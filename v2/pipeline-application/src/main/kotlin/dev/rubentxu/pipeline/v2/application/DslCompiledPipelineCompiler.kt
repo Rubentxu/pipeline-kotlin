@@ -40,17 +40,16 @@ import kotlinx.serialization.json.put
 /**
  * Transitional application adapter from the current DSL aggregate to the
  * canonical executable IR. It deliberately bypasses PipelineDefinition and
- * SpecDefinitionMapper; validator/planner migration is LFC1-005.
- *
- * LFC1-007: StepSpec.WriteFile is re-mapped to `core.file.writeFile` with typed payload.
+ * SpecDefinitionMapper; validator/planner migration is
+ * StepSpec.WriteFile is re-mapped to `core.file.writeFile` with typed payload.
  * Body-aware steps:
  * - catchError / warnError: compiled via [rewriteWorkflowControl] to the legacy linear
- *   sequence (core.emit.event enter + core.sh + core.emit.event trigger) until EM-5/EM-6
+ * Sequence (core.emit.event enter + core.sh + core.emit.event trigger) until/
  *   semantics (failure suppression, UNSTABLE classification) are fully implemented.
  * - timeout / retry / dir / withCredentials: compiled to [BlockStepNode] with canonical
- *   body-execution IR (EM-4 substrate, JEP-020/021/022/029).
+ * Body-execution IR (substrate)
  * Unstable: compiled via [rewriteUnstable] to the legacy linear sequence.
- */
+*/
 object DslCompiledPipelineCompiler {
 
     private const val COMPILER_VERSION = "dsl-compiler-v1"
@@ -117,7 +116,7 @@ object DslCompiledPipelineCompiler {
             options = stage.options.toOptions(),
             body = body,
             directives = stage.directives,
-            // S2-B: the declared `post` block becomes typed IR data. The
+            // The declared `post` block becomes typed IR data. The
             // COMPILER only projects; it never decides which finalizer runs —
             // that is the pure PostPlanner's job at execution time.
             post = stage.post.conditions
@@ -135,9 +134,9 @@ object DslCompiledPipelineCompiler {
     /**
      * Linearizes a list of step specs into a flat list of canonical step nodes.
      * catchError/warnError/unstable → legacy linear sequence via rewriteWorkflowControl/rewriteUnstable.
-     * timeout/retry/dir/withCredentials → [BlockStepNode] (EM-4 body-execution IR).
+     * Timeout/retry/dir/withCredentials → [BlockStepNode] (body-execution IR)
      * Terminal steps → [OpaqueStepNode].
-     */
+*/
     private fun stepNodes(steps: List<StepSpec>, parentToken: String): List<StepNode> {
         val occurrences = mutableMapOf<String, Int>()
         return steps.flatMap { step ->
@@ -149,10 +148,10 @@ object DslCompiledPipelineCompiler {
     /**
      * Converts one StepSpec into one or more canonical StepNode IR nodes.
      * Body-aware steps → BlockStepNode; terminal steps → OpaqueStepNode.
-     */
+*/
     private fun stepNode(step: StepSpec, parentToken: String, occurrence: Int): List<StepNode> {
         return when (step) {
-            // Generic open-registry lowering (LB-02 / EP-F2): carries the plugin StepKey + already
+            // Carries the plugin StepKey + already
             // encoded input verbatim. The compiler NEVER knows a concrete external StepKey, never
             // resolves a StepDefinition, never decodes/re-encodes the typed input. Runtime
             // registry/preparation resolves it. Lowering to StructuralRegistry is the SAME family as
@@ -167,7 +166,7 @@ object DslCompiledPipelineCompiler {
                     ),
                 ),
             )
-            // WU-RP-033: generic open-registry Block lowering. The plugin StepKey is carried
+            // Generic open-registry Block lowering. The plugin StepKey is carried
             // verbatim into a BlockStepNode; the canonical body children are compiled
             // recursively (the SAME lowering every core Block Step uses). Runtime admission
             // resolves the declared BodyExecutionPolicy from the open registry and rejects
@@ -204,7 +203,7 @@ object DslCompiledPipelineCompiler {
             )
             is StepSpec.WarnError -> rewriteWorkflowControl(
                 projection = WorkflowControlProjection.WarnError,
-                buildResult = CatchErrorBuildResult.Unstable, // forced per ADR-0054 §D5
+                buildResult = CatchErrorBuildResult.Unstable, // fixed by the projection
                 stageResult = CatchErrorBuildResult.Unstable,
                 message = step.message,
                 innerSteps = step.steps,
@@ -241,23 +240,23 @@ object DslCompiledPipelineCompiler {
                 parentToken = parentToken,
                 occurrence = occurrence,
             )
-            // WU-G5R.2: waitUntil projects to canonical BlockStepNode (body-owning).
+            // WaitUntil projects to canonical BlockStepNode (body-owning).
             // The else -> OpaqueStepNode catch-all MUST NOT fire for this key.
             is StepSpec.WaitUntilBlock -> blockStepNode(
                 step = step,
                 parentToken = parentToken,
                 occurrence = occurrence,
             )
-            // WU-091 G3: core.lock lowers through the SAME block machinery; the
-            // wire payload is produced exclusively by CoreLockWireCodec (G3.4).
+            // Core.lock lowers through the SAME block machinery; the
+            // Wire payload is produced exclusively by CoreLockWireCodec
             // The else -> OpaqueStepNode catch-all MUST NOT fire for this key.
             is StepSpec.Lock -> blockStepNode(
                 step = step,
                 parentToken = parentToken,
                 occurrence = occurrence,
             )
-            // WU-092 G3: core.input lowers through the SAME block machinery; the
-            // wire payload is produced exclusively by CoreInputWireCodec (G3.4).
+            // Core.input lowers through the SAME block machinery; the
+            // Wire payload is produced exclusively by CoreInputWireCodec
             // The else -> OpaqueStepNode catch-all MUST NOT fire for this key.
             is StepSpec.Input -> blockStepNode(
                 step = step,
@@ -269,10 +268,10 @@ object DslCompiledPipelineCompiler {
                 parentToken = parentToken,
                 occurrence = occurrence,
             )
-            // S2-A9 / G5: StepSpec.Milestone branch removed (LEGACY_REMOVED). The DSL
+            // StepSpec.Milestone branch removed (LEGACY_REMOVED). The DSL
             // `milestone(ordinal, label)` now lowers directly to StepSpec.RegistryStepSpec
             // (open-world registry path); no dedicated compiler branch needed. Legacy
-            // milestonePayload() removed at G5.
+            // milestonePayload removed at.
             else -> listOf(
                 OpaqueStepNode(
                     id = StepId("$parentToken/${stableToken(step.name)}-$occurrence"),
@@ -285,18 +284,16 @@ object DslCompiledPipelineCompiler {
 
     /**
      * Compiles a body-aware StepSpec into a canonical [BlockStepNode].
-     *
      * The body steps are compiled recursively via [stepNodes] to produce the flat
      * canonical child sequence. The step's metadata (buildResult, time/unit, count, etc.)
      * is not encoded in the BlockStepNode itself — it lives in the [StepDescriptor] looked
      * up from [StepDescriptorRegistry.standard] and the runtime [ContextOverlay] pushed
      * by the coordinator when dispatching the block.
-     *
-     * JEP-029 (body-execution IR): BlockStepNode is the canonical representation
+     * BlockStepNode is the canonical representation
      * for all block-type steps. The coordinator's [CanonicalDurableRunCoordinator.dispatchBody]
      * handles the body children with proper per-child journal rows and context-stack
      * restoration.
-     */
+*/
     private fun blockStepNode(step: StepSpec, parentToken: String, occurrence: Int): List<StepNode> {
         val tokenPrefix = stableToken(step.name)
         val stepId = StepId("$parentToken/${tokenPrefix}-body-$occurrence")
@@ -311,10 +308,10 @@ object DslCompiledPipelineCompiler {
             is StepSpec.WithEnv -> step.steps
             is StepSpec.Timestamps -> step.steps
             is StepSpec.WaitUntilBlock -> step.body
-            // WU-091 G3: the lock body children compile like every other block
+            // The lock body children compile like every other block
             // family member; missing this arm would silently drop the body.
             is StepSpec.Lock -> step.steps
-            // WU-092 G3: same law for the input body.
+            // Same law for the input body.
             is StepSpec.Input -> step.steps
             else -> emptyList()
         }, "$parentToken/${tokenPrefix}-body-$occurrence")
@@ -344,12 +341,12 @@ object DslCompiledPipelineCompiler {
         is StepSpec.WithCredentialsBlock -> CredentialBindingsPayload.encode(
             step.bindings.map { it.toSpec() },
         )
-        // B13/E-EM-11: core.retry projects its contract (attempt count) into the
+        // Core.retry projects its contract (attempt count) into the
         // payload so the durable coordinator can loop body attempts without
-        // interpreting StepSpec. Only maxAttempts is consumed (A3 audit: the
+        // Interpreting StepSpec. Only maxAttempts is consumed (audit: the
         // retrofit retry policy's baseMs/jitterMs had no runtime consumer and
         // the surface was removed; the block form projects count only).
-        // B13/E-EM-11: core.timeout projects its deadline into the payload so the
+        // Core.timeout projects its deadline into the payload so the
         // durable coordinator can budget child dispatches without interpreting
         // StepSpec. Unit: DSL produces SECONDS/MINUTES/HOURS (Jenkins time/unit).
         is StepSpec.TimeoutBlock -> {
@@ -368,19 +365,19 @@ object DslCompiledPipelineCompiler {
             put("kind", "retry")
             put("maxAttempts", step.count)
         })
-        // DEBT-WIRE-AUTHORITY: the compiler does NOT hand-write the waitUntil block
+        // The compiler does NOT hand-write the waitUntil block
         // wire JSON. CoreWaitUntilWireCodec is THE single authority for that format,
-        // the same law as core.lock (WU-091) and core.input (WU-092). The encoder
+        // The same law as core.lock and core.input. The encoder
         // is byte-identical to the JSON this branch used to build, so no durable
         // body identity moves (BodyStructureDigest appends the payload string).
         is StepSpec.WaitUntilBlock ->
             CoreWaitUntilWireCodec.encode(step.toCoreWaitUntilInput()).value
-        // WU-091 G3.4: the compiler does NOT hand-write the core.lock wire JSON.
+        // The compiler does NOT hand-write the core.lock wire JSON.
         // CoreLockWireCodec is THE single authority for that format; this is the
         // divergence core.sh suffered (kind=sh|shell, command|script) refused in
         // advance. Guarded by Lfc2LockWireAuthorityFitnessTest.
         is StepSpec.Lock -> CoreLockWireCodec.encode(step.toCoreLockInput()).value
-        // WU-092 G3.4: same single-authority law as core.lock. The compiler knows
+        // Same single-authority law as core.lock. The compiler knows
         // the StepSpec.Input -> CoreInputInput transformation (a DOMAIN decision)
         // and delegates the ENCODING to CoreInputWireCodec.
         is StepSpec.Input -> CoreInputWireCodec.encode(step.toCoreInputInput()).value
@@ -388,12 +385,12 @@ object DslCompiledPipelineCompiler {
     }
 
     /**
-     * WU-092 G3.3: the compiler knows the `StepSpec.Input -> CoreInputInput`
+     * The compiler knows the `StepSpec.Input -> CoreInputInput`
      * transformation, which is a DOMAIN decision; it does not know the wire
      * format, which is an ENCODING decision owned by [CoreInputWireCodec]. Pure,
      * total, one direction, and it does NOT resolve a blank message here: that
      * rule belongs to `inputIntentOf`, applied once at the Step.
-     */
+*/
     private fun StepSpec.Input.toCoreInputInput(): CoreInputInput = CoreInputInput(
         message = message,
         ok = ok,
@@ -403,12 +400,12 @@ object DslCompiledPipelineCompiler {
     )
 
     /**
-     * WU-091 G3.3: the compiler knows the `StepSpec.Lock -> CoreLockInput`
+     * The compiler knows the `StepSpec.Lock -> CoreLockInput`
      * transformation, which is a DOMAIN decision (what the step takes as
      * input); it does not know the wire format, which is an ENCODING decision
      * owned by [CoreLockWireCodec]. Pure, total, one direction, no defaults
      * invented here: every field maps verbatim.
-     */
+*/
     private fun StepSpec.Lock.toCoreLockInput(): CoreLockInput = CoreLockInput(
         resource = resource,
         timeoutSeconds = timeoutSeconds,
@@ -417,12 +414,12 @@ object DslCompiledPipelineCompiler {
     )
 
     /**
-     * DEBT-WIRE-AUTHORITY: the compiler knows the `StepSpec.WaitUntilBlock ->
+     * The compiler knows the `StepSpec.WaitUntilBlock ->
      * CoreWaitUntilInput` transformation, which is a DOMAIN decision (what the
      * block declares); it does not know the wire format, which is an ENCODING
      * decision owned by [CoreWaitUntilWireCodec]. Pure, total, one direction, no
      * defaults invented here: every field maps verbatim.
-     */
+*/
     private fun StepSpec.WaitUntilBlock.toCoreWaitUntilInput(): CoreWaitUntilInput = CoreWaitUntilInput(
         initialRecurrencePeriod = initialRecurrencePeriod,
         maxBackoffMs = maxBackoffMs,
@@ -430,23 +427,20 @@ object DslCompiledPipelineCompiler {
 
     /**
      * Pre-compiler rewrite for catchError / warnError blocks.
-     *
      * Produces a linear sequence of nodes:
      * 1. `core.emit.event(kind="CatchErrorEntered", buildResult, enteredAt)` — entry marker (scope push)
      * 2. the projected inner scope — plain steps inlined into `set +e` shell wrapper(s);
      *    nested catchError/warnError children recursively rewritten INSIDE this scope
      *    (between enter and trigger) so they inherit the parent overlay
      * 3. `core.emit.event(kind="CatchErrorTriggered", emitted=true)` — exit marker (scope pop, always emitted)
-     *
      * warnError is catchError(buildResult=UNSTABLE, stageResult=UNSTABLE) plus a
      * visible StageMarkedUnstable projection after the scope closes.
-     *
      * Bare unstable children keep their existing semantics: lifted after the trigger
      * for catchError, projected as the warnError StageMarkedUnstable marker otherwise.
      * A shell wrapper runs its inlined steps with `set +e` so failures are captured
-     * rather than aborting the script (FIND-DV-DUPL-01); segment boundaries between
+     * Rather than aborting the script; segment boundaries between
      * markers stay covered by the coordinator's catch-error overlay continuation.
-     */
+*/
     private fun rewriteWorkflowControl(
         projection: WorkflowControlProjection,
         buildResult: CatchErrorBuildResult?,
@@ -456,7 +450,7 @@ object DslCompiledPipelineCompiler {
         parentToken: String,
         occurrence: Int,
     ): List<StepNode> {
-        // P3-E D3 — was `buildResult?.uppercase() ?: "UNSTABLE"` and
+        // Was `buildResult?.uppercase() ?: "UNSTABLE"` and
         // `stageResult?.uppercase() ?: effectiveBuildResult`. The `uppercase()` was the tell:
         // a free-text authoring String was being normalised on its way to the wire, so the
         // token that reached durable history was one the author never wrote. Both defaults
@@ -482,8 +476,8 @@ object DslCompiledPipelineCompiler {
                     put("buildResult", effectiveBuildResult.wireToken)
                     put("stageResult", effectiveStageResult.wireToken)
                     put("enteredAt", System.currentTimeMillis().toString())
-                    // EM-5/EM-6: carry the message so the coordinator's overlay can publish the
-                    // CatchErrorTriggered event at the real-failure fold (D5). Nullable/absent OK.
+                    // Carry the message so the coordinator's overlay can publish the
+                    // CatchErrorTriggered event at the real-failure fold. Nullable/absent OK
                     message?.let { put("message", it) }
                 },
             ))
@@ -523,19 +517,17 @@ object DslCompiledPipelineCompiler {
 
     /**
      * Projects the inner steps of a workflow-control scope into canonical nodes.
-     *
      * Without structured children the plain steps are inlined into a single
      * `set +e` shell wrapper with the scope's own step id, preserving the
      * historical single-node shape (including the empty retained wrapper).
      * With nested catchError/warnError children the scope is projected as ordered
      * segments: each plain run becomes its own shell wrapper and each structured
      * child is recursively rewritten inside the parent scope.
-     *
      * Any other structured step kind fails compilation loudly — the compiler
      * never emits a silent shell comment.
-     */
+*/
     private fun projectInnerScope(innerSteps: List<StepSpec>, scopeToken: String): List<StepNode> {
-        // G1 (INC gate): `error` is also structured — it must abort the inner scope as a typed
+        // `error` is also structured — it must abort the inner scope as a typed
         // core.error node so the coordinator's catchError overlay can catch it, never be inlined
         // as a silent shell comment by buildShellScript.
         val hasStructuredChild = innerSteps.any {
@@ -592,7 +584,7 @@ object DslCompiledPipelineCompiler {
                     flushPlainRun()
                     nodes += rewriteWorkflowControl(
                         projection = WorkflowControlProjection.WarnError,
-                        buildResult = CatchErrorBuildResult.Unstable, // forced per ADR-0054 §D5
+                        buildResult = CatchErrorBuildResult.Unstable, // fixed by the projection
                         stageResult = CatchErrorBuildResult.Unstable,
                         message = step.message,
                         innerSteps = step.steps,
@@ -603,7 +595,7 @@ object DslCompiledPipelineCompiler {
                 }
                 is StepSpec.Shell, is StepSpec.Echo, is StepSpec.WriteFile -> plainRun += step
                 is StepSpec.Error -> {
-                    // G1: project a structured `error` to a typed core.error abort node so the
+                    // Project a structured `error` to a typed core.error abort node so the
                     // coordinator dispatches a Failure and the enclosing catchError overlay decides
                     // whether to suppress (default UNSTABLE) or propagate. Never a silent shell comment.
                     flushPlainRun()
@@ -627,11 +619,10 @@ object DslCompiledPipelineCompiler {
 
     /**
      * Pre-compiler rewrite for unstable(message).
-     *
      * Produces a linear sequence of 2 nodes:
      * 1. `core.emit.event(kind="StageMarkedUnstable", message)` — marks the stage
      * 2. `core.sh("exit 0")` — ensures the step exits 0 so pipeline continues
-     */
+*/
     private fun rewriteUnstable(
         message: String,
         parentToken: String,
@@ -657,11 +648,10 @@ object DslCompiledPipelineCompiler {
     /**
      * Constructs a shell script heredoc that executes all inner steps sequentially
      * with `set +e` (continue on error) and explicit exit code propagation.
-     *
      * Fail-closed: a structured step kind that reaches this function has bypassed
      * the pre-compiler rewrite, so compilation fails loudly instead of emitting an
      * invalid silent shell comment.
-     */
+*/
     private fun buildShellScript(innerSteps: List<StepSpec>): String {
         val commands = innerSteps.map { step ->
             when (step) {
@@ -725,7 +715,7 @@ object DslCompiledPipelineCompiler {
         })
     }
 
-    // S2-A9 / G5: milestonePayload removed (LEGACY_REMOVED). The canonical envelope for
+    // MilestonePayload removed (LEGACY_REMOVED). The canonical envelope for
     // core.milestone is produced by the DSL `milestone(...)` function (scripting-api) which
     // lowers to StepSpec.RegistryStepSpec; the runtime decoder/handler is CoreMilestoneStep
     // via the registry. No compiler-side payload construction needed.
@@ -758,7 +748,7 @@ object DslCompiledPipelineCompiler {
                 }
                 is StepSpec.Error -> {
                     put("message", step.message)
-                    // P3-E E6: `failureKind` is typed, and the wire is not. `FailureKind.name` IS
+                    // `failureKind` is typed, and the wire is not. `FailureKind.name` IS
                     // the historical token for every case, so this projection is byte-identical to
                     // the String it replaces — which is the point. The String that used to live
                     // here was the last place a typed decision was degraded before it was
@@ -772,7 +762,7 @@ object DslCompiledPipelineCompiler {
                     put("text", step.text)
                     put("encoding", step.encoding)
                 }
-                // WU-LPR-104: canonical envelopes byte-identical to the registry
+                // Canonical envelopes byte-identical to the registry
                 // input codecs (CoreReadFileStep / CoreFileExistsStep).
                 is StepSpec.ReadFile -> {
                     put("kind", "readFile")
@@ -806,23 +796,23 @@ object DslCompiledPipelineCompiler {
                     put("allowEmptyArchive", step.allowEmptyArchive ?: false)
                     put("excludes", step.excludes)
                     put("fingerprint", step.fingerprint ?: false)
-                    // E1.1 / T1: optional artifactName. Only emitted when
+                    // Optional artifactName. Only emitted when
                     // non-null to preserve byte-shape for legacy callers
-                    // (backward-compat with F1 archive fixtures).
+                    // (backward-compat with archive fixtures)
                     step.artifactName?.let { put("name", it) }
                 }
-                // WU-RP-053R / C3.1: canonical envelope for core.deleteDir — the
+                // Canonical envelope for core.deleteDir — the
                 // typed input codec (CoreDeleteDirStep.inputCodec) reads
                 // {"kind":"deleteDir","path":"<path>"}. Previously the else-branch
                 // produced {"kind":"deleteDir","declarativeValue":"StepSpec.DeleteDir(path=…)"}
                 // which silently defaulted the `path` field to "." in the handler,
                 // making `deleteDir(path="sub")` a no-op against the stage workspace
-                // root. C2 RED-DELETEDIR discriminated this defect.
+                // Root. discriminated this defect
                 is StepSpec.DeleteDir -> {
                     put("kind", "deleteDir")
                     put("path", step.path)
                 }
-                // WU-RP-053R / C3.2: canonical envelope for core.pwd. The
+                // Canonical envelope for core.pwd. The
                 // CorePwdStep.inputCodec reads {"kind":"pwd","tmp":<bool>} and
                 // decodes tmp=true as a PWD_TMP_TRUE_DISPOSITION failure
                 // (fail-closed). Previously the else-branch produced the legacy
@@ -834,14 +824,14 @@ object DslCompiledPipelineCompiler {
                     put("kind", "pwd")
                     put("tmp", JsonPrimitive(step.tmp))
                 }
-                // WU-RP-053R / C3.6: canonical envelope for core.cleanWs.
+                // Canonical envelope for core.cleanWs.
                 // The CoreCleanWsStep.inputCodec reads
                 // {"kind":"cleanWs","deleteDirs":<bool>,"patterns":[...]}.
                 // Previously the else-branch produced
                 // {"kind":"cleanWs","declarativeValue":"StepSpec.CleanWs(deleteDirs=…, patterns=…)"}
                 // which made the typed decode fall back to defaults (empty
-                // patterns), erasing the user's glob selectors. C2
-                // RED-WS-CLEANED incidentally passed because `patterns=[]` is
+                // Patterns), erasing the user's glob selectors
+                // Incidentally passed because `patterns=[]` is
                 // its own valid default; the defect was not discriminated but
                 // was structurally identical to the deleteDir / pwd family.
                 // Locking the canonical envelope here closes the structural
@@ -851,11 +841,11 @@ object DslCompiledPipelineCompiler {
                     put("deleteDirs", JsonPrimitive(step.deleteDirs))
                     put("patterns", JsonArray((step.patterns ?: emptyList()).map { JsonPrimitive(it) }))
                 }
-                // WU-RP-053R / C3.7: canonical envelope for core.checkout. The
+                // Canonical envelope for core.checkout. The
                 // GitCheckoutInputCodec (scm-git plugin) decodes
                 // {"url":<str>,"branch":<str>,"credentialsRef":<str|null>,
                 //  "changelog":<bool>,"poll":<bool>,"relativeTargetDir":<str>}.
-                // The outer kind field is preserved by the registry seam (LB-02)
+                // The outer kind field is preserved by the registry seam
                 // via the OpaqueStepNode.pluginStepId; the payload itself must
                 // carry the typed fields verbatim. The DSL `checkout(scm)` /
                 // `scmGit(...)` lowers to StepSpec.Checkout; this branch keeps
@@ -873,7 +863,7 @@ object DslCompiledPipelineCompiler {
                     put("poll", JsonPrimitive(git?.poll ?: true))
                     put("relativeTargetDir", git?.relativeTargetDir ?: ".")
                 }
-                // WU-RP-053R / C3.8: canonical envelope for core.load.
+                // Canonical envelope for core.load.
                 // core.load is DEFERRED + UNSUPPORTED (no CoreLoadStep exists,
                 // admission fail-closes); the envelope must still be canonical
                 // because the field shape is the contract — `{"kind":"load",
@@ -884,7 +874,7 @@ object DslCompiledPipelineCompiler {
                     put("kind", "load")
                     put("path", step.path)
                 }
-                // WU-RP-053R / C3.9: canonical envelope for core.ansiColor.
+                // Canonical envelope for core.ansiColor.
                 // The step is body-aware; the nested `steps` are lowered
                 // recursively by the canonical `stepNodes` machinery and live
                 // inside a [BlockStepNode] body — the envelope itself carries
@@ -896,12 +886,12 @@ object DslCompiledPipelineCompiler {
                     put("kind", "ansiColor")
                     put("colorMapName", step.colorMapName)
                 }
-                // WU-RP-053R / C3.10: canonical envelope for core.node
+                // Canonical envelope for core.node
                 // (LOCAL_no_op semantics — emits AgentResolved, executes inner
                 // body as-is). The step is body-aware; the inner `steps` are
                 // lowered by `stepNodes` and live inside a [BlockStepNode]
                 // body. The envelope carries only the agent label.
-                // ML-R7 reference: Jenkins `node(label?: String) { block }`.
+                // Jenkins `node(label?: String) { block }`.
                 is StepSpec.NodeNoOp -> {
                     put("kind", "node")
                     step.label?.let { put("label", it) }
@@ -912,17 +902,15 @@ object DslCompiledPipelineCompiler {
         return Json.encodeToString(JsonObject.serializer(), payload)
     }
 
-    // WU-RP-032 / DSL-008: stage options surface carries ONLY timeout (the only option
+    // Stage options surface carries ONLY timeout (the only option
     // with a runtime interpreter, projected via projectShellOptions). retry/skip were
     // removed from the DSL surface; unrepresentable instead of accepted-and-dropped.
-    //
-    // S3.3: the typed value now goes straight into the [StageOption] ADT. It used
+    // The typed value now goes straight into the [StageOption] ADT. It used
     // to be flattened to `OptionSpec("timeout", it.toString())` and recovered by
     // the interpreter with a name filter plus `toLongOrNull`, which made the
     // carrier survive only as text. A non-positive value is rejected by the
     // ADT's own invariant rather than becoming a stage that fails at run time.
-    //
-    // S3-R1-B: the KDoc here used to say this conversion was total. It was not:
+    // The KDoc here used to say this conversion was total. It was not:
     // `OptionsSpec` had no validation, so `Math.multiplyExact` was a live
     // `ArithmeticException` reachable from `OptionsSpec(timeout = Long.MAX_VALUE)`
     // and from `options { timeout(Long.MAX_VALUE) }`. Both doors now consult one
@@ -945,6 +933,6 @@ object DslCompiledPipelineCompiler {
         .trim('-')
         .ifBlank { error("DSL names must contain at least one alphanumeric character: '$value'") }
 
-    /** Shared utility (B0). Same bytes, same lowercase hex as the previous local helper. */
+    /** Shared utility. Same bytes, same lowercase hex as the previous local helper */
     private fun sha256(value: String): String = Sha256.ofText(value)
 }

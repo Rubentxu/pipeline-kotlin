@@ -21,18 +21,14 @@ import dev.rubentxu.pipeline.v2.events.registry.EventDefinitionCreation
 import java.util.ServiceLoader
 
 /**
- * S6/D — the composition gate that makes "admit, THEN load" an ordering, not a promise.
- *
+ * The composition gate that makes "admit, THEN load" an ordering, not a promise.
  * ## Why this type exists
- *
  * [PluginAdmission] is a pure decision and [PluginManifestResourceReader] is a pure read.
  * Neither of them can enforce WHEN a plugin's code runs; a caller that loads the contributor
  * first and admits afterwards satisfies both signatures perfectly and defeats the entire
  * guarantee. That is the inversion this gate closes: the ordering lives in the type that
  * both halves are called from, so a wrong order is not possible to express here.
- *
  * ## The four phases, and why each is where it is
- *
  * ```text
  * Class.forName(name, initialize = false)   -> link, do NOT run plugin code
  * read manifest by resource name            -> the DECLARATION
@@ -40,43 +36,35 @@ import java.util.ServiceLoader
  * Class.forName(name, initialize = true)    -> ONLY NOW may plugin code run
  * ServiceLoader contributions               -> and only what admission accepted
  * ```
- *
  * `initialize = false` is load-bearing and is the reason the first line is safe: it resolves
  * the class without running its static initialiser, which is what lets the manifest be read
  * "by artifact" without touching a line of plugin code. A reader that needed an instance to
  * find the declaration could not make that promise, and the difference between those two
- * readers is the whole content of ADR-EVO-003.
- *
+ * Readers is the whole content of
  * ## A refused plugin is never linked
- *
  * On refusal nothing after the decision runs, and the method returns the typed rejection. It
  * does not throw, does not skip, and does not return an empty list a caller could mistake for
  * "this plugin contributed nothing" — absence of a plugin and absence of a contribution are
  * different facts and must stay different.
- *
  * ## Why all THREE families are collected here, and what it cost not to
- *
  * The cross-check takes `definitions`, `directiveKeys` and `eventKinds`. This method used to pass
  * only the first, which made the other two permanently `emptySet()` — and therefore made
  * `missingDirectives` and `missingEvents` equal to whatever the manifest declared. The
  * consequence was not subtle: **a plugin that declared a Directive or an Event could never be
  * admitted**, however faithfully it implemented them, because the comparison had nothing to
  * compare against and the declared side always lost.
- *
  * It stayed invisible for as long as it stayed true, because no plugin declared either family:
  * with empty declarations AND empty implementations, the cross-check passed trivially. It looked
  * like the cross-check covered four families and it covered one. That is the same shape of defect
  * as the prohibition over a file that no longer exists — a check whose green is produced by the
  * absence of the subject.
- *
  * The fix is not "trust the manifest" and not "trust the classes": both sides are now measured in
  * the same window, from the same artifact, under the same scoping rule.
- */
+*/
 object PluginAdmissionGate {
 
     /**
      * Admit a contributor class and, only if admitted, let its code run.
-     *
      * @param contributorClassName the ServiceLoader provider class name.
      * @param classLoader loader that will also supply the manifest resource.
      * @param runtimeVersion the running PipelineK version, for the API range comparison.
@@ -84,16 +72,16 @@ object PluginAdmissionGate {
      * @param strict whether the manifest must come from the same code source as the
      *   contributor. Left on in production; tests inject manifests for classes they cannot
      *   repackage and pass `false`, which is a weaker promise and says so.
-     * @param trustDatabase B3.2 trust database. When `null`, the gate uses the legacy
+     * @param trustDatabase trust database. When `null`, the gate uses the legacy
      *   `measure()` entry point (Unverified identity, no operator-trust check). When
      *   provided, the gate hashes the artifact bytes, consults the operator's pinned
      *   digests, refuses on no-row / mismatch, and writes a control row BEFORE returning.
-     *   Legacy code that did not know about B3.2 keeps working; new code passes a real
-     *   database to get the fail-closed B3.2 behaviour.
-     * @param controlJournal B3.2 admission control row writer. Required when
+     * Legacy code that did not know about keeps working; new code passes a real
+     * Database to get the fail-closed behaviour
+     * @param controlJournal admission control row writer. Required when
      *   [trustDatabase] is provided; the gate persists the decision durably before
      *   returning. When [trustDatabase] is `null`, [controlJournal] is also ignored.
-     */
+*/
     fun admitThenLoad(
         contributorClassName: String,
         classLoader: ClassLoader,
@@ -118,7 +106,7 @@ object PluginAdmissionGate {
         val read = PluginManifestResourceReader.read(classLoader, contributorClass, strict)
         val decoded = when (read) {
             is PluginManifestReadOutcome.NoManifest -> {
-                // B3.2 control-row-before-refusal: write the row even on a "no manifest"
+                // Write the row even on a "no manifest"
                 // refusal, because the absence of a manifest IS the durable fact the
                 // operator may want to see. The row's `measuredDigest` is null and the
                 // verdict is Unverified.ArtifactNotMeasurable.
@@ -230,14 +218,12 @@ object PluginAdmissionGate {
             Class.forName(contributorClassName, /* initialize = */ true, classLoader)
 
             // ServiceLoader is Iterable but NOT Closeable, so `use` does not apply here.
-            //
             // The filter is load-bearing and was found by a failing test. ServiceLoader returns
             // EVERY contributor on the classloader, so an unscoped cross-check compares one
             // plugin's manifest against every other plugin's Steps and reports them all as
             // undeclared. A plugin's cross-check is about ITS OWN contributions, so providers
             // are selected by the artifact they come from — the same scoping `strict` applies
             // to the manifest. Without it every plugin refuses and the gate admits nothing.
-            //
             // All THREE families are scoped by that same rule, and they must be: a Step is not
             // "this plugin's" in some looser sense that a Directive is not. They are one plugin's
             // contributions or the cross-check is comparing a manifest against a neighbour.
@@ -278,7 +264,7 @@ object PluginAdmissionGate {
                 }
             }
 
-            // S6/E — the cross-check. It runs HERE, after the contributor's code has run,
+            // The cross-check. It runs HERE, after the contributor's code has run,
             // because comparing a declaration against contributions is only possible once
             // the contributions exist. Splitting it from phase 3 is the point: the first gate
             // is pre-load and cheap, the second is post-load and complete, and collapsing
@@ -308,7 +294,7 @@ object PluginAdmissionGate {
             )
         }
 
-        // B3.2 — admitted plugins also write a row. The decision the runtime made is
+        // Admitted plugins also write a row. The decision the runtime made is
         // itself a durable fact: a future run with the same `--control-root` can see what
         // was admitted and why, without re-running the gate.
         if (trustDatabase != null && controlJournal != null) {
@@ -332,20 +318,17 @@ object PluginAdmissionGate {
 
     /**
      * The artifact-integrity guarantee, as a pure decision with no I/O and no clock.
-     *
      * A measured digest that disagrees with the declared one is refused BEFORE any
      * operator row is consulted: the admission layer does not need a row to know the
      * manifest is lying, and a plugin that lies about its own bytes is refused whether
      * or not anyone pinned anything.
-     *
      * `null` means the bytes did not contradict the claim. It does NOT mean verified:
      * a `null` [MeasuredArtifactIdentity.measuredDigest] means nobody measured, and that
      * stays a distinct state handled by the caller, never a silent pass.
-     *
      * Split out from [b32TrustRefusal] so the guarantee is reachable from a test without
      * building a whole [dev.rubentxu.pipeline.v2.domain.step.PluginManifest] — a fixture
      * for eight unrelated fields would freeze the manifest's shape to guard a comparison.
-     */
+*/
     internal fun measuredVsDeclaredRefusal(
         pluginId: String,
         identity: MeasuredArtifactIdentity,
@@ -362,12 +345,11 @@ object PluginAdmissionGate {
     }
 
     /**
-     * Compute the B3.2 trust refusal for a manifest + measured identity.
-     *
+     * Compute the trust refusal for a manifest + measured identity
      * Returns `null` when the plugin is admitted on trust grounds (i.e. the operator
      * pinned the digest and the measured bytes match). Returns the first matching
      * [AdmissionRefusal] case otherwise.
-     */
+*/
     private fun b32TrustRefusal(
         trustDatabase: OperatorTrustDatabase,
         manifest: dev.rubentxu.pipeline.v2.domain.step.PluginManifest,
@@ -405,7 +387,7 @@ object PluginAdmissionGate {
      * Persist the gate's decision durably. Called from EVERY refusal path AND from
      * the admit path; absence of a row for a plugin means the gate has not yet
      * decided it, NOT that the plugin is missing.
-     */
+*/
     private fun writeControlRow(
         controlJournal: AdmissionControlJournal,
         pluginId: String,
@@ -429,7 +411,7 @@ object PluginAdmissionGate {
     /**
      * Resolve the contributor's `protectionDomain.codeSource` to an [ArtifactOrigin].
      * Returns [ArtifactOrigin.Unknown] if the contributor has no codeSource.
-     */
+*/
     private fun originFor(contributorClass: Class<*>): ArtifactOrigin {
         val location = contributorClass.protectionDomain?.codeSource?.location?.toString()
             ?: return ArtifactOrigin.Unknown

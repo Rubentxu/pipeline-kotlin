@@ -8,7 +8,7 @@ import java.nio.file.Path
 /**
  * Converts a [ScriptDefinition] into a [SourceCode] suitable for
  * [kotlin.script.experimental.jvmhost.BasicJvmScriptingHost.evalWithTemplate].
- */
+*/
 object SourceCodeFactory {
     fun toSourceCode(definition: ScriptDefinition): SourceCode {
         val sourcePath: Path? = definition.sourcePath

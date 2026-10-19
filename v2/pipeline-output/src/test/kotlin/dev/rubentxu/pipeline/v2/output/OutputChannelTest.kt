@@ -10,12 +10,11 @@ import org.junit.jupiter.api.Test
  * A stream's identity is its ADDRESS STRING: `runId/operationId/channel`. Everything downstream --
  * the pin index, the frame index, the transcript reader -- keys off that string, so how it is built
  * and when a string is refused are both contract, not formatting.
- *
  * `OutputStreamAddress.parse` is the only way an address becomes a typed value again, and it is the
  * only place a persisted stream id re-enters the product. A `null` from it is the refusal; every
  * rejection is a whole-value return, never a throw, because a malformed id arrives from a journal on
  * disk and must not be able to escape as an exception.
- */
+*/
 class OutputChannelTest {
 
     // --- the address is a pure function of its three fields ------------------

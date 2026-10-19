@@ -5,48 +5,43 @@ import dev.rubentxu.pipeline.v2.scripting.CacheKey
 /**
  * The primitive field readers of the [JsonEventLog] wire format: string,
  * long, int, boolean and the embedded cache key.
- *
  * [JsonEventLog] is an `object`, so detekt budgets it 11 functions
  * (allowedFunctionsPerObject) rather than the 25 allowedFunctionsPerClass
  * that applies to classes. These readers were private there and are shared
  * by every event constructor in [EventJsonDecoder].
- */
+*/
 internal object EventJsonFields {
 
     /**
-     * P3-E E6 — how "this optional field was not declared" travels on the wire.
-     *
+     * How "this optional field was not declared" travels on the wire.
      * An optional field is written as the empty string, and read back as `null`. That pair used
      * to be two independent literals: thirteen `?: ""` in [EventJsonWriter] and thirteen
      * `takeIf { it.isNotEmpty() }` in [JsonEventLog]. They happened to correspond, and nothing
      * asserted that they did.
-     *
-     * That is the shape of the defect P3-E exists to close, in its mildest form. Add a writer
+     * That is the shape of the defect exists to close, in its mildest form. Add a writer
      * that forgets the reader and the field decodes as the empty string — a fabricated value
      * that reads back as a real one. Add a reader without the writer and absence silently
      * becomes `null`, which happens to be right for the wrong reason. Both compile, both run,
      * and neither is noticed until a consumer distinguishes "" from "not declared".
-     *
      * The empty string is kept rather than a JSON `null` because it is the encoding every
      * historical record already uses, and wire/history compatibility outranks elegance. What
      * changes is that the convention now has a name, one implementation, and a fitness test
      * asserting that the two sides cover the same field set.
-     */
+*/
     const val ABSENT_ON_WIRE = ""
 
     /**
      * Reads an OPTIONAL string field, mapping the wire encoding of absence back to `null`.
-     *
      * Use [stringField] for a field that is required: for those, absence is corruption and must
      * fail closed rather than be invented into a value.
-     */
+*/
     fun optionalStringField(json: String, name: String): String? =
         stringField(json, name)?.takeIf { it != ABSENT_ON_WIRE }
 
     /**
      * Extracts a string field value from JSON by finding the field name
      * and reading until the closing quote (handling escapes).
-     */
+*/
     fun stringField(json: String, name: String): String? {
         val nameStart = json.indexOf("\"$name\"")
         if (nameStart == -1) return null
@@ -73,7 +68,7 @@ internal object EventJsonFields {
      * Reverses exactly the escapes [dev.rubentxu.pipeline.v2.events.durable.EventJsonWriter.jsonString]
      * emits (`\\` `"` `\n` `\r` `\t`). Any other backslash pair is left verbatim so an
      * unknown escape degrades to data, never to a lost character.
-     */
+*/
     private fun unescape(raw: String): String {
         if ('\\' !in raw) return raw
         val sb = StringBuilder(raw.length)
@@ -100,7 +95,7 @@ internal object EventJsonFields {
     /**
      * Extracts the cacheKey object value from the event JSON.
      * Returns a CacheKey or null if parsing fails.
-     */
+*/
     fun parseCacheKey(json: String): CacheKey? {
         val keyStart = json.indexOf("\"cacheKey\"")
         if (keyStart == -1) return null
@@ -154,7 +149,7 @@ internal object EventJsonFields {
      * reader is a bracket scanner plus repeated [stringField]-style unquoting.
      * Returns null when the field is absent; an empty array yields an empty
      * list. Elements are raw (no nested arrays/objects are expected or read).
-     */
+*/
     fun stringListField(json: String, name: String): List<String>? {
         val nameStart = json.indexOf("\"$name\"")
         if (nameStart == -1) return null

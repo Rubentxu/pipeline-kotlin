@@ -14,16 +14,13 @@ import kotlinx.serialization.json.Json
 /**
  * In-memory [OperationJournal]: the storage-free counterpart of
  * [SqliteOperationJournalImpl] with mirrored semantics, row for row.
- *
  * Per the Single Runtime Spine rule ("Storage, CLI flag, local/remote
  * mode o step type no seleccionan otro algoritmo de ejecución"), choosing
  * volatile storage must never select a different execution algorithm.
  * This journal lets the SAME durable spine run without a database:
  * same walker, same reconcilers, same replay semantics — nothing
  * survives the process.
- *
  * ## Mirrored SQLite semantics (intentional fidelity)
- *
  * - [beginOperation] writes a RUNNING row (kind `RERUN`, raw input JSON,
  *   `startedAt` = `createdAt` = now) and throws
  *   [IllegalStateException] on a duplicate `(opId, attempt)`. Like the
@@ -37,10 +34,9 @@ import kotlinx.serialization.json.Json
  *   `endedAt` is stamped only for terminal statuses.
  * - [get] by opId returns the highest-attempt row.
  * - [listForRun] filters on the stored run id, ordered by `createdAt`.
- *
  * All mutations are serialized on a single monitor (the SQLite impl
  * achieves the same via DbLock + WAL).
- */
+*/
 class InMemoryOperationJournal(
     private val clock: Clock,
     private val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true },

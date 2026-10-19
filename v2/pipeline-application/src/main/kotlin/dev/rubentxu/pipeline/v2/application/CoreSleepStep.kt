@@ -25,11 +25,10 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * Typed input payload of `core.sleep`.
- *
  * The invariant is validated while decoding the complete canonical envelope, before the handler
  * can create an effect. A non-negative `Long` is represented as a [kotlin.time.Duration] directly,
  * avoiding the legacy `seconds * 1000L` overflow path.
- */
+*/
 data class CoreSleepInput(val seconds: Long) {
     init {
         require(seconds >= 0) { "core.sleep requires seconds >= 0" }
@@ -38,25 +37,22 @@ data class CoreSleepInput(val seconds: Long) {
 
 /**
  * Typed successful output for `core.sleep`.
- *
  * Cancellation is an execution mechanism, not a handler-produced terminal result. The generic
  * execution boundary preserves ordinary [kotlinx.coroutines.CancellationException] propagation;
  * timeout classification is likewise owned by that generic boundary, never by this Step key.
- */
+*/
 data object CoreSleepOutput : TypedStepOutput {
     override val outcome: StepOutcome = StepOutcome.Success
 }
 
 /**
  * Candidate registry authority for `core.sleep`.
- *
- * G1 registers this definition but does not change `LEGACY_PLUGIN_IDS`, the legacy decoder, the
+ * Registers this definition but does not change `LEGACY_PLUGIN_IDS`, the legacy decoder, the
  * metadata row, or the legacy dispatcher. StructuralFamilyResolver therefore continues to route
  * production invocations to LegacyCore until the later cutover gate.
- *
  * A temporal operation does not imply a temporal capability: this handler requires only the
  * coroutine context supplied by the execution boundary and declares no runtime capability.
- */
+*/
 object CoreSleepStep {
     val KEY: PluginStepId = PluginStepId("core.sleep")
 

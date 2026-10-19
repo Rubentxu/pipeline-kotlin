@@ -4,14 +4,11 @@ import org.yaml.snakeyaml.LoaderOptions
 
 /**
  * SnakeYAML LoaderOptions configured for untrusted input.
- *
  * The defaults are dangerous: the default `Constructor` instantiates arbitrary
  * classes via `!!class.name` tags, alias expansion has no cap, and nested
  * documents blow the JVM stack. The Step NEVER uses defaults; it ALWAYS uses
  * this builder.
- *
  * Limits (calibrated against empirical probe `YamlSafetyCharacterisationTest`):
- *
  *  - `tagInspector = Inspector()` — refuse every non-standard tag, including
  *    `!!python/name:os.system`, `!!javax.script.ScriptEngineManager`, etc.
  *    Only the YAML 1.1 standard tags are accepted.
@@ -27,7 +24,7 @@ import org.yaml.snakeyaml.LoaderOptions
  *    attack; refuse to silently overwrite.
  *  - `processComments = false` — comments are dropped silently rather
  *    than retained in the typed value.
- */
+*/
 internal object SafeConstructorOnlyOptions {
     /** YAML 1.1 standard tags + a few common safe extensions. */
     private val ALLOWED_TAGS: Set<String> = setOf(

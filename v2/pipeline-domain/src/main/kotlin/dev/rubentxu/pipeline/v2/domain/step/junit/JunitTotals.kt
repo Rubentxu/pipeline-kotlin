@@ -2,11 +2,9 @@ package dev.rubentxu.pipeline.v2.domain.step.junit
 
 /**
  * Totals of a JUnit XML report — sums across all `<testsuite>` children.
- *
  * Used by `core.junit` to surface a typed summary to the pipeline
  * without forcing the author to walk the suite tree. The handler
  * computes these once at parse time; the codec round-trips them.
- *
  * @property tests     total number of `<testcase>` elements across all suites
  * @property failures  total `<failure>` count across all suites
  * @property errors    total `<error>` count across all suites
@@ -14,7 +12,7 @@ package dev.rubentxu.pipeline.v2.domain.step.junit
  * @property timeSeconds cumulative time (seconds) reported by the suites;
  *                       the parser does NOT trust this to be monotonic
  *                       across suites (it is the cumulative sum)
- */
+*/
 data class JunitTotals(
     val tests: Int,
     val failures: Int,

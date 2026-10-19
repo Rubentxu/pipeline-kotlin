@@ -2,16 +2,14 @@ package dev.rubentxu.pipeline.v2.domain.durable
 
 /**
  * Sealed ADT returned by [RetryReconciler.reconcile].
- *
- * ADR-0075 §3 + §4 — every reconciliation outcome is one of these
+ * Every reconciliation outcome is one of these
  * variants, each carrying the minimum evidence a downstream caller
  * needs to act. There are NO nullable booleans, no `failed: Boolean?`,
  * no `attempt: Int?` flag bags. The variant IS the state.
- *
  * ## Variants
  * - [ScheduleAttempt] — execute the body as a fresh attempt at [attempt].
  *   Only one writer must persist the control row BEFORE any child is
- *   launched. (ADR-0075 §6.)
+ *   launched. (.)
  * - [ResumeAttempt] — re-attach to an in-flight attempt [attempt] whose
  *   child journal evidence is mid-run. NO new child is launched; the
  *   canonical child dispatch resumes.
@@ -30,7 +28,7 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * - [RejectDivergence] — durable state is ambiguous or contract-divergent.
  *   ZERO child execution. The caller MUST surface this as a step failure
  *   with the same status the durable state implied.
- */
+*/
 sealed interface RetryReconciliationDecision {
 
     /** Execute the body as a fresh attempt at [attempt]. */
@@ -40,30 +38,30 @@ sealed interface RetryReconciliationDecision {
     data class ResumeAttempt(val attempt: Int) : RetryReconciliationDecision
 
     /**
-     * Window C (ADR-0075 §7) — child evidence at attempt [attempt]
+     * Child evidence at attempt [attempt]
      * proves success; close the aggregate as success without scheduling
      * any new child execution.
-     */
+*/
     data class CloseSuccessFromChild(val attempt: Int) : RetryReconciliationDecision
 
     /**
      * Attempt [from] failed with retry budget remaining; advance to
      * [to]. The writer persists the new control row before launching
      * any child.
-     */
+*/
     data class AdvanceAfterFailure(val from: Int, val to: Int) : RetryReconciliationDecision
 
     /** Aggregate succeeded at [attempt]. No new child execution. */
     data class ReuseSuccess(val attempt: Int) : RetryReconciliationDecision
 
     /**
-     * Aggregate completed UNSTABLE at [attempt] (P2 of the Runtime Observation Contract
+     * Aggregate completed UNSTABLE at [attempt] (of the Runtime Observation Contract
      * Closure). No new child execution, and no advance: fresh retry semantics return an
      * unstable outcome immediately without consuming another attempt, so the restart must
      * answer the same fact the control row already carries — `UNSTABLE` — instead of
      * re-running finished work or counting the attempt as a failure. The caller surfaces
      * `StepOutcome.Unstable`.
-     */
+*/
     data class ReuseUnstable(val attempt: Int) : RetryReconciliationDecision
 
     /** Aggregate failed at [attempt] (terminal exhaustion). No new child execution. */
@@ -74,7 +72,7 @@ sealed interface RetryReconciliationDecision {
      * unsafe to act on. ZERO child execution. The caller must surface
      * this as a step failure carrying the same durable status implied
      * by the rejected state.
-     */
+*/
     data class RejectDivergence(
         val operationId: String,
         val reason: String,

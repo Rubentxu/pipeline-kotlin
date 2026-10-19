@@ -11,19 +11,16 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Structural, pre-decode canonical invocation (B1.2c2-CDE.1).
- *
+ * Structural, pre-decode canonical invocation (.2c2-CDE.1)
  * This is the durable, extensible input form for routing and execution: a Step identified by its
  * [PluginStepId] together with its raw canonical payload, carried exactly as the engine persisted it.
  * It deliberately predates [CanonicalCoreStepCommand] (the closed, already-decoded legacy/core world),
  * so registry-vs-legacy selection can happen on form/schema/type before any concrete Step decode.
- *
  * [encodedInput] is derived losslessly and step-agnostically from [VersionedStepPayload.encoded], so
  * fingerprint/journal/operation-identity authority over the durable payload is untouched. It is NOT a
  * reconstruction from a decoded command (no `when(key){ Echo -> text }` bridging).
- *
  * The registry strategy feeds [encodedInput] unchanged to `StepDefinition.inputCodec`.
- */
+*/
 data class CanonicalInvocation(
     val stepKey: PluginStepId,
     val schemaVersion: String,
@@ -40,26 +37,24 @@ data class CanonicalInvocation(
 }
 
 /**
- * Outcome of the structural (pre-decode) phase of an invocation (B1.2c2-CDE.2-a).
- *
+ * Outcome of the structural (pre-decode) phase of an invocation (.2c2-CDE.2-a)
  * Structural preparation validates only what a step-agnostic envelope gate may decide before any
  * concrete Step semantics run: the canonical payload schema version and that the encoded payload is a
  * well-formed dsl-v1 JSON object. It deliberately predates [CanonicalCoreStepDecoder.decode], so a
  * structurally-invalid node is rejected as `SCHEMA` without ever entering typed field extraction. This
- * is what keeps the frozen decode-first laws (C3/C5) intact once typed decode is later relocated behind
+ * Is what keeps the frozen decode-first laws intact once typed decode is later relocated behind
  * the durable resolution.
- *
  * A [Ready] carries the structural [CanonicalInvocation] (stepKey + schemaVersion + lossless
  * [EncodedStepValue]); durable resolution and typed decode consume it. A [Rejected] carries the reason
  * the envelope gate rejected the node (terminal `SCHEMA`, never the executor).
- */
+*/
 sealed interface StructuralPreparation {
     /**
      * Envelope validation succeeded. [invocation] is the structural (pre-decode) invocation and
      * [envelope] is the structurally-validated dsl-v1 JSON object, so pre-reconcile control
      * projection never needs a typed command. The envelope is NOT a typed Step input: consuming it
      * for concrete Step semantics is the later TypedInputDecode's job.
-     */
+*/
     data class Ready(
         val invocation: CanonicalInvocation,
         val envelope: JsonObject,
@@ -76,7 +71,7 @@ object CanonicalStructuralPreparation {
      * Validates the canonical envelope of [node]: schema version must be `dsl-v1` and the encoded
      * payload must parse as a JSON object. Anything else is a terminal [StructuralPreparation.Rejected].
      * No field is read, so no concrete Step semantics run here.
-     */
+*/
     fun prepare(node: StepNode): StructuralPreparation {
         if (node.payload.schemaVersion != SCHEMA_VERSION) {
             return StructuralPreparation.Rejected(
@@ -100,17 +95,15 @@ object CanonicalStructuralPreparation {
 }
 
 /**
- * Structural, closed overlay descriptor for this invocation (B1.2c2-CDE.2-c0).
- *
+ * Structural, closed overlay descriptor for this invocation (.2c2-CDE.2-c0)
  * Expresses exactly the pre-reconcile control context an invocation contributes, derived from the
  * structural envelope WITHOUT building a typed command. It is NOT Step metadata (stable per plugin:
  * [StepMetadata]) and NOT a typed Step input (post-reconcile): it is the structural control info of
  * this particular invocation that the coordinator must apply to its context before durable
- * resolution (frozen by C6: a reused CatchErrorEntered still pushes its overlay pre-reconcile).
- *
+ * A reused CatchErrorEntered still pushes its overlay pre-reconcile).
  * Only the control boundaries that actually affect pre-reconcile context are represented. Full
  * runtime emission semantics belong to the later TypedInputDecode/executor, not here.
- */
+*/
 sealed interface StructuralOverlay {
     /** No pre-reconcile control context to apply for this invocation. */
     data object None : StructuralOverlay
@@ -129,12 +122,11 @@ sealed interface StructuralOverlay {
 
 /**
  * Projects the pre-reconcile control overlay from a structurally-validated envelope (CDE.2-c0).
- *
  * This is the structural-overlay boundary: it reads only the known control-emission envelope shape
  * (the legacy `core.emit.event` CatchErrorEntered/Triggered) and yields a closed [StructuralOverlay].
  * It deliberately does not decode full Step input; everything else is [StructuralOverlay.None] and
  * handled by the typed decode that runs only when the operation actually executes.
- */
+*/
 object StructuralOverlayProjection {
     private const val EMIT_EVENT_PLUGIN = "core.emit.event"
 
@@ -144,13 +136,12 @@ object StructuralOverlayProjection {
         if (kind != "CatchErrorEntered" && kind != "CatchErrorTriggered") {
             return StructuralOverlay.None
         }
-        // P3-E D3 — no defaults here. This used to read
+        // No defaults here. This used to read
         //   `?: "UNSTABLE"` for buildResult and `?: buildResult` for stageResult,
         // which is the same fail-open E4c removed from the store: an unreadable field
         // became a semantic claim, and UNSTABLE is the claim that SUPPRESSES the failure
         // this scope was installed to catch. A corrupt payload used to be the one input
         // guaranteed not to abort the run.
-        //
         // `None` is the fail-closed direction rather than a silent coercion: no overlay is
         // pushed, so the scope never catches, so the failure propagates and the run fails
         // loudly. That is the opposite of the old behaviour, by construction.

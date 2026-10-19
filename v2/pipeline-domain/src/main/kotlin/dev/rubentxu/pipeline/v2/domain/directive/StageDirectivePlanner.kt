@@ -4,20 +4,18 @@ import dev.rubentxu.pipeline.v2.domain.StageDirective
 import dev.rubentxu.pipeline.v2.domain.StageNode
 
 /**
- * S1-B — Stage directive planning: the pure decision half of the engine seam.
- *
+ * Stage directive planning: the pure decision half of the engine seam.
  * The planner turns a stage's declared directives into a typed decision that a
  * coordinator can interpret at the effect boundary. It is a PURE transformation:
  * no clock, no filesystem, no events, no I/O. The coordinator (application) is
  * the interpreter; this file is the decision.
- *
  * Fail-closed law: the FIRST directive that cannot be admitted denies the whole
  * stage. An unknown key is never skipped, because skipping would turn a
  * misspelled or uninstalled directive into a silent no-op — the exact defect
  * class the Semantic Honesty Gate removes. Admission happens before any effect,
  * so the denial observable is "the stage never started", not "the stage started
  * and something inside failed".
- */
+*/
 
 /** One admitted directive, with the policy the engine must later interpret. */
 data class AdmittedDirective(
@@ -29,15 +27,14 @@ data class AdmittedDirective(
 
 /**
  * The typed outcome of planning one stage's directives.
- *
  * A coordinator reads this value; it MUST NOT re-derive admission itself.
- */
+*/
 sealed interface StageDirectiveDecision {
     /**
      * Every declared directive is registered. Directives are grouped by their
      * declared [DirectivePhase]; every phase key is present (possibly empty) so
      * the interpreter can exhaustively walk phases without null checks.
-     */
+*/
     data class Permitted(
         val phases: Map<DirectivePhase, List<AdmittedDirective>>,
     ) : StageDirectiveDecision
@@ -45,7 +42,7 @@ sealed interface StageDirectiveDecision {
     /**
      * At least one directive cannot be admitted. [reason] names the key and the
      * stage; it is the diagnostic the operator sees.
-     */
+*/
     data class Denied(
         val key: DirectiveKey,
         val reason: String,

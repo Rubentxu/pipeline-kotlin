@@ -9,9 +9,7 @@ import java.util.jar.JarFile
 
 /**
  * Composition authority for what JARs the script compiler sees (SH-classpath WU).
- *
  * The Single Runtime Spine invariants:
- *
  *  - A `.pipeline.kts` script must be compilable in the same classpath where it will
  *    be executed. The runtime feeds ServiceLoader (TCCL) from
  *    `java.class.path`, but the Kotlin scripting host replaces the host classpath
@@ -22,15 +20,13 @@ import java.util.jar.JarFile
  *    [StepDefinitionContributor] SPI. The same SPI is the discriminator that
  *    decides whether a JAR on `install/lib/` is a public plugin (compile-visible
  *    DSL façade) or an internal runtime-only artefact (credential materialiser,
- *    journal, app launcher, ...).
+ *    journal, app launcher,...).
  *  - External plugins remain user-supplied via `--plugin-jar`. Their classpath
  *    entries are added by the user, deduped against bundled plugins by baseName,
  *    and resolved to the same identities the compiler and the runtime see.
  *  - One resolver feeds BOTH sides. There are no per-site `when`-branches and
  *    no `when(stepKey)`-style switches in [dev.rubentxu.pipeline.v2.application.Main].
- *
  * Design (HS / SH-classpath WU):
- *
  *  - Inputs are pure (an iterable of classpath entries); outputs are sealed.
  *  - The classpath is taken from `java.class.path` (set by the launcher script),
  *    falling back to `System.getProperty("APP_HOME")/lib` when the system property
@@ -39,13 +35,12 @@ import java.util.jar.JarFile
  *    conflict; two JARs with different versions of the same baseName is also a
  *    fail-closed conflict (we never silently load two copies of `pipeline-domain`
  *    or any other public type).
- *
  *  NOT in scope (deliberate): the helper does not read pipeline catalogues,
- *  does not hot-load or hot-reload, does not parse META-INF beyond the contributor
+ * Does not hot-load or hot-reload, does not parse beyond the contributor
  *  file. Plugin authors do not need to do anything additional to ship in the
  *  pipelinek distribution: the existing [StepDefinitionContributor] registration
  *  is what makes them visible to the script compiler.
- */
+*/
 sealed interface BundledPluginResolution {
     /** Successful resolution. The list of canonical paths ordered for stable cache keys. */
     data class Resolved(val artifacts: List<ArtifactIdentity>) : BundledPluginResolution {
@@ -62,7 +57,7 @@ sealed interface BundledPluginResolution {
     /**
      * Two or more classpath entries conflict. Reason is human-readable, conflicts
      * are the offending identities (preserves evidence for the diagnostic).
-     */
+*/
     data class Conflicting(
         val reason: String,
         val conflicts: List<ConflictingArtifacts>,
@@ -72,7 +67,7 @@ sealed interface BundledPluginResolution {
      * Fail-closed composition failure that does not match the conflict shape
      * (e.g. an unreadable JAR, malformed manifest). Diagnostics surface to stderr
      * with the original cause preserved.
-     */
+*/
     data class Rejected(val reason: String, val cause: Throwable? = null) : BundledPluginResolution
 }
 
@@ -86,13 +81,12 @@ data class ConflictingArtifacts(
 
 /**
  * Identity of a plugin JAR visible to the script compiler.
- *
  * `canonicalPath` is the absolute resolved file path used to address the JAR;
  * `baseName` is the artefact stem without version (e.g. `scm-git`); `version`
  * is the parsed `-x.y.z` suffix when present (best-effort, may be null for
  * unreleased snapshots). Two JARs with the same baseName are considered
  * duplicates when their version strings differ.
- */
+*/
 data class ArtifactIdentity(
     val canonicalPath: String,
     val baseName: String,
@@ -101,22 +95,20 @@ data class ArtifactIdentity(
 
 /**
  * Compose the classpath identity set the script compiler must see.
- *
  * Pure function over explicit inputs. The resolution scans every entry of the
  * given classpath source list (typically `java.class.path`); entries that are
  * plain directories are walked recursively; entries that are not files nor
  * directories are ignored. Each candidate JAR is probed for the canonical
  * [StepDefinitionContributor] service file. Hits are converted into
  * [ArtifactIdentity] and deduped by `(baseName, version)`.
- */
+*/
 object BundledPluginClasspathPlan {
 
     /**
      * Compose the script-compiler-visible plugin classpath.
-     *
      * @param classpathSource semicolon- or colon-separated classpath string
      *   (typical: [System.getProperty] `"java.class.path"`).
-     */
+*/
     fun fromClasspathString(classpathSource: String): BundledPluginResolution {
         if (classpathSource.isBlank()) return BundledPluginResolution.Empty
         val separator = System.getProperty("path.separator", if (File.separatorChar == '/') ":" else ";")
@@ -128,7 +120,7 @@ object BundledPluginClasspathPlan {
      * Compose the script-compiler-visible plugin classpath from a discrete
      * list of classpath entries. Exposed for tests and for callers that already
      * hold the entries as a list (e.g. an App Home lib dir scan).
-     */
+*/
     fun compose(entries: List<String>): BundledPluginResolution {
         val candidates = collectCandidates(entries)
         if (candidates.isEmpty()) return BundledPluginResolution.Empty
@@ -143,7 +135,7 @@ object BundledPluginClasspathPlan {
      * Find every JAR on the classpath that declares the canonical
      * [StepDefinitionContributor] service file. Returns raw identities (no
      * dedup). Pure relative to the filesystem.
-     */
+*/
     private fun collectCandidates(entries: List<String>): List<ArtifactIdentity> {
         val seenCanonical = mutableSetOf<String>()
         val out = mutableListOf<ArtifactIdentity>()
@@ -178,26 +170,22 @@ object BundledPluginClasspathPlan {
      * contributor SPIs. This is the discriminator, and it is the same manifests the JRE's
      * `ServiceLoader` uses at runtime, so the set admitted here is exactly the set the runtime
      * will instantiate.
-     *
      * ## Why all four, and not only Steps
-     *
      * This used to test for [StepDefinitionContributor] alone, and that was a hole straight through
      * the admission guarantee. Pass 2 composes Steps, Directives, Events and Capabilities through
      * four separate `ServiceLoader` passes, but pass 1 admitted only the artifacts declaring the
      * Step SPI. A plugin contributing **only** a Directive was therefore never admitted, and
      * reached the run already instantiated and composed.
-     *
      * Measured, not predicted: run output listed a directive contributor while that plugin's JAR
      * carried no manifest at all. An artifact that declares nothing was running, and admission
      * never saw it because it was never a subject. Broadening the discriminator is what closes it:
      * an artifact is admitted if it claims to contribute anything, which is the rule the whole
      * admission chain rests on.
-     *
      * Deliberately described without naming any example plugin: this is a production source, and
      * `FArchS1DirectiveKernelFitnessTest` fails a production file that mentions one by name. A
      * comment had to be rewritten to satisfy it, which is the law working rather than a rule to
      * work around — the defect class is general and does not need an instance to be legible.
-     */
+*/
     private fun isPluginJar(file: File): Boolean = runCatching {
         JarFile(file).use { jar ->
             CONTRIBUTOR_SPIS.any { spi ->
@@ -210,11 +198,10 @@ object BundledPluginClasspathPlan {
 
     /**
      * Every public contributor SPI a plugin may register through.
-     *
      * Named rather than reflected over: a list that silently grew or shrank with the SPI inventory
      * would be a discovery rule nobody could review, and a plugin declaring only a family this list
      * forgot would escape admission exactly as it did before.
-     */
+*/
     private val CONTRIBUTOR_SPIS: List<String> = listOf(
         StepDefinitionContributor::class.java.name,
         DirectiveContributor::class.java.name,
@@ -231,7 +218,7 @@ object BundledPluginClasspathPlan {
      * Split an artefact filename like `scm-git-0.36.0` into `("scm-git", "0.36.0")`.
      * If the trailing segment is not a version (no digits) the version is null and
      * the whole name is the base.
-     */
+*/
     internal fun splitBaseAndVersion(stem: String): Pair<String, String?> {
         // Find the LAST '-'; verify the suffix parses as a version (it must contain a digit and a dot
         // or consist of digits only — snapshots like `1.0.0-SNAPSHOT` count as versioned).

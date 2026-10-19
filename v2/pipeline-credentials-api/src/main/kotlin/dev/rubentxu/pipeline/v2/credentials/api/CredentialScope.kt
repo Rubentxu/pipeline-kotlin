@@ -13,39 +13,31 @@ import java.util.UUID
 
 /**
  * Lifecycle scope for credential bindings within a pipeline step.
- *
- * ## Design (ADR-0049 D2 — rung ii)
- *
+ * ## Design (— rung ii)
  * [CredentialScope] is the SOLE entry point for [SecretHandle] injection into
- * [ProcessBuilder.environment()]. The engine JVM's [System.getenv] never sees
- * secret bytes (INV-CR-CR7 + /proc/environ same-UID defense).
- *
+ * [ProcessBuilder.environment]. The engine JVM's [System.getenv] never sees
+ * Secret bytes (+ /proc/environ same-UID defense)
  * ## Responsibilities
- *
  * 1. **Binding resolution**: `env(binding)` resolves a [CredentialsBinding] to a map of
  *    environment variable names to [SecretHandle]. Variable names are persisted WITHOUT
- *    case coercion (INV-L6-CR-007).
- * 2. **Wipe on exit**: `close()` fills all active handles with zeros (INV-CR-CR7).
+ *    case coercion.
+ * 2. **Wipe on exit**: `close()` fills all active handles with zeros
  *    Called in `finally` — always executes even on step failure.
  * 3. **Redaction pattern scoping**: `close()` also drops active redaction patterns
- *    from the bound [RedactingEventSink] (CR-RD-011).
+ * From the bound [RedactingEventSink]
  * 4. **Audit events**: emits [CredentialBound], [CredentialUsed], [CredentialUnbound]
- *    events through the bound [EventSink] (INV-L6-CR-008).
- *
+ * Events through the bound [EventSink]
  * ## Failures
- *
  * Wipe failures propagate via `addSuppressed` and do NOT prevent step completion.
  * The first exception is rethrown; subsequent exceptions are suppressed.
- *
  * @param store The credential store (e.g., [LocalSecretStore])
  * @param bindings The credential bindings active in this scope
  * @param eventSink The event sink for audit events
  * @param clock Clock for event timestamps
  * @param runId The run identifier for audit events
- *
  * @see SecretStore for the store interface
  * @see RedactingEventSink for the redaction decorator
- */
+*/
 class CredentialScope(
     private val store: SecretStore,
     private val bindings: List<CredentialsBinding>,
@@ -65,28 +57,22 @@ class CredentialScope(
 
     /**
      * Resolves a [CredentialsBinding] to a map of environment variable names to [SecretHandle].
-     *
      * The handle is cached — subsequent calls return the same [SecretHandle].
-     * Handles are wiped on [close()].
-     *
-     * ## Variable Name Persistence (INV-L6-CR-007)
-     *
+     * Handles are wiped on [close].
+     * ## Variable Name Persistence
      * Variable names are persisted WITHOUT case coercion. The variable name specified
      * in the binding is used exactly as-is for the environment variable name.
-     *
-     * ## Audit Events (INV-L6-CR-008)
-     *
+     * ## Audit Events
      * Emits [CredentialBound] event when a credential is first resolved.
-     *
      * @param binding The credential binding to resolve
      * @return Map of environment variable names to [SecretHandle]
      * @throws SecretStoreException if the credential is not found or tampered
-     */
+*/
     fun env(binding: CredentialsBinding): Map<String, SecretHandle> {
         val handle = activeHandles.getOrPut(binding.credentialsId) {
             val handle = store.getAsSecretHandle(binding.credentialsId)
 
-            // Emit CredentialBound event (INV-L6-CR-008)
+            // Emit CredentialBound event
             if (!boundCredentials.contains(binding.credentialsId)) {
                 boundCredentials.add(binding.credentialsId)
                 emitCredentialBound(binding.credentialsId, binding.boundPurpose)
@@ -101,14 +87,12 @@ class CredentialScope(
 
     /**
      * Resolves a credential ID to its [SecretHandle] within this scope.
-     *
      * The handle is cached — subsequent calls return the same [SecretHandle].
-     * Handles are wiped on [close()].
-     *
+     * Handles are wiped on [close].
      * @param id The credential ID to resolve
      * @return [SecretHandle] wrapping the secret bytes
      * @throws SecretStoreException if the credential is not found or tampered
-     */
+*/
     fun env(id: CredentialsId): SecretHandle {
         return activeHandles.getOrPut(id) {
             store.getAsSecretHandle(id)
@@ -117,12 +101,10 @@ class CredentialScope(
 
     /**
      * Closes the scope: wipes all handles and drops redaction patterns.
-     *
      * Called in `finally` — always executes even on step failure.
      * Failures propagate via `addSuppressed`; first rethrown.
-     *
-     * Emits [CredentialUnbound] events for all bound credentials (INV-L6-CR-008).
-     */
+     * Emits [CredentialUnbound] events for all bound credentials
+*/
     override fun close() {
         var firstException: Throwable? = null
 
@@ -185,19 +167,14 @@ class CredentialScope(
 
 /**
  * Credential binding — describes HOW a credential will be used in a step.
- *
  * ## Kinds
- *
  * - [Kind.STRING]: a single environment variable (e.g., `API_KEY=ghp_xxx`)
  * - [Kind.USERNAME_PASSWORD]: two environment variables (e.g., `USR=admin`, `PSW=secret`)
- *
  * ## Design Note
- *
- * File/ssh/certificate bindings are deferred to ML-R4.1 (DEC-Q1 cut).
- * Only string and usernamePassword are implemented in L4.
- *
+ * File/ssh/certificate bindings are deferred to (cut)
+ * Only string and usernamePassword are implemented in
  * @see CredentialScope for the lifecycle manager
- */
+*/
 data class CredentialsBinding(
     val kind: Kind,
     val credentialsId: CredentialsId,
@@ -211,8 +188,8 @@ data class CredentialsBinding(
     }
 
     /**
-     * Maps this binding kind to a [BoundPurpose] for audit events (INV-L6-CR-008).
-     */
+     * Maps this binding kind to a [BoundPurpose] for audit events
+*/
     val boundPurpose: BoundPurpose
         get() = when (kind) {
             Kind.STRING -> BoundPurpose.API_KEY
@@ -221,15 +198,12 @@ data class CredentialsBinding(
 
     /**
      * Converts this binding to a map of environment variable names to [SecretHandle].
-     *
-     * ## Variable Name Persistence (INV-L6-CR-007)
-     *
+     * ## Variable Name Persistence
      * Variable names are persisted WITHOUT case coercion. The variable name specified
      * in the binding is used exactly as-is.
-     *
      * @param handle The [SecretHandle] to associate with each env var
      * @return Map of environment variable names to [SecretHandle]
-     */
+*/
     fun toEnvEntries(handle: SecretHandle): Map<String, SecretHandle> {
         return when (kind) {
             Kind.STRING -> {
@@ -284,10 +258,9 @@ data class CredentialsBinding(
 
 /**
  * Converts a [CredentialsBinding] to [GitCredentials] for use by git checkout steps.
- *
  * @return GitCredentials with typed carriers for the credential
  * @throws IllegalArgumentException if the binding kind is not STRING or USERNAME_PASSWORD
- */
+*/
 fun CredentialsBinding.asGitCredentials(): GitCredentials {
     return when (kind) {
         CredentialsBinding.Kind.STRING -> GitCredentials(

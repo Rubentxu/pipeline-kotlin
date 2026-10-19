@@ -27,54 +27,46 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * TRAIN H4 / PR-020 — the BEFORE_STAGE directive seam, out of the run loop.
- *
+ * TRAIN / — the BEFORE_STAGE directive seam, out of the run loop
  * Admission plus interpretation of a stage's declared directives used to be ~317 lines inline in
  * `CanonicalDurableRunCoordinator.run`, interleaved with the run's control flow: every denial
  * site wrote a `return@run`, and the skip site wrote a `continue@stagesLoop`. That made the seam
  * impossible to read as a unit and impossible to test without a whole run.
- *
  * The split is the one AGENTS.md asks for everywhere else:
- *
  *  - the PURE decisions were already elsewhere and stay there — [StageDirectivePlanner] admits,
- *    [GateCompositionPlanner] composes, and `gateEvaluator` is injected (S2-A) so this engine
+ * [GateCompositionPlanner] composes, and `gateEvaluator` is injected so this engine
  *    interprets a verdict rather than computing one;
  *  - this engine OBSERVES: it emits the admission, denial, evaluation and skip events, which is
  *    interpretation of a decided outcome;
  *  - it RETURNS a [Verdict] and the coordinator applies the run's control flow. A denied or
  *    unsatisfiable directive must not be able to `return@run` from inside a collaborator: only
  *    the owner of the loop decides what the run does next.
- *
  * The event order is the contract and is preserved exactly: admission events before the decode,
  * the denial event before the run folds, the negative verdict observable BEFORE the skip it
  * causes, and the Unverifiable verdict observable before the fail-closed denial.
- */
+*/
 internal class BeforeStageDirectiveEngine(
     private val eventSink: EventSink,
     private val gateContext: (dev.rubentxu.pipeline.v2.domain.EnvironmentSpec) -> dev.rubentxu.pipeline.v2.domain.directive.GateContext,
     private val gateEvaluator: (WhenPredicate, dev.rubentxu.pipeline.v2.domain.directive.GateContext) -> dev.rubentxu.pipeline.v2.domain.directive.GateVerdict,
     /**
-     * B4: the capabilities THIS run's composition supplies.
-     *
+     * The capabilities THIS run's composition supplies.
      * The engine's own dependency, like the resolver below, and the reason the resolver's
      * default can stop being the empty set. A composition root that knows what it supplies
      * passes it; one that supplies nothing keeps the fail-closed default.
-     */
+*/
     capabilityContributor: dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor =
         dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor { emptyMap() },
     /**
-     * S3.1: the ONE seam allowed to answer "does a target exist".
-     *
+     * The ONE seam allowed to answer "does a target exist".
      * Injected rather than constructed, so the engine interprets a decision it
      * did not make. A coordinator that both decided satisfiability and applied
-     * the result would be the same defect the S3.1 port exists to prevent.
-     *
+     * The result would be the same defect the.1 port exists to prevent
      * The default lives HERE, on the consumer, rather than as another
      * parameter on the coordinator's constructor, and that placement is
      * deliberate. The rule is that new responsibilities belong in named engines; a resolver default
      * is the engine's own dependency, and the coordinator that merely forwarded one was buying
      * nothing but a line.
-     *
      * **Nothing enforces the rule.** `CoordinatorGrowthGuardrailTest` used to ratchet the
      * coordinator's constructor against a 562-line ceiling and was removed by the test RESET in
      * `2aa071aab`. The ceiling in that number is a historical fact, not a live threshold.
@@ -86,18 +78,16 @@ internal class BeforeStageDirectiveEngine(
      * knows a host exists, and the platform has exactly one authority —
      * `SystemRuntimeConfig` — which is what `core.isUnix` already uses, so the
      * two cannot disagree about which machine the run is on.
-     *
      * The override seam is preserved for when a composition root really does
      * know the granted capability set; until then the default refuses a
      * `CapabilitySet` requirement loudly instead of granting it speculatively.
-     *
-     * B4 closes that seam's other half: the default is no longer the empty set
+     * The default is no longer the empty set
      * unconditionally — it is the KEYS of [capabilityContributor], this run's own
      * composed capability authority, so `agentWithCapabilities` is granted exactly
      * when the capability is real for this run. A static table of "capabilities
      * PipelineK can provide" is deliberately NOT used: it would grant a target for
      * a capability no composition supplies.
-     */
+*/
     private val targetResolver: ExecutionTargetResolver = LocalExecutionTargetResolver(
         grantedCapabilities = capabilityContributor.capabilities().keys,
     ),
@@ -111,22 +101,21 @@ internal class BeforeStageDirectiveEngine(
         /**
          * Fail the run closed, carrying [reason] and the [kind] the failure is
          * classified as.
-         *
          * [kind] defaults to [FailureKind.USER] because almost every denial here
          * IS the author's: a gate that cannot be decoded, a target nothing
-         * satisfies. S3-R1-A added the one case that is not — a definition that
+         * Satisfies. added the one case that is not — a definition that
          * faulted is a PLUGIN defect, and reporting it as USER would point an
          * operator at their pipeline to fix a bug in ours, and would count our
          * bug among the user's in every run dashboard. The coordinator applies
          * [kind] verbatim; it does not classify, because the engine is where the
          * distinction between the two causes is actually known.
-         */
+*/
         data class Denied(val reason: String, val kind: FailureKind = FailureKind.USER) : Verdict
 
         /**
          * The stage is skipped because a gate was not satisfied. NOT a denial: a skip is a stage
          * outcome, so the coordinator must run the finalizers the pure planner selects for it.
-         */
+*/
         data class SkipStage(val reason: String) : Verdict
     }
 
@@ -145,7 +134,7 @@ internal class BeforeStageDirectiveEngine(
         }
         if (admitted.isEmpty()) return Verdict.Admitted
 
-        // S2-C/S2-D: interpret the BEFORE_STAGE seam. Decode EVERY admitted Gate|Evaluate
+        // Interpret the BEFORE_STAGE seam. Decode EVERY admitted Gate|Evaluate
         // directive through its own definition codec (the registry carries the decoder; the
         // engine never switches on a key).
         val decoded: List<DecodedBeforeStage> = admitted.map { entry ->
@@ -170,15 +159,13 @@ internal class BeforeStageDirectiveEngine(
             return Verdict.Denied(reason, deniedDirective.kind)
         }
 
-        // S3-R1-C: check the resource declarations for conflict BEFORE resolving any of
+        // Check the resource declarations for conflict BEFORE resolving any of
         // them, and while they are still pure values.
-        //
         // Order is the whole point. Resolving first would acquire a target for the first
         // declaration and only then discover the second one contradicts it, so the
         // conflicting stage would have emitted an ExecutionTargetResolved — an observer
         // would see a target granted for a stage that never ran, and declaration order
         // would decide which of two contradictory requirements was honoured.
-        //
         // The law is read from the POLICY the definition declared, never from the key, so
         // it holds for a second resource directive contributed later.
         val declaredResources = decoded.filterIsInstance<DecodedBeforeStage.Requirement>().map {
@@ -205,8 +192,7 @@ internal class BeforeStageDirectiveEngine(
             return Verdict.Denied(resourceConflict.reason, FailureKind.USER)
         }
 
-        // S3.1: resolve declared execution-target requirements BEFORE composing gates.
-        //
+        // Resolve declared execution-target requirements BEFORE composing gates.
         // Order matters and is not arbitrary. A gate answers "may this stage
         // proceed"; a resource answers "what is it running on". Resolving first
         // means a stage that both gates and targets never reports a resolution
@@ -215,7 +201,7 @@ internal class BeforeStageDirectiveEngine(
         val unresolved = resolveRequirements(decoded, stage, stageIndex, runId)
         if (unresolved != null) return unresolved
 
-        // S2-D: only GATE predicates compose; a decoded Evaluate is observed and dropped by
+        // Only GATE predicates compose; a decoded Evaluate is observed and dropped by
         // this filter. gateKeys therefore stays the GATE keys — GateEvaluated keeps gate
         // semantics (it is never reused for an Evaluate).
         val predicates = decoded.filterIsInstance<DecodedBeforeStage.GatePredicate>().map { gate ->
@@ -252,7 +238,7 @@ internal class BeforeStageDirectiveEngine(
     /**
      * The admission result. Closed, because "denied" and "nothing declared" are opposite
      * outcomes and a null could only ever mean one of them by accident.
-     */
+*/
     private sealed interface Admission {
         /** Fail the stage closed; the denial event has already been observed. */
         data class Denied(val reason: String) : Admission
@@ -264,7 +250,7 @@ internal class BeforeStageDirectiveEngine(
     /**
      * The pure admission decision, then its observation. A denial fails the stage closed BEFORE
      * any stage effect; a null registry admits nothing and denies every declared directive.
-     */
+*/
     private fun admit(
         stage: StageNode,
         stageIndex: Int,
@@ -289,7 +275,7 @@ internal class BeforeStageDirectiveEngine(
             }
 
             is StageDirectiveDecision.Permitted -> {
-                // S1-C: one typed admitted event per declared directive, emitted at the same
+                // One typed admitted event per declared directive, emitted at the same
                 // seam that will later interpret them.
                 decision.phases.values.flatten().forEach { entry ->
                     eventSink.append(
@@ -306,7 +292,7 @@ internal class BeforeStageDirectiveEngine(
                                 is DirectiveExecutionPolicy.Evaluate -> "evaluate"
                                 is DirectiveExecutionPolicy.Gate -> "gate"
                                 is DirectiveExecutionPolicy.ProvideContext -> "provide-context"
-                                // S3.1: observable like any other admitted policy. A resource
+                                // Observable like any other admitted policy. A resource
                                 // request that is admitted and then refused is still an admitted
                                 // request, and collapsing the two would make "declared and never
                                 // resolved" indistinguishable from "never declared".
@@ -316,18 +302,18 @@ internal class BeforeStageDirectiveEngine(
                     )
                 }
 
-                // S2-C/S2-D: the directives the interpreter will decode in the BEFORE_STAGE
+                // The directives the interpreter will decode in the BEFORE_STAGE
                 // seam are the ones the DECISION admitted there with policy Gate OR Evaluate —
                 // never a re-scan of the stage declaration. Membership is read from the closed
                 // policy ADT, never from a key. Admitted directives in other phases or policies
-                // (e.g. ProvideContext, D5) are outside this seam.
+                // (e.g. ProvideContext,) are outside this seam
                 Admission.Permitted(
                     decision.phases
                         .getValue(DirectivePhase.BEFORE_STAGE)
                         .filter {
                             it.policy is DirectiveExecutionPolicy.Gate ||
                                 it.policy is DirectiveExecutionPolicy.Evaluate ||
-                                // S3.1: a resource request is resolved in this seam too. It
+                                // A resource request is resolved in this seam too. It
                                 // is the same phase as a gate - before the body - and
                                 // filtering it out here would make it admitted and then
                                 // invisible, which is the accepted-metadata defect.
@@ -343,12 +329,10 @@ internal class BeforeStageDirectiveEngine(
     }
 
     /**
-     * S3-R1-A: the outcome of decoding through a definition's OWN codec, with the
+     * The outcome of decoding through a definition's OWN codec, with the
      * definition's own failure kept structurally distinct.
-     *
      * Private to this file and deliberately NOT a case of [DecodedBeforeStage]. Two
      * reasons, both learned the hard way:
-     *
      *  - [DecodedBeforeStage] is consumed with `firstNotNullOfOrNull { it as? …Denied }`,
      *    so a new case added there would be DROPPED SILENTLY and the stage would proceed.
      *    An internal fault must arrive as the `Denied` case that path already handles,
@@ -356,24 +340,22 @@ internal class BeforeStageDirectiveEngine(
      *  - the fault is a boundary property of this engine, not a shape a definition can
      *    legitimately return, so it does not belong in the published
      *    [DirectiveDecodeResult] algebra.
-     */
+*/
     private sealed interface DecodeOutcome {
         data class Read(val result: DirectiveDecodeResult<Any>) : DecodeOutcome
 
         /**
          * The definition threw instead of returning a value.
-         *
          * Per the [DirectiveDecodeResult] KDoc this is the case the domain says must be
          * "reported differently": a definition that cannot read its own arguments is a
          * programming error, not an expected operational outcome, and an author who
          * malformed a payload must not be pointed at a plugin bug.
-         */
+*/
         data class DefinitionFault(val failure: Exception) : DecodeOutcome
     }
 
     /**
-     * S3-R1-A: decode through the registry with the boundary guarded.
-     *
+     * Decode through the registry with the boundary guarded.
      * [DirectiveRegistry.decodeAny] contracts that the engine "fails closed on it without
      * exception-based control flow", but nothing enforced that: a definition contributed
      * through the open [DirectiveContributor] SPI is third-party code, and a codec that threw
@@ -381,16 +363,14 @@ internal class BeforeStageDirectiveEngine(
      * instead of a [DirectiveDecodeResult] the engine could deny on. Definitions are
      * contributed by plugins, so the kernel cannot assume their totality — it has to hold
      * the boundary they were admitted through.
-     *
      * Catches [Exception] and NOT [Throwable], on purpose. Every realistic definition fault
      * is an [Exception] — arithmetic, index, type, argument, state. An [Error] is the JVM
      * reporting genuine resource exhaustion, and relabelling that as "this directive is
      * broken" would be a false diagnosis pointed at the wrong owner, so it propagates.
-     *
-     * The bundled definitions are all total after S3-R1-A, so this guard is a second line of
+     * The bundled definitions are all total after, so this guard is a second line of
      * defence, not the mechanism the first one relies on: it exists for the day an external
      * definition reintroduces what the codec tests now prevent.
-     */
+*/
     private fun decodeThrough(definition: DirectiveDefinitionAny, encodedArguments: String): DecodeOutcome =
         try {
             DecodeOutcome.Read(definition.decodeAny(encodedArguments))
@@ -404,7 +384,7 @@ internal class BeforeStageDirectiveEngine(
      * but decodes to anything other than a WhenPredicate is a self-contradiction, and the only
      * safe reading of a contradiction is a typed failure — not a ClassCastException escaping
      * into the run loop.
-     */
+*/
     private fun decode(entry: AdmittedDirective, directiveRegistry: DirectiveRegistry?): DecodedBeforeStage {
         val key = entry.invocation.key
         val definition = directiveRegistry?.find(key)
@@ -453,7 +433,7 @@ internal class BeforeStageDirectiveEngine(
                 "declared policy provide-context is not interpretable in the BEFORE_STAGE decode seam",
             )
 
-            // S3.1: a resource request decodes to its REQUIREMENT, not to a predicate.
+            // A resource request decodes to its REQUIREMENT, not to a predicate.
             // The seam is right for it - both are considered before the body - but the
             // shape is different, so it is a distinct case rather than a reused one.
             // [encodedArguments] is carried alongside so the resolution event can report what
@@ -478,14 +458,13 @@ internal class BeforeStageDirectiveEngine(
     }
 
     /**
-     * S3.1: resolve every declared execution target, observing each outcome.
-     *
+     * Resolve every declared execution target, observing each outcome.
      * Returns a [Verdict.Denied] on the FIRST refusal and null when every
      * requirement was satisfied. A denial is emitted as a [DirectiveDenied] and
      * a grant as an [ExecutionTargetResolved], so an observer can tell the
      * three cases apart: declared and satisfied, declared and refused, and
      * never declared at all.
-     */
+*/
     private fun resolveRequirements(
         decoded: List<DecodedBeforeStage>,
         stage: StageNode,
@@ -532,7 +511,7 @@ internal class BeforeStageDirectiveEngine(
     /**
      * Evaluate the composed gate ONCE (pure `WhenPredicateEvaluator` via the injected
      * `gateEvaluator`) and observe the verdict before acting on it.
-     */
+*/
     private fun evaluateComposition(
         composition: dev.rubentxu.pipeline.v2.domain.directive.GateCompositionDecision.Composite,
         gateKeys: List<String>,
@@ -543,7 +522,7 @@ internal class BeforeStageDirectiveEngine(
         val context = gateContext(stage.environment)
         return when (val verdict = gateEvaluator(composition.predicate, context)) {
             is dev.rubentxu.pipeline.v2.domain.directive.GateVerdict.Satisfied -> {
-                // S2-C: the verdict is observable even when it admits the stage — otherwise a
+                // The verdict is observable even when it admits the stage — otherwise a
                 // satisfied gate and an absent gate are indistinguishable.
                 eventSink.append(
                     GateEvaluated(
@@ -562,7 +541,7 @@ internal class BeforeStageDirectiveEngine(
             }
 
             is dev.rubentxu.pipeline.v2.domain.directive.GateVerdict.NotSatisfied -> {
-                // S2-C: the negative verdict is observable BEFORE the skip it causes.
+                // The negative verdict is observable BEFORE the skip it causes.
                 eventSink.append(
                     GateEvaluated(
                         eventId = UUID.randomUUID().toString(),
@@ -576,7 +555,7 @@ internal class BeforeStageDirectiveEngine(
                         reason = verdict.reason,
                     ),
                 )
-                // S2-B: a skip is itself a stage outcome; the coordinator runs the finalizers
+                // A skip is itself a stage outcome; the coordinator runs the finalizers
                 // the pure planner selects for Skipped. The skip event is emitted here because
                 // it is the observation of the decision, while the post block is the run's
                 // control flow and belongs to the coordinator.
@@ -632,20 +611,19 @@ internal class BeforeStageDirectiveEngine(
 internal sealed interface DecodedBeforeStage {
     val key: dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 
-    /** Gate decoded to its predicate; S2-C composition consumes exactly this. */
+    /** Gate decoded to its predicate; composition consumes exactly this */
     data class GatePredicate(
         override val key: dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey,
         val predicate: dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate,
     ) : DecodedBeforeStage
 
     /**
-     * S3.1: a resource request decoded to its requirement.
-     *
+     * A resource request decoded to its requirement.
      * [encoded] is the exact byte sequence the script declared, carried so the
      * resolution event reports the declaration rather than a re-encoding of
      * it. Re-encoding would be a silent way for the event and the program to
      * disagree.
-     */
+*/
     data class Requirement(
         override val key: dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey,
         val requirement: ExecutionTargetRequirement,
@@ -660,10 +638,9 @@ internal sealed interface DecodedBeforeStage {
     /**
      * Fail-closed: the directive's decode contract failed (or the policy cannot
      * be interpreted in this seam). The stage never starts.
-     *
      * [kind] is [FailureKind.USER] for every case where the author is at fault,
-     * and [FailureKind.PLUGIN] for the one case where the definition is — S3-R1-A.
-     */
+     * And [FailureKind.PLUGIN] for the one case where the definition is
+*/
     data class Denied(
         override val key: dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey,
         val reason: String,
@@ -688,21 +665,19 @@ internal fun seamDecodeFailureReason(
 }
 
 /**
- * S3-R1-A: the reason when a definition FAULTED, as distinct from a payload that
+ * The reason when a definition FAULTED, as distinct from a payload that
  * failed to decode.
- *
  * The two must never read alike, because they have different owners and different
  * remedies. A [DirectiveDecodeResult.Malformed] means the AUTHOR wrote something the
  * definition cannot read, and the fix is to the program. A fault means the DEFINITION
  * is broken, the fix is to the plugin, and a user must never be sent to their pipeline
  * to fix our bug. Collapsing the two would make every definition crash look like user
  * error.
- *
  * Names the definition, the failure type and its message, so a genuine bug stays
  * diagnosable after it has been turned into a denial. Does NOT include the encoded
  * payload: the arguments are author-supplied and may carry sensitive values, and a
  * crash diagnostic is not a licence to echo them into an event.
- */
+*/
 internal fun definitionFaultReason(definition: DirectiveDefinitionAny, failure: Exception): String =
     "definition '" + definition.key.value + "' faulted while decoding its arguments (" +
         failure::class.simpleName + ": " + failure.message + "); this is a defect in the directive " +

@@ -17,20 +17,17 @@ import org.junit.jupiter.api.Test
 /**
  * The guarantee: a credential seeded from a redirected stream is the same
  * credential one typed at a terminal would produce.
- *
  * The capacity this serves: a store prepared by a script — provisioning, a
  * container, a build — holds the value that was piped in. Before this reader
  * existed the terminal was the only source, so every such use of `credentials
  * add` had no way in at all.
- *
  * "The same credential" is asserted on the bytes, not on the exit code. A
  * reader that returns the right kind of object holding the wrong value would
  * pass a test that only checked success, so each test compares content and the
  * binary case compares every byte including a NUL and a high byte.
- *
  * Everything here is in-memory: a byte array in, a credential out. No terminal,
  * no file, no clock, no store.
- */
+*/
 class StreamCredentialPromptsTest {
 
     private fun read(kind: MainCredentialsCli.CredentialKind, text: String) =

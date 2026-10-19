@@ -22,12 +22,10 @@ import java.nio.file.Path
 import java.nio.file.Paths
 
 /**
- * `junit.results` OFFICIAL_PLUGIN Step (F5.2 / LFC-2E2 / WU-LPR-FK).
- *
+ * `junit.results` OFFICIAL_PLUGIN Step
  * Reads a JUnit XML report and produces a typed [JUnitResultsOutput]
  * (a `TypedStepOutput` carrier pairing a [JUnitReportSummary] with the
  * canonical [StepOutcome]).
- *
  * The handler:
  *  - resolves the report path against `workspaceRoot`;
  *  - fails closed with USER kind if the file is missing, empty or
@@ -37,22 +35,20 @@ import java.nio.file.Paths
  *    or errors, returns a typed [StepOutcome.Failure] (kind=USER) via
  *    the carrier so the canonical engine aborts the pipeline with the
  *    declared kind preserved end-to-end.
- *
- * Why a carrier (WU-LPR-FK): throwing a [dev.rubentxu.pipeline.v2.domain.PluginStepException]
+ * Throwing a [dev.rubentxu.pipeline.v2.domain.PluginStepException]
  * is funnelled through the registry boundary's generic `catch (e: Exception)`
  * and re-classified as `FailureKind.ENGINE`, losing the declared USER kind.
  * Returning a [JUnitResultsOutput] makes the boundary project the carrier's
  * `outcome` via `produced as? TypedStepOutput`, preserving the declared
  * kind end-to-end. This mirrors the [dev.rubentxu.pipeline.v2.application.CoreShellOutput]
  * pattern that `core.sh` already uses.
- *
- * Capability discipline (F5.2 closure): the contract declares an
- * empty capability set, matching the F5.1 UAT-closure precedent. The
+ * The contract declares an
+ * Empty capability set, matching the UAT-closure precedent. The
  * handler reads the workspace path and the report bytes directly from
  * the typed input; it never reaches CanonicalRuntimeContext. A future
- * F5.2 follow-up introduces a typed WORKSPACE_OPERATIONS_CAPABILITY
- * read path that the runtime already supplies (LB-02 / G3-A4.2).
- */
+ * Follow-up introduces a typed WORKSPACE_OPERATIONS_CAPABILITY
+ * Read path that the runtime already supplies
+*/
 class JUnitResultsStepDefinition : StepDefinition<JUnitResultsInput, JUnitResultsOutput> {
 
     override val contract: StepContract<JUnitResultsInput, JUnitResultsOutput> = StepContract(
@@ -70,25 +66,25 @@ class JUnitResultsStepDefinition : StepDefinition<JUnitResultsInput, JUnitResult
         ),
         inputCodec = JUnitResultsInputCodec,
         outputCodec = JUnitResultsOutputCodec,
-        // WU-LPR-WC: the handler reads the canonical workspace root from
+        // The handler reads the canonical workspace root from
         // the typed WORKSPACE_IDENTITY_CAPABILITY seam. The capability
         // admission is fail-closed before the handler runs when the
         // runtime context does not supply it. The historical
         // `pipeline.workspace.root` system property remains only as a
-        // RP034-I deleted the `workspaceRootResolver` developer-escape
+        // deleted the `workspaceRootResolver` developer-escape
         // hatch, so no system property is consulted anywhere in this Step.
         requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
     )
 
     override val handler = StepHandler<JUnitResultsInput, JUnitResultsOutput> { input, ctx ->
-        // WU-LPR-WC: read the canonical workspace root from the typed
+        // Read the canonical workspace root from the typed
         // capability seam. The capability access is fail-closed: the
         // boundary re-checks the declared capabilities before the
         // handler runs and throws EngineInvariantViolation if any are
         // missing, so reaching this `get(...)` is guaranteed to
         // succeed when the handler was admitted.
         val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
-        // RP034-E: the report path anchors on
+        // The report path anchors on
         // CURRENT_DIRECTORY, so a `dir(...)` scope scopes the report the same
         // way it scopes `sh`. Same value the legacy capability supplied; what
         // changes is that the anchor is now stated rather than implied.
@@ -113,7 +109,7 @@ class JUnitResultsStepDefinition : StepDefinition<JUnitResultsInput, JUnitResult
             Files.isDirectory(configured) -> configured
             else -> capabilityWorkspaceRoot
         }
-        // RP034-I: the developer-escape hatch is gone. When no usable base was
+        // The developer-escape hatch is gone. When no usable base was
         // selected, the run is malformed — falling back to
         // `System.getProperty("pipeline.workspace.root") ?: user.dir` made a
         // broken context silently resolve against whatever directory the JVM
@@ -212,12 +208,11 @@ class JUnitResultsStepDefinition : StepDefinition<JUnitResultsInput, JUnitResult
 
     /**
      * Resolve the report path against the current directory and confine it to
-     * the workspace root (RP034-E / ADR-0100).
-     *
+     * The workspace root
      * Replaces a bare `if (absolute) path else root.resolve(path)`, which
      * honoured an absolute host path such as `/etc/passwd` and a `..`
      * traversal straight out of the workspace.
-     */
+*/
     private fun resolveReport(base: Path, rawPath: String): Path =
         WorkspacePathAnchors.against(
             base = base,

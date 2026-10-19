@@ -27,13 +27,11 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * `core-utils.writeYaml` OFFICIAL_PLUGIN Step (LFC-2E2 utilities, Slice 2 / S2.2).
- *
+ * `core-utils.writeYaml` OFFICIAL_PLUGIN Step (utilities, Slice 2 /.2)
  * Reference: Jenkins `writeYaml` (Pipeline Utility Steps Plugin, master).
  *   - docs:    https://www.jenkins.io/doc/pipeline/steps/pipeline-utility-steps/#writeyaml-write-a-yaml-from-file-or-text-content-and-persist-into-a-file
  *   - source:  WriteYamlStep.java in
  *              `https://github.com/jenkinsci/pipeline-utility-steps-plugin/blob/master/src/main/java/org/jenkinsci/plugins/pipeline/utility/steps/conf/WriteYamlStep.java`
- *
  * Adaptation:
  *  - `data XOR datas` and `file XOR returnText` are sealed-hierarchy invariants.
  *  - SnakeYAML 2.3 + DumperOptions matching Jenkins (`FlowStyle.BLOCK`,
@@ -44,12 +42,11 @@ import java.nio.file.Path
  *  - Jenkins' recursive type validation (`isValidObjectType`) is replaced by
  *    the closed [YamlDocument] ADT: invalid shapes cannot be constructed in
  *    the first place, so the runtime check is unnecessary.
- *
  * Effects: `WRITES_WORKSPACE` when destination is a file.
  * ReplayPolicy: `NEVER` — a successful durable write MUST NOT silently
- *   re-execute on replay (E-EM-11 NEVER-1).
+ * Re-execute on replay
  * RecoveryPolicy: `None`.
- */
+*/
 class CoreUtilsWriteYamlStepDefinition : StepDefinition<WriteYamlInput, WriteYamlOutput> {
 
     override val contract = StepContract(
@@ -124,7 +121,7 @@ class CoreUtilsWriteYamlStepDefinition : StepDefinition<WriteYamlInput, WriteYam
                         ),
                     )
                 }
-                // Shared utility (B0). Same bytes, same lowercase hex.
+                // Shared utility. Same bytes, same lowercase hex
                 val hexDigest = Sha256.ofBytes(bytes)
 
                 WriteYamlOutput(

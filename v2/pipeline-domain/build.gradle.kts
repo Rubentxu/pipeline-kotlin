@@ -2,14 +2,14 @@ plugins {
     kotlin("jvm")
     kotlin("plugin.serialization")
     `maven-publish`
-    // WU-RP-040 R4: selective mutation (ReplayPolicy core). Run explicitly: :pipeline-domain:pitest
+    // Selective mutation (ReplayPolicy core). Run explicitly::pipeline-domain:pitest
     id("info.solidsoft.pitest")
 }
 
 pitest {
     junit5PluginVersion = "1.2.1"
     targetClasses = listOf("dev.rubentxu.pipeline.v2.domain.durable.*")
-    // PR-014 follow-up: kotlinx-generated $$serializer classes are compiler
+    // Follow-up: kotlinx-generated $$serializer classes are compiler
     // output, not hand-written logic - mutating their default-value branches
     // only inflates the NO_COVERAGE denominator (they were 200+ of the 322).
     excludedClasses = listOf(

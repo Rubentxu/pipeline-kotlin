@@ -81,27 +81,22 @@ import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
 
 /**
  * How each family of [DomainEvent] becomes console text.
- *
  * ## Why this is a separate object
- *
  * `HumanConsoleRenderer` is the projection's entry point: it decides which view sees a line and it
  * walks the scope. The text of each case is a different fact with a different owner, and keeping it
  * in the same object made the entry point carry sixteen functions — past the point where a reader
  * opening the file is looking for "what does a console line look like" and gets an inventory instead.
- *
  * So the routing table stays in [HumanConsoleRenderer.line], where the closed dispatch belongs, and
  * the construction lives here. The split is along the seam the types already describe: routing is
  * about WHICH handler, construction is about WHAT it says.
- *
  * ## The contract every function here honours
- *
  * Each takes a [DomainEvent] and returns a [Line], and each ends in `else -> unrouted(...)`, which
  * throws. They are only ever reached through [HumanConsoleRenderer.line], which is exhaustive over
  * the sealed hierarchy, so the fallback is unreachable unless the routing table and a handler
  * disagree — and that disagreement must stop the console rather than produce a plausible wrong line.
  * `RendererRoutePartitionTest` checks the two lists against the hierarchy so the disagreement
  * cannot survive.
- */
+*/
 internal object ConsoleFamilyLines {
 
     /** RUN — the run and compilation lifecycle. */
@@ -112,7 +107,7 @@ internal object ConsoleFamilyLines {
             Family.RUN,
             // The event carries the correlation; the rendering only NAMES it.
             // It must not invent a new identity, decide an outcome, or hide
-            // what the durable event already records. sanitize() strips
+            // what the durable event already records. sanitize strips
             // control chars so a hostile correlationId cannot inject terminal
             // escapes or break line alignment.
             "Run correlated: ${sanitize(event.correlationId.value)}",
@@ -137,13 +132,11 @@ internal object ConsoleFamilyLines {
      * `"Compilation finished with 9 diagnostic(s)"` — a user whose script does
      * not compile was told that nine reasons existed and shown none of them, and
      * a user whose script is fine was told the same thing about a warning they
-     * cannot see. Measured 2026-10-18 on the built distribution: even the
+     * cannot see. Measured in an earlier build on the built distribution: even the
      * repo's own canonical fixture (`01-basic.pipeline.kts`) printed
      * "1 diagnostic(s)" on a `VALIDATION SUCCESSFUL` run.
-     *
      * Three properties, one cause — the count was rendered and the content was
      * not:
-     *
      *  1. **The count is interpretable.** Severity is broken out, so "1" is
      *     distinguishable as "1 warning" from "1 error". A bare number is
      *     indistinguishable between a run that is fine and a run that cannot
@@ -156,7 +149,7 @@ internal object ConsoleFamilyLines {
      *     "a failure a view can hide is a lie" — so no `ObservationView` can
      *     filter away the reason a run failed to start. A warnings-only
      *     compilation stays in [Family.RUN].
-     */
+*/
     private fun compilationFinished(event: CompilationFinished): Line {
         val errors = event.diagnostics.filter { it.severity == ScriptDiagnosticSeverity.ERROR }
         val summary = describeBySeverity(event.diagnostics)
@@ -176,13 +169,12 @@ internal object ConsoleFamilyLines {
 
     /**
      * `"Compilation finished with 1 warning"`, `"… with 9 errors and 1 warning"`.
-     *
      * Severity is named rather than elided because a bare count is the defect:
      * "1 diagnostic(s)" on a green run reads as a failure, and the only way to
      * tell an ignorable warning from a fatal error was to read a message that
      * was never printed. Severities are listed worst-first and empty ones are
      * dropped, so the count and the shape cannot drift apart.
-     */
+*/
     private fun describeBySeverity(diagnostics: List<ScriptingDiagnostic>): String {
         if (diagnostics.isEmpty()) return "Compilation finished"
         val parts = listOf(
@@ -201,9 +193,8 @@ internal object ConsoleFamilyLines {
 
     /**
      * STRUCTURE — stage and Step openers and closers, plus branch markers.
-     *
      * The only family that reads [Scope], because a Step line names its stage.
-     */
+*/
     fun structure(event: DomainEvent, scope: Scope): Line = when (event) {
         is StageStarted -> Line(Family.STRUCTURE, "[stage: ${event.stageName}]")
 
@@ -224,7 +215,7 @@ internal object ConsoleFamilyLines {
         // failure. Rendering it "ok" printed, for one failing step and in this order:
         //     ERROR: step 's1/sh-0' failed [SCRIPT]: shell exited with code 7
         //     [PipelineK] [step: s1] s1/sh-0 ok
-        // Measured 2026-10-18 against distribution 0.62.0. SEMANTIC CONSTITUTION §8: a
+        // Measured in an earlier build against distribution 0.62.0. SEMANTIC CONSTITUTION: a
         // projection must not render a status its event does not carry. `StageFinished` above
         // DOES carry `outcome`, which is why its line shows it and this one must not.
         is StepFinished -> Line(
@@ -428,12 +419,11 @@ internal object ConsoleFamilyLines {
 
     /**
      * NOTE — a plugin's own event.
-     *
      * Its payload is the contributor's serialization, not ours, so the console reports WHICH contract
      * fired rather than guessing at the contents. This branch is also the proof that the exhaustive
      * `when` is doing its job: PluginEventEmitted lives in its own file and was absent from a grep of
      * DomainEvent.kt. An `else` in the routing table would have swallowed it.
-     */
+*/
     fun pluginNote(event: DomainEvent): Line = when (event) {
         is PluginEventEmitted -> Line(
             Family.NOTE,
@@ -445,24 +435,21 @@ internal object ConsoleFamilyLines {
 
     /**
      * The last resort of a family function, and deliberately the loudest thing in this file.
-     *
      * Reaching it means the routing table and a family handler disagree — an event was sent to a
      * function that does not know it. Returning [Family.NOTE] with a placeholder would turn that
      * programming error into a plausible console line, which is the failure mode the routing table
      * exists to prevent. Naming the event and the function makes the disagreement a one-line
      * diagnosis instead of a bug report.
-     */
+*/
     private fun unrouted(event: DomainEvent, function: Any): Nothing =
         error("${event::class.simpleName} routed to a family function that does not render it: $function")
 
     /**
      * Strips control characters and ANSI escape sequences from external data
      * before it reaches the console.
-     *
      * <h2>Why this lives here</h2>
-     *
      * Every family function interpolates event fields (scriptPath, message,
-     * reason, url, ownerId, correlationId, ...) directly into a `Line`. Most
+     * reason, url, ownerId, correlationId,...) directly into a `Line`. Most
      * of those fields are author-declared or come from a trusted source, but
      * several cross a trust boundary — `correlationId` is generated by the
      * external invoker, `reason` on a `GitCheckoutFailed` is `git` stderr,
@@ -471,26 +458,22 @@ internal object ConsoleFamilyLines {
      * terminal escape sequence (e.g. `"\u001b[2J"`) can rewrite a reader's
      * screen; a value with a stray CR can split one log line into two; a
      * null byte can truncate a downstream tool.
-     *
      * The defense is a single pass that:
      *  - removes ASCII control characters (0x00..0x1F except LF and TAB),
      *  - removes the DEL character (0x7F),
-     *  - removes CSI / OSC / DCS ANSI escape sequences (ESC [ ... letter,
-     *    ESC ] ... BEL or ST, ESC P ... ST).
-     *
+     *  - removes CSI / OSC / DCS ANSI escape sequences (ESC [... letter,
+     *    ESC ]... BEL or ST, ESC P... ST).
      * Newlines (LF) and tabs are kept so multi-line error messages remain
      * readable. The result is a string that is safe to print on a TTY, paste
      * into a markdown table, or include in a JSON log line.
-     *
      * <h2>Why this is a string function and not a renderer argument</h2>
-     *
      * The renderer is a pure projection; the family functions must not grow
      * an `escape` argument that callers forget to pass. A single
      * centralising helper is the only way to guarantee every interpolation
      * goes through the same scrubber. The contract is: any field that
      * crosses a trust boundary reaches the console via [sanitize], not via
      * raw interpolation.
-     */
+*/
     private fun sanitize(raw: String): String {
         if (raw.isEmpty()) return raw
         val out = StringBuilder(raw.length)

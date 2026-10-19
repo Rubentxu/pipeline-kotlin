@@ -29,26 +29,24 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Typed input payload of `core.isUnix` (S2-A5 / G1). The legacy wire payload for this
+ * Typed input payload of `core.isUnix`. The legacy wire payload for this
  * Step is the empty object `"{}"` (compiler `encodePayload` else-branch), so the input
  * is a unit value and the codec preserves that exact durable envelope.
- */
+*/
 data object IsUnixInput
 
 /**
- * TYPED_RUNTIME_OUTPUT — APPROVED_ARCHITECTURAL_DELTA (S2-A5 / G2, decision D2).
- *
+ * TYPED_RUNTIME_OUTPUT — APPROVED_ARCHITECTURAL_DELTA (/, decision)
  * Legacy durable path produces NO typed output (`StepOutcome.Success` only; the
  * boolean is observable solely through the `UnixDetected` event). The candidate
  * deliberately exposes the classified value as a typed result because the product
  * baseline requires `isUnix` to be a runtime-valued Step (the eventual reconnection
  * of `PipelineDsl.isUnix` to a real execution-target observation depends on it).
- *
- * Durable law (G2): fresh/rerun OBSERVE the environment; resume/reuse REPRODUCE the
+ * Durable law: fresh/rerun OBSERVE the environment; resume/reuse REPRODUCE the
  * persisted observation (`IsUnixOutput` + original `UnixDetected`) without
  * re-executing the handler or re-observing `PlatformIdentity`. A stale observation
  * after an OS change is correct durable semantics, not a bug.
- */
+*/
 data class IsUnixOutput(
     val isUnix: Boolean,
 ) : TypedStepOutput {
@@ -56,39 +54,35 @@ data class IsUnixOutput(
 }
 
 /**
- * Registry candidate for `core.isUnix` (S2-A5 / G1 registry seam proof).
- *
- * G1 registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy decoder,
+ * Registry candidate for `core.isUnix` (/ registry seam proof)
+ * Registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy decoder
  * the metadata row, or the legacy dispatcher: `StructuralFamilyResolver`'s
  * legacy-membership-wins rule keeps LegacyCore as the production authority until the
- * G3/G4 flip. Counters stay 8 / 8 / 8.
- *
- * Classification policy is **PATH_B verbatim** (G0 characterization):
+ * / flip. Counters stay 8 / 8 / 8
+ * Classification policy is **PATH_B verbatim**:
  * `osName.lowercase()` contains any of
  * `linux | mac | darwin | freebsd`. The DSL-side whitelist (PATH_A) is deliberately NOT
- * copied; the canonical-policy decision belongs to G2 with a clean `C == B` baseline.
- *
- * Capability separation (the G0 live counterexample made this justified):
+ * Copied; the canonical-policy decision belongs to with a clean `C == B` baseline
+ * Capability separation:
  * - [PLATFORM_IDENTITY_CAPABILITY] owns the environmental OBSERVATION (`osName`);
  *   the single `System.getProperty("os.name")` read lives in the capability bridge,
  *   never in the handler.
  * - The Step owns the isUnix classification POLICY.
  * - [EVENT_SINK_CAPABILITY] publishes the durable `UnixDetected` observation.
- *
  * Adjective checks: input codec preserves the legacy `"{}"` envelope; the handler is
  * total (no exceptions as semantics); `UnixDetected` fields mirror the legacy dispatcher
  * byte-for-byte (uuid eventId, sequence 0L, sha256 hex of osName).
- */
+*/
 object CoreIsUnixStep {
 
     val KEY: PluginStepId = PluginStepId("core.isUnix")
 
     /**
-     * S2-A5 / G2: classification now routes through the single canonical pure
-     * classifier [UnixPlatformClassifier.classifyUnix] (decision D1). The G1
-     * PATH_B-verbatim body is retired; see the G2 differential-freeze receipt for the
+     * Classification now routes through the single canonical pure
+     * Classifier [UnixPlatformClassifier.classifyUnix] (decision). The
+     * PATH_B-verbatim body is retired; see the differential-freeze receipt for the
      * APPROVED_FIX / APPROVED_CONTRACT_DELTA matrix.
-     */
+*/
     internal fun classify(osName: String): Boolean = UnixPlatformClassifier.classifyUnix(osName)
 
     private val inputCodec = object : StepCodec<IsUnixInput> {
@@ -156,11 +150,10 @@ object CoreIsUnixStep {
 
     /**
      * The `core.isUnix` platform-probe digest, emitted in the Step's observability event.
-     *
-     * Routed through [Sha256] (B0). Byte-identical to the previous `input.toByteArray()`
-     * on any UTF-8 toolchain; what changes is that the charset is stated rather than
+     * Routed through [Sha256]. Byte-identical to the previous `input.toByteArray()`
+     * On any toolchain; what changes is that the charset is stated rather than
      * inherited from the platform default.
-     */
+*/
     internal fun sha256(input: String): String = Sha256.ofText(input)
 
     val definition: StepDefinition<IsUnixInput, IsUnixOutput> =

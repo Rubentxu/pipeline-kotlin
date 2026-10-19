@@ -3,23 +3,21 @@ package dev.rubentxu.pipeline.v2.release
 import kotlinx.serialization.Serializable
 
 /**
- * P0.1 — a product version is a final SemVer triple. It must NOT carry a
+ * A product version is a final SemVer triple. It must NOT carry a
  * candidate suffix: candidate state lives *outside* the binary identity,
  * and this type is where that separation is enforced. `0.44.0-rc1` is
  * therefore not a valid [ProductVersion]; the candidate is
  * `(ProductVersion=0.44.0, CandidateId=sha256:…)`.
- *
  * The v0.43.0 incident is the reason this type exists. That artifact was
  * internally consistent at `0.43.0-rc1` and was later presented under a GA
  * identity; a gate that only compared the build's own surfaces would have been
  * green on exactly the bytes that caused the incident. Rejecting a
  * candidate-suffixed *product* identity is what removes the second identity
  * there was to launder.
- *
  * A value class rather than a bare [String] so an invalid version cannot be
  * constructed at all: [parseOrNull] is the only way in, and it returns null for
  * a candidate suffix.
- */
+*/
 @Serializable
 @JvmInline
 value class ProductVersion private constructor(val value: String) {
@@ -41,7 +39,7 @@ value class ProductVersion private constructor(val value: String) {
          * candidate suffix. Returning null rather than throwing keeps this
          * usable as a predicate; callers that require a version use
          * [parseOrThrow].
-         */
+*/
         fun parseOrNull(raw: String): ProductVersion? {
             val trimmed = raw.trim()
             if (!FINAL_SEMVER.matches(trimmed)) return null

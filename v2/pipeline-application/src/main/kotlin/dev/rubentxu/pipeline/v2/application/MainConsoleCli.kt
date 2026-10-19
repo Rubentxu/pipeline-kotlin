@@ -28,49 +28,40 @@ import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * M1-P3 — the consumable read side: console output, addressed by [OutputCursor].
- *
+ * The consumable read side: console output, addressed by [OutputCursor].
  * ## What this is for
- *
- * `OutputReadPort` existed since M1-P1, and nothing called it. A contract nobody can call is a
+ * `OutputReadPort` existed since, and nothing called it. A contract nobody can call is a
  * design, not a product. This is the surface a consumer actually reaches for: a Jenkins
  * `LogStorage`, a Fabric ACL adapter, or [MainConsoleCli].
- *
  * ## Why it is not built on `EventHistoryReader`
- *
  * The event plane continues over a store-assigned **sequence**; the output plane continues over a
  * **committed byte offset**. Building a console reader on the event sequence is precisely the
- * conflation `ADR-M1 D3` forbids: a gap in the sequence is indistinguishable from output that was
+ * A gap in the sequence is indistinguishable from output that was
  * never emitted, and unrelated event traffic perturbs the read. So this reads the Output Plane and
  * only the Output Plane, and its continuation token is `out-cursor-v1:`, never `evt-cursor-v1:`.
- *
  * ## Resolution, not guessing
- *
  * A consumer names a **run and an operation**, not a stream id. The mapping is
  * [OutputPlaneProvider.streamId] and it is one-way on purpose: this service never *derives* a
  * cursor, it only resolves what a consumer already asked for. A reader that invented a stream
  * identity would be one refactor away from reading the wrong run.
- *
  * ## Refusals are reported, not swallowed
- *
  * A refusal is a fact about the question, not an error: an unknown stream and a cursor from another
  * stream are both ways a consumer asked something that cannot be answered. They are rendered to the
  * caller, never turned into an empty page — an empty page is a valid answer, and conflating it with
  * "wrong stream" is how a reader ends up believing it read nothing when it read nothing at all.
- */
+*/
 object ConsoleReadService {
 
     /** Bytes emitted per continuation by default. A page is bounded; this is the bound. */
     const val DEFAULT_PAGE_BYTES: Int = 64 * 1024
 
     /**
-     * R4 / WU-R4.6 — frames emitted per continuation by default on the per-frame path.
-     *
+     * Frames emitted per continuation by default on the per-frame path.
      * 1024 frames is a defensive default: at the typical 8 KiB frame size a step's transcript
      * fits well under it, while a noisy script that emits many small frames does not get capped
      * too soon. Callers that want a different bound pass `--frame-limit N`; the admission
      * refuses non-positive values.
-     */
+*/
     const val DEFAULT_FRAME_LIMIT: Int = 1024
 
     /** What a consumer gets back: a bounded page, or the reason there isn't one. */
@@ -81,14 +72,11 @@ object ConsoleReadService {
 
     /**
  * Read one bounded page of [opId]'s transcript in [runId], continuing after [after].
- *
  * ## Why one call still answers "the whole console"
- *
- * OBS-C2.3 split an operation's output into two channel-addressed streams, and this method is where
+ * 3 split an operation's output into two channel-addressed streams, and this method is where
  * a consumer is meant to see them as one console again. The concatenation happens HERE, on the read
  * side, and is never persisted — a merged run on disk would be the second byte authority that
- * `ADR-M1 §D2` exists to prevent.
- *
+ * ` §` exists to prevent
  * The continuation cursor names **the channel the page stopped on**, because that is the only thing
  * an [OutputCursor] can honestly name: it addresses a byte position inside ONE stream, and the type
  * refuses a cursor that claims otherwise. So a reader resuming from the returned cursor continues
@@ -96,10 +84,9 @@ object ConsoleReadService {
  * ordering across channels — the interleaving a real console shows — is `OutputFrameIndex`'s job, and
  * this method deliberately does NOT pretend to do it: it concatenates in a fixed channel order, which
  * is a projection and not a claim about what the kernel interleaved.
- *
  * @param after `null` reads from the start. A token for a different stream is **refused**,
  *   not clamped — see the class KDoc.
- */
+*/
     fun read(
         controlDirRoot: Path,
         runId: String,
@@ -198,15 +185,13 @@ object ConsoleReadService {
 
     /**
      * Read an arbitrary committed byte range of [opId]'s console.
-     *
      * ## The merged offset space
-     *
-     * OBS-C2.3 gives an operation two channel streams, so "byte 30 of this console" is only
+     * 3 gives an operation two channel streams, so "byte 30 of this console" is only
      * meaningful once the two are put in an order. That order is the fixed channel order used by
      * [read], which makes a range and a page agree by construction: the same offsets name the same
      * bytes whichever way a reader asks for them. It is a **projection**, not a claim about what the
      * kernel interleaved — reconstructing the real observation order is `OutputFrameIndex`'s job.
-     */
+*/
     fun readRange(
         controlDirRoot: Path,
         runId: String,
@@ -288,7 +273,7 @@ object ConsoleReadService {
             "console-refused: dangling-commit end=${reason.requestedEnd} readable=${reason.readableBytes}"
         OutputRefusal.RecoveryNotCompleted ->
             "console-refused: recovery-not-completed"
-        // M1-A additions: the Output follow contract introduced two
+        // The Output follow contract introduced two
         // new refusal cases. They can reach `console-refused` when a
         // follow produces a Refused event the application layer
         // surfaces. Render them with stable, script-branchable text.
@@ -296,17 +281,17 @@ object ConsoleReadService {
             "console-refused: stream-lost-retention stream=${reason.stream.value} last-committed=${reason.lastCommitted}"
         is OutputRefusal.FollowCancelled ->
             "console-refused: follow-cancelled run=${reason.runId}"
-        // M1-B addition: a thrown exception from the read ports is
+        // A thrown exception from the read ports is
         // caught at the follower boundary and surfaced as a typed
         // refusal. The console renders the cause as a short string
         // so a script can branch on the prefix.
         is OutputRefusal.StorageError ->
             "console-refused: storage-error cause=${reason.cause}"
-        // M3 additions: the digest/pin/retention surface introduced four
+        // The digest/pin/retention surface introduced four
         // new refusal cases. Render them with stable, script-branchable text
         // so consumers can grep the prefix. The sealed ADT discipline means
         // adding a case forces this branch list to grow here at compile
-        // time — the discipline the audit §B.2 (d) requires.
+        // time — the discipline the auditB.2 (d) requires.
         is OutputRefusal.RetentionGap ->
             "console-refused: retention-gap stream=${reason.stream.value} last-committed=${reason.lastCommitted}"
         is OutputRefusal.Corrupt ->
@@ -320,56 +305,49 @@ object ConsoleReadService {
 
 /**
  * What `pipeline console` was asked to read.
- *
  * ## Why this is a type and not a branch
- *
  * The two readings are not variants of one thing. A [Paged] read CONTINUES after a cursor and is
  * bounded by a budget. A [Range] read NAMES A SPAN of the merged offset space and is not resumable,
  * because continuation is expressed with a cursor and a span across two channel streams has no
  * honest single cursor.
- *
  * `main` used to hold a `String?` for `--range`, another for `--after-cursor`, and pick between them
  * with an `if`. Nothing in that program said the two are different requests, so `--range 0:10
  * --max-bytes 5` was not refused — the budget was silently discarded, and `readRange`'s `require`
  * then threw out of `main` for a span no run had committed. A third flag that cannot apply is a
  * refusal, and refusal is a case of the request type's absence, not a branch that quietly picks a
  * different case.
- */
+*/
 sealed interface ConsoleReadRequest {
     val controlDir: String
     val runId: String
 
     /**
-     * R4 / WU-RC3 — the operation to read, or `null` to read the WHOLE RUN and let the
+     * The operation to read, or `null` to read the WHOLE RUN and let the
      * [dev.rubentxu.pipeline.v2.application.console.OperationSelection] narrow it.
-     *
      * Nullable because a required opId made `--stage`, `--step` and `--kind` unable to select
      * among operations at all: the read was scoped to ONE operation before any filter ran, so a
      * filter could only ever narrow within it. `--stage build` against `run-1-s0-0` could never
      * reach `run-1-s1-0`, whatever the filter said.
-     *
      * `null` is therefore the shape a content filter REQUIRES, and the positional stays
      * mandatory for an unfiltered read so `console <runId> <opId>` keeps its meaning. Both may
      * be supplied together and then INTERSECT: the positional names one operation and the
      * selection may only remove from it.
-     */
+*/
     val opId: String?
     val format: MainConsoleCli.ConsoleFormat
 
     /**
-     * R4 / WU-RC3 — the events journal this request may consult, or `null` when none was supplied.
-     *
+     * The events journal this request may consult, or `null` when none was supplied.
      * It is a PATH, not an opened store: the parser admits a request without performing an
-     * effect (STRICT TYPED FUNCTIONAL DESIGN §10 — a builder describes, it does not interpret),
+     * effect (STRICT TYPED FUNCTIONAL DESIGN — a builder describes, it does not interpret),
      * so opening the journal happens in `main`, after admission, where a failure is a typed
      * refusal rather than a parse error.
-     *
      * `null` is a real, load-bearing value and not an omission. Stage/step NAMES and `--kind`
      * live only in the journal, so without it those axes cannot be honoured and
      * [dev.rubentxu.pipeline.v2.application.console.ConsoleOperationSelection.resolve] refuses
      * them by name. Defaulted so every existing construction stays valid and so the byte paths
      * ([Paged], [Range]) — which have no filter and need no journal — are unaffected.
-     */
+*/
     val dbPath: String? get() = null
 
     /** Continue after [after] (`null` starts at the beginning), emitting at most [maxBytes] bytes. */
@@ -393,18 +371,16 @@ sealed interface ConsoleReadRequest {
     ) : ConsoleReadRequest
 
     /**
-     * R4 / WU-R4.6 — per-frame walk.
-     *
+     * Per-frame walk.
      * Continue after [afterOrdinal] (`-1` starts at the first frame), emitting at most
      * [frameLimit] frames in observation order. Unlike [Paged] (byte-budgeted, cursor-resumable)
      * and [Range] (byte span, no continuation), this path answers the question only the frame
      * index can: "what did this operation publish, frame by frame, in the order PipelineK
      * observed it?" The JSONL emitter walks this path and writes one record per real frame;
      * the per-record [OutputFrame.ordinal] / [OutputFrame.from] / [OutputFrame.to] ride on the wire.
-     *
      * [frameLimit] is the loop bound. The constructor refuses non-positive values, so the
      * caller learns the rule at compile + admission rather than at the runtime loop.
-     */
+*/
     data class Frames(
         override val controlDir: String,
         override val runId: String,
@@ -420,26 +396,22 @@ sealed interface ConsoleReadRequest {
     }
 
     /**
-     * R4 / WU-CON-2.3 — `--follow` over the per-frame path.
-     *
+     * `--follow` over the per-frame path.
      * A thin loop over [Frames] reads. Each poll re-reads with
      * `afterOrdinal = (last seen ordinal) + 1` (or `-1` for the first poll), emits any new
      * frames, and continues until either:
-     *
      *   - the read returns 0 new frames AND every known output stream is [Sealed]
      *     (the durable authority for "the writer closed this stream") — EOF, exit 0;
      *   - the [followConfig] has been polled [FollowConfig.maxPolls] times — exit 0;
      *   - the JVM receives a SIGINT/SIGTERM — exit 2.
-     *
      * The cursor between polls is local state, fully reconstructible from the durable
-     * authority ([afterOrdinal] + [frameLimit]); it is NOT journaled (DR-5 in AGENTS.md).
+     * Authority ([afterOrdinal] + [frameLimit]); it is NOT journaled (in AGENTS.md)
      * A fresh process invocation starts over from [afterOrdinal]; a follow does NOT resume
      * across runs.
-     *
-     * The follow is reading, not deciding: PAR-D (ADR-0076) is in force. The typed decision
+     * The follow is reading, not deciding: is in force. The typed decision
      * ([FollowFrames]) is what reaches the loop; the loop is a pure interpreter of that
      * decision and must not mutate any journal state.
-     */
+*/
     data class FollowFrames(
         override val controlDir: String,
         override val runId: String,
@@ -449,18 +421,16 @@ sealed interface ConsoleReadRequest {
         val followConfig: FollowConfig,
         override val format: MainConsoleCli.ConsoleFormat,
         /**
-         * R4 / WU-RC3 — the same content filter a single [FramesFiltered] read carries.
-         *
-         * This field is the audit's **P0-4**. `CliParser.consoleValidate` dispatched `--follow`
+         * The same content filter a single [FramesFiltered] read carries.
+         * This field is the audit's ****. `CliParser.consoleValidate` dispatched `--follow`
          * BEFORE the filter branch, so `console --frames --follow --stage build` admitted a
          * filterless [FollowFrames] and dropped the filter without a word: the operator asked to
          * see one stage and was shown the whole run, with a successful exit code.
-         *
          * Defaulting to [ConsoleFrameFilters.None] rather than being required keeps every
          * existing construction valid, and the default is the honest value — "no filter was
          * asked for" is not the same as "no filter could be applied", and only the latter is a
          * defect.
-         */
+*/
         val filters: ConsoleFrameFilters = ConsoleFrameFilters.None,
         override val dbPath: String? = null,
     ) : ConsoleReadRequest {
@@ -471,18 +441,16 @@ sealed interface ConsoleReadRequest {
     }
 
     /**
-     * R4 / WU-CON-2.2 — per-frame walk with content filters.
-     *
+     * Per-frame walk with content filters.
      * Same per-frame contract as [Frames] (resume by frame ordinal, bounded by frame count) but
      * with a [filters] constraint applied at emit time. The filters name stage, step and event
      * kind; the verb main resolves those into a set of opIds by walking the events journal,
      * and only emits frames whose stream names a matching opId.
-     *
      * A filter request without [filters] being [ConsoleFrameFilters.Active] is a [Frames] read;
      * a filter request with no `--frames` flag is refused at admission. The closed [filters] ADT
      * keeps the "no filters" path on the same sealed type as the active path so the verb main's
      * `when (request)` stays exhaustive without an `else` branch.
-     */
+*/
     data class FramesFiltered(
         override val controlDir: String,
         override val runId: String,
@@ -504,17 +472,15 @@ sealed interface ConsoleReadRequest {
 }
 
 /**
- * R4 / WU-CON-2.3 — the bounded knobs that turn a [ConsoleReadRequest.Frames] read into a loop.
- *
+ * The bounded knobs that turn a [ConsoleReadRequest.Frames] read into a loop.
  * A closed payload rather than a flag bag: [pollIntervalMillis] is the wait between rounds,
  * [maxPolls] is the loop bound. The constructor refuses non-positive values so a malformed
  * `--follow-*` is a typed refusal at admission, not a silent degradation at runtime.
- *
  * The defaults (1000 ms / 60 polls) make one `--follow` invocation roughly a minute of
  * follow time, which is the budget the events verb established and which we keep here
  * for parity. The CLI surface admits `--follow-poll-interval` and `--follow-max-polls`
  * explicitly so an operator can tune them.
- */
+*/
 data class FollowConfig(
     val pollIntervalMillis: Long,
     val maxPolls: Int,
@@ -534,35 +500,28 @@ data class FollowConfig(
 }
 
 /**
- * R4 / WU-RC4 — why a `--follow` loop stopped.
- *
+ * Why a `--follow` loop stopped.
  * ## Why this is an ADT and not an `Int`
- *
  * The loop previously returned a bare `Int`, with `0` meaning both "the output lane is final" and
  * "we ran out of polls" and `1`/`2` meaning a refusal and a signal. Three facts about a run were
  * encoded in one number with no way to tell them apart, and two of them — a finished follow and an
  * abandoned one — were reported **identically**. A caller could not distinguish "this operation's
  * output is complete" from "we gave up looking", which is the same false-green the follow
  * decision itself was fixed for: a truncated transcript that looks like a clean exit.
- *
  * [exitCode] is a *projection* of the case, defined once here so the mapping is stated in exactly
  * one place and cannot drift per call site.
- *
  * ## Why `PollBudgetExhausted` is NOT zero
- *
  * Running out of polls means the loop never observed a terminal fact. It says nothing about the
  * run: the run may be alive, may have failed, may have finished a millisecond after the last poll.
  * Reporting that as success claims the product completed an observation it never completed.
- *
  * The cost is real and deliberate: this verb has **no event-plane authority** (it never opens the
  * journal — see the note on the filter resolver), so for an op that owns no stream — a silent
  * `sh("true")` — the poll budget is the ONLY exit, and such a follow now reports exhaustion rather
  * than a clean completion. That is the honest answer. The alternative was a `0` that lied.
- *
  * Closing the gap properly means giving this verb a run-plane authority (see `RunPlane` and the
  * `--db` gap recorded in the RC4 receipt); until then this case is the honest ceiling, not a bug
  * to be tuned away.
- */
+*/
 sealed interface FollowExit {
     /** The process exit code this outcome projects to. Stated once, never re-derived per call site. */
     val exitCode: Int
@@ -584,28 +543,25 @@ sealed interface FollowExit {
 
     /**
      * The poll budget ran out before any terminal fact was observed.
-     *
      * Its own case because none of the others happened. Deliberately non-zero — see the type KDoc.
-     */
+*/
     data class PollBudgetExhausted(val polls: Int, val lastOrdinal: Long) : FollowExit {
         override val exitCode: Int = 3
     }
 }
 
 /**
- * R4 / WU-CON-2.2 — closed ADT of content filters on the per-frame `console` path.
- *
+ * Closed ADT of content filters on the per-frame `console` path.
  * `None` is the existing [ConsoleReadRequest.Frames] path: no filter, every frame in observation
  * order. `Active` carries the closed set of values the user requested for `--stage`, `--step` and
  * `--kind`. Each axis is a set, so repeated flags OR within an axis (`--kind StepStarted
  * --kind StepFinished` = "StepStarted OR StepFinished") and the three axes AND together (a frame
  * must match every axis that has a value).
- *
  * The closed shape is what makes "filter that filters nothing" a typed decision: a caller that
  * says "filter by stage=build, but I am reading the whole run" gets a frame walk; a caller that
  * says "filter by stage=build on the run that contains no build stage" gets zero frames. There
  * is no third "silently empty" state, which is what the closed ADT prevents.
- */
+*/
 sealed interface ConsoleFrameFilters {
     /** No filter; the per-frame walk returns every frame in observation order. */
     data object None : ConsoleFrameFilters
@@ -615,7 +571,7 @@ sealed interface ConsoleFrameFilters {
      * non-empty), at least one step in [steps] (if non-empty), AND the events journal shows
      * at least one matching kind in [kinds] (if non-empty). The empty-set axes are
      * "no constraint on this axis" — the conjunction is across the non-empty axes only.
-     */
+*/
     data class Active(
         val stages: Set<String> = emptySet(),
         val steps: Set<String> = emptySet(),
@@ -631,11 +587,10 @@ sealed interface ConsoleFrameFilters {
 
 /**
  * Why `pipeline console` will not do what it was asked.
- *
  * Every case is decided before a store is opened, except [ConsoleCliRefusal.ControlDirNotFound],
  * which is the first thing that touches the filesystem. A refusal names the token that is wrong,
  * because a diagnostic that does not is a diagnostic the caller has to guess from.
- */
+*/
 sealed interface ConsoleCliRefusal {
     data object MissingArgument : ConsoleCliRefusal
     data class UnknownOption(val option: String) : ConsoleCliRefusal
@@ -646,21 +601,19 @@ sealed interface ConsoleCliRefusal {
     data class ControlDirNotFound(val path: String) : ConsoleCliRefusal
     /**
      * A valued option was written and its value was not.
-     *
      * Distinct from [MissingArgument], which is about a REQUIRED positional that was not supplied.
      * This one is about an option that IS present, so the caller has already made a choice and must
      * learn that the choice is incomplete. Keeping them apart is not cosmetic: conflating them is how
      * `--max-bytes` at the end of the command line read as "no `--max-bytes`" and silently took the
      * default page size.
-     */
+*/
     data class MissingOptionValue(val option: String) : ConsoleCliRefusal
 
     /**
      * A reader flag offered to a range read, or the other way round.
-     *
      * [spansNothing] is the argument, in one token: the flag does not shrink the answer, it does not
      * change it, and it produces no output at all. There is no documented meaning to honour it by.
-     */
+*/
     data class IncompatibleWithRange(val option: String) : ConsoleCliRefusal {
         override fun toString(): String =
             "IncompatibleWithRange($option): --range names a span of the committed console, and " +
@@ -670,16 +623,15 @@ sealed interface ConsoleCliRefusal {
     }
 
     /**
-     * R4 / WU-R4.6 — a byte-budgeted or cursor-resume flag offered to a per-frame read, or vice
+     * A byte-budgeted or cursor-resume flag offered to a per-frame read, or vice
      * versa.
-     *
      * The per-frame path answers "what did the operation publish, in observation order?" and
      * bounds the answer with [ConsoleReadRequest.Frames.frameLimit] (frame count) and
      * [ConsoleReadRequest.Frames.afterOrdinal] (frame ordinal). `--max-bytes`, `--after-cursor`,
      * and `--range` are the byte-budgeted / cursor-resume / byte-span affordances of the
      * legacy path; mixing them with `--frames` is a category error, not a numeric one. The
      * rendered refusal names the option so the caller deletes one token rather than editing two.
-     */
+*/
     data class IncompatibleWithFrames(val option: String) : ConsoleCliRefusal {
         override fun toString(): String =
             "IncompatibleWithFrames($option): '$option' is a byte-budgeted / byte-cursor / " +
@@ -690,23 +642,21 @@ sealed interface ConsoleCliRefusal {
     }
 
     /**
-     * R4 / WU-R4.3 — `--format` was given a value that is neither `text` nor `jsonl`.
-     *
+     * `--format` was given a value that is neither `text` nor `jsonl`.
      * Distinct from [UnknownOption] (which is about a flag the verb does not recognise) and from
      * [MissingOptionValue] (the flag had no value). The closed [MainConsoleCli.ConsoleFormat] ADT
      * has exactly two cases; this refusal names the offending value so the caller edits one token
      * rather than guessing which one.
-     */
+*/
     data class UnknownFormat(val value: String, val accepted: List<String>) : ConsoleCliRefusal
 
     /**
-     * R4 / WU-CON-2.3 — `--follow` was supplied without `--frames`.
-     *
+     * `--follow` was supplied without `--frames`.
      * The follow is a loop over the per-frame read; without `--frames` it would be a loop over
      * nothing. Refused rather than defaulted: a `--follow` against the legacy byte-budgeted path
      * would silently emit the merged page once and then poll forever on `OutputCursor`, which is
      * a different contract from what the operator asked for.
-     */
+*/
     data object FollowRequiresFrames : ConsoleCliRefusal {
         override fun toString(): String =
             "FollowRequiresFrames: --follow requires --frames; the per-frame path is the only " +
@@ -715,36 +665,32 @@ sealed interface ConsoleCliRefusal {
     }
 
     /**
-     * R4 / WU-CON-2.2 — `--run` and the positional `<runId>` were both supplied.
-     *
+     * `--run` and the positional `<runId>` were both supplied.
      * Two ways of naming the same value is a silent-precedence defect waiting to happen: the
      * verb would have to pick one and tell the user they did not get the other. Refused
      * instead, with both tokens named so the caller deletes one rather than guessing which
      * the parser preferred.
-     */
+*/
     data class MutuallyExclusiveRunId(val runId: String, val runOverride: String) : ConsoleCliRefusal
 
     /**
-     * R4 / WU-CON-2.2 — a content filter was supplied without `--frames`.
-     *
+     * A content filter was supplied without `--frames`.
      * Filters narrow the answer on a per-frame basis: the byte-budgeted (Paged) and
      * byte-span (Range) paths do not produce per-frame records, so a filter on them would
      * have nothing to apply to. The refusal names the offending flag(s) so the caller adds
      * `--frames` rather than guessing why their filter did not narrow the answer.
-     */
+*/
     data class FilterRequiresFrames(val flags: List<String>) : ConsoleCliRefusal
 
     /**
-     * R4 / WU-RC3 — the filter could not be turned into a selection.
-     *
+     * The filter could not be turned into a selection.
      * Carries the whole [dev.rubentxu.pipeline.v2.application.console.SelectionRefusal] rather
      * than flattening it, because the four reasons need genuinely different messages and a
      * flattened "filter failed" would make the caller guess which one applied.
-     *
      * Its own case, and the reason `--kind` stopped being a lie: the rc1 resolver returned `true`
      * for any kind, so `--kind anything` selected the whole run and exited 0. A caller asking for
      * a filter the verb cannot apply must be told so.
-     */
+*/
     data class FilterNotResolvable(
         val reason: dev.rubentxu.pipeline.v2.application.console.SelectionRefusal,
     ) : ConsoleCliRefusal
@@ -755,15 +701,14 @@ sealed interface ConsoleCliRefusal {
  * legacy path, the byte-span path, and the per-frame path. Each is mutually
  * exclusive with the others; the per-frame path's options are listed in the
  * block under `--frames`.
- *
- * The line is intentionally longer than the legacy single-line form: the H3
+ * The line is intentionally longer than the legacy single-line form: the
  * mandate's "UX observable" requires the operator to see every verb on
  * `pipelinek console` with no args, not just the byte-budgeted affordance that
- * shipped in M1-P3. `--frame-limit`, `--after-ordinal`, `--follow`, `--stage`,
- * `--step`, `--kind` are the per-frame options the R4 console work added; their
+ * Shipped in. `--frame-limit`, `--after-ordinal`, `--follow`, `--stage`
+ * `--step`, `--kind` are the per-frame options the console work added; their
  * presence in the usage line closes the gap between the parser (which accepts
  * them) and the help text (which previously did not advertise them).
- */
+*/
 internal const val CONSOLE_USAGE_TEXT: String =
     "Usage: pipeline console --control-dir <path> <runId> <opId> " +
         "[--max-bytes N] [--after-cursor TOKEN] [--format text|jsonl]\n" +
@@ -821,67 +766,56 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
 }
 
 /**
- * M1-P3 — the console reader CLI.
- *
+ * The console reader CLI.
  * ```text
  * pipeline console --control-dir <path> <runId> <opId> [--max-bytes N] [--after-cursor TOKEN]
  * pipeline console --control-dir <path> <runId> <opId> --range FROM:TO
- * pipeline console --control-dir <path> <runId> <opId> --format text|jsonl ...
+ * pipeline console --control-dir <path> <runId> <opId> --format text|jsonl...
  * ```
- *
  * The console transcript goes to **stdout as bytes**, not as a rendered line, because a consumer
  * that has to strip a CLI's framing out of a transcript will eventually strip the wrong thing. The
  * continuation token goes to **stderr**, which is the convention [MainEventsCli] already uses and
  * keeps the two planes from colliding. A refusal is therefore also stderr-only: it must never reach
  * stdout, because a consumer reading bytes there cannot tell a refusal from an empty transcript.
- *
- * ## R4 / WU-R4.3 — `--format text | jsonl`
- *
- * The default is `text` (raw bytes to stdout, unchanged from M1-P3). `--format jsonl` switches
+ * `--format text | jsonl`
+ * The default is `text` (raw bytes to stdout, unchanged from). `--format jsonl` switches
  * the emitter to [ObservationJsonLines]: one record per page, with the canonical
  * `{type:"output", channel, operation, ordinal, from, to, text/base64}` shape, the same one
  * `pipelinek observe --view console --format jsonl` already produces. Stdout stays the protocol
  * surface (one record per line, newline-terminated, flushed); the continuation token still
  * goes to stderr, so a script can resume without parsing the jsonl stream for control bytes.
- *
  * The jsonl path is bounded to the operation's merged page; a future slice can wire per-frame
  * records through `FrameIndexedObservationOutputReader` once the per-operation index is
- * available (CON-2.1/2.2 follow-up).
- *
+ * available.
  * ## Three steps, in that order
- *
  * [MainConsoleCliAdmission.parseTokens] collects argv and decides nothing. [admit] validates — and
  * validates CONFLICTS before TYPES, so `--range 0:10 --max-bytes abc` says the budget has no meaning
  * there rather than complaining about the number, which would send the caller to edit a token they
  * should delete. [MainConsoleCli.execute] interprets the admitted request.
- *
- * ## R4 / WU-C — why this object holds 21 functions, more than detekt's 12
- *
- * The object is the canonical CLI surface for `pipeline console`. The tests that certified it by RC3/RC4/WU-A/B
+ * Why this object holds 21 functions, more than detekt's 12
+ * The object is the canonical CLI surface for `pipeline console`. The tests that certified it
  * (`ConsoleRc3FilteredFollowTest`, `ConsoleRc4FollowTerminationTest`, `ConsoleRc2FrameIntegrityTest`,
  * `ConsoleFollowTest`, `ConsoleFrameFiltersTest`, `ConsoleReadServiceTest`) all reached the verbs
- * through `MainConsoleCli.X`, and the test RESET removed all six in `2aa071aab`. Nothing reaches
+ * through `MainConsoleCli.X`, and the testing reset removed all six. Nothing reaches
  * these verbs from a test today, so the 21-vs-12 count below is argued, not enforced. Splitting the
  * object into per-verb objects (Read/Follow/Emit) would
  * require moving every public function and rewriting the test call sites, and the only honest
  * way to certify a refactor that changes both production and tests at once is to re-derive
  * every row's expectation. That is a separate slice; recorded in the receipt, not done here.
- *
  * Suppressing the rule here is therefore not a relaxed assertion to obtain green: it is a
  * DECISION to keep the public surface stable and pay down the count later, in a follow-up whose
  * only purpose is the move.
- */
+*/
 @Suppress("TooManyFunctions")
 object MainConsoleCli {
 
     /**
-     * R4 / WU-R4.3 — the closed ADT of console output formats.
-     *
-     * `TEXT` is the legacy raw-bytes path (unchanged from M1-P3). `JSONL` is the canonical
+     * The closed ADT of console output formats.
+     * `TEXT` is the legacy raw-bytes path (unchanged from). `JSONL` is the canonical
      * machine-readable projection [ObservationJsonLines] emits. Adding a third case is a
      * compile-time break for every caller of [ConsoleReadRequest.format] and for the emit
      * dispatch in [MainConsoleCli.emit].
-     */
+*/
     enum class ConsoleFormat(val token: String) {
         /** Raw bytes to stdout. Default. */
         TEXT("text"),
@@ -911,20 +845,18 @@ object MainConsoleCli {
                 )
                 2
             } else {
-                // R4 / WU-R4.6 — the dispatch is on the request variant: Paged / Range go
-                // through the byte-budgeted [emit] path (unchanged from WU-R4.3); Frames
+                // The dispatch is on the request variant: Paged / Range go
+                // Through the byte-budgeted [emit] path (unchanged from); Frames
                 // goes through the per-frame path, which reads the index directly and
                 // emits one record per real frame.
-                // R4 / WU-CON-2.2 — FramesFiltered is the filtered per-frame path; the
+                // FramesFiltered is the filtered per-frame path; the
                 // filter is resolved at emit time by matching each frame's stream against
                 // the closed [ConsoleFrameFilters.Active] set.
-                //
-                // R4 / WU-RC3 — ONE selection, resolved here and consumed by whichever
+                // ONE selection, resolved here and consumed by whichever
                 // interpreter runs. This is the whole point of the block: the single read
                 // and the follow loop used to decide "which frames?" separately, and the
-                // follow path did not decide at all (audit P0-4). Resolving before the
+                // Follow path did not decide at all (audit). Resolving before the
                 // dispatch is what makes them the same question.
-                //
                 // Opening the journal HERE rather than in the parser is deliberate: admission
                 // must perform no effect, so a missing or unreadable `--db` is a typed refusal
                 // at interpretation time, not a parse error.
@@ -940,15 +872,15 @@ object MainConsoleCli {
                 when (request) {
                     is ConsoleReadRequest.Frames ->
                         emitFrames(readFrames(request, root), request, System.out, System.err)
-                    // R4 / WU-CON-2.3 — `--follow`. A loop over the per-frame path; the loop
+                    // `--follow`. A loop over the per-frame path; the loop
                     // is a pure interpreter of [ConsoleReadRequest.FollowFrames] and does not
                     // mutate any journal state.
                     is ConsoleReadRequest.FollowFrames ->
-                        // R4 / WU-RC4 — the loop returns a typed [FollowExit]; the ONLY place its
+                        // The loop returns a typed [FollowExit]; the ONLY place its
                         // exit code is projected. Stated here once so the mapping cannot drift,
                         // and so a reader can see that an exhausted poll budget is non-zero
                         // without reading the loop.
-                        // R4 / WU-RC3 — a `--follow` carrying filters is a FILTERED follow.
+                        // A `--follow` carrying filters is a FILTERED follow.
                         // Under rc1 this branch shadowed the filter entirely: the operator
                         // asked for one stage, was shown the whole run, and got exit 0.
                         runFollowFrames(request, root, System.out, System.err, selection).also { outcome ->
@@ -978,13 +910,12 @@ object MainConsoleCli {
     }
 
     /**
-     * R4 / WU-R4.6 — per-frame read.
-     *
+     * Per-frame read.
      * Uses [dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader]
-     * (the WU-R4.1.3 per-op public seam) to walk the operation's frames in observation order
+     * (the per-op public seam) to walk the operation's frames in observation order
      * starting at [ConsoleReadRequest.Frames.afterOrdinal], bounded by [ConsoleReadRequest.Frames.frameLimit].
-     * The opId filter is applied on the read side, exactly as WU-R4.1.3 documents it.
-     */
+     * The opId filter is applied on the read side, exactly as documents it
+*/
     private fun readFrames(
         request: ConsoleReadRequest.Frames,
         root: Path,
@@ -995,7 +926,7 @@ object MainConsoleCli {
             bytes = store,
             tails = store,
         )
-        // R4 / WU-RC2 (P0 frame integrity) — pass opId to the reader so the per-frame walk
+        // Pass opId to the reader so the per-frame walk
         // is scoped to ONE operation, not the whole run. The opId-less overload is still
         // there for callers that legitimately want every frame in a run (observe --view
         // console, the live drain). The console verb addresses one op at a time and gets
@@ -1004,25 +935,22 @@ object MainConsoleCli {
     }
 
     /**
-     * R4 / WU-RC3 — the per-frame reader over the run's Output Plane.
-     *
+     * The per-frame reader over the run's Output Plane.
      * One constructor for every frame path, so the three paths cannot end up reading different
      * stores. `storeForReading` memoises per control root in a process-wide cache, which is why
-     * HARNESS FIDELITY §4 forbids a shared mutable singleton in a harness and why the test
+     * HARNESS FIDELITY forbids a shared mutable singleton in a harness and why the test
      * classes call `OutputPlaneProvider.forgetAll()` before each fixture.
-     */
+*/
     /**
-     * R4 / WU-RC3 — one bounded frame read, scoped or not.
-     *
+     * One bounded frame read, scoped or not.
      * The scope decision lives HERE, in the verb, rather than in the reader, because that is
      * where the selection lives. `ObservationOutputReader` keeps its contract — a supplied
      * `opId` is a scope, never a filter — and this function is the single place that decides
      * whether a request asked for one operation or for the whole run.
-     *
      * Supplying `null` reads the run wide; the selection then narrows. Supplying an opId reads
      * that operation and the selection may only remove from it. Both together are an
      * intersection, which is the honest reading of two constraints.
-     */
+*/
     private fun readFramePage(
         reader: dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader,
         runId: String,
@@ -1046,15 +974,14 @@ object MainConsoleCli {
     }
 
     /**
-     * R4 / WU-CON-2.2 — filtered per-frame read.
-     *
+     * Filtered per-frame read.
      * Reads the run's frames via the same per-frame reader as [readFrames] (the reader stays
      * un-touched per "do not modify the reader" in the slice's scope). The filter is applied
      * at emit time, not read time — see [emitFramesFiltered] — so the page returned here is
      * the full observation-ordered window the per-frame walk already produced, exactly the
      * same shape [readFrames] returns. The verb main's `when (request)` dispatch in [main]
      * sends the result to the filtered emit path; the read path is filter-agnostic.
-     */
+*/
     private fun readFramesFiltered(
         request: ConsoleReadRequest.FramesFiltered,
         root: Path,
@@ -1065,13 +992,12 @@ object MainConsoleCli {
             bytes = store,
             tails = store,
         )
-        // R4 / WU-RC2 (P0 frame integrity) — opId-scoped read; see readFrames.
+        // OpId-scoped read; see readFrames.
         return readFramePage(reader, request.runId, request.opId, request.afterOrdinal, request.frameLimit)
     }
 
     /**
-     * R4 / WU-CON-2.2 — emit the filtered per-frame result.
-     *
+     * Emit the filtered per-frame result.
      * The filter is applied HERE, at emit time, against the [ConsoleFrameFilters.Active] ADT
      * the parser admitted. The predicate runs on each frame's stream id
      * (`<runId>/<opId>/<channel>`) by extracting the opId segment and asking the
@@ -1080,7 +1006,7 @@ object MainConsoleCli {
      * one record per surviving frame, and the continuation token rides on the last surviving
      * record's ordinal so a `--follow` consumer resumes from the right place even when the
      * filter dropped frames in between.
-     */
+*/
     fun emitFramesFiltered(
         result: dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead,
         request: ConsoleReadRequest.FramesFiltered,
@@ -1094,7 +1020,7 @@ object MainConsoleCli {
         }
 
         is dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead.Page -> {
-            // R4 / WU-RC3 — the SAME [OperationSelection] the follow loop consults. The rc1
+            // The SAME [OperationSelection] the follow loop consults. The rc1
             // predicate (`StageStepKindResolver`) matched the user's `--stage build` against the
             // stringified index `"0"`, and treated `--kind` as a true conjunct; both are gone,
             // and one selection now answers "which frames?" for every frame path.
@@ -1130,8 +1056,7 @@ object MainConsoleCli {
     }
 
     /**
-     * R4 / WU-R4.6 — emit the per-frame result.
-     *
+     * Emit the per-frame result.
      * The dispatch is on the closed [ConsoleFormat] ADT:
      *  - `TEXT` writes the merged bytes of the page's frames to stdout (in observation order,
      *    one frame after another), with a continuation token on stderr carrying the next
@@ -1140,8 +1065,8 @@ object MainConsoleCli {
      *    order, each carrying the frame's true [OutputFrame.ordinal] / [OutputFrame.from] /
      *    [OutputFrame.to] / [OutputFrame.channel] plus the operation id parsed from the
      *    stream. This is the per-frame wire shape [ObservationJsonLines] was already wired
-     *    to emit (the WU-R4.3 path was a synthetic-merged-page workaround).
-     */
+     * To emit (the path was a synthetic-merged-page workaround)
+*/
     fun emitFrames(
         result: dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead,
         request: ConsoleReadRequest.Frames,
@@ -1194,20 +1119,15 @@ object MainConsoleCli {
     }
 
     /**
-     * R4 / WU-CON-2.3 — `--follow` interpreter. A pure interpreter of [ConsoleReadRequest.FollowFrames].
-     *
-     * The loop is reading, not deciding: PAR-D (ADR-0076) is in force. The typed decision
+     * `--follow` interpreter. A pure interpreter of [ConsoleReadRequest.FollowFrames].
+     * The loop is reading, not deciding: is in force. The typed decision
      * ([FollowFrames]) is what reached this method; the loop interprets it and walks the
      * durable authority via the per-frame reader.
-     *
-     * CTX-P is in force too: the `afterOrdinal` cursor is local state threaded as a parameter,
+     * Is in force too: the `afterOrdinal` cursor is local state threaded as a parameter
      * never a global or thread-local. Each poll derives a fresh `afterOrdinal` from the previous
      * one; the durable authority is unchanged by the loop.
-     *
      * ## Exit conditions
-     *
      * The loop exits when any of:
-     *
      *  - **`followDecision` returns [FollowDecision.Finished].** That is: the page returned no
      *    new frames AND every known stream this run owns is [Sealed]. The durable authority
      *    promises nothing more will arrive on this run.
@@ -1216,33 +1136,28 @@ object MainConsoleCli {
      *    has no run-plane authority to ask instead — so the bound is the only exit for a silent
      *    op, and it reports [FollowExit.PollBudgetExhausted] rather than a clean completion.
      *  - **SIGINT/SIGTERM.** Shutdown hook flips a flag; the loop checks it between rounds.
-     *
      * ## Status mapping
-     *
      *  - 0 on [FollowExit.Completed] — nothing pending and every known stream sealed.
      *  - 1 on [FollowExit.Refused] — the store refused to answer the call in flight.
      *  - 2 on [FollowExit.Signalled] — a `Ctrl-C` is distinguishable from every other way out.
      *  - 3 on [FollowExit.PollBudgetExhausted] — the loop ran out of polls without ever observing
      *    a terminal fact. **Non-zero on purpose:** an abandoned follow and a completed one are
      *    different facts and must not share an exit code.
-     */
+*/
     /**
-     * R4 / WU-RC3 — turn a request's filter tokens into ONE [OperationSelection].
-     *
+     * Turn a request's filter tokens into ONE [OperationSelection].
      * The only place the events journal is opened for a console read. Everything downstream —
      * the single filtered read AND the follow loop — receives the resulting selection as a value
      * and never asks the journal anything, so the two paths cannot drift apart.
-     *
      * `dbPath == null` is passed through as `null` rather than as an empty history. Those are
      * different facts and the resolver gives them different answers: an empty history means "this
      * run has no such stage", while no journal at all means "nobody can tell", which is a refusal
      * naming the axis. Collapsing them would make `--db` optional in the worst possible way —
      * silently narrowing the answer.
-     *
      * A request with no filter at all short-circuits to [OperationSelection.AllOperations]
      * WITHOUT opening the journal, so the byte paths and the unfiltered per-frame read are
      * untouched by this block.
-     */
+*/
     private fun resolveSelection(request: ConsoleReadRequest): SelectionOutcome {
         val filters = when (request) {
             is ConsoleReadRequest.FramesFiltered -> request.filters
@@ -1256,7 +1171,7 @@ object MainConsoleCli {
         val dbPath = request.dbPath
             ?: return ConsoleOperationSelection.resolve(request.runId, active.stages, active.steps, active.kinds, null)
 
-        // D3 — the shared admission, not a second opinion about the same path. `ControlDirNotFound`
+        // The shared admission, not a second opinion about the same path. `ControlDirNotFound`
         // above already refused the OTHER durable lane with a name; this verb was letting the event
         // lane's equivalent escape as a raw java.sql.SQLException.
         val admission = admitEventStore(dbPath, EventStorePurpose.Read)
@@ -1274,17 +1189,15 @@ object MainConsoleCli {
     }
 
     /**
-     * R4 / WU-RC3 — does [selection] admit this frame?
-     *
+     * Does [selection] admit this frame?
      * The stream id is `<runId>/<opId>/<channel>`, and a selection is over the opId SEGMENT.
      * Splitting on `/` and taking index 1 is what makes this a segment comparison: a substring
      * test would let `run-1-s0-0` match a selection containing `run-1-s0-01`, which on a run
      * with ten or more steps per stage leaks every neighbouring operation into a filtered read.
-     *
      * A malformed stream id — fewer than three segments, or a foreign run — is NOT selected.
      * Refusing to interpret it is the fail-closed direction: a frame whose operation cannot be
      * named is one no selection can honestly claim.
-     */
+*/
     internal fun selectionSelects(selection: OperationSelection, streamId: String): Boolean {
         val parts = streamId.split('/')
         if (parts.size < 3) return false
@@ -1319,7 +1232,7 @@ object MainConsoleCli {
             for (poll in 0 until maxPolls) {
                 if (shutdown.get()) return FollowExit.Signalled
 
-                // R4 / WU-RC2 (P0 frame integrity) — opId-scoped read; see readFrames.
+                // OpId-scoped read; see readFrames.
                 val page = when (val read = readFramePage(reader, request.runId, request.opId, ordinal, request.frameLimit)) {
                     is ObservationOutputRead.Refused -> {
                         err.println(ConsoleReadService.renderRefusal(read.reason))
@@ -1328,11 +1241,10 @@ object MainConsoleCli {
                     is ObservationOutputRead.Page -> read.page
                 }
 
-                // R4 / WU-RC3 — audit P0-4. The filter is applied to EVERY page the loop emits,
+                // Audit. The filter is applied to EVERY page the loop emits,
                 // using the same [selection] the single read consults. rc1 applied no filter here
                 // at all: `--frames --follow --stage build` was admitted as a plain follow and the
                 // operator was shown the whole run with exit 0.
-                //
                 // The cursor advances on the LAST DELIVERED frame, not on the last READ one. That
                 // distinction is what keeps a filter from stalling the loop: advancing to the last
                 // read ordinal when the filter dropped everything after it would re-read those
@@ -1354,7 +1266,7 @@ object MainConsoleCli {
                 //    (a window-shape fact);
                 //  - tailStates: what the durable stores say about each stream this run owns
                 //    (whether more bytes can ever arrive on it);
-                //  - runPlane: what the EXECUTION plane can say about the run. R4 / WU-RC4 — this
+                //  RunPlane: what the EXECUTION plane can say about the run. / — this
                 //    verb never opens the events journal, so it has NO run-plane authority and
                 //    says so explicitly with [RunPlane.Unavailable] instead of passing a `false`
                 //    that was indistinguishable from "the run is still going". The distinction is
@@ -1394,25 +1306,22 @@ object MainConsoleCli {
     }
 
     /**
-     * R4 / WU-CON-2.3 — emit one [ObservationOutputPage] of records to stdout, in the requested format.
-     *
+     * Emit one [ObservationOutputPage] of records to stdout, in the requested format.
      * The follow path does not emit a continuation token to stderr: the per-poll ordinal is a
-     * local cursor that does not survive the process (DR-5; the spec for `--follow`). A consumer
+     * Local cursor that does not survive the process (; the spec for `--follow`). A consumer
      * that needs to recover from a clip would re-invoke `pipelinek console --follow --after-ordinal
      * <N>` directly, the same way it started.
-     */
+*/
     /**
-     * R4 / WU-RC2 (P0) — test seam for the follow-page emitter.
-     *
+     * Test seam for the follow-page emitter.
      * The emitter's stream-lifetime contract is the defect the rc1 audit found (it closed
      * the caller's `System.out` after the first page), and a stream-lifetime contract
      * cannot be verified from outside a process: the row has to write two pages through
      * the same stream and observe whether the second one lands. That needs a seam, not a
      * forked JVM per assertion.
-     *
      * It delegates to the private [emitFollowPage]; it does not re-implement it, so the
      * row tests the shipped code path rather than a copy of it.
-     */
+*/
     internal fun emitFollowPageForTest(
         records: List<ObservationRecord.Output>,
         format: ConsoleFormat,
@@ -1434,14 +1343,14 @@ object MainConsoleCli {
             }
             ConsoleFormat.JSONL -> {
                 // DO NOT wrap `out` in a writer and call `.use {}` on it: OutputStreamWriter's
-                // close() closes the underlying stream by default, and a `.use` block calls
-                // close() on exit. After the first follow page that pattern closes System.out,
+                // close closes the underlying stream by default, and a `.use` block calls
+                // close on exit. After the first follow page that pattern closes System.out,
                 // and the next page's `out.write(...)` throws IOException — silently losing the
                 // rest of the follow output. Use a writer that does NOT propagate close, and
                 // flush it explicitly without closing.
                 val noCloseOut = object : java.io.FilterOutputStream(out) {
                     override fun close() {
-                        // No-op: the writer's own close() would propagate to the underlying
+                        // No-op: the writer's own close would propagate to the underlying
                         // stream and close System.out between follow pages. We own the
                         // stream's lifetime; the JVM owns System.out.
                     }
@@ -1457,13 +1366,12 @@ object MainConsoleCli {
     }
 
     /**
-     * R4 / WU-R4.6 — frame-ordinal continuation token, distinct from [OutputCursor.TOKEN_PREFIX].
-     *
+     * Frame-ordinal continuation token, distinct from [OutputCursor.TOKEN_PREFIX].
      * The byte path encodes `out-cursor-v1:<stream>:<offset>`; the per-frame path encodes
      * `out-frame-ord-v1:<ordinal>`. Two prefixes, two planes, and a consumer that pastes the
      * wrong one in the wrong command is told so at decode, not by being silently advanced to
      * a position in the wrong bytes.
-     */
+*/
     internal const val FRAME_ORDINAL_TOKEN_PREFIX: String = "out-frame-ord-v1"
 
     internal fun encodeFrameOrdinal(ordinal: Long): String =
@@ -1473,7 +1381,7 @@ object MainConsoleCli {
      * Decode a frame-ordinal token. Returns `null` for anything else, including a byte-cursor
      * token (which the byte path would decode) — two planes, two decoders, no accidental
      * cross-wiring.
-     */
+*/
     internal fun decodeFrameOrdinal(token: String): Long? {
         val parts = token.split(':')
         if (parts.size != 2) return null
@@ -1523,14 +1431,13 @@ object MainConsoleCli {
 
     /**
      * Emit the result. Split out so a test drives it without capturing the real process streams.
-     *
-     * R4 / WU-R4.3 — the format dispatch is a `when` over the closed [ConsoleFormat] ADT (two
+     * The format dispatch is a `when` over the closed [ConsoleFormat] ADT (two
      * cases: `TEXT` raw bytes, `JSONL` envelope). The `JSONL` path builds a synthetic
      * [ObservationRecord.Output] from the page so the existing [ObservationJsonLines] writer
      * stays the only encoder; an [ObservationFrameOrdinal] of `0` and a synthetic
      * [OutputFrame] are honest about the fact that the merged page is one reader-side
      * projection, not a kernel-recorded frame.
-     */
+*/
     fun emit(
         result: ConsoleReadService.Result,
         request: ConsoleReadRequest,
@@ -1545,7 +1452,7 @@ object MainConsoleCli {
             when (request.format) {
                 ConsoleFormat.TEXT -> {
                     // Raw bytes. The transcript is not text-shaped in general and re-encoding it
-                    // here would corrupt anything that is not valid UTF-8.
+                    // Here would corrupt anything that is not valid
                     out.write(result.page.bytes)
                     out.flush()
                     result.page.next?.let { err.println(it.encode()) }
@@ -1557,15 +1464,14 @@ object MainConsoleCli {
     }
 
     /**
-     * R4 / WU-R4.3 — emit one [ObservationJsonLines] record for a merged [OutputPage].
-     *
+     * Emit one [ObservationJsonLines] record for a merged [OutputPage].
      * The page names one stream (`page.stream`) and a byte range (`page.from..page.committedEnd`).
      * We construct an [ObservationRecord.Output] carrying the page's bytes so the existing
      * encoder handles the text/base64 split (`ObservationJsonLines.encodeOutputLine`). The
      * ordinal is `0L` (synthetic) and the [OutputFrame] is named from the page's reported
      * stream and range; the page's "next" cursor still goes to stderr so a `--follow` consumer
      * can resume without parsing the jsonl stream for control bytes.
-     */
+*/
     private fun emitJsonlPage(
         page: OutputPage,
         out: PrintStream,
@@ -1629,11 +1535,10 @@ object MainConsoleCli {
 
     /**
  * The stream id a consumer is handed for one operation's console.
- *
- * OBS-C2.3: the console is the operation's channel-addressed streams, and a reader that wants one
+ * The console is the operation's channel-addressed streams, and a reader that wants one
  * channel asks for it by name. This stays a single helper so the shape is minted in ONE place — the
  * same reason [OutputStreamAddress.parse] reads it back from the two ends.
- */
+*/
     internal fun streamIdFor(runId: String, opId: String, channel: dev.rubentxu.pipeline.v2.output.OutputChannel): OutputStreamId =
         OutputPlaneProvider.streamId(runId, opId, channel)
 
@@ -1641,8 +1546,7 @@ object MainConsoleCli {
 }
 
 /**
- * R4 / WU-CON-2.2 — predicate that maps a frame's stream id to a stage/step/kind decision.
- *
+ * Predicate that maps a frame's stream id to a stage/step/kind decision.
  * The stream id carries the operation id in its middle segment
  * (`<runId>/<opId>/<channel>`), and the opId is shaped
  * `<runId>-s<stageIndex>-<stepIndex>[-b<branchIndex>][-bp<...>]` — see
@@ -1653,19 +1557,18 @@ object MainConsoleCli {
  * `stage` / `step` against the **stringified index** that opId already carries, so a caller that
  * writes `--stage 0 --step 0` against a `runId-s0-0` opId gets a hit and a caller that writes
  * `--stage build` against the same opId gets a miss with the same answer.
- *
  * The `kind` axis is not derivable from the stream id, so it is currently treated as a
  * pass-through: a non-empty `kinds` set is admitted (the user said the request was
  * `FramesFiltered`) and contributes a true conjunct. Wiring `kind` to the events journal is the
- * next slice's job (CON-2.3 / event-→-opId resolution); the contract this resolver exposes —
+ * Next slice's job (/ event-→-opId resolution); the contract this resolver exposes
  * "an empty axis is a no-op, a non-empty axis is a conjunct" — is what the next slice will
  * extend without breaking today's matches.
- */
+*/
 internal class StageStepKindResolver private constructor(private val runId: String) {
     /**
      * Match a frame's stream id against [filters]. The contract is
      * "every non-empty axis must be satisfied; an empty axis is a no-op".
-     */
+*/
     fun matches(streamId: String, filters: ConsoleFrameFilters.Active): Boolean {
         val parts = streamId.split('/')
         if (parts.size < 3) return false

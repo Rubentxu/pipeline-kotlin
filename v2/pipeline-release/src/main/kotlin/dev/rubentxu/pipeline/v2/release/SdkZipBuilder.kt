@@ -10,25 +10,22 @@ import java.util.zip.ZipOutputStream
 
 /**
  * Build the SDK distribution and the SDK BOM JSON manifest for a candidate.
- *
- * §8 of the project policy demands 5 exact release assets, including
+ *  of the project policy demands 5 exact release assets, including
  * `pipelinek-<v>.sdk.zip` (compiled public contracts) and
  * `pipelinek-bom-<v>.json` (a JSON view of the Maven BOM). The local
  * Maven repository at `<v2>/build/sdk-repo/` is the single source of
  * truth for what was published; this builder selects the entries for
  * the current product version and packages them.
- *
  * The SDK ZIP contains every JAR and POM whose folder ends with
  * `/<version>/`. The BOM JSON lists the managed coordinates as
  * `group:artifact:version` triples plus a per-file SHA-256 inventory of
  * the ZIP contents (so a downstream consumer can verify the bytes
  * without re-extracting the archive).
- *
  * Both files are written under `<v2>/pipeline-application/build/distributions/`
  * to match the convention `distZip` and `cyclonedxBom` already use. The
  * `candidateAdmission` task then copies them next to the ZIP and
  * records their digests in the manifest.
- */
+*/
 object SdkZipBuilder {
 
     /** Schema tag for [BomManifest]; bumped on breaking changes. */
@@ -36,7 +33,6 @@ object SdkZipBuilder {
 
     /**
      * Build both artifacts and write them under [distDir].
-     *
      * @param sdkRepo the local Maven repo produced by
      *   `publishSdkForExternalPlugin` (typically `<v2>/build/sdk-repo/`).
      * @param version the product version, e.g. `0.62.0`. Every folder
@@ -47,7 +43,7 @@ object SdkZipBuilder {
      * @param distDir the directory the artifacts are written into.
      * @return the paths of the produced files, in the order
      *   `(sdkZip, bomJson)`.
-     */
+*/
     fun build(
         sdkRepo: Path,
         version: String,
@@ -86,7 +82,7 @@ object SdkZipBuilder {
      * into the ZIP, which `unzip` strips to `dev/...` (the leading `/`
      * makes it an absolute path entry); the result is a ZIP that is
      * not directly usable as a local Maven repo.
-     */
+*/
     private fun collectVersionedEntries(sdkRepo: Path, version: String): List<EntryRef> {
         if (!Files.isDirectory(sdkRepo)) return emptyList()
         val versionSegment = "/$version/"
@@ -112,7 +108,7 @@ object SdkZipBuilder {
      * (path relative to the SDK repo, size, sha256) for the BOM
      * manifest. The inventory is sorted by relative path so the BOM
      * JSON is byte-deterministic across builds.
-     */
+*/
     private fun writeSdkZip(
         target: Path,
         entries: List<EntryRef>,
@@ -150,7 +146,7 @@ object SdkZipBuilder {
      * surface of the Maven BOM) plus a per-file inventory of the
      * SDK ZIP. Consumers that want a CycloneDX view of the same
      * dependencies use the SBOM; this is the BOM view.
-     */
+*/
     private fun writeBomManifest(
         target: Path,
         version: String,

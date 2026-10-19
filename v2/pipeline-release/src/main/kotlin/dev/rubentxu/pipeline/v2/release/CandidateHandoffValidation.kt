@@ -1,19 +1,17 @@
 package dev.rubentxu.pipeline.v2.release
 
 /**
- * P0.4 / P-UAT-04 — a candidate handoff must be internally consistent with
+ * A candidate handoff must be internally consistent with
  * the distribution manifest it names, and its `candidate_id` must be the real
  * digest of the artifact.
- *
  * This is the last producer-side gate before the harness sees the bytes. The
  * v0.43.0 incident is the reason it is a *closed* result type rather than a
  * list of warnings: any inconsistency is a rejection, and the harness receives
  * a candidate or it receives nothing.
- *
  * Pure: it takes values, returns a decision, and touches no filesystem. The
  * caller measures the ZIP and supplies the digest; this decides whether the
  * documents agree.
- */
+*/
 sealed interface HandoffVerdict {
 
     /** Every mandatory field is present and the documents agree. */
@@ -23,7 +21,7 @@ sealed interface HandoffVerdict {
      * The handoff is internally inconsistent and MUST NOT be emitted.
      * [violations] names every problem, not just the first, so one build
      * reveals all of them.
-     */
+*/
     data class Rejected(val violations: List<HandoffViolation>) : HandoffVerdict
 }
 
@@ -36,14 +34,13 @@ enum class HandoffViolationCode {
 
     /**
      * `artifact.sha256` is not the measured digest of the ZIP.
-     *
      * Separate from [CANDIDATE_ID_NOT_ARTIFACT_DIGEST] because the two name
      * DIFFERENT fields and have different fixes: a wrong candidate_id is an
      * identity defect, a wrong artifact.sha256 is a bytes defect. Folding them
      * into one code made a build report the same code twice for two root
      * causes, and a consumer that groups violations by code could not tell
      * them apart — it only saw the detail string, which is prose, not a key.
-     */
+*/
     ARTIFACT_DIGEST_NOT_MEASURED_ZIP,
 
     /** The handoff's product version differs from the manifest's. */
@@ -69,10 +66,8 @@ enum class HandoffViolationCode {
  * Decide whether [handoff] may be handed to the harness, given the
  * [manifest] that describes the same bytes and the [measuredZipSha256] digest
  * of the ZIP as it exists on disk.
- *
  * [measuredZipSha256] is supplied by the caller rather than read here so this
  * function stays pure and testable without a filesystem.
- *
  * **The parameter only bites when the caller received these documents from
  * somewhere else.** Half of the checks below compare two values a producer
  * building the candidate from one measurement already made equal, so on that
@@ -86,19 +81,17 @@ enum class HandoffViolationCode {
  * claimed the opposite — that passing the declared digest would make the check
  * vacuous "so the distinction is part of the signature" — while the only
  * production call site did precisely that.
- *
  * The other four are live from that same call site, because they observe the
  * archive rather than compare two documents: ASSET_NAME and ARCHIVE_ROOT read
  * the ZIP's own name and layout, and the two IMPLEMENTATION_VERSION codes read
  * the version embedded in the archive's JAR. The embedded-version check is the
  * one that catches the v0.43.0 laundering shape, and it fires from
  * [CandidateMaterializer] today.
- *
  * Independent re-measurement belongs to whoever RECEIVES the bytes: the
  * certifier recomputes the digest of the published artifact. A producer-side
  * gate that tried to re-read its own output would only re-derive the same
  * measurement and call the result a check.
- */
+*/
 fun evaluateCandidateHandoff(
     handoff: CandidateHandoff,
     manifest: DistributionManifest,

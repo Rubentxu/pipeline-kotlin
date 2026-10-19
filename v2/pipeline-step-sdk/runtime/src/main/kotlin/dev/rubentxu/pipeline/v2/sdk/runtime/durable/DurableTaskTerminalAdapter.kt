@@ -14,7 +14,7 @@ import java.nio.file.Path
  * Converts a reconciliation observation to a terminal only when the
  * reconciler has established one. A fresh heartbeat remains non-terminal and
  * therefore produces `null`, never a fake terminal result.
- */
+*/
 fun StepReconcilerL1.terminalFromReconciliation(
     opId: String,
     controlDir: Path,
@@ -40,13 +40,13 @@ fun StepReconcilerL1.terminalFromReconciliation(
     is StepReconcilerL1.Classification.Reattach -> null
 }
 
-/** Transitional adapter retained for PipelineRun's pre-EM-1 projection; remove in EM-10. */
+/** Transitional adapter retained for PipelineRun's projection; remove */
 @Deprecated(
     message = "Legacy durable-shell projection. Consume DurableTaskTerminal directly; removal is scheduled for EM-10.",
 )
 fun DurableTaskTerminal.toLegacyShellResult(controlDir: Path): DurableShellResult = when (this) {
     is DurableTaskTerminal.Exited -> {
-        // WU-RP-044 (M5 RSS debt): the canonical executor no longer
+        // The canonical executor no longer
         // materialises the console transcript in JENKINS_LOG projection; the
         // legacy projection recovers it lazily from the durable console.log
         // (jenkins-log.txt) when the terminal carried no typed value. The
@@ -91,7 +91,7 @@ fun DurableTaskTerminal.toLegacyShellResult(controlDir: Path): DurableShellResul
  * Adapts the legacy mixed result only after it is terminal. This is kept for
  * the two legacy entry points while their callers migrate to
  * [DurableShellExecutor.executeTerminal].
- */
+*/
 @Deprecated(
     message = "Legacy durable-shell adapter. Produce DurableTaskTerminal at the executor seam; removal is scheduled for EM-10.",
 )
@@ -134,9 +134,9 @@ fun DurableShellResult.toDurableTaskTerminal(opId: String): DurableTaskTerminal 
 }
 
 /**
- * Compatibility bridge used by the pre-EM-1 entry points. It makes the
+ * Compatibility bridge used by the previous entry points. It makes the
  * terminal conversion explicit while preserving their existing result shape.
- */
+*/
 @Suppress("DEPRECATION")
 @Deprecated(
     message = "Legacy durable-shell compatibility bridge. Consume DurableTaskTerminal directly; removal is scheduled for EM-10.",
@@ -167,3 +167,4 @@ internal fun lostFailureRecord(opId: String, controlDir: Path, message: String):
     taskId = "durable-shell",
     details = mapOf("controlDir" to controlDir.toString()),
 )
+

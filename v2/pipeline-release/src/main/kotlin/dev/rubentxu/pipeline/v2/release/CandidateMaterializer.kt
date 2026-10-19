@@ -6,30 +6,27 @@ import java.nio.file.Path
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 
 /**
- * P0.2 / P0.4 — the effectful half: measure real bytes and emit the candidate
+ * The effectful half: measure real bytes and emit the candidate
  * material (distribution manifest + SHA256SUMS + handoff descriptor).
- *
  * Everything here does I/O; the decisions it feeds stay pure in
  * [evaluateDistributionIdentity] and [evaluateCandidateHandoff]. This is the
  * "decide, then interpret" split from AGENTS.md: this class gathers facts and
  * writes files, and it never decides whether identity is acceptable. It calls
  * the pure deciders and fails closed on their verdicts.
- *
  * The one thing it must never do is *invent* a value. Every digest comes from
  * reading the bytes; every version comes from the artifact or the build. A
  * surface that cannot be read is recorded as absent, never defaulted.
- */
+*/
 object CandidateMaterializer {
 
     /**
      * Digest of a file's bytes, lowercase hex.
-     *
      * This value becomes the candidate's identity, so the bytes hashed are unchanged: the
-     * shared utility (B0) streams with the same algorithm and produces the same lowercase hex
+     * Shared utility streams with the same algorithm and produces the same lowercase hex
      * as the local 64 KiB loop this replaces. The local loop and its private hex helper are
      * deleted rather than left behind, because a candidate digest computable two ways is the
      * kind of ambiguity that lets a wrong ZIP pass admission.
-     */
+*/
     fun sha256Of(path: Path): String = Sha256.ofFile(path)
 
     /**
@@ -37,12 +34,11 @@ object CandidateMaterializer {
      * before returning. On any rejection nothing is written and the caller is
      * told why: a build either produces a complete, self-consistent candidate
      * or produces no candidate at all.
-     *
      * [productVersion] is the build's declared identity. [gitCommit],
      * [candidateRef] and [toolchain] are build provenance, never promotion. [sbom] is optional because the
      * CycloneDX task may not have run; the manifest records its absence rather
      * than pretending it exists.
-     */
+*/
     fun materialize(
         zip: Path,
         productVersion: ProductVersion,
@@ -83,9 +79,8 @@ object CandidateMaterializer {
                     "Refusing to write a manifest that would assert an unverified root.",
             )
 
-        // §8 — SHA256SUMS is where the proof that `covered` was digested is kept,
+        // — SHA256SUMS is where the proof that `covered` was digested is kept,
         // so the two are decided together and BEFORE the manifest is built.
-        //
         // A non-empty `covered` is a claim that those assets MUST be digested.
         // With no `sha256sums` path there is nowhere to keep that proof, so the
         // candidate is refused: materializing it would write a manifest whose
@@ -93,11 +88,9 @@ object CandidateMaterializer {
         // and the file it DID write earlier (the SHA256SUMS of a smaller set) would
         // still verify — the same silent absence as the `locateSbom` null, one
         // layer down.
-        //
         // An EMPTY `covered` is a genuinely different thing and is not refused:
         // no assets declared means nothing to digest, and a pre-existing sums
         // path is then a reference the manifest records without rewriting.
-        //
         // Previously this was the `else -> null` arm of a `when`, which covered
         // this case and returned null — while the comment above it claimed the
         // case was refused. The comment was true about the intent and false about
@@ -181,7 +174,7 @@ object CandidateMaterializer {
         Files.writeString(manifestPath, manifestText)
 
         // The SAME handoff that was admitted, not a copy patched afterwards. The
-        // previous code emitted `handoff.copy(distributionManifest = ...sha256 =
+        // previous code emitted `handoff.copy(distributionManifest =...sha256 =
         // sha256Of(manifestPath))`, a second object that no gate ever saw: the
         // admission verdict described a document carrying an empty digest while
         // the published one carried a real one. The bytes are identical, so this
@@ -201,9 +194,9 @@ object CandidateMaterializer {
 
     /**
      * Write a `SHA256SUMS` file covering [covered]. This is the checksum
-     * authority the installer consumes (P1.1): one file, standard
+     * One file, standard
      * `sha256sum` format, so `sha256sum -c SHA256SUMS` works unchanged.
-     */
+*/
     fun writeSha256Sums(target: Path, covered: List<Path>) {
         val text = covered.joinToString(separator = "\n", postfix = "\n") { path ->
             "${sha256Of(path)}  ${path.fileName}"
@@ -229,6 +222,6 @@ sealed interface MaterializationResult {
     /**
      * The candidate was refused and NOTHING was written. [reason] is the
      * operator diagnostic from the pure decider that rejected it.
-     */
+*/
     data class Refused(val reason: String) : MaterializationResult
 }

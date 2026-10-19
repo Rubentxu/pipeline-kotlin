@@ -5,31 +5,26 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 
 /**
- * M6 — closed ADT returned by [RuntimeIntrospectionPort.runStructure].
- *
+ * Closed ADT returned by [RuntimeIntrospectionPort.runStructure].
  * Three cases:
- *
  *  - [Stages] — the run has at least one journaled stage; the typed enumeration is
  *    present. The list is bounded by the call's [StructureRunOptions.pageSize].
  *  - [Empty] — the run is known to the runtime but has no journaled stages yet
  *    (a fresh run, or a run whose stages have not been journaled).
  *  - [Unavailable] — the substrate cannot be inspected at all; `refusal` carries
  *    the closed [IntrospectionRefusal] reason.
- *
- * Mirrors the M2 pattern: a sealed result ADT with three cases, no
+ * A sealed result ADT with three cases, no
  * `Either`/`Result` reuse. The distinction between [Empty] and [Unavailable] is
  * the same one [RuntimeObservation.LiveButEmpty] pins for the inspect port:
  * "known but empty" vs "substrate unobservable".
- *
- */
+*/
 sealed interface RunStructure {
     /**
      * The run has journaled stages; `stages` is the bounded enumeration.
-     *
      * The list is bounded by the [StructureRunOptions.pageSize] of the call.
      * A consumer that wants the next page reads the [StructureCursor] the
      * adapter attaches (returned in [RunStructureResult.Structure.cursor]).
-     */
+*/
     data class Stages(val stages: List<StageSummary>) : RunStructure {
         init {
             // The list can be empty (the journal may have a stage row whose
@@ -48,18 +43,18 @@ sealed interface RunStructure {
      * The substrate could not be inspected at all. The `refusal` carries the
      * closed [IntrospectionRefusal] reason (UnknownRun / NoControlRoot /
      * StorageError / etc.).
-     */
+*/
     data class Unavailable(val refusal: IntrospectionRefusal) : RunStructure
 }
 
-/** The closed envelope around [RunStructure]; mirrors the M2 [RuntimeIntrospectionResult] shape. */
+/** The closed envelope around [RunStructure]; mirrors the [RuntimeIntrospectionResult] shape */
 sealed interface RunStructureResult {
 
     /**
      * The structure call succeeded. `structure` is the typed view; `cursor` is
      * the resume cursor for the next page (null when the result is the
      * last page or the result is [RunStructure.Empty] / [RunStructure.Unavailable]).
-     */
+*/
     data class Structure(
         val structure: RunStructure,
         val cursor: StructureCursor?,
@@ -71,10 +66,9 @@ sealed interface RunStructureResult {
 
 /**
  * A bounded view of one stage of a run.
- *
  * `steps` is the list of journaled steps in execution order. `finishedAtMs`
  * is `null` while the stage is in flight.
- */
+*/
 data class StageSummary(
     val stageOrdinal: Int,
     val stageIndex: String,
@@ -97,11 +91,10 @@ data class StageSummary(
 
 /**
  * A bounded view of one step of a stage.
- *
  * `state` is the typed [StepState]; `operations` is the list of journaled
  * operations in execution order. `finishedAtMs` is `null` while the step is
  * in flight.
- */
+*/
 data class StepSummary(
     val stepOrdinal: Int,
     val stepKey: String,
@@ -125,12 +118,11 @@ data class StepSummary(
 
 /**
  * A bounded view of one operation of a step.
- *
  * `status` is the journal's [OperationStatus] enum, projected verbatim.
- * `fingerprint` is the SHA-256 of the operation's input (M3 sibling) — null
+ * `fingerprint` is the SHA-256 of the operation's input— null
  * when the journal did not record one. `streams` names the declared stdout
  * / stderr streams of the operation.
- */
+*/
 data class OperationSummary(
     val operationId: String,
     val attempt: Int,
@@ -157,7 +149,7 @@ data class OperationSummary(
  * step level (a step is "Succeeded" when its last operation is
  * [OperationStatus.SUCCEEDED], etc.). New step states are compile errors at
  * every `when` site that exhausts this ADT.
- */
+*/
 sealed interface StepState {
     data object Pending : StepState
     data object Running : StepState
@@ -169,28 +161,23 @@ sealed interface StepState {
 
 /**
  * The declared stdout / stderr streams of one operation.
- *
  * Both fields are nullable because the operation may declare neither (a
  * pure computation), one, or both. The stream id is the published
  * [OutputStreamId] value class so the consumer can pass it directly to
  * `OutputReadPort.read / readRange / readRangeDigested`.
- *
  * ## Why the two must differ when both are present
- *
  * None/one/both are the three real states of "what did this operation declare",
  * so the nullability stays — but "both" means exactly **two** streams. A value
  * naming one stream twice tells a consumer reading `stdoutStream` and
  * `stderrStream` that it will see the same bytes twice and never the other
  * channel.
- *
  * The guard is therefore **not** the `stdoutStream != stderrStream` it looks
  * like it should be: that form refuses `null != null`, which is `false`, which
  * rejects the *none* state — the one an operation declaring no stream produces.
- * Measured 2026-10-18; the row that caught it is
+ * Measured in an earlier build; the row that caught it is
  * `the three real states are all constructible`. A guard that reads correctly
  * and rejects a real state is worse than none, because the type then promises
  * something it cannot keep.
- *
  * **Latent, not shipped.** The only construction,
  * `RuntimeIntrospectionPortStoreAdapter.streamsForOperation`, matches `::stdout`
  * and `::stderr` as disjoint suffixes, so it cannot produce a duplicate — but
@@ -198,7 +185,7 @@ sealed interface StepState {
  * in `dev.rubentxu.pipeline.v2.output` had the same hole with the same cause,
  * and closing only that one would have left the shape broken twice. See
  * `OperationOutputStreamsDistinctStreamsTest`.
- */
+*/
 data class OperationOutputStreams(
     val stdoutStream: OutputStreamId?,
     val stderrStream: OutputStreamId?,

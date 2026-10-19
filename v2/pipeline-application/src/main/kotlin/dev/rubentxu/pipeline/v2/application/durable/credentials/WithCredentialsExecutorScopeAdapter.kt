@@ -9,15 +9,12 @@ import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
 import dev.rubentxu.pipeline.v2.events.EventSink
 
 /**
- * EM-7 / LFC-5.3 — Application adapter implementing [CredentialScopePort].
- *
+ * Application adapter implementing [CredentialScopePort].
  * Wraps the port-driven [WithCredentialsExecutor] (an adapter of the credential
  * SPI ports) so the canonical coordinator only names the application seam
  * contract. This adapter lives in `:pipeline-application` (the port's home);
  * dependency direction is inward: coordinator → port ← this adapter → executor.
- *
  * ## Acquire
- *
  * [acquire] delegates to [WithCredentialsExecutor.bindSpecs] with the typed
  * [CredentialBindingSpec] sealed specs the coordinator decoded from the
  * compiled node payload (no DSL round-trip). On success it wraps the returned
@@ -26,16 +23,14 @@ import dev.rubentxu.pipeline.v2.events.EventSink
  * typed [CredentialScopeCleanup]. On failure it returns a closed
  * [CredentialScopeOutcome.Unavailable] — the body is never dispatched
  * (fail-closed policy of the port).
- *
  * ## Cleanup
- *
  * [WithCredentialsExecutor.BoundCredentials.close] is idempotent and is the sole
  * owner of [CredentialUnbound][dev.rubentxu.pipeline.v2.events.CredentialUnbound]
  * emission; it throws a
  * [WithCredentialsExecutor.CleanupException] when a secure wipe fails. This
  * adapter converts that to [CredentialScopeCleanup.Failed] so the coordinator
  * finally can fold it into a typed operational `StepOutcome.Failure`.
- */
+*/
 class WithCredentialsExecutorScopeAdapter(
     private val executor: WithCredentialsExecutor?,
     private val eventSink: EventSink,
@@ -79,13 +74,12 @@ class WithCredentialsExecutorScopeAdapter(
 
 /**
  * Adapter-produced [AcquiredCredentialScope] over an executor [WithCredentialsExecutor.BoundCredentials].
- *
  * Cleanup is delegated to the executor's idempotent [WithCredentialsExecutor.BoundCredentials.close]
  * and mapped to the typed [CredentialScopeCleanup]: wipe failure surfaces the
  * orphan paths as [CredentialScopeCleanup.Failed] instead of escaping as an
  * exception, so the coordinator's total outcome merge never sees
  * an unhandled throw from the cleanup seam.
- */
+*/
 private class BoundCredentialsScope(
     private val bound: BoundCredentials,
 ) : AcquiredCredentialScope {

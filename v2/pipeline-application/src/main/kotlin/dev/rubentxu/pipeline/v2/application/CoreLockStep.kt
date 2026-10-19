@@ -43,10 +43,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * `core.lock` — hold a named resource while the enclosed body runs (RP6-A / WU-091).
- *
+ * `core.lock` — hold a named resource while the enclosed body runs
  * ## Why HANDLER_CONTINUATION and not a body policy
- *
  * The body of a `lock` is CONDITIONAL: under contention, under `skipIfLocked`, or
  * on an allocation timeout the body may never run. Every case of the closed
  * [BodyExecutionPolicy] family presumes the body runs, so no case can express it,
@@ -54,17 +52,14 @@ import kotlinx.serialization.json.put
  * A [BodyExecutionOwner.HANDLER_CONTINUATION] Step decides WHETHER to invoke its
  * body and reaches it only through the bound [BodyContinuation]; the engine remains
  * the only executor, on the same durable spine, with the same journal and events.
- *
  * The viability of that shape — and the proof that the engine does not substitute
  * its own body semantics — is `LockFeasibilityProofTest`.
- *
  * ## Effects
- *
  * [Effect.READ_ONLY]: `core.lock` does not touch the workspace. It coordinates, and
  * waiting is a suspension, not a mutation. Declaring more than it does would violate
  * "declared capability == used capability"; declaring less would let a replay
  * policy treat a coordination point as a pure computation.
- */
+*/
 object CoreLockStep {
 
     val KEY: PluginStepId = PluginStepId("core.lock")
@@ -73,12 +68,11 @@ object CoreLockStep {
 
     /**
      * Explicit, lossless round-trip of [CoreLockOutput].
-     *
      * Written out rather than derived from a serializer because the output carries
      * two ADTs ([LockAdmission] and [StepOutcome]) whose case identity is the
      * contract: a reader of the journal must be able to tell "took it, body
      * succeeded" from "never took it", and both are `Success`.
-     */
+*/
     private val outputCodec = object : StepCodec<CoreLockOutput> {
         override fun encode(value: CoreLockOutput): EncodedStepValue {
             val obj: JsonObject = buildJsonObject {
@@ -196,7 +190,7 @@ object CoreLockStep {
         // which is precisely the exclusion the lock exists to provide.
         val owner = LockOwner(lane)
 
-        // RP6-A §6: the REQUEST is observable even when the declaration is
+        // The REQUEST is observable even when the declaration is
         // contradictory — the event carries what the pipeline author declared,
         // not what the step went on to do.
         sink.append(
@@ -264,13 +258,12 @@ object CoreLockStep {
 
     /**
      * Intersects the declared wait with the enclosing block budget.
-     *
      * `Now` is already non-blocking, so a budget cannot make it wait. A bounded wait
      * is replaced by the TIGHTER of author and budget — a budget that expires while
      * the resource is held produces the ordinary typed
      * [LockDenialReason.TimedOut], indistinguishable from an author timeout on
      * purpose: both mean "this run does not hold the resource".
-     */
+*/
     private fun LockIntent.withBudget(budget: ExecutionBudget): LockIntent = when (this) {
         is LockIntent.Now -> this
         is LockIntent.UpTo -> LockIntent.UpTo(budget.bound(millis) ?: millis)
@@ -280,12 +273,12 @@ object CoreLockStep {
     }
 
     /**
-     * RP6-A §6: a denial is observable with the reason the author needs — the
+     * A denial is observable with the reason the author needs — the
      * `skipIfLocked` contract as [LockSkipped], the lost wait as
      * [LockAcquireFailed]. The coordinator-defect denial (held under a waiting
      * intent) intentionally emits nothing here: it is an engine failure, and
      * the step failure output already names it as such.
-     */
+*/
     private fun emitDenialEvent(
         sink: EventSink,
         runId: String,
@@ -332,13 +325,12 @@ object CoreLockStep {
     /**
      * The body runs ONLY on a granted hold, and the hold is released after the
      * continuation RETURNS, whatever it returned.
-     *
      * [BodyOutcome] is exactly `Completed | Cancelled` and never throws, so the
      * release contract is return-based. The `finally` is defence in depth against
      * an ENGINE defect (a throw across the continuation), and is explicitly NOT a
      * property this file claims to be tested — see
      * `LockFeasibilityProofTest`'s header.
-     */
+*/
     private suspend fun runBody(
         owner: LockOwner,
         resource: String,
@@ -368,7 +360,7 @@ object CoreLockStep {
             )
         }
     } finally {
-        // RP6-A §6: release is observable on EVERY terminal — completed, failed
+        // Release is observable on EVERY terminal — completed, failed
         // and cancelled body alike — because the `finally` owns the release and
         // the event follows it.
         coordinator.release(LockHold(owner, admission.resource))
@@ -391,7 +383,7 @@ object CoreLockStep {
      *  - `Held` under a waiting intent means the coordinator did not honour the wait,
      *    which is a coordinator defect surfaced as a failure rather than swallowed.
      *  - `TimedOut` and `Cancelled` are failures.
-     */
+*/
     private fun denied(
         resource: String,
         denial: LockAdmission.Denied,

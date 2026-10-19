@@ -2,32 +2,26 @@ package dev.rubentxu.pipeline.v2.domain
 
 /**
  * Pure planner that resolves a [PipelineDefinition] into an
- * [ExecutionPlan] (LF-0207 canonical parallel).
- *
+ * [ExecutionPlan] ( canonical parallel).
  * ## Concurrency is opt-in
- *
  * Only steps explicitly joined by a `PARALLEL` edge are co-scheduled into
  * an [ExecutionUnit.Concurrent] wave. Everything else — including steps
  * that merely *could* run concurrently because no constraint relates
  * them — stays a single step in legacy declaration order. This keeps the
- * M2 exit criterion honest ("orden semántico equivalente"): a definition
+ * Exit criterion honest ("orden semántico equivalente"): a definition
  * without `PARALLEL` edges plans exactly the linear order the runtime has
  * always executed, and parallelism can never appear implicitly.
- *
  * ## Edge semantics
- *
  * | Edge kind       | Meaning for the plan |
  * |-----------------|----------------------|
  * | `SEQUENTIAL`    | ordering constraint: `from` before `to` |
- * | `CONDITIONAL`   | ordering constraint (predicate runtime is LF-0307) |
+ * | `CONDITIONAL` | ordering constraint (predicate runtime is) |
  * | `PARALLEL`      | **no** ordering constraint; asserts both endpoints are co-scheduled in the same wave |
- *
  * ## Algorithm
- *
  * 1. Fail-closed validation: every edge must reference known step ids.
  * 2. Longest-path leveling (Kahn) over the ordering edges assigns each
  *    step a wave level; ties are broken by declaration order, so the same
- *    definition always plans identically (M2-005 determinism property).
+ * Definition always plans identically (determinism property)
  * 3. A cycle among ordering edges fails closed and names the stuck steps.
  * 4. Every `PARALLEL` edge is validated: both endpoints must sit at the
  *    same level — a PARALLEL edge across levels is contradictory (other
@@ -37,12 +31,11 @@ package dev.rubentxu.pipeline.v2.domain
  *    or more becomes [ExecutionUnit.Concurrent]. Groups emit in level
  *    order, then by their smallest declaration index; steps inside a
  *    group in declaration order.
- *
  * The planner is pure: no I/O, no clock, no global state. It subsumes the
  * former linear-only `StepOrderResolver`: a definition without `PARALLEL`
  * edges plans to single-step units in the very same deterministic linear
  * order that resolver produced.
- */
+*/
 object ExecutionPlanner {
 
     fun plan(definition: PipelineDefinition): ExecutionPlan {

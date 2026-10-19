@@ -1,9 +1,8 @@
 package dev.rubentxu.pipeline.v2.events.registry
 
 /**
- * The typed contract a plugin declares for its OWN event payload (P3 of the Runtime Observation
- * Contract Closure, slice 1).
- *
+ * The typed contract a plugin declares for its OWN event payload (of the Runtime Observation
+ * Contract Closure.
  * The core `DomainEvent` hierarchy stays sealed: it is the vocabulary of the ENGINE, and opening
  * it would let any classpath stranger masquerade as a core event. A plugin event instead travels
  * as identity — the same `PipelineEventEnvelope` every event gets — plus a payload that only
@@ -11,20 +10,18 @@ package dev.rubentxu.pipeline.v2.events.registry
  * it in. Nothing here names a concrete event, a transport, or a storage format: a definition is
  * a declaration, and a declaration performs no effects (a builder that executes is a Step
  * wearing a builder's name).
- *
- * Every field is required by the Semantic Constitution §8/§9: an external contribution without
+ * Every field is required by the Semantic Constitution/: an external contribution without
  * schema, version and emission authority is forbidden, so the definition is where those three
  * become MANDATORY instead of conventional. `kind` must be namespaced
  * (`<plugin-id>.<EventName>`) so two plugins cannot collide by accident and a collision that
  * still happens is an explicit registration failure, never a silent overwrite.
- *
  * @param kind namespaced event kind, e.g. `fabric.contractvalidated`. Unique per registry.
  * @param schemaVersion 1-based version of THIS payload shape. Decode is versioned: a payload
  *   written under a version the codec does not know fails closed — it is never "best-effort
  *   parsed".
  * @param emittedBy the identity of the contributor that owns the emission, as provenance the
  *   read side can surface. Not trusted for decisions; declared for inspection.
- */
+*/
 class EventDefinition<P : Any> private constructor(
     val kind: String,
     val schemaVersion: Int,
@@ -39,7 +36,7 @@ class EventDefinition<P : Any> private constructor(
          * The only construction path. Total validation of the declaration BEFORE any registry
          * sees it, so an invalid definition is a construction failure with named reasons, not a
          * registration that half-succeeded.
-         */
+*/
         fun <P : Any> create(
             kind: String,
             schemaVersion: Int,
@@ -74,7 +71,7 @@ class EventDefinition<P : Any> private constructor(
 /**
  * Outcome of declaring an event. A sealed ADT rather than a boolean-plus-nullable pair or an
  * exception: an invalid declaration is an EXPECTED operational outcome, not a defect.
- */
+*/
 sealed interface EventDefinitionCreation<P : Any> {
     /** The declaration is well-formed and ready to register. Carries the definition itself. */
     data class Valid<P : Any>(val definition: EventDefinition<P>) : EventDefinitionCreation<P>
@@ -87,11 +84,10 @@ sealed interface EventDefinitionCreation<P : Any> {
  * Versioned payload codec of one event kind. Implemented by the CONTRIBUTOR, in its own module,
  * with its own serialization stack: the core moves strings and typed payloads and never parses
  * a plugin's format itself.
- *
  * Implementations MUST be pure and deterministic: the same payload encodes to the same string,
  * and the same string decodes to the same payload, every time — a codec that embedded a clock
  * or ambient state would make recorded events unreplayable.
- */
+*/
 interface EventPayloadCodec<P : Any> {
     /** Serializes the payload. The result must be stable for identical inputs. */
     fun encode(payload: P): String
@@ -100,14 +96,14 @@ interface EventPayloadCodec<P : Any> {
      * Deserializes a payload written under [schemaVersion]. A version the implementation does
      * not recognise MUST return [PayloadDecode.UnknownSchemaVersion] — reading an unknown shape
      * as "probably fine" is the semantic drop the Constitution forbids.
-     */
+*/
     fun decode(raw: String, schemaVersion: Int): PayloadDecode<P>
 }
 
 /**
  * Outcome of a versioned payload decode. Three cases with different meanings; none is
  * interchangeable with another.
- */
+*/
 sealed interface PayloadDecode<P : Any> {
     /** The payload is a well-formed instance of the declared version's schema. */
     data class Decoded<P : Any>(val payload: P) : PayloadDecode<P>
@@ -118,3 +114,4 @@ sealed interface PayloadDecode<P : Any> {
     /** The payload claims a known version but does not conform to that version's schema. */
     data class Malformed<P : Any>(val reason: String) : PayloadDecode<P>
 }
+

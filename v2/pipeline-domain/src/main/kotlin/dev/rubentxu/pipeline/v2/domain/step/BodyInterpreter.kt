@@ -4,13 +4,10 @@ import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
 import java.nio.file.Path
 
 /**
- * WU-LPR-021 — Pure interpretation of an already-decided body execution
+ * Pure interpretation of an already-decided body execution
  * projection.
- *
  * ## Why this exists
- *
  * The body execution decision lives in two layers:
- *
  *  1. **Decision** — `BlockStepNode.projectBodyExecution(policy, options)`
  *     produces a [BodyExecutionProjection] (pure: `(policy, options) -> ADT`).
  *  2. **Interpretation** — `BodyInterpreter.interpret(projection)` produces a
@@ -18,16 +15,13 @@ import java.nio.file.Path
  *     the scope to project, the `ShOptions` patch to apply, whether the body is
  *     a credential lease (which has its own acquisition preamble), or whether
  *     the shape is unimplemented.
- *
- * Before WU-LPR-021, the equivalent of step 2 was inlined in
+ * Before, the equivalent of step 2 was inlined in
  * `CanonicalDurableRunCoordinator.dispatchBody` as a sequence of `when` arms
  * over the projection, mixed with event emission and `Files.createDirectories`
  * side effects. The interpretation logic itself was pure (mapping projection
  * to scope + `ShOptions` patch + context overlay), but it was not separable
  * from the effectful surrounding code.
- *
  * ## What this is NOT
- *
  *  - NOT an effectful executor. [BodyInterpreter] does not emit events, does
  *    not touch the filesystem, does not call any capability. The effectful
  *    layer (event emission, directory creation, credential acquisition)
@@ -38,44 +32,38 @@ import java.nio.file.Path
  *  - NOT a Step-name branch. [BodyInterpreter] never reads a `StepKey`, a
  *    plugin id, or any concrete step class. The closed ADT over the
  *    projection guarantees that.
- *
  * ## Relationship to the existing descriptor metadata
- *
  * Same authority as [BodyExecutionPolicy]: declared on the
  * [dev.rubentxu.pipeline.v2.domain.StepDescriptor] of the Step family,
  * resolved by a pure function over the open [StepRegistry], rejected
  * fail-closed when the declaration is unknown.
- *
- * ## Migration note (post WU-LPR-021)
- *
+ * ## Migration note (post)
  * The current [BodyInterpreter] is a **seam candidate** with its own
  * parallel typed vocabulary ([BlockShellScopeDescriptor],
  * [BodyExecutionProjectionDescriptor]). The canonical coordinator still uses
  * its private `BlockShellScope` / `BodyExecutionProjection` types. Publishing
  * those types out of the coordinator (so the seam can directly consume them)
- * is a separate WU (WU-LPR-024, InvocationEngine seam). Until then, the two
+ * Is a separate WU (, InvocationEngine seam). Until then, the two
  * type families coexist by construction: the seam is total and pure, and a
  * future adapter can map canonical-projection → descriptor before invoking
  * the interpreter.
- */
+*/
 fun interface BodyInterpreter {
     /**
      * `(projection) -> InterpretedBody`. Pure, total, no effects.
-     *
      * The projection may carry typed invalid input or an unimplemented shape;
      * both surface as typed variants of [InterpretedBody] (never as exceptions
      * on this path).
-     */
+*/
     fun interpret(projection: BodyExecutionProjectionDescriptor): InterpretedBody
 }
 
 /**
  * Pure interpretation result for one body invocation.
- *
  * Every case carries ONLY the typed payload that the runner needs to consume
  * to apply the body's effects. No runtime effects (events, FS ops, capability
  * calls) are represented here.
- */
+*/
 sealed interface InterpretedBody {
 
     /** Body runs once in declaration order in the caller's own context. */
@@ -84,7 +72,7 @@ sealed interface InterpretedBody {
     /**
      * Body runs once inside a single derived execution context. The runner
      * applies [scope] and [childShPatch] before any child `StepStarted`.
-     */
+*/
     data class Scoped(
         val scope: BlockShellScopeDescriptor,
         val childShPatch: ShPatch,
@@ -95,7 +83,7 @@ sealed interface InterpretedBody {
      * Body runs under a credential lease (acquire → environment overlay →
      * always close). Carries the decoded bindings so the payload is decoded
      * exactly once, in the projection step.
-     */
+*/
     data class CredentialLeased(
         val bindings: List<CredentialBindingSpec>,
     ) : InterpretedBody
@@ -103,7 +91,7 @@ sealed interface InterpretedBody {
     /**
      * Decoded input was invalid: typed SCHEMA rejection. The runner MUST
      * NOT iterate children. Never a fallback to [Unimplemented].
-     */
+*/
     data class InvalidInput(val detail: String) : InterpretedBody
 
     /**
@@ -111,7 +99,7 @@ sealed interface InterpretedBody {
      * by construction (policy resolution rejects a shape outside
      * [BodyExecutionSupport]); kept total so widening the support without
      * implementing the shape fails closed.
-     */
+*/
     data class Unimplemented(val shape: BodyExecutionPolicyShape) : InterpretedBody
 }
 
@@ -119,7 +107,7 @@ sealed interface InterpretedBody {
  * Pure descriptor of the scope a body is executed under. Parallel to the
  * canonical coordinator's private `BlockShellScope` — see migration note on
  * [BodyInterpreter].
- */
+*/
 sealed interface BlockShellScopeDescriptor {
 
     /** No scope — body runs in the caller's own context (Sequential default). */
@@ -141,9 +129,9 @@ sealed interface BlockShellScopeDescriptor {
     ) : BlockShellScopeDescriptor
 
     /**
-     * B13/E-EM-11: body-deadline contract projected from `core.timeout`.
+     * Body-deadline contract projected from `core.timeout`.
      * The deadline flows to child ShOptions as the per-invocation watchdog.
-     */
+*/
     data class Timeout(val budgetMs: Long) : BlockShellScopeDescriptor
 
     /** Body is re-dispatched up to [maxAttempts] times with deterministic per-attempt identity. */
@@ -160,12 +148,11 @@ sealed interface BlockShellScopeDescriptor {
  * runner should push onto its immutable context stack before iterating body
  * children. The overlay is a typed value, NOT an effect: the runner pushes it
  * onto the stack and pops it on exit.
- *
  * Kept separate from [InterpretedBody.Scoped.childShPatch] because the patch
  * is `ShOptions`-typed (consumed by `core.sh` handler capability) while the
  * overlay is `ContextOverlay`-typed (consumed by the canonical coordinator's
  * scope stack).
- */
+*/
 sealed interface ContextOverlayDescriptor {
 
     /** No overlay — the body runs in the parent's own context. */
@@ -184,21 +171,18 @@ sealed interface ContextOverlayDescriptor {
 /**
  * Pure patch describing the typed values the runner should overlay on the
  * inherited runtime options before running body children.
- *
  * The interpreter produces one of these for every [Scoped] body. No effect,
  * no event emission: the runner applies the patch atomically with the
  * corresponding `*Entered` event.
- *
  * The interpreter is intentionally agnostic to the concrete runtime options
  * type (`ShOptions` lives in `pipeline-step-sdk`). The runner is responsible
  * for materializing this patch onto its concrete options class — the seam
  * contract is "patch.applyToMaterializes(parent)" is the only place
  * `ShOptions` is touched, and the interpreter never imports that type.
- *
  * @property timeoutMs The tighter block deadline (null = inherit parent).
  * @property workingDirectory The projected cwd (null = inherit parent).
  * @property env Merged environment overrides on top of the parent env.
- */
+*/
 data class ShPatch(
     val timeoutMs: Long? = null,
     val workingDirectory: Path? = null,
@@ -213,7 +197,7 @@ data class ShPatch(
 /**
  * Pure descriptor of the canonical coordinator's `BodyExecutionProjection`.
  * Parallel type family — see migration note on [BodyInterpreter].
- */
+*/
 sealed interface BodyExecutionProjectionDescriptor {
 
     /** The generic body machinery runs this body with [scope] projected around it. */
@@ -232,10 +216,8 @@ sealed interface BodyExecutionProjectionDescriptor {
 }
 
 /**
- * WU-LPR-021 — Default implementation of [BodyInterpreter].
- *
+ * Default implementation of [BodyInterpreter].
  * Maps a [BodyExecutionProjectionDescriptor] to an [InterpretedBody]:
- *
  *  - [BodyExecutionProjectionDescriptor.Scope] with [BlockShellScopeDescriptor.None]
  *    → [InterpretedBody.Sequential].
  *  - [BodyExecutionProjectionDescriptor.Scope] with [BlockShellScopeDescriptor.Directory]
@@ -255,11 +237,10 @@ sealed interface BodyExecutionProjectionDescriptor {
  *    carrying the bindings verbatim (the runner's preamble handles acquisition).
  *  - [BodyExecutionProjectionDescriptor.InvalidInput] → [InterpretedBody.InvalidInput].
  *  - [BodyExecutionProjectionDescriptor.Unimplemented] → [InterpretedBody.Unimplemented].
- *
  * Total over the projection ADT — adding a new projection case forces this
  * `when` to be revisited (compile-time exhaustiveness check via the sealed
  * interface).
- */
+*/
 object DefaultBodyInterpreter : BodyInterpreter {
     override fun interpret(projection: BodyExecutionProjectionDescriptor): InterpretedBody =
         when (projection) {

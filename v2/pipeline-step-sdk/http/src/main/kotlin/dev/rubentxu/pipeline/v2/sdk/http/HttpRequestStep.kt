@@ -18,23 +18,20 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 
 /**
- * The canonical StepKey of the HTTP OFFICIAL_PLUGIN (LFC-2E3 / WU-093).
- *
+ * The canonical StepKey of the HTTP OFFICIAL_PLUGIN
  * It is namespaced under the PLUGIN, not under `core`. That is the whole
  * delivery classification in one string: `http.request` belongs to
  * `pipeline-plugin-http` (STEP_ECOSYSTEM_POLICY) and the matrix calls it an
  * `OFFICIAL_PLUGIN candidate`. A `core.httpRequest` would have been core closed
  * by accident, which is the drift the ARCHITECTURAL_STOP recorded.
- */
+*/
 object HttpRequestKey {
     val VALUE: PluginStepId = PluginStepId("http.request")
 }
 
 /**
- * `http.request` — one request to a remote service (LFC-2E3 / WU-093).
- *
+ * `http.request` — one request to a remote service
  * ## Why this is a StepDefinition and not a `StepSpec` variant
- *
  * The compiler has no branch for this key, and there must never be one. The
  * DSL façade ([httpRequest] in `HttpDsl.kt`) builds a typed
  * [HttpRequestInput], encodes it with [HttpRequestCodec] — the single authority
@@ -42,9 +39,7 @@ object HttpRequestKey {
  * primitive. `core.sh`, `core.echo` and `example.uppercase` all travel the
  * same path, which is the property that proves the seam is real rather than
  * aspirational.
- *
  * ## Handler discipline
- *
  * The handler uses ONLY declared capabilities:
  * - [HTTP_TRANSPORT_CAPABILITY] for the socket (supplied by the plugin's own
  *   transport implementation, wired by the composition root);
@@ -52,14 +47,11 @@ object HttpRequestKey {
  *   ASKS, never a verdict it reads. The runtime withholds the capability entirely
  *   unless this run has some network entitlement, so the default is refused at
  *   admission; the gate is what narrows that entitlement to a destination.
- *
  * It never reaches `CanonicalRuntimeContext`, the journal, the event sink, the
  * filesystem, or `java.net` directly. It resolves no credential: the transport
  * receives an already-resolved [HttpAuthorization] and never a [CredentialsId],
  * so a secret cannot leak through a typed value by accident.
- *
  * ## The order of the three questions
- *
  * ```text
  * 1. is the declaration sound?     httpIntentOf      pure, no capabilities
  * 2. may this run open a socket to THIS host?       the gate
@@ -67,12 +59,11 @@ object HttpRequestKey {
  *    ────────────────────────────────────────────────────────────────
  *    … and only now, transport.send
  * ```
- *
  * Each question is cheaper and coarser than the next, and none of them has a
  * socket behind it. The order is not an optimisation: it is why a refused
  * destination cannot decrypt a credential, and why an unsendable declaration never
  * asks the runtime about the network at all.
- */
+*/
 object HttpRequestStep {
 
     val KEY: PluginStepId get() = HttpRequestKey.VALUE
@@ -120,11 +111,10 @@ object HttpRequestStep {
                 )
 
                 is HttpIntent.Ready -> {
-                    // H6 — WHERE, not WHETHER. The gate is a question, and this is
+                    // WHERE, not WHETHER. The gate is a question, and this is
                     // where it is asked: after the declaration is known to be sound,
                     // before a credential is decrypted, and long before a socket
                     // could exist.
-                    //
                     // The ordering is the security property, not an optimisation. A
                     // credential is a secret; resolving it for a destination the run
                     // may not reach would decrypt material nobody was authorised to
@@ -135,7 +125,7 @@ object HttpRequestStep {
                         return@StepHandler notSent(intent, admission.toEgressFailure())
                     }
 
-                    // H5: the credential is resolved HERE, before the send request
+                    // The credential is resolved HERE, before the send request
                     // exists, so a credential that cannot be used means no socket was
                     // ever opened. A declared secret that degraded into an anonymous
                     // request would be the failure this ordering exists to prevent.
@@ -232,8 +222,7 @@ object HttpRequestStep {
                 // `if` inside the handler, which is the difference between a
                 // default that cannot be forgotten and a default somebody has
                 // to remember to write.
-                //
-                // H6 sharpened what "some entitlement" means. Withholding the gate
+                // Sharpened what "some entitlement" means. Withholding the gate
                 // only when the run has NO network keeps the default fail-closed at
                 // admission while leaving a restricted gate free to refuse a single
                 // destination from inside the handler — which is a different fact,
@@ -241,7 +230,7 @@ object HttpRequestStep {
                 requiredCapabilities = setOf<StepCapability>(
                     HTTP_TRANSPORT_CAPABILITY,
                     NETWORK_EGRESS_CAPABILITY,
-                    // H5: declared UNCONDITIONALLY, not only when the author asked for
+                    // Declared UNCONDITIONALLY, not only when the author asked for
                     // a credential. A conditional requirement would mean deciding the
                     // capability set from the decoded input, and this contract is read
                     // BEFORE decode — that is what makes the refusal below an admission
@@ -259,27 +248,24 @@ object HttpRequestStep {
 
     /**
      * Adds this Step to a composition in progress.
-     *
      * The parameter is a [StepRegistryBuilder], not a [StepRegistry]: the runtime holds a
      * registry that cannot be mutated, so composing and reading are separate capabilities.
-     */
+*/
     fun registerInto(builder: StepRegistryBuilder) {
         builder.add(definition)
     }
 
     /**
      * Something was decided NOT to send, and the fact is the whole outcome.
-     *
      * `durationMs` is zero on purpose: no socket was opened, so no time was spent
      * and no request reached the world. A reader of the journal can tell that apart
      * from "we sent it and it failed", which are very different facts about a
      * pipeline.
-     *
      * Both refusal paths — a declaration this build cannot honour, and a destination
      * the runtime refused — are expressed here rather than at their own call sites,
      * because "nothing was sent, and here is exactly why" is one fact and two
      * constructions of it would be two chances to spell it differently.
-     */
+*/
     private fun notSent(intent: HttpIntent.Ready, failure: HttpFailure): HttpResponseOutput =
         HttpResponseOutput(
             attempt = HttpAttempt.Failed(
@@ -292,7 +278,7 @@ object HttpRequestStep {
 
     /**
      * A credential that cannot be used is a DECLARATION failure with nothing sent.
-     */
+*/
     private fun rejected(intent: HttpIntent.Ready, rejection: HttpRejection): HttpResponseOutput =
         notSent(intent, HttpFailure.Rejected(rejection))
 }

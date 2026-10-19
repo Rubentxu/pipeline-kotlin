@@ -10,17 +10,15 @@ import org.junit.jupiter.api.assertThrows
 
 /**
  * `StatusRange.parse` is the pure, total function an author-supplied range spec is decoded through.
- *
  * Its own KDoc states the contract: *"Total: anything unparseable returns `null` and the caller
  * turns that into a typed rejection. It never throws and never guesses."* Total and never-throws are
  * separate promises, and the second is the one that was false.
- *
  * The spec arrives from outside: `HttpCodecs` reads it out of a JSON payload at decode time, which
  * is the whole reason this function exists -- Jenkins parses the same string *after* the request has
  * already reached the world, so here a bad range must be a declaration error. A declaration error
  * that arrives as an `IllegalArgumentException` from deep inside a decoder is not a declaration
  * error, and it escapes the total boundary the caller is entitled to rely on.
- */
+*/
 class StatusRangeTest {
 
     // --- the total promise, stated as a promise ---------------------------------

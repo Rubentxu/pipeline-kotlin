@@ -6,20 +6,17 @@ import dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame
 /**
  * In-memory [ReplayCursorStore]: the storage-free counterpart of
  * [SqliteReplayCursorStoreImpl] with mirrored semantics.
- *
- * Part of the LF-0208 storage-pluggable spine: choosing volatile storage
+ * Part of the storage-pluggable spine: choosing volatile storage
  * never selects a different execution algorithm.
- *
  * ## Mirrored semantics
- *
  * - [advance]: upsert per run id with the same CAS rule as the SQLite
  *   `WHERE excluded.stage_index >= replay_cursor.stage_index` — an
  *   advance to an EARLIER stage index is a no-op (idempotency).
  * - [advancePastParallelFrame]: join barrier keyed `$runId:parallel` /
- *   `$runId:parallel-completed` (ADR-0035), same CAS rule, returns the
+ * `$runId:parallel-completed`, same CAS rule, returns the
  *   [StageIndex] it advanced to.
  * - [load]: `null` when no cursor exists for the run.
- */
+*/
 class InMemoryReplayCursorStore(
     private val clock: Clock,
 ) : ReplayCursorStore {
@@ -48,7 +45,7 @@ class InMemoryReplayCursorStore(
             ?: branchResults.maxOfOrNull { it.stageIndex }
             ?: 0
 
-        // ADR-0035 §Decision: cursor keys derived from the runId.
+        // Cursor keys derived from the runId.
         val parallelCursorKey = "$runId:parallel"
         val parallelCompletedKey = "$runId:parallel-completed"
         advance(parallelCursorKey, parallelCompletedKey, maxStageIndex)

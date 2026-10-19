@@ -8,11 +8,10 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 
 /**
  * Registry strategy payload, opaque to the durable coordinator (CDE.3-c).
- *
  * Runtime-ephemeral: carries the admitted [StepDefinition] and its already-decoded input so the
  * registry EXECUTE path (CDE.3-d/e) can run the typed handler without re-decoding. Never persisted,
  * never fingerprinted, never replayed. Constructing it runs NO Step side effects.
- */
+*/
 data class PreparedRegistryExecution(
     val key: PluginStepId,
     val definition: StepDefinition<*, *>,
@@ -26,7 +25,7 @@ data class PreparedRegistryExecution(
  * [ExecutionPreparation], and NEVER calls the handler. Producing a [Ready] means the invocation is
  * decoded and admitted and ready for the single [CommonExecutionBoundary]; [Rejected] is admission
  * failure BEFORE any effect (unknown key, missing capability, or decode failure).
- */
+*/
 object RegistryExecutionPreparation {
 
     @Suppress("UNCHECKED_CAST")

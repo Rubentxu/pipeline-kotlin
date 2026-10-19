@@ -1,21 +1,18 @@
 package dev.rubentxu.pipeline.v2.events.shape
 
 /**
- * M7 — closed ADT of typed events returned by [EventShapeReadPort].
- *
- * The five cases are the typed events the M6 audit names as the source
+ * Closed ADT of typed events returned by [EventShapeReadPort].
+ * The five cases are the typed events the audit names as the source
  * of truth for stage / step boundaries. A sixth case would be a
  * breaking change requiring consumer recompile.
- *
  * "Five" is not enforced by a test: the one that did was deleted in
  * `2aa071aab`, and this ADT is `sealed`, so adding a sixth case is a
  * compile-time fact a reader sees in this file rather than something a
  * red test reports. Until [EventShapeReadPort] stops being EXPERIMENTAL,
  * the declaration itself is the guard, and it is an honest one.
- *
  * The `runId` and `occurredAtMs` fields are common to all cases; the
  * type-specific fields are unique to each case.
- */
+*/
 sealed interface TypedEvent {
 
     /** The run the event belongs to. */

@@ -13,14 +13,13 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * [CredentialCrypto] is the pure half of the local store: Argon2id derivation, AES-KWP key
+ * [CredentialCrypto] is the pure half of the local store: Argon2id derivation, key
  * wrapping, the AAD structure that binds each ciphertext to a header and a credential id,
  * and the on-disk entry encoding.
- *
  * Every function is total over its inputs and produces the same bytes for the same inputs.
  * A bug here is silent: the store would either refuse to decrypt a file it produced, or
  * accept a file it should have refused. Both modes are tested here.
- */
+*/
 class CredentialCryptoTest {
 
     private val passphrase = "correct horse battery staple".toCharArray()
@@ -211,7 +210,7 @@ class CredentialCryptoTest {
     fun `encodeV2Entry and readEntries produce the same id, kind and plaintext when prefixed by the v1 header`() {
         // readEntries is the FILE reader: it skips a 74-byte v1 header (4 magic + 2 version
         // + 4 m + 4 t + 4 p + 16 salt + 40 wrappedDek) and then walks v2 entries. A unit
-        // test cannot produce a real file (AGENTS.md §2 forbids filesystem persistence in
+        // test cannot produce a real file (AGENTS.md forbids filesystem persistence in
         // unit tests), so the test writes the header bytes by hand and concatenates an
         // encoded v2 entry, exercising the same byte stream the store would read.
         val id = CredentialsId.from("aws-prod")
@@ -273,12 +272,11 @@ class CredentialCryptoTest {
 
 /**
  * Build the 74-byte v1 header that [CredentialCrypto.readEntries] expects at offset 0.
- *
  * The header layout is pinned by the source: 4-byte magic, 2-byte little-endian version,
- * 4-byte little-endian m/t/p, 16-byte salt, 40-byte AES-KWP wrapped DEK. The header's
+ * 4-byte little-endian m/t/p, 16-byte salt, 40-byte wrapped DEK. The header's
  * CONTENTS do not need to be cryptographically valid: readEntries walks entries, it does
  * not verify the header. The test cares about the byte positions, not the values.
- */
+*/
 private fun synthV1Header(): ByteArray {
     val out = java.io.ByteArrayOutputStream()
     out.write("PKCR".toByteArray(Charsets.US_ASCII))

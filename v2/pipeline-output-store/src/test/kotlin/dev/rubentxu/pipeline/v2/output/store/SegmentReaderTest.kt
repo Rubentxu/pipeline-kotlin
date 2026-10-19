@@ -11,10 +11,9 @@ import java.nio.file.Path
  * `sealedName` writes a sealed segment's file name and `parseSealed` reads it back.
  * The two are one contract: a name the writer can produce must be readable, and a name the writer
  * can never produce must be rejected rather than misread.
- *
  * `parseSealed` reads only `Path.fileName`, so it is a pure function over a string — no filesystem
  * access, no clock. The tests build the `Path` values by hand and never touch a disk.
- */
+*/
 class SegmentReaderTest {
 
     // --- the writer ---------------------------------------------------------
@@ -40,7 +39,7 @@ class SegmentReaderTest {
     @Test
     fun `a negative length behind a double dash is rejected`() {
         // sealedName splits at the FIRST dash, so "10--5" parses as base=10 and length="-5".
-        // toLongOrNull accepts the sign, so without a guard this reaches currentBase() with
+        // toLongOrNull accepts the sign, so without a guard this reaches currentBase with
         // base+length = 5 and the read path re-serves bytes from the live segment.
         val parsed = SegmentReader.parseSealed(Path.of("10--5.seg"))
 

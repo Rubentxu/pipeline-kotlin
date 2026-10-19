@@ -44,35 +44,27 @@ import java.util.UUID
 
 /**
  * Shell execution orchestration for durable steps.
- *
- * Extracted from PipelineRun.kt (FIND-268736 god-file split).
+ * Extracted from PipelineRun.kt (god-file split)
  * Provides a single canonical implementation for shell step execution
  * that threads workspace and env options.
- *
  * ## Responsibilities
- *
  * - `runShStep`: Executes a shell step with durable semantics
- * - `executeBranchStep`: Executes shell steps within parallel branches (W8 fold)
- *
- * ## P2 Invariant
- *
+ * `executeBranchStep`: Executes shell steps within parallel branches (fold)
+ *  Invariant
  * User script content NEVER appears in any argv. The wrapper script is constructed
  * with single-quoted path variables only (no script content in argv).
- *
- * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
- * @see <a href="ADR-0047">ADR-0047 — FAILED_TIMEOUT Terminal State</a>
- */
+ * Durable sh Pattern</a>
+ * FAILED_TIMEOUT Terminal State</a>
+*/
 /**
  * Whether the terminal itself says the transcript could not be completed.
- *
- * WU-B. The runtime refuses to claim a complete transcript for exactly one reason and reports it
+ * The runtime refuses to claim a complete transcript for exactly one reason and reports it
  * with exactly one code; the caller that must not seal reads the SAME constant from the SAME module
  * rather than matching a string literal. There is one producer of the fact and one consumer of it,
  * so a rename cannot leave half the contract behind.
- *
- * Pure and therefore testable at HF0: it is a predicate over the terminal ADT, and pretending more
+ * Pure and therefore testable in isolation: it is a predicate over the terminal ADT, and pretending more
  * is needed to check it would mean inventing a process.
- */
+*/
 internal fun terminalDeclaresTranscriptIncomplete(terminal: DurableTaskTerminal): Boolean =
     terminal is DurableTaskTerminal.LaunchFailed &&
         terminal.failure.code == OUTPUT_PERSISTENCE_REFUSED
@@ -81,11 +73,11 @@ object ShExecution {
 
 
     /**
-     * WU-LPR-011: redacts observable transcript content when a secret registry
+     * Redacts observable transcript content when a secret registry
      * is active. Chunk-boundary-safe: a secret split across process output
      * chunks is still scrubbed (the registry's StreamingRedactor carries
      * boundary state across reads).
-     */
+*/
     private fun redactTranscript(
         content: String,
         secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
@@ -96,39 +88,33 @@ object ShExecution {
 
     /**
      * Stream a process transcript into the Output Plane, redacting on the way in.
-     *
-     * RESTORED VERBATIM FROM `origin/main` during the §1.1 reconciliation. It is NOT new code:
+     * RESTORED VERBATIM FROM `origin/main` during the reconciliation. It is NOT new code:
      * `ShExecution.kt` auto-merged, and the automatic merge silently dropped this function while
      * `main`'s own `B1aOutputPlaneProviderLifecycleCharacterizationTest` still calls it. A clean
      * textual merge is not a safe merge, and the compile is what caught it.
-     *
      * **This is not on the production path on this branch.** `main` reaches this function from
      * `invokeShell`; this branch reaches the Output Plane through the composed sink instead —
      * `RedactingOutputIngress` handed to the executor as `channelSinks`, which drains the redacted
      * stream in bounded windows and commits each chunk. That is the successor to the pull-shaped
-     * `appendFrom` below, and it is what OBS-C2.3 and the live-window work delivered.
-     *
+     * `appendFrom` below, and it is what.3 and the live-window work delivered
      * It is kept because a characterisation test that exercised it is still in the tree and
      * deleting the subject to make the test compile would certify a path that no longer exists.
      * Whether that test should instead be repointed at the composed sink is an open decision for
      * the owner, recorded as such rather than decided here.
-     *
-     * M1-P2. This replaces the pair of emitters that used to exist here, and the replacement is not
+     * This replaces the pair of emitters that used to exist here, and the replacement is not
      * a refactor: those emitters were the **second** rendering of the same bytes. The wrapper
      * writes `console.log`, and then the JVM re-rendered its content into an
      * `EchoOutputCaptured` event built from in-memory buffers. Two sources, one redactor in two
      * overloads, and no property saying they agreed — so a parity test built on this path would
      * have compared two implementations rather than one writer against what it wrote. The event is
-     * gone; the store is the authority. See ADR-M1 D2.
-     *
+     * Gone; the store is the authority. See
      * Redaction happens **here**, on the way to persistence, not on the way out. A store that
      * redacted at read time would already have written the secret to disk, and the byte count a
      * reader sees would depend on how many secrets happened to be in the stream.
-     *
      * Streaming, never materialised: the producer is consumed in bounded windows by
      * [dev.rubentxu.pipeline.v2.output.store.OutputStreamHandle.appendFrom], so the resident set is one
      * window plus redactor lookahead regardless of transcript size.
-     */
+*/
     internal fun ingestTranscriptIntoOutputPlane(
         controlDirRoot: Path,
         runId: String,
@@ -151,7 +137,6 @@ object ShExecution {
 
     /**
      * Executes a shell step with durable semantics.
-     *
      * @param step The shell step specification.
      * @param opId The operation ID for this step.
      * @param runId The run identifier.
@@ -162,7 +147,7 @@ object ShExecution {
      * @param eventSink The event sink for emitting EchoOutputCaptured events.
      * @return the closed shell invocation result. Lifecycle callers decide how
      * terminal failure and interruption affect their own run state.
-     */
+*/
     suspend fun runShStep(
         step: StepSpec.Shell,
         opId: OpId,
@@ -188,12 +173,11 @@ object ShExecution {
 
     /**
      * Executes a typed shell command without requiring a DSL step object.
-     *
-     * DEPRECATED (EM_DEAD_CODE_AUDIT A1): projects the typed result through a
+     * DEPRECATED: projects the typed result through a
      * lossy legacy [String] status. Callers must classify from
      * [invokeShell]'s closed semantic result instead; removal is scheduled
-     * for EM-10 once no compatibility caller remains.
-     */
+     * For once no compatibility caller remains
+*/
     @Deprecated(
         message = "Legacy String status projection; use invokeShell() and classify the typed result",
         replaceWith = ReplaceWith("invokeShell(command, opId, runId, stageIndex, stepIndex, shOptions, controlDirRoot, eventSink)"),
@@ -220,10 +204,9 @@ object ShExecution {
 
     /**
      * Invokes the durable shell substrate and returns its closed semantic result.
-     *
      * Compatibility callers may project this result through [runShellCommand],
      * but canonical callers must classify from this value rather than a string.
-     */
+*/
     suspend fun invokeShell(
         command: ShellCommand,
         opId: OpId,
@@ -240,8 +223,8 @@ object ShExecution {
         // we fall back to direct bash -c which works without filesystem privileges)
         if (controlDirRoot == null) {
             // Non-durable fallback: script written to temp file; argv = [bash, <path>]
-            // P2: env injected via pb.environment().putAll (WS-S-005)
-            // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
+            // Env injected via pb.environment.putAll
+            // JAVA_HOME/_HOME prepend applied via EnvModel.apply
             return executeNonDurableInvocation(
                 command = command,
                 env = EnvModel.apply(shOptions.env),
@@ -264,22 +247,20 @@ object ShExecution {
         val controlDir = controlDirRoot.resolve(opId.format())
 
         return try {
-            // Apply EnvModel transformations (JAVA_HOME/M2_HOME prepend to PATH) (WS-S-006/WS-S-007)
+            // Apply EnvModel transformations (JAVA_HOME/_HOME prepend to PATH)
             val envOptions = effectiveOptions.copy(
                 env = EnvModel.apply(effectiveOptions.env),
                 captureStdout = command.returnMode == ShellReturnMode.STDOUT,
             )
 
-            // OBS-B: the composed destination for the child's bytes. This is the whole change — the
+            // The composed destination for the child's bytes. This is the whole change — the
             // transcript is handed to the Output Plane by the pump WHILE the step runs, instead of
             // being written to a control-dir file and ingested once the step has returned.
-            //
-            // OBS-C2.3: one ingress per CHANNEL, each addressing its own channel-addressed stream.
+            // One ingress per CHANNEL, each addressing its own channel-addressed stream.
             // The channel is part of the stream identity, so attribution survives a crash, a reopen
             // and a cursor hand-off with nothing extra to keep in step with the bytes. Declaring
             // both streams up front is what makes a crash between the first byte commit and the
             // first frame recoverable instead of lost — see OutputFrameIndex.declareStream.
-            //
             // The handles are NOT opened here. `RedactingOutputIngress` opens and declares on its
             // first write of at least one byte, which keeps that recovery property (the first
             // reserve creates the first committed byte, and the stream is declared by then) while
@@ -309,11 +290,10 @@ object ShExecution {
             } ?: emptyMap()
 
             // Execute with tee-gated wrapper if captureStdout is enabled
-            // P2: env injected via pb.environment().putAll (not argv) in DurableShellExecutor.launch()
-            // Timeout threaded via timeoutMs parameter (TMO-S-013: 0 = no timeout)
-            // workspaceRoot threaded via effectiveOptions.workspaceRoot (DEC-1 cwd flip)
-            //
-            // R2.3 / ADR-OBS-003: when the caller opts into the agent path
+            // Env injected via pb.environment.putAll (not argv) in DurableShellExecutor.launch
+            // Timeout threaded via timeoutMs parameter (: 0 = no timeout)
+            // WorkspaceRoot threaded via effectiveOptions.workspaceRoot (cwd flip)
+            // When the caller opts into the agent path
             // (`pumpedViaAgent = true` in ShOptions), build a DurableShConfig
             // that flips the same flag and carries the secret the agent uses
             // for in-memory redaction. The default config
@@ -334,13 +314,13 @@ object ShExecution {
                 opId = opId.format(),
                 shOptions = envOptions,
                 config = durableConfig,
-                // WU-LPR-011R2 (Gate-1 at-rest closure): the durable authority receives ONLY
+                // The durable authority receives ONLY
                 // already-redacted bytes. The wrap factory is built per launch; each
                 // StreamingRedactor instance carries independent boundary state.
                 transcriptRedactor = secretPatternRegistry?.let { registry ->
                     { raw -> dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor(registry).wrap(raw) }
                 },
-                // OBS-B: live destination, one per channel. Empty only when there is no control-dir root,
+                // Live destination, one per channel. Empty only when there is no control-dir root,
                 // which is the non-durable fallback handled above.
                 channelSinks = ingressSinks,
             )
@@ -354,37 +334,31 @@ object ShExecution {
             //     read as terminal.capturedStdout) and is NOT part of the transcript at all; the
             //     stderr stream is the observable transcript. The stdout value must NOT be re-emitted
             //     as a console event.
-            // OBS-B: there is nothing left to ingest here, and that is the point.
-            //
-            // M1-P2 established that the transcript enters the Output Plane exactly once and that
+            // There is nothing left to ingest here, and that is the point.
+            // Established that the transcript enters the Output Plane exactly once and that
             // no console event carries it. Before this it entered by a whole-file read AFTER the
             // step returned, which meant the store was authoritative but never live: a reader
             // tailing the stream saw nothing until the step ended, however long it ran.
-            //
             // The pump now writes each sanitized chunk straight into the channel stream above, so:
             //   - `console.log` is not written, not read, and not deleted. It was a staging buffer
             //     whose lifetime was the reason the store could not be live.
             //   - post-mortem retention is no longer the existence of a file that a `finally`
             //     block happens to leave behind. It is the Output Plane's retention policy, which
             //     is where the other durable authorities already keep it.
-            //
-            // OBS-C2.3 added the per-channel split on top of that: there is no merged stream at all,
+            // 3 added the per-channel split on top of that: there is no merged stream at all
             // so a merged console is a read-side projection over two streams and the frame index
             // that orders them — never a third copy on disk.
-            //
             // What did NOT change, and is checked above and by OutputSingleAuthorityFitnessTest:
             // redaction happens before persistence, the bytes land in one authority, and no
             // console event is emitted for them.
-            // OBS-C3: the terminal is the only place that knows the operation is over, so it is the
+            // The terminal is the only place that knows the operation is over, so it is the
             // only place a tail may be sealed. The pump ending is NOT that fact: when the JVM dies
             // mid-`sh`, the pump ends while the operation continues, and a resumed run re-attaches to
             // the same operation id and appends to these very streams. Sealing on pump close would
             // seal a stream that is legitimately about to grow again.
-            //
-            // Both channels are sealed because OBS-C2.3 gave the operation one stream per channel,
+            // Both channels are sealed because.3 gave the operation one stream per channel
             // and a consumer that merged them must be able to see both reach their end.
-            //
-            // M1-F.3 — per-channel seal. A stdout-only script (e.g. `sh("echo hi")`)
+            // Per-channel seal. A stdout-only script (e.g. `sh("echo hi")`)
             // never opened stderr; sealing it would be a "no seal" outcome, not a
             // warning. The [OutputSealPort.seal] return type makes the four cases
             // explicit, and the per-channel loop below is the place that decides
@@ -392,14 +366,12 @@ object ShExecution {
             val terminalResult = classifyShellTerminal(terminal, command.returnMode)
             // controlDirRoot is non-null from this point: the function
             // checked it at the top and returned early otherwise.
-            //
-            // WU-B: a seal is the durable statement "this operation's output is complete", and it is
+            // A seal is the durable statement "this operation's output is complete", and it is
             // the statement `console --follow` terminates on. So it MUST NOT be made for a
             // transcript the runtime has just declared it could not complete: a sink that lost a
             // write, or a pump still holding the read end at the drain budget. Sealing there would
             // tell every downstream reader that a short, ordered, plausible transcript is the final
             // one — which is the exact artifact this whole path exists to refuse.
-            //
             // The terminal fact is still known and still reported (the step fails with an explicit
             // INFRASTRUCTURE cause). What is withheld is the completeness claim, and only that.
             if (!terminalDeclaresTranscriptIncomplete(terminal)) {
@@ -411,8 +383,8 @@ object ShExecution {
             terminalResult
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
             // Non-durable fallback for non-Linux platforms
-            // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
-            // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
+            // Script via temp file; env via pb.environment.putAll
+            // JAVA_HOME/_HOME prepend applied via EnvModel.apply
             return executeNonDurableInvocation(
                 command = command,
                 env = EnvModel.apply(shOptions.env),
@@ -425,7 +397,7 @@ object ShExecution {
                 secretPatternRegistry = secretPatternRegistry,
             )
         } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
-            // PAR-D: a CancellationException is an execution mechanism, not a failure.
+            // A CancellationException is an execution mechanism, not a failure.
             // Mapping it to Failed(INFRASTRUCTURE) would make "the run was cancelled"
             // indistinguishable from "the shell substrate broke". Rethrow unchanged.
             throw ce
@@ -461,18 +433,16 @@ object ShExecution {
 
     /**
      * Whether the terminal itself says the transcript could not be completed.
-     *
-     * WU-B. The runtime refuses to claim a complete transcript for exactly one reason, and it
+     * The runtime refuses to claim a complete transcript for exactly one reason, and it
      * reports it with exactly one code; the caller that must not seal reads the SAME constant from
      * the SAME module rather than matching a string literal. There is one production of the fact and
      * one consumer of it, so a rename cannot leave half of the contract behind.
-     */
+*/
 
     /**
      * Seals the operation's per-channel output tails and decides which
      * outcomes are surfaced.
-     *
-     * M1-F.3:
+     * :
      *  - [SealOutcome.Sealed] / [SealOutcome.AlreadySealed] — silent.
      *  - [SealOutcome.NeverOpened] — silent. A stdout-only script never
      *    opened stderr, and a stderr-only script never opened stdout; that
@@ -481,13 +451,12 @@ object ShExecution {
      *    INFRASTRUCTURE with the failure cause verbatim. The terminal is
      *    reclassified so a downstream consumer sees the seal failure
      *    rather than the (potentially-successful) shell exit.
-     *
      * The previous shape printed "[ShExecution] could not seal the output
-     * tail ..." to stderr for every kind of failure including legitimate
+     * tail..." to stderr for every kind of failure including legitimate
      * absence (the user's "stream not opened" noise). The new shape is
      * silent on the legitimate paths and only surfaces real failures,
      * which is what a healthy `pipelinek run` was missing.
-     */
+*/
     private fun sealOperationTail(
         controlDirRoot: java.nio.file.Path,
         runId: String,
@@ -517,11 +486,9 @@ object ShExecution {
     }
 
     /**
-     * Executes a shell step within a parallel branch (W8 fold).
-     *
+     * Executes a shell step within a parallel branch (fold)
      * This method replaces the 3-line bash -c block in walkBranchDurable.
      * Routes parallel Shell steps through the same durable execution path.
-     *
      * @param stageIndex The stage index for workspace naming.
      * @param stepIndex The step index for event sequencing.
      * @param branchOpId The operation ID for this branch step.
@@ -533,7 +500,7 @@ object ShExecution {
      * @return the closed shell invocation result. This preserves a timeout or
      * cancellation as [ShellInvocationResult.Interrupted] instead of
      * collapsing it into a failure string.
-     */
+*/
     suspend fun executeBranchStep(
         stageIndex: Int,
         stepIndex: Int,
@@ -579,7 +546,7 @@ object ShExecution {
 
     /**
      * No-op event sink for shell execution where events are not persisted.
-     */
+*/
     private object NoOpEventSink : EventSink {
         override fun append(event: dev.rubentxu.pipeline.v2.events.DomainEvent) {
             // no-op
@@ -591,19 +558,16 @@ object ShExecution {
     }
 
     /**
-     * Executes a shell step via the M3 task runtime (non-durable fallback).
-     *
+     * Executes a shell step via the task runtime (non-durable fallback)
      * Replaces the legacy direct `ProcessBuilder("bash", scriptPath)` path with
      * [ProcessDurableTaskRuntime] + [TaskSpec.ShellScriptTask]. The runtime owns
      * the script-file lifecycle (write, executable perms, delete), the process
      * tree, the chunked stdout/stderr streams, and the durable result — leaving
      * this method responsible only for opaque env coercion and event emission.
-     *
      * Used when the durable-shell sandbox refuses to launch (e.g. non-Linux) or
      * when no [controlDirRoot] is provided. Behaviour parity with the legacy
-     * path: P2 (env injected via env map, NOT argv), best-effort fail-closed,
+     * Path: (env injected via env map, NOT argv), best-effort fail-closed
      * one [EchoOutputCaptured] per step with the full script output.
-     *
      * @param scriptContent The shell script content.
      * @param env Environment variables (SecretHandle values coerced at the runtime boundary).
      * @param eventSink Event sink for EchoOutputCaptured and StepFailed emission.
@@ -612,7 +576,7 @@ object ShExecution {
      * @param opId Operation ID used for the runtime control dir and the task request.
      * @param controlDirRoot Optional stable control dir root; null = best-effort temp dir.
      * @return "success" if exit code is 0, "failure" otherwise.
-     */
+*/
     private suspend fun executeNonDurableInvocation(
         command: ShellCommand,
         env: Map<String, SecretHandle>,
@@ -624,8 +588,8 @@ object ShExecution {
         timeoutMs: Long?,
         secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
     ): ShellInvocationResult {
-        // AUD-02 (c): the caller's budget must reach the runtime. `0` means "no
-        // timeout" on BOTH routes (TMO-S-013, DurableShellExecutor: `timeoutMs > 0`
+        // The caller's budget must reach the runtime. `0` means "no
+        // Timeout" on BOTH routes (, DurableShellExecutor: `timeoutMs > 0`
         // arms the watchdog); a negative budget is not a mode this route can
         // honour, so it is refused explicitly instead of being silently dropped.
         val effectiveTimeoutMs = when {
@@ -639,13 +603,12 @@ object ShExecution {
             )
         }
 
-        // Env flows typed through the runtime boundary (M3 invariant: secret
+        // Env flows typed through the runtime boundary (invariant: secret
         // bytes never escape SecretHandle here). The runtime materialises them
         // at the moment it hands them to the OS env block, and never persists
-        // them. The legacy code coerced eagerly at pb.environment().putAll —
+        // them. The legacy code coerced eagerly at pb.environment.putAll —
         // the runtime collapses that responsibility into one place.
-        //
-        // AUD-02 (c/d): when the caller owns the root, it is theirs and is left
+        // When the caller owns the root, it is theirs and is left
         // alone; when this route had to create its own scratch directory under
         // java.io.tmpdir, this route owns its full lifecycle and deletes it on
         // success, failure, timeout AND cancellation (deterministic cleanup; the
@@ -691,7 +654,7 @@ object ShExecution {
             val result = try {
                 runtime.execute(request, sink)
             } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
-                // PAR-D: a cancellation is an execution mechanism, not a failure. The
+                // A cancellation is an execution mechanism, not a failure. The
                 // runtime already recorded its own durable CANCELLED terminal; mapping
                 // it to a Failed(INFRASTRUCTURE) value is the forbidden conversion.
                 throw ce
@@ -703,19 +666,16 @@ object ShExecution {
                 )
             }
 
-            // The NON-DURABLE fallback, and the one place where a console event is still correct.
-            //
+            // The fallback, and the one place where a console event is still correct
             // This path runs when there is no controlDirRoot at all — no filesystem privileges, or a
-            // non-Linux host — so there is no Output Plane to write into. ADR-M1 D2 forbids a SECOND
+            // Non-Linux host — so there is no Output Plane to write into. forbids a SECOND
             // authority over the same bytes; it does not require one to exist where none can. Here the
             // event is the only rendering, so it is not a second anything.
-            //
             // The law the fitness test enforces is therefore per-execution, not per-type: "for any
             // one execution, the transcript bytes exist in exactly one place." A guard written as
             // "EchoOutputCaptured is never emitted" would have been wrong here and would have pushed
             // someone into deleting the only observable console this path has.
-            //
-            // WU-LPR-011: the observable content is redacted with the chunk-boundary-safe redactor
+            // The observable content is redacted with the chunk-boundary-safe redactor
             // before emission, exactly as on the durable path.
             val output = stdoutBuilder.toString() + stderrBuilder.toString()
             val observableContent = redactTranscript(output, secretPatternRegistry)

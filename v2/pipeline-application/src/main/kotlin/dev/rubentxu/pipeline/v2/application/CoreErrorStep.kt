@@ -25,11 +25,10 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Typed input payload of `core.error`.
- *
  * The whole input is encoded into the canonical dsl-v1 envelope by [inputCodec]. No field
  * is encoded separately; the codec encodes the WHOLE payload so the journal/fingerprint
  * identity of `core.error` is independent of the codec's internal layout.
- */
+*/
 data class CoreErrorInput(
     val message: String,
     val failureKind: FailureKind,
@@ -42,22 +41,19 @@ data class CoreErrorInput(
 }
 
 /**
- * `core.error` registered as an open [StepDefinition] (B1.2b, ADR-0070).
- *
+ * `core.error` registered as an open [StepDefinition] (.2b,)
  * Mirrors the structure of [CoreEchoStep] (atomic) and [CoreShellStep] (effectful via
  * `TypedStepOutput`). The handler returns a [CoreErrorOutput] (a [TypedStepOutput] carrier)
  * — it MUST NOT throw to signal a failure. The boundary folds `produced as? TypedStepOutput`
  * into the canonical `CommonExecutionResult.outcome` (Step-agnostic).
- *
- * S2-A1 / G3-A4.3 amendment: the carrier's invariant
+ * The carrier's invariant
  * `outcome == StepOutcome.Failure(failure)` is enforced in [CoreErrorOutput]'s factory
  * (`from`/`of`). The handler does NOT compute the outcome; it calls [CoreErrorOutput.of]
  * and the boundary projects `outcome` unchanged.
- *
  * Required capabilities: `emptySet()`. The handler does not reach a coordinator, journal,
  * event sink, or process executor. The boundary is the sole authority for
  * `StepStarted`/`StepFailed`/`StepFinished`/`RunFinished` event projection.
- */
+*/
 object CoreErrorStep {
 
     val KEY: PluginStepId = PluginStepId("core.error")
@@ -67,10 +63,9 @@ object CoreErrorStep {
      * shape is byte-identical to what the legacy `CanonicalCoreStepDecoder` produced for
      * `core.error` (`{"kind":"error","message":"...","failureKind":"USER"}`), so durable
      * fingerprint/journal identity is continuous across the migration.
-     *
      * Round-trip `encode(I) → payload.encoded → decode` is lossless. Rejects unknown
      * `failureKind` names fail-closed (matches legacy behavior).
-     */
+*/
     private val inputCodec = object : StepCodec<CoreErrorInput> {
         override fun encode(value: CoreErrorInput): EncodedStepValue =
             EncodedStepValue(
@@ -100,12 +95,11 @@ object CoreErrorStep {
      *  - `kind` = `"error"` (discriminant)
      *  - `failureKind` = [FailureKind.name]
      *  - `failureMessage` = [PipelineFailure.message]
-     *
      * `outcome` is NOT serialized (it is reconstructed from `failureKind` + `failureMessage`
      * via [CoreErrorOutput.from], which is the single failure authority). Stack traces,
      * Throwable instances, or any non-contractual fields are NEVER encoded. The codec is
      * round-trip deterministic: `encode(decode(encode(x))) == encode(x)` byte-for-byte.
-     */
+*/
     private val outputCodec = object : StepCodec<CoreErrorOutput> {
         override fun encode(value: CoreErrorOutput): EncodedStepValue =
             EncodedStepValue(
@@ -134,17 +128,15 @@ object CoreErrorStep {
     /**
      * Descriptor preserved from the legacy metadata row:
      * `StepMetadata(setOf(Effect.ABORTS_PIPELINE), ReplayPolicy.NEVER)`.
-     *
      * `Effect.ABORTS_PIPELINE` is the Step's effect AFTER legitimate execution: a `core.error`
      * outcome aborts the pipeline (no later step executes). This is the typed outcome side
      * and is distinct from the replay decision (see [EffectReplayPolicy]).
-     *
      * `ReplayPolicy.NEVER` is the replay decision:
      *  - fresh / no durable entry → execute handler once (typed failure);
      *  - existing durable history → `ReplayDecision.ABORT`; handler NEVER runs again.
      * This is the same semantics as the legacy path, derived from the Step's real behavior
      * (no reproducible effect to re-execute), not copied from echo/sh.
-     */
+*/
     private val descriptor = StepDescriptor(
         stepId = "core.error",
         name = "error",
@@ -159,7 +151,7 @@ object CoreErrorStep {
      * to signal failure; it returns a [CoreErrorOutput] whose invariant is enforced in
      * the carrier's constructor and whose `outcome` is the single authority for the
      * `StepOutcome.Failure(failure)` projection.
-     */
+*/
     val definition: StepDefinition<CoreErrorInput, CoreErrorOutput> = object :
         StepDefinition<CoreErrorInput, CoreErrorOutput> {
 
@@ -183,10 +175,10 @@ object CoreErrorStep {
 
     /**
      * Registers this Step into a [StepRegistry]. NOT yet wired into
-     * [CoreStepRegistryFactory] (G2); until then `core.error` remains LEGACY_EXECUTABLE
-     * and `LEGACY_PLUGIN_IDS == 12`. Wiring happens in G2 after handler/codec/contract
+     * [CoreStepRegistryFactory]; until then `core.error` remains LEGACY_EXECUTABLE
+     * And `LEGACY_PLUGIN_IDS == 12`. Wiring happens in after handler/codec/contract
      * unit tests pass.
-     */
+*/
     fun registerInto(builder: StepRegistryBuilder) {
         builder.add(definition)
     }

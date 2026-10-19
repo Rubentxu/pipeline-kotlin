@@ -9,20 +9,16 @@ import java.nio.charset.StandardCharsets
  * The Output Plane frames bytes wherever a write happens, so a multi-byte code point can straddle a
  * page boundary. `StreamingUtf8Decoder` exists to hold that half code point and emit it once the
  * next page completes it.
- *
  * Its own KDoc names the guarantee twice, and both are the contract these tests pin:
- *
  * - "`String(bytes, UTF_8)` is the reference: a single-page decode is byte-for-byte equivalent."
  * - "Invalid byte sequences are replaced with U+FFFD — but ONLY when the decoder has confirmed
  *   that no continuation can follow (next page starts with an ASCII byte, …)."
- *
  * The second clause is what makes this more than a string-equality exercise: a decoder that holds
  * a leader byte must NOT also swallow the ASCII byte sitting behind it, because that byte is
  * already in the page and is not part of the incomplete sequence.
- *
  * Every test builds a fresh decoder: the class carries state across calls by design, so sharing an
  * instance between tests would let one test's held bytes explain another's output.
- */
+*/
 class StreamingUtf8DecoderTest {
 
     // --- the named reference: one page in, one page out ---------------------
@@ -43,7 +39,7 @@ class StreamingUtf8DecoderTest {
 
     @Test
     fun `a lone surrogate can never survive a decode`() {
-        // ED A0 80 encodes U+D800, which is not a character: it is half of a UTF-16 pair. A
+        // ED 80 encodes U+, which is not a character: it is half of a pair. A
         // decoder that emits it alone hands its consumer a value that is illegal to re-encode.
         val decoded = StreamingUtf8Decoder().decode(bytes(0xED, 0xA0, 0x80))
 
@@ -53,7 +49,7 @@ class StreamingUtf8DecoderTest {
 
     @Test
     fun `an overlong encoding is replaced, not decoded to the character it smuggles`() {
-        // C0 80 is the two-byte spelling of U+0000. Accepting it would let anything that filters
+        // 80 is the two-byte spelling of U+0000. Accepting it would let anything that filters
         // on decoded text be bypassed by writing the character in a longer form.
         val decoded = StreamingUtf8Decoder().decode(bytes(0xC0, 0x80))
 
@@ -68,7 +64,7 @@ class StreamingUtf8DecoderTest {
 
     @Test
     fun `a code point above the Unicode maximum is replaced`() {
-        // F7 BF BF BF is the largest sequence the 4-byte branch accepts: U+1FFFFF, which is
+        // BF BF BF is the largest sequence the 4-byte branch accepts: U+1FFFFF, which is
         // above U+10FFFF and therefore not a character at all.
         val decoded = StreamingUtf8Decoder().decode(bytes(0xF7, 0xBF, 0xBF, 0xBF))
 
@@ -80,7 +76,7 @@ class StreamingUtf8DecoderTest {
 
     @Test
     fun `an ASCII byte behind an incomplete leader is decoded, not held over`() {
-        // E2 is a 3-byte leader with only ONE byte after it in this page, and that byte is 'A',
+        // Is a 3-byte leader with only ONE byte after it in this page, and that byte is 'A'
         // which cannot be a continuation. The leader is malformed NOW: the decoder must emit
         // U+FFFD for it and decode the 'A' in the same page. Holding both would delay the 'A'
         // by a page and lose it entirely if the caller resets.
@@ -94,7 +90,7 @@ class StreamingUtf8DecoderTest {
 
     @Test
     fun `an ASCII byte behind a 4-byte leader is decoded, not held over`() {
-        // F0 is a 4-byte leader with three bytes after it, the second of which is 'A'. Only the
+        // Is a 4-byte leader with three bytes after it, the second of which is 'A'. Only the
         // first continuation is plausible; 'A' cannot continue it.
         val page = bytes(0xF0, 0x9F, 0x41, 0x80)
 

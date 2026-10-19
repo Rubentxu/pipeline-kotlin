@@ -17,35 +17,27 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /**
- * [LockCoordinator] backed by POSIX file locks (RP6-A / WU-091).
- *
+ * [LockCoordinator] backed by POSIX file locks
  * ## Why a file and not a durable queue
- *
- * Measured, not assumed: PipelineK has no controller and no worker (that is RP-8),
+ * Measured, not assumed: PipelineK has no controller and no worker (that is)
  * and `parallel` is coroutines inside ONE run. The contention that actually exists
  * today is therefore (a) branches of `parallel` in the same process and (b) two runs
  * in two processes on the same host. A file lock covers both, and nothing else.
- *
  * The decisive property is that **the OS owns the hold's lifetime**. There is no
  * durable row that a killed process can leave behind, so there is no stale lease to
  * expire and no recovery step to get wrong. That is the reason this backend is
  * chosen over a database queue, not convenience.
- *
  * What it deliberately does NOT do: order waiters. `priority` and
- * `inversePrecedence` need a queue, and a queue between hosts is an RP-8
- * requirement. Building one now would be building RP-8 by convenience.
- *
+ * `inversePrecedence` need a queue, and a queue between hosts is an
+ * Requirement. Building one now would be building by convenience
  * ## Re-entrancy: keyed by DURABLE owner, not by process
- *
  * Re-entrancy follows [LockOwner], never the process, thread or coroutine. A
  * second RUN in the same JVM is a different owner and must contend through the
  * OS lock like anyone else; only the same owner re-enters.
- *
  * This was decided here because Jenkins is re-entrant per build
  * (`LockableResourcesManager` is per build), so `lock("a") { lock("a") { ... } }`
  * inside one run runs the inner body. A backend that denied it would skip a body
  * silently and still report Success.
- *
  * The in-process map is not optional bookkeeping: a `FileLock` is owned by the
  * JVM, not the thread, so a second `tryLock` from the same JVM throws
  * [OverlappingFileLockException] instead of reporting contention. Some registry
@@ -53,7 +45,7 @@ import kotlinx.coroutines.withContext
  * than flagging a boolean — and it is what makes
  * [LockAdmission.Acquired.reentrant] a real value rather than a field nobody
  * sets.
- */
+*/
 class FileLockCoordinator(
     private val lockRoot: Path,
 ) : LockCoordinator {
@@ -61,7 +53,7 @@ class FileLockCoordinator(
     /**
      * Key of a hold: the canonical lock FILE plus a durable owner. Never a thread,
      * a coroutine, or the coordinator instance.
-     */
+*/
     private data class HoldKey(val lockPath: Path, val owner: LockOwner, val resource: String)
 
     private class HeldLock(
@@ -75,13 +67,12 @@ class FileLockCoordinator(
          * Poll cadence for a bounded or unbounded wait. Small enough that a
          * `skipIfLocked` denial is prompt, large enough not to spin a core while
          * a genuinely long `lock` body runs.
-         */
+*/
         const val POLL_INTERVAL_MILLIS = 50L
 
         /**
          * Holds taken by this PROCESS, keyed by canonical lock file and durable
          * owner. PROCESS-scoped and NOT instance-scoped, for two reasons:
-         *
          *  1. A `FileLock` is owned by the JVM, not by the thread or the object, so
          *     a second `tryLock` on the same file from the same JVM throws
          *     [OverlappingFileLockException] instead of reporting contention. A
@@ -90,29 +81,26 @@ class FileLockCoordinator(
          *  2. The durable spine may construct a FRESH coordinator per dispatch. A
          *     resume re-runs the handler, which must re-enter its own earlier hold;
          *     an instance-scoped registry would deadlock the run against itself.
-         *
          * Keyed by the canonical lock PATH so two coordinators over the same lock
          * root share holds, while two DIFFERENT lock roots (two workspaces) never
          * collide.
-         */
+*/
         val PROCESS_HOLDS: ConcurrentHashMap<HoldKey, HeldLock> = ConcurrentHashMap()
     }
 
     /**
      * Takes the lock, suspending rather than blocking while it waits.
-     *
      * The wait is coroutine-first: the `tryLock` syscall runs on
      * [Dispatchers.IO] because it is a real (fast) file operation, and the WAIT
      * itself is [delay]. A coroutine parked in `delay` retains no thread, so a
      * pipeline holding ten contended locks retains ten nothing.
-     *
      * Cancellation propagates as [kotlinx.coroutines.CancellationException] rather
      * than being converted into a typed denial. Turning a cancelled coroutine into
      * a business failure value is the mistake this deliberately avoids: the caller
      * is being cancelled, and a `Denied(Cancelled)` value would invite it to carry
      * on. [LockDenialReason.Cancelled] remains for a coordinator that is asked to
      * stop while its coroutine is still live.
-     */
+*/
     override suspend fun acquire(
         owner: LockOwner,
         resource: String,
@@ -165,12 +153,11 @@ class FileLockCoordinator(
 
     /**
      * Takes the OS lock according to [intent], SUSPENDING while it waits.
-     *
      * There is NO timed `tryLock` on this JDK's [FileChannel] (only `tryLock()` and
      * the positional `tryLock(long, long, boolean)`), so a bounded wait is a poll
      * loop — but the wait between attempts is [delay], not [Thread.sleep], so a
      * waiting acquire holds no thread at all.
-     */
+*/
     private suspend fun takeLock(
         channel: FileChannel,
         intent: LockIntent,
@@ -227,16 +214,15 @@ class FileLockCoordinator(
 
     /**
      * Canonical lock file for a resource name.
-     *
      * The name is sanitised AND suffixed with a short digest of the original, so
      * two different resource names can never map to one file by sanitisation
      * accident, and a name can never escape [lockRoot] through `..` or a
      * separator. A collision here would be a mutual-exclusion hole, so it is
      * designed out rather than validated at runtime.
-     */
+*/
     private fun lockFileFor(resource: String): Path {
         // 6 digest bytes, as before. The truncation is named in the utility rather than spelled
-        // here so this stays one hex form in the repository (B0).
+        // Here so this stays one hex form in the repository
         val digest = Sha256.ofBytesPrefix(resource.toByteArray(Charsets.UTF_8), 6)
         val safe = buildString {
             for (c in resource) {

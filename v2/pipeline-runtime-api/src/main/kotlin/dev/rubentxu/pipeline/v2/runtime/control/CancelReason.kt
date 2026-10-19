@@ -1,12 +1,11 @@
 package dev.rubentxu.pipeline.v2.runtime.control
 
 /**
- * M2 — closed ADT of cancel reasons a caller may pass.
- *
+ * Closed ADT of cancel reasons a caller may pass.
  * The reason is carried in the terminal `RunFinished` event payload and surfaces
  * in the journal row. New cases are compile errors at every `when` site that
  * exhausts this ADT.
- */
+*/
 sealed interface CancelReason {
 
     /** An operator or a consumer explicitly asked to cancel. */

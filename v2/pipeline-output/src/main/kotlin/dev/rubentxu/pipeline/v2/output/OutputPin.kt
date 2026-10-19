@@ -3,13 +3,12 @@ package dev.rubentxu.pipeline.v2.output
 import java.util.UUID
 
 /**
- * M3 — opaque identifier for an active pin.
- *
+ * Opaque identifier for an active pin.
  * The id is assigned by [OutputPinPort.pin] and must be carried
  * through `release(pinId)` and `pinsOf(stream)` filters. The
  * implementation chooses the format (UUID v4 is the recommended
  * baseline — collision-resistant, opaque, no PK-internal encoding).
- */
+*/
 @JvmInline
 value class OutputPinId(val value: String) {
     init {
@@ -24,8 +23,7 @@ value class OutputPinId(val value: String) {
 }
 
 /**
- * M3 — the durable record of one active pin.
- *
+ * The durable record of one active pin.
  * @property pinId       the opaque pin id (assigned at pin time)
  * @property stream      the stream whose bytes are held
  * @property range       the half-open byte range held; `range.last >=
@@ -37,7 +35,7 @@ value class OutputPinId(val value: String) {
  * @property createdAtMs epoch-ms when the pin was created
  * @property expiresAtMs epoch-ms when the pin expires, or `null` for
  *                       "no expiry"
- */
+*/
 data class OutputPin(
     val pinId: OutputPinId,
     val stream: OutputStreamId,
@@ -72,12 +70,11 @@ data class OutputPin(
 }
 
 /**
- * M3 — closed result of [OutputPinPort.pin].
- *
+ * Closed result of [OutputPinPort.pin].
  * Two cases: pinned (with the new pin id) OR refused (with a closed
  * [PinRefusal] reason). Adding a new refusal mode is a compile error
  * at every `when` site.
- */
+*/
 sealed interface OutputPinResult {
 
     /** The pin was created; [pinId] is the opaque id, [expiresAtMs] is the effective expiry. */
@@ -91,11 +88,10 @@ sealed interface OutputPinResult {
 }
 
 /**
- * M3 — closed ADT of reasons [OutputPinPort.pin] refused.
- *
- * Mirrors the M1 / M2 convention: sealed interface per port, no
+ * Closed ADT of reasons [OutputPinPort.pin] refused.
+ * Sealed interface per port, no
  * `Either`/`Result` re-use, every case named after a real failure mode.
- */
+*/
 sealed interface PinRefusal {
 
     /** No stream with this id has ever been opened. */
@@ -104,7 +100,7 @@ sealed interface PinRefusal {
     /**
      * The range extends past the stream's committed extent. The pin
      * store MUST refuse closed rather than clamping.
-     */
+*/
     data class RangeBeyondCommitted(
         val stream: OutputStreamId,
         val range: LongRange,
@@ -116,7 +112,7 @@ sealed interface PinRefusal {
      * exceeded. The default cap is
      * [OutputPinPort.DEFAULT_MAX_PINS_PER_STREAM]; a custom cap is
      * permitted at construction.
-     */
+*/
     data class TooManyPins(
         val stream: OutputStreamId,
         val limit: Int,
@@ -128,11 +124,10 @@ sealed interface PinRefusal {
 }
 
 /**
- * M3 — closed result of [OutputPinPort.release].
- *
+ * Closed result of [OutputPinPort.release].
  * Idempotent: a second call returns [AlreadyReleased] rather than a
- * refusal. Mirrors the M1-F.3 `SealOutcome.AlreadySealed` discipline.
- */
+ * Refusal. Mirrors the `SealOutcome.AlreadySealed` discipline
+*/
 sealed interface PinReleaseOutcome {
 
     /** The pin was released by this call. */

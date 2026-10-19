@@ -1,30 +1,25 @@
 package dev.rubentxu.pipeline.v2.release
 
 /**
- * P0.1 / P0.3 — exact product identity, as a pure decision.
- *
+ * Exact product identity, as a pure decision.
  * The product-identity rule is a single equality across the
  * [IdentitySurface] cases below:
- *
  * ```text
  * ProductVersion == AssetVersion == ArchiveRootVersion
  *                 == ImplementationVersion == RuntimeVersion == ManifestVersion
  * ```
- *
  * A mismatch is a build defect that blocks candidate handoff. The v0.43.0
  * incident is exactly this failure: the asset was advertised with a GA identity
  * while the bytes carried `rc1` inside.
- *
  * This is deliberately a **pure** function. It takes facts and returns a
  * decision. It does not open a ZIP, shell out, or read a JAR manifest, so it
  * is testable without a build and without a filesystem. The effectful
  * collector lives in [DistributionIdentityProbe]; the interpreter at the
  * boundary lives in the build task.
- *
  * The shape follows the AGENTS.md rule that a decision must be produced
  * before it is interpreted, and that a closed result type should express the
  * cases rather than a boolean plus a nullable string.
- */
+*/
 sealed interface DistributionIdentityVerdict {
 
     /** Every observed surface reports the same version. */
@@ -34,7 +29,7 @@ sealed interface DistributionIdentityVerdict {
      * At least two surfaces disagree. [conflicts] lists every offending
      * surface with the version it actually reported, so the diagnostic names
      * the mismatch instead of just asserting that one exists.
-     */
+*/
     data class Divergent(
         val expected: ProductVersion,
         val conflicts: List<SurfaceConflict>,
@@ -75,13 +70,12 @@ data class IdentityObservation(val surface: IdentitySurface, val reported: Strin
 
 /**
  * The observed facts of a built candidate.
- *
  * A [reported] of null means the surface could not be observed. That is
  * modelled as a missing value rather than a sentinel string so that
  * "reported the wrong thing" and "reported nothing" stay distinguishable: the
  * former is a divergence defect, the latter an incomplete build. Conflating
  * them would let a missing manifest read as a pass.
- */
+*/
 data class DistributionIdentityFacts(
     val observations: List<IdentityObservation>,
 ) {
@@ -91,11 +85,10 @@ data class DistributionIdentityFacts(
 
 /**
  * Decide identity consistency. Pure: no I/O, no clock, no environment.
- *
  * The expected version is derived from [IdentitySurface.PRODUCT_VERSION], the
  * build's own declaration, because that is the only surface the producer
  * controls directly. Everything else is derived from it and must match.
- */
+*/
 fun evaluateDistributionIdentity(
     facts: DistributionIdentityFacts,
 ): DistributionIdentityVerdict {
@@ -137,7 +130,7 @@ fun evaluateDistributionIdentity(
  * Render a verdict as the operator-facing message. Kept separate from the
  * decision so the decision stays pure and testable, and so the wording lives
  * in one place instead of being re-invented at each call site.
- */
+*/
 fun DistributionIdentityVerdict.render(): String = when (this) {
     is DistributionIdentityVerdict.Consistent ->
         "identity consistent: $version"

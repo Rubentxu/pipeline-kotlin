@@ -21,8 +21,7 @@ dependencies {
     implementation(project(":pipeline-scripting-api"))
     implementation(project(":pipeline-step-sdk:api"))
 
-    // Unit-test wiring ADDED (2026-10-19) for the teardown decisions.
-    //
+    // Unit-test wiring ADDED for the teardown decisions.
     // The three defects this module carried were all in the ORDERING and ACCUMULATION of the
     // credential bind/unbind teardown, none of which is reachable from a `.pipeline.kts` example
     // without a real lock, a real event store and a real filesystem — and AGENTS.md section 2
@@ -30,7 +29,6 @@ dependencies {
     // extracted into pure top-level functions in `CredentialTeardown.kt` and
     // `:pipeline-domain`'s `wipeMaterialization`, each with its filesystem, event-store and
     // SecretHandle effects injected, so what the tests pin is the rule rather than the I/O.
-    //
     // `useJUnitPlatform()` below is load-bearing, not boilerplate. Without it Gradle defaults to
     // the JUnit 4 runner, discovers zero JUnit 5 tests, and reports BUILD SUCCESSFUL over an
     // empty result set — and `scripts/verify-all.sh` would then read that as a passing module
@@ -49,3 +47,4 @@ tasks.test {
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
+

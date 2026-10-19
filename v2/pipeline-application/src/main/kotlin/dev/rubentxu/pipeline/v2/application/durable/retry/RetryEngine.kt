@@ -24,21 +24,17 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Application-internal authority for the retry aggregate (WU-LPR-302 Phase 2,
- * 2026-09-18; ADR-0075).
- *
+ * Application-internal authority for the retry aggregate (Phase 2
+ * ;).
  * ## What this owns
- *
  * `RetryEngine` owns the **loop**: reconcile -> should-invoke -> build attempt
  * context -> `BodyInvoker.invoke(...)` -> fold outcome -> persist transition.
  * It does NOT iterate body children; it does NOT call the canonical
  * `invokeBodyChildren` directly. The body-child traversal lives in the
  * canonical coordinator's shared loop; the engine reaches that loop through the
- * `BodyInvoker` port (B11 / W2) so the canonical "one body-child traversal
+ * `BodyInvoker` port so the canonical "one body-child traversal
  * authority" law is preserved.
- *
  * ## What it does NOT own
- *
  * - The `BodyRef` lifecycle (`open` / `close`): the canonical coordinator
  *   remains the owner; the engine only invokes the registered body through
  *   `BodyInvoker.invoke`.
@@ -48,33 +44,27 @@ import java.util.UUID
  * - The legacy compat retry loop (no `retryControlJournal`): the canonical
  *   coordinator keeps its inline legacy loop bit-equivalent for callers that
  *   have not yet opted into the durable retry aggregate.
- *
  * ## Plan-only invariant
- *
  * `plan()` is the pure read path and is unchanged in semantics from
  * [RetryReconciliationDriver]: read the journal, build the input, delegate to
  * [RetryReconciler]. The engine mutates ONLY through `journal.beginAttempt`
- * and `journal.updateStatus`, and only after a plan() emits a mutation
- * decision. The single-writer law (ADR-0075 §11) is preserved: this engine is
+ * and `journal.updateStatus`, and only after a plan emits a mutation
+ * Decision. The single-writer law is preserved: this engine is
  * the only place that mutates [FileBasedRetryControlJournal] for the retry
  * aggregate.
- *
  * ## Body invocation law
- *
  * The engine invokes the body through `bodyInvoker.invoke(bodyRef,
  * BodyInvocationContext(attempt = AttemptSegment(N, key)))`. The runner
  * registered by the canonical coordinator (Phase 1b) projects `attempt` onto
  * the per-attempt deterministic `bodyPath` segment, so each attempt owns a
  * distinct journal OpId. The engine is `StepKey`-blind: it does not branch on
  * concrete `PluginStepId` and does not call `invokeBodyChildren` directly.
- *
  * ## Re-entry port discipline
- *
  * `RetryEngine` depends only on the public [BodyInvoker] port. It does NOT
  * declare or require any secondary `BodyExecutor`, `BranchInvoker`,
  * `BodyRunnerPort`, or `BlockExecutor` collaborator. The port count for body
- * re-entry is exactly ONE across the application (B10 / W1d-W2 fitness law).
- */
+ * Re-entry is exactly ONE across the application
+*/
 class RetryEngine(
     private val journal: FileBasedRetryControlJournal,
     private val eventSink: EventSink,
@@ -98,20 +88,17 @@ class RetryEngine(
 
     /**
      * Project a retry attempt's terminal durable transition.
-     *
      * Persists the terminal status via the control journal and emits
      * [RetryAttemptFinished] only when the transition actually occurred
      * (RUNNING -> FAILED / RUNNING -> SUCCEEDED). Re-terminaling an attempt
      * that is already in the requested terminal state is a no-op: no event.
-     *
      * Replay paths (ReuseSuccess / ReuseFailure / CloseSuccessFromChild) do
      * not route through here, so replay never fabricates extra events.
-     *
      * This helper is part of the retry aggregate's authority and is the
      * single place that translates durable status transitions into the
      * [RetryAttemptFinished] event. The canonical coordinator's previous
      * `persistAttemptTerminalTransition` has been replaced by this engine.
-     */
+*/
     private fun persistTerminalTransition(attempt: Int, status: OperationStatus) {
         val priorStatus = journal.readState(
             controlOpId = controlOpId,
@@ -156,7 +143,7 @@ class RetryEngine(
      * Pure plan-only read of durable state. Equivalent to
      * [RetryReconciliationDriver.plan]. Kept on the engine so the dispatch
      * loop below is one collaborator; the planner remains pure.
-     */
+*/
     fun plan(): RetryReconciliationDecision {
         val state = journal.readState(
             controlOpId = controlOpId,
@@ -181,14 +168,12 @@ class RetryEngine(
 
     /**
      * Execute the retry aggregate against [bodyRef].
-     *
      * The loop is bounded by [maxAttempts] + 1 ticks to guarantee progress.
      * The engine never reaches the canonical `invokeBodyChildren` directly;
      * it re-enters the body through the [BodyInvoker] port the coordinator
      * already opened under [bodyRef], passing the per-attempt
      * [BodyInvocationContext] so the runner projects the attempt onto a
      * distinct bodyPath segment.
-     *
      * Outcomes are folded into [StepOutcome]:
      *  - `ReuseSuccess` / `CloseSuccessFromChild` -> [StepOutcome.Success]
      *  - `ReuseFailure` -> [StepOutcome.Failure] with [FailureKind.SCRIPT]
@@ -197,11 +182,10 @@ class RetryEngine(
      *  - `ScheduleAttempt` / `ResumeAttempt` -> invoke, fold, persist
      *    transition, advance or return
      *  - `AdvanceAfterFailure` -> persist next attempt RUNNING, loop
-     *
      * The body's typed outcome (Success / Failure / Unstable) decides the
      * engine's fold; the engine itself is `StepKey`-blind (no `when(stepKey)`,
      * no `if (pluginStepId == ...)`).
-     */
+*/
     suspend fun execute(bodyRef: dev.rubentxu.pipeline.v2.domain.step.BodyRef): StepOutcome {
         // The loop is bounded by `2 * maxAttempts + 1` ticks to guarantee
         // progress. Each failed attempt consumes two ticks (an
@@ -216,7 +200,7 @@ class RetryEngine(
             when (decision) {
                 is RetryReconciliationDecision.ReuseSuccess -> return StepOutcome.Success
                 is RetryReconciliationDecision.ReuseUnstable -> {
-                    // P2: the control row already carries UNSTABLE; a reuse arm replays the
+                    // The control row already carries UNSTABLE; a reuse arm replays the
                     // durable truth and writes NOTHING. The restart answers the same unstable
                     // fact fresh execution produced, with zero further attempts.
                     return StepOutcome.Unstable
@@ -339,3 +323,4 @@ class RetryEngine(
         )
     }
 }
+

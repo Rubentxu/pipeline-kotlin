@@ -32,20 +32,17 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * TRAIN H4 / PR-020 — the parallel aggregate, out of the step-execution spine.
- *
+ * TRAIN / — the parallel aggregate, out of the step-execution spine
  * A parallel stage is not a Step. It is a composite whose durable identity is an AGGREGATE row
  * reconciled against every branch child's row, and whose outcome is a fold over typed branch
  * outcomes. That is a different job from "take this Step and make it happen", so it gets its
  * own unit rather than living as a large private method of the Step dispatcher.
- *
  * The split is also the honest one for testing. [aggregateAction] is PURE — no journal, no
  * clock, no coroutine — so the whole parallel law (fail-closed on divergence, no duplicate row
  * on reuse, RUNNING written before any branch launches) is decidable without running a pipeline.
- *
  * One direction only: this engine dispatches branch steps through [StepDispatchEngine], which
  * knows nothing about parallel aggregates. There is no cycle and no second dispatch spine.
- */
+*/
 internal class ParallelStageEngine(
     private val stepDispatch: StepDispatchEngine,
     private val journal: OperationJournal,
@@ -66,12 +63,11 @@ internal class ParallelStageEngine(
         val branches = (stage.body as? StageBody.Parallel)?.branches
             ?: throw EngineInvariantViolation("runParallelStage called for non-parallel stage '${stage.name}'")
 
-        // INC-007 (+1 helper, canonical coordinator dispatchBody sibling).
-        //
+        // (+1 helper, canonical coordinator dispatchBody sibling)
         // Dispatches parallel branch bodies with fresh per-child journal rows so
         // every branch child gets independent durable rows and a durable rerun
         // reuses completed branch work instead of duplicating it.
-        // E-EM-11 Z2: the canonical stage law is StageStarted < stage execution <
+        // The canonical stage law is StageStarted < stage execution <
         // StageFinished for EVERY admitted stage, including parallel bodies. The
         // parallel path previously forked before the linear-path StageStarted emitter,
         // an accidental implementation difference, not a different Stage semantic.
@@ -79,7 +75,7 @@ internal class ParallelStageEngine(
         // by the caller's continuation handling.
         runLifecycle.stageStarted(runId, stageIndex, stage.name)
 
-        // PAR-D D2: plan the parallel aggregate from durable facts BEFORE any branch
+        // Plan the parallel aggregate from durable facts BEFORE any branch
         // launches. The reconciler is pure; this class is the single writer.
         val aggregateId = ParallelAggregateId(runId = runId.value, stageIndex = stageIndex)
         val aggregateInput = OperationInput(
@@ -154,7 +150,7 @@ internal class ParallelStageEngine(
 
         val branchOutcomes = launchBranches(branches, branchesToRun, runId, stageIndex, stageShOptions, executionContext)
 
-        // PAR-D D2: fold the typed branch outcomes (exact semantic knowledge at fresh
+        // Fold the typed branch outcomes (exact semantic knowledge at fresh
         // execution time) and close the aggregate row with the lossless carrier.
         val outcomeByBranch = branchesToRun.mapIndexed { i, branchIdx ->
             val o = branchOutcomes[i]
@@ -175,15 +171,14 @@ internal class ParallelStageEngine(
     }
 
     /**
-     * PAR-D structured concurrency: the join runs inside a caller-bound supervisorScope; branch
+     * Structured concurrency: the join runs inside a caller-bound supervisorScope; branch
      * outcomes are typed VALUES (contained), never exceptions used as control flow. The scope
      * exits only when every branch resolves, so no coroutine survives the parallel stage
      * lifecycle. A branch CancellationException stays an execution mechanism — it is converted
      * here, never into a durable terminal truth.
-     *
      * The join is all-or-nothing by construction: every launched branch is awaited before this
      * returns, so a fast failure can never leave a slow sibling still writing journal rows.
-     */
+*/
     private suspend fun launchBranches(
         branches: List<StageNode>,
         branchesToRun: List<Int>,
@@ -210,7 +205,7 @@ internal class ParallelStageEngine(
                     val branchOutcome = executeBranchSteps(
                         branch, runId, stageIndex, branchIndex, stageShOptions, executionContext,
                     )
-                    // P3-E E2: exhaustive WITHOUT `else`, on purpose. This used to end
+                    // Exhaustive WITHOUT `else`, on purpose. This used to end
                     // in `else -> "success"`, which meant a `StepOutcome` case nobody had
                     // written yet would be reported to every external observer as a
                     // SUCCESS. The type system is the only thing standing between a new
@@ -240,7 +235,7 @@ internal class ParallelStageEngine(
         return deferred.map { it.await() }
     }
 
-    /** Deterministic control OpId for the parallel aggregate (PAR-D typed identity). */
+    /** Deterministic control OpId for the parallel aggregate (typed identity) */
     private fun parallelControlOpId(runIdValue: String, stageIndex: Int): String =
         OpId(runIdValue, stageIndex, -1, bodyPath = listOf(BlockSegment("0:parallel-control"))).format()
 
@@ -249,15 +244,14 @@ internal class ParallelStageEngine(
      * the durable facts. Closed, because "report a durable outcome", "close the aggregate and
      * report", and "keep it running and launch these branches" are three different obligations
      * and a caller that guessed between them would either duplicate a row or lose one.
-     *
      * The row travels as a VALUE so this function never touches the journal. The engine stays
      * the single writer; it just no longer decides what to write.
-     */
+*/
     private sealed interface AggregateAction {
         /**
          * The durable outcome is replayed. NO row is written: the row that carries this outcome
          * already exists, and rewriting it would be a second write of the same truth.
-         */
+*/
         data class Settle(val outcome: StepOutcome) : AggregateAction
 
         /** Close the aggregate with [row], then report [outcome]. Exactly one write. */
@@ -267,7 +261,7 @@ internal class ParallelStageEngine(
          * Keep the aggregate RUNNING and launch [branches]. [runningRow] is non-null only when
          * the aggregate row must be (re)written before launching; null means it is already
          * RUNNING and writing again would be a duplicate.
-         */
+*/
         data class Launch(val runningRow: CompositeOperation?, val branches: List<Int>) : AggregateAction
     }
 
@@ -275,7 +269,7 @@ internal class ParallelStageEngine(
      * The PURE mapping from a reconciliation decision to the obligation it names. No journal, no
      * coroutine, no clock: given the same decision and durable facts it always returns the same
      * action, which is what makes the parallel law checkable without running a pipeline.
-     */
+*/
     private fun aggregateAction(
         decision: ParallelDecision,
         aggregateOpId: String,
@@ -341,7 +335,7 @@ internal class ParallelStageEngine(
             decision.branches,
         )
 
-        // Already RUNNING, or absent for a pre-PAR-D journal: write only when it is actually absent,
+        // Already RUNNING, or absent for a journal: write only when it is actually absent
         // so a resume never duplicates a row that is already there.
         is ParallelDecision.ResumeBranches -> AggregateAction.Launch(
             if (aggregateRowPresent) null else compositeRunningRow(aggregateOpId, aggregateFingerprint, aggregateInput),
@@ -351,7 +345,6 @@ internal class ParallelStageEngine(
 
     /** The durable status that carries a branch terminal, in one place so the row and the
      *  reported outcome can never disagree about it.
-     *
      *  `Unstable` was `ABORTED` here while the same fact arriving through `StepOutcome` became
      *  `FAILED` elsewhere, so a child row and the aggregate row of one branch described the same
      *  condition two different ways. Both now name [OperationStatus.UNSTABLE], which is what makes
@@ -416,7 +409,7 @@ internal class ParallelStageEngine(
      * Dispatches one parallel branch's linear steps through the shared spine with
      * branch-indexed journal identity. A branch failure is contained: it becomes
      * the branch outcome, never a throw (the join waits for all branches).
-     */
+*/
     private suspend fun executeBranchSteps(
         branch: StageNode,
         runId: RunId,
@@ -425,13 +418,13 @@ internal class ParallelStageEngine(
         stageShOptions: ShOptions,
         executionContext: ExecutionContext,
     ): StepOutcome {
-        // CTX-P2 branch derivation: immutable value; today branchContext == parentContext.
+        // Immutable value; today branchContext == parentContext.
         val branchContext = executionContext
-        // SB-S-008 / WU-LPR-071: parallel branches get ISOLATED cwds. The workspace is
+        // Parallel branches get ISOLATED cwds. The workspace is
         // derived purely from (controlDirRoot, stageIndex, branchIndex) and carried in
         // the branch's immutable ShOptions copy — no coordinator state is mutated and
         // no branch can observe a sibling's working directory. With --workspace
-        // (workspaceBase set) the shared project workspace wins, per WU-LPR-062.
+        // (workspaceBase set) the shared project workspace wins
         val branchShOptions = if (controlDirRoot != null && workspaceBase == null) {
             val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
             val branchWorkspace = resolver.ensureCreated(
@@ -441,13 +434,13 @@ internal class ParallelStageEngine(
         } else {
             stageShOptions
         }
-        // P2 fitness: branches must observe an explicitly derived context, never coordinator state.
+        // Branches must observe an explicitly derived context, never coordinator state.
         val steps = (branch.body as? StageBody.Steps)?.steps
             ?: throw EngineInvariantViolation("Parallel branch '${branch.name}' has a non-linear body")
         var outcome: StepOutcome = StepOutcome.Success
         for (stepIndex in steps.indices) {
             val step = steps[stepIndex]
-            // Branch durable identity: dispatch() derives the journal key from the
+            // Branch durable identity: dispatch derives the journal key from the
             // bodyPath it is handed, so the branch index is encoded as the FIRST
             // deterministic BlockSegment ("b{branchIndex}:branch"). Two branches'
             // children can never collide; a durable rerun reuses the same keys.
@@ -465,7 +458,7 @@ internal class ParallelStageEngine(
                 bodyPath,
                 branchContext,
             )
-            // R14: a parallel branch only needs to KNOW the outcome, so it projects it here. The
+            // A parallel branch only needs to KNOW the outcome, so it projects it here. The
             // carrier is not destroyed to make that possible — `Dispatched` still holds the encoded
             // value, and the branch aggregate is free to read it if it ever needs to.
             val stepOutcome = dispatchedBranch.result.outcome
@@ -477,3 +470,4 @@ internal class ParallelStageEngine(
         return outcome
     }
 }
+

@@ -17,21 +17,17 @@ import kotlinx.serialization.json.put
 
 /**
  * THE single wire authority for the `core.waitUntil` **block** payload
- * (DEBT-WIRE-AUTHORITY, `bl-bl-01M3YGH3FE000387X13PG607G0`).
- *
+ * (`bl-bl-01M3YGH3FE000387X13PG607G0`).
  * Before this object existed, `DslCompiledPipelineCompiler.blockPayload`
  * hand-wrote this format in JSON while the Step's own codec wrote the
  * registry one — the same shape of divergence `core.sh` suffered
  * (`kind=sh|shell`, `command|script`, `returnStdout|returnMode`), where every
  * alias is a compatibility shim added after the fact.
  * [Lfc2WaitUntilWireAuthorityFitnessTest] freezes the law, the third Step after
- * `core.lock` (WU-091) and `core.input` (WU-092).
- *
+ * `core.lock` and `core.input`.
  * ## The bytes are unchanged, and that is the contract
- *
  * [encode] reproduces the compiler's previous output character for character,
  * including the `kind` discriminator and the key order. Two measured reasons:
- *
  * 1. `Lfc2WaitUntilDslCanonicalProjectionTest` asserts, across the productive
  *    authority, that the compiled block payload carries `kind="waitUntilBlock"`.
  * 2. The compiled payload is the one string hashed into the operation identity
@@ -39,27 +35,23 @@ import kotlinx.serialization.json.put
  *    which `OperationInput` documents as fingerprint input), and the replay
  *    table's first rule is `!hasJournalEntry -> RERUN`. So a changed payload does
  *    not silently reuse old history: the operation runs again.
- *
  * This text previously cited `BodyStructureDigest` for reason 2. That was wrong.
  * `BodyStructureDigest.of()` appends the payload string, but its only call-site is
  * guarded by `hasBodyContinuation`, bound solely for the `HANDLER_CONTINUATION`
  * owner, which only `core.lock` and `core.input` declare. `core.waitUntil` is an
  * engine-driven block, so its payload never reaches that digest. The conclusion
  * (bytes unchanged, extraction is about authorship) survived; the mechanism did not.
- *
  * `maxBackoffMs` is therefore a deliberate format CHANGE made in a later slice,
  * and it is safe for the reason above: the durable resume misses its old key and
- * re-executes, which is the fail-closed direction DR-10 asks for. Removing the
+ * Re-executes, which is the fail-closed direction asks for. Removing the
  * discriminator later is a separate decision that needs a compatibility review.
- *
  * ## Not the same format as the registry one
- *
  * `CoreWaitUntilStep`'s codec owns `encodedInput`, discriminator
  * `kind="waitUntil"`, decoded before the handler runs. This one owns the block
  * IR payload, discriminator `kind="waitUntilBlock"`. Two carriers, two formats,
  * two types ([CoreWaitUntilInput] vs `WaitUntilInput`), and the decoder below
  * refuses the other one by name rather than guessing.
- */
+*/
 object CoreWaitUntilWireCodec : StepCodec<CoreWaitUntilInput> {
 
     /** Discriminator of the block carrier. Distinct from the registry one by design. */

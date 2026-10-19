@@ -8,18 +8,16 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * PK-1 / ADR-PK1-IDENTITY — `pipeline sdk-info` subcommand.
- *
+ * `pipeline sdk-info` subcommand.
  * Emits the SDK manifest the current build was compiled against on
  * stdout as a single line of `pipelinek.sdk/1` JSON. The output is
  * side-effect-free.
- *
  * The list of [COORDINATES] is the contract declared in
  * `v2/build.gradle.kts` (`publishedContractModules` + the BOM). A
  * consumer that parses this line can verify, by external observation
  * of the resolved artifacts, that the build matches the expected
  * contract.
- */
+*/
 object MainSdkInfoCli {
     const val SCHEMA: String = "pipelinek.sdk/1"
 
@@ -35,7 +33,7 @@ object MainSdkInfoCli {
 
     /**
      * @return 0 on success (always).
-     */
+*/
     @Suppress("UnusedParameter") // args is required by the JVM main signature.
     fun main(args: Array<String>): Int {
         val version = RuntimeApiVersion.readImplementationVersion() ?: "unknown"

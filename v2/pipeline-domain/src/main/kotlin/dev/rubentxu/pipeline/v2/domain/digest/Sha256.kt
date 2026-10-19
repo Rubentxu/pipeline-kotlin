@@ -7,48 +7,38 @@ import java.nio.file.Path
 import java.security.MessageDigest
 
 /**
- * The one SHA-256 utility in this repository (B0).
- *
+ * The one SHA-256 utility in this repository
  * ## Why this exists
- *
  * An inventory at `6e8e86bd` found 29 `MessageDigest.getInstance("SHA-256")` call sites across
  * seven modules and four separately written `sha256Hex` helpers, with no shared utility. Each
  * site re-decided two things that must agree:
- *
  * ```text
  * hex encoding   lowercase "%02x" vs something else
- * byte source    UTF-8 by default, or platform default
+ * Byte source by default, or platform default
  * ```
- *
  * A divergence in either is not visible at the call site. `Fingerprint` hashing a payload as
- * UTF-8 while an artifact handle hashes the same bytes as platform default produces two digests
+ * While an artifact handle hashes the same bytes as platform default produces two digests
  * for one artifact on a non-UTF-8 default, and the mismatch surfaces as a replay divergence
  * far from its cause. The duplication is therefore a correctness risk, not only duplication.
- *
  * ## What it guarantees
- *
  * ```text
  * hex      lowercase, 64 characters, no locale surprises
- * text     UTF-8, always — never the platform default charset
+ * Text, always — never the platform default charset
  * file     streamed, so a large artifact does not have to be resident
  * ```
- *
  * The streaming form is what [ofFile] uses and what the file-digest call sites should use; it
  * is byte-for-byte identical to hashing the file's contents read whole.
- *
  * ## Scope, and what it deliberately does NOT do
- *
  * This is a primitive, not a policy. It does not decide *what* is hashed, in *which* order, or
  * which files participate — those are decisions of the caller and belong to that caller's
  * contract. [ofDirectory] is the one bundled composite, because "a directory's identity with
  * generated metadata excluded" is a decision this repository has already had to make twice
  * (`archiveArtifacts`, `stash`), and having it once, with an EXACT exclusion, is cheaper than
  * having it twice with a subtly different matcher.
- *
  * Callers whose digest is already durable (every fingerprint written by a shipped candidate)
  * MUST NOT change their input bytes to "improve" them. Migrating a call site means routing the
  * same bytes through this object, not changing what is hashed.
- */
+*/
 object Sha256 {
 
     /** Buffer size for streaming. 8192 is the JDK default and matches the previous sites. */
@@ -56,30 +46,27 @@ object Sha256 {
 
     /**
      * Lowercase hex of the SHA-256 of [bytes].
-     *
      * `%02x` on a signed `Byte` yields the two-digit form in Kotlin because the format masks
      * to 8 bits; the value is therefore stable for negative bytes (`-1` -> `ff`), which the
      * tests pin against the JDK oracle.
-     */
+*/
     fun ofBytes(bytes: ByteArray): String = hex(MessageDigest.getInstance("SHA-256").digest(bytes))
 
     /**
-     * Lowercase hex of the SHA-256 of [text], encoded as UTF-8.
-     *
-     * UTF-8 is explicit and never `Charset.defaultCharset()`. Every previous site that hashed a
+     * Lowercase hex of the SHA-256 of [text], encoded as
+     * Is explicit and never `Charset.defaultCharset()`. Every previous site that hashed a
      * string used `toByteArray(Charsets.UTF_8)`; making it the only option removes the class of
      * bug where a new site silently picks the platform default and disagrees with every
      * existing durable fingerprint on the same input.
-     */
+*/
     fun ofText(text: String): String = ofBytes(text.toByteArray(StandardCharsets.UTF_8))
 
     /**
      * Lowercase hex of the SHA-256 of the file's CONTENTS, streamed.
-     *
      * The path is not an input. Two files with equal bytes at different locations hash equal,
      * which is what an artifact-identity caller means and what a call site that hashed the path
      * would silently get wrong.
-     */
+*/
     fun ofFile(file: Path): String {
         val digest = MessageDigest.getInstance("SHA-256")
         Files.newInputStream(file).use { stream -> stream.update(digest) }
@@ -88,15 +75,13 @@ object Sha256 {
 
     /**
      * The lowercase hex of the first [byteCount] digest bytes, as a short lock discriminator.
-     *
      * Exists because this caller needs a PREFIX of the digest, not the digest. It is a named
      * truncation rather than a caller-side `.take(n)` on a full hex string: a local
-     * `joinToString` truncation is one more spelling of the hex form, which is what B0 exists
+     * `joinToString` truncation is one more spelling of the hex form, which is what exists
      * to remove. The bytes hashed and the truncation point are unchanged from the previous
      * implementation, so existing lock file names are unaffected.
-     *
      * @param byteCount how many digest bytes to keep; must be positive.
-     */
+*/
     fun ofBytesPrefix(bytes: ByteArray, byteCount: Int): String {
         require(byteCount > 0) { "byteCount must be positive, got $byteCount" }
         val full = MessageDigest.getInstance("SHA-256").digest(bytes)
@@ -105,60 +90,50 @@ object Sha256 {
 
     /**
      * Lowercase hex of the SHA-256 of [bytes], matching [ofBytes] for the same content.
-     *
      * Retained as a named alternative rather than removed: `ofText` is the spelling that says
      * "this was a string", and having both is one line. If a caller is migrating, prefer
      * [ofText].
-     */
+*/
     fun ofString(value: String): String = ofText(value)
 
     /**
      * Whether [value] is one of this object's own outputs: 64 characters of lowercase hex.
-     *
      * ## Why the minting class has to answer this
-     *
      * Every method above states the format in prose — "lowercase, 64 characters" — and until
      * this one, no caller could ask whether a string it *received* held that format. So each
      * site that consumes a digest written elsewhere had to re-decide the format, and measured
-     * 2026-10-18 that several of them decided it as `length == 64` alone: 64 characters of any
+     * that several of them decided it as `length == 64` alone: 64 characters of any
      * kind passed, and reached every consumer as a digest that could never match a real one.
      * A length check against a field documented as a SHA-256 is an assertion about a format it
      * does not test.
-     *
      * The class that produces the value is the only place the answer can stay correct when the
      * format changes, so this lives here rather than in each consumer.
-     *
      * ## Why uppercase is refused rather than accepted
-     *
      * [ofBytes] emits `0-9a-f` only, so uppercase was not written by this object. Accepting it
      * would give one digest two spellings that compare unequal, which is the same defect
-     * B0 exists to remove. `dev.rubentxu.pipeline.v2.domain.step.SemVer` accepts `A-F`
+     * Exists to remove. `dev.rubentxu.pipeline.v2.domain.step.SemVer` accepts ``
      * deliberately — that is a version string, not a digest, and it simply does not call this.
-     */
+*/
     fun isSha256Hex(value: String): Boolean =
         value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' }
 
     /**
      * A stable digest of a directory's regular files, in path order, with generated metadata
      * excluded by EXACT file name.
-     *
      * The framing is explicit and unambiguous: each contributing file contributes
      * `relativePath \u0000 content`, and the sequence is terminated.
-     *
      * The separator is NUL rather than a space, and that choice is load-bearing: a SPACE is a
      * legal character in a file name, so a space-separated framing makes the directory holding
      * `("a b.txt", "c.txt")` and the one holding `("a.txt", "b c.txt")` produce the same
      * pre-image and therefore the same digest. A collision reachable by renaming a file is
      * exactly what an identity function must not have.
-     *
      * Excluded names match the file name EXACTLY (`index.json` excludes `index.json` and does
      * not exclude `index.json.bak`, `myindex.json` or `index`). A prefix, suffix or substring
      * match is the specific defect this method exists to prevent, so it is spelled as an
      * equality test on the file name and nothing else.
-     *
      * Empty exclusions and empty directories are defined rather than left to a null: an empty
      * directory is the digest of an empty byte sequence, which is a real value.
-     */
+*/
     fun ofDirectory(root: Path, excludedFileNames: Set<String> = emptySet()): String {
         // Files.walk returns a Stream whose walk directory handles must be closed. Closed here
         // explicitly rather than with `use`, which would do exactly the same thing -- the old
@@ -170,7 +145,6 @@ object Sha256 {
         val stream = Files.walk(root)
         val canonical: List<Pair<String, Path>> = try {
             // Ordered by RELATIVE PATH, with an explicit comparator.
-            //
             // `.sorted()` with no argument is wrong here and was caught by the
             // functional test, not by review: kotlin.Pair does not implement Comparable,
             // so the natural-order comparator throws ClassCastException on the second
@@ -195,11 +169,10 @@ object Sha256 {
 
     /**
      * Feed a stream into [digest] and return the stream.
-     *
      * Takes the digest rather than creating one so a caller hashing several sources into one
      * digest (a manifest of parts, say) shares the framing and the hex form without copying
      * them.
-     */
+*/
     private fun InputStream.update(digest: MessageDigest): InputStream {
         val buffer = ByteArray(STREAM_BUFFER)
         while (true) {

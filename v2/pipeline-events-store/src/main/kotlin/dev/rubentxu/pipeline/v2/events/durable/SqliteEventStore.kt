@@ -87,44 +87,40 @@ import java.util.concurrent.atomic.AtomicLong
  * SQLite-backed event store using JDK 21 stdlib java.sql.
  * Each operation opens a fresh connection that auto-commits and closes,
  * ensuring data is immediately visible to subsequent readers.
- *
- * ## M2-R1 Variants
- * This store supports all M2-R1 event variants in addition to M1-R3 variants:
+ *  Variants
+ * This store supports all event variants in addition to variants
  * - [AgentResolved][dev.rubentxu.pipeline.v2.events.AgentResolved]
  * - [ParallelBranchStarted][dev.rubentxu.pipeline.v2.events.ParallelBranchStarted]
  * - [ParallelBranchFinished][dev.rubentxu.pipeline.v2.events.ParallelBranchFinished]
  * - [RetryAttemptStarted][dev.rubentxu.pipeline.v2.events.RetryAttemptStarted]
  * - [RetryAttemptFinished][dev.rubentxu.pipeline.v2.events.RetryAttemptFinished]
  * - [TimeoutScheduled][dev.rubentxu.pipeline.v2.events.TimeoutScheduled]
- *
  * New variants are decoded via the [JsonEventLog][dev.rubentxu.pipeline.v2.events.durable.JsonEventLog]
  * `kind` discriminator — no schema migration required.
- *
- * ## M3-R1 Extension
+ *  Extension
  * This store also creates the [operation_journal][dev.rubentxu.pipeline.v2.events.durable.OperationJournalSchema]
  * and [replay_cursor][dev.rubentxu.pipeline.v2.events.durable.OperationJournalSchema] tables
  * via [SqliteConnectionFactory] with WAL mode enabled.
- */
+*/
 class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
 
     private val sequenceCounters = ConcurrentHashMap<String, AtomicLong>()
 
     // ------------------------------------------------------------------
-    // WU-LPR-042: persistent connection + single-writer batched appends.
-    //
+    // Persistent connection + single-writer batched appends.
     // Overload policy (explicit, honest): appends enqueue on a bounded
     // queue drained by ONE writer thread that commits in batches inside a
     // single transaction. If the queue fills (producer outpacing durable
-    // writer), append() BLOCKS — bounded + lossless; silent loss is not an
+    // writer), append BLOCKS — bounded + lossless; silent loss is not an
     // option. The durable unit is the SQLite COMMIT (WAL, synchronous=
-    // NORMAL: durable under process crash). flush() is a barrier: blocks
+    // NORMAL: durable under process crash). flush is a barrier: blocks
     // until every enqueued event is committed.
     // ------------------------------------------------------------------
 
     /**
      * Closed ADT for the single-writer queue: each case carries only what
      * it needs (no nullable-sentinel DomainEvent, no flag bag).
-     */
+*/
     private sealed interface PendingWrite {
         /** A real event to insert. */
         data class Event(val event: DomainEvent) : PendingWrite
@@ -175,22 +171,19 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                     """.trimIndent()
                 )
             }
-            // WU-RP-020: the durable sequence authority.
-            //
+            // The durable sequence authority.
             // The per-run counter is seeded ONCE per instance from
             // MAX(sequence), so two store instances over the same database
             // each start from the same number and then increment
             // independently. Without a uniqueness constraint BOTH inserts
             // succeed and the events table accumulates duplicate sequences,
             // breaking the per-run monotonic invariant that replay and every
-            // external observer depend on (P1 bl-bl-01M3QD197Q000387ET2D4MFKR0,
+            // External observer depend on (bl-bl-01M3QD197Q000387ET2D4MFKR0
             // observed rows=300 distinct=150).
-            //
             // UNIQUE(run_id, sequence) makes the DATABASE the authority: a
             // writer that would duplicate a sequence is rejected by SQLite
             // itself (fail-closed, no silent corruption) instead of
             // appending a second event with a number already in the log.
-            //
             // This is deliberately the MINIMAL invariant repair. It does not
             // renumber a colliding event: the single-writer queue already
             // gives a dense 1..N for one instance, and renumbering under
@@ -200,20 +193,20 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
             // Create durable operation journal tables.
             OperationJournalSchema.create(conn)
             // Migrate operation_journal schema: add started_at + ended_at columns if absent.
-            // Idempotent: safe to run on pre-M3-R3 databases.
+            // Idempotent: safe to run on databases written by an older format
             migrateOperationJournalSchema(conn)
-            // M3-R4.1 T-02: backfill run_id from input JSON for pre-existing rows.
+            // Backfill run_id from input JSON for pre-existing rows.
             // Idempotent: only updates rows where run_id IS NULL.
             backfillRunId(conn)
         } finally {
             conn.close()
         }
-        // WU-LPR-041: durable sequence truth. The per-run counters MUST be
+        // Durable sequence truth. The per-run counters MUST be
         // seeded from SQLite (durable state), not start empty per instance.
         // Without this, a fresh store instance restarts sequences at 1 and
         // duplicates the history of any run already present in the DB.
         seedSequenceCounters()
-        // WU-LPR-042: prepare the insert on the persistent connection and
+        // Prepare the insert on the persistent connection and
         // start the single writer.
         insertStatement = writerConnection.prepareStatement(
             "INSERT INTO events (event_id, run_id, sequence, kind, occurred_at, payload) VALUES (?, ?, ?, ?, ?, ?)"
@@ -228,7 +221,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      * the events table. Called once at construction; later appends advance
      * the in-memory counters monotonically and persist through the normal
      * write path.
-     */
+*/
     private fun seedSequenceCounters() {
         val conn = freshConnection()
         try {
@@ -251,8 +244,8 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     /**
      * Idempotent schema migration for operation_journal.
      * Adds started_at INTEGER and ended_at INTEGER columns if they do not already exist.
-     * Safe to call on databases created with the M3-R1 schema (before this migration).
-     */
+     * Safe to call on databases created with the schema (before this migration)
+*/
     private fun migrateOperationJournalSchema(conn: java.sql.Connection) {
         conn.createStatement().use { stmt ->
             // Check which columns exist in operation_journal
@@ -269,7 +262,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
             if (!existingColumns.contains("ended_at")) {
                 stmt.execute("ALTER TABLE operation_journal ADD COLUMN ended_at INTEGER")
             }
-            // M3-R4.1 C-032: add run_id column and index if absent
+            // Add run_id column and index if absent
             if (!existingColumns.contains("run_id")) {
                 stmt.execute("ALTER TABLE operation_journal ADD COLUMN run_id TEXT")
                 stmt.execute("CREATE INDEX IF NOT EXISTS operation_journal_run_id_idx ON operation_journal(run_id)")
@@ -278,10 +271,10 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     /**
-     * Backfills run_id from the input JSON for pre-M3-R4.1 rows.
+     * Backfills run_id from the input JSON.1 rows
      * Idempotent: only updates rows where run_id IS NULL.
      * Uses json_extract to pull $.runId from the input JSON blob.
-     */
+*/
     private fun backfillRunId(conn: java.sql.Connection) {
         conn.createStatement().use { stmt ->
             stmt.execute(
@@ -291,11 +284,11 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     /**
-     * WU-LPR-105 test seam: artificial per-batch writer delay (default 0 =
+     * Artificial per-batch writer delay (default 0 =
      * production behaviour untouched). Widens the old append/COMMIT window
      * deterministically so the sequence-publication race is reproducible in
      * tests instead of flaky in CI.
-     */
+*/
     @Volatile var writerDelayMillis: Long = 0
 
     override fun append(event: DomainEvent) {
@@ -303,18 +296,16 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     /**
-     * WU-RP-020: makes `UNIQUE(run_id, sequence)` the durable authority.
-     *
+     * Makes `UNIQUE(run_id, sequence)` the durable authority.
      * Idempotent: `IF NOT EXISTS`, so opening an already-migrated database
      * is a no-op.
-     *
      * A database that ALREADY carries duplicate sequences cannot satisfy the
      * constraint, and SQLite would then fail the index creation for an opaque
      * reason at some later moment. That is reported here, with the offending
      * run, instead of leaving a corrupt log that only fails later: an operator
      * gets a named cause and a remediation (drop the database, or re-run the
      * corrupted run) rather than a mystery UNIQUE violation mid-run.
-     */
+*/
     private fun createSequenceUniquenessIndex(conn: java.sql.Connection) {
         // Cheap existence probe FIRST. The duplicate scan below is a full
         // GROUP BY over the whole events table; running it on every open of an
@@ -357,13 +348,13 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     /**
-     * WU-LPR-105: the store assigns the sequence and returns the assigned
+     * The store assigns the sequence and returns the assigned
      * event explicitly. Single counter, single authority — the read model is
      * never consulted for write metadata.
-     */
+*/
     override fun appendAssigned(event: DomainEvent): DomainEvent {
         writerError?.let { throw IllegalStateException("event writer failed earlier", it) }
-        // Assign per-runId sequence eagerly (monotonic per run; LPR-041
+        // Assign per-runId sequence eagerly (monotonic per run
         // counters seeded from durable truth at construction).
         val counter = sequenceCounters.computeIfAbsent(event.runId) { AtomicLong() }
         val assignedSequence = if (event.sequence == 0L) {
@@ -377,7 +368,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         }
         val eventWithSequence = when (event) {
                 is RunStarted -> event.copy(sequence = assignedSequence)
-                // PK-1 / ADR-PK1-IDENTITY: RunCorrelated carries the
+                // RunCorrelated carries the
                 // assigned sequence like every other durable event; it
                 // must appear in the when for the assignment to take
                 // effect.
@@ -412,11 +403,11 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is FileExistsChecked -> event.copy(sequence = assignedSequence)
                 is ArtifactArchived -> event.copy(sequence = assignedSequence)
                 is ArtifactArchiveFailed -> event.copy(sequence = assignedSequence)
-                // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
+                // Core.stash/core.unstash durable cross-stage data movement
                 is StashCreated -> event.copy(sequence = assignedSequence)
                 is StashRestored -> event.copy(sequence = assignedSequence)
                 is StashFailed -> event.copy(sequence = assignedSequence)
-                // WU-LPR-090 — core.publishHTML durable HTML report publishing
+                // Core.publishHTML durable HTML report publishing
                 is HtmlReportPublished -> event.copy(sequence = assignedSequence)
                 is HtmlReportSkipped -> event.copy(sequence = assignedSequence)
                 is HtmlReportFailed -> event.copy(sequence = assignedSequence)
@@ -437,13 +428,13 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is UnixDetected -> event.copy(sequence = assignedSequence)
                 is MilestoneReached -> event.copy(sequence = assignedSequence)
                 is MilestoneAborted -> event.copy(sequence = assignedSequence)
-                // RP6-A / WU-091 §6 lock events
+                // / lock events
                 is LockRequested -> event.copy(sequence = assignedSequence)
                 is LockAcquired -> event.copy(sequence = assignedSequence)
                 is LockReleased -> event.copy(sequence = assignedSequence)
                 is LockSkipped -> event.copy(sequence = assignedSequence)
                 is LockAcquireFailed -> event.copy(sequence = assignedSequence)
-                // RP6-B / WU-092 §6 input events
+                // / input events
                 is InputRequested -> event.copy(sequence = assignedSequence)
                 is HttpRequestStarted -> event.copy(sequence = assignedSequence)
                 is HttpResponseReceived -> event.copy(sequence = assignedSequence)
@@ -455,7 +446,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is TimeoutTriggered -> event.copy(sequence = assignedSequence)
                 is TimestampsEntered -> event.copy(sequence = assignedSequence)
                 is TimestampsExited -> event.copy(sequence = assignedSequence)
-                // S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation (WU-1)
+                // durable-spine admission observation
                 is StepAdmissionObserved -> event.copy(sequence = assignedSequence)
             }
 
@@ -471,20 +462,18 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     /**
-     * WU-RP-020: release every [PendingWrite.FlushBarrier] still queued behind a
+     * Release every [PendingWrite.FlushBarrier] still queued behind a
      * writer that is about to die.
-     *
      * A barrier is a wait for the writer to make progress. Once the writer has
      * failed there is no progress left to wait for, so a barrier left in the
      * queue converts an immediate fail-fast into a stall for the full
      * `barrier.await(60, SECONDS)` bound. Releasing it lets the waiter reach
      * the `writerError` path and report the real failure instead.
-     *
      * Queued [PendingWrite.Event]s are put **back**, not dropped: discarding
      * them would silently lose writes. They are unreadable in practice because
      * every later `append`/`appendAssigned` fails fast on `writerError`, and
      * the store is closed right after.
-     */
+*/
     private fun releaseQueuedBarriers() {
         val queued = ArrayList<PendingWrite>(appendQueue.size)
         appendQueue.drainTo(queued)
@@ -507,7 +496,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      * every batch inside ONE transaction. The COMMIT is the durable unit.
      * On failure, records [writerError] and releases all waiters; later
      * appends fail fast.
-     */
+*/
     private fun writerLoop() {
         val batch = ArrayList<PendingWrite>(256)
         while (true) {
@@ -540,14 +529,13 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                     for (pending in batch) {
                         if (pending is PendingWrite.FlushBarrier) pending.done.countDown()
                     }
-                    // WU-RP-020: the writer is dying and will never take another
+                    // The writer is dying and will never take another
                     // item off the queue. A FlushBarrier enqueued AFTER this
                     // batch was taken -- which is exactly what happens when a
                     // producer appends a doomed event and immediately flushes --
                     // is stranded in the queue and its waiter blocks for the
                     // full 60 s bound. Release those barriers now, so the
                     // waiter observes the writer's real error.
-                    //
                     // Only barriers are released. Queued Events are NOT
                     // dropped: discarding them would silently lose writes, and
                     // every later append/appendAssigned already fails fast on
@@ -578,23 +566,21 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      * durably committed. Implemented with a one-shot latch carried through
      * the queue behind the pending events (ordering guarantee of the
      * single writer).
-     */
+*/
     fun flush() {
         writerError?.let { throw IllegalStateException("event writer failed", it) }
         val barrier = java.util.concurrent.CountDownLatch(1)
         try {
-            // WU-RP-020 (measured, not inferred): a barrier enqueued while the
+            // A barrier enqueued while the
             // writer is DYING is stranded and burns the full 60 s bound.
-            //
             // The failing batch contains only events -- the writer dies on a
             // duplicate INSERT, so the catch-block release loop finds zero
             // barriers to count down (observed: "batch FAILED size=4
-            // barriers=0"). The barrier enqueued by this flush() therefore
+            // barriers=0"). The barrier enqueued by this flush therefore
             // lands in the queue AFTER the writer stopped consuming, and nobody
             // will ever release it. The `writerError` fast path above cannot
             // catch this: it is a race, and the failing append returns BEFORE
             // the writer records its error.
-            //
             // Symptom seen in a real gate: `flush()` took 60008 ms, the exact
             // barrier bound. Fix: a latch that is already counted down cannot
             // be stranded, and `await` returns immediately, so the writer's
@@ -607,7 +593,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 barrier.await(60, TimeUnit.SECONDS)
             }
             if (!released) {
-                // WU-RP-022 (finding P2): a timed-out barrier almost always means
+                // A timed-out barrier almost always means
                 // the writer thread DIED on a write error (e.g. SQLITE_TOOBIG for
                 // an oversized event payload). Surface the writer's real failure
                 // instead of the misleading "timed out" message.
@@ -622,18 +608,16 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     override fun eventsFor(runId: String): Sequence<DomainEvent> {
-        // P3-E E4c: this CANNOT report a refusal — `Sequence<DomainEvent>` has no case for one —
+        // This CANNOT report a refusal — `Sequence<DomainEvent>` has no case for one —
         // so it FAILS CLOSED at the unreadable row instead of skipping it. See the KDoc on
         // EventStore.eventsFor for why a skip here is worse than a crash: a skip is invisible, and
         // the caller reads a shorter stream as complete history.
-        //
-        // WU-RP-044 (M5 RSS debt): lazy row-by-row read. Materialising the full
+        // Lazy row-by-row read. Materialising the full
         // list held every decoded event (including GiB-scale transcripts) in
         // memory before the caller could stream them out. The sequence owns its
         // connection and closes it at exhaustion; a partial iteration leaks the
         // connection to GC finalisation (same as the previous eager form's
         // error path), which no production caller does — all iterate fully.
-        //
         // The ORDER BY is `sequence`, and it used to be `rowid`. That is the
         // difference between the row's physical position and the number this
         // store assigned, and it is not a stylistic one: `appendAssigned` stamps
@@ -643,7 +627,6 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         // cuts on `sequence > lastSequence`, so a read that walks the physical
         // order can step over an event whose sequence is below the cursor and
         // lose it for good — the next cursor starts even higher.
-        //
         // `sequence` is also the column the `ux_events_run_sequence` index covers,
         // so this ordering is the one the database can serve from the index
         // instead of sorting a temporary b-tree over every matching row.
@@ -659,7 +642,6 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                         while (rs.next()) {
                             val record = readRecord(rs)
                             // The row's event, or a NAMED refusal. Never a silent skip.
-                            //
                             // Unwrap rather than cast: `Decoded` is a wrapper carrying the event, not
                             // a DomainEvent itself. Writing `record as? DomainEvent` here compiled
                             // and always yielded null, so every well-formed row reported itself
@@ -693,17 +675,13 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      * Cuts the page in SQL, which is the only place where that is possible: the cut and the limit
      * are the index's job, and asking SQLite for a run's whole history to keep `limit` of it meant
      * decoding every event of a long run to hand back a page of three.
-     *
      * `LIMIT limit + 1` is how [dev.rubentxu.pipeline.v2.events.EventSlice.hasMore] is proved
      * rather than guessed: the extra row is looked at and dropped, which is the same single peek
      * the inherited default performs, only here it costs one row instead of the rest of the run.
-     *
      * The `ORDER BY sequence` is the same one `eventsFor` uses, and for the same reason — the
      * cursor cuts on sequence, so the read has to be in sequence. `ux_events_run_sequence` covers
      * it, so the database serves the ordering from the index.
-     *
-     * ## The page bound counts ROWS, not decodable events (P3-E E4c)
-     *
+     * ## The page bound counts ROWS, not decodable events (E4c)
      * This used to `page.add(decode(payload))` under a `page.size == limit` check, which meant the
      * bound counted rows that had DECODED. One unreadable row then let its successor into the
      * page, so the returned page was neither the requested size nor a prefix of the history, and
@@ -712,22 +690,19 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      * report "no more" with rows still unread. A consumer resuming from that cursor would skip the
      * unreadable row entirely — the silent hole, arrived at from the pagination side as well as
      * the decode side.
-     *
      * The fix is not a guard but an order change: count rows, decode inside the page, and let the
      * refusal travel on the same cursor. `EventRecordSlice.nextCursor` is the last ROW's sequence
      * whether or not that row decoded, which is what lets a resuming reader page past a refusal on
      * purpose instead of re-reading it forever or stepping over it blind.
-     *
      * This page law is argued here, not witnessed by a test: [SqliteConnectionFactory.open] opens a
      * FRESH connection per call, so an in-memory database would be empty on every read and the
      * store is file-backed by design. Exercising this path needs real durable storage, which is
      * outside what a unit test may own; the claim above is therefore the authority, and the reader
      * of it is the auditor.
-     */
+*/
 
     /**
-     * M1-A — authoritatively answer "has this run ever been written to".
-     *
+     * Authoritatively answer "has this run ever been written to".
      * The [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
      * adapter needs to distinguish a run that does not exist (the
      * consumer mistyped the runId, or the run was on a different host)
@@ -735,19 +710,17 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      * adapter's only authority for that distinction is this method, and
      * SQLite's `EXISTS` over the events table is the cheapest correct
      * answer.
-     *
      * The check is row-presence on the events table, NOT "non-empty
      * page from readRecords": a run that has just been declared but
      * not yet appended to must answer `true` so the adapter can serve
      * an empty [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult.Page]
      * to the consumer instead of refusing with
      * [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.UnknownRun].
-     *
      * Connection lifecycle: opens a fresh short-lived connection via
      * [freshConnection] so the call does not share state with the
      * persistent writer connection (a write under load would otherwise
      * see the connection busy).
-     */
+*/
     fun hasRun(runId: String): Boolean = freshConnection().use { conn ->
         conn.prepareStatement(
             "SELECT 1 FROM events WHERE run_id = ? LIMIT 1"
@@ -758,20 +731,18 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     /**
-     * M1-A — durable `MAX(sequence)` for [runId], or `null` if the run
+     * Durable `MAX(sequence)` for [runId], or `null` if the run
      * has no rows.
-     *
      * The [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
      * adapter uses this to refuse a cursor that is past the tail.
      * SQLite's `MAX` is `null` over an empty set, so the function
      * returns `null` for an empty run without a separate existence
      * check; the adapter already gated the unknown-run case on
      * [hasRun] before calling this.
-     *
      * Connection lifecycle: opens a fresh short-lived connection via
      * [freshConnection] (same rationale as [hasRun]: avoid sharing
      * state with the persistent writer connection).
-     */
+*/
     fun tailSequence(runId: String): Long? = freshConnection().use { conn ->
         conn.prepareStatement(
             "SELECT MAX(sequence) FROM events WHERE run_id = ?"
@@ -830,34 +801,29 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
 
     /**
      * Turns ONE durable row into either its typed event or a refusal that names it.
-     *
      * The identity comes from the row's own COLUMNS, not from the payload, and that is what makes
      * the refusal honest: `event_id`, `sequence` and `kind` are `NOT NULL` in the schema and are
      * written by [bindInsert] from the event, so a refusal can repeat what storage actually holds
      * even when the payload is unparseable text. Reading identity out of the payload instead would
      * make the refusal disappear in exactly the case it exists to describe.
-     *
      * ## Read by COLUMN NAME, never by index (paid for on the day this was written)
-     *
      * The first version of this read `rs.getString(1)`, `rs.getLong(2)`, … against
      * `SELECT event_id, sequence, kind, payload`. That is wrong the moment the SELECT list and the
      * schema disagree: the schema is `(event_id, run_id, sequence, kind, occurred_at, payload)`, so
      * position 2 in the SELECT is `sequence` while position 2 in the TABLE is `run_id`, and
      * `getLong(2)` returned a run id silently coerced to 0. Every row came back as
      * `Undecodable(sequence = 0)`.
-     *
      * What makes it worth recording is how it presented. The old code was
      * `firstOrNull()?.let { yield(it) }`, so a mis-indexed read looked exactly like an empty table:
      * `eventsFor` returned an empty list and the row-tuple test failed on `assertEquals(4, …)` with a
      * message about order and payload. Nothing said "you read the wrong column". Under E4c the same
      * bug surfaces as a refusal naming sequence 0, which is strictly more diagnosable — but only
      * because the refusal exists. Positional reads and silent skips were the same accident twice.
-     *
      * Returning a sealed result rather than throwing is deliberate: the caller here is a PAGE, and
      * a page has to be able to carry the refusal. Throwing at this level would lose the rows after
      * it. The fail-closed decision belongs to whoever asked for typed events —
      * [eventsFor] and [readSlice] make it, and [readRecords] hands the caller the choice.
-     */
+*/
     private fun readRecord(rs: java.sql.ResultSet): dev.rubentxu.pipeline.v2.events.EventRecordRead {
         val eventId = rs.getString("event_id")
         val sequence = rs.getLong("sequence")
@@ -878,7 +844,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     /**
      * Closes the store: flush barrier, then stops the writer and releases
      * the persistent connection. Close is idempotent.
-     */
+*/
     @Volatile private var closed = false
     private val closeLock = Any()
 
@@ -904,29 +870,27 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     /**
      * Exposes the underlying connection factory for use by [OperationJournal]
      * and [ReplayCursorStore].
-     *
      * This is intentionally internal — it is only used within the durable
      * execution subsystem that shares the same SQLite database file.
-     */
+*/
     fun underlyingConnectionFactory(): () -> Connection = { freshConnection() }
 
     /**
      * Exposes the database file path for use by [SqliteOperationJournalImpl]
      * to enable cross-instance [DbLock] synchronization.
-     */
+*/
     fun databasePath(): String = file
 
     private companion object {
         /**
          * How much of an unreadable payload a refusal quotes back.
-         *
          * Enough to recognise the row by eye — the head of a truncated transcript or a stray byte
          * is diagnostic, the whole thing is not — and deliberately bounded, because the payloads
          * this store holds are the GiB-scale transcripts it reads row by row specifically to avoid
          * materialising. A refusal that copied the failing payload in full would reintroduce the
          * memory profile the row-at-a-time read exists to avoid, at exactly the moment something
          * has already gone wrong.
-         */
+*/
         const val REFUSAL_DETAIL_CHARS = 200
     }
 }

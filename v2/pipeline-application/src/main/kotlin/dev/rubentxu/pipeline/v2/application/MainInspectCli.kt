@@ -20,11 +20,8 @@ import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 
 /**
  * `pipelinek inspect <run>` — bounded diagnostic surface for a single run.
- *
  * ## What this verb is
- *
- * The primary bounded diagnostic surface named by ADR-0088 §Decision. Five typed dimensions:
- *
+ * The primary bounded diagnostic surface named byDecision. Five typed dimensions
  * ```text
  * inputs   --control-root PATH, --db PATH, <runId>
  * state    --failed (boolean shorthand for outcome=failure), --kind K, --stage S, --step N
@@ -32,13 +29,10 @@ import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
  * shape    --fields STAGE,STEP,OUTCOME,MESSAGE,CONSOLETAIL
  * output   --format json|text
  * ```
- *
  * `--failed`, `--kind`, `--stage`, `--step`, `--context` and `--log-tail` close the gaps
- * in R4_CLI_GAP_ANALYSIS §1..§4. `--fields` projects to one of the [InspectField] cases; the
+ * in_CLI_GAP_ANALYSIS... `--fields` projects to one of the [InspectField] cases; the
  * ADT is closed so adding a sixth field forces every caller to be revisited.
- *
  * ## What this verb is NOT
- *
  *  - NOT a second authority on run state. The event store and the Output Plane keep theirs.
  *    `inspect` reads both lanes; it does not claim they interleaved.
  *  - NOT a substitute for `observe`. `observe` returns the full envelopes + bytes; `inspect`
@@ -46,19 +40,16 @@ import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
  *    of the same read authority.
  *  - NOT a follow loop. A query that wants live events uses `observe --follow`; `inspect`
  *    is a static query against the durable history.
- *
- * ## R4 / WU-R4.1 — skeleton
- *
+ * ## / — skeleton
  * This slice ships the PARSER + the closed ADT + the typed query record + the dispatcher
  * entry point. The full read-side (event-store and Output Plane wiring) is implemented
  * incrementally under the same closed ADT; for now the verb parses, validates, and reports
  * the typed query on stdout so a caller can confirm the surface and the field selection
  * before the durable read is wired.
- *
  * Exit codes follow the canonical contract:
  *   0 — parsed successfully and emitted the typed query;
  *   2 — usage error (missing run id, unknown option, refused value).
- */
+*/
 object MainInspectCli {
 
     const val USAGE: String =
@@ -70,9 +61,7 @@ object MainInspectCli {
 
     /**
      * The five dimensional columns a caller can request from the inspection document.
-     *
-     * Closed ADT (R4 / WU-R4.1, distinct from `EventField`):
-     *
+     * Closed ADT (/, distinct from `EventField`)
      *   * `Stage`    — the stage name the record was inspected for (--stage).
      *   * `Step`     — the step ordinal within the stage (--step).
      *   * `Outcome`  — the outcome value the record carried (success / failure / unstable / aborted).
@@ -80,10 +69,9 @@ object MainInspectCli {
      *   * `ConsoleTail` — the last `logTail` bytes of the Output Plane for THIS row's operation.
      *     Resolved per operation, not once for the run: see [operationIdPerEvent] for the
      *     measurement that made the run-scoped value wrong.
-     *
      * Adding a sixth case is a compile-time break for every call site that pattern-matches
      * over [InspectField]; that is the discipline that makes the projection closed.
-     */
+*/
     sealed class InspectField(val cli: String) {
         abstract fun extract(record: InspectionRecord): String
 
@@ -143,12 +131,11 @@ object MainInspectCli {
 
     /**
      * Entry point for `pipelinek inspect <runId> [opts]`.
-     *
-     * R4 / WU-R4.1 — the parser + the typed query are the contract. The durable read seam
+     * The parser + the typed query are the contract. The durable read seam
      * (SqliteEventStore + FrameIndexedObservationOutputReader.readTail) is the next slice; for
      * now the verb reports the typed query on stdout so the CLI dispatch + field selection
      * are exercisable today.
-     */
+*/
     fun main(args: Array<String>): Int {
         val runId = args.firstOrNull()?.takeIf { !it.startsWith("--") }
         if (runId == null) {
@@ -167,7 +154,7 @@ object MainInspectCli {
             }
         }
 
-        // R4 / WU-R4.1.2 — durable read seam.
+        // Durable read seam.
         if (compiled.dbPath == null) {
             System.err.println("inspect: --db <path> is required to read the durable event store")
             return 2
@@ -177,7 +164,7 @@ object MainInspectCli {
             return 2
         }
 
-        // D3 — the admission is the ONE decision on whether this store may be opened. It used to
+        // The admission is the ONE decision on whether this store may be opened. It used to
         // be re-asked here, and this catch only knew about IOException, so a `--db` pointing at a
         // missing directory escaped as a raw java.sql.SQLException with a fourteen-frame stack
         // trace and exit 1 — the code this CLI reserves for a run that executed and failed.
@@ -195,7 +182,7 @@ object MainInspectCli {
             return 2
         }
 
-        // D2 — resolve each event to its operation BEFORE any Output Plane read, because the
+        // Resolve each event to its operation BEFORE any Output Plane read, because the
         // tail belongs to the operation and not to the run.
         val opIds: List<OpId?> = operationIdPerEvent(events, runId)
 
@@ -242,45 +229,36 @@ object MainInspectCli {
 
     /**
      * Resolve each event to the operation whose console tail it may report, in event order.
-     *
      * ## The defect this removes
-     *
      * `--log-tail` used to be answered ONCE for the whole run and the same value stamped onto
-     * every row. Measured 2026-10-18 against distribution 0.62.0, a two-stage run whose first
+     * every row. Measured in an earlier build against distribution 0.62.0, a two-stage run whose first
      * stage printed `DESPUES` and whose second stage exited 7:
-     *
      * ```text
      * STAGE          OUTCOME   CONSOLETAIL
      *  build/sh-0    StepStarted  DESPUES
      *  verify/sh-0   failure     DESPUES     <- a FAILURE carrying the other step's transcript
      * ```
-     *
      * Thirteen rows, thirteen copies, and the failure's row quoted a step that SUCCEEDED. Same
      * defect class as the `ok` verdict, in the opposite direction: a projection rendering a fact
      * its event does not carry. [InspectField.ConsoleTail] had always promised "the Output Plane
      * for THE FAILED STEP'S OP"; this function is what makes the promise true.
-     *
      * ## Why a fold, and what it cannot do
-     *
      * `StepFailed` carries `stepIndex` but NOT `stageIndex`, and an [OpId] needs both. The fold
      * therefore keeps the op of the most recent [StepStarted] — a step runs inside its stage, so
      * the open step's op is the right one — while every event that carries its own indices
      * prefers them.
-     *
      * Both stage boundaries CLEAR the open op: a stage-level row belongs to a stage, and a stage
      * is not an operation. `StageFinished` was measured inheriting the last step's op and printing
      * that step's transcript on the row that closes its stage — the same defect as the failure row,
      * one level up, and found by reading the rendered document rather than by a test.
      * `StageSkipped` needs no case: a skipped stage never opened a step, so `open` is already null.
-     *
      * What the fold cannot decide: a `StepFailed` from a PARALLEL branch that reports after a
      * sibling started. The event carries nothing to resolve it with, so it inherits the sibling.
      * Stated rather than hidden, because wrong-but-present attribution is precisely what the
      * measurement above removes.
-     *
      * Pure: no clock, no filesystem, no reader. [OpId] is the typed authority for the format —
      * this never re-templates the string.
-     */
+*/
     internal fun operationIdPerEvent(events: List<DomainEvent>, runId: String): List<OpId?> {
         var open: OpId? = null
         return events.map { event ->
@@ -299,16 +277,14 @@ object MainInspectCli {
 
     /**
      * Read each operation's tail ONCE and index it by opId.
-     *
      * Bounded by the number of DISTINCT operations in the run, not by the number of rows: a
      * 40-step run reads 40 indexed tails and stamps them onto however many rows each owns.
-     *
      * [scopeOpId] (`--log-tail-op`) narrows the eligible set to the operation the operator named,
      * so every other row projects silence rather than someone else's transcript. [main] has
      * already validated that a named operation belongs to the run, which is what lets
      * [OutputRefusal.UnknownStream] mean one thing here — "this operation has no output stream" —
      * instead of two.
-     */
+*/
     private fun consoleTailsByOperation(
         opIds: List<OpId?>,
         runId: String,
@@ -353,10 +329,9 @@ object MainInspectCli {
      * Translate one [DomainEvent] into the row shape that [InspectField] extractors read from.
      * The mapping is intentionally narrow: the five [InspectField] cases are the contract,
      * not the union of every DomainEvent subtype.
-     *
      * [opId] is this row's operation, or null when the event belongs to no step. A row with no
      * operation has no transcript, and says nothing rather than borrowing one.
-     */
+*/
     private fun toInspectionRecord(
         event: DomainEvent,
         opId: OpId?,
@@ -461,28 +436,26 @@ object MainInspectCli {
     )
 
     /**
-     * Decode a stream of per-frame byte buffers as one continuous UTF-8 transcript.
-     *
+     * Decode a stream of per-frame byte buffers as one continuous transcript
      * `ObservationOutputReader.decodeWindow` decodes one frame at a time on purpose: the contract
      * is per-frame determinism, and a carry-over buffer would re-decode the same bytes differently
      * depending on where a reader resumed. `inspect --log-tail`, however, presents ONE transcript
      * to a human; a multi-byte codepoint straddling a frame boundary must be reassembled or the
-     * tail shows two U+FFFD characters instead of the original character. PC-08 names that defect
+     * Tail shows two U+FFFD characters instead of the original character. names that defect
      * for the human-facing surface; this helper is the fix.
-     *
      * The decoder is the same [StreamingUtf8Decoder] the [StreamingUtf8DecoderTest] exercises; the
      * bytes are not re-decoded character-by-character — the full byte array per frame is fed
      * through the incremental decoder in [r.page.records] order, oldest first, and the final
      * `String` is the assembled transcript.
-     */
+*/
     private fun decodePageBytesAsUtf8(records: List<dev.rubentxu.pipeline.v2.application.observation.ObservationRecord.Output>): String =
         decodePageBytesAsUtf8Impl(records)
 
     /**
-     * Internal-visible entry for the byte-stream decode so an HF0 unit test can pin the
+     * Internal-visible entry for the byte-stream decode so a unit test can pin the
      * contract (a multi-byte codepoint straddling two records reassembles into one character)
      * without paying for the heavier MainInspectCli fixture.
-     */
+*/
     internal fun decodePageBytesAsUtf8Impl(records: List<dev.rubentxu.pipeline.v2.application.observation.ObservationRecord.Output>): String {
         val decoder = StreamingUtf8Decoder()
         val out = StringBuilder(records.sumOf { it.bytes.size })
@@ -494,13 +467,12 @@ object MainInspectCli {
 
     /**
      * Parse the option args (run id consumed upstream) into a [CompiledInspectionQuery].
-     *
-     * CC-1 / R4 / WU-R4.7 — delegates to [CliParser.parseInspect]; the body that used to live here
+     * Delegates to [CliParser.parseInspect]; the body that used to live here
      * moved into [CliParser] as part of the four-verb parser unification. This signature stays so the
      * existing test surface (`MainInspectCli.parseInspect`) keeps compiling without changes.
      * `MainInspectCli.parseInspect` is the test seam; `CliParser.parseInspect` is the production
      * entry point. Both return the same typed [InspectParseResult].
-     */
+*/
     @Suppress("CyclomaticComplexMethod")
     fun parseInspect(args: Array<String>): InspectParseResult = CliParser.parseInspect(args)
 }
@@ -514,10 +486,10 @@ data class CompiledInspectionQuery(
     val context: Int = 0,
     val logTail: Int = 0,
     /**
-     * R4 / WU-R4.1.3 — when set, the `--log-tail` scope is one operation (this opId),
+     * When set, the `--log-tail` scope is one operation (this opId),
      * not the whole run. The per-op read filters frames whose stream id carries this
      * opId as a middle segment. When null, the tail is the run-wide last-N-bytes path.
-     */
+*/
     val opId: String? = null,
     val fields: List<MainInspectCli.InspectField>? = null,
     val format: MainInspectCli.InspectFormat = MainInspectCli.InspectFormat.TEXT,
@@ -533,17 +505,15 @@ sealed interface InspectParseResult {
 
 /**
  * What the console tail of an inspected record actually IS.
- *
  * Three states, because the Output Plane's own contract keeps them apart and a nullable `String`
  * did not. [ObservationOutputRead] already distinguishes "the page" from "the store could not
  * answer", and [dev.rubentxu.pipeline.v2.output.OutputRefusal] spells out what a refusal means:
  * the bytes are NOT absent, they are unread. Rendering that as an empty transcript told a consumer
  * that a step printed nothing, which is the one fact it would act on.
- *
  * The empty [Bytes] case is deliberately still a value rather than folded into [NotRequested]: "this
  * step ran and printed nothing" and "nothing was asked for" are different answers to different
  * questions, and only the first one is evidence about the step.
- */
+*/
 sealed interface InspectConsoleTail {
 
     /** `--log-tail` was not requested, so there is nothing to report either way. */
@@ -558,16 +528,14 @@ sealed interface InspectConsoleTail {
 
 /**
  * One inspected record — the row shape that the projection fields read from.
- *
  * Kept as a data class, not a sealed ADT: every record carries all five columns, with `null` for
  * the ones that do not apply, because the consumer chooses which fields to project and a row that
  * has `null` for un-requested fields is not a different SHAPE of record.
- *
  * [consoleTail] is the exception, and the exception is the point: its states are not "which columns
  * this row fills in" but "what the Output Plane answered". A `null` there would have to mean both
  * "un-requested" and "refused", which are different facts about a run, so it is a closed ADT
  * instead. Every other field is still a nullable projection.
- */
+*/
 data class InspectionRecord(
     val stage: String? = null,
     val stepOrdinal: Long? = null,

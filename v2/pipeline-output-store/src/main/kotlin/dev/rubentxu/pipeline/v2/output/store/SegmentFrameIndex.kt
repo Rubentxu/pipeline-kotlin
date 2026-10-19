@@ -21,20 +21,16 @@ import kotlin.concurrent.withLock
 
 /**
  * The durable frame index: one append-only log of frames per run, beside the bytes it describes.
- *
  * ## Two files per run, and why there are two
- *
  * ```text
  * output-plane/frames/<run>.streams   which streams this run declared, one per line
  * output-plane/frames/<run>.frames    the frames themselves, in publication order
  * ```
- *
  * The streams file exists because recovery has to answer "is any stream holding committed bytes
  * that no frame mentions?", and the **byte store cannot answer that on its own**. It stores a
  * directory named by `safe(streamId)`, and `safe` folds `/` onto `_`, which is not invertible — its
  * own KDoc says so and refuses to parse those names for exactly that reason. So this index records
  * stream identity itself, once per stream, **before the first byte is written**.
- *
  * That declaration is what makes the contract's second safety property hold. A crash between a byte
  * commit and its frame leaves bytes that are durable, readable and unattributed; because the
  * stream was declared up front, [recoverUnframedBytes] knows to look for it and closes the gap.
@@ -42,31 +38,24 @@ import kotlin.concurrent.withLock
  * would leave bytes this index has never heard of — exactly the "committed but irrecoverably
  * outside the index" case the contract forbids, and exactly the one no amount of later recovery
  * could reconstruct, because those bytes have no durable position in the interleaving.
- *
  * Declaring costs one append per stream, not per chunk, so it does not scale with output volume.
- *
  * ## Listing runs is safe here, and would not be in the store
- *
  * The directory names under [FRAMES_DIR] are only used to find *files to open*. Every stream id
  * this index uses is read back out of the file's own content, where it was written whole and
  * percent-escaped. Nothing is recovered by decoding a directory name, which is the operation the
  * byte store rightly refuses to perform.
- *
  * ## The ordinal is assigned here, not by the caller
- *
  * Two channel pumps append concurrently, and an ordinal assigned by the caller would race. The lock
  * is held across both the ordinal assignment and the durable write, so the order of lines in the
  * file is the order of the frames and the ordinals are monotonic by construction rather than by
  * hope.
- *
  * ## What a half-written line means
- *
  * A crash can leave the final line torn. A torn line is **not** a frame: it has no ordinal, and its
  * range may name bytes that were never committed. Reading stops at the first malformed line and
  * truncates the file there, which is the same rule the byte store applies to a dangling commit.
  * Skipping the bad line and reading past it is precisely how a truncated index starts inventing
  * frames, so the read refuses instead.
- */
+*/
 class SegmentFrameIndex(
     private val store: SegmentOutputStore,
     private val root: Path,
@@ -85,14 +74,13 @@ class SegmentFrameIndex(
 
     /**
      * Per-run sparse offset index cache, paired with the offset-index file's mtime the entries
-     * were parsed against. R3 / OBS-3 step 2 (ADR-OBS-004): one entry every [INDEX_STRIDE] frames
+     * Were parsed against. / step 2: one entry every [INDEX_STRIDE] frames
      * records the byte offset of that frame's line, so [framesOfRun] can binary-search the entry,
      * seek, and read `O(L)` frames forward instead of `O(file bytes)`.
-     *
      * The cache is keyed on the index file's mtime, not the frames file's mtime. Appending a
      * frame that does NOT cross [INDEX_STRIDE] advances the frames file's mtime but leaves the
      * index file untouched — the entries are still valid pointers, the cache must not reload.
-     */
+*/
     private data class CachedOffsetIndex(val entries: List<IndexEntry>, val indexMtime: FileTime?)
 
     private data class IndexEntry(val ordinal: Long, val byteOffset: Long)
@@ -181,10 +169,9 @@ class SegmentFrameIndex(
 
     /**
      * Sorted, so a caller that lists streams gets a stable order without asking for one.
-     *
      * [loadDeclared] is what makes this survive a reopen: the in-memory cache is a cache over a
      * durable file, and a consumer in a fresh JVM has to get the same answer as one that stayed up.
-     */
+*/
     override fun streamsOfRun(runId: String): List<OutputStreamId> = lock.withLock {
         if (!declaredByRun.containsKey(runId)) loadDeclared(runId)
         declaredByRun[runId]?.sortedBy { it.value } ?: emptyList()
@@ -192,19 +179,17 @@ class SegmentFrameIndex(
 
     /**
      * Which run owns each declared stream, keyed by the **directory name** that holds its bytes.
-     *
      * The key is the folded name rather than the stream id because the only question this answers is
      * "when [SegmentOutputStore] is standing in a directory, whose bytes are these" — and prune
      * reaches a stream by its directory, never by its id (`safe` folds `/` onto `_`, so the id is
      * not recoverable from the name). A consumer that wants ids asks [streamsOfRun].
-     *
      * A stream absent from this map is not "owned by no run": it is **undeclared**, which is a
      * different fact. Streams written before the channels were separated carry no channel, so
      * [declareStream] refuses them by design and they never appear here, yet they hold real bytes.
      * The distinction is what lets prune tell "this directory is another run's" (an answer, from
      * this map) apart from "nothing proves who wrote this" (no answer), which are opposite
      * decisions.
-     */
+*/
     fun declaredDirOwners(): Map<String, String> = lock.withLock {
         val owners = HashMap<String, String>()
         for (runId in runsWithDeclaredStreams()) {
@@ -218,14 +203,12 @@ class SegmentFrameIndex(
 
     /**
      * Closes every gap between a stream's committed extent and its last indexed frame.
-     *
      * Idempotent: with no newly committed bytes there is nothing to close, so recovery can run on
      * every open without growing the log.
-     *
      * The recovered frame's ordinal is **later** than any the interrupted write would have had,
      * because that ordinal was never assigned. That is the honest placement: those bytes go after
      * everything published before the crash, because nothing durable recorded where they belonged.
-     */
+*/
     override fun recoverUnframedBytes(): List<OutputFrame> = lock.withLock {
         val closed = ArrayList<OutputFrame>()
 
@@ -271,57 +254,48 @@ class SegmentFrameIndex(
 
     /**
      * The sparse per-run offset index that turns [framesOfRun] from `O(N)` into `O(L)` for
-     * limit-bound reads. R3 / OBS-3 step 2 (ADR-OBS-004). One entry every [INDEX_STRIDE] frames.
-     *
+     * Limit-bound reads. /. One entry every [INDEX_STRIDE] frames
      * Lives beside the frames file in the same directory so a single directory walk (`Files.list`)
      * enumerates both. The file name is `<runId>.frames.offset-index`, derived by appending
      * [OFFSET_INDEX_SUFFIX] to the frames-file name; the offset index is a derived structure,
      * never an independent authority.
-     */
+*/
     private fun offsetIndexFile(runId: String): Path =
         root.resolve(FRAMES_DIR).resolve("${safeStreamName(runId)}$FRAMES_SUFFIX$OFFSET_INDEX_SUFFIX")
 
     /**
      * The per-run ordinal authority: an OS lock file beside the frames it protects.
-     *
      * Allocating an ordinal is a read-modify-write of "read the highest ordinal in the log, add one,
      * append that line". Inside one JVM [lock] makes that atomic. Between processes it was atomic
      * over nothing, and the collision was measured rather than assumed:
      * `SegmentFrameIndexCrossProcessOrdinalTest` released six writers together from a filesystem
      * barrier and got 4 distinct ordinals out of 6 writes, three runs in a row.
-     *
      * A duplicate ordinal is byte loss, not untidiness: a reader paging with a limit stops after the
      * first of two frames sharing one, and the other is committed output no console can show again.
-     */
+*/
     private fun ordinalAuthorityFile(runId: String): Path =
         root.resolve(FRAMES_DIR).resolve("${safeStreamName(runId)}$AUTHORITY_SUFFIX")
 
     /**
      * Runs [block] as the sole ordinal allocator for [runId], across every process.
-     *
      * ## Why a lock, when re-reading already looked sufficient
-     *
      * It is not obvious and it was believed to be broken first. [sealTornTail] re-reads the whole
      * durable log before every allocation and folds it into [lastOrdinalByRun], so the map is a
      * cache over the file rather than the authority — which is exactly what makes the SEQUENTIAL
-     * cross-process case safe, and why `XPROC-1` is green. Re-reading cannot help when two processes
-     * read before either writes. Only mutual exclusion closes that window, which is what `XPROC-2`
+     * cross-process case safe, and why the cross-process test is green. Re-reading cannot help when two processes
+     * read before either writes. Only mutual exclusion closes that window, which is what the mutual-exclusion test proves
      * measures and this closes.
-     *
      * ## Lock order, and why this order
-     *
      * [lock] first, OS lock second. The [lock] serialises threads inside this JVM, so only one thread
      * at a time reaches `channel.lock()` and it cannot see an `OverlappingFileLockException` from a
      * sibling thread. [SegmentOutputStore] handles that same-JVM case by SKIPPING the stream, and
      * skipping is not available here: this is a write that has already committed bytes, so declining
      * would turn a moment of contention into lost output.
-     *
      * Blocking rather than skipping for the same reason. The wait is one file read plus one append.
-     *
-     * `FileLock` over a heartbeat, PID or mtime, per ADR-OBS-002: the kernel releases it the instant
+     * `FileLock` over a heartbeat, PID or mtime,: the kernel releases it the instant
      * the owning process dies and refuses it to a second process while the first lives, which answers
      * "is a writer alive?" with no clock and no staleness policy to get wrong.
-     */
+*/
     private fun <T> withOrdinalAuthority(runId: String, block: () -> T): T = lock.withLock {
         val file = ordinalAuthorityFile(runId)
         Files.createDirectories(file.parent)
@@ -384,25 +358,20 @@ class SegmentFrameIndex(
 
     /**
      * Removes a torn final line before anything is appended behind it.
-     *
      * Without this, appending after a crash writes a valid frame **after** the fragment. Every later
      * read stops at the fragment — by design, because it cannot be trusted — so the new frame would
      * be unreachable forever, and the index would be permanently stuck at whatever preceded the
      * crash. Repairing the tail is therefore an obligation of the *write* path, not only of
      * recovery: any append has to make the file consistent again before making it longer.
-     *
-     * ## R3 / OBS-3 — O(1) tail read
-     *
+     * O(1) tail read
      * The previous implementation called [readFrames] which re-reads the **whole** log; for a
      * 1 GiB / 10⁷-frame index that made every append O(N) and the cumulative cost O(N²). This
      * version reads at most [TAIL_READ_BYTES] from the END of the file — enough for one frame
      * line (~100–200 bytes) plus a comfortable margin — and only inspects the LAST line.
-     *
      * The contract that made the previous whole-read version safe is preserved:
-     *
      * - The file is at most one torn line long at the time of an append, because a torn line is
      *   from a partial write and the writer process is gone; a second writer cannot start before
-     *   the first one's reservation is reconciled (O3), and reconciliation seals the tail. So
+     * The first one's reservation is reconciled, and reconciliation seals the tail. So
      *   the only torn line that can exist is the LAST one, and tail-only repair is sufficient.
      * - If the tail is small enough that [TAIL_READ_BYTES] covers the whole file, the logic
      *   collapses to the original whole-file behaviour; correctness is unchanged.
@@ -412,12 +381,11 @@ class SegmentFrameIndex(
      *   and recovery runs the same code path on every open.
      * - If the last line parses, the in-memory ordinal counter is updated from it; the next call
      *   to [loadOrdinals] short-circuits because [ordinalsLoaded] already has this run.
-     *
      * Returns the whole frames only when the file fits in the tail; otherwise it returns the
      * frames actually inspected (zero or one). The only caller is [append], which discards the
      * return value; the only behaviour the caller relies on is the side effects (truncate +
      * counter update + ordinalsLoaded).
-     */
+*/
     private fun sealTornTail(runId: String): List<OutputFrame> {
         val file = framesFile(runId)
         if (!Files.isRegularFile(file)) return emptyList()
@@ -480,11 +448,10 @@ class SegmentFrameIndex(
 
     /**
      * Reads whole frames from a run's log, stopping at the first malformed line.
-     *
      * With [sealTornTail] the file is truncated back to the last whole frame, so the next append
      * starts from a consistent point instead of appending behind a torn record. Reads that are
      * only asking a question leave the file alone, so a concurrent reader cannot destroy state.
-     */
+*/
     private fun readFrames(runId: String, sealTornTail: Boolean): List<OutputFrame> {
         val file = framesFile(runId)
         if (!Files.isRegularFile(file)) return emptyList()
@@ -524,7 +491,7 @@ class SegmentFrameIndex(
             )
             // A frame that is only in the page cache is not durable, and "committed" would then be
             // a word the crash gets to contradict. One force per frame is the price of this index
-            // being an authority at all; its cost per unit of output is measured in OBS-F.
+            // Being an authority at all; its cost per unit of output is measured in
             channel.force(false)
         }
     }
@@ -536,16 +503,13 @@ class SegmentFrameIndex(
         }
     }
 
-    // ------------------------------------------------------------------ R3 / OBS-3 step 2 — per-run offset index
-    //
-    // ADR-OBS-004. The whole reason this section exists: `framesOfRun(K, L)` used to re-read the
+    // Per-run offset index
+    // The whole reason this section exists: `framesOfRun(K, L)` used to re-read the
     // entire frames log via `readFrames` and filter, which made the limit-bound Follow path cost
     // `O(file bytes)` regardless of `L`. The fix is a sparse per-run index of `(ordinal,
     // byteOffset)` pairs — one entry every [INDEX_STRIDE] frames — that lets the reader binary-
     // search for the floor(afterOrdinal) entry, `seek(byteOffset)`, and read `O(L)` frames forward.
-    //
     // The contract this section preserves:
-    //
     //   * The index is a derived structure under [withOrdinalAuthority], never a parallel authority.
     //     Two writers cannot interleave a frames-line write with an index-entry write because
     //     both happen inside the same OS lock window.
@@ -560,15 +524,13 @@ class SegmentFrameIndex(
     /**
      * Records an offset-index entry for [justAppendedOrdinal] if and only if it is the
      * [INDEX_STRIDE]-th frame since the last entry, i.e. `(ordinal + 1) % INDEX_STRIDE == 0`.
-     *
      * Called from [append] inside the [withOrdinalAuthority] block, after the frames-line
      * `appendLine` has returned, so the entry's `byteOffset` is computed against an on-disk file
      * the OS lock has serialised against any other writer.
-     *
      * The index gets one `fsync` per entry, which is the same per-line `force(false)` discipline
      * the frames file already pays. One entry every 1000 frames is `0.1%` extra `fsync`s — in the
      * noise of the existing per-frame cost.
-     */
+*/
     private fun maybeAppendIndexEntry(runId: String, justAppendedOrdinal: Long, justAppendedEncoded: String) {
         if ((justAppendedOrdinal + 1) % INDEX_STRIDE != 0L) return
         val framesPath = framesFile(runId)
@@ -583,16 +545,14 @@ class SegmentFrameIndex(
      * Returns the per-run offset index entries. Trusts the on-disk index if it is present and
      * has the same mtime as the cache; rebuilds from the frames file when the index is missing
      * (cold start, partial-write window, or external deletion).
-     *
      * The cache is keyed on the index file's mtime, so:
      *   * same-JVM appends below [INDEX_STRIDE] advance the frames file's mtime but leave the
      *     cache valid — the entries are still useful pointers, no reload needed;
      *   * same-JVM appends that cross [INDEX_STRIDE] advance the index's mtime and force a
      *     reload, which picks up the new entry;
      *   * cross-JVM readers see whatever mtime the index file has on first read.
-     *
      * Caller holds [lock].
-     */
+*/
     private fun loadOffsetIndex(runId: String): List<IndexEntry> {
         val indexPath = offsetIndexFile(runId)
         val indexMtime: FileTime? =
@@ -616,13 +576,11 @@ class SegmentFrameIndex(
      * One-pass rebuild of the offset index by walking the frames file line by line. Records an
      * entry at every [INDEX_STRIDE]-th frame (0-indexed: ordinal 999, 1999, …), exactly matching
      * the convention [maybeAppendIndexEntry] uses when it is the writer.
-     *
      * The walk stops at the first malformed line, which is the same contract [readFrames]
      * applies — a torn last line is not a frame and not an index entry. Writes the rebuilt
      * entries back to the index file with a single `force(false)`.
-     *
      * Caller holds [lock].
-     */
+*/
     private fun rebuildOffsetIndex(runId: String): List<IndexEntry> {
         val framesPath = framesFile(runId)
         val entries = mutableListOf<IndexEntry>()
@@ -652,7 +610,7 @@ class SegmentFrameIndex(
      * Parses the offset index file, skipping any line that does not match `ordinal\tbyteOffset`.
      * A torn last line is dropped silently — same rule as [decode] for frames — so a partial
      * write to the index does not poison the whole read.
-     */
+*/
     private fun parseOffsetIndex(file: Path): List<IndexEntry> {
         if (!Files.isRegularFile(file)) return emptyList()
         val entries = mutableListOf<IndexEntry>()
@@ -673,10 +631,9 @@ class SegmentFrameIndex(
      * Truncates and rewrites the offset index file. Single `force(false)` at the end is enough
      * because rebuilds are infrequent (only on first read after a stale-mtime window) and the
      * index file is small (`O(N / INDEX_STRIDE)` entries).
-     *
      * Empty-input is a no-op: the file is not materialised until the first stride boundary is
      * crossed, so an empty-run keeps the on-disk layout identical to pre-fix.
-     */
+*/
     private fun writeOffsetIndex(file: Path, entries: List<IndexEntry>) {
         if (entries.isEmpty()) return
         Files.createDirectories(file.parent)
@@ -699,7 +656,7 @@ class SegmentFrameIndex(
      * `byteOffset`. If that offset is at or past the current file size (a stale index after a
      * torn-tail truncate), walks back to the previous entry with `byteOffset < fileSize`. If
      * nothing valid remains, returns 0 — the read starts at the beginning of the frames file.
-     */
+*/
     private fun binarySeekIndex(entries: List<IndexEntry>, atOrBefore: Long, fileSize: Long): Long {
         var lo = 0
         var hi = entries.size - 1
@@ -751,29 +708,27 @@ class SegmentFrameIndex(
         const val AUTHORITY_SUFFIX = ".authority"
 
         /**
-         * R3 / OBS-3 step 2 (ADR-OBS-004) — suffix for the per-run sparse offset index that lets
+         * Suffix for the per-run sparse offset index that lets
          * [framesOfRun] seek past frames it has already returned instead of re-reading the log.
-         */
+*/
         const val OFFSET_INDEX_SUFFIX = ".offset-index"
 
         /**
-         * R3 / OBS-3 step 2 (ADR-OBS-004) — number of frames between consecutive entries in the
-         * offset index. Fixed for the first implementation; revisited at the OBS-3 measurement
+         * Number of frames between consecutive entries in the
+         * Offset index. Fixed for the first implementation; revisited at the measurement
          * gate. `1000` keeps the index around `16 KB` at `10⁶` frames and `160 KB` at `10⁷`.
-         */
+*/
         const val INDEX_STRIDE = 1000L
 
         /**
-         * R3 / OBS-3 — window for the tail-only torn-tail read in [sealTornTail].
-         *
+         * Window for the tail-only torn-tail read in [sealTornTail].
          * One frame line is ~100–200 bytes (5 tab-separated fields: ordinal, from, to, channel,
          * URL-encoded stream). 4 KiB holds ~20–40 lines, which is more than enough margin for a
          * writer that crashed mid-line: the worst case is one torn line, never twenty.
-         *
          * Bigger would still be O(1) for the read but wastes I/O on every append. Smaller would
          * be safer in theory but unnecessary: there is at most one torn line at a time, and that
          * line is at most one line long.
-         */
+*/
         const val TAIL_READ_BYTES = 4L * 1024L
     }
 }

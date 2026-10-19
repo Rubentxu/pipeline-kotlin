@@ -12,34 +12,27 @@ import java.nio.file.StandardCopyOption
 import java.time.Instant
 
 /**
- * B3.2 — single-writer durable store for admission control rows.
- *
- * ## The RETRY-D analogy, applied to admission
- *
+ * Single-writer durable store for admission control rows.
+ * ## The analogy, applied to admission
  * The retry aggregate has a control row so a second invocation of the binary with the
  * same `--db` and `--control-root` does not re-run a successful child. The admission
  * aggregate has the same problem: a refused plugin, reported back to the caller, leaves
  * no evidence the run can re-read. Re-running the same artifacts through the gate would
  * re-decide the same way, but the OPERATOR needs to be able to look at a single file and
  * see why a plugin was refused — without re-running anything.
- *
  * The retry control row is the precedent: persist BEFORE the effect, write under
  * `<controlDirRoot>/<family>/<sha256-identity>.<extension>`, atomically renamed. The
  * admission control row uses the same shape under
  * `<controlDirRoot>/admission-control/<sha256-identity>.row.json`.
- *
  * ## Persist-before-decision-returns
- *
  * The gate's contract: the row is on disk before the gate's refusal is returned. A
  * refused plugin that left the row in memory only would defeat the whole point, because
  * the row is the audit trail.
- *
  * ## Single-writer
- *
  * No other component writes to this file. The gate is the only writer; the read path is
  * for the operator and for tests. A future planner that reads admission history gets the
  * same single-writer property the retry path already has.
- */
+*/
 class AdmissionControlJournal(controlDirRoot: Path) {
 
     private val admissionControlDir: Path = controlDirRoot.resolve("admission-control")
@@ -50,13 +43,11 @@ class AdmissionControlJournal(controlDirRoot: Path) {
 
     /**
      * Persist a row.
-     *
      * Atomic write: writes to a temp file in the same directory and atomically renames.
      * A crashed writer never leaves a half-written row visible to a reader.
-     *
      * @return the absolute path of the persisted row file (useful for the gate's
      *   pre-conditions assertions; production callers do not normally need it).
-     */
+*/
     fun record(row: AdmissionControlRow): Path {
         val file = rowFile(row.pluginId)
         val tmp = Files.createTempFile(admissionControlDir, "row-", ".json")
@@ -73,7 +64,7 @@ class AdmissionControlJournal(controlDirRoot: Path) {
      * Read the persisted row for [pluginId], or `null` if the gate has not yet decided
      * that identity. A second run that re-encounters the same plugin gets the durable
      * record of the prior decision.
-     */
+*/
     fun readRow(pluginId: String): AdmissionControlRow? {
         val file = rowFile(pluginId)
         if (!Files.exists(file)) return null
@@ -88,12 +79,10 @@ class AdmissionControlJournal(controlDirRoot: Path) {
 }
 
 /**
- * B3.2 — one durable admission decision.
- *
- * Written BEFORE the gate's refusal returns (RETRY-D, ADR-0075 §6). The [verdict] field
+ * One durable admission decision.
+ * Written BEFORE the gate's refusal returns. The [verdict] field
  * is the runtime's typed identity verdict; [refusedKind] / [refusedDetail] name the
  * specific [AdmissionRejection] case when the gate refused.
- *
  * @property pluginId the canonical [ResourceRef] text of the plugin; the durable key
  * @property origin the [ArtifactOrigin.canonicalText] the gate measured
  * @property declaredDigest the digest the manifest's `releaseDigest` field carried
@@ -105,7 +94,7 @@ class AdmissionControlJournal(controlDirRoot: Path) {
  *   when the gate admitted)
  * @property refusedDetail the rejection's payload text, if any (nullable)
  * @property recordedAt when the row was written
- */
+*/
 data class AdmissionControlRow(
     val pluginId: String,
     val origin: String,
@@ -119,12 +108,11 @@ data class AdmissionControlRow(
     companion object {
         /**
          * Compose a row from the gate's typed inputs.
-         *
          * The [verdict] and [rejection] are produced together so the row is consistent:
          * a [AdmissionRejection] implies a [TrustMetadata.Unverified] or [Mismatch] verdict,
          * and an [Admitted] plugin has `refusedKind = null`. The composer is the only
          * place this invariant is checked.
-         */
+*/
         fun compose(
             pluginId: String,
             origin: ArtifactOrigin,
@@ -154,7 +142,7 @@ data class AdmissionControlRow(
 /**
  * Canonical text of an [ArtifactOrigin]. Hand-written to keep the durable row independent
  * of any Kotlin data class's `toString()` evolution.
- */
+*/
 private fun ArtifactOrigin.canonicalText(): String = when (this) {
     is ArtifactOrigin.LocalClasspathEntry -> "local:$location"
     is ArtifactOrigin.ResolvedCoordinate -> "coord:$group:$artifact:$version"
@@ -251,7 +239,7 @@ private fun escape(s: String): String = s
  * [dev.rubentxu.pipeline.v2.application.OperatorTrustDatabase]: a small cursor that
  * only knows objects, strings and null/long literals. The on-disk format is contractual
  * and a richer parser would invite a second authority.
- */
+*/
 private class TinyJsonObject(private val source: String) {
     private var pos = 0
 

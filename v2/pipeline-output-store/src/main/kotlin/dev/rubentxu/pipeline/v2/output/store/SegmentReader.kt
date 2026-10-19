@@ -15,34 +15,27 @@ import java.nio.file.StandardOpenOption
 
 /**
  * Serving bytes out of a stream's segment set, and nothing else.
- *
  * ## Why this is split out
- *
  * `SegmentOutputStore` does two structurally different jobs and had grown enough to hold both: it
  * **owns** reservations, commits, sealing and recovery — every mutation passes through its
  * `FileLock` and its `ReentrantLock` — and it **serves** already-committed bytes to readers, which
  * mutates nothing and takes no lock at all. The second job crossed the first job's size budget,
  * and `detekt`'s `TooManyFunctions` flagged it.
- *
  * The repository's own policy for that rule (`config/detekt/detekt.yml`) says the honest response to
  * a class that accumulates logic is an extraction and not a wider number, so the threshold was left
  * alone and this is the extraction.
- *
  * The seam chosen is the one where the two jobs stop touching: **reads**. Everything moved here is
  * pure with respect to the store — it reads files and returns a value, never reserving, committing,
- * rotating or truncating — so the ownership discipline that `ADR-OBS-002` and the `M-OWN` mutations
+ * Rotating or truncating — so the ownership discipline that `` and the `` mutations
  * were written against stays in one place, unweakened and still covered by the same laws.
- *
  * ## What moved, and what deliberately did not
- *
  * Moved: enumerating and parsing sealed segments, reading a chunk positionally, and assembling a page
  * from the merged segment set. Stayed: `reconcile`, `rotateLocked`, `truncateTo`, the lock helpers and
  * every write path, because those are the authority and moving them would be refactoring semantics
  * for a lint budget.
- *
  * The sealed-segment *naming* moved here too, so that `sealedName` and `parseSealed` are adjacent and
  * the format has one authority rather than a writer in one class and a reader in another.
- */
+*/
 internal object SegmentReader {
 
     /** Suffix of a sealed segment file. Owned here because this object also parses it back. */
@@ -51,7 +44,7 @@ internal object SegmentReader {
     /** One sealed segment: where it starts, how long it is, and the file holding it. */
     data class SealedSegment(val base: Long, val length: Long, val file: Path) {
         init {
-            // The sibling value types in :pipeline-output all guard their ranges at construction
+            // The sibling value types:pipeline-output all guard their ranges at construction
             // (OutputFrame.init, OutputPage.init, OutputPin.init). SealedSegment was the one that
             // did not, so a nonsensical extent could travel the whole read path before failing.
             require(base >= 0) { "segment base must be non-negative, got $base" }
@@ -85,7 +78,7 @@ internal object SegmentReader {
         val length = stem.substring(dash + 1).toLongOrNull() ?: return null
         // `sealedName` splits at the FIRST dash, so a stem like "10--5" parses as base=10 with
         // length=-5: toLongOrNull accepts the sign. A negative length understates base+length,
-        // which lowers currentBase(), which in turn makes the caller's localStart too large and
+        // which lowers currentBase, which in turn makes the caller's localStart too large and
         // re-serves bytes already emitted — the exact "misdirected segment duplicates output"
         // failure this reader exists to prevent. The writer cannot emit it (rotateLocked refuses
         // length <= 0), so this is reachable only by corruption; the reader's contract is to
@@ -115,10 +108,9 @@ internal object SegmentReader {
     /**
      * Assembles `[from, to)` out of the merged segment set: the sealed segments in base order, then
      * the current segment.
-     *
-     * [committedEnd] is the O2 authority and is passed in rather than re-read, so this object cannot
+     * [committedEnd] is the authority and is passed in rather than re-read, so this object cannot
      * hold a second opinion about how far a stream is committed.
-     */
+*/
     fun readRange(
         stream: OutputStreamId,
         sealedDir: Path,
@@ -163,7 +155,7 @@ internal object SegmentReader {
         }
 
         if (written != target.size) {
-            // A committed offset that cannot be fully served is a dangling commit (I4). A short page
+            // A committed offset that cannot be fully served is a dangling commit. A short page
             // would be indistinguishable from a complete one, and this used to be an IOException —
             // which was a hole in the closed ADT, since a caller handling every refusal could still
             // be thrown out of a total function.
@@ -184,18 +176,16 @@ internal object SegmentReader {
     }
 
     /**
-     * M3 — single-pass read: serves `[from, to)` out of the merged segment set
+     * Single-pass read: serves `[from, to)` out of the merged segment set
      * AND computes a deterministic SHA-256 digest of the bytes in the SAME pass.
-     *
      * The hash is updated as each chunk is read, so the I/O and the digest
      * share the buffer. The default `OutputReadPort.readRangeDigested`
      * implementation does the same in two passes; this override exists so a
      * single I/O round produces both the page and the digest.
-     *
      * Refusal cases mirror `readRange` exactly: a partial read becomes
      * `OutputRefusal.DanglingCommit` so the contract test
      * `DigestRefusalTranslation` can pin it.
-     */
+*/
     fun readRangeDigested(
         stream: OutputStreamId,
         sealedDir: Path,
@@ -263,13 +253,12 @@ internal object SegmentReader {
 
     /**
      * The refusal for a read whose requested bytes are not all present.
-     *
      * [lastRetained] is the offset of the last byte that WAS served; the missing region starts at
      * `lastRetained + 1`, which is the address a consumer re-anchors at if it chooses to continue
      * rather than fail. One constructor for both readers: the two read paths must not be able to
      * describe the same gap differently, because a consumer branching on the refusal would then
      * have to handle two shapes of one fact.
-     */
+*/
     private fun retentionGap(
         stream: OutputStreamId,
         from: Long,
@@ -285,7 +274,6 @@ internal object SegmentReader {
 /**
  * The first offset in `[from, to)` that no sealed segment and no current segment can serve, or
  * `null` when the whole range is covered.
- *
  * This is the decision the two readers used to make by accident. Both assembled `[from, to)` by
  * walking segments and deriving each chunk's offset as `(cursor - seg.base).coerceAtLeast(0)`, so a
  * segment that began ABOVE the cursor was read from its own offset 0 and copied into the middle of
@@ -295,20 +283,18 @@ internal object SegmentReader {
  * handed the CONTENT of `[1000, 1500)` and told it was the range it named. For the digested
  * reader it was worse: the digest certified bytes the caller never asked for, and a digest is
  * exactly what a consumer stores to detect corruption later.
- *
  * A gap is currently unreachable — `SegmentOutputStore.prune` deletes a whole stream DIRECTORY,
  * which leaves the reader with no stream at all (`UnknownStream`) rather than a short one, so the
  * surviving segments are always contiguous from offset 0. That is a property of the writer, not a
  * property of the reader, and it is not guaranteed: the ADT case
  * [OutputRefusal.RetentionGap], the `MainConsoleCli` render branch and the `OutputReadPort`
- * contract have all existed since M3 and describe a reader that detects the gap. Answering here
+ * Contract have all existed since and describe a reader that detects the gap. Answering here
  * makes the declared contract true, and it costs one comparison per segment.
- *
  * The walk is over [sealed] in base order and treats the current segment as covering
  * `[currentBase, ∞)` — the store passes the base, not a length, so nothing beyond `currentBase`
  * is a gap on this account; a commit past the bytes that physically exist is the separate
  * `DanglingCommit` case, which the reader still raises on its own short-read check.
- */
+*/
 internal fun firstMissingOffset(
     sealed: List<SegmentReader.SealedSegment>,
     from: Long,

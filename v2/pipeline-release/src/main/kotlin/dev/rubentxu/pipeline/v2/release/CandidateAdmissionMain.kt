@@ -6,20 +6,18 @@ import java.nio.file.Paths
 import kotlin.system.exitProcess
 
 /**
- * P0.3 build wiring — command-line entry point for the cheap identity gate.
- *
+ * Command-line entry point for the cheap identity gate.
  * Gradle cannot call Kotlin project code directly, so the task runs this main
  * against the release module's runtime classpath. It is intentionally a thin
  * shell over [CandidateAdmission]: it parses arguments, delegates, prints the
  * diagnostic, and maps [AdmissionOutcome] to an exit code. It contains no
  * admission rules of its own, so the build and the tests cannot disagree.
- *
  * ```text
  * usage: candidate-admission <zip> <productVersion> <gitCommit> <outDir>
  *                      [<candidateRef>] [<candidateSequence>] [<sbomPath>] [<sdkPath>] [<bomPath>] [<repoRoot>]
  * exit  0 = admitted, 1 = refused
  * ```
- */
+*/
 fun main(args: Array<String>) {
     if (args.size < 4) {
         System.err.println(
@@ -61,13 +59,13 @@ fun main(args: Array<String>) {
         covered = covered,
         candidateSequence = args.getOrNull(5)?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 1,
         outDir = outDir,
-        // P0.5 — the law is enforced from observed version control state, not
+        // The law is enforced from observed version control state, not
         // from the commit string the caller passed. Passing the caller's own
         // claim back in would make the gate check itself.
         provenanceFacts = SourceProvenanceProbe.probe(
-            // P0.5 — the repository whose version control state defines this
+            // The repository whose version control state defines this
             // candidate's provenance. When the caller omits arg 7, the process
-            // cwd (Paths.get("") — no global System property read, LFC0-006)
+            // Cwd (Paths.get("") — no global System property read,)
             // is the explicit fallback.
             Paths.get(args.getOrNull(9) ?: Paths.get("").toAbsolutePath().toString()),
         ),

@@ -5,22 +5,18 @@ import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 
 /**
  * New authority seam for the EFFECTIVE execution of a Step's concrete semantics (CDE.3-b2).
- *
  * This is the seam the durable protocol observes for the a1 law going forward: a call to [execute]
  * means "the concrete Step will actually run and may produce side effects". It supersedes
  * [CanonicalInvocationExecutor] as the architectural authority. During the migration the old
  * command-typed seam lives behind [LegacyExecutionAdapter] as a compatibility detail; after the
  * legacy dispatcher disappears, only this seam remains.
- *
  * The durable protocol decides whether to call it (fresh/re-run executes; replay reuse, decode
  * rejection, divergence and running-shell recovery return before it is reached).
- *
- * ## LB-02 / G3-A3: atomic outcome + encodedOutput
- *
+ * ## /: atomic outcome + encodedOutput
  * The seam returns a [CommonExecutionResult] — `outcome + encodedOutput` in one value — to
  * eliminate temporal connascence. Legacy paths encode `encodedOutput = null`; registry-routed
  * paths MAY carry a non-null encoded typed output. **There is exactly one execution seam.**
- */
+*/
 fun interface CommonExecutionBoundary {
     suspend fun execute(
         prepared: PreparedExecution,
@@ -32,14 +28,13 @@ fun interface CommonExecutionBoundary {
  * Legacy strategy payload: wraps the already-decoded command opaquely. Only [LegacyExecutionAdapter]
  * reads [command]; the durable coordinator never sees it. Prepared here, never executed during
  * preparation.
- *
- * WU-LPR-301 / G5 (2026-09-18): [command] is typed as `Any?` because every CanonicalCoreStepCommand
+ * [command] is typed as `Any?` because every CanonicalCoreStepCommand
  * subtype is LEGACY_REMOVED. The legacy boundary is kept only as a binary-compatibility seam for
  * historical call sites that pass an arbitrary payload through [LegacyExecutionAdapter]. In
  * production the boundary never receives a [PreparedLegacyExecution] (the registry boundary always
  * wins when a StepRegistry is wired); the seam is exercised only by characterization tests that
  * preserve the boundary-projection invariants (encodedOutput shape, no-op outcome).
- */
+*/
 data class PreparedLegacyExecution(val command: Any?) : PreparedExecution
 
 /**
@@ -47,11 +42,10 @@ data class PreparedLegacyExecution(val command: Any?) : PreparedExecution
  * new [CommonExecutionBoundary]. Temporary migration glue, behavior-preserving: the coordinator may
  * keep constructing the old executor (including a recording one) while the new boundary routes an
  * already-prepared legacy execution to it unchanged.
- *
  * The legacy executor produces only an outcome (no typed output at this seam); the adapter
  * lifts its [dev.rubentxu.pipeline.v2.domain.StepOutcome] into a [CommonExecutionResult]
  * with `encodedOutput = null`. Backwards-behaviour-preserving at every call site.
- */
+*/
 object LegacyExecutionAdapter {
     fun adapt(legacy: CanonicalInvocationExecutor): CommonExecutionBoundary =
         CommonExecutionBoundary { prepared, context ->
@@ -69,14 +63,12 @@ object LegacyExecutionAdapter {
 /**
  * Composes the two structural execution-strategy families behind a single [CommonExecutionBoundary]
  * (CDE.3-d2).
- *
  * Selection is by the PreparedExecution strategy kind (legacy-compatible vs registry), NEVER by step
  * key and NEVER over concrete plugin steps, so no concrete handler is special-cased. The [when] is
  * exhaustive over the two sealed structural forms. Each family is backed by its own executor boundary
  * ([legacy] for [PreparedLegacyExecution], [registry] for [PreparedRegistryExecution]).
- *
- * LB-02 / G3-A3: the routed [CommonExecutionResult] is propagated unchanged — the seam is single.
- */
+ * The routed [CommonExecutionResult] is propagated unchanged — the seam is single.
+*/
 object SeamedExecutionRouter {
     fun route(
         legacy: CommonExecutionBoundary,
@@ -91,17 +83,15 @@ object SeamedExecutionRouter {
 
 /**
  * Single production authority that builds the default [CommonExecutionBoundary] a coordinator (or a
- * recording test decorator) should route through (B1.2c3-S2.5.2).
- *
+ * Recording test decorator) should route through this boundary
  * Without a registry it is the legacy adapter over the legacy executor; with a [StepRegistry] it is the
  * family router ([SeamedExecutionRouter.route]) over the legacy adapter + the registry boundary. Test
  * recorders MUST wrap this authority (observing effective execution and delegating to the real routing),
  * never reimplement family routing themselves.
- *
- * As of S2.5.7 this function is retained for source compatibility as a forwarder over
+ * As of.5.7 this function is retained for source compatibility as a forwarder over
  * [ExecutionBoundaryFactory.build]; the structural decision lives in [ExecutionBoundaryFactory] / [FamilyRouter].
  * Removal is future cleanup after legacy adapter retirement.
- */
+*/
 fun buildDefaultExecutionBoundary(
     dispatcher: CanonicalNodeDispatcher,
     invocationExecutor: CanonicalInvocationExecutor?,

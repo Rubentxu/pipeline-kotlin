@@ -7,14 +7,12 @@ import dev.rubentxu.pipeline.v2.harness.codec.YamlEventContractCodec
 import dev.rubentxu.pipeline.v2.harness.verify.EventHarness
 
 /**
- * EVT-3 minimal post-run acceptance surface:
- *
+ * Minimal post-run acceptance surface
  *   pipeline events verify --db <path> --run <runId> --contract <events.yaml> [--from-cursor TOKEN]
- *
  * Verifies persisted history through the EventHarness (typed contract) WITHOUT
  * re-executing the pipeline. Exit 0 = PASSED, 1 = FAILED, 2 = usage/decode error.
  * Prints a VerificationReport summary to stdout; violations detail on FAILED.
- */
+*/
 object MainEventsVerifyCli {
 
     fun main(args: Array<String>): Int {
@@ -39,7 +37,7 @@ object MainEventsVerifyCli {
             System.err.println("Usage: pipeline events verify --db <path> --run <runId> --contract <events.yaml> [--from-sequence N] [--after-last-run-started]")
             return 2
         }
-        // D3 — the second of the two copies of this rule. Both now consult `admitEventStore`.
+        // The second of the two copies of this rule. Both now consult `admitEventStore`.
         val dbAdmission = admitEventStore(db, EventStorePurpose.Read)
         if (dbAdmission is EventStoreAdmission.Refused) {
             System.err.println(dbAdmission.refusal.render())

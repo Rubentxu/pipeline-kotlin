@@ -7,18 +7,16 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * WU-LPR-011 secret-redaction slice: chunk-boundary-safe transcript reader.
- *
+ * Chunk-boundary-safe transcript reader.
  * Reads a durable console transcript through [StreamingRedactor] so a secret
- * straddling arbitrary read boundaries (the P5 characterization in
- * WU-LPR-040) is still scrubbed before the content reaches the observable
+ * Straddling arbitrary read boundaries (the characterization in
+ * ) is still scrubbed before the content reaches the observable
  * event/console plane.
- *
  * Law of channel separation (trunk rule): this redactor is for the
  * OBSERVABLE console/event channel only. The typed value channel
  * (`output.txt` / `capturedStdout`) is deliberately NOT routed through it —
  * a typed value requested by a capture mode must stay exact.
- */
+*/
 class TranscriptRedactor(
     private val registry: SecretPatternRegistry,
     private val chunkSize: Int = 8192,

@@ -23,7 +23,6 @@ import java.time.Instant
 
 /**
  * What happens when an acquisition FAILS after some credentials have already been materialised.
- *
  * Bind two credentials and the second can fail — a tampered store, a wrong kind, a missing linked
  * secret — after the first has already written a private key to disk. The rollback closed the
  * projections it had retained with `catch (_: Throwable) { /* swallow: best-effort */ }`, so a key

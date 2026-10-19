@@ -15,7 +15,7 @@
     <ID>UnusedImport:LocalSecretStore.kt:import org.bouncycastle.crypto.params.Argon2Parameters</ID>
     <ID>UnusedImport:LocalSecretStore.kt:import org.bouncycastle.crypto.params.KeyParameter</ID>
     <ID>UnusedPrivateProperty:LocalSecretStore.kt:LocalSecretStore.Companion$/** * Payload marker of a part that links to another credential. The * referenced id follows the marker, without a length prefix of its own. */ private const val LINKED_REF_MARKER: Int = -1</ID>
-    <ID>UnusedPrivateProperty:LocalSecretStore.kt:LocalSecretStore.Companion$/** Payload marker of a part that is declared but has no value.*/ private const val ABSENT_MARKER: Int = 0</ID>
+    <ID>UnusedPrivateProperty:LocalSecretStore.kt:LocalSecretStore.Companion$/** Payload marker of a part that is declared but has no value. */ private const val ABSENT_MARKER: Int = 0</ID>
     <ID>UnusedVariable:CredentialPartReader.kt:CredentialPartReader$val marker = buf.int</ID>
     <ID>UnusedVariable:CredentialSerializer.kt:CredentialSerializer$val partCount = buf.get().toInt()</ID>
     <ID>UnusedVariable:LocalSecretStore.kt:LocalSecretStore$val partCount = buf.get().toInt()</ID>

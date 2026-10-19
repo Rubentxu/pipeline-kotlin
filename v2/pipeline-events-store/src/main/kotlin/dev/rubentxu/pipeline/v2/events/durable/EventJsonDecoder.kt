@@ -16,12 +16,11 @@ import java.time.Instant
 
 /**
  * The field and element readers of [JsonEventLog]'s decoder.
- *
  * [JsonEventLog] is an `object`, so detekt budgets it 11 functions
  * (allowedFunctionsPerObject) rather than the 25 allowedFunctionsPerClass
  * that applies to classes. This holds the fifteen decoding helpers that
  * every entry point in here was private.
- */
+*/
 internal object EventJsonDecoder {
 
     fun decodeStringList(json: String, fieldName: String): List<String> {
@@ -177,18 +176,17 @@ internal object EventJsonDecoder {
         return ScriptingDiagnostic(severity, message, line, column, path)
     }
 
-    // WU-LPR-089 — Stash helpers (compact JSON arrays).
+    // Stash helpers (compact JSON arrays).
     // parseJsonArrayObjects (which the ArtifactArchiveFailed-family already uses).
     /**
      * Decodes an entry list, distinguishing "the field is absent or empty" from
      * "the field is present and at least one entry is unreadable".
-     *
      * The distinction matters because the caller must fail closed on the second
      * and accept the first. Before this existed, an unreadable entry was dropped by
      * `mapNotNull`, so an event decoded successfully carrying a SHORT list: a
      * stash of five files with one corrupt came back as a stash of four, and
      * nothing anywhere reported the difference.
-     */
+*/
     fun decodeStashedEntriesOrRefuse(s: String): List<StashedEntry>? {
         val arr = extractJsonArray(s, "files") ?: return emptyList()
         val entries = arr.map { obj ->
@@ -219,7 +217,7 @@ internal object EventJsonDecoder {
         return if (entries.size == arr.size) entries else null
     }
 
-    // WU-LPR-090 — HtmlReport helpers (compact JSON arrays, same shape as Stash).
+    // HtmlReport helpers (compact JSON arrays, same shape as Stash).
 
     fun decodeHtmlReportEntries(s: String): List<HtmlReportEntry> {
         val arr = extractJsonArray(s, "entries") ?: return emptyList()
@@ -237,7 +235,7 @@ internal object EventJsonDecoder {
      * Extracts the JSON array of objects for the named field from a single
      * event payload. Returns one string per object in the array, or null if
      * the field is missing or not an array.
-     */
+*/
     fun extractJsonArray(payload: String, fieldName: String): List<String>? {
         // Find the field marker (e.g. `"files":[`)
         val marker = "\"$fieldName\":["
@@ -248,7 +246,7 @@ internal object EventJsonDecoder {
         // because the payload we receive here is a single event object (already extracted
         // from the outer JSON array), and the array-of-objects inside it must be balanced
         // through brace depth (the opening `[` is consumed by the marker itself).
-        // WU-LPR-090 fix: prior implementation only tracked `[`/`]`, which caused arrays
+        // Prior implementation only tracked `[`/`]`, which caused arrays
         // of objects (StashCreated/StashRestored entries, HtmlReportPublished entries) to
         // decode as empty lists — the outer `]` at end-of-array decremented past 0 and
         // never matched `depth == 0`.
@@ -318,5 +316,5 @@ internal object EventJsonDecoder {
 
     /**
      * Serializes a string to a quoted JSON literal, escaping per RFC 8259.
-     */
+*/
 }

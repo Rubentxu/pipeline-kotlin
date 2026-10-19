@@ -38,12 +38,10 @@ kotlin {
 }
 
 // ----------------------------------------------------------------------------
-// SCM/Git OFFICIAL_PLUGIN provenance seam (LFC-2E2 / F5.1 / ADR-0092).
-//
+// SCM/Git OFFICIAL_PLUGIN provenance seam
 // The contributor (ScmGitStepDefinitionContributor) refuses to register
 // without the real SHA-256 of its own artefact — that is the "no
 // fabricated SHA" contract the human reviewer asked for.
-//
 // We compute the digest at build time by streaming the contents of every
 // class file produced by `compileKotlin` and every resource processed by
 // `processResources` through `sha256sum` (always present on Linux) and
@@ -52,10 +50,8 @@ kotlin {
 // classes -> same digest) and is independent of the JAR layout / packaging
 // timestamp — a much stronger provenance than hashing the JAR bytes would
 // give us (since `Built-Date` and `Built-By` would randomise the JAR).
-//
 // The digest is written to `META-INF/scm-git-release.properties` so it
 // ships inside the JAR and is observable by any consumer.
-//
 // If the digest cannot be computed (no compiled classes yet — e.g. when
 // running compileKotlin directly), the properties file is left absent
 // and the contributor fails closed at registration time with a clear
@@ -71,7 +67,7 @@ val scmGitReleaseProps = layout.buildDirectory.file("resources/main/META-INF/scm
 val scmGitClassesDir = layout.buildDirectory.dir("classes/kotlin/main")
 val scmGitResourcesDir = layout.buildDirectory.dir("resources/main")
 
-// Exclusions by EXACT relative path, never by name suffix (B0.2). The previous filter dropped
+// Exclusions by EXACT relative path, never by name suffix. The previous filter dropped
 // any file ending with `plugin-manifest.json`, which would also drop an unrelated
 // `unrelated-plugin-manifest.json` from the identity.
 val scmGitExcludedResourcePaths = setOf(
@@ -92,8 +88,8 @@ val computeScmGitDigest = tasks.register("computeScmGitDigest") {
     dependsOn("compileKotlin", "processResources")
 
     // Declared inputs, WITHOUT `skipWhenEmpty`: `inputs.dir + skipWhenEmpty` used to make Gradle
-    // mark this NO-SOURCE on incremental builds. `inputs.files(fileTree(...))` keeps the task
-    // runnable while still letting Gradle re-run it when the material changes (B0.2).
+    // Mark this on incremental builds. `inputs.files(fileTree(...))` keeps the task
+    // Runnable while still letting Gradle re-run it when the material changes
     inputs.files(fileTree(scmGitClassesDir)).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.files(fileTree(scmGitResourcesDir) { exclude(scmGitExcludedResourcePaths) })
         .withPathSensitivity(PathSensitivity.RELATIVE)
@@ -102,7 +98,7 @@ val computeScmGitDigest = tasks.register("computeScmGitDigest") {
     inputs.property("version", ver)
     inputs.property("module", "scm-git")
 
-    // AUD-01: this used to be `sh -c "sha256sum <ABSOLUTE PATHS> | sha256sum"`, and `sha256sum`
+    // This used to be `sh -c "sha256sum <ABSOLUTE PATHS> | sha256sum"`, and `sha256sum`
     // PRINTS THE FILENAME IT WAS GIVEN. The shared ProvenanceDigest frames only the root name and
     // the relative path, so two checkouts of identical bytes hash identically.
     doLast {
@@ -183,12 +179,10 @@ tasks.withType<Test>().configureEach {
 
 
 // ----------------------------------------------------------------------------
-// S6/C — the manifest DOCUMENT, derived from the code, not typed by hand.
-//
+// The manifest DOCUMENT, derived from the code, not typed by hand.
 // The declaration object is the one authority: the contributor reads it at runtime
 // and this task reads it at build time. Typing the JSON here instead would create a
 // second authority able to describe Steps the code does not have.
-//
 // The digest task MUST run first: the manifest reports the digest and fails closed
 // for lack of provenance. The declared digest covers the artifact content EXCLUDING
 // this document, the same convention the release-properties file already uses.
@@ -263,14 +257,12 @@ tasks.named("jar") {
     dependsOn(emitScmGitManifest)
 }
 
-// Unit-test wiring RESTORED (2026-10-19), and the reason it went is still worth keeping.
-//
-// It was REMOVED on 2026-10-18 by the testing RESET, on the grounds that this module is a git
+// Unit-test wiring RESTORED , and the reason it went is still worth keeping.
+// It was REMOVED by the testing reset, on the grounds that this module is a git
 // STEP whose guarantee is that a pipeline mutates a real repository, so its verification belongs
 // to the executable E2E layer -- `.pipeline.kts` pipelines under `v2/examples/`, driven by
 // `v2/examples/run.sh` -- and not to a JUnit class. The reasoning about that guarantee stands,
 // and the E2E layer is still where this module's I/O behaviour is verified.
-//
 // What the reasoning did NOT cover is that this module also holds PURE decisions, and one of
 // them had a defect no E2E scenario could have caught: `GitCredentialsApplier.guardProcessBuilderArgs`
 // refused argv carrying a credential by echoing that very argv into its exception message, and
@@ -279,7 +271,6 @@ tasks.named("jar") {
 // The password the guard existed to keep out of the process was therefore written to the event
 // log. Both functions involved are pure predicates over `String` -- no filesystem, no
 // subprocess, no clock -- which is exactly what AGENTS.md section 2 says a unit test is for.
-//
 // The part of the original note that still applies is the warning: a `Test` task whose source
 // set is empty reports success while executing zero classes. Gradle 8.14 exposes no
 // `failOnNoDiscoveredTests` property -- the setting does not exist in this version -- so what

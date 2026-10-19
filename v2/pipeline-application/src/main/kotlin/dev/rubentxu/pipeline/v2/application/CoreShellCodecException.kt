@@ -5,28 +5,24 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * G7 — typed decode failure for `core.sh` output codec.
- *
+ * Typed decode failure for `core.sh` output codec.
  * Subclassing [RuntimeException] (not [Exception]) keeps the failure visible to
  * the boundary's `try / catch (e: Exception)` adapter so the result shape can
  * become a typed `StepOutcome.Failure(ENGINE)` rather than silently coercing
  * a malformed replay payload to `Success`.
- *
  * The message is part of the diagnostic contract; downstream tooling may surface
  * it in run logs. It MUST NOT include raw payload bytes that could leak secrets.
- */
+*/
 class CoreShellCodecException(message: String) : RuntimeException(message)
 
 /**
- * G7 — JsonElement helpers used by `core.sh` output codec decode.
- *
+ * JsonElement helpers used by `core.sh` output codec decode.
  * `asStringOrNull` / `asIntOrNull` / `asLongOrNull` are tolerant readers that
  * return null on type mismatch; the codec explicitly distinguishes "missing"
  * from "wrong-typed" by calling the typed helpers on the validated field.
- *
  * `stringOrThrow` / `intOrThrow` / `boolOrThrow` are strict readers used after
  * the field's presence was already verified.
- */
+*/
 internal fun kotlinx.serialization.json.JsonElement?.asStringOrNull(): String? =
     (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 

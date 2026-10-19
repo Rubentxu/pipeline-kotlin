@@ -27,9 +27,8 @@ import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromT
  * [kotlin.script.experimental.jvmhost.BasicJvmScriptingHost] that may reuse a
  * stored compilation) and
  * exposes the [ScriptingHost] contract from `:pipeline-scripting-api`.
- *
  * Design contract:
- *  - Uses the canonical V1 pattern: `createJvmCompilationConfigurationFromTemplate<Any>`
+ * `createJvmCompilationConfigurationFromTemplate<Any>`
  *    which resolves to the built-in Kotlin script definition (no custom
  *    `@KotlinScript` annotation needed — the file extension is conveyed
  *    via [SourceCodeFactory] producing a [kotlin.script.experimental.host.FileScriptSource]
@@ -47,7 +46,7 @@ import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromT
  *    sha256(scriptText | sortedClasspath | kotlinVersion | hostVersion).
  *  - Maps [ScriptDiagnostic] fields 1:1 to [ScriptingDiagnostic] so the
  *    editor/UAT harness can render source-mapped errors.
- */
+*/
 class Kotlin24ScriptingHost(
     private val eventSink: EventSink = NullEventSink,
     private val runId: String? = null,
@@ -59,36 +58,32 @@ class Kotlin24ScriptingHost(
 
     /**
      * Host implementation version fed into the cache key.
-     *
-     * S0-C1: bumped to 1.1.0 when `-Xreturn-value-checker=check` was added, and
-     * M1-F.1: bumped to 1.2.0 when `-Xuse-fast-jar-file-system=false` was added. In both
+     * Bumped to 1.1.0 when `-Xreturn-value-checker=check` was added, and
+     * Bumped to 1.2.0 when `-Xuse-fast-jar-file-system=false` was added. In both
      * cases the bump was the ONLY thing invalidating previously compiled scripts, because the
-     * options themselves were not part of the key — OBSERVED in S0-C1: the flag was in the
+     * Options themselves were not part of the key — OBSERVED in: the flag was in the
      * binary, yet a script compiled before the change still discarded its result silently.
-     *
      * That defence is now a second line rather than the only one: [compilerFlags] is its own
      * cache-key dimension (see [cacheKeyFor]), so an option change invalidates the key whether
      * or not anyone remembers this value. The bumps above stay, because [hostVersion] still
      * covers host changes that are not options — a different classpath assembly, a different
      * compiler invocation — and because a stale `v1` label is still on old event payloads.
-     */
+*/
     private val hostVersion = "1.2.0"
 
     /**
      * The compiler options the host always passes to the Kotlin scripting host.
-     *
-     * M1-F.1: `-Xuse-fast-jar-file-system=false` is mandatory. Kotlin 2.4.10's
+     * `-Xuse-fast-jar-file-system=false` is mandatory. Kotlin 2.4.10's
      * [FastJarFileSystemKt] (in kotlin-stdlib) calls
      * `sun.misc.Unsafe::invokeCleaner`, which on JDK 21+ emits a warning and
      * is scheduled for removal. Disabling the fast jar file system routes
      * jar reads through the regular `JarFile` path, which is the documented
-     * workaround and removes the call entirely. See ADR-M1-F D1.
-     *
+     * Workaround and removes the call entirely. See
      * The option list is read directly into the compilation identity (see [cacheKeyFor]), so
      * adding an option invalidates the key by construction. It was previously covered only by
      * the [hostVersion] bump discipline described above, which is a comment asking every future
      * author to remember something that the key can enforce instead.
-     */
+*/
     private val compilerFlags: List<String> = listOf(
         // Pure Builder Consumption Gate: an unconsumed return value from
         // a MUST_CONSUME PURE_BUILDER is a compile error in a
@@ -98,7 +93,7 @@ class Kotlin24ScriptingHost(
         // The annotation is only enforced where the checker is enabled,
         // so other consumers of the DSL library are unaffected.
         "-Xreturn-value-checker=check",
-        // M1-F.1: real elimination of `sun.misc.Unsafe::invokeCleaner`
+        // Real elimination of `sun.misc.Unsafe::invokeCleaner`
         // calls from Kotlin 2.4.10's [FastJarFileSystemKt]. Routes jar
         // reads through the legacy `JarFile` path, which does not
         // touch Unsafe. See the field KDoc above.
@@ -142,14 +137,12 @@ class Kotlin24ScriptingHost(
         val classpathFiles = definition.classpath.map { File(it).canonicalFile }
         val sortedClasspath = classpathFiles.map { it.canonicalPath }.sorted().joinToString(",")
 
-        // S0-C1 (Pure Builder Consumption Gate)
-        //
-        // WHY `evalWithTemplate` AND NOT A PRE-BUILT CONFIGURATION
+        // (Pure Builder Consumption Gate)
+        // WHY `evalWithTemplate` AND NOT A CONFIGURATION
         // ========================================================
         // OBSERVED: with `createJvmCompilationConfigurationFromTemplate` the
         // `compilerOptions` key is accepted, stored, and then IGNORED — a
         // discarded `@MustUseReturnValues` result still compiled silently.
-        //
         // ROOT CAUSE (verified against the 2.4.10 artifacts, not guessed):
         //   - `kotlin-scripting-jvm` and `kotlin-scripting-jvm-host` contain
         //     ZERO references to "compilerOptions".
@@ -158,17 +151,15 @@ class Kotlin24ScriptingHost(
         // So the option is read from a `ScriptDefinition`, which only
         // `evalWithTemplate` constructs. Handing the host a pre-built
         // `ScriptCompilationConfiguration` bypasses that read entirely.
-        //
         // `evalWithTemplate` keeps ONE compilation body — the DSL default
         // imports, the per-call classpath and the gate flag are all declared in
         // the same builder — so there is still a single source of truth for how
         // a `.pipeline.kts` is compiled.
-        // S0-C1 / TRAIN-DSL-HONESTY: a fail-closed DSL guard that throws while
+        // A fail-closed DSL guard that throws while
         // the script BODY is being built (e.g. the Pure Builder Consumption
         // gate rejecting an unconsumed MUST_CONSUME carrier) escapes the entry
         // point as a plain exception, BEFORE the evaluator can wrap it in
         // ResultValue.Error.
-        //
         // Without this, the throwable left `compile()` entirely, the exception
         // surfaced inside the durable run, and a BUILD-TIME rejection was
         // misreported to the author as a StepFailed — a construction error
@@ -190,9 +181,9 @@ class Kotlin24ScriptingHost(
             host.evalWithTemplate<Any>(
                 source,
             {
-                // Pure Builder Consumption Gate + M1-F.1 fast-jar-file-system
+                // Pure Builder Consumption Gate + fast-jar-file-system
                 // option. Both live in [compilerFlags] so they share the same
-                // authority and the same cache-key input. The S0-C1 / M1-F.1
+                // Authority and the same cache-key input. The /
                 // comments on those fields explain why each option is here.
                 this[compilerOptions] = compilerFlags
                 jvm {
@@ -243,7 +234,7 @@ class Kotlin24ScriptingHost(
             @Suppress("UNCHECKED_CAST")
             val evalResult = rwd.value as kotlin.script.experimental.api.EvaluationResult
 
-            // TRAIN-DSL-HONESTY: a script body that throws during DSL
+            // A script body that throws during DSL
             // construction (any `require(false)` in a stage body, or a
             // fail-closed DSL guard such as `whenCondition`) surfaces here as a
             // ResultValue.Error while `rwd` still reports Success. Mapping that
@@ -303,10 +294,10 @@ class Kotlin24ScriptingHost(
     }
 
     /**
-     * S0-C1: reports a body-build throwable as an honest compilation failure:
+     * Reports a body-build throwable as an honest compilation failure:
      * emits the CompilationFinished diagnostic and returns Failure with the
      * author's message verbatim. See the catch-site comment in [compile].
-     */
+*/
     private fun compilationFailure(
         t: Throwable,
         effectiveRunId: String,
@@ -343,16 +334,14 @@ class Kotlin24ScriptingHost(
 
     /**
      * The one place this host derives a compilation identity.
-     *
      * It was three hand-written constructions of the same expression — in [compile] and twice in
      * [compilationFailure] — and each one had to remember the same four dimensions. That is the
-     * duplication `Sha256` (B0) was created to remove for digesting, one layer up: a divergence
+     * Duplication `Sha256` was created to remove for digesting, one layer up: a divergence
      * between two spellings is a divergence nobody notices until the keys disagree.
-     *
      * Reading [compilerFlags] from here rather than from the caller is what makes the option
      * dimension unskippable. It used to be covered only by the [hostVersion] bump discipline,
      * which is a comment asking every future author to remember something.
-     */
+*/
     private fun cacheKeyFor(scriptText: String, sortedClasspath: String): CacheKey =
         CacheKey.Companion.v2.compute(
             CompilationIdentity(

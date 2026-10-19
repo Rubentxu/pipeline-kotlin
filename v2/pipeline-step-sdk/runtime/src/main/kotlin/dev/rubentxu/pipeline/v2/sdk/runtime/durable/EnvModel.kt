@@ -4,57 +4,48 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 
 /**
  * Environment variable model for shell step execution.
- *
- * Handles the PATH/JAVA_HOME/M2_HOME legacy semantics from V1:
+ * Handles the PATH/JAVA_HOME/_HOME legacy semantics from
  * - JAVA_HOME/bin is prepended to PATH if JAVA_HOME is set
- * - M2_HOME/bin is prepended to PATH if M2_HOME is set
- *
- * This preserves V1 semantics where Maven/Gradle wrappers would work
+ * -_HOME/bin is prepended to PATH if_HOME is set
+ * This preserves semantics where Maven/Gradle wrappers would work
  * with the expected PATH ordering.
- *
- * ## ML-R4 Typed Env Channel
- *
+ * ## Typed Env Channel
  * The [apply] function is overloaded to handle both:
  * - Legacy `Map<String, String>` (back-compat via [ShOptions.from])
- * - Typed `Map<String, SecretHandle>` for ML-R4 secret redaction
- *
+ * Typed `Map<String, SecretHandle>` for secret redaction
  * When using the typed form, masked entries (PATH manipulation) bypass PATH prepend
  * and are propagated as-is to the output; non-masked entries are transformed.
- *
- * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
- */
+ * Durable sh Pattern</a>
+*/
 object EnvModel {
 
     /**
      * Regex for PATH+= prepend syntax (Jenkins verbatim).
      * Matches keys like "PATH+MAVEN" where the VALUE is the directory to prepend.
      * Example: key="PATH+MAVEN", value="/opt/maven/bin" → prepends /opt/maven/bin to PATH.
-     */
+*/
     private val PATH_PLUS_REGEX = Regex("""^PATH\+([A-Za-z0-9_]+)$""")
 
     /**
      * Applies environment variable transformations for typed SecretHandle env.
-     *
      * Given the user-provided typed env map, this function:
      * 1. Copies all non-masked entries to the output map
      * 2. Handles PATH+= prepend syntax (PATH+=/dir prepends to existing PATH)
      * 3. If JAVA_HOME is set, prepends `${JAVA_HOME}/bin` to PATH
-     * 4. If M2_HOME is set, prepends `${M2_HOME}/bin` to PATH
-     *
+     * 4. If_HOME is set, prepends `${M2_HOME}/bin` to PATH
      * Masked entries bypass PATH prepend and are propagated as-is to the output.
      * PATH prepend applies only to non-masked entries.
-     *
      * @param env The typed user-provided environment variables.
      * @return The transformed environment with PATH adjustments.
-     */
+*/
     @JvmName("applyTyped")
     fun apply(env: Map<String, SecretHandle>): Map<String, SecretHandle> {
         // For the typed form, we need to:
         // 1. Propagate masked non-PATH+= entries as-is (not secret values)
         // 2. Apply PATH prepend logic using the materialized path values
-        // 3. Wrap transformed plain values back in SecretHandle.plain()
+        // 3. Wrap transformed plain values back in SecretHandle.plain
 
-        // T-02 regression, applied to the typed form as well: an empty step environment
+        // Regression, applied to the typed form as well: an empty step environment
         // must stay empty. Falling through to the PATH seed below would materialise the
         // CONTROLLER's PATH and hand it to the child, so a pipeline that declared no
         // environment at all silently inherited one from the machine running it. The
@@ -112,11 +103,11 @@ object EnvModel {
             currentPath = "${javaHome}/bin${if (currentPath.isNotEmpty()) ":$currentPath" else ""}"
         }
 
-        // M2_HOME/bin prepend to PATH (starts from original PATH, not from JAVA_HOME-modified PATH)
+        //_HOME/bin prepend to PATH (starts from original PATH, not from JAVA_HOME-modified PATH)
         val m2HomeHandle = env["M2_HOME"]
         if (m2HomeHandle != null) {
             val m2Home = m2HomeHandle.materialize()
-            // M2_HOME prepends to whatever PATH is currently (after JAVA_HOME)
+            //_HOME prepends to whatever PATH is currently (after JAVA_HOME)
             currentPath = "${m2Home}/bin${if (currentPath.isNotEmpty()) ":$currentPath" else ""}"
         }
 
@@ -131,20 +122,17 @@ object EnvModel {
 
     /**
      * Applies environment variable transformations for legacy String env.
-     *
      * This is a convenience wrapper that delegates to the typed form
      * via [ShOptions.from] for back-compat with legacy callers.
-     *
      * Handles PATH+= prepend syntax (Jenkins verbatim):
      * - PATH+= value prepends to existing PATH
      * - Multiple PATH+= entries prepend in order (first declared = outermost)
-     *
      * @param env The legacy user-provided environment variables.
      * @return The transformed environment with PATH adjustments.
-     */
+*/
     @JvmName("applyLegacy")
     fun apply(env: Map<String, String>): Map<String, String> {
-        // T-02 regression fix: apply(emptyMap()) must return empty map.
+        // Apply(emptyMap) must return empty map.
         // The empty input contract is that no environment variables are inherited —
         // not even PATH from the controller's system. Early return before any
         // PATH fallback logic so the controller's PATH never leaks into step envs.
@@ -179,8 +167,8 @@ object EnvModel {
             out.remove(key)
         }
 
-        // T-02 regression: when no PATH+= entries are present, preserve original behavior
-        // (JAVA_HOME/M2_HOME prepend onto originalPath without deduplication).
+        // When no PATH+= entries are present, preserve original behavior
+        // (JAVA_HOME/_HOME prepend onto originalPath without deduplication).
         // Only deduplicate when PATH+= is actually used, per the PATH+= prepend semantics.
         var currentPath = if (pathPlusDirs.isEmpty()) {
             originalPath
@@ -205,7 +193,7 @@ object EnvModel {
             currentPath = "${javaHome}/bin${if (currentPath.isNotEmpty()) ":$currentPath" else ""}"
         }
 
-        // M2_HOME/bin prepend to PATH (starts from original PATH, not from JAVA_HOME-modified PATH)
+        //_HOME/bin prepend to PATH (starts from original PATH, not from JAVA_HOME-modified PATH)
         env["M2_HOME"]?.let { m2Home ->
             currentPath = "${m2Home}/bin${if (currentPath.isNotEmpty()) ":$currentPath" else ""}"
         }
@@ -218,17 +206,15 @@ object EnvModel {
     }
 
     /**
-     * Checks if an environment variable value is safe for pb.environment().
-     *
-     * JDK's ProcessBuilder.environment() rejects NUL characters (\u0000).
+     * Checks if an environment variable value is safe for pb.environment.
+     * JDK's ProcessBuilder.environment rejects NUL characters (\u0000).
      * Values containing =, $, newlines, quotes, backticks, unicode, etc.
      * are all safe and will be passed verbatim.
-     *
      * @param value The environment variable value to check.
      * @return true if the value is safe for ProcessBuilder.
-     */
+*/
     fun isValueSafeForProcessBuilder(value: String): Boolean {
-        // ProcessBuilder.environment() rejects NUL
+        // ProcessBuilder.environment rejects NUL
         return !value.contains('\u0000')
     }
 }
@@ -237,11 +223,10 @@ object EnvModel {
 
 /**
  * Deny-list of environment variable keys that are stripped from the sandboxed env.
- *
  * These keys are removed unless they appear in [allowExtra].
  * Covers: LD_PRELOAD, LD_LIBRARY_PATH, BASH_ENV, ENV, SHELLOPTS,
  * BASH_FUNC_*, IFS, PYTHONPATH, NODE_OPTIONS, JAVA_TOOL_OPTIONS, JDK_JAVA_OPTIONS.
- */
+*/
 private val DENY_LIST: Set<String> = setOf(
     "LD_PRELOAD",
     "LD_LIBRARY_PATH",
@@ -260,13 +245,11 @@ private val DENY_LIST_GLOB = setOf("BASH_FUNC_")
 
 /**
  * Applies the env deny-list: strips deny-listed keys unless in [allowExtra].
- *
  * Called for [SandboxProfile.LOCAL] only. [SandboxProfile.NONE] skips this entirely.
- *
- * @param env The base environment map (typically pb.environment() snapshot).
+ * @param env The base environment map (typically pb.environment snapshot).
  * @param allowExtra Set of keys to retain even if deny-listed.
  * @return A new map with deny-listed keys removed (unless in allowExtra).
- */
+*/
 fun Map<String, String>.applyDenyList(allowExtra: Set<String>): Map<String, String> {
     return this.filter { (key, _) ->
         if (allowExtra.contains(key)) {
@@ -284,7 +267,7 @@ fun Map<String, String>.applyDenyList(allowExtra: Set<String>): Map<String, Stri
 /**
  * Default PATH keep-set: prefixes that survive PATH normalisation.
  * Add entries via [PIPELINE_SANDBOX_PATH_KEEP] env var / sysprop.
- */
+*/
 private val DEFAULT_PATH_KEEP: Set<String> = setOf(
     "/usr",
     "/bin",
@@ -295,16 +278,14 @@ private val DEFAULT_PATH_KEEP: Set<String> = setOf(
 /**
  * Normalises PATH: keeps only entries whose absolute prefix is in [pathKeep]
  * plus the default keep-set, then prepends `${javaHome}/bin` and `${m2Home}/bin`.
- *
- * Prepend order: JAVA_HOME/bin first, then M2_HOME/bin (V1 legacy — prepend always wins).
+ * Prepend order: JAVA_HOME/bin first, then_HOME/bin (legacy — prepend always wins)
  * Prefix matching: `/tmp/rogue/x` is dropped if `/tmp/rogue` is NOT in keep-set;
  * `/opt/x/y` is retained because `/opt` IS in the default keep-set.
- *
  * @param pathKeep Additional prefixes to retain (from PIPELINE_SANDBOX_PATH_KEEP).
  * @param javaHome JAVA_HOME path (if set, `${javaHome}/bin` is prepended to PATH).
- * @param m2Home M2_HOME path (if set, `${m2Home}/bin` is prepended after JAVA_HOME).
+ * @param m2Home_HOME path (if set, `${m2Home}/bin` is prepended after JAVA_HOME).
  * @return A new map with normalised PATH.
- */
+*/
 fun Map<String, String>.normalizePath(
     pathKeep: Set<String>,
     javaHome: String?,
@@ -340,7 +321,7 @@ fun Map<String, String>.normalizePath(
     // JAVA_HOME/bin prepend first
     javaHome?.let { normalisedEntries.add("$it/bin") }
 
-    // M2_HOME/bin prepend second
+    //_HOME/bin prepend second
     m2Home?.let { normalisedEntries.add("$it/bin") }
 
     // Add retained PATH entries (deduplicated, preserving order)

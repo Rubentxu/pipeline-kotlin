@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test
 /**
  * The guard exists so a credential never reaches `argv` — and it must not become
  * the reason one reaches the event log.
- *
  * **The guarantee under test.** When argv is refused because it carries a
  * credential, the refusal identifies the offending argument well enough for an
  * operator to act on, and never reproduces the credential itself. This matters
@@ -16,10 +15,9 @@ import org.junit.jupiter.api.Test
  * `GitCheckoutExecutor`'s `try`, so the exception is not caught by the scrub,
  * and `RegistryExecutionBoundary` copies `e.message` straight into a durable
  * `StepFailed` event. Whatever this guard prints is what gets persisted.
- *
  * Pure: both functions are on the companion object, take a `String` or a
  * `List<String>`, and touch no filesystem and no clock.
- */
+*/
 class GitCredentialsApplierGuardTest {
 
     /** A password that appears ONLY inside the URL below. */

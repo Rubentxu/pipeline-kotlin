@@ -1,11 +1,9 @@
 package dev.rubentxu.pipeline.v2.runtime.inspect
 
 /**
- * M6 — bounded-scan + resume-cursor options for [RuntimeIntrospectionPort.runStructure].
- *
- * The audit's §F.3 names "bounded scan + resume cursor" as the F.3 gap. The
+ * Bounded-scan + resume-cursor options for [RuntimeIntrospectionPort.runStructure].
+ * The audit'sF.3 names "bounded scan + resume cursor" as the F.3 gap. The
  * options pin the contract:
- *
  *  - `pageSize` — the maximum number of operations returned in a single
  *    call. Bounded per-call, not per-run. The init guard enforces a [1, 4096]
  *    range; the lower bound stops an unbounded call, the upper bound stops a
@@ -19,12 +17,10 @@ package dev.rubentxu.pipeline.v2.runtime.inspect
  *    are included in the enumeration. When `false`, only in-flight stages
  *    are returned. The flag exists so a Fabric that wants the live view of
  *    a long-running run can skip the historical tail.
- *
  * The options are validated at construction (`init`); a closed ADT pattern
  * with a `Default` companion preserves the "no `Either`/`Result` reuse"
  * rule.
- *
- */
+*/
 data class StructureRunOptions(
     val pageSize: Int = DEFAULT_STRUCTURE_PAGE_SIZE,
     val cursor: StructureCursor? = null,
@@ -37,7 +33,7 @@ data class StructureRunOptions(
     }
 
     companion object {
-        /** Default page size; matches the M2 design's `DEFAULT_INSPECT_TIMEOUT_MS` discipline. */
+        /** Default page size; matches the design's `DEFAULT_INSPECT_TIMEOUT_MS` discipline */
         const val DEFAULT_STRUCTURE_PAGE_SIZE: Int = 64
 
         /** Hard cap on a single call's `pageSize`. The audit's F.3 answer. */
@@ -50,14 +46,11 @@ data class StructureRunOptions(
 
 /**
  * Opaque-per-run resume cursor for [RuntimeIntrospectionPort.runStructure].
- *
  * The cursor encodes three ordinals — `(stageOrdinal, stepOrdinal,
  * operationOrdinal)` — all per-run. A consumer that wants the next page
  * passes the cursor from the previous result back as
  * `StructureRunOptions.cursor`; the call returns the next page.
- *
  * Cursor identity rules:
- *
  *  - Per-run: a cursor from run A is not valid for run B. A consumer that
  *    re-uses it gets a `RunStructureResult.Refused(...)` or a truncated
  *    result, depending on the type-mismatch case.
@@ -66,8 +59,7 @@ data class StructureRunOptions(
  *    cursor by ordinal arithmetic is out of contract.
  *  - Forward-only: the cursor is monotonic in execution order. The adapter
  *    does not support backwards pagination.
- *
- */
+*/
 data class StructureCursor(
     val stageOrdinal: Int,
     val stepOrdinal: Int,

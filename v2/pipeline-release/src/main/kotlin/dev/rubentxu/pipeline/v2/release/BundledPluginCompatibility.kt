@@ -8,8 +8,7 @@ import java.util.jar.JarInputStream
 import java.util.zip.ZipInputStream
 
 /**
- * PK-R1 R1-C — fail-closed bundled plugin compatibility gate.
- *
+ * Fail-closed bundled plugin compatibility gate.
  * The product version is the HOST for every bundled plugin. The contract that
  * the host admits a plugin is the plugin's `apiRange`; it is the plugin, not
  * the host, that names the range of host versions it can run against. A
@@ -17,25 +16,21 @@ import java.util.zip.ZipInputStream
  * same defect as a candidate that ships with a missing plugin manifest, and
  * `PluginAdmissionGate` would refuse the plugin at runtime — a failure
  * the user would see AFTER download, not at candidate admission.
- *
  * This check moves that refusal to the producer side, where the build can
  * fail closed with a diagnostic that names the offending plugin and its
- * observed range. It is the one R1-C check that is mechanical, observable
+ * Observed range. It is the one check that is mechanical, observable
  * from the distribution ZIP alone, and reproducible.
- *
  * ## What this check is NOT
- *
  * It does NOT assert that all bundled plugins are at the SAME releaseVersion
  * (e.g. junit is intentionally `0.1.0` while http is `0.51.0`). Plugins have
  * their own release cadence; the host's product version is the one the
  * plugin's `apiRange` must accept. Asserting version equality would have
  * rejected junit on every v0.5x release.
- *
  * It also does NOT check anything about the host's identity; that is
  * [evaluateDistributionIdentity]'s job. The two verdicts are reported
  * independently so a divergence in one does not hide a divergence in the
  * other.
- */
+*/
 object BundledPluginCompatibility {
 
     /**
@@ -48,7 +43,7 @@ object BundledPluginCompatibility {
      * `META-INF/pipelinek/plugin-manifest.json`" — a content check, not
      * a name check. The name is kept as a secondary filter so a future
      * layout that names JARs `pipeline-step-sdk-*` keeps working.
-     */
+*/
     private const val PLUGIN_JAR_HINT = "pipeline-step-sdk"
     private const val LIB_DIR_HINT = "/lib/"
 
@@ -57,7 +52,7 @@ object BundledPluginCompatibility {
      * `PluginAdmissionGate.MANIFEST_RESOURCE` and is the only path the
      * check looks at; a plugin with no manifest would have been refused
      * by admission at runtime, and is therefore also refused here.
-     */
+*/
     private const val PLUGIN_MANIFEST_RESOURCE = "META-INF/pipelinek/plugin-manifest.json"
 
     /**
@@ -66,11 +61,10 @@ object BundledPluginCompatibility {
      * the raw apiRange string. Missing values stay null so a candidate
      * with a partially-emitted manifest is recorded as incomplete, not
      * silently coerced into compatibility.
-     *
      * Also accepts a single JAR as input, since a JAR is structurally a
      * ZIP and the same probe is useful at lower levels (one plugin under
      * test, no surrounding distribution).
-     */
+*/
     fun probeZip(zip: Path): List<BundledPluginEntry> {
         if (!Files.isRegularFile(zip)) return emptyList()
         val entries = mutableListOf<BundledPluginEntry>()
@@ -140,7 +134,7 @@ object BundledPluginCompatibility {
      * original `ResourceRef.plugin` form exposes. A manifest that does
      * not match the ref shape is left as the raw value rather than
      * null, so a single broken field still surfaces something to act on.
-     */
+*/
     internal fun shortPluginName(ref: String): String {
         // "v1:plugin:<namespace>/plugin/<name>" — return <namespace>.
         val withoutScheme = ref.removePrefix("v1:plugin:")
@@ -151,7 +145,7 @@ object BundledPluginCompatibility {
     /**
      * Decide whether the host product version is admitted by every bundled
      * plugin's apiRange. Pure: takes the entries, returns a verdict; no I/O.
-     */
+*/
     fun evaluate(
         expectedHost: ProductVersion,
         entries: List<BundledPluginEntry>,
@@ -186,13 +180,12 @@ object BundledPluginCompatibility {
      * Returns null when the literal does not match the shape so a malformed
      * range is recorded as a conflict (unknown range == not containable),
      * never as compatibility.
-     *
      * The lower bound is inclusive and the upper bound is exclusive. The
      * producer side cannot rely on `PluginAdmissionGate` (host-side) to
      * enforce this — a candidate that ships a malformed range would let
      * the host say "unknown" and admit silently. The check fails closed
      * on any literal it cannot parse.
-     */
+*/
     internal fun apiRangeContains(raw: String?, version: String): Boolean {
         if (raw == null) return false
         val match = API_RANGE_REGEX.matchEntire(raw.trim()) ?: return false
@@ -210,7 +203,7 @@ object BundledPluginCompatibility {
      * (`-rc1`, `-SNAPSHOT`) are ignored on the candidate path because
      * `apiRange` is never expressed with suffixes and the producer
      * refuses candidate-suffixed product versions upstream.
-     */
+*/
     internal fun semverCompare(a: String, b: String): Int {
         val pa = a.trim().split(".").map { it.toIntOrNull() ?: 0 }
         val pb = b.trim().split(".").map { it.toIntOrNull() ?: 0 }
@@ -248,7 +241,7 @@ object BundledPluginCompatibility {
      * Minimal manifest parser: only the three fields the gate reads. Anything
      * richer belongs in the SDK; this check is producer-side and only needs
      * the contract line.
-     */
+*/
     internal fun parseManifestJson(text: String): ParsedPluginManifest? {
         val pluginId = REGEX_PLUGIN_ID.find(text)?.groupValues?.get(1) ?: return null
         val releaseVersion = REGEX_RELEASE_VERSION.find(text)?.groupValues?.get(1) ?: return null
@@ -281,7 +274,7 @@ data class BundledPluginEntry(
  * compatibility is containment of a host version in each plugin's range.
  * Conflating them would have hidden the junit@0.1.0 / host@0.51.0 case
  * (different `releaseVersion`, same `apiRange`-membership) as a divergence.
- */
+*/
 sealed interface BundledPluginCompatibilityVerdict {
 
     /**
@@ -289,7 +282,7 @@ sealed interface BundledPluginCompatibilityVerdict {
      * absence is the fail-closed default: a distribution that does not
      * ship its official plugins is missing required surface, not a green
      * candidate with no plugins to check.
-     */
+*/
     data class NoPluginsFound(val expectedHost: ProductVersion) : BundledPluginCompatibilityVerdict
 
     /** Every bundled plugin admits [expectedHost]. */
@@ -302,7 +295,7 @@ sealed interface BundledPluginCompatibilityVerdict {
      * At least one bundled plugin's [BundledPluginEntry.apiRange] excludes
      * [expectedHost]. [conflicts] lists every offender so the operator
      * sees the full set in one diagnostic, not one round-trip per plugin.
-     */
+*/
     data class Incompatible(
         val expectedHost: ProductVersion,
         val conflicts: List<PluginRangeConflict>,

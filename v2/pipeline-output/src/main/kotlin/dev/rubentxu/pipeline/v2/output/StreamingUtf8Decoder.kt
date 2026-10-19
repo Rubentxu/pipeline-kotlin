@@ -1,20 +1,15 @@
 package dev.rubentxu.pipeline.v2.output
 
 /**
- * R4 / WU-R4.4 — incremental UTF-8 decoder that holds half-codepoint state across page reads.
- *
+ * Incremental UTF-8 decoder that holds half-codepoint state across page reads.
  * ## Why this exists
- *
  * The Output Plane frames bytes in [page] entries whose boundaries fall wherever a write happens,
- * not wherever a code-point ends. The OBS-E5 read pipeline concatenates page bytes into a transcript
+ * Not wherever a code-point ends. The read pipeline concatenates page bytes into a transcript
  * with [java.nio.charset.CharsetDecoder] re-decoded PER PAGE — which means a multi-byte codepoint
  * straddling two pages produces two replacement characters (or one `null` + one base64) instead of
- * one correctly emitted character. PC-08 (OBS_PROGRESSIVE_CONSOLE_ROADMAP §3) names this exact defect:
- *
- * > Decodificación UTF-8 por frame sin estado de caracteres.
- *
+ * One correctly emitted character. (OBS_PROGRESSIVE_CONSOLE_ROADMAP) names this exact defect
+ * > Decodificación por frame sin estado de caracteres
  * ## The contract
- *
  * `decode(page)` accepts the next byte page, holds any partial codepoint between calls, and returns
  * the text THIS page contributed. It is not an accumulator: the returned `String` starts empty on
  * every call and never repeats an earlier page. A caller that loops over pages therefore CONCATENATES
@@ -22,38 +17,33 @@ package dev.rubentxu.pipeline.v2.output
  * it. (An earlier version of this KDoc promised "the complete `CharSequence` so far", which the
  * implementation has never done; a caller written against that sentence would silently drop every
  * page but the last.)
- *
  * `String(bytes, UTF_8)` is the reference for which bytes are valid, but not for how many U+FFFD a
  * malformed run produces: the JDK reports a malformed LENGTH per structural step, so it may group a
  * bad run differently than this decoder does. What is guaranteed is that a valid sequence decodes to
  * the same characters, and that an invalid one never yields a lone surrogate, an overlong spelling of
  * a real character, or a code point past U+10FFFF.
- *
  * ## Errors
- *
  * Invalid byte sequences are replaced with U+FFFD — but ONLY when the decoder has confirmed that no
  * continuation can follow (next page starts with an ASCII byte, the leader is a leader that the
  * next page cannot complete, or `reset` is called). A trailing leader at end-of-input is held over;
  * the caller decides what to do with it (typically `reset()` to drop it).
- */
+*/
 class StreamingUtf8Decoder {
 
     /**
-     * Held-over bytes from the previous page that form an incomplete UTF-8 sequence. Empty when
+     * Held-over bytes from the previous page that form an incomplete sequence. Empty when
      * the decoder is in sync with the page boundary.
-     */
+*/
     private var pendingBytes: ByteArray = EMPTY
 
     /**
      * Consume the next page of bytes and return the text THIS page contributed.
-     *
      * Not an accumulator: the returned `String` starts empty on every call and never repeats an
      * earlier page. A held-over half code point is not part of it — that text arrives with a later
      * page's return.
-     *
      * The returned `String` is freshly allocated; `decode` is not a view, and the caller may keep
      * the reference past the next call without aliasing surprises.
-     */
+*/
     fun decode(page: ByteArray): String {
         val combined: ByteArray = if (pendingBytes.isEmpty()) {
             page
@@ -64,7 +54,7 @@ class StreamingUtf8Decoder {
             }
         }
 
-        // Walk the combined bytes, decoding each COMPLETE UTF-8 sequence and holding any
+        // Walk the combined bytes, decoding each COMPLETE sequence and holding any
         // incomplete trailing sequence for the next call. Each branch reports how many bytes it
         // consumed, or HOLD when the sequence continues onto the next page.
         val out = StringBuilder(combined.size)
@@ -103,11 +93,10 @@ class StreamingUtf8Decoder {
 
     /**
      * 110xxxxx — a 2-byte sequence needing 1 continuation byte.
-     *
-     * The branch admits leaders C0..DF, but C0 and C1 can only ever spell U+0000..U+007F, which a
+     * The branch admits leaders..DF, but and can only ever spell U+0000..U+007F, which a
      * single ASCII byte already spells. Accepting them would let a filter on decoded text be
      * bypassed by writing the character in a longer form, so a 2-byte sequence must reach U+0080.
-     */
+*/
     private fun twoBytes(combined: ByteArray, i: Int, out: StringBuilder): Int {
         if (i + 1 >= combined.size) return HOLD
         val b1 = combined[i + 1].toInt() and 0xff
@@ -128,17 +117,15 @@ class StreamingUtf8Decoder {
 
     /**
      * 1110xxxx — a 3-byte sequence needing 2 continuation bytes.
-     *
      * Each available byte is checked BEFORE deciding to hold the leader. A non-continuation byte
      * that is already in this page proves the leader malformed now, so the leader becomes U+FFFD
      * and the loop continues at the byte after it. The previous shape peeked only at
-     * `i + 2 >= size`, so a page like [E2, 41] took the hold path and swallowed the 'A' — a valid
+     * `i + 2 >= size`, so a page like [, 41] took the hold path and swallowed the 'A' — a valid
      * character in this very page — into pendingBytes, delaying it by a page and losing it
      * outright if the caller reset.
-     *
-     * A malformed unit also consumes the continuations it already accepted: [F0, 9F, 41, 80] is
+     * A malformed unit also consumes the continuations it already accepted: [, 9F, 41, 80] is
      * one bad unit, then 'A', then a stray continuation — three characters, not four.
-     */
+*/
     private fun threeBytes(combined: ByteArray, i: Int, out: StringBuilder): Int {
         if (i + 1 >= combined.size) return HOLD
         val b1 = combined[i + 1].toInt() and 0xff
@@ -156,8 +143,8 @@ class StreamingUtf8Decoder {
             ((b1 and 0b00111111) shl 6) or
             (b2 and 0b00111111)
         // 3 bytes can spell anything from U+0000, so a code below U+0800 is an OVERLONG encoding
-        // of a character a shorter form already exists for, and U+D800..U+DFFF is not a character
-        // at all — it is one half of a UTF-16 pair. Both yield U+FFFD, never the smuggled value.
+        // Of a character a shorter form already exists for, and U+..U+DFFF is not a character
+        // At all — it is one half of a pair. Both yield U+FFFD, never the smuggled value
         if (code < 0x0800 || code in 0xD800..0xDFFF) {
             out.append(REPLACEMENT)
             return 3
@@ -170,10 +157,9 @@ class StreamingUtf8Decoder {
      * 11110xxx — a 4-byte sequence needing 3 continuation bytes. Each available byte is checked
      * before holding, for the same reason as the 3-byte branch: a byte that cannot continue the
      * leader must be decoded, not retained.
-     *
-     * A valid sequence becomes a UTF-16 surrogate PAIR. `Int.toChar()` would truncate the low 16
+     * A valid sequence becomes a surrogate PAIR. `Int.toChar()` would truncate the low 16
      * bits and emit a lone low-surrogate, which is the pre-fix defect for code points like 🚀.
-     */
+*/
     private fun fourBytes(combined: ByteArray, i: Int, out: StringBuilder): Int {
         if (i + 1 >= combined.size) return HOLD
         val b1 = combined[i + 1].toInt() and 0xff
@@ -197,7 +183,7 @@ class StreamingUtf8Decoder {
             ((b1 and 0b00111111) shl 12) or
             ((b2 and 0b00111111) shl 6) or
             (b3 and 0b00111111)
-        // The branch admits leaders F0..F7, but F5..F7 cannot reach U+10FFFF. U+10000 is the
+        // The branch admits leaders.., but.. cannot reach U+10FFFF. U+10000 is the
         // floor for this width, so anything under it is overlong, and anything past U+10FFFF is
         // not a code point at all.
         if (code < 0x10000 || code > 0x10FFFF) {
@@ -216,7 +202,7 @@ class StreamingUtf8Decoder {
     /**
      * Drop any held-over partial codepoint. Useful for tests and for callers that want to end a
      * decode session and discard a malformed trailing byte rather than carry it forever.
-     */
+*/
     fun reset() {
         pendingBytes = EMPTY
     }

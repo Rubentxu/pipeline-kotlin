@@ -4,14 +4,11 @@ import java.nio.ByteOrder
 
 /**
  * KDF parameters for Argon2id.
- *
  * ## OWASP Floor (2023)
- *
  * m ≥ 19456 KiB, t ≥ 2, p ≥ 1
- *
  * These params are persisted in the store header and upgraded on next put/rotate
  * if the persisted params are below the current OWASP floor.
- */
+*/
 data class KdfParams(
     val m: Int,   // Memory in KiB
     val t: Int,   // Iterations
@@ -32,14 +29,14 @@ data class KdfParams(
 
     /**
      * Returns true if these params are below the OWASP floor.
-     */
+*/
     fun isBelowCurrentFloor(): Boolean =
         m < OWASP_MIN.m || t < OWASP_MIN.t || p < OWASP_MIN.p
 
     /**
      * Returns a KdfParams upgraded to OWASP floor.
      * Only upgrades m/t/p, keeps the same salt.
-     */
+*/
     fun upgradeToFloor(): KdfParams = copy(
         m = maxOf(m, OWASP_MIN.m),
         t = maxOf(t, OWASP_MIN.t),

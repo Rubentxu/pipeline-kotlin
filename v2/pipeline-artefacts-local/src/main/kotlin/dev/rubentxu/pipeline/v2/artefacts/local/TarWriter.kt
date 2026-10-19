@@ -21,15 +21,12 @@ import java.util.UUID
 
 /**
  * Writes files to a tar archive, preserving relative paths.
- *
  * Uses the system `tar` command for reliable POSIX-compliant tar creation.
- * No compression (plain tar format per D6).
- *
+ * No compression (plain tar format)
  * Not thread-safe — single-threaded use only.
- *
  * @param output Target output stream (caller owns the stream)
  * @param digestSink Optional SHA-256 accumulator for the complete tar bytes
- */
+*/
 class TarWriter(
     private val output: OutputStream,
     private val digestSink: MessageDigest? = null,
@@ -37,21 +34,20 @@ class TarWriter(
 
     /**
      * Adds a file to the tar archive.
-     *
      * @param file File to add
      * @param root Root directory (used to compute relative path for the tar entry)
      * @throws java.io.IOException on I/O errors
-     */
+*/
     fun add(file: Path, root: Path) {
         // Defer to archive-level tar creation; individual adds are registered
-        // and the actual tar is created at close() time via system tar
+        // and the actual tar is created at close time via system tar
         pendingFiles.add(file to root)
     }
 
     /**
      * Closes the tar archive, creating it via system tar.
      * After this call, the archive bytes are written to [output].
-     */
+*/
     override fun close() {
         if (pendingFiles.isEmpty()) {
             // Write empty tar (two 512-byte zero blocks)
@@ -68,7 +64,7 @@ class TarWriter(
             }
             Files.writeString(listFile, listContent)
 
-            // M3: tar runs through the runtime. The output stream is fed
+            // Tar runs through the runtime. The output stream is fed
             // chunk-by-chunk to both `output` and `digestSink` (O(chunk)
             // memory — no readAllBytes). exit != 0 fails closed with the
             // accumulated stderr.

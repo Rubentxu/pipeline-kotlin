@@ -3,11 +3,11 @@ package dev.rubentxu.pipeline.v2.harness.model
 import kotlinx.serialization.Serializable
 
 /**
- * EVT-3 fundamental law: [PipelineOutcome] (what the run reported) is distinct from
+ * Fundamental law: [PipelineOutcome] (what the run reported) is distinct from
  * [AcceptanceOutcome] (what the observer concluded about the observable protocol).
  * A run may finish SUCCESS and still fail acceptance. The harness never mutates
  * PipelineOutcome and never persists AcceptanceOutcome as a DomainEvent.
- */
+*/
 enum class PipelineOutcome { SUCCESS, UNSTABLE, FAILURE }
 
 enum class AcceptanceOutcome { PASSED, FAILED }
@@ -39,7 +39,7 @@ enum class KeyKind { BRANCH, STAGE, STEP }
  * Typed payload field match. Closed ADT over fields the current contracts actually
  * need; resolving a match decodes the DomainEvent and reads a named domain field.
  * No Map<String, Any>, no dynamic paths.
- */
+*/
 @Serializable
 sealed interface FieldMatch {
     @Serializable data class CatchBuildResult(val value: String) : FieldMatch
@@ -54,7 +54,7 @@ sealed interface FieldMatch {
 
 /**
  * Structured, typed selector: event kind plus closed payload field matches.
- */
+*/
 @Serializable
 data class EventSelector(
     val kind: String,
@@ -62,9 +62,9 @@ data class EventSelector(
 )
 
 /**
- * Closed constraint ADT. Deliberately minimal (P4-EX 07-10 + universal laws).
+ * Closed constraint ADT. Deliberately minimal (07-10 + universal laws)
  * `After` is intentionally absent: it is the inverse of [Before]; authority is not duplicated.
- */
+*/
 sealed interface EventConstraint {
     data class Exactly(val selector: EventSelector, val count: Int) : EventConstraint
     data class Never(val selector: EventSelector) : EventConstraint
@@ -74,7 +74,7 @@ sealed interface EventConstraint {
 
 /**
  * A versioned, named protocol contract over one run's observable event history.
- */
+*/
 data class EventContract(
     val version: Int,
     val name: String,

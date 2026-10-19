@@ -7,27 +7,23 @@ import org.junit.jupiter.api.Test
 /**
  * The wire contract of [EventCursor]: a continuation token a client encodes, hands to the engine,
  * and gets back later to resume reading.
- *
  * The guarantee is not "the format looks right" but the round trip: whatever this encoder emits,
  * this decoder must accept, and must recover the same run and the same sequence. A token that
  * survives neither direction is not a continuation, it is a dead end -- and the caller cannot tell
  * the difference, because a rejected token and a fresh request both arrive as "no events".
- *
  * This defect ALREADY HAPPENED HERE. `encode()` interpolated the run id raw while `decode()` split
  * on colons and demanded exactly three parts, so any run id containing a colon produced a token its
  * own decoder refused. And a run id built the ordinary way does contain colons: a `ResourceRef`
  * canonical text is `v<version>:<kind>:<segments>`. The first version of this pair therefore
  * round-tripped only for hand-written run ids that no producer emits. It surfaced in an independent
  * consumer build that could not decode the token it had just encoded.
- *
  * The guardian for that fix was deleted in `2aa071aab` while the KDoc describing the fix stayed.
  * This file is the guardian the KDoc already implied.
- *
  * Why the E2E layer cannot cover it: `examples/run.sh` reads the process exit code and, at most, a
  * substring of stderr. The cursor travels in the API response on stdout, which the launcher writes
  * to a file and never opens. A token that no longer round-trips changes neither of the two facts
  * the launcher observes -- so a regression here is invisible to the entire executable suite.
- */
+*/
 class EventCursorTest {
 
     /** The shape a real producer emits: a versioned ResourceRef canonical text. */
@@ -35,7 +31,7 @@ class EventCursorTest {
 
     @Test
     fun `a run id containing colons survives the round trip`() {
-        // THE LOAD-BEARING ROW. Encode the id raw and this returns null: the token splits into
+        // THE ROW. Encode the id raw and this returns null: the token splits into
         // five parts instead of three, and the refusal is indistinguishable from an unknown token.
         val cursor = EventCursor(runIdWithColons, 42L)
 
@@ -79,7 +75,6 @@ class EventCursorTest {
     fun `a run id containing a slash survives the round trip`() {
         // Canonical text joins segments with slashes, so this is the other character the real form
         // carries, and the token escapes it as `%2F` rather than leaving it bare.
-        //
         // MEASURED, and worth saying plainly: this row is NOT an independent guard. Removing the
         // escaping turns this one red for the same reason it turns the colon row red -- the run id
         // in it also contains colons, so the token splits into five parts. A slash on its own would

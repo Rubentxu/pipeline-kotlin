@@ -10,7 +10,7 @@ kotlin {
     compilerOptions {
         languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_4)
         apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_4)
-        // S0-C1 (Pure Builder Consumption Gate): `@MustUseReturnValues` is an
+        // `@MustUseReturnValues` is an
         // "ignorability" annotation, and Kotlin 2.4 rejects it on a declaration
         // when the return-value checker is disabled (diagnostic
         // IGNORABILITY_ANNOTATIONS_WITH_CHECKER_DISABLED). The DSL module is
@@ -23,10 +23,9 @@ kotlin {
 }
 
 dependencies {
-    // P3-E E6: `StepSpec.Error.failureKind` is typed as `FailureKind`, so the published ABI of
+    // `StepSpec.Error.failureKind` is typed as `FailureKind`, so the published ABI of
     // this module names a type from `:pipeline-domain`. That makes the dependency part of the
     // contract and it has to be `api`, not `implementation`.
-    //
     // This is a declaration, not a new exposure. `pipeline-events/build.gradle.kts:31-32` already
     // declares `api(project(":pipeline-domain"))` AND `api(project(":pipeline-scripting-api"))`,
     // and all four modules are published to the same SDK repository, so any consumer of the

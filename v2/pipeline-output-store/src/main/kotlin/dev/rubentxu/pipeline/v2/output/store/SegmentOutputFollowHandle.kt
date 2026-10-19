@@ -21,11 +21,9 @@ import java.util.concurrent.locks.Condition
 import java.util.concurrent.locks.ReentrantLock
 
 /**
- * M1-B — production [OutputFollowHandle] driven by a polling loop on the
+ * Production [OutputFollowHandle] driven by a polling loop on the
  * consumer's thread.
- *
  * ## What this is and what it is not
- *
  * The handle is the live state of one [dev.rubentxu.pipeline.v2.output.follow.OutputFollower.open]
  * call. It holds:
  *  - the run being followed ([runId]),
@@ -40,18 +38,14 @@ import java.util.concurrent.locks.ReentrantLock
  *    rather than a silent `next == null` page (the design KDoc names this
  *    the central invariant: "the follow does NOT silently emit a
  *    `next == null` page and pretend nothing was lost").
- *
  * ## Polling, not push
- *
  * The wakeup vocabulary (`ObservationWakeup`) is not wired to a real
  * emitter in this repository, so the first cut polls. The handle sleeps
  * [OutputFollowOptions.pollIntervalMs] between cycles, on the consumer's
  * thread: a future non-breaking addition can swap the implementation
  * for one that honours `ObservationWakeup` without changing the public
  * type.
- *
  * ## Single-observer, idempotent close
- *
  * The handle is single-observer: calling [iterator] returns the same
  * [FollowIterator] every time. The iterator is single-pass: once
  * [OutputFollowEvent.Completed] or [OutputFollowEvent.Refused] is
@@ -59,16 +53,14 @@ import java.util.concurrent.locks.ReentrantLock
  * [close] is idempotent and interrupts a mid-poll consumer: after
  * `close`, the next [FollowIterator.hasNext] returns `false` and no
  * half-page is delivered.
- *
  * ## RunTerminal is NOT emitted
- *
  * The Output Plane does not authoritatively know if a run is over
  * (cf. [OutputTailState] KDoc: "Putting an outcome here would make the
  * Output Plane a second authority over execution results"). The
- * application-layer adapter joins the event plane; the M1-B follower
+ * Application-layer adapter joins the event plane; the follower
  * stops at [FollowState.StreamSealed] and then [OutputFollowEvent.Completed]
  * when the consumer's [FollowUntil] is [FollowUntil.UntilAllSealed].
- */
+*/
 internal class SegmentOutputFollowHandle(
     private val read: OutputReadPort,
     private val frames: OutputFrameIndex,
@@ -85,7 +77,7 @@ internal class SegmentOutputFollowHandle(
      * from a thread that calls [close]; the lock serialises both so the
      * closed state is observed atomically with the [idleCondition]
      * `signalAll` that wakes the sleeping consumer.
-     */
+*/
     private var closed = false
 
     /** Signalled by [close] so an [idle] consumer unblocks within `pollIntervalMs`. */
@@ -100,7 +92,7 @@ internal class SegmentOutputFollowHandle(
      * subsequent poll to translate a `null` answer (retention pruned the
      * stream) into [OutputRefusal.StreamLostRetention] with the
      * consumer's last-known position preserved.
-     */
+*/
     private val lastCommitted = HashMap<OutputStreamId, Long>()
 
     /**
@@ -108,7 +100,7 @@ internal class SegmentOutputFollowHandle(
      * [OutputReadPort.read] call). Initially `null`, meaning "start at
      * the first frame's `from`". Advanced by the page boundary returned
      * from each successful read.
-     */
+*/
     private val streamCursors = HashMap<OutputStreamId, Long>()
 
     /** The first state change has been emitted, so subsequent polls do not re-announce it. */
@@ -139,7 +131,6 @@ internal class SegmentOutputFollowHandle(
      * collaborators (the segment store and the frame index) are owned by
      * the [SegmentOutputFollower] factory, not by this handle, so the
      * handle has no resources of its own to release.
-     *
      * A consumer sleeping inside [idle] on [idleCondition] is released
      * by [idleCondition.signalAll]; the next [FollowIterator.hasNext]
      * observes the closed flag and returns `false` promptly. Without this
@@ -147,7 +138,7 @@ internal class SegmentOutputFollowHandle(
      * iterator blocked until the full `pollIntervalMs` elapsed; the lock +
      * condition pair is what turns the operator's "close releases waits"
      * correction into a sub-cycle response.
-     */
+*/
     override fun close() {
         lock.lock()
         try {
@@ -231,7 +222,7 @@ internal class SegmentOutputFollowHandle(
      * Run one poll cycle and fill [pending] with up to [OutputFollowOptions.maxRecords]
      * events. Returns `true` if at least one event was queued, `false` if
      * the cycle was quiet (the caller may want to idle and retry).
-     */
+*/
     // drainOnce runs the seven-stage pipeline (declared-streams discovery, tail-port
     // state probe, initial-state emission, UntilAllSealed guard, frame poll, page
     // delivery, exhausted-check). The branch ordering is contract-bearing — the
@@ -474,16 +465,15 @@ internal class SegmentOutputFollowHandle(
     /**
      * Sleep on the consumer's thread for [pollIntervalMs], interruptible
      * by [close].
-     *
      * Replaces a plain [Thread.sleep] (which only wakes on
      * [Thread.interrupt], not on a flag check) with a [Condition.awaitNanos]
-     * bound by [lock]. [close] does `lock.lock(); closed = true;
-     * idleCondition.signalAll(); lock.unlock()`, so a consumer that closed
+     * bound by [lock]. [close] does `lock.lock; closed = true;
+     * idleCondition.signalAll; lock.unlock`, so a consumer that closed
      * the handle from another thread wakes within the bounded wait. The
      * baseline cadence is `pollIntervalMs = FOLLOW_IDLE_MILLIS = 25L`;
      * passing `0L` short-circuits and yields immediately, which is what
      * the JUnit tests use to keep the suite fast.
-     */
+*/
     private fun idle() {
         val ms = options.pollIntervalMs
         if (ms <= 0) return
@@ -507,7 +497,7 @@ internal class SegmentOutputFollowHandle(
      * that already hold no lock. Cheap (one lock/unlock per frame is
      * negligible compared to the storage reads) and serialised with
      * [close]'s flag set.
-     */
+*/
     private fun isClosed(): Boolean {
         lock.lock()
         try {
@@ -522,7 +512,7 @@ internal class SegmentOutputFollowHandle(
      * `Running(openStreams, sealedStreams)` while any declared stream is
      * still open; `StreamSealed(sealed)` when every declared stream is
      * sealed.
-     */
+*/
     private fun currentState(open: List<OutputStreamId>, sealed: List<OutputStreamId>): FollowState =
         if (open.isEmpty() && sealed.isNotEmpty()) {
             FollowState.StreamSealed(sealed)
@@ -534,7 +524,7 @@ internal class SegmentOutputFollowHandle(
      * Set the terminal flag, queue a [OutputFollowEvent.Completed], and
      * return `true` so the iterator knows the cycle produced at least
      * one event.
-     */
+*/
     private fun queueCompleted(): Boolean {
         terminated = true
         pending.add(OutputFollowEvent.Completed)
@@ -544,7 +534,7 @@ internal class SegmentOutputFollowHandle(
     /**
      * Queue a [OutputFollowEvent.Refused], set the terminal flag, and
      * return `true` so the iterator knows the cycle produced an event.
-     */
+*/
     private fun queueRefusal(reason: OutputRefusal): Boolean {
         terminated = true
         pending.add(OutputFollowEvent.Refused(reason))

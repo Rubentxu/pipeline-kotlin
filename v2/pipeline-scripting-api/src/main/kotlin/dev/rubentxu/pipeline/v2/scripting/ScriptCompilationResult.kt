@@ -2,11 +2,10 @@ package dev.rubentxu.pipeline.v2.scripting
 
 /**
  * The closed outcome of a [ScriptingHost.compile] invocation.
- *
  * Consumers branch on [Success] and [Failure] rather than coordinating a
  * boolean with nullable values. The legacy script instance is deliberately
  * separate from the evaluated [ScriptEvaluationOutput].
- */
+*/
 sealed interface ScriptCompilationResult {
     val diagnostics: List<ScriptingDiagnostic>
     val cacheKey: CacheKey
@@ -21,7 +20,7 @@ sealed interface ScriptCompilationResult {
     /**
      * Host-specific technical instance retained for the quarantined legacy
      * static runner. New callers must consume [Success.output] instead.
-     */
+*/
     val scriptInstance: Any?
         get() = (this as? Success)?.scriptInstance
 

@@ -10,22 +10,20 @@ import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciliationDecision.S
 
 /**
  * Pure reconciler for waitUntil predicate polling state.
- *
  * Mirrors [RetryReconciler] but for the waitUntil polling loop:
  * - No fixed attempt budget; polls with exponential backoff toward a ceiling.
  * - Control rows carry the backoff state at persistence time.
  * - Aggregate terminates on predicate satisfaction or backoff ceiling.
- *
  * The function takes only pure value snapshots ([WaitUntilReconciliationInput])
  * and returns only pure decisions ([WaitUntilReconciliationDecision]).
  * It owns ZERO effects: no journal writes, no clock, no child dispatch, no logging.
- */
+*/
 object WaitUntilReconciler {
 
     /**
      * Reconcile the durable waitUntil state into exactly one
      * [WaitUntilReconciliationDecision].
-     */
+*/
     fun reconcile(input: WaitUntilReconciliationInput): WaitUntilReconciliationDecision {
         // Fingerprint gate — fail closed before any effect.
         for (row in input.controlRows) {
@@ -37,7 +35,7 @@ object WaitUntilReconciler {
             }
         }
 
-        // No control rows: fresh waitUntil (W0).
+        // No control rows: fresh waitUntil
         if (input.controlRows.isEmpty()) {
             return ScheduleAttempt(1)
         }
@@ -153,10 +151,9 @@ object WaitUntilReconciler {
 
     /**
      * Compute the next backoff from the current backoff.
-     *
      * Exponential backoff: double the current backoff, cap at [maxBackoffMs].
      * On the first advance from a zero backoff, use [initialRecurrencePeriodMs].
-     */
+*/
     private fun computeNextBackoff(
         currentBackoffMs: Long,
         initialRecurrencePeriodMs: Long,

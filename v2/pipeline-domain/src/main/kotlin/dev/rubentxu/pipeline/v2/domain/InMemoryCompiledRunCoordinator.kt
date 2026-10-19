@@ -13,11 +13,10 @@ fun interface CompiledStepDispatcher {
 
 /**
  * Deterministic reference adapter for direct execution of [CompiledPipeline].
- *
  * It deliberately has no dependency on `PipelineDefinition`, `StepDescriptor`,
  * or a registry. Parallel execution is flattened in declaration order until
  * the canonical runtime declares its concurrent-dispatch contract.
- */
+*/
 class InMemoryCompiledRunCoordinator(
     private val dispatcher: CompiledStepDispatcher,
 ) {

@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test
  * and still name the same byte of the same stream. `OutputPage` is the other half: it is the only
  * thing that hands a caller the cursor to resume from, so the two have to agree on where the page
  * ended.
- */
+*/
 class OutputCursorTest {
 
     // --- the token round-trip ------------------------------------------------

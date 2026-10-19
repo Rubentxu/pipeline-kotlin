@@ -2,15 +2,13 @@ package dev.rubentxu.pipeline.v2.domain.durable
 
 /**
  * Retry policy for durable step execution.
- *
  * Each attempt waits for an exponential backoff before executing:
  * delay = baseMs * 2^(attempt-1) + jitter
  * where jitter is a random value in [0, jitterMs].
- *
  * @param maxAttempts Maximum number of attempts (must be >= 1).
  * @param baseMs Base delay in milliseconds for exponential backoff.
  * @param jitterMs Maximum jitter to add in milliseconds.
- */
+*/
 data class RetryPolicy(
     val maxAttempts: Int,
     val baseMs: Long,
@@ -25,15 +23,14 @@ data class RetryPolicy(
     companion object {
         /**
          * Default retry policy with no retry (single attempt).
-         */
+*/
         val NONE = RetryPolicy(maxAttempts = 1, baseMs = 0, jitterMs = 0)
 
         /**
          * Computes the backoff delay for a given attempt number.
-         *
          * @param attempt The 1-based attempt number.
          * @return The delay in milliseconds to wait before starting this attempt.
-         */
+*/
         fun backoffDelay(attempt: Int, baseMs: Long, jitterMs: Long): Long {
             require(attempt >= 1) { "attempt must be >= 1, got $attempt" }
             val exponentialDelay = baseMs * (1L shl (attempt - 1)) // baseMs * 2^(attempt-1)
@@ -44,9 +41,8 @@ data class RetryPolicy(
 
     /**
      * Computes the backoff delay for this policy's configuration.
-     *
      * @param attempt The 1-based attempt number.
      * @return The delay in milliseconds.
-     */
+*/
     fun backoffDelay(attempt: Int): Long = backoffDelay(attempt, baseMs, jitterMs)
 }

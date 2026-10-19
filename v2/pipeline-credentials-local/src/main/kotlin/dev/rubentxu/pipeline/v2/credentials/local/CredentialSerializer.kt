@@ -16,13 +16,12 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Canonical part serialization of a credential into the local store format (ADR-0049 D2).
- *
+ * Canonical part serialization of a credential into the local store format
  * Pure and state-free: it reads no file, takes no lock and touches no cached
  * value. The credential kind ids are duplicated here rather than widened in
  * [LocalSecretStore] so that both sides of the format stay explicit and the
  * shared values cannot drift apart silently.
- */
+*/
 internal object CredentialSerializer {
 
     private const val KIND_SECRET_TEXT: Short = 1
@@ -37,7 +36,7 @@ internal object CredentialSerializer {
 
 // === Credential serialization ===
 
-// Canonical part format (D2):
+// Canonical part format:
 //   normal part:  [nameLen:1][name][len:4 BE][bytes]
 //   linked-ref:   [nameLen:1][name][0xFFFFFFFF:4][refIdLen:4][refId]
 //   absent opt:   [nameLen:1][name][0x00000000:4]
@@ -54,7 +53,6 @@ fun writeAbsentMarker(out: ByteArrayOutputStream) {
 /**
  * Writes one length-prefixed part: a name, then a payload, each prefixed by
  * its length.
- *
  * Layout, pinned by `CredentialPartLayoutTest`:
  * ```
  * 1 byte   name length
@@ -62,15 +60,14 @@ fun writeAbsentMarker(out: ByteArrayOutputStream) {
  * 4 bytes  payload length, big-endian
  * m bytes  payload
  * ```
- *
- * This is the on-disk format of the store (magic "PKCR", versions V1 and
- * V2), so the byte sequence is a persistence contract. The name length is
- * `String.length`, which counts UTF-16 code units rather than UTF-8 bytes.
+ * This is the on-disk format of the store (magic "PKCR", versions and
+ * ), so the byte sequence is a persistence contract. The name length is
+ * `String.length`, which counts code units rather than bytes
  * Every part name in the current vocabulary is ASCII, where the two agree;
  * a non-ASCII name would desynchronise a reader. That is recorded as a
  * pinned property rather than silently corrected, because changing the
  * prefix would change bytes that already exist on disk.
- */
+*/
 fun writePart(out: ByteArrayOutputStream, name: String, payload: ByteArray) {
     out.write(name.length)
     out.write(name.toByteArray(Charsets.UTF_8))
@@ -81,12 +78,11 @@ fun writePart(out: ByteArrayOutputStream, name: String, payload: ByteArray) {
 /**
  * Writes a part whose payload is a link to another credential rather than
  * inline bytes.
- *
  * The part name is still written, because the reader always consumes it
  * before reading the marker. The payload is a marker followed by either
  * the referenced id or nothing at all, so it deliberately has no length
  * prefix: [writePart] does not apply here.
- */
+*/
 fun writeRefPart(
     out: ByteArrayOutputStream,
     name: String,

@@ -6,28 +6,22 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 
 /**
  * Static metadata for one plugin step kind.
- *
  * The descriptor belongs to the domain so compiled definitions, the SDK
  * generator, validation, execution planning, and graph projection share one
  * contract. It does not carry command payload or runtime state.
- *
- * ## Pre-decode durable metadata (LB-02 / G3-A4.1)
- *
+ * ## Pre-decode durable metadata
  * The descriptor is the SINGLE source of pre-decode metadata that the durable protocol
  * may need BEFORE typed input decode. That set is:
- *
  *  - [effects]            — durable side-effect classification (drives replay policy)
  *  - [replayPolicy]       — declared replay/reuse strategy
  *  - [recoveryPolicy]     — declared recovery/reconciliation behaviour for RUNNING
  *                            journaled operations (e.g. `ExternalSubprocess` for `core.sh`)
- *
  * Putting all three on the descriptor mirrors how the legacy
  * [dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata] table carries them
  * and lets the registry metadata resolver propagate them 1:1 without per-Step branches.
- *
  * Defaults preserve backward compatibility: `core.echo` and other Steps that do not
  * need a typed recovery path keep `recoveryPolicy = RecoveryPolicy.None`.
- */
+*/
 data class StepDescriptor(
     val stepId: String,
     val name: String,
@@ -49,23 +43,21 @@ data class StepDescriptor(
     val securityProfile: String = "",
     val deprecation: String = "",
     /**
-     * The body this Step kind declares (EM-4 body metadata, one typed value since
-     * B10 / W1d). See [StepBody] for the ADT, its laws, and what it makes
+     * The body this Step kind declares (body metadata, one typed value since
+     * See [StepBody] for the ADT, its laws, and what it makes
      * unrepresentable.
-     *
      * [StepBody.None] is the total default: a Step that declares nothing is terminal.
      * A body Step states its cardinality, its execution owner and its execution shape
      * explicitly. None of the three is defaulted, so "this Step takes a body and nobody
      * owns it" has no spelling, and a body row that forgot its owner cannot silently
      * acquire canonical semantics.
-     *
      * The declared policy is resolved by a pure function over the open StepRegistry
      * ([dev.rubentxu.pipeline.v2.domain.step.resolveBodyExecutionPolicy]) and rejected
      * fail-closed when the Step is unknown, the row incoherent with
      * [StepBody.Declared.invocation] / [StepBody.Declared.introduces], or the shape not
      * executable by the current engine build
      * ([dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport]).
-     */
+*/
     val body: StepBody = StepBody.None,
 ) {
     /** Legacy terminology retained for consumers of the legacy definition model. */
@@ -77,7 +69,7 @@ data class StepDescriptor(
 
 /**
  * Policy for how many times body children may be invoked.
- */
+*/
 sealed interface BodyInvocationPolicy {
     /** Body children are invoked exactly once (e.g., catchError). */
     data object ONCE : BodyInvocationPolicy
@@ -91,7 +83,7 @@ sealed interface BodyInvocationPolicy {
 
 /**
  * Kind of context introduced by a block step.
- */
+*/
 sealed interface ContextKind {
     data object ENVIRONMENT : ContextKind
     data object CWD : ContextKind

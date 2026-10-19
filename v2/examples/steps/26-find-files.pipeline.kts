@@ -1,7 +1,6 @@
 // The subject is enumeration by glob: a small tree is created and then read
 // back through the typed step with two glob shapes, one for direct children and
 // one recursive.
-//
 // The step's RETURNED SET is not asserted, and cannot be: the DSL is
 // declarative, so a step's result is never handed back to the script and nothing
 // it computed can reach stdout. What the checks below do assert is the shape the
@@ -33,7 +32,7 @@ pipeline {
             // 3) Recursive: the glob crosses the directory boundary.
             findFiles(base = "build/utils/scan", glob = "**/*.txt")
 
-            // 4) Cross-check against the shell. Three .txt files exist (a.txt
+            // 4) Cross-check against the shell. Three.txt files exist (a.txt
             //    plus one in each subdirectory), so the listing must have three
             //    lines; comparing the count is what makes the step's answer
             //    falsifiable.

@@ -6,15 +6,13 @@ import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 
 /**
  * Composition point between a [StepDefinition] and its
- * [StepProviderMetadata] (PLUGIN_IDENTITY_MODEL §"Step registration seam").
- *
+ * [StepProviderMetadata] (PLUGIN_IDENTITY_MODEL"Step registration seam").
  * `StepDefinition` is the executable shape; `StepProviderMetadata` is
  * the provenance/distribution shape. They are composed here, not in
  * `StepContract` (which stays semantically minimal).
- *
  * This is the **additive** registration shape. The legacy
  * `register(StepDefinition)` overload on [StepRegistry] is unchanged.
- */
+*/
 data class StepRegistration<I : Any, O : Any>(
     val definition: StepDefinition<I, O>,
     val provider: StepProviderMetadata,
@@ -23,18 +21,17 @@ data class StepRegistration<I : Any, O : Any>(
      * The Step key derived from the inner definition. Exposed so the
      * registry can use it as the map key without leaking the
      * `StepDefinition` boundary.
-     */
+*/
     val stepKey: PluginStepId get() = definition.contract.key
 
     companion object {
         /**
          * Wraps a [StepDefinition] into a [StepRegistration] with the
-         * **legacy-shape** provider metadata (LFC-2E2 / F5.1 / ADR-0092 /
-         * C10 backwards-compat). Used by the default
+         * **legacy-shape** provider metadata (/ / /
+         * Backwards-compat). Used by the default
          * [StepDefinitionContributor.registrations] implementation so
          * legacy contributors (CORE Steps, `example.uppercase`, …) keep
          * working under the additive loader without any code change.
-         *
          * The legacy shape:
          * - publisher = [publisher] (caller-supplied; the contributor picks it)
          * - plugin = `ResourceRefs.plugin("legacy", "<key.value>")` — the
@@ -56,14 +53,13 @@ data class StepRegistration<I : Any, O : Any>(
          * - delivery = [Delivery.CORE] when [publisher] starts with
          *   `legacy-core`, otherwise [Delivery.EXTERNAL_REFERENCE].
          * - trust = [TrustMetadata.Unverified] (only constructable state from the document grammar).
-         *
          * Legacy registrations DO carry a [StepProviderMetadata] entry in
          * the registry (so [StepRegistry.providerOf] returns non-null for
-         * legacy keys). The C8 projector still returns `null` for the
+         * Legacy keys). The projector still returns `null` for the
          * legacy path because the runner passes `null` as `providerLookup`
          * to the projection seam (see `EnvelopeProjectingEventSink`
-         * wiring in F5.1 / CanonicalDurableRunCoordinator).
-         */
+         * Wiring in / CanonicalDurableRunCoordinator)
+*/
         fun legacy(definition: StepDefinition<*, *>, publisher: String): StepRegistration<*, *> {
             val key = definition.contract.key
             val syntheticNs = "legacy"

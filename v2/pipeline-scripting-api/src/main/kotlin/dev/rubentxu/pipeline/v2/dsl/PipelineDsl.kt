@@ -8,7 +8,6 @@ import dev.rubentxu.pipeline.v2.domain.scm.Scm
 
 /**
  * Top-level `pipeline { }` DSL entry point.
- *
  * Example:
  * ```
  * pipeline {
@@ -20,7 +19,7 @@ import dev.rubentxu.pipeline.v2.domain.scm.Scm
  *     }
  * }
  * ```
- */
+*/
 fun pipeline(block: PipelineScope.() -> Unit): PipelineSpec {
     val scope = PipelineScope(currentRuntimeConfig())
     scope.block()
@@ -30,13 +29,12 @@ fun pipeline(block: PipelineScope.() -> Unit): PipelineSpec {
 /**
  * Sets the [dev.rubentxu.pipeline.v2.domain.RuntimeConfig] the DSL `pwd()` /
  * `isUnix()` synchronous helpers read from for the current thread.
- *
  * Production adapters (the `pipeline-application` CLI) call this before
  * compiling and executing a user pipeline script so synchronous return
  * values reflect the host environment instead of placeholder values. Tests
  * can call it with a deterministic `MapRuntimeConfig`. Nested calls are
  * supported via a stack; the previous config is restored on `clear()`.
- */
+*/
 public object DslRuntimeConfigScope {
     private val stack: ThreadLocal<ArrayDeque<dev.rubentxu.pipeline.v2.domain.RuntimeConfig>> =
         ThreadLocal.withInitial { ArrayDeque() }
@@ -65,11 +63,10 @@ internal fun currentRuntimeConfig(): dev.rubentxu.pipeline.v2.domain.RuntimeConf
  * Variant of [pipeline] that accepts an explicit [RuntimeConfig] so the DSL
  * stays decoupled from global JVM state (see
  * `Lfc0GlobalStateFitnessTest`).
- *
  * Production callers (the `pipeline-application` CLI) should pass the
  * `SystemRuntimeConfig` adapter. Tests can pass a deterministic
  * `MapRuntimeConfig`.
- */
+*/
 fun pipeline(
     runtimeConfig: dev.rubentxu.pipeline.v2.domain.RuntimeConfig,
     block: PipelineScope.() -> Unit,
@@ -80,26 +77,23 @@ fun pipeline(
 }
 
 /**
- * WU-LPR-401 — DSL isolation markers.
- *
+ * DSL isolation markers.
  * Each marker declares a separate lexical layer of the DSL. A `@DslMarker`
  * on a receiver type tells the Kotlin compiler to reject implicit `this`
  * from an outer scope when an inner scope is in scope: a method that
  * belongs to [PipelineScope] cannot be called from inside a
  * [StageScope] lambda, and vice versa. The user gets a compile-time
  * error when they accidentally try to nest DSL calls in the wrong scope.
- *
  * The four layers are deliberately separate markers, not one umbrella
  * marker: when [StagesScope] and [PipelineScope] both carried the same
  * marker, a `stages { pipeline { ... } }` mistake would be rejected the
  * same as a `stages { stages { ... } }` mistake — but those are different
  * errors and the user-facing message should reflect that.
- *
  * What these markers do NOT do: they do not change the API surface, do
  * not add runtime checks, and do not affect existing pipelines that use
  * the DSL correctly. The only observable change is that misuse becomes
  * a compile error instead of a silent miscompile.
- */
+*/
 @DslMarker
 annotation class PipelineDslMarker
 
@@ -114,7 +108,7 @@ annotation class PostDslMarker
 
 /**
  * Receiver scope for the `stages { }` block inside `pipeline { }`.
- */
+*/
 @PipelineDslMarker
 class PipelineScope(
     private val runtimeConfig: dev.rubentxu.pipeline.v2.domain.RuntimeConfig =
@@ -133,7 +127,7 @@ class PipelineScope(
 
 /**
  * Receiver scope for the `stage("name") { }` block inside `stages { }`.
- */
+*/
 @StageDslMarker
 class StagesScope(
     private val runtimeConfig: dev.rubentxu.pipeline.v2.domain.RuntimeConfig =
@@ -144,7 +138,7 @@ class StagesScope(
     fun stage(name: String, block: StageScope.() -> Unit) {
         val scope = StageScope(name, runtimeConfig)
         scope.block()
-        // S0-C1 (Pure Builder Consumption Gate): fail closed HERE, while the
+        // Fail closed HERE, while the
         // pipeline is still being built, so an unconsumed MUST_CONSUME carrier
         // can never reach step admission, event emission or a process. This is
         // the earliest point at which the whole block is known and therefore
@@ -163,7 +157,7 @@ class StagesScope(
  * compiles but `pwd()` / `isUnix()` will return the placeholder values used
  * pre-v0.33.1. Production callers must pass an explicit config; see
  * [pipeline] overload that accepts a [dev.rubentxu.pipeline.v2.domain.RuntimeConfig].
- */
+*/
 internal object StubRuntimeConfig : dev.rubentxu.pipeline.v2.domain.RuntimeConfig {
     override fun env(name: String): String? = null
     override fun property(name: String): String? = null
@@ -175,7 +169,7 @@ internal object StubRuntimeConfig : dev.rubentxu.pipeline.v2.domain.RuntimeConfi
 
 /**
  * Environment variables scope.
- */
+*/
 @StepDslMarker
 class EnvironmentScope {
     private val values = mutableMapOf<String, String>()
@@ -189,12 +183,11 @@ class EnvironmentScope {
 
 /**
  * Options scope for stage configuration.
- */
+*/
 @StepDslMarker
 class OptionsScope {
     /**
-     * S3-R1-B: the declared stage-wide timeout, in seconds.
-     *
+     * The declared stage-wide timeout, in seconds.
      * Public, and VALIDATING, which is a correction rather than a detail. This was
      * a bare `var` with no setter, sitting beside `fun timeout(seconds)`, so inside
      * `options { … }` — where this scope is the receiver — `timeout = 5` was a
@@ -204,19 +197,17 @@ class OptionsScope {
      * fixture that wrote `timeout = 2L`; that test is not in this tree either
      * (`git ls-files` returns nothing for it), so the fact is kept and the false citation
      * is not.
-     *
      * Making the property private was the first fix and it was the WRONG one. It
      * removes the bypass, and it also breaks every existing `.pipeline.kts` that
      * assigns the property, which is a source break in a published DSL surface
      * disguised as a hardening. The full gate caught exactly that: two timeout
      * UATs failed to compile with "Cannot access 'var timeout': it is private".
-     *
      * So the property stays and the SETTER validates. That keeps the two syntaxes
      * (`timeout(30)` and `timeout = 30`) while making the unvalidated door
      * impossible rather than merely unused — and the setter and the function
      * delegate to [StageTimeout], so they cannot drift apart, which is what
      * produced the overflow in the first place.
-     */
+*/
     var timeout: Long? = null
         set(value) {
             require(value == null || StageTimeout.isValid(value)) {
@@ -230,15 +221,13 @@ class OptionsScope {
         }
 
     fun timeout(seconds: Long) {
-        // S3.3: author input is validated HERE, at the construction boundary,
+        // Author input is validated HERE, at the construction boundary,
         // rather than being carried as a raw Long and rejected later. Two things
         // are decided by doing it now:
-        //
         //  - the diagnostic names the author, not an internal carrier;
         //  - `StageOption.Timeout`'s own invariant can then be a plain
         //    precondition, because this is the only way to reach it.
-        //
-        // S3-R1-B: delegates to the validating setter rather than repeating the
+        // Delegates to the validating setter rather than repeating the
         // check, so the function and the property have ONE authority between them.
         timeout = seconds
     }
@@ -248,7 +237,7 @@ class OptionsScope {
 
 /**
  * Post conditions scope.
- */
+*/
 @PostDslMarker
 class PostScope {
     private val alwaysSteps = mutableListOf<StepSpec>()
@@ -281,15 +270,13 @@ class PostScope {
 
     /**
      * The declared blocks, keyed by the closed [PostCondition] set.
-     *
      * Multiple blocks under the same condition CONCATENATE in declaration
      * order, which is the author's intent; the execution ORDER across different
      * conditions is not decided here but by the pure
      * [dev.rubentxu.pipeline.v2.domain.post.PostPlanner].
-     *
      * Conditions with no declared block are omitted rather than stored empty, so
      * an empty `post { }` produces no entry at all.
-     */
+*/
     fun build(): PostConditionSpec {
         val conditions = buildMap {
             putIfNotEmpty(dev.rubentxu.pipeline.v2.domain.post.PostCondition.ALWAYS, alwaysSteps)
@@ -313,7 +300,7 @@ class PostScope {
 
 /**
  * Steps within post condition blocks.
- */
+*/
 @PostDslMarker
 class PostStepsScope {
     val steps = mutableListOf<StepSpec>()
@@ -332,16 +319,14 @@ class PostStepsScope {
 
     /**
      * The STABLE historical spelling, kept as a validated adapter.
-     *
      * `error` is STABLE. E6b typed the representation
      * (`StepSpec.Error.failureKind`) but this signature is the published authoring surface,
      * so `error("boom", "USER")` keeps compiling and is validated IMMEDIATELY at script
      * construction — see [LegacyResultVocabulary].
-     *
      * `failureKind` has NO default here on purpose. With one, `error("boom")` would be
      * ambiguous between the two overloads; without it, the bare call resolves to the typed
      * one and the legacy spelling is only reachable by actually passing a token.
-     */
+*/
     fun error(message: String, failureKind: String) {
         steps.add(StepSpec.Error(message, LegacyResultVocabulary.failureKind(failureKind)))
     }
@@ -353,7 +338,7 @@ class PostStepsScope {
 
 /**
  * Parallel execution scope.
- */
+*/
 @StepDslMarker
 class ParallelScope {
     private val branches = mutableListOf<StepSpec.BranchSpec>()
@@ -369,7 +354,7 @@ class ParallelScope {
 
 /**
  * Branch scope within parallel block.
- */
+*/
 @StepDslMarker
 class BranchScope {
     val steps = mutableListOf<StepSpec>()
@@ -388,16 +373,14 @@ class BranchScope {
 
     /**
      * The STABLE historical spelling, kept as a validated adapter.
-     *
      * `error` is STABLE. E6b typed the representation
      * (`StepSpec.Error.failureKind`) but this signature is the published authoring surface,
      * so `error("boom", "USER")` keeps compiling and is validated IMMEDIATELY at script
      * construction — see [LegacyResultVocabulary].
-     *
      * `failureKind` has NO default here on purpose. With one, `error("boom")` would be
      * ambiguous between the two overloads; without it, the bare call resolves to the typed
      * one and the legacy spelling is only reachable by actually passing a token.
-     */
+*/
     fun error(message: String, failureKind: String) {
         steps.add(StepSpec.Error(message, LegacyResultVocabulary.failureKind(failureKind)))
     }
@@ -408,12 +391,12 @@ class BranchScope {
 
     /**
      * Changes the current working directory for the duration of the nested
-     * block within this branch (B1 / WU-RP-053R; the operator's composed
-     * property test for parallel { left -> dir("a") -> effect; right -> ... }
+     * Block within this branch (/; the operator's composed
+     * property test for parallel { left -> dir("a") -> effect; right ->... }
      * requires [dir] to be available on [BranchScope], not only on
      * [StageScope]). The nested [block] is itself a [BranchScope] body, so the
      * user may write `branch("left") { dir("a") { sh("...") } }`.
-     */
+*/
     fun dir(path: String, block: BranchScope.() -> Unit) {
         val inner = BranchScope()
         inner.block()
@@ -421,13 +404,13 @@ class BranchScope {
     }
 
     /**
-     * `lock` inside a parallel branch (RP6-A / WU-091). The composed scenario
+     * `lock` inside a parallel branch. The composed scenario
      * `branch("left") { lock("res") { ... } }` vs a sibling branch contending
      * for the same resource is exactly the case the durable execution lane
      * (`ExecutionLaneId = runId + parallelLineage`) was introduced for: two
      * sibling branches are DIFFERENT lanes and must contend; a nested `lock`
      * on the SAME lane re-enters. Same declarative shape as [dir].
-     */
+*/
     fun lock(
         resource: String,
         timeoutSeconds: Int? = null,
@@ -451,19 +434,19 @@ class BranchScope {
 
 /**
  * Script scope for inline script blocks.
- */
+*/
 @StepDslMarker
 class ScriptScope {
     val commands = mutableListOf<String>()
 
     /**
      * Adds a command line to the script.
-     */
+*/
     fun line(command: String) {
         commands.add(command)
     }
 
-    // WU-LPR-071 (fixture 05-scripted-if): the @DslMarker hierarchy (LPR-401) correctly
+    // The @DslMarker hierarchy correctly
     // blocks implicit outer receivers inside `script { }`, so script bodies can no longer
     // resolve `echo`/`sh` from [StageScope]. Jenkins-familiar script blocks still expect
     // these step verbs, so the scope carries its own step shims that record the
@@ -484,8 +467,8 @@ class ScriptScope {
 
 /**
  * Builder for a stage, capturing its name, steps, options, environment, and
- * declared directives (S1-B).
- */
+ * declared directives.
+*/
 class StageBuilder(
     private val name: String,
     private val steps: List<StepSpec>,
@@ -498,14 +481,13 @@ class StageBuilder(
 }
 
 /**
- * LF-0401 conversion: turn the DSL flat [StepSpec.CredentialsBinding] into
+ * Conversion: turn the DSL flat [StepSpec.CredentialsBinding] into
  * the sealed-typed `:pipeline-domain` [dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec].
- *
  * The DSL type stays as-is (scripts and the binding-factory tests still
  * produce it), but at the executor call site the conversion is performed
  * once. This is the inversion that lets `:pipeline-credentials-executor`
  * depend on `:pipeline-domain` (typed) instead of the DSL flat shape.
- */
+*/
 fun StepSpec.CredentialsBinding.toSpec():
     dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec =
     when (kind) {

@@ -7,10 +7,8 @@ import javax.xml.XMLConstants
 import javax.xml.parsers.SAXParserFactory
 
 /**
- * Pure SAX parser for JUnit XML reports (F5.2).
- *
+ * Pure SAX parser for JUnit XML reports
  * Security and resource guarantees:
- *
  *  - **External entities disabled** (XXE). We construct the
  *    [SAXParserFactory] with `setFeature("http://xml.org/sax/features/external-general-entities", false)`
  *    and `external-parameter-entities`, plus a hard `disallow-doctype-decl`
@@ -25,28 +23,24 @@ import javax.xml.parsers.SAXParserFactory
  *  - **No reflection / no ScriptEngine.** A malicious XML cannot load
  *    a class, evaluate an XPath, or open a network socket from inside
  *    the parser.
- *
  * Element mapping (the Maven Surefire / Gradle Test schema):
- *
  *   <testsuite tests="N" failures="F" errors="E" skipped="S" time="T">
  *     <testcase>...</testcase>
  *   </testsuite>
- *
  * Old JUnit (junit-3) reports the same schema with a <testsuites>
  * wrapper; we sum across all <testsuite> children if present.
- */
+*/
 object JUnitReportParser {
 
     /**
      * Parses [xml] and returns the typed [JUnitReportSummary].
-     *
      * @param xml the JUnit XML content (caller already bounded the byte
      *            count via `maxReportBytes`).
      * @param reportPath the path the summary will report as
      *                   `reportPath` (no I/O here; just a tag).
      * @throws JUnitReportParseException when the XML is malformed, the
      *         root element is missing, or the parser is misconfigured.
-     */
+*/
     fun parse(xml: InputStream, reportPath: String): JUnitReportSummary {
         val factory = SAXParserFactory.newInstance().apply {
             // XXE hardening: disable DOCTYPE, external entities, and
@@ -131,7 +125,7 @@ object JUnitReportParser {
      * EntityResolver that REJECTS any external entity reference. Set
      * on the SAX reader directly so a malicious DTD or external
      * entity cannot smuggle a remote schema or local file read.
-     */
+*/
     private val REJECTING_ENTITY_RESOLVER =
         org.xml.sax.EntityResolver { publicId, systemId ->
             throw JUnitReportParseException(
@@ -142,8 +136,8 @@ object JUnitReportParser {
 }
 
 /**
- * Typed parse-failure exception (F5.2). Carries the original cause so
+ * Typed parse-failure exception. Carries the original cause so
  * the handler can wrap it as a USER failure (malformed input is not an
  * infrastructure defect).
- */
+*/
 class JUnitReportParseException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)

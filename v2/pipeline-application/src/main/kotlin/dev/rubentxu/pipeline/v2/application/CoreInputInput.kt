@@ -6,16 +6,13 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 
 /**
- * Typed input of `core.input` (RP6-B / WU-092).
- *
+ * Typed input of `core.input`
  * The WHOLE payload is encoded; the engine does not probe individual fields, and
  * the codec is not required to round-trip only some of them. Not annotated
  * `@Serializable` on purpose: `pipeline-application` does not apply the
  * kotlinx-serialization compiler plugin, so the codec in [CoreInputStep] is
  * written out explicitly, exactly as `CoreLockInput` is.
- *
  * ## Surface and its Jenkins source
- *
  * Derived from the official `input` step reference
  * (<https://www.jenkins.io/doc/pipeline/steps/workflow-durable-task-step/>).
  * `withId` and the permission/role parameters are deliberately absent. `timeoutSeconds`
@@ -23,7 +20,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
  * `timeout`, and this runner already bounds a suspending wait with the enclosing scope
  * budget, so an author-level bound here is the same fact stated in the place the author
  * looks.
- */
+*/
 data class CoreInputInput(
     val message: String,
     val ok: String = "Proceed",
@@ -36,7 +33,7 @@ data class CoreInputInput(
  * A human answer. Closed: there are exactly two possible answers, and the pipeline
  * author cannot express a third one. [message] is the answer's own free text
  * (Jenkins returns `input`'s value to the caller), not the question.
- */
+*/
 sealed interface InputDecision {
     data class Proceed(val submitter: String?, val message: String?) : InputDecision
     data class Abort(val submitter: String?, val message: String?) : InputDecision
@@ -46,11 +43,10 @@ sealed interface InputDecision {
  * Why there is no answer. Closed, and every case carries the evidence needed to
  * act on it: how long we waited, whether we were cancelled, or what made the
  * question unaskable.
- *
  * A malformed response and a lost race are deliberately NOT cases here. A
  * malformed file is ignored and the wait continues; a lost race is a filesystem
- * fact on the answering side. Neither can be an outcome of the Step (D4).
- */
+ * Fact on the answering side. Neither can be an outcome of the Step
+*/
 sealed interface InputDenialReason {
     data class TimedOut(val waitedMillis: Long) : InputDenialReason
     data object Cancelled : InputDenialReason
@@ -60,13 +56,12 @@ sealed interface InputDenialReason {
 /**
  * The Step's result. [decision] and [denial] are mutually exclusive by
  * construction, and [bodyRan] is true if and only if a `Proceed` was obtained.
- *
  * [outcome] carries what the body returned, so a body failure is the run's failure
  * and a body success is the run's success. It is null exactly when the body did
  * not run, which is the same condition [bodyRan] states — a second fact about the
  * same event, kept because the journal reader needs the outcome and the flag
  * answers a different question (did we run at all).
- */
+*/
 data class CoreInputOutput(
     val requested: String,
     val decision: InputDecision? = null,
@@ -77,20 +72,19 @@ data class CoreInputOutput(
     /**
      * The canonical Step outcome, projected by `RegistryExecutionBoundary` through the
      * Step-agnostic `(produced as? TypedStepOutput)?.outcome`.
-     *
      * This is NOT a convenience alias: it is the only channel by which an unanswered or
      * refused question can reach the run's outcome. `core.input` can end without ever
      * running a body, so the body engine has no outcome to propagate and the handler's
      * return value alone would default to Success — a run whose permission was DENIED,
      * TIMED OUT or ABORTED would report success and exit 0. Measured on the real CLI
-     * before this carrier existed (WU-092 G4).
-     */
+     * Before this carrier existed
+*/
     override val outcome: StepOutcome get() = runOutcome()
 
     /**
      * The run outcome this Step produces. Pure interpretation of the facts above, so
      * no caller can disagree about what an Abort or a denial means.
-     */
+*/
     fun runOutcome(): StepOutcome = when {
         bodyOutcome != null -> bodyOutcome
         decision is InputDecision.Abort -> StepOutcome.Failure(
@@ -154,11 +148,10 @@ sealed interface InputIntentResolution {
 
 /**
  * Decides the question and its bound, in one pure place, once.
- *
  * The author declares; the scope budget bounds. Nothing here performs I/O, reads a
  * clock or inspects the environment, so the rule cannot be applied twice with
  * different answers, and it is testable without a coordinator or a filesystem.
- */
+*/
 fun inputIntentOf(
     input: CoreInputInput,
     budget: ExecutionBudget,

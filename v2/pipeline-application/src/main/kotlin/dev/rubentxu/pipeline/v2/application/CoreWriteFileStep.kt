@@ -23,11 +23,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Typed input payload of `core.file.writeFile` (S2-A3).
- *
+ * Typed input payload of `core.file.writeFile`
  * Decoding validates the complete canonical envelope before the handler can create an
  * effect: non-blank `file`, non-null `encoding`.
- */
+*/
 data class CoreWriteFileInput(val file: String, val text: String, val encoding: String) {
     init {
         require(file.isNotBlank()) { "core.file.writeFile requires a non-blank file" }
@@ -36,34 +35,29 @@ data class CoreWriteFileInput(val file: String, val text: String, val encoding: 
 
 /**
  * Typed successful output for `core.file.writeFile`.
- *
  * The observable write evidence is the `FileWritten` domain event emitted by the
  * [dev.rubentxu.pipeline.v2.sdk.files.FileWriteExecutor] substrate (path, sha256, size,
  * atomicallyMoved). The typed output carries no duplicated write data — the transcript and
  * the typed value are independent channels.
- */
+*/
 data object CoreWriteFileOutput : TypedStepOutput {
     override val outcome: StepOutcome = StepOutcome.Success
 }
 
 /**
- * Registry authority for `core.file.writeFile` (S2-A3 / G1 registry seam proof).
- *
- * G1 registers this candidate without changing `LEGACY_PLUGIN_IDS`, the legacy decoder,
+ * Registry authority for `core.file.writeFile` (/ registry seam proof)
+ * Registers this candidate without changing `LEGACY_PLUGIN_IDS`, the legacy decoder
  * the metadata row, or the legacy dispatcher: `StructuralFamilyResolver`'s
  * legacy-membership-wins rule keeps LegacyCore as the production authority until the
- * G3/G4 flip.
- *
+ * / flip.
  * The handler reaches workspace file operations ONLY through the typed
  * [WorkspaceOperations] seam (capability `WORKSPACE_OPERATIONS_CAPABILITY`), which binds
  * the certified `FileWriteExecutor` substrate. The handler:
- *
  *  - does NOT write filesystem state itself,
  *  - does NOT emit `FileWritten` (the substrate is the single emitter),
  *  - does NOT resolve stage identity (the adapter binds the runtime context's values).
- *
  * Capability admission is fail-closed at prepare-time via `RegistryExecutionPreparation`.
- */
+*/
 object CoreWriteFileStep {
     val KEY: PluginStepId = PluginStepId("core.file.writeFile")
 
@@ -71,7 +65,7 @@ object CoreWriteFileStep {
      * Canonical dsl-v1 envelope, byte-identical to the legacy decode form emitted by
      * `DslCompiledPipelineCompiler.writeFilePayload`:
      * `{"kind":"writeFile","file":...,"text":...,"encoding":...}`.
-     */
+*/
     private val inputCodec = object : StepCodec<CoreWriteFileInput> {
         override fun encode(value: CoreWriteFileInput): EncodedStepValue =
             EncodedStepValue(

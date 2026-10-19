@@ -5,21 +5,18 @@ import org.junit.jupiter.api.Test
 
 /**
  * The guarantee: AwaitAll folds branches by severity first and by branch index only second.
- *
  * The capacity this serves: a parallel aggregate's single terminal state. A stage with three
  * branches — one failed, one unstable, one clean — must report the failure, because a caller
  * reading "unstable" would retry work whose real cause was already known. Severity has to win
  * over position, and that ordering is not something a reader of the call site can infer.
- *
  * The failure branch carries its message, so these assertions pin *which* branch was chosen, not
  * just what class it fell into. That is what makes the tie-break rows discriminate: an
  * implementation that folded by lowest index first and classified afterwards would return a
  * perfectly plausible-looking [BranchTerminal.Unstable] for the dominance row and still satisfy a
  * test that only checked the class.
- *
  * The fold sits on a published boundary that production callers depend on, and had no coverage
  * of its own.
- */
+*/
 class FoldAwaitAllTest {
 
     @Test

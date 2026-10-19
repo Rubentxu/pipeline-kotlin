@@ -1,19 +1,16 @@
 package dev.rubentxu.pipeline.v2.runtime.inspect
 
 /**
- * M2 — closed ADT of reasons an inspection could not be served.
- *
- * Mirrors the M1 convention (`OutputRefusal`, `EventRecordReadRefusal`,
+ * Closed ADT of reasons an inspection could not be served.
+ * Mirrors the convention (`OutputRefusal`, `EventRecordReadRefusal`
  * `EventFollowRefusal`): a sealed interface per port, no `Either`/`Result` reuse.
- *
  * The audit's B.1 names `NoEventStore`, `NoControlRoot`, `UnknownRun`,
  * `LeaseHeldByAnother`. This design formalises those plus the substrate gaps
- * the audit's §C unmasked (`InconsistentLeaseState`).
- *
- */
+ * the audit'sC unmasked (`InconsistentLeaseState`).
+*/
 sealed interface IntrospectionRefusal {
 
-    /** The run is not known to this PK instance. */
+    /** The run is not known to this instance. */
     data class UnknownRun(val runId: String) : IntrospectionRefusal
 
     /** No `--control-root` was given at startup; there is no journal or lease to consult. */
@@ -30,7 +27,7 @@ sealed interface IntrospectionRefusal {
      * and `fencingToken` name the live authority; this is the same fact the
      * cancel port refuses on (audit B.2). The introspection port reports it; it
      * does NOT attempt to take over.
-     */
+*/
     data class LeaseHeldByAnother(
         val heldBy: String,
         val fencingToken: FencingToken,
@@ -43,17 +40,17 @@ sealed interface IntrospectionRefusal {
      * The journal, the lease record, and the cursor store disagree about the
      * run's state. `details` is a one-line diagnostic so an operator can read
      * what the inspector saw.
-     */
+*/
     data class InconsistentLeaseState(val details: String) : IntrospectionRefusal
 
     /**
-     * M7 — [inspectOperation] was called with an `(operationId, attempt)`
+     * [inspectOperation] was called with an `(operationId, attempt)`
      * pair that the journal has no row for. The case is additive on the
-     * existing `IntrospectionRefusal` ADT (no breaking change). The M6
+     * Existing `IntrospectionRefusal` ADT (no breaking change). The
      * first-cut adapter used `StorageError("no journal row ...")` for
-     * this case; the M7 audit's B.2 hardening item is to lift the
+     * This case; the audit's B.2 hardening item is to lift the
      * "no row" mode into a typed refusal case so a consumer can
      * `when` on it without parsing the StorageError's cause string.
-     */
+*/
     data class UnknownOperation(val operationId: String, val attempt: Int) : IntrospectionRefusal
 }

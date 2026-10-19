@@ -8,15 +8,13 @@ import org.junit.jupiter.api.Test
 
 /**
  * The rules every outbound socket passes before it is opened.
- *
  * Two failure modes, opposite in direction and equal in cost: a predicate too loose opens a
  * network the operator closed, and one too tight closes a network they opened. Nothing else in
  * the seam tells the difference — the socket opens or it does not — so the rules live here and
  * are pinned from both sides.
- *
  * The cases below are the ones the KDoc names out loud, because a guarantee nobody wrote down
  * is a guarantee the next edit may treat as a comment.
- */
+*/
 class NetworkEgressTest {
 
     private fun dest(

@@ -8,21 +8,19 @@ import dev.rubentxu.pipeline.v2.domain.step.EgressRefusal
 
 /**
  * What the server actually said, as facts.
- *
  * Deliberately NOT a [TypedStepOutput] and deliberately NOT the Step's carrier.
  * The separation is what breaks a cycle that otherwise hides a defect: if this
  * type were the carrier, then `HttpAttempt.Answered` would have to hold the
  * carrier that holds the attempt, and the only way out of that recursion is for
  * the carrier to report a hardcoded outcome.
- *
- * A hardcoded `Success` is exactly the defect WU-092 measured in `core.input`:
+ * A hardcoded `Success` is exactly the defect measured in `core.input`
  * a refused question closed the run green with exit 0. The previous shape of this
  * file carried `override val outcome get() = StepOutcome.Success` while its KDoc
  * claimed that implementing `TypedStepOutput` "is not decoration" — the
  * annotation was there and the honesty was not. A refused status would have
  * reported Success. Three types instead of one, because the honest shape needs
  * the room.
- */
+*/
 data class HttpResponse(
     val url: String,
     val method: HttpMethod,
@@ -37,10 +35,9 @@ data class HttpResponse(
 ) {
     /**
      * Whether [status] is one the author said they would accept.
-     *
      * Pure, and it lives on the response rather than in the handler, so the same
      * question cannot be answered two ways by two callers.
-     */
+*/
     fun isAccepted(accepted: List<StatusRange>): Boolean =
         accepted.any { it.contains(status) }
 }
@@ -62,11 +59,10 @@ sealed interface HttpAttempt {
     /**
      * The network worked and the server answered with a status the author did
      * NOT accept.
-     *
      * Separate from the failure cases on purpose: that is not a `NETWORK`
      * failure, it is a consequence of a policy the author wrote, so it carries
      * [FailureKind.USER].
-     */
+*/
     data class Refused(
         override val url: String,
         override val method: HttpMethod,
@@ -107,17 +103,15 @@ sealed interface HttpFailure {
     }
 
     /**
-     * H4 — the server answered and the body stopped part-way.
-     *
+     * The server answered and the body stopped part-way.
      * Distinct from [Unreachable] because the host WAS reached: it returned a status
      * and then the connection died mid-body. The two are the same shape to a caller
      * and completely different incidents, and merging them is what turns "the proxy
      * gave up at 37 MiB" into "the host does not exist".
-     *
      * [bytesReceived] is carried because without it the diagnostic is a string that
      * says nothing: how much arrived is the difference between a truncated download,
      * a server that filled its disk, and a peer that vanished immediately.
-     */
+*/
     data class ResponseInterrupted(
         val reason: String,
         val bytesReceived: Long,
@@ -128,19 +122,17 @@ sealed interface HttpFailure {
 
     /**
      * The DECLARATION was unusable, so nothing was sent.
-     *
      * A `durationMs` of zero accompanies this case, and that is the point: no
      * socket was opened, so no time was spent and no request reached the world.
      * A reader of the journal can tell "we decided not to send" from "we sent
      * and it failed", which are very different facts about a pipeline.
-     */
+*/
     data class Rejected(val rejection: HttpRejection) : HttpFailure {
         override val diagnostic: String get() = rejection.diagnostic
     }
 
     /**
-     * H6 — the runtime refused egress, and says WHICH refusal.
-     *
+     * The runtime refused egress, and says WHICH refusal.
      * Normally unreachable for [EgressRefusal.NetworkNotPermitted]: the runtime
      * withholds the egress capability rather than handing out a refusing gate, so
      * admission rejects the Step before the handler runs. The other two reasons are
@@ -148,11 +140,10 @@ sealed interface HttpFailure {
      * stopped being a bare `data object` — "denied" alone sends an operator to
      * `--allow-network`, which is useless advice when the run already has a network
      * and the destination simply is not on the list.
-     *
      * [reason] is the whole payload, and it is deliberately not joined by a parsed
      * destination: [HttpAttempt.url] already carries it, and a second copy would
      * have to be kept in step with the first on every write and every decode.
-     */
+*/
     data class EgressDenied(val reason: EgressRefusal) : HttpFailure {
         override val diagnostic: String get() = when (reason) {
             EgressRefusal.NetworkNotPermitted ->
@@ -179,12 +170,11 @@ sealed interface CredentialRejection {
 
     /**
      * The credential exists but its kind is out of scope.
-     *
      * Jenkins reports this as *"Authentication 'X' doesn't exist anymore"*, which is a
      * lie: it blames a missing credential for a present one of the wrong shape, and the
      * operator goes looking for a credential they can already see. This says what
      * arrived and what would have worked.
-     */
+*/
     data class KindUnsupported(
         val id: String,
         val found: String,
@@ -198,13 +188,12 @@ sealed interface CredentialRejection {
 
 /**
  * The carrier this Step produces.
- *
  * **Implements [TypedStepOutput] and that is not decoration.**
  * `RegistryExecutionBoundary` projects `(produced as? TypedStepOutput)?.outcome
  * ?: Success`, so this type MUST carry the real outcome or a refusal closes the
  * run green. The outcome is DERIVED from the attempt, never stored separately,
  * so the carrier cannot be constructed in a state where the two disagree.
- */
+*/
 data class HttpResponseOutput(val attempt: HttpAttempt) : TypedStepOutput {
 
     override val outcome: StepOutcome get() = attempt.toStepOutcome()
@@ -221,10 +210,9 @@ data class HttpResponseOutput(val attempt: HttpAttempt) : TypedStepOutput {
 
 /**
  * The canonical outcome of the Step, derived from what happened.
- *
  * Pure interpretation of a closed ADT, so no caller can disagree about what a
  * refused request or an unreachable host means.
- */
+*/
 fun HttpAttempt.toStepOutcome(): StepOutcome = when (this) {
     is HttpAttempt.Answered -> StepOutcome.Success
     is HttpAttempt.Refused -> StepOutcome.Failure(

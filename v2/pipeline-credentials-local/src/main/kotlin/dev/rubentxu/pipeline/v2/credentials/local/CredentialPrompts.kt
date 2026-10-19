@@ -7,17 +7,15 @@ import java.nio.file.Paths
 /**
  * Collects one credential of each supported kind by asking for it at an
  * interactive terminal.
- *
  * This object decides only where the values come from. Whether a value is
  * acceptable is [CredentialValues]' decision, shared with the caller that reads
  * the same kinds from a redirected stream: two callers asking the same question
  * must get the same answer, or a store seeded one way would differ from a store
  * seeded the other.
- *
  * Every function is pure in the sense that matters here: each returns a fresh
  * value with no file handle, lock or cached state. They live apart from
  * [MainCredentialsCli] so the dispatch table there stays about dispatching.
- */
+*/
 internal object CredentialPrompts {
 
     fun read(kind: MainCredentialsCli.CredentialKind): Credential = when (kind) {

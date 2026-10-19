@@ -1,15 +1,12 @@
-// WU-LPR-089 — `core.stash` / `core.unstash` installed-CLI canary (Tier B #1).
-//
+// `core.stash` / `core.unstash` installed-CLI canary (Tier B #1).
 // Exercises the registry-path `core.stash` and `core.unstash` Steps through
 // the DSL surface. Stage "build" creates files in the workspace and stashes
 // them under the logical name "lpr104-files"; stage "use" un-stashes them
 // back and verifies byte-equivalent recovery via sh(returnStdout=true).
-//
 // Failures here mean one of:
 //   - registry resolution broke (StepKey "core.stash"/"core.unstash" not found)
 //   - the registry handler regressed (no StashCreated/StashRestored, or wrong path shape)
 //   - the DSL lowering reverted to legacy StepSpec.Stash
-//
 // Storage layout: <controlRoot>/stashes/<runId>/<lpr104-files>. The stash
 // directory is a SIBLING of <controlRoot>/workspace/ so cleanup of the
 // build stage workspace does NOT destroy the stash.

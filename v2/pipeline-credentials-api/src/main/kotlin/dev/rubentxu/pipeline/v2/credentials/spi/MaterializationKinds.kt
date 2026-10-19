@@ -6,11 +6,10 @@ import java.nio.file.Path
 
 /**
  * Kind of materialization for file-based credential types.
- *
  * The shape is:
  * - Part of the CredentialMaterialization SPI
- * - Reused from what was previously in :pipeline-credentials-multipart
- */
+ * - Reused from what was previously:pipeline-credentials-multipart
+*/
 sealed interface MaterializationKind {
     /** Materialize to a temporary file with 0600 permissions. */
     data object SecretFile : MaterializationKind
@@ -28,11 +27,10 @@ sealed interface MaterializationKind {
 /**
  * Result of credential materialization.
  * Either provides a path (for file-based kinds) or a SecretHandle (for in-memory kinds).
- *
  * The shape is:
  * - Part of the CredentialMaterialization SPI
- * - Reused from what was previously in :pipeline-credentials-multipart
- */
+ * - Reused from what was previously:pipeline-credentials-multipart
+*/
 data class MaterializedCredential(
     val credentialsId: CredentialsId,
     val kind: MaterializationKind,
@@ -42,7 +40,7 @@ data class MaterializedCredential(
 
     /**
      * Executes the given block with this materialized credential, then ensures cleanup.
-     */
+*/
     inline fun <R> use(block: (MaterializedCredential) -> R): R {
         return try {
             block(this)
@@ -69,7 +67,7 @@ data class MaterializedCredential(
 
 /**
  * Thrown when a credential kind cannot be materialized to a file.
- */
+*/
 class MaterializationKindUnsupportedException(
     val credentialsId: CredentialsId,
     val actualKind: String,

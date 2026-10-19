@@ -2,18 +2,15 @@ package dev.rubentxu.pipeline.v2.domain
 
 /**
  * Stable mapping from the legacy run-outcome strings to the canonical
- * typed [RunOutcome] (LF-0104).
- *
+ * typed [RunOutcome].
  * The durable walker currently returns raw strings (`"success"` /
  * `"unstable"` / `"failure"`) at its boundary. While that walker exists,
  * every crossing from the legacy boundary into typed territory MUST go
- * through this mapper — this is the mechanical definition of the M2-005
+ * Through this mapper — this is the mechanical definition of the
  * acceptance criterion ("failure mapping estable"): exactly one place
  * where legacy strings become typed outcomes, deterministic, and
  * fail-closed on unknown tokens.
- *
  * ## Mapping table
- *
  * | Legacy token   | Canonical outcome |
  * |----------------|-------------------|
  * | `"success"`    | [RunOutcome.Success] |
@@ -23,11 +20,10 @@ package dev.rubentxu.pipeline.v2.domain
  * | `"failed"`     | [RunOutcome.Failure] (historical synonym) |
  * | `"aborted"`    | [RunOutcome.Aborted] |
  * | anything else  | `IllegalArgumentException` (fail-closed; an unknown token is a contract violation, never silently a success) |
- *
  * The mapper is pure and deterministic. It accepts only the exact closed
  * set above — no trimming, no case folding: legacy producers emit fixed
  * constants, and a silently-tolerant mapper would hide producer drift.
- */
+*/
 object LegacyOutcomeMapper {
 
     private val FAILURE = PipelineFailure(

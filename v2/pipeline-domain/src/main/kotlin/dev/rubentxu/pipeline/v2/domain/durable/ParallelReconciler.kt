@@ -1,20 +1,19 @@
 package dev.rubentxu.pipeline.v2.domain.durable
 
 /**
- * PAR-D parallel reconciler — pure, plan-only, effect-free (ADR-0075
+ * Parallel reconciler — pure, plan-only, effect-free (
  * thinker/writer pattern reused). Reads observed durable facts, returns a
  * [ParallelDecision]. The coordinator is the single writer.
- *
- * Laws (PAR-D0 §2 matrix + confirmed decisions):
+ * Laws (matrix + confirmed decisions)
  * - a terminal child is NEVER re-executed;
  * - reuse/close paths schedule zero executions;
  * - structural divergence rejects before any effect;
- * - a FAILED child row possibly hiding a pre-P1 Unstable (no lossless carrier for THAT row)
- *   is NOT Failure: it is [ParallelDecision.RejectAmbiguousOutcome]. Since P1 an UNSTABLE
- *   row IS a lossless carrier, so `reconstructBranch` and the W5 stale-aggregate fold close
+ * A FAILED child row possibly hiding an Unstable row (no lossless carrier for THAT row)
+ * Is NOT Failure: it is [ParallelDecision.RejectAmbiguousOutcome]. Since an UNSTABLE
+ * Row IS a lossless carrier, so `reconstructBranch` and the stale-aggregate fold close
  *   unstable deterministically from it — the ambiguity survives only for FAILED rows;
  * - decision makes the executed AND not-executed branch sets explicit.
- */
+*/
 object ParallelReconciler {
 
     fun reconcile(input: ParallelReconciliationInput): ParallelDecision {
@@ -31,7 +30,7 @@ object ParallelReconciler {
             val children = input.childrenByBranch[branch].orEmpty()
             when {
                 children.isEmpty() -> incomplete += branch
-                // A branch with any non-terminal child is INCOMPLETE (W2): the
+                // A branch with any non-terminal child is INCOMPLETE: the
                 // canonical child dispatch resumes it; no ambiguity involved.
                 children.any { !it.status.isTerminal } -> incomplete += branch
                 else -> {
@@ -46,8 +45,8 @@ object ParallelReconciler {
         }
 
         return when {
-            // W6: aggregate row terminal with exact semantic outcome — reuse it. UNSTABLE
-            // joined the whitelist when P1 made the aggregate persist it and P2 made the
+            // Aggregate row terminal with exact semantic outcome — reuse it. UNSTABLE
+            // Joined the whitelist when made the aggregate persist it and made the
             // restart reuse it: an aggregate that says UNSTABLE carries its BranchTerminal
             // losslessly in `semanticOutcome`, so ReuseUnstable needs no child evidence.
             input.aggregateRow?.status?.let {
@@ -62,20 +61,20 @@ object ParallelReconciler {
                 is BranchTerminal.Failed -> ParallelDecision.ReuseFailure
             }
 
-            // W0: no aggregate, no children.
+            // No aggregate, no children.
             input.aggregateRow == null && branchOutcomes.isEmpty() && incomplete.size == input.branchCount ->
                 ParallelDecision.Start((0 until input.branchCount).toList())
 
-            // W1: aggregate admitted, nothing launched.
+            // Aggregate admitted, nothing launched.
             input.aggregateRow != null && branchOutcomes.isEmpty() && incomplete.size == input.branchCount ->
                 ParallelDecision.Start((0 until input.branchCount).toList())
 
-            // W5: every branch terminal, aggregate stale — close from children when the
+            // Every branch terminal, aggregate stale — close from children when the
             // children prove the fold losslessly.
             incomplete.isEmpty() -> {
                 val fold = foldAwaitAll(branchOutcomes)
-                // Pre-P1, only a SUCCESS fold was provable from children: a FAILED child row
-                // could not distinguish Failure from Unstable. P1 gave unstable rows a
+                // Only a SUCCESS fold was provable from children: a FAILED child row
+                // Could not distinguish Failure from Unstable. gave unstable rows a
                 // lossless carrier (`OperationStatus.UNSTABLE`), so an UNSTABLE fold is now
                 // provable the same way an all-SUCCEEDED fold always was. A fold that needed
                 // a FAILED branch never reaches here — reconstructBranch reports that
@@ -89,7 +88,7 @@ object ParallelReconciler {
                 }
             }
 
-            // W2–W4: partially completed — resume only the incomplete branches.
+            //: partially completed — resume only the incomplete branches.
             else -> ParallelDecision.ResumeBranches(incomplete.toList())
         }
     }
@@ -106,12 +105,12 @@ object ParallelReconciler {
         val allSucceeded = children.all { it.status == OperationStatus.SUCCEEDED }
         return when {
             allSucceeded -> Reconstructed.Terminal(BranchTerminal.Succeeded)
-            // FAILED keeps the legacy ambiguity FIRST: a pre-P1 FAILED row may hide an
+            // FAILED keeps the legacy ambiguity FIRST: a FAILED row may hide an
             // unstable step outcome, and the fold cannot distinguish the two from it.
             hasFailed -> Reconstructed.Ambiguous(
                 "branch child rows contain FAILED; cannot distinguish real Failure from Unstable without a lossless semantic carrier",
             )
-            // P1 made UNSTABLE a lossless carrier: the row says exactly what happened, so
+            // The row says exactly what happened, so
             // the branch reconstructs deterministically instead of failing closed.
             hasUnstable -> Reconstructed.Terminal(BranchTerminal.Unstable)
             // Terminal-but-neither-succeeded-nor-unstable-nor-failed (LOST, FAILED_TIMEOUT,
@@ -120,3 +119,5 @@ object ParallelReconciler {
         }
     }
 }
+
+

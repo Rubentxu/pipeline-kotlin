@@ -31,44 +31,36 @@ import kotlinx.serialization.json.JsonPrimitive
  * like right now?". It exists so the recover adapter does not depend on the
  * concrete `RuntimeIntrospectionPortStoreAdapter` type and so the test can
  * substitute a stub introspect without instantiating the storage stack.
- *
  * Production wiring is `::inspect` against the live
  * `RuntimeIntrospectionPortStoreAdapter`; tests may pass a hand-rolled
  * lambda.
- *
  * Declared BEFORE the class so the class can use it as a constructor parameter
  * type without a self-import dance.
- */
+*/
 fun interface RuntimeRecoverPortIntrospect {
     fun inspect(runId: String): RuntimeIntrospectionResult
 }
 
 /**
- * M2 — production [RuntimeRecoverPort] adapter backed by the existing journal,
+ * Production [RuntimeRecoverPort] adapter backed by the existing journal,
  * cursor, lease, and output-recovery authorities.
- *
  * ## What this adapter is and is not
- *
  * The adapter is a thin composition: it does NOT introduce a new lease, a new
  * fencing scheme, a new journal schema, a new output store, or a new scheduler.
  * Every authority it composes is named below.
- *
  * The adapter consults the existing [RuntimeIntrospectionPort] to get the typed
  * observation, fetches the journal's terminal row + cursor via the existing
  * `OperationJournal.listForRun` + `ReplayCursorStore.load`, hands the proof to
  * the pure [RuntimeRecoverDecision.decideRecovery] decider, and dispatches the
  * returned [RecoveryChoice] into one of the four [RecoverOutcome] cases.
- *
  * ## No-rerun invariant (audit D.4)
- *
  * The adapter NEVER re-executes a step's `execute()`. It materialises the
  * terminal row by writing it through the existing `OperationJournal.append`
  * (which is the journal's own observation, not a side-effecting re-run) and
  * reconciles the output store via the existing `OutputRecoveryPort.recover` +
- * `OutputFrameIndex.recoverUnframedBytes` pair. `RecoverNoRerunTest` (§7.3 of
+ * `OutputFrameIndex.recoverUnframedBytes` pair. `RecoverNoRerunTest` ( of
  * the design) pins the invariant.
- *
- */
+*/
 class RuntimeRecoverPortStoreAdapter(
     private val journal: OperationJournal,
     private val cursors: ReplayCursorStore,
@@ -78,15 +70,14 @@ class RuntimeRecoverPortStoreAdapter(
     private val introspect: RuntimeRecoverPortIntrospect,
     private val clock: Clock,
     /**
-     * M3 — optional pin port consulted by [recover] before returning
+     * Optional pin port consulted by [recover] before returning
      * `RecoveredTerminal`. When `null` (default), no pin check runs and
-     * the recover adapter behaves exactly as it did in M2.
-     *
-     * The audit §D.4 PARTIAL verdict flagged that the M2 recover port is
-     * silent on pins; M3 closes this with a consult that returns
+     * The recover adapter behaves exactly as it did in
+     * The auditD.4 PARTIAL verdict flagged that the recover port is
+     * Silent on pins; closes this with a consult that returns
      * [RecoverRefusal.PinnedBytesOutsideRecoveredRegion] when an active
      * pin covers bytes the run owns.
-     */
+*/
     private val pinPort: OutputPinPort? = null,
     private val syntheticObserverId: String = "m2-observer",
     private val json: Json = Json {
@@ -95,7 +86,7 @@ class RuntimeRecoverPortStoreAdapter(
     },
 ) : RuntimeRecoverPort {
 
-    // recover() composes four contract surfaces — lease boundary, introspection,
+    // recover composes four contract surfaces — lease boundary, introspection,
     // journal proof, and cursor replay — in a strict order; each stage's failure
     // mode short-circuits to FailClosed with a typed refusal. Refactoring in this
     // cycle would require re-deriving the same ordering inside extracted helpers
@@ -219,7 +210,7 @@ class RuntimeRecoverPortStoreAdapter(
         // 6. Dispatch.
         return when (decision) {
             is RecoveryChoice.AlreadyRecovered -> {
-                // M3 — also consult the pin port in the AlreadyRecovered
+                // Also consult the pin port in the AlreadyRecovered
                 // path. A run that was already recovered on a previous call
                 // and now has a new pin must STILL fail closed; otherwise
                 // re-attaching under a recovered-terminal contract would
@@ -265,7 +256,7 @@ class RuntimeRecoverPortStoreAdapter(
             is RecoveryChoice.ReuseTerminal -> {
                 val receipt = decision.receipt
 
-                // M3 — consult the pin port BEFORE we commit the recover.
+                // Consult the pin port BEFORE we commit the recover.
                 // Any active pin on the run's streams blocks the recover
                 // with `PinnedBytesOutsideRecoveredRegion`; expired pins
                 // are not pins and the recover proceeds.

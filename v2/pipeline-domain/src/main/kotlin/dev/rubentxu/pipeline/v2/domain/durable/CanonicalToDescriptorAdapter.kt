@@ -7,28 +7,23 @@ import dev.rubentxu.pipeline.v2.domain.step.BlockShellScopeDescriptor
 import java.nio.file.Path
 
 /**
- * WU-LPR-024 (slice 1/3) — Adapter from canonical coordinator types to the
- * parallel descriptor vocabulary introduced by WU-LPR-021..023.
- *
+ * Adapter from canonical coordinator types to the
+ * Parallel descriptor vocabulary introduced by
  * ## Why this exists
- *
- * WU-LPR-021 created `BodyInterpreter` with its own descriptor family
+ * Created `BodyInterpreter` with its own descriptor family
  * ([BodyExecutionProjectionDescriptor], [BlockShellScopeDescriptor]) because
  * `pipeline-domain` cannot depend on the canonical coordinator's private
  * types. That worked for tests and for the seam itself, but it left the
  * canonical coordinator untouched: it still inlines the dispatch loop,
  * still holds its private `BlockShellScope` / `BodyExecutionProjection`
  * types, and still branches on `is BodyShellScope.Directory` etc.
- *
- * WU-LPR-024 slice 1/3 is the **adapter** that lets the canonical
+ * Slice 1/3 is the **adapter** that lets the canonical
  * coordinator publish its types and consume the interpreter. Once this
  * adapter is in place, slices 2/3 and 3/3 migrate the inline loops
  * (`dispatchBody`, `runParallelStage`, retry loop) to consume the
  * interpreter + durable control engine policy + branch invoker without
  * changing the durable event/journal byte stream.
- *
  * ## What this is NOT
- *
  *  - NOT an effect. The adapter is a pure transformation between two
  *    type families; the canonical coordinator remains the effectful
  *    runner.
@@ -38,23 +33,21 @@ import java.nio.file.Path
  *    canonical case. Golden parity tests pin this contract.
  *  - NOT a Step-name branch. The adapter never reads a StepKey; it only
  *    transforms values.
- *
  * ## Migration note
- *
  * The canonical types (`BlockShellScope`, `BodyExecutionProjection`) are
  * currently `private` inside `CanonicalDurableRunCoordinator`. To make this
  * adapter usable by the canonical code, those types must be published
  * (moved to `:pipeline-domain` or made public inside `:pipeline-application`).
- * Slice 1/3 prepares the adapter; slice 2/3 publishes the types and
+ * Slice 1/3 prepares the adapter; /3 publishes the types and
  * introduces the canonical coordinator's `interpret(...)` call site;
- * slice 3/3 migrates the inline loops behind the engines.
- */
+ * /3 migrates the inline loops behind the engines.
+*/
 object CanonicalToDescriptorAdapter {
 
     /**
      * Maps a canonical `BlockShellScope` to its descriptor twin.
      * Pure, total, no effects.
-     */
+*/
     fun adaptScope(canonical: Any): BlockShellScopeDescriptor = when (canonical) {
         is CanonicalBlockShellScope.None -> BlockShellScopeDescriptor.None
         is CanonicalBlockShellScope.Directory -> BlockShellScopeDescriptor.Directory(
@@ -84,7 +77,7 @@ object CanonicalToDescriptorAdapter {
     /**
      * Maps a canonical `BodyExecutionProjection` to its descriptor twin.
      * Pure, total, no effects.
-     */
+*/
     fun adaptProjection(canonical: Any): BodyExecutionProjectionDescriptor = when (canonical) {
         is CanonicalBodyExecutionProjection.Scope ->
             BodyExecutionProjectionDescriptor.Scope(adaptScope(canonical.scope))
@@ -121,33 +114,27 @@ object CanonicalToDescriptorAdapter {
 }
 
 /**
- * WU-LPR-024 (slice 1/3) — Stand-in mirror of the canonical coordinator's
+ * Stand-in mirror of the canonical coordinator's
  * private `BlockShellScope` and `BodyExecutionProjection` types.
- *
  * ## Why a mirror, not a re-export
- *
  * The canonical types are `private sealed interface` inside
  * `CanonicalDurableRunCoordinator.kt`; they cannot be re-exported without
  * publishing them. The mirror lets the adapter + golden parity tests
  * reason about the canonical shape WITHOUT forcing the publication in this
- * WU. Once slice 2/3 publishes the canonical types, the mirror collapses
+ * WU. Once /3 publishes the canonical types, the mirror collapses
  * and the adapter consumes them directly.
- *
  * The mirror is intentionally minimal: it names the variants, carries the
  * payload, and is `Any`-typed in the adapter's signature so a future
  * unification of the two type families is a search-and-replace away.
- *
  * Variants mirror the canonical private types:
- *
  *  - `BlockShellScope`: None / Directory / TimestampsScope / EnvScope /
  *    Timeout / Retry / WaitUntilScope.
  *  - `BodyExecutionProjection`: Scope / CredentialLease / InvalidInput /
  *    Unimplemented.
- *
  * `borrow { bytes -> ... }` on `EnvScope.parentEnv` reflects the canonical
  * `SecretHandle.borrow { ... }` shape; the mirror stores `Map<String, String>`
  * so tests can construct fixtures without going through the secret lifecycle.
- */
+*/
 sealed interface CanonicalBlockShellScope {
     data object None : CanonicalBlockShellScope
     data class Directory(val target: Path, val previous: Path) : CanonicalBlockShellScope
@@ -177,7 +164,7 @@ sealed interface CanonicalBodyExecutionProjection {
  * Stand-in mirror of `dev.rubentxu.pipeline.v2.domain.SecretHandle`. Carries
  * a `borrow { bytes -> T }` shape so the adapter can extract string values
  * without dragging the secret lifecycle into tests.
- */
+*/
 interface CanonicalSecretHandle {
     fun <T> borrow(block: (ByteArray) -> T): T
 }

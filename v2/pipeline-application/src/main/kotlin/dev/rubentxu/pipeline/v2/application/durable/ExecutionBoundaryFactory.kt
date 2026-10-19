@@ -9,34 +9,29 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
 
 /**
- * S2.5.7 / B1.2c3: named producer seam for the [CommonExecutionBoundary] that a coordinator (or a
+ * Named producer seam for the [CommonExecutionBoundary] that a coordinator (or a
  * recording test decorator) routes through.
- *
  * Replaces the inline `if (stepRegistry != null)` previously hidden inside
  * [buildDefaultExecutionBoundary]. Routing logic lives in [FamilyRouter.decide] as an exhaustive
  * sealed ADT; this object only does the structural switch + the optional recorder wrapping.
- *
  * Policy (binary preservation of legacy inline `if (stepRegistry != null)`): when [stepRegistry]
  * is non-null, the factory ALWAYS returns a `SeamedRouting` boundary over the pre-built legacy +
  * registry boundaries via [SeamedExecutionRouter.route] — regardless of whether a [stepKey] is
  * supplied, because reachability is decided at prepare-time inside the registry boundary, not in
  * the factory. When [stepRegistry] is null the factory returns the legacy adapter alone (the
  * dispatcher fallback applies as for the null executor).
- *
  * The seam is named and the structural shape is an exhaustive `when` over
  * [FamilyRoutingDecision]; the binary rule above means [FamilyRoutingDecision.LegacyOnly] only
  * fires when registry is null, and [FamilyRoutingDecision.SeamedRouting] fires when registry is
  * supplied. [FamilyRouter.decide]'s finer-grained step-key check is the optional refinement for
  * future per-step entry points that know the key up front; the canonical coordinator
  * (`CanonicalDurableRunCoordinator`) does not need it.
- *
  * [More info: @rad correctness / behavioural preservation] — the former inline branch was
  * bit-equivalent to the policy below: when `stepRegistry != null`, the factory returns a
  * `SeamedRouting` boundary; otherwise it falls back to a `LegacyOnly` boundary (adapting the
  * provided dispatcher). Routing decisions NEVER depend on the StepKey or any concrete plugin
  * type — the canonical coordinator's structural switch is binary on registry presence, exactly
  * as the original code path was.
- *
  * @param dispatcher canonical node dispatcher used as the legacy-executor fallback when no
  *   [invocationExecutor] is supplied.
  * @param invocationExecutor optional legacy compatibility seam; when null, the dispatcher is
@@ -52,10 +47,10 @@ import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
  * @param milestoneStateStore optional run-scoped milestone store. The coordinator always
  *   creates a [MilestoneStateStore] instance (no longer nullable) so this parameter is always
  *   non-null when called from production code. Nullable kept for test/adapter flexibility.
- * @param artifactIndex E1.1 / T1: per-run artifact index passed through to the registry
+ * Per-run artifact index passed through to the registry
  *   boundary's capability bridge. When null, the capability stays unexposed and the bridge
  *   fails closed at registry-prepare-time.
- */
+*/
 object ExecutionBoundaryFactory {
 
     fun build(
@@ -72,7 +67,7 @@ object ExecutionBoundaryFactory {
         // branch. `stepKey` is forwarded to the router for future per-step routing, but does not
         // gate the canonical case (the registry reachability is established at prepare-time).
         if (stepRegistry != null) {
-            // WU-LPR-301 / G5 (2026-09-18): the legacy canonical command family is LEGACY_REMOVED,
+            // The legacy canonical command family is LEGACY_REMOVED,
             // so the dispatcher fallback cannot route a real Step. The LegacyOnly boundary is
             // preserved only for binary compatibility: when the legacy fallback is reached WITHOUT
             // an invocationExecutor, it MUST fail closed (FailureKind.ENGINE) instead of returning a
@@ -92,7 +87,7 @@ object ExecutionBoundaryFactory {
                     )
                 },
             )
-            // E1.1 / T1: thread the artifact index through the registry boundary's capability
+            // Thread the artifact index through the registry boundary's capability
             // bridge so core.archiveArtifacts and core.artifact.query share one instance per run.
             val registry = RegistryExecutionBoundary.adapt(
                 milestoneStateStore = milestoneStateStore,
@@ -113,7 +108,7 @@ object ExecutionBoundaryFactory {
             stepRegistry = stepRegistry,
             stepKey = stepKey,
         )) {
-            // WU-LPR-301 / G5 (2026-09-18): see the matching comment above. The LegacyOnly fallback
+            // See the matching comment above. The LegacyOnly fallback
             // returns Failure(ENGINE) when no invocationExecutor is supplied so a step that never
             // ran cannot produce a silent Success; the typed failure names the cause and the
             // expected resolution path. The registry boundary decides reachability per prepared
@@ -144,11 +139,10 @@ object ExecutionBoundaryFactory {
      * execution to [delegate] (the structurally-decided boundary), and returns the delegated
      * [StepOutcome] unchanged. Does NOT reimplement family routing — if it did, the productive
      * [SeamedExecutionRouter] authority would be silently bypassed.
-     *
      * The counter and recorder invocation are purely observational: tests can assert on either
      * `calls` or the user-supplied recorder's counter to prove the boundary was exercised the
      * expected number of times without affecting the structural routing decision.
-     */
+*/
     private class RecordingBoundary(
         private val recorder: CommonExecutionBoundary,
         private val delegate: CommonExecutionBoundary,

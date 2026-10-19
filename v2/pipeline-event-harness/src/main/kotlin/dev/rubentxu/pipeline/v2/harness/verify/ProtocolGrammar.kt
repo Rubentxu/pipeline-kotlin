@@ -19,7 +19,7 @@ import dev.rubentxu.pipeline.v2.harness.model.ViolationRule
 /**
  * Universal protocol laws checked for EVERY contract verification. Partial order
  * only: events group by typed key; NO global scheduler order is imposed.
- */
+*/
 object ProtocolGrammar {
 
     private const val CONTEXT = 4 // bounded window around the violating event
@@ -59,7 +59,7 @@ object ProtocolGrammar {
      * For each key, every terminal must have a prior start. Keys with terminals
      * but no start are violations. Extra starts without terminals are tolerated
      * only for kinds that legitimately abort (StepFailed replaces StepFinished).
-     */
+*/
     private fun pairLaw(
         history: List<TypedEvent>,
         rule: ViolationRule,

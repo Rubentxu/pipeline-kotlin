@@ -23,11 +23,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Typed input payload of `core.readFile` (WU-LPR-104).
- *
+ * Typed input payload of `core.readFile`
  * Decoding validates the complete canonical envelope before the handler can create an
  * effect: non-blank `file`, non-null `encoding`.
- */
+*/
 data class CoreReadFileInput(val file: String, val encoding: String) {
     init {
         require(file.isNotBlank()) { "core.readFile requires a non-blank file" }
@@ -35,19 +34,17 @@ data class CoreReadFileInput(val file: String, val encoding: String) {
 }
 
 /**
- * Typed successful output for `core.readFile` (WU-LPR-087, LFC-2R2).
- *
+ * Typed successful output for `core.readFile`
  * `content` is the file content as String (null when the file does not exist
  * — the substrate's path guard returns `exists=false` for out-of-workspace,
  * reserved-`.v2`, or missing targets). `exists = false` is a successful
  * observation in Jenkins predicate semantics, NOT a typed step failure.
- *
  * Observable read evidence is the `FileRead` domain event emitted by the
  * [WorkspaceOperationsAdapter] (path, sha256, size — NEVER content,
- * INV-L6-EVT-001). The content stays inside the typed step result and the
+ * ). The content stays inside the typed step result and the
  * codec's canonical envelope; the runtime-returning façade decodes it back
  * to `String` for the scripted caller.
- */
+*/
 data class CoreReadFileOutput(
     val content: String?,
     val exists: Boolean,
@@ -56,19 +53,16 @@ data class CoreReadFileOutput(
 }
 
 /**
- * Registry authority for `core.readFile` (WU-LPR-104, blocker closure for the
+ * Registry authority for `core.readFile` (, blocker closure for the
  * LPR certification checkpoint).
- *
  * The handler reaches workspace file operations ONLY through the typed
  * [WorkspaceOperations] seam (capability `WORKSPACE_OPERATIONS_CAPABILITY`), which binds
  * the certified `FileReadExecutor` substrate. The handler:
- *
  *  - does NOT read filesystem state itself,
  *  - does NOT emit `FileRead` (the adapter is the single emitter),
  *  - does NOT resolve stage identity (the adapter binds the runtime context's values).
- *
  * Capability admission is fail-closed at prepare-time via `RegistryExecutionPreparation`.
- */
+*/
 object CoreReadFileStep {
     val KEY: PluginStepId = PluginStepId("core.readFile")
 
@@ -76,7 +70,7 @@ object CoreReadFileStep {
      * Canonical dsl-v1 envelope, byte-identical to the compile lowering emitted by
      * `DslCompiledPipelineCompiler.readFilePayload`:
      * `{"kind":"readFile","file":...,"encoding":...}`.
-     */
+*/
     private val inputCodec = object : StepCodec<CoreReadFileInput> {
         override fun encode(value: CoreReadFileInput): EncodedStepValue =
             EncodedStepValue(

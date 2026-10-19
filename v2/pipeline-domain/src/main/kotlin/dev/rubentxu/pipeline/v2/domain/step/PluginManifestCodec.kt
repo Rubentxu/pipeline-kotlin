@@ -6,46 +6,38 @@ import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 
 /**
- * S6/C — the machine-readable manifest format, and the ONLY place its spelling is decided.
- *
+ * The machine-readable manifest format, and the ONLY place its spelling is decided.
  * ## Why a codec at all
- *
  * Before this type a plugin declared itself by CONSTRUCTING a [PluginManifest] in memory
  * from `System.getProperty` values, and the runtime read that declaration off the plugin's
- * own objects after its classes had already loaded. That order is the defect ADR-EVO-003
+ * Own objects after its classes had already loaded. That order is the defect
  * names: the runtime cannot refuse a plugin it has already run. A manifest that lives only
  * as Kotlin constructors is not a declaration, it is a report.
- *
  * So the manifest becomes a DOCUMENT with a canonical path, a schema version, and a codec
  * that is total: malformed input yields a typed refusal, never an exception a caller could
  * mistake for a bug in the reader.
- *
  * ## Determinism
- *
  * [encode] emits keys in a fixed order and sorts every collection, so the same
  * [PluginManifest] produces the same bytes every time. That matters because the artifact
  * carries this document and anything non-deterministic here becomes a spurious digest
  * change: a manifest that re-serializes differently on every build teaches every reader that
  * digest equality means nothing.
- *
  * ## The digest is NOT proof
- *
  * The `releaseDigest` field travels inside the document it describes, which makes it a
- * self-declared value, and ADR-EVO-003 explicitly refuses "self-declared digest as proof".
+ * Self-declared value, and explicitly refuses "self-declared digest as proof"
  * This codec therefore carries it but never VERIFIES it — [MeasuredArtifactIdentity] is what
  * separates what the runtime measured from what the plugin claimed. Recording the limit in
  * the codec's own KDoc is deliberate: a codec that looked authoritative would invite exactly
  * the trust this field has not earned.
- */
+*/
 object PluginManifestCodec {
 
     /**
      * The single canonical location, decided once and now contractual.
-     *
      * Under `META-INF/pipelinek/` rather than beside `META-INF/services/` because it is not
      * a ServiceLoader input: nothing reads it reflectively, and admission reads it through a
      * [ClassLoader] the runtime already holds rather than through a fresh scan.
-     */
+*/
     const val RESOURCE_PATH: String = "META-INF/pipelinek/plugin-manifest.json"
 
     /** Codec identity. A reader that does not recognise this must refuse, not best-effort. */
@@ -53,12 +45,11 @@ object PluginManifestCodec {
 
     /**
      * Encode to the canonical textual form.
-     *
      * Hand-written rather than delegated to a JSON library so field ORDER and escaping are
      * properties of this file rather than of whichever serializer happens to be on the
      * classpath. A manifest whose bytes depend on the build's dependency tree is not a
      * contract.
-     */
+*/
     fun encode(manifest: PluginManifest): String {
         val sb = StringBuilder()
         sb.append("{\n")
@@ -71,8 +62,8 @@ object PluginManifestCodec {
         sb.append("  \"publisher\": \"").append(escape(manifest.publisher)).append("\",\n")
         sb.append("  \"delivery\": \"").append(escape(manifest.delivery.name)).append("\",\n")
         sb.append("  \"trust\": \"").append(escape(trustToken(manifest.trust))).append("\",\n")
-        // B3.2 — optional operatorTrustReference URI. Emitted only when the manifest
-        // carries one. Pre-B3.2 documents (no field) stay byte-compatible because the
+        // Optional operatorTrustReference URI. Emitted only when the manifest
+        // carries one. Older documents (no field) stay byte-compatible because the
         // field is absent from the encoded form, not present-and-null. The trust line
         // above already terminates with a trailing comma, so this field does NOT add
         // its own leading comma. A trailing comma IS added so families follows cleanly.
@@ -125,7 +116,7 @@ object PluginManifestCodec {
      * Total decode. Every refusal is a typed [PluginManifestDecodeResult.Rejected]; nothing
      * throws, because the caller is a boundary reading bytes it did not author and an
      * exception there would be indistinguishable from a defect in the reader.
-     */
+*/
     fun decode(text: String): PluginManifestDecodeResult =
         when (val parsed = decodeOrNull(text)) {
             null -> PluginManifestDecodeResult.reject(
@@ -141,12 +132,11 @@ object PluginManifestCodec {
 
     /**
      * What ONE section of the document produced.
-     *
      * A separate closed type rather than more cases of [DecodeOutcome]: a section is not a
      * document, and letting the two share one hierarchy would force `decode`'s `when` to carry
      * three branches that can never occur at the top level. Keeping them apart is what lets
      * that `when` stay exhaustive over its two real cases with no `else` to hide a third.
-     */
+*/
     private sealed interface SectionOutcome
 
     private data class DecodeSuccess(val manifest: PluginManifest) : DecodeOutcome
@@ -201,7 +191,7 @@ object PluginManifestCodec {
         val c = contract as Contract
         val k = contributions as Contributions
 
-        // B3.2 — optional operatorTrustReference URI. Absent = null (no operator
+        // Optional operatorTrustReference URI. Absent = null (no operator
         // trust reference). Present + parses as a URI = the URI string. Present +
         // malformed = refused as MalformedDocument, NOT silently dropped.
         val operatorTrustRefRaw = root.str("operatorTrustReference")
@@ -390,7 +380,7 @@ object PluginManifestCodec {
 
     private fun trustToken(trust: TrustMetadata): String = when (trust) {
         // The document grammar still only knows the `unverified` token. Encoding a
-        // [TrustMetadata.Verified] or [TrustMetadata.Mismatch] here is a B3.2 plumbing
+        // [TrustMetadata.Verified] or [TrustMetadata.Mismatch] here is a plumbing
         // defect — those states belong to the runtime's identity verdict, not to the
         // manifest document. We refuse them rather than emitting a placeholder token that
         // would round-trip into a different case on decode.
@@ -405,11 +395,10 @@ object PluginManifestCodec {
 
     /**
      * Rebuild a [ResourceRef] from its canonical text.
-     *
      * Round-trips [ResourceRef.canonicalText] rather than inventing a plugin-specific
      * spelling: the manifest carries the same textual identity the rest of the domain uses,
      * so there is one way to write a resource and not a second one that only manifests know.
-     */
+*/
     private fun decodeResourceRef(text: String): ResourceRef? {
         val segments = text.split(':')
         if (segments.size < 2) return null
@@ -432,7 +421,7 @@ object PluginManifestCodec {
     }
 
     private fun parseApiRange(raw: String): PipelineKApiRange? {
-        // Encoded by PipelineKApiRange.toString() as "[from, until)".
+        // Encoded by PipelineKApiRange.toString as "[from, until)".
         if (!raw.startsWith('[') || !raw.endsWith(')')) return null
         val inner = raw.substring(1, raw.length - 1)
         val parts = inner.split(',').map { it.trim() }
@@ -461,12 +450,11 @@ private fun Map<String, Any>.objects(key: String): List<Map<String, Any>>? =
 
 /**
  * Cursor over the fixed manifest grammar [PluginManifestCodec.encode] writes.
- *
  * Deliberately NOT a general JSON parser and it does not pretend to be one: objects, arrays
  * of strings, arrays of flat objects, and strings. Anything else yields null, which decode
  * turns into a refusal. Growing a general parser here would create a second authority for
  * what a manifest is allowed to say.
- */
+*/
 private class JsonCursor(private val source: String) {
     private var pos = 0
 

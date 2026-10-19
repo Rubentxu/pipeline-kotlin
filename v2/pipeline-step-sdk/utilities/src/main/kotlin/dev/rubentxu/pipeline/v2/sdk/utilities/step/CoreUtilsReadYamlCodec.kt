@@ -18,16 +18,14 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * JSON codec for [ReadYamlInput] (LFC-2E2 utilities OFFICIAL_PLUGIN).
- *
+ * JSON codec for [ReadYamlInput] (utilities OFFICIAL_PLUGIN)
  * The sealed [ReadYamlSource] hierarchy is encoded as a discriminator field
  * `source.kind` with `path` / `text` per variant. The `file XOR text` invariant
  * is preserved by construction: a `decode` cannot produce a `FromFile` and
  * `FromText` simultaneously.
- *
- * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * Migrated to `PipelineJson` / `JsonAccessors`. Wire
  * format unchanged (roundtrip byte-identical to pre-refactor).
- */
+*/
 object CoreUtilsReadYamlInputCodec : StepCodec<ReadYamlInput> {
 
     override fun encode(value: ReadYamlInput): EncodedStepValue = PipelineJson.encode(
@@ -112,17 +110,14 @@ object CoreUtilsReadYamlInputCodec : StepCodec<ReadYamlInput> {
 
 /**
  * JSON codec for [ReadYamlOutput].
- *
  * Encodes the closed [YamlDocument] ADT as a tagged JSON object. Each variant
  * becomes a one-field object whose discriminator is the field name and whose
  * payload is the variant's data.
- *
  * The encoding roundtrip is total and lossless — the value returned from a
  * successful Step replayed through the codec reproduces the original ADT
  * shape, which is what makes replay safe.
- *
- * D-012: migrated to `PipelineJson` / `JsonAccessors`.
- */
+ * Migrated to `PipelineJson` / `JsonAccessors`.
+*/
 object CoreUtilsReadYamlOutputCodec : StepCodec<ReadYamlOutput> {
 
     override fun encode(value: ReadYamlOutput): EncodedStepValue = PipelineJson.encode(

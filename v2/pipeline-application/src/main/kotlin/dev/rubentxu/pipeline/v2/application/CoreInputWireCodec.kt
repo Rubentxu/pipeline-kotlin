@@ -14,8 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * THE single wire authority for `core.input` (RP6-B / WU-092 G3.4).
- *
+ * THE single wire authority for `core.input`
  * Both the DSL compiler and the Step use this object; neither writes the format
  * by hand. That is the whole point: `core.sh` carries a dialect split
  * (`kind=sh|shell`, `command|script`, `returnStdout|returnMode`) that exists only
@@ -23,11 +22,10 @@ import kotlinx.serialization.json.put
  * compatibility shim added after the divergence. `Lfc2LockWireAuthorityFitnessTest`
  * froze the same law for `core.lock`; `Lfc2InputWireAuthorityFitnessTest` freezes
  * it for `core.input`.
- *
  * `null` fields are omitted rather than written as JSON null, matching
  * `CoreLockWireCodec` and keeping the payload byte-identical between the compiler
  * and the codec for a default-valued input.
- */
+*/
 object CoreInputWireCodec : StepCodec<CoreInputInput> {
 
     override fun encode(value: CoreInputInput): EncodedStepValue {
@@ -72,11 +70,10 @@ class CoreInputCodecException(message: String) : IllegalArgumentException(messag
 
 /**
  * Wire format of an ANSWER, written by whoever responds.
- *
  * Separate from [CoreInputWireCodec] on purpose: the request is engine-owned and
  * the answer is human-owned, they travel in opposite directions, and conflating
  * them would let a human-supplied file dictate the question.
- */
+*/
 object InputAnswerCodec {
 
     fun encode(decision: InputDecision): String {
@@ -100,11 +97,10 @@ object InputAnswerCodec {
     /**
      * Decodes an answer, or returns `null` when the file is not yet a complete,
      * valid answer.
-     *
      * `null` is the honest answer for "a human is still typing" and for "this is
      * not an answer at all". Neither may end the wait: a half-written file is not
      * a refusal.
-     */
+*/
     fun decode(raw: String): InputDecision? {
         val obj = try {
             Json.parseToJsonElement(raw).jsonObject

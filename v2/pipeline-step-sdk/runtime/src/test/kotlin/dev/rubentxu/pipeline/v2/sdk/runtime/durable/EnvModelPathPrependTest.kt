@@ -9,18 +9,16 @@ import org.junit.jupiter.api.Test
 /**
  * `PATH+=` is Jenkins verbatim syntax: `PATH+=<dir>` prepends the **directory** to
  * PATH and then removes the entry, leaving no `PATH+<dir>` key behind.
- *
  * `EnvModel` carries two overloads — one over `Map<String, String>` ("legacy") and
  * one over `Map<String, SecretHandle>` ("typed"). The typed one is the live one:
  * `ShOptions.env` is declared as `Map<String, SecretHandle>`, and
  * `DurableShellExecutor` materialises its result immediately afterwards
  * (`transformedEnv.mapValues { it.value.materialize() }`). So the typed overload
  * is the one whose output actually reaches `ProcessBuilder`.
- *
  * Every input here supplies PATH explicitly. `EnvModel.apply` falls back to
  * `System.getenv("PATH")` when the input carries none, which would make the
  * expected value depend on the machine running the test.
- */
+*/
 class EnvModelPathPrependTest {
 
     private fun pathOf(env: Map<String, SecretHandle>): String? =

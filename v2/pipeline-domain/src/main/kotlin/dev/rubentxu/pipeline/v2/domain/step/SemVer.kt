@@ -2,12 +2,11 @@ package dev.rubentxu.pipeline.v2.domain.step
 
 /**
  * Minimal SemVer value object for plugin release identity (PLUGIN_IDENTITY_MODEL).
- *
  * Deliberately frozen shape: only `major`, `minor`, `patch`. Pre-release and
  * build metadata are NOT supported in this cycle; introducing them is an ADR
  * that brings its own version-comparison semantics. The canonical textual
  * representation is `MAJOR.MINOR.PATCH`.
- */
+*/
 data class SemVer(val major: Int, val minor: Int, val patch: Int) {
     init {
         require(major >= 0 && minor >= 0 && patch >= 0) {
@@ -20,11 +19,10 @@ data class SemVer(val major: Int, val minor: Int, val patch: Int) {
 
 /**
  * Opaque content digest used for plugin-release identity (PLUGIN_IDENTITY_MODEL).
- *
  * Accepts the textual form `sha256:<64-hex>`. Validation is fail-closed: any
  * deviation (wrong algorithm prefix, wrong length, non-hex chars) throws.
  * The internal storage form is the lowercase prefix plus the hex payload.
- */
+*/
 data class Digest(val value: String) {
     init {
         require(value.startsWith("sha256:")) {

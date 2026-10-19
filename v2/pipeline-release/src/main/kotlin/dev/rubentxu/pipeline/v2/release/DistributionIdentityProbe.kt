@@ -6,19 +6,17 @@ import java.util.jar.JarInputStream
 import java.util.zip.ZipInputStream
 
 /**
- * P0.3b — the effectful half of the identity gate: read a real distribution ZIP
+ * The effectful half of the identity gate: read a real distribution ZIP
  * and produce [DistributionIdentityFacts] for the pure decision.
- *
  * The split is deliberate and follows AGENTS.md ("separate decision from
  * interpretation"). [DistributionIdentity] decides with no I/O; this collects
  * facts from bytes on disk. Neither half invents the other's job: the probe
  * never decides, and the decision never touches a filesystem.
- *
  * Every surface is probed independently and may come back null. A surface that
  * cannot be read is reported as unobserved, never defaulted to the expected
  * version. Defaulting would let a missing JAR manifest masquerade as a
  * passing check, which is the exact false-green this gate exists to prevent.
- */
+*/
 object DistributionIdentityProbe {
 
     /** The application JAR is the one carrying the runtime's own manifest. */
@@ -28,11 +26,10 @@ object DistributionIdentityProbe {
      * Collect the three ZIP-derived surfaces:
      * [IdentitySurface.ASSET], [IdentitySurface.ARCHIVE_ROOT] and
      * [IdentitySurface.IMPLEMENTATION_VERSION].
-     *
      * Returns only the surfaces it could actually observe. The caller is
      * responsible for merging these with the build-time and runtime
      * observations, because those two are not derivable from the ZIP alone.
-     */
+*/
     fun probeZip(zip: Path): List<IdentityObservation> = listOf(
         IdentityObservation(IdentitySurface.ASSET, assetVersion(zip)),
         IdentityObservation(IdentitySurface.ARCHIVE_ROOT, archiveRootVersion(zip)),
@@ -50,7 +47,7 @@ object DistributionIdentityProbe {
      * The single top-level directory inside the archive, as `pipelinek-<V>`.
      * A ZIP with zero or several top-level roots is malformed for our
      * distribution shape and yields null rather than a guess.
-     */
+*/
     fun archiveRootVersion(zip: Path): String? {
         val root = archiveRootName(zip) ?: return null
         if (!root.startsWith("pipelinek-")) return null
@@ -59,14 +56,13 @@ object DistributionIdentityProbe {
 
     /**
      * The archive root as the literal directory name, e.g. `pipelinek-0.44.0`.
-     *
      * Distinct from [archiveRootVersion] on purpose: that one yields the
      * *version component* for the identity comparison, while the distribution
      * manifest must record the *observed directory name*. Returning the wrong
      * unit from either would make a correct build look divergent, so the two
      * shapes are separate functions rather than one caller re-prefixing a
      * result it might be misreading.
-     */
+*/
     fun archiveRootName(zip: Path): String? {
         val roots = topLevelEntries(zip)
         if (roots.size != 1) return null
@@ -78,7 +74,7 @@ object DistributionIdentityProbe {
      * Reads the manifest through the JAR's own entry API rather than assuming
      * the manifest is the first or only entry, which ZIP ordering does not
      * guarantee.
-     */
+*/
     fun jarImplementationVersion(zip: Path): String? {
         if (!Files.isRegularFile(zip)) return null
         ZipInputStream(Files.newInputStream(zip)).use { outer ->

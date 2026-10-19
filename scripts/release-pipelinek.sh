@@ -1,51 +1,43 @@
 #!/usr/bin/env bash
 # release-pipelinek.sh — the one and only release script.
-#
-# PK-RC-PLUGIN-001 corrective: a release MUST NOT be published unless the
+# corrective: a release MUST NOT be published unless the
 # releaseGate produced a PASS receipt bound to the SHA of the ZIP the script
 # then uploads. This script is the only path that calls `gh release create`;
 # it refuses to advance without the four signals:
-#
-#   1. Gradle :pipeline-release:releaseGate exits 0 (admission passed)
+#   1. Gradle:pipeline-release:releaseGate exits 0 (admission passed)
 #   2. The candidateAdmission receipt (build/candidate/distribution-manifest.json)
 #      names a candidate_id whose sha256 matches the distZip artifact the
 #      script then uploads.
 #   3. The local sha256 of the distZip artifact equals the sha256 in the receipt.
 #   4. The tag name is fresh (does not collide with an existing remote tag)
 #      and points at HEAD on a clean working tree.
-#
 # Usage:
 #   PIPELINEK_RELEASE_TAG=v0.56.0-rc5 PIPELINEK_RELEASE_TRAIN=0.56.0 \
-#     ./scripts/release-pipelinek.sh
-#
-# On success: the script exits 0, the ZIP and the full §8 asset set are
+#./scripts/release-pipelinek.sh
+# On success: the script exits 0, the ZIP and the full  asset set are
 # uploaded and the Prerelease is created on GitHub. The receipt, HANDOFF and
 # SHA256SUMS are PUBLISHED as release assets and the HANDOFF becomes the release
 # notes; they are not committed to the repository. An earlier version did
 # `git add` them under docs/v2/07-uat/evidence/<tag>/, which reintroduced a
 # Markdown tree this repository's policy forbids and duplicated information the
 # release page already carries.
-#
 # On any refusal: non-zero exit, no upload, no Prerelease, no commit.
-#
-# Published asset set (AGENTS.md §8)
+# Published asset set (AGENTS.md )
 # ---------------------------------
 # The publisher reads the asset set from the DistributionManifest (the typed
 # value at v2/pipeline-release/.../DistributionManifest.kt), which is the
-# single source of truth produced by :pipeline-release:releaseGate. The five
+# single source of truth produced:pipeline-release:releaseGate. The five
 # slots are: asset (the ZIP), sbom, sdk, bom, sha256sums. Any non-null slot
 # is staged from v2/pipeline-application/build/distributions/ to the evidence
-# dir, hashed into SHA256SUMS, and uploaded. This is the §8 contract:
-#
+# dir, hashed into SHA256SUMS, and uploaded. This is the  contract:
 #   pipelinek-<train>.zip          the candidate bytes
 #   pipelinek-<train>.sbom.json    the SBOM (if present in manifest)
 #   pipelinek-<train>.sdk.zip      the SDK contract bundle (if present)
 #   pipelinek-bom-<train>.json     the SDK BOM JSON (if present)
 #   SHA256SUMS                     the digest authority, covering all of the above
-#
 # HANDOFF.md and git-head.txt stay in the EVIDENCE_DIR as small text
 # artefacts committed to git, but they are NOT release assets per AGENTS.md
-# §3 (HANDOFF.md is a report; git-head.txt is a receipt). They are not
+# (HANDOFF.md is a report; git-head.txt is a receipt). They are not
 # uploaded to the GitHub release asset store. The handoff remains available
 # to consumers as the body of the GitHub release via --notes-file.
 
@@ -135,8 +127,7 @@ if [ "$RECEIPT_SHA" != "$LOCAL_SHA" ]; then
 fi
 
 # ----------------------------------------------------------------------------
-# 5. Assemble the §4 asset set and its digest authority.
-#
+# 5. Assemble the  asset set and its digest authority.
 #    The tag is created FIRST so the handoff can state a resolved tag commit
 #    rather than a prediction. Note the ordering consequence, which is the
 #    whole point of section 5a below: the tag lands on the commit the
@@ -202,19 +193,15 @@ fi
 
 # ----------------------------------------------------------------------------
 # 5a. Tag ↔ artefact identity.
-#
 #     The audit of v0.61.0-rc1 recorded git-head.txt = eda7dd56 while the tag
 #     pointed at fdcadcfd, with no statement of the relationship. That release
 #     was published by hand, so nothing recorded WHICH commit produced the
 #     bytes and nothing recorded that the two commits were parent and child. A
 #     certifier reading it had three readings available and no way to choose.
-#
 #     The rule, stated so it is checkable rather than merely documented:
-#
 #       git-head.txt records the commit the ARTEFACT was built from. Never the
 #       evidence commit, never the tag commit unless they coincide, never a
 #       branch name.
-#
 #     Under THIS script's ordering the two coincide BY CONSTRUCTION: the tag is
 #     annotated onto the build commit, and the evidence commit below is a
 #     descendant of it. So the whole asset set — git-head, handoff and digest
@@ -306,12 +293,11 @@ fi
 
 # The asset staging happens in section 5b below, driven by the manifest.
 # We deliberately do not stage here, because the manifest is the single
-# source of truth for the asset set (AGENTS.md §8).
+# source of truth for the asset set (AGENTS.md ).
 
 # ----------------------------------------------------------------------------
 # 5b. Manifest-driven asset staging.
-#
-#     The DistributionManifest is the single source of truth for the §8 asset
+#     The DistributionManifest is the single source of truth for the  asset
 #     set. Each non-null field (asset, sbom, sdk, bom, sha256sums) names a
 #     file in v2/pipeline-application/build/distributions/. We stage each
 #     non-null one into the EVIDENCE_DIR, then hash the staged set into
@@ -342,14 +328,13 @@ stage_manifest_asset() {
     # $1 = manifest field path (e.g. "asset.name"); $2 = local source path
     # (resolved against v2/pipeline-application/build/distributions/).
     # Copies the named file to EVIDENCE_DIR and appends it to STAGED_PATHS.
-    #
     # A null field REFUSES. It used to print a note and `return 0`, and that
-    # made the §8 completeness check unverifiable: the verification loop after
+    # made the completeness check unverifiable: the verification loop after
     # `gh release create` iterates STAGED_PATHS, so an asset the manifest
     # omitted never entered the list and therefore never had to be present on
     # the published release. A release missing its SDK or its BOM passed the
     # check written to catch exactly that. Every field this function is called
-    # with is mandatory under §8, so there is no legitimate skip here.
+    # with is mandatory under, so there is no legitimate skip here.
     local field="$1"
     local src="$2"
     local fname
@@ -406,7 +391,6 @@ STAGED_PATHS+=("$SUMS")
 
 # ----------------------------------------------------------------------------
 # 6. Tag, then confirm the tag landed where the handoff says it would.
-#
 #    Everything above ran without touching the tag, so a failure here is still
 #    recoverable: delete the tag and re-run. The reverse was not true.
 # ----------------------------------------------------------------------------
@@ -425,7 +409,7 @@ fi
 
 # ----------------------------------------------------------------------------
 # 7. Publish. The Prerelease URL is the receipt's permanent address.
-#    PK-NEXT R0.1: the ZIP is uploaded to the GitHub release asset store
+#: the ZIP is uploaded to the GitHub release asset store
 #    (NOT copied into the git tree). The git tree carries only the small
 #    text artefacts (manifest, handoff, git-head).
 # ----------------------------------------------------------------------------

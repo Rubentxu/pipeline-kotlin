@@ -5,13 +5,11 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
 
 /**
  * Scope of a credential — determines where it can be used.
- *
  * Per Jenkins credentials-binding conventions:
  * - GLOBAL: usable across all pipelines and jobs
  * - SYSTEM: usable only within the same Jenkins master (agent nodes)
- *
- * ML-R6 uses GLOBAL exclusively. SYSTEM is reserved for future cycles.
- */
+ * Uses GLOBAL exclusively. SYSTEM is reserved for future cycles
+*/
 enum class CredentialScope {
     GLOBAL,
     SYSTEM
@@ -19,46 +17,40 @@ enum class CredentialScope {
 
 /**
  * Sealed hierarchy of typed credentials.
- *
  * Every credential has:
  * - [id]: The credential identifier (NOT secret material)
  * - [scope]: Where the credential can be used (GLOBAL/SYSTEM)
- *
  * Each concrete kind overrides [toString] to NEVER log secret bytes.
  * The [toString] output contains ONLY safe fields (id, scope, safe identifiers).
  * Secret bytes (passwords, private keys, file contents) are NEVER present in toString.
- *
- * This sealed hierarchy IS the kind system (INV-L6-CR-001).
+ * This sealed hierarchy IS the kind system
  * Kind is the static type, never inferred from byte content.
- *
  * @see dev.rubentxu.pipeline.v2.credentials.api.SecretStore for the store interface
- */
+*/
 sealed interface Credential {
     /**
      * The credential identifier.
      * This is NOT a secret — it is a public reference.
-     */
+*/
     val id: CredentialsId
 
     /**
      * The scope where this credential can be used.
-     */
+*/
     val scope: CredentialScope
 
     /**
      * Maps this credential kind to a [BoundPurpose] for audit trail.
-     */
+*/
     val purpose: BoundPurpose
 }
 
 /**
  * Reference to another credential by ID.
  * Used for [SshPrivateKey.passphraseRef] and [Certificate.passwordRef].
- *
  * Resolving a LinkedSecretRef returns the referenced [SecretText] bytes.
- *
  * @param credentialsId The ID of the referenced credential
- */
+*/
 data class LinkedSecretRef(val credentialsId: CredentialsId)
 
 // ---------------------------------------------------------------------------
@@ -67,13 +59,11 @@ data class LinkedSecretRef(val credentialsId: CredentialsId)
 
 /**
  * Secret text credential — a raw string secret.
- *
  * Example: API tokens, passwords without a specific structure.
- *
  * @param id The credential ID
  * @param scope The credential scope (default: GLOBAL)
- * @param bytes The secret text as UTF-8 bytes
- */
+ * @param bytes The secret text as bytes
+*/
 data class SecretText(
     override val id: CredentialsId,
     override val scope: CredentialScope = CredentialScope.GLOBAL,
@@ -84,7 +74,7 @@ data class SecretText(
     /**
      * Returns a safe string representation.
      * NEVER logs the actual secret bytes.
-     */
+*/
     override fun toString(): String =
         "[SECRET SecretText(id=${id.value}, scope=$scope)]"
 
@@ -109,12 +99,11 @@ data class SecretText(
 
 /**
  * Username/password pair credential.
- *
  * @param id The credential ID
  * @param scope The credential scope (default: GLOBAL)
  * @param username The username (NOT a secret)
- * @param password The password as UTF-8 bytes
- */
+ * @param password The password as bytes
+*/
 data class UsernamePassword(
     override val id: CredentialsId,
     override val scope: CredentialScope = CredentialScope.GLOBAL,
@@ -126,7 +115,7 @@ data class UsernamePassword(
     /**
      * Returns a safe string representation.
      * NEVER logs the password bytes.
-     */
+*/
     override fun toString(): String =
         "[SECRET UsernamePassword(id=${id.value}, scope=$scope, username=$username)]"
 
@@ -155,13 +144,12 @@ data class UsernamePassword(
 
 /**
  * SSH private key with optional passphrase reference.
- *
  * @param id The credential ID
  * @param scope The credential scope (default: GLOBAL)
  * @param username The SSH username (e.g., "git")
  * @param privateKey The SSH private key bytes (PEM format)
  * @param passphraseRef Optional reference to a [SecretText] containing the passphrase
- */
+*/
 data class SshPrivateKey(
     override val id: CredentialsId,
     override val scope: CredentialScope = CredentialScope.GLOBAL,
@@ -174,7 +162,7 @@ data class SshPrivateKey(
     /**
      * Returns a safe string representation.
      * NEVER logs the private key bytes.
-     */
+*/
     override fun toString(): String =
         "[SECRET SshPrivateKey(id=${id.value}, scope=$scope, username=$username, hasPassphrase=${passphraseRef != null})]"
 
@@ -205,12 +193,11 @@ data class SshPrivateKey(
 
 /**
  * Secret file credential.
- *
  * @param id The credential ID
  * @param scope The credential scope (default: GLOBAL)
  * @param bytes The file contents bytes
  * @param originalName Optional original filename hint
- */
+*/
 data class SecretFile(
     override val id: CredentialsId,
     override val scope: CredentialScope = CredentialScope.GLOBAL,
@@ -222,7 +209,7 @@ data class SecretFile(
     /**
      * Returns a safe string representation.
      * NEVER logs the file contents bytes.
-     */
+*/
     override fun toString(): String =
         "[SECRET SecretFile(id=${id.value}, scope=$scope, originalName=$originalName)]"
 
@@ -251,13 +238,12 @@ data class SecretFile(
 
 /**
  * Certificate credential with optional password reference.
- *
  * @param id The credential ID
  * @param scope The credential scope (default: GLOBAL)
  * @param keystore The PKCS#12 keystore bytes
  * @param passwordRef Optional reference to a [SecretText] containing the keystore password
  * @param alias Optional key alias within the keystore
- */
+*/
 data class Certificate(
     override val id: CredentialsId,
     override val scope: CredentialScope = CredentialScope.GLOBAL,
@@ -270,7 +256,7 @@ data class Certificate(
     /**
      * Returns a safe string representation.
      * NEVER logs the keystore bytes.
-     */
+*/
     override fun toString(): String =
         "[SECRET Certificate(id=${id.value}, scope=$scope, alias=$alias, hasPassword=${passwordRef != null})]"
 
@@ -301,11 +287,10 @@ data class Certificate(
 
 /**
  * ZIP archive credential.
- *
  * @param id The credential ID
  * @param scope The credential scope (default: GLOBAL)
  * @param entries Map of entry name to uncompressed bytes
- */
+*/
 data class Zip(
     override val id: CredentialsId,
     override val scope: CredentialScope = CredentialScope.GLOBAL,
@@ -316,7 +301,7 @@ data class Zip(
     /**
      * Returns a safe string representation.
      * NEVER logs the ZIP entry bytes.
-     */
+*/
     override fun toString(): String =
         "[SECRET Zip(id=${id.value}, scope=$scope, entryCount=${entries.size})]"
 
@@ -358,15 +343,13 @@ data class Zip(
 
 /**
  * Username:password credential (colon-joined format).
- *
  * Unlike [UsernamePassword], this stores a pre-joined "user:pass" string.
  * Used by Jenkins [usernameColonPassword][BoundPurpose.USERNAME_COLON_PASSWORD] binding.
- *
  * @param id The credential ID
  * @param scope The credential scope (default: GLOBAL)
  * @param user The username
  * @param pass The password
- */
+*/
 data class UsernameColonPassword(
     override val id: CredentialsId,
     override val scope: CredentialScope = CredentialScope.GLOBAL,
@@ -378,7 +361,7 @@ data class UsernameColonPassword(
     /**
      * Returns a safe string representation.
      * NEVER logs the password bytes.
-     */
+*/
     override fun toString(): String =
         "[SECRET UsernameColonPassword(id=${id.value}, scope=$scope, user=$user)]"
 

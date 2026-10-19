@@ -24,8 +24,8 @@
     <ID>UnusedParameter:StepExecutors.kt:sink: EventSink</ID>
     <ID>UnusedParameter:StepExecutors.kt:stepIndex: Int</ID>
     <ID>UnusedPrivateFunction:DurableShellExecutor.kt:DurableShellExecutor$private fun isSessionLeader: Boolean</ID>
-    <ID>UnusedPrivateProperty:DurableShellExecutor.kt:DurableShellExecutor$/** Path to bash (resolved once at startup).*/ private val bashPath: String by lazy { resolveCommandPath("bash") ?: throw IllegalStateException("bash not found on PATH") }</ID>
-    <ID>UnusedPrivateProperty:DurableShellExecutor.kt:DurableShellExecutor$/** Path to setsid (resolved once at startup).*/ private val setsidPath: String by lazy { resolveCommandPath("setsid") ?: throw IllegalStateException("setsid not found on PATH") }</ID>
+    <ID>UnusedPrivateProperty:DurableShellExecutor.kt:DurableShellExecutor$/** Path to bash (resolved once at startup). */ private val bashPath: String by lazy { resolveCommandPath("bash") ?: throw IllegalStateException("bash not found on PATH") }</ID>
+    <ID>UnusedPrivateProperty:DurableShellExecutor.kt:DurableShellExecutor$/** Path to setsid (resolved once at startup). */ private val setsidPath: String by lazy { resolveCommandPath("setsid") ?: throw IllegalStateException("setsid not found on PATH") }</ID>
     <ID>UnusedVariable:DurableShellExecutor.kt:DurableShellExecutor$val agentHandles: AgentHandles? = if (config.pumpedViaAgent &amp;&amp; pumpedThroughJvm) { val fifoDir = materialiseFifos(controlDir) val stdoutFifo = fifoDir.resolve("stdout.fifo") val stderrFifo = fifoDir.resolve("stderr.fifo") val readyMarker = fifoDir.resolve("agent.ready") pb.redirectOutput(ProcessBuilder.Redirect.to(stdoutFifo.toFile())) pb.redirectError(ProcessBuilder.Redirect.to(stderrFifo.toFile())) val warmup = listOf( java.nio.channels.FileChannel.open( stdoutFifo, java.nio.file.StandardOpenOption.READ, java.nio.file.StandardOpenOption.WRITE, ), java.nio.channels.FileChannel.open( stderrFifo, java.nio.file.StandardOpenOption.READ, java.nio.file.StandardOpenOption.WRITE, ), ) val handles = AgentHandles( fifoDir = fifoDir, stdoutFifo = stdoutFifo, stderrFifo = stderrFifo, readyMarker = readyMarker, warmup = warmup, process = null, ) launchIngestAgent(controlDir, opId, config, handles) awaitAgentReady(handles) lastAgentHandles = handles handles } else { null }</ID>
     <ID>UnusedVariable:DurableShellExecutor.kt:DurableShellExecutor$val cookieFile = shellFiles.cookieFile</ID>
     <ID>UnusedVariable:DurableShellExecutor.kt:DurableShellExecutor$val outerRedirect = when { transcriptPipedThroughJvm &amp;&amp; captureStdout -&gt; "&gt; '$outputFileEscaped'" transcriptPipedThroughJvm -&gt; "" captureStdout -&gt; "&gt; '$outputFileEscaped' 2&gt; '$logFileEscaped'" else -&gt; "&gt; '$logFileEscaped' 2&gt;&amp;1" }</ID>
@@ -44,6 +44,6 @@
     <ID>UseOrEmpty:DurableShellExecutor.kt:DurableShellExecutor$coercedEnv["PATH"] ?: ""</ID>
     <ID>UseOrEmpty:DurableShellExecutor.kt:DurableShellExecutor$mapOf("PATH" to userPath).normalizePath( sandbox.pathKeep, pbEnv["JAVA_HOME"], pbEnv["M2_HOME"], )["PATH"] ?: ""</ID>
     <ID>UseOrEmpty:EnvModel.kt:this["PATH"] ?: ""</ID>
-    <ID>VariableNaming:DurableShellExecutor.kt:DurableShellExecutor$/** Sentinel cookie value — inherited by wrapper + heartbeat, distinguishes wrapper machinery.*/ private val SENTINEL_COOKIE = "__pipeline_protected__"</ID>
+    <ID>VariableNaming:DurableShellExecutor.kt:DurableShellExecutor$/** Sentinel cookie value — inherited by wrapper + heartbeat, distinguishes wrapper machinery. */ private val SENTINEL_COOKIE = "__pipeline_protected__"</ID>
   </CurrentIssues>
 </SmellBaseline>

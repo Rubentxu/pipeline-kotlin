@@ -11,21 +11,17 @@ import kotlinx.serialization.json.buildJsonObject
 import java.nio.file.Path
 
 /**
- * PK-1 / ADR-PK1-IDENTITY + ADR-PK1-LAUNCHRECEIPT-MODES — typed,
+ * Typed
  * machine-verifiable receipt of a pipeline invocation.
- *
  * Emitted on **stdout** as a single line of JSON once the launch
  * sequence is complete. A consumer that reads the line is
  * guaranteed that:
- *
- *  - The [runId] has been assigned by PK.
+ *  - The [runId] has been assigned by.
  *  - The [correlationId] has been bound to the [runId] in the
  *    [dev.rubentxu.pipeline.v2.events.RunCorrelated] event.
  *  - The [ownerId] is the writer authority for this run.
- *
  * **Launched is a guarantee of LAUNCH, not of DURABILITY.**
  * Two modes emit the same `pipelinek.launch/1` schema:
- *
  *  - **Durable mode** (`--db <path>`): the run is recorded in
  *    a SQLite journal and an advisory FileChannel lease is
  *    acquired on the control root. A subsequent process can
@@ -34,21 +30,18 @@ import java.nio.file.Path
  *  - **Non-durable mode** (in-memory): no journal is written
  *    and no lease is acquired. A crash of the process loses
  *    the run; `--resume` has no state to find.
- *
  * Consumers that need the durable/non-durable distinction must
  * infer it from the invocation (`--db <path>` was supplied) or
  * from the [dev.rubentxu.pipeline.v2.output.OutputRefusal]
  * stream's `recoveryGate`. The schema does not encode the
  * mode; doing so would be a breaking change to consumers
  * that already parse the receipt.
- *
  * The line is schema-versioned. The [SCHEMA] constant is the
  * authoritative version. Incompatible changes bump to
  * `pipelinek.launch/2`. Consumers MUST parse by [SCHEMA].
- *
- * @see ADR-PK1-IDENTITY for the channel and schema rationale.
- * @see ADR-PK1-LAUNCHRECEIPT-MODES for the durability semantics.
- */
+ * @see for the channel and schema rationale
+ * @see for the durability semantics
+*/
 @Serializable
 data class LaunchReceipt(
     val schema: String = SCHEMA,
@@ -66,7 +59,7 @@ data class LaunchReceipt(
          * JSON encoder configured to emit a single line (no pretty-print,
          * no HTML escaping, no lenient parsing). The output is stable
          * byte-for-byte for a given input.
-         */
+*/
         private val ENCODER: Json = Json {
             prettyPrint = false
             encodeDefaults = true
@@ -74,7 +67,7 @@ data class LaunchReceipt(
 
         /**
          * Build a successful [LaunchReceipt] from typed inputs.
-         */
+*/
         fun launched(
             runId: RunId,
             correlationId: CorrelationId,
@@ -92,7 +85,7 @@ data class LaunchReceipt(
 
         /**
          * Build a refused [LaunchReceipt] (admission or pre-launch failure).
-         */
+*/
         fun refused(
             correlationId: CorrelationId,
             reason: String,
@@ -110,7 +103,7 @@ data class LaunchReceipt(
          * Encode a [LaunchReceipt] to a single-line JSON string. The
          * output ends with a single `\n` so a consumer can `readLine()`
          * it cleanly.
-         */
+*/
         fun encode(receipt: LaunchReceipt): String {
             val obj: JsonObject = buildJsonObject {
                 put("schema", JsonPrimitive(receipt.schema))

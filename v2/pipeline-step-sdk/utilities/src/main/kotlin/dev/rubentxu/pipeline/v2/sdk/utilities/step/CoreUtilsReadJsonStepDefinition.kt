@@ -24,21 +24,18 @@ import kotlin.io.path.exists
 import kotlin.io.path.isRegularFile
 
 /**
- * `core-utils.readJson` OFFICIAL_PLUGIN Step (LFC-2E2 utilities).
- *
+ * `core-utils.readJson` OFFICIAL_PLUGIN Step (utilities)
  * Capability discipline: declares `WORKSPACE_IDENTITY_CAPABILITY` and reads the
  * canonical workspace root from the typed capability seam. The handler does
  * NOT consult `user.dir` or any system property at runtime.
- *
  * Effects: `READ_ONLY` (read-only file access).
  * ReplayPolicy: `MEMOIZED` (file content is deterministic; replay may reuse
  *   the cached output when the durable fingerprint matches).
  * RecoveryPolicy: `None` (no transient failure modes — the only failures are
  *   typed USER-class errors for missing files or invalid JSON).
- *
  * Determinism: identical inputs always produce identical outputs (modulo the
  * file content changing on disk).
- */
+*/
 class CoreUtilsReadJsonStepDefinition : StepDefinition<ReadJsonInput, ReadJsonOutput> {
 
     override val contract = StepContract(

@@ -5,9 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 /**
  * Structural cross-check between a [PluginManifest] and the contributions the
  * plugin actually provides.
- *
  * ## What it checks
- *
  * - every Step in the supplied definitions has a manifest entry, and every manifest
  *   Step has a definition (neither direction may drift);
  * - per Step, `declaredCapabilities` EQUALS `contract.requiredCapabilities` — a
@@ -16,29 +14,24 @@ import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
  * - every declared Directive and Event resolves against the supplied definitions;
  * - every Step contract's declared required capabilities appear in the manifest's
  *   top-level capability set.
- *
  * ## What it is NOT
- *
  * It is deterministic (no I/O, no clock, no global state) and fail-closed: any
  * mismatch throws with a diagnostic naming the key and the discrepancy.
- *
- * It does NOT decide whether the plugin may be admitted at runtime. Admission (S6/C)
+ * It does NOT decide whether the plugin may be admitted at runtime. Admission
  * runs BEFORE any contributor class is loaded;
  * this validator runs AFTER loading, to prove the implementation matches the
  * declaration. Keeping the two apart is the whole point of the two-phase check.
- */
+*/
 object PluginManifestValidator {
 
     /**
      * Validates that [manifest] is consistent with the contributions the plugin supplies.
-     *
      * @param manifest the declaration read from the artifact.
      * @param definitions the StepDefinitions the plugin's contributor produced.
      * @param directiveKeys the DirectiveKeys the plugin's directive contributor produced.
      * @param eventKinds the event kinds the plugin's event contributor produced.
-     *
      * @throws IllegalArgumentException on any structural mismatch.
-     */
+*/
     fun validate(
         manifest: PluginManifest,
         definitions: List<StepDefinition<*, *>>,
@@ -109,19 +102,17 @@ object PluginManifestValidator {
     /**
      * The manifest's top-level capability set and the set its Step contracts actually require
      * must be EQUAL, and both directions are checked.
-     *
      * Only one direction was enforced here for a while, and the KDoc claimed the other. That is
      * the defect this row exists to close: the class documented "every required capability
      * appears in the top-level set" while the code computed the reverse, so a plugin whose Step
      * required a capability it never asked for was admitted against something the plugin had
      * not declared it needed. One direction is not a weaker check, it is a check of the wrong
      * set.
-     *
      * Over-claiming is the first direction because it is the one that widens what the runtime
      * promises: a capability nobody uses is a broader declaration than the plugin needs.
      * Under-claiming is the second because it is the one that lets a Step demand something the
      * plugin never requested to be supplied.
-     */
+*/
     private fun validateDeclaredCapabilitiesAppear(
         manifest: PluginManifest,
         definitions: List<StepDefinition<*, *>>,
@@ -144,3 +135,4 @@ object PluginManifestValidator {
         }
     }
 }
+

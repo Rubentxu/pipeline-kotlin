@@ -6,13 +6,11 @@ import java.nio.file.Path
 
 /**
  * Ant-style glob pattern matcher using Spring's [AntPathMatcher].
- *
  * Matches workspace-relative paths against Ant-style patterns (`, `**`, `?`, `[...]`, `{...}`).
  * Supports multi-pattern expansion, user excludes, and Jenkins-compatible 13-entry default excludes.
- *
- * Design: D7 — wraps Spring `AntPathMatcher` (already on classpath via spring-core).
- * Invariant: INV-L6-ANT-001 (default excludes verbatim), INV-L6-ANT-002 (traversal safety).
- */
+ * Design: — wraps Spring `AntPathMatcher` (already on classpath via spring-core)
+ * Invariant: (default excludes verbatim), (traversal safety)
+*/
 // `patternList` is internal, not public: it is the decision `match()` acts on, and a unit test
 // cannot call `match()` at all because it walks a real directory. Exposing the list is what makes
 // "a pattern containing a comma stays one pattern" a testable fact instead of a comment -- the
@@ -22,7 +20,7 @@ class AntStyleGlob private constructor(internal val patternList: List<String>) {
     /**
      * One pattern. A comma inside it is part of the pattern, not a separator: `{jar,war}` is
      * Ant alternation and `data/a,b.txt` is a legal POSIX filename.
-     */
+*/
     constructor(pattern: String) : this(listOf(pattern)) {
         require(pattern.isNotEmpty()) { "At least one pattern must be provided" }
     }
@@ -36,8 +34,8 @@ class AntStyleGlob private constructor(internal val patternList: List<String>) {
     companion object {
         /**
          * Jenkins 13-entry default excludes (verbatim from Jenkins `archiveArtifacts` page).
-         * INV-L6-ANT-001: this list must remain exactly 13 entries.
-         */
+         * This list must remain exactly 13 entries.
+*/
         val DEFAULT_EXCLUDES: List<String> = listOf(
             "**/.git/**",
             "**/.svn/**",
@@ -56,10 +54,9 @@ class AntStyleGlob private constructor(internal val patternList: List<String>) {
 
         /**
          * Factory for List<String> - joins to comma-separated string.
-         */
+*/
         /**
          * Factory for [List] inputs.
-         *
          * This used to flatten the list into one comma-separated string and re-split it inside the
          * constructor, so a single element containing a comma came back as two broken fragments.
          * That made the documented `{...}` alternation unmatchable -- `build/**/*.{jar,war}` became
@@ -78,12 +75,11 @@ class AntStyleGlob private constructor(internal val patternList: List<String>) {
 
     /**
      * Matches files under [root] against this glob's patterns.
-     *
      * @param root Root directory to search under (walk is bounded to this root)
      * @param excludes Additional exclude patterns (applied after default excludes if enabled)
      * @param defaultExcludes Whether to apply Jenkins 13-entry default excludes
      * @return Sorted, deduplicated list of matching file paths under [root]
-     */
+*/
     fun match(
         root: Path,
         excludes: List<String> = emptyList(),

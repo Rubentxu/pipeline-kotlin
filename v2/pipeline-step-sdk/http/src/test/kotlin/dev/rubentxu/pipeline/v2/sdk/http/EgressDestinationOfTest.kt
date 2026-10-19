@@ -8,15 +8,13 @@ import org.junit.jupiter.api.Test
 /**
  * The plugin's half of egress admission: reducing an author-supplied URL to the destination the
  * runtime is asked about.
- *
  * This file holds no policy. Its whole contract is that the reduction either yields exactly the
  * destination the author named, or yields nothing at all. A reduction that silently lands on a
  * different destination is worse than a refusal, because the refusal is visible in the journal
  * and the substitution is not: the run opens a socket to somewhere the author did not write down,
  * and an allowlist written for the real destination does not govern it.
- *
  * The URL is external input, so every case here is a string a pipeline author can actually type.
- */
+*/
 class EgressDestinationOfTest {
 
     // --- the destination is the one that was written ------------------------------

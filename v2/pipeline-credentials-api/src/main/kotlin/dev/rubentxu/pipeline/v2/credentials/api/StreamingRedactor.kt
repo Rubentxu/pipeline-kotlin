@@ -6,19 +6,17 @@ import java.util.ArrayDeque
 
 /**
  * The mutable state of a single [StreamingRedactor] pass.
- *
- * R2.3(b) / TODO 3: the redactor's state used to be hidden inside
+ * The redactor's state used to be hidden inside
  * [StreamingRedactor.RedactingInputStream], which made "no more data" and
  * "end of stream" the same event — `close()` did both, so a caller that
  * wanted to drain the lookahead at EOF also had to close the source. The
  * ingest agent needs to call them separately: the FIFO's read returns EOF
  * (kernel signal) and the agent then flushes the lookahead WITHOUT closing
  * the source. The state machine makes those two facts independent.
- *
  * One [RedactorState] is independent of every other: two passes with the
  * same [StreamingRedactor] (the same secret registry) do not share state.
  * The agent creates one per FIFO channel and feeds it as bytes arrive.
- */
+*/
 class RedactorState internal constructor(
     /** The maximum encoded literal byte length, copied at construction. */
     val maxLiteral: Int,
@@ -41,10 +39,10 @@ class RedactorState internal constructor(
      * plus the SCRUB_MARKER expansion. The agent's read buffer is `chunkSize`,
      * so a single feed can emit up to `chunkSize` bytes plus one SCRUB_MARKER.
      * Without this, a large `feed` call wraps the output ring and overwrites
-     * bytes that the next [take] has not yet read — R2.3(b) / TODO 4 caught
+     * Bytes that the next [take] has not yet read — (b) / caught
      * this as f04 "stdout garbled" (outputQueue=56, feed emits 8136 bytes,
      * first 25 are clobbered before the take loop drains them).
-     */
+*/
     internal val outputQueue = ByteArray(maxOf(maxLiteral, chunkSize) + SecretPatternRegistry.SCRUB_MARKER.length)
     internal var outputHead = 0
     internal var outputCount = 0
@@ -57,54 +55,41 @@ class RedactorState internal constructor(
 /**
  * Stateful stream redaction decorator that scrubs secrets split across arbitrary
  * read boundaries using a bounded prefix-scanner algorithm.
- *
  * ## Bounded Prefix-Scanner Algorithm
- *
  * Unlike the failed carry-prefix approach that used scrub-and-slice on a shrinking
  * String, this implementation:
- *
  * 1. **Pending buffer**: Holds at most `maxLiteralByteLength` raw bytes from the
  *    source. This is the maximum lookahead needed to rule out any secret match
  *    at the pending head.
- *
  * 2. **Output queue**: Holds bytes waiting to be returned to the caller. When a
  *    secret literal is detected at the pending head, the raw literal bytes are
  *    consumed from pending and replaced with `SCRUB_MARKER` bytes in the output
  *    queue. The output queue allows the marker to be drained in smaller reads
  *    than the marker length.
- *
  * 3. **Input chunk buffer**: Fixed-size buffer for reading from the source.
- *
  * ## Memory Bound
- *
  * Per wrapped stream: `O(maxLiteralByteLength + chunkSize + markerLength)`
  * - pending: at most maxLiteralByteLength bytes
  * - outputQueue: at most markerLength bytes (SCRUB_MARKER = "****" = 4 bytes)
  * - inputBuffer: chunkSize bytes
- *
  * Total: O(maxLiteral + chunk + marker)
- *
  * ## Correctness Invariants
- *
  * - `InputStream.read(byte[], off, len)` with `len > 0` returns a positive count
  *   or -1; it NEVER returns 0 as an internal signal.
  * - A byte is NOT emitted from pending until enough lookahead exists to rule out
  *   every secret literal beginning at that byte.
  * - At EOF, the remaining pending buffer is drained by applying the same rule
  *   (but no match is possible since no more data will arrive).
- *
  * ## Re-entrancy
- *
  * Each `wrap()` returns a new `RedactingInputStream` instance with independent state.
  * Multiple concurrent `wrap()` calls on the same `StreamingRedactor` are fully
  * independent. `close()` clears all buffers and closes the source.
- *
  * @param registry The [SecretPatternRegistry] providing the active patterns.
  *                  Its [SecretPatternRegistry.maxLiteralByteLength] determines the
  *                  pending buffer size.
  * @param chunkSize The number of bytes to read from the underlying source
  *                  per `read()` call. Default 8192.
- */
+*/
 class StreamingRedactor(
     private val registry: SecretPatternRegistry,
     private val chunkSize: Int = 8192,
@@ -112,11 +97,10 @@ class StreamingRedactor(
 
     /**
      * The maximum encoded literal byte length.
-     *
      * This is the bound for the pending buffer: we need to hold at most this many
      * bytes to have sufficient lookahead to rule out any secret match at the
      * pending head.
-     */
+*/
     val maxLiteralByteLength: Int = registry.maxLiteralByteLength()
 
     /**
@@ -124,16 +108,15 @@ class StreamingRedactor(
      * first byte. Exposed for the state-machine API: [initialState] copies
      * the array references into the [RedactorState] so the per-pass state
      * does not need to re-scan the registry on every call.
-     */
+*/
     private val seamLiterals: List<ByteArray> = registry.literalSeam()
     private val seamFirstBytes: ByteArray = ByteArray(seamLiterals.size) { seamLiterals[it][0] }
 
     /**
      * A fresh, independent [RedactorState] for one redaction pass.
-     *
      * Each call returns a state with its own buffers, lookahead, and output
      * queue. The seam literal table is shared (read-only) with the redactor.
-     */
+*/
     fun initialState(chunkSize: Int = this.chunkSize): RedactorState {
         val state = RedactorState(maxLiteralByteLength, chunkSize)
         state.seam = seamLiterals
@@ -147,10 +130,9 @@ class StreamingRedactor(
      * by design: it never reads from an [InputStream], only from the byte
      * array the caller hands it. EOF on the source is signalled separately
      * by [finish]; conflating the two is the bug the state machine removes.
-     *
      * @return the updated [RedactorState]. The state is mutated in place
      *   and also returned, mirroring the typical Kotlin mutable-bag idiom.
-     */
+*/
     fun feed(state: RedactorState, bytes: ByteArray, off: Int, len: Int): RedactorState {
         if (state.sourceExhausted) return state
         require(off >= 0 && len >= 0 && off + len <= bytes.size) {
@@ -184,7 +166,7 @@ class StreamingRedactor(
      * up to [maxLen] bytes. Returns the number of bytes copied. The agent
      * is expected to call this after every [feed] (and once more after
      * [finish]) and to flush the result through the Output Plane sink.
-     */
+*/
     fun take(state: RedactorState, bytes: ByteArray, off: Int, maxLen: Int): Int {
         var written = 0
         while (written < maxLen && state.outputCount > 0) {
@@ -201,7 +183,7 @@ class StreamingRedactor(
      * queue. Useful for callers that want to skip the [take] call when the
      * queue is empty; the agent uses the return value of [take] directly
      * and does not need this, but it is part of the public surface.
-     */
+*/
     fun available(state: RedactorState): Int = state.outputCount
 
     /**
@@ -210,9 +192,8 @@ class StreamingRedactor(
      * partial literal), so [finish] drains them through the same matcher
      * used by [feed]. The returned byte array is the final flush; the
      * caller MUST persist it before discarding the state.
-     *
      * [finish] is idempotent: a second call returns an empty array.
-     */
+*/
     fun finish(state: RedactorState): ByteArray {
         if (state.sourceExhausted) return ByteArray(0)
         state.sourceExhausted = true
@@ -244,17 +225,15 @@ class StreamingRedactor(
     }
 
     /**
-     * WU-B FIX 1 — the only way out of a full ring with nothing decidable.
-     *
+     * The only way out of a full ring with nothing decidable.
      * Emit the ring head as plain text. It is emitted rather than dropped because a byte inside
      * the lookahead has to reach the Output Plane eventually, and it is emitted NOW because the
      * alternative is a stall: see [RedactingInputStream.read].
-     *
      * Called from two places, and that is the whole point. [feed] reached it while it still had
      * input to consume; the InputStream wrapper needs it too, because the wrapper's feed is
      * bounded by the ring's FREE SPACE — so when the ring is already full the wrapper can never
      * call `feed` at all, and without this method it has no branch that makes progress.
-     */
+*/
     private fun relieveFullRing(state: RedactorState) {
         if (state.ringCount < state.maxLiteral) return
         if (drainOneHead(state)) return
@@ -274,7 +253,7 @@ class StreamingRedactor(
      * Try to match a seam literal at the ring head. If matched, the literal
      * bytes are consumed from the ring and the SCRUB_MARKER is enqueued.
      * @return true if a literal was matched (one head byte was decided).
-     */
+*/
     private fun drainOneHead(state: RedactorState, atEof: Boolean = false): Boolean {
         if (state.ringCount == 0) return false
         val first = state.ring[state.ringHead]
@@ -282,18 +261,15 @@ class StreamingRedactor(
             if (state.seamFirstBytes[li] != first) continue
             val literal = state.seam[li]
             if (literal.size > state.ringCount) {
-                // WU-A FIX 4 — a literal that does not FIT yet means the head is UNDECIDED, and
+                // A literal that does not FIT yet means the head is UNDECIDED, and
                 // undecided must not fall through to a shorter literal.
-                //
                 // This used to `continue`, so the scan went on to the next literal. When two
                 // secrets share a prefix (`SECRET-AB` and `SECRET-ABCDEFGH`) and the ring held
                 // fewer bytes than the longer one, the longer was skipped and the SHORTER matched
                 // — so the real secret was replaced by `****` and its own tail, `CDEFGH`, was
                 // written to the Output Plane in the clear:
-                //
                 //   input   SECRET-ABCDEFGH;SECRET-AB;SECRET-ABCDEFGH
                 //   output  ****CDEFGH;****;****          <- the tail of a real secret, in clear
-                //
                 // The ring is sized to the LONGEST literal, so a full ring is always decidable and
                 // this arm is only reachable with a partly filled ring — which is the normal state
                 // while the source is still producing. At EOF no more bytes can arrive, so the
@@ -325,13 +301,11 @@ class StreamingRedactor(
 
     /**
      * Decorates an [InputStream] with secret redaction across chunk boundaries.
-     *
      * The returned stream must be closed by the caller to trigger final flush
      * and zero the internal buffers.
-     *
      * @param input The underlying stream to decorate.
      * @return A redaction [InputStream] wrapping [input].
-     */
+*/
     fun wrap(input: InputStream): InputStream =
         RedactingInputStream(input, initialState())
 
@@ -341,30 +315,27 @@ class StreamingRedactor(
      * just shovels bytes between the [InputStream] and the public state
      * machine, so the [wrap] and the agent's direct state-machine use cannot
      * drift.
-     *
      * Each wrapped stream has its own state, so multiple concurrent wraps
      * are safe.
-     */
+*/
     /**
-     * PERFORMANCE (WU-RP-022 finding P1): the previous implementation used
+     * The previous implementation used
      * `ArrayDeque<Byte>` (one boxed Byte per byte) plus a full pendingArray copy
      * and a linear scan over every seam literal PER BYTE. Throughput measured at
      * ~100 KB/s, which stalls any pipeline whose child writes >~100 MiB to the
      * console transcript (observed: 200 MiB run busy-spinning at 100% CPU for
      * 36+ minutes without completing).
-     *
      * This rewrite keeps the EXACT same observable contract (see class docs and
      * StreamingRedactorTest, 23 tests):
      * - never returns 0 from read(b, off, len>0);
      * - a byte is only emitted once maxLiteral lookahead rules out every seam literal;
      * - at EOF remaining pending bytes are emitted as-is;
-     * - close() drains pending, clears buffers, closes the source.
-     *
+     * - close drains pending, clears buffers, closes the source.
      * Implementation: ring buffer of primitive bytes with incremental
      * longest-first literal matching. Per emitted byte the cost is
      * O(seam_literals x literal_length) only for bytes that share a prefix with
      * a literal; the common path is a single first-byte comparison per literal.
-     */
+*/
     internal inner class RedactingInputStream(
         private val source: InputStream,
         private val state: RedactorState,
@@ -379,18 +350,17 @@ class StreamingRedactor(
         /** Number of valid bytes in inputBuffer (-1 means EOF reached). */
         private var inputLimit = 0
 
-        /** True after close() has been called */
+        /** True after close has been called */
         private var closed = false
 
         /**
-         * WU-B FIX 2 — the part of the EOF flush this call could not hand back.
-         *
+         * The part of the EOF flush this call could not hand back.
          * `finish` empties the state's output queue and zeroes it, so a flush that does not fit
          * the caller's buffer is otherwise **gone**: the bytes left the pipe, the state was
          * cleared, and the next `read` would have said "no more data" about a transcript that had
          * more in it. Held here so the next call serves the remainder, which is the only
          * difference between "a small read" and "truncated output".
-         */
+*/
         private var finalFlush: ByteArray = ByteArray(0)
         private var finalFlushOffset = 0
 
@@ -404,7 +374,7 @@ class StreamingRedactor(
          * Same observable contract as documented on the class. Backed by the
          * shared [RedactorState] so the agent's direct use of the state
          * machine and the InputStream wrapper cannot diverge.
-         */
+*/
         override fun read(b: ByteArray, off: Int, len: Int): Int {
             if (closed) return -1
             if (len <= 0) return 0
@@ -413,7 +383,6 @@ class StreamingRedactor(
 
             while (written < len) {
                 // Step 0 — serve the retained EOF flush BEFORE anything else.
-                //
                 // It is first because it is the only step that can still have bytes: `finish`
                 // empties and zeroes the state, so once it has run the queue is gone for good.
                 // The old code copied `min(final.size, len - written)` and returned, throwing
@@ -432,32 +401,27 @@ class StreamingRedactor(
                 if (written >= len) break
 
                 // Step 2: Source exhausted (state.ringCount == 0 because finish
-                // was called via close()) and pending empty → EOF.
+                // was called via close) and pending empty → EOF.
                 if (state.sourceExhausted && state.ringCount == 0) {
                     return if (written > 0) written else -1
                 }
 
                 // Step 2.5 — hand back what has been DECIDED, before touching the source again.
-                //
                 // This is the same guard that used to sit after Step 4, where it could not fire in
                 // the case that mattered. Step 3 refills `inputBuffer` by BLOCKING on
                 // `source.read`, and it runs first, so by the time the old guard was evaluated the
                 // buffer was full again and its `inputOffset >= inputLimit` condition no longer
                 // held. The guard could therefore only ever fire after a blocking read — which is
                 // the opposite of what it was written to prevent.
-                //
                 // The defect that produced: the transcript pump asks for a whole
                 // `TRANSCRIPT_LIVE_WINDOW_BYTES` (64 KiB) and relies on this returning as soon as
                 // anything is available. With the guard unreachable the wrapper instead filled the
                 // entire buffer or blocked, so:
-                //
                 //   15-byte payload     -> nothing committed mid-step (waits for EOF)
                 //   128 KiB payload     -> exactly one 64 KiB window committed, then a block
-                //
-                // Both were measured by the OBS-B rows. Placing the guard BEFORE the refill is the
+                // Both were measured by the rows. Placing the guard BEFORE the refill is the
                 // minimal change: it can only fire when `written > 0` and the input buffer is
                 // drained, so it never returns before any decision has been made.
-                //
                 // Short reads are legal for `InputStream.read(b, off, len)` and every consumer here
                 // already handles them: `DurableShellExecutor`'s pump loops on the returned count,
                 // and `ObsPc2IngestAgent` writes whatever `n` it gets. Nothing depends on a full fill.
@@ -485,8 +449,7 @@ class StreamingRedactor(
                         inputOffset += chunk
                         continue
                     }
-                    // WU-B FIX 1 — the ring is FULL and nothing is decidable at its head.
-                    //
+                    // The ring is FULL and nothing is decidable at its head.
                     // This is the branch that used to not exist. The feed above is bounded by the
                     // ring's FREE SPACE, so a full ring means the wrapper can never call `feed`,
                     // and the early-return below requires room to return. Every path through the
@@ -494,7 +457,6 @@ class StreamingRedactor(
                     // nothing while the child kept writing. An empty registry made it near-certain,
                     // because with no secrets almost no head is ever decidable and the ring fills
                     // after a handful of bytes.
-                    //
                     // Emitting the head is the only way out, and it is SAFE: the head is being
                     // emitted precisely because no literal starts with it, so no secret can span
                     // it. It is also not optional for correctness — a redactor that cannot emit a
@@ -505,7 +467,6 @@ class StreamingRedactor(
 
                 // Step 4: pending.size < maxLiteral and source still has data → fill
                 // lookahead. Return what we have rather than blocking on the source.
-                //
                 // `InputStream.read` is allowed to return fewer than `len` bytes, and forcing a full
                 // fill is what stranded the transcript. `available()` says how much can be emitted
                 // without touching the source; a caller that trusts it asks for exactly that. This
@@ -523,10 +484,9 @@ class StreamingRedactor(
 
         /**
          * How many sanitized bytes can be emitted RIGHT NOW without reading more from the source.
-         *
          * Backed by the shared state machine; the InputStream wrapper contributes
          * no decision of its own.
-         */
+*/
         override fun available(): Int {
             if (closed) return 0
             val bufferedFromSource = maxOf(0, inputLimit - inputOffset)
@@ -549,11 +509,10 @@ class StreamingRedactor(
             }
             // Zero the state so it is safe to discard. The retained EOF flush is zeroed for the
             // same reason: it is decided output, and decided output can still be secret-shaped.
-            //
             // `inputBuffer` is zeroed too, and that is not incidental. It holds RAW bytes straight
             // off the pipe — including any that were never fed, because the ring filled first —
             // so leaving them in a discarded object is exactly the leak the whole class exists to
-            // prevent. This was already asserted by "close clears all buffers"; WU-B made it
+            // Prevent. This was already asserted by "close clears all buffers"; made it
             // reachable by letting the read loop leave the buffer partly consumed.
             java.util.Arrays.fill(inputBuffer, 0.toByte())
             inputOffset = 0

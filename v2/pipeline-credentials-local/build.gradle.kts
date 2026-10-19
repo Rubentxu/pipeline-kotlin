@@ -33,6 +33,6 @@ tasks.test {
 // PassphraseResolver, CredentialsStorePath, CredentialsStorePosix (assertSupported only),
 // CredentialCrypto, CredentialSerializer and CredentialPartReader. The store file's
 // IO is exercised by the E2E pipelines under `v2/examples/security/`, not by JUnit; the
-// AGENTS.md §2 rule against filesystem persistence in unit tests is what scopes the
+// AGENTS.md rule against filesystem persistence in unit tests is what scopes the
 // suite this way. Each primitive is a `data class` or a pure `object`; the test
 // functions take arguments and return values without touching disk, network or clock.

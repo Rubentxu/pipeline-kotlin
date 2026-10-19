@@ -30,11 +30,9 @@ import kotlin.io.path.relativeTo
 import kotlin.streams.toList
 
 /**
- * `core-utils.findFiles` OFFICIAL_PLUGIN Step (LFC-2E2 utilities, Slice 2 / S2.3).
- *
+ * `core-utils.findFiles` OFFICIAL_PLUGIN Step (utilities, Slice 2 /.3)
  * Jenkins reference: pipeline-utility-steps-plugin::FindFilesStep
  * (MIT, CloudBees).
- *
  * Strategy:
  *  - Pattern.None       -> direct children of the base directory only.
  *  - Pattern.Glob(g, e) -> recursive scan; PathMatcher("glob:...") keeps
@@ -46,7 +44,7 @@ import kotlin.streams.toList
  *                          semantics.
  *  - maxResults cap of 100_000; on overflow a typed PluginStepException
  *    with FailureKind.USER is raised before the response is constructed.
- */
+*/
 class CoreUtilsFindFilesStepDefinition : StepDefinition<FindFilesInput, FindFilesOutput> {
 
     override val contract: StepContract<FindFilesInput, FindFilesOutput> =
@@ -191,13 +189,12 @@ class CoreUtilsFindFilesStepDefinition : StepDefinition<FindFilesInput, FindFile
          * pattern like `two-stars-slash-star.txt`. This breaks Jenkins
          * compatibility, where `findFiles(glob: ...)` is expected to
          * match files directly under the base too.
-         *
          * To preserve the Jenkins contract, when the user-supplied glob
          * starts with `two-stars-slash` we ALSO accept the glob with
          * that prefix stripped. Both matchers are wrapped into a single
          * "matchesAny" [PathMatcher] so a candidate is kept if either
          * one accepts it.
-         */
+*/
         internal fun buildMatcher(glob: String): PathMatcher {
             val primary = java.nio.file.FileSystems.getDefault()
                 .getPathMatcher("glob:$glob")

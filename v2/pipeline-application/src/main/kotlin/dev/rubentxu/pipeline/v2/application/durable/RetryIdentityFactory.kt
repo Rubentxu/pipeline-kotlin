@@ -6,8 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 /**
  * Materializes the canonical retry identities used for durable journal
  * persistence and reconciliation.
- *
- * ADR-0075 §2 — the retry logical invocation has TWO levels of identity
+ * The retry logical invocation has TWO levels of identity
  * at the [OpId] level:
  *  - **Control identity**: stable across attempts; one canonical opId per
  *    retry logical invocation. Used to persist per-attempt control rows
@@ -20,7 +19,6 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
  *    bodyPath=parentBodyPath + attempt BlockSegment +
  *    child BlockSegment) tuple the canonical child dispatch already
  *    produces.
- *
  * ## Why control and child opIds MUST NOT collide
  * Both identities share the same (runId, stageIndex, stepIndex) prefix.
  * The control opId's bodyPath is the bare `parentBodyPath` (no per-attempt
@@ -30,27 +28,25 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
  * per-attempt ordinal; child rows are persisted with attempt=1 in the
  * current schema (they differentiate attempts via the bodyPath's attempt
  * BlockSegment).
- *
  * ## Determinism
  * All inputs that drive identity are pure values (no clock, no random).
  * Two calls with the same `(runId, stageIndex, stepIndex, parentBodyPath,
  * attempt, childIndex, childPluginStepId)` produce byte-identical strings.
- */
+*/
 object RetryIdentityFactory {
 
     /**
      * Canonical marker appended to the bodyPath of each child opId to
      * record which retry attempt produced the child durable fact.
-     */
+*/
     private val RETRY_ATTEMPT_MARKER: PluginStepId = PluginStepId("retry-attempt")
 
     /**
      * Canonical retry CONTROL operation identifier.
-     *
      * Stable across attempts: every attempt's control row for one retry
      * logical invocation shares this opId. The journal's (opId, attempt)
      * pair locates a specific row.
-     */
+*/
     fun controlOperationId(
         runId: String,
         stageIndex: Int,
@@ -72,7 +68,7 @@ object RetryIdentityFactory {
     /**
      * Canonical retry CHILD operation identifier for a specific
      * (attempt, childIndex, childPluginStepId) triple.
-     */
+*/
     fun childOperationId(
         runId: String,
         stageIndex: Int,

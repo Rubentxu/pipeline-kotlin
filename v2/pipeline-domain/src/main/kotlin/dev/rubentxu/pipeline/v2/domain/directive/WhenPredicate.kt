@@ -1,47 +1,38 @@
 package dev.rubentxu.pipeline.v2.domain.directive
 
 /**
- * S2-A — the first real directive: a typed `when` predicate.
- *
+ * The first real directive: a typed `when` predicate.
  * ## Why an ADT and not a String
- *
  * `whenCondition("1 == 2")` was rejected outright because a `String` cannot
  * carry semantics into the IR: the expression would have to be re-parsed at
  * runtime by an interpreter that does not exist, and the only honest outcome
  * was to refuse the call. This file replaces that refusal with a value.
- *
  * The state space here is FINITE, so it is a sealed hierarchy. Each case
  * carries only the payload meaningful for it, and there is no stringly-typed
  * escape hatch: an expression that cannot be one of these cases does not
  * compile. That is the whole point — a predicate that must be interpreted
  * cannot be smuggled in as opaque text.
- *
  * ## The three-valued rule
- *
  * The verdict is deliberately THREE-valued, not boolean:
- *
  * ```
  * Satisfied       -> run the stage
  * NotSatisfied    -> skip the stage (a real, decided negative)
  * Unverifiable    -> fail closed; nobody can prove the predicate
  * ```
- *
  * Collapsing the last two would reintroduce the exact defect this replaces:
  * a gate naming a fact the runtime cannot resolve would read as "false", the
  * stage would silently skip, and the pipeline would report success for work
  * that never ran.
- *
  * This is a pure inner-domain value: no clock, no filesystem, no ambient
  * state, no I/O. [WhenPredicateEvaluator] is a total function over it.
- */
+*/
 
 /**
  * A predicate a stage gate can evaluate.
- *
  * Closed by structure. The engine matches these cases; it never inspects a
  * predicate name, and it cannot grow a new case without changing every
  * interpreter, which is the intent.
- */
+*/
 sealed interface WhenPredicate {
 
     /** Unconditionally satisfied. Useful as a neutral element for `AnyOf`. */
@@ -52,12 +43,11 @@ sealed interface WhenPredicate {
 
     /**
      * The named variable equals [expected].
-     *
      * An unset variable is a decided negative, NOT an error: that is what
      * makes `when { env.X == 'prod' }` behave the way users expect when X is
      * absent. Only a variable that no source can resolve at all is
      * unverifiable, and that distinction is carried by [GateContext].
-     */
+*/
     data class VariableEquals(val name: String, val expected: String) : WhenPredicate {
         init {
             require(name.isNotBlank()) { "WhenPredicate.VariableEquals.name must not be blank" }
@@ -79,26 +69,23 @@ sealed interface WhenPredicate {
 
     /**
      * Negation.
-     *
      * Note it inverts satisfaction but PRESERVES unverifiability. Negating an
      * unknown into "satisfied" would make `not` a way to accidentally admit a
      * stage that was never evaluated.
-     */
+*/
     data class Not(val child: WhenPredicate) : WhenPredicate
 }
 
 /**
  * The facts a gate may be evaluated against.
- *
  * Immutable and explicit: the evaluator receives this value rather than
  * discovering ambient state, which is what makes the decision testable without
  * constructing a coordinator, a process, or a filesystem.
- *
  * [unresolvable] names variables that no configured source can supply. It is a
  * separate field rather than a sentinel inside [values] because "set to
  * nothing" and "no source exists" are different facts with different operator
  * responses, and collapsing them is the defect this design exists to prevent.
- */
+*/
 data class GateContext(
     val values: Map<String, String> = emptyMap(),
     val unresolvable: Set<String> = emptySet(),
@@ -130,11 +117,10 @@ data class GateContext(
 
 /**
  * The typed outcome of evaluating a [WhenPredicate].
- *
  * [reason] is carried on the negative cases because "why did my stage not
  * run" is the first question an operator asks, and reconstructing it from the
  * program text is exactly the work this type exists to save.
- */
+*/
 sealed interface GateVerdict {
     data object Satisfied : GateVerdict
 
@@ -145,11 +131,10 @@ sealed interface GateVerdict {
 
 /**
  * Total, pure evaluation of a [WhenPredicate] against a [GateContext].
- *
  * Exhaustive `when` over the closed ADT: adding a predicate case forces this
  * function to handle it, so a new case cannot ship uninterpreted. There is no
  * `else` branch hiding an unhandled situation.
- */
+*/
 object WhenPredicateEvaluator {
 
     fun evaluate(predicate: WhenPredicate, context: GateContext): GateVerdict =

@@ -6,7 +6,7 @@ group = "dev.rubentxu.pipeline.v2"
 
 // NOT published. `:pipeline-output` is the Output Plane's published contract; this module is its
 // segment/filesystem implementation. Publishing both would hand an external consumer a second
-// authority over the same bytes, which is the double-writer ADR-M1 D2 removed. The absence of
+// Authority over the same bytes, which is the double-writer removed. The absence of
 // `maven-publish` here is the mechanism, and `PublishedContractBoundaryFitnessTest` is what keeps
 // it from being re-added by accident.
 
@@ -40,10 +40,10 @@ tasks.test {
 // and the reader that serves it back, and they are pure functions over a file NAME — the tests
 // build `Path` values by hand and never open one. The segment files' IO (`readChunk`, `readRange`,
 // `readRangeDigested`) is exercised by the E2E pipelines under `v2/examples/output/`, not by JUnit;
-// the AGENTS.md §2 rule against filesystem persistence in unit tests is what scopes the suite.
+// the AGENTS.md rule against filesystem persistence in unit tests is what scopes the suite.
 
 // The `performanceTest` lane, its `tasks.test` tag exclusion and its Kover
-// `disabledForTestTasks` entry were REMOVED (2026-10-18, testing RESET). All three
+// `disabledForTestTasks` entry were REMOVED . All three
 // read `sourceSets["test"]`, which is now empty, and Gradle 8.14 reports success for an
 // empty source set -- it has no `failOnNoDiscoveredTests` property at all -- so the lane would
 // have been a green 1 GiB soak

@@ -12,34 +12,27 @@ import java.nio.file.Path
 import java.util.Base64
 
 /**
- * Applies Git credentials using the answer-file pattern (INV-L6-CR-011/012).
- *
- * ## Answer-File Pattern (D6 Design)
- *
+ * Applies Git credentials using the answer-file pattern
+ * ## Answer-File Pattern (Design)
  * The credential helper and GIT_ASKPASS scripts NEVER receive secrets via environment
  * variables. Instead:
  * 1. JVM writes pre-resolved credentials to an answer file at `apply()` time
  * 2. The file is keyed by `host+path` for isolation
  * 3. Script reads the answer file, matches by host, then **unsets** the env var
  * 4. Script outputs the secret to stdout for git to consume
- *
  * ## Security Properties
- *
- * - Secrets NEVER in helper env (INV-L6-CR-011)
- * - Helper script unsets any env vars after reading (INV-L6-CR-012)
+ * Secrets NEVER in helper env
+ * Helper script unsets any env vars after reading
  * - Temp files 0600 (credentials, ssh keys), 0700 (directories)
  * - Wiped in finally block
- *
  * ## Supported Channels
- *
  * - **string**: API token via `credential helper` + answer file
  * - **usernamePassword**: Basic auth via `extraHeader` (per-host config)
  * - **ssh**: SSH private key via `GIT_SSH_COMMAND`
- *
  * @param tempDir Parent temp directory for credential files (0700)
  * @param credentials GitCredentials carrying typed SecretHandleRef carriers
  * @param secretStore SecretStore for resolving SecretHandleRef to actual secret bytes
- */
+*/
 class GitCredentialsApplier(
     private val tempDir: Path,
     val credentials: GitCredentials,
@@ -47,7 +40,7 @@ class GitCredentialsApplier(
     private val linkedSecretResolver: CredentialLinkedSecretResolver? = null,
 ) : AutoCloseable {
 
-    // WU-RP-050 (ADR-0098): if no explicit resolver was injected, build one from
+    // If no explicit resolver was injected, build one from
     // the SecretStore so all LinkedSecretRef resolution in this class flows
     // through the canonical CredentialLinkedSecretResolver port. May still be
     // null if neither was supplied; resolveSecret/resolveAndEncode throw
@@ -71,29 +64,27 @@ class GitCredentialsApplier(
 
     /**
      * Exposes the credentials file path (.git-credentials) for test verification.
-     */
+*/
     fun credentialsFilePath(): String = gitCredentialsFile.toString()
 
     /**
      * Exposes the gitconfig file path (.gitconfig) for test verification.
-     */
+*/
     fun gitConfigFilePath(): String = gitConfigFile.toString()
 
     /**
      * Exposes the answer file path for test verification.
-     */
+*/
     fun answerFilePath(): String = answerFile.toString()
 
     /**
      * Applies credentials for the string channel (API token) using answer-file pattern.
-     *
      * Writes credential helper script and answer file, then configures git to use it.
-     * For non-HTTP(S) URLs (file://, ssh://, local paths), writes the token to .git-credentials
+     * For non-HTTP(S) URLs (file://, ssh://, local paths), writes the token.git-credentials
      * directly (satisfies test assertions) even though git ignores credential helpers for these.
-     *
      * @param tokenSecret SecretHandleRef pointing to the token credential
      * @param repoUrl Optional repository URL to determine if HTTP credential helper is applicable
-     */
+*/
     fun apply(tokenSecret: SecretHandleRef, repoUrl: String? = null) {
         check(!isClosed) { "GitCredentialsApplier already closed" }
         guardProcessBuilderArgs(listOf("git", "credential", "store"))
@@ -112,7 +103,7 @@ class GitCredentialsApplier(
         // Also write to gitCredentialsFile (.git-credentials) for test compatibility.
         // For HTTP(S): git's store helper uses this file; git invokes the helper.
         // For non-HTTP: git ignores helpers, but we write the token here to satisfy
-        // test assertions that check .git-credentials content.
+        // test assertions that check.git-credentials content.
         Files.writeString(gitCredentialsFile, "$host\n$tokenValue\n")
         Files.setPosixFilePermissions(gitCredentialsFile, CredentialFilePermissions.OWNER_READ_WRITE)
 
@@ -131,16 +122,14 @@ class GitCredentialsApplier(
 
     /**
      * Applies credentials for the usernamePassword channel using per-host config.
-     *
      * Uses `extraHeader` via GIT_CONFIG_GLOBAL per-host config section.
      * For http/https URLs: writes valid gitconfig with proper [http "https://host"] section.
      * For non-http URLs: writes minimal gitconfig that satisfies test assertions but
      * is not used by git (git ignores HTTP Basic auth for these transports).
-     *
      * @param usernameSecret SecretHandleRef for the username credential
      * @param passwordSecret SecretHandleRef for the password credential
      * @param repoUrl Optional repository URL to determine transport type and extract host
-     */
+*/
     fun apply(usernameSecret: SecretHandleRef, passwordSecret: SecretHandleRef, repoUrl: String? = null) {
         check(!isClosed) { "GitCredentialsApplier already closed" }
         guardProcessBuilderArgs(listOf("git", "config"))
@@ -175,12 +164,11 @@ class GitCredentialsApplier(
 
     /**
      * Applies SSH credentials using GIT_SSH_COMMAND with answer-file pattern.
-     *
      * SSH private key is written to temp file (0600), then GIT_SSH_COMMAND
      * invokes a script that reads the key path from an answer file.
      * For non-SSH URLs (file://, http://, https://), this is a no-op since
      * SSH is only used for ssh:// or git@host:path URLs.
-     */
+*/
     fun applySsh(sshKeySecret: SecretHandleRef, passphraseSecret: SecretHandleRef?, repoUrl: String? = null) {
         check(!isClosed) { "GitCredentialsApplier already closed" }
         guardProcessBuilderArgs(listOf("git", "clone"))
@@ -215,9 +203,8 @@ class GitCredentialsApplier(
 
     /**
      * Builds environment variables for credential injection.
-     *
      * @return Map of env var names to values (NOT SecretHandle - those go to process builder)
-     */
+*/
     fun buildEnv(): Map<String, String> {
         val env = mutableMapOf<String, String>()
 
@@ -428,7 +415,7 @@ class GitCredentialsApplier(
      * Guards against argv containing forbidden substrings.
      * Fail-closed: throws IllegalArgumentException if any arg contains
      * `extraHeader`, `Authorization`, or URL credentials.
-     */
+*/
     companion object {
         fun guardProcessBuilderArgs(args: List<String>) {
             for ((index, arg) in args.withIndex()) {
@@ -461,7 +448,6 @@ class GitCredentialsApplier(
 
         /**
          * Describe [arg] for a message that gets PERSISTED, without reproducing it.
-         *
          * This message is not a local throwaway. The guard runs outside
          * [GitCheckoutExecutor.execute]'s `try`, so its exception is not caught by the
          * `scrub` that every other failure on that path passes through, and
@@ -469,11 +455,10 @@ class GitCredentialsApplier(
          * event. The previous version interpolated `$arg` itself, which meant the
          * argument the guard had just identified as carrying a credential had its
          * credential written to the event log — the guard was the leak.
-         *
          * The host is what an operator actually needs to act, and [extractHost] strips
          * userinfo before returning it, so naming it costs nothing sensitive. Everything
          * else reduces to a length, which locates the argument without disclosing it.
-         */
+*/
         private fun describeForDiagnostics(arg: String, index: Int): String {
             val host = runCatching { extractHost(arg) }.getOrNull()
             return if (host.isNullOrBlank()) {
@@ -497,7 +482,7 @@ class GitCredentialsApplier(
             } else {
                 noProtocol
             }
-            // Step 3: extract host (before / or :)
+            // Step 3: extract host (before /:)
             val clean = noUserinfo
                 .substringBefore("/")
                 .substringBefore(":")
@@ -521,7 +506,7 @@ class GitCredentialsApplier(
      * so the files remain on disk until the OS reclaims them. The residue is
      * owner-only — [tempDir] is 0700 and every file in it is 0600 — so what is
      * left behind is readable by the invoking user alone.
-     */
+*/
     override fun close() {
         if (isClosed) return
         isClosed = true

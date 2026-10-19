@@ -2,24 +2,19 @@ package dev.rubentxu.pipeline.v2.output
 
 /**
  * Which of a child process' two byte streams a transcript came from.
- *
  * ## Why this is a closed set and not a flag
- *
  * A process has exactly two. `merge` is not a third kind of byte — it is the *absence* of this
  * distinction, produced by concatenating what these two produced. Carrying it as an
  * `OutputChannel?` or as a `"stdout" | "stderr" | "all"` string would make "merged" look like a
  * channel that was persisted, and it is not: the Output Plane stores each byte once, under the
  * channel that produced it.
- *
  * ## What it is not
- *
  * It says nothing about ordering between the two channels, and it is not a clock. A frame's
  * [OutputFrame.ordinal] carries the order PipelineK observed; nothing here implies the kernel
  * interleaved the writes in any particular way, and a reader must never reconstruct a merged view
  * by assuming one did.
- *
  * @property token stable, lower-case name used in a stream id and in machine-readable output
- */
+*/
 enum class OutputChannel(val token: String) {
 
     /** The child's standard output. */
@@ -32,80 +27,62 @@ enum class OutputChannel(val token: String) {
     companion object {
         /**
          * The channel named [token], or `null` when the token names none.
-         *
          * `null` rather than a thrown error: this parses identifiers that arrive from a durable
          * store written by an older producer, and a token that no longer maps to a channel is
          * "not a channel-addressed stream", which is a fact a caller can act on.
-         */
+*/
         fun fromToken(token: String): OutputChannel? = entries.firstOrNull { it.token == token }
     }
 }
 
 /**
  * A stream id that says which channel it holds, with the shape that makes that recoverable.
- *
  * ## The shape
- *
  * ```text
  * {runId}/{operationId}/{channel.token}
  * ```
- *
  * ## What the operation id actually is
- *
  * It is an **operation identity**, not a step identity. Production mints it with `OpId.format()` in
  * `pipeline-application`, whose shape is:
- *
  * ```text
  * {runId}-s{stageIndex}-{stepIndex}[-b{branchIndex}][-bp{N}-{childIndex}:{pluginStepId}...]
  * ```
- *
  * So the stdout stream of an `sh` in stage 0, step 0 of run `run-7` is `run-7/run-7-s0-0/stdout` —
  * **three** segments, and the run id appears twice, once as the run and once inside the operation.
- *
  * The two identities are easy to confuse because both are derived from a step, and they are not
  * interchangeable. `build/sh-0` is a **StepId**: the definition-local node id, and the value that
  * reaches the journal as `OperationInput.stepId`. It is not the operation id and never appears as the
  * middle of a stream id. A reader that builds that StepId from a step event and looks for the stream
  * finds nothing, and finds nothing for every step in the run — which reads like an empty transcript
  * rather than like the mistake it is.
- *
  * ## Read it from the ends, never from a segment count
- *
  * The middle is not required to be one segment. A `bodyPath` segment embeds a `PluginStepId`, and
  * `PluginStepId` is only required to be non-blank — so a plugin step id carrying `/` would make a
  * legitimate operation id span several segments. Production's plugin step ids (`core.sh`, `core.dir`)
  * happen to carry none, so real ids are three segments today; "today" is not a property [parse] is
  * entitled to depend on.
- *
  * The two unambiguous ends are what matter:
- *
  * - the **first** segment is the run, which is minted by the run and never contains a separator;
  * - the **last** segment is the channel token, which is a closed set.
- *
  * Everything between them is the operation id, separators and all. That is what makes
  * `{runId}/{operationId}/{channel}` injective rather than merely plausible, and it is what lets
  * [parse] round-trip an operation id it did not mint.
- *
  * ## Why the channel rides on the stream rather than beside the bytes
- *
  * A frame of metadata beside each range would be a second thing to keep in step with the bytes,
  * and keeping it in step is exactly what a crash interrupts. Making the channel part of the
  * identity instead means attribution is carried by **which stream the byte is in** — a fact that
  * survives a crash, a reopen and a cursor hand-off for free, because those already address bytes
  * by stream.
- *
  * The cost is that one operation now owns one stream per channel rather than one stream, which is
  * why [OperationOutputStreams] spells merged consumption out as a reader's job rather than
  * implying a third stream.
- *
  * ## Parsing is a capability of this producer, not of the published id
- *
  * [OutputStreamId] is documented as an opaque handle whose representation is not a contract, and
  * that stays true: [parse] is offered because this producer *chooses* this shape and has to read
  * its own records back (see recovery). It is not a promise that every [OutputStreamId] anywhere has
- * this shape — an id minted by another producer, including the pre-OBS-C2 `.../transcript` shape,
+ * This shape — an id minted by another producer, including the `.../transcript` shape
  * is opaque again and [parse] returns `null` for it.
- */
+*/
 data class OutputStreamAddress(
     val runId: String,
     val operationId: String,
@@ -128,13 +105,12 @@ data class OutputStreamAddress(
 
         /**
          * The address [stream] denotes, or `null` when it does not have this shape.
-         *
          * Three segments or more, a known channel token at the end, and a non-blank run at the
          * start. Two segments or a trailing token that is not a channel both yield `null`: a partial
          * parse would invent an attribution for a stream whose middle is something else, and the
-         * one real case that must not be misread is the pre-OBS-C2 `{runId}/{opId}/transcript`
+         * one real case that must not be misread is the `{runId}/{opId}/transcript`
          * stream, whose trailing `transcript` is not a channel.
-         */
+*/
         fun parse(stream: OutputStreamId): OutputStreamAddress? {
             val segments = stream.value.split('/')
             if (segments.size < 3) return null
@@ -149,36 +125,30 @@ data class OutputStreamAddress(
 
 /**
  * Both channel streams of one operation, and what a reader does with them.
- *
  * A "merged" console is not stored. It is **read**, by interleaving the frames of both streams by
  * [OutputFrame.ordinal], because that ordinal is the order PipelineK observed and nothing else. A
  * consumer that wants merged bytes therefore needs [OutputFrameIndex] as well as a read port, and
  * that dependency is the honest shape: the interleaving is a fact that lives in the index, not in
  * either byte stream.
- *
  * ## Why the channels are pinned, and what that does NOT buy
- *
  * This is the only type that hands a caller "both channels of one operation" at once, so it is
  * where "the two channels are distinguishable" has to become a fact rather than a comment. The
  * `init` below compared `runId` and `operationId` and stopped there, which made
  * `stderr = stdout-with-channel-STDOUT` a legal value: `select(setOf(STDERR))` on such a pair
  * returns an EMPTY list over a live transcript, and `all` yields one stream twice.
- *
  * **That was latent, not shipped.** [of] is the only construction of this type in the repository
- * and it builds the correct pair, so no run ever produced a crossing one — measured 2026-10-18 by
+ * and it builds the correct pair, so no run ever produced a crossing one — measured in an earlier build by
  * enumerating every construction site, not by assuming. What was missing was the invariant that
  * would have kept it true when the next construction site appears.
- *
  * Identity rather than `!=`, because the fields are NAMED `stdout` and `stderr`: a field whose name
  * is a channel claims that channel, and `distinct` would have admitted the reversed pair just as
  * readily.
- *
  * It is a runtime refusal, **not** a type-level one. Both fields are `OutputStreamAddress`, and an
- * address on the STDOUT channel is a valid address, so M-3 still compiles against this `init`. What
+ * Address on the STDOUT channel is a valid address, so still compiles against this `init`. What
  * changed is where the defect surfaces: the pair cannot be constructed, so there is nothing for a
  * consumer to inherit. Removing it entirely would mean two single-valued types instead of one pair,
  * which is a larger change than a latent hole in one factory justifies.
- */
+*/
 data class OperationOutputStreams(
     val stdout: OutputStreamAddress,
     val stderr: OutputStreamAddress,

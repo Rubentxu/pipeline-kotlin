@@ -1,6 +1,6 @@
 plugins {
     kotlin("jvm")
-    // WU-RP-040 R4: selective mutation (durable decision kernels). Run explicitly: :pipeline-step-sdk:runtime:pitest
+    // Selective mutation (durable decision kernels). Run explicitly::pipeline-step-sdk:runtime:pitest
     id("info.solidsoft.pitest")
 }
 
@@ -34,7 +34,7 @@ dependencies {
     implementation(project(":pipeline-step-sdk:api"))
     implementation(project(":pipeline-events"))
     // BLOCK 2: this module's main sources name `events.durable.OperationJournal` directly
-    // (StepReconcilerL1). That is a real coupling and it is registered as an S6 input rather than
+    // (StepReconcilerL1). That is a real coupling and it is registered as an input rather than
     // papered over here — an SDK runtime module depending on a durable journal is the coupling the
     // unified plugin SDK dissolves, and pretending otherwise by inventing a port now would create
     // a second name for one thing.

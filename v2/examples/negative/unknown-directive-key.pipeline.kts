@@ -2,7 +2,6 @@
 //@ expect-stderr unresolved directive 'acme.no.such.directive'
 // A directive key that no contributor registers must fail CLOSED and name the
 // key, never be skipped.
-//
 // This is the other half of plugins/lock-directive.pipeline.kts. That scenario
 // would stay green if admission turned fail-OPEN and simply ignored the whole
 // directives block; this one goes red in the same circumstance, and it also

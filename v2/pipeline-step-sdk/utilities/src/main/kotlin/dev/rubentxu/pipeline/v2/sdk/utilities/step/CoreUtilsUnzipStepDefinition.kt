@@ -28,12 +28,10 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
 /**
- * `core-utils.unzip` OFFICIAL_PLUGIN Step (LFC-2E2 utilities, Slice 2 / S2.5).
- *
+ * `core-utils.unzip` OFFICIAL_PLUGIN Step (utilities, Slice 2 /.5)
  * Jenkins reference: pipeline-utility-steps-plugin::UnZipStep
  * (MIT, CloudBees).
- *
- * Security (CVE-2023-32981 / SECURITY-2196):
+ * Security (CVE-2023-32981 /):
  *  - For every entry, the resolved target path MUST be a descendant of
  *    the destination root (normalised). Otherwise the whole archive is
  *    rejected with a USER failure.
@@ -43,7 +41,7 @@ import java.util.zip.ZipFile
  *    treated as an unsupported entry and the archive is rejected.
  *  - Resource caps: `MAX_ENTRIES = 1_000_000`,
  *    `MAX_ENTRY_BYTES = 4 GiB`. Both enforced before writing.
- */
+*/
 class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
 
     override val contract: StepContract<UnzipInput, UnzipOutput> =
@@ -233,10 +231,10 @@ class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
 
     /**
      * Resolve the target path for [entryName] under [destRoot] and
-     * verify containment. This is the CVE-2023-32981 / Zip Slip
+     * Verify containment. This is the / Zip Slip
      * mitigation: any entry whose normalised target escapes the
      * destination root is rejected.
-     */
+*/
     private fun resolveAndCheck(destRoot: Path, entryName: String): Path {
         // Reject suspicious names before any path resolution.
         if (entryName.contains('\\')) {
@@ -297,7 +295,6 @@ class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
         // [refuseIfOutOfBounds] catches the common symlink-as-traversal
         // cases (entries named ".." or with absolute / backslash
         // segments).
-        //
         // Future hardening: parse the extra field manually to detect
         // mode 0xA1ED (Unix symlink) and reject it. Out of scope for
         // this slice; tracked under Slice 2 debt.

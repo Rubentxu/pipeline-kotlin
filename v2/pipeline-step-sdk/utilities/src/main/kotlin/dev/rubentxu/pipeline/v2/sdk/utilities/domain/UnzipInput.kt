@@ -3,15 +3,13 @@ package dev.rubentxu.pipeline.v2.sdk.utilities.domain
 import kotlinx.serialization.Serializable
 
 /**
- * `core-utils.unzip` typed Input (LFC-2E2 utilities, Slice 2 / S2.5).
- *
+ * `core-utils.unzip` typed Input (utilities, Slice 2 /.5)
  * Jenkins reference: pipeline-utility-steps-plugin::UnZipStep.
- *
  * Mode is closed: a caller picks exactly one of the three
  * [UnzipMode] cases. Mixing `read` and `test` is unrepresentable at
  * compile time. The mode is a sibling of `glob` and `destination` so
  * that the entire operational shape is one type.
- */
+*/
 @Serializable
 data class UnzipInput(
     val path: String,
@@ -38,14 +36,13 @@ data class UnzipInput(
 
 /**
  * Closed mode ADT for the unzip step. Exactly one of three cases:
- *
  * - [Extract] writes the archive's files to disk (default Jenkins
  *   behaviour).
- * - [Read] reads the matched entries as UTF-8 strings and returns them
+ * [Read] reads the matched entries as strings and returns them
  *   in [UnzipOutput.readEntries].
  * - [Test] performs a CRC32 sweep without writing, returning
  *   [UnzipOutput.testReport] with the verification outcome.
- */
+*/
 @Serializable
 sealed interface UnzipMode {
     @Serializable

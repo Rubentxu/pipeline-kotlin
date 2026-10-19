@@ -5,9 +5,8 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 
 /**
- * CDE.3-d5b / LB-02 G3-A4.1.2: [StepMetadataResolver] composite over an open [StepRegistry] plus the
+ * CDE.3-d5b /: [StepMetadataResolver] composite over an open [StepRegistry] plus the
  * legacy core catalog.
- *
  * The durable protocol resolves pre-decode metadata by structural step key only (never a concrete Step
  * name). This composite keeps that true across both worlds:
  *  - a legacy core key (in [CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS]) delegates to the legacy core
@@ -20,11 +19,10 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
  *    this resolver.
  *  - a key neither core nor registered is a hard defect (mirrors the legacy fail-fast default), never a
  *    silent lookup miss.
- *
  * Additive seam: the coordinator still defaults to [CoreLegacyStepMetadataResolver]; callers opt into the
  * composite by injecting it. Once the coordinator is wired to the composite + the prepare selector, a
  * registered plugin step can flow through the durable spine.
- */
+*/
 object RegistryStepMetadataResolver {
     fun composite(registry: StepRegistry): StepMetadataResolver =
         StepMetadataResolver { stepKey -> resolve(registry, stepKey) }

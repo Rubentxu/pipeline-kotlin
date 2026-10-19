@@ -16,14 +16,11 @@ import java.util.UUID
 
 /**
  * Appends new commits to `<workspace>/changelog.txt`.
- *
  * Format: `<7-char-sha> <first-line-of-subject>` (truncated 256 chars, non-ASCII stripped).
  * Idempotent: parses existing file for already-listed SHAs and skips duplicates.
- *
- * INV-L5-CR-005: plain-text changelog, no JDOM XML.
- *
+ * Plain-text changelog, no JDOM XML.
  * @param timeoutSeconds max wait for git log command (default 10)
- */
+*/
 class GitChangelogWriter(
     private val timeoutSeconds: Long = 10,
     private val taskRuntime: DurableTaskRuntime? = null,
@@ -42,12 +39,11 @@ class GitChangelogWriter(
 
     /**
      * Append new commits from `<prevSha>..<endRef>` to `<workspace>/<rel>/changelog.txt`.
-     *
      * @param workspace Workspace root
      * @param relativeTargetDir Relative directory inside workspace
      * @param previousSha SHA to start from (excluded), or null/empty for all history
      * @param endRef Git ref for end of range (e.g., "HEAD")
-     */
+*/
     fun append(workspace: Path, relativeTargetDir: String, previousSha: String?, endRef: String): Result<Unit> {
         return try {
             val targetDir = workspace.resolve(relativeTargetDir)

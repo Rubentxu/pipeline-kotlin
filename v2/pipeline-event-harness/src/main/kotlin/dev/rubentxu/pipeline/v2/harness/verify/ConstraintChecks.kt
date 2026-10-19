@@ -11,11 +11,10 @@ import dev.rubentxu.pipeline.v2.harness.model.ViolationRule
 /**
  * The four constraint checkers of [EventHarness], with the selector matching
  * and selector description they share.
- *
  * Extracted because [EventHarness] is an `object`, so detekt's function budget
  * for it is 11 (allowedFunctionsPerObject) rather than the 25 that applies to
  * classes. Only [EventHarness] calls this; every entry point here was private.
- */
+*/
 internal object ConstraintChecks {
 
     fun check(

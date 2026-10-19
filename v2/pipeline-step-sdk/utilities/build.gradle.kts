@@ -14,7 +14,7 @@ dependencies {
     implementation(project(":pipeline-scripting-api"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
-    // LFC-2E2 Slice 2: SnakeYAML is the safe-loader for `core-utils.readYaml`.
+    // Slice 2: SnakeYAML is the safe-loader for `core-utils.readYaml`
     // The version is pinned in libs.versions.toml; the Step uses a custom
     // SafeConstructorOnlyOptions to refuse arbitrary-class instantiation,
     // alias bombs, and oversize documents.
@@ -36,23 +36,19 @@ kotlin {
 }
 
 // ----------------------------------------------------------------------------
-// LFC-2E2 utilities OFFICIAL_PLUGIN provenance seam.
-//
-// Mirrors the proven scm-git build-time provenance pattern (F5.1 / ADR-0092):
+// Utilities OFFICIAL_PLUGIN provenance seam
+// Mirrors the proven scm-git build-time provenance pattern:
 // the contributor (CoreUtilsStepDefinitionContributor) refuses to register
 // without the real SHA-256 of its own artefact — that is the "no fabricated
 // SHA" contract.
-//
 // The digest is computed at build time by streaming the contents of every
 // class file produced by `compileKotlin` and every resource processed by
 // `processResources` through `sha256sum` and then taking the SHA-256 of the
 // concatenation. The result is deterministic for a given module source
 // revision (same source -> same classes -> same digest) and is independent
 // of JAR layout / packaging timestamps.
-//
 // The digest is written to `META-INF/utilities-release.properties` so it
 // ships inside the JAR and is observable by any consumer.
-//
 // If the digest cannot be computed (no compiled classes yet — e.g. when
 // running compileKotlin directly), the properties file is left absent and
 // the contributor fails closed at registration time with a clear diagnostic.
@@ -68,7 +64,7 @@ val utilitiesReleaseProps = layout.buildDirectory.file("resources/main/META-INF/
 val utilitiesClassesDir = layout.buildDirectory.dir("classes/kotlin/main")
 val utilitiesResourcesDir = layout.buildDirectory.dir("resources/main")
 
-// Exclusions by EXACT relative path, never by name suffix (B0.2). The previous filter dropped
+// Exclusions by EXACT relative path, never by name suffix. The previous filter dropped
 // any file ending with `plugin-manifest.json`, which would also drop an unrelated
 // `unrelated-plugin-manifest.json` from the identity.
 val utilitiesExcludedResourcePaths = setOf(
@@ -89,8 +85,8 @@ val computeUtilitiesDigest = tasks.register("computeUtilitiesDigest") {
     dependsOn("compileKotlin", "processResources", "generatePluginCompatibilityMetadata")
 
     // Declared inputs, WITHOUT `skipWhenEmpty`: `inputs.dir + skipWhenEmpty` used to make Gradle
-    // mark this NO-SOURCE on incremental builds. `inputs.files(fileTree(...))` keeps the task
-    // runnable while still letting Gradle re-run it when the material changes (B0.2).
+    // Mark this on incremental builds. `inputs.files(fileTree(...))` keeps the task
+    // Runnable while still letting Gradle re-run it when the material changes
     inputs.files(fileTree(utilitiesClassesDir)).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.files(fileTree(utilitiesResourcesDir) { exclude(utilitiesExcludedResourcePaths) })
         .withPathSensitivity(PathSensitivity.RELATIVE)
@@ -99,7 +95,7 @@ val computeUtilitiesDigest = tasks.register("computeUtilitiesDigest") {
     inputs.property("version", ver)
     inputs.property("module", "utilities")
 
-    // AUD-01: this used to be `sh -c "sha256sum <ABSOLUTE PATHS> | sha256sum"`, and `sha256sum`
+    // This used to be `sh -c "sha256sum <ABSOLUTE PATHS> | sha256sum"`, and `sha256sum`
     // PRINTS THE FILENAME IT WAS GIVEN. The shared ProvenanceDigest frames only the root name and
     // the relative path, so two checkouts of identical bytes hash identically.
     doLast {
@@ -135,15 +131,12 @@ tasks.named("jar") {
 }
 
 // ----------------------------------------------------------------------------
-// S6/C — the manifest DOCUMENT, derived from the code, not typed by hand.
-//
+// The manifest DOCUMENT, derived from the code, not typed by hand.
 // The plugin declares itself once, in UtilitiesPluginDeclaration, and both this build and
 // the runtime read that same declaration. Writing the JSON here instead would create a
 // second authority able to describe Steps the code does not have.
-//
 // Ordering is load-bearing: the digest task must run FIRST, because the manifest reports
 // the digest and would otherwise fail closed for lack of provenance.
-//
 // The declared digest covers the artifact content EXCLUDING this document, the same
 // convention `utilities-release.properties` already uses — a digest that included the
 // manifest carrying it would have no fixed point.
@@ -188,7 +181,6 @@ val emitUtilitiesManifest = tasks.register<JavaExec>("emitUtilitiesManifest") {
 
     // Captured into a buffer rather than stdout: Gradle prints task output to the console,
     // and the document must land in a file with no shell quoting in between.
-    //
     // The buffer is created at CONFIGURATION time, outside `providers`: inside that lambda
     // the identifier `java` resolves to Gradle's own JavaPluginExtension, not the java.io
     // package, and the DSL stops compiling.
@@ -261,12 +253,10 @@ tasks.withType<Test>().configureEach {
 }
 
 // Unit-test wiring, and what it does NOT cover.
-//
 // This module is the `readJson`/`writeJson`/`sha256`/`findFiles` STEPs. Their guarantee is that a
 // pipeline calls them on real input, and AGENTS.md section 2 keeps a filesystem out of unit tests
 // -- so the walk, the encode/decode of a real file, and the 100_000 cap stay with the executable
 // E2E layer (`.pipeline.kts` under `v2/examples/`, driven by `v2/examples/run.sh`).
-//
 // That reasoning does not reach `CoreUtilsFindFilesStepDefinition.buildMatcher`, a pure
 // String -> PathMatcher whose whole job is a written contract: a leading `**` means any depth
 // INCLUDING ZERO, which Java NIO's own `glob:` does not do. A defect there is invisible to the
@@ -274,7 +264,6 @@ tasks.withType<Test>().configureEach {
 // read an exit code, and a wrong matcher and a right one both produce 0. Same shape and same
 // exception as `pipeline-step-sdk/files`, which tests its `antPatternToRegex` for exactly this
 // reason and says so in its own build file.
-//
 // `useJUnitPlatform()` is load-bearing, not decorative: without it Gradle defaults to the JUnit 4
 // runner, discovers zero JUnit 5 tests, and reports BUILD SUCCESSFUL over an empty result set.
 // Gradle 8.14 exposes no `failOnNoDiscoveredTests` property -- the setting does not exist in this

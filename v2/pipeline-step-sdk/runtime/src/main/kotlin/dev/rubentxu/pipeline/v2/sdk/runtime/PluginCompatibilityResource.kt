@@ -4,36 +4,29 @@ import dev.rubentxu.pipeline.v2.domain.step.PipelineKApiRange
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
 
 /**
- * PK-RC-PLUGIN-001 — the loader for the policy-derived compatibility resource.
- *
+ * The loader for the policy-derived compatibility resource.
  * <h2>Why this exists</h2>
- *
  * The four official plugins used to declare their `apiRange` as a hand-typed
  * `PipelineKApiRange(...)` constant in the declaration object. When the product
  * version was bumped from 0.53.x to 0.54.x, the constant was not updated, and
  * the v0.56.0-rc3 candidate shipped a manifest with `apiRange=[0.47.0, 0.53.0)`
  * while the host product was 0.56.0 — `PluginAdmissionGate` would refuse every
  * official plugin on its own distribution.
- *
  * The fix is: a pure policy in `buildSrc` (`PluginCompatibilityPolicy`) reads
  * `rootProject.version` and emits `META-INF/pipelinek/plugin-compatibility.json`
  * at build time. THIS class is the runtime reader of that document. Every
  * official plugin declaration calls [load] instead of constructing a literal,
  * so a future product-version bump is observable from the runtime, and the
  * Gradle wiring of the policy is the only authority on the value.
- *
  * <h2>Fail-closed</h2>
- *
  * A plugin without the resource cannot be installed correctly. The loader
  * refuses the call rather than constructing a default; admission would have
  * refused the plugin anyway, and a default would let the drift return.
- *
  * <h2>External plugins</h2>
- *
  * External plugins (any plugin not in `:pipeline-step-sdk/`) keep their manual
  * `apiRange`. They are not consumers of this resource, and their build does
  * not emit one.
- */
+*/
 object PluginCompatibilityResource {
 
     const val RESOURCE_PATH: String = "META-INF/pipelinek/plugin-compatibility.json"
@@ -44,7 +37,7 @@ object PluginCompatibilityResource {
      * malformed, or carries a range that cannot be parsed back into a
      * [PipelineKApiRange]. Plugins MUST call this from their declaration
      * instead of typing the range.
-     */
+*/
     fun load(classLoader: ClassLoader = PluginCompatibilityResource::class.java.classLoader): PipelineKApiRange {
         val resource = classLoader.getResource(RESOURCE_PATH)
             ?: throw IllegalStateException(
@@ -70,7 +63,7 @@ object PluginCompatibilityResource {
      * Minimal extraction: find `"apiRange": "[..."` and return the value. Robust
      * enough for the resource shape `PluginCompatibilityPolicy.toJson()` emits;
      * the production codec lives in `PluginManifestCodec` for richer documents.
-     */
+*/
     internal fun parseApiRangeField(json: String): String? {
         val key = "\"apiRange\""
         val keyIdx = json.indexOf(key)

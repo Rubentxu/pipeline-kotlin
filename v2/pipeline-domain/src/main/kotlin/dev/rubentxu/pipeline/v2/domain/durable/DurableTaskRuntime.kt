@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * Which pipe a chunk came from.
- */
+*/
 enum class TaskStream { STDOUT, STDERR }
 
 /**
@@ -14,7 +14,7 @@ enum class TaskStream { STDOUT, STDERR }
  * never O(total output)). Chunks are delivered to the
  * [ExecutionOutputSink] as the process produces them; nothing in the
  * runtime may buffer the whole stream.
- */
+*/
 class OutputChunk(
     val stream: TaskStream,
     val data: ByteArray,
@@ -36,22 +36,19 @@ class OutputChunk(
  * Streaming destination for process output. Implementations MUST be
  * safe to call from two concurrent pump contexts (stdout and stderr are
  * drained concurrently per the spec).
- *
  * Prohibited on the producing side: `readText()` / `readAllBytes()` over
  * unbounded pipes — only bounded chunks cross this interface.
- */
+*/
 fun interface ExecutionOutputSink {
     suspend fun append(chunk: OutputChunk)
 }
 
 /**
  * Terminal state of one durable task execution.
- *
  * Exactly one of the boolean flags is a "why it ended" marker:
  * [timedOut] (watchdog killed the process tree after [TaskExecutionRequest.timeoutMs]),
  * [cancelled] (external cancellation), or neither (the process exited on
  * its own with [exitCode]).
- *
  * The booleans are public because the runtime writes them; consumers MUST NOT
  * read them directly. The single source of truth for "did this task succeed"
  * is [decideTaskTerminal] + [isSuccessFromDecision] in `TaskTerminalDecision.kt`,
@@ -61,7 +58,7 @@ fun interface ExecutionOutputSink {
  * text to police this is forbidden by AGENTS.md section 2, so what holds the rule is the
  * routing, not a gate. A second reader would stay invisible until it disagreed with the
  * decider.
- */
+*/
 data class TaskExecutionResult(
     val exitCode: Int,
     val timedOut: Boolean = false,
@@ -78,14 +75,13 @@ data class TaskExecutionResult(
 }
 
 /**
- * Request to execute one durable task (LF-0302 port contract).
- *
+ * Request to execute one durable task (port contract)
  * @property task the task to run.
- * @property runId identity of the pipeline invocation (M1-001 chain).
+ * @property runId identity of the pipeline invocation (chain)
  * @property opId durable journal key for the operation; the runtime
  *                 records its durable result under this id (atomic
  *                 result.txt-style write is an adapter concern).
- * @property attempt zero-based retry attempt (M1 chain continuity).
+ * @property attempt zero-based retry attempt (chain continuity)
  * @property timeoutMs wall-clock budget for the process; the watchdog
  *                     kills the whole process tree when it fires. `null`
  *                     means no deadline.
@@ -93,7 +89,7 @@ data class TaskExecutionResult(
  *               precedes any persistence or transmission).
  * @property workspaceRoot process working directory; `null` lets the
  *                         adapter choose (its control dir).
- */
+*/
 data class TaskExecutionRequest(
     val task: TaskSpec,
     val runId: RunId,
@@ -111,18 +107,15 @@ data class TaskExecutionRequest(
 }
 
 /**
- * Port for durable process execution (LF-0302).
- *
- * The single authorised home for process creation in the V2 runtime
- * (M3 gate: production may contain `ProcessBuilder` only inside this
+ * Port for durable process execution
+ * The single authorised home for process creation in the runtime
+ * Production may contain `ProcessBuilder` only inside this
  * port's adapter). Every sh / git / tar execution must migrate onto this
- * seam (LF-0305..LF-0307) so that the spec invariants hold in ONE place:
+ * Seam so that the spec invariants hold in ONE place
  * concurrent stdout/stderr drains, O(chunk) memory, timeout/cancel while
  * the process lives, process-tree termination, atomic durable result,
  * and reconcile-after-restart.
- *
  * ## Contract
- *
  * - Returns exactly one [TaskExecutionResult]; step failure is data
  *   (`exitCode`/`timedOut`/`cancelled`), never an exception. Throwing is
  *   reserved for invalid requests and runtime bugs (mirrors
@@ -131,7 +124,7 @@ data class TaskExecutionRequest(
  *   the result is returned only after both pumps drain.
  * - Adapters must be fail-closed on restart: a request whose operation
  *   was interrupted mid-flight is reconciled, never silently trusted.
- */
+*/
 interface DurableTaskRuntime {
     suspend fun execute(request: TaskExecutionRequest, outputSink: ExecutionOutputSink): TaskExecutionResult
 }

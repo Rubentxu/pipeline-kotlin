@@ -1,8 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.junit.step
 
 /**
- * Typed summary of a JUnit XML report (F5.2 / OFFICIAL_PLUGIN junit.results).
- *
+ * Typed summary of a JUnit XML report (/ OFFICIAL_PLUGIN junit.results)
  * Every field is the canonical Maven Surefire / Gradle Test naming:
  * - tests:     total test cases declared in the XML.
  * - failures:  <failure> child elements (assertion failures + errors that
@@ -15,12 +14,11 @@ package dev.rubentxu.pipeline.v2.sdk.junit.step
  * - reportPath: the absolute path of the XML the summary was derived
  *              from. Persists a typed reference for downstream Steps /
  *              reporting (no Map<String, Any?> smuggling).
- *
  * The summary is intentionally narrower than a full XML parse: a UAT
  * caller wants the totals, not every testcase name. Per-testcase
- * expansion is an F5.2 follow-up (the requirement is the totals +
+ * Expansion is an follow-up (the requirement is the totals +
  * a typed reference to the report).
- */
+*/
 data class JUnitReportSummary(
     val tests: Int,
     val failures: Int,
@@ -35,8 +33,7 @@ data class JUnitReportSummary(
 }
 
 /**
- * Input for the `junit.results` Step (F5.2).
- *
+ * Input for the `junit.results` Step
  * - reportPath: REQUIRED. Either absolute or workspace-relative path to
  *   a JUnit XML report.
  * - workspaceRoot: REQUIRED. The directory the relative path is
@@ -49,7 +46,7 @@ data class JUnitReportSummary(
  * - maxReportBytes: hard cap on the report size we will read (default
  *   10 MiB). Larger reports fail closed with a USER failure; the
  *   failure message names the limit so the caller can raise it.
- */
+*/
 data class JUnitResultsInput(
     val reportPath: String,
     val workspaceRoot: String,

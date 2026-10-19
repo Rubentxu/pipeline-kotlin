@@ -10,26 +10,22 @@ import org.junit.jupiter.api.Test
 /**
  * The admission laws of [EventRegistry]: which declarations get in, and what a reader can
  * therefore rely on once they are in.
- *
  * The class KDoc above promises these laws are "each pinned by [EventRegistryTest]". That
  * sentence was a lie until this file existed: `2aa071aab` deleted the 21 test files of this
  * module and the promises stayed in the source, so a reader concluded a guardian existed where
  * none did. This file is the guardian that sentence was already claiming.
- *
  * Why the laws matter beyond tidiness: a kind is the identity a recorded event travels under.
  * If admission is ever loosened, a second contributor claiming one kind silently replaces the
  * first, and every payload already recorded under that kind becomes ambiguous FOREVER -- there
  * is no timestamp that says which definition was in force, and no decoder that can tell. The
  * damage is retroactive, which is why the failure mode has to be a refusal rather than a
  * resolution order.
- *
  * What this file does NOT cover: whether an admitted definition's codec actually round-trips a
  * payload, and whether any of these kinds reach production. Both need a store and a consumer
  * respectively, and stay with the executable layer.
- *
  * No filesystem, no clock, no network, no event store: every input here is a value the compiler
  * already checked, and every output is a value a reader can inspect.
- */
+*/
 class EventRegistryTest {
 
     private val codec = StringCodec
@@ -55,7 +51,7 @@ class EventRegistryTest {
 
     @Test
     fun `a duplicate kind is refused and names the owner that already holds it`() {
-        // THE LOAD-BEARING ROW. Replace the `DuplicateKind` return with an overwrite and this
+        // THE ROW. Replace the `DuplicateKind` return with an overwrite and this
         // goes red -- and nothing else in the repository would, because no E2E reads this module:
         // `examples/run.sh` observes the process exit code and at most a stderr substring, and
         // `stdout` is captured to a file that is never opened.
@@ -187,10 +183,9 @@ class EventRegistryTest {
 
 /**
  * A codec that only has to satisfy the type; nothing in these laws decodes a payload.
- *
  * Encoding is the identity so that a future assertion about payload content has something stable
  * to assert against, and decoding reports the one case these tests never ask for.
- */
+*/
 private object StringCodec : EventPayloadCodec<String> {
     override fun encode(payload: String): String = payload
 

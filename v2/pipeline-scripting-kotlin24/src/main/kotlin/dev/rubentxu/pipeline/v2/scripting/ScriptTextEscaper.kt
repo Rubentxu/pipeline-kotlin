@@ -3,10 +3,9 @@ package dev.rubentxu.pipeline.v2.scripting
 /**
  * Idempotent, brace-depth-aware escaper that protects environment-variable
  * references from premature Kotlin string-template expansion inside `${...}` blocks.
- *
  * The algorithm scans character-by-character and tracks:
  * - **brace depth** — depth=0 outside `${...}`; depth>=1 inside
- * - **string context** — inside `"..."`, `'...'`, `//`, or `/* */`
+ * - **string context** — inside `"..."`, `'...'`, `//`, or `/**/`
  *
  * When a `$` followed by a valid identifier is found:
  * - If **depth=0** and the identifier is in [envVars] → replaces `$VAR` with `${'$'}VAR`
@@ -24,11 +23,10 @@ internal object ScriptTextEscaper {
     /**
      * Escapes all `$VAR` references in [scriptText] that correspond to env vars in [envVars],
      * but only when they appear outside of `${...}` Kotlin string template blocks.
-     *
      * @param scriptText the raw pipeline script content
      * @param envVars set of env-var names to protect (e.g. `{"USERNAME", "PASSWORD"}`)
      * @return the escaped script text (idempotent — re-running produces the same result)
-     */
+*/
     fun escape(scriptText: String, envVars: Set<String>): String {
         if (envVars.isEmpty()) return scriptText
 
@@ -86,7 +84,7 @@ internal object ScriptTextEscaper {
      * Attempts to read a Kotlin identifier starting at [start].
      * Returns the identifier text and the index after the last character,
      * or `null` if no valid identifier starts at [start].
-     */
+*/
     private fun tryReadIdentifier(text: String, start: Int): Pair<String, Int>? {
         if (start >= text.length) return null
         val first = text[start]
@@ -107,7 +105,7 @@ internal object ScriptTextEscaper {
     /**
      * Returns true if position [pos] in [text] is inside a string literal,
      * character literal, or comment.
-     */
+*/
     private fun isInsideString(text: String, pos: Int): Boolean {
         var inDoubleString = false
         var inSingleString = false
@@ -133,7 +131,7 @@ internal object ScriptTextEscaper {
                 continue
             }
             if (inDoubleString) {
-                // WU-LPR-071: double-quoted Kotlin strings are exactly WHERE env-var
+                // Double-quoted Kotlin strings are exactly WHERE env-var
                 // references must be escaped (template-expansion protection), so a
                 // position inside them is processable (return false via the tail).
                 if (i == pos) return false

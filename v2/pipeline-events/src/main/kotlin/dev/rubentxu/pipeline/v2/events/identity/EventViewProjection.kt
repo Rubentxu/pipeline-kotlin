@@ -4,39 +4,30 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
 /**
- * WU-LPR-050 — Read-side projection of an event history query.
- *
- * ## CORRECTION (M1-P3). This KDoc was false and said so at length.
- *
+ * Read-side projection of an event history query.
+ * ## CORRECTION. This KDoc was false and said so at length
  * It claimed that [MainEventsCli][dev.rubentxu.pipeline.v2.application.MainEventsCli]
  * "accepts `--view <mode>` and `--format <fmt>` and delegates the projection" here. It accepts
  * neither flag: its parser is `--db / --runId / --kind / --subject / --limit / --after-cursor` and
  * nothing else. **This projection has no caller at all** — production or test. `project`, and
  * both enums it takes, have zero references anywhere in the tree; the two tests this module has
  * (`EventCursorTest`, `EventRegistryTest`) do not reach it. That was found by RCE's promotion of
- * the OUT-B item and confirmed here against the current HEAD.
- *
+ * The item and confirmed here against the current HEAD
  * It is not deleted because it is public API: `EventViewProjection`, `ViewMode` and
  * `OutputFormat` are all in `api/pipeline-events.api`, the dump `binary-compatibility-validator`
  * gates on. Removing them is an ABI break, not a cleanup, and needs an authorised versioned
  * break. So it stays, unreachable, until someone decides that.
- *
  * The claim was not harmless documentation drift. It described an integration that a reader would
  * reasonably go looking for, and the way to find it was `--view console`.
- *
  * ## Why the `console` mode is deprecated rather than merely documented
- *
- * It filters envelopes by `EchoOutputCaptured`. Since M1-P2 that event no longer carries **process**
+ * It filters envelopes by `EchoOutputCaptured`. Since that event no longer carries **process**
  * output — it carries the semantic `core.echo` event only. So a "console" view that selects on it
  * can only ever return a subset of console, which is the dangerous kind of wrong: it looks like it
  * works, and it silently drops whatever a process printed. Filtering events to reconstruct a
- * console is also exactly the event-sequence-for-output-cursor conflation that `ADR-M1 D3` forbids.
- *
+ * Console is also exactly the event-sequence-for-output-cursor conflation that ` ` forbids
  * The real console reader is [dev.rubentxu.pipeline.v2.application.ConsoleReadService], which
  * addresses the Output Plane by committed byte offset.
- *
  * ## Modes
- *
  *  - `events` — every envelope, full payload, one per line in the chosen
  *    format. Equivalent to the historical "show me everything" output.
  *  - `normal` — lifecycle-only envelope set: RunStarted, StageStarted,
@@ -44,32 +35,28 @@ import kotlinx.serialization.json.JsonObject
  *    EchoOutputCaptured / UnixDetected / PwdResolved / ParallelBranchStarted
  *    / ParallelBranchFinished / etc. The agent-friendly default.
  *  - `full` — alias for `events` (every envelope). No CLI surface selects it.
- *  - `console` — DEPRECATED. Selects `EchoOutputCaptured` envelopes, which since M1-P2 carry the
+ * `console` — DEPRECATED. Selects `EchoOutputCaptured` envelopes, which since carry the
  *    semantic `core.echo` event and NOT process output. It cannot show a process console, and
  *    nothing selects it. A real console is read through
  *    [dev.rubentxu.pipeline.v2.application.ConsoleReadService].
  *  - `quiet` — only `RunFinished` envelopes (the aggregate outcome).
- *
  * ## Formats
- *
  *  - `jsonl` — one JSON envelope per line (the canonical wire format).
  *  - `json` — a single JSON array containing every envelope.
  *  - `text` — a one-line-per-envelope human-readable summary
  *    (`<sequence> <kind> <key=value pairs...>`).
- *
  * Pure, total, no effects. Nothing calls it, so there is no boundary to materialise on today:
  * the CLI named above is the one that would, and it has no flags that reach this.
- */
+*/
 object EventViewProjection {
 
     /**
      * Pure projection.
-     *
      * @param envelopes The query result, in `sequence` order.
      * @param mode The view mode; defaults to `normal`.
      * @param format The output format; defaults to `jsonl`.
      * @return One string per envelope, ready to be emitted on stdout.
-     */
+*/
     fun project(
         envelopes: List<PipelineEventEnvelope>,
         mode: ViewMode = ViewMode.NORMAL,
@@ -112,13 +99,12 @@ object EventViewProjection {
 
     /**
      * Closed set of lifecycle kinds promoted to the `normal` view.
-     *
      * Source of truth = the canonical `events` package's event classes
      * (CompilationStarted/Finished, RunStarted, StageStarted/Finished,
      * StepStarted/Finished, RunFinished). EchoOutputCaptured and the
      * UnixDetected/PwdResolved/ParallelBranch* family are NOT lifecycle
      * events and are filtered out of `normal`.
-     */
+*/
     private val LIFECYCLE_KINDS: Set<String> = setOf(
         "CompilationStarted",
         "CompilationFinished",
@@ -134,7 +120,7 @@ object EventViewProjection {
 /**
  * Closed view mode. Adding a case forces [EventViewProjection.filter] to be
  * revisited (compile-time exhaustiveness check).
- */
+*/
 enum class ViewMode {
     /** Lifecycle-only envelope set (agent-friendly default). */
     NORMAL,
@@ -144,11 +130,10 @@ enum class ViewMode {
     FULL,
     /**
      * DEPRECATED — semantic `core.echo` envelopes only, never a process console.
-     *
      * Kept so the closed enum stays source-compatible for a caller that wants echo events, and so
      * the wrong thing is named rather than quietly available. A process console is read through
      * [dev.rubentxu.pipeline.v2.application.ConsoleReadService].
-     */
+*/
     @Deprecated(
         message = "selects semantic core.echo events, not process output; use ConsoleReadService for a console",
         replaceWith = ReplaceWith("dev.rubentxu.pipeline.v2.application.ConsoleReadService.read(...)"),
@@ -161,7 +146,7 @@ enum class ViewMode {
 /**
  * Closed output format. Adding a case forces [EventViewProjection.project]
  * to be revisited (compile-time exhaustiveness check).
- */
+*/
 enum class OutputFormat {
     /** One JSON envelope per line (canonical wire format). */
     JSONL,

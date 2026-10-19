@@ -3,13 +3,12 @@ package dev.rubentxu.pipeline.v2.release
 import kotlinx.serialization.json.Json
 
 /**
- * P0.4 — deterministic serialisation of the candidate handoff descriptor.
- *
+ * Deterministic serialisation of the candidate handoff descriptor.
  * Mirrors [DistributionManifestCodec]: fixed key order, defaults encoded, and
  * unknown fields refused. The descriptor is a handoff artifact the harness
  * ingests, so a field it does not understand must be a loud failure rather
  * than a silently dropped instruction.
- */
+*/
 object CandidateHandoffCodec {
 
     private val json = Json {

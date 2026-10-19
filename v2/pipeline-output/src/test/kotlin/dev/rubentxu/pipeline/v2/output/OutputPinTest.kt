@@ -10,11 +10,10 @@ import org.junit.jupiter.api.Test
  * A pin is what stops the Output Plane from pruning bytes a reader is still looking at, so its two
  * safety properties are the point of the type: it must name a real range of a real stream, and it
  * must stop protecting that range at the instant it says it does.
- *
  * `isExpiredAt` takes the clock as an ARGUMENT rather than reading one, which is what makes the
  * expiry boundary testable at all — and the boundary is the thing worth pinning, because `<` and `<=`
  * disagree about exactly one instant and that instant is the one an operator sees.
- */
+*/
 class OutputPinTest {
 
     private fun pin(

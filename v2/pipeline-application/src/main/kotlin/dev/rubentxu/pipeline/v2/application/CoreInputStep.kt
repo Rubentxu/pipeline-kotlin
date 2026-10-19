@@ -42,21 +42,17 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 
 /**
- * `core.input` — ask a human and continue only if they say yes (RP6-B / WU-092).
- *
+ * `core.input` — ask a human and continue only if they say yes
  * ## Why HANDLER_CONTINUATION and not a body policy
- *
  * The body is CONDITIONAL in the strongest sense: an `Abort` means the author
  * asked the pipeline NOT to continue. `CANONICAL_ENGINE` would run the body
  * unconditionally, which would make `input` a no-op with extra steps. So the
  * handler owns the body and only invokes it on a `Proceed`.
- *
  * ## What the handler does NOT do
- *
  * It does not touch the filesystem, the clock or the journal. It asks through
  * [InputDecisions] and interprets what comes back. Deciding the question and its
  * bound is [inputIntentOf]'s job, once and purely.
- */
+*/
 object CoreInputStep {
 
     val KEY: PluginStepId = PluginStepId("core.input")
@@ -185,7 +181,7 @@ object CoreInputStep {
     /**
      * The body runs ONLY on a granted `Proceed`, and its outcome is the run's
      * outcome for everything downstream of the question.
-     */
+*/
     private suspend fun runBody(
         requested: String,
         decision: InputDecision.Proceed,

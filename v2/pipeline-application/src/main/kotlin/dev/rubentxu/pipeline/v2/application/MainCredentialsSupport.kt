@@ -10,19 +10,17 @@ import dev.rubentxu.pipeline.v2.credentials.multipart.LocalFileMaterialization
 import java.nio.file.Path
 
 /**
- * T12 / WU-LPR-103: compose the credential injection stack ONCE, shared by the
+ * Compose the credential injection stack ONCE, shared by the
  * durable (--db) and in-memory (default `pipeline run`) branches.
- *
  * Design: the store location comes from CredentialsStorePath, the ONE authority:
  * PIPELINE_CREDENTIALS_STORE if set, else ~/.pipeline/credentials.bin.
  * PIPELINE_STORE_PASSPHRASE supplies the passphrase.
- *
  * Behavior:
  * - Store file does not exist -> null (user runs `pipeline credentials add`
  *   first; no error at startup)
  * - Store file exists + passphrase available -> WithCredentialsExecutor
  * - Store file exists + passphrase wrong/missing -> fail fast with actionable error
- */
+*/
 internal fun composeWithCredentialsExecutor(
     redactionRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
 ): WithCredentialsExecutor? {
@@ -39,7 +37,7 @@ internal fun composeWithCredentialsExecutor(
         val passphraseChars = PassphraseResolver.resolve()
         // Do NOT wipe passphraseChars here — LocalSecretStore stores the
         // same CharArray reference and would lose its own copy. The store
-        // zeros the passphrase in its own close().
+        // zeros the passphrase in its own close.
         LocalSecretStore(credentialsStorePath, passphraseChars)
     } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
         System.err.println("Error: ${e.message}")

@@ -4,10 +4,8 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
 /**
  * Capability key under which the engine supplies a typed [ShellOperations]
- * seam to a handler that must execute a shell process (LB-02 / G3).
- *
+ * Seam to a handler that must execute a shell process
  * Mirrors the [EVENT_SINK_CAPABILITY] shape:
- *
  * - Kept at a neutral owner so the durable runtime capability bridge and
  *   the registry step definitions can both reference the SAME token
  *   without the execution seam depending on any concrete plugin
@@ -18,5 +16,5 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  *   available.
  * - The corresponding `StepHandlerContext.capabilities.get<ShellOperations>(SHELL_OPERATIONS_CAPABILITY)`
  *   is the only call-site a registry-routed sh handler is allowed to use.
- */
+*/
 val SHELL_OPERATIONS_CAPABILITY: StepCapability = StepCapability("shellOperations")

@@ -7,7 +7,6 @@ pipeline {
                 // it, so the assertion has to observe them from where a step
                 // would actually see them. Placed outside, it would pass on an
                 // empty environment and prove nothing about `withEnv`.
-                //
                 // `${'$'}` rather than a bare `$`: this is a Kotlin raw string,
                 // so a plain `$KEY` is a Kotlin template reference and the
                 // scenario fails to COMPILE with "Unresolved reference" instead

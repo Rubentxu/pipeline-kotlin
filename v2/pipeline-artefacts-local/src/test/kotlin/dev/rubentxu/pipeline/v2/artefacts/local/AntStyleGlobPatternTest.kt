@@ -6,11 +6,9 @@ import org.junit.jupiter.api.Test
 
 /**
  * That a pattern stays one pattern.
- *
  * `AntStyleGlob` used to flatten whatever it was given into a single comma-separated `String` and
  * re-split it inside the constructor. Every entry point round-tripped through that join, so a
  * pattern containing a comma came back as two fragments that match nothing:
- *
  * - `build/**/*.{jar,war}` became `build/**/*.{jar` and `war}` -- and `{jar,war}` is the alternation
  *   the class KDoc advertises, so the documented feature was unmatchable;
  * - `data/a,b.txt`, a perfectly legal POSIX filename, became `data/a` and `b.txt`.
@@ -122,7 +120,7 @@ class AntStyleGlobPatternTest {
 
     @Test
     fun `the default excludes are exactly the thirteen Jenkins entries`() {
-        // INV-L6-ANT-001, as stated in the companion's own KDoc. The matcher is Jenkins-
+        // As stated in the companion's own KDoc. The matcher is Jenkins
         // compatible only while this list is, and an edit that dropped or added an entry would be
         // invisible at every call site.
         assertEquals(13, AntStyleGlob.DEFAULT_EXCLUDES.size)

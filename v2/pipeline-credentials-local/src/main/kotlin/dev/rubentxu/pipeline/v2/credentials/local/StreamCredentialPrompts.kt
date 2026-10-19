@@ -6,12 +6,10 @@ import java.io.InputStream
 /**
  * Collects one credential of each supported kind from bytes already on a
  * stream, so a store can be seeded without an interactive terminal.
- *
  * The stream carries the value's bytes, whole. Nothing is quoted, escaped or
  * re-encoded, which matters because three of the kinds are binary and a text
  * round trip would corrupt them. Two details make that rule usable rather than
  * merely correct:
- *
  * - Exactly one trailing newline is dropped, once, from the whole stream. Shell
  *   pipelines add one, and a value the caller did not intend to differ by a
  *   byte is the most common way a store ends up holding the wrong secret.
@@ -19,11 +17,10 @@ import java.io.InputStream
  *   everything after that newline as the password, verbatim. One separator, one
  *   meaning: a password that itself ends in a newline keeps it, and the caller
  *   sends one more to close the value.
- *
  * As with the terminal, this object decides only where the values come from;
  * [CredentialValues] decides whether each is acceptable, so a value piped in
  * and the same value typed are accepted or refused on identical grounds.
- */
+*/
 internal object StreamCredentialPrompts {
 
     fun read(kind: MainCredentialsCli.CredentialKind, stdin: InputStream): Credential {

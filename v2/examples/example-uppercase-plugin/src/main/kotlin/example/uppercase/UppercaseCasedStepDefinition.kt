@@ -10,20 +10,15 @@ import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 
 /**
- * S6/I — the Step that CONSUMES the plugin's own capability.
- *
+ * The Step that CONSUMES the plugin's own capability.
  * ## Why a third Step rather than a capability on one of the two existing ones
- *
  * Because both of those are load-bearing references. `uppercase` is the standing proof that an
  * external Step runs asking the host for nothing at all, and `uppercaseObserved` is the standing
  * proof that one asking for exactly one seam gets only that seam. Adding a dependency to either
  * would not extend the demonstration, it would delete one of the two claims it exists to make —
  * and a reference that has quietly acquired a dependency is no longer a reference.
- *
  * So the capability gets the Step that needs it, and the two references stay untouched.
- *
  * ## The loop this closes
- *
  * ```text
  * this JAR supplies example.uppercase.case-table
  *   -> this JAR's manifest declares it
@@ -31,10 +26,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandler
  *       -> admission cross-checks all three against each other
  *         -> the handler receives the value and nothing else
  * ```
- *
  * Every arrow crosses a public seam. No arrow requires the host to learn the name `example.*`,
  * which is what BLOCK 1-J measures separately.
- */
+*/
 object UppercaseCasedStepDefinition : StepDefinition<UppercaseInput, UppercaseOutput> {
 
     val KEY = PluginStepId("example.uppercase.cased")

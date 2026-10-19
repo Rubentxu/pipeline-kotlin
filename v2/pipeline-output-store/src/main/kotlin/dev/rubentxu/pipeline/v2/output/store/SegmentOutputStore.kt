@@ -37,81 +37,67 @@ import kotlin.concurrent.withLock
 
 /**
  * A file-backed Output Plane implementing strategy **D** (segment reservation with recovery), the
- * protocol decided by RCE `ADR-0002` on measured contention and commit-window grounds.
- *
+ * Protocol decided by RCE `` on measured contention and commit-window grounds
  * ## Layout
- *
  * ```text
  * <root>/streams/<streamKey>/
  *     cur.seg      payload of the segment currently being written
- *     cur.cmt      the stream's committed offset          <- the O2 authority
+ * Cur.cmt the stream's committed offset <- the authority
  *     cur.res      the outstanding reservation "<base>|<limit>"   (absent = none)
  *     segments/    sealed segments, named "<base>-<length>.seg"
  * ```
- *
  * `cur.cmt` is a **global** committed offset, not a per-segment count, so it is the single number a
  * cursor names. The base of the current segment is derivable — it is one past the last sealed
  * segment — which is what lets the current segment be sealed and a new one opened without a second
  * durable counter to fall out of step.
- *
  * ## Why this shape is D and not A, B or C
- *
  * D keeps bytes in **segments a writer owns** and appends sequentially into them: no shared index
  * write per frame, no per-frame metadata, no cross-writer lock. That is what made it 200x–545x
  * faster than A and C at eight parallel writers. The order is recovered by *merging segments by
  * offset*, not by consulting a global index, so a single-writer-per-stream Output Plane keeps the
  * property without inheriting the contention that killed the others.
- *
  * - **A** (durable reserve + commit record) stranded payload bytes behind a commit record that never
  *   landed, and paid for it with two windows instead of one release step.
  * - **B** (store-assigned sequence) had the strongest per-write property — sequence and payload as
  *   one atomic unit — but is single-writer by construction.
  * - **C** (per-operation file + global index) stranded bytes at the window and was the slowest.
- *
  * ## The three obligations, and where each one lives
- *
- * - **O1** — [Reserve]'s initialiser writes `cur.res` and returns only afterwards. The
+ * **** — [Reserve]'s initialiser writes `cur.res` and returns only afterwards. The
  *   acknowledgement *is* the reservation, not the append.
- * - **O2** — the committed offset lives in `cur.cmt`, never in the size of a byte file.
- * - **O3** — [recover] is a distinct entry point. Until it completes, every read is refused with
+ * **** — the committed offset lives in `cur.cmt`, never in the size of a byte file
+ * **** — [recover] is a distinct entry point. Until it completes, every read is refused with
  *   [OutputRefusal.RecoveryNotCompleted] rather than served from an unreconciled state.
- *
  * ## Density is why D is dense and A is not
- *
  * Recovery keeps each stream's committed prefix and then **releases** an outstanding reservation, so
  * a range that was claimed and not used leaves no permanent hole. Without the release, a writer that
  * reserved 64 KiB and used 200 bytes would strand 63 KiB, and a cursor into that range would be
  * permanently stuck — unable to tell "those bytes are gone" from "those bytes have not arrived yet".
- *
  * ## The refusal, kept in the class rather than only in the ADR
- *
  * Writes are issued and are **not** `fsync`ed. Bytes already issued to a file descriptor survive
  * process death in the page cache, which is the fault model this store was measured under. It
  * therefore proves *"a process that dies loses nothing it acknowledged"* and does **not** prove
  * durability across power loss — see [OutputNotEstablished.POWER_LOSS_DURABILITY].
- */
+*/
 class SegmentOutputStore(
     private val root: Path,
     /**
-     * Whether this store may reconcile durable state at all, per ADR-OBS-002.
-     *
+     * Whether this store may reconcile durable state at all
      * A reader answers "no". That is the whole separation the ADR makes: a read-only verb opens the
      * plane without ever running a reconciliation, so it cannot remove or truncate a reservation even
      * if every stream were unowned.
-     *
-     * Reads therefore do NOT require [recovered]. The invariant ADR-M1 §D4 O3 protects — a reader
+     * Reads therefore do NOT require [recovered]. The invariantprotects — a reader
      * never observes a byte the store has not committed — is enforced by the committed-offset
      * authority in [committedLocked], and only ever was helped along by recovery. Recovery is what
      * makes debris disappear; it is not what makes a read honest.
-     */
+*/
     private val recoveryPermitted: Boolean = true,
     /**
-     * M3 — optional pin port consulted by [canPrune]. When `null` (default),
+     * Optional pin port consulted by [canPrune]. When `null` (default),
      * `canPrune` returns [PruneAuthorisation.Granted] unconditionally. The
-     * audit §B.3 (f) names the consult-before-act primitive as the load-bearing
+     * auditB.3 (f) names the consult-before-act primitive as the load-bearing
      * authority on the retention-under-pin invariant; the wiring is optional
      * so test fixtures that do not need pins can construct a plain store.
-     */
+*/
     private val pinPort: OutputPinPort? = null,
 ) : OutputAppendPort, OutputReadPort, OutputRecoveryPort, OutputRetentionPort, OutputSealPort,
     OutputTailPort {
@@ -124,21 +110,19 @@ class SegmentOutputStore(
         val sealedDir: Path,
         /**
          * The marker saying "no further bytes will be written to this stream".
-         *
          * Deliberately NOT named `sealed`: [sealedDir] holds ROTATED SEGMENTS (`$base-$length.sealed`),
          * which is an unrelated fact about storage geometry. Two meanings of "sealed" in one layout is
          * how a reader ends up trusting the wrong file, so the stream-level marker says what it is.
-         */
+*/
         val streamSealMarker: Path,
         /**
-         * The exclusive, kernel-held ownership of this stream, per ADR-OBS-002.
-         *
+         * The exclusive, kernel-held ownership of this stream
          * Held from `reserve()` until `commit()`/`abandon()`, so its presence answers the only
          * question recovery cannot answer from file contents alone: is there a writer ALIVE right now?
          * The kernel releases it when the owning process dies and refuses it to a second process
          * while the first lives, which is the distinction recovery needs and which no mtime, PID or
          * heartbeat supplies without a clock and a staleness policy.
-         */
+*/
         val ownershipFile: Path,
     )
 
@@ -148,29 +132,27 @@ class SegmentOutputStore(
 
     /**
      * One lock per stream, keyed by the **canonical** stream key.
-     *
      * The key is `safe(streamId.value)` — exactly the directory name [layout] resolves for that
      * stream — and it is deliberately a `String` rather than an [OutputStreamId]. [prune] reaches a
      * stream by its directory name (the id is not invertible: `safe` folds `/` onto `_`), so a map
      * keyed by the raw id could never share an entry with prune. The writer used to key on the raw
      * id and prune on the folded name, so releasing a run added a second, permanently retained lock
      * for a stream whose writer lock was already present (measured: `2N` locks after releasing `N`
-     * runs, AUD-08/B1a). Two ids that fold to the same name already share one on-disk directory, so
+     * runs,/). Two ids that fold to the same name already share one on-disk directory, so
      * they ARE one stream on disk and must share one lock; that is what makes this the correct
      * canonical key and not merely a convenient one.
-     */
+*/
     private val perStream = HashMap<String, ReentrantLock>()
 
     @Volatile private var frameIndex: SegmentFrameIndex? = null
 
     /**
      * The frame index for this store, sharing its root so the index sits beside the bytes.
-     *
      * Created once and held, for the same reason the store itself is held per control-dir root by
      * its provider: recovery has to be a property of the durable layout rather than of whichever
      * object a caller happened to construct. The returned index is the same instance every time, so
      * its ordinal counter cannot be split across two writers.
-     */
+*/
     fun frameIndex(): SegmentFrameIndex =
         frameIndex ?: synchronized(this) { frameIndex ?: SegmentFrameIndex(this, root).also { frameIndex = it } }
 
@@ -179,18 +161,14 @@ class SegmentOutputStore(
     /**
      * Records that [stream] will receive no further bytes, and returns the
      * [SealOutcome] that names which of the four cases the call landed in.
-     *
      * The marker is written with the stream's committed extent AT THE MOMENT of sealing, not at the
      * moment it is read. That is what makes it a fact rather than a view: a reader in a fresh JVM
      * after a crash sees the same end the writer saw, instead of inferring it from whatever bytes
      * happen to be present.
-     *
      * Idempotent by construction — if the marker exists it is left alone. Rewriting it with a later
      * extent would make a resumed run's seal depend on WHEN it happened to run, which is exactly the
      * non-determinism recovery must not have.
-     *
-     * ## Per-channel contract (M1-F.3)
-     *
+     * ## Per-channel contract
      *  - [SealOutcome.Sealed]: stream exists and was sealed by this call.
      *  - [SealOutcome.AlreadySealed]: stream exists and was already sealed.
      *    Idempotent: the recorded end is returned unchanged.
@@ -199,12 +177,12 @@ class SegmentOutputStore(
      *    produces for stderr — silent no-op, not a refusal.
      *  - [SealOutcome.Failure]: real I/O failure while writing the marker.
      *    The cause is propagated as data so the caller can route on it.
-     */
+*/
     override fun seal(stream: OutputStreamId): SealOutcome {
         requireRecoveredForWriting()
         val layout = layout(stream)
         return withStreamLockFor(stream) {
-            // M1-F.3: an unopened stream is NOT a refusal. Sealing it
+            // An unopened stream is NOT a refusal. Sealing it
             // would mint an authority for bytes nobody wrote, but a
             // stdout-only script (which never opened stderr) must NOT
             // warn here — that was the noise the user reported. The
@@ -234,30 +212,26 @@ class SegmentOutputStore(
 
     /**
      * The tail state of [stream], or `null` when this store does not know the stream.
-     *
      * Read under the stream lock, so a reader cannot observe `Open` for a stream a concurrent writer
      * has just sealed: the answer is always about one moment rather than two.
-     */
+*/
     override fun tailState(stream: OutputStreamId): OutputTailState? {
-        // R4 / WU-RC4 — the guard is `!recovered && recoveryPermitted`, matching EVERY other read
+        // The guard is `!recovered && recoveryPermitted`, matching EVERY other read
         // path here ([read], [readRange], [readRangeDigested], [committedExtent]), and the
         // difference is the whole fix.
-        //
         // It used to be a bare `!recovered`, which made this the ONLY read path that treated a
         // reader-side store as permanently unrecovered. A reader store is opened with
-        // `recoveryPermitted = false` (ADR-OBS-002) and `recover()` THROWS for it, so `recovered`
+        // `recoveryPermitted = false` and `recover()` THROWS for it, so `recovered`
         // can never become true and `tailState` answered `null` for every stream, forever.
-        //
         // The consequence was not subtle and not slow: `console --follow` obtains its store via
         // `OutputPlaneProvider.storeForReading`, so on EVERY follow `tailStates` was a list of
         // nulls, `followDecision` saw `any { it !is Sealed }` and returned `ReadAgain` forever,
         // and the follow could only ever leave through its poll budget. A follow that cannot
         // observe a seal is a follow that cannot report completion — the exact false-green this
         // block exists to remove.
-        //
         // Why the reader store is safe to answer from: this method RECONCILES NOTHING. It stats a
         // seal marker and reads a committed extent — the same two facts [committedExtent] already
-        // serves a reader store without complaint. ADR-OBS-002 forbids a reader from *releasing
+        // Serves a reader store without complaint. forbids a reader from *releasing
         // reservations and truncating a live writer's range*, which is what `recover()` does and
         // what this method does not. So the guard keeps its old meaning for a WRITING store that
         // has not recovered, and stops blocking a reader store that never may.
@@ -350,11 +324,11 @@ class SegmentOutputStore(
     }
 
     /**
-     * M3 — single-pass digest read. Same refusal shape as [readRange];
+     * Single-pass digest read. Same refusal shape as [readRange];
      * the default `OutputReadPort.readRangeDigested` does the same in two
      * passes (one for the page, one for the hash). The override collapses
      * both into one I/O round via [SegmentReader.readRangeDigested].
-     */
+*/
     override fun readRangeDigested(
         stream: OutputStreamId,
         from: Long,
@@ -384,9 +358,9 @@ class SegmentOutputStore(
     /**
      * Reconcile durable state. Idempotent, and safe to interrupt and call again — a store that
      * cannot be recovered twice cannot be trusted after its own recovery crashes.
-     */
+*/
     override fun recover(): OutputRecoveryReport = recoveryLock.withLock {
-        // ADR-OBS-002. A reader may not reconcile, and saying so loudly beats letting a read-side
+        // A reader may not reconcile, and saying so loudly beats letting a read-side
         // caller reach a destructive path by accident: the whole defect was that recovery was
         // available to everyone and therefore performed by everyone.
         check(recoveryPermitted) {
@@ -415,11 +389,11 @@ class SegmentOutputStore(
                 streamSealMarker = entry.resolve(STREAM_SEAL_MARKER),
                     ownershipFile = entry.resolve(OWNERSHIP_FILE),
                 )
-                // ADR-OBS-002. Reconciliation is only safe on a stream nobody is writing right now,
+                // Reconciliation is only safe on a stream nobody is writing right now
                 // and the ownership lock is what says so: it is held for the whole of a reservation and
                 // the kernel drops it the instant the owning process dies, so "held" means ALIVE rather
                 // than "recently seen". Truncating a held stream would destroy a live writer's bytes,
-                // which is the defect OBS-G measured.
+                // Which is the defect measured
                 val reconciled = tryWithStreamOwnership(layout) {
                     releasedBytes += reconcile(layout)
                     if (Files.deleteIfExists(layout.reservationFile)) releasedReservations++
@@ -447,26 +421,20 @@ class SegmentOutputStore(
 
     /**
      * The directories this run owns.
-     *
      * ## The defect this predicate had
-     *
      * Selection used to be `fileName.startsWith(safe(runId) + "_")`, justified here as "the prefix is
      * a *filter*, never a parse". The reasoning was about not *inverting* the name, and it was true
      * — but it answered the wrong question. A filter is still an IDENTITY when it is the only thing
      * authorising a `deleteRecursively`, and the shorter safe name is a prefix of the longer one:
-     *
      * ```text
      *   runId "run"    -> prefix "run_"
      *   runId "run_x"  -> directory "run_x_step1_stdout"   which STARTS WITH "run_"
      *   prune("run")   -> deletes run_x's stream. Another run's bytes, gone.
      * ```
-     *
      * That is a PREFIX COLLISION, not a fold: making `safe` injective would NOT have closed it, so
      * no durable-format decision was ever needed — only the SELECTION predicate had to change. The
      * on-disk layout is untouched.
-     *
      * ## Why selection alone is not "declared streams only"
-     *
      * The obvious repair — prune exactly what [SegmentFrameIndex.streamsOfRun] lists — is wrong too,
      * and it was wrong in a way that measured as **a retention leak rather than a lost guarantee**.
      * [SegmentFrameIndex.declareStream] refuses an id whose last segment is not a channel token, by
@@ -476,28 +444,23 @@ class SegmentOutputStore(
      * — the `.../transcript` shape — on every `sh` step. Selecting by declaration alone made that
      * production transcript permanently unprunable, which is the failure a retention port exists to
      * prevent, and it fails silently: nothing is deleted and no caller is told.
-     *
      * So ownership has three answers, not two:
-     *
      * ```text
      *   directory declared to THIS run          -> ours, unconditionally
      *   directory declared to ANOTHER run       -> NOT ours, even if our prefix matches it
      *   directory nobody declared (legacy shape) -> ours if our prefix matches; nobody can prove
      *                                               otherwise, and the bytes are still this run's
      * ```
-     *
      * The middle line is what closes the collision: `prune("run")` still scans by prefix, but a
      * directory `run_x` has declared is excluded before the scan can claim it.
-     *
      * ## The residual, stated rather than papered over
-     *
      * Two runs whose safe names collide by prefix and whose streams are BOTH undeclared are
      * indistinguishable on disk — there is no byte inside the directory carrying the run id
      * ([Layout] holds only segment, commit, reservation, seal and ownership-lock files, and the
      * ownership lock is never read as content). Pruning the shorter id deletes the longer one's
      * legacy transcript. That remainder is irreducible without changing the on-disk layout, and it
      * is narrower than the original defect by exactly the set of streams any run declared.
-     */
+*/
     private fun runStreamDirs(runId: String): List<Path> {
         val streamRoot = root.resolve(STREAMS_DIR)
         if (!Files.isDirectory(streamRoot)) return emptyList()
@@ -523,12 +486,11 @@ class SegmentOutputStore(
 
     /**
      * Removes a run's streams. See [OutputRetentionPort.prune].
-     *
      * The byte count comes from the store's own committed offset rather than from `Files.size`:
      * a segment can be sealed, and a file's size is not what a reader was ever promised. A report
      * naming the wrong number would be a small lie in the one place a caller uses it to confirm
      * that data is really gone.
-     */
+*/
     override fun prune(intent: OutputPruneIntent): OutputPruneReport {
         requireRecoveredForWriting()
         val targets = runStreamDirs(intent.runId)
@@ -540,11 +502,10 @@ class SegmentOutputStore(
             // Deleting under a per-stream lock, so a concurrent reader is served or refused, never
             // served from a directory being removed underneath it. Deleting without one is a race
             // whose outcome is "some bytes, or an IOException", decided by scheduling.
-            //
             // The key is the directory name itself, which IS `streamKey(stream)` for the stream
             // that wrote this directory: prune reaches a stream by its directory (the id is not
             // invertible), so keying on the name is what lets it share the writer's lock instead of
-            // adding a permanent second one (AUD-08).
+            // Adding a permanent second one
             val streamLock = synchronized(perStream) {
                 perStream.getOrPut(dir.fileName.toString()) { ReentrantLock() }
             }
@@ -560,27 +521,24 @@ class SegmentOutputStore(
     }
 
     /**
-     * M3 — consult-before-act: would [intent] succeed RIGHT NOW, given the
+     * Consult-before-act: would [intent] succeed RIGHT NOW, given the
      * current pins?
-     *
      * When [pinPort] is wired, this composes the existing retention port
      * with the pin port's `pinsForSafeName` per stream directory of the run.
      * When no pin port is wired (the default), returns
      * [PruneAuthorisation.Granted] unconditionally — the test fixtures and
-     * the M1/M2 paths do not need the consult-before-act primitive.
-     *
+     * The/ paths do not need the consult-before-act primitive
      * The composition table:
-     *
      * ```text
      * canPrune(intent):
      *   for each stream of intent.runId:
      *     pins = pinsOf(stream)
-     *     if pins.isNotEmpty() -> Consulted(stream, range, pins)
+     *     if pins.isNotEmpty -> Consulted(stream, range, pins)
      *     else -> Granted
-     *   if no streams for runId -> Refused(StorageError("unknown run ..."))
+     *   if no streams for runId -> Refused(StorageError("unknown run..."))
      *   if pin storage failed -> Refused(SubstrateUnavailable)
      * ```
-     */
+*/
     override fun canPrune(intent: OutputPruneIntent): PruneAuthorisation {
         requireRecoveredForWriting()
         val pins = pinPort ?: return PruneAuthorisation.Granted
@@ -637,34 +595,28 @@ class SegmentOutputStore(
 
     /**
      * The unreconciled-state guard, for the operations whose return type CANNOT express a refusal.
-     *
      * ## One condition, one representation — per return type
-     *
      * [OutputRefusal.RecoveryNotCompleted] is part of the closed refusal ADT, and a read that hits
      * an unrecovered store answers with it: `read` and `readRange` return
      * [OutputReadResult.Refused]. They are total functions, and a total function that throws for a
      * value its own result type can name is not total. This store used to throw from both, which
      * meant a caller that handled every refusal still got an exception out of it — the same hole
-     * [OutputRefusal.DanglingCommit] documents for the I4 case.
-     *
+     * [OutputRefusal.DanglingCommit] documents for the case
      * The other three keep throwing, and the reason is the return type rather than a preference:
-     *
      * | operation | returns | why it cannot refuse in-band |
      * |---|---|---|
      * | [open] | [OutputStreamHandle] | a handle, not a result — no case to put the refusal in |
      * | [committedExtent] | `Long?` | `null` already means "no committed extent"; a second meaning would make the two indistinguishable |
      * | [prune] | [OutputPruneReport] | a report of what was done; "refused to try" is not a report |
-     *
      * So the condition has exactly one representation in each shape, and the one place where two
      * shapes could have claimed it now has one.
-     */
+*/
     /**
      * Writing and destructive paths require recovery, always, whichever role this store opened with.
-     *
-     * ADR-OBS-002 splits the requirement that used to be one: reconciling before you APPEND is about
+     * Splits the requirement that used to be one: reconciling before you APPEND is about
      * not stranding a reservation behind debris, and reconciling before you DELETE is about not
      * deleting a range you have not proved is unreferenced. Neither is a read concern.
-     */
+*/
     private fun requireRecoveredForWriting() {
         check(recovered) {
             "appends, seals and prunes require OutputRecoveryPort.recover() first (O3): refusing to " +
@@ -676,11 +628,10 @@ class SegmentOutputStore(
      * Reads do not require recovery, and the reason is the committed-offset authority rather than a
      * preference: [read] and [committedExtent] only ever serve bytes at or below [committedLocked],
      * so a reader cannot observe an unacknowledged byte whether or not debris has been reconciled.
-     *
-     * O3 said "recovery is a distinct entry point that reconciles before any reader is served". This
+     * Said "recovery is a distinct entry point that reconciles before any reader is served". This
      * keeps the distinct entry point and drops the second clause: a reader is served committed bytes
      * either way, and the entry point is distinct precisely so that a reader never has to invoke it.
-     */
+*/
     private fun requireReadable() {
         check(recovered || !recoveryPermitted) {
             "reads require OutputRecoveryPort.recover() first (O3): refusing to serve an unreconciled state"
@@ -692,11 +643,10 @@ class SegmentOutputStore(
 
     /**
      * The [Layout] of a stream directory.
-     *
      * Shared by [layout] and by retention, which reaches the same directory by prefix rather than
      * by a reconstructed id. One owner for the directory's internal names: a second copy here
      * would be free to disagree with the first about what a stream is made of.
-     */
+*/
     private fun layoutFor(dir: Path): Layout = Layout(
         streamDir = dir,
         segmentFile = dir.resolve("cur.seg"),
@@ -722,38 +672,34 @@ class SegmentOutputStore(
 
     /**
      * The canonical lock key for a stream: the `safe()`-folded name that also names its directory.
-     *
      * `layout(stream)` resolves the directory with exactly this fold, so a writer and [prune] (which
      * reaches the same directory by directory name) compute the same key for the same stream. Kept
-     * in one place so the two sites cannot drift apart again, which is the defect B1c fixes.
-     */
+     * in one place so the two sites cannot drift apart again, which is the defect fixes.
+*/
     private fun streamKey(stream: OutputStreamId): String = safe(stream.value)
 
     /**
      * The prefix every directory of this run's streams starts with: the folded run id and the
      * separator that follows it.
-     *
      * Deliberately NOT sufficient to identify a stream, and used only where the declaration cannot
      * answer — see [runStreamDirs], which excludes any directory another run has declared before
      * this prefix gets to claim it. The trailing separator is what makes it a prefix of *this run's*
      * names rather than of any run whose id merely starts with the same characters.
-     */
+*/
     private fun runPrefix(runId: String): String = safe(runId) + "_"
 
     /**
      * Drop any uncommitted bytes and return how many were dropped.
-     *
      * The committed offset is authoritative and the segment is truncated to it, so a crash between
-     * write and commit cannot make an unacknowledged byte observable (I2), and a committed offset
-     * can never point past what is on disk (I4).
-     *
+     * Write and commit cannot make an unacknowledged byte observable, and a committed offset
+     * Can never point past what is on disk
      * Note that this is the ONLY place a crashed writer's uncommitted bytes are dropped. There used
      * to be a second truncation in [Reserve]'s initialiser, disabled with `if (false)` and carrying a
-     * dead local. It was redundant — this has already run, and O3 makes a reservation unreachable
+     * Dead local. It was redundant — this has already run, and makes a reservation unreachable
      * before recovery — so restoring it would have given one fact two authorities. The mutation
      * harness had already measured it as non-load-bearing; the line was a guard that guarded nothing.
      * Deleting it is the honest form of that measurement.
-     */
+*/
     private fun reconcile(layout: Layout): Long {
         val committed = committedLocked(layout)
         val onDisk = if (Files.exists(layout.segmentFile)) Files.size(layout.segmentFile) else 0L
@@ -766,11 +712,10 @@ class SegmentOutputStore(
         // A commit record AHEAD of the payload is detected and reported, and deliberately NOT
         // repaired. Clamping down to the readable end is the obvious fix and is worse than the
         // defect: the bytes between the last real commit and the readable end were never
-        // acknowledged, so clamping would publish them (I2). Clamping back to the last real commit
+        // Acknowledged, so clamping would publish them. Clamping back to the last real commit
         // is not decidable from the segment alone either, because the record is precisely what was
         // lost. So the claim stands, is counted in bytesUnbacked, and the reads that would need it
-        // fail loudly (I4) instead of returning a short page that reads as an end of stream.
-        //
+        // Fail loudly instead of returning a short page that reads as an end of stream
         // Deciding what a corrupt commit record MEANS is a product decision, and this store does
         // not make it silently. See OutputNotEstablished.CORRUPT_COMMIT_RECORD.
         return 0L
@@ -781,7 +726,7 @@ class SegmentOutputStore(
         currentBaseLocked(layout) +
             (if (Files.exists(layout.segmentFile)) Files.size(layout.segmentFile) else 0L)
 
-    /** The global committed offset: the O2 authority. */
+    /** The global committed offset: the authority */
     private fun committedLocked(layout: Layout): Long =
         if (Files.exists(layout.commitFile)) {
             Files.readString(layout.commitFile).trim().toLongOrNull() ?: 0L
@@ -789,19 +734,17 @@ class SegmentOutputStore(
 
     /**
      * One past the last sealed segment: the global base of the current segment.
-     *
      * Delegates instead of repeating the enumeration. A second copy of "which segments are sealed"
      * here would be a second authority for one decision, and two authorities for one decision drift.
-     */
+*/
     private fun currentBaseLocked(layout: Layout): Long = SegmentReader.currentBase(layout.sealedDir)
 
     /**
      * Serves `[from, to)` out of the merged segment set.
-     *
      * The committed extent and the current base are read **here**, by the owner, and passed down. The
      * reader must never form a second opinion about how far a stream is committed, so it is given the
      * number rather than left to re-read it.
-     */
+*/
     private fun readRangeLocked(
         layout: Layout,
         stream: OutputStreamId,
@@ -818,9 +761,9 @@ class SegmentOutputStore(
     )
 
     /**
-     * M3 — single-pass digested read; same calling convention as
+     * Single-pass digested read; same calling convention as
      * [readRangeLocked] but returns the page + SHA-256 in one I/O round.
-     */
+*/
     private fun readRangeDigestedLocked(
         layout: Layout,
         stream: OutputStreamId,
@@ -841,25 +784,22 @@ class SegmentOutputStore(
      * in general, but the canonical `run/op/transcript` shape round-trips
      * through `_`→`/`. Used only as a fallback when the pin adapter is not
      * an [OutputPinPortStoreAdapter].
-     */
+*/
     private fun streamFromSafeName(safeName: String): OutputStreamId =
         OutputStreamId(safeName.replace("_", "/"))
 
     /**
      * Runs [block] holding this stream's ownership, or answers `false` when a live writer holds it.
-     *
-     * `FileLock` rather than a heartbeat, PID or mtime, per ADR-OBS-002: the kernel releases the lock
+     * `FileLock` rather than a heartbeat, PID or mtime,: the kernel releases the lock
      * when the owning process dies and refuses it to a second process while the first lives, which is
      * exactly the "writer alive?" question and needs no clock and no staleness policy.
-     *
      * `OverlappingFileLockException` is the same JVM holding it, and is caught here rather than thrown
      * because a reader sharing a JVM with a live writer must skip the stream just as a reader in
      * another process does.
-     *
      * An [java.io.IOException] while opening the lock file is NOT swallowed: failing to learn who owns
      * a stream is not permission to destroy its bytes, and silently skipping would be a hole rather
      * than a safety. It propagates, and the recovery that called it fails loudly.
-     */
+*/
     private fun tryWithStreamOwnership(layout: Layout, block: () -> Unit): Boolean {
         Files.createDirectories(layout.streamDir)
         FileChannel.open(layout.ownershipFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
@@ -880,10 +820,8 @@ class SegmentOutputStore(
 
     /**
      * Shrinks [file] to [size] bytes, and does nothing when that is impossible or unnecessary.
-     *
      * Two failure modes were closed here, and both were reachable from [OutputReservation.abandon]
      * on an ordinary path:
-     *
      * 1. **A file that does not exist.** `FileChannel.open(..., WRITE)` without `CREATE` throws
      *    `NoSuchFileException`, and a stream that has committed nothing has no `cur.seg` at all. A
      *    release that throws is the worst possible failure for this method: the caller cannot free
@@ -893,7 +831,7 @@ class SegmentOutputStore(
      *    zero bytes. A release that grew the segment would leave a hole of NULs inside a stream,
      *    which is precisely the permanent gap [OutputCrashInvariant.I3_ORDER_IS_DENSE] forbids and
      *    which no reader could tell from real output.
-     */
+*/
     private fun truncateTo(file: Path, size: Long) {
         if (!Files.exists(file)) return
         val current = Files.size(file)
@@ -940,12 +878,11 @@ class SegmentOutputStore(
 
         /**
          * Reserve → write → commit, once per window, until the source is exhausted.
-         *
          * Each window is a complete cycle rather than one growing reservation, so the committed
          * offset advances as the transcript is produced. A reader tailing with a cursor therefore
          * sees bytes appear during execution instead of only at the end — which is the whole point
          * of a resumable output cursor, and is why this is not one `reserve(hugeNumber)` call.
-         */
+*/
         override fun appendFrom(source: InputStream, windowBytes: Int): Long {
             require(windowBytes > 0) { "windowBytes must be positive, got $windowBytes" }
             var committed = 0L
@@ -963,7 +900,7 @@ class SegmentOutputStore(
                     if (read == 0) break
                     val reservation = reserve(windowBytes)
                     // No try/catch around this: if the write or the commit fails, the reservation
-                    // is already durable and is deliberately left on disk for recover() to release.
+                    // is already durable and is deliberately left on disk for recover to release.
                     // Swallowing it here would strand it; catching it just to rethrow would be a
                     // no-op with a comment attached.
                     reservation.write(window.copyOf(read))
@@ -992,7 +929,7 @@ class SegmentOutputStore(
         private var segmentBaseInternal = 0L
         private var open = true
 
-        /** Held for the whole reservation, per ADR-OBS-002. Closed by [releaseOwnership]. */
+        /** Held for the whole reservation,. Closed by [releaseOwnership] */
         private var ownershipChannel: FileChannel? = null
 
         init {
@@ -1013,14 +950,12 @@ class SegmentOutputStore(
             val base = committedLocked(layout)
             segmentBaseInternal = currentBaseLocked(layout)
             // No truncation happens here, and that is a decision rather than an omission.
-            //
             // A segment longer than the committed extent means a writer crashed between write and
             // commit, and [reconcile] is the single authority that resolves it: it runs on
-            // [recover], which O3 requires before any reservation can be taken at all — this very
+            // [recover], which requires before any reservation can be taken at all — this very
             // initialiser refuses a stream that still carries an outstanding reservation precisely
             // because "recovery owns that decision". Enabling a second truncation here would give
             // that one fact two authorities, and the two would disagree about which is right.
-            //
             // There used to be one here, disabled with `if (false)`, carrying a dead `onDisk` local
             // and a comment that described the property it no longer enforced. The mutation harness
             // had already measured it as non-load-bearing, so the line was a guard that guarded
@@ -1031,13 +966,12 @@ class SegmentOutputStore(
             position = base
             limitInternal = base + maxOf(minBytes.toLong(), DEFAULT_RESERVATION_BYTES)
 
-            // O1: the reservation is durable before this returns, and before any byte is written.
+            // The reservation is durable before this returns, and before any byte is written.
             Files.writeString(layout.reservationFile, "$baseInternal|$limitInternal\n")
 
-            // ADR-OBS-002: from here until commit/abandon, this stream is OWNED, and any recovery in
+            // From here until commit/abandon, this stream is OWNED, and any recovery in
             // any process skips it. Taken last, after every failure that could throw, so a reservation
             // that never became durable also never advertises an owner.
-            //
             // A reservation that is abandoned without committing or abandoning leaks this channel, and
             // a leaked channel keeps the lock for the life of the process. That failure direction is
             // deliberate: the stream stays unreconcilable, which is the safe way to be wrong. Recovery
@@ -1069,10 +1003,9 @@ class SegmentOutputStore(
 
         /**
          * Copy [source] in bounded windows so an unbounded producer is never materialised.
-         *
          * The bytes arriving here are expected to be **already redacted**: redaction is a write-side
          * obligation, and a store that redacted on read would have already persisted the secret.
-         */
+*/
         override fun copyFrom(source: InputStream) {
             ensureOpen()
             val headroom = (limitInternal - position).toInt()
@@ -1089,7 +1022,7 @@ class SegmentOutputStore(
         override fun commit(): Long {
             ensureOpen()
             open = false
-            // O2: this file is the committed offset, not the size of the segment.
+            // This file is the committed offset, not the size of the segment.
             Files.writeString(
                 layout.commitFile,
                 "$position\n",
@@ -1135,13 +1068,13 @@ class SegmentOutputStore(
         /**
          * Per-stream marker recording that no further bytes will be written. Distinct from
          * [SEALED_DIR], which names ROTATED SEGMENTS — see `Layout.streamSealMarker`.
-         */
+*/
         const val STREAM_SEAL_MARKER = "stream.seal"
 
         /**
          * The exclusive, kernel-held ownership file per stream. Never read as content: it exists to
-         * be LOCKED, and its bytes are meaningless. See ADR-OBS-002.
-         */
+         * Be LOCKED, and its bytes are meaningless. See
+*/
         const val OWNERSHIP_FILE = "cur.own"
         const val DEFAULT_RESERVATION_BYTES = 64L * 1024L
         const val SEGMENT_MAX_BYTES = 8L * 1024L * 1024L
@@ -1152,13 +1085,11 @@ class SegmentOutputStore(
 
 /**
  * The on-disk name for a stream or run identifier.
- *
  * **Lossy and deliberately never undone.** Every character outside `[A-Za-z0-9._-]` folds onto `_`,
  * so `a/b` and `a_b` produce the same name. Nothing decodes these names back into identifiers:
  * [SegmentFrameIndex] writes the whole identifier into its own files and reads it back from
  * there, which is the only place the round trip is safe.
- *
  * Shared rather than duplicated so the byte store and the frame index cannot drift into naming the
  * same run differently.
- */
+*/
 internal fun safeStreamName(name: String): String = name.replace(Regex("[^A-Za-z0-9._-]"), "_")

@@ -6,26 +6,20 @@ import java.util.ServiceLoader
 
 /**
  * Orchestrates credential binding resolution using SPI-discovered [ContributedBindingFactory] instances.
- *
- * ## Design (INV-L6-CR-010 — Parallel Multi-Binding Isolation)
- *
+ * ## Design (— Parallel Multi-Binding Isolation)
  * Each contributed factory is loaded independently via `ServiceLoader` and handles
  * only its supported kinds. This provides:
  * - **Isolation**: a failure in one factory's resolution does NOT affect other factories
  * - **Parallelism-ready**: factories can be invoked in parallel (future optimization)
  * - **Extensibility**: new binding kinds can be added without modifying this class
- *
  * ## Fail-Fast Semantics (Partial-Failure = Nothing Injected)
- *
  * [resolveAll] follows all-or-nothing semantics:
  * 1. Resolve ALL bindings to their env entries
  * 2. If ANY resolution fails, return failure WITHOUT injecting any env vars
  * 3. Only commit (return success) when ALL bindings are resolved
- *
  * This ensures a malformed credential cannot leave the process in a partially-injected state.
- *
  * @param serviceLoader Optional [ServiceLoader] for testing; defaults to system loader
- */
+*/
 class MultiBindingWithCredentials(
     private val serviceLoader: ServiceLoader<ContributedBindingFactory> = ServiceLoader.load(
         ContributedBindingFactory::class.java
@@ -44,18 +38,17 @@ class MultiBindingWithCredentials(
 
     /**
      * Returns the set of all supported binding kinds.
-     */
+*/
     fun supportedKinds(): Set<String> = factories.keys
 
     /**
      * Resolves a single [CredentialsBinding] to environment variable entries.
-     *
      * @param binding The binding to resolve
      * @param credentialResolver Function that resolves a [CredentialsId] to a [SecretHandle]
      * @return List of [ContributedBindingFactory.EnvEntry] entries
      * @throws UnsupportedBindingKindException if no factory handles this binding kind
      * @throws BindingResolutionException if resolution fails
-     */
+*/
     fun resolve(
         binding: CredentialsBinding,
         credentialResolver: (CredentialsId) -> SecretHandle
@@ -74,21 +67,17 @@ class MultiBindingWithCredentials(
 
     /**
      * Resolves ALL bindings with fail-fast semantics.
-     *
-     * ## Fail-Fast (INV-L6-CR-010)
-     *
+     * ## Fail-Fast
      * If ANY binding fails to resolve:
      * 1. All successfully resolved entries are discarded (zero injected)
      * 2. [BindingResolutionException] is thrown with the first failure
      * 3. No environment variables are added to the process
-     *
      * This prevents partial injection where some credentials are set and others aren't.
-     *
      * @param bindings List of bindings to resolve
      * @param credentialResolver Function that resolves a [CredentialsId] to a [SecretHandle]
      * @return Map of environment variable names to secret handles (ONLY on success)
      * @throws BindingResolutionException if any binding fails (injects nothing)
-     */
+*/
     fun resolveAll(
         bindings: List<CredentialsBinding>,
         credentialResolver: (CredentialsId) -> SecretHandle
@@ -98,7 +87,7 @@ class MultiBindingWithCredentials(
         val resolvedEntries = mutableListOf<ContributedBindingFactory.EnvEntry>()
         var firstFailure: BindingResolutionException? = null
 
-        // Phase 1: Resolve ALL bindings (isolation per INV-L6-CR-010)
+        // Phase 1: Resolve ALL bindings (isolation)
         for (binding in bindings) {
             try {
                 val entries = resolve(binding, credentialResolver)
@@ -134,12 +123,11 @@ class MultiBindingWithCredentials(
 
     /**
      * Convenience overload for resolving with a simple credential map.
-     *
      * @param bindings List of bindings to resolve
      * @param credentialsMap Map from [CredentialsId] to [SecretHandle]
      * @return Map of environment variable names to secret handles
      * @throws BindingResolutionException if any binding fails
-     */
+*/
     fun resolveAll(
         bindings: List<CredentialsBinding>,
         credentialsMap: Map<CredentialsId, SecretHandle>

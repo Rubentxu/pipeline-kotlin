@@ -29,14 +29,13 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }
 
-// The JUnit lane below is NOT the lane that was removed on 2026-10-18. That one certified the
+// The JUnit lane below is NOT the lane that was removed on. That one certified the
 // SHIPPED artifact -- it needed the distribution ZIP, the SBOM staging step and the
 // `PIPELINEK_DIST_ZIP` environment, and it executed zero classes while naming a real ZIP in its
 // output. This one pins pure functions (`apiRangeContains`, `semverCompare`, `evaluate`) that
 // decide whether a candidate may ship. AGENTS.md section 2 forbids exactly the ingredients the
 // removed lane needed -- filesystem, JAR, Gradle invocation -- and none of them appear here, so
 // the candidate-admission model is testable without ever touching the artifact it admits.
-//
 // `useJUnitPlatform()` is load-bearing. Gradle defaults to the JUnit 4 runner, which discovers
 // zero JUnit 5 tests and reports BUILD SUCCESSFUL over an empty result set: a green gate that ran
 // nothing, which is how the removed lane looked from the outside.
@@ -49,17 +48,14 @@ tasks.test {
 }
 
 // ---------------------------------------------------------------------------
-// DIST-PRODUCT P0.3 build wiring: the cheap identity gate.
-//
+// The cheap identity gate.
 // This task is the boundary. It runs AFTER the distribution ZIP exists, asks
 // the release model whether those bytes are an admissible candidate, and fails
 // the build when they are not. Until this task existed, the identity model was
 // exercised only by tests — a green build did not mean an admissible candidate.
-//
 // The task is intentionally thin. It resolves the ZIP, shells out to the
 // `candidate-admission` main, and propagates a non-zero exit. It re-derives no
 // admission rules, so the build and the tested model cannot drift apart.
-//
 // Candidate sequence is a build parameter rather than a constant: a release
 // train publishes several candidates, and the sequence is what orders them.
 // ---------------------------------------------------------------------------
@@ -77,13 +73,13 @@ tasks.register<JavaExec>("candidateAdmission") {
     description = "DIST-PRODUCT P0.3: cheap identity admission for the distribution ZIP."
 
     dependsOn(":pipeline-application:distZip")
-    // PR-012 / WU-RP-5: every admitted candidate carries its SBOM. The cyclonedx plugin
+    // Every admitted candidate carries its SBOM. The cyclonedx plugin
     // already produces build/reports/bom.json; the admission previously recorded
     // "sbom": null because nothing placed the BOM where the probe looks. Generate it as
     // part of admission and stage it under the probed name — no manual step, and the
     // handoff stops shipping an SBOM hole.
     dependsOn(":pipeline-application:cyclonedxBom")
-    // §8 of the project's DISTRIBUTION-FIRST RELEASE POLICY lists
+    // of the project's DISTRIBUTION-FIRST RELEASE POLICY lists
     // `pipelinek-<v>.sdk.zip` and `pipelinek-bom-<v>.json` as required
     // release assets. The new `:pipeline-release:sdkZip` task produces
     // them from the local Maven repo populated by
@@ -121,7 +117,6 @@ tasks.register<JavaExec>("candidateAdmission") {
         // Stage the freshly generated BOM under the probed name. The task dependency above
         // guarantees it exists; the copy is what makes it OBSERVABLE to the admission probe,
         // which only looks inside the distributions directory.
-        //
         // It is checked rather than assumed. `dependsOn` declares the intent to run
         // `:pipeline-application:cyclonedxBom`; it does not promise the task emitted a
         // file, and a task that ran and wrote nothing looks exactly like one that was
@@ -141,25 +136,22 @@ tasks.register<JavaExec>("candidateAdmission") {
 
         val sbom = dist.resolve("pipelinek-$version.sbom.json")
 
-        // §8 names three more assets besides the ZIP, and each one is backed by a
+        // names three more assets besides the ZIP, and each one is backed by a
         // `dependsOn` above. An absent file after a declared dependency ran is not an
         // optional state; it is a dependency that did not produce what it promised.
-        //
         // The previous shape degraded silently on all three. `takeIf { it.isFile }` turned
         // the absence into null, null was written into argv as "-", and
         // `CandidateAdmissionMain` mapped "-" back to null — so the handoff recorded a
         // candidate with no SDK and no BOM while the task itself went green. `covered` shrank
         // with them, and `covered.isNotEmpty()` was the only completeness invariant
         // `CandidateMaterializer` had, so a `SHA256SUMS` covering the ZIP alone satisfied it.
-        // Measured 2026-10-18: three mandatory assets could be missing with every existing
+        // Measured in an earlier build: three mandatory assets could be missing with every existing
         // invariant holding and no diagnostic emitted.
-        //
-        // `covered.isNotEmpty()` is no longer the ONLY invariant there. `b078bb63` made the
+        // `covered.isNotEmpty()` is no longer the ONLY invariant there. The materializer made the
         // materializer refuse a non-empty `covered` with no `sha256sums` path, which is the
         // second half of this defect class and landed after the paragraph above was written.
         // The guards here are still the first line: they refuse at the producer, where the
         // absent dependency is nameable, rather than at the consumer.
-        //
         // The ZIP check above already fails closed. These three now do too, and each refusal
         // names the dependency that was supposed to produce the file.
         fun requiredAsset(asset: String, file: File, producedBy: String): File {
@@ -186,9 +178,8 @@ tasks.register<JavaExec>("candidateAdmission") {
             ":pipeline-release:sdkZip",
         )
 
-        // §8 — the materializer writes SHA256SUMS covering these four
+        // — the materializer writes SHA256SUMS covering these four
         // distributable assets. The list is `;`-separated on the CLI.
-        //
         // It used to be `listOfNotNull(...)` with three `?: "-"` sentinels in the
         // argv beside it, because the three assets were `takeIf { it.isFile }` and
         // could be absent. The checks above now make each of them a non-null `File`,
@@ -212,9 +203,9 @@ tasks.register<JavaExec>("candidateAdmission") {
             sbom.absolutePath,
             sdkZip.absolutePath,
             bomJson.absolutePath,
-            // P0.5 — the repository whose version control state defines this
+            // The repository whose version control state defines this
             // candidate's provenance. RootProject lives in v2/, whose parent
-            // holds the .git directory.
+            // holds.git directory.
             rootProject.projectDir.parentFile.absolutePath,
             covered.joinToString(";") { it.absolutePath },
         )
@@ -229,26 +220,23 @@ tasks.register<JavaExec>("candidateAdmission") {
 
 /**
  * Build the SDK distribution ZIP and the SDK BOM JSON manifest.
- *
- * §8 of the project's DISTRIBUTION-FIRST RELEASE POLICY requires both
+ *  of the project's DISTRIBUTION-FIRST RELEASE POLICY requires both
  * `pipelinek-<v>.sdk.zip` and `pipelinek-bom-<v>.json` as exact release
  * assets, distinct from the SBOM (which is a CycloneDX dependency
  * inventory) and from the distribution ZIP (which is the CLI). The SDK
  * ZIP carries the public contracts (`pipeline-domain`,
  * `pipeline-scripting-api`, `pipeline-events`, `pipeline-output`,
  * `pipeline-runtime-api`) and the BOM POM that pins them.
- *
  * Source: `<v2>/build/sdk-repo/`, the local Maven repository populated
  * by `:publishSdkForExternalPlugin`. The builder selects every entry
  * whose folder ends with `/<version>/` and zips it. The BOM JSON is a
  * flat manifest of `group:artifact:version` triples plus a per-file
  * SHA-256 inventory of the ZIP contents.
- *
  * The managed-coordinates list MUST mirror
  * `publishedContractModules` in the root build. The `sdkBomModules`
  * list (the `:pipeline-sdk-bom` POM itself) is included implicitly
  * because the builder scans the repo.
- */
+*/
 tasks.register<JavaExec>("sdkZip") {
     group = "distribution"
     description = "§8: build pipelinek-<v>.sdk.zip and pipelinek-bom-<v>.json " +
@@ -310,13 +298,12 @@ tasks.register<JavaExec>("sdkZip") {
  * unavailable (an exported source tree, for example). Never an empty string:
  * the manifest records provenance, and an empty commit would be a claim about
  * a build nobody can trace.
- *
- * NOTE (P0.5): this value alone does NOT establish provenance. It is git HEAD
+ * This value alone does NOT establish provenance. It is git HEAD
  * while the ZIP is compiled from the working tree, so a dirty tree would make
  * it a false address. The build's real guarantee is the clean-tree law in
  * `SourceProvenance`, enforced by the `candidateAdmission` task; this function
  * only supplies the address to be verified.
- */
+*/
 fun gitCommitOf(root: Project): String = try {
     providers.exec {
         workingDir(root.projectDir.parentFile)
@@ -327,19 +314,16 @@ fun gitCommitOf(root: Project): String = try {
 }
 
 // ----------------------------------------------------------------------------
-// PK-RC-PLUGIN-001 — the release gate.
-//
+// The release gate.
 // A release MUST NOT be published without this gate producing a PASS receipt
 // bound to the ZIP's sha256. The gate runs:
 //   1. `:pipeline-application:distZip`             (the candidate bytes)
 //   2. `:pipeline-application:cyclonedxBom`       (the SBOM)
 //   3. `:pipeline-release:candidateAdmission`      (the BundledPluginCompatibility
 //                                                   + identity + provenance checks)
-//
 // Any non-zero exit from any of the three propagates verbatim. There is no
 // "I will skip the gate" escape: the only way to advance is for the gate to
 // admit the bytes the ZIP actually contains.
-//
 // Block 3 of the spec also asked the gate to be reachable from `check` so a
 // developer without a clean tree can run it locally. The `releaseGate` task
 // is wired as a sibling of the standard lifecycle: it does NOT depend on
@@ -354,7 +338,6 @@ tasks.register("releaseGate") {
     description = "PK-RC-PLUGIN-001 + PK-RC-RENDER-001 + PK-NEXT R0.2 + PK-RELEASE-CONSOLIDATION H1.4: " +
         "run the candidate gate end-to-end. Dist ZIP + cyclonedxBom + candidateAdmission + " +
         "LaunchReceipt contract + SDK BOM alignment. Non-zero on any refusal."
-    //
     // The description used to enumerate four certifications that no longer run here: the
     // renderer partition test, the application regression suite, and the mandatory-plugin test
     // (7 plugins) whose failure-on-unset-`PIPELINEK_DIST_ZIP` was the gate's hard-red path for a
@@ -375,16 +358,15 @@ tasks.register("releaseGate") {
         ":buildExampleBlockPlugin",
     )
 
-    // PK-RELEASE-CONSOLIDATION R1.1 (audit fix): previously this doFirst
+    // Previously this doFirst
     // called `testTask.environment("PIPELINEK_DIST_ZIP", ...)`. That
     // arrived too late — by the time releaseGate's doFirst ran, the
     // test task it depends on had either already forked or already
     // completed. The env var is now attached to the test task's own
     // configuration (above), so a developer running just
     // `:pipeline-release:test` gets the same wiring as the gate.
-    //
     // The doFirst is now a sanity check only: the dependency on
-    // :pipeline-application:distZip guarantees the file exists by the
+    //:pipeline-application:distZip guarantees the file exists by the
     // time the test JVM forks, but if a developer bypasses the graph
     // (cleaning the build dir mid-run, for instance) we want a hard
     // error rather than a confusing "zip not found" deep in the test.
@@ -400,25 +382,22 @@ tasks.register("releaseGate") {
     }
 }
 
-// The JUnit lane was REMOVED (2026-10-18, testing RESET). Everything it configured existed to
+// The JUnit lane was REMOVED . Everything it configured existed to
 // certify the SHIPPED artifact from a JVM: the SBOM staging dependency, the
 // `PIPELINEK_DIST_ZIP` environment plumbing, the `release.dist.zip` and `release.v2.root` system
 // properties, and the `releaseGate` entries that depended on `:test` and on
 // `:pipeline-application:test`.
-//
 // Gradle 8.14 has no `Test.failOnNoDiscoveredTests` property and `src/test` was empty here at
 // the time, so that lane reported a distribution certification while executing zero classes --
 // the most expensive false green in the build, because it names a real ZIP and a real SBOM. The
 // gate entries go with it: a `dependsOn(":pipeline-application:test")` on an empty source set
 // makes `releaseGate` slower and no more honest.
-//
 // `src/test` is no longer empty. It holds the pure release decisions --
 // `ApiRangeContainsTest`, `CandidateHandoffDigestAttributionTest`,
 // `ProductVersionIdentityTest` -- which is exactly what the lane was not for: they decide from
 // strings, with no ZIP and no SBOM. The clause above used to read "is empty here" in the
 // present tense, and it stopped being true when the first of those landed. A comment that
 // asserts a property of the build outlives the state it described unless someone edits it.
-//
 // Its replacement is the executable E2E layer: `scripts/verify-all.sh` stages the distribution
 // once (`:pipeline-application:installDist`) and `v2/examples/run.sh` runs the real binary
 // against the `.pipeline.kts` pipelines. An earlier version of this comment named a single

@@ -22,16 +22,14 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * JSON codec for [JUnitResultsInput] (F5.2).
- *
+ * JSON codec for [JUnitResultsInput]
  * Same shape as the SCM/Git codec: kotlinx.serialization runtime JSON
  * API (no plugin), symmetric encode/decode, `encodeDefaults = true`
  * preserved via explicit `put` for every field so the roundtrip is
  * lossless.
- *
- * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * Migrated to `PipelineJson` / `JsonAccessors`. Wire
  * format unchanged.
- */
+*/
 object JUnitResultsInputCodec : StepCodec<JUnitResultsInput> {
 
     override fun encode(value: JUnitResultsInput): EncodedStepValue = PipelineJson.encode(
@@ -73,10 +71,9 @@ object JUnitResultsInputCodec : StepCodec<JUnitResultsInput> {
  * JSON codec for [JUnitReportSummary]. Symmetric to the input codec so
  * a handler-side failure that returns the typed value lands at the same
  * JSON shape on the wire.
- *
- * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * Migrated to `PipelineJson` / `JsonAccessors`. Wire
  * format unchanged.
- */
+*/
 object JUnitReportSummaryCodec : StepCodec<JUnitReportSummary> {
 
     override fun encode(value: JUnitReportSummary): EncodedStepValue = PipelineJson.encode(
@@ -107,29 +104,24 @@ object JUnitReportSummaryCodec : StepCodec<JUnitReportSummary> {
 }
 
 /**
- * JSON codec for [JUnitResultsOutput] (F5.2 / WU-LPR-FK).
- *
+ * JSON codec for [JUnitResultsOutput]
  * Mirrors `CoreShellOutput`'s shape in `CoreShellStep.kt`: the durable
  * payload is the carrier, not just the summary, so that the
  * [dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary]
  * can project `outcome` via `produced as? TypedStepOutput` without
  * ever inspecting a concrete StepKey. The boundary stays Step-agnostic.
- *
  * On the wire:
- *
  *     {
  *       "outcome": { "kind": "Success" }
  *     |  "outcome": { "kind": "Failure", "failureKind": "USER", "message": "..." },
- *       "summary": { "tests": ..., "failures": ..., ... }
+ *       "summary": { "tests":..., "failures":...,... }
  *     }
- *
  * The legacy [JUnitReportSummaryCodec] (summary-only envelope) is still
  * shipped for replay-decode of any historical journal entries; new
  * production writes always use [JUnitResultsOutputCodec].
- *
- * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * Migrated to `PipelineJson` / `JsonAccessors`. Wire
  * format unchanged.
- */
+*/
 object JUnitResultsOutputCodec : StepCodec<JUnitResultsOutput> {
 
     override fun encode(value: JUnitResultsOutput): EncodedStepValue = PipelineJson.encode(

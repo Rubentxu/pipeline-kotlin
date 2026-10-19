@@ -14,8 +14,7 @@ kotlin {
 }
 
 dependencies {
-    // PK-R1 / CRIC-M2 — module split precondition.
-    //
+    // Module split precondition.
     // `api(:pipeline-runtime-api)`, not `implementation`: the three production
     // adapters (`RuntimeRecoverPortStoreAdapter`, `RuntimeControlPortStoreAdapter`,
     // `RuntimeIntrospectionPortStoreAdapter`) implement the port interfaces
@@ -32,9 +31,8 @@ dependencies {
     // `ReplayCursor.load`). Hiding any of these behind `implementation` would put
     // them at `runtime` scope in the POM and hand a consumer a contract whose own
     // value types it cannot resolve at compile time — exactly the failure mode the
-    // M1 read-side wires guard against.
-    //
-    // PK-R1 / CRIC-M2 — after the split, these two `api` deps are technically
+    // Read-side wires guard against
+    // After the split, these two `api` deps are technically
     // reachable transitively from `:pipeline-runtime-api`. They are kept as direct
     // `api` declarations for the (legitimate) `:pipeline-events` / `:pipeline-output`
     // consumption that the adapters do, NOT because the new module forces it: a
@@ -42,7 +40,7 @@ dependencies {
     // `api(:pipeline-runtime-api)` would still leave the contracts transitive.
     api(project(":pipeline-events"))
     api(project(":pipeline-output"))
-    // `implementation`: the adapters compose internal PK stores (the SQLite
+    // `implementation`: the adapters compose internal stores (the SQLite
     // event store, the file-backed lease, the operation journal, the segment
     // output follower). The public ABI does not name any of these types, so
     // they belong at `implementation` scope: a consumer that pulls in
@@ -56,8 +54,8 @@ dependencies {
 
 }
 
-// PK-R1 / CRIC-M2 — module split precondition. This `publishing { }` block is
-// intentionally ORPHANED in this commit: the four M2 ports live in the new
+// Module split precondition. This `publishing { }` block is
+// Intentionally ORPHANED in this commit: the four ports live in the new
 // `:pipeline-runtime-api` module, NOT in this one. This block keeps a
 // `sdk` publication declared so the publication machinery is wired up if a
 // future cycle decides to publish `:pipeline-runtime` for an internal-only
@@ -83,20 +81,17 @@ publishing {
     }
 }
 
-// Unit-test wiring REMOVED (2026-10-18, testing RESET).
-//
+// Unit-test wiring REMOVED .
 // This module carries no unit tests: it is the RUNTIME that executes steps; a JUnit class
 // driving it is a harness, and the plan bans harness code. Its verification is the executable
 // E2E layer -- `.pipeline.kts` pipelines under `v2/examples/`, driven by
 // `v2/examples/run.sh` -- and not a JUnit class.
-//
 // The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
 // Left in place they were a SILENT green: a `Test` task whose source set is empty reports
 // success while executing zero classes. Gradle 8.14 exposes no `failOnNoDiscoveredTests`
 // property -- the setting does not exist in this version, so nothing inside the build can
 // turn that green into a failure, and a build file asserting otherwise is describing a flag
 // it cannot compile.
-//
 // What turns it into a failure lives outside Gradle: `scripts/verify-all.sh` enumerates the
 // modules it asks from the filesystem and fails when a module that has a test source produces
 // no JUnit XML. The wiring that could have produced the misleading green is gone from the

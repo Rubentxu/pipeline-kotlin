@@ -6,23 +6,20 @@ package dev.rubentxu.pipeline.v2.domain
  * [StepDispatcher] (concurrent waves through the optional
  * [ConcurrentStepDispatcher], which reuses the SAME dispatcher instance),
  * and folds outcomes with [RunOutcomeReducer].
- *
- * This adapter exists to (a) exercise the full M2 contract chain in
+ * This adapter exists to (a) exercise the full contract chain in
  * tests and characterisation without I/O, and (b) define the reference
- * execution semantics the production durable coordinator (LF-0205+) must
+ * Execution semantics the production durable coordinator (+) must
  * reproduce: same order, same dispatch sequence, same reduced outcome —
- * that is the M2 exit criterion ("InMemory/SQLite producen outcomes y
+ * That is the exit criterion ("InMemory/SQLite producen outcomes y
  * orden semántico equivalente").
- *
  * ## Semantics
- *
  * - Plan: [ExecutionPlanner.plan] — waves of constraint-free steps;
  *   fail-closed on unknown edge references, cycles, and contradictory
  *   `PARALLEL` edges.
  * - Concurrent waves: with a [ConcurrentStepDispatcher] injected, wave
  *   steps dispatch concurrently through the same [StepDispatcher]
- *   instance (M2-004). Without one, waves flatten to sequential dispatch
- *   in declaration order (the pre-LF-0207 behaviour, kept as fallback).
+ * Instance. Without one, waves flatten to sequential dispatch
+ * In declaration order (the previous behaviour, kept as fallback)
  * - Resume: with [RunRequest.resumeAfter] set, steps up to and including
  *   the cursor are skipped **without dispatching**; a wave partially
  *   before the cursor keeps only its remaining steps (as a wave if two
@@ -32,14 +29,12 @@ package dev.rubentxu.pipeline.v2.domain
  *   [RunOutcomeReducer] — first Failure wins, else first Unstable, else
  *   Success. An empty execution (definition without steps) reduces to
  *   [RunOutcome.Success].
- *
  * The adapter is not thread-safe per instance; wrap it for concurrent use.
- *
  * @see RunCoordinator
  * @see ExecutionPlanner
  * @see ConcurrentStepDispatcher
  * @see RecordingStepDispatcher
- */
+*/
 class InMemoryRunCoordinator(
     private val dispatcher: StepDispatcher,
     private val concurrentDispatcher: ConcurrentStepDispatcher? = null,
@@ -83,3 +78,4 @@ class InMemoryRunCoordinator(
         }
     }
 }
+

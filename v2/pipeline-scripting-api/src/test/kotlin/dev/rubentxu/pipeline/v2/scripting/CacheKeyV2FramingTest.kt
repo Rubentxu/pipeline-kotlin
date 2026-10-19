@@ -8,16 +8,14 @@ import org.junit.jupiter.api.Test
  * The cache key is the identity of a compiled artifact, and `CompiledScriptCache.fileNameFor`
  * turns it into a jar FILE NAME, so two identities that share a key are two different
  * compilations competing for one file, and whichever wrote last is the one the next run executes.
- *
  * The pair below is the one named in `CacheKey`'s own KDoc: joined with a single `|`, both spell
  * `a|b|c|d|`. Framing each part by its length is the only thing keeping them apart, and this is
  * the only instrument that notices if that ever goes away.
- *
  * The object is reached as `CacheKey.Companion.v2`, not as the `CacheKey.v2` shorthand: measured
- * 2026-10-19, the shorthand does not resolve from another file in this module while all three
+ * , the shorthand does not resolve from another file in this module while all three
  * explicit forms do. The reason is not established, so this test uses the spelling that compiles
  * rather than asserting a cause.
- */
+*/
 class CacheKeyV2FramingTest {
 
     @Test

@@ -16,11 +16,9 @@ kotlin {
 
 dependencies {
     // `api`, not `implementation`, and the distinction is the whole point of this block.
-    //
     // `implementation` publishes the dependency as `runtime` scope in the POM. A consumer that
     // compiles against a legal public type then fails. All three of these leak into the published
     // ABI and are named here, not guessed:
-    //
     //   pipeline-domain         EventRef.source and PipelineEventEnvelope.subject are ResourceRef;
     //                            EventHistory and EventQuery take ResourceRef too.
     //   pipeline-scripting-api  DomainEvent's public properties are CacheKey and
@@ -56,7 +54,6 @@ tasks.test {
     // another module's sources, so there is nothing for a cross-module input to guard. If one ever
     // does, the honest fix is to make that test read the tree through a Gradle-provided property,
     // not to re-add a directory whose hash nothing consumes.
-    //
     // `useJUnitPlatform()` is load-bearing, not decorative: without it Gradle defaults to the JUnit 4
     // runner, discovers zero JUnit 5 tests, and reports BUILD SUCCESSFUL over an empty result set.
     useJUnitPlatform()

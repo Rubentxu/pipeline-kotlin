@@ -15,7 +15,7 @@ sealed interface CompiledExecutionUnit {
     /**
      * A block step with its compiled body plan.
      * The block counts as ONE planning unit; its body is represented as a separate [CompiledExecutionPlan].
-     */
+*/
     data class Block(
         val block: BlockStepNode,
         val bodyPlan: CompiledExecutionPlan,
@@ -53,7 +53,7 @@ object CompiledExecutionPlanner {
                 }
                 is StageBody.Matrix -> error("Matrix planning is not supported yet for stage '${stage.name}'")
 
-                // S4-F2: a scripted body contributes NO static unit, and that is a fact rather
+                // A scripted body contributes NO static unit, and that is a fact rather
                 // than a gap. The planner enumerates structure known at COMPILE time, and a
                 // scripted body has none by construction: its steps are produced at RUN time by
                 // the artifact. Emitting a placeholder unit here would be the declarative
@@ -70,7 +70,7 @@ object CompiledExecutionPlanner {
     /**
      * Plans a single step, returning a [CompiledExecutionUnit].
      * For [BlockStepNode], wraps in a [CompiledExecutionUnit.Block] with recursive body plan.
-     */
+*/
     private fun planStep(step: StepNode): CompiledExecutionUnit = when (step) {
         is OpaqueStepNode -> CompiledExecutionUnit.Single(step)
         is BlockStepNode -> {
@@ -81,7 +81,7 @@ object CompiledExecutionPlanner {
 
     /**
      * Plans a list of steps into a [CompiledExecutionPlan].
-     */
+*/
     private fun planBody(steps: List<StepNode>): CompiledExecutionPlan {
         val bodyUnits = steps.map { step -> planStep(step) }
         return CompiledExecutionPlan(bodyUnits)

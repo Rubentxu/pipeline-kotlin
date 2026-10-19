@@ -11,15 +11,14 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
 
 /**
- * D-032 (audit D-011 H3.d): scripted-frontend run wrapper extracted from Main.kt.
- *
- * Single classloader for the plugin JAR list (LB-02 / EP-6): parented on the
+ * Scripted-frontend run wrapper extracted from Main.kt.
+ * Single classloader for the plugin JAR list: parented on the
  * application classloader so the plugin sees the SDK contracts; installed as
  * the thread-context classloader during composition so ServiceLoader discovery
  * finds the contributed descriptors. The SAME jars are also given to the Kotlin
  * script compiler via ScriptDefinition.classpath — one flag, one classpath,
  * two consumers.
- */
+*/
 internal fun runScriptedFrontend(
     entryPoint: dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint,
     runId: String,
@@ -53,7 +52,7 @@ internal fun runScriptedFrontend(
         )
     }
     return when (outcome) {
-        // S4-D2: the aggregate is ALREADY a RunOutcome, produced by RunOutcomeReducer inside
+        // The aggregate is ALREADY a RunOutcome, produced by RunOutcomeReducer inside
         // `runBody`. This branch used to re-derive it from a StepOutcome with a second
         // hand-written Success/Unstable/Failure table — precedence written twice, with the copy
         // here able to disagree with the reducer that is supposed to own it. The reducer is now

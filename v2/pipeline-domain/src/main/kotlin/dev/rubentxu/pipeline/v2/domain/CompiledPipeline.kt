@@ -41,33 +41,29 @@ data class EnvironmentSpec(val values: Map<String, String>) {
 }
 
 /**
- * S3.3 — DEPRECATED. Superseded by [StageOption]; nothing constructs this.
- *
+ * DEPRECATED. Superseded by [StageOption]; nothing constructs this.
  * Retained rather than deleted, for one reason: it is PUBLISHED API. It was a
  * public class in `dev.rubentxu.pipeline.v2.domain`, so removing it outright
  * breaks every external plugin author who named it, and
  * `:pipeline-domain:apiCheck` (binary-compatibility validator) is right to
  * refuse. This is the same rule already applied to the deprecated
- * `AgentResolved` event in S3.1: supersede, do not silently break.
- *
+ * Supersede, do not silently break.
  * Why it was wrong, stated so the deprecation is informative rather than a
  * bare marker: a `name: String` / `value: String?` pair cannot express WHICH
  * options exist, so an option that no interpreter reads is indistinguishable
  * from one that is. It compiled, serialized, and did nothing — the silent drop
  * the Semantic Constitution names as a defect class.
- *
  * @see StageOption for the carrier that replaced it.
- *
  * NOTHING ENFORCES THAT IT STAYS UNUSED. This comment used to say a
  * `FArchS3TypedOptionCarrierFitnessTest` pinned "no production source
  * constructs this type"; that file is gone. The guard it described was a
- * SOURCE-TEXT FITNESS -- it grepped the tree -- which AGENTS.md §2 bans
+ * SOURCE-TEXT FITNESS -- it grepped the tree -- which AGENTS.md bans
  * inside unit tests, so it could not simply be rewritten. What holds the line
  * today is only the deprecation itself: a construction site would have to name
  * a deprecated type on purpose. The residual risk is real and small -- a
  * migration that reintroduces the name/value pair would reintroduce the silent
  * drop -- and it is recorded here rather than closed.
- */
+*/
 @Deprecated(
     message = "OptionSpec is a name/value bag with no type-level statement of which options " +
         "exist, so an option nothing reads is indistinguishable from one that is. Use " +
@@ -81,8 +77,7 @@ data class OptionSpec(val name: String, val value: String? = null) {
 }
 
 /**
- * S3.3 — a stage option, as a CLOSED set of cases rather than a name/value bag.
- *
+ * A stage option, as a CLOSED set of cases rather than a name/value bag.
  * This replaces `OptionSpec(name: String, value: String?)`, which forced a
  * stringly-typed hole through the whole path: the DSL held a typed `Long`,
  * the compiler flattened it to `OptionSpec("timeout", it.toString())`, and the
@@ -90,52 +85,43 @@ data class OptionSpec(val name: String, val value: String? = null) {
  * followed by `toLongOrNull`. A name a typo away from silence, a payload that
  * could not survive the trip, and three exception escapes for what are ordinary
  * author mistakes.
- *
  * ## Why only one case
- *
  * The rule that decides it: *"Every option must map to a real
  * policy/interpreter or be rejected."* Only `Timeout` has one
  * (`StageNode.projectShellOptions` -> `ShOptions.timeoutMs`); `Retry`,
  * `SkipDefaultCheckout` and `Timestamps` were removed from the DSL surface in
- * WU-RP-032 precisely because nothing read them. Adding their cases here would
+ * Precisely because nothing read them. Adding their cases here would
  * re-create the defect the previous shape had — a declared option with no
  * interpreter — inside a more respectable-looking type. The ADT grows a case on
  * the day an interpreter exists, not on the day a design note lists it.
- *
  * ## Proof that the sealed-ness is load-bearing
- *
  * Mutation M-s3-3 added `data object Timestamps : StageOption` — a declared case
- * with no interpreter, precisely the §8 violation. It did not compile:
- *
+ * with no interpreter, precisely the violation. It did not compile:
  * ```
  * e: CanonicalStructuralDecisions.kt:292:12 'when' expression must be exhaustive.
  *    Add the 'Timestamps' branch or an 'else' branch.
  * ```
- *
- * So the §8 rule is enforced by the build, not by discipline. An uninterpreted
+ * So the rule is enforced by the build, not by discipline. An uninterpreted
  * option cannot be added without the interpreter being forced to name it, and
  * the interpreter has no `else` to absorb it.
- *
  * ## Why the invariant lives in the constructor
- *
  * `Timeout` rejects a non-positive duration at construction, so an invalid
  * deadline is unrepresentable rather than representable-and-rejected later.
  * That deletes the interpreter's whole failure surface: it no longer needs a
  * "multiple timeout options" check, a parse, a positivity check or an overflow
  * guard, so a closed `when` over this interface is total by construction
  * rather than by an `else` that hides an unhandled case.
- */
+*/
 @Serializable
 sealed interface StageOption {
 
     /**
      * A stage-wide shell deadline.
-     *
      * Distinct from the `timeout()` BLOCK Step, which is a body with its own
      * `TimeoutScheduled`/`TimeoutTriggered` events. This produces no such
      * event: a breach surfaces as the governed step's own
      * `StepFailed(failureKind = TIMEOUT)`.
-     */
+*/
     @Serializable
     data class Timeout(val milliseconds: Long) : StageOption {
         init {
@@ -165,13 +151,11 @@ data class ToolSpec(val name: String, val version: String) {
 }
 
 /**
- * The `post` block as it appears in the compiled IR (S2-B).
- *
+ * The `post` block as it appears in the compiled IR
  * TYPED over [PostCondition] rather than `Map<String, ...>`: a bare string key
  * would let `post { alwyas { } }` compile into a block that silently never runs,
  * which is the exact fake-fallback class the Step Constitution forbids. The
  * closed enum makes an unrecognised condition a compile error instead.
- *
  * Values are [StepNode] lists because the IR must round-trip through
  * serialization without knowing any execution detail. The pure
  * [dev.rubentxu.pipeline.v2.domain.post.PostPlanner] decides which of these
@@ -179,7 +163,7 @@ data class ToolSpec(val name: String, val version: String) {
  * interpreter that dispatches them. There is NO second reference layer: the
  * nodes here are the same values the stage body would carry, so a durable
  * rerun replays the identical program.
- */
+*/
 @Serializable
 data class PostSpec(
     val conditions: Map<PostCondition, List<StepNode>> = emptyMap(),
@@ -195,7 +179,7 @@ data class PostSpec(
     /**
      * The pure projection into the runtime [dev.rubentxu.pipeline.v2.domain.post.PostPlan].
      * Total, effect-free, and the ONLY place the two representations meet.
-     */
+*/
     fun toPostPlan(): dev.rubentxu.pipeline.v2.domain.post.PostPlan =
         dev.rubentxu.pipeline.v2.domain.post.PostPlan(bodies = conditions)
 }
@@ -232,26 +216,24 @@ data class StageNode(
     val post: PostSpec? = null,
 
     /**
-     * S1-B: directives declared on this stage, in declaration order.
-     *
+     * Directives declared on this stage, in declaration order.
      * Declarative data only: a key plus its already-encoded arguments. The
      * canonical coordinator admits every entry against the [DirectiveRegistry]
      * BEFORE the stage starts (fail-closed); interpretation per phase is read
      * from the closed [DirectiveExecutionPolicy], never from the key.
-     */
+*/
     val directives: List<StageDirective> = emptyList(),
 ) {
     init { require(name.isNotBlank()) { "StageNode.name must not be blank" } }
 }
 
 /**
- * A directive invocation as declared on a stage (S1-B carrier).
- *
+ * A directive invocation as declared on a stage (carrier)
  * The key is an open-world string so a stage can name any contributed
  * directive; the arguments are an opaque encoded payload owned by the
  * definition's codec. Deliberately serializable plain data: the IR must
  * round-trip without knowing any concrete directive.
- */
+*/
 @Serializable
 data class StageDirective(
     val key: String,
@@ -274,44 +256,37 @@ sealed interface StageBody {
     data class Matrix(val matrix: MatrixSpec) : StageBody
 
     /**
-     * S4-F2 (ADR-S4-F2) — a stage whose body is a COMPILED SCRIPTED ARTIFACT.
-     *
+     * A stage whose body is a COMPILED SCRIPTED ARTIFACT.
      * A distinct case rather than a flag, and the distinction is not cosmetic: it makes a hybrid
      * body unrepresentable instead of merely discouraged. A stage that mixes eager steps with
      * runtime calls has no defined lexical ordering between them, and a flag would let it be
      * written down before anyone had decided what that ordering means.
-     *
      * The payload is an IDENTITY, not the artifact. `pipeline-domain` deliberately depends on
      * nothing but kotlinx-serialization and coroutines, so it cannot name `ScriptedArtifactIdentity`
      * (owned by `pipeline-scripting-api`) or `CompiledScriptedEntryPoint` (owned by
      * `pipeline-application`) without inverting the dependency. The IR therefore carries the key
      * the artifact's own identity already produced, and the EDGE resolves it — the same arrangement
      * as `PluginStepId` naming a Step that lives in a registry.
-     */
+*/
     @Serializable
     data class Scripted(val ref: ScriptedStageRef) : StageBody
 }
 
 /**
- * S4-F2 — reference to a compiled scripted artifact, carrying only what the canonical spine needs
+ * Reference to a compiled scripted artifact, carrying only what the canonical spine needs
  * in order to RECONCILE a stage: which artifact, and which entry point inside it.
- *
  * ## Why this holds a key and not the six identity fields
- *
  * `ScriptedArtifactIdentity` owns `sourceDigest`, `dslApiVersion`, `compilerAdapterVersion`,
  * `runtimeCompatibilityVersion`, `pluginLockDigest` and `facadeSchemaDigest`, plus
  * `fingerprintMaterial()` — the collision-free material the replay fingerprint already consumes.
- *
  * Copying those six fields here would create a SECOND authority for the same identity, and two
  * authorities that decide the same thing get eliminated rather than synchronised. So the computation
  * stays where it lives and this type transports its result.
- *
  * ## What this boundary does and does not lose
- *
  * It loses the ARTIFACT, which is executable and not serialisable, and keeps its IDENTITY, which is
  * the only thing the spine needs. The same rule as `classifyShellTerminal` receiving a terminal
  * instead of an `OperationStatus`: the fact travels, its meaning is applied by whoever owns it.
- */
+*/
 @Serializable
 data class ScriptedStageRef(
     /** `ScriptedArtifactIdentity.fingerprintMaterial()`. Never recomputed here. */
@@ -356,11 +331,10 @@ data class VersionedStepPayload(val schemaVersion: String, val encoded: String) 
 
 /**
  * Typed overlay for body execution scope tracking.
- *
  * Replaces the untyped `ScopeFrame` marker stack in CanonicalDurableRunCoordinator
  * with a sealed family of typed overlays. Each variant carries only the minimal
  * metadata needed for scope restoration.
- */
+*/
 @kotlinx.serialization.Polymorphic
 @Serializable
 sealed interface ContextOverlay {
@@ -380,11 +354,10 @@ sealed interface ContextOverlay {
     data class CancellationScope(val scopeId: String) : ContextOverlay
 
     // Legacy catch-error overlay for migration compatibility.
-    // EM-5/EM-6 (catcherror-semantics-em56): carries stageResult + message so the coordinator's
+    // Carries stageResult + message so the coordinator's
     // catchError fold-walk can publish the CatchErrorTriggered domain event at the point of the
     // real failure (re-throw/suppress decision) instead of at a later IR marker step.
-    //
-    // P3-E D3: both results are typed, and both keep travelling as BARE JSON STRINGS. The
+    // Both results are typed, and both keep travelling as BARE JSON STRINGS. The
     // explicit serializer is load-bearing — kotlinx would otherwise emit `{"type":"UNSTABLE"}`
     // and change the compiled-pipeline format this overlay has always had.
     @Serializable
@@ -406,11 +379,10 @@ sealed interface ContextOverlay {
 
 /**
  * Immutable stack of [ContextOverlay] values.
- *
  * Used by CanonicalDurableRunCoordinator to track active scopes during body execution.
  * The immutability guarantee ensures trivially correct `finally`-restoration:
  * `val parentStack = contextStack; try { ... } finally { contextStack = parentStack }`.
- */
+*/
 @Serializable
 data class ContextStack(val frames: List<ContextOverlay>) {
     fun push(overlay: ContextOverlay): ContextStack = ContextStack(frames + overlay)

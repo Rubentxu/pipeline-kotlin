@@ -1,20 +1,16 @@
 #!/usr/bin/env bash
 # SDKMAN publish for pipelinek vX.Y.Z
-#
 # Authority:
 #   - SDKMAN Vendor API doc: https://sdkman.io/vendors
-#
 # Usage:
 #   SDKMAN_CONSUMER_KEY=xxx SDKMAN_CONSUMER_TOKEN=yyy \
-#     ./scripts/release/sdkman-publish.sh 0.39.0
-#
+#./scripts/release/sdkman-publish.sh 0.39.0
 # Pre-conditions:
 #   - GitHub Release vX.Y.Z is PUBLIC with the canonical ZIP AND its
 #     SHA256SUMS manifest as assets
 #   - ZIP SHA-256 match between the manifest and the GitHub asset
 #   - pipelinek-X.Y.Z/bin/pipelinek is the executable SDKMAN will expose
 #   - scripts/release/resolve-release-digest.sh is present and executable
-#
 # Idempotent: POST to /release is idempotent per SDKMAN doc.
 # Does NOT make vX.Y.Z the default — that's a separate PUT to /default.
 

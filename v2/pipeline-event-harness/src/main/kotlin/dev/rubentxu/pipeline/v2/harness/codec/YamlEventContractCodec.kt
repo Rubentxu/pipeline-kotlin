@@ -15,7 +15,6 @@ import org.yaml.snakeyaml.error.YAMLException
  * YAML is deserialization of the typed ADT — never arbitrary interpretation.
  * Unknown version, unknown constraint form or unknown fields fail CLOSED with
  * a useful diagnostic. Wire form (v1):
- *
  * version: 1
  * name: 07-catch-error
  * expect: { runOutcome: UNSTABLE }
@@ -25,7 +24,7 @@ import org.yaml.snakeyaml.error.YAMLException
  *   - before:
  *       first: { event: RetryAttemptFinished, where: { outcome: failed } }
  *       second: { event: RetryAttemptFinished, where: { outcome: succeeded } }
- */
+*/
 object YamlEventContractCodec {
 
     class ContractDecodeException(message: String, cause: Throwable? = null) :

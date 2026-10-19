@@ -9,10 +9,8 @@ import org.junit.jupiter.api.Test
 /**
  * A run has exactly one publishing authority at a time, and every takeover
  * advances a fencing token so a superseded owner can be detected.
- *
  * The two guarantees that `UNIQUE(run_id, sequence)` does NOT provide, and that
  * this decider does:
- *
  *  - **Ownership.** The database constraint rejects the losing writer's rows;
  *    it does not tell the loser it lost. The loser sees a raw driver error and
  *    its batch is dropped, so a probe costs the live owner facts.
@@ -20,11 +18,10 @@ import org.junit.jupiter.api.Test
  *    long after a legitimate owner took over. The constraint accepts its rows
  *    when the numbers do not collide, so the log ends up carrying facts from a
  *    superseded authority. This is the check that stops that.
- *
  * Every function here is pure and total, so each test states the whole law and
  * needs no store, no clock and no process. The order of the branches in
  * `acquire` IS the policy, and each rule below is one branch of it.
- */
+*/
 class RunExecutionLeaseTest {
 
     private val runId = "run-42"

@@ -2,13 +2,11 @@ package dev.rubentxu.pipeline.v2.domain.durable
 
 /**
  * Minimal execution context for durable operations.
- *
  * This interface provides the minimal set of fields required for fingerprint
- * computation and replay cursor tracking. Full ADR-0003 Context syntax
- * (with capability declarations) is deferred to M3-R2 when the `script {}`
+ * Computation and replay cursor tracking. Full Context syntax
+ * (with capability declarations) is deferred to when the `script {}`
  * block needs it.
- *
- */
+*/
 interface OperationContext {
     /** Deterministic run identifier derived from script path + content. */
     val runId: String

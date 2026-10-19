@@ -1,10 +1,8 @@
 //@ expect-exit 1
 //@ expect-stderr Zip Slip
-// LFC-2E2 utilities OFFICIAL_PLUGIN live fixture (Slice 2 / S2.4 + S2.5).
-//
-// End-to-end defence-in-depth proof of CVE-2023-32981 containment on
+// Utilities OFFICIAL_PLUGIN live fixture (Slice 2 /.4 +.5)
+// End-to-end defence-in-depth proof of containment on
 // BOTH sides of the zip chain. The fixture:
-//
 //   1) Creates a benign zip archive (via the typed zipFiles Step).
 //   2) Replaces the local-file-header entry-name bytes with a
 //      parent-segment name "../escaped.txt" using a `core.sh` one-liner.
@@ -15,7 +13,6 @@
 //   4) The handler MUST reject the archive with a typed USER failure
 //      containing "Zip Slip". The pipeline as a whole fails with a
 //      typed failure.
-//
 // Note: this fixture intentionally triggers a typed failure. The
 // CompatibilityCorpusTest recognises it as a known-good negative case.
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.zipFiles
@@ -43,7 +40,6 @@ pipeline {
             //    and the central-directory header to "../escaped.txt"
             //    (14 chars). The file body / CRC remain valid; only
             //    the entry name has been smuggled.
-            //
             //    We pad the original entry name "f" to exactly 14
             //    bytes by replacing it in-place with the smuggled
             //    name (no length change -> the rest of the CDH stays

@@ -7,40 +7,32 @@ import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreRefusal
 
 /**
- * R4 / WU-RC3 — the ONE decision that answers "which operations does this console request want?",
+ * The ONE decision that answers "which operations does this console request want?",
  * resolved once and consumed by every frame path.
- *
  * ## Why this exists
- *
  * The rc1 console verb resolved filters in three different places, inconsistently:
- *
  *  - `--follow` was dispatched BEFORE the filter branch in `CliParser.consoleValidate`, so
  *    `console --frames --follow --stage build` admitted a plain `FollowFrames` and **silently
- *    dropped the filter**. That is the audit's P0-4.
+ * Dropped the filter**. That is the audit's
  *  - `StageStepKindResolver` matched the user's `--stage`/`--step` against the **stringified
  *    index** the opId carries, so `--stage 0` hit and `--stage build` missed against the very
  *    same operation.
  *  - `--kind` was `val kindOk = true` — a non-empty kind set contributed a *true* conjunct. Any
  *    `--kind nonsense` matched every frame in the run. That is the "semantic drop" the Semantic
- *    Constitution §2 forbids outright: a flag accepted, never interpreted.
- *
+ *    Constitution forbids outright: a flag accepted, never interpreted.
  * None of those is fixable by adjusting a comparison. The names and the kinds are not in the
  * stream id; they are in the **events journal**, and `StepStarted` carries exactly what is needed
  * (`stageIndex`, `stageName`, `stepIndex`, `stepName`, `stepType`).
- *
  * ## The shape
- *
  * A selection is a SET OF OPERATION IDS. Deciding membership by set membership rather than by
  * re-deriving a predicate per frame is what makes the single read and the follow loop the same
  * decision: they both ask this one function, so they cannot drift apart again.
- *
  * ## Purity
- *
  * [resolve] reads a `Sequence<DomainEvent>` and returns a value. It opens no store, touches no
  * clock and no filesystem, so the whole resolution — including every failure — is testable at
- * HF0 without a journal, a run, or a control root. Deciding is separated from interpreting: the
+ * without a journal, a run, or a control root. Deciding is separated from interpreting: the
  * caller opens the journal and hands the events over.
- */
+*/
 sealed interface OperationSelection {
     /** Every operation of the run. The unfiltered case; nothing is decided. */
     data object AllOperations : OperationSelection
@@ -50,27 +42,24 @@ sealed interface OperationSelection {
 
     /**
      * The no-journal case: the selection is stated as required INDICES, not as an opId set.
-     *
      * Its own case, and deliberately not a degenerate [Operations]. Without a journal there is no
      * `StepStarted` to enumerate operations from, so the only authority available is the opId the
      * caller already scoped the read to. [includes] therefore parses THAT opId and checks its own
      * indices — which is sound, because an opId states its stage and step exactly.
-     *
      * Making it a separate case is what lets the refusal be precise: `null` on both axes means
      * the filter genuinely constrains nothing, while `Operations(emptySet())` would mean "this
      * stage exists and wrote nothing" — a fact about the product that this path cannot establish
      * and must therefore never claim.
-     */
+*/
     data class IndexOnly(val requiredStage: Int?, val requiredStep: Int?) : OperationSelection
 
     /**
      * Membership test.
-     *
      * The one function every frame path consults. It takes the opId **segment** of a stream id,
      * not the whole id, because that is what a selection is over — and comparing segments rather
      * than substrings is what stops `run-1-s0-0` from matching a selection containing
      * `run-1-s0-01`.
-     */
+*/
     fun includes(opId: String): Boolean = when (this) {
         AllOperations -> true
         is Operations -> opId in opIds
@@ -94,21 +83,19 @@ sealed interface SelectionRefusal {
 
     /**
      * No events journal was reachable, so names and kinds cannot be resolved at all.
-     *
      * Its own case, and the reason this block can be honest about `--kind`: an index token
      * (`--stage 0`) is derivable from the opId alone, but a NAME and a TYPE are not. Rather than
      * admit the filter and pretend to apply it, the request is refused and told what to supply.
-     */
+*/
     data class NoEventsAuthority(val axesNeedingIt: List<String>) : SelectionRefusal
 
     /**
      * The events journal was NAMED but cannot be opened.
-     *
      * Distinct from [NoEventsAuthority], which is about a journal that was never given: here the
      * operator pointed at one and it is unusable, so the remedy is a different path, not a
      * different flag. [refusal] is the shared admission's own verdict, which is why this case
      * carries it rather than re-deriving the condition.
-     */
+*/
     data class EventStoreRefused(
         val refusal: EventStoreRefusal,
     ) : SelectionRefusal
@@ -121,38 +108,32 @@ sealed interface SelectionOutcome {
 }
 
 /**
- * R4 / WU-RC3 — resolve `--stage` / `--step` / `--kind` tokens into an [OperationSelection].
- *
+ * Resolve `--stage` / `--step` / `--kind` tokens into an [OperationSelection].
  * ## The resolution, stated once
- *
  * ```text
  * --stage NAME  -> StageStarted.stageName == NAME  -> its stageIndex
  * --step  NAME  -> StepStarted.stepName   == NAME  -> its (stageIndex, stepIndex)
  * --kind  TYPE  -> StepStarted.stepType   == TYPE  -> its (stageIndex, stepIndex)
- *
  * every token resolves independently; UNRESOLVED tokens are a REFUSAL, not an empty set
  * an operation survives when it satisfies EVERY non-empty axis (AND across axes, OR within one)
  * ```
- *
  * A numeric `--stage 0` / `--step 1` is accepted as an index **as well as** a name, because the
  * opId carries the index and a caller scripting against it should not have to own the journal.
  * The index is matched against the SAME resolved set as the name, so a name and an index can
  * never disagree about which operations they select.
- *
  * ## Why an unresolved token is a refusal and not an empty result
- *
  * `--stage typo` selecting nothing looks exactly like a stage that wrote nothing, and the caller
  * has no way to tell a typo from a genuinely silent stage. Silent wrong answers are the failure
  * with the worst consequence here — a filtered console that shows too little is read as "the
  * pipeline was quiet", which is a claim about the PRODUCT. So the answer names the token and the
  * known set.
- */
+*/
 object ConsoleOperationSelection {
 
     /**
      * @param events the run's events. `null` means **no journal was reachable** — a fact the
      *   caller established, not an empty history, and the two produce different answers.
-     */
+*/
     fun resolve(
         runId: String,
         stages: Set<String>,
@@ -184,15 +165,13 @@ object ConsoleOperationSelection {
             )
         }
 
-        // WU-C FIX — the events are traversed ONCE and materialised.
-        //
+        // The events are traversed ONCE and materialised.
         // `SqliteEventStore.eventsFor` hands back a sequence that can be consumed only once, so
         // the two `filterIsInstance` calls this used to make threw
         // `IllegalStateException: This sequence can be consumed only once` on the SECOND one.
         // It never appeared in a unit test because `list.asSequence()` is not constrained — the
         // only real journal is the one that constrains, so the crash was reachable ONLY from the
         // product, and it took `--stage NAME` and `--kind` both down with it.
-        //
         // Materialising once also makes the function total over ANY sequence, which is the
         // contract it should have had from the start.
         val history = events.toList()
@@ -259,11 +238,10 @@ object ConsoleOperationSelection {
 
     /**
      * Index-only resolution: no journal, so every token must be an index.
-     *
      * An opId's own indices are the whole authority here, which is why this can be sound without
      * a journal at all. It produces the SET of opIds rather than a predicate so the caller's
      * shape is the same either way — the difference is visible in the refusal, not in the type.
-     */
+*/
     private fun resolveByIndex(
         stages: Set<String>,
         steps: Set<String>,

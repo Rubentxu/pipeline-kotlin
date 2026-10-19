@@ -7,50 +7,39 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.delay
 
 /**
- * [InputDecisions] over the control directory (RP6-B / WU-092 G2).
- *
+ * [InputDecisions] over the control directory
  * ```text
  * <root>/<opId>/request.json    written by this adapter
  * <root>/<opId>/response.json   written by whoever answers
  * ```
- *
  * `opId` is the durable operation identity, not the run: two `input` steps in one
  * run are two questions and must not share a file.
- *
  * ## The law this adapter exists to enforce
- *
  * **A file that is not yet a complete, valid answer is not an answer.**
- *
  * A human answering through a filesystem is a writer, and writers are not atomic
  * by default: a two-kilobyte answer truncated at the halfway point looks exactly
  * like a refusal to anyone who is impatient. So [awaitDecision] decodes what it
  * finds and, on anything incomplete or unrecognised, takes another turn instead of
  * ending the wait. The only things that end it are a valid answer, the bound
  * expiring, or cancellation.
- *
  * ## Cancellation is control flow, not an outcome
- *
  * Coroutine cancellation PROPAGATES as [CancellationException] instead of being
  * flattened into a typed denial, and this adapter is the second place in the
  * codebase to make that choice (the first is `FileLockCoordinator`).
- *
  * The reason is not stylistic. A cancelled coroutine cannot deliver a value to the
  * thing that cancelled it: the promise it would have completed is already
  * cancelled, so the "typed" result is discarded and the caller carries on with
  * nothing. Flattening it only hides the signal, and a caller that is being
  * cancelled must be allowed to stop.
- *
  * [InputDenialReason.Cancelled] therefore stays for the interrupt path, where the
  * thread is interrupted while the coroutine is still live — the same producer
  * `FileLockCoordinator` has.
- *
  * ## What this class does NOT do
- *
  * It does not authorise the answer, and it does not decide what a valid decision
  * is: that vocabulary belongs to [InputAnswerCodec], which is the authority for
  * the answer wire and lives next to the request wire on purpose, because the two
  * travel in opposite directions and are owned by different parties.
- */
+*/
 class FileInputDecisions(
     private val root: Path,
     private val pollIntervalMs: Long = DEFAULT_POLL_INTERVAL_MS,
@@ -62,7 +51,7 @@ class FileInputDecisions(
      * index, but a caller may pass anything, so the name is sanitised rather than
      * trusted: a path separator here would let a question address another
      * question's directory.
-     */
+*/
     private fun dirFor(opId: String): Path = root.resolve(sanitize(opId))
 
     private fun sanitize(opId: String): String =
@@ -115,7 +104,7 @@ class FileInputDecisions(
      * Publishes the question. Idempotent by construction: the same op re-publishes
      * the same content, which is what a resumed run does when it re-asks for a
      * decision it has not obtained yet.
-     */
+*/
     private fun publish(dir: Path, request: InputRequest, requestFile: Path) {
         try {
             Files.createDirectories(dir)
@@ -141,7 +130,7 @@ class FileInputDecisions(
     /**
      * Reads an answer, or `null` when the file is absent, unreadable, incomplete or
      * not a decision this Step recognises.
-     */
+*/
     private fun readAnswer(responseFile: Path): InputDecision? {
         val raw = try {
             if (!Files.exists(responseFile)) return null

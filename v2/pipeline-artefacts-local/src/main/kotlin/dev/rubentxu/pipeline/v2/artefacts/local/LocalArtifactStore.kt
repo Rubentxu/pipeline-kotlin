@@ -14,27 +14,21 @@ import java.util.UUID
 
 /**
  * Workspace artifact store using per-stage tar archives.
- *
  * Layout: `<controlRoot>/artefacts/<runId>/<stageName>/<ts>-<uuid>.tar`
- *
- * Design: D6 — artefacts live OUTSIDE the workspace (F-ARCH-L7 workspace-cleanup
+ * Design: — artefacts live OUTSIDE the workspace (workspace-cleanup
  * preservation invariant). When `WorkspaceResolver.cleanupAfterComplete()` wipes the
  * stage workspace, the artefacts directory survives because it is a sibling of the
  * workspace directory under `<controlRoot>`, not a descendant.
- *
  * ## API
- *
  * - [stageDir] — returns the per-run per-stage artefact directory
  * - [archive] — creates a tar archive from files matching the given Ant-style pattern
  * - [close] — idempotent cleanup
- *
- * ## Workspace-Cleanup Preservation (F-ARCH-L7 / INV-L7-FS-007)
- *
+ * ## Workspace-Cleanup Preservation
  * The artefacts directory is `<controlRoot>/artefacts/` and the workspace is
  * `<controlRoot>/workspace/<stageName>-<stageIndex>/`. They are siblings under
  * `<controlRoot>`, not nested. `WorkspaceResolver.cleanupAfterComplete()` only
  * deletes `<controlRoot>/workspace/...`. The artefacts directory is untouched.
- */
+*/
 class LocalArtifactStore(
     private val controlRoot: Path,
     private val clock: Clock = Clock.systemUTC(),
@@ -42,11 +36,10 @@ class LocalArtifactStore(
 
     /**
      * Returns the artefact directory for a given run and stage.
-     *
      * @param runId Run identifier
      * @param stageName Human-readable stage name
      * @return Path to `<controlRoot>/artefacts/<runId>/<stageName>/`
-     */
+*/
     fun stageDir(runId: RunId, stageName: StageName): Path {
         val artefactsRoot = controlRoot.resolve("artefacts")
         return artefactsRoot
@@ -56,10 +49,8 @@ class LocalArtifactStore(
 
     /**
      * Creates a tar archive of files matching [pattern] in the stage workspace.
-     *
      * Uses [AntStyleGlob] for pattern matching with default excludes enabled.
      * The archive is named `<ts>-<uuid>.tar` and written under [stageDir].
-     *
      * @param runId Run identifier
      * @param stageName Human-readable stage name
      * @param workspace Workspace root (stage directory resolved via WorkspaceResolver)
@@ -85,7 +76,7 @@ class LocalArtifactStore(
 
         // Ensure workspace exists before walking — Jenkins semantics: archive matches
         // files in the current workspace. If workspace was never created (no steps
-        // wrote files), Files.walk() would throw NoSuchFileException.
+        // wrote files), Files.walk would throw NoSuchFileException.
         Files.createDirectories(workspace)
 
         val glob = AntStyleGlob(pattern)
@@ -137,24 +128,23 @@ class LocalArtifactStore(
 
     /**
      * Idempotent close — no-op for this implementation.
-     */
+*/
     fun close() {
         // No resources held beyond the filesystem
     }
 
     /**
-     * SHA-256 of an existing file, streamed (shared utility, B0).
-     *
+     * SHA-256 of an existing file, streamed (shared utility).
      * The previous implementation read the whole file into a `ByteArray` before hashing it,
      * which meant a large artifact had to be resident. The digest value is unchanged, so
      * previously stored entries still compare equal.
-     */
+*/
     private fun sha256(file: Path): String = Sha256.ofFile(file)
 }
 
 /**
  * Result of a successful archive operation.
- */
+*/
 data class ArchiveResult(
     /** Path to the created tar archive, or null if empty and allowEmptyArchive=true */
     val archivePath: Path?,
@@ -166,22 +156,22 @@ data class ArchiveResult(
 
 /**
  * Thrown when archive is called with no matching files and allowEmptyArchive=false.
- */
+*/
 class EmptyArchiveException(message: String) : RuntimeException(message)
 
 /**
  * Run identifier — domain value type.
- */
+*/
 data class RunId(val value: String)
 
 /**
  * Stage name — domain value type.
- */
+*/
 data class StageName(val value: String)
 
 /**
  * Thrown when archive is invoked on a filesystem that does not support POSIX permissions.
- */
+*/
 class LocalArtifactStorePosixUnsupportedException(message: String) : RuntimeException(message)
 
 private fun assertPosixSupported(root: Path) {

@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test
  * reference comparison there would make two byte-identical archives unequal — the
  * kind of defect that only shows up as a cache miss or a `distinct()` that keeps
  * duplicates, never as a crash.
- */
+*/
 class ZipTest {
 
     private val id = CredentialsId.from("aws-prod")

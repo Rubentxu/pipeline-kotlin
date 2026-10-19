@@ -7,23 +7,19 @@ import java.nio.file.attribute.PosixFilePermissions
 
 /**
  * POSIX permission helpers for credential store files.
- *
  * ## Requirements
- *
  * - Store file: 0600 (owner read/write only)
  * - Store directory: 0700 (owner read/write/execute only)
- *
  * These permissions protect the credentials at rest from other users on the same system.
- *
- * The permission sets come from [CredentialFilePermissions] (D-001) so
+ * The permission sets come from [CredentialFilePermissions] so
  * any drift between adapters is caught at compile time, not by
  * adversarial filesystem testing.
- */
+*/
 object CredentialsStorePosix {
 
     /**
      * Creates the parent directory with 0700 permissions.
-     */
+*/
     fun createDirectory(dir: Path) {
         Files.createDirectories(dir, PosixFilePermissions.asFileAttribute(
             CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE))
@@ -31,17 +27,16 @@ object CredentialsStorePosix {
 
     /**
      * Sets the store file to 0600.
-     */
+*/
     fun setFilePermissions(file: Path) {
         Files.setPosixFilePermissions(file, CredentialFilePermissions.OWNER_READ_WRITE)
     }
 
     /**
      * Asserts that the filesystem supports POSIX permissions.
-     *
      * @throws LocalSecretStore.CredentialsStorePosixPermissionsException
      * if POSIX is not supported
-     */
+*/
     fun assertSupported(fileSystem: java.nio.file.FileSystem) {
         check(fileSystem.supportedFileAttributeViews().contains("posix")) {
             "POSIX file attributes not supported on this filesystem"
@@ -50,7 +45,7 @@ object CredentialsStorePosix {
 
     /**
      * Enforces POSIX permissions on a store file and its parent directory.
-     */
+*/
     fun enforce(file: Path, dir: Path) {
         val fs = file.fileSystem
         assertSupported(fs)

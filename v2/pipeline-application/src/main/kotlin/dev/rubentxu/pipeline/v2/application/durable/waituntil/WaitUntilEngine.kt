@@ -32,20 +32,15 @@ import java.util.UUID
 import kotlin.math.min
 
 /**
- * Application-internal authority for the waitUntil aggregate (WU-LPR-302
- * Phase 3, 2026-09-18).
- *
+ * Application-internal authority for the waitUntil aggregate (
  * ## What this owns
- *
  * `WaitUntilEngine` owns the **polling loop**: reconcile -> should-poll ->
  * build attempt context -> `BodyInvoker.invoke(...)` -> fold outcome ->
  * persist transition -> sleep / advance. It does NOT iterate body children;
  * it does NOT call the canonical `invokeBodyChildren` directly. The body-child
  * traversal lives in the canonical coordinator's shared loop; the engine
- * reaches that loop through the `BodyInvoker` port (B11 / W2).
- *
+ * Reaches that loop through the `BodyInvoker` port
  * ## What it does NOT own
- *
  * - The `BodyRef` lifecycle (`open` / `close`): the canonical coordinator
  *   remains the owner.
  * - Event shape beyond what the waitUntil aggregate itself owns
@@ -53,26 +48,22 @@ import kotlin.math.min
  * - The legacy compat polling loop (no `waitUntilControlJournal`): the
  *   canonical coordinator keeps its inline legacy loop bit-equivalent for
  *   callers that have not yet opted into the durable waitUntil aggregate.
- *
  * ## Plan-only invariant
- *
  * `plan()` is the pure read path and is unchanged in semantics from
  * [WaitUntilReconciliationDriver]: read the journal, build the input,
  * delegate to [WaitUntilReconciler]. The engine mutates ONLY through
  * `journal.beginAttempt` and `journal.updateStatus`, and only after a
- * plan() emits a mutation decision. The single-writer law is preserved:
+ * plan emits a mutation decision. The single-writer law is preserved:
  * this engine is the only place that mutates [WaitUntilControlJournal]
  * for the waitUntil aggregate.
- *
  * ## Body invocation law
- *
  * The engine invokes the body through `bodyInvoker.invoke(bodyRef,
  * BodyInvocationContext(attempt = AttemptSegment(N, wait-until-poll)))`.
  * The runner registered by the canonical coordinator (Phase 1b) projects
  * `attempt` onto the per-attempt deterministic `bodyPath` segment, so
  * each poll owns a distinct journal OpId. The engine is `StepKey`-blind:
  * it does not branch on concrete `PluginStepId`.
- */
+*/
 class WaitUntilEngine(
     private val journal: WaitUntilControlJournal,
     private val eventSink: EventSink,
@@ -103,7 +94,7 @@ class WaitUntilEngine(
      * Pure plan-only read of durable state. Equivalent to
      * [WaitUntilReconciliationDriver.plan]. Kept on the engine so the
      * dispatch loop below is one collaborator; the planner remains pure.
-     */
+*/
     fun plan(): WaitUntilReconciliationDecision {
         val driver = WaitUntilReconciliationDriver(
             journal = journal,
@@ -118,12 +109,10 @@ class WaitUntilEngine(
     /**
      * Execute the waitUntil aggregate against [bodyRef] until the predicate
      * body succeeds, the deadline is exceeded, or the aggregate is aborted.
-     *
      * The engine reaches the body through the [BodyInvoker] port the
      * coordinator already opened; it does NOT call `invokeBodyChildren`
      * directly. The per-poll bodyPath segment
      * (`BlockSegment(N, wait-until-poll)`) drives per-poll journal identity.
-     *
      * Outcomes fold into [StepOutcome]:
      *  - `Satisfied` -> [StepOutcome.Success], persist SUCCEEDED, emit
      *    [WaitUntilCompleted].
@@ -135,7 +124,7 @@ class WaitUntilEngine(
      *    [StepOutcome.Failure] ([FailureKind.ENGINE]).
      *  - `RejectDivergence` -> [StepOutcome.Failure]
      *    ([FailureKind.REPLAY_COMPATIBILITY]).
-     */
+*/
     suspend fun execute(bodyRef: BodyRef): StepOutcome {
         val overallStartMs = System.currentTimeMillis()
         while (true) {
@@ -216,7 +205,7 @@ class WaitUntilEngine(
 
                     when (predicateOutcome) {
                         is WaitUntilPredicateOutcome.Satisfied -> {
-                            // P3-E E4b.4 — the terminal is decided ONCE, as a
+                            // The terminal is decided ONCE, as a
                             // `WaitUntilCompletion`, and the durable status, the
                             // typed result and the wire token are all projections
                             // of it. This site used to write all three by hand.
@@ -232,7 +221,7 @@ class WaitUntilEngine(
                         }
                         is WaitUntilPredicateOutcome.Failed -> {
                             // Predicate failed: persist FAILED on this poll so
-                            // the next plan() emits
+                            // the next plan emits
                             // AdvanceAfterPredicateUnsatisfied (or
                             // DeadlineExceeded), not ResumeAttempt. Without
                             // this persistence the loop would re-execute the
@@ -261,8 +250,7 @@ class WaitUntilEngine(
                             // ABORTED on this poll so the planner emits
                             // Aborted (or the durable journal shows a
                             // terminal state), not ResumeAttempt.
-                            //
-                            // P3-E E4b.4 — same terminal as the reconciler's
+                            // Same terminal as the reconciler's
                             // `Aborted`, and here it DOES persist, because the
                             // fresh path owns a row that is still RUNNING. The
                             // terminal does not decide that; the branch does.
@@ -282,7 +270,7 @@ class WaitUntilEngine(
                 }
 
                 is WaitUntilReconciliationDecision.AdvanceAfterPredicateSatisfied -> {
-                    // P3-E E4b.4 — the same `Satisfied` terminal the fresh loop
+                    // The same `Satisfied` terminal the fresh loop
                     // reaches at line ~216. One case, two arrival paths, which is
                     // the point: fresh and restart are not two vocabularies.
                     val completion = WaitUntilCompletion.Satisfied
@@ -323,7 +311,7 @@ class WaitUntilEngine(
                 }
 
                 is WaitUntilReconciliationDecision.Aborted -> {
-                    // P3-E E4 — READ-ONLY. The reconciler returns `Aborted` precisely
+                    // READ-ONLY. The reconciler returns `Aborted` precisely
                     // BECAUSE it read a durable row whose status already is ABORTED, so
                     // there is no transition left to persist. Writing it back could only
                     // ever be a no-op, and it was: `updateStatus` requires an existing
@@ -331,8 +319,7 @@ class WaitUntilEngine(
                     // write below used to throw `IllegalStateException` on an attempt that
                     // existed nowhere — the branch never emitted its event and never
                     // returned its typed failure, and the abort escaped as an untyped crash.
-                    //
-                    // P3-E E4b.4 — the terminal is still the same `Aborted` the fresh
+                    // The terminal is still the same `Aborted` the fresh
                     // cancellation produces. What differs is the persistence, and that
                     // stays here: this branch has nothing to write.
                     val completion = WaitUntilCompletion.Aborted(
@@ -364,13 +351,12 @@ class WaitUntilEngine(
     /**
      * Invoke the predicate body through the [BodyInvoker] port and fold the
      * typed outcome.
-     *
      * Cancellation propagates as [WaitUntilPredicateOutcome.Cancelled] so the
      * main loop persists ABORTED and emits
      * [dev.rubentxu.pipeline.v2.events.WaitUntilCompleted] with
      * `outcome = "aborted"`. A typed [StepOutcome.Failure] from a completed
      * body is folded as [WaitUntilPredicateOutcome.Failed].
-     */
+*/
     private suspend fun invokeBodyOnce(
         bodyRef: BodyRef,
         attempt: Int,
@@ -401,3 +387,4 @@ class WaitUntilEngine(
         )
     }
 }
+

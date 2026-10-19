@@ -42,13 +42,11 @@ import java.util.UUID
 
 /**
  * Typed input payload of `core.waitUntil`.
- *
  * The wire payload for `waitUntil(initialRecurrencePeriod = X)` is:
  * `{"kind":"waitUntil","initialRecurrencePeriod":X}`
- *
  * The codec preserves that envelope structure. A payload written by an older build may also
  * carry a `"quiet"` key; decoding ignores it, which is safe because nothing ever read it.
- */
+*/
 data class WaitUntilInput(
     val initialRecurrencePeriod: Long = DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS,
 ) {
@@ -61,35 +59,28 @@ data class WaitUntilInput(
 
 /**
  * Typed output for `core.waitUntil`.
- *
  * The handler emits WaitUntilPolled and WaitUntilCompleted events as the observable
  * runtime output. The typed output carries the final outcome for scriptability.
- *
  * ## Why the terminal is a [WaitUntilCompletion] and not a `String`
- *
  * This used to carry `resultOutcome: String`, and [outcome] was reconstructed by matching one
  * literal — `if (resultOutcome == "completed") Success else Failure(TIMEOUT)`. A `String` cannot
  * fail closed: a typo, a terminal a future version adds, or a corrupted journal all take the
  * `else` branch and produce a run that ended in a deadline it never reached, reported with a
  * message about a wait it never exceeded. Nothing in the type said "these three are all of them".
- *
  * The closed ADT [WaitUntilCompletion] already existed in `pipeline-domain` with exactly the
  * three terminals the domain has, and `WaitUntilEngine` already projected all five of its
  * emission sites from it. This value was the last string authority, and it now derives from the
  * same ADT as the durable engine: there is no field a caller could set to a token inconsistent
  * with the terminal it claims to report.
- *
  * ## The wire token is a projection, and it does not move
- *
  * [resultOutcome] remains available to scripting because the encoded `outcome` field is a
- * **published, frozen** surface (S8 freezes event schemas against these three tokens, and an
+ * **published, frozen** surface (freezes event schemas against these three tokens, and an
  * older journal has to keep decoding). It is derived from [completion] on every read, so it
  * cannot drift from the terminal — and the codec is the only place that parses it back, where an
  * unrecognised value is refused instead of interpreted. Direction of authority: ADT → token,
  * never token → decision.
- *
  * @see WaitUntilCompletion for the three terminals and what each one owns.
- */
+*/
 data class WaitUntilOutput(
     val completion: WaitUntilCompletion,
     val totalAttempts: Int,
@@ -98,10 +89,9 @@ data class WaitUntilOutput(
 
     /**
      * The historical wire token, derived rather than stored.
-     *
      * Kept as a property because it is published scripting surface; it is not a field because a
      * stored token is a second source of truth that could disagree with [completion].
-     */
+*/
     val resultOutcome: String get() = completion.wireOutcome
 
     override val outcome: StepOutcome get() = completion.toStepOutcome()
@@ -109,30 +99,26 @@ data class WaitUntilOutput(
 
 /**
  * Registry definition for `core.waitUntil`.
- *
  * `core.waitUntil` is REGISTRY_PRIMARY (retired from `LEGACY_PLUGIN_IDS` at
- * WU-LPR-301 / G5). The descriptor declares
+ * The descriptor declares
  * `BodyExecutionPolicy.Retrying(waitUntil = WaitUntilShape())` with
  * `BodyExecutionOwner.CANONICAL_ENGINE`, so [StepDispatchEngine] takes the
  * CANONICAL_ENGINE short-circuit: the engine runs the block and
  * [capabilityRoutedHandler] is NEVER invoked.
- *
- * Verified, not assumed (B1.3, 2026-10-08): the handler was given a deliberately
+ * The handler was given a deliberately
  * absurd clock (1970-01-01) and no `WaitUntilPolled` carried that stamp — the
  * polling events come from `WaitUntilEngine`, and the body's own effect does happen
  * (asserted by `CoreWaitUntilBodyVsHandlerTest`). So the stub below is DEAD CODE on
  * the production path. It is kept, not deleted, because the StepDefinition requires a
  * handler and because deleting it would be a wider change than this slice allows;
  * the KDoc previously claimed this stub is reached through the legacy dispatcher,
- * which stopped being true at G5 and was the reason nobody questioned it.
- *
+ * Which stopped being true at and was the reason nobody questioned it
  * The stub must not be "completed" as if it were a second polling loop: if it were
  * ever made reachable it would report `Satisfied` without evaluating the condition,
- * which Semantic Constitution §2 classifies as a silent no-op.
- *
+ * which Semantic Constitution classifies as a silent no-op.
  * Capability design:
  * - [EVENT_SINK_CAPABILITY] publishes the durable observation events.
- */
+*/
 object CoreWaitUntilStep {
 
     val KEY: PluginStepId = PluginStepId("core.waitUntil")
@@ -192,16 +178,14 @@ object CoreWaitUntilStep {
 
     /**
      * Parses a historical wire token back into the closed ADT, failing closed on anything else.
-     *
      * This is the one place where a token becomes a terminal again, and it is deliberately the
      * *only* place: the token is a projection of [WaitUntilCompletion], and a reader of it that
      * cannot name the terminal it corresponds to has no authority to produce one. Coercing an
      * unknown value into a deadline (the old `else` branch) reported a timeout the run never
      * reached; refusing it reports a corrupt or newer journal, which is diagnosable and true.
-     *
      * The mapping is total over the frozen set and undefined outside it, so a terminal whose wire
      * representation nobody decided is refused here rather than silently accepted.
-     */
+*/
     private fun completionFromWireOutcome(wireOutcome: String): WaitUntilCompletion =
         when (wireOutcome) {
             WaitUntilCompletion.Satisfied.wireOutcome -> WaitUntilCompletion.Satisfied
@@ -217,7 +201,7 @@ object CoreWaitUntilStep {
             )
         }
 
-    // WU-LPR-301: waitUntil declares its execution shape structurally via the
+    // WaitUntil declares its execution shape structurally via the
     // waitUntil sub-shape of BodyExecutionPolicy.Retrying. The coordinator dispatches
     // the polling loop by reading the sub-shape, with no concrete-StepKey branch.
     private val descriptor = StepDescriptor(
@@ -242,12 +226,11 @@ object CoreWaitUntilStep {
 
     /**
      * NOT REACHED on the production path (see the object KDoc).
-     *
      * Present because [StepDefinition] requires a handler, and because the contract
      * suite resolves the definition. It emits a single satisfied poll pair without
      * evaluating the condition. Do not wire it to a live path: a reachable version
      * would report a condition it never checked.
-     */
+*/
     private val capabilityRoutedHandler: StepHandler<WaitUntilInput, WaitUntilOutput> =
         StepHandler { input, ctx ->
             val sink: EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)

@@ -10,12 +10,10 @@ import org.junit.jupiter.api.Test
  * stack-trace that percent-escapes its own arguments all print
  * `p%40ss%20w0rd`, not `p@ss w0rd`. The registry enumerates a URL-encoded
  * variant per registered secret precisely so that form is scrubbed too.
- *
  * The variant is built by replacing the characters that require encoding and
  * leaving every other character as it is. A secret is mostly unreserved
  * characters — letters and digits — so "replace the ones that need it" has to
  * mean "keep the rest", not "keep only those".
- *
  * Every test builds its own [SecretPatternRegistry]. The class holds per-instance
  * state, so a fresh instance is full isolation and no test can observe another's
  * registration; there is nothing to tear down and no order to depend on. Each
@@ -23,7 +21,7 @@ import org.junit.jupiter.api.Test
  * because a shorter value is silently left unregistered and would therefore
  * not be scrubbed at all — the assertion below would see an untouched string
  * and read as a redactor failure rather than as an under-length input.
- */
+*/
 class SecretPatternRegistryUrlEncodingTest {
 
     /** 9 chars: two reserved characters (`@`, space) among ordinary letters. */

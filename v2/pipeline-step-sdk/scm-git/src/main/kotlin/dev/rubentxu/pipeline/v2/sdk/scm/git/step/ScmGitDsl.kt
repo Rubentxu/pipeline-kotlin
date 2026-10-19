@@ -6,18 +6,15 @@ import dev.rubentxu.pipeline.v2.dsl.StageScope
 
 /**
  * Ergonomic Kotlin DSL extension for the `scm-git.checkout` Step
- * (LFC-2E2 / F5.1).
- *
+ * .
  * The façade is intentionally narrow:
  *   - constructs the typed [GitCheckoutInput] from positional/named
  *     arguments (no Map<String, Any?> smuggling);
  *   - encodes it with the plugin's own [GitCheckoutInputCodec];
  *   - lowers to the generic [StageScope.registryStep] primitive that
  *     core provides (no plugin-specific case in the compiler).
- *
  * The extension does NOT resolve the runtime registry, does NOT execute
  * the handler, does NOT inspect any global mutable state.
- *
  * @param url git URL (https://, git@, file:// all supported).
  * @param branch branch to check out (default `master`).
  * @param credentialsRef typed reference to a credentials entry in the
@@ -26,7 +23,7 @@ import dev.rubentxu.pipeline.v2.dsl.StageScope
  *   resolved SHA.
  * @param poll whether to ls-remote probe before deciding clone/fetch/reset.
  * @param relativeTargetDir workspace-relative checkout directory.
- */
+*/
 fun StageScope.scmGitCheckout(
     url: String,
     branch: String = "master",
@@ -53,5 +50,5 @@ fun StageScope.scmGitCheckout(
 /**
  * The canonical plugin StepKey for scm-git.checkout, re-exported here
  * so this façade is the only thing a `.pipeline.kts` needs to import.
- */
+*/
 fun scmGitCheckoutStepKey(): PluginStepId = ScmGitCheckoutKey.VALUE

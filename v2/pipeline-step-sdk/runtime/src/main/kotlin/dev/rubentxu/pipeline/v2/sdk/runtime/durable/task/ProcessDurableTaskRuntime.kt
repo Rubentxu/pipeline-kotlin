@@ -23,39 +23,33 @@ import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * The production [DurableTaskRuntime] — the SINGLE authorised home for
- * `ProcessBuilder` in the V2 runtime (M3 gate; LF-0302 implementation +
- * LF-0303 concurrent output pumps + LF-0304 timeout/cancel tree).
- *
+ * `ProcessBuilder` in the runtime (gate; implementation +
+ * Concurrent output pumps + timeout/cancel tree)
  * ## Spec invariants implemented here
- *
  * - **ExecTask preserves argv**: `ProcessBuilder(argv)` with no shell in
- *   between — M3-002 ("argv con spaces/quotes sin shell") holds by
+ * Between — ("argv con spaces/quotes sin shell") holds by
  *   construction.
  * - **ShellScriptTask writes the script to a file** (`script.sh` in the
  *   operation's control dir) and executes `[interpreter.binary, file]`.
  * - **stdout/stderr are drained concurrently** into bounded chunks
  *   (O(chunk) memory, never O(total output)) — two independent pumps
- *   feed the sink while the process lives (LF-0303). Pump threads bridge
+ * Feed the sink while the process lives. Pump threads bridge
  *   to the suspend sink via `runBlocking` per chunk.
  * - **timeout/cancel happen while the process lives** and kill the whole
  *   process tree (`ProcessHandle.descendants()` + `destroyForcibly`),
- *   never just the direct child (LF-0304).
+ * Never just the direct child
  * - **Durable, atomic result**: the terminal outcome is written to
  *   `result.txt` inside the control dir via temp-file + `ATOMIC_MOVE`,
  *   so a restart can reconcile (never a partial result).
  * - **Redaction before persistence**: env secrets are materialised solely
  *   into the process environment; nothing secret is written to disk.
- *
  * ## Control-dir layout
- *
  * ```
  * controlRoot/<opId>/
  *   script.sh       (ShellScriptTask only; written verbatim)
  *   result.txt      (atomic terminal record: EXIT <code> | TIMED_OUT | CANCELLED)
  * ```
- *
  * ## Termination protocol (single sequence for every path)
- *
  * The process tree is destroyed in the `finally` block while the pump
  * coroutines are still children of the scope. This ordering is what makes
  * cancellation safe: pumps blocked on stream reads are released by the
@@ -63,7 +57,7 @@ import kotlin.coroutines.cancellation.CancellationException
  * the tree is destroyed before the re-`waitFor`; on cancellation the
  * `finally` runs before the scope joins the pumps; on normal exit the
  * `finally` is a no-op.
- */
+*/
 class ProcessDurableTaskRuntime(
     private val controlRoot: Path,
     private val clock: Clock,
@@ -98,7 +92,7 @@ class ProcessDurableTaskRuntime(
 
         val exitCode: Int = try {
             coroutineScope {
-                // WU-LPR-043: sink invocation is decoupled from the pump
+                // Sink invocation is decoupled from the pump
                 // threads. Pumps enqueue chunks (suspend, bounded: co-operate
                 // with a slow sink at capacity instead of dropping — the
                 // pipeline output is lossless) but the sink call itself runs
@@ -129,7 +123,7 @@ class ProcessDurableTaskRuntime(
                             process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
                         }
                         if (!finished) {
-                            // Watchdog fired while the process lives (LF-0304).
+                            // Watchdog fired while the process lives
                             timedOut = true
                             destroyTree(process)
                         }
@@ -168,7 +162,7 @@ class ProcessDurableTaskRuntime(
             is TaskTerminalDecision.TimedOut -> "TIMED_OUT"
             // Cancelled is structurally unreachable at this site: the catch block above writes
             // "CANCELLED" and rethrows, so by construction result.cancelled is false here. The
-            // explicit error() is the audit-trail witness for that invariant: any future refactor
+            // explicit error is the audit-trail witness for that invariant: any future refactor
             // that drops the catch's CANCELLED write will hit it.
             is TaskTerminalDecision.Cancelled -> error(
                 "cancellation reached writeAtomicResult; the catch block above should have written CANCELLED"
@@ -180,11 +174,11 @@ class ProcessDurableTaskRuntime(
     }
 
     /**
-     * Drains one stream into bounded chunks until EOF (LF-0303). The
+     * Drains one stream into bounded chunks until EOF. The
      * blocking read runs under `runInterruptible` on the IO dispatcher;
      * each chunk is handed to the suspend sink through a `runBlocking`
      * bridge on the pump thread — memory stays O(chunk).
-     */
+*/
     private suspend fun drain(
         process: Process,
         stream: TaskStreamKind,

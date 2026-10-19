@@ -4,7 +4,7 @@ package dev.rubentxu.pipeline.v2.harness.model
  * Result of verifying one contract against one history. Exceptions are NOT used
  * for contract failure: they are reserved for corrupt contracts, codec incompatibility
  * and internal verifier invariants.
- */
+*/
 sealed interface VerificationResult {
     data object Valid : VerificationResult
 
@@ -15,7 +15,7 @@ sealed interface VerificationResult {
  * Bounded counterexample: violated rule + minimal relevant window, never the full
  * 200-event dump. 80/20 slicing: violated selectors + nearest causally related
  * events + small bounded context.
- */
+*/
 data class EventViolation(
     val rule: ViolationRule,
     val message: String,

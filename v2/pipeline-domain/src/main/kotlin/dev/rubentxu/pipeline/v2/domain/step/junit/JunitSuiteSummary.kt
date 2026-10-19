@@ -2,19 +2,17 @@ package dev.rubentxu.pipeline.v2.domain.step.junit
 
 /**
  * A single `<testsuite>` summary extracted from a JUnit XML report.
- *
  * The summary aggregates the test counts reported by the suite
  * itself (the parser does NOT recompute them by walking the
  * `<testcase>` children; the upstream tool's counts are
  * authoritative).
- *
  * @property name         the `<testsuite>` name attribute
  * @property tests        `<testsuite tests="...">` value
  * @property failures     `<testsuite failures="...">` value
  * @property errors       `<testsuite errors="...">` value
  * @property skipped      `<testsuite skipped="...">` value
  * @property timeSeconds  `<testsuite time="...">` value
- */
+*/
 data class JunitSuiteSummary(
     val name: String,
     val tests: Int,

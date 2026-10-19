@@ -205,6 +205,11 @@ dependencies {
     runtimeOnly(files(rootDir.resolve("examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar")))
     runtimeOnly(files(rootDir.resolve("examples/example-directive-plugin/build/libs/example-directive-plugin-0.1.0.jar")))
     runtimeOnly(files(rootDir.resolve("examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar")))
+    // SAGA / PK-2: the external CONSUMER of the Saga contract, and the only bundled plugin
+    // that drives a real compensation loop. It is bundled for the same reason the other three
+    // are: the E2E scenarios have to reach the Saga contract the way a real plugin does —
+    // from OUTSIDE, through published capabilities, with the engine owning the state.
+    runtimeOnly(files(rootDir.resolve("examples/example-saga-plugin/build/libs/example-saga-plugin-0.1.0.jar")))
 
     // Test wiring RESTORED (2026-10-19) because `src/test/kotlin` is no longer empty, in this
     // module or in the other 15 that have tests. The earlier removal was correct then: a JUnit

@@ -19,6 +19,7 @@ import dev.rubentxu.pipeline.v2.domain.ContextOverlay
 import dev.rubentxu.pipeline.v2.domain.ContextTransition
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StageBody
@@ -40,6 +41,10 @@ import dev.rubentxu.pipeline.v2.domain.durable.ParallelDecision
 import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciler
 import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciliationInput
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
+import dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker
+import dev.rubentxu.pipeline.v2.domain.step.BodySlots
+import dev.rubentxu.pipeline.v2.domain.step.SlotResolution
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity
 import dev.rubentxu.pipeline.v2.domain.step.BodyContinuation
@@ -178,6 +183,24 @@ internal class StepDispatchEngine(
     }
 
     /**
+     * SAGA / PK-2: a slot the handler asked for and the engine cannot honour.
+     *
+     * A CONTAINED failure, not an exception: the handler's own outcome is where
+     * that violation belongs, and an exception would tear the run down instead
+     * of reporting it. ENGINE, because the contract was the engine's to keep —
+     * the handler named a slot the body does not have.
+     */
+    private fun slotFailure(message: String): BodyOutcome =
+        BodyOutcome.Completed(
+            StepOutcome.Failure(
+                PipelineFailure(
+                    kind = FailureKind.ENGINE,
+                    message = message,
+                ),
+            ),
+        )
+
+    /**
      * CDE.3-e4.3: the runtime context is built here so registry prepare can derive the available
      * capabilities from the capability bridge, never the raw context handed to a handler.
      *
@@ -192,6 +215,7 @@ internal class StepDispatchEngine(
         stepIndex: Int,
         stageShOptions: ShOptions,
         bodyContinuation: dev.rubentxu.pipeline.v2.domain.step.BodyContinuation?,
+        bodySlotInvoker: BodySlotInvoker?,
     ): CanonicalRuntimeContext = CanonicalRuntimeContext(
         opId = opId,
         runId = runId.value,
@@ -211,6 +235,10 @@ internal class StepDispatchEngine(
         // fail-closed admission is real: a handler that declares the capability
         // without the engine having bound it never runs.
         bodyContinuation = bodyContinuation,
+        // SAGA / PK-2: the slot seam, bound ONLY for a HANDLER_CONTINUATION Step
+        // whose body is already bound. Null everywhere else, so the fail-closed
+        // admission is real.
+        bodySlotInvoker = bodySlotInvoker,
         secretPatternRegistry = secretPatternRegistry,
         workspaceBase = workspaceBase,
         pluginEventEmitter = pluginEventEmitter(eventRegistry, eventSink, clock),
@@ -362,7 +390,7 @@ internal class StepDispatchEngine(
                         listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(segment.index, segment.key))
                     } ?: emptyList()
                     val contextForCall = applyPatchToContext(executionContext, bodyContext.patch)
-                    dev.rubentxu.pipeline.v2.domain.step.BodyOutcome.Completed(
+                    BodyOutcome.Completed(
                         dispatchBody(
                             block = step,
                             runId = runId,
@@ -391,6 +419,66 @@ internal class StepDispatchEngine(
                     // built explicitly with a null encoded output rather than narrowed from one.
                     return Dispatched(CommonExecutionResult(outcome = body), executionContext)
                 }
+                null
+            }
+
+        // SAGA / PK-2: the slot seam.
+        //
+        // The continuation runs the WHOLE body, which is right for a loop and wrong
+        // for a plan with alternatives: a Saga has to choose between the FORWARD
+        // body and the COMPENSATE body. This port gives the handler that choice and
+        // nothing else — the engine still resolves the slot, still dispatches it and
+        // still owns its identity.
+        //
+        // The dispatched child travels the SAME canonical spine as any other body
+        // child, and it carries the path the canonical body loop WOULD have given
+        // it (body path + attempt + BlockSegment(index, key)). So the slot's journal
+        // rows are the rows that child would have had, and a body dispatched by the
+        // engine and a body dispatched by the handler are the same operation.
+        val bodySlotInvoker: BodySlotInvoker? =
+            if (step is BlockStepNode && declaredBodyOwnerOf(step) ==
+                dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner.HANDLER_CONTINUATION
+            ) {
+                BodySlotInvoker { slot, slotContext ->
+                    when (
+                        val resolution = BodySlots.resolve(
+                            step.body.map { it.pluginStepId },
+                            slot,
+                        )
+                    ) {
+                        is SlotResolution.Missing -> slotFailure(
+                            "no body slot '${slot.value}' in the body of '${step.pluginStepId.value}'",
+                        )
+
+                        is SlotResolution.Ambiguous -> slotFailure(
+                            "body slot '${slot.value}' is ambiguous in the body of " +
+                                "'${step.pluginStepId.value}': ${resolution.matches} children share that key",
+                        )
+
+                        is SlotResolution.Found -> {
+                            val childIndex = resolution.childIndex
+                            val child = step.body[childIndex]
+                            val attemptSegment = slotContext.attempt?.let { segment ->
+                                listOf(BlockSegment(segment.index, segment.key))
+                            }.orEmpty()
+                            val contextForCall = applyPatchToContext(executionContext, slotContext.patch)
+                            val childBodyPath = bodyPath + attemptSegment +
+                                BlockSegment(childIndex, child.pluginStepId)
+                            val outcome = dispatch(
+                                child,
+                                runId,
+                                stageName,
+                                stageIndex,
+                                stepIndex,
+                                stageShOptions,
+                                childBodyPath,
+                                contextForCall,
+                            ).result.outcome
+                            BodyOutcome.Completed(outcome)
+                        }
+                    }
+                }
+            } else {
                 null
             }
 
@@ -506,6 +594,7 @@ internal class StepDispatchEngine(
             stepIndex = stepIndex,
             stageShOptions = stageShOptions,
             bodyContinuation = bodyContinuation,
+            bodySlotInvoker = bodySlotInvoker,
         )
 
         // CDE.2-c/d + CDE.3-b3/e4.3: strategy preparation runs ONLY on actual execution and NEVER
@@ -637,7 +726,7 @@ internal class StepDispatchEngine(
         val policy = when (val resolution = bodyPolicyResolver.resolve(block.pluginStepId)) {
             is BodyPolicyResolution.Rejected -> return StepOutcome.Failure(
                 PipelineFailure(
-                    dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                    FailureKind.ENGINE,
                     "body execution policy rejected for '${block.pluginStepId.value}': ${resolution.reason}",
                 ),
             )
@@ -678,7 +767,7 @@ internal class StepDispatchEngine(
             )
             is BodyExecutionProjection.Unimplemented -> return StepOutcome.Failure(
                 PipelineFailure(
-                    dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                    FailureKind.ENGINE,
                     "body execution shape '${projection.shape}' is declared by " +
                         "'${block.pluginStepId.value}' but not implemented by this engine",
                 ),

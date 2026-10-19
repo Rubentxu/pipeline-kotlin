@@ -362,11 +362,19 @@ private class SpiMaterializationAdapter(
  * - [retainedProjections]: retained [ProjectionResult] objects whose [ProjectionResult.close]
  *   performs secure file wipe in reverse-LIFO order
  * - [close]: Idempotent close handler that wipes materializations, emits
- *   [CredentialUnbound] events, and closes handles. Non-silent: accumulated
- *   wipe exceptions are thrown as [CredentialScopeCleanup.Failed].
+ *   [CredentialUnbound] events, and closes handles. Non-silent: an accumulated
+ *   wipe failure is thrown as [CleanupException] carrying the orphan paths.
+ *   (`CredentialScopeCleanup.Failed` is the `:pipeline-application` adapter's
+ *   mapping of that exception, not a type this class throws.)
  *
- * ## Thread Safety
- * [close] is safe to call from any thread. Idempotent — multiple calls are safe.
+ * ## Concurrency
+ * [close] is idempotent from a SINGLE thread: the second call is a no-op. It is
+ * NOT safe to call concurrently. `@Volatile` on [closed] gives visibility, not
+ * mutual exclusion, so `if (!closed) { closed = true; ... }` is a check-then-act
+ * two threads can both pass. No caller does this today — the only consumer holds
+ * the instance on a non-escaping local and closes it from one `finally` — so the
+ * race is latent rather than live. It becomes real the moment a second thread can
+ * reach this object, and the fix then is a lock, not a stronger volatile.
  */
 class BoundCredentials(
     private val env: Map<String, SecretHandle>,

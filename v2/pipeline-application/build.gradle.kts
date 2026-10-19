@@ -206,13 +206,24 @@ dependencies {
     runtimeOnly(files(rootDir.resolve("examples/example-directive-plugin/build/libs/example-directive-plugin-0.1.0.jar")))
     runtimeOnly(files(rootDir.resolve("examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar")))
 
-    // The `testImplementation(...)` / `testRuntimeOnly(...)` block was REMOVED (2026-10-18,
-    // testing RESET) together with the JUnit launcher and the `useJUnitPlatform()` wiring that
-    // needed it. `src/test/kotlin` is empty in every module, so a JUnit engine on the test
-    // classpath had no class to discover. The runtime classpath is unchanged: the
-    // `implementation(project(":pipeline-step-sdk:junit"))` line above is the PRODUCT's
-    // `junit.results` OFFICIAL_PLUGIN, not a test dependency, and it stays.
+    // Test wiring RESTORED (2026-10-19) because `src/test/kotlin` is no longer empty, in this
+    // module or in the other 15 that have tests. The earlier removal was correct then: a JUnit
+    // engine on a classpath with no class to discover is a silent green. It stopped being correct
+    // as soon as there was something to discover, and leaving it out would have meant a permanent
+    // green with no way to run the tests that do exist.
+    //
+    // Nothing QA-shaped comes back with it. The removed lanes (`pluginContractTest`,
+    // `installedContractTest`, the `-Plane` selector, tag exclusions and sharding) stay gone;
+    // what returns is only enough for a plain unit test of a pure decision.
+    //
+    // The runtime classpath is unchanged: the `implementation(project(":pipeline-step-sdk:junit"))`
+    // line above is the PRODUCT's `junit.results` OFFICIAL_PLUGIN, not a test dependency.
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+}
 
+tasks.test {
+    useJUnitPlatform()
 }
 
 // TEST LANES REMOVED (2026-10-18, testing RESET). Five separate registrations were deleted

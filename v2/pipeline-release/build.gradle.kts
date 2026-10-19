@@ -24,6 +24,28 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-step-sdk:runtime"))
+
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+}
+
+// The JUnit lane below is NOT the lane that was removed on 2026-10-18. That one certified the
+// SHIPPED artifact -- it needed the distribution ZIP, the SBOM staging step and the
+// `PIPELINEK_DIST_ZIP` environment, and it executed zero classes while naming a real ZIP in its
+// output. This one pins pure functions (`apiRangeContains`, `semverCompare`, `evaluate`) that
+// decide whether a candidate may ship. AGENTS.md section 2 forbids exactly the ingredients the
+// removed lane needed -- filesystem, JAR, Gradle invocation -- and none of them appear here, so
+// the candidate-admission model is testable without ever touching the artifact it admits.
+//
+// `useJUnitPlatform()` is load-bearing. Gradle defaults to the JUnit 4 runner, which discovers
+// zero JUnit 5 tests and reports BUILD SUCCESSFUL over an empty result set: a green gate that ran
+// nothing, which is how the removed lane looked from the outside.
+tasks.test {
+    useJUnitPlatform()
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
 
 // ---------------------------------------------------------------------------

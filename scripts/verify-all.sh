@@ -297,6 +297,18 @@ export PATH="$JAVA_HOME/bin:$PATH"
 echo "    JAVA_HOME=$JAVA_HOME"
 "$JAVA_HOME/bin/java" -version 2>&1 | sed 's/^/    /'
 
+# Each invocation writes its stage output into its own directory, so two gates
+# running concurrently on the same machine cannot write into the same file.
+# A shared path let one run truncate the log while another was still appending
+# to it, which silently destroyed part of that run's evidence.
+log_dir="${TMPDIR:-/tmp}/verify-all.$$"
+mkdir -p "$log_dir"
+
+# The logs are removed only when the run reaches a full pass. Every other
+# outcome leaves them in place, because that is when someone needs to read them.
+cleanup_logs() { [[ "${VERIFY_ALL_VERDICT:-FAIL}" == PASS* ]] && rm -rf "$log_dir"; }
+trap cleanup_logs EXIT
+
 # --- Stage 1: compile, static analysis, API compatibility, distribution -------
 # One Gradle invocation, so the distribution is assembled exactly once and the
 # tests below reuse the same compiled classes rather than recompiling.
@@ -317,8 +329,8 @@ stage_started_at=$(date +%s)
     detektTest \
     apiCheck \
     :pipeline-application:installDist \
-    > "${TMPDIR:-/tmp}/verify-all-stage1.log" 2>&1 \
-    || { tail -40 "${TMPDIR:-/tmp}/verify-all-stage1.log" >&2; fail "stage 1 (see ${TMPDIR:-/tmp}/verify-all-stage1.log)"; }
+    > "$log_dir/stage1.log" 2>&1 \
+    || { tail -40 "$log_dir/stage1.log" >&2; fail "stage 1 (see "$log_dir/stage1.log")"; }
 echo "    ok in $(elapsed "$stage_started_at")s"
 else
   log "stage 1/5  SKIPPED by --stage"
@@ -424,8 +436,8 @@ else
         gradle_args=("${tasks[@]}")
     fi
     ./v2/gradlew --no-daemon -p v2 "${gradle_args[@]}" \
-        > "${TMPDIR:-/tmp}/verify-all-stage2.log" 2>&1 \
-        || { tail -40 "${TMPDIR:-/tmp}/verify-all-stage2.log" >&2; fail "stage 2 (see ${TMPDIR:-/tmp}/verify-all-stage2.log)"; }
+        > "$log_dir/stage2.log" 2>&1 \
+        || { tail -40 "$log_dir/stage2.log" >&2; fail "stage 2 (see "$log_dir/stage2.log")"; }
     # Gradle's exit status is not the result. A Test task can report success
     # with its classes skipped or absent, so the executed/failed/skipped counts
     # are read from the JUnit XML that the task wrote.
@@ -536,13 +548,16 @@ if want_stage 3; then
 log "stage 3/5  E2E scenarios in v2/examples/"
 stage_started_at=$(date +%s)
 if [[ -n "$scenario_filter" ]]; then
-    ./v2/examples/run.sh "$scenario_filter" > "${TMPDIR:-/tmp}/verify-all-stage3.log" 2>&1 \
-        || { tail -40 "${TMPDIR:-/tmp}/verify-all-stage3.log" >&2; fail "stage 3 (see ${TMPDIR:-/tmp}/verify-all-stage3.log)"; }
+    ./v2/examples/run.sh "$scenario_filter" > "$log_dir/stage3.log" 2>&1 \
+        || { tail -40 "$log_dir/stage3.log" >&2; fail "stage 3 (see "$log_dir/stage3.log")"; }
 else
-    ./v2/examples/run.sh > "${TMPDIR:-/tmp}/verify-all-stage3.log" 2>&1 \
-        || { tail -40 "${TMPDIR:-/tmp}/verify-all-stage3.log" >&2; fail "stage 3 (see ${TMPDIR:-/tmp}/verify-all-stage3.log)"; }
+    ./v2/examples/run.sh > "$log_dir/stage3.log" 2>&1 \
+        || { tail -40 "$log_dir/stage3.log" >&2; fail "stage 3 (see "$log_dir/stage3.log")"; }
 fi
-stage3_summary="$(grep -E '^[0-9]+ scenario' "${TMPDIR:-/tmp}/verify-all-stage3.log" || true)"
+# Reading the log with -a: the scenario output can carry NUL bytes, and without
+# it the match is reported as a binary file with no text, which is
+# indistinguishable from the summary being absent.
+stage3_summary="$(grep -aE '^[0-9]+ scenario' "$log_dir/stage3.log" || true)"
 printf '%s\n' "$stage3_summary" | sed 's/^/    /'
 if [[ -z "$stage3_summary" ]]; then
     fail "stage 3 printed no scenario summary; a missing count is not a zero count"
@@ -617,6 +632,10 @@ if (( e2e_not_run > 0 )); then
     printf 'This is not the gate: seed the credential store on a TTY, or accept the gap\n'
     printf 'explicitly. AGENTS.md section 4 does not allow an unrun test to be a PASS.\n'
 else
+    # The only verdict that earns a clean exit is a full PASS. INCOMPLETE, a
+    # subset, and every `fail` keep their logs: those are exactly the runs an
+    # operator has to come back and read.
+    VERIFY_ALL_VERDICT=PASS
     printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss\n' \
         "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS"
 fi

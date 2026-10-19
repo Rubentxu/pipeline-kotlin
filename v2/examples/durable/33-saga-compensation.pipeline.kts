@@ -1,6 +1,7 @@
 //@ durable-once
 //@ expect-exit 1
 //@ expect-stderr the action ship failed
+//@ expect-stderr saga [checkout]: SETTLED
 
 // A Saga CHAIN, compensated by the engine, in a real process with a real SQLite.
 //
@@ -10,16 +11,25 @@
 //   2. The engine compensates them in the INVERSE order, and the log proves it: the last
 //      two lines are the compensation of the SECOND action and of the FIRST one.
 //   3. The third action's compensation NEVER runs: it left no effect, so there is nothing
-//      to undo, and the marker file proves it.
+//      to undo.
 //
 // The run FAILS, and that is the point: a Saga that was compensated is a Saga that recovered
 // from a failure, and the failure is still a failure. The expectations above say so three
-// ways: the exit code is 1, the stderr names the action that failed, and the stderr does NOT
-// carry the marker the assertion below prints when the order was not the inverse.
+// ways: the exit code is 1, the stderr names the action that failed, and the stderr says the
+// Saga SETTLED — which is the difference between "the failure was undone" and "the failure
+// was left standing".
 //
 // The assertion lives in `post { always { } }` because the stage dies at the failing action:
 // a scenario that watches the world AFTER the failure it expects cannot use the exit code
 // alone, since its own failing assertion would look the same.
+//
+// The log is the whole proof, and it is an EXACT match. Every compensation of the chain
+// appends its own line, including the third action's — so a compensation that should not
+// have run is a line that must not be there, and one extra line fails the match. An earlier
+// revision of this scenario asserted the third action's compensation with a marker file that
+// nothing ever created: a check that could not fail, next to a comment claiming it proved
+// something. The compensation now writes to the log like every other, and the exact match
+// proves what the comment says.
 //
 // The markers live in PIPELINEK_E2E_HOME: the launcher's private directory for this
 // scenario, unique per scenario and removed with it.
@@ -68,7 +78,10 @@ pipeline {
                         // that is the provider's contract, and the plugin reports it
                         // honestly as "no effect".
                         forwardCommand = "exit 1",
-                        compensateCommand = "",
+                        // Its compensation MUST NOT RUN — the forward left no effect, so
+                        // there is nothing to undo. It writes to the log anyway, so the
+                        // exact match below can prove it did not.
+                        compensateCommand = "echo unship >> '$home/effects.log'",
                     ),
                 ),
             )
@@ -81,7 +94,6 @@ pipeline {
                     sh(
                         "test \"$(cat '$home/effects.log')\" = " +
                             "\"$(printf 'reserve\\ncharge\\nrefund\\nrelease')\" " +
-                            "&& test ! -e '$home/compensated-ship' " +
                             "|| { echo 'SAGA-DID-NOT-COMPENSATE-IN-ORDER' >&2; exit 1; }",
                     )
                 }

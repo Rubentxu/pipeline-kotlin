@@ -49,6 +49,30 @@ import kotlinx.serialization.json.Json
 import java.security.MessageDigest
 
 /**
+ * What a failed call MEANS for the provider that failed.
+ *
+ * The whole demonstration rests on this being the PROVIDER's contract and not the plugin's
+ * convenience: a provider that promises "a failed call left nothing behind" lets the engine
+ * move on to the older obligations, and a provider that cannot promise that leaves the engine
+ * with nothing it may safely undo — so it stops and asks a human.
+ *
+ * It is a closed set and not a String because a typo in a String would silently mean the
+ * OPPOSITE: the plugin reads an unknown contract as "nobody can say", so a scenario that meant
+ * to compensate would stop compensating, for a reason the script never asked for. The name on
+ * the wire is the enum's own, so the script and the plugin cannot drift apart.
+ */
+enum class SagaProviderContract(
+    /** The name the step's input carries. */
+    val wireName: String,
+) {
+    /** The call left nothing behind, so there is nothing to undo. */
+    FailureLeavesNoEffect("FailureLeavesNoEffect"),
+
+    /** Nobody can say whether the call took effect. */
+    FailureMayHaveApplied("FailureMayHaveApplied"),
+}
+
+/**
  * One action of the chain, as the plugin declares it.
  *
  * The two slots are named by the PLUGIN STEP KEY of a child of this Step's own body, and that
@@ -141,11 +165,21 @@ object SagaChainStepDefinition : StepDefinition<SagaChainInput, SagaChainOutput>
 
     val KEY = PluginStepId("example.saga.chain")
 
-    /** The provider promises that a failed call left no effect behind. */
-    const val PROVIDER_FAILURE_LEAVES_NO_EFFECT: String = "FailureLeavesNoEffect"
-
-    /** The provider cannot promise that, so a failed call is an unknown outcome. */
-    const val PROVIDER_FAILURE_MAY_HAVE_APPLIED: String = "FailureMayHaveApplied"
+    /**
+     * The contract the script declared, as the closed set it is.
+     *
+     * An unknown name is REFUSED rather than guessed. The two contracts lead to opposite
+     * worlds — one compensates and the other stops — so reading an unknown contract as
+     * "nobody can say" would be a guess about the provider's guarantees, made in the
+     * direction that silently leaves work undone. A refusal says what the script did not
+     * say.
+     */
+    fun contractOf(wireName: String): SagaProviderContract =
+        SagaProviderContract.entries.firstOrNull { it.wireName == wireName }
+            ?: throw IllegalArgumentException(
+                "the provider contract '$wireName' is not one of " +
+                    SagaProviderContract.entries.joinToString(", ") { it.wireName },
+            )
 
     override val contract = StepContract(
         key = KEY,
@@ -198,6 +232,7 @@ object SagaChainStepDefinition : StepDefinition<SagaChainInput, SagaChainOutput>
         val slots: BodySlotInvoker = context.capabilities.get(BODY_SLOT_CAPABILITY)
 
         val sagaId = SagaId.of(input.sagaId)
+        val contract = contractOf(input.providerContract)
         val forwardOutcomes = mutableListOf<String>()
         var failure: String? = null
 
@@ -248,7 +283,7 @@ object SagaChainStepDefinition : StepDefinition<SagaChainInput, SagaChainOutput>
                     // provider that cannot promise that is reported as UNKNOWN, and the engine
                     // stops: an effect that may have happened must not be undone twice, and
                     // must not be declared absent either.
-                    if (input.providerContract == PROVIDER_FAILURE_LEAVES_NO_EFFECT) {
+                    if (contract == SagaProviderContract.FailureLeavesNoEffect) {
                         plan.recordForward(declaration.key, EffectEvidence.Absent)
                         forwardOutcomes += "FAILED"
                     } else {

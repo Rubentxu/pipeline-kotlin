@@ -123,6 +123,18 @@ enum class InterventionReason {
      * have happened, so running the compensation again would double it.
      */
     COMPENSATION_UNCERTAIN,
+
+    /**
+     * The compensation was NOT dispatched, because the durable state refused the write-ahead.
+     *
+     * The write-ahead is written BEFORE the body leaves the process, so a refusal means the body
+     * never ran and the resource was NOT touched. The obligation stays owed and durable, and
+     * whoever owns the run — a later process or a human — decides.
+     *
+     * It is a different fact from [COMPENSATION_UNCERTAIN]: there, something ran and nobody
+     * knows what it did; here, nothing ran at all.
+     */
+    COMPENSATION_NOT_DISPATCHED,
 }
 
 /**

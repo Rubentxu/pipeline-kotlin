@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaCompensationReport
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlan
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations
+import dev.rubentxu.pipeline.v2.domain.saga.SagaRecordOutcome
 import dev.rubentxu.pipeline.v2.domain.saga.SagaRuntime
 import dev.rubentxu.pipeline.v2.domain.step.BodyInvocationContext
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
@@ -37,6 +38,18 @@ import dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker
  * runs. If the process dies while the body is in flight, the durable state says so, and the
  * next process does NOT run the body again on a guess: it stops, because the compensation may
  * already have been applied.
+ *
+ * ## A refusal is a STOP, not a warning
+ *
+ * Both writes of the loop are asked for an answer, and the answer is obeyed. If the durable
+ * state refuses the write-ahead, the body is not dispatched at all: a compensation that leaves
+ * no "in flight" marker is a compensation nobody can fence, and the next process would apply it
+ * a second time. If the durable state refuses the record, the Saga cannot claim the
+ * compensation happened, and the loop stops instead of compensating an older obligation
+ * against a state that was never proven to be restored.
+ *
+ * In both cases the report says what the durable state says, so the process that reads the
+ * rows later reaches the same conclusion this one reached.
  *
  * ## The bodies run through the SAME dispatcher
  *
@@ -91,14 +104,46 @@ class SagaCompensationInterpreter(
                         )
 
                     // The write-ahead: BEFORE the body leaves the process.
-                    planOperations.beginCompensation(obligation.key)
+                    //
+                    // A refusal is not a warning: it means the durable state does not know that
+                    // a compensation is about to run, so the body is NOT dispatched. A body that
+                    // runs without that marker is a compensation nobody can fence — after a crash
+                    // the row would still say "owed", and the next process would compensate a
+                    // second time.
+                    when (planOperations.beginCompensation(obligation.key)) {
+                        is SagaRecordOutcome.Recorded -> Unit
+
+                        is SagaRecordOutcome.Refused -> return SagaCompensationReport(
+                            plan.sagaId,
+                            compensated,
+                            CompensationDirective.NeedsIntervention(
+                                obligation,
+                                InterventionReason.COMPENSATION_NOT_DISPATCHED,
+                            ),
+                        )
+                    }
 
                     val observation = observe(
                         slotInvoker.invoke(action.compensateSlot, BodyInvocationContext()),
                     )
-                    planOperations.recordCompensation(obligation.key, observation)
 
-                    compensated += obligation.actionId
+                    // The answer has to become durable too. If the store refuses the record, the
+                    // row keeps saying "the compensation is in flight", and the Saga cannot
+                    // claim it is settled: a later process reads that same row and reaches the
+                    // same conservative conclusion. So the loop stops here, and the reason is
+                    // the one the row itself implies.
+                    when (planOperations.recordCompensation(obligation.key, observation)) {
+                        is SagaRecordOutcome.Recorded -> compensated += obligation.actionId
+
+                        is SagaRecordOutcome.Refused -> return SagaCompensationReport(
+                            plan.sagaId,
+                            compensated,
+                            CompensationDirective.NeedsIntervention(
+                                obligation,
+                                InterventionReason.COMPENSATION_UNCERTAIN,
+                            ),
+                        )
+                    }
                 }
             }
         }

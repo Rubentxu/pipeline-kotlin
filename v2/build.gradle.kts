@@ -106,7 +106,14 @@ repositories {
 // 2026-10-19: the 0.62.0 train closes at v0.62.0. The 0.63.0 train opens
 // here (ProductVersion 0.63.0) so the next candidate can be tagged
 // v0.63.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
-version = "0.63.0"
+//
+// 2026-10-19: the 0.63.0 train closes at v0.63.0-rc1. The 0.64.0 train opens
+// here (ProductVersion 0.64.0) so the next candidate can be tagged
+// v0.64.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
+// The public SDK contracts grew in this train: the Saga SLOT seam
+// (BodySlotInvoker, BodySlots, SlotResolution) is new published API, so the
+// version that carries it cannot be the version that shipped without it.
+version = "0.64.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

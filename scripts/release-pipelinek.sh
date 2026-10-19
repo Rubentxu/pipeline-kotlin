@@ -109,7 +109,86 @@ fi
 # 3. Run the release gate. It runs distZip, cyclonedxBom, candidateAdmission,
 #    and the mandatory-plugin test, all bound to the just-built ZIP. The
 #    receipt is the JSON file the gate writes to build/candidate/.
+#
+#    The JDK is resolved BEFORE the gate, for the same reason
+#    scripts/verify-all.sh resolves it, and the failure it prevents is worth
+#    naming because the message does not: the repository declares
+#    jvmToolchain(21), and Kotlin's embedded build-script compiler cannot parse
+#    the Java version of a newer JDK. On Java 25 every Gradle invocation dies
+#    with `IllegalArgumentException: 25.0.4.1` from JavaVersion.parse inside
+#    KotlinScriptCompilationAndInstrumentation.compile, reported under a
+#    `What went wrong:` headline that is just the bare version string. Nothing
+#    in that output mentions a toolchain, a JDK, or this repository — which is
+#    why this script used to die on a correctly-configured machine with no
+#    usable diagnosis.
+#
+#    So: resolve a JDK matching jvmToolchain, refuse with the cause named if
+#    there is none, and only then invoke Gradle. A release that cannot build is
+#    a clean refusal, not a stack trace three steps deep in someone else's
+#    compiler.
 # ----------------------------------------------------------------------------
+
+REQUIRED_JAVA_FEATURE=21
+
+java_feature() {
+    # `java -version` leads with e.g. openjdk version "21.0.8" 2025-07-15 LTS.
+    # The feature version is the integer before the first dot, and that integer
+    # is what jvmToolchain() means by 21 — not the full 21.0.8.
+    "$1/bin/java" -version 2>&1 | head -1 \
+        | sed -E 's/.*version "([0-9]+).*/\1/'
+}
+
+resolve_java_home() {
+    local candidates=() c mac
+    [ -n "${JAVA_HOME:-}" ] && candidates+=("$JAVA_HOME")
+    # Debian/Ubuntu layout.
+    if [ -d /usr/lib/jvm ]; then
+        for c in /usr/lib/jvm/*/; do
+            [ -x "${c}bin/java" ] && candidates+=("${c%/}")
+        done
+    fi
+    # asdf. This one is not optional on a machine that manages Java this way:
+    # `java` on PATH is an asdf SHIM, and asdf resolves it to the newest
+    # installed JDK, so an unqualified `java -version` here reports 25 and the
+    # build dies with the bare-version error. Listing asdf's installs directly
+    # is what makes a 21 findable here at all.
+    if [ -d "$HOME/.asdf/installs/java" ]; then
+        for c in "$HOME"/.asdf/installs/java/*/; do
+            [ -x "${c}bin/java" ] && candidates+=("${c%/}")
+        done
+    fi
+    # SDKMAN.
+    if [ -d "$HOME/.sdkman/candidates/java" ]; then
+        for c in "$HOME"/.sdkman/candidates/java/*/; do
+            [ -x "${c}bin/java" ] && candidates+=("${c%/}")
+        done
+    fi
+    # macOS.
+    if command -v /usr/libexec/java_home >/dev/null 2>&1; then
+        mac=$(/usr/libexec/java_home -v "$REQUIRED_JAVA_FEATURE" 2>/dev/null || true)
+        [ -n "$mac" ] && candidates+=("$mac")
+    fi
+    for c in "${candidates[@]:-}"; do
+        [ -x "$c/bin/java" ] || continue
+        if [ "$(java_feature "$c" || true)" = "$REQUIRED_JAVA_FEATURE" ]; then
+            printf '%s' "$c"; return 0
+        fi
+    done
+    return 1
+}
+
+echo "release-pipelinek: resolving a JDK ${REQUIRED_JAVA_FEATURE} (jvmToolchain(${REQUIRED_JAVA_FEATURE}))"
+if ! java_home="$(resolve_java_home)"; then
+    echo "release-pipelinek: no JDK ${REQUIRED_JAVA_FEATURE} found." >&2
+    echo "    v2 declares jvmToolchain(${REQUIRED_JAVA_FEATURE}), and Kotlin's build-script" >&2
+    echo "    compiler cannot parse a newer JDK's version string, so running on a later one" >&2
+    echo "    fails with an unrelated-looking 'IllegalArgumentException: <version>'." >&2
+    echo "    Install a JDK ${REQUIRED_JAVA_FEATURE} or point JAVA_HOME at one." >&2
+    exit 1
+fi
+export JAVA_HOME="$java_home"
+export PATH="$JAVA_HOME/bin:$PATH"
+"$JAVA_HOME/bin/java" -version 2>&1 | sed 's/^/release-pipelinek:   /'
 
 echo "release-pipelinek: running releaseGate (distZip + cyclonedxBom + candidateAdmission + test)"
 ./v2/gradlew --no-daemon -p v2 :pipeline-release:releaseGate -Pcandidate.tag="${PIPELINEK_RELEASE_TAG}" -Pcandidate.sequence=1 "$@"

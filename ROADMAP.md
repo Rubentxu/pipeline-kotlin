@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `1fa2b07b8` medido; este bloque empuja a `dde514b83` / `094319696` | `git rev-parse HEAD` |
+| SHA | `8a823ca556` medido, gate completo sobre este árbol | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 9 | ídem |
-| Tests unitarios ejecutados | **557** (59/59 informes reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **571** (62 informes en disco, 53 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Escenarios E2E | 36 (**35 pasan, 0 fallan, 1 `NOT_RUN`**, 1 rerun durable) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **7229 / 61650 = 0.117** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **7408 / 61484 = 0.120** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **276 s**, de **dos** ensayos medidos en este ciclo (276 / 242), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **289 s** en el ensayo de `8a823ca556`; la serie del ciclo es 276 / 242 / 289, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`INCOMPLETE`**, `gaps=1 not_run` — las cinco etapas corrieron y pasaron, pero el escenario de credenciales no llegó a ejecutarse | línea final de `verify-all.sh` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
@@ -800,13 +800,20 @@ y ruidosamente». Ese fallo no se produjo. `apiDump` regenerado: 48 líneas meno
 y `CompatibilityLevel`, `PipelineJson`, `WorkspacePathAnchors` y `StepContext`
 siguen en el volcado.
 
-#### 2.2.2 Cuatro comentarios que citaban pruebas que nunca existieron
+#### 2.2.2 Cuatro comentarios que citaban pruebas que este árbol ya no tiene
 
 `Sha256MigrationCharsetInvariantTest`, `SharedModelCompositionFitnessTest`,
 `UatLocal004TimeoutTest` y `CompatibilityLevelEnumTest`: `git ls-files` no
 devuelve **ningún** fichero para ninguno de los cuatro. Cada comentario afirmaba
 un guard que el repositorio no tiene — la quinta y sexta apariciones de un defecto
 que este árbol ya había pagado cuatro veces.
+
+**El título de esta sección estuvo mal hasta que se midió (§2.2.4).** Decía «pruebas
+que nunca existieron». Es falso: los cuatro eran ficheros de test reales, borrados
+por el propio RESET en `2aa071aab`. Lo cierto es más estrecho y sigue siendo un
+defecto —la cita no tiene sujeto **en este árbol**—, pero la diferencia no es
+cosmética: «nunca existió» innocentiza al KDoc y «lo borramos y no actualizamos la
+cita» lo acusa. Es la distinción que decide el remedio.
 
 No se les añade test, y esa es la decisión: una garantía que sólo existe en un
 comentario no se vuelve real con un test, y un *fitness* de texto fuente está
@@ -884,11 +891,44 @@ lectura y el store es file-backed por diseño; ejercitarlo exige almacenamiento
 durable, que AGENTS.md §2 prohíbe a un test unitario. Por eso se **conservó la
 afirmación** y se borró la cita al test, y no al revés.
 
-**Las otras 10 afirmaciones vivas siguen NOT_RUN.** No se corrigen aquí, y no se
-declaran cerradas: corregirlas exige leer cada uno de sus ficheros para saber qué
-garantía nombra, y ese trabajo no se ha hecho. La regla que las gobierna sigue
-siendo la de arriba —se reescriben al tocar el fichero—, con una única excepción
-acotada: una afirmación viva comprobada como falsa no espera al próximo toque.
+**Las otras 10 afirmaciones vivas: la mitad de existencia está resuelta, la de
+reescritura sigue NOT_RUN.** §2.2.4 midió las diez. Lo que queda no se corrige aquí,
+y no se declara cerrado: reescribir una afirmación viva exige leer el fichero para
+saber qué garantía nombra, y ese trabajo no se ha hecho. La regla que las gobierna
+sigue siendo la de arriba —se reescriben al tocar el fichero—, con una única
+excepción acotada: una afirmación viva comprobada como falsa no espera al próximo
+toque.
+
+#### 2.2.4 Las diez existen como borradas, y eso cambia lo que §2.2.2 afirmaba
+
+Medido el 2026-10-19 sobre `8a823ca556`, con cinco nombres comprobados aquí a mano y
+los diez por agente:
+
+| Comprobación | Resultado |
+|---|---|
+| `git log --diff-filter=D -1 -- */<Nombre>.kt` sobre HEAD | **un solo commit para los cinco**: `2aa071aab` |
+| `git ls-files -- '*<Nombre>.kt'` | 0 en este árbol |
+| El fichero, en un worktree hermano | **existe**: p. ej. `.worktrees/pr134-review/.../CoordinatorGrowthGuardrailTest.kt` |
+| `git merge-base --is-ancestor e41fc91e7 HEAD` | **NO** |
+
+La cuarta fila es la que casi convierte el hallazgo en otro. Buscando con `--all`,
+`git log` devuelve `e41fc91e7` (`feat(release) … (#146)`) para los cuatro nombres:
+parece una contradicción con `2aa071aab`. No lo es —`e41fc91e7` **no es ancestro de
+HEAD**, es una segunda eliminación en otra línea, y `--all` mezcló dos denominadores
+en una sola cifra. Sin esa fila, el veredicto habría sido «el commit equivocado».
+
+**Lo que cambia:** §2.2.2 decía «pruebas que nunca existieron». Es falso y era mi
+error. Los diez eran ficheros de test reales que el propio RESET borró en
+`2aa071aab` sin tocar las citas. El defecto sigue existiendo y sigue siendo el mismo
+—una afirmación viva sobre un guard que este árbol no tiene— pero la causa es
+**desincronización**, no invención, y el remedio se lee distinto: un KDoc que nombra
+un test borrado por nosotros se corrige al tocar el fichero; un KDoc que nombra un
+test imaginado se corría aunque nadie tocase nada.
+
+**Y una cifra que este documento ya había pagado:** «71 nombres» no está respaldada
+por ninguna lista. §2.2.3 deja escrita una tabla de 4 y una muestra de 4; sólo **10**
+nombres son recuperables del texto. 71 era la salida del instrumento, no un conjunto
+que nadie pueda volver a contar.
 
 **Censo histórico — los nueve módulos que la lista vieja nombraba, no los seis
 que quedan.** Se conserva porque su hallazgo sigue siendo cierto y explica por
@@ -2103,6 +2143,14 @@ usa la grafía que compila y **no** afirma una causa que no se ha establecido.
   mutación —forzar el `when(kindId)` a una sola rama— mata 10 tests. Un test que
   describe un formato equivocado no es un test débil: es un test que empuja a
   «arreglar» el producto para satisfacerlo.
+
+- **`delivery-first-testing` tiene una affordance colgante, y el router la ofrece
+  como si fuera ejecutable.** `references/navigation.md` punto 10 enruta la
+  intención `audit` a `audit-portfolio`. En disco hay **8** playbooks en
+  `references/lenses/` y **`audit-portfolio.md` no está entre ellos**. No es una
+  lente activable: invocarla produce un enlace a nada. Las que sí están y sirven
+  para este árbol son `change-impact`, `regression-promotion` y `failure-triage`.
+  Se anota para que nadie la invoque esperando un procedimiento.
 
 ---
 

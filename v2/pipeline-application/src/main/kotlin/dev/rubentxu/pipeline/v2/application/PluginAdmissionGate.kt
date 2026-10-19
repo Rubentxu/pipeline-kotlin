@@ -331,6 +331,37 @@ object PluginAdmissionGate {
     }
 
     /**
+     * The artifact-integrity guarantee, as a pure decision with no I/O and no clock.
+     *
+     * A measured digest that disagrees with the declared one is refused BEFORE any
+     * operator row is consulted: the admission layer does not need a row to know the
+     * manifest is lying, and a plugin that lies about its own bytes is refused whether
+     * or not anyone pinned anything.
+     *
+     * `null` means the bytes did not contradict the claim. It does NOT mean verified:
+     * a `null` [MeasuredArtifactIdentity.measuredDigest] means nobody measured, and that
+     * stays a distinct state handled by the caller, never a silent pass.
+     *
+     * Split out from [b32TrustRefusal] so the guarantee is reachable from a test without
+     * building a whole [dev.rubentxu.pipeline.v2.domain.step.PluginManifest] — a fixture
+     * for eight unrelated fields would freeze the manifest's shape to guard a comparison.
+     */
+    internal fun measuredVsDeclaredRefusal(
+        pluginId: String,
+        identity: MeasuredArtifactIdentity,
+    ): AdmissionRefusal.RefusedDigestMismatch? {
+        val measured = identity.measuredDigest
+        if (measured != null && !measured.value.equals(identity.declaredDigest.value, ignoreCase = true)) {
+            return AdmissionRefusal.RefusedDigestMismatch(
+                identity = pluginId,
+                declared = identity.declaredDigest,
+                measured = measured,
+            )
+        }
+        return null
+    }
+
+    /**
      * Compute the B3.2 trust refusal for a manifest + measured identity.
      *
      * Returns `null` when the plugin is admitted on trust grounds (i.e. the operator
@@ -349,14 +380,7 @@ object PluginAdmissionGate {
         // 1) Compare measured vs declared FIRST. A measured mismatch is a measured
         // mismatch, regardless of whether the operator has pinned anything. The
         // admission layer does not need a row to know the manifest is lying.
-        val measured = identity.measuredDigest
-        if (measured != null && !measured.value.equals(identity.declaredDigest.value, ignoreCase = true)) {
-            return AdmissionRefusal.RefusedDigestMismatch(
-                identity = pluginId,
-                declared = identity.declaredDigest,
-                measured = measured,
-            )
-        }
+        measuredVsDeclaredRefusal(pluginId, identity)?.let { return it }
 
         // 2) Look up the operator's row for (plugin, version). Three outcomes.
         val row = trustDatabase.lookup(pluginId, releaseVersion)

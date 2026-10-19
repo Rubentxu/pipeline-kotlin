@@ -76,7 +76,8 @@ typealias PwdTmpOutput = PwdOutput
  *
  * ## Why a single capability, not three
  *
- * AGENTS.md STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (symmetric with
+ * AGENTS.md §1: a handler reaches a named port rather than effectful work itself,
+ * symmetric with
  * `core.sh → ShellOperations`). Three capabilities on a single effectful Step
  * leak the runtime concerns into the contract: the handler would re-derive
  * `sha256` from `OpId`, manually call `Files.createDirectories`, and manually

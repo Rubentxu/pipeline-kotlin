@@ -31,8 +31,8 @@ import java.time.Instant
  *
  * ## Why a typed seam and not `FileWriteExecutor` directly?
  *
- * AGENTS.md §STEP IMPLEMENTATION — OPERATIVE GUIDE (handler must adapt to existing
- * certified infrastructure). Mirrors [ShellOperations] for `core.sh`: the substrate
+ * AGENTS.md §1 (a handler must adapt to the existing named ports/adapters).
+ * Mirrors [ShellOperations] for `core.sh`: the substrate
  * stays the single authority for `FileWritten` emission; the handler neither writes
  * files nor emits events.
  *

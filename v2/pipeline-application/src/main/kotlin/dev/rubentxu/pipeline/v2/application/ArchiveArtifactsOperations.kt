@@ -16,8 +16,8 @@ import java.nio.file.Path
  *
  * ## Why a typed seam
  *
- * AGENTS.md STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (effectful handlers adapt to
- * typed seams, never embed IO logic). Mirrors the certified pattern:
+ * AGENTS.md §1: effectful work — I/O, files, processes — resides at named
+ * ports/adapters, never embedded in a handler. Mirrors the certified pattern:
  * - `WorkspaceOperations` / `WorkspaceOperationsAdapter` (S2-A3 / G1)
  * - `ShellOperations` / `ShOperationsAdapter` (LB-02 / G3)
  * - `DeleteDirOperations` / `DeleteDirOperationsAdapter` (S2-A7 / G3-fix)

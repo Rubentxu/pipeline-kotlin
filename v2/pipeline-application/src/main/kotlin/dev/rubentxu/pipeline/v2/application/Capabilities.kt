@@ -98,8 +98,8 @@ val WORKSPACE_IDENTITY_CAPABILITY: StepCapability = dev.rubentxu.pipeline.v2.dom
  *
  * ## Why a typed seam and not a generic `OpId`/`Files` capability?
  *
- * AGENTS.md STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (handler adapts to typed
- * seams, never embeds process/IO logic). The certified `core.sh` Step reaches a
+ * AGENTS.md §1: effectful work — I/O, files, processes — resides at named
+ * ports/adapters, never embedded in a handler. The certified `core.sh` Step reaches a
  * `ShellOperations` capability and never touches `ProcessBuilder` directly. By
  * symmetry, the registry `core.pwd.tmp` reaches this `TemporaryWorkspaceOperations`
  * capability and never touches `Files.createDirectories` directly.
@@ -151,8 +151,8 @@ val TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY: StepCapability =
  *
  * ## Why a typed seam and not `DeleteDirExecutor` directly?
  *
- * AGENTS.md STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (handler adapts to typed
- * seams, never embeds process/IO logic). The certified `core.sh` Step reaches a
+ * AGENTS.md §1: effectful work — I/O, files, processes — resides at named
+ * ports/adapters, never embedded in a handler. The certified `core.sh` Step reaches a
  * `ShellOperations` capability and never touches `ProcessBuilder` directly. By
  * symmetry, `core.deleteDir` reaches this `DeleteDirOperations` capability and
  * never touches `DeleteDirExecutor`, `Files`, `EventSink`, or `sha256` directly.
@@ -264,7 +264,8 @@ val CLEAN_WS_OPERATIONS_CAPABILITY: StepCapability = StepCapability("clean-ws.op
  *
  * ## Why a capability and not a var in the handler?
  *
- * AGENTS.md §STEP IMPLEMENTATION: handler MUST NOT hold mutable state. The previous
+ * AGENTS.md §1: decisions are pure and immutable where practical, so a handler MUST NOT
+ * hold mutable state. The previous
  * `CoreMilestoneStep` implementation used `private var lastReachedOrdinal: Int? = null`
  * in the singleton object — global classloader state that bleeds across runs and JVM
  * classloader boundaries. The capability system + run-scoped store provides proper
@@ -280,8 +281,8 @@ val MILESTONE_OPERATIONS_CAPABILITY: StepCapability =
  *
  * ## Why a typed seam and not filesystem primitives directly?
  *
- * AGENTS.md §STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (handler adapts to typed
- * seams, never embeds IO logic). Mirrors the certified pattern:
+ * AGENTS.md §1: effectful work — I/O, files, processes — resides at named
+ * ports/adapters, never embedded in a handler. Mirrors the certified pattern:
  * - `WorkspaceOperations` / `WorkspaceOperationsAdapter` (S2-A3 / G1)
  * - `ArchiveArtifactsOperations` / `ArchiveArtifactsOperationsAdapter` (S2-B10 / G1)
  * - `ShellOperations` / `ShOperationsAdapter` (LB-02 / G3)

@@ -92,9 +92,9 @@ class StashOperationsAdapter(
         }
 
         val matched: List<Path> = try {
-            AntStyleGlob(input.includes).match(
+            AntStyleGlob.fromList(splitPatterns(input.includes)).match(
                 root = workspaceRoot,
-                excludes = splitExcludes(input.excludes),
+                excludes = splitPatterns(input.excludes),
                 defaultExcludes = true,
             )
         } catch (e: Exception) {
@@ -366,8 +366,23 @@ class StashOperationsAdapter(
             reason = reason,
         )
 
-    private fun splitExcludes(excludes: String): List<String> =
-        excludes.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    /**
+     * Both glob fields of [StashInput] are comma-separated LISTS carried in a [String], and both
+     * are split here so the convention lives in exactly one place.
+     *
+     * `excludes` was already split this way; `includes` was not, which made the pair read as
+     * "one pattern plus a list" while the type said neither. `AntStyleGlob` cannot absorb the
+     * difference for both: a comma inside a real pattern is part of that pattern (Ant brace
+     * alternation such as `*.{jar,war}`, or a legal POSIX filename such as `data/a,b.txt`), so
+     * splitting inside the glob would shred both. The list therefore has to be split by the caller
+     * that knows the field is a list -- which is exactly what `excludes` already did.
+     *
+     * Consequence, stated rather than hidden: a `stash` of a file whose name contains a comma is
+     * not expressible through this field. That was already true before the split moved here, so
+     * nothing is newly refused; it is the one honest price of a list-in-a-String.
+     */
+    private fun splitPatterns(patterns: String): List<String> =
+        patterns.split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
     private fun sha256Of(file: Path): String {
         // Shared utility (B0): the same streaming loop with the same 8192-byte buffer, so the

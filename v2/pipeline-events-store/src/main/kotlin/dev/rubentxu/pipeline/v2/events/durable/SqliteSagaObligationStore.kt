@@ -78,17 +78,28 @@ class SqliteSagaObligationStore(
                     statement.setString(10, row.forwardOpId)
                     statement.setString(11, row.compensationOpId)
                     statement.setLong(12, row.leaseEpoch)
+                    // The arm timestamp is the ARM ORDER, and it is made strictly increasing
+                    // per Saga inside the statement itself: two obligations armed in the same
+                    // millisecond still get a defined order, and that order is the one they
+                    // were armed in.
+                    //
+                    // It matters because the compensation order IS the reverse of the arm
+                    // order, and a tie broken by the identifiers would compensate in an order
+                    // the plugin never declared. The cost is at most a millisecond of drift
+                    // against the wall clock, and only when two arms collide.
                     statement.setLong(13, row.createdAtMs)
-                    statement.setLong(14, row.updatedAtMs)
+                    statement.setString(14, row.runId)
+                    statement.setString(15, row.sagaId.value)
+                    statement.setLong(16, row.updatedAtMs)
                     if (row.receiptRef == null) {
-                        statement.setNull(15, java.sql.Types.VARCHAR)
+                        statement.setNull(17, java.sql.Types.VARCHAR)
                     } else {
-                        statement.setString(15, row.receiptRef.value)
+                        statement.setString(17, row.receiptRef.value)
                     }
                     // The guard's two parameters: the run whose high-water mark is read, and the
                     // epoch of this writer.
-                    statement.setString(16, row.runId)
-                    statement.setLong(17, row.leaseEpoch)
+                    statement.setString(18, row.runId)
+                    statement.setLong(19, row.leaseEpoch)
                     statement.executeUpdate()
                 }
 
@@ -315,6 +326,12 @@ class SqliteSagaObligationStore(
          * The trailing WHERE is the fencing guard and the ON CONFLICT is the idempotency guard;
          * both live in the same statement as the write, so neither can be won by a race between
          * a check and an insert.
+         *
+         * The arm timestamp is made strictly increasing PER SAGA inside this statement: it is
+         * the wall clock, or one millisecond later than the newest arm of the same Saga when
+         * both landed in the same millisecond. That is what makes the arm order — and
+         * therefore the compensation order — the order the promises were actually made in,
+         * instead of an accident of the identifiers.
          */
         const val INSERT_OBLIGATION = """
             INSERT INTO saga_obligation (
@@ -322,7 +339,12 @@ class SqliteSagaObligationStore(
                 resource_ref, compensation_kind, status, forward_op_id, compensation_op_id,
                 lease_epoch, created_at_ms, updated_at_ms, receipt_ref
             )
-            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                MAX(?, COALESCE((
+                    SELECT MAX(created_at_ms) FROM saga_obligation
+                    WHERE run_id = ? AND saga_id = ?
+                ), 0) + 1),
+                ?, ?
             WHERE (
                 SELECT COALESCE(MAX(lease_epoch), -1) FROM saga_obligation WHERE run_id = ?
             ) <= ?

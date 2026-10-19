@@ -30,8 +30,8 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
  * ## Law
  *
  * A [key] is a durable key. Changing it, or adding a case, changes the fingerprint of an
- * already-journaled aggregate and is a REPLAY-BREAKING change to be treated as such
- * (ADR-0075 / ADR-0076), never as a cosmetic rename.
+ * already-journaled aggregate and is a REPLAY-BREAKING change to be treated as such,
+ * never as a cosmetic rename.
  */
 sealed interface BodyAggregateIdentity {
 
@@ -42,7 +42,7 @@ sealed interface BodyAggregateIdentity {
     val durableRole: AggregateDurableRole
 
     /**
-     * RETRY-D (ADR-0075) — identity of the retry CONTROL ROW.
+     * RETRY-D — identity of the retry CONTROL ROW.
      *
      * The control row is the durable anchor of a retry aggregate: persisted before any
      * child effect, so a second invocation with the same run identity reconciles against it
@@ -55,7 +55,7 @@ sealed interface BodyAggregateIdentity {
     }
 
     /**
-     * PAR-D (ADR-0076) — identity of the parallel STAGE AGGREGATE.
+     * PAR-D — identity of the parallel STAGE AGGREGATE.
      *
      * The aggregate row records the stage's branch terminal outcome, so a durable rerun
      * reconstructs the join from journaled branch facts instead of re-launching branches.
@@ -77,7 +77,7 @@ sealed interface BodyAggregateIdentity {
     }
 
     /**
-     * WU-G5R.5 (ADR-0075 analog) — identity of the waitUntil CONTROL ROW.
+     * WU-G5R.5 — identity of the waitUntil CONTROL ROW.
      *
      * The control row is the durable anchor of a waitUntil aggregate: persisted before any
      * predicate body effect, so a second invocation with the same run identity reconciles
@@ -92,17 +92,17 @@ sealed interface BodyAggregateIdentity {
     companion object {
         /**
          * Every declared aggregate identity. Pinned so a THIRD durable aggregate identity
-         * has to be added deliberately (here, with its owning ADR), instead of appearing as
+         * has to be added deliberately (here, with its owning decision), instead of appearing as
          * a string literal inside the coordinator.
          */
         val ALL: List<BodyAggregateIdentity> = listOf(RetryControlRow, ParallelStageAggregate, WaitUntilControlRow)
     }
 }
 
-/** The durable role an aggregate identity plays. Closed: a new role is a new ADR. */
+/** The durable role an aggregate identity plays. Closed: adding a role is a deliberate edit. */
 enum class AggregateDurableRole(val authority: String) {
-    RETRY_CONTROL_ROW("ADR-0075"),
-    PARALLEL_STAGE_AGGREGATE("ADR-0076"),
+    RETRY_CONTROL_ROW("durable retry control row"),
+    PARALLEL_STAGE_AGGREGATE("parallel stage aggregate"),
     /** WU-G5R.5 — durable waitUntil predicate polling loop control row. */
-    WAIT_UNTIL_CONTROL_ROW("ADR-0075 (waitUntil control journal, WU-G5R.5 analog)"),
+    WAIT_UNTIL_CONTROL_ROW("durable waitUntil control row"),
 }

@@ -18,15 +18,16 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `12eea7a89` + los cambios de este bloque | `git rev-parse HEAD` |
+| SHA | `1fa2b07b8` medido; este bloque empuja a `dde514b83` / `094319696` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 9 | ídem |
-| Tests unitarios ejecutados | **531** (56/56 informes reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **557** (59/59 informes reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Escenarios E2E | 36 (**35 pasan, 0 fallan, 1 `NOT_RUN`**, 1 rerun durable) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **6981 / 61644 = 0.113** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **7229 / 61650 = 0.117** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **228 s**, peor de tres ensayos (228 / 227 / 227), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **276 s**, de **dos** ensayos medidos en este ciclo (276 / 242), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| Veredicto del gate | **`INCOMPLETE`**, `gaps=1 not_run` — las cinco etapas corrieron y pasaron, pero el escenario de credenciales no llegó a ejecutarse | línea final de `verify-all.sh` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 Los tres ensayos se ejecutaron desde salidas de build limpias y los tres
@@ -947,12 +948,31 @@ Los tokens más citados son `ADR-0075` (64), `ADR-0103` (37), `ADR-0046` (30),
 La primera redacción de este bloque las trataba a todas igual —«llevan la razón
 dentro del comentario»— y eso es falso para una de ellas:
 
-1. **4 literales de cadena en 3 ficheros**, no 27. Comportamiento observable, no
-   documentación. Los cuatro, textuales:
+1. **7 literales de cadena en 5 ficheros**, no 4 y no 27. Comportamiento
+   observable, no documentación. **Corregido el 4**: un agente leyó 258 de los 295
+   sitios y reportó 5 literales; un censo derivado del disco con el filtro de
+   comentarios aplicado encuentra **7**, y la diferencia son dos que el agente no
+   tenía en su alcance —`ObsPc2IngestAgent.kt:345` (estaba en su lista de
+   *unread*) y `SegmentOutputStore.kt:394` (fuera del módulo que leyó)—. El
+   instrumento del agente era «lo que leí»; el del disco es «todo». Textuales:
    - `CliParser.kt:141` — `"…user directory; choose one (ADR-0101 clause 3.4)."`
    - `CliParser.kt:151` — `"UnsupportedSandboxProfile(value=$value, ref=ADR-0016/M5/M9: …"`
+   - `Main.kt:1488` — `hint = "see ADR-PK1-OUTPUT-FRAMING for the negotiation contract"`
+   - `ObsPc2IngestAgent.kt:345` — `"…which ADR-OBS-003 excludes and which raw_secret_on_disk == 0 …"`
+   - `SegmentOutputStore.kt:394` — `"…can truncate a live writer's range (ADR-OBS-002). …"`
    - `RunnerTrustProfile.kt:53` — `"RunnerTrustProfile.multiTenantConstrained requires ADR-0016 M5/M9 …"`
    - `SandboxProfile.kt:61` — `"sandbox-profile 'os' requires ADR-0016 M5/M9; rejected in L3. …"`
+
+   **Los siete resueltos en `dde514b83`.** Cada mensaje conserva la mitad
+   accionable que ya tenía y pierde solo la referencia muerta. Dos necesitaron
+   más: el `hint` de `--output-protocol` ahora dice la regla **tal y como está
+   implementada** (el primer id listado que este binario soporta es el que se
+   usa, leído de `OutputProtocol.negotiate`), y el KDoc de `RunnerTrustProfile`
+   afirmaba que el fallo lleva una «machine-checkable ADR citation» —quitar el
+   token habría dejado esa afirmación falsa, así que el KDoc pasó a decir lo que
+   el mensaje lleva de verdad. Ningún test, ejemplo ni dump `.api` afirmaba
+   ninguna de las siete: comprobado **antes** de editar. Re-medido después con el
+   mismo instrumento: **0 literales de runtime**.
    Son mensajes de error que **lee el operador**. Borrar el token no limpia nada:
    cambia el texto que el operador lee. Cualquier barrido de «comentarios que
    citan documentos borrados» aplicado sobre el árbol entero los corrompe.
@@ -987,6 +1007,51 @@ documento donde la regla está escrita.
 —«esto lo exige *ADR-0085`*— sobre un comportamiento que el propio código había
 cambiado. Quedan 119; es el primero que se resuelve, y por el mismo motivo que en
 (f): no por ser el más numeroso, sino por ser el que sostiene una decisión.
+
+**Y este ciclo lo confirma empíricamente, no por argumento.** Antes de decidir si
+el resto se puede borrar en bloque, se construyó el barrido y se probó **sin
+escribir nada**, con una red que rechaza toda línea que quede mal formada y con
+un segundo motor de sufijo acotado. Resultado sobre las 273 líneas de `.kt` main:
+
+- El primer motor destruye líneas: `* ADR-0075 — authoritative spec for durable
+  retry reconciliation.` → `*.`.
+- El segundo motor no las destruye pero **corrompe la mayoría**. De las seis
+  primeras líneas que la red aceptó, cuatro estaban rotas:
+  `see ADR-0070).` → `see).`; `RP034-H / ADR-0101: …` → `RP034-H /: …`;
+  `This is the plugin ADR-0081 claimed was possible…` → `This is the plugin
+  claimed was possible…`; y —peor que todas— `ADR-PK1-IDENTITY` → `-IDENTITY`,
+  porque un patrón `[A-Za-z0-9]+` se corta en el primer guion del nombre.
+
+La red de seguridad solo detectaba paréntesis vacíos y puntos sueltos; no detectó
+ninguna de estas cuatro, porque **ninguna deja sintaxis inválida**: el Kotlin
+compila igual y el comentario solo queda tonto. Ese es el argumento definitivo de
+por qué esto no se barre: un fallo aquí no rompe la compilación, así que ningún
+gate lo detecta, y la deuda se convierte en ruido ilegible en 273 sitios.
+
+**Cuatro sitios donde la cita era la única autoridad, resueltos en `094319696`
+antes de que cualquier barrido pudiera alcanzarlos.** Dos los confirmó leyendo el
+fichero; los otros dos el agente los había marcado *unread* y resultaron **peores
+de lo que decía el informe** — no eran citas sino referencias a ítems de decisión
+(`Design: D1, D2 (ADR-0052 …)`, `Design: D8 (ADR-0052 …)`) que el propio KDoc
+nunca define, de modo que un lector no tiene forma de recuperarlos del fichero.
+Las dos líneas se borraron; la prosa alrededor ya llevaba el diseño.
+
+- `GitCredentialsApplier.close()` afirmaba que el borrado de temporales era *«safe
+  against SIGKILL residue»*. El argumento de seguridad vivía en un documento que
+  no está, y **lo cierto es lo contrario**: SIGKILL no es capturable, así que un
+  proceso matado deja los ficheros de credenciales en disco hasta que el SO los
+  recupera. El KDoc dice ahora ese límite en vez de prometer una garantía que ya
+  no tiene quién la respalde. **Esto no se arregla aquí** —arreglarlo es diseño—,
+  pero esconderlo detrás de una cita era peor.
+- `PluginContributions` decía que S5.5 fue diferido por `ADR-0104` y que Reactor
+  vuelve «when ADR-0104's reopening condition is met» —una condición que el
+  fichero nunca declara, así que nadie podía actuar sobre ella. El registro de la
+  decisión sobrevive; la referencia colgante no.
+
+Quedan **117** sitios de comentarios y KDoc. El trabajo que queda es de revisión
+por fichero, y su coste real se ha medido: no es el borrado mecánico, es
+decidir si la regla está escrita en las tres líneas siguientes. Eso no se paraleliza
+con un script.
 
 **k) La identidad declarada de un plugin: la premisa de este bloque era falsa.**
 Un agente afirmó «los bytes nunca se miden en producción» y, corrigiendo eso, una

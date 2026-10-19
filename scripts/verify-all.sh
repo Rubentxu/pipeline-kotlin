@@ -596,6 +596,21 @@ if [[ "$total" -gt "$BUDGET_SECONDS" ]]; then
     fail "stage 5: wall clock ${total}s"
 fi
 
+# The LOC gate IS the 2:1 contract of section 4. A run that skipped it cannot
+# carry the same verdict as one that ran it, for the same reason the subset
+# marker above exists: the difference between this run and the gate has to be
+# INSIDE the line, not beside it. `PASS sha=...` from a --no-budget run is
+# exactly the line somebody quotes as "the gate passed" while the contract it
+# checks was never measured.
+if [[ "$skip_budget" == 1 ]]; then
+    printf '\nPASS (no LOC budget)  sha=%s  elapsed=%ss  budget=%ss%s\n' \
+        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS" \
+        "$(gaps_suffix)"
+    printf 'The 2:1 LOC contract was NOT verified: stage 4 was skipped by --no-budget.\n'
+    printf 'Quote scripts/verify-all.sh with no flags for that.\n'
+    exit 0
+fi
+
 printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss%s\n' \
     "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS" \
     "$(gaps_suffix)"

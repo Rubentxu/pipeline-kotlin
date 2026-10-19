@@ -1,20 +1,8 @@
 package dev.rubentxu.pipeline.v2.credentials.local
 
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
-import dev.rubentxu.pipeline.v2.domain.credentials.Certificate
 import dev.rubentxu.pipeline.v2.domain.credentials.Credential
-import dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope
-import dev.rubentxu.pipeline.v2.domain.credentials.SecretFile
-import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
-import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey
-import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword
-import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
-import dev.rubentxu.pipeline.v2.domain.credentials.Zip
-import java.io.Console
-import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
-import java.util.zip.ZipInputStream
 
 /**
  * Main credentials CLI — subcommand dispatcher for credential store operations.
@@ -29,10 +17,23 @@ import java.util.zip.ZipInputStream
  *
  * ## Subcommands
  *
- * - `add [--kind <kind>] <id>` — prompts for secret via Console.readPassword(), stores with passphrase
+ * - `add [--kind <kind>] [--from-stdin] <id>` — stores a credential. Without
+ *   `--from-stdin` the value is asked for at the terminal; with it, the value
+ *   is read from standard input.
  * - `list` — lists all credential IDs with kind and scope (never values)
  * - `remove <id>` — removes a credential
- * - `rotate [--kind <kind>] <id>` — re-encrypts with new secret (prompts via Console.readPassword())
+ * - `rotate [--kind <kind>] [--from-stdin] <id>` — replaces a stored credential
+ *   with a new value, read the same way `add` reads it.
+ *
+ * ## Seeding without a terminal
+ *
+ * `--from-stdin` exists so a store can be prepared by a script. The passphrase
+ * already arrives through the environment, but the value itself used to have
+ * exactly one possible source, an interactive terminal, which left every
+ * non-interactive use of `add` -- provisioning, containers, continuous
+ * integration -- with no way in. The value never reaches a log either way: it
+ * is read once, held in memory for as long as the call takes, and handed
+ * straight to the store.
  *
  * ## Supported Kinds (--kind)
  *
@@ -96,58 +97,23 @@ object MainCredentialsCli {
             "rotate" -> rotate(args.drop(1))
             else -> {
                 println("Usage: pipeline credentials {add|list|remove|rotate} [args]")
-                println("Add:    pipeline credentials add [--kind <kind>] <id>")
+                println("Add:    pipeline credentials add [--kind <kind>] [--from-stdin] <id>")
                 println("        --kind values: ${CredentialKind.ALL_KINDS}")
+                println("        --from-stdin reads the value from standard input")
                 println("List:   pipeline credentials list")
                 println("Remove: pipeline credentials remove <id>")
-                println("Rotate: pipeline credentials rotate [--kind <kind>] <id>")
+                println("Rotate: pipeline credentials rotate [--kind <kind>] [--from-stdin] <id>")
                 1
             }
         }
     }
 
     private fun add(args: List<String>): Int {
-        var kind: CredentialKind? = null
-        var idArg: String? = null
-
-        // Parse arguments
-        val it = args.iterator()
-        while (it.hasNext()) {
-            val arg = it.next()
-            when {
-                arg == "--kind" && it.hasNext() -> {
-                    val kindStr = it.next()
-                    kind = CredentialKind.fromString(kindStr)
-                    if (kind == null) {
-                        println("Error: unknown kind '$kindStr'. Valid kinds: ${CredentialKind.ALL_KINDS}")
-                        return 1
-                    }
-                }
-                !arg.startsWith("--") && idArg == null -> idArg = arg
-            }
-        }
-
-        val id = idArg ?: run {
-            println("Error: missing credential id")
-            return 1
-        }
-
+        val parsed = parseWriteArguments(args) ?: return 1
         return try {
-            val passphrase = PassphraseResolver.resolve()
-            val store = LocalSecretStore(STORE_FILE, passphrase)
-
-            val credential = when (kind ?: CredentialKind.SECRET_TEXT) {
-                CredentialKind.SECRET_TEXT -> CredentialPrompts.readSecretText()
-                CredentialKind.USERNAME_PASSWORD -> CredentialPrompts.readUsernamePassword()
-                CredentialKind.SSH_PRIVATE_KEY -> CredentialPrompts.readSshPrivateKey()
-                CredentialKind.SECRET_FILE -> CredentialPrompts.readSecretFile()
-                CredentialKind.CERTIFICATE -> CredentialPrompts.readCertificate()
-                CredentialKind.ZIP -> CredentialPrompts.readZip()
-                CredentialKind.USERNAME_COLON_PASSWORD -> CredentialPrompts.readUsernameColonPassword()
-            }
-
-            store.add(CredentialsId.from(id), credential)
-            println("Credential '$id' stored successfully.")
+            val store = openStore()
+            store.add(CredentialsId.from(parsed.id), readCredential(parsed.kind, parsed.fromStdin))
+            println("Credential '${parsed.id}' stored successfully.")
             0
         } catch (e: LocalSecretStore.CredentialsStorePassphraseUnavailableException) {
             println("Error: ${e.message}")
@@ -220,47 +186,11 @@ object MainCredentialsCli {
     }
 
     private fun rotate(args: List<String>): Int {
-        var kind: CredentialKind? = null
-        var idArg: String? = null
-
-        // Parse arguments
-        val it = args.iterator()
-        while (it.hasNext()) {
-            val arg = it.next()
-            when {
-                arg == "--kind" && it.hasNext() -> {
-                    val kindStr = it.next()
-                    kind = CredentialKind.fromString(kindStr)
-                    if (kind == null) {
-                        println("Error: unknown kind '$kindStr'. Valid kinds: ${CredentialKind.ALL_KINDS}")
-                        return 1
-                    }
-                }
-                !arg.startsWith("--") && idArg == null -> idArg = arg
-            }
-        }
-
-        val id = idArg ?: run {
-            println("Error: missing credential id")
-            return 1
-        }
-
+        val parsed = parseWriteArguments(args) ?: return 1
         return try {
-            val passphrase = PassphraseResolver.resolve()
-            val store = LocalSecretStore(STORE_FILE, passphrase)
-
-            val credential = when (kind ?: CredentialKind.SECRET_TEXT) {
-                CredentialKind.SECRET_TEXT -> CredentialPrompts.readSecretText()
-                CredentialKind.USERNAME_PASSWORD -> CredentialPrompts.readUsernamePassword()
-                CredentialKind.SSH_PRIVATE_KEY -> CredentialPrompts.readSshPrivateKey()
-                CredentialKind.SECRET_FILE -> CredentialPrompts.readSecretFile()
-                CredentialKind.CERTIFICATE -> CredentialPrompts.readCertificate()
-                CredentialKind.ZIP -> CredentialPrompts.readZip()
-                CredentialKind.USERNAME_COLON_PASSWORD -> CredentialPrompts.readUsernameColonPassword()
-            }
-
-            store.rotate(CredentialsId.from(id), credential)
-            println("Credential '$id' rotated successfully.")
+            val store = openStore()
+            store.rotate(CredentialsId.from(parsed.id), readCredential(parsed.kind, parsed.fromStdin))
+            println("Credential '${parsed.id}' rotated successfully.")
             0
         } catch (e: LocalSecretStore.CredentialsStorePassphraseUnavailableException) {
             println("Error: ${e.message}")
@@ -279,4 +209,60 @@ object MainCredentialsCli {
             1
         }
     }
+
+    /** The two commands that write a value share these arguments exactly. */
+    private data class WriteArguments(
+        val kind: CredentialKind,
+        val id: String,
+        val fromStdin: Boolean,
+    )
+
+    /**
+     * Reads the arguments of `add` and `rotate`, which differ only in what they
+     * do with the result. Returns null after printing the reason, so a caller
+     * never has to invent a usage string of its own and two commands cannot
+     * disagree about which flags exist.
+     */
+    private fun parseWriteArguments(args: List<String>): WriteArguments? {
+        var kind: CredentialKind? = null
+        var id: String? = null
+        var fromStdin = false
+
+        val it = args.iterator()
+        while (it.hasNext()) {
+            val arg = it.next()
+            when {
+                arg == "--kind" && it.hasNext() -> {
+                    val kindStr = it.next()
+                    kind = CredentialKind.fromString(kindStr)
+                    if (kind == null) {
+                        println("Error: unknown kind '$kindStr'. Valid kinds: ${CredentialKind.ALL_KINDS}")
+                        return null
+                    }
+                }
+
+                arg == "--from-stdin" -> fromStdin = true
+                !arg.startsWith("--") && id == null -> id = arg
+                // A flag whose value is missing is a typo the user should see,
+                // not a silently ignored argument.
+                arg.startsWith("--") -> {
+                    println("Error: $arg needs a value")
+                    return null
+                }
+            }
+        }
+
+        val idArg = id ?: run {
+            println("Error: missing credential id")
+            return null
+        }
+        return WriteArguments(kind ?: CredentialKind.SECRET_TEXT, idArg, fromStdin)
+    }
+
+    private fun openStore(): LocalSecretStore =
+        LocalSecretStore(STORE_FILE, PassphraseResolver.resolve())
+
+    private fun readCredential(kind: CredentialKind, fromStdin: Boolean): Credential =
+        if (fromStdin) StreamCredentialPrompts.read(kind, System.`in`)
+        else CredentialPrompts.read(kind)
 }

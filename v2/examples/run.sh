@@ -18,12 +18,12 @@
 #                                     require the second run not to repeat the
 #                                     effect; the pipeline itself asserts the
 #                                     count, this only re-runs it
-#   //@ requires-seeded-credentials   NOT_RUN: the scenario needs a credential
-#                                     store seeded in advance, and the product
-#                                     offers no non-interactive way to seed one
-#                                     (`credentials add` prompts on the TTY).
-#                                     It is reported as not executed, which is
-#                                     neither a pass nor a failure.
+#   //@ credentials <id> <kind>       seed <id> into this scenario's own store
+#                                     before the run, so a pipeline that binds a
+#                                     credential has one to resolve. Repeatable.
+#                                     The value is a fixture, generated here:
+#                                     the scenario asserts that the binding
+#                                     RESOLVED, never what it resolved to.
 #
 # The distribution must already exist:
 #     cd v2 && ./gradlew :pipeline-application:installDist
@@ -63,11 +63,67 @@ trap cleanup EXIT
 
 passed=0
 failed=0
-not_run=0
+seeded=0
 durable_runs=0
 failures=()
 
 scenario_index=0
+
+# Fixtures a seeded credential can be built from. Built once per invocation and
+# shared: they are synthetic values nobody asserts on, so rebuilding them per
+# scenario would spend a subprocess to produce the same bytes.
+fixtures_dir="$cycle_root/fixtures"
+seed_value() {
+    # $1 = credential kind. Writes the fixture bytes on standard output.
+    case "$1" in
+        secret-text)
+            printf 'e2e-fixture-secret' ;;
+        username-password | username-colon-password)
+            printf 'e2e-fixture-user\ne2e-fixture-pass' ;;
+        ssh-private-key)
+            printf 'e2e-fixture-user\n-----BEGIN E2E KEY-----\ne2e-fixture-key\n-----END E2E KEY-----' ;;
+        secret-file)
+            printf 'e2e-fixture-file-contents' ;;
+        certificate)
+            cat "$fixtures_dir/keystore.p12" ;;
+        zip)
+            cat "$fixtures_dir/archive.zip" ;;
+        *)
+            printf 'run.sh: unknown credential kind %s\n' "$1" >&2
+            return 1 ;;
+    esac
+}
+
+# The two binary kinds need bytes that pass their own validation, which means
+# something has to produce a real keystore and a real archive. A missing tool is
+# a loud failure naming the tool, never a silently accepted fixture.
+build_binary_fixtures() {
+    mkdir -p "$fixtures_dir"
+    if [[ ! -f "$fixtures_dir/keystore.p12" ]]; then
+        command -v keytool >/dev/null || {
+            printf 'run.sh: keytool is required to build the certificate fixture\n' >&2
+            return 1
+        }
+        keytool -genkeypair -alias e2e -keyalg RSA -keysize 2048 \
+            -dname 'CN=pipelinek e2e fixture' -validity 1 \
+            -keystore "$fixtures_dir/keystore.p12" -storetype PKCS12 \
+            -storepass e2e-fixture -keypass e2e-fixture -noprompt >/dev/null 2>&1 || {
+            printf 'run.sh: keytool could not build the certificate fixture\n' >&2
+            return 1
+        }
+    fi
+    if [[ ! -f "$fixtures_dir/archive.zip" ]]; then
+        command -v zip >/dev/null || {
+            printf 'run.sh: zip is required to build the archive fixture\n' >&2
+            return 1
+        }
+        printf 'e2e-fixture-entry' >"$fixtures_dir/entry.txt"
+        ( cd "$fixtures_dir" && zip -q archive.zip entry.txt ) || {
+            printf 'run.sh: zip could not build the archive fixture\n' >&2
+            return 1
+        }
+    fi
+}
 
 # One scenario, fully isolated. Nothing is read from the developer's HOME and
 # nothing is written outside $cycle_root.
@@ -83,7 +139,7 @@ run_scenario() {
     local expect_stdout=""
     local expect_stderr=""
     local durable=0
-    local needs_seeded_credentials=0
+    local -a seeds=()
     local directive
     while IFS= read -r directive; do
         case "$directive" in
@@ -91,35 +147,9 @@ run_scenario() {
             '//@ expect-stdout '*) expect_stdout="${directive#//@ expect-stdout }" ;;
             '//@ expect-stderr '*) expect_stderr="${directive#//@ expect-stderr }" ;;
             '//@ durable')         durable=1 ;;
-            '//@ requires-seeded-credentials') needs_seeded_credentials=1 ;;
+            '//@ credentials '*)   seeds+=("${directive#//@ credentials }") ;;
         esac
     done < <(grep -m 20 '^//@ ' "$script" || true)
-
-    if [[ "$needs_seeded_credentials" == 1 ]]; then
-        # A scenario that cannot RUN is still compiled first. `run` is what
-        # needs the seeded store; compiling does not, and skipping it meant the
-        # seven CredentialsBinding factories — a security boundary's DSL
-        # surface — had zero compilation coverage: renaming one would leave the
-        # verdict unchanged at `gaps=1 not_run`, with nothing to say whether
-        # the scenario compiled and could not run, or was never looked at.
-        #
-        # A compile failure here is a FAIL, not a NOT_RUN: the scenario's
-        # execution is blocked, its compilation is not.
-        local compile_out="$cycle_root/$slug.validate.txt"
-        if ! "$binary" validate "$script" >"$compile_out" 2>&1; then
-            printf 'FAIL    %-50s does not compile\n' "$name"
-            sed -n 's/^/    /p' "$compile_out" >&2
-            failed=$((failed + 1))
-            return
-        fi
-        # Declared up front, before any execution, so the verdict cannot depend
-        # on a run whose outcome was never observed. NOT_RUN is not a pass:
-        # it is the honest third state, and it keeps the scenario in the
-        # inventory so it cannot be forgotten the way a deleted file can.
-        printf 'NOT_RUN %-50s needs a credential store seeded on a TTY\n' "$name"
-        not_run=$((not_run + 1))
-        return
-    fi
 
     local root="$cycle_root/$slug"
     # A private working directory per scenario, entered with `cd`, so a step
@@ -143,6 +173,43 @@ run_scenario() {
     # does not exist, the credential executor is not composed, and any scenario
     # that actually needs one says so instead of borrowing a stranger's.
     export PIPELINE_CREDENTIALS_STORE="$root/creds.bin"
+
+    # Seed the credentials this scenario binds, through the distribution's own
+    # writer. The store is encrypted, so building it any other way would test
+    # the hand-built bytes rather than the store; `credentials add --from-stdin`
+    # is the same path a user takes, and the scenario runs against the same
+    # binary it was seeded with.
+    local seed
+    for seed in ${seeds[@]+"${seeds[@]}"}; do
+        local seed_id="${seed%% *}" seed_kind="${seed#* }"
+        local seed_out="$root/seed-$seed_id.txt"
+        case "$seed_kind" in
+            certificate | zip)
+                # Built on first use: paying for a keystore on the scenarios
+                # that bind no certificate would tax every run for one file.
+                if [[ ! -f "$fixtures_dir/keystore.p12" || ! -f "$fixtures_dir/archive.zip" ]]; then
+                    if ! build_binary_fixtures; then
+                        printf 'FAIL %-52s could not build the fixtures for %s\n' \
+                            "$name" "$seed_id"
+                        failed=$((failed + 1))
+                        failures+=("$name: binary fixtures unavailable")
+                        return
+                    fi
+                fi
+                ;;
+        esac
+        if ! seed_value "$seed_kind" >"$root/fixture.bin" \
+            || ! "$binary" credentials add --kind "$seed_kind" --from-stdin \
+                   "$seed_id" <"$root/fixture.bin" >"$seed_out" 2>&1; then
+            printf 'FAIL %-52s could not seed credential %s (%s)\n' \
+                "$name" "$seed_id" "$seed_kind"
+            sed 's/^/       | /' "$seed_out" 2>/dev/null | head -5
+            failed=$((failed + 1))
+            failures+=("$name: credential $seed_id could not be seeded")
+            return
+        fi
+        seeded=$((seeded + 1))
+    done
 
     local stdout="$root/stdout.txt" stderr="$root/stderr.txt" code=0
 
@@ -235,8 +302,8 @@ for script in ${selected[@]+"${selected[@]}"}; do
     run_scenario "$script"
 done
 
-printf '\n%d scenario(s), %d passed, %d failed, %d not run, %d durable rerun(s)\n' \
-    "$scenario_index" "$passed" "$failed" "$not_run" "$durable_runs"
+printf '\n%d scenario(s), %d passed, %d failed, %d credential(s) seeded, %d durable rerun(s)\n' \
+    "$scenario_index" "$passed" "$failed" "$seeded" "$durable_runs"
 
 # A capability with no scenario exercising it is not covered, it is merely
 # unobserved -- and unobserved is indistinguishable from absent from the outside.
@@ -251,11 +318,6 @@ if [[ -z "$filter" ]] && (( durable_runs == 0 )); then
     printf 'run.sh: no scenario declared "//@ durable", so the replay path was never executed.\n' >&2
     printf '  A green here would be the absence of the subject, not a passing check.\n' >&2
     exit 1
-fi
-if (( not_run > 0 )); then
-    printf 'not run (NOT_RUN is not a pass):\n'
-    printf '  - every scenario above marked NOT_RUN needs external state this\n'
-    printf '    launcher does not and must not fabricate.\n'
 fi
 if (( failed > 0 )); then
     printf 'failures:\n'

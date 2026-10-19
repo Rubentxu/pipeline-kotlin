@@ -20,6 +20,9 @@ dependencies {
     // alias bombs, and oversize documents.
     implementation(libs.snakeyaml)
 
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -257,21 +260,31 @@ tasks.withType<Test>().configureEach {
     }
 }
 
-// Unit-test wiring REMOVED (2026-10-18, testing RESET).
+// Unit-test wiring, and what it does NOT cover.
 //
-// This module carries no unit tests: it is the `readJson`/`writeJson`/`sha256` STEPs, whose
-// guarantee is that a pipeline calls them on real input. Its verification is the executable E2E
-// layer -- `.pipeline.kts` pipelines under `v2/examples/`, driven by
-// `v2/examples/run.sh` -- and not a JUnit class.
+// This module is the `readJson`/`writeJson`/`sha256`/`findFiles` STEPs. Their guarantee is that a
+// pipeline calls them on real input, and AGENTS.md section 2 keeps a filesystem out of unit tests
+// -- so the walk, the encode/decode of a real file, and the 100_000 cap stay with the executable
+// E2E layer (`.pipeline.kts` under `v2/examples/`, driven by `v2/examples/run.sh`).
 //
-// The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
-// Left in place they were a SILENT green: a `Test` task whose source set is empty reports
-// success while executing zero classes. Gradle 8.14 exposes no `failOnNoDiscoveredTests`
-// property -- the setting does not exist in this version, so nothing inside the build can
-// turn that green into a failure, and a build file asserting otherwise is describing a flag
-// it cannot compile.
+// That reasoning does not reach `CoreUtilsFindFilesStepDefinition.buildMatcher`, a pure
+// String -> PathMatcher whose whole job is a written contract: a leading `**` means any depth
+// INCLUDING ZERO, which Java NIO's own `glob:` does not do. A defect there is invisible to the
+// E2E layer in the worst possible way -- `findFiles` returns `Unit`, so the scenario can only
+// read an exit code, and a wrong matcher and a right one both produce 0. Same shape and same
+// exception as `pipeline-step-sdk/files`, which tests its `antPatternToRegex` for exactly this
+// reason and says so in its own build file.
 //
-// What turns it into a failure lives outside Gradle: `scripts/verify-all.sh` enumerates the
-// modules it asks from the filesystem and fails when a module that has a test source produces
-// no JUnit XML. The wiring that could have produced the misleading green is gone from the
-// modules that have no tests, so no module reaches that check in silence.
+// `useJUnitPlatform()` is load-bearing, not decorative: without it Gradle defaults to the JUnit 4
+// runner, discovers zero JUnit 5 tests, and reports BUILD SUCCESSFUL over an empty result set.
+// Gradle 8.14 exposes no `failOnNoDiscoveredTests` property -- the setting does not exist in this
+// version -- so what turns that green into a failure lives outside Gradle: `scripts/verify-all.sh`
+// enumerates the modules it asks from the filesystem and fails when a module that HAS a test
+// source produces no JUnit XML. The wiring is present here because the test source is present.
+tasks.test {
+    useJUnitPlatform()
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+}

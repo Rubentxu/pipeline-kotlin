@@ -18,26 +18,33 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `2d4fdf38` | `git rev-parse HEAD` |
+| SHA | `12eea7a89` + los cambios de este bloque | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
-| Módulos con test unitario permanente | **17** | etapa 2 del gate, que imprime cada módulo por nombre |
-| Módulos sin test | 10 | ídem |
-| Tests unitarios ejecutados | **522** (54/54 informes reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
-| Escenarios E2E | 36 (**35 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **6805 / 61618 = 0.110** (límite 2) | `scripts/check-budgets.py --json` |
+| Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
+| Módulos sin test | 9 | ídem |
+| Tests unitarios ejecutados | **531** (56/56 informes reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Escenarios E2E | 36 (**35 pasan, 0 fallan, 1 `NOT_RUN`**, 1 rerun durable) | `v2/examples/**/*.pipeline.kts` |
+| `VERIFY_LOC / PRODUCT_LOC` | **6981 / 61644 = 0.113** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **231 s**, peor de tres ensayos (224 / 227 / 231), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **228 s**, peor de tres ensayos (228 / 227 / 227), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 Los tres ensayos se ejecutaron desde salidas de build limpias y los tres
-reeelccionaron los **54** informes JUnit, que es la condición que hace que la
+reescribieron los **56** informes JUnit, que es la condición que hace que la
 cifra de reloj mida el gate y no una restauración de caché. Un total correcto
 con el verbo equivocado ya no puede colarse: la etapa 2 separa `rewritten` de
 `read` y **falla** si no reescribe ninguno.
 
+**Los 18 informes son 18 proyectos Gradle, no 18 directorios de fuentes.** Un
+censo por `src/test/kotlin` devuelve 14, y la diferencia son los cinco
+subproyectos de `pipeline-step-sdk` (`files`, `http`, `runtime`, `scm-git`,
+`workflow-control`) más el directorio padre, que no produce XML propio. El
+denominador que cuenta el gate es el proyecto Gradle, que es la unidad que
+Gradle ejecuta; el nombre del directorio no lo es.
+
 **Limpiar «los `build/`» es más peligroso de lo que parece, y por eso el
 criterio importa.** Una primera tanda de ensayos limpió con
-`find v2 -type d -name build` ymidió **48 de 54** informes reescritos: ese
+`find v2 -type d -name build` y midió **48 de 54** informes reescritos: ese
 `build/` de un solo nivel deja fuera once directorios de módulos anidados, como
 `v2/pipeline-step-sdk/*/build`, y el árbol queda medio tibio. Al corregirlo a
 `find` sin `-maxdepth` se descubrió el peor fallo posible: ese mismo criterio
@@ -53,12 +60,59 @@ declara `build.gradle.kts` o `build.gradle`**.
 El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
 declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
 fabricar credenciales. `NOT_RUN` no es un aprobado, y desde `5240feac` tampoco se
-confunde con uno: la línea de veredicto lleva el hueco **dentro**, como
-`PASS  sha=…  elapsed=226s  budget=900s  gaps=1 not_run`. Antes el conteo se
-imprimía y no se leía —la etapa 3 solo hacía `grep` del resumen—, así que el
-peor caso (`--scenario 'security/*'`: 0 pasan, 0 fallan, 1 no ejecutado) salía
-vestido de `PASS`. Un tercer estado no se propaga porque la capa de abajo lo
+confunde con uno: la línea de veredicto lleva el hueco **dentro**. Antes el
+conteo se imprimía y no se leía —la etapa 3 solo hacía `grep` del resumen—, así
+que el peor caso (`--scenario 'security/*'`: 0 pasan, 0 fallan, 1 no ejecutado)
+salía vestido de `PASS`. La primera forma fue un sufijo sobre la misma palabra,
+`PASS  sha=…  budget=900s  gaps=1 not_run`, que se contradecía a sí misma y
+cuya contradicción era justo lo que se acababa citando. Hoy la palabra del
+veredicto sigue a la evidencia:
+
+```
+INCOMPLETE  sha=…  elapsed=220s  budget=900s  gaps=1 not_run
+```
+
+`INCOMPLETE` y no `PASS` porque `AGENTS.md` §4 dice que una prueba ausente o
+omitida nunca es un aprobado. El código de salida sigue siendo 0: las etapas que
+sí corrieron son evidencia real, y un escenario que el producto no puede lanzar
+sin TTY es un hueco que hay que nombrar, no un defecto que deba poner el gate
+entero en rojo. Un tercer estado no se propaga porque la capa de abajo lo
 imprima: si el hueco necesita el log de la etapa para entenderse, no ha viajado.
+
+La misma regla se aplicó a `--no-budget`: ponía `skip_budget=1` y nada más, así
+que saltaba la etapa 4 y caía igualmente en la línea `PASS … budget=900s` del
+gate completo — una línea que nombraba un presupuesto de LOC que esa corrida no
+midió. Ahora también marca `subset=1` y sale como `PASS (subset)`. El veredicto
+pertenece a la corrida que lo observó todo; quitar una etapa quita la
+afirmación con ella.
+
+### La rama de replay que nadie ejecutaba
+
+`run.sh` admitía `//@ durable` desde su cabecera, pero **ninguno** de los 36
+escenarios lo declaraba: la segunda ejecución sobre el mismo `--control-root`
+nunca había corrido. `durable/22-wait-until.pipeline.kts` lo declara ahora, que
+es el escenario que puede hablar del assunto y ningún otro puede — un cuerpo que
+ya llegó a `WaitUntilCompleted` no debe volver a consultarse al repetir, ni
+fallar por no haber hecho nada nuevo, y una sola ejecución no lo observa.
+
+Un capacidad sin observador no está cubierta: está sin mirar. Por eso el
+lanzador cuenta los reejecuciones y **una corrida completa se niega a ser verde
+con `0 durable rerun(s)`**. La comprobación se limita a la corrida sin filtro a
+propósito: un `--scenario` es quien elige qué rebanada medir, y ahí obligar a la
+cobertura durable castigaría al bucle rápido por usar el filtro. La guarda se
+sometió a su propia mutación — quitar la directiva y ejecutar el inventario
+completo dio salida 1 con `0 durable rerun(s)`; ese mismo árbol era verde antes
+del arreglo.
+
+En la misma pasada se cerraron dos escapes del directorio aislado:
+`smoke/10-smoke-e2e` creaba y clonaba un repositorio en `/tmp/smoke-repo` con un
+`rm -rf` dirigido a una ruta compartida, y `durable/22` usaba el marcador
+absoluto `/tmp/marker-wu-g5-restore` — cuyo comentario afirmaba que la ruta era
+«única a este corpus para evitar colisión con otras corridas», que es
+justamente lo que dos corridas simultáneas se garantizan. Ambos son ahora rutas
+relativas al workspace propio de su etapa. `control-flow/11` ya había arreglado
+esto mismo y el arreglo no se propagó, que es la forma que toma un defecto
+cuando nadie lo busca de forma transversal.
 
 Host de referencia, exigido por `§4`: 64 núcleos lógicos Intel Xeon E5-2682 v4
 @ 2,50 GHz, 94,2 GiB de RAM, Linux 7.2.9-ogc3.1.fc44.x86_64, Temurin
@@ -147,21 +201,25 @@ o retirarlo; los cinco puntos anteriores son la evidencia para decidir, y la
 `settings.gradle.kts` no contiene una cadena es *source-text fitness*, que
 `§2` prohíbe, y `§2` prohíbe también resucitar `:pipeline-architecture-tests`.
 
-### Los 17 módulos con test
+### Los 18 módulos con test
 
 `pipeline-application`, `pipeline-domain`, `pipeline-events-store`,
 `pipeline-step-sdk/runtime`, `pipeline-step-sdk/http`,
 `pipeline-step-sdk/workflow-control`, `pipeline-step-sdk/files`,
-`pipeline-credentials-api`, `pipeline-credentials-local`,
-`pipeline-credentials-multipart`, `pipeline-credentials-executor`,
-`pipeline-binding-factory`, `pipeline-artefacts-local`,
-`pipeline-runtime-api`, `pipeline-output`, `pipeline-output-store`,
-`pipeline-release`.
+`pipeline-step-sdk/scm-git`, `pipeline-credentials-api`,
+`pipeline-credentials-local`, `pipeline-credentials-multipart`,
+`pipeline-credentials-executor`, `pipeline-binding-factory`,
+`pipeline-artefacts-local`, `pipeline-runtime-api`, `pipeline-output`,
+`pipeline-output-store`, `pipeline-release`.
 
 > **Censo remedido 2026-10-19 desde el disco.** Sobre los 27 módulos que declara
-> el `include(` de `settings.gradle.kts`: **17 con `src/test/kotlin/**/*Test.kt`,
-> 10 sin él**. La lista de arriba omitía `pipeline-application`, que ya tiene
+> el `include(` de `settings.gradle.kts`: **18 con `src/test/kotlin/**/*Test.kt`,
+> 9 sin él**. La lista de arriba omitía `pipeline-application`, que ya tiene
 > `ProjectWorkingDirectoryTest.kt`, y por eso se contradecía con la fila de §1.
+> Una segunda omisión, `pipeline-step-sdk/scm-git`, salió al reconciliar los 18
+> informes XML del gate contra un censo por directorio de fuentes: el gate cuenta
+> proyectos Gradle y el censo contaba carpetas, y un proyecto compuesto con
+> subproyectos tiene más carpetas que proyectos.
 > Las cifras anteriores a esta —«los 12 módulos con test», «17 módulos sin
 > test», «quedan 15», y el «16 con test / 11 sin él» de una remedición
 > intermedia— estaban todas caducadas: el censo se tomó antes de que este ciclo
@@ -517,7 +575,7 @@ el arreglo; los demás siguen verdes).
 
 ### 2.2 Lo que queda abierto, por valor operativo
 
-**a) 11 módulos sin test unitario permanente.** No es un objetivo de paridad.
+**a) 9 módulos sin test unitario permanente.** No es un objetivo de paridad.
 `AGENTS.md` §2 manda por riesgo, no por cuota. El orden de ataque es:
 
 | Prioridad | Módulo | Riesgo que justifica el test | Estado |
@@ -531,7 +589,7 @@ el arreglo; los demás siguen verdes).
 | 7 | `pipeline-credentials-multipart` | El punto donde una credencial llega a disco. Una escritura arbitraria y una retención silenciosa, ambas en materialización. | **Hecho** — 16 tests, 2 clases. Encontró 2 defectos materiales: Zip Slip y la fuga de directorios anidados. |
 | — | `pipeline-events` | Su único candidato (`EventViewProjection`) no tiene consumidor: ver 2.2 b. Sin consumidor, un test es coste sin destinatario. | Bloqueado por decisión de producto |
 
-Quedan **11** módulos sin test. **Esta redacción anterior los llamaba
+Quedan **9** módulos sin test. **Esta redacción anterior los llamaba
 «adaptadores finos o módulos sin clases», y es falsa**: un censo de
 `src/main/kotlin` encontró lógica pura real en varios de ellos
 (`pipeline-artefacts-local`, `pipeline-step-sdk/files`, `pipeline-release`,
@@ -540,7 +598,7 @@ adaptadores. La afirmación no se comprobó cuando se escribió y por eso salió
 único caso encaja de verdad: `pipeline-sdk-bom` es un `java-platform` sin
 clases, y su propio `settings.gradle.kts` dice por qué.
 
-**Censo de qué es testeable en cada uno de los 15** (delimitado por módulo;
+**Censo de qué es testeable en cada uno de los 9** (delimitado por módulo;
 NOT_RUN donde no se midió). Un módulo «sin test» no es un módulo
 sin lógica: cuatro de ellos deciden cosas de las que depende borrar ficheros o
 publicar un binario.
@@ -986,6 +1044,48 @@ Nota menor, del mismo tipo que las de 2.1: el KDoc de `EventHarness` explica el
 alcance «con secuencias que se reinician», pero `appendAssigned` reasigna `0L` con
 el contador monotónico. La deuda está vigente; **su explicación del mecanismo ya no**.
 
+**d) 24 de 36 escenarios E2E sólo comprueban el código de salida.** Es el
+siguiente bloque desbloqueado y el más barato de los que quedan.
+
+Censo reproducible el 2026-10-19 sobre los 36 `.pipeline.kts` del árbol. El
+lanzador sólo conoce dos aserciones, `//@ expect-exit` y `//@ expect-stderr`, y
+las dos comparan un valor de salida o una subcadena de stderr. Todo lo demás
+tiene que afirmarlo el propio escenario, y no todos lo hacen:
+
+| | Qué afirma | N |
+|---|---|---|
+| A | `//@ expect-stderr`: el lanzador exige **este** texto de negativa, no un código cualquiera | 4 |
+| B | Una comprobación dentro del cuerpo (`test -f`, `grep -q`, `cat`, `find`, `test "$X" =`) que falla si el efecto no ocurrió | 8 |
+| C | **Nada.** El lanzador compara el código de salida y ya está | **24** |
+
+El recuento por *grep* dio primero 12 y después 26 porque el patrón era más
+estrecho que el sujeto: buscaba `test -f` y `grep`, y se le escapaban `cat`,
+`find`, `wc -l` y `ls`, que son igual de asertivas porque devuelven distinto
+código de salida cuando el efecto no ocurrió. Un censo cuyo instrumento es más
+estrecho que su sujeto da un número confiado y equivocado, y esa es la tercera
+vez que pasa en este ciclo.
+
+**Un código de salida verde no es un comportamiento verde.** `smoke/01-basic`
+es `echo("hello world")` y nada más: si el motor escribiera la cadena en otro
+sitio, o dos veces, o no la escribiera, el escenario seguiría en verde. Lo mismo
+con `steps/04-sh`. El daño es mayor donde el efecto es destructivo o
+persistente —`steps/18-cleanWs` borra un directorio y no comprueba que lo borró—
+porque ahí una regresión deja datos de otra corrida en disco y nadie se entera.
+
+Por qué no se cierra en este ciclo: los 36 escenarios son el sujeto de la
+medición de reloj que acaba de hacerse, y editar el sujeto invalida la
+medición. Un número de reloj tomado sobre un árbol que ya no existe es un
+número inventado. El orden correcto es medir, luego cambiar, luego volver a
+medir; y volver a medir cuesta otros tres ensayos completos.
+
+Coste por defecto de cerrarlo: cada uno de los 24 recibe **una** comprobación
+pequeña sobre un efecto que ya produce —el fichero que escribe, la línea que
+emite, el directorio que debe quedar vacío—, no un `Shell` que reimprima lo que
+el escenario ya hizo. La lente de este bloque es `change-impact`: la garantía es
+«el escenario falla cuando el efecto público no ocurrió», y el instrumento más
+barato es una aserción dentro del propio pipeline, que no cuesta un proceso
+extra ni un segundo vocabulario en el lanzador.
+
 
 ### 2.3 Cierre de ciclo
 
@@ -1008,15 +1108,14 @@ el contador monotónico. La deuda está vigente; **su explicación del mecanismo
   impedir.
   Serie anterior sobre `2d4fdf38` (224 / 227 / 231 s, 522 tests), que sigue
   siendo cierta para aquel SHA y para ninguno más. Desde entonces los tests
-  subieron de 522 a 526 y el peor tiempo bajó de 231 a 228 s. Un gate verde
+  subieron de 522 a 531 y el peor tiempo bajó de 231 a 228 s. Un gate verde
   por inercia sería peor que uno marcado caducado; por eso esto se vuelve a
   medir cada vez que `HEAD` avanza.
   El commit posterior `d8b0c413` (solo comentarios, **cero líneas de código**)
-  midió **249 s** en una corrida completa con las mismas 55/55 y 526 tests:
-  coherente con la serie de tres, que es lo esperable en un cambio que no
-  toca lógica. La cifra que se cita como peor sigue siendo **228 s**.
+  midió **249 s** en una corrida completa con 55/55 y 526 tests: coherente con
+  la serie de tres, que es lo esperable en un cambio que no toca lógica.
 - **Presupuesto de LOC: CERRADO**, medido en la misma corrida.
-  `VERIFY_LOC = 6870` / `PRODUCT_LOC = 61637` = **0.111**, muy por debajo del
+  `VERIFY_LOC = 6981` / `PRODUCT_LOC = 61644` = **0.113**, muy por debajo del
   límite duro de 2. Los dos módulos con test más densos también pasan con
   holgura: `pipeline-credentials-local` 1103 / 1750 = 0.63 y
   `pipeline-artefacts-local` 84 / 251 = 0.335.

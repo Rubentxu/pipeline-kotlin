@@ -17,8 +17,8 @@ import org.junit.jupiter.api.Test
  * perfectly plausible-looking [BranchTerminal.Unstable] for the dominance row and still satisfy a
  * test that only checked the class.
  *
- * `foldAwaitAll` is published ABI of `pipeline-domain`, consumed by `ParallelReconciler` and
- * `ParallelStageEngine`, and had no test.
+ * The fold sits on a published boundary that production callers depend on, and had no coverage
+ * of its own.
  */
 class FoldAwaitAllTest {
 

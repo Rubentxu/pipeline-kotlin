@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
 import dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader
 import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
+import dev.rubentxu.pipeline.v2.output.store.DiagnosticText
 import dev.rubentxu.pipeline.v2.output.StreamingUtf8Decoder
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -344,7 +345,7 @@ object MainInspectCli {
             // Previously this became `NotRequested`, which rendered as silence on every row —
             // the same "printed nothing" lie the class above was built to remove. An unreadable
             // plane is unreadable on every row, and each row now says so.
-            eligible.associateWith { InspectConsoleTail.Unreadable(OutputRefusal.StorageError(e.message ?: e.javaClass.simpleName)) }
+            eligible.associateWith { InspectConsoleTail.Unreadable(OutputRefusal.StorageError(DiagnosticText.from(e))) }
         }
     }
 

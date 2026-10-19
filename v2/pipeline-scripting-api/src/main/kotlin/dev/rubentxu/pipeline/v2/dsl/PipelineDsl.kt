@@ -198,9 +198,12 @@ class OptionsScope {
      * Public, and VALIDATING, which is a correction rather than a detail. This was
      * a bare `var` with no setter, sitting beside `fun timeout(seconds)`, so inside
      * `options { … }` — where this scope is the receiver — `timeout = 5` was a
-     * second way in that no diagnostic guarded. That was not hypothetical: the
-     * certified `UatLocal004TimeoutTest` fixtures write exactly `timeout = 2L` /
-     * `timeout = 3L`.
+     * second way in that no diagnostic guarded. That was not hypothetical: two timeout
+     * UATs failed to compile when the first fix made the property private, which is the
+     * failure recorded two paragraphs down. It used to cite `UatLocal004TimeoutTest` as the
+     * fixture that wrote `timeout = 2L`; that test is not in this tree either
+     * (`git ls-files` returns nothing for it), so the fact is kept and the false citation
+     * is not.
      *
      * Making the property private was the first fix and it was the WRONG one. It
      * removes the bypass, and it also breaks every existing `.pipeline.kts` that

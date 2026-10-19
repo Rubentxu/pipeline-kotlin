@@ -279,8 +279,14 @@ object ScriptedSourceLowering {
      * no charset, which resolves to the platform default; JEP 400 made that UTF-8 in JDK 18, so
      * on every supported toolchain this migration is byte-identical and no committed identity
      * moves. What it removes is the dependency on that default being UTF-8 rather than an
-     * assumption about it. The assertion that pins this is
-     * `Sha256MigrationCharsetInvariantTest`.
+     * assumption about it.
+     *
+     * UNPINNED, and this KDoc used to say otherwise: it named
+     * `Sha256MigrationCharsetInvariantTest` as the assertion that held this, and that test has
+     * never existed in this tree (`git ls-files | grep Sha256MigrationCharsetInvariantTest` is
+     * empty). The property is real and still holds by the toolchain, but nothing here checks it,
+     * so a future edit could reintroduce a platform-default charset and the digests would move
+     * silently. The line above states the invariant; it does not claim a guard that is absent.
      */
     internal fun sha256(input: String): String =
         dev.rubentxu.pipeline.v2.domain.digest.Sha256.ofText(input)
@@ -300,10 +306,13 @@ object ScriptedSourceLowering {
     // version. Bumping it separately from the behaviour change would let an artifact built
     // before the change be reused by a runtime that no longer shares its identity law.
     //
-    // Naming the type in this comment would register a phantom consumer module in
-    // SharedModelCompositionFitnessTest, whose `consumersOf` is a raw text search rather than a
-    // symbol resolution. The dependency this bump does not create must not be recorded as though
-    // it had.
+    // The type this constant belongs to is deliberately not named here. It used to be, with a
+    // stated reason: naming it would register a phantom consumer in
+    // `SharedModelCompositionFitnessTest`, whose `consumersOf` was a raw text search. That test
+    // no longer exists either, so the reason is gone — but the conclusion it reached still holds
+    // for a better reason. This is a private constant of this file; a type reference written
+    // beside it invites exactly the kind of consumer that a later text search would read as real.
+    // The dependency this bump does not create must not be recorded as though it had.
     private const val RUNTIME_COMPATIBILITY_VERSION = "r4-runtime-v1"
     private const val PLUGIN_LOCK_DIGEST = "r3-plugins-v1"
 

@@ -168,10 +168,38 @@ run_scenario() {
     failures+=("$name: exit $code, expected $expect_exit")
 }
 
+# Optional glob filter, relative to this directory: `run.sh 'control-flow/*'`.
+# Zero matches is an ERROR, not a run of nothing. A filter that quietly runs zero
+# scenarios prints "0 scenario(s), 0 passed, 0 failed" and exits 0, which reads
+# exactly like a green -- the shape this launcher spent a whole cycle learning to
+# refuse elsewhere.
+filter="${1:-}"
+selected=()
 while IFS= read -r script; do
-    run_scenario "$script"
+    rel="${script#"$here"/}"
+    if [[ -n "$filter" ]]; then
+        # shellcheck disable=SC2254 # the pattern is a caller-supplied glob on purpose
+        case "$rel" in $filter) selected+=("$script") ;; esac
+    else
+        selected+=("$script")
+    fi
 done < <(find "$here" -name '*.pipeline.kts' -type f -not -path '*/build/*' \
             -not -path '*/example-*-plugin/*' | LC_ALL=C sort)
+
+if [[ -n "$filter" && ${#selected[@]} -eq 0 ]]; then
+    printf 'run.sh: no scenario matches the pattern %s\n' "$filter" >&2
+    printf '  patterns are globs against the path relative to this directory,\n' >&2
+    printf '  e.g. '\''control-flow/*'\'' or '\''*/11-*'\''.\n' >&2
+    printf '  available:\n' >&2
+    find "$here" -name '*.pipeline.kts' -type f -not -path '*/build/*' \
+        -not -path '*/example-*-plugin/*' | LC_ALL=C sort \
+        | sed "s|^$here/|    |" >&2
+    exit 2
+fi
+
+for script in ${selected[@]+"${selected[@]}"}; do
+    run_scenario "$script"
+done
 
 printf '\n%d scenario(s), %d passed, %d failed, %d not run\n' \
     "$scenario_index" "$passed" "$failed" "$not_run"

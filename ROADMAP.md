@@ -1466,9 +1466,70 @@ Una quinta, `EventFollower`, se trata en sentido contrario: su comentario
 afirmaba que el defecto F2 (`Completed` en una página silenciosa, que confunde
 snapshot con live follow) estaba clavado por dos falsificadores, y **los dos se
 borraron** en `2aa071aab`. Ningún escenario E2E observa el flujo de eventos, así que
-la máquina de estados puede volver al defecto exacto que su propio KDoc describe y
+la máquina de estado puede volver al defecto exacto que su propio KDoc describe y
 toda la suite ejecutable sigue verde. El comentario ahora dice eso, en vez de
 nombrar dos guardianes ausentes.
+
+#### `EventViewProjection` — cerrado como DEFER, y por una razón que no era la del DEFER
+
+`29d6aa31e` lo dejó `DEFER` con la pregunta «¿esto se borra?». Esta pasada
+contestó la pregunta, y la respuesta no es «es código muerto».
+
+**No es borrable.** `EventViewProjection`, `ViewMode` y `OutputFormat` están
+**los tres** en `v2/pipeline-events/api/pipeline-events.api`, el dump que
+`binary-compatibility-validator` genera (declarado en `v2/build.gradle.kts:355`)
+y sobre el que corre `apiCheck`. Quitar API pública es un **break versionado
+autorizado**, no una limpieza — AGENTS.md §1 lo prohíbe sin autorización. El DEFER
+no era indecisión: era la categoría de decisión equivocada. Sigue sin tocarse, y
+ahora el KDoc dice por qué se queda.
+
+Lo que sí era defecto, y se corrigió (`83ec78aef`): el KDoc afirmaba que
+«only its own test reaches it». **Ese test no existe.** Medido sobre el árbol:
+`project`, `ViewMode` y `OutputFormat` tienen **cero** referencias en todo el
+árbol, y los dos únicos tests del módulo (`EventCursorTest`,
+`EventRegistryTest`) no los tocan. Tres promesas más nombraban una superficie
+inexistente: un CLI que «materialises the projection lines», un `--view full`, y
+un caso del enum que algo «seleects». `EventInspection` era el espejo: se
+describía *apoyándose* en la proyección y el CLI la llamaba directo. **Esa sí
+está viva** (tres llamadas en `MainEventsCli`), así que solo se corrigió la
+afirmación de capas. `Main.kt:314` nombra `EventViewProjection.CONSOLE` al
+justificar por qué `console` es un verbo aparte: ese enum existe y sí está
+deprecated, así que esa referencia se queda.
+
+Verificado: diff solo de comentarios (0 líneas de código), `apiCheck` y ambos
+`compileKotlin` verdes, dump ABI sin cambios. Coherente con que
+`effective_loc()` excludes comentarios: `PRODUCT_LOC` no se movió.
+
+### 2.4b `v2/pipeline-protocol/` — no es vestigial: el build no lo ve
+
+**La premisa de este bloque era falsa, y equivocarse importa.** No es «un módulo
+que nadie usa». `v2/settings.gradle.kts` **no lo incluye**: sus 28 `include` no
+contienen `pipeline-protocol`, y no existe `v2/pipeline-protocol/build/`, que
+Gradle habría creado al compilarlo. Gradle no lo ha compilado nunca. Verificado
+por cuatro instrumentos independientes, porque el primero mintió: `grep -c` sobre
+el `include` imprime el número *y* devuelve 0, así que una cadena `&&`/`||`
+encadenada sobre él lee «ausente» cuando acaba de imprimir «1».
+
+**El defecto material es otro, y no lo arregla borrarlo.** `scripts/check-budgets.py`
+define `PRODUCT_LOC` con globs de disco (`v2/*/src/main/*`, `v2/*/build.gradle.kts`,
+líneas 62-66) que **no consultan `settings.gradle.kts`**. Las **511** líneas de
+este módulo entran en el denominador de 61.652 aunque el build nunca las compile
+— 8 `.proto` (432 efectivas) y `ProtocolCore.kt` (37). El gate mide contra un
+`PRODUCT_LOC` inflado por código invisible para él.
+
+Su efecto en el ratio es pequeño y va en la dirección honesta: borrarlo deja
+`ratio` en **0.118** (hoy 0.117, `VERIFY_LOC` 7.229 sin cambios), porque el
+denominador baja 511 líneas que el build nunca tuvo. No es un autónomo: es un
+`git rm -r` de 10 ficheros versionados. Queda preparado y medido, no ejecutado —
+esperando autorización explícita junto a `docs/` sin trackear y los 10 worktrees.
+
+**Lo que sí se puede hacer sin borrar, y es el arreglo real:** que
+`check-budgets.py` derive el denominador de los módulos que `settings.gradle.kts`
+declara, en vez de de los que el disco contiene. Eso corrige la clase de defecto
+—«el gate cuenta lo que existe, no lo que se construye»— y sobrevive a que el
+siguiente módulo entre o salga del `include`. Es un cambio en el instrumento del
+gate, así que él mismo exige evidencia: mutar el denominador debe poner en rojo
+la fila correcta.
 
 ### 2.5 Las promesas colgantes que quedan — medido, no estimado
 

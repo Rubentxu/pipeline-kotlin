@@ -66,6 +66,17 @@ pipeline {
             )) {
                 // Verify shell expansion of injected env vars
                 sh("echo API_KEY=\${API_KEY} DB_USER=\${DB_USER} SSH_KEY_FILE=\${SSH_KEY_FILE} SECRET_FILE=\${SECRET_FILE} KEYSTORE_PATH=\${KEYSTORE_PATH} ZIP_PATH=\${ZIP_PATH} U_P=\${U_P}")
+                // The `echo` below used to be the last statement and it was
+                // unconditional, so it printed "resolved successfully" whether
+                // or not any binding had resolved -- seven empty strings satisfy
+                // `echo name=` and still exit 0. A success message is not
+                // evidence of success. `-n` is the weakest honest check here:
+                // it proves each variable was bound to SOMETHING, not that the
+                // value is correct, which is all this scenario can reach.
+                //
+                // Uses the `\${VAR}` form documented in the comment above, not
+                // `${'$'}VAR`, which bash rejects.
+                sh("test -n \"\${API_KEY}\" && test -n \"\${DB_USER}\" && test -n \"\${SSH_KEY_FILE}\" && test -n \"\${SECRET_FILE}\" && test -n \"\${KEYSTORE_PATH}\" && test -n \"\${ZIP_PATH}\" && test -n \"\${U_P}\"")
                 echo("All 7 credential binding kinds resolved successfully")
             }
         }

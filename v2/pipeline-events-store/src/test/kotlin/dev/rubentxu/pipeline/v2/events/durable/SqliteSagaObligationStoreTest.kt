@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.saga.CompensationId
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationKey
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationKind
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationObligationStatus
+import dev.rubentxu.pipeline.v2.domain.saga.EffectReceiptRef
 import dev.rubentxu.pipeline.v2.domain.saga.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
@@ -148,6 +149,101 @@ class SqliteSagaObligationStoreTest {
             )
 
             assertInstanceOf<SagaArmPersistence.Inserted>(persistence)
+        }
+    }
+
+    @Nested
+    inner class Moving {
+
+        @Test
+        fun `the obligation moves to the new state and keeps its promise`() {
+            val store = store()
+            store.arm(row())
+
+            val persistence = store.updateOutcome(
+                SagaObligationUpdate(
+                    runId = "run-1",
+                    key = KEY,
+                    status = CompensationObligationStatus.EFFECT_CONFIRMED,
+                    receiptRef = EffectReceiptRef.of("rcpt-1"),
+                    updatedAtMs = 2_000L,
+                    leaseEpoch = 1L,
+                ),
+            )
+
+            val updated = assertInstanceOf<SagaUpdatePersistence.Updated>(persistence)
+            assertEquals(CompensationObligationStatus.EFFECT_CONFIRMED, updated.row.status)
+            assertEquals("rcpt-1", updated.row.receiptRef?.value)
+            // The promise itself is untouched: it was made at a moment, and moving it does not
+            // move the moment it was made.
+            assertEquals(1_000L, updated.row.createdAtMs)
+            assertEquals(PLAN_A, updated.row.planFingerprint)
+        }
+
+        @Test
+        fun `the moved state is still there after the writer is gone`() {
+            store().arm(row())
+
+            store().updateOutcome(
+                SagaObligationUpdate(
+                    runId = "run-1",
+                    key = KEY,
+                    status = CompensationObligationStatus.COMPENSATED,
+                    receiptRef = null,
+                    updatedAtMs = 2_000L,
+                    leaseEpoch = 1L,
+                ),
+            )
+
+            // A DIFFERENT store instance over the SAME file: this is what a later process,
+            // after a restart, sees.
+            val later = store().find("run-1", KEY)
+
+            assertEquals(CompensationObligationStatus.COMPENSATED, later?.status)
+        }
+
+        @Test
+        fun `a key that was never armed stays unpromised`() {
+            val store = store()
+
+            val persistence = store.updateOutcome(
+                SagaObligationUpdate(
+                    runId = "run-1",
+                    key = KEY,
+                    status = CompensationObligationStatus.COMPENSATED,
+                    receiptRef = null,
+                    updatedAtMs = 2_000L,
+                    leaseEpoch = 1L,
+                ),
+            )
+
+            assertInstanceOf<SagaUpdatePersistence.NotFound>(persistence)
+            assertNull(store.find("run-1", KEY))
+        }
+
+        @Test
+        fun `a writer behind the run epoch is fenced out of the move too`() {
+            val store = store()
+            store.arm(row(leaseEpoch = 5L))
+
+            val persistence = store.updateOutcome(
+                SagaObligationUpdate(
+                    runId = "run-1",
+                    key = KEY,
+                    status = CompensationObligationStatus.EFFECT_CONFIRMED,
+                    receiptRef = null,
+                    updatedAtMs = 2_000L,
+                    leaseEpoch = 2L,
+                ),
+            )
+
+            val fenced = assertInstanceOf<SagaUpdatePersistence.Fenced>(persistence)
+            assertEquals(5L, fenced.currentEpoch)
+            // And the state is exactly where it was: the stale writer wrote nothing.
+            assertEquals(
+                CompensationObligationStatus.ARMED,
+                store.find("run-1", KEY)?.status,
+            )
         }
     }
 

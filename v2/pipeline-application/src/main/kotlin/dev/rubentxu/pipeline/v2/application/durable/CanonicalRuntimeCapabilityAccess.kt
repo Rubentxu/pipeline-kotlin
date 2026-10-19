@@ -54,6 +54,7 @@ import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_COMPENSATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_PLAN_CAPABILITY
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
@@ -317,6 +318,15 @@ open class CanonicalRuntimeCapabilityAccess(
         // rather than a null the handler discovers halfway through a forward effect.
         context.sagaCompensation?.let { operations ->
             builder[SAGA_COMPENSATION_CAPABILITY] = operations
+        }
+        // SAGA / PK-2: the compensation PLAN port.
+        //
+        // Exposed ONLY when the engine bound one for this invocation, for the same reason as
+        // the intent port above: a Step that asks what a Saga owes must not reach a handler
+        // that has no durable state to answer from, and a Step that reports an observation
+        // must not reach a handler whose write would go nowhere.
+        context.sagaPlan?.let { plan ->
+            builder[SAGA_PLAN_CAPABILITY] = plan
         }
     }
 

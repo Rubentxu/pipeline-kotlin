@@ -82,17 +82,31 @@ enum class CompensationKind {
 enum class CompensationObligationStatus {
 
     /**
-     * The durable intent is recorded. No forward effect has been observed yet.
+     * The durable intent is recorded. The forward effect has NOT been dispatched yet.
      *
-     * This is the only status PK-1 writes: arming is the whole of the milestone's write path.
+     * This is the status a promise is born in, and it is also the status in which nothing is
+     * owed: an effect that was never attempted has nothing to compensate.
      */
     ARMED,
 
     /**
+     * The forward effect was DISPATCHED and its outcome has not been recorded.
+     *
+     * ## Why "dispatched" is a durable fact
+     *
+     * Between "the call left the process" and "the outcome was written down" there is a window
+     * in which a crash loses the answer: the provider may have done the thing, and nobody
+     * knows. Recording the dispatch BEFORE it happens is what closes that window — a row found
+     * in this state after a restart is not "nothing happened", it is "something may have
+     * happened and the answer was lost", which is a very different thing to compensate.
+     */
+    EFFECT_PENDING,
+
+    /**
      * The forward effect was observed and confirmed.
      *
-     * Written when the observation path lands: the obligation stays open, because a confirmed
-     * forward effect is precisely the case that needs a compensation.
+     * The obligation stays open, because a confirmed forward effect is precisely the case that
+     * needs a compensation.
      */
     EFFECT_CONFIRMED,
 
@@ -104,9 +118,46 @@ enum class CompensationObligationStatus {
     EFFECT_ABSENT,
 
     /**
+     * The forward effect's outcome is INDETERMINATE.
+     *
+     * The call was made and the answer did not settle whether the effect happened. The
+     * obligation is still open, and the provider may still be able to say what happened: a
+     * reconciler that answers "it did happen" moves the obligation to [EFFECT_CONFIRMED], and
+     * one that answers "it did not" moves it to [EFFECT_ABSENT].
+     */
+    EFFECT_UNKNOWN,
+
+    /**
+     * The compensation was DISPATCHED and its outcome has not been recorded.
+     *
+     * The same window as [EFFECT_PENDING], on the other side of the Saga: the compensation may
+     * have been applied, so running it again would apply it twice. A row found in this state
+     * is never compensated blindly.
+     */
+    COMPENSATION_PENDING,
+
+    /**
      * The compensation ran and was confirmed.
      */
     COMPENSATED,
+
+    /**
+     * The compensation ran and FAILED.
+     *
+     * The resource was NOT put back. The compensations that depend on this one are not
+     * attempted: a dependent compensation against a state that was not restored destroys more
+     * than the failure it was recovering from.
+     */
+    COMPENSATION_FAILED,
+
+    /**
+     * The compensation ran and its outcome is INDETERMINATE.
+     *
+     * The resource may or may not have been put back. The same rule as a failed compensation,
+     * with one more reason to stop: the compensation may already have been applied, so running
+     * it again would double it.
+     */
+    COMPENSATION_UNCERTAIN,
 
     /**
      * The outcome is indeterminate and neither a reconciler nor an automatic decision can settle

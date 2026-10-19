@@ -255,6 +255,18 @@ internal class StepDispatchEngine(
                 clock = clock,
             )
         },
+        // SAGA / PK-2: the plan port for THIS run. It carries no operation identity — what a
+        // Saga owes is a property of the Saga, not of the step that happens to ask — so it is
+        // bound to the run and its lease epoch, and it reads the same durable rows the intent
+        // port writes.
+        sagaPlan = sagaBinding?.let { binding ->
+            SagaPlanOperationsAdapter(
+                runId = runId.value,
+                leaseEpoch = binding.leaseEpoch,
+                store = binding.store,
+                clock = clock,
+            )
+        },
     )
 
     /**

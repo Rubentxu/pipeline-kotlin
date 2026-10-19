@@ -73,22 +73,34 @@ import java.nio.file.attribute.PosixFileAttributes
  * producing a regular file that silently became the excluded spool.
  * See [openRendezvous].
  *
- * ## Why it opens the FIFO O_RDWR
+ * ## Why it opens the FIFO O_RDONLY
  *
- * Opening a FIFO read-only succeeds immediately but reports EOF
- * until a writer appears, and a read end with no writer is
- * indistinguishable from a finished child. O_RDWR on a FIFO never
- * blocks and keeps a writer reference alive for this process, so
- * "no data yet" is not mistaken for "the child is done".
+ * A read-only open on a named pipe **blocks until a writer appears**. That
+ * blocking is the rendezvous, not an obstacle to it: the runtime pre-opens
+ * the FIFO (a "warmup" writer) before launching the agent, so the agent's
+ * O_RDONLY open is released, the runtime then starts the child, and from
+ * that moment the child is the only writer. When the child exits, the last
+ * writer closes and the agent's read returns **EOF** — which is exactly the
+ * signal the redactor needs to flush its lookahead window and exit.
  *
- * The cost is stated rather than hidden: **the agent cannot see
- * EOF**, because it is itself a writer. It therefore cannot tell
- * that a child exited by watching the pipe. Completion is a
- * separate fact — the step's terminal, or a seal — and conflating
- * "no data right now" with "finished" is precisely the bug
- * `ADR-0085` forbids. A production agent needs an explicit seal;
- * R2.3 supplies it (the runtime sends SIGTERM at run terminal; the
- * agent drains its FIFO buffer, closes the sinks, and exits).
+ * **The previous version of this section argued for O_RDWR and was wrong
+ * three times over**, which is why it is worth writing down what went
+ * against it rather than deleting it:
+ *
+ * 1. It stated that a read-only open "succeeds immediately and reports EOF
+ *    until a writer appears". That is the opposite of what POSIX does. An
+ *    O_RDONLY open blocks, and the whole design depends on it blocking.
+ * 2. It presented O_RDWR's real drawback — "the agent cannot see EOF, because
+ *    it is itself a writer" — as an acceptable cost to be mitigated by an
+ *    explicit seal. In practice it was not a cost, it was the defect: holding
+ *    a write reference meant the pipe never reached a zero-writers state when
+ *    the child exited, so the redactor blocked forever on the lookahead window
+ *    waiting for an EOF that could not arrive.
+ * 3. It cited `ADR-0085` as the authority for treating completion as a
+ *    separate fact. With O_RDONLY the completion signal is the pipe's own.
+ *
+ * So O_RDWR was the prototype's design and this is the correction; see
+ * [openRendezvous] for the code and the ordering it depends on.
  *
  * ## Security invariant: the FIFO type
  *
@@ -177,9 +189,13 @@ object ObsPc2IngestAgent {
                 "stdoutFifo=${fifoDir.resolve("stdout.fifo")} stderrFifo=${fifoDir.resolve("stderr.fifo")}",
         )
 
-        // O_RDWR on a FIFO: never blocks, and keeps this process a
-        // writer so the read side never reports a spurious EOF
-        // before the child has started.
+        // The channels are opened O_RDONLY, which BLOCKS until a writer
+        // appears -- see [openRendezvous]. This comment previously said
+        // O_RDWR and "never blocks, and keeps this process a writer",
+        // which contradicted the function called on the very next lines:
+        // holding a write reference is what stopped the pipe from ever
+        // reaching a zero-writers state, so the redactor waited forever
+        // for an EOF that could not arrive.
         val channels = mapOf(
             ProcessOutputChannel.STDOUT to openRendezvous(fifoDir.resolve("stdout.fifo")),
             ProcessOutputChannel.STDERR to openRendezvous(fifoDir.resolve("stderr.fifo")),

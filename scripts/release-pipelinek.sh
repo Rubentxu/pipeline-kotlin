@@ -466,11 +466,19 @@ if [ -z "$ASSET_FNAME" ]; then
     exit 1
 fi
 DIST_DIR="v2/pipeline-application/build/distributions"
+# SHA256SUMS is the odd one out: the gate's CandidateMaterializer writes it
+# next to the receipt in build/candidate/, not beside the artefacts in
+# build/distributions/. Every other asset is read from DIST_DIR; this one is
+# read from the receipt directory, and saying so here is cheaper than the
+# "manifest names 'SHA256SUMS' ... but the file does not exist" refusal that
+# this mismatch produced, which read like a missing build output rather than
+# a lookup in the wrong directory.
+RECEIPT_DIR="$(dirname "$RECEIPT")"
 stage_manifest_asset "asset.name"   "${DIST_DIR}/${ASSET_FNAME}"
 stage_manifest_asset "sbom.name"    "${DIST_DIR}/$(read_manifest_field 'sbom.name' 'none')"
 stage_manifest_asset "sdk.name"     "${DIST_DIR}/$(read_manifest_field 'sdk.name' 'none')"
 stage_manifest_asset "bom.name"     "${DIST_DIR}/$(read_manifest_field 'bom.name' 'none')"
-stage_manifest_asset "sha256sums.name" "${DIST_DIR}/$(read_manifest_field 'sha256sums.name' 'none')"
+stage_manifest_asset "sha256sums.name" "${RECEIPT_DIR}/$(read_manifest_field 'sha256sums.name' 'none')"
 
 # ----------------------------------------------------------------------------
 # 5c. The provenance manifest.
@@ -539,6 +547,26 @@ fi
 "${REPO_ROOT}/scripts/release/build-release-manifest.sh" \
     --out "$SUMS" \
     "${STAGED_PATHS[@]}"
+
+# The gate's SHA256SUMS covers exactly the four artefacts, which are exactly
+# the paths just staged, so regenerating it over the staged bytes must
+# reproduce the digest the manifest already names. That equality is checked
+# rather than assumed: SHA256SUMS is the digest authority a consumer verifies
+# the download against, and a producer that overwrote it with different bytes
+# would publish sums that disagree with the manifest in its own release.
+#
+# It is rewritten for one reason only: the staged set is what gets uploaded, so
+# the published sums must describe the staged bytes.
+STAGED_SUMS_SHA="$(sha256sum "$SUMS" | awk '{print $1}')"
+DECLARED_SUMS_SHA="$(read_manifest_field 'sha256sums.sha256' '')"
+if [ -n "$DECLARED_SUMS_SHA" ] && [ "$DECLARED_SUMS_SHA" != "$STAGED_SUMS_SHA" ]; then
+    echo "release-pipelinek: regenerated SHA256SUMS ($STAGED_SUMS_SHA) does not match" >&2
+    echo "    the digest the gate recorded ($DECLARED_SUMS_SHA). The staged bytes are not" >&2
+    echo "    the bytes the candidate was admitted against; refusing to publish a release" >&2
+    echo "    whose digest authority contradicts its own manifest." >&2
+    rm -rf "$EVIDENCE_DIR"
+    exit 1
+fi
 
 # Now SHA256SUMS is staged. Add it to the upload list but NOT to the
 # SHA256SUMS coverage (a manifest cannot carry its own digest).

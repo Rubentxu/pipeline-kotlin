@@ -1098,17 +1098,20 @@ class DurableShellExecutor : DurableShellLaunching {
             // never existed: a grep for it found only this comment, so the
             // rationale for keeping console.log pointed at a phantom consumer.
             if (keepTranscriptLog) {
-                Files.walk(controlDir)
-                    .sorted(Comparator.reverseOrder())
-                    .forEach { p ->
-                        try {
-                            if (p.fileName?.toString() != DurableShellFiles.CONSOLE_LOG) {
-                                Files.deleteIfExists(p)
+                // `use` closes the walk's directory handle. This runs once per shell step, so
+                // a bare chain leaks a descriptor per step for the life of the JVM.
+                Files.walk(controlDir).use { walk ->
+                    walk.sorted(Comparator.reverseOrder())
+                        .forEach { p ->
+                            try {
+                                if (p.fileName?.toString() != DurableShellFiles.CONSOLE_LOG) {
+                                    Files.deleteIfExists(p)
+                                }
+                            } catch (_: Exception) {
+                                // Ignore
                             }
-                        } catch (_: Exception) {
-                            // Ignore
                         }
-                    }
+                }
             } else {
                 deleteRecursively(controlDir)
             }
@@ -1454,15 +1457,16 @@ class DurableShellExecutor : DurableShellLaunching {
     }
 
     private fun deleteRecursively(path: Path) {
-        Files.walk(path)
-            .sorted(Comparator.reverseOrder())
-            .forEach { p ->
-                try {
-                    Files.deleteIfExists(p)
-                } catch (_: Exception) {
-                    // Ignore
+        Files.walk(path).use { walk ->
+            walk.sorted(Comparator.reverseOrder())
+                .forEach { p ->
+                    try {
+                        Files.deleteIfExists(p)
+                    } catch (_: Exception) {
+                        // Ignore
+                    }
                 }
-            }
+        }
     }
 
     /**

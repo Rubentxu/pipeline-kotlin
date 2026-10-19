@@ -160,9 +160,13 @@ object Sha256 {
      * directory is the digest of an empty byte sequence, which is a real value.
      */
     fun ofDirectory(root: Path, excludedFileNames: Set<String> = emptySet()): String {
-        // Files.walk returns a Stream whose walk directory handles must be closed. `use` does
-        // not apply: kotlin.io.use is declared for Closeable, and a Stream is not one, so the
-        // directory handles would leak for the lifetime of the test JVM. Closed explicitly.
+        // Files.walk returns a Stream whose walk directory handles must be closed. Closed here
+        // explicitly rather than with `use`, which would do exactly the same thing -- the old
+        // comment claimed `use` could not be applied because it is declared for Closeable and a
+        // Stream is not one. That is false: Stream implements AutoCloseable, and `use` on a walk
+        // result is used in at least four places in this repository. Left as an explicit
+        // try/finally because it reads fine; the reason recorded here is now the correct one, so
+        // nobody copies the false claim into the next site that forgets to close.
         val stream = Files.walk(root)
         val canonical: List<Pair<String, Path>> = try {
             // Ordered by RELATIVE PATH, with an explicit comparator.

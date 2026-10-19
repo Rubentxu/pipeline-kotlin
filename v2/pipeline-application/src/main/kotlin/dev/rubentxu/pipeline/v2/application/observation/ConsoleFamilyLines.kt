@@ -8,6 +8,9 @@ import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.CompensationArmed
+import dev.rubentxu.pipeline.v2.events.CompensationFinished
+import dev.rubentxu.pipeline.v2.events.CompensationStarted
+import dev.rubentxu.pipeline.v2.events.SagaTerminal
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.CredentialBound
@@ -366,6 +369,22 @@ internal object ConsoleFamilyLines {
         is CompensationArmed -> Line(
             Family.NOTE,
             "compensation armed: ${event.sagaId}/${event.actionId} -> ${event.compensationId}",
+        )
+
+        is CompensationStarted -> Line(
+            Family.NOTE,
+            "compensation started: ${event.sagaId}/${event.actionId} -> ${event.slot}",
+        )
+
+        is CompensationFinished -> Line(
+            Family.NOTE,
+            "compensation finished: ${event.sagaId}/${event.actionId} -> ${event.outcome}",
+        )
+
+        is SagaTerminal -> Line(
+            Family.NOTE,
+            "saga terminal: ${event.sagaId} ${event.state}" +
+                event.reason?.let { " ($it)" }.orEmpty(),
         )
 
         else -> unrouted(event, this)

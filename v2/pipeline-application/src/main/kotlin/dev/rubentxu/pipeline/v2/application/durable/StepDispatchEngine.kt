@@ -274,6 +274,7 @@ internal class StepDispatchEngine(
         // guess.
         sagaRuntime = if (sagaBinding != null && bodySlotInvoker != null) {
             SagaCompensationInterpreter(
+                runId = runId.value,
                 planOperations = SagaPlanOperationsAdapter(
                     runId = runId.value,
                     leaseEpoch = sagaBinding.leaseEpoch,
@@ -281,6 +282,12 @@ internal class StepDispatchEngine(
                     clock = clock,
                 ),
                 slotInvoker = bodySlotInvoker,
+                // The events are the observable trace of the loop: a compensation that STARTED,
+                // one that FINISHED and the Saga's TERMINAL state. They are announced by the
+                // engine, never by the plugin, and always after the durable write that makes
+                // them true.
+                eventSink = eventSink,
+                clock = clock,
             )
         } else {
             null

@@ -1503,3 +1503,118 @@ data class CompensationArmed(
 ) : DomainEvent {
     override val kind: String get() = "CompensationArmed"
 }
+
+/**
+ * The engine is about to dispatch the compensation body of an obligation.
+ *
+ * ## When it is emitted
+ *
+ * AFTER the write-ahead committed. The order matters: the write-ahead is what puts the durable
+ * row in "the compensation is in flight", and an event that announced a compensation before that
+ * row existed would describe a compensation nobody could fence. A crash right after this event
+ * leaves both a row that says "in flight" and an event that says "started": that is the window
+ * where the answer was lost, and it is exactly the window an operator has to look at.
+ *
+ * ## Why it carries the SLOT
+ *
+ * [slot] is the plugin step key of the body that is about to run — the name the plan used to
+ * address it. The compensation body is dispatched through the same canonical spine as any other
+ * child of that body, so its journal rows carry that key in their path. The slot is therefore the
+ * JOIN between "this Saga owes this" and "these journal rows are the body that undid it", and it
+ * is the only link that does not need a new column or a new identity scheme to exist.
+ *
+ * ## What it is not
+ *
+ * It is not the truth. The truth is the `saga_obligation` row; this event is its projection, and
+ * it says that a body is ABOUT TO RUN, which is not the same as saying that anything was undone.
+ */
+data class CompensationStarted(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val sagaId: String,
+    val actionId: String,
+    val compensationId: String,
+    val resourceRef: String,
+    /** The plugin step key of the compensation body that is about to be dispatched. */
+    val slot: String,
+) : DomainEvent {
+    override val kind: String get() = "CompensationStarted"
+}
+
+/**
+ * The compensation body finished, and this is what it produced.
+ *
+ * ## Why it is emitted even when the durable record was refused
+ *
+ * The body ran. That is a fact about the world, and it happened whether or not the store was able
+ * to write it down. When the record IS refused, the row keeps saying "in flight" and this event
+ * is the only witness that the body actually finished — which is what makes the disagreement
+ * visible instead of silent. A reader that sees a `CompensationStarted` with no matching
+ * `CompensationFinished` knows the answer was lost; a reader that sees a `CompensationFinished`
+ * whose row still says "in flight" knows the write was refused.
+ *
+ * ## The outcome vocabulary
+ *
+ * [outcome] is one of `CONFIRMED`, `FAILED` or `UNCERTAIN`, and it is the projection of the
+ * domain's closed [dev.rubentxu.pipeline.v2.domain.saga.CompensationObservation]. The three are
+ * not interchangeable: a confirmed compensation put the resource back, a failed one did not, and
+ * an uncertain one may or may not have. [detail] carries the provider's message for a failure and
+ * the reason for an uncertainty, and is empty for a confirmation.
+ */
+data class CompensationFinished(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val sagaId: String,
+    val actionId: String,
+    val compensationId: String,
+    /** The plugin step key of the compensation body that ran. */
+    val slot: String,
+    /** `CONFIRMED`, `FAILED` or `UNCERTAIN`. */
+    val outcome: String,
+    /** The provider's message (a failure) or the reason (an uncertainty). */
+    val detail: String? = null,
+) : DomainEvent {
+    override val kind: String get() = "CompensationFinished"
+}
+
+/**
+ * The Saga's recovery is over: it is settled, or a human has to decide.
+ *
+ * ## What it closes
+ *
+ * The compensation loop has no other ending. It either settles every obligation, or it stops at
+ * the first one that cannot be settled — and the stop is not a failure of the run, it is the state
+ * of the Saga. This event says which of the two happened, and names the reason when a human is
+ * needed.
+ *
+ * ## Why the reason is a name and not a story
+ *
+ * [reason] is the domain's [dev.rubentxu.pipeline.v2.domain.saga.InterventionReason], by name. A
+ * free-text excuse would not be decidable: the difference between "nothing ran" and "nobody
+ * knows" is the difference between retrying and not retrying, and it has to be readable by a
+ * consumer that does not speak prose.
+ *
+ * ## What it does not say
+ *
+ * It does not say the pipeline succeeded. A Saga that was compensated is a Saga that recovered
+ * from a failure, and the run that failed is still a failed run.
+ */
+data class SagaTerminal(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val sagaId: String,
+    /** `SETTLED` or `NEEDS_INTERVENTION`. */
+    val state: String,
+    /** The name of the [dev.rubentxu.pipeline.v2.domain.saga.InterventionReason], when there is one. */
+    val reason: String? = null,
+    /** The actions that were compensated, in the order they were compensated. */
+    val compensatedActions: List<String>,
+) : DomainEvent {
+    override val kind: String get() = "SagaTerminal"
+}

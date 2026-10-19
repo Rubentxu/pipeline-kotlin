@@ -139,7 +139,17 @@ repositories {
 // dispatched because the durable state refused the write-ahead. The published
 // vocabulary of a Saga is closed on purpose, so a fact the old one could not
 // name needs a new name in it.
-version = "0.67.0"
+//
+// 2026-10-19: the 0.67.0 train closes at v0.67.0-rc1. The 0.68.0 train opens
+// here (ProductVersion 0.68.0) so the next candidate can be tagged
+// v0.68.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
+// The public SDK grew additively in this train too: the Saga's own facts are
+// EVENTS now (CompensationStarted, CompensationFinished, SagaTerminal), so a
+// consumer of the event plane can see what the compensation loop did instead
+// of having to read the durable rows to find out. New event kinds are new
+// published API, and the version that carries them cannot be the version that
+// shipped without them.
+version = "0.68.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

@@ -11,7 +11,6 @@ import kotlinx.serialization.Serializable
  * @param stageIndex The stage index at which execution should resume.
  * @param savedAt    Epoch milliseconds at which this cursor was last saved.
  *
- * @see <a href="design.md §E4-04">Design §E4-04</a>
  */
 @Serializable
 data class ReplayCursor(

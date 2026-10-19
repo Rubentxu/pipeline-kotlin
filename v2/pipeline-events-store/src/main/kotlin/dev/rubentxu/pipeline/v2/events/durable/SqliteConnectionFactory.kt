@@ -21,7 +21,6 @@ import java.sql.DriverManager
  * is not `"wal"`. This prevents silent fallback to DELETE mode which would
  * bypass the durability guarantees of the operation journal.
  *
- * @see <a href="design.md §E4-03">Design §E4-03</a>
  */
 object SqliteConnectionFactory {
 

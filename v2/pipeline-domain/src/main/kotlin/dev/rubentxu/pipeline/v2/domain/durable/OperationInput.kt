@@ -17,7 +17,6 @@ import kotlinx.serialization.json.JsonNull
  * @param runId    Deterministic run identifier derived from script path + content.
  * @param attempt  Monotonically increasing attempt number within the run (≥ 1).
  *
- * @see <a href="design.md §E4-01">Design §E4-01</a>
  */
 @Serializable
 data class OperationInput(

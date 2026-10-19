@@ -11,7 +11,6 @@ import kotlinx.serialization.json.JsonNull
  * @param durationMs Wall-clock duration in milliseconds.
  * @param finishedAt Epoch milliseconds at which execution completed.
  *
- * @see <a href="design.md §E4-01">Design §E4-01</a>
  */
 @Serializable
 data class OperationOutput(

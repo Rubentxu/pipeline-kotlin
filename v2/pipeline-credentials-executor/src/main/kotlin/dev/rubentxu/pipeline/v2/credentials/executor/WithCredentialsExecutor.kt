@@ -175,16 +175,27 @@ class WithCredentialsExecutor(
                 credentials = credentialIds.toList(),
                 retainedProjections = retainedProjections.toList(),
                 closeAction = {
-                    closeBoundCredentials(runId, credentialIds, eventSink)
+                    val failure = emitCredentialUnbound(runId, credentialIds, eventSink)
+                    if (failure != null) throw failure
                 },
             )
         } catch (t: Throwable) {
-            // On failure: close any already-created projections (reverse-LIFO), then emit events
-            for (projection in retainedProjections.asReversed()) {
-                try { projection.close() } catch (_: Throwable) { /* swallow: best-effort cleanup */ }
+            // On failure: close any already-created projections (reverse-LIFO), then emit events.
+            //
+            // `drainProjections` folds each wipe failure into `t` as a SUPPRESSED exception rather
+            // than discarding it. The previous `catch (_: Throwable) { /* swallow */ }` meant a
+            // materialized key that could not be wiped left no trace: the operator heard only about
+            // the missing credential.
+            drainProjections(retainedProjections, t)
+
+            // `emitCredentialUnbound` RETURNS the throwable instead of throwing it, precisely so
+            // that this line is the live thrower. Seeded with a non-null primary it always returns
+            // non-null, and `requireNotNull` says so as a checked precondition: the tempting `?: t`
+            // would rethrow the ACQUISITION failure and hide the very append failure it was
+            // standing in for.
+            throw requireNotNull(emitCredentialUnbound(runId, credentialIds, eventSink, t)) {
+                "emitCredentialUnbound returned null despite a non-null primaryThrowable"
             }
-            closeBoundCredentials(runId, credentialIds, eventSink, t)
-            throw t
         }
     }
 
@@ -236,16 +247,32 @@ class WithCredentialsExecutor(
     }
 
     /**
-     * Closes all bound credentials in reverse-LIFO order.
+     * Emits one [CredentialUnbound] per binding and REPORTS the outcome instead of throwing it.
+     *
      * This is the SOLE owner of [CredentialUnbound] emission (erratum-1, design E-19).
-     * On failure path: also closes any already-created projections.
+     *
+     * ## Why it returns rather than throws
+     *
+     * It is called from two places with two different obligations. As the `closeAction` of a live
+     * [BoundCredentials] it must not throw, because [runTeardown] has phases after it whose work
+     * would be skipped. On the acquisition-rollback path it must produce the throwable the caller
+     * propagates, and that throwable has to be the one already in flight — the one the caller is
+     * `throw`ing — so that wipe failures attached to it by [drainProjections] survive.
+     *
+     * A function that only threw could not serve both without the second caller keeping a `throw`
+     * after a call that had already thrown, which is unreachable code that reads as a live guard.
+     *
+     * @param primaryThrowable the throwable already in flight, or `null` on the normal teardown
+     *   path. Every append failure is suppressed onto it.
+     * @return the throwable to propagate — [primaryThrowable] when given, otherwise the first
+     *   append failure — or `null` when every append succeeded.
      */
-    private fun closeBoundCredentials(
+    private fun emitCredentialUnbound(
         runId: String,
         credentialIds: List<CredentialsId>,
         eventSink: EventSink,
         primaryThrowable: Throwable? = null,
-    ) {
+    ): Throwable? {
         var firstThrowable = primaryThrowable
 
         // WU-RP-020: no local sequence counter here either. Restarting at 1 per
@@ -274,10 +301,7 @@ class WithCredentialsExecutor(
             }
         }
 
-        // Rethrow first throwable if any
-        if (firstThrowable != null) {
-            throw firstThrowable
-        }
+        return firstThrowable
     }
 }
 
@@ -372,9 +396,15 @@ class BoundCredentials(
      * 2. Emit [CredentialUnbound] for each binding
      * 3. Close [SecretHandle]s
      *
-     * Non-silent: wipe failures are accumulated and thrown as [CleanupException]
-     * wrapping a [CredentialScopeCleanup.Failed] for the application adapter
-     * to map to a typed [StepOutcome].
+     * Every phase runs even when an earlier one threw. That is the whole contract: each phase
+     * releases something no later phase can, so a throw from phase 2 used to leave every
+     * [SecretHandle] byte array resident — and since `closed` is already set, the retry was a
+     * no-op. See [runTeardown].
+     *
+     * Non-silent: a wipe failure is reported as [CleanupException] carrying the orphan paths. A
+     * failure outside the wipe propagates unwrapped, which is the shape this class had before
+     * [runTeardown] existed and the shape `WithCredentialsExecutorScopeAdapter` in
+     * `:pipeline-application` already maps.
      *
      * Idempotent — calling multiple times is safe.
      */
@@ -382,45 +412,28 @@ class BoundCredentials(
         if (!closed) {
             closed = true
 
-            // 1. Close retained projections (secure file wipe, reverse-LIFO)
-            // This may throw CleanupException
-            val failedWipes = mutableListOf<java.nio.file.Path>()
-            var firstWipeThrowable: Throwable? = null
+            // One phase per projection so that each projection's WipeException contributes its own
+            // orphan paths, rather than only the first one's surviving into the report.
+            val phases = mutableListOf<TeardownPhase>()
             for (projection in retainedProjections.asReversed()) {
-                try {
-                    projection.close()
-                } catch (t: Throwable) {
-                    // Collect orphan paths from WipeException; others contribute nothing
-                    if (t is dev.rubentxu.pipeline.v2.domain.credentials.ProjectionResult.WipeException) {
-                        failedWipes.addAll(t.orphanPaths)
-                    }
-                    if (firstWipeThrowable == null) {
-                        firstWipeThrowable = t
-                    } else {
-                        firstWipeThrowable.addSuppressed(t)
-                    }
-                }
+                phases += TeardownPhase(TeardownPhaseName.Wipe) { projection.close() }
             }
+            phases += TeardownPhase(TeardownPhaseName.EmitUnbound) { closeAction() }
+            phases += TeardownPhase(TeardownPhaseName.CloseHandles) { closeHandles() }
 
-            // If wipe failed, propagate as CleanupException
-            if (firstWipeThrowable != null) {
-                // Emit unbound events even on wipe failure (audit trail)
-                closeAction()
-                // Then close handles
-                closeHandles()
-                // Then propagate
+            val outcome = runTeardown(phases)
+            val failed = outcome as? TeardownOutcome.Failed ?: return
+
+            val wipe = failed.wipeFailure
+            if (wipe != null) {
                 throw CleanupException(
-                    orphanPaths = failedWipes.distinct(),
-                    detail = "Secure wipe failed: ${firstWipeThrowable.message}",
-                    cause = firstWipeThrowable,
+                    orphanPaths = failed.orphanPaths,
+                    detail = "Secure wipe failed: ${wipe.throwable.message}",
+                    cause = wipe.throwable,
                 )
             }
 
-            // 2. Emit CredentialUnbound events
-            closeAction()
-
-            // 3. Close secret handles
-            closeHandles()
+            throw failed.firstFailure.throwable
         }
     }
 

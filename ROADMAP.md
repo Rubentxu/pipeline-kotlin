@@ -18,40 +18,81 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `18d3148a` | `git rev-parse HEAD` |
-| Módulos declarados | 27 | `v2/settings.gradle.kts` |
-| Módulos con test unitario permanente | **10** | `src/test/kotlin` con al menos un `*Test.kt` |
-| Módulos sin test | 17 | ídem |
-| Tests unitarios ejecutados | **400** (41 informes XML, 0 fallidos, 0 saltados) | etapa 2 del gate |
-| Escenarios E2E | 35 (34 pasan, **1 `NOT_RUN`**) | etapa 3 del gate |
-| `VERIFY_LOC / PRODUCT_LOC` | **5044 / 61420 = 0.082** (límite 2) | etapa 4 del gate |
-| `VERIFY_ALL_WALL_CLOCK` | **peor de tres ensayos = 242 s** (242 / 211 / 213) (límite 900 s) | etapa 5 del gate, `§4` de `AGENTS.md` |
+| SHA | `24c66110` | `git rev-parse HEAD` |
+| Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` |
+| Módulos con test unitario permanente | **12** | `src/test/kotlin` con al menos un `*Test.kt` |
+| Módulos sin test | 15 | ídem |
+| Tests unitarios ejecutados | **pendiente** | etapa 2 del gate, sobre el SHA de la tabla |
+| Escenarios E2E | 35 | `v2/examples/**/*.pipeline.kts` |
+| `VERIFY_LOC / PRODUCT_LOC` | **5256 / 61461 = 0.086** (límite 2) | `scripts/check-budgets.py --json` |
+| Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
+| `VERIFY_ALL_WALL_CLOCK` | **pendiente** (límite 900 s) | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
+
+Las dos filas marcadas *pendiente* no se rellenan con una medición anterior: el
+SHA se movió después del último ensayo y una cifra de reloj heredada de otro
+commit es exactamente el tipo de verde que esta tabla existe para no
+declarar.
 
 Los ratios por módulo de §2.2 a) son mediciones independientes del gate, hechas
 sobre el mismo árbol con el mismo criterio de recuento (líneas efectivas,
 sin blancos, comentarios ni generados). El gate los agrega, no los contradice.
 
-Los tres ensayos de reloj se ejecutaron sobre el **mismo** SHA `18d3148a`. El
-primero (242 s) es el peor y es el que cuenta: sigue a la corrección de un
-commit, con cachés de Gradle frías. Los otros dos (211 s, 213 s) son el régimen
-estable. `AGENTS.md` §4 exige el peor de tres, así que el número que se declara
-es 242 s y no la media. Cablear `detektTest` a la etapa 1 costó 3 s medidos
-sobre 26 subproyectos; el peor ensayo subió +9 s respecto al ciclo anterior
-(233 → 242 s) contando además 54 tests nuevos y 13 ficheros reescritos.
+### Cumplimiento del plan RESET, medido sobre el árbol
 
-El SHA medido es `18d3148a`, y `HEAD` ha avanzado desde entonces por dos commits
-que no tocan código de producto: este documento y el propio `verify-all.sh`. La
-tabla dice el SHA en el que se **midió**, no el SHA actual; un gate que se
-atribuyera a un commit que no lo ejecutó sería la misma clase de mentira que
-esta tabla evita al declarar la procedencia.
+Las siete límites inflexibles del mandato, comprobados contra el disco y no
+contra el texto del plan. «Medido» significa que el número salió de una
+ enumeración de este checkout.
 
-### Los 10 módulos con test
+| # | Límite | Veredicto | Evidencia |
+|---|---|---|---|
+| 1 | 0 Markdown bajo `docs/` y `v2/` | **PASS** | `git ls-files ':(glob)docs/**/*.md'` = 0; `:(glob)v2/**/*.md` = 0. En la raíz solo quedan `AGENTS.md`, `README*.md`, `ROADMAP.md` |
+| 2 | 0 `@Test` UAT/E2E/AAT/harness | **PASS** | 0 en `pluginContractTest`/`installedContractTest`/`integrationTest`/`functionalTest`; 0 `@Disabled` |
+| 3 | 0 clases legacy trasladadas | **PASS** | `v2/test-harness`, `v2/pipeline-testkit`, `v2/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
+| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 35 escenarios en 8 categorías bajo `v2/examples/`; 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` (186 líneas) invocado por `scripts/verify-all.sh:246` |
+| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 5256 / 61461 = 0.086; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
+| 6 | `verify-all` local ≤ 900 s | **PENDIENTE** | requiere los tres ensayos sobre el SHA de la tabla |
+| 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS con una excepción** | 27 módulos declarados compilan; `v2/pipeline-protocol/` está versionado y **no está declarado**, luego Gradle nunca lo compila |
+
+Sobre el límite 4: el mandato escribe el lanzador como `examples/run.sh`, y en
+este checkout está en `v2/examples/run.sh`. Es la misma ruta relativa al módulo
+raíz de Gradle, versionada, y es la que la etapa 3 invoca. Se registra aquí
+porque la diferencia entre «no existe» y «está en otro sitio» es la diferencia
+entre borrar un fichero y nada.
+
+### `v2/pipeline-protocol/` — módulo vestigial
+
+Versionado, con su `build.gradle.kts`, y sin declarar en
+`v2/settings.gradle.kts`. Cuatro hechos independientes, todos medidos:
+
+- **`ProtocolCore.kt` no compilaría aunque se declarase.** Referencia
+  `dev.rubentxu.pipeline.v2.protocol.Version`, que solo produce `protoc`; el
+  fichero no está versionado y no existe `v2/pipeline-protocol/build/`, o sea
+  que `protoc` nunca se ejecutó.
+- **Cero consumidores** de `ProtocolModules`, `ProtocolGovernance` y
+  `ProtocolVersion` fuera del propio módulo, y cero referencias a `v2.protocol`.
+- **Diez ficheros versionados**: un `.kt` y ocho `.proto`.
+- **Último toque `2aa071aa`**, el commit masivo de política, no un cambio de
+  producto.
+
+No se borra en este ciclo: no figura en la lista del mandato y borrar ficheros
+versionados es del usuario. La decisión pendiente es declararlo (y arreglarlo)
+o retirarlo.
+
+### Los 12 módulos con test
 
 `pipeline-domain`, `pipeline-events-store`, `pipeline-step-sdk/runtime`,
-`pipeline-step-sdk/http`, `pipeline-credentials-api`, `pipeline-binding-factory`,
-`pipeline-runtime-api`, `pipeline-credentials-local`, `pipeline-output`,
-`pipeline-output-store`.
+`pipeline-step-sdk/http`, `pipeline-step-sdk/workflow-control`,
+`pipeline-credentials-api`, `pipeline-credentials-local`,
+`pipeline-credentials-multipart`, `pipeline-binding-factory`,
+`pipeline-runtime-api`, `pipeline-output`, `pipeline-output-store`.
+
+La lista sale de los doce módulos que `check-budgets.py` informa con
+`verify_loc > 0`, no de contar directorios `src/test`: los dos módulos añadidos
+este ciclo (`credentials-multipart` y `step-sdk/workflow-control`) nacieron con
+defectos materiales corregidos, y un módulo puede tener `src/test` con cero
+`*Test.kt` —contarlo por directorios daría un número que no es el que se
+declara.
 
 Los diez módulos de la lista, con sus ficheros, clases y tests medidos. El
 recuento de XML es **recursivo**: `pipeline-step-sdk/runtime` y

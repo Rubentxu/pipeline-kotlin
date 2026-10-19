@@ -240,7 +240,10 @@ dependencies {
 //   * `forkEveryPerClass` was read by `tasks.test` and by nothing else. Left declared, an
 //     unread `-PpipelineTestForkEvery` would have looked like a live tuning knob.
 //
-// Their replacement is the executable E2E layer: `.pipeline.kts` pipelines under
-// `v2/examples/`, validated by `scripts/run-e2e-pipelines.sh`, which stage the real
-// distribution once and run the real binary. That path executes the shipped artifact, so it
-// certifies behaviour rather than asserting a tag on an empty source set.
+// Their replacement is the executable E2E layer: `scripts/verify-all.sh` builds the real
+// distribution once (`:pipeline-application:installDist`, stage 1) and `v2/examples/run.sh`
+// then runs the real binary against the `.pipeline.kts` pipelines under `v2/examples/`
+// (stage 3). An earlier version of this comment named a single script,
+// `scripts/run-e2e-pipelines.sh`, which does not exist in this tree and never staged
+// anything. That path executes the shipped artifact, so it certifies behaviour rather
+// than asserting a tag on an empty source set.

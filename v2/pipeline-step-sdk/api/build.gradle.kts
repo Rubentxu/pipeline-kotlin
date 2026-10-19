@@ -26,7 +26,7 @@ dependencies {
 // This module carries no unit tests: it is the SDK's public API surface, whose guarantee is
 // `apiCheck` (binary compatibility), the pyramid's leg 3. Its verification is the executable
 // E2E layer -- `.pipeline.kts` pipelines under `v2/examples/`, driven by
-// `scripts/run-e2e-pipelines.sh` -- and not a JUnit class.
+// `v2/examples/run.sh` -- and not a JUnit class.
 //
 // The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
 // Left in place they were a SILENT green: a `Test` task whose source set is empty reports

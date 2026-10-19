@@ -43,13 +43,18 @@ import dev.rubentxu.pipeline.v2.domain.workspace.DestructiveAuthorization
  *
  * ## Why the DSL default is NOT changed by this
  *
- * `StepSpec.DeleteDir(path = ".")` keeps its default. `deleteDir()` with no
- * argument is a Jenkins contract, pinned by
- * `FArchL7JenkinsVerbatimSignatureReflectionTest` (WCL-S-008, FIL-ALL-001), and
- * removing it would break source compatibility for every existing pipeline for
- * no safety gain: [UserOwned] already refuses the root before any effect. The
- * defect was never the default's existence, it was that the default's outcome
- * was decided by a bit the caller could pass wrong.
+ * `StageScope.deleteDir(path = ".")` keeps its default. `deleteDir()` with no
+ * argument is a Jenkins contract, and what holds it in place in this tree is
+ * the tracked scenario `v2/examples/control-flow/11-workflow-control.pipeline.kts`,
+ * which calls `deleteDir()` bare: drop the default and that program stops
+ * compiling, so stage 3 of `scripts/verify-all.sh` goes red. An earlier
+ * architecture fitness used to pin this and was deleted by the RESET; the
+ * guarantee moved to a different custodian, so the citation moved with it.
+ *
+ * Removing the default would break source compatibility for every existing
+ * pipeline for no safety gain: [UserOwned] already refuses the root before any
+ * effect. The defect was never the default's existence, it was that the
+ * default's outcome was decided by a bit the caller could pass wrong.
  */
 enum class RootDestruction {
     /** PipelineK's own scratch. Wiping it is the point of the Step. */

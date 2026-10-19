@@ -262,7 +262,7 @@ tasks.withType<Test>().configureEach {
 // This module carries no unit tests: it is the `readJson`/`writeJson`/`sha256` STEPs, whose
 // guarantee is that a pipeline calls them on real input. Its verification is the executable E2E
 // layer -- `.pipeline.kts` pipelines under `v2/examples/`, driven by
-// `scripts/run-e2e-pipelines.sh` -- and not a JUnit class.
+// `v2/examples/run.sh` -- and not a JUnit class.
 //
 // The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
 // Left in place they were a SILENT green: a `Test` task whose source set is empty reports

@@ -50,10 +50,11 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * Both parameters default, and both defaults are decisions rather than
  * placeholders.
  *
- * The [RuntimeConfig] default is [SystemRuntimeConfig], the one adapter
- * `FArchM1CanonicalRuntimeConfigTest` recognises as the only class permitted
- * to read `System.getenv` / `System.getProperty`. This resolver asks the port
- * for the platform and never reads the host itself, so `agent(label = ...)`
+ * The [RuntimeConfig] default is [SystemRuntimeConfig], which is the adapter
+ * that reads the host. It is not the only one — no gate says it is — so this
+ * resolver earns its single authority by asking the port instead of reading
+ * `System.getenv` itself. It asks the port for the platform and never reads
+ * the host directly, so `agent(label = ...)`
  * and `core.isUnix` cannot disagree about which machine they are on: there is
  * one platform authority and this is not a second one. It is also read at
  * acquire time rather than construction time, which is what [RuntimeConfig]

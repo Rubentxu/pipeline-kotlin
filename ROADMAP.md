@@ -18,21 +18,37 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `24c66110` | `git rev-parse HEAD` |
-| Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` |
-| Módulos con test unitario permanente | **12** | `src/test/kotlin` con al menos un `*Test.kt` |
-| Módulos sin test | 15 | ídem |
-| Tests unitarios ejecutados | **pendiente** | etapa 2 del gate, sobre el SHA de la tabla |
-| Escenarios E2E | 35 | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **5256 / 61461 = 0.086** (límite 2) | `scripts/check-budgets.py --json` |
+| SHA | `a5cc2fe9` | `git rev-parse HEAD` |
+| Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
+| Módulos con test unitario permanente | **16** | `src/test/kotlin` con al menos un `*Test.kt` |
+| Módulos sin test | 11 | ídem |
+| Tests unitarios ejecutados | **505** (51/51 informes reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
+| Escenarios E2E | 36 (**35 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
+| `VERIFY_LOC / PRODUCT_LOC` | **6203 / 61624 = 0.101** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **pendiente** (límite 900 s) | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **236 s**, peor de tres ensayos (233 / 236,48 / 223,71), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
-Las dos filas marcadas *pendiente* no se rellenan con una medición anterior: el
-SHA se movió después del último ensayo y una cifra de reloj heredada de otro
-commit es exactamente el tipo de verde que esta tabla existe para no
-declarar.
+Ensayos 2 y 3 se ejecutaron tras `rm -rf` de las salidas de build reales —las
+cuyo padre declara `build.gradle.kts`— y ambos reelectionaron los 51 informes
+JUnit, que es la condición que hace que la cifra de reloj mida el gate y no una
+restauración de caché. Ensayo 1.reportó 505 tests en 17 s con 48 informes
+frescos: el total era correcto y el verbo mentía, por eso la etapa 2 separa
+`rewritten` de `read` y **falla** si no reescribe ninguno.
+
+El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
+declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
+fabricar credenciales. `NOT_RUN` no es un aprobado y así queda escrito.
+
+Host de referencia, exigido por `§4`: 64 núcleos lógicos Intel Xeon E5-2682 v4
+@ 2,50 GHz, 94,2 GiB de RAM, Linux 7.2.9-ogc3.1.fc44.x86_64, Temurin
+21.0.8+9.0.LTS, Gradle 8.14.5, cachés de dependencias ya pobladas y sin
+descargas externas dentro de la medición. El certificador externo tiene su
+propia latencia y **no** va dentro de este número.
+
+Una cifra de reloj heredada de otro commit es exactamente el tipo de verde que
+esta tabla existe para no declarar: por eso cada fila lleva el SHA al que se
+midió.
 
 Los ratios por módulo de §2.2 a) son mediciones independientes del gate, hechas
 sobre el mismo árbol con el mismo criterio de recuento (líneas efectivas,
@@ -406,10 +422,22 @@ Los tres primeros son **los que ordenan el ataque**, y no por tamaño:
    > `from(DestructiveAuthorization)`, que recibe la autorización en vez de un
    > bit de ella. Los dos adaptadores pasan ahora por esa función, y `grep`
    > encuentra la regla escrita **exactamente una vez**. El KDoc ya no afirma
-   > una autoridad inexistente: ahora existe. **Lo que queda abierto es la
-   > duplicación** —los dos bloques `when (rootDestruction)` byte-idénticos
-   > hoy— y la cita a un test que no está en el repositorio. Ninguna de las dos
-   > es un defecto con comportamiento observable; son deuda de mantenimiento.
+   > una autoridad inexistente: ahora existe.
+   >
+   > **Cita cerrada 2026-10-19.** El KDoc apuntaba a
+   > `FArchL7JenkinsVerbatimSignatureReflectionTest`, borrado por el RESET
+   > (`find` fuera de `.worktrees/` no lo devuelve). La garantía, en cambio,
+   > **sí** se sostiene hoy y en otro sitio:
+   > `v2/pipeline-scripting-api/.../StageScope.kt:72` declara
+   > `fun deleteDir(path: String = ".")` y
+   > `v2/examples/control-flow/11-workflow-control.pipeline.kts:7` llama
+   > `deleteDir()` a secas — quite el valor por defecto y ese programa deja de
+   > compilar, y la etapa 3 de `scripts/verify-all.sh` se pone roja. La cita
+   > se repuntó al testigo real y se dijo por qué se movió de custodio.
+   >
+   > **Lo que queda abierto es solo la duplicación** —los dos bloques
+   > `when (rootDestruction)` byte-idénticos hoy—, que es deuda de
+   > mantenimiento sin comportamiento observable.
 2. **`pipeline-release` — qué se publica.** `BundledPluginCompatibility` decide
    «este candidato se publica o se rechaza» y tiene un defecto vivo ya registrado:
    un `apiRange` obsoleta en plugins de ejemplo empaquetados es la causa anotada

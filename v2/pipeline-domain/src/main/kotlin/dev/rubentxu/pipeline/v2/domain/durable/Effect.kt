@@ -20,6 +20,20 @@ enum class Effect {
     WRITES_WORKSPACE,
 
     /**
+     * Step writes to the ENGINE's own durable state.
+     *
+     * SAGA / PK-1. A Saga Step that arms a compensation obligation writes a promise into the
+     * run's durable store, and none of the values above describes that: it is not a read of
+     * local state, it is not a subprocess, it does not abort the pipeline, and it does not
+     * write the workspace. Declaring `WRITES_WORKSPACE` would be a lie that a ReplayPolicy
+     * resolver would then believe.
+     *
+     * The value matters for replay: a Step that records a promise must not be memoised as if it
+     * had done nothing, because the promise is the effect.
+     */
+    WRITES_DURABLE_STATE,
+
+    /**
      * Step performs I/O against a remote service (RP6-C / WU-093, `http.request`,
      * an OFFICIAL_PLUGIN that declares this effect).
      *

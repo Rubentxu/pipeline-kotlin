@@ -104,7 +104,10 @@ interface SagaRuntime {
 /**
  * What the compensation loop did.
  *
- * @param compensated the actions that were compensated, in the order they were compensated.
+ * @param compensated the actions that were compensated AND durably recorded, in the order
+ * they were compensated. An action whose compensation ran but could not be written down is
+ * NOT here: the durable state does not know it, and a report that claimed it would disagree
+ * with the rows a later process reads.
  * @param directive the Saga's state when the loop stopped: settled, or needing a human.
  */
 data class SagaCompensationReport(

@@ -90,6 +90,22 @@ run_scenario() {
     done < <(grep -m 20 '^//@ ' "$script" || true)
 
     if [[ "$needs_seeded_credentials" == 1 ]]; then
+        # A scenario that cannot RUN is still compiled first. `run` is what
+        # needs the seeded store; compiling does not, and skipping it meant the
+        # seven CredentialsBinding factories — a security boundary's DSL
+        # surface — had zero compilation coverage: renaming one would leave the
+        # verdict unchanged at `gaps=1 not_run`, with nothing to say whether
+        # the scenario compiled and could not run, or was never looked at.
+        #
+        # A compile failure here is a FAIL, not a NOT_RUN: the scenario's
+        # execution is blocked, its compilation is not.
+        local compile_out="$cycle_root/$slug.validate.txt"
+        if ! "$binary" validate "$script" >"$compile_out" 2>&1; then
+            printf 'FAIL    %-50s does not compile\n' "$name"
+            sed -n 's/^/    /p' "$compile_out" >&2
+            failed=$((failed + 1))
+            return
+        fi
         # Declared up front, before any execution, so the verdict cannot depend
         # on a run whose outcome was never observed. NOT_RUN is not a pass:
         # it is the honest third state, and it keeps the scenario in the

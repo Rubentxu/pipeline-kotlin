@@ -1277,8 +1277,11 @@ antes de leer el resultado** —una aserción no vale si no se ha visto fallar�
 pero **no** se vieron fallar: `23-readfile`, `09-sh-then-echo`,
 `30-artifact-query-bridge`, `32-publish-html` y `14-credentials-bindings`. Este
 último además **nunca se ejecuta** —está en `NOT_RUN` por
-`requires-seeded-credentials`—, así que su aserción está escrita y compilada
-pero no ha corrido nunca. Declararlo probado sería falso.
+`requires-seeded-credentials`—, así que su aserción no ha corrido nunca.
+Declararlo probado sería falso. Y hasta el commit de este ciclo tampoco
+**compilaba**: el lanzador salía por el `NOT_RUN` antes de invocar al binario, de
+modo que las siete fábricas `CredentialsBinding` no tenían ninguna cobertura de
+compilación. Ver §2.6.
 
 **El instrumento de este censo falló cuatro veces antes de reconciliar**, y es
 la cuarta vez que aparece en este ciclo que un censo da un número confiado y

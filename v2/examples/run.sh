@@ -60,6 +60,7 @@ trap cleanup EXIT
 passed=0
 failed=0
 not_run=0
+durable_runs=0
 failures=()
 
 scenario_index=0
@@ -142,6 +143,7 @@ run_scenario() {
         cd "$caller_pwd"
         code="$second"
         expect_exit=0
+        durable_runs=$((durable_runs + 1))
     fi
 
     local label="$name"
@@ -201,8 +203,23 @@ for script in ${selected[@]+"${selected[@]}"}; do
     run_scenario "$script"
 done
 
-printf '\n%d scenario(s), %d passed, %d failed, %d not run\n' \
-    "$scenario_index" "$passed" "$failed" "$not_run"
+printf '\n%d scenario(s), %d passed, %d failed, %d not run, %d durable rerun(s)\n' \
+    "$scenario_index" "$passed" "$failed" "$not_run" "$durable_runs"
+
+# A capability with no scenario exercising it is not covered, it is merely
+# unobserved -- and unobserved is indistinguishable from absent from the outside.
+# The durable double-run branch below sat behind `//@ durable` while not one
+# scenario declared it, so the whole replay path reported green for as long as
+# anybody cared to look. A count is therefore published in the summary above,
+# and a FULL inventory run refuses to be green without at least one rerun. The
+# check is scoped to the unfiltered run on purpose: a `--scenario` filter is a
+# caller choosing which slice to run, and forcing durable coverage there would
+# punish the inner loop for using the filter at all.
+if [[ -z "$filter" ]] && (( durable_runs == 0 )); then
+    printf 'run.sh: no scenario declared "//@ durable", so the replay path was never executed.\n' >&2
+    printf '  A green here would be the absence of the subject, not a passing check.\n' >&2
+    exit 1
+fi
 if (( not_run > 0 )); then
     printf 'not run (NOT_RUN is not a pass):\n'
     printf '  - every scenario above marked NOT_RUN needs external state this\n'

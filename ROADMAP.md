@@ -318,6 +318,45 @@ adaptadores. La afirmación no se comprobó cuando se escribió y por eso salió
 único caso encaja de verdad: `pipeline-sdk-bom` es un `java-platform` sin
 clases, y su propio `settings.gradle.kts` dice por qué.
 
+**Censo de qué es testeable en cada uno de los 15** (delimitado por módulo;
+NOT_RUN donde no se midió). Un módulo «sin test» no es un módulo
+sin lógica: cuatro de ellos deciden cosas de las que depende borrar ficheros o
+publicar un binario.
+
+| Módulo | Ficheros main | Con lógica pura | Dónde está la decisión |
+|---|---|---|---|
+| `pipeline-step-sdk/files` | 6 | 3 | `RootDestruction.fromUserOwned`, los dos `when (rootDestruction)` de `CleanWsExecutor:91` y `DeleteDirExecutor:103`, `antPatternToRegex` (`CleanWsExecutor:221-269`) |
+| `pipeline-release` | 18 | **10** | `ProductVersion.parseOrNull`, `DistributionIdentity.evaluateDistributionIdentity`, `CandidateHandoffValidation.evaluateCandidateHandoff`, `SourceProvenance.evaluate`, `CandidateTagProvenance.evaluate`, `BundledPluginCompatibility.apiRangeContains` / `semverCompare` |
+| `pipeline-credentials-executor` | 3 | 2 | `ProviderBackedSource.resolve` (donde `NotFound` es inalcanzable a propósito), `SpiMaterializationAdapter.materialize`, y el orden reverse-LIFO de `BoundCredentials.close` |
+| `pipeline-artefacts-local` | 3 | 1 | `AntStyleGlob`: la lista de 13 exclusiones por defecto, el contrato ida/vuelta de `fromList`/`vararg` con `,`, y el `require` de glob vacío |
+| `pipeline-output` | 15 | 7 (**6 sin cubrir**) | `OutputAdoption.invariantsBlockedBy`, `OutputDigest`, `OutputFrameIndex` (`to > from`), `PruneAuthorisation.StorageError.init` |
+
+Los tres primeros son **los que ordenan el ataque**, y no por tamaño:
+
+1. **`pipeline-step-sdk/files` — qué se borra.** `RootDestruction` existe para
+   que un tercer estado no pueda heredar un veredicto, y su KDoc afirma que la
+   regla «se dice una sola vez aquí». Medido: **no es cierto**. `fromUserOwned` no
+   tiene ni un solo llamador, y la regla vive en dos bloques `when` que hoy son
+   **byte-idénticos**. La severidad que se le dio a este punto en un informe previo
+   estaba inflada, y conviene decirlo: no hay defecto hoy. Un `when` sobre enum
+   usado como expresión es exhaustivo en Kotlin, así que añadir un cuarto estado
+   rompe la compilación en los dos sitios, y los dos cuerpos coinciden hoy. Lo que
+   queda es un KDoc que afirma una autoridad inexistente y una duplicación de
+   cuatro líneas hoy consistente. El KDoc además cita
+   `FArchL7JenkinsVerbatimSignatureReflectionTest (WCL-S-008, FIL-ALL-001)`, y
+   **`git ls-files` no devuelve ningún fichero con ese nombre**.
+2. **`pipeline-release` — qué se publica.** `BundledPluginCompatibility` decide
+   «este candidato se publica o se rechaza» y tiene un defecto vivo ya registrado:
+   un `apiRange` obsoleta en plugins de ejemplo empaquetados es la causa anotada
+   del arreglo de ejecución de R4/WU-R4.0.0. Cero tests.
+3. **`pipeline-output` — `OutputAdoption.invariantsBlockedBy`.** Es el decider que
+   autoriza decir «el Output Plane es crash-consistente», y su propio KDoc
+   registra **dos defectos materiales ya corregidos exactamente en esas dos
+   funciones**: la inversión de polaridad de un parámetro, y un `return` en el
+   primer match que avalaba I5 e I6 en silencio. Ninguno está fijado por un test.
+   Un tercer fallo del mismo tipo pasa hoy sin nada que lo pare.
+
+
 El denominador, derivado de `settings.gradle.kts` con los comentarios eliminados
 primero — contarlos sin quitarlos lee los **tres módulos ya borrados** que el
 comentario menciona y da 28 en vez de 27: **27 declarados, 12 con `src/test`,
@@ -454,20 +493,35 @@ El denominador que lo confirma: **`git ls-files` no devuelve ni un solo
 Los tokens más citados son `ADR-0075` (64), `ADR-0103` (37), `ADR-0046` (30),
 `ADR-0081` (22), `ADR-0016` (17).
 
-**No se borran en bloque, y la razón es una diferencia real, no pereza.** Las
-296 líneas de `design.md §` que sí se limpiaron eran **anclas de navegación**: un
-`[design.md §R-C]` que apunta a nada y no deja ninguna afirmación detrás. Estas
-no son lo mismo. Una cita como «este es el ADR-0081 que decía que un Step externo
-puede tener un body» **transporta la justificación dentro del comentario**: si se
-borra la cita, se borra el porqué, y el siguiente que lo lea decide que el
-comportamiento es arbitrario. Por eso la deuda es real pero el arreglo no es un
-borrado: es devolver esas frases a forma autosuficiente («un Step externo puede
-tener un body porque …») o recuperar los ADR en el archivo histórico, que es
-donde `AGENTS.md` §6 manda. Bandear las 296 sin leerlas produciría 296 comentarios
-sin explicación, que es peor que 296 comentarios con una referencia Rota.
+**No se borran en bloque, y al medir por qué aparecieron TRES clases, no una.**
+La primera redacción de este bloque las trataba a todas igual —«llevan la razón
+dentro del comentario»— y eso es falso para una de ellas:
 
-Los cuatro tokens de una línea (`FArchL`, `WCL-S`, `FIL-ALL`) sí son triviales y se
-limpian como candidatos de una pasada junto a `f)`.
+1. **27 líneas con el token dentro de una cadena de código**, no de un comentario.
+   Comportamiento observable, no documentación. Dos ejemplos, de clases distintas:
+   `WAIT_UNTIL_CONTROL_ROW("ADR-0075 (waitUntil control journal, WU-G5R.5
+   analog)")` es el **identificador de una fila de control**, y
+   `"sandbox-profile 'os' requires ADR-0016 M5/M9; rejected in L3. Accepted:
+   {none, local}. Got: 'os'."` es un **mensaje de error que lee el operador**.
+   Borrar el token no limpia nada: cambia el valor persistido o el texto que
+   alguiensupporta. Cualquier barrido de «comentarios que citan documentos
+   borrados» aplicado sobre el árbol entero corrompe estos 27.
+2. **5 apariciones de `Pre-ADR-0075`** en 4 ficheros, con el prefijo `Pre-`. No es
+   navegación: es un **marcador de frontera de formato** —«filas persistidas
+   antes de este formato». Sin el token la frase queda en «filas Pre-», que no
+   significa nada.
+3. El resto, comentarios y KDoc. Ahí sí aplica lo de 2.2 e: la cita es a veces la
+   única razón escrita, y borrarla deja una afirmación sin porqué.
+
+Por eso la deuda es real pero el arreglo no es un barrido: es decidir por
+fichero, y hay 120. Una pasada automática sería más rápida que leer 120 ficheros
+y sería el error más caro del ciclo, porque los 27 de la clase 1 **no fallan
+ningún test**: cambian en silencio.
+
+La otra mitad de la pregunta —si un mensaje de error debe citarle un ADR al
+operador— es de diseño de producto y no se resuelve aquí. El mensaje debería
+decir la **regla** («un perfil de sandbox multi-tenant no puede ser `os`»), no el
+documento donde la regla está escrita.
 
 
 ### 2.3 Cierre de ciclo

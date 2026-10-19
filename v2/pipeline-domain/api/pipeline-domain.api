@@ -5752,6 +5752,42 @@ public final class dev/rubentxu/pipeline/v2/domain/saga/SagaActionId$Companion {
 	public final fun ofOrNull-ugsw5EA (Ljava/lang/String;)Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaActionPlan {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-l_DKfx8 ()Ljava/lang/String;
+	public final fun component2--p2rSqk ()Ljava/lang/String;
+	public final fun component3-9W-23fU ()Ljava/lang/String;
+	public final fun component4 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;
+	public final fun component5-GfyuE-w ()Ljava/lang/String;
+	public final fun component6-GfyuE-w ()Ljava/lang/String;
+	public final fun copy-nXXqgWk (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaActionPlan;
+	public static synthetic fun copy-nXXqgWk$default (Ldev/rubentxu/pipeline/v2/domain/saga/SagaActionPlan;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaActionPlan;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActionId-l_DKfx8 ()Ljava/lang/String;
+	public final fun getCompensateSlot-GfyuE-w ()Ljava/lang/String;
+	public final fun getCompensationId--p2rSqk ()Ljava/lang/String;
+	public final fun getForwardSlot-GfyuE-w ()Ljava/lang/String;
+	public final fun getKind ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;
+	public final fun getResourceRef-9W-23fU ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaCompensationReport {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDirective;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-YTsXdgg ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDirective;
+	public final fun copy-yJYkKtc (Ljava/lang/String;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDirective;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaCompensationReport;
+	public static synthetic fun copy-yJYkKtc$default (Ldev/rubentxu/pipeline/v2/domain/saga/SagaCompensationReport;Ljava/lang/String;Ljava/util/List;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDirective;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaCompensationReport;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCompensated ()Ljava/util/List;
+	public final fun getDirective ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDirective;
+	public final fun getSagaId-YTsXdgg ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/saga/SagaDecider {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/saga/SagaDecider;
 	public final fun armOutcome (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome;
@@ -5825,6 +5861,22 @@ public final class dev/rubentxu/pipeline/v2/domain/saga/SagaOperationPhase : jav
 	public final fun getSlot ()Ljava/lang/String;
 	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaOperationPhase;
 	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/saga/SagaOperationPhase;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaPlan {
+	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy;Ljava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun action-DFknhno (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaActionPlan;
+	public final fun component1-YTsXdgg ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy;
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy-yJYkKtc (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaPlan;
+	public static synthetic fun copy-yJYkKtc$default (Ldev/rubentxu/pipeline/v2/domain/saga/SagaPlan;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaPlan;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActions ()Ljava/util/List;
+	public final fun getPolicy ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy;
+	public final fun getSagaId-YTsXdgg ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/saga/SagaPlanFingerprint {
@@ -5919,6 +5971,14 @@ public final class dev/rubentxu/pipeline/v2/domain/saga/SagaRecordRejection$Unkn
 	public fun equals (Ljava/lang/Object;)Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/saga/SagaRuntime {
+	public abstract fun compensate (Ldev/rubentxu/pipeline/v2/domain/saga/SagaPlan;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaRuntimeKt {
+	public static final fun getSAGA_RUNTIME_CAPABILITY ()Ljava/lang/String;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/saga/SagaSnapshot {

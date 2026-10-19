@@ -11,6 +11,9 @@ import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.CompensationArmed
+import dev.rubentxu.pipeline.v2.events.CompensationFinished
+import dev.rubentxu.pipeline.v2.events.CompensationStarted
+import dev.rubentxu.pipeline.v2.events.SagaTerminal
 import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
@@ -260,7 +263,14 @@ object EnvelopeProjector {
         // SAGA / PK-1: a compensation obligation is a run-scoped fact. The obligation's
         // identity is (run, saga, action, compensation), and none of those three finer
         // identities is a stage or a step, so the run is the honest subject.
+        //
+        // SAGA / PK-2: the same holds for the loop's own facts. A compensation that started
+        // or finished, and the Saga that reached a terminal state, are facts about the Saga
+        // and about the run that owns it — not about the step that happened to ask.
         is CompensationArmed,
+        is CompensationStarted,
+        is CompensationFinished,
+        is SagaTerminal,
         -> runRef
     }.let { it }
 }

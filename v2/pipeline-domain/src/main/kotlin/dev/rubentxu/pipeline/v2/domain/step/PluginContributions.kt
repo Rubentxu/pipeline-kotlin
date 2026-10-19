@@ -26,11 +26,11 @@ import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
  *
  * ## Why Reactor is absent
  *
- * S5.5 is `DEFERRED` by ADR-0104, which named S6 as where a plugin-contributed
- * reactive construct belongs. This is that place, and it still does not declare one:
- * a manifest slot with no consumer is the same defect ADR-0104 refused to let S5.5
- * commit, reached by another road. When ADR-0104's reopening condition is met,
- * Reactor joins this hierarchy as a fifth shape with a real producer behind it.
+ * S5.5 was deferred, and S6 was named as where a plugin-contributed reactive
+ * construct belongs. This is that place, and it still does not declare one:
+ * a manifest slot with no consumer is the same defect the deferral refused to
+ * let S5.5 commit, reached by another road. Reactor joins this hierarchy as a
+ * fifth shape when a real producer exists behind it.
  */
 data class PluginStepContribution(
     val stepKey: PluginStepId,

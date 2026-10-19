@@ -516,7 +516,9 @@ class GitCredentialsApplier(
 
     /**
      * Wipes all temp files using fill(0) + Files.delete.
-     * Called in finally block — safe against SIGKILL residue documented in ADR-0050.
+     * Called from a finally block, so it runs on both normal and exceptional
+     * returns. A process killed outright cannot run it: SIGKILL is not catchable,
+     * so the files remain on disk until the OS reclaims them.
      */
     override fun close() {
         if (isClosed) return

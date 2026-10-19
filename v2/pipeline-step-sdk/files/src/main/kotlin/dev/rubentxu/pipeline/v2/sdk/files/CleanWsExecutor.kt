@@ -218,7 +218,7 @@ class CleanWsExecutor(
         return results
     }
 
-    private fun antPatternToRegex(pattern: String): String {
+    internal fun antPatternToRegex(pattern: String): String {
         val sb = StringBuilder("^")
         var i = 0
         while (i < pattern.length) {
@@ -226,18 +226,35 @@ class CleanWsExecutor(
             when {
                 ch == '*' -> {
                     if (i + 1 < pattern.length && pattern[i + 1] == '*') {
-                        // ** — zero or more complete path segments (each ending in /)
-                        if (i + 2 < pattern.length && pattern[i + 2] == '*') {
-                            // *** or **** — treat as **
-                            sb.append("(.*/)*")
-                            i += 2
-                        } else if (i + 2 < pattern.length) {
-                            // **** (three stars total: ** followed by *) → **/* shorthand
-                            sb.append("(.*/)*")
-                            i += 3  // skip ** and the following *
-                        } else {
-                            // ** at end (no following *) — matches everything including /
+                        // ** — zero or more complete path segments, each ending in /
+                        if (i + 2 == pattern.length) {
+                            // ** at the end. Nothing follows it to anchor on, so it is
+                            // "everything", including separators.
                             sb.append(".*")
+                            i += 2
+                        } else if (pattern[i + 2] == '/') {
+                            // **/ — `(.*/)*` already ends in `/`, so the separator is
+                            // consumed together with it and nothing is left to emit.
+                            sb.append("(.*/)*")
+                            i += 3
+                        } else {
+                            // ** followed by a literal. `(.*/)*` does NOT end in `/` here,
+                            // so the literal still has to be emitted, by the next iteration.
+                            //
+                            // This branch used to be `else if (i + 2 < pattern.length)` with
+                            // `i += 3`. That condition was a tautology — reaching it already
+                            // proved `pattern[i + 2]` exists and is not `*` — and advancing
+                            // three positions consumed a literal character that was never
+                            // written to the regex. `**build/**` compiled to a pattern that
+                            // matched `uild/x.txt` and refused `build/x.txt`: a silent,
+                            // destructive off-by-one that deletes the wrong directory tree
+                            // and reports a plausible file count. Only `**/` was unaffected,
+                            // because the `/` it swallowed is exactly the one `(.*/)*` needs.
+                            //
+                            // The literal is now reached rather than skipped, and `***` /
+                            // `****` no longer need their own case: they fall through here and
+                            // the surplus stars are handled as ordinary `*` on later iterations.
+                            sb.append("(.*/)*")
                             i += 2
                         }
                     } else {

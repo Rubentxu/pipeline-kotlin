@@ -650,57 +650,142 @@ documento, uno escrito a mano y otro derivado del gate, discrepando sobre qué
 queda por hacer: el escrito a mano manda, y por eso el orden de ataque apuntaba
 a trabajo ya hecho.
 
-Re-medido sobre el árbol comiteado, instrumento único y sin listas escritas:
+Re-medido sobre el árbol comiteado, instrumento único y sin listas escritas. La
+primera versión de este bloque usó `grep -ohE '":[a-zA-Z0-9:_-]+"'` sobre todo el
+fichero y dio **8**. Fallaba en la misma dirección dos veces, y por eso el
+instrumento va aquí completo:
 
 ```
-declared=$(git grep -ohE '":[a-zA-Z0-9:_-]+"' settings.gradle.kts \
-             | sed 's/^"//; s/"$//' | sort -u)
-for m in $declared; do
+# 1. sólo el bloque include(), con los comentarios fuera
+sed -n '/^include(/,/^)/p' settings.gradle.kts \
+  | sed 's|//.*||' \
+  | grep -oE '":[^"]+"' | sed 's/^"//; s/"$//' | sort -u
+# -> 27 módulos
+
+# 2. sin clase de test, y con código de producto debajo
+for m in $(...); do
     d=$(printf '%s' "$m" | sed 's/^://; s/:/\//g')   # Gradle ':' -> disco '/'
-    [ "$(find "$d/src/test" -name '*Test.kt' | wc -l)" -gt 0 ] || echo "$m"
+    main=$(find "$d/src/main" -name '*.kt' | wc -l)
+    test=$(find "$d/src/test" -name '*Test.kt' | wc -l)
+    [ "$test" -eq 0 ] && [ "$main" -gt 0 ] && echo "$m"
 done
 ```
 
-**Son 8, no 9**, y ninguno de ellos figura entre los cinco que se nombraban:
+**Son 6**, y ninguno figura entre los cinco que la lista vieja nombraba:
 
-| módulo declarado | ficheros `src/main` |
-|---|---:|
-| `:pipeline-scripting-api` | 16 |
-| `:pipeline-step-sdk:junit` | 9 |
-| `:pipeline-scripting-kotlin24` | 8 |
-| `:pipeline-event-harness` | 8 |
-| `:pipeline-step-sdk:api` | 5 |
-| `:pipeline-runtime` | 4 |
-| `:pipeline-architecture-tests:test` | 0 |
-| `:pipeline-sdk-bom` | 0 |
+| módulo declarado | ficheros `src/main` | LOC de producto |
+|---|---:|---:|
+| `:pipeline-scripting-api` | 16 | 3.583 |
+| `:pipeline-scripting-kotlin24` | 8 | 1.874 |
+| `:pipeline-runtime` | 4 | 1.598 |
+| `:pipeline-step-sdk:junit` | 9 | 961 |
+| `:pipeline-event-harness` | 8 | 831 |
+| `:pipeline-step-sdk:api` | 4 | 340 |
 
-Esa columna es **la cuenta de ficheros, y nada más**. Qué decisión pura hay
-dentro de cada uno y con qué riesgo está **NOT_RUN**: se deja en blanco a
-propósito, porque rellenarla de intuición es exactamente el mecanismo que
-produjo la lista vieja. El único caso con una razón ya documentada es
-`:pipeline-sdk-bom`, y la da su propio `settings.gradle.kts`: es un
-`java-platform` sin clases.
+Qué decisión pura hay dentro de cada uno y con qué riesgo está **NOT_RUN**: se
+deja en blanco a propósito, porque rellenarla de intuición es exactamente el
+mecanismo que produjo la lista vieja.
 
-Dos advertencias sobre el propio instrumento, porque sin ellas la tabla engaña
-como la tabla anterior:
+Tres advertencias sobre el propio instrumento, porque sin ellas la tabla engaña
+como la tabla anterior. Las dos primeras las suffered así un instrumento
+anterior de este mismo bloque:
 
-1. **`:pipeline-step-sdk:http` no es un directorio.** Se llama así en Gradle y
-   en disco es `pipeline-step-sdk/http/`. Un censo que no traduzca `:` a `/`
-   lee **0 ficheros y 0 tests** en los ocho módulos anidados, y los cuenta como
+1. **`grep` sobre el fichero entero lee los comentarios.** El módulo
+   `:pipeline-architecture-tests:test` **fue eliminado** durante el RESET y sigue
+   apareciendo en `settings.gradle.kts` dentro de un comentario que explica su
+   propia baja. Un censo que no lo distinga lo cuenta como módulo vivo, con
+   cero `src/main` y cero `build.gradle.kts`: un directorio que sólo contiene un
+   `build/` de Gradle. Eso fue el «8»→«7».
+2. **`:pipeline-step-sdk:http` no es un directorio.** Se llama así en Gradle y en
+   disco es `pipeline-step-sdk/http/`. Un censo que no traduzca `:` a `/` lee
+   **0 ficheros y 0 tests** en los ocho módulos anidados, y los cuenta como
    vacíos. Ese es el mecanismo que puede producir un número.
-2. El recuento es de **clases de test**, no de tests ejecutados. Un módulo con
-   una clase no equivale a un módulo cubierto; por eso la tabla de ratios, que
-   sí cuenta líneas, es la que manda para valorar riesgo.
+3. **Sin código no hay garantía que probar.** `:pipeline-sdk-bom` es un
+   `java-platform` sin clases —lo dice su propio `build.gradle.kts`—, y el filtro
+   `[ "$main" -gt 0 ]` lo excluye por eso y no por juicio. Un módulo que no
+   compila nada no es un módulo sin test: es un módulo sin sujeto.
+
+Queda además la advertencia que ya no depende del instrumento: el recuento es de
+**clases de test**, no de tests ejecutados. Un módulo con una clase no equivale a
+un módulo cubierto; por eso la tabla de ratios, que sí cuenta líneas, es la que
+manda para valorar riesgo.
 
 **El orden de ataque se rehace cuando la medición exista, no antes.**
 
-**Censo histórico — los nueve módulos que la lista vieja nombraba, no los ocho
+#### 2.2.1 `BlockStepFlattener` borrado: la segunda autoridad de una regla viva
+
+Un agente midió los cuatro módulos de scripting y señaló a `BlockStepFlattener`
+como «el hallazgo más agudo del repositorio», por una asimetría real y medible:
+en su rama `Parallel` **añade dos segmentos a `blockPath` y sólo `depth + 1`**,
+mientras que las otras trece ramas añaden uno y `depth + 1`
+(`BlockStepFlattener.kt:114-122`, ya borrado).
+
+**La asimetría no era un defecto**, y ahí está la mitad del aprendizaje: el
+validador que manda, `CompiledPipelineValidator:89`, cuenta **un nivel por
+`BlockStepNode`**, igual que el flattener. `blockPath` es una *identidad* y
+necesita dos índices; `depth` es un *nº de continuaciones CPS* y necesita uno.
+Dos segmentos y una unidad de profundidad no se contradicen: son dos preguntas.
+
+**Lo que sí era un defecto era lo que el agente no vio.** Al verificar en vez de
+publicar su recomendación, la tabla de consumidores salió vacía:
+
+```
+git grep -l 'BlockStepFlattener\|FlattenedStep\|IndexedStep' -- .
+  -> BlockNestingConstants.kt:7      (una línea de KDoc)
+  -> api/api.api                     (el volcado ABI)
+  -> detekt-baseline-main.xml        (una entrada)
+  -> el propio fichero
+```
+
+Cero llamadas. Un segundo calculador de profundidad de anidamiento, con **su
+propia excepción** `BlockNestingDepthExceededException` para la misma condición,
+que no vigilaba nada — mientras el que sí vigila es
+`CompiledPipelineValidator`, invocado desde `CompiledExecutionPlanner:34`.
+
+**La recomendación del agente era incorrecta, y seguirla habría costado caro.**
+Escribir un test permanente para código sin consumidor viola AGENTS.md §2 por
+dos vias distintas: un módulo «sin test» no es un módulo sin lógica, y una
+garantía sin destinatario es coste. El ROADMAP ya lo tenía escrito para
+`EventViewProjection` («sin consumidor, un test es coste sin destinatario») y el
+agente lo pasó por alto en el módulo siguiente.
+
+El borrado no es un juicio mío: el `build.gradle.kts` de la raíz ya lo tenía
+medido — `pipeline-step-sdk:api` está en `bcvModules` y **no** en
+`publishedContractModules`, ninguno aplica `maven-publish`, y `examples/` no
+importa nada del paquete sdk — de modo que «sus llamadores internos están dentro
+de este build, así que un tipo público eliminado falla `compileKotlin` de inmediato
+y ruidosamente». Ese fallo no se produjo. `apiDump` regenerado: 48 líneas menos,
+y `CompatibilityLevel`, `PipelineJson`, `WorkspacePathAnchors` y `StepContext`
+siguen en el volcado.
+
+#### 2.2.2 Cuatro comentarios que citaban pruebas que nunca existieron
+
+`Sha256MigrationCharsetInvariantTest`, `SharedModelCompositionFitnessTest`,
+`UatLocal004TimeoutTest` y `CompatibilityLevelEnumTest`: `git ls-files` no
+devuelve **ningún** fichero para ninguno de los cuatro. Cada comentario afirmaba
+un guard que el repositorio no tiene — la quinta y sextainstances de un defecto
+que este árbol ya había pagado cuatro veces.
+
+No se les añade test, y esa es la decisión: una garantía que sólo existe en un
+comentario no se vuelve real con un test, y un *fitness* de texto fuente está
+prohibido por AGENTS.md §2. Cada comentario se corrigió por lo que afirmaba, que
+no es lo mismo en los cuatro: uno decía «fijado» sobre una invariante que se
+cumple pero nadie comprueba; otro justificaba una decisión con un test que ya no
+existe; otro respaldaba un fallo histórico real con un fixture inventado; y el
+último declaraba fijado un enum que no tiene un solo consumidor.
+
+**Qué haría el siguiente ciclo con esto:** un escaneo que busque
+`Test\`\|Spec\`\|Uat` dentro de comentarios y compruebe que cada nombre existe.
+Es el mismo instrumento que este bloque: leer el nombre, no la prosa que lo
+rodea. Está **NOT_RUN**: no escrito.
+
+**Censo histórico — los nueve módulos que la lista vieja nombraba, no los seis
 que quedan.** Se conserva porque su hallazgo sigue siendo cierto y explica por
 qué esos cinco se priorizaron: un módulo «sin test» no es un módulo sin lógica;
 varios de ellos deciden cosas de las que depende borrar ficheros o publicar un
 binario. Los cinco con tests de esta tabla están cerrados —`pipeline-release`
 recién, en el punto 2 más abajo—. **No es el orden de ataque vigente**, y la
-tabla de los ocho de arriba lo sustituye.
+tabla de los seis de arriba lo sustituye.
 
 | Módulo | Ficheros main | Con lógica pura | Dónde está la decisión |
 |---|---|---|---|

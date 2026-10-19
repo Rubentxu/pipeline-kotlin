@@ -139,6 +139,15 @@ object CandidateMaterializer {
             sha256sums = sumsRef,
         )
 
+        // The manifest's BYTES are decided before they reach disk. Encoding once
+        // and digesting that text means the digest below is the digest of exactly
+        // the bytes that get written, and the admission gate still runs BEFORE
+        // anything is written -- writing first and measuring afterwards would
+        // make this method leave a manifest behind for a candidate it refused,
+        // contradicting the contract on this function.
+        val manifestText = DistributionManifestCodec.encode(manifest)
+        val manifestDigest = Sha256.ofText(manifestText)
+
         val handoff = CandidateHandoff(
             candidateId = CandidateId.fromDigest(manifest.asset.sha256),
             releaseTrain = productVersion,
@@ -154,7 +163,7 @@ object CandidateMaterializer {
             ),
             distributionManifest = CandidateFileRef(
                 name = MANIFEST_NAME,
-                sha256 = "",
+                sha256 = manifestDigest,
                 builtAt = candidateRef ?: gitCommit,
             ),
             sbom = manifest.sbom?.let { CandidateFileRef(it.name, it.sha256, candidateRef ?: gitCommit) },
@@ -169,18 +178,18 @@ object CandidateMaterializer {
 
         Files.createDirectories(outDir)
         val manifestPath = outDir.resolve(MANIFEST_NAME)
-        val manifestText = DistributionManifestCodec.encode(manifest)
         Files.writeString(manifestPath, manifestText)
 
+        // The SAME handoff that was admitted, not a copy patched afterwards. The
+        // previous code emitted `handoff.copy(distributionManifest = ...sha256 =
+        // sha256Of(manifestPath))`, a second object that no gate ever saw: the
+        // admission verdict described a document carrying an empty digest while
+        // the published one carried a real one. The bytes are identical, so this
+        // changes no output -- it removes the gap between what is checked and
+        // what ships, which is what would bite the day a check on that field
+        // was added and every build started rejecting its own placeholder.
         val handoffPath = outDir.resolve(HANDOFF_NAME)
-        val handoffText = CandidateHandoffCodec.encode(
-            handoff.copy(
-                distributionManifest = handoff.distributionManifest.copy(
-                    sha256 = sha256Of(manifestPath),
-                ),
-            ),
-        )
-        Files.writeString(handoffPath, handoffText)
+        Files.writeString(handoffPath, CandidateHandoffCodec.encode(handoff))
 
         return MaterializationResult.Materialized(
             manifestPath = manifestPath,

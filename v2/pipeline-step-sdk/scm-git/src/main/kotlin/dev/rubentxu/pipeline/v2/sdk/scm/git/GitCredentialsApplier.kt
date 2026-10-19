@@ -433,22 +433,28 @@ class GitCredentialsApplier(
         fun guardProcessBuilderArgs(args: List<String>) {
             for ((index, arg) in args.withIndex()) {
                 val lower = arg.lowercase()
-                if (lower.contains("extraheader") || lower.contains("authorization")) {
-                    throw IllegalArgumentException(
-                        "Forbidden substring in argv: 'extraHeader' and 'Authorization' " +
+                // `require` rather than a hand-rolled throw: same exception type
+                // (IllegalArgumentException) and same message, which is what
+                // GitCredentialsApplierGuardTest asserts. detekt's UseRequire
+                // rule is right that a guard reads better as a condition than as
+                // a control-flow jump -- and the guard is a precondition, not an
+                // error path, so calling it one is what detekt is flagging.
+                require(
+                    !(lower.contains("extraheader") || lower.contains("authorization")),
+                ) {
+                    "Forbidden substring in argv: 'extraHeader' and 'Authorization' " +
                         "must not appear in process arguments (credentials must use GIT_CONFIG_GLOBAL env). " +
                         "Found in ${describeForDiagnostics(arg, index)}"
-                    )
                 }
                 // Detect embedded credentials in URLs: https://user:pass@host/path
-                if ((lower.contains("://") || lower.contains("@")) &&
-                    URL_CREDENTIALS_PATTERN.containsMatchIn(arg)) {
-                    throw IllegalArgumentException(
-                        "Forbidden: URL with embedded credentials detected. " +
+                require(
+                    !((lower.contains("://") || lower.contains("@")) &&
+                        URL_CREDENTIALS_PATTERN.containsMatchIn(arg)),
+                ) {
+                    "Forbidden: URL with embedded credentials detected. " +
                         "Credentials must not appear in process arguments (argv) — " +
                         "use GIT_ASKPASS or credential helper instead. " +
                         "Found in ${describeForDiagnostics(arg, index)}"
-                    )
                 }
             }
         }

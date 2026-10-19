@@ -130,7 +130,16 @@ repositories {
 // (SagaRuntime, SagaPlan, SagaActionPlan, SagaCompensationReport,
 // SAGA_RUNTIME_CAPABILITY) is new published API, so the version that carries it
 // cannot be the version that shipped without it.
-version = "0.66.0"
+//
+// 2026-10-19: the 0.66.0 train closes at v0.66.0-rc1. The 0.67.0 train opens
+// here (ProductVersion 0.67.0) so the next candidate can be tagged
+// v0.67.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
+// The public SDK grew additively in this train: InterventionReason gained
+// COMPENSATION_NOT_DISPATCHED, the word for a compensation that was NOT
+// dispatched because the durable state refused the write-ahead. The published
+// vocabulary of a Saga is closed on purpose, so a fact the old one could not
+// name needs a new name in it.
+version = "0.67.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

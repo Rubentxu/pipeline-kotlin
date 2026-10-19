@@ -69,7 +69,6 @@ fun interface RuntimeRecoverPortIntrospect {
  * `OutputFrameIndex.recoverUnframedBytes` pair. `RecoverNoRerunTest` (§7.3 of
  * the design) pins the invariant.
  *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §5 and §6.
  */
 class RuntimeRecoverPortStoreAdapter(
     private val journal: OperationJournal,

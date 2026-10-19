@@ -39,7 +39,6 @@ package dev.rubentxu.pipeline.v2.runtime.control
  *
  * Cancel does NOT take a fresh lease; it consults the existing one.
  *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §4.
  */
 fun interface RuntimeControlPort {
 

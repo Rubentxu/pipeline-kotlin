@@ -4,9 +4,8 @@ import kotlinx.serialization.Serializable
 
 /**
  * P0.1 — a product version is a final SemVer triple. It must NOT carry a
- * candidate suffix: under the release-evolution contract
- * (`docs/pipelinek-release-evolution/shared/01-cross-repo-contract.md` §4, §11)
- * candidate state lives *outside* the binary identity. `0.44.0-rc1` is
+ * candidate suffix: candidate state lives *outside* the binary identity,
+ * and this type is where that separation is enforced. `0.44.0-rc1` is
  * therefore not a valid [ProductVersion]; the candidate is
  * `(ProductVersion=0.44.0, CandidateId=sha256:…)`.
  *

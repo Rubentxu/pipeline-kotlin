@@ -15,9 +15,7 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
  * [dev.rubentxu.pipeline.v2.output.OutputTailPort] into a pull-style handle
  * that a consumer can drive. It does NOT introduce a new writer, a new
  * store, or a new cursor vocabulary: the existing ports are the source of
- * truth, and the follow contract is additive on top of them. The
- * composition rule lives in `M1_FOLLOW_DESIGN.md` §4 in
- * `docs/pipelinek-coordinated-evolution/m1-design/`.
+ * truth, and the follow contract is additive on top of them.
  *
  * ## Why pull (iterator) and not Flow
  *
@@ -49,9 +47,6 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
  * via `use { }`). After `close`, `iterator().hasNext()` returns `false`
  * and the implementation releases any store-side resources. The contract
  * guarantees that no half-page is delivered after a `close`.
- *
- * @see M1_FOLLOW_DESIGN.md §2.1 for the full type surface and §4 for the
- *   composition contract.
  */
 interface OutputFollower {
 

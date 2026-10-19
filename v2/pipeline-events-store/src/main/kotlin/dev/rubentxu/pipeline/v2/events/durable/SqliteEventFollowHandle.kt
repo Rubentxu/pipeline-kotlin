@@ -49,9 +49,9 @@ import java.util.concurrent.locks.ReentrantLock
  *
  * ## Terminal detection
  *
- * Terminal detection follows the design's
- * `M1_FOLLOW_DESIGN.md` §4 rule: a `DomainEvent.kind == "RunFinished"`
- * observation transitions the follow from [EventFollowState.Live] to
+ * Terminal detection follows one rule: a
+ * `DomainEvent.kind == "RunFinished"` observation transitions the follow
+ * from [EventFollowState.Live] to
  * [EventFollowState.RunFinished] and then [EventFollowEvent.Completed].
  * The Event Plane is the source of truth for run terminality (the
  * Output Plane learns of it by joining this plane).
@@ -60,8 +60,7 @@ import java.util.concurrent.locks.ReentrantLock
  * consumer's [EventFollowOptions.until] condition is met
  * ([EventFollowUntil.UntilRunFinished] / [EventFollowUntil.UntilSequence])
  * or once the page has been drained to the current tail with no
- * further events visible (the natural-end semantic the
- * `M1_FOLLOW_DESIGN.md` §4 composition rule names for an empty
+ * further events visible (the natural-end semantic for an empty
  * history).
  *
  * `EventFollowUntil.UntilSequence(lastSequence)` is honoured by

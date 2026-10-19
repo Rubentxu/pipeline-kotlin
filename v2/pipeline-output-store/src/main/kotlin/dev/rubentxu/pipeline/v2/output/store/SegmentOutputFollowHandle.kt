@@ -68,9 +68,6 @@ import java.util.concurrent.locks.ReentrantLock
  * application-layer adapter joins the event plane; the M1-B follower
  * stops at [FollowState.StreamSealed] and then [OutputFollowEvent.Completed]
  * when the consumer's [FollowUntil] is [FollowUntil.UntilAllSealed].
- *
- * @see M1_FOLLOW_DESIGN.md §2.1 for the type surface and §4 for the
- *   composition contract.
  */
 internal class SegmentOutputFollowHandle(
     private val read: OutputReadPort,

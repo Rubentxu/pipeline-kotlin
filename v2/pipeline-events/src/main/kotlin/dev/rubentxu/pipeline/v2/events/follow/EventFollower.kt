@@ -42,9 +42,6 @@ import java.time.Duration
  * The handle is `AutoCloseable`. The consumer closes it (try-with-resources
  * via `use { }`). After `close`, the iterator returns no further events
  * and the implementation releases any store-side resources.
- *
- * @see M1_FOLLOW_DESIGN.md §2.2 for the full type surface and §4 for the
- *   composition contract.
  */
 interface EventFollower {
 

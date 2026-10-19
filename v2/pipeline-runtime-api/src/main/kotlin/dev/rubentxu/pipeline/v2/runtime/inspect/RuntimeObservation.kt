@@ -19,7 +19,6 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
  *    names as the fix for the category error between "what the journal recorded"
  *    and "what the run semantically is".
  *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §3.2.
  */
 sealed interface RuntimeObservation {
 

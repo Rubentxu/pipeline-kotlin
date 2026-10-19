@@ -52,9 +52,6 @@ package dev.rubentxu.pipeline.v2.runtime.inspect
  * `EXPERIMENTAL` until the M6 candidate is `CERTIFIED`. Promotion to
  * `PUBLICADA` happens only after the corresponding candidate is certified by
  * `pipelinek-release-harness`.
- *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §3.
- * @see M6_CONTEXT_PRESSURE_DESIGN.md §A and §C.
  */
 interface RuntimeIntrospectionPort {
 

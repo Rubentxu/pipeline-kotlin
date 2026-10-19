@@ -39,8 +39,6 @@ import dev.rubentxu.pipeline.v2.events.EventRecordSlice
  * is green and the M1-D cross-JVM e2e test is green). The
  * implementation may add a typed `RunId` parameter in a future M-block;
  * the port signature is additive.
- *
- * @see M1_FOLLOW_DESIGN.md §2.3.
  */
 interface EventRecordReadPort {
 

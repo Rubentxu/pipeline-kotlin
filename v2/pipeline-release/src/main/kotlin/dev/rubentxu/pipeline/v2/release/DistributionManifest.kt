@@ -6,9 +6,9 @@ import kotlinx.serialization.Serializable
 /**
  * P0.2 — the immutable distribution manifest, as a typed value.
  *
- * Authority: `docs/pipelinek-release-evolution/pipeline-kotlin/01-responsibilities-and-spec.md`
- * §5 (must be generated from the build and describe the real bytes) and
- * `shared/01-cross-repo-contract.md` §10 (downstream MUST NOT rewrite it).
+ * Two rules hold, and this type makes both structural rather than
+ * conventional: the manifest is generated from the build and describes the
+ * real bytes, and no downstream party rewrites it.
  *
  * The manifest is a *description of bytes that already exist*. Every field is
  * either derived from the artifact itself or from the build that produced it.

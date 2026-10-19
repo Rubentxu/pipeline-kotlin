@@ -36,8 +36,6 @@ package dev.rubentxu.pipeline.v2.events.shape
  * Promotion to `PUBLICADA` happens after the certifier's `CERTIFIED`
  * verdict. The five-case `TypedEvent` ADT is closed; a sixth case would
  * be a breaking change requiring consumer recompile.
- *
- * @see M7_FINAL_HARDENING_DESIGN.md §A.
  */
 fun interface EventShapeReadPort {
 

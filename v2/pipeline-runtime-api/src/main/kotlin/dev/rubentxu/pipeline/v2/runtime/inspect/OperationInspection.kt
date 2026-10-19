@@ -12,7 +12,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
  * `IntrospectionRefusal` is the existing M2 closed ADT (no new refusal
  * variants needed).
  *
- * @see M6_CONTEXT_PRESSURE_DESIGN.md §B.2.
  */
 sealed interface OperationInspectionResult {
 
@@ -39,7 +38,6 @@ sealed interface OperationInspectionResult {
  * / stderr streams of the operation. `stageOrdinal` and `stepOrdinal` locate
  * the operation within the run's structure.
  *
- * @see M6_CONTEXT_PRESSURE_DESIGN.md §B.2.
  */
 data class OperationInspection(
     val operationId: String,

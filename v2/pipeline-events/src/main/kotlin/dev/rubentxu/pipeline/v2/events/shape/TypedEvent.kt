@@ -11,8 +11,6 @@ package dev.rubentxu.pipeline.v2.events.shape
  *
  * The `runId` and `occurredAtMs` fields are common to all cases; the
  * type-specific fields are unique to each case.
- *
- * @see M7_FINAL_HARDENING_DESIGN.md §A.2.
  */
 sealed interface TypedEvent {
 

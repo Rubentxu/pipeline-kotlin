@@ -29,8 +29,6 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
  * rule limits it to reads and a projection pass. The contract test
  * `EventShapeReadPortAdapterTest` pinna this with a 100-concurrent-
  * caller test (mirroring the M2 `IntrospectionDoesNotMutateStateTest`).
- *
- * @see M7_FINAL_HARDENING_DESIGN.md §A.
  */
 class EventShapeReadPortStoreAdapter(
     private val readTypedEvents: (runId: String) -> List<Any>,

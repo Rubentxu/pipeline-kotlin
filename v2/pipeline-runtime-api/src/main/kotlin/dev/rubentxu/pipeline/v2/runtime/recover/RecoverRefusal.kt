@@ -15,7 +15,6 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
  * invariant: a recover that drops pinned bytes would invalidate the consumer's
  * retention hold.
  *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §5.4.
  */
 sealed interface RecoverRefusal {
 

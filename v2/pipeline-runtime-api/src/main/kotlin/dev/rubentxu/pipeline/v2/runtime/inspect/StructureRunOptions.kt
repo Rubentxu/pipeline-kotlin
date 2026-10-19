@@ -24,7 +24,6 @@ package dev.rubentxu.pipeline.v2.runtime.inspect
  * with a `Default` companion preserves the "no `Either`/`Result` reuse"
  * rule.
  *
- * @see M6_CONTEXT_PRESSURE_DESIGN.md §B.3 and §D.
  */
 data class StructureRunOptions(
     val pageSize: Int = DEFAULT_STRUCTURE_PAGE_SIZE,
@@ -68,7 +67,6 @@ data class StructureRunOptions(
  *  - Forward-only: the cursor is monotonic in execution order. The adapter
  *    does not support backwards pagination.
  *
- * @see M6_CONTEXT_PRESSURE_DESIGN.md §D.
  */
 data class StructureCursor(
     val stageOrdinal: Int,

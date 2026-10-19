@@ -448,6 +448,30 @@ el arreglo; los demás siguen verdes).
   verdes son los casos de un solo nivel donde el orden da igual; quitar la normalización →
   ROJO 1/7).
 
+- **El guardián de argv publicaba la credencial que acababa de rechazar.**
+  `GitCredentialsApplier.guardProcessBuilderArgs` rechazaba un argumento con
+  credenciales embebidas **interpolando ese mismo argumento** en el mensaje. Y el
+  rechazo no es un throw local: el guard se llama en `GitCheckoutExecutor.execute`
+  **antes** del `try` que envuelve el resto del trabajo, así que su
+  `IllegalArgumentException` nunca llega al `secretPatternRegistry.scrub` por el que
+  pasan todos los demás fallos de ese camino. Sigue a `GitCheckoutStepDefinition`, que
+  reenvía `throwable.message`, y de ahí a `RegistryExecutionBoundary`, que copia
+  `e.message` en un `StepFailed` durable. Es decir: **la contraseña que el guardián
+  existía para sacar del proceso acababa en el registro de eventos.** Un autor que
+  escribiera `url = "https://user:secreto@host/repo"` la filtraba sin que nada lo
+  impidiera, porque no hay ninguna validación previa de `spec.url`: el único guard es
+  el que filtraba. `extractHost` tenía el mismo defecto un nivel más abajo, con su
+  propio mensaje de fallo interpolando la URL entera. Los dos rechazos identifican
+  ahora el argumento por posición, longitud y —para una URL— su host, que
+  `extractHost` ya devuelve sin userinfo, así que el operador no pierde nada accionable.
+  **Visto rojo antes de tocar producción**: 3 de 4 filas cayeron por la fuga mientras
+  la fila que afirma que el guard **sigue rechazando** permaneció verde, que es la
+  capacidad que no podía perderse. La fila de `extractHost` se comprobó sola por
+  mutación —revertir solo ese rechazo y confirmar que cae exactamente ella— porque ya
+  había caído antes por el motivo equivocado: mi dato de entrada
+  (`https://user:clave@`) no alcanza la rama `ifEmpty`, devuelve `user` y no lanza
+  nunca. El dato correcto es `https://:clave@`. 4 tests, 0 fallos, 0 skips.
+
 ### 2.2 Lo que queda abierto, por valor operativo
 
 **a) 11 módulos sin test unitario permanente.** No es un objetivo de paridad.
@@ -650,7 +674,61 @@ prometía líneas, de modo que las dos sumas cerraban a 17 y nadie notó que la
 cifra de líneas era 26. El denominador es lo que hace la contradicción visible:
 cada número necesita el suyo al lado.
 
-**f) `EffectReplayPolicy`**, KDoc que cita una clase de test eliminada.
+**f) 87 clases de test eliminadas citadas desde producción — MEDIDO, y era 1.**
+La redacción anterior de este bloque era una sola línea: *«`EffectReplayPolicy`,
+KDoc que cita una clase de test eliminada»*. Es real, pero la cifra era la de
+una anécdota, no la del defecto. Medido sobre `git ls-files` y `git grep`:
+
+| Magnitud | Valor |
+|---|---|
+| Clases `*Test` citadas desde `src/main` | 89 |
+| …que NO existen en ninguna fuente de test | **87** (2 sí existen) |
+| Ficheros de producción afectados | **85** |
+| Sitios de cita | **120** |
+| …dentro de una cadena de código | **0** |
+
+**El defecto es un comentario que afirma una protección que ya no existe.** Las
+formas que toma son «pinned by *X*», «the contract test *X*», «asserted by *X*»
+— es decir, el KDoc promete que una garantía está anclada por un test que el
+RESET borró. `AGENTS.md` §2 prohíbe resucitar ese corpus («no grandfather
+rights»), de modo que la corrección es **arreglar la afirmación**, no restaurar
+el test.
+
+**Los 120 sitios son comentarios. Cero cadenas de código.** Eso se midió, no se
+supuso, y es lo que hace el arreglo seguro por construcción: no puede cambiar
+comportamiento. También separa esta deuda de la de (j): el aviso de que «una
+pasada automática cambiaría en silencio 27 mensajes que ve el operador»
+**no aplica aquí**, porque ninguna de estas 120 citas vive en una cadena.
+
+**Por qué no es un barrido mecánico.** Cada nombre lleva contenido sustantivo
+alrededor, y quitar el nombre deja la frase colgando: «Layout, pinned by
+*CredentialPartLayoutTest*:» se convierte en «Layout:». Exige 120 redacciones
+con criterio, no una sustitución.
+
+**Dos instrumentos ciegos, y el defecto real era otro.** La comprobación por
+**nombre de fichero** (`git ls-files | grep /$n\.kt$`) y la segunda por
+**declaración** dieron el mismo 87, pero un tercer intento con `\s` bajo
+`git grep -E` reportó **49** clases declaradas frente a las **63** reales,
+porque ERE no tiene `\s`: séptima recurrencia. Y al leer las líneas a mano
+apareció
+que la cita de `EffectReplayPolicy.kt` a `DefaultEffectReplayPolicyTest`
+**es cierta** —ese test existe y fija las filas 1–8 una por una—, mientras que
+las citas que en ese mismo fichero sí cuelgan son a **`ADR-0103`**, que existió
+como `docs/v2/04-adrs/ADR-0103-one-replay-authority.md` y borró el RESET. **(f) y
+(j) son el mismo defecto visto desde dos ángulos.**
+
+**Una de las 87 sí es load-bearing, y conviene nombrarla primero.** No todas las
+citas remanentes son cosmetiquería: `RunLifecycleEngine.kt:31` dice que su
+comportamiento está fijado por `CoordinatorRunLifecycleCharacterizationTest`, «que
+debe satisfacer SIN CAMBIOS». Ese nombre aparece en **una sola línea de todo el
+repositorio — la que lo cita**; la clase no existe, ni en `src/test` ni en ningún
+otro sitio. Y el KDoc no es un comentario de contexto: es la justificación entera
+de una refactorización de extracción sin cambios de comportamiento
+(`CanonicalDurableRunCoordinator` → motor propio). Una extracción que promete no
+cambiar nada y cuyo testigo fue borrado es una refactorización **no verificada**,
+que es la forma más difícil de detectar después: nada falla, el código funciona, y
+nadie ya no distingue una extracción correcta de una que cambió algo. Cuenta
+dentro de las 87 de arriba; no es un hallazgo aparte.
 
 **g) El digest de `Fingerprint` cambió** al corregir la igualdad de `Map`, lo
 que altera cualquier digest emitido antes. Consignado, no revertido: el
@@ -717,7 +795,7 @@ dentro del comentario»— y eso es falso para una de ellas:
    `"sandbox-profile 'os' requires ADR-0016 M5/M9; rejected in L3. Accepted:
    {none, local}. Got: 'os'."` es un **mensaje de error que lee el operador**.
    Borrar el token no limpia nada: cambia el valor persistido o el texto que
-   alguiensupporta. Cualquier barrido de «comentarios que citan documentos
+   el operador lee. Cualquier barrido de «comentarios que citan documentos
    borrados» aplicado sobre el árbol entero corrompe estos 27.
 2. **5 apariciones de `Pre-ADR-0075`** en 4 ficheros, con el prefijo `Pre-`. No es
    navegación: es un **marcador de frontera de formato** —«filas persistidas
@@ -735,6 +813,82 @@ La otra mitad de la pregunta —si un mensaje de error debe citarle un ADR al
 operador— es de diseño de producto y no se resuelve aquí. El mensaje debería
 decir la **regla** («un perfil de sandbox multi-tenant no puede ser `os`»), no el
 documento donde la regla está escrita.
+
+**k) La identidad declarada de un plugin se mide y luego se tira — CERRADO POR ABI.**
+Un agente affirmationó «los bytes nunca se miden en producción». **Es falso, y lo
+medí antes de creérselo**: `PreResolvedComposition.kt` mide cada artefacto con
+`PluginManifestResourceReader.digestOfArtifactAt`, rechaza `ArtifactNotMeasurable`,
+deduplica por bytes **medidos** y vuelve a medir al final rechazando
+`ArtifactChangedDuringAdmission` — o sea, el TOCTOU está cubierto, y con buen
+razonamiento escrito (el `releaseDigest` lo declara el propio plugin, así que es
+precisamente el caso en que mentiría). El hueco real es otro y es más estrecho:
+
+- `PreLoadPluginAdmission.kt:98` llama a `PluginManifestResourceReader.measure`, que
+  está `@Deprecated`, y pasa **`measuredDigest = null`** — tira una medición que su
+  propio llamador ya había hecho.
+- `PluginAdmission.admit` recibe `identity: MeasuredArtifactIdentity` y **nunca lee
+  `identity.verdict` ni `identity.measuredDigest`**: solo comprueba identidad
+  duplicada y rango de API.
+- `ArtifactIdentityVerdict` (Verified / Mismatch / Unverified) tiene **cero
+  lectores de producción**. Por eso el veredicto es siempre `Unverified` y por eso
+  observarlo no cambiaría nada.
+- El resultado es que **nada compara los bytes medidos contra el `release.digest`
+  declarado por el manifiesto**. La medición existe, se deduplica con ella, y luego
+  no se contrasta con la afirmación que el plugin hace sobre sí mismo.
+
+No lo medio-arreglo, y la razón es concreta: `PluginManifestRejection` no tiene un
+caso de discrepancia de digest (sí lo tiene `AdmissionRejection`, que es otro
+tipo). Añadirlo cambia `pipeline-domain.api`, y ese módulo tiene `maven-publish` en
+la línea 4 y dump `.api` en el repo. **Es la misma pared de ABI que bloquea (h) e
+(i)**, y a diferencia de ellos aquí no se puede ni siquiera cambiar el veredicto de
+`Unverified` a `Verified`/`Mismatch` sin romper el binario. Autorización que
+necesita: un break versionado explícito en `pipeline-domain`.
+
+**l) Los *bookends* de run y stage se vuelven a emitir en cada reanudación durable.**
+Trazado a mano, extremo a extremo:
+
+1. `MainDurableRunSupport.kt:35` — `--resume` reutiliza el **mismo `runId`**
+   (`runIdDirectory.lastRunId(definitionId)`).
+2. `CanonicalDurableRunCoordinator.run()` llama a `runLifecycle.openRun(...)`
+   **sin condición**, y el bucle de stages es `for (stageIndex in pipeline.stages.indices)`,
+   o sea desde el 0. Ninguna de las dos consultas journal o event store.
+3. `RunLifecycleEngine.openRun` / `stageStarted` / `stageFinished` emiten con
+   `UUID.randomUUID()` y `sequence = 0L`, siempre.
+
+La duda que decides si esto es defecto o diseño era si el `UNIQUE(run_id, sequence)`
+del store lo neutralizaba. **No lo neutraliza**, y la comprobación merece quedar
+escrita: `SqliteEventStore.appendAssigned` trata `sequence == 0L` como *petición de
+reasignación*, no como valor — `counter.incrementAndGet()`. O sea que el segundo
+`RunStarted` no colisiona, **se escribe con la siguiente secuencia**. Tampoco
+ayudaría la proyección: `EventViewProjection` incluye `RunStarted` en su conjunto de
+lifecycle sin deduplicar.
+
+Resultado tras un fallo en el stage 2 y su reanudación: **dos `RunStarted` para un
+run**, y cada stage ya completado vuelve a anunciarse.
+
+Lo que lo hace defecto y no decisión es la asimetría dentro del propio codebase:
+`RecoveryInterpretationEngine.kt:241` suprime deliberadamente los duplicados a
+nivel de **step** —«Reuse is the one arm that emits nothing: the journal row is
+already terminal, so re-emitting StepStarted/StepFinished would duplicate the
+record»— y **no hay equivalente en run/stage**. El mismo *resume* sabe evitar el
+duplicado en un nivel y no en el otro.
+
+Contraargumento honesto, y por eso no lo he tocado: si cada invocación es un
+«intento» distinto, el duplicado es aceptable siempre que el evento lleve un
+discriminador de intento. **No lo lleva, y el `runId` es el mismo**, así que el
+consumidor no tiene forma de distinguirlos. Cerrarlo exige decidir qué es un
+run a través de una reanudación — si el `runId` es el intento o el pipeline — y esa
+es una decisión de producto, no una refactorización. Hasta que se decida, un
+consumidor que reconstruya el run desde el log obtiene una ejecución que empieza
+dos veces.
+
+Lo que **no** afirmo: que el operador lo vea duplicado en consola. `ConsoleFamilyLines.kt:109`
+mapea un `RunStarted` a la línea «Run started: …», lo que significa que *si* el
+renderizador recibe el log durable completo de ese `runId` lo imprimiría dos veces,
+pero **no llegué a establecer quién lo alimenta**: un barrido de los productores de
+`ConsoleFamilyLines`/`HumanConsoleRenderer` fuera de su propio paquete no devolvió
+ningún resultado. Queda como la comprobación que convierte esto de deuda de log a
+defecto visible, y es barata.
 
 
 ### 2.3 Cierre de ciclo

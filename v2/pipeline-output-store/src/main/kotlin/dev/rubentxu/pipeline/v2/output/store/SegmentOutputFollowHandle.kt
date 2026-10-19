@@ -254,7 +254,7 @@ internal class SegmentOutputFollowHandle(
         val declared: List<OutputStreamId> = try {
             frames.streamsOfRun(runId)
         } catch (e: Exception) {
-            return queueRefusal(OutputRefusal.StorageError(shortCause(e)))
+            return queueRefusal(OutputRefusal.StorageError(DiagnosticText.from(e)))
         }
 
         // 2. No declared streams — either unknown run or empty run.
@@ -293,7 +293,7 @@ internal class SegmentOutputFollowHandle(
             val state: OutputTailState? = try {
                 tails.tailState(stream)
             } catch (e: Exception) {
-                return queueRefusal(OutputRefusal.StorageError(shortCause(e)))
+                return queueRefusal(OutputRefusal.StorageError(DiagnosticText.from(e)))
             }
             when (state) {
                 null -> {
@@ -379,7 +379,7 @@ internal class SegmentOutputFollowHandle(
         val framesInRun: List<OutputFrame> = try {
             frames.framesOfRun(runId, cursor, maxRecords)
         } catch (e: Exception) {
-            return queueRefusal(OutputRefusal.StorageError(shortCause(e)))
+            return queueRefusal(OutputRefusal.StorageError(DiagnosticText.from(e)))
         }
         if (framesInRun.isEmpty()) {
             // 7. Check `UntilBytesRead` even when no bytes were emitted
@@ -435,7 +435,7 @@ internal class SegmentOutputFollowHandle(
                         maxBytes = boundedMax,
                     )
                 } catch (e: Exception) {
-                    return queueRefusal(OutputRefusal.StorageError(shortCause(e)))
+                    return queueRefusal(OutputRefusal.StorageError(DiagnosticText.from(e)))
                 }
                 when (readResult) {
                     is OutputReadResult.Page -> {
@@ -555,11 +555,5 @@ internal class SegmentOutputFollowHandle(
         terminated = true
         pending.add(OutputFollowEvent.Refused(reason))
         return true
-    }
-
-    private fun shortCause(e: Throwable): String {
-        val cls = e::class.simpleName ?: e.javaClass.name
-        val msg = e.message?.take(120)?.replace('\n', ' ')
-        return if (msg.isNullOrBlank()) cls else "$cls: $msg"
     }
 }

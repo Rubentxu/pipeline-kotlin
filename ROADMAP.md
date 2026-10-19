@@ -246,6 +246,53 @@ el arreglo; los demás siguen verdes).
   las fuentes que esa etapa ya compila— y el riesgo que queda es que volvería
   a estar ciego al primer fichero que se añadiera sin ese salto.
 
+- **`dir(...)` confinaba por PREFIJO de texto, no por elemento de ruta.**
+  `DirExecutor.resolveTargetPath` comparaba `target.toString()` contra la cadena del
+  workspace. Medido antes de arreglar, con `Path` de Java y el workspace
+  `/home/rub/proyecto`: `../proyecto-evil` → `/home/rub/proyecto-evil` **permitido**;
+  `/home/rub/proyecto2` **permitido**; `../proyectoX/inner` **permitido**; y solo
+  `../other` → `/home/rub/other` era rechazado. Los tres que pasaban son directorios
+  reales fuera de la raíz autorizada: son hermanos, no subdirectorios, y su nombre
+  empieza por el de la raíz. `Path.startsWith(Path)` compara **elementos de nombre** y
+  rechaza los tres. La raíz además se normaliza, o una raíz sin normalizar rechaza a sus
+  propios hijos (`/ws/./sub` no empieza por `/ws/./`). `WorkspacePathAnchors` ya documenta
+  esta clase de guarda como la razón por la que `core-utils` `.zip`/`.unzip` pasaron a
+  `WorkspacePathResolver`: **este era el exemplar que se quedó**, con la forma de texto
+  además de la frontera equivocada. Un censo del patrón en los otros ejecutores
+  (`FileWriteExecutor`, `FileReadExecutor`, `FileExistsExecutor`,
+  `PublishHtmlOperationsAdapter`, `StashOperationsAdapter`, `WorkspacePathResolver`)
+  encontró que **los seis ya usan la forma correcta**: este era el único. 9 tests;
+  mutación en las dos direcciones (restaurar el prefijo de texto pone ROJO el caso del
+  hermano, 1/9; quitar la normalización de la raíz pone ROJO su propio test, 1/9).
+- **Zip Slip en `CredentialMaterializer`.** `Zip.entries` es un `Map<String, ByteArray>`
+  de nombres libres leídos del almacén de secretos, así que `..` no es un archivo mal
+  formado: es una **clave legal**. `materializeZip` la resolvía contra el directorio
+  temporal **sin ningún confinamiento** y escribía los bytes de la entrada en el
+  resultado, con `chmod 0600`. Reproducido antes de arreglar: `../escape.txt` escribía en
+  `/tmp/escape.txt`, `../../etc/cron.d/pwn` en `/etc/cron.d/pwn`, y una clave absoluta
+  en su propio destino. Eso es una **escritura arbitraria, con contenido elegido por el
+  atacante, en una ruta arbitraria**, durante la materialización de credenciales. La
+  guarda compara elementos de ruta, no caracteres, así que también rechaza el hermano
+  cuyo nombre empieza por el del temporal (`<tmpdir>-evil`) — el mismo caso que un
+  atacante elige en cuanto ve un prefijo de texto en el código.
+- **Un archivo anidado dejaba la credencial en disco tras un run que reportaba éxito.**
+  Compuesto con el anterior, y peor: `Files.createDirectories` crea **todos** los niveles
+  que faltan y solo informa del último, así que el materializador no registraba los
+  directorios intermedios de una entrada anidada (`certs/server.pem`). `close()` llegaba a
+  `Files.delete(tempDir)` con un `sub/` todavía dentro, tomaba `DirectoryNotEmptyException`
+  y **se la tragaba** — el `catch` silencioso ya existía. El resultado es contenido de
+  credencial retenido en disco, invisible: el run es verde y el fichero sigue ahí. La
+  cadena se registra ahora en orden de creación, que es el que necesita el borrado en
+  orden inverso que ya existía para eliminar hijos antes que padres. Los dos extremos se
+  normalizan en vez de confiarse: en crudo, `a/./x/../b` da tres niveles que
+  `createDirectories` nunca creó, y el nivel con `..` normaliza de vuelta a un padre no
+  vacío — es decir, degrada al defecto original. El único llamador hoy pasa una ruta ya
+  normalizada, que es exactamente la razón por la que no es una precondición que deba
+  quedar escrita y confiada. 16 tests, mutación en las tres direcciones (restaurar el
+  prefijo de texto → ROJO 1/9; quitar `reverse()` → ROJO 4/7, y las tres que quedan
+  verdes son los casos de un solo nivel donde el orden da igual; quitar la normalización →
+  ROJO 1/7).
+
 ### 2.2 Lo que queda abierto, por valor operativo
 
 **a) 17 módulos sin test unitario permanente.** No es un objetivo de paridad.
@@ -258,25 +305,53 @@ el arreglo; los demás siguen verdes).
 | 3 | `pipeline-output-store` | Continuación del Output Plane por offset comprometido. Un segmento mal dirigido duplica o pierde bytes ya emitidos. | **Hecho** — 26 tests, 2 clases. Encontró 2 defectos materiales (`parseSealed` sin guarda de rango, el `coerceAtLeast` que sustituía bytes). |
 | 4 | `pipeline-step-sdk/http` | Red, reintentos, códigos no-2xx. Adaptador con pocas reglas puras extraíbles. | **Hecho** — 26 tests, 2 clases. Encontró 2 defectos materiales (`StatusRange.parse` no total, el puerto de egreso explícito inválido sustituido por el default). La mitad de dominio —la allowlist— se añadió en `pipeline-domain`, donde vive el tipo. |
 | 5 | `pipeline-runtime-api` | `RuntimeRecoverDecision` es un decider puro y público: la misma clase que `RunExecutionLease`, coste de test bajo y valor alto. | **Hecho** — `RuntimeRecoverDecisionTest`. |
+| 6 | `pipeline-step-sdk/workflow-control` | El confinamiento que decide si un `dir(...)` puede salirse del workspace. Puro, y además estaba **mal**. | **Hecho** — 9 tests, 1 clase. Encontró 1 defecto material: el prefijo de texto descrito en 2.1. |
+| 7 | `pipeline-credentials-multipart` | El punto donde una credencial llega a disco. Una escritura arbitraria y una retención silenciosa, ambas en materialización. | **Hecho** — 16 tests, 2 clases. Encontró 2 defectos materiales: Zip Slip y la fuga de directorios anidados. |
 | — | `pipeline-events` | Su único candidato (`EventViewProjection`) no tiene consumidor: ver 2.2 b. Sin consumidor, un test es coste sin destinatario. | Bloqueado por decisión de producto |
 
-Los 17 restantes son adaptadores finos o módulos sin clases
-(`pipeline-sdk-bom`). No se les asigna test por asignar. El denominador es
-`settings.gradle.kts`: 27 proyectos declarados, 10 con `src/test`, 17 sin él.
+Quedan **15** módulos sin test. **Esta redacción anterior los llamaba
+«adaptadores finos o módulos sin clases», y es falsa**: un censo de
+`src/main/kotlin` encontró lógica pura real en varios de ellos
+(`pipeline-artefacts-local`, `pipeline-step-sdk/files`, `pipeline-release`,
+`pipeline-credentials-executor`, `pipeline-output-store` entre otros), no
+adaptadores. La afirmación no se comprobó cuando se escribió y por eso salió. Un
+único caso encaja de verdad: `pipeline-sdk-bom` es un `java-platform` sin
+clases, y su propio `settings.gradle.kts` dice por qué.
 
-Ratios por módulo, medidos con `scripts/check-budgets.py --json` sobre este mismo
-árbol (VERIFY / PRODUCT), los diez con unit tests:
-`pipeline-output` 576/714 = **0.807**, `pipeline-credentials-local` 1103/1750 =
-0.630, `pipeline-binding-factory` 123/289 = 0.426, `pipeline-runtime-api`
-239/574 = 0.416, `pipeline-step-sdk:http` 223/1499 = 0.149,
-`pipeline-step-sdk:runtime` 269/2092 = 0.129, `pipeline-output-store` 228/1779 =
-0.128, `pipeline-domain` 746/6270 = 0.119, `pipeline-credentials-api` 62/751 =
-0.083, `pipeline-events-store` 288/4534 = 0.064. Global **5044/61420 = 0.082**.
-El más alto es `pipeline-output` con 0.807, y aun así queda a **2.5 veces**
-del límite 2: el presupuesto no es lo que frena la cobertura, es la elección de
-qué riesgo merece un test. Nótese que los dos módulos del Output Plane son los
-dos ratios más altos, lo que confirma que «valor operativo» y «densidad de tests»
-no son el mismo criterio.
+El denominador, derivado de `settings.gradle.kts` con los comentarios eliminados
+primero — contarlos sin quitarlos lee los **tres módulos ya borrados** que el
+comentario menciona y da 28 en vez de 27: **27 declarados, 12 con `src/test`,
+15 sin él**. Los dos módulos con test nuevos son los de las filas 6 y 7.
+
+Ratios por módulo, **re-medidos sobre este árbol** con
+`python3 scripts/check-budgets.py --json` (VERIFY / PRODUCT), los **doce** con
+unit tests:
+
+| Ratio | Módulo | VERIFY / PRODUCT |
+|---|---|---|
+| **1.633** | `pipeline-step-sdk:workflow-control` | 80 / 49 |
+| 0.807 | `pipeline-output` | 576 / 714 |
+| 0.630 | `pipeline-credentials-local` | 1103 / 1750 |
+| 0.545 | `pipeline-credentials-multipart` | 132 / 242 |
+| 0.426 | `pipeline-binding-factory` | 123 / 289 |
+| 0.416 | `pipeline-runtime-api` | 239 / 574 |
+| 0.149 | `pipeline-step-sdk:http` | 223 / 1499 |
+| 0.129 | `pipeline-step-sdk:runtime` | 269 / 2092 |
+| 0.128 | `pipeline-output-store` | 228 / 1779 |
+| 0.119 | `pipeline-domain` | 746 / 6270 |
+| 0.083 | `pipeline-credentials-api` | 62 / 751 |
+| 0.064 | `pipeline-events-store` | 288 / 4534 |
+
+Global **5256 / 61461 = 0.086**, contra el límite duro de 2.0.
+
+**El ratio más alto del repositorio es ahora `workflow-control`, a 1.633, y
+conviene decirlo en lugar de esconderlo.** El módulo tiene 49 líneas de producto
+—una clase y el tipo de excepción— y el test 80. La asimetría es real, pero el
+test cubre nueve casos incluyendo los tres escapes hermanos en tabla, y cada
+mutación aplicada lo pone ROJO: no es cobertura decorativa. Aun así es el módulo
+donde el siguiente test Careful saldría más caro que el riesgo, y ese es un
+argumento para **no** añadirle otro fichero sin medir antes. El techo del
+presupuesto global es 2.0; ningún módulo lo roza.
 
 **b) `EventViewProjection` sin consumidor — MEDIDO, no citado.** Un barrido de
 todo `src/main` del repositorio encuentra exactamente dos referencias fuera del
@@ -360,29 +435,60 @@ busqué las guardas con una ventana de 6 líneas alrededor del campo, y
 `OutputPin` las tiene 15 líneas más abajo. Un instrumento más estrecho que su
 sujeto reporta un número con seguridad y con error.
 
+**j) 296 líneas en 120 ficheros citan documentos ADR que no existen.** La misma
+clase que 2.2 e, pero **once veces más grande**. Medido con `git grep -cE` y
+pathspec recursivo sobre `v2/**/*.kt` y este fichero:
+
+| Token | Líneas | Ficheros |
+|---|---|---|
+| `ADR-0…` | 296 | 120 |
+| `INV-L…` | 61 | 20 |
+| `docs/` | 12 | 11 |
+| `FArchL` | 1 | 1 |
+| `WCL-S` | 2 | 2 |
+| `FIL-ALL` | 1 | 1 |
+| `design.md §` | 2 | 2 |
+
+El denominador que lo confirma: **`git ls-files` no devuelve ni un solo
+`ADR-*.md` ni `INV-*.md`** — cero. Los documentos no están en otra rama; no están.
+Los tokens más citados son `ADR-0075` (64), `ADR-0103` (37), `ADR-0046` (30),
+`ADR-0081` (22), `ADR-0016` (17).
+
+**No se borran en bloque, y la razón es una diferencia real, no pereza.** Las
+296 líneas de `design.md §` que sí se limpiaron eran **anclas de navegación**: un
+`[design.md §R-C]` que apunta a nada y no deja ninguna afirmación detrás. Estas
+no son lo mismo. Una cita como «este es el ADR-0081 que decía que un Step externo
+puede tener un body» **transporta la justificación dentro del comentario**: si se
+borra la cita, se borra el porqué, y el siguiente que lo lea decide que el
+comportamiento es arbitrario. Por eso la deuda es real pero el arreglo no es un
+borrado: es devolver esas frases a forma autosuficiente («un Step externo puede
+tener un body porque …») o recuperar los ADR en el archivo histórico, que es
+donde `AGENTS.md` §6 manda. Bandear las 296 sin leerlas produciría 296 comentarios
+sin explicación, que es peor que 296 comentarios con una referencia Rota.
+
+Los cuatro tokens de una línea (`FArchL`, `WCL-S`, `FIL-ALL`) sí son triviales y se
+limpian como candidatos de una pasada junto a `f)`.
+
+
 ### 2.3 Cierre de ciclo
 
 - `PRODUCT-GATE` (certificador externo, RC publicada) = **`BLOCKED_EXTERNAL`**.
   No hay CI remoto en este repositorio. La ausencia de CI **nunca** se declara
   `PASS`.
-- **Presupuesto de tiempo: CERRADO.** Tres ensayos de `scripts/verify-all.sh`
-  sobre el mismo SHA `18d3148a`, con cachés de dependencias locales ya pobladas
-  y sin red: **242 s, 211 s, 213 s**. El peor de los tres es **242 s** frente al
-  límite de 900 s, que es lo que `AGENTS.md` §4 exige para declarar conformidad
-  estable. El primero es el peor porque sigue a la corrección de un commit, con
-  cachés de Gradle frías; los otros dos (211 s, 213 s) son el régimen estable. Los
-  tres imprimen `executed=400 failed=0 skipped=0` leído del XML de JUnit, no del
-  código de salida. La cifra anterior de este bloque (233/213/210 s sobre
-  `05902e5c`) quedó obsoleta en cuanto este ciclo añadió 54 tests, cambió 13
-  ficheros de test y metió `detektTest` en la etapa 1. El peor ensayo subió
-  **+9 s** (233 → 242) para todo eso, y `detektTest` por sí solo mide 3 s sobre
-  26 subproyectos: la holgura sigue siendo de cuatro quintas partes del
-  presupuesto. La cifra no se redondea hacia abajo porque una holgura medida en
-  contra es una hipótesis, y este es un bloque de cierre.
-- **Presupuesto de LOC: CERRADO** con dos órdenes de magnitud de holgura
-  (`0.082` sobre un límite de `2`; 5044 verify / 61420 product). El alza frente
-  a la medición anterior (+465 verify) es exactamente este ciclo: 44 tests
-  nuevos y sus 21 líneas de arreglo.
+- **Presupuesto de tiempo: MEDICIÓN CADUCADA, pendiente de repetir.** El
+  ensayo anterior dio **242 s, 211 s, 213 s** sobre `18d3148a` — el peor, 242 s
+  frente al límite de 900 s, leído del XML de JUnit (`executed=400 failed=0
+  skipped=0`) y no del código de salida. Esos números **siguen siendo ciertos
+  para ese SHA y ninguno más**: desde entonces `HEAD` ha avanzado cinco commits,
+  dos de los cuales añaden 16 tests nuevos y compilan dos módulos que antes no
+  compilaban para test. Repetir el ensayo es lo que devuelve esta línea a
+  `CERRADO`; hasta entonces **no** se declara conformidad. Se conserva el
+  desglose del ensayo antiguo porque explica el margen, no porque autorice el
+  actual: `detektTest` mide 3 s sobre 26 subproyectos, y el alza de +9 s
+  (233 → 242) correspondió a 54 tests, 13 ficheros de test y `detektTest` en la
+  etapa 1 — es decir, el gate crece mucho más despacio que el trabajo. Un gate
+  verde por inercia es peor que un gate marcado caducado: el segundo se lee y el
+  primero se acepta sin mirarlo.
 
 ---
 

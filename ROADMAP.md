@@ -641,19 +641,66 @@ el arreglo; los demás siguen verdes).
 | 7 | `pipeline-credentials-multipart` | El punto donde una credencial llega a disco. Una escritura arbitraria y una retención silenciosa, ambas en materialización. | **Hecho** — 16 tests, 2 clases. Encontró 2 defectos materiales: Zip Slip y la fuga de directorios anidados. |
 | — | `pipeline-events` | Su único candidato (`EventViewProjection`) no tiene consumidor: ver 2.2 b. Sin consumidor, un test es coste sin destinatario. | Bloqueado por decisión de producto |
 
-Quedan **9** módulos sin test. **Esta redacción anterior los llamaba
-«adaptadores finos o módulos sin clases», y es falsa**: un censo de
-`src/main/kotlin` encontró lógica pura real en varios de ellos
-(`pipeline-artefacts-local`, `pipeline-step-sdk/files`, `pipeline-release`,
-`pipeline-credentials-executor`, `pipeline-output-store` entre otros), no
-adaptadores. La afirmación no se comprobó cuando se escribió y por eso salió. Un
-único caso encaja de verdad: `pipeline-sdk-bom` es un `java-platform` sin
-clases, y su propio `settings.gradle.kts` dice por qué.
+**La lista que sigue estaba caduca y mandaba al siguiente ciclo a módulos ya
+cerrados.** Decía «9 módulos sin test» y nombraba `pipeline-artefacts-local`,
+`pipeline-step-sdk:files`, `pipeline-release`, `pipeline-credentials-executor` y
+`pipeline-output-store`. Los cinco tienen tests hoy, y su propia tabla de ratios
+más abajo —que sale de `check-budgets.py`— ya lo decía. Dos censos del mismo
+documento, uno escrito a mano y otro derivado del gate, discrepando sobre qué
+queda por hacer: el escrito a mano manda, y por eso el orden de ataque apuntaba
+a trabajo ya hecho.
 
-**Censo de qué es testeable en cada uno de los 9** (delimitado por módulo;
-NOT_RUN donde no se midió). Un módulo «sin test» no es un módulo
-sin lógica: cuatro de ellos deciden cosas de las que depende borrar ficheros o
-publicar un binario.
+Re-medido sobre el árbol comiteado, instrumento único y sin listas escritas:
+
+```
+declared=$(git grep -ohE '":[a-zA-Z0-9:_-]+"' settings.gradle.kts \
+             | sed 's/^"//; s/"$//' | sort -u)
+for m in $declared; do
+    d=$(printf '%s' "$m" | sed 's/^://; s/:/\//g')   # Gradle ':' -> disco '/'
+    [ "$(find "$d/src/test" -name '*Test.kt' | wc -l)" -gt 0 ] || echo "$m"
+done
+```
+
+**Son 8, no 9**, y ninguno de ellos figura entre los cinco que se nombraban:
+
+| módulo declarado | ficheros `src/main` |
+|---|---:|
+| `:pipeline-scripting-api` | 16 |
+| `:pipeline-step-sdk:junit` | 9 |
+| `:pipeline-scripting-kotlin24` | 8 |
+| `:pipeline-event-harness` | 8 |
+| `:pipeline-step-sdk:api` | 5 |
+| `:pipeline-runtime` | 4 |
+| `:pipeline-architecture-tests:test` | 0 |
+| `:pipeline-sdk-bom` | 0 |
+
+Esa columna es **la cuenta de ficheros, y nada más**. Qué decisión pura hay
+dentro de cada uno y con qué riesgo está **NOT_RUN**: se deja en blanco a
+propósito, porque rellenarla de intuición es exactamente el mecanismo que
+produjo la lista vieja. El único caso con una razón ya documentada es
+`:pipeline-sdk-bom`, y la da su propio `settings.gradle.kts`: es un
+`java-platform` sin clases.
+
+Dos advertencias sobre el propio instrumento, porque sin ellas la tabla engaña
+como la tabla anterior:
+
+1. **`:pipeline-step-sdk:http` no es un directorio.** Se llama así en Gradle y
+   en disco es `pipeline-step-sdk/http/`. Un censo que no traduzca `:` a `/`
+   lee **0 ficheros y 0 tests** en los ocho módulos anidados, y los cuenta como
+   vacíos. Ese es el mecanismo que puede producir un número.
+2. El recuento es de **clases de test**, no de tests ejecutados. Un módulo con
+   una clase no equivale a un módulo cubierto; por eso la tabla de ratios, que
+   sí cuenta líneas, es la que manda para valorar riesgo.
+
+**El orden de ataque se rehace cuando la medición exista, no antes.**
+
+**Censo histórico — los nueve módulos que la lista vieja nombraba, no los ocho
+que quedan.** Se conserva porque su hallazgo sigue siendo cierto y explica por
+qué esos cinco se priorizaron: un módulo «sin test» no es un módulo sin lógica;
+varios de ellos deciden cosas de las que depende borrar ficheros o publicar un
+binario. Los cinco con tests de esta tabla están cerrados —`pipeline-release`
+recién, en el punto 2 más abajo—. **No es el orden de ataque vigente**, y la
+tabla de los ocho de arriba lo sustituye.
 
 | Módulo | Ficheros main | Con lógica pura | Dónde está la decisión |
 |---|---|---|---|

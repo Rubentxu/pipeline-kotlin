@@ -4,7 +4,6 @@ import dev.rubentxu.pipeline.v2.application.DeleteDirInput
 import dev.rubentxu.pipeline.v2.application.DeleteDirOperations
 import dev.rubentxu.pipeline.v2.application.DeleteDirResult
 import dev.rubentxu.pipeline.v2.application.StageIdentity
-import dev.rubentxu.pipeline.v2.domain.workspace.DestructiveAuthorization
 import dev.rubentxu.pipeline.v2.domain.workspace.WorkspacePathResolver
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.events.DirDeleted
@@ -114,15 +113,12 @@ class DeleteDirOperationsAdapter(
             // C8: the decision is now a value, not a bit. The adapter maps the
             // lease verdict onto the shared RootDestruction intent so the
             // executor cannot be handed a half-resolved question.
-            rootDestruction = when (
+            rootDestruction = RootDestruction.from(
                 WorkspacePathResolver.authorizeRootDestruction(
                     executionLocation.workspace,
                     "deleteDir",
-                )
-            ) {
-                is DestructiveAuthorization.Permitted -> RootDestruction.ScratchOwned
-                is DestructiveAuthorization.Refused -> RootDestruction.UserOwned
-            },
+                ),
+            ),
         )
 
         val spec = StepSpec.DeleteDir(path = input.path)

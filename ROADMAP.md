@@ -763,7 +763,7 @@ siguen en el volcado.
 `Sha256MigrationCharsetInvariantTest`, `SharedModelCompositionFitnessTest`,
 `UatLocal004TimeoutTest` y `CompatibilityLevelEnumTest`: `git ls-files` no
 devuelve **ningún** fichero para ninguno de los cuatro. Cada comentario afirmaba
-un guard que el repositorio no tiene — la quinta y sextainstances de un defecto
+un guard que el repositorio no tiene — la quinta y sexta apariciones de un defecto
 que este árbol ya había pagado cuatro veces.
 
 No se les añade test, y esa es la decisión: una garantía que sólo existe en un
@@ -774,10 +774,51 @@ cumple pero nadie comprueba; otro justificaba una decisión con un test que ya n
 existe; otro respaldaba un fallo histórico real con un fixture inventado; y el
 último declaraba fijado un enum que no tiene un solo consumidor.
 
-**Qué haría el siguiente ciclo con esto:** un escaneo que busque
-`Test\`\|Spec\`\|Uat` dentro de comentarios y compruebe que cada nombre existe.
-Es el mismo instrumento que este bloque: leer el nombre, no la prosa que lo
-rodea. Está **NOT_RUN**: no escrito.
+**El escaneo propuesto aquí está escrito y ejecutado: §2.2.3.** Convierte el
+NOT_RUN de «escribir un instrumento» en la cifra que el instrumento da.
+
+#### 2.2.3 El escaneo de §2.2.2, ejecutado: 71 nombres citados y sin sujeto
+
+**Denominador, medido sobre el árbol:** 689 ficheros `.kt` rastreados por `git
+ls-files`, 6.447 identificadores declarados (`class`, `object`, `interface`,
+`fun`, `val`). El censo lee **comentarios** —líneas que empiezan por `*` o `//`—
+y busca un nombre entre acentos graves que termine en `Test` o `Uat`; si ese
+nombre no está en el conjunto de declaraciones, la cita no tiene sujeto.
+
+**Resultado: 71 nombres, 91 citas, todas bajo `v2/`.** Los más repetidos:
+
+| Nombre citado | Citas | Dónde |
+|---|---:|---|
+| `ObsPc2ProducerSurvivalSpikeTest` | 5 | `durable/ingest/ObsPc2IngestAgent.kt:34` |
+| `CoordinatorGrowthGuardrailTest` | 4 | `durable/BeforeStageDirectiveEngine.kt:74` |
+| `ObsPc2IngestAgentPrototypeUatTest` | 3 | `durable/ingest/ObsPc2IngestAgent.kt:33` |
+| `EventSliceParityLawsTest` | 3 | `events/durable/InMemoryEventStore.kt:257` |
+
+**Dos correcciones al instrumento, y las dos cambiaron la cifra:**
+
+- El patrón inicial incluía `Spec`. Daba 74. `OptionsSpec` tiene **12
+  apariciones** en el árbol y es un símbolo del DSL: el sufijo de una prueba es
+  `Test` o `Uat`, y `Spec` captura cualquier cosa que lo lleve en medio. Bajó a
+  71.
+- El primer intento comprobaba el **nombre de fichero**, no la declaración. Un
+  `class FooTest` declarado dentro de otro fichero se contaba como ausente. El
+  denominador correcto es la unión de identificadores declarados en los 689
+  ficheros, que es lo que se usa aquí.
+
+**Verificación a mano de una muestra**, porque una cifra sin contenido no es un
+censo: `CliParserArityTest` 1 aparición y 0 ficheros, `ConsoleFollowTest` 1 y 0,
+`EventSliceParityLawsTest` 4 y 0, `ObsPc2ProducerSurvivalSpikeTest` 5 y 0.
+Ninguno de los 71 aparece declarado en un `.java` ni en un `.kts`.
+
+**Lo que el censo NO leyó:** los 74 ficheros `.kts` del árbol. Sus comentarios
+pueden citar pruebas que no existen, y aquí no se afirma que no las haya.
+
+**Decisión: no se abre campaña.** Esta sección ya fija la regla que gobierna
+estas 91 citas —«una promesa en KDoc se reescribe cuando se toca el fichero, no
+en una campaña»— y los cuatro casos de §2.2.2 se corrigieron al tocar su
+fichero, no en barrido. Abrir ahora un barrido sobre 71 sitios sería exactamente
+la campaña que la regla prohíbe, y cada reescritura tocaría producto sin un
+cambio de comportamiento que la justifique.
 
 **Censo histórico — los nueve módulos que la lista vieja nombraba, no los seis
 que quedan.** Se conserva porque su hallazgo sigue siendo cierto y explica por
@@ -1801,6 +1842,16 @@ a llamarlo aprobado.
 Por tanto: **hoy no existe ruta de siembra no interactiva**, y no es una decisión
 del escenario, es una limitación estructural del escritor. El escenario acertó.
 
+**Verificado de nuevo en este ciclo, con la ubicación exacta.** Los cuatro
+lectores de contraseña de `v2/pipeline-credentials-local/.../CredentialPrompts.kt`
+—líneas 29, 50, 79 y 120— son todos `System.console()?.readPassword() ?: error(
+"no TTY available")`, y los lectores de línea son `readLine() ?: error(...)`.
+No hay bandera, ni rama alternativa, ni lectura de tubería: `credentials add
+--value-stdin` que nombra la tabla siguiente **no existe todavía**, así que la
+tabla es una propuesta y no un inventario. `pipelinek credentials add --help`
+responde `Error: missing credential id`, que es lo que el dispatch_table de
+`MainCredentialsCli` produce al no recibir el id.
+
 **Las dos formas de cerrarlo, con su coste real:**
 
 | opción | qué añade | coste |
@@ -1853,6 +1904,37 @@ Lo mismo se aplicó al propio comentario del escenario, que decía «keeps
 compiling» describiendo un comportamiento que no ocurría. Un comentario que
 afirma una propiedad del código es una promesa: si el código no la cumple, es el
 código el que miente.
+
+### 2.6.2 El gate completo en `9b211bf30`, con su veredicto exacto
+
+`scripts/verify-all.sh` sin filtros, sobre el árbol ya commiteado:
+
+| etapa | resultado |
+|---|---|
+| 1 compilación + detekt + detektTest + apiCheck + installDist | ok, 44 s |
+| 2 tests unitarios permanentes | 20 módulos, 60 informes JUnit, **565 tests, 0 fallidos, 0 saltados** (51 de los 60 reescritos por esta ejecución) |
+| 3 escenarios E2E | 36 escenarios, **35 pasan, 1 NOT_RUN**, 1 reejecución durable |
+| 4 presupuesto LOC | `VERIFY_LOC` 7.336 / `PRODUCT_LOC` 61.484 = **0,119** (límite 2) |
+| 5 reloj de pared | **261 s** de 900 s |
+
+```
+INCOMPLETE  sha=9b211bf309c040f16fc232ad311f725d9ef3408f  elapsed=261s
+            budget=900s  gaps=1 not_run
+```
+
+**El veredicto sigue siendo INCOMPLETE y no se maquilla como PASS.** El único
+hueco es el escenario de credenciales de §2.6, y la etapa 3 lo cuenta como lo
+que es.
+
+**Sobre el estado de salida 0: es deliberado, y se comprobó que lo es.** La
+lectura ingenua sería «el gate dice INCOMPLETE pero sale con éxito, eso es un
+defecto». No lo es: el propio `verify-all.sh` lo razona en el bloque que imprime
+esa línea, y el motivo se sostiene —todas las etapas que sí corrieron son
+evidencia real, y un escenario que el producto no puede lanzar sin TTY es un
+hueco que hay que nombrar, no un defecto que redden la puerta entera. La
+alternativa, un 1 que encienda una alarma roja por algo ya declarado y
+explicado en el propio veredicto, es peor. Lo que sí obliga AGENTS.md §4 es que
+una prueba ausente nunca sea PASS, y la palabra del veredicto ya lo cumple.
 
 ---
 

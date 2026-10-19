@@ -10,13 +10,12 @@ import java.nio.file.Path
  * sealed segments' EXTENTS and the current segment's base. It never opens a file: a `SealedSegment`
  * carries a `Path` but nothing here reads it, which is what keeps this a unit test under
  * AGENTS.md section 2.
- *
  * The property is the one the two read loops used to get wrong by accident. Both derived each
  * chunk's offset as `(cursor - seg.base).coerceAtLeast(0)`, so a segment starting ABOVE the cursor
  * was read from its own offset 0 and copied into the middle of the answer. The page came back the
  * requested length, so the only remaining guard -- `written == target.size` -- passed: a substituted
  * answer satisfies it perfectly. Every case below is one a reader must distinguish.
- */
+*/
 class FirstMissingOffsetTest {
 
     /** A sealed segment by extent. The [Path] is a name this test never opens. */
@@ -121,7 +120,7 @@ class FirstMissingOffsetTest {
 
     @Test
     fun `an overlapping segment does not hide the gap behind it`() {
-        // A segment that overlaps its predecessor covers [cursor, ...) but cannot move the cursor
+        // A segment that overlaps its predecessor covers [cursor,...) but cannot move the cursor
         // BACK, so a later hole is still found. Walking in base order is what makes this hold.
         val overlapping = listOf(seg(0, 1000), seg(500, 1000), seg(2000, 1000))
 

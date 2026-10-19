@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.domain
 /**
  * Classification of failure kinds for error reporting.
  * Used by [dev.rubentxu.pipeline.v2.dsl.StepSpec.Error] step type.
- */
+*/
 enum class FailureKind {
     /** Infrastructure-level failure (network, disk, etc.) */
     INFRASTRUCTURE,
@@ -30,16 +30,14 @@ enum class FailureKind {
     companion object {
 
         /**
-         * P3-E E6b — the single boundary where a declared token becomes typed.
-         *
+         * The single boundary where a declared token becomes typed.
          * The map is derived from [entries] rather than written out again: a second list of
          * the same vocabulary is a second authority, and the two drift the first time someone
          * adds a constant.
-         *
          * Returns **null** outside the vocabulary, and deliberately does NOT fall back to
          * [UNKNOWN]: a default here would turn a typo into a silent classification, which is
          * the exact defect the DSL bridge exists to refuse.
-         */
+*/
         private val BY_TOKEN: Map<String, FailureKind> = entries.associateBy { it.name }
 
         /** Every token this runtime accepts, for diagnostics on a refused spelling. */

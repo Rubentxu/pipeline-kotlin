@@ -12,107 +12,87 @@ import dev.rubentxu.pipeline.v2.output.OutputTailState
 /**
  * The OUTPUT lane of the read model: committed bytes, in the order PipelineK observed them, as
  * records a query can select.
- *
  * ## This is not `ConsoleReadService`, and the difference is the whole point
- *
  * `pipeline console` needs bytes and needs them soon, so `ConsoleReadService` continues by **byte
  * cursor** and concatenates the two channels in a FIXED order. That is the right trade for a verb
  * whose job is "show me the transcript": a cursor knows its own stream, so a resume is exact, and
  * the fixed order is a stated projection rather than a claim about interleaving.
- *
  * The read model needs something else. A reader here has to answer `--channel stderr`, and it has to
  * say *which bytes came from which channel in the order they were published* — a question only
  * [OutputFrameIndex] can answer. So this reader is positioned by **frame ordinal**, walks the frames,
  * and reads each one's bytes from the store.
- *
  * ```text
  * ConsoleReadService   byte cursor   fixed channel order   returns bytes   console verb
  * ObservationOutputReader  frame ordinal   observation order   returns records   filters, follow
  * ```
- *
  * Neither replaces the other, and merging them would mean either losing channel attribution or
  * claiming an interleaving the fixed-order reader never had.
- *
  * ## Why [ObservationOutputRead] is a sealed result and not an empty list
- *
  * "There are no records because nothing has been written yet" and "there are no records because the
  * store refused to answer" are different facts, and collapsing them into an empty list is the defect
  * [dev.rubentxu.pipeline.v2.events.EventRecordRead] was built to close on the event side. A `--follow`
  * consumer that read a refusal as "nothing yet" would poll a broken store forever, and one that read
  * it as "the run produced no output" would report a silent step as a truncated one.
- *
  * ## The window is the caller's, and that is deliberate
- *
  * There is no default. `frameLimit` is required because the number that belongs here is a **measured**
  * budget, not a constant chosen at a keyboard: how many frames one read should pull depends on what
  * the consumer does with them, and a default would hide that choice behind a call site that appears to
  * say nothing about it. A reader that materialises more than it was asked for is the mechanism by
  * which a `--follow` loop turns a 200 MB build log into memory pressure.
- */
+*/
 interface ObservationOutputReader {
 
     /**
      * Records for [runId]'s frames after [afterOrdinal], in observation order, at most [frameLimit]
      * of them.
-     *
      * @param afterOrdinal `-1` reads from the first frame of the run; it is not a cursor into bytes
      *   and is not comparable with an event sequence.
      * @param frameLimit how many frames this read may pull. Bounds the work and the memory.
-     */
+*/
     fun readOutput(runId: String, afterOrdinal: Long, frameLimit: Int): ObservationOutputRead
 
     /**
-     * R4 / WU-RC2 (P0 frame integrity) — per-operation [readOutput] overload.
-     *
+     * Per-operation [readOutput] overload.
      * The opId-less [readOutput] above reads every frame in [runId], regardless of which
      * operation wrote it. The console verb, by contrast, addresses ONE operation at a time:
      * the user asked for `--opId main/echo-0` and the answer must be that operation's frames
      * only, not a slice of every operation in the run.
-     *
      * The filter is applied at the read boundary (not the emit boundary), so the durable
      * authority is the source of truth: only frames whose stream id carries [opId] as a
      * middle segment (`<runId>/<opId>/<channel>`) are materialised. Same window semantics as
      * the opId-less overload: at most [frameLimit] frames after [afterOrdinal], strict
      * `ordinal > afterOrdinal`, and `moreFrames` reflects the index's bounded window.
-     *
      * An opId with no frames (e.g., a step that emitted no console output) yields an empty
      * page with `lastOrdinal = -1L` and `moreFrames = false`. That is distinct from a
      * refusal: the opId is real, the run is real, the page is just empty. A caller that
      * asked for the frames of an op knows there is nothing to show.
-     *
      * @param opId the operation identifier (e.g., `main/echo-0`). Must be non-blank; the
      *   caller that addresses by opId owns the input — the reader does not invent an opId
      *   from a stream id (that is the events-→-opId hand-off, a separate slice).
-     */
+*/
     fun readOutput(runId: String, opId: String, afterOrdinal: Long, frameLimit: Int): ObservationOutputRead
 
     /**
      * Tail state of every stream DECLARED for [runId], in a stable order.
-     *
      * This is what makes [followDecision] answerable for a follower that has read nothing. Reading
      * frames is not enough: a run whose steps have not produced output yet has declared streams and
      * no frames, and a follower that lists only what it has seen would conclude nothing about them.
-     *
      * A `null` entry means the store does not know that stream — which is NOT
      * [dev.rubentxu.pipeline.v2.output.OutputTailState.Sealed], and deliberately keeps a follower
      * waiting. That is the safe direction: a stream declared a moment ago may not have a directory
      * yet, and a follower must not treat "not there yet" as "finished".
-     */
+*/
     fun tailStatesOf(runId: String): List<OutputTailState?>
 
     /**
      * The last [tailBytes] bytes of [runId]'s output, as one bounded page.
-     *
      * ## What "the last" means here, and why it is the run's order and not the wall clock
-     *
      * Ordered by [OutputFrame.ordinal], which is the order PipelineK OBSERVED the chunks — not the
      * order the kernel wrote them, and not a timestamp. That is the only order this plane has, and
      * it is enough for a tail: "the most recently observed bytes" is exactly what a reader wants
      * when it cannot afford the whole transcript. It is deliberately not compared with an event
      * sequence, for the reason [ObservationRecord] refuses [dev.rubentxu.pipeline.v2.application.observation.ObservationView.FULL].
-     *
      * ## Per STREAM would be the other reading, and it is not this one
-     *
      * The obvious alternative — the last N bytes of each stream — is what `failure-context` already
      * does per channel, and it is what `kubectl logs --tail-bytes` means per container. It is not
      * what this can answer cheaply, and the reason is structural rather than incidental: the frame
@@ -120,41 +100,35 @@ interface ObservationOutputReader {
      * beginning of the run's ordinals. Bounding by stream would make finding the tail of an early
      * step cost a scan of everything the run did afterwards — the exact "200 MB instead of 30 KiB"
      * this flag exists to avoid. Bounding by the run's own order costs what it reads.
-     *
      * The trade is named rather than hidden: with this reading, a run with one enormous early step
      * and a quiet late one returns bytes only from the late one.
-     *
      * ## The oldest frame included is NARROWED, never dropped and never invented
-     *
      * The byte budget usually lands in the middle of a frame, so that frame is re-issued with its
      * `from` moved forward and its `ordinal` KEPT. The ordinal is not reassigned: it is still that
      * frame's position in the run, and a reader resuming from [ObservationOutputPage.lastOrdinal]
      * continues exactly where the tail ended. Nothing is dropped, and no range is claimed that was
      * not read.
-     */
+*/
     fun readTail(runId: String, tailBytes: Long): ObservationOutputRead
 
     /**
-     * R4 / WU-R4.1.3 — per-operation readTail.
-     *
+     * Per-operation readTail.
      * Reads the last [tailBytes] of one operation's output, scoped by the operation's
      * stream-id prefix. Where [readTail] returns the trailing bytes of the WHOLE run, this
      * overload returns the trailing bytes of one operation, so an inspect consumer can
-     * attach a step's tail to that step's `StepFailed` record (CON-2.x).
-     *
+     * Attach a step's tail to that step's `StepFailed` record (.x)
      * Frames whose [OutputFrame.stream] does NOT carry [opId] as a segment are skipped.
      * The stream id format is `<runId>/<operationId>/<channel>` (see [OutputStreamAddress]),
      * so the opId appears as a literal segment between run and channel. Frames with
-     * stream ids from BEFORE the durable-task v1 minting shape (the pre-ADR-0088
+     * stream ids from BEFORE the durable-task v1 minting shape (
      * `<runId>/<opId>/transcript` exception) carry the same shape; this is honest about
      * the indexing it can prove.
-     *
      * The semantics match [readTail]: oldest frame included is narrowed, never dropped,
      * never invented. A frame that straddles the byte budget keeps its ordinal and is
      * re-issued with `from` moved forward. A future slice can re-derive opId from a
      * [durable]/[events] cross-reference; this overload accepts the opId as input on
      * purpose, so the resolution lives at the caller (which has both lanes).
-     */
+*/
     fun readTail(runId: String, opId: String, tailBytes: Long): ObservationOutputRead
 }
 
@@ -170,15 +144,14 @@ sealed interface ObservationOutputRead {
 
 /**
  * A bounded window of the output lane.
- *
  * @property records one record per frame, in ascending ordinal. Each carries its own bytes, decoded.
  * @property lastOrdinal the ordinal to continue from. Equal to the requested `afterOrdinal` when the
  *   page is empty, so a caller can always resume from the value on the page it just received instead
  *   of tracking what it asked for.
  * @property moreFrames whether the index had frames left AFTER the ones returned. Says nothing about
  *   whether more will ever arrive — that is [dev.rubentxu.pipeline.v2.output.OutputTailState]'s
- *   question, and answering it here would be the `next == null` mistake OBS-C3 closed.
- */
+ * Question, and answering it here would be the `next == null` mistake closed
+*/
 data class ObservationOutputPage(
     val records: List<ObservationRecord.Output>,
     val lastOrdinal: Long,
@@ -202,18 +175,15 @@ data class ObservationOutputPage(
 
 /**
  * Composes the two Output Plane authorities into the output lane.
- *
  * Neither alone is enough: the index knows WHICH ranges were published and in what order, and the
  * store knows what the bytes say. Asking either for the other's question is what produces a merged
  * transcript with no attribution or a frame index holding payloads.
- *
  * ## The frame's bytes are read at the frame's own range
- *
  * A frame names `[from, to)` in one stream, and the read is addressed to that exact range rather than
  * to "whatever comes next". If a resumed run has appended more since the frame was published, the
  * frame's range is still the frame's range, so a reader replaying history sees the same bytes it saw
  * the first time instead of a window that grew underneath it.
- */
+*/
 class FrameIndexedObservationOutputReader(
     private val index: OutputFrameIndex,
     private val bytes: OutputReadPort,
@@ -248,19 +218,17 @@ class FrameIndexedObservationOutputReader(
     }
 
     /**
-     * R4 / WU-RC2 (P0 frame integrity) — per-operation [readOutput].
-     *
+     * Per-operation [readOutput].
      * The opId filter is `streamId.contains("/<opId>/")` — the stream id is shaped
      * `<runId>/<opId>/<channel>` (see [OutputStreamAddress]), so the opId is the middle
      * segment. Frames whose stream id does not carry [opId] are skipped at the read
      * boundary, never materialised, and the resulting page contains ONLY frames that
      * match the opId.
-     *
      * The opId-less [readOutput] is preserved unchanged for callers that legitimately
      * want every frame in the run (the observe verb's `--view console`, the
      * follow-decision authority, the live drain). The console verb, which addresses
      * one op at a time, uses this overload.
-     */
+*/
     override fun readOutput(runId: String, opId: String, afterOrdinal: Long, frameLimit: Int): ObservationOutputRead {
         require(frameLimit > 0) { "frameLimit must be positive, got $frameLimit" }
         require(opId.isNotBlank()) { "opId must not be blank" }
@@ -272,7 +240,6 @@ class FrameIndexedObservationOutputReader(
         // window can contain zero frames of the requested opId and the caller sees "nothing
         // new" for an op that has plenty to say. That is how a `--follow` on one operation
         // of a busy run silently stalled.
-        //
         // So the loop keeps pulling index windows — advancing past each window's last
         // ordinal — until it has `frameLimit` MATCHING frames, or the index stops returning
         // a full window (which is the index's own "there is nothing more" answer).
@@ -346,18 +313,16 @@ class FrameIndexedObservationOutputReader(
     }
 
     /**
-     * R4 / WU-R4.1.3 — per-operation readTail overload.
-     *
+     * Per-operation readTail overload.
      * Filters the run's frames to those whose stream id carries [opId] as a middle segment
      * (`<runId>/<opId>/<channel>`), then applies the same tail-budget walk as the
      * run-wide [readTail]. The shape of the returned page is identical; only the input
      * scope differs.
-     *
      * An opId that has no frames (e.g., a step that emitted no console output) yields an
      * empty page with `lastOrdinal = -1L` and `moreFrames = false`. This is distinct from
      * a refusal: the opId is real, the run is real, the page is just empty. A caller that
      * asked for the tail of an op knows there is nothing to show.
-     */
+*/
     override fun readTail(runId: String, opId: String, tailBytes: Long): ObservationOutputRead {
         require(tailBytes > 0) { "tailBytes must be positive, got $tailBytes" }
         require(opId.isNotBlank()) { "opId must not be blank" }
@@ -401,7 +366,7 @@ class FrameIndexedObservationOutputReader(
      * byte-budget semantics as the run-wide path; the only difference is that we do
      * not re-query the index, which is what makes the per-op tail bounded by the op's
      * own bytes rather than the whole run's.
-     */
+*/
     private fun tailFramesFromOldestFirst(
         frames: List<OutputFrame>,
         tailBytes: Long,
@@ -426,13 +391,12 @@ class FrameIndexedObservationOutputReader(
     /**
      * The trailing frames of [runId] whose bytes cover [tailBytes], oldest first, with the oldest
      * one narrowed to the exact boundary.
-     *
      * Walks BACKWARDS in batches that double, so the cost is proportional to the bytes asked for
      * rather than to the length of the run: a 64 KiB tail of 4 KiB frames examines a few dozen
      * frames, and a run that never wrote more than 64 KiB stops at the beginning instead of
      * rescanning. Ordinals are dense per run — the index assigns them from a per-run counter — so
      * the last `n` ordinals really are the last `n` frames.
-     */
+*/
     private fun tailFrames(runId: String, last: Long, tailBytes: Long): List<OutputFrame> {
         var requested = INITIAL_TAIL_BATCH
         while (true) {
@@ -495,18 +459,16 @@ class FrameIndexedObservationOutputReader(
 
     /**
      * Decodes ONE frame's bytes, and only that frame's.
-     *
      * A multi-byte character split across two frames does not survive the split: it appears as
      * U+FFFD in exactly one of them. That is a real cost, and it is paid here on purpose rather than
      * papered over with a carry-over buffer, because a carry would be reader-local state and would
      * make the SAME bytes decode differently depending on where a reader happened to resume. The
      * Output Plane keeps no record of the partial character that preceded a resume point, so a reader
      * that claims to reconstruct it would be inventing it.
-     *
      * Determinism and resumability are worth more here than one intact character at a frame
      * boundary, and a caller who needs whole characters should read a larger window rather than
      * depend on state this contract deliberately does not keep.
-     */
+*/
     private fun decodeWindow(bytes: ByteArray): String = String(bytes, Charsets.UTF_8)
 }
 

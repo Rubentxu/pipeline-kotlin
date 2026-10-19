@@ -21,14 +21,13 @@ import dev.rubentxu.pipeline.v2.output.OutputCursor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.events.identity.EventField
 
-// CC-1 — parser unification. The four verb mains used to own their own admission
+// Parser unification. The four verb mains used to own their own admission
 // parsers; their bodies lived next to the verb and drifted the moment a flag gained
 // a case. `parseConsole`, `parseEvents`, `parseInspect` are now the single entry
 // point for argv-to-typed-request conversion; the verb mains translate the typed
 // result into the wire format they have always used. Refusal prefixes
 // (`console-refused:`, `evt-refusal-v1:`, `Error:`) live in the renderer / the
 // verb main, NOT in the parser — preserving them is a property of the call site.
-// R4 / WU-R4.7 — CC-1.
 
 const val NON_CANONICAL_CANONICAL_BRIDGE_ERROR: String =
     "Error: script uses non-canonical plugins; canonical bridge requires " +
@@ -48,76 +47,70 @@ data class CliFlags(
     val durableRunPolicy: DurableRunPolicy,
     val scriptPath: String,
     val controlRoot: String? = null,
-    /** WU-LPR-062: project workspace base directory (--workspace). */
+    /** Project workspace base directory (--workspace). */
     val workspace: String? = null,
     /**
-     * RP034-H / ADR-0101: request the historical PipelineK-managed scratch
+     * Request the historical PipelineK-managed scratch
      * workspace instead of the default attached invocation directory.
-     *
      * Mutually exclusive with [workspace]; the parser rejects the combination
      * rather than applying a silent precedence rule.
-     */
+*/
     val isolated: Boolean = false,
     val sandboxProfile: SandboxProfile = SandboxProfile.NONE,
     /**
-     * RP6-C / LFC-2E3 (`--allow-network`): whether this run may open outbound
+     * Whether this run may open outbound
      * connections. FALSE unless the operator asks for it.
-     *
      * Default-deny is the whole point, and it is enforced as a MISSING
      * capability rather than as a check inside a Step: a Step that declares
      * `NETWORK_EGRESS_CAPABILITY` is rejected at prepare-time when the runtime
      * did not produce the verdict, so there is no code path in which a Step
      * reaches the network on a default run.
-     */
+*/
     val allowNetwork: Boolean = false,
     /** External plugin JARs: one list feeds compilation and runtime discovery. */
     val pluginJars: List<String> = emptyList(),
     /**
-     * PK-1 / ADR-PK1-IDENTITY: external invoker correlation token. When
+     * External invoker correlation token. When
      * supplied, the runtime binds it to the [RunId] in durable state
      * and emits it on the [dev.rubentxu.pipeline.v2.events.RunCorrelated]
      * event. The raw string is held here; conversion to [CorrelationId]
      * happens after parsing succeeds.
-     */
+*/
     val correlationId: String? = null,
     /**
-     * ADR-0088: which families of observation reach the reader. Orthogonal to
+     * Which families of observation reach the reader. Orthogonal to
      * [format]; neither changes execution.
-     */
+*/
     val view: ObservationView = ObservationView.NORMAL,
     /**
-     * ADR-0088: wire encoding. `TEXT` is human and the default; JSON and JSONL
+     * Wire encoding. `TEXT` is human and the default; JSON and JSONL
      * are opt-in, so a machine consumer must ask for them explicitly instead of
      * discovering them by accident.
-     */
+*/
     val format: ObservationFormat = ObservationFormat.TEXT,
     /**
-     * PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: opt-in versioned output
+     * Opt-in versioned output
      * protocol. The parser holds the raw token(s) the operator
      * supplied (last token wins on repetition). Validation happens
      * in [dev.rubentxu.pipeline.v2.application.Main] which translates
      * an unknown id to a typed CliExit.InvalidArgument. Empty list
      * means "no opt-in", which falls back to [OutputProtocol.DEFAULT]
      * in Main.
-     */
+*/
     val outputProtocolTokens: List<String> = emptyList(),
     /**
-     * Normalized read-side selection (ADR-0088). Identity by default.
-     *
+     * Normalized read-side selection. Identity by default
      * ## The KDoc that used to say `channel` could not exist
-     *
      * This field once carried the line "channel is deliberately absent: no durable carrier exists
      * for stdout vs stderr, so offering the dimension would be a filter that cannot filter."
-     *
-     * That claim became false at OBS-C2.3, when the merge was removed and two independent pumps
+     * That claim became false at.3, when the merge was removed and two independent pumps
      * began attributing every committed range to its channel, durably. What was left behind was the
      * worse half: [ObservationQuery.channels] had been implemented and consumed all along, so the
      * dimension was REAL and UNREACHABLE — a filter nobody could type. The correction is not a new
      * field here, it is the removal of a sentence that had stopped being true.
-     *
      * [ObservationQuery] carries the same history and what it means for a record that has no
      * channel to carry.
-     */
+*/
     val query: ObservationQuery = ObservationQuery(),
 )
 
@@ -129,11 +122,11 @@ sealed interface CliError {
     data object ConflictingDurablePolicies : CliError
 
     /**
-     * RP034-H / ADR-0101 clause 3.4: `--isolated` and `--workspace` request two
+     * `--isolated` and `--workspace` request two
      * different workspace origins. Applying a silent precedence would let a user
      * believe they attached a workspace while running in scratch, so the
      * combination fails closed at admission.
-     */
+*/
     data class ConflictingWorkspaceModes(val workspace: String) : CliError {
         override fun toString(): String =
             "ConflictingWorkspaceModes(workspace=$workspace): --isolated requests a " +
@@ -142,10 +135,10 @@ sealed interface CliError {
     }
     data class InvalidSandboxProfile(val value: String) : CliError
     data class UnsupportedSandboxProfile(val value: String) : CliError {
-        // D-012: enrich the typed error message with cross-references so the
+        // Enrich the typed error message with cross-references so the
         // fail-closed CLI surface cites the contract documents the operator
-        // expects to see at the boundary (ADR-0016 sandbox policy, M5 OS-level
-        // isolation, M9 multi-tenant gate). The value token echoes the rejected
+        // Expects to see at the boundary (sandbox policy, OS-level
+        // Isolation, multi-tenant gate). The value token echoes the rejected
         // input verbatim so log scrapers can correlate.
         override fun toString(): String =
             "UnsupportedSandboxProfile(value=$value: " +
@@ -157,13 +150,12 @@ sealed interface CliError {
 
     /**
      * An option appeared AFTER the script path.
-     *
      * The scan used to stop at the first non-`--` argument, so
      * `pipeline run s.kts --format text` discarded everything after the script
      * and still ran, producing the default output. A flag the user believed was
      * applied was silently ignored — the fail-open shape the observation work
      * exists to remove. Trailing options are now rejected before any effect.
-     */
+*/
     data class TrailingOption(val value: String) : CliError {
         override fun toString(): String =
             "TrailingOption($value): options must appear BEFORE the script path. " +
@@ -179,10 +171,9 @@ sealed interface CliError {
 
     /**
      * `--view` named a real view this build cannot deliver.
-     *
      * Refused rather than downgraded: silently substituting another view tells
      * the operator they observed something they did not observe.
-     */
+*/
     data class UnavailableView(val view: ObservationView) : CliError {
         override fun toString(): String =
             "UnavailableView($view): this build cannot deliver the '$view' view. " +
@@ -199,11 +190,10 @@ sealed interface CliError {
 
     /**
      * `--grep` or `--grep-regex` was given an empty value.
-     *
      * Refused rather than resolved: under substring semantics an empty literal
      * matches EVERY line, so accepting it would turn a typo into a filter that
      * silently keeps everything.
-     */
+*/
     data class EmptyTextFilter(val option: String) : CliError {
         override fun toString(): String =
             "EmptyTextFilter($option): an empty pattern matches every line under " +
@@ -218,13 +208,12 @@ sealed interface CliError {
 
     /**
      * `--channel` named no channel.
-     *
      * Refused rather than dropped, for the same reason [EmptyTextFilter] is: a token that matches
      * nothing would silently become a filter that keeps everything, and the next run would look
      * like a data problem instead of a typo. [OutputChannel.fromToken] answers `null` rather than
      * throwing because a durable store may name a channel this build does not know, and that is a
      * fact a reader can act on — but a human typing a flag is not reading a store, and gets a name.
-     */
+*/
     data class InvalidChannel(val value: String) : CliError {
         override fun toString(): String =
             "InvalidChannel: --channel '$value' is not a channel. Known: " +
@@ -233,11 +222,10 @@ sealed interface CliError {
 
     /**
      * A flag that changes what a run DOES was passed to a verb that only reads.
-     *
      * Refused rather than ignored, and the wording matters: `--resume` on a reader has no meaning
      * at all, so the user is not being denied a feature — they are being told that the verb they
      * reached for is not the one that does this.
-     */
+*/
     data class OptionNotReadable(val option: String) : CliError {
         override fun toString(): String =
             "OptionNotReadable: '$option' changes what a run DOES, and this command only reads. " +
@@ -249,18 +237,17 @@ sealed interface CliError {
      * The assembled query is not usable — most often an uncompilable
      * `--grep-regex`. Caught here so no process, store or journal is created
      * for a run that could never be filtered as asked.
-     */
+*/
     data class InvalidQuery(val reason: String) : CliError {
         override fun toString(): String = "InvalidQuery: $reason"
     }
 
     /**
      * `--follow` in a format that has no continuation.
-     *
      * Refused because the combination has no honest answer, not because it is unusual: a document
      * format is complete only when its closing bracket arrives, and following is by definition
      * stopping before you know whether that has happened.
-     */
+*/
     data class FollowNeedsAnIncrementalFormat(val format: String) : CliError {
         override fun toString(): String =
             "FollowNeedsAnIncrementalFormat: --follow with --format $format would emit one document " +
@@ -270,13 +257,12 @@ sealed interface CliError {
 
     /**
      * A reader's option reached `run`.
-     *
      * The inverse of [OptionNotReadable], and refused for a sharper reason than symmetry. A flag that
      * is parsed, remembered and never read is a dead semantic parameter; `--follow` on `run` is
      * exactly that, because `run` already reads its run as it happens. `--limit` is worse than dead:
      * it would truncate the live transcript and `run` has no way to say the transcript was
      * truncated, which is the failure a reader that reports itself complete already causes elsewhere.
-     */
+*/
     data class OptionBelongsToObserve(val option: String) : CliError {
         override fun toString(): String =
             "OptionBelongsToObserve: '$option' is what a READER does, and 'run' cannot report that it " +
@@ -286,18 +272,16 @@ sealed interface CliError {
 
     /**
      * `--limit` that is not a count.
-     *
      * Refused rather than defaulted, and the legacy `events` verb already learned this the hard way:
      * `--limit abc` used to read as 100, so a typo silently became a different query than the one
      * the caller believed they were making.
-     */
+*/
     /**
      * `--tail-bytes` on a view that carries no process bytes.
-     *
      * Refused rather than ignored for the reason `--follow` on `run` is: a flag that changes nothing
      * observable is a parameter the caller believed in. `console` is the only view whose records are
      * bytes, so it is the only one where a byte budget has anything to bound.
-     */
+*/
     data class TailNeedsTheOutputLane(val view: String) : CliError {
         override fun toString(): String =
             "TailNeedsTheOutputLane: --tail-bytes bounds committed process bytes, and --view $view " +
@@ -312,11 +296,10 @@ sealed interface CliError {
 
     /**
      * `--outcome` that names no outcome.
-     *
      * Refused rather than treated as a wildcard, because the whole point of typing the vocabulary
      * was that `--outcome` stops answering "which spelling did this producer use". A typo that
      * silently matched everything would hand the caller the opposite of what they asked for.
-     */
+*/
     data class InvalidOutcome(val value: String) : CliError {
         override fun toString(): String =
             "InvalidOutcome: --outcome names how something ended. Known: " +
@@ -331,17 +314,15 @@ sealed interface CliError {
 
     /**
      * A valued option was handed a token that is itself an option of this CLI.
-     *
      * Refused rather than consumed, and the severity is not uniform. `run --db --resume script.kts`
      * stored the literal `"--resume"` as a database path and left the durable policy at its default,
      * exiting 0: the caller asked for two things and one of them was quietly not done.
      * `--control-root --allow-network script.kts` is the same shape with the egress flag on the
      * losing side — the run stayed network-denied while the caller believed they had opened it.
-     *
      * Scoped to tokens this build KNOWS, deliberately. Refusing every value that begins with `--`
      * would make `--grep --verbose-stop` unexpressible, trading one silent drop for a new surprise;
      * a token that names nothing is far more likely to be a pattern than a mistyped flag.
-     */
+*/
     data class OptionValueIsAnOption(val option: String, val value: String) : CliError {
         override fun toString(): String =
             "OptionValueIsAnOption: '$option' was given '$value', which is another option of this CLI. " +
@@ -352,12 +333,11 @@ sealed interface CliError {
 
 /**
  * Normalizes collected query values into the typed [ObservationQuery].
- *
  * Pure. The parser may offer convenience flags, but what reaches the runtime is
  * an ADT — never a bag of flags whose meaning is reconstructed downstream.
  * `Only` and `Except` are distinct cases rather than a `negate` boolean, so the
  * blacklist reading of `--grep-invert` is visible in the type.
- */
+*/
 fun buildObservationQuery(
     grepSelectors: List<TextSelector>,
     grepInvert: Boolean,
@@ -387,11 +367,10 @@ sealed interface CliParseResult {
 
 /**
  * What a read-only verb was asked for, already compiled.
- *
  * The query arrives COMPILED so a reader cannot re-validate it and disagree with the parser about
  * whether a pattern was usable — the same reasoning [RunObservationOutput.encode] documents for its
  * own parameter.
- */
+*/
 sealed interface ObservationParseResult {
     data class Parsed(
         val query: ObservationQuery,
@@ -440,80 +419,75 @@ private class ParseState(
     var durableRunPolicy: DurableRunPolicy = DurableRunPolicy.ReusePriorRun,
     var controlRoot: String? = null,
     var workspace: String? = null,
-    /** RP034-H / ADR-0101: `--isolated` requests managed scratch. */
+    /** `--isolated` requests managed scratch. */
     var isolated: Boolean = false,
     var sandboxProfile: SandboxProfile = SandboxProfile.NONE,
     /**
-     * RP6-C / LFC-2E3: `--allow-network` permits outbound egress for this run.
+     * `--allow-network` permits outbound egress for this run.
      * FALSE by default, so a pipeline that reaches for the network without the
      * flag is rejected at capability admission rather than quietly succeeding.
-     */
+*/
     var allowNetwork: Boolean = false,
     val pluginJars: MutableList<String> = mutableListOf(),
     /**
-     * PK-1 / ADR-PK1-IDENTITY: external invoker correlation token, set by
+     * External invoker correlation token, set by
      * `--correlation-id <uuid>`. The raw string lives here; conversion
      * to a typed [CorrelationId] happens after parsing succeeds so
      * a malformed value surfaces as a typed [InvalidCorrelationId]
      * rather than crashing the parser.
-     */
+*/
     var correlationId: String? = null,
     /**
-     * PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: every `--output-protocol`
+     * Every `--output-protocol`
      * token the operator supplied. The last one wins. Validation
      * against [dev.rubentxu.pipeline.v2.application.OutputProtocol.SUPPORTED_IDS]
      * happens in Main.kt — a missing or unknown id surfaces as
      * `CliExit.InvalidArgument` (exit 2), never as silent
      * degradation.
-     */
+*/
     var outputProtocolTokens: List<String> = emptyList(),
-    /** ADR-0088 `--view`. Resolved to a DELIVERABLE view at parse time. */
+    /** `--view`. Resolved to a DELIVERABLE view at parse time */
     var view: ObservationView = ObservationView.NORMAL,
     /**
      * Which views THIS parse may deliver.
-     *
      * In the state so `--view` keeps ONE handler for every verb: a reader that also reads the output
      * lane widens this before parsing and gets `--view console`, `run` does not and keeps refusing
      * it. Branching on the verb inside the `--view` handler instead would have been a second place
      * where a flag's meaning is decided, which is how one flag ends up meaning two things.
-     */
+*/
     var deliverableViews: Set<ObservationView> = ObservationView.EVENT_LANE_VIEWS,
     /**
      * `--limit N`. A read-side budget over SELECTED records, never a filter: see [RecordBudget].
-     */
+*/
     var budget: RecordBudget = RecordBudget.All,
     /**
      * `--outcome`. A closed vocabulary, so unknown names are refused rather than carried.
-     *
      * A plain `mutableSetOf` and not `sortedSetOf` like `channels`: the order a set of outcomes is
      * collected in is not information, and the ADT is not `Comparable` because nothing needs it to
      * be. Asking for it anyway would have put a phantom requirement in the parser.
-     */
+*/
     var outcomes: MutableSet<ObservedOutcome> = mutableSetOf(),
     /**
      * `--tail-bytes N`. Where the output lane STARTS, not what it prints.
-     *
      * A start position and a budget are different things and compose: read the last N bytes, then
      * print at most `--limit` of what that yields.
-     */
+*/
     var tailBytes: Long? = null,
     /**
      * `--follow`. Read-only and therefore legal here and on `observe`, unlike the execution options.
-     *
      * A flag rather than a mode: following is how long you read, not what you read, and the view
      * still decides the lane.
-     */
+*/
     var follow: Boolean = false,
-    /** ADR-0088 `--format`. JSON/JSONL are opt-in; text is the default. */
+    /** `--format`. JSON/JSONL are opt-in; text is the default */
     var format: ObservationFormat = ObservationFormat.TEXT,
     /**
-     * ADR-0088 query dimensions. AND across dimensions, OR within each one.
-     *
+     * Query dimensions. AND across dimensions, OR within each one
      * [grepSelectors] accumulates repeated `--grep`/`--grep-regex` into an OR
      * group; [grepInvert] turns that whole group into a blacklist at build time.
      * No [LineSelector] is stored here: the parser collects raw values and the
      * normalized ADT is produced once, by [buildObservationQuery].
-     */
+*/
     val grepSelectors: MutableList<TextSelector> = mutableListOf(),
     var grepInvert: Boolean = false,
     val stageNames: MutableSet<String> = sortedSetOf(),
@@ -521,27 +495,25 @@ private class ParseState(
     val eventKinds: MutableSet<String> = sortedSetOf(),
     /**
      * Collected as the parsed [OutputChannel], never as the raw token.
-     *
      * The parser is the boundary where a human's string becomes a domain value, so this is where an
      * unknown token is refused. Storing `stdout` as a `String` and letting [ObservationQuery] decide
      * would push the vocabulary check downstream, where a miss reads as "no stderr in this run"
      * instead of "that was not a channel".
-     */
+*/
     val channels: MutableSet<OutputChannel> = sortedSetOf(),
 )
 
 /**
  * Pure parser for the application CLI.
- *
- * CC-1 (R4 / WU-R4.7) added three more public entry points — [parseConsole], [parseEvents],
+ *  added three more public entry points — [parseConsole], [parseEvents]
  * [parseInspect] — alongside the original [parse] / [parseObservation]. The object now exposes
  * five verb parsers; the per-verb private helpers (one per verb) keep each verb's
  * CyclomaticComplexMethod under the configured ceiling. The five public functions plus
  * `applyOption` push the object flavour of [TooManyFunctions] past the default 11; that is
- * structural to the unification — a CC-1 parser owns every verb's argv-to-typed-request
+ * Structural to the unification — a parser owns every verb's argv-to-typed-request
  * translation, and a sub-object per verb would re-introduce the multi-authority defect the
  * slice exists to remove.
- */
+*/
 @Suppress("TooManyFunctions")
 object CliParser {
     fun parse(args: Array<String>): CliParseResult {
@@ -578,7 +550,7 @@ object CliParser {
             }
         }
 
-        // RP034-H / ADR-0101 clause 3.4: fail closed on the incompatible pair.
+        // Fail closed on the incompatible pair.
         state.workspace?.let { explicit ->
             if (state.isolated) {
                 return CliParseResult.Rejected(CliError.ConflictingWorkspaceModes(explicit))
@@ -656,22 +628,18 @@ object CliParser {
 
     /**
      * The OBSERVATION subset of the CLI surface, for a verb that reads rather than executes.
-     *
      * ## Why this lives here and not in the reader
-     *
      * `observe` selects with the same dimensions `run` does, so the meaning of `--channel` has to
      * be decided in exactly one place. A second option parser would be a second authority for what a
      * flag means, and the two would drift the moment one of them gains a case. So this runs the same
      * [applyOption] over the same [ParseState] and hands back the same assembled query — a verb that
      * reads cannot quietly accept a different `--grep` than the verb that runs.
-     *
      * ## Why execution options are refused rather than ignored
-     *
      * `--resume` and `--rerun` decide which run exists; `--sandbox-profile` and `--allow-network`
      * decide what a run may do. None of them means anything to a reader, and an option that is
      * silently dropped is an option the user believed in. They are rejected by name, so
      * `observe --resume RUN` says so instead of replaying a different run than the one asked for.
-     */
+*/
     fun parseObservation(args: Array<String>): ObservationParseResult {
         val state = ParseState(deliverableViews = READS_BOTH_LANES)
         var index = 0
@@ -732,21 +700,19 @@ object CliParser {
         }
     }
 
-    // --------------------------------------------------------------- CC-1 verb parsers
+    // --------------------------------------------------------------- verb parsers
 
     /**
-     * CC-1 / R4 / WU-R4.7 — `pipelinek inspect <runId> [opts]`.
-     *
+     * `pipelinek inspect <runId> [opts]`.
      * Body verbatim from [MainInspectCli.parseInspect]; the verb main now calls this and translates
      * the typed result into the `inspect: ...` stderr line + exit 2 it has always used. The
      * `Error:` prefix is not the inspect prefix — inspect prefixes with `inspect:`, and this
      * separation is intentional (events and console share `Error:` as their CLI-admission prefix).
-     *
      * Body kept inline rather than delegated so the cyclomatic cost [MainInspectCli.parseInspect]
      * used to wear is gone with it; the same option-table layout justifies the same
      * `@Suppress("CyclomaticComplexMethod")`. See [MainInspectCli.parseInspect] for the option
      * table and the per-option rationale.
-     */
+*/
     @Suppress("CyclomaticComplexMethod")
     fun parseInspect(args: Array<String>): InspectParseResult {
         var failed = false
@@ -842,14 +808,13 @@ object CliParser {
         InspectParseResult.Rejected(message)
 
     /**
-     * CC-1 / R4 / WU-R4.7 — `pipelinek events --db <path> <runId> [opts]`.
-     *
+     * `pipelinek events --db <path> <runId> [opts]`.
      * Body verbatim from [MainEventsCli.parseMainArgs]; the verb main calls this and renders the
-     * typed rejection as `Error: <reason>` (the AUD-04 / AUD-05 contract the events verb has used
-     * since WU-R4.2). The follow-up flags (`--follow`, `--fields`, `--context`, `--tail`) ride on
+     * Typed rejection as `Error: <reason>` (the / contract the events verb has used
+     * Since). The follow-up flags (`--follow`, `--fields`, `--context`, `--tail`) ride on
      * [MainEventsCli.parseEventsInspectionFlags], which stays in the verb because it has its own
      * closed ADT (`EventsInspectionFlag`) the existing tests exercise directly.
-     */
+*/
     @Suppress("CyclomaticComplexMethod")
     fun parseEvents(args: Array<String>): EventsCliParseResult {
         var db: String? = null
@@ -952,9 +917,9 @@ object CliParser {
     }
 
     /**
-     * CC-1 / R4 / WU-R4.7 — `--fields` token parse for the events verb. Kept private on the
+     * `--fields` token parse for the events verb. Kept private on the
      * parser; the closed vocabulary is the parser's contract, not the verb's.
-     */
+*/
     private fun parseEventsFieldsToken(raw: String): List<EventField>? {
         if (raw.isBlank()) return null
         val out = mutableListOf<EventField>()
@@ -973,7 +938,7 @@ object CliParser {
         return out
     }
 
-    /** CC-1 — non-negative Int parse for `--context` / `--tail`. */
+    /** Non-negative Int parse for `--context` / `--tail`. */
     private fun parseEventsNonNegativeInt(raw: String): Int? {
         val n = raw.toIntOrNull() ?: return null
         if (n < 0) return null
@@ -981,18 +946,16 @@ object CliParser {
     }
 
     /**
-     * CC-1 / R4 / WU-R4.7 — `pipelinek console --control-dir <path> <runId> <opId> [opts]`.
-     *
+     * `pipelinek console --control-dir <path> <runId> <opId> [opts]`.
      * Body verbatim from the now-removed [MainConsoleCliAdmission]. The verb main calls this and
      * renders the typed [ConsoleCliRefusal] through [renderConsoleCliRefusal], which produces the
      * `Error: ...` wire line for argument refusals. The data-plane refusals
      * (`console-refused: foreign-stream ...`, etc.) are produced by [ConsoleReadService.renderRefusal]
      * at the read boundary and are NOT touched here — they are independent observable contracts.
-     *
      * `--range`, `--frames`, `--after-cursor`, `--max-bytes`, `--after-ordinal` and `--frame-limit`
-     * remain exclusive in the combinations [validate] documents; CC-1 is a relocation, not a
+     * Remain exclusive in the combinations [validate] documents; is a relocation, not a
      * relaxation.
-     */
+*/
     @Suppress("CyclomaticComplexMethod")
     fun parseConsole(args: Array<String>): ConsoleCliParseResult {
         var controlDir: String? = null
@@ -1005,13 +968,13 @@ object CliParser {
         var frames = false
         var frameLimit: String? = null
         var afterOrdinal: String? = null
-        // R4 / WU-CON-2.3 — `--follow` over the per-frame path. Boolean gates the dispatch;
+        // `--follow` over the per-frame path. Boolean gates the dispatch;
         // the two valued options (`--follow-poll-interval`, `--follow-max-polls`) carry into
         // [consoleAdmitFollowFrames] via [consoleValidate] and become [FollowConfig].
         var follow = false
         var followPollInterval: String? = null
         var followMaxPolls: String? = null
-        // R4 / WU-CON-2.2 — content filters on the per-frame path. Repeated flags OR within an
+        // Content filters on the per-frame path. Repeated flags OR within an
         // axis; the three axes AND together (a frame must satisfy every non-empty axis). The
         // sets are populated here and lowered into the closed [ConsoleFrameFilters.Active] ADT
         // in [consoleValidate]. `--run` is the only one of the four that is not a filter — it
@@ -1020,7 +983,7 @@ object CliParser {
         var steps: MutableSet<String> = LinkedHashSet()
         var kinds: MutableSet<String> = LinkedHashSet()
         var runOverride: String? = null
-        // R4 / WU-RC3 — the events journal. It is the ONLY authority that knows a stage/step
+        // The events journal. It is the ONLY authority that knows a stage/step
         // NAME or a step's kind; without it those axes are refused rather than ignored. It is a
         // path here and an opened store in `main`, so admission still performs no effect.
         var dbPath: String? = null
@@ -1055,7 +1018,7 @@ object CliParser {
                 "--frames" -> frames = true
                 "--follow" -> follow = true
                 else -> {
-                    // R4 / WU-CON-2.2 — `--run` and a positional `<runId>` are mutually
+                    // `--run` and a positional `<runId>` are mutually
                     // exclusive, and a positional that follows `--run` is interpreted as
                     // the opId (the runId comes from the flag). The second positional,
                     // if any, IS a positional runId: the user typed it after the opId
@@ -1175,10 +1138,9 @@ object CliParser {
 
     /**
      * The result of resolving the run id axis: either an effective run id, or a refusal.
-     *
      * `Either<Refusal, String>` would say the same thing; this is a `when`-friendly sealed pair
      * with a `refusal()` accessor so the call site can `?: return refusal`.
-     */
+*/
     private sealed interface ResolvedRunAxis {
         fun refusal(): ConsoleCliRefusal
         data class Admitted(val effectiveRunId: String) : ResolvedRunAxis {
@@ -1190,7 +1152,7 @@ object CliParser {
     }
 
     private fun resolveRunAxis(runId: String?, runOverride: String?): ResolvedRunAxis? {
-        // R4 / WU-CON-2.2 — `--run` replaces the positional <runId>; both is a category error
+        // `--run` replaces the positional <runId>; both is a category error
         // that the verb main has no honest answer to, so it is refused at admission.
         if (runOverride != null && runId != null) {
             return ResolvedRunAxis.Refused(ConsoleCliRefusal.MutuallyExclusiveRunId(runId, runOverride))
@@ -1235,7 +1197,7 @@ object CliParser {
     }
 
     private fun validateFollowShape(follow: Boolean, frames: Boolean): ConsoleCliParseResult? {
-        // R4 / WU-CON-2.3 — `--follow` requires `--frames`. Refused rather than defaulted: a
+        // `--follow` requires `--frames`. Refused rather than defaulted: a
         // `--follow` against the byte path would silently emit the merged page once and then
         // poll forever on a byte cursor, which is a different contract from what the operator
         // asked for.
@@ -1250,7 +1212,7 @@ object CliParser {
         kinds: Set<String>,
     ): ConsoleCliParseResult? {
         if (!hasFilter || frames) return null
-        // R4 / WU-CON-2.2 — a content filter without `--frames` is a category error: filters
+        // A content filter without `--frames` is a category error: filters
         // operate on per-frame records, and the byte-budgeted (Paged) and byte-span (Range)
         // paths produce no per-frame records. The refusal names every offending flag so the
         // caller adds `--frames` rather than guessing why their filter did not narrow the
@@ -1266,12 +1228,11 @@ object CliParser {
     /**
      * Selects which [ConsoleReadRequest] shape the call admits, after every axis validator has
      * accepted the input.
-     *
-     * R4 / WU-RC3 — audit P0-4. `--follow` used to be dispatched FIRST, so
+     * Audit. `--follow` used to be dispatched FIRST, so
      * `--frames --follow --stage build` admitted a filterless FollowFrames and dropped the
      * filter in silence. Filters and following are INDEPENDENT axes — following is how long you
      * read, filtering is what you read — so there is no reason for one to shadow the other.
-     */
+*/
     private fun consoleDecideVerb(
         cd: String,
         effectiveRunId: String,
@@ -1379,18 +1340,16 @@ object CliParser {
     }
 
     /**
-     * R4 / WU-CON-2.3 — admit the [ConsoleReadRequest.FollowFrames] request.
-     *
+     * Admit the [ConsoleReadRequest.FollowFrames] request.
      * The per-poll bound (`--frame-limit`) and the resume cursor (`--after-ordinal`) share their
      * parsing with [consoleAdmitFrames]; only the [FollowConfig] payload is new. Both new
      * valued options refuse rather than default to match the policy the rest of the console
      * parser applies: a malformed `--follow-*` is a typed refusal, not a silent degradation.
-     *
      * Closed payload: [FollowConfig] constructor refuses non-positive values, so a
      * `0` or negative `--follow-poll-interval` / `--follow-max-polls` is a typed refusal
      * BEFORE the constructor runs — the [NotAnInteger] refusal covers the "not an integer"
      * shape, and the constructor covers the "parsed but non-positive" shape.
-     */
+*/
     private fun consoleAdmitFollowFrames(
         controlDir: String,
         runId: String,
@@ -1446,12 +1405,11 @@ object CliParser {
 
     /**
      * Lower the three raw token sets into the closed [ConsoleFrameFilters] ADT.
-     *
      * One function so `--follow` and a single filtered read cannot disagree about what a filter
      * IS. All-empty axes produce [ConsoleFrameFilters.None] rather than an `Active` with nothing
      * in it — the closed ADT refuses that, correctly, because "no axis constrains" and "a filter
      * is active" are different claims.
-     */
+*/
     private fun consoleFilters(
         stages: Set<String>,
         steps: Set<String>,
@@ -1464,13 +1422,12 @@ object CliParser {
         }
 
     /**
-     * R4 / WU-CON-2.2 — admit a filtered per-frame read.
-     *
+     * Admit a filtered per-frame read.
      * Reuses the per-frame integer rules from [consoleAdmitFrames] and lowers the three filter
      * sets into the closed [ConsoleFrameFilters.Active] ADT. The closed ADT
      * rejects an "active with no axis set" at construction; we gate the call here so the
      * failure shows up as a parser-level refusal rather than a runtime exception.
-     */
+*/
     private fun consoleAdmitFramesFiltered(
         controlDir: String,
         runId: String,
@@ -1513,20 +1470,17 @@ object CliParser {
 
     /**
      * What a reader that reads BOTH lanes can deliver, which is what `observe` parses against.
-     *
      * Still excluding [ObservationView.FULL]: events and output have no total order, so a view
      * claiming to be both would be claiming an interleaving this build cannot produce.
-     */
+*/
     private val READS_BOTH_LANES: Set<ObservationView> =
         ObservationView.EVENT_LANE_VIEWS + ObservationView.CONSOLE
 
     /**
      * Process one CLI option at [index] of [args], mutating [state] and returning the next index or
      * a typed rejection.
-     *
      * Recognition, consumption and application are three separate steps, and the split is the fix
      * rather than a style preference:
-     *
      * 1. **Recognition** — [recognise] looks the token up in [FlagOption] / [ValuedOption]. An unknown
      *    token is refused here, before `args[index + 1]` is read at all.
      * 2. **Consumption** — the arity in that table decides whether [args] is consulted. A [FlagOption]
@@ -1535,21 +1489,18 @@ object CliParser {
      *    `--allow-network`.
      * 3. **Application** — [FlagOptions] and [ValuedOptions] decide what an option MEANS, grouped by
      *    the shape of its value so neither is a twenty-five-branch switch.
-     *
      * This used to open with `val value = args.getOrNull(index + 1) ?: return MissingOptionValue`
      * BEFORE dispatching on the name, which made every option take a value and nothing stop a valued
      * option from swallowing a flag. The arity of every option is now carried by the
      * [FlagOptions] / [ValuedOptions] tables above, and those tables are the whole record of the
      * fix.
-     *
      * **Nothing observes that split.** `CliParserArityTest`, which used to be the row-per-row
      * record, was removed by the test RESET in `2aa071aab`. This KDoc still named it in the
      * present tense, so for one revision this tree asserted a guard it did not have. A regression
      * in the tables would not be caught by anything today.
-     *
      * Shared with [parseObservation] on purpose: one table of what each option means, whatever verb
      * is being parsed.
-     */
+*/
     private fun applyOption(
         option: String,
         args: Array<String>,
@@ -1571,7 +1522,7 @@ object CliParser {
         }
     }
 
-    /** CC-1 — events verb default page size; the same value [MainEventsCli] used locally. */
+    /** Events verb default page size; the same value [MainEventsCli] used locally. */
     private const val EVENTS_DEFAULT_LIMIT: Int = 100
 }
 
@@ -1584,25 +1535,24 @@ private val EXECUTION_ONLY_VALUED: List<ValuedOption> =
 
 /**
  * The whole option surface of this CLI, in one table.
- *
  * Two enums rather than one, and the reason is exhaustiveness: [FlagOptions] matches a
  * `when (FlagOption)` over six cases and [ValuedOptions] a `when (ValuedOption)` over fifteen, both
  * with no `else`. One enum would force an `else` into each, and an `else` here is the defect this
  * refactor exists to remove — an unrecognised option is exactly what must never fall through.
- */
+*/
 private enum class FlagOption(val token: String) {
     RESUME("--resume"),
     RERUN("--rerun"),
 
-    /** RP034-H / ADR-0101: managed scratch workspace. */
+    /** Managed scratch workspace. */
     ISOLATED("--isolated"),
 
     /**
-     * RP6-C / LFC-2E3. A BOOLEAN with no value, deliberately: the only question is whether this run
+     * A BOOLEAN with no value, deliberately: the only question is whether this run
      * may egress at all, and a `--allow-network=<something>` spelling would invite a per-host
      * allowlist this runtime does not implement. Until it does, an all-or-nothing switch is the
      * honest surface.
-     */
+*/
     ALLOW_NETWORK("--allow-network"),
     GREP_INVERT("--grep-invert"),
     FOLLOW("--follow"),
@@ -1631,13 +1581,13 @@ private enum class ValuedOption(val token: String) {
     TAIL_BYTES("--tail-bytes"),
     LIMIT("--limit"),
     CHANNEL("--channel"),
-    // PK-1 / ADR-PK1-IDENTITY: external invoker correlation token.
+    // External invoker correlation token.
     // The string is held as-is and converted to a typed
     // [CorrelationId] after parsing; the parser refuses blank
     // values via the same [MissingOptionValue] path as every
     // other valued flag.
     CORRELATION_ID("--correlation-id"),
-    // PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: opt-in versioned
+    // Opt-in versioned
     // output protocol. Repeating the flag collects the tokens;
     // Main.kt validates the last-supplied id against
     // [OutputProtocol.SUPPORTED_IDS] and exits InvalidArgument
@@ -1692,10 +1642,9 @@ private object FlagOptions {
 
 /**
  * Options with a value, dispatched by the shape of that value.
- *
  * The three groups are not decoration: each has a different failure mode, and collapsing them is how
  * a parser ends up with one error vocabulary for three unrelated mistakes.
- */
+*/
 private object ValuedOptions {
     fun apply(
         option: ValuedOption,
@@ -1709,7 +1658,7 @@ private object ValuedOptions {
         ValuedOption.CONTROL_ROOT -> { state.controlRoot = value; ApplyOutcome.Applied(index + 2) }
         ValuedOption.WORKSPACE -> { state.workspace = value; ApplyOutcome.Applied(index + 2) }
         ValuedOption.PLUGIN_JAR -> { state.pluginJars += value; ApplyOutcome.Applied(index + 2) }
-        // PK-1 / ADR-PK1-IDENTITY: blank values are rejected here at
+        // Blank values are rejected here at
         // the boundary; downstream the CliFlags.correlationId field
         // converts the string to a typed [CorrelationId] with the
         // same init guard.
@@ -1721,7 +1670,7 @@ private object ValuedOptions {
                 ApplyOutcome.Applied(index + 2)
             }
         }
-        // PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: collect every supplied
+        // Collect every supplied
         // --output-protocol token in the order the operator passed them.
         // The list is the client's priority for the negotiation. Resolution
         // (intersection with OutputProtocol.SUPPORTED_IDS, fail-closed on
@@ -1757,11 +1706,10 @@ private object ValuedOptions {
 
 /**
  * Values that name a closed vocabulary or a count, and therefore have exactly one right answer.
- *
  * Every function here either resolves the token into a typed field of [ParseState] or refuses it by
  * name. None of them clamps, defaults or falls through: an unrecognised name in a closed vocabulary
  * is the caller's typo, and answering it with something plausible is how `--limit abc` became 100.
- */
+*/
 private object ClosedValueOptions {
     fun applySandboxProfile(value: String, index: Int, state: ParseState): ApplyOutcome {
         state.sandboxProfile = when (value) {
@@ -1836,7 +1784,7 @@ private object TextFilterOptions {
      * Repeated `--grep` / `--grep-regex` OR into one group; the group's sense (whitelist or
      * blacklist) is decided once, at normalization, so `Only` and `Except` stay distinct cases of
      * [LineSelector] rather than a flag that travels downstream.
-     */
+*/
     fun addGrep(
         token: String,
         value: String,
@@ -1865,32 +1813,30 @@ private object TextFilterOptions {
     }
 }
 
-// ====================================================================== CC-1 types
+// ====================================================================== types
 
 /**
- * CC-1 / R4 / WU-R4.7 — typed result of [CliParser.parseConsole].
- *
+ * Typed result of [CliParser.parseConsole].
  * Same shape the verb used locally; promoted to a top-level type so the parser and the verb main
  * share one result algebra. The wire prefixes (`Error:` for argument refusals,
  * `console-refused:` for data-plane refusals) are NOT carried here — they belong to
  * [renderConsoleCliRefusal] and [ConsoleReadService.renderRefusal] respectively, and the parser
  * does not decide what the caller sees on stderr.
- */
+*/
 sealed interface ConsoleCliParseResult {
     data class Admitted(val request: ConsoleReadRequest) : ConsoleCliParseResult
     data class Rejected(val refusal: ConsoleCliRefusal) : ConsoleCliParseResult
 }
 
 /**
- * CC-1 / R4 / WU-R4.7 — closed ADT of what `pipelinek events` may emit per row.
- *
+ * Closed ADT of what `pipelinek events` may emit per row.
  * Same shape [MainEventsCli.RowProjection] had locally; promoted to a top-level type because the
  * parser and the verb main now share the type. The two cases are deliberately separate: a future
  * projection (e.g. a CSV shape) is a compile-time break here and at every consumer of this ADT,
  * which is the discipline that keeps `--typed` from re-introducing a third wire shape.
- */
+*/
 sealed interface EventsRowProjection {
-    /** The V1 envelope wire form. Byte-for-byte unchanged by `--typed`. */
+    /** The envelope wire form. Byte-for-byte unchanged by `--typed` */
     data object Envelope : EventsRowProjection
 
     /** The stored [dev.rubentxu.pipeline.v2.events.DomainEvent], one JSON object per line. */
@@ -1898,13 +1844,12 @@ sealed interface EventsRowProjection {
 }
 
 /**
- * CC-1 / R4 / WU-R4.7 — typed arguments [CliParser.parseEvents] hands the verb main.
- *
+ * Typed arguments [CliParser.parseEvents] hands the verb main.
  * Every field is the value the runtime needs to issue a [dev.rubentxu.pipeline.v2.events.identity.EventQuery],
  * a follow, or a typed projection; nothing here is a positional placeholder. The fields mirror
  * the legacy `MainArgs.Parsed` shape, with no semantic change. Rejecting events on any of these
- * would be a separate audit; CC-1 is relocation, not relaxation.
- */
+ * Would be a separate audit; is relocation, not relaxation
+*/
 data class EventsCliArgs(
     val db: String,
     val runId: String,
@@ -1920,12 +1865,11 @@ data class EventsCliArgs(
 )
 
 /**
- * CC-1 / R4 / WU-R4.7 — typed result of [CliParser.parseEvents].
- *
+ * Typed result of [CliParser.parseEvents].
  * Same two-case shape as the verb's local `MainArgs`. The verb main translates a [Rejected] into
  * `Error: <reason>` on stderr; a [Parsed] flows into the typed [runWithArgs] path the events
- * verb has used since WU-R4.2.
- */
+ * Verb has used since
+*/
 sealed interface EventsCliParseResult {
     data class Parsed(val args: EventsCliArgs) : EventsCliParseResult
     data class Rejected(val reason: String) : EventsCliParseResult

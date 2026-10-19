@@ -24,35 +24,28 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * `core.publishHTML` Step (WU-LPR-090 / Tier B #2).
- *
+ * `core.publishHTML` Step (/ Tier B #2)
  * Copies workspace files matching an Ant-style `reportFiles` glob (default
  * recursive match) into the run-scoped reports archive under a sanitized
  * `reportName`, generating an `index.html` wrapper with one `<a>` link per
  * published file. The reports archive is a SIBLING of `stashes/` so that
  * `WorkspaceResolver.cleanupAfterComplete()` does not destroy published
- * reports when the producing stage finishes (F-ARCH-L7).
- *
+ * Reports when the producing stage finishes
  * Jenkins signature: `publishHTML(target)` where `target` is an
  * `HtmlPublisherTarget` in upstream Java. Pipeline-K keeps the public DSL
  * surface narrow and typed (see [publishHTML] in PipelineDsl.kt).
- *
  * ## Capability discipline
- *
  * The handler reaches ONLY [PublishHtmlOperations] through the
  * [PUBLISH_HTML_OPERATIONS_CAPABILITY] typed seam. It never touches `Files`,
  * `AntStyleGlob`, `MessageDigest`, or `EventSink` directly — those belong to
  * [PublishHtmlOperationsAdapter].
- *
  * ## Effect classification
- *
  * `Effect.WRITES_WORKSPACE` is declared because the handler physically
  * creates the run-scoped reports archive directory and copies files into it.
- *
  * `ReplayPolicy.MEMOIZED` is declared: fresh/rerun overwrites the existing
  * archive with the current snapshot (idempotent); resume/reuse reproduces the
  * persisted observation without re-publishing.
- */
+*/
 object CorePublishHtmlStep {
 
     val KEY: PluginStepId = PluginStepId("core.publishHTML")

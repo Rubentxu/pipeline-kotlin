@@ -23,34 +23,27 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * `core.stash` Step (WU-LPR-089 / Tier B #1 — first Tier B Step).
- *
+ * `core.stash` Step (/ Tier B #1 — first Tier B Step)
  * Copies workspace files matching an Ant-style `includes` pattern into the
  * run-scoped stash directory, so a later stage (within the same run) can
  * restore them via [CoreUnstashStep].
- *
  * Jenkins signature: `stash(name, includes, excludes = "")`.
- *
  * ## Capability discipline
- *
  * The handler reaches ONLY [StashOperations] through the
  * [STASH_OPERATIONS_CAPABILITY] typed seam. It never touches `Files`,
  * `AntStyleGlob`, `MessageDigest`, or `EventSink` directly — those belong to
  * [StashOperationsAdapter].
- *
  * ## Effect classification
- *
  * `Effect.WRITES_WORKSPACE` is declared because the handler physically
  * modifies filesystem state (creates the run-scoped stash directory and copies
  * files into it). The stash directory lives OUTSIDE the stage workspace
- * (F-ARCH-L7 workspace-cleanup preservation invariant) but the WORKSPACE
+ * (workspace-cleanup preservation invariant) but the WORKSPACE
  * effect class still applies because the durable side-effect is a filesystem
  * write scoped to this run.
- *
  * `ReplayPolicy.MEMOIZED` is declared: fresh/rerun overwrites the existing
  * stash with the current snapshot (idempotent); resume/reuse reproduces the
  * persisted observation without re-stashing.
- */
+*/
 object CoreStashStep {
 
     val KEY: PluginStepId = PluginStepId("core.stash")
@@ -165,7 +158,7 @@ object CoreStashStep {
                     failureKind = result.failureKind,
                     message = result.message,
                 )
-                // StashRestoredResult is the unstash success case; cannot happen from .stash().
+                // StashRestoredResult is the unstash success case; cannot happen.stash.
                 is StashRestoredResult -> StashFailureOutput(
                     failureKind = FailureKind.ENGINE,
                     message = "core.stash adapter returned an unstash result for a stash call",
@@ -194,15 +187,12 @@ object CoreStashStep {
 }
 
 /**
- * `core.unstash` Step (WU-LPR-089 / Tier B #2 — paired with [CoreStashStep]).
- *
+ * `core.unstash` Step (/ Tier B #2 — paired with [CoreStashStep])
  * Restores files from a previously-produced stash into the current stage
  * workspace. Existing files are OVERWRITTEN (matching Jenkins `unstash`).
- *
  * Jenkins signature: `unstash(name)` (Pipeline-K extends with optional `into`).
- *
  * Capability discipline, effect class and replay policy mirror [CoreStashStep].
- */
+*/
 object CoreUnstashStep {
 
     val KEY: PluginStepId = PluginStepId("core.unstash")
@@ -315,7 +305,7 @@ object CoreUnstashStep {
                     failureKind = result.failureKind,
                     message = result.message,
                 )
-                // StashSuccess is the .stash() success case; cannot happen from .unstash().
+                // StashSuccess.stash success case; cannot happen.unstash.
                 is StashSuccess -> UnstashFailureOutput(
                     failureKind = FailureKind.ENGINE,
                     message = "core.unstash adapter returned a stash result for an unstash call",

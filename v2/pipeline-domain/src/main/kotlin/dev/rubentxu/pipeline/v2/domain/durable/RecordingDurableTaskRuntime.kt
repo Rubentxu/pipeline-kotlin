@@ -6,16 +6,13 @@ import kotlinx.coroutines.runBlocking
  * Deterministic, test-friendly [DurableTaskRuntime]: records every request
  * (no process is ever spawned), replays a configurable sequence of output
  * chunks to the sink, and returns a configurable result.
- *
  * The moral equivalent of `RecordingStepDispatcher` / `MapPipelineCompiler`
  * — the test adapter for its port. Fully deterministic: same requests in,
  * same recorded log and results out.
- *
  * ## Thread-safety
- *
  * The call log is synchronized; the adapter safely serves concurrent
- * requests (M3 output-pump scenarios pump from two contexts).
- */
+ * Requests (output-pump scenarios pump from two contexts)
+*/
 class RecordingDurableTaskRuntime(
     private val chunks: List<OutputChunk> = emptyList(),
     private val result: TaskExecutionResult =
@@ -46,7 +43,7 @@ class RecordingDurableTaskRuntime(
 /**
  * Blocking convenience for tests that exercise the suspend port without a
  * coroutine test harness.
- */
+*/
 fun DurableTaskRuntime.executeBlocking(
     request: TaskExecutionRequest,
     sink: ExecutionOutputSink = ExecutionOutputSink { },

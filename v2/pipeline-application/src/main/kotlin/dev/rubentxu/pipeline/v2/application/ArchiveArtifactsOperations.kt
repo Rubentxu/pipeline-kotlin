@@ -9,21 +9,16 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Typed seam for `core.archiveArtifacts` (LFC-2E1 S2-B10 / G1 registry candidate).
- *
+ * Typed seam for `core.archiveArtifacts` (/ registry candidate)
  * The ONLY capability the registry-routed `CoreArchiveArtifactsStep.handler` consumes
  * to archive workspace files into the artifacts retention directory.
- *
  * ## Why a typed seam
- *
- * AGENTS.md §1: effectful work — I/O, files, processes — resides at named
+ * AGENTS.md: effectful work — I/O, files, processes — resides at named
  * ports/adapters, never embedded in a handler. Mirrors the certified pattern:
- * - `WorkspaceOperations` / `WorkspaceOperationsAdapter` (S2-A3 / G1)
- * - `ShellOperations` / `ShOperationsAdapter` (LB-02 / G3)
- * - `DeleteDirOperations` / `DeleteDirOperationsAdapter` (S2-A7 / G3-fix)
- *
+ * `WorkspaceOperations` / `WorkspaceOperationsAdapter`
+ * `ShellOperations` / `ShOperationsAdapter`
+ * `DeleteDirOperations` / `DeleteDirOperationsAdapter`
  * ## Scope
- *
  * The seam intentionally hides:
  * - canonical [dev.rubentxu.pipeline.v2.application.durable.WorkspaceResolver] —
  *   stage workspace and artefacts-directory resolution (adapter-owned);
@@ -32,20 +27,18 @@ import java.nio.file.Path
  * - the event sink — the adapter is the ONLY emitter of `ArtifactArchived` /
  *   `ArtifactArchiveFailed`;
  * - run identity and stage identity — bound by the adapter from the runtime context.
- *
  * ## Failure semantics
- *
  * Implementations return [ArchiveArtifactsResult] (closed typed ADT). Re-classification
  * to [dev.rubentxu.pipeline.v2.domain.StepOutcome] is the responsibility of the handler,
  * which maps `Failed` to the typed failure output (never an exception: a thrown handler
  * is classified ENGINE by the boundary, while archive failures are legacy SCRIPT).
- */
+*/
 interface ArchiveArtifactsOperations {
 
     /**
      * Archives workspace files matching the Ant-style [ArchiveArtifactsInput.artifacts]
      * pattern into the run's artefacts retention directory.
-     */
+*/
     fun archive(input: ArchiveArtifactsInput): ArchiveArtifactsResult
 }
 
@@ -65,7 +58,7 @@ sealed interface ArchiveArtifactsResult
 /**
  * Deterministic summary of one archived file. Carries NO timestamps and NO content —
  * the durable `ArtifactArchived` event (with `archivedAt`) is the observability channel.
- */
+*/
 data class ArchivedFileSummary(
     val relPath: String,
     val sha256: String,
@@ -76,35 +69,31 @@ val ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY: StepCapability =
     StepCapability("artifact-archive.operations")
 
 /**
- * Canonical input payload of `core.archiveArtifacts` (G1 typed contract).
- *
+ * Canonical input payload of `core.archiveArtifacts` (typed contract)
  * Shape mirrors the legacy `CanonicalCoreStepCommand.ArchiveArtifacts` command:
  * Jenkins-verbatim signature `archiveArtifacts(artifacts, allowEmptyArchive=false,
  * excludes="", fingerprint=false)`. `fingerprint` is carried on the wire (legacy
- * envelope parity) but the G1 candidate does not act on it (legacy parity; L7.1 deferral).
- */
+ * Envelope parity) but the candidate does not act on it (legacy parity; deferral)
+*/
 data class ArchiveArtifactsInput(
     val artifacts: String,
     val allowEmptyArchive: Boolean = false,
     val excludes: String = "",
     val fingerprint: Boolean = false,
     /**
-     * Optional logical name attached to this archive (E1.ecosystem-local-first).
-     *
+     * Optional logical name attached to this archive (.ecosystem-local-first)
      * When non-null AND non-blank, the archive's files are recorded in the
      * `ArtifactIndexCapability` under this name, and a subsequent
      * `core.artifact.query(name = ...)` call can retrieve the handle.
-     *
      * When null (the default), the archive behaves exactly as before the
-     * E1 cycle: files are copied to the retention directory, no index
+     * Files are copied to the retention directory, no index
      * entry is recorded, the legacy byte-shape is preserved.
-     *
      * Backward-compatibility:
      *  - The codec includes `name` only when non-null.
      *  - The handler ignores null `name` (no index interaction).
      *  - Existing tests that construct `ArchiveArtifactsInput(artifacts, ...)`
      *    continue to compile and behave the same.
-     */
+*/
     val name: String? = null,
 ) {
     init {
@@ -121,51 +110,46 @@ data class ArchiveArtifactsInput(
 }
 
 /**
- * Production adapter for [ArchiveArtifactsOperations] (G1).
- *
+ * Production adapter for [ArchiveArtifactsOperations]
  * Reuses the certified `AntStyleGlob` substrate (pipeline-artefacts-local) for pattern
  * matching and the canonical [WorkspaceResolver] for stage-workspace and artefacts
  * retention-directory resolution — mirroring the legacy retention layout
  * `<controlDirRoot>/artifacts/<runId>/<stageName>/`.
- *
  * Legacy-parity semantics preserved verbatim:
  * - empty match + `allowEmptyArchive=false` → `ArtifactArchiveFailed` + typed failure;
  * - empty match + `allowEmptyArchive=true` → success with an EMPTY `ArtifactArchived`
  *   event (legacy emits the event with zero entries);
  * - per-file copy failure → `ArtifactArchiveFailed` + typed failure, no partial success.
- *
- * Recorded candidate delta (frozen at G2): the legacy dispatcher used a hand-rolled
+ * Recorded candidate delta: the legacy dispatcher used a hand-rolled
  * glob translation and silently IGNORED `excludes`; this candidate delegates to
  * `AntStyleGlob` (the certified Ant engine) and applies `excludes` after the Jenkins
  * 13-entry default excludes. `Files.copy(..., REPLACE_EXISTING)` makes fresh
- * re-execution idempotent. The G2 differential contract freeze owns this decision.
- */
+ * Re-execution idempotent. The differential contract freeze owns this decision
+*/
 class ArchiveArtifactsOperationsAdapter(
     private val runIdString: String,
     private val stageIdentity: StageIdentity,
     private val controlDirRoot: Path,
     private val eventSink: dev.rubentxu.pipeline.v2.events.EventSink,
-    /** WU-LPR-062: optional project-workspace override (--workspace). */
+    /** Optional project-workspace override (--workspace). */
     private val workspaceBase: Path? = null,
     /**
-     * RP034-F: the shared execution location. `null` keeps the previous
+     * The shared execution location. `null` keeps the previous
      * reconstruction for direct construction; the bridge always supplies it and
-     * retiring the fallback is RP034-I.
-     */
+     * retiring the fallback is.
+*/
     private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation? = null,
 ) : ArchiveArtifactsOperations {
 
     /**
      * The directory the user pattern is resolved against.
-     *
-     * RP034-F: the archive source is a user path, so it anchors on
+     * The archive source is a user path, so it anchors on
      * CURRENT_DIRECTORY and a `dir(...)` scope moves it. With no scope this is
      * the stage workspace — what the private resolver returned — so behaviour at
      * the root is unchanged.
-     *
      * The durable store stays under `controlDirRoot/artefacts/...`; it is an
      * INTERNAL_STORE path and is never a workspace anchor.
-     */
+*/
     private fun sourceRoot(resolver: WorkspaceResolver): Path {
         val shared = executionLocation?.cwd
         if (shared != null) {
@@ -263,7 +247,7 @@ class ArchiveArtifactsOperationsAdapter(
         excludes.split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
     private fun sha256Of(file: Path): String {
-        // Shared utility (B0): the same streaming loop with the same 8192-byte buffer, so the
+        // The same streaming loop with the same 8192-byte buffer, so the
         // digest value is unchanged for every file already archived.
         return Sha256.ofFile(file)
     }

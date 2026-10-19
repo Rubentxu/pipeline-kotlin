@@ -7,7 +7,6 @@ import java.nio.file.Paths
 
 /**
  * The glob compiler that decides WHICH files `core-utils.findFiles` reports.
- *
  * `buildMatcher` is the Jenkins compatibility seam of the step. Java NIO's `glob:` syntax
  * requires `**` to consume at least one path segment, so a two-stars-slash in front of a
  * suffix refuses a file sitting directly under the base — while Jenkins' `findFiles(glob: ...)`
@@ -15,23 +14,20 @@ import java.nio.file.Paths
  * is not academic and it is not self-announcing: a pipeline asking for every `.txt` gets a
  * shorter list, the step exits 0, and nothing above it can tell "fewer files matched" from
  * "the matcher is wrong".
- *
  * The step's own guarantee is therefore not observable from the E2E layer. `findFiles` returns
  * `Unit`, so `v2/examples/steps/26-find-files.pipeline.kts` can only read the process exit
  * code — and a wrong matcher and a right matcher both produce 0. The scenario cannot be
  * strengthened into an assertion about the result count without a new value out of the DSL.
- *
  * What this file covers is the pure decision underneath: `String` in, a [java.nio.file.PathMatcher]
  * out, evaluated against in-memory [java.nio.file.Path] values. No filesystem, no step, no
  * subprocess, no clock — which is what AGENTS.md section 2 means by a unit test. What is NOT
  * covered is the walk, the exclude pass, or the 100_000 cap, which are filesystem behaviour by
  * design and stay with the executable layer.
- *
  * The matcher is applied to `candidate.relativeTo(base)`, so every path here is workspace-
  * relative with no leading `./` and no leading separator. That is the coordinate system the
  * production call site uses, and a path written any other way here would test a shape the
  * product never evaluates.
- */
+*/
 class FindFilesGlobMatcherTest {
 
     private fun matches(glob: String, path: String): Boolean =
@@ -41,7 +37,7 @@ class FindFilesGlobMatcherTest {
 
     @Test
     fun `a leading double star matches a file directly under the base`() {
-        // THE LOAD-BEARING ROW. Java NIO answers `false` to this one on its own -- the stripped
+        // THE ROW. Java NIO answers `false` to this one on its own -- the stripped
         // matcher is what makes it true. Delete the `|| secondary.matches(path)` from
         // buildMatcher and this row is the only thing in the file that goes red.
         assertTrue(

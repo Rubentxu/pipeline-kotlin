@@ -15,37 +15,31 @@ import java.util.UUID
 
 /**
  * The run-lifecycle bookends, extracted from [CanonicalDurableRunCoordinator]
- * (WU-PR-017 slice 1; ACTION_CATALOG PR-017).
- *
+ * .
  * Owns exactly two responsibilities that used to live as coordinator fields:
- *
  *  1. the RunStarted/RunFinished bookend pair, including the
  *     "RunFinished only if RunStarted was emitted" correlation invariant
  *     (SKIP replay paths still get their closing bookend);
  *  2. the run's terminal outcome, folded as the run progresses and read
  *     exactly once at the end.
- *
  * NOT a coordinator replacement and not a second execution path: the
  * coordinator still orchestrates stages, dispatch and failure folding. This
  * engine only records and closes the lifecycle.
- *
  * **This extraction is currently UNVERIFIED, and the previous version of this
  * paragraph claimed the opposite.** It said the behavior "is pinned by
  * `CoordinatorRunLifecycleCharacterizationTest`, which it must satisfy
  * UNCHANGED". That class does not exist: the name occurs on exactly one line in
- * the repository, the one that cited it. The testing RESET deleted it, along with
- * the rest of the inherited corpus, and `AGENTS.md` section 2 forbids restoring
+ * the repository, the one that cited it. The testing reset deleted it, along with
+ * the rest of the inherited corpus, and the project policy forbids restoring
  * that corpus. A sweep of the test sources finds nothing that names this engine,
  * and nothing that exercises the coordinator's lifecycle bookends either, so the
  * emitted content and ordering are a real contract with no instrument left
  * measuring it. Someone changing a bookend here would see nothing go red.
- *
  * It is therefore stated as an assertion, not as a fact: the extraction was meant
  * to preserve behavior, and preserving it has not been demonstrated since the
  * witness was removed. Restoring a witness is a decision, not a side effect --
  * the engine reads `Instant.now()` and `UUID.randomUUID()`, so pinning it would
  * mean giving it a clock and an id source first.
- *
  * The same paragraph also asserted a quirk that no longer holds here: it said
  * lifecycle events "always carry sequence 0". They are CONSTRUCTED with
  * `sequence = 0L`, but 0 is the request for an assigned sequence, not a value:
@@ -53,7 +47,7 @@ import java.util.UUID
  * `counter.incrementAndGet()`. What reaches the store is the next per-run
  * sequence, and the durable `UNIQUE(run_id, sequence)` constraint applies to
  * that assigned value.
- */
+*/
 internal class RunLifecycleEngine(private val eventSink: EventSink) {
 
     private var runStartedEmitted: Boolean = false
@@ -84,10 +78,10 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
     fun outcome(): RunOutcome = outcome
 
     /**
-     * The stage bookend pair (WU-PR-017 slice 2). Same events, same field
+     * The stage bookend pair. Same events, same field
      * values, same sequence-0 quirk the coordinator has always emitted; the
      * only variable is the outcome string.
-     */
+*/
     fun stageStarted(runId: RunId, stageIndex: Int, stageName: String) {
         eventSink.append(
             dev.rubentxu.pipeline.v2.events.StageStarted(
@@ -132,15 +126,14 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
         runIdValue: String,
         executionContext: ExecutionContext,
     ): CanonicalContinuation {
-        // CTX-P2: identical EM-5/6 walk over the pure trailing chain (outermost-first fold order).
+        // Identical walk over the pure trailing chain (outermost-first fold order).
         val chain = executionContext.trailingCatchErrorChain()
         for (overlay in chain) {
-            // P3-E E4 parsed once at the decision, over the closed vocabulary, never with a
+            // Parsed once at the decision, over the closed vocabulary, never with a
             // default: the previous `else -> ContinueUnstable` read UNSTABLE for every token
             // that was not FAILURE or SUCCESS, so a typo in the pipeline's own error handling
             // suppressed the failure it was installed to catch.
-            //
-            // P3-E D3 removed the parse. `overlay.buildResult` IS the vocabulary now, so the
+            // Removed the parse. `overlay.buildResult` IS the vocabulary now, so the
             // `null` arm this used to need — an unrecognised token, aborted with SCHEMA — is
             // no longer reachable, and that is the point: the illegal state became
             // unrepresentable rather than handled. Refusal did not disappear, it moved to
@@ -177,7 +170,7 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
      * Closes the run: emits RunFinished in the coordinator's finally, only if
      * RunStarted was emitted, with the outcome mapping the coordinator has
      * always used.
-     */
+*/
     fun closeRun(runId: RunId) {
         if (!runStartedEmitted) {
             return

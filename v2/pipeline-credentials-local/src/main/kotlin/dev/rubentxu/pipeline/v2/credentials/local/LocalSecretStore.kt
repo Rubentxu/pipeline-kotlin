@@ -26,17 +26,13 @@ import java.security.SecureRandom
 
 /**
  * Local credential store using envelope encryption.
- *
- * ## Design (ADR-0049 D2 — rung ii)
- *
+ * ## Design (— rung ii)
  * - KEK derives from passphrase via Argon2id (OWASP floor: m≥19456 KiB, t≥2, p≥1)
  * - DEK is random 256-bit, wrapped by KEK (envelope tier ii)
- * - Per-entry: AES-256-GCM with random 96-bit nonce + AAD
+ * Per-entry: with random 96-bit nonce + AAD
  * - AAD = magic ‖ version ‖ kdfParams ‖ credentialId (anti-rename/swap)
  * - re-Argon2id only on unlock, never on every put
- *
  * ## File Format
- *
  * ```
  * Header:
  *   magic: 4 bytes ("PKCR")
@@ -45,8 +41,7 @@ import java.security.SecureRandom
  *   argon2_t: 4 bytes LE (iterations)
  *   argon2_p: 4 bytes LE (parallelism)
  *   salt: 16 bytes
- *   wrappedDEK: 40 bytes (AES-KWP RFC 3394 output for 32-byte DEK)
- *
+ * WrappedDEK: 40 bytes (RFC 3394 output for 32-byte DEK)
  * Entry (repeated):
  *   idLen: 2 bytes LE
  *   credentialId: UTF-8 bytes
@@ -54,7 +49,7 @@ import java.security.SecureRandom
  *   ciphertext: variable
  *   tag: 16 bytes
  * ```
- */
+*/
 class LocalSecretStore(
     private val file: Path,
     private val passphrase: CharArray,
@@ -64,7 +59,7 @@ class LocalSecretStore(
     /** Shared wire types of the store file format. */
     /**
      * Header data for the store.
-     */
+*/
     data class StoreHeader(
         val magic: ByteArray,
         val version: Short,
@@ -76,15 +71,15 @@ class LocalSecretStore(
     )
     /**
      * Encrypted entry data: id + sealed blob + plaintext length for boundary detection.
-     */
+*/
     data class EntryData(
         val id: CredentialsId,
         val sealed: AeadCipher.SealedBlob,
         val plaintextLen: Int,
     )
     /**
-     * V2 entry data: id + sealed blob + kind ID for v2 format.
-     */
+     * Id + sealed blob + kind ID for v2 format.
+*/
     data class V2EntryData(
         val id: CredentialsId,
         val sealed: AeadCipher.SealedBlob,
@@ -94,7 +89,7 @@ class LocalSecretStore(
     /**
      * KDF parameters for Argon2id.
      * Nested as LocalSecretStore.KdfParams so that LocalSecretStore.KdfParams.OWASP_MIN.m works.
-     */
+*/
     data class KdfParams(
         val m: Int,
         val t: Int,
@@ -133,7 +128,7 @@ class LocalSecretStore(
         const val OWASP_P = 1       // parallelism
         const val SALT_SIZE = 16
         const val DEK_SIZE = 32
-        // AES-KWP (RFC 3394) output = input + 8 bytes (64-bit IV/wrap vector)
+        // (RFC 3394) output = input + 8 bytes (64-bit IV/wrap vector)
         const val WRAPPED_DEK_SIZE = DEK_SIZE + 8  // = 40 bytes
 
         // Kind IDs for v2 envelope (stored as first 2 bytes after version)
@@ -148,7 +143,7 @@ class LocalSecretStore(
         /**
          * Payload marker of a part that links to another credential. The
          * referenced id follows the marker, without a length prefix of its own.
-         */
+*/
         private const val LINKED_REF_MARKER: Int = -1
 
         /** Payload marker of a part that is declared but has no value. */
@@ -156,7 +151,7 @@ class LocalSecretStore(
 
         /**
          * Maps a Credential simple name to a kind ID.
-         */
+*/
         fun kindIdFor(credential: Credential): Short = when (credential) {
             is SecretText -> KIND_SECRET_TEXT
             is dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword -> KIND_USERNAME_PASSWORD
@@ -169,7 +164,7 @@ class LocalSecretStore(
 
         /**
          * Maps a kind ID to a Credential simple name.
-         */
+*/
         fun kindNameFor(kindId: Short): String = when (kindId) {
             KIND_SECRET_TEXT -> "SecretText"
             KIND_USERNAME_PASSWORD -> "UsernamePassword"
@@ -184,7 +179,7 @@ class LocalSecretStore(
         /**
          * Reads the header from a file path.
          * Accessible as LocalSecretStore.readHeader(path)
-         */
+*/
         fun readHeader(file: Path): StoreHeader {
             val bytes = Files.readAllBytes(file)
             return readHeaderBytes(bytes)
@@ -223,13 +218,13 @@ class LocalSecretStore(
 
     /**
      * Exception thrown when the store file is corrupted or tampered.
-     */
+*/
     class SecretStoreTamperException(message: String, cause: Throwable? = null) :
         dev.rubentxu.pipeline.v2.credentials.api.SecretStoreTamperException(message, cause)
 
     /**
      * Exception thrown when the passphrase is incorrect.
-     */
+*/
     class SecretStorePassphraseMismatchException :
         dev.rubentxu.pipeline.v2.credentials.api.SecretStorePassphraseMismatchException(
             "Passphrase required: set PIPELINE_STORE_PASSPHRASE or run interactively in a TTY"
@@ -237,13 +232,13 @@ class LocalSecretStore(
 
     /**
      * Exception thrown when no passphrase is available.
-     */
+*/
     class CredentialsStorePassphraseUnavailableException(message: String) :
         dev.rubentxu.pipeline.v2.credentials.api.CredentialsStorePassphraseUnavailableException(message)
 
     /**
      * Exception thrown when a secret is empty.
-     */
+*/
     class CredentialsStoreEmptySecretException :
         dev.rubentxu.pipeline.v2.credentials.api.CredentialsStoreEmptySecretException(
             "Cannot store empty secret"
@@ -251,7 +246,7 @@ class LocalSecretStore(
 
     /**
      * Exception thrown when POSIX permissions cannot be enforced.
-     */
+*/
     class CredentialsStorePosixPermissionsException(message: String) :
         dev.rubentxu.pipeline.v2.credentials.api.CredentialsStorePosixPermissionsException(message)
 
@@ -262,21 +257,21 @@ class LocalSecretStore(
 
     /**
      * Returns the path to the lock file for this store.
-     */
+*/
     private fun lockFile(): Path = file.resolveSibling(file.fileName.toString() + ".lock")
 
     /**
      * Executes a mutation operation with an exclusive file lock.
      * Uses synchronized for JVM-level mutual exclusion (handles same-JVM thread contention)
-     * and FileChannel.lock() for OS-level inter-process locking (handles crash consistency).
-     */
+     * and FileChannel.lock for OS-level inter-process locking (handles crash consistency).
+*/
     private val mutationLock = Any()
 
     private inline fun <T> withExclusiveLock(block: () -> T): T {
         synchronized(mutationLock) {
             // Inside synchronized block, perform the actual file mutation with file-level locking
             // The synchronized ensures same-JVM threads don't conflict
-            // FileChannel.lock() provides OS-level inter-process locking for crash consistency
+            // FileChannel.lock provides OS-level inter-process locking for crash consistency
             val lock = lockFile()
             val channel = FileChannel.open(lock,
                 StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE)
@@ -293,11 +288,10 @@ class LocalSecretStore(
 
     /**
      * Stores a credential.
-     *
      * @param id The credential ID
      * @param bytes The secret bytes
      * @throws CredentialsStoreEmptySecretException if bytes is empty
-     */
+*/
     override fun put(id: CredentialsId, bytes: ByteArray) {
         if (bytes.isEmpty()) throw CredentialsStoreEmptySecretException()
 
@@ -306,7 +300,7 @@ class LocalSecretStore(
             val hdr = if (existingFileBytes != null) {
                 readHeader(existingFileBytes)
             } else {
-                // Fresh V1 store for legacy backward-compat contract
+                // Fresh store for legacy backward-compat contract
                 val salt = ByteArray(SALT_SIZE); secureRandom.nextBytes(salt)
                 StoreHeader(MAGIC, VERSION_V1, OWASP_M, OWASP_T, OWASP_P, salt, ByteArray(WRAPPED_DEK_SIZE))
             }
@@ -347,9 +341,9 @@ class LocalSecretStore(
     }
 
     /**
-     * Stores a typed credential (ML-R6) in v2 format.
-     * On first add() to a v1 file: migrates existing v1 entries to v2.
-     */
+     * Stores a typed credential in v2 format
+     * On first add to a v1 file: migrates existing v1 entries to v2.
+*/
     override fun add(id: CredentialsId, credential: Credential) {
         withExclusiveLock {
             val hdr = loadOrCreateHeader()
@@ -375,13 +369,13 @@ class LocalSecretStore(
             val existingBytes = if (Files.exists(file) && Files.size(file) > 0) Files.readAllBytes(file) else null
 
             val out = ByteArrayOutputStream()
-            // Always write V2 header for new entries; migrate V1 entries to V2
+            // Always write header for new entries; migrate entries to
             writeHeader(out, hdr.magic, VERSION_V2, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, CredentialCrypto.wrapDek(kek, dek))
 
             if (existingBytes != null && existingBytes.size > HEADER_SIZE_V1) {
                 // Route to correct reader based on header version of existing file
                 val existingEntries: MutableMap<String, V2EntryData> = if (hdr.version == VERSION_V1.toShort()) {
-                    // Migrate V1 entries to V2: decrypt as SecretText and re-encrypt as V2
+                    // Decrypt as SecretText and re-encrypt as V2
                     val v1Entries = CredentialCrypto.readEntriesV1(existingBytes)
                     v1Entries.mapValues { (entryId, v1Entry) ->
                         val v1Hdr = readHeader(existingBytes)
@@ -409,9 +403,9 @@ class LocalSecretStore(
     }
 
     /**
-     * Retrieves a typed credential (ML-R6).
+     * Retrieves a typed credential
      * Handles both v1 (back-compat) and v2 formats.
-     */
+*/
     override fun get(id: CredentialsId): Credential {
         if (!Files.exists(file)) {
             throw SecretStoreTamperException("Store file does not exist")
@@ -456,8 +450,8 @@ class LocalSecretStore(
 
     /**
      * Retrieves a credential as SecretHandle (v1 compatibility).
-     * Full implementation - same as ML-R4 behavior.
-     */
+     * Full implementation - same as behavior
+*/
     override fun getAsSecretHandle(id: CredentialsId): SecretHandle {
         if (!Files.exists(file)) {
             throw SecretStoreTamperException("Store file does not exist")
@@ -466,7 +460,7 @@ class LocalSecretStore(
         val hdr = readHeader(fileBytes)
         val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
 
-        // Route to correct reader based on header version (add() stores in V2 format)
+        // Route to correct reader based on header version (add stores in format)
         val entries: Map<String, out Any> = if (hdr.version == VERSION_V1.toShort()) {
             CredentialCrypto.readEntriesV1(fileBytes)
         } else {
@@ -481,12 +475,12 @@ class LocalSecretStore(
         // Decrypt secret - build AAD based on version
         val plaintext = try {
             if (hdr.version == VERSION_V1.toShort()) {
-                // V1 entry: decrypt using V1 AAD
+                // Decrypt using V1 AAD
                 val v1Entry = entry as? EntryData ?: throw ClassCastException("Expected EntryData but got ${entry::class.simpleName}")
                 val aad = CredentialCrypto.buildAad(hdr, id)
                 AeadCipher.decrypt(dek, v1Entry.sealed, aad)
             } else {
-                // V2 entry: decrypt using V2 AAD with kindId
+                // Decrypt using V2 AAD with kindId
                 val v2Entry = entry as? V2EntryData ?: throw ClassCastException("Expected V2EntryData but got ${entry::class.simpleName}")
                 val aad = CredentialCrypto.buildV2Aad(hdr, id, v2Entry.kindId)
                 AeadCipher.decrypt(dek, v2Entry.sealed, aad)
@@ -500,18 +494,16 @@ class LocalSecretStore(
 
     /**
      * Retrieves a specific part of a multipart credential as a SecretHandle.
-     *
      * For file-based kinds (SecretFile, Certificate, Zip), this returns the raw part bytes.
      * For LinkedSecretRef parts, this resolves the reference and returns the SecretText part
      * of the referenced credential.
-     *
      * @param id The credential ID
      * @param partName The name of the part to retrieve (e.g., "password", "privateKey")
      * @return SecretHandle wrapping the part bytes
      * @throws LinkedSecretReferenceNotFoundException if the credential or referenced credential does not exist
      * @throws LinkedSecretReferenceTypeMismatchException if the referenced credential is not SecretText
      * @throws SecretStoreTamperException if the credential is tampered
-     */
+*/
     override fun getAsHandle(id: CredentialsId, partName: String): SecretHandle {
         if (!Files.exists(file)) {
             throw SecretStoreTamperException("Store file does not exist")
@@ -547,7 +539,7 @@ class LocalSecretStore(
      * Extracts a named part from deserialized credential bytes using the canonical part format.
      * Format per part: [nameLen:1][name][len:4 BE][bytes]
      * After reading nameLen and name, position is at len(4). We must also skip len to reach bytes.
-     */
+*/
     private fun extractPart(
         plaintext: ByteArray,
         kindId: Short,
@@ -652,7 +644,7 @@ class LocalSecretStore(
      * A linked-ref part must carry a reference. [readLinkedRefPart] already
      * raises for the absent marker, so this is the null-safety net that lets the
      * caller pass the result straight to [resolveLinkedSecretRef].
-     */
+*/
     private fun requireLinkedRef(refId: CredentialsId?, absentMessage: String) {
         if (refId == null) throw SecretStoreTamperException(absentMessage)
     }
@@ -662,7 +654,7 @@ class LocalSecretStore(
      * Uses a visited set with depth cap ≤16 to detect circular linked secret references.
      * For SshPrivateKey/Certificate passphrase/password LinkedSecretRefs, this method
      * traverses through intermediate credentials following the ref chain until SecretText is found.
-     */
+*/
     private fun resolveLinkedSecretRef(refId: CredentialsId, visited: MutableSet<CredentialsId> = mutableSetOf()): SecretHandle {
         // Cycle detection: if refId is already in visited set, we have a circular reference
         if (refId in visited) {
@@ -748,7 +740,7 @@ class LocalSecretStore(
 
     /**
      * Extracts the passphrase LinkedSecretRef from a SshPrivateKey and resolves it.
-     */
+*/
     private fun extractLinkedRefFromSshPrivateKey(plaintext: ByteArray, visited: MutableSet<CredentialsId>): SecretHandle {
         val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
         val partCount = buf.get().toInt()
@@ -789,7 +781,7 @@ class LocalSecretStore(
 
     /**
      * Extracts the password LinkedSecretRef from a Certificate and resolves it.
-     */
+*/
     private fun extractLinkedRefFromCertificate(plaintext: ByteArray, visited: MutableSet<CredentialsId>): SecretHandle {
         val buf = ByteBuffer.wrap(plaintext).order(ByteOrder.BIG_ENDIAN)
         val partCount = buf.get().toInt()
@@ -830,9 +822,8 @@ class LocalSecretStore(
 
     /**
      * Lists all credential IDs in the store.
-     *
      * @return List of credential IDs (never returns values)
-     */
+*/
     override fun list(): List<CredentialsId> {
         if (!Files.exists(file) || Files.size(file) == 0L) return emptyList()
         val fileBytes = Files.readAllBytes(file)
@@ -848,9 +839,8 @@ class LocalSecretStore(
 
     /**
      * Removes a credential.
-     *
      * @param id The credential ID to remove
-     */
+*/
     override fun remove(id: CredentialsId) {
         withExclusiveLock {
             if (!Files.exists(file)) return
@@ -883,15 +873,13 @@ class LocalSecretStore(
 
     /**
      * Re-encrypts a credential with new bytes, preserving the DEK.
-     *
      * Replaces the existing credential with a new one of the same ID but new content.
      * Uses the same DEK (from the store header) to re-encrypt the new credential.
      * This preserves the ability to decrypt existing entries while updating the credential.
-     *
      * @param id The credential ID (must already exist)
      * @param credential The new typed credential to store
      * @throws SecretStoreTamperException if the credential doesn't exist
-     */
+*/
     override fun rotate(id: CredentialsId, credential: Credential) {
         withExclusiveLock {
             if (!Files.exists(file)) {
@@ -936,7 +924,7 @@ class LocalSecretStore(
             // Update entries
             entries[id.value] = V2EntryData(id, sealed, kindId)
 
-            // Atomic write - always write V2 header
+            // Atomic write - always write header
             val tempFile = file.resolveSibling(file.fileName.toString() + ".tmp")
             val out = ByteArrayOutputStream()
             writeHeader(out, hdr.magic, VERSION_V2, hdr.kdfM, hdr.kdfT, hdr.kdfP, hdr.kdfSalt, hdr.wrappedDek)
@@ -951,8 +939,8 @@ class LocalSecretStore(
 
     /**
      * Rotates a credential with new bytes, preserving the DEK (v1 compatibility).
-     * Full implementation - same as ML-R4 behavior.
-     */
+     * Full implementation - same as behavior
+*/
     override fun rotateBytes(id: CredentialsId, newBytes: ByteArray) {
         if (newBytes.isEmpty()) throw CredentialsStoreEmptySecretException()
         if (!Files.exists(file)) {
@@ -989,7 +977,7 @@ class LocalSecretStore(
 
     /**
      * Closes the store, wiping the passphrase and cached keys from memory.
-     */
+*/
     override fun close() {
         passphrase.fill('\u0000')
         cachedKek?.fill(0)
@@ -1016,7 +1004,7 @@ class LocalSecretStore(
         if (Files.exists(file) && Files.size(file) > 0) {
             return readHeader(Files.readAllBytes(file))
         }
-        // Create new header with fresh salt - use V2 format for new stores
+        // Create new header with fresh salt - use format for new stores
         val salt = ByteArray(SALT_SIZE)
         secureRandom.nextBytes(salt)
         return StoreHeader(MAGIC, VERSION_V2, OWASP_M, OWASP_T, OWASP_P, salt, ByteArray(WRAPPED_DEK_SIZE))

@@ -5,11 +5,9 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.YamlDocument
 /**
  * Pure mapping from the closed [YamlDocument] ADT to plain Java objects that
  * SnakeYAML 2.3's default `Representer` can serialise.
- *
  * The output is restricted to the same primitives and containers SnakeYAML's
  * safe constructor accepts (Boolean, Number, String, null, List, Map), which
  * closes the round-trip loop:
- *
  *   safe-constructor output (Any?) --[SnakeYamlAdapter]--> YamlDocument
  *                                                         |
  *                                                         v  (encode/decode via YamlDocumentCodec)
@@ -20,11 +18,10 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.YamlDocument
  *                                                         |
  *                                                         v
  *                                  SnakeYAML Representer output (Any?) --[Yaml.dump]--> YAML text
- *
  * The exhaustive `when` is intentional: any future addition to the
  * YamlDocument ADT must show up here as a compile-time warning, not as a
  * silent runtime loss.
- */
+*/
 internal object YamlToJava {
 
     @Suppress("UNCHECKED_CAST")

@@ -14,14 +14,11 @@ import kotlin.concurrent.withLock
 
 /**
  * State machine for a durable shell execution.
- *
  * Valid transitions:
  * ```
  * LAUNCHING → RUNNING → COMPLETE | LOST | LAUNCH_FAILED | TIMED_OUT
  * ```
- *
  * ## State Descriptions
- *
  * - **LAUNCHING**: ProcessHandle acquired but not yet confirmed detached.
  *                  Wrapper may still fork; we're in a race window.
  * - **RUNNING**: Wrapper confirmed detached, cookie file exists.
@@ -29,12 +26,12 @@ import kotlin.concurrent.withLock
  * - **COMPLETE**: result.txt written and read successfully.
  *                 Exit code captured; final state.
  * - **LOST**: result.txt missing AND heartbeat is stale (> checkInterval + minimumDelta).
- *            Worker died; outcome unknown. Fail-closed per UAT-REC-002.
+ * Worker died; outcome unknown. Fail-closed
  * - **LAUNCH_FAILED**: Failed to acquire ProcessHandle or fork wrapper.
  *                      Immediate failure; no recovery possible.
  * - **TIMED_OUT**: Watchdog killed the process via timeout.flag + SIGKILL.
- *                  Per TMO-S-005: timeout.flag written BEFORE kill.
- */
+ * Per: timeout.flag written BEFORE kill
+*/
 @Deprecated(
     message = "Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.",
 )
@@ -50,8 +47,8 @@ enum class DurableShellState {
 
     /**
      * result.txt missing AND heartbeat is stale.
-     * Fail-closed: LOST never implies success (UAT-REC-002).
-     */
+     * Fail-closed: LOST never implies success
+*/
     LOST,
 
     /** Failed to acquire ProcessHandle or fork wrapper. */
@@ -59,21 +56,19 @@ enum class DurableShellState {
 
     /**
      * Watchdog killed the process tree via timeout.flag + SIGKILL.
-     *
-     * Per TMO-S-005: timeout.flag written BEFORE kill to ensure
+     * Per: timeout.flag written BEFORE kill to ensure
      * the reconciler can distinguish this from LOST.
-     */
+*/
     TIMED_OUT,
 }
 
 /**
  * Result of a durable shell execution.
- *
  * @property state The final state (COMPLETE, LOST, LAUNCH_FAILED, or TIMED_OUT).
  * @property exitCode The exit code (0 for LOST/LAUNCH_FAILED - unknown/unavailable).
  * @property controlDir The control directory path.
  * @property capturedStdout The captured stdout if returnStdout was enabled, or null.
- */
+*/
 @Deprecated(
     message = "Legacy mixed durable-shell result. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.",
 )
@@ -86,33 +81,25 @@ data class DurableShellResult(
 
 /**
  * Implementation of [DurableShellLaunching] using ProcessBuilder + setsid.
- *
  * ## State Machine
- *
  * LAUNCHING → RUNNING → COMPLETE | LOST | LAUNCH_FAILED | TIMED_OUT
- *
- * ## Control Directory Layout (D2)
- *
+ * ## Control Directory Layout
  * ```
  * controlDir/
  *   script.sh              # User script verbatim
- *   script.sh.copy         # Copy for JENKINS-70874
+ *   script.sh.copy         # Copy for
  *   wrapper.sh             # Generated; embeds real cookie value (never in argv)
  *   jenkins-log.txt        # stdout+stderr
  *   result.txt             # Exit code (atomic write)
  *   result.txt.tmp         # Temp for atomic write
- *   output.txt             # Reserved for returnStdout (L1: never read)
+ * Output.txt # Reserved for returnStdout (: never read)
  *   .cookie                # PID file; existence = process alive
  * ```
- *
- * ## P2 Invariant (CRITICAL)
- *
+ *  Invariant (CRITICAL)
  * User script content NEVER appears in argv. This is verified by the
  * self-test [verifyScriptNotInArgv]. If the script somehow appears in argv,
  * the executor will detect it and refuse to launch.
- *
  * ## Jenkins-Faithful Cookie Kill (DEVIATION from old nohup pattern)
- *
  * The kill mechanism mirrors Jenkins (BourneShellScript.java + FileMonitoringTask.stop
  * + ProcessTree):
  * 1. LAUNCH: argv = [setsid, bash, wrapper.sh] — no -c, no -f, no -w.
@@ -124,14 +111,13 @@ data class DurableShellResult(
  *    5s grace (SoftKillWaitSeconds parity), then `kill -9 -<sid>`.
  * 5. Sentinel cookie initially protects wrapper machinery (heartbeat + result-writer);
  *    the wrapper overwrites it before the watchdog scans.
- *
- * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
- * @see <a href="JENKINS-58290">JENKINS-58290 - nohup+setsid detachment</a>
- * @see <a href="JENKINS-70874">JENKINS-70874 - Text-File-Busy workaround</a>
- */
+ * Durable sh Pattern</a>
+ * @see <a href=""> - nohup+setsid detachment</a>
+ * @see <a href=""> - Text-File-Busy workaround</a>
+*/
 class DurableShellExecutor : DurableShellLaunching {
 
-    /** Polling interval for result.txt checks (100ms as per ADR-0046). */
+    /** Polling interval for result.txt checks (100ms) */
     private val pollIntervalMs = 100L
 
     /** Sentinel cookie value — inherited by wrapper + heartbeat, distinguishes wrapper machinery. */
@@ -150,7 +136,7 @@ class DurableShellExecutor : DurableShellLaunching {
     /**
      * Resolves the absolute path of a command using `command -v`.
      * Returns null if the command is not found.
-     */
+*/
     private fun resolveCommandPath(command: String): String? {
         return try {
             val pb = ProcessBuilder("command", "-v", command)
@@ -176,11 +162,10 @@ class DurableShellExecutor : DurableShellLaunching {
 
     /**
      * The files a durable shell materialises in the control directory before the child can run.
-     *
      * A holder rather than a pile of locals so that adding a file is a change here rather than a
      * reason for [launch] to keep growing: the redirect and cookie-scan logic that follows is the
      * part that has to stay readable, because that is where the descriptor decisions live.
-     */
+*/
     private data class ShellFiles(
         val scriptFile: Path,
         val wrapperFile: Path,
@@ -191,9 +176,8 @@ class DurableShellExecutor : DurableShellLaunching {
     )
 
     /**
-     * R2.3 / ADR-OBS-003 — the rendezvous between the child process and the
+     * The rendezvous between the child process and the
      * ingest agent, plus the agent's own [Process] handle once launched.
-     *
      * The child writes to [stdoutFifo] and [stderrFifo]; the agent opens
      * the same files O_RDONLY (so the kernel's read can return EOF when the
      * last writer closes its end — O_RDWR would have made the agent itself
@@ -201,7 +185,6 @@ class DurableShellExecutor : DurableShellLaunching {
      * created by the agent once it has both FIFOs open, which is what the
      * runtime (and the spike test) await to know "the agent is attached,
      * the child is safe to start".
-     *
      * [warmup] is the runtime's pre-opened O_RDWR fd for each FIFO. The
      * agent's O_RDONLY open on a FIFO with no writers BLOCKS until a
      * writer appears; the warmup is that writer. The runtime holds the
@@ -210,9 +193,8 @@ class DurableShellExecutor : DurableShellLaunching {
      * agent sees EOF). The kill-the-runtime path works too: the OS releases
      * the warmup fds when the JVM dies, leaving the child as the only
      * writer; the agent's read continues and sees EOF when the child exits.
-     *
      * [process] is `null` until [launchIngestAgent] populates it.
-     */
+*/
     private data class AgentHandles(
         val fifoDir: Path,
         val stdoutFifo: Path,
@@ -224,11 +206,10 @@ class DurableShellExecutor : DurableShellLaunching {
 
     /**
      * Writes `script.sh`, its Jenkins-70874 copy, and `wrapper.sh`, and makes both executable.
-     *
      * The copy exists because Jenkins itself keeps one, so dropping it would be a compatibility
      * difference nobody asked for; the wrapper embeds only the *cookie*, never the script text,
      * which is what keeps the user's script out of argv.
-     */
+*/
     private fun materialiseShellFiles(
         controlDir: Path,
         scriptContent: String,
@@ -245,7 +226,7 @@ class DurableShellExecutor : DurableShellLaunching {
         )
         val scriptFile = controlDir.resolve("script.sh")
         Files.writeString(scriptFile, scriptContent)
-        Files.writeString(controlDir.resolve("script.sh.copy"), scriptContent) // JENKINS-70874 workaround
+        Files.writeString(controlDir.resolve("script.sh.copy"), scriptContent) // workaround
         Files.setPosixFilePermissions(scriptFile, executable)
 
         val wrapperFile = controlDir.resolve("wrapper.sh")
@@ -274,28 +255,26 @@ class DurableShellExecutor : DurableShellLaunching {
     }
 
     /**
-     * R2.3 / ADR-OBS-003 — create the FIFO rendezvous under
+     * Create the FIFO rendezvous under
      * `controlDir/fifos/`. The directory and the FIFOs are owned by the
      * runtime; the child writes to them, the agent reads from them.
-     *
      * `java.nio.file` cannot create a FIFO, so we shell out to
      * `mkfifo`. The mkfifo binary is the standard coreutils command and
      * is present on every POSIX host the durable shell already requires
      * (`LinuxRequiredException`).
-     *
-     * R2.3(b) / TODO 5: `mkfifo` defaults to `0666 & ~umask`, which on a
+     * `mkfifo` defaults to `0666 & ~umask`, which on a
      * typical umask 022 host is 0644 — world-readable. The child's raw
      * bytes flow through the FIFO before redaction, so a world-readable
-     * FIFO is a plaintext-spool exposure (same threat class ADR-OBS-003
+     * FIFO is a plaintext-spool exposure (same threat class
      * excludes for the Output Plane). We chmod 0600 immediately after
      * `mkfifo` and assert the type is a named pipe, so a pre-existing
      * regular file or symlink at the path is rejected rather than
      * silently accepted as a spool.
-     */
+*/
     private fun materialiseFifos(controlDir: Path): Path {
         val fifoDir = controlDir.resolve("fifos")
         Files.createDirectories(fifoDir)
-        // R2.3(b) / TODO 5: lock down the dir too — only the owner may
+        // Lock down the dir too — only the owner may
         // traverse it, so even if the FIFO perms were wider, the path
         // itself cannot be reached by another user.
         Files.setPosixFilePermissions(
@@ -314,14 +293,14 @@ class DurableShellExecutor : DurableShellLaunching {
         check(exit == 0) { "mkfifo failed with exit $exit in $fifoDir" }
         for (name in listOf("stdout.fifo", "stderr.fifo")) {
             val fifo = fifoDir.resolve(name)
-            // R2.3(b) / TODO 5: refuse anything that is not a named pipe.
+            // Refuse anything that is not a named pipe.
             // A symlink or regular file pre-placed by another process
             // would have made the child's output a plaintext spool on
-            // disk, exactly the threat class ADR-OBS-003 §2.4 excludes.
+            // Disk, exactly the threat class excludes
             require(isFifo(fifo)) {
                 "$fifo is not a FIFO; refusing to use it as a rendezvous"
             }
-            // R2.3(b) / TODO 5: owner read+write only. The agent (same
+            // Owner read+write only. The agent (same
             // uid as the runtime) opens it; no other user can.
             Files.setPosixFilePermissions(
                 fifo,
@@ -331,8 +310,8 @@ class DurableShellExecutor : DurableShellLaunching {
                 ),
             )
         }
-        // R2.3(b) / TODO 5: record the FIFO type + perms to a file the
-        // OBS-PC-208 f06 test can read AFTER the runtime cleanup has
+        // Record the FIFO type + perms to a file the
+        // test can read AFTER the runtime cleanup has
         // deleted the control dir. Without this, the test would race the
         // cleanup and miss the assertion.
         recordFifoPerms(fifoDir)
@@ -340,10 +319,10 @@ class DurableShellExecutor : DurableShellLaunching {
     }
 
     /**
-     * R2.3(b) / TODO 5: write the FIFO perms to a probe file in the
+     * Write the FIFO perms to a probe file in the
      * user's home so the f06 test can verify them post-cleanup. Format:
      * one line per FIFO, `name=isFifo,perms`, e.g. `stdout.fifo=true,OWNER_READ|OWNER_WRITE`.
-     */
+*/
     private fun recordFifoPerms(fifoDir: Path) {
         runCatching {
             val reportDir = java.nio.file.Files.createDirectories(
@@ -376,21 +355,19 @@ class DurableShellExecutor : DurableShellLaunching {
     }
 
     /**
-     * R2.3(b) / TODO 5: whether [path] is a named pipe (POSIX FIFO).
-     *
+     * Whether [path] is a named pipe (POSIX FIFO).
      * `java.nio.file` exposes no direct FIFO test, but
      * [java.nio.file.attribute.PosixFileAttributes.isOther] answers it
      * exactly: a FIFO is neither a regular file nor a directory, which
      * is precisely what `isOther` means.
-     */
+*/
     private fun isFifo(path: Path): Boolean = runCatching {
         Files.readAttributes(path, java.nio.file.attribute.PosixFileAttributes::class.java).isOther
     }.getOrDefault(false)
 
     /**
-     * R2.3 / ADR-OBS-003 — launch the production
+     * Launch the production
      * ingest agent as a separate JVM that owns the FIFO read ends.
-     *
      * The agent lives in
      * `dev.rubentxu.pipeline.v2.application.durable.ingest.ObsPc2IngestAgent`
      * (production, in `pipeline-application`). The runtime module
@@ -400,22 +377,19 @@ class DurableShellExecutor : DurableShellLaunching {
      * string the runtime owns; if the class is missing the runtime
      * fails the launch with a typed message rather than a
      * `ClassNotFoundException` leaking the architectural boundary.
-     *
      * The agent opens the FIFOs O_RDWR (no spurious EOF), redacts in
      * memory, and commits sanitized bytes to the Output Plane. The
      * runtime does NOT start its per-channel pump threads in this
      * mode.
-     *
      * ## Detachment
-     *
      * The agent is launched with the same JVM as the runtime and
      * inherits the runtime's session. The runtime keeps the [Process]
      * handle so the run terminal can send `SIGTERM` and, after a
      * 5-second grace, `SIGKILL`. Killing the runtime JVM does NOT
      * automatically kill the agent: the agent owns the FIFO read
      * ends and survives its writer's death, which is the whole point
-     * of the OBS-2 Level B design.
-     */
+     * Of the Level B design
+*/
     /**
      * Block until the agent's [AgentHandles.readyMarker] exists, with a
      * bounded deadline. The agent touches the marker once it has both
@@ -424,7 +398,7 @@ class DurableShellExecutor : DurableShellLaunching {
      * opening a FIFO for write blocks until a reader appears, so a
      * child started before the agent attaches would deadlock on its
      * first write.
-     */
+*/
     private fun awaitAgentReady(handles: AgentHandles) {
         val deadline = System.currentTimeMillis() + AGENT_READY_TIMEOUT_MILLIS
         while (System.currentTimeMillis() < deadline) {
@@ -448,7 +422,7 @@ class DurableShellExecutor : DurableShellLaunching {
         handles: AgentHandles,
     ) {
         val runId = config.runId ?: error("runId must be set when pumpedViaAgent is true")
-        // R2.3(b): the control dir is `<root>/<opId>`, NOT `<root>/<runId>/<opId>`.
+        // The control dir is `<root>/<opId>`, NOT `<root>/<runId>/<opId>`.
         // ShExecution.kt:246 does `controlDirRoot.resolve(opId.format())`, so the
         // hierarchy the agent needs to recover is exactly one level above the
         // control dir. The previous `controlDir.parent?.parent` walked one level
@@ -471,13 +445,12 @@ class DurableShellExecutor : DurableShellLaunching {
 
         val javaBin = Path.of(System.getProperty("java.home"), "bin", "java").toString()
         val classpath = System.getProperty("java.class.path")
-        // R2.3 / ADR-OBS-003 §2.4: the agent MUST outlive the runtime JVM, so it is
+        // The agent MUST outlive the runtime JVM, so it is
         // launched via `setsid` to create a new session. The default ProcessBuilder
         // launch would put the agent in the runtime's process group, and a `kill -9`
         // on the runtime would also kill the agent — defeating the whole point of
-        // OBS-2 Level B. `setsid` makes the agent its own session leader; the
+        // Level B. `setsid` makes the agent its own session leader; the
         // runtime killing its own process group does not take the agent down.
-        //
         // The agent's output (including the `pc2-agent-pump-*-failed` lines the
         // agent emits on its catch block) is captured to a log file in the control
         // dir so the spike test can read it when the assertion fails. The runtime
@@ -496,7 +469,6 @@ class DurableShellExecutor : DurableShellLaunching {
      * Duplicated locally so the runtime does not import the agent's
      * `argv` helper (the import would pull `pipeline-application` into
      * `pipeline-step-sdk:runtime`, which is a cycle).
-     *
      * Order:
      *  0. `controlDirRoot` — root of the Output Plane
      *  1. `runId` — broader run identifier (streams are keyed by it)
@@ -504,7 +476,7 @@ class DurableShellExecutor : DurableShellLaunching {
      *  3. `fifoDir` — directory holding `stdout.fifo` / `stderr.fifo`
      *  4. `readyMarker` — file the agent touches once it has both FIFOs open
      *  5. `secret` — the secret the agent registers for in-memory redaction
-     */
+*/
     private fun buildAgentArgv(
         controlDirRoot: String,
         runId: String,
@@ -528,19 +500,18 @@ class DurableShellExecutor : DurableShellLaunching {
          * [DurableShConfig.pumpedViaAgent] is `true`. Reflection is used
          * (not a direct import) to keep `pipeline-step-sdk:runtime` free
          * of a backward dependency on `pipeline-application`.
-         */
+*/
         const val AGENT_MAIN_CLASS: String =
             "dev.rubentxu.pipeline.v2.application.durable.ingest.ObsPc2IngestAgent"
 
         /**
-         * WU-B: how long a launch waits for its transcript pumps before refusing to claim a
+         * How long a launch waits for its transcript pumps before refusing to claim a
          * complete transcript.
-         *
          * Bounded, because a pump stuck on a live child must not hold the step open forever. But the
          * bound is worthless unless it is CHECKED — `join(timeout)` returns identically on both
          * outcomes, so the check is [Thread.isAlive] afterwards and its failure is a refusal rather
          * than a log line.
-         */
+*/
         const val TRANSCRIPT_PUMP_DRAIN_BUDGET_MS: Long = 10_000
 
         /**
@@ -549,7 +520,7 @@ class DurableShellExecutor : DurableShellLaunching {
          * sub-second in practice; 10s is a generous upper bound that
          * also surfaces a crashed agent JVM as a typed error rather
          * than an infinite wait.
-         */
+*/
         const val AGENT_READY_TIMEOUT_MILLIS: Long = 10_000L
     }
 
@@ -558,10 +529,9 @@ class DurableShellExecutor : DurableShellLaunching {
      * sentinels first, then the sandbox profile, then the caller's variables, with PATH
      * re-normalised after the merge because a user-supplied PATH would otherwise smuggle entries
      * past the sandbox keep-set.
-     *
      * Extracted from [launch] because that ordering is a policy with four interacting rules, and
      * reading it inline among the descriptor decisions made the whole launch opaque.
-     */
+*/
     private fun composeChildEnvironment(
         pb: ProcessBuilder,
         opId: String,
@@ -575,7 +545,7 @@ class DurableShellExecutor : DurableShellLaunching {
         pbEnv["DURABLE_SH_COOKIE"] = "please-do-not-kill-me-$opId"
         pbEnv["DURABLE_SH_OPID"] = opId
 
-        // ML-R3: Sandbox profile integration (DEC-1 cwd + DEC-2 deny-list + DEC-3 PATH normalize)
+        // Sandbox profile integration ( cwd + deny-list + PATH normalize)
         // Profile branch: LOCAL applies deny-list + PATH normalize; NONE is pass-through.
         // OS would throw at factory (CLI rejects it), so reaching here means NONE or LOCAL.
         if (sandbox.profile == SandboxProfile.LOCAL) {
@@ -586,19 +556,19 @@ class DurableShellExecutor : DurableShellLaunching {
             pbEnv.putAll(pbEnvFiltered.normalizePath(sandbox.pathKeep, javaHome, m2Home))
         }
 
-        // User-provided env injected here (WS-S-005: env via pb.environment() ONLY)
-        // WS-S-022: coerce SecretHandle to String at pb.environment() putAll
+        // User-provided env injected here (env via pb.environment ONLY)
+        // Coerce SecretHandle to String at pb.environment putAll
         if (env.isEmpty()) return
 
-        // F-D1: Apply EnvModel transformations (PATH prepend, PATH+= handling) before materialization.
-        // This ensures JAVA_HOME/bin and M2_HOME/bin are prepended to PATH, and PATH+=
+        // Apply EnvModel transformations (PATH prepend, PATH+= handling) before materialization.
+        // This ensures JAVA_HOME/bin and_HOME/bin are prepended to PATH, and PATH+=
         // entries are properly handled. Without this call, the PATH manipulation is skipped.
         val transformedEnv = EnvModel.apply(env)
         // Coerce SecretHandle to String at the single choke point
         val coercedEnv: Map<String, String> = transformedEnv.mapValues { entry -> entry.value.materialize() }
         pbEnv.putAll(coercedEnv)
 
-        // SB-S-005 regression fix (T-02): re-normalize PATH after user env merge.
+        // Re-normalize PATH after user env merge.
         // User-provided PATH overrides the sandbox-normalized PATH if it contains
         // entries outside the keep-set. Re-apply normalization to ensure sandbox
         // filtering is enforced on user-provided PATH values.
@@ -614,35 +584,31 @@ class DurableShellExecutor : DurableShellLaunching {
             }
         }
 
-        // WS-S-023: wipe handles after putAll
-        // WS-S-024: wipe failure addsSuppressed but does NOT prevent step completion
-        // NOTE (M4): wipe intentionally OMITTED. WithCredentialsExecutor shares the
+        // Wipe handles after putAll
+        // Wipe failure addsSuppressed but does NOT prevent step completion
+        // Wipe intentionally OMITTED. WithCredentialsExecutor shares the
         // env map across multiple inner sh invocations (outer sh → nested
         // withCredentials → restored sh). Wiping here would corrupt the bytes for
-        // the third sh. The wipe is performed by BoundCredentials.close() instead.
+        // the third sh. The wipe is performed by BoundCredentials.close instead.
     }
 
     /**
      * Launches a durable shell step with optional stdout capture.
-     *
      * ## Jenkins-Faithful Launch Pattern
-     *
      * argv = [setsid, bash, wrapper.sh] — no -c, no -f, no -w.
      * setsid execs bash in place → JVM child PID == PGID == SID.
-     *
      * The wrapper.sh file embeds the real cookie value (opId).
-     * PIPELINE_OP_COOKIE=__pipeline_protected__ sentinel is set in pb.environment()
+     * PIPELINE_OP_COOKIE=__pipeline_protected__ sentinel is set in pb.environment
      * and inherited by the wrapper + heartbeat processes. The sentinel protects
      * wrapper machinery from the cookie-scan kill.
-     *
      * @param controlDir The control directory path.
      * @param scriptContent The user's shell script.
      * @param opId The operation ID.
      * @param config The durable shell configuration.
      * @param captureStdout If true, capture stdout to output.txt via tee wrapper.
-     * @param env Environment variables to inject via pb.environment().putAll (P2: env via env map, NOT argv).
+     * @param env Environment variables to inject via pb.environment.putAll (env via env map, NOT argv)
      * @return The process handle.
-     */
+*/
     fun launch(
         controlDir: Path,
         scriptContent: String,
@@ -652,19 +618,19 @@ class DurableShellExecutor : DurableShellLaunching {
         env: Map<String, SecretHandle> = emptyMap(),
         workspaceRoot: Path? = null,
         sandbox: SandboxConfig = SandboxConfig.NONE,
-        // WU-LPR-011R2 (Gate-1 at-rest closure): wrap factory applied to EACH child's
+        // Wrap factory applied to EACH child's
         // stream BEFORE any byte reaches its sink. The factory must return a
         // chunk-boundary-safe redacting stream (StreamingRedactor).
         // Null = explicit legacy/test composition (raw transcript, unredacted).
         transcriptRedactor: ((java.io.InputStream) -> java.io.InputStream)? = null,
-        // OBS-C2.3: one sink per channel. Null entries mean "this composition has no destination
+        // One sink per channel. Null entries mean "this composition has no destination
         // for that channel", which the launch treats as "pump it to the control-dir file" rather
         // than as a request to discard it — a missing sink must never become a dropped byte.
         channelSinks: Map<ProcessOutputChannel, ProcessOutputSink> = emptyMap(),
     ): ProcessHandle {
         checkLinuxOrThrow()
 
-        // P2 invariant: script content is written to filesystem (script.sh), NOT passed as argv.
+        // Script content is written to filesystem (script.sh), NOT passed as argv.
         // This is guaranteed by construction:
         // 1. scriptContent -> Files.writeString(scriptFile)
         // 2. wrapper.sh references script by path only, never embeds content
@@ -673,10 +639,10 @@ class DurableShellExecutor : DurableShellLaunching {
         // Create control directory structure
         Files.createDirectories(controlDir)
 
-        // OBS-B: the wrapper must not open a console.log handle whenever the bytes are piped to
+        // The wrapper must not open a console.log handle whenever the bytes are piped to
         // the JVM, whether or not they are redacted on the way. Keying this on redaction alone
         // meant a piped-but-unredacted composition had two writers of the same file.
-        // OBS-C2.3: "pumped" now means "has a per-channel destination", which is the condition
+        // "pumped" now means "has a per-channel destination", which is the condition
         // that makes one-pump-per-channel possible at all.
         val pumpedThroughJvm = transcriptRedactor != null || channelSinks.isNotEmpty()
 
@@ -707,17 +673,15 @@ class DurableShellExecutor : DurableShellLaunching {
         composeChildEnvironment(pb, opId, sandbox, env)
 
         // Redirect stdin to /dev/null to prevent blocking on input
-        // LB-02 / S6.8 (mode-aware projection): the durable file separation depends on the Sh
-        // invocation mode.
+        // The durable file separation depends on the invocation mode.
         //   plain (captureStdout=false): BOTH channels are PIPEs when pumped, so each channel is
-        //     observed before it is persisted and each lands in its own sink. OBS-C2.3 removed the
+        //     Observed before it is persisted and each lands in its own sink. That design removed the
         //     `redirectErrorStream(true)` that used to be here: it fused the two channels inside one
         //     kernel descriptor, so `--channel stderr` was unrecoverable at every boundary after it.
         //   captureStdout=true: stdout goes to the separate stdout value file (output.txt) and
         //     stderr to the transcript sink. No fusion: the typed value must never be polluted by
         //     stderr.
-        //
-        // WU-LPR-011R2 (Gate-1 at-rest closure): when a transcript redactor is active, the
+        // When a transcript redactor is active, the
         // redirected streams are NOT ProcessBuilder redirect targets. Each piped stream is pumped
         // through the redactor by a runtime-owned pump thread so ONLY already-redacted bytes reach
         // the sinks — redaction happens BEFORE persistence, not during cleanup. The typed value
@@ -734,7 +698,7 @@ class DurableShellExecutor : DurableShellLaunching {
                 pb.redirectError(ProcessBuilder.Redirect.to(logFile.toFile()))
             }
         } else if (pumpedThroughJvm) {
-            // OBS-C2.3: two independent pipes. Fusing them here would make the channel distinction
+            // Two independent pipes. Fusing them here would make the channel distinction
             // unrecoverable at the kernel boundary, which is precisely what made `--channel stderr`
             // unanswerable in ObsCChannelAndTailCharacterisationTest.
             pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
@@ -753,14 +717,13 @@ class DurableShellExecutor : DurableShellLaunching {
             Files.newOutputStream(logFile).use { /* create/truncate */ }
         }
 
-        // R2.3 / ADR-OBS-003: when `pumpedViaAgent` is true, create the FIFO rendezvous,
+        // When `pumpedViaAgent` is true, create the FIFO rendezvous,
         // launch the agent JVM, and wait for the agent to attach BEFORE starting the
         // child. Opening a FIFO for write blocks until a reader appears, so a child
         // started before the agent attaches would deadlock on its first write; the
         // agent's `readyMarker` is the cross-process event the runtime uses to know
         // "the read ends are open, the child is safe to start".
-        //
-        // R2.3(b): the agent opens the FIFOs O_RDONLY (see ObsPc2IngestAgent
+        // The agent opens the FIFOs O_RDONLY (see ObsPc2IngestAgent
         // openRendezvous), so the open BLOCKS until a writer appears. The
         // runtime pre-opens the FIFOs in O_RDWR (a "warmup") so the agent's
         // open succeeds immediately. The warmup is held open until the child
@@ -804,21 +767,19 @@ class DurableShellExecutor : DurableShellLaunching {
 
             return try {
             val process = pb.start()
-            // WU-LPR-011R2: drain the redirected streams through the redactor into the composed
+            // Drain the redirected streams through the redactor into the composed
             // sinks on daemon pumps. Redaction happens BEFORE persistence: at any instant the durable
             // authority contains only sanitized bytes, and a JVM crash can leave at most a partial
             // SANITIZED transcript. The typed value channel (output.txt) is unaffected: capture-mode
             // stdout remains an exact redirect (typed values are never scrubbed).
-            //
-            // OBS-C2.3: ONE PUMP PER CHANNEL. Two pumps on two threads is what lets each channel be
+            // ONE PUMP PER CHANNEL. Two pumps on two threads is what lets each channel be
             // attributed before it is persisted. It also means both pipes are drained concurrently,
             // so neither child stream can block on a full pipe while the other is being read — which
             // is the deadlock that made the old "wait, then read the other channel" shape unsafe.
             if (pumpedThroughJvm && !config.pumpedViaAgent) {
                 // In capture mode stdout is an exact redirect to the typed-value file, so the only
                 // piped channel is stderr. In plain mode both are piped and each gets its own pump.
-                //
-                // R2.3 / ADR-OBS-003: when the agent path is active, the runtime does NOT start
+                // When the agent path is active, the runtime does NOT start
                 // its per-channel pump threads; the agent JVM owns the FIFO read ends and is the
                 // single durable authority.
                 val (pumps, sinks) = startTranscriptPumps(
@@ -832,7 +793,7 @@ class DurableShellExecutor : DurableShellLaunching {
                 lastTranscriptPumps = pumps
                 lastTranscriptSinks = sinks
             }
-            // R2.3 / ADR-OBS-003: the agent was launched BEFORE `pb.start()` (see the
+            // The agent was launched BEFORE `pb.start()` (see the
             // `agentHandles` block above) and the runtime waited on its `readyMarker`
             // to know the read ends are open. The agent now owns the FIFO read ends
             // and is the durable authority for the transcript under SIGKILL of the
@@ -849,7 +810,6 @@ class DurableShellExecutor : DurableShellLaunching {
             // and SIGKILLs the session that owns it. The warning was a
             // diagnostic about implementation choice dressed up as a fault,
             // and a healthy `pipelinek run` produced one per `sh` step.
-            //
             // Real failures (signal delivery, fork failure, timeout) are
             // still surfaced as typed results below; only the noise was
             // removed.
@@ -863,17 +823,15 @@ class DurableShellExecutor : DurableShellLaunching {
     /**
      * Starts the per-channel transcript pumps for [process] and returns them alongside their
      * [GuardedProcessOutputSink]s.
-     *
      * Extracted from [launch] so the launch body itself only resolves a configuration: this is the
-     * WU-B pump-by-pump thread loop, kept as a single function so a future channel addition
+     * Pump-by-pump thread loop, kept as a single function so a future channel addition
      * (or a future test that exercises one channel in isolation) has ONE place to look.
-     *
-     * The shape of the loop is OBS-C2.3: one thread per channel, writing through the
+     * The shape of the loop is.3: one thread per channel, writing through the
      * [GuardedProcessOutputSink] so every `Throwable` becomes a [ProcessOutputRefusal] on the same
      * channel. The capture-mode case pipes only stderr because stdout is an exact redirect to the
      * typed-value file; the plain-mode case pipes both. The `pumpedViaAgent` case never reaches
      * here because the agent JVM owns the FIFO read ends.
-     */
+*/
     private fun startTranscriptPumps(
         process: Process,
         opId: String,
@@ -906,8 +864,7 @@ class DurableShellExecutor : DurableShellLaunching {
                 val window = ByteArray(TRANSCRIPT_LIVE_WINDOW_BYTES)
                 try {
                     while (true) {
-                        // TD-R4.2 — the pump's read sizing, after the operator's note.
-                        //
+                        // The pump's read sizing, after the operator's note.
                         // The previous shape was
                         //   `ready = maxOf(1, minOf(window.size, redacted.available()))`
                         // which is a busy-loop with `available() == 0` and a forced one-byte
@@ -915,7 +872,6 @@ class DurableShellExecutor : DurableShellLaunching {
                         // on an empty-registry redactor ring (262 frames for 1024 bytes is
                         // measured; the operator's "median 1 byte per frame" is the same
                         // shape, just with a larger sample).
-                        //
                         // The fix is structural: read directly from the redacting stream
                         // with the whole window, and let it block until at least one byte
                         // is available, then return as many as the source can give. That
@@ -950,16 +906,15 @@ class DurableShellExecutor : DurableShellLaunching {
     /**
      * Checks if the given PID is a session leader (PID == PGID == SID).
      * Used for post-launch verification of the Jenkins-faithful launch pattern.
-     *
      * @param pid The process ID to check.
      * @return true if the process is a session leader.
-     */
+*/
     private fun isSessionLeader(pid: Long): Boolean {
         return try {
             val statFile = java.io.File("/proc/$pid/stat")
             if (!statFile.exists()) return false
             val content = statFile.readText()
-            // stat format: pid (comm) state ppid pgrp session tpgid ...
+            // stat format: pid (comm) state ppid pgrp session tpgid...
             // Extract ppid (field 4), session (field 5), pgrp (field 6)
             // We need PID == PGID == SID
             val pidLong = pid
@@ -1072,11 +1027,11 @@ class DurableShellExecutor : DurableShellLaunching {
     }
 
     /**
-     * WU-RP-044 (M5 RSS debt): when [keepTranscriptLog] is set (plain JENKINS_LOG
+     * When [keepTranscriptLog] is set (plain JENKINS_LOG
      * projection), a successful cleanup deletes everything in the control dir
      * EXCEPT console.log, which the production consumer streams lazily and then
      * deletes itself. Capture-mode callers keep the default (full delete).
-     */
+*/
     fun cleanup(controlDir: Path, exitCode: Int, keepTranscriptLog: Boolean) {
         val config = DurableShConfig.fromSystemProperties()
 
@@ -1087,13 +1042,12 @@ class DurableShellExecutor : DurableShellLaunching {
 
         // Always delete on success
         if (exitCode == 0) {
-            // WU-RP-044 (M5 RSS debt): in plain (JENKINS_LOG) projection the
+            // In plain (JENKINS_LOG) projection the
             // terminal does not materialise the transcript, so the production
             // consumer (ShExecution.ingestTranscriptIntoOutputPlane) streams it
             // from console.log AFTER this method returns. Deleting console.log here
             // would race the consumer and silently drop observability. The
             // consumer deletes it in its finally once streaming completes.
-            //
             // The method used to be named `emitTranscriptStreaming` here, which
             // never existed: a grep for it found only this comment, so the
             // rationale for keeping console.log pointed at a phantom consumer.
@@ -1120,24 +1074,20 @@ class DurableShellExecutor : DurableShellLaunching {
 
     /**
      * Builds the wrapper script content that is written to wrapper.sh.
-     *
      * ## Jenkins-Faithful Wrapper
-     *
      * The real cookie value (opId) is embedded in the file content as:
      * `PIPELINE_OP_COOKIE=<opId>`
-     *
      * This allows the watchdog to identify victim processes by scanning
      * /proc/<pid>/environ for PIPELINE_OP_COOKIE=<real>, while the sentinel
      * PIPELINE_OP_COOKIE=__pipeline_protected__ protects the wrapper machinery
      * (heartbeat + result-writer) from being killed.
-     *
      * @param controlDir The control directory path.
      * @param scriptPath The path to the script file.
      * @param config The durable shell configuration.
      * @param captureStdout If true, tee stdout to output.txt (returnStdout mode).
      * @param opId The operation ID (embedded as the real cookie value).
      * @return The shell wrapper script content.
-     */
+*/
     private fun buildWrapperContent(
         controlDir: Path,
         scriptPath: Path,
@@ -1154,32 +1104,29 @@ class DurableShellExecutor : DurableShellLaunching {
         val scriptPathEscaped = escapeForShell(scriptPath.toString())
         val outputFileEscaped = escapeForShell(controlDir.resolve("output.txt").toString())
 
-        // D3 Wrapper: VERBATIM, single-quoted paths, script NEVER in argv
-        //
+        // Wrapper: VERBATIM, single-quoted paths, script NEVER in argv
         // Key properties:
         // 1. PIPELINE_OP_COOKIE=<real> (embedded in file, NOT argv) identifies victims
         // 2. COOKIE_FILE protects wrapper machinery from cookie-scan kill
         // 3. Single-quoted script path prevents any expansion
         // 4. Heartbeat loop touches log file (independent of stdout)
         // 5. Exit code written atomically
-        //
-        // When captureStdout=true (D4 tee-gating):
+        // When captureStdout=true:
         // - stdout is tee'd to output.txt via '> '$OUT' 2> '$LOG'
         // - stderr goes to jenkins-log.txt as usual
         // - Heartbeat (inner while) still touches jenkins-log.txt only
 
         // Outer redirect: tee to output.txt if captureStdout, otherwise just log
-        // OBS-B: when the child's bytes are piped to the JVM, the wrapper MUST NOT open its own
+        // When the child's bytes are piped to the JVM, the wrapper MUST NOT open its own
         // console.log handle. It inherits the PIPE, and the composed sink is the single writer of
         // only sanitized bytes. Keeping the file write here as well is what would make the same
         // bytes durable in two places. For capture mode, stdout still tee's to output.txt (the
         // typed VALUE channel); stderr inherits the pipe.
-        //
-        // R2.3 (ADR-OBS-003 §2.3): when `pumpedViaAgent` is true the wrapper gains `trap '' PIPE`.
+        // When `pumpedViaAgent` is true the wrapper gains `trap '' PIPE`.
         // The child's stdout/stderr are redirected to FIFOs owned by the ingest agent; if the
         // agent dies, the next write returns `EPIPE` rather than killing the user's process.
         // The `SIG_IGN` disposition is inherited across `exec`, so the user's script — and
-        // everything it spawns — runs with `SIGPIPE` ignored. ADR §2.3 ratifies this trade; see
+        // everything it spawns — runs with `SIGPIPE` ignored. ADR ratifies this trade; see
         // the config KDoc on `pumpedViaAgent`.
         val outerRedirect = when {
             transcriptPipedThroughJvm && captureStdout -> "> '$outputFileEscaped'"
@@ -1193,7 +1140,7 @@ class DurableShellExecutor : DurableShellLaunching {
         return buildString {
             append("#!/bin/bash\n")
             if (pumpedViaAgent) {
-                // R2.3 / ADR-OBS-003 §2.3: ignore SIGPIPE in the wrapper so the user's process
+                // Ignore SIGPIPE in the wrapper so the user's process
                 // survives when the ingest agent dies. The trap is the first non-comment line so
                 // it is in effect for every subsequent fork.
                 append("trap '' PIPE\n")
@@ -1208,7 +1155,7 @@ class DurableShellExecutor : DurableShellLaunching {
             // Create cookie file with PID - this is the heartbeat mechanism
             append("echo \$\$ > \"\$COOKIE_FILE\"; ")
             // Heartbeat: touch log file periodically to show process is alive
-            // WU-LPR-011R2: capture the heartbeat PID. When the transcript is pumped
+            // Capture the heartbeat PID. When the transcript is pumped
             // through the redaction pipe, the heartbeat subshell holds the pipe's write
             // end; if left running it delays EOF (and thus the final redactor drain)
             // by up to CHECK_INTERVAL. The wrapper kills it explicitly at exit.
@@ -1220,8 +1167,7 @@ class DurableShellExecutor : DurableShellLaunching {
             append("echo \$EXIT_CODE > \"\$RESULT_TMP\"; ")
             append("mv \"\$RESULT_TMP\" \"\$RESULT_FILE\"; ")
             // Remove cookie file to signal completion.
-            //
-            // RP034-Id: stdout and stderr are REDIRECTED AWAY. The cookie is our
+            //: stdout and stderr are REDIRECTED AWAY. The cookie is our
             // control-plane bookkeeping, not the user's output, so it must never
             // write into the data channel that becomes `capturedStdout` and the
             // console transcript. An unredirected `rm` leaks whenever the host's
@@ -1238,22 +1184,20 @@ class DurableShellExecutor : DurableShellLaunching {
     /**
      * Legacy wrapper builder for compatibility (used by tests).
      * @deprecated Use buildWrapperContent instead for Jenkins-faithful pattern.
-     */
+*/
     override fun buildWrapper(controlDir: Path, scriptPath: Path, config: DurableShConfig): String {
         return buildWrapperContent(controlDir, scriptPath, config, captureStdout = false, opId = "legacy")
     }
 
     /**
      * Reads the captured stdout from output.txt.
-     *
-     * Per RTS-S-004: read AFTER result.txt (poll result.txt first).
-     * Per RTS-S-005: single-flight read-then-delete (when captureRetainPolicy == READ_THEN_DELETE).
-     * Per RTS-S-006: on timeout/kill/non-zero, returns "" (never throws, never blocks).
-     *
+     * Per: read AFTER result.txt (poll result.txt first)
+     * Per: single-flight read-then-delete (when captureRetainPolicy == READ_THEN_DELETE)
+     * Per: on timeout/kill/non-zero, returns "" (never throws, never blocks)
      * @param controlDir The control directory path.
      * @param captureRetainPolicy Whether to delete output.txt after reading.
      * @return The captured stdout content, or null if output.txt doesn't exist.
-     */
+*/
     fun readOutputText(controlDir: Path, captureRetainPolicy: CaptureRetainPolicy = CaptureRetainPolicy.READ_THEN_DELETE): String? {
         val outputFile = controlDir.resolve("output.txt")
         if (!Files.exists(outputFile)) {
@@ -1267,7 +1211,7 @@ class DurableShellExecutor : DurableShellLaunching {
             }
             content
         } catch (_: Exception) {
-            // On any error reading/deleting, return empty string per RTS-S-006
+            // On any error reading/deleting, return empty string
             // (never throws, never blocks)
             ""
         }
@@ -1280,19 +1224,16 @@ class DurableShellExecutor : DurableShellLaunching {
 
     /**
      * Jenkins-faithful cookie-scan kill.
-     *
      * Scans /proc/<pid>/environ for processes matching PIPELINE_OP_COOKIE=<real>
-     * (same UID; excludes the JVM itself), sends SIGTERM to each via ProcessHandle.destroy(),
+     * (same UID; excludes the JVM itself), sends SIGTERM to each via ProcessHandle.destroy,
      * waits up to 5000ms (SoftKillWaitSeconds parity), then escalates to
      * `kill -9 -<sid>` (sid = session ID, stable).
-     *
      * DEVIATION from Jenkins core: Jenkins has no SIGKILL escalation (no determinism
      * requirement); our FAILED_TIMEOUT state requires definitive process-tree kill.
-     *
      * @param process The process handle (may be dead parent sh; the real process is found via cookie scan).
      * @param opId The operation ID (real cookie value).
      * @return true if kill was triggered (always returns true if called).
-     */
+*/
     internal fun killWithCookieScan(process: ProcessHandle, opId: String): Boolean {
         val jvmPid = ProcessHandle.current().pid()
 
@@ -1387,11 +1328,10 @@ class DurableShellExecutor : DurableShellLaunching {
 
     /**
      * Finds PIDs of processes whose /proc/<pid>/environ contains PIPELINE_OP_COOKIE=<real>.
-     *
      * @param realCookie The real cookie value (opId) to match.
      * @param jvmPid The JVM's own PID to exclude from the scan.
      * @return List of matching PIDs.
-     */
+*/
     private fun findCookieProcesses(realCookie: String, jvmPid: Long): List<Long> {
         val matching = mutableListOf<Long>()
         val procDir = java.io.File("/proc")
@@ -1471,12 +1411,10 @@ class DurableShellExecutor : DurableShellLaunching {
 
     /**
      * Writes the timeout.flag file to signal that the watchdog triggered.
-     *
-     * Per TMO-S-005: timeout.flag MUST be written BEFORE kill to ensure
+     * Per: timeout.flag MUST be written BEFORE kill to ensure
      * the reconciler can distinguish TIMED_OUT from LOST.
-     *
      * @param controlDir The control directory path.
-     */
+*/
     private fun writeTimeoutFlag(controlDir: Path) {
         try {
             Files.writeString(controlDir.resolve("timeout.flag"), System.currentTimeMillis().toString())
@@ -1487,26 +1425,23 @@ class DurableShellExecutor : DurableShellLaunching {
 
     /**
      * Checks if the timeout.flag exists in the control directory.
-     *
      * @param controlDir The control directory path.
      * @return true if timeout.flag exists.
-     */
+*/
     fun hasTimeoutFlag(controlDir: Path): Boolean {
         return Files.exists(controlDir.resolve("timeout.flag"))
     }
 
     /**
      * Executes a durable shell step with timeout watchdog support.
-     *
      * This is an extended version of [executeDurableShell] that accepts timeout
      * and stdout capture options via [ShOptions].
-     *
      * @param controlDir The control directory path.
      * @param scriptContent The user's shell script.
      * @param opId The operation ID.
      * @param shOptions Shell execution options including timeout and capture settings.
      * @return The execution result with optional captured stdout.
-     */
+*/
     @Deprecated(
         message = "Legacy durable-shell projection. Use executeTerminal() and consume DurableTaskTerminal; removal is scheduled for EM-10.",
         replaceWith = ReplaceWith("executeTerminal(controlDir, scriptContent, opId, shOptions)"),
@@ -1526,7 +1461,7 @@ class DurableShellExecutor : DurableShellLaunching {
     /**
      * Canonical durable-shell execution seam. The closed return type permits
      * only terminal outcomes; lifecycle snapshots never escape this module.
-     */
+*/
     fun executeTerminal(
         controlDir: Path,
         scriptContent: String,
@@ -1559,9 +1494,9 @@ class DurableShellExecutor : DurableShellLaunching {
 
     /**
      * Compatibility implementation detail retained while [PipelineRun] still
-     * consumes the pre-EM-1 string/status flow. It projects the typed terminal
+     * consumes the previous string/status flow. It projects the typed terminal
      * produced by the same core while retaining the legacy watchdog policy.
-     */
+*/
     internal fun executeLegacyProjection(
         controlDir: Path,
         scriptContent: String,
@@ -1588,34 +1523,32 @@ class DurableShellExecutor : DurableShellLaunching {
     ).toLegacyShellResult(controlDir)
 
     /**
-     * WU-LPR-011R2: the transcript pump created by the most recent [launch] call
+     * The transcript pump created by the most recent [launch] call
      * (single-threaded launch discipline: one launch per executeCore). Used by
      * executeCore to drain the pump before projecting the persisted transcript.
-     */
+*/
     @Volatile
     private var lastTranscriptPumps: List<Thread> = emptyList()
 
     /**
      * The sinks the pumps wrote into, kept so the terminal projection can read their refusals.
-     *
      * The pumps cannot propagate a persistence failure to the caller by throwing — they run on
      * daemon threads whose whole purpose is to survive the child. So a failure is recorded on the
      * sink and read here, after the pumps have been joined, which is the first point at which the
-     * answer is stable. OBS-C2.3 made this a list because one launch now pumps up to two channels,
+     * Answer is stable. That is why this is a list: one launch now pumps up to two channels
      * and a refusal on stderr must not be hidden behind a healthy stdout.
-     */
+*/
     @Volatile
     private var lastTranscriptSinks: List<ProcessOutputSink> = emptyList()
 
     /**
-     * R2.3(b) / ADR-OBS-003: the [AgentHandles] created by the most recent [launch] call
+     * The [AgentHandles] created by the most recent [launch] call
      * when the agent path is active. Used by [executeCore] to release the warmup
      * fds in its `finally` block, after the child has finished — at which point
      * the warmup is the only writer on the FIFO and closing it lets the agent
      * see EOF and exit cleanly.
-     *
      * `null` in non-agent paths and after a `consume` call.
-     */
+*/
     @Volatile
     private var lastAgentHandles: AgentHandles? = null
 
@@ -1625,15 +1558,13 @@ class DurableShellExecutor : DurableShellLaunching {
 
     /**
      * Waits for every channel's pump, then refuses if any of them was still running.
-     *
      * `join(timeout)` returns when the thread finishes **or** when the timeout elapses, so the
      * return value of a join proves nothing at all on its own. The runtime then projected a
      * transcript it had no evidence was complete and classified the step — which is the same
      * "short, ordered, plausible" outcome a write failure produces, reached by the opposite route.
-     *
      * So the check that actually means something is [Thread.isAlive] AFTER the join, and its
      * failure is a refusal rather than a log line, for the same reason [transcriptRefusal] is.
-     */
+*/
     private fun drainTranscriptPumps(pumps: List<Thread>): ProcessOutputRefusal? {
         pumps.forEach { it.join(TRANSCRIPT_PUMP_DRAIN_BUDGET_MS) }
         val stillDraining = pumps.filter { it.isAlive }
@@ -1666,18 +1597,17 @@ class DurableShellExecutor : DurableShellLaunching {
         var process: ProcessHandle? = null
         var launched = false
         val timeoutTriggered = AtomicBoolean(false)
-        // WU-LPR-011R2: reference to the transcript pumps so the terminal projection can drain them
+        // Reference to the transcript pumps so the terminal projection can drain them
         // BEFORE reading any durable transcript (redaction-before-persistence means the bytes are
         // only complete once the pumps reach EOF).
-        //
-        // OBS-C2.3: a LIST, because one launch pumps up to two channels. Joining only the first
+        // A LIST, because one launch pumps up to two channels. Joining only the first
         // would let the terminal be projected while stderr was still arriving — which is exactly
         // the "short, ordered, plausible transcript" failure this path exists to prevent.
         var transcriptPumps: List<Thread> = emptyList()
 
         try {
             // Step 1: Launch
-            // P2: environment is injected via pb.environment().putAll in launch()
+            // Environment is injected via pb.environment.putAll in launch
             process = launch(
                 controlDir,
                 scriptContent,
@@ -1703,11 +1633,11 @@ class DurableShellExecutor : DurableShellLaunching {
                 Thread {
                     try {
                         Thread.sleep(request.timeoutMs)
-                        // Timeout triggered - write flag BEFORE kill (TMO-S-005)
+                        // Timeout triggered - write flag BEFORE kill
                         writeTimeoutFlag(controlDir)
                         // Jenkins-faithful cookie scan kill
                         // DEVIATION: Jenkins core has no SIGKILL escalation; our FAILED_TIMEOUT
-                        // determinism requires it per spec TMO-S-004 (process-tree kill, no zombies)
+                        // Determinism requires it per spec (process-tree kill, no zombies)
                         val killResult = killWithCookieScan(process!!, opId)
                         timeoutTriggered.set(
                             when (request.timeoutCompletion) {
@@ -1740,13 +1670,13 @@ class DurableShellExecutor : DurableShellLaunching {
                 }
             }
 
-            // TMO race guard (WU-RP-005 r7, CI run 35653013723): under CPU load the
+            // TMO race guard: under CPU load the
             // watchdog's kill lands AFTER pollResult already read a (misleading)
             // wrapper exit code — the killed script's bash continued, echoed `done`
             // and wrote result.txt 0 just before the SIGKILL, while the watchdog
             // thread had not yet published timeoutTriggered. Without this bounded
             // settle the terminal is classified Exited(0) → success, defeating
-            // FAILED_TIMEOUT (TMO-S-001/002). Give the watchdog a bounded window to
+            // FAILED_TIMEOUT. Give the watchdog a bounded window to
             // publish its flag before classifying.
             if (!timeoutTriggered.get() && watchdogThread != null && request.timeoutMs > 0) {
                 val settleDeadline = System.currentTimeMillis() + 2_000
@@ -1756,7 +1686,7 @@ class DurableShellExecutor : DurableShellLaunching {
             }
 
             // The persisted flag file is the AUTHORITATIVE timeout marker
-            // (written BEFORE the kill, TMO-S-005). The in-memory flag depends on
+            // (written BEFORE the kill,). The in-memory flag depends on
             // watchdog-thread scheduling AND kill completion (KILL_RESULT), so on a
             // loaded 2-core runner it can lose the race against a wrapper that
             // writes result.txt after its child was killed. If the flag file
@@ -1770,7 +1700,7 @@ class DurableShellExecutor : DurableShellLaunching {
 
             // If we exited due to timeout
             if (timeoutTriggered.get()) {
-                // One grace poll cycle - late exit wins per TMO-S-009
+                // One grace poll cycle - late exit wins
                 val graceExitCode = pollResult(controlDir, 1000)
                 if (graceExitCode != null) {
                     exitCode = graceExitCode
@@ -1779,12 +1709,10 @@ class DurableShellExecutor : DurableShellLaunching {
 
             // Drain the transcript pumps BEFORE projecting, so the last sanitized bytes have reached
             // the durable authority before the step is reported.
-            //
-            // OBS-C2.3: every channel's pump is drained, not just one. Joining a single pump would
+            // Every channel's pump is drained, not just one. Joining a single pump would
             // let stderr still be in flight when the step is reported, and a reader tailing the
             // stderr stream would see the step finish before its last bytes arrive.
-            //
-            // WU-B: `drainTranscriptPumps` is not `forEach { join }`. It waits AND then asks whether
+            // `drainTranscriptPumps` is not `forEach { join }`. It waits AND then asks whether
             // the wait succeeded, because a join that times out returns exactly like one that
             // completed and the difference between them is the whole difference between a complete
             // transcript and a plausible one.
@@ -1793,7 +1721,6 @@ class DurableShellExecutor : DurableShellLaunching {
             // A persistence or drain refusal is a step failure, not a warning. The bytes left the
             // pipe when the pump read them, so a transcript that is short, ordered and plausible is
             // the worst possible outcome; it has to be reported rather than returned.
-            //
             // The drain is checked FIRST: if a pump was still alive, nothing downstream of it can
             // claim the transcript is complete, so that refusal subsumes whatever the sinks recorded
             // in the meantime.
@@ -1821,7 +1748,7 @@ class DurableShellExecutor : DurableShellLaunching {
                 )
             }
 
-            // OBS-B: the terminal carries NO console transcript. The bytes belong to the Output
+            // The terminal carries NO console transcript. The bytes belong to the Output
             // Plane and are read through OutputReadPort; a terminal that carried them would be a
             // second copy of an observable authority, and in-memory at that. capturedStdout stays
             // exactly what it always claimed to be: the typed VALUE requested by returnStdout,
@@ -1831,7 +1758,7 @@ class DurableShellExecutor : DurableShellLaunching {
                 DurableShellOutputProjection.JENKINS_LOG -> null
             }
 
-            // WU-RP-005 r9 (CI run 35656479415): when the watchdog triggered, the
+            // When the watchdog triggered, the
             // terminal is a timeout REGARDLESS of the wrapper exit code. The race
             // evidence: the killed child's surviving bash wrote result.txt=0 after
             // the SIGKILL; classifying Exited(0) marked the run success AND the
@@ -1874,13 +1801,12 @@ class DurableShellExecutor : DurableShellLaunching {
                 )
             }
         } finally {
-            // R2.3(b) / ADR-OBS-003: release the warmup fds so the agent can
+            // Release the warmup fds so the agent can
             // see EOF. The child has already exited (pollResult returned
             // before we got here, or the failure path took over), so the
             // child's O_WRONLY is already closed; the warmup is the only
             // writer on the FIFO. Closing it leaves 0 writers, the agent's
             // read returns EOF, and the agent exits cleanly.
-            //
             // `kill -9` of the runtime (the spike test) skips this finally
             // block. The OS releases the warmup fds on JVM death, so the
             // invariant still holds: at the moment the runtime dies the
@@ -1894,9 +1820,9 @@ class DurableShellExecutor : DurableShellLaunching {
             }
             // Cleanup based on final state. A watchdog timeout is a failure, not a
             // success: the surviving wrapper can publish exit code 0 after its child
-            // was SIGKILLed (WU-RP-005 r9, CI 35656479415/35657576105), so cleanup
+            // Was SIGKILLed (r9, CI 35656479415/35657576105), so cleanup
             // MUST NOT read that code as success and delete the control dir (which
-            // would erase the authoritative timeout.flag, TMO-S-005).
+            // Would erase the authoritative timeout.flag,)
             cleanup(
                 controlDir,
                 if (timeoutTriggered.get()) -1 else exitCode,
@@ -1930,9 +1856,7 @@ private enum class DurableShellTimeoutCompletion {
 
 /**
  * Executes a durable shell step with full state machine.
- *
- * ## Crash-Safe Order (C5)
- *
+ * ## Crash-Safe Order
  * The crash-safe execution order is:
  * 1. begin → journal RUNNING
  * 2. create → control dir + script.sh
@@ -1940,22 +1864,20 @@ private enum class DurableShellTimeoutCompletion {
  * 4. poll → wait for result.txt (100ms polling)
  * 5. append → journal COMPLETE/LOST
  * 6. cleanup → delete control dir (unless retainOnFailure)
- *
  * This order ensures that:
  * - On crash after step 1-2: LOST on resume (no result.txt)
  * - On crash after step 3-4: LOST on resume (no result.txt, stale heartbeat)
  * - On crash after step 5: COMPLETE on resume (result.txt exists)
- *
  * @param controlDir The control directory root.
  * @param scriptContent The user's shell script.
  * @param opId The operation ID.
  * @param config The durable shell configuration.
- * @param timeoutMs Timeout in milliseconds (0 = no timeout, per TMO-S-013).
- * @param env Environment variables to inject via pb.environment().putAll (P2: env via env map, NOT argv).
+ * @param timeoutMs Timeout in milliseconds (0 = no timeout,)
+ * @param env Environment variables to inject via pb.environment.putAll (env via env map, NOT argv)
  * @param sandbox Sandbox profile for cwd flip and env filtering.
- * @param workspaceRoot Root directory for the stage workspace (DEC-1 cwd flip). If null, defaults to controlDir.
+ * @param workspaceRoot Root directory for the stage workspace (cwd flip). If null, defaults to controlDir
  * @return The execution result.
- */
+*/
 @Deprecated(
     message = "Compatibility projection for PipelineRun's legacy String status flow. Migrate to DurableShellExecutor.executeTerminal with ShOptions and consume the typed terminal result; removal is scheduled for EM-10.",
     replaceWith = ReplaceWith(
@@ -1984,3 +1906,4 @@ fun executeDurableShell(
         workspaceRoot = workspaceRoot,
     )
 }
+

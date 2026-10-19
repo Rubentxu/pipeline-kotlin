@@ -28,15 +28,13 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Registry-driven core Step for `core.artifact.query`
- * (E1.ecosystem-local-first cycle).
- *
+ * (.ecosystem-local-first cycle).
  * Given a logical [ArtifactQueryInput.name], returns the
  * [ArtifactHandle] recorded by an earlier `core.archiveArtifacts`
  * with `name=...`. Pure read; no filesystem access; no event
  * emission; the only capability is the typed
  * [ArtifactIndexCapability].
- *
- * ## Effect classification (E1 cycle, no new Effect variants)
+ * ## Effect classification (cycle, no new Effect variants)
 
  * `core.artifact.query` is a pure read of the in-memory index; it
  * does NOT touch the filesystem (the durable record) and it does
@@ -44,23 +42,21 @@ import kotlinx.serialization.json.jsonPrimitive
  * variant (the index is a derived projection of the workspace's
  * artifacts retention directory). Recorded as the canonical
  * classification; will not change without an ADR.
- *
  * ## Replay policy
 
  * [ReplayPolicy.MEMOIZED] — the index is a derived projection; a
  * second invocation returns the cached handle. The handler does
  * NOT consult the filesystem, so replay is deterministic without
  * touching the durable record.
- *
  * ## Failure semantics
 
  * When the requested name is not in the index, the handler returns
  * a typed `INPUT_INVALID` failure carrying a closed
  * [ArtifactQueryFailureOutput] envelope. The Step itself does not
  * throw; `PluginStepException` would be re-classified as `ENGINE`
- * by the boundary (F5.2 / WU-LPR-FK precedent), losing the declared
+ * By the boundary (/ precedent), losing the declared
  * kind.
- */
+*/
 object CoreArtifactQueryStep {
 
     val KEY: PluginStepId = PluginStepId("core.artifact.query")
@@ -164,11 +160,11 @@ object CoreArtifactQueryStep {
     /**
      * [RecoveryPolicy.None] — re-execution after a crash follows the
      * generic replay/reconcile path. The index is in-memory and
-     * ephemeral, so a crash wipes it; this is acceptable for the E1
+     * Ephemeral, so a crash wipes it; this is acceptable for the
      * cycle (the durable record is the filesystem; the index is a
      * derived projection). A future cycle may introduce a journaled
      * index if cross-restart queries become a real requirement.
-     */
+*/
     private val descriptor = StepDescriptor(
         stepId = "core.artifact.query",
         name = "artifactQuery",
@@ -181,12 +177,11 @@ object CoreArtifactQueryStep {
 
     /**
      * Capability-routed handler — zero infrastructure.
-     *
      * Reads the index; fails closed with `INPUT_INVALID` when the
      * name is not recorded. Capability admission is fail-closed at
      * prepare-time by the registry boundary; the handler can call
      * `ctx.capabilities.get(...)` directly.
-     */
+*/
     private val capabilityRoutedHandler: StepHandler<ArtifactQueryInput, TypedStepOutput> =
         StepHandler { input, ctx ->
             val index: ArtifactIndexCapability =

@@ -1,12 +1,10 @@
 package dev.rubentxu.pipeline.v2.domain.identity
 
 /**
- * The ONLY authority for constructing [ResourceRef]s (EVT-1 law: typed
+ * The ONLY authority for constructing [ResourceRef]s (law: typed
  * construction, no ad-hoc concatenation in production code).
- *
  * Deterministic: builders are pure functions of their arguments. Branch names,
  * completion order, timestamps and occurrence UUIDs are never inputs.
- *
  * Segment convention (hierarchical, parent-first):
  * ```
  * pipeline:  <ns=default, pipeline/<definitionId>>
@@ -17,7 +15,7 @@ package dev.rubentxu.pipeline.v2.domain.identity
  * ```
  * `runId` and `opKey` are the local durable authorities (RunId / OpId); here they
  * appear only as identity SEGMENTS of the projection.
- */
+*/
 object ResourceRefs {
     const val NAMESPACE: String = "pipeline"
 
@@ -50,14 +48,14 @@ object ResourceRefs {
             ),
         )
 
-    // ---- LFC-2E2-prep plugin provider builders (ADR-0092) ----
+    // Plugin provider builders
 
     /**
-     * Logical plugin identity (PLUGIN_IDENTITY_MODEL §"ResourceRef").
+     * Logical plugin identity (PLUGIN_IDENTITY_MODEL"ResourceRef").
      * Segment convention: `<ns, plugin, <identity>>` (single-segment identity).
      * Use this for the logical identity of a provider; for an immutable
      * artifact, use [pluginRelease].
-     */
+*/
     fun plugin(namespace: String, identity: String): ResourceRef =
         ResourceRef(
             ResourceKind.PLUGIN,
@@ -69,7 +67,7 @@ object ResourceRefs {
      * Segment convention: `<ns, plugin, <identity>, release, <version>>`.
      * The release digest lives in `PluginReleaseRef`, not in segments
      * (digests are too long and contain forbidden characters).
-     */
+*/
     fun pluginRelease(namespace: String, identity: String, version: String): ResourceRef =
         ResourceRef(
             ResourceKind.PLUGIN_RELEASE,
@@ -79,7 +77,7 @@ object ResourceRefs {
     /**
      * One Step family's addressable identity under a plugin release.
      * Segment convention: `<ns, plugin, <identity>, step, <stepKey>>`.
-     */
+*/
     fun stepDefinition(namespace: String, identity: String, stepKey: String): ResourceRef =
         ResourceRef(
             ResourceKind.STEP_DEFINITION,
@@ -89,7 +87,7 @@ object ResourceRefs {
     /**
      * A functional family under a plugin publisher.
      * Segment convention: `<ns, plugin-family, <family>>`.
-     */
+*/
     fun pluginFamily(namespace: String, family: String): ResourceRef =
         ResourceRef(
             ResourceKind.PLUGIN_FAMILY,

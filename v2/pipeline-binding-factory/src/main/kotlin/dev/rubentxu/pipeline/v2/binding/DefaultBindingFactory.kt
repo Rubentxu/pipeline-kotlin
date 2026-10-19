@@ -5,9 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 
 /**
  * Default implementation of [ContributedBindingFactory] for all 7 Jenkins credential kinds.
- *
  * ## Supported Kinds
- *
  * - `string`: Secret text → single env var
  * - `usernamePassword`: Username with password → USERNAME_VAR + PASSWORD_VAR
  * - `sshUserPrivateKey`: SSH Username with private key → KEY_FILE_VAR (+ PASSPHRASE_VAR, USERNAME_VAR)
@@ -15,17 +13,15 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
  * - `certificate`: Certificate credentials → KEYSTORE_VAR (+ ALIAS_VAR, PASSWORD_VAR)
  * - `zip`: Zip credentials → temp dir path
  * - `usernameColonPassword`: Username:Password → single env var
- *
  * ## Design Notes
- *
- * - Variable names are persisted WITHOUT case coercion (INV-L6-CR-007)
+ * Variable names are persisted WITHOUT case coercion
  * - For typed credential extraction (UsernamePassword, etc.), the caller should
  *   pass a resolver that can return typed [Credential] objects when needed.
  *   This factory receives [SecretHandle] via the resolver, which is sufficient for
  *   simple bindings that map directly to env vars.
  * - Partial-failure = nothing injected: if any binding in [MultiBindingWithCredentials]
  *   fails, all resolved handles are wiped before throwing
- */
+*/
 class DefaultBindingFactory : ContributedBindingFactory {
 
     override fun supportedKinds(): Set<String> = SUPPORTED_KINDS
@@ -55,10 +51,9 @@ class DefaultBindingFactory : ContributedBindingFactory {
 
     /**
      * Resolves UsernamePassword binding.
-     *
      * Note: UsernamePassword credentials store username and password as a null-separated
      * byte sequence in the secret: "username\0password". This method parses that format.
-     */
+*/
     private fun resolveUsernamePassword(
         binding: UsernamePasswordBinding,
         credentialResolver: (CredentialsId) -> SecretHandle

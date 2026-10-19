@@ -5,26 +5,22 @@ import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 /**
  * Provenance + distribution metadata for a Step family
  * (PLUGIN_IDENTITY_MODEL).
- *
  * The metadata carries TWO dimensions:
  * - the **logical plugin** ([plugin]: `ResourceRef(PLUGIN, namespace,
  *   identity)`)
  * - the **immutable artifact** ([release]: `PluginReleaseRef` with
  *   version + digest)
- *
  * The two dimensions are kept separate. The invariant that
  * `release.plugin == plugin` is enforced by [create] (the only public
  * constructor) and by the constructor's `init` block. A mismatched pair
  * is rejected at construction time, never silently collapsed.
- *
  * [families] is a non-empty set (multi-family allowed). [delivery] is
- * **metadata**, never a verdict (PLUGIN_IDENTITY_MODEL §"Delivery
+ * **metadata**, never a verdict (PLUGIN_IDENTITY_MODEL"Delivery
  * classification vs trust decision"). [trust] is the typed trust ADT
  * (only [TrustMetadata.Unverified] is constructable from the document grammar today).
- *
  * The primary constructor is `internal` to force the use of [create],
  * which centralises the cross-field invariant.
- */
+*/
 @ConsistentCopyVisibility
 data class StepProviderMetadata internal constructor(
     val plugin: ResourceRef,
@@ -53,7 +49,7 @@ data class StepProviderMetadata internal constructor(
         /**
          * Public factory enforcing all cross-field invariants in one place.
          * Any future invariant (cross-field sanity) belongs here.
-         */
+*/
         fun create(
             plugin: ResourceRef,
             release: PluginReleaseRef,

@@ -17,11 +17,10 @@ import org.jetbrains.kotlin.psi.KtValueArgumentName
 /**
  * Kotlin-compiler adapter for [ScriptedSourceMapper]. Compiler PSI stays in
  * this outer adapter; callers receive only immutable scripting-port values.
- *
  * Sources are parsed as Kotlin *scripts* (`.kts`), so top-level statements —
  * `if`, loops, property declarations followed by calls — are valid, exactly as
  * in a `.pipeline.kts` body.
- */
+*/
 class KotlinScriptedSourceMapper : ScriptedSourceMapper {
     override fun map(source: ScriptedSource): ScriptedSourceMapping = synchronized(parserLock) {
         val disposable = Disposer.newDisposable()
@@ -41,20 +40,18 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
 
             file.accept(object : KtTreeVisitorVoid() {
                 /**
-                 * S4-IDENTITY I2 — record every `for` loop with a BLOCK body.
-                 *
+                 * Record every `for` loop with a BLOCK body.
                  * The lowering wraps these bodies in `steps.scoped(…)`, which is what
                  * turns an iteration from "the Nth time we arrived here" into a
                  * structural occurrence path. Without it the only thing separating
-                 * two iterations was `ScriptedScope.nextOrdinal`, and the I1
+                 * Two iterations was `ScriptedScope.nextOrdinal`, and the
                  * falsification measured what that costs when the argument does not
                  * vary: a resume silently skips an owed effect and orphans its row.
-                 *
                  * Only BLOCK bodies are recorded. A braceless body is a single
                  * statement with no braces to wrap, and it is left alone rather than
                  * rejected — rejecting it would be a new failure mode for a program
                  * shape that works today through the arrival counter.
-                 */
+*/
                 override fun visitForExpression(expression: KtForExpression) {
                     val parameter = expression.loopParameter
                     val body = expression.body as? KtBlockExpression
@@ -74,8 +71,7 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                     val location = source.locationAt(expression.textRange.startOffset)
                     when {
                         // Unqualified generator-level `sh(...)`: a shell step call.
-                        //
-                        // S4-A1. ONE arm, not two. The eager arm used to match on
+                        // ONE arm, not two. The eager arm used to match on
                         // the callee name alone and was tested first, so the
                         // runtime-returning arm below it could never fire; and the
                         // eager arm carried no script, so the lowering had nothing
@@ -112,7 +108,7 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                             }
                         }
                         // Unqualified runtime-returning `isUnix()`: platform query step
-                        // (LFC-2R / R3). Argument-less by contract; qualified/receiver
+                        //. Argument-less by contract; qualified/receiver
                         // forms are NOT generator calls.
                         expression.calleeExpression?.text == "isUnix" &&
                             !isDotQualified &&
@@ -123,7 +119,7 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                                 expression.textRange.length,
                             )
                         // Unqualified runtime-returning `pwd()` / `pwd(tmp=true)`:
-                        // workspace query step (WU-LPR-402). Argument-less → core.pwd,
+                        // Workspace query step. Argument-less → core.pwd
                         // `tmp = true` → core.pwd.tmp.
                         expression.calleeExpression?.text == "pwd" &&
                             !isDotQualified ->
@@ -133,10 +129,9 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                                 expression.textRange.length,
                             )
                         // Unqualified runtime-returning `readFile(...)`: workspace file-read
-                        // step (LFC-2R2). The argument is the path; encoding defaults at the
+                        // Step. The argument is the path; encoding defaults at the
                         // façade.
-                        //
-                        // S4-DATA. The author's path EXPRESSION is carried, as PSI text,
+                        // The author's path EXPRESSION is carried, as PSI text
                         // from this same KtCallExpression. It used to be a payload-free kind,
                         // so the lowering wrote a literal `""` and the real argument survived
                         // past the rewritten call, producing Kotlin that does not compile.
@@ -144,7 +139,7 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                             !isDotQualified ->
                             recordPathArgument(source, expression, "file", ScriptedCallKind::ReadFile, calls, diagnostics)
                         // Unqualified runtime-returning `fileExists(...)`: workspace
-                        // file-existence check (LFC-2R2). The argument is the path.
+                        // File-existence check. The argument is the path
                         expression.calleeExpression?.text == "fileExists" &&
                             !isDotQualified ->
                             recordPathArgument(source, expression, "file", ScriptedCallKind::FileExists, calls, diagnostics)
@@ -188,7 +183,7 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
      * Returns true iff [name] is a named argument in the call with a literal `true`
      * value. Recognises the canonical `name = true` and the shorthand `name = 1`
      * that Kotlin allows for boolean parameters.
-     */
+*/
     private fun KtCallExpression.hasNamedArgTrue(name: String): Boolean =
         valueArguments.any { arg ->
             arg.getArgumentName()?.asName?.asString() == name &&
@@ -197,16 +192,14 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
 
     /**
      * Which runtime-returning shape a `sh(...)` call asks for.
-     *
      * Both spellings of each flag are recognised: `returnStdout = true` and the
      * marker form `returnStdout = ReturnStdout` that the public DSL actually uses.
      * Checking only the boolean spelling would have classified the documented
      * spelling as NONE and quietly run a command whose value the user expected to
      * read.
-     *
      * Both flags are reported rather than resolved, because asking for both is an
      * invalid program the caller must reject, not a shape to invent meaning for.
-     */
+*/
     private fun KtCallExpression.shellReturnFlags(): ShellReturnFlags {
         fun requested(name: String, marker: String): Boolean = valueArguments.any { arg ->
             arg.getArgumentName()?.asName?.asString() == name &&
@@ -227,20 +220,18 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
 
     /**
      * The `script` argument of a `sh(...)` call, in either legal spelling.
-     *
      * Both `sh("echo hi")` and `sh(script = "echo hi")` are ordinary Kotlin, so
      * both must be recognised. The argument is carried as PSI TEXT rather than a
      * literal, which is what lets `sh(command)` pass a variable through: the
      * generated call is then `steps.sh(callSite, command, null, null)`, valid
      * Kotlin that resolves the same value at run time.
-     *
-     * S4-A1: returns `null` when there is no `script` argument at all, so the
+     * Returns `null` when there is no `script` argument at all, so the
      * caller can reject the call. The previous version searched only positional
      * arguments and substituted an empty string for anything else, so the
      * NAMED form silently became a shell command running nothing and reported
      * success — the silent placeholder the Semantic Constitution forbids. A test
      * fixture using `sh(script = ...)` had been passing on that behaviour.
-     */
+*/
     private fun KtCallExpression.scriptTextOrNull(): String? =
         valueArguments
             .firstOrNull { arg ->
@@ -253,11 +244,9 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
 
     /**
      * Records a `readFile`/`fileExists` call, carrying the author's path expression.
-     *
-     * S4-DATA. Three cases are possible and each is decided HERE, at the call
+     * Three cases are possible and each is decided HERE, at the call
      * expression the arguments actually belong to — not in the lowering, which never
      * sees the arguments:
-     *
      *  - exactly the one path argument, positional or named: mapped, carrying its text;
      *  - no argument at all: **rejected**. The previous `valueArguments.isNotEmpty()`
      *    guard meant such a call was not mapped, and an unmapped call is still a call
@@ -267,7 +256,7 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
      *  - more than the one argument: **rejected**. `readFile("a", "b")` has no meaning;
      *    the lowering emits a two-argument façade call, so a second argument would be
      *    dropped in silence — a semantic drop, which the Semantic Constitution forbids.
-     */
+*/
     private fun recordPathArgument(
         source: ScriptedSource,
         expression: KtCallExpression,
@@ -314,7 +303,7 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
          * Fixed parse-side file name: the `.kts` suffix makes the PSI parser
          * treat the text as a Kotlin script. It carries no semantic weight —
          * reported locations always use the caller's [ScriptedSourceId].
-         */
+*/
         const val SCRIPT_PARSE_FILE_NAME = "scripted-source.kts"
     }
 }

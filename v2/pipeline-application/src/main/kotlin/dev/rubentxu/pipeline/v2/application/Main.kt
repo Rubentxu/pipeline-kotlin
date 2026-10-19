@@ -77,22 +77,19 @@ import java.nio.file.Files
 
 /**
  * The CLI's verb set, and the only place it is written down.
- *
- * Measured 2026-10-18: three defects came from this list living in prose. A rejected
+ * Measured in an earlier build: three defects came from this list living in prose. A rejected
  * argument printed `Usage: pipeline <validate|run>` — 2 of 11 verbs, under a name the
  * binary does not have. The hint on the same rejection said "run 'pipeline --help'",
  * and `--help` was itself rejected: a promise with nothing behind it. The list inside
  * [CliExitMapping] meanwhile named 10 verbs and omitted `inspect`.
- *
  * Enumerating verbs in a *message* is the census defect ([see AGENTS.md]): a hand-kept
  * list drifts from the dispatch and nobody notices until an operator is misled. A verb
  * list in prose is worse than no list, because it is read as authoritative.
- *
  * So: one constant, rendered by [printUsage], referenced by the hints. The dispatch
  * chain below still spells each verb as its own comparison — collapsing the two is a
  * separate concern from telling the truth about the current shape, and it would change
  * the admission order that the per-verb guards depend on.
- */
+*/
 internal val CLI_VERBS: List<Pair<String, String>> = listOf(
     "validate" to "compile a script and report every diagnostic",
     "run" to "execute a script durably (--db, --resume|--rerun, --control-root)",
@@ -109,16 +106,13 @@ internal val CLI_VERBS: List<Pair<String, String>> = listOf(
 
 /**
  * Environment variables that change behaviour, rendered by [printUsage].
- *
  * ## Why this is a constant and not prose
- *
- * Measured 2026-10-18 before this existed: six `PIPELINE*` literals in product
+ * Measured in an earlier build before this existed: six `PIPELINE*` literals in product
  * code, **zero** of them reachable from `--help`. `PIPELINE_STORE_PASSPHRASE`
  * appeared only in two error hints, so it was discoverable exactly when
  * something had already gone wrong; `PIPELINE_CREDENTIALS_STORE` appeared only
  * in a comment; the sandbox pair appeared only in SDK KDoc. An operator could
  * not find any of them without reading the source.
- *
  * That is the same failure mode [CLI_VERBS] exists to prevent, on the other
  * surface: a list nobody reads drifts from the code, and here the drift is
  * invisible because a missing env var looks like a program that simply ignored
@@ -126,9 +120,7 @@ internal val CLI_VERBS: List<Pair<String, String>> = listOf(
  * list is the only place a new variable has to be remembered — and a fitness
  * checks that a variable added to the code is added here or to
  * [CLI_ENVIRONMENT_INTERNAL].
- *
  * ## The six, and how the first count of three was wrong
- *
  * A sweep for `"PIPELINE[A-Z0-9_]*"` reports six. An earlier sweep of this
  * session reported three, and the fitness disproved the three by failing with
  * the names it had never returned. The cause was not the character class: it
@@ -138,7 +130,7 @@ internal val CLI_VERBS: List<Pair<String, String>> = listOf(
  * glob is not a small error; it is an error that reads as a complete answer,
  * which is why the row comparing the two sets is the row that carries this
  * block.
- */
+*/
 internal val CLI_ENVIRONMENT: List<Pair<String, String>> = listOf(
     "PIPELINE_CREDENTIALS_STORE" to "credentials store file (default ~/.pipeline/credentials.bin)",
     "PIPELINE_STORE_PASSPHRASE" to "passphrase that decrypts the credentials store",
@@ -152,12 +144,11 @@ internal val CLI_ENVIRONMENT: List<Pair<String, String>> = listOf(
  * operator's. These are rendered as well, because an operator who finds one in
  * `/proc/<pid>/environ` and cannot tell whether setting it means anything has
  * the same problem as one who cannot find a variable at all.
- *
  * They live in a second named list rather than being skipped inside the
  * fitness, and that is the point: an exemption that is a name in a list can be
  * audited, whereas an exemption expressed as a pattern or a filename can hide a
  * real variable behind it.
- */
+*/
 internal val CLI_ENVIRONMENT_INTERNAL: List<Pair<String, String>> = listOf(
     "PIPELINE_OP_COOKIE" to "internal: tags one durable operation's process tree (do not set)",
 )
@@ -176,11 +167,10 @@ private fun printUsage(out: Appendable) {
 
 /**
  * Whether [args] asks for the usage surface.
- *
  * Extracted so the hints printed on a rejection can be CHECKED against it. A hint that
  * names a flag the CLI does not accept is a promise with nothing behind it, and the
  * cheapest way to keep that from returning is to make the question answerable in a test.
- */
+*/
 internal fun isHelpRequest(args: Array<String>): Boolean =
     args.firstOrNull() in HELP_TOKENS
 
@@ -194,20 +184,19 @@ fun main(args: Array<String>) {
         return
     }
 
-    // WU-LPR-011 F1: `version` is a real subcommand. Reports the CLI version from the build-generated
+    // `version` is a real subcommand. Reports the CLI version from the build-generated
     // version resource (authoritative source = project.version) and exits 0.
-    // WU-LPR-071: the version MUST be produced by the build from project.version. The legacy
+    // The version MUST be produced by the build from project.version. The legacy
     // "0.1.0-SNAPSHOT" sentinel is removed: if the generated resource is missing, that is a packaging
     // defect, NOT a fallback case.
     // Fail-closed: print an explicit error and exit non-zero so CI cannot ship an
     // unversioned artifact.
     if (args.firstOrNull() == "version" && args.getOrNull(1) != "--json") {
-        // S6-COMPOSITION: ONE authority for "what version is this". Admission reads the same value
+        // ONE authority for "what version is this". Admission reads the same value
         // through RuntimeApiVersion, so the number a plugin is judged against and the number the
         // CLI reports cannot come from two readers free to disagree.
-        //
-        // S6-COMPOSITION: the source moved from the jar manifest to a generated RESOURCE, because
-        // 34 harnesses run the CLI from a classes directory where Package.getImplementationVersion()
+        // The source moved from the jar manifest to a generated RESOURCE, because
+        // 34 harnesses run the CLI from a classes directory where Package.getImplementationVersion
         // is null. The manifest attribute is still populated for pipeline-release and external
         // inspection, and RuntimeApiVersionDriftTest fails if the two ever diverge.
         val manifestVersion = RuntimeApiVersion.readImplementationVersion()
@@ -225,13 +214,11 @@ fun main(args: Array<String>) {
         return
     }
 
-    // H1.4 — the same authority, reported as a machine-readable object.
-    //
+    // The same authority, reported as a machine-readable object.
     // `version` prints a line a human reads and a version that identifies a release LINE. Neither
     // answers "which commit is this binary", and a harness must be able to ask. Emitting the
     // provenance as JSON keeps the report machine-checkable and keeps the product version as the
     // release identity it actually is, without overloading it into a fake commit identity.
-    //
     // Absent provenance is reported as `null`, not as an empty string and not as an error: a
     // working-tree build has no commit to report, and the candidate gate decides whether that is
     // acceptable for what it is certifying.
@@ -250,7 +237,7 @@ fun main(args: Array<String>) {
         return
     }
 
-    // PK-1 / ADR-PK1-IDENTITY: `capabilities` is a real subcommand.
+    // `capabilities` is a real subcommand.
     // Emits `pipelinek.capabilities/1` JSON line on stdout; side-effect
     // free. Machine-verifiable surface for external consumers.
     if (args.firstOrNull() == "capabilities") {
@@ -259,7 +246,7 @@ fun main(args: Array<String>) {
         return
     }
 
-    // PK-1 / ADR-PK1-IDENTITY: `sdk-info` is a real subcommand.
+    // `sdk-info` is a real subcommand.
     // Emits `pipelinek.sdk/1` JSON line on stdout; side-effect free.
     if (args.firstOrNull() == "sdk-info") {
         val exitCode = MainSdkInfoCli.main(args.drop(1).toTypedArray())
@@ -267,11 +254,11 @@ fun main(args: Array<String>) {
         return
     }
 
-    // WU-LPR-011 F1: `doctor` is a real subcommand. Local-only health
+    // `doctor` is a real subcommand. Local-only health
     // diagnostics: JDK version, working directory writability probe. Exits
     // 0 when the local runtime is healthy, 2 on an environment defect.
     if (args.firstOrNull() == "doctor") {
-        // WU-LPR-071: route host-environment reads through the canonical
+        // Route host-environment reads through the canonical
         // RuntimeConfig adapter (single authority); direct System.getProperty
         // here would be a second runtime-value authority (WULpr402 property 6).
         val runtimeConfig = dev.rubentxu.pipeline.v2.application.SystemRuntimeConfig()
@@ -293,7 +280,7 @@ fun main(args: Array<String>) {
         return
     }
 
-    // Events subcommand (EVT-2): structured local history inspection
+    // Events subcommand: structured local history inspection
     if (args.firstOrNull() == "events") {
         if (args.getOrNull(1) == "verify") {
             val exitCode = MainEventsVerifyCli.main(args.drop(2).toTypedArray())
@@ -305,12 +292,11 @@ fun main(args: Array<String>) {
         return
     }
 
-    // Console subcommand (M1-P3): read process output from the Output Plane by OutputCursor.
-    //
+    // Read process output from the Output Plane by OutputCursor.
     // Deliberately a SEPARATE verb from `events`. The two planes are different orders and a
     // different authority: `events` continues on a store-assigned sequence, `console` continues on
     // a committed byte offset and never reads an event. Folding console into `events` — as a view,
-    // or as a flag — is the conflation ADR-M1 D3 exists to prevent, and it is exactly what the
+    // Or as a flag — is the conflation exists to prevent, and it is exactly what the
     // deprecated EventViewProjection.CONSOLE was.
     if (args.firstOrNull() == "console") {
         val exitCode = MainConsoleCli.main(args.drop(1).toTypedArray())
@@ -318,8 +304,7 @@ fun main(args: Array<String>) {
         return
     }
 
-    // Observe subcommand (OBS-E5): one public verb over both durable authorities.
-    //
+    // One public verb over both durable authorities.
     // NOT a third universe alongside `events` and `console` — it reads the same two planes and
     // composes them read-side. What it refuses is the thing neither of the other two can promise:
     // a document claiming an interleaving. `Event.sequence` and `OutputFrame.ordinal` have no
@@ -337,11 +322,10 @@ fun main(args: Array<String>) {
         return
     }
 
-    // Inspect subcommand (R4 / WU-R4.1, ADR-0088): bounded diagnostic surface.
-    //
+    // Bounded diagnostic surface.
     // The verb is the same workflow for `inspect` that `observe`, `events`, and `console`
     // are for their lanes: a typed parser + a typed query + a typed projection. The dispatcher
-    // adds it without disturbing the existing CLI surface (R4 / WU-R4.5 is the cross-CLI
+    // Adds it without disturbing the existing CLI surface (/ is the cross-CLI
     // canary that catches any regression here).
     if (args.firstOrNull() == "inspect") {
         val exitCode = MainInspectCli.main(args.drop(1).toTypedArray())
@@ -366,7 +350,7 @@ fun main(args: Array<String>) {
         }
     }
 
-    // PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: validate --output-protocol
+    // Validate --output-protocol
     // BEFORE the run starts. An unknown id is a fail-closed
     // CliExit.InvalidArgument (exit 2); the server never falls back
     // to Published on an unknown request, because that would be the
@@ -381,14 +365,13 @@ fun main(args: Array<String>) {
     // the query is built a single time for every output path below.
     val compiledQuery = (compileQuery(config.query) as SelectorCompileResult.Ok).value
 
-    // Shared secret pattern registry for redaction (T6)
+    // Shared secret pattern registry for redaction
     // Both InMemoryEventStore and SqliteEventStore are wrapped at construction time
     // so all downstream consumers receive already-sanitized events.
     val secretPatternRegistry = SecretPatternRegistry()
 
-    // CR-RD-008 / CR-RD-021 / ARC-CANARY-001 canaries, registered ONLY when a round-gate asks for
+    // Canary steps, registered ONLY when a round-gate asks for
     // them. They used to be unconditional, and they were not free.
-    //
     // `SecretPatternRegistry.maxLiteralByteLength()` is the redactor's LOOKAHEAD, and the lookahead
     // is the floor below which no live output is observable at all: a byte inside it could still
     // turn out to begin a secret, so the redactor must hold it until more input rules it out.
@@ -397,25 +380,24 @@ fun main(args: Array<String>) {
     // step that printed 32 bytes committed NOTHING to the Output Plane until it exited — not
     // because the pump was late, but because 32 < 56. Every real run was paying 49 bytes of
     // observability latency for test material.
-    //
     // Gating them removes no protection. These values are synthetic and appear in no real
     // credential; what protects a real credential is the secrets registered from the credential
     // store, which are added independently. And the round-gate that needs them now says so
     // explicitly, so the proof is opt-in and visible instead of ambient.
     if (System.getProperty(REDACTION_CANARY_PROPERTY) == "true") {
-        // CR-RD-008 canary: synthetic secret for round-gate verification.
+        // Canary: synthetic secret for round-gate verification
         secretPatternRegistry.addSecret(SecretHandle.plain("GHS6_CANARY_7f3a9c2e1b4d5e6f"))
 
-        // CR-RD-021 ssh canary: synthetic secret for SSH channel round-gate verification.
+        // Ssh canary: synthetic secret for SSH channel round-gate verification
         secretPatternRegistry.addSecret(SecretHandle.plain("__ssh_canary__"))
 
-        // ARC-CANARY-001 / CR-RD-022 artefact canary: synthetic secret for artefact step round-gate.
+        // Artefact canary: synthetic secret for artefact step round-gate
         secretPatternRegistry.addSecret(SecretHandle.plain("__artefact_canary__"))
     }
 
     val scriptPath = Paths.get(config.scriptPath)
 
-    // DEBT-CLI-SCRIPT-NOT-FOUND: a missing/unreadable script used to reach
+    // A missing/unreadable script used to reach
     // `scriptPath.toFile().readText()` deep in each mode and surface as a raw
     // `NoSuchFileException` stacktrace. Reject it here — at the CLI boundary, before
     // any store, journal or process is created — with a typed, actionable message.
@@ -429,7 +411,7 @@ fun main(args: Array<String>) {
     }
 
     if (command == CliCommand.VALIDATE) {
-        // M2-002: validate NEVER starts processes. It compiles the script
+        // Validate NEVER starts processes. It compiles the script
         // and reports diagnostics — nothing else.
         val rawStore = InMemoryEventStore()
         val store = RedactingEventSink(rawStore, secretPatternRegistry)
@@ -454,12 +436,11 @@ fun main(args: Array<String>) {
             query = compiledQuery,
             protocol = outputProtocol,
         )
-        // TRAIN-DSL-HONESTY: a script that compiles but throws while building
+        // A script that compiles but throws while building
         // its IR reaches here with isSuccess == true and no usable spec.
         // Reporting SUCCESS for it was the same DEFAULT_SUCCESS the run path
         // turned into an NPE.
-        //
-        // A compilation produces a LIST of diagnostics. Measured 2026-10-18 on
+        // A compilation produces a LIST of diagnostics. Measured in an earlier build on
         // the built distribution, the previous shape collapsed it to one
         // message with `lastOrNull`: a script with nine errors printed exactly
         // one of them — the LAST one, which is the least likely to be the one
@@ -473,10 +454,9 @@ fun main(args: Array<String>) {
         val noSpec = compileResult.isSuccess &&
             compileResult.scriptInstance?.javaClass?.methods?.any { it.name == "get\$\$result" } != true
         if (!compileResult.isSuccess || evalFailures.isNotEmpty() || noSpec) {
-            // WU-LPR-011 F3: compile failure is an invocation/admission error,
+            // Compile failure is an invocation/admission error,
             // not a pipeline execution failure. Exit 2 per the canonical
             // contract (0 success / 1 pipeline fail / 2 invocation+compile).
-            //
             // The verdict is ONE line. The reasons were just printed above by
             // the console renderer, each with path:line:column, on this same
             // stream — repeating them here would print every error twice, and
@@ -496,7 +476,7 @@ fun main(args: Array<String>) {
 
     // "run" command.
     if (config.dbPath == null) {
-        // LF-0208 (Single Runtime Spine): storage choice must not select a
+        // Storage choice must not select a
         // different execution algorithm. Without --db the run uses the
         // canonical durable coordinator with volatile (in-memory) stores;
         // nothing survives the process.
@@ -508,7 +488,7 @@ fun main(args: Array<String>) {
         }
         val rawEventStore = InMemoryEventStore()
         val redactedStore = RedactingEventSink(rawEventStore, secretPatternRegistry)
-        // ADR-0088: in TEXT the run is mirrored live as events are appended, so
+        // In TEXT the run is mirrored live as events are appended, so
         // the end-of-run dump is suppressed below. Machine formats keep stdout
         // untouched and are written once, at the end, exactly as before.
         val eventStore: dev.rubentxu.pipeline.v2.events.EventSink =
@@ -529,14 +509,13 @@ fun main(args: Array<String>) {
             scriptContent,
         )
         // `--control-root` is honoured HERE TOO, and it used not to be. The flag is parsed and
-        // validated in the durable branch (ML-R1) and was silently ignored in this one, which
+        // Validated in the durable branch and was silently ignored in this one, which
         // hard-coded a fresh temp directory per run. That made the flag mean two different
         // things depending on whether `--db` was present, and it made the Output Plane
         // unreachable from the CLI on the DEFAULT path: `pipeline console --control-dir X`
         // could not be pointed at a run that had not been given a database.
-        //
-        // That is not a cosmetic inconsistency. M1 moved process output into the plane
-        // (ADR-M1 D2/D3), so "where the plane is written" IS the product question, and a flag
+        // That is not a cosmetic inconsistency. moved process output into the plane
+        //, so "where the plane is written" IS the product question, and a flag
         // that answers it only on one of two execution paths is a flag that cannot be relied on
         // to observe the default one. The default is unchanged: with no `--control-root`, this
         // still creates a private temp directory.
@@ -553,14 +532,14 @@ fun main(args: Array<String>) {
         }
         val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
         val fresh = UuidRunIdGenerator().next()
-        // PK-1 / ADR-PK1-IDENTITY: build the correlationId once here at
+        // Build the correlationId once here at
         // the CLI boundary so both the durable last-run record and the
         // in-memory RunCorrelated event share the same token.
         val correlationId: CorrelationId = config.correlationId?.let { CorrelationId(it) }
             ?: UuidCorrelationIdGenerator().next()
         runIdDirectory.record(definitionId, fresh, correlationId as CorrelationId)
         val runId: String = fresh.value
-        // PK-1 / ADR-PK1-IDENTITY: emit the RunCorrelated event on the
+        // Emit the RunCorrelated event on the
         // event sink so a consumer can join durable state to the
         // external correlationId. The in-memory eventStore is created
         // below; we emit after the rest of the run is wired (so the
@@ -574,7 +553,7 @@ fun main(args: Array<String>) {
             "cli-inmem-" + ProcessHandle.current().pid() + "-" +
                 java.util.UUID.randomUUID().toString().take(8)
         )!!
-        // PK-1 / ADR-PK1-IDENTITY: emit the RunCorrelated event and
+        // Emit the RunCorrelated event and
         // the LaunchReceipt. The receipt is durable machine-readable
         // metadata, not a human message; in TEXT view it goes to
         // stderr so the human console is not polluted. In JSON/JSONL
@@ -594,7 +573,7 @@ fun main(args: Array<String>) {
         val definition0 = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
         // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
         // return values reflect the host environment. Lfc0GlobalStateFitnessTest
-        // requires :pipeline-scripting-api to read no global state; this scope is
+        // requires:pipeline-scripting-api to read no global state; this scope is
         // the single bridge. Cleared in a finally block.
         dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.set(SystemRuntimeConfig())
         val result = try {
@@ -617,7 +596,7 @@ fun main(args: Array<String>) {
         } else null
 
         val compileOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = if (result is dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Failure) {
-            // TRAIN-DSL-HONESTY: evaluation failures (any exception thrown while
+            // Evaluation failures (any exception thrown while
             // the DSL body constructs its IR, including the fail-closed
             // rejections of whenCondition/retry) arrive here as a Failure. The
             // user's own diagnostic message must survive instead of becoming an
@@ -649,20 +628,20 @@ fun main(args: Array<String>) {
             )
         }
 
-        // LB-02 / EP-6: compose registry BEFORE the gate so contributed keys are eligible.
-        // S6-COMPOSITION: admission happens FIRST and inside the same function, so the in-memory and
-        // durable branches cannot admit differently. S6/G's "one resolution for the whole run" now
+        // Compose registry BEFORE the gate so contributed keys are eligible.
+        // Admission happens FIRST and inside the same function, so the in-memory and
+        // durable branches cannot admit differently. The "one resolution for the whole run" now
         // also covers the decision about WHICH artifacts are allowed to resolve at all.
         val composition = admitThenComposeOrExit(config.pluginJars)
         val composedStepRegistry = composition.steps
         val nonCanonicalSteps = compiledPipeline
             ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()
-        // WU-LPR-103: the default `pipeline run <script>` (in-memory) branch composes
+        // The default `pipeline run <script>` (in-memory) branch composes
         // the SAME credential injection stack as the durable branch. The default path
         // is the temp in-memory control dir's sibling; PIPELINE_CREDENTIALS_STORE env
         // overrides, exactly like the durable path.
         val withCredentialsExecutor = composeWithCredentialsExecutor(secretPatternRegistry)
-        // RP034-H / ADR-0101 clause 3.1 + RP034-Id: the workspace origin is decided
+        // / +: the workspace origin is decided
         // ONCE, here at the boundary. Both facts cross into the runtime — the shared
         // directory and its owner — because a runtime that receives only the root
         // re-derives ownership and lets `deleteDir` erase a user's project under the
@@ -671,7 +650,7 @@ fun main(args: Array<String>) {
         val workspaceTransport = WorkspaceIntent.resolveRuntimeTransport(
             config, Path.of("").toAbsolutePath().normalize(), controlDirRoot,
         )
-        // OBS-E4: the process output of a step lives in the Output Plane, not on the event spine,
+        // The process output of a step lives in the Output Plane, not on the event spine,
         // so the event sink above never saw it. This observer follows the plane while the run is in
         // flight, which is what makes a build's progress visible while the build runs. It is
         // started BEFORE the pipeline (there is nothing to observe until a step produces bytes) and
@@ -682,11 +661,11 @@ fun main(args: Array<String>) {
             when {
             // Compilation must be checked FIRST. If the script failed to compile there is no
             // compiled pipeline to run; jumping to runCanonicalPipeline would NPE on `!!`. This
-            // regression was introduced when the per-step canonical gate was added (v0.33.1 P2
+            // Regression was introduced when the per-step canonical gate was added (v0.33.1
             // corpus-closure) but the compile-failure branch was left inside `else -> compileOutcome`
             // which only fires when nonCanonicalSteps is non-empty OR pipelineSpec is non-null.
             compileOutcome != null -> compileOutcome
-            // TRAIN-DSL-HONESTY: compile "succeeded" but produced no PipelineSpec. Before this
+            // Compile "succeeded" but produced no PipelineSpec. Before this
             // branch this reached runCanonicalPipeline(compiledPipeline!!) and died as an NPE
             // with exit 0. A script that cannot produce its IR is an admission failure.
             compiledPipeline == null -> dev.rubentxu.pipeline.v2.domain.RunOutcome.Failure(
@@ -706,20 +685,20 @@ fun main(args: Array<String>) {
                 eventSink = eventStore,
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
-                // RP034-H / ADR-0101 clause 3.1: the CLI default is local-first. The
+                // The CLI default is local-first. The
                 // workspace origin is decided once, here at the boundary, and BOTH
                 // facts cross into the runtime: the shared directory and its owner.
                 // `--isolated` preserves the historical PipelineK-managed scratch;
                 // `--workspace <path>` stays authoritative.
                 workspaceBase = workspaceTransport.base,
                 workspaceOwnership = workspaceTransport.ownership,
-                // S6/G: the frozen composition, not a step registry plus a classloader.
+                // The frozen composition, not a step registry plus a classloader.
                 // There is no path here that can reach a registry without a directive registry
                 // having been resolved under the same loader.
                 composition = composition,
                 secretPatternRegistry = secretPatternRegistry,
                 withCredentialsExecutor = withCredentialsExecutor,
-                // H5-B: NO credentialProvider on this path, deliberately. It composes
+                // NO credentialProvider on this path, deliberately. It composes
                 // with an in-memory journal and receives no store, so the seam takes
                 // its default: a source that refuses every lookup with
                 // `NotConfigured`. That is the honest answer for a run that has
@@ -727,7 +706,7 @@ fun main(args: Array<String>) {
                 // when the operator configured no store. Passing a provider here
                 // would mean opening a secret store for a path that has no use for
                 // one.
-                // H8-D1: this path composes its own coordinator and had the same
+                // This path composes its own coordinator and had the same
                 // omission as the durable one. `--allow-network` is a per-RUN
                 // permission; a run whose flag is ignored is a run where the
                 // operator believes they opened the network and did not.
@@ -752,7 +731,7 @@ fun main(args: Array<String>) {
         }
 
         val events = eventStore.eventsFor(runId).toList()
-        // ADR-0088: human text was already streamed live by ConsolePrintingEventSink.
+        // Human text was already streamed live by ConsolePrintingEventSink.
         // Only the machine formats still need a document at the end.
         if (config.format != ObservationFormat.TEXT) {
             writeEventDocument(
@@ -772,7 +751,7 @@ fun main(args: Array<String>) {
                     System.err.println("Pipeline finished with UNSTABLE"); false
                 }
                 is dev.rubentxu.pipeline.v2.domain.RunOutcome.Failure -> {
-                    // TRAIN-DSL-HONESTY: an admission failure (compile or DSL
+                    // An admission failure (compile or DSL
                     // construction) must carry its diagnostic. "FAILURE" alone
                     // sent users hunting with zero context.
                     runOutcome.failure.message
@@ -800,7 +779,7 @@ fun main(args: Array<String>) {
 
     // Durable mode: SqliteEventStore + PipelineOrchestrator for replay/divergence gating.
     // Both stores are wrapped with RedactingEventSink at construction time.
-    // D3 — a run CREATES its event store, so the file is legitimately absent; only the DIRECTORY
+    // A run CREATES its event store, so the file is legitimately absent; only the DIRECTORY
     // has to exist. That is why the purpose is part of the admission and not a flag at each site:
     // `run` used to reach the same constructor as the read verbs and inherited neither the refusal
     // nor the exit code, so a `--db` under a missing directory escaped as a raw SQLException with
@@ -825,10 +804,10 @@ fun main(args: Array<String>) {
         scriptPath.toString(),
         scriptContent,
     )
-    // ML-R1: controlDirRoot is the parent directory of the SQLite db file (default).
+    // ControlDirRoot is the parent directory of the SQLite db file (default).
     // Can be overridden via --control-root flag for testing.
     // Each step gets a subdirectory: $controlDirRoot/$runId-$stageIndex-$stepIndex/
-    // C5: Validate control-root path before use
+    // Validate control-root path before use
     val dbPath = Paths.get(config.dbPath!!)
     val controlDirRoot: Path = if (config.controlRoot != null) {
         try {
@@ -841,7 +820,7 @@ fun main(args: Array<String>) {
     } else {
         dbPath.parent.resolve("durable-shell")
     }
-    // WU-LPR-WC: the canonical engine threads `workspaceBase` through
+    // The canonical engine threads `workspaceBase` through
     // `CanonicalRuntimeContext.workspaceBase`; the capability bridge
     // populates `WORKSPACE_IDENTITY_CAPABILITY` from
     // `context.shOptions.workspaceRoot`. Plugins consume the typed
@@ -849,11 +828,11 @@ fun main(args: Array<String>) {
     // instead of reading a process-global property. The system-property
     // bridge has been removed: no production code reads
     // `pipeline.workspace.root` any more (the historical writers were
-    // F5.1 SCM/Git and F5.2 JUnit; F5.2 JUnit migrated to the typed
-    // capability here; F5.1 SCM/Git migration is filed as a sibling
+    // SCM/Git and JUnit; JUnit migrated to the typed
+    // Capability here; SCM/Git migration is filed as a sibling
     // follow-up, OUT OF SCOPE for this WU).
     val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
-    // PK-1 / ADR-PK1-IDENTITY: build the correlationId once here at
+    // Build the correlationId once here at
     // the CLI boundary so both the durable last-run record and the
     // RunCorrelated event share the same token.
     val pk1Correlation: CorrelationId = config.correlationId?.let { CorrelationId(it) }
@@ -867,7 +846,7 @@ fun main(args: Array<String>) {
             correlationId = pk1Correlation,
         )
     } catch (e: IllegalArgumentException) {
-        // WU-LPR-011 F4: --resume without a prior durable run is an
+        // --resume without a prior durable run is an
         // invocation/admission error, not a pipeline failure. Typed
         // rejection, no stack trace, exit 2 per the CLI exit contract.
         System.err.println("Error: ${e.message}")
@@ -875,7 +854,7 @@ fun main(args: Array<String>) {
         throw e // unreachable
     }
     val runId = runSelection.runId.value
-    // S2-R0: first-class run ownership. Before any event is written for this
+    // First-class run ownership. Before any event is written for this
     // run we must prove we are the only process writing to it. Without this,
     // two concurrent `--resume` invocations of the same definition both proceed
     // and collide on the durable `ux_events_run_sequence` uniqueness index, so
@@ -909,10 +888,10 @@ fun main(args: Array<String>) {
             throw IllegalStateException("unreachable")
         }
     }
-    // PK-1 / ADR-PK1-IDENTITY: lease is held; emit the RunCorrelated
+    // Lease is held; emit the RunCorrelated
     // event on the durable event sink and the LaunchReceipt on stdout.
     // The owner is the lease-acquired runOwner.
-    // PK-1 / ADR-PK1-IDENTITY: the durable branch's correlation is the
+    // The durable branch's correlation is the
     // one persisted alongside the runId; fall back to the CLI-bound
     // token if the durable record has none.
     val resolvedCorrelationId: CorrelationId = pk1Correlation
@@ -945,14 +924,13 @@ fun main(args: Array<String>) {
                 @Suppress("UNCHECKED_CAST")
                 resultMethod.invoke(inst) as? PipelineSpec
             } catch (invocationError: java.lang.reflect.InvocationTargetException) {
-                // S0-C1 / TRAIN-DSL-HONESTY: `get$$result` runs the script BODY,
+                // `get$$result` runs the script BODY,
                 // so this is where a fail-closed DSL guard fires (e.g. the Pure
                 // Builder Consumption gate rejecting an unconsumed MUST_CONSUME
                 // carrier). Swallowing it into `null` turned a construction
                 // rejection into "no pipeline", which the runner then reported
                 // downstream as a runtime step failure — the author's discarded
                 // value disappeared and a StepFailed appeared instead.
-                //
                 // Unwrap the reflective wrapper so the real, actionable message
                 // reaches the author verbatim.
                 throw (invocationError.targetException ?: invocationError)
@@ -960,20 +938,20 @@ fun main(args: Array<String>) {
         }
     } else null
 
-    // LFC-2R / R4B — frontend FORM selection. The compiler-backed mapping decides
+    // Frontend FORM selection. The compiler-backed mapping decides
     // whether this source contains runtime-effectful scripted calls; Main only
     // picks the closed artifact FORM, never an execution authority and never a
-    // concrete Step (R4A law: Main may choose the frontend, never the backend).
+    // concrete Step (Main may choose the frontend, never the backend).
     val scriptedFrontend: dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.EntryPointArtifact? =
         if (result.isSuccess) {
             val mapping = KotlinScriptedSourceMapper().map(ScriptedSource(ScriptedSourceId(scriptPath.fileName.toString()), scriptContent))
             val mappedCalls = if (mapping is dev.rubentxu.pipeline.v2.scripting.ScriptedSourceMapping.Mapped) {
                 mapping.calls.filter { it.kind.isRuntimeReturning() }
             } else emptyList()
-            // R4B scope: the R3 lowering emits a generator-level entry point
+            // The lowering emits a generator-level entry point
             // body only. A `pipeline { stages { stage { ... } } }` structure
             // keeps the eager PipelineSpec frontend this slice (no DSL-body
-            // migration, per the R4B GO). Frontend FORM selection, never an
+            // migration). Frontend FORM selection, never an
             // execution-authority switch.
             val isGeneratorLevelSource = mappedCalls.isNotEmpty() &&
                 !Regex("""\bpipeline\s*\{""").containsMatchIn(scriptContent)
@@ -1052,15 +1030,13 @@ fun main(args: Array<String>) {
     val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
     val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
 
-    // T12: Resolve SecretStore for credential injection in withCredentials blocks.
-    //
+    // Resolve SecretStore for credential injection in withCredentials blocks.
     // The store location is CredentialsStorePath's, the ONE authority, and it is
     // the same value composeWithCredentialsExecutor uses on the durable branch.
     // This block used to recompute it from controlDirRoot, which is how the two
     // branches came to disagree about a credentials file; the duplicated copy is
     // what made the divergence invisible. PIPELINE_STORE_PASSPHRASE supplies the
     // passphrase.
-    //
     // Behavior:
     // - Store file does not exist → pass null (user runs `pipeline credentials add`
     //   first to create it; no error at startup)
@@ -1079,7 +1055,7 @@ fun main(args: Array<String>) {
                 val store = LocalSecretStore(credentialsStorePath, passphraseChars)
                 // Do NOT wipe passphraseChars here — LocalSecretStore stores the
                 // same CharArray reference and would lose its own copy. The store
-                // zeros the passphrase in its own close().
+                // zeros the passphrase in its own close.
                 store
             } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
                 System.err.println("Error: ${e.message}")
@@ -1098,7 +1074,7 @@ fun main(args: Array<String>) {
             }
         }
 
-    // H0 composition root: construct credential ports and executor
+    // Composition root: construct credential ports and executor
     // LocalSecretStore (existing) -> LocalCredentialProvider -> CredentialMaterializer -> LocalFileMaterialization -> WithCredentialsExecutor
     val credentialProvider: dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider? = secretStore?.let { LocalCredentialProvider(it) }
     val credentialMaterialization: dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization? = secretStore?.let { LocalFileMaterialization(CredentialMaterializer(it)) }
@@ -1108,38 +1084,38 @@ fun main(args: Array<String>) {
         null
     }
 
-    // LF-0205 (closed LEG-1.1): the legacy PipelineOrchestrator was constructed here but
+    // The legacy PipelineOrchestrator was constructed here but
     // never invoked. The CLI reaches the durable runtime ONLY through the canonical
-    // RunCoordinator (fail-closed exit 2 otherwise). LEG-1 burn-down deleted the class.
-    // LB-02 / EP-6: compose the registry BEFORE the canonical-eligibility gate —
+    // RunCoordinator (fail-closed exit 2 otherwise). burn-down deleted the class
+    // Compose the registry BEFORE the canonical-eligibility gate —
     // eligibility is registry-derived, so external plugin contributions must be
     // visible to the gate or a contributed key would be wrongly rejected as
     // non-canonical. Same composed registry is handed to the coordinator below.
-    // S6-COMPOSITION: same single entry point as the in-memory branch above. Writing the admission
+    // Same single entry point as the in-memory branch above. Writing the admission
     // wiring out a second time here would let the two branches disagree about which plugins were
-    // admitted, which is precisely the defect S6/G removed once already.
+    // Admitted, which is precisely the defect the composition already removed
     val composition = admitThenComposeOrExit(config.pluginJars)
     val composedStepRegistry = composition.steps
-    // RP034-H / ADR-0101 clause 3.1 + RP034-Id: the workspace origin is decided
+    // / +: the workspace origin is decided
     // ONCE, here at the boundary, and both facts cross into the runtime — the
     // shared directory and its owner. `--isolated` keeps the historical
     // PipelineK scratch; `--workspace <path>` stays authoritative.
     val workspaceTransport = WorkspaceIntent.resolveRuntimeTransport(
         config, Path.of("").toAbsolutePath().normalize(), controlDirRoot,
     )
-    // UAT-RP-024 collateral finding fix (shutdown race 1/3): the sqlite
+    // Collateral finding fix (shutdown race 1/3): the sqlite
     // single-writer thread is NON-daemon. If any exception escapes the run
-    // or the stdout envelope streaming below, rawEventStore.close() is
-    // skipped, the writer keeps blocking on queue.take(), and
+    // or the stdout envelope streaming below, rawEventStore.close is
+    // skipped, the writer keeps blocking on queue.take, and
     // DestroyJavaVM hangs forever (observed: first replay of the dogfood
     // receipt hung until manual kill). Compute the outcome and the last
     // event inside the try; guarantee the close in finally on every path.
     val runOutcomeAndLastEvent: Pair<RunOutcome?, dev.rubentxu.pipeline.v2.events.DomainEvent?> = try {
     val outcome: RunOutcome? = when {
-        // LFC-2R / R4B: the scripted FRONTEND form runs against the SAME durable
+        // The scripted FRONTEND form runs against the SAME durable
         // authority (journal, registry, event sink, control root) composed for the
         // canonical path. This is a frontend selection, never a second runner: the
-        // invocation authority is the registry seam proven in R1/R2 (R4A model B).
+        // Invocation authority is the registry seam the model proved
         scriptedEntryPoint != null -> runScriptedFrontend(
             entryPoint = scriptedEntryPoint,
             runId = runId,
@@ -1161,7 +1137,7 @@ fun main(args: Array<String>) {
             eventSink = eventStore,
             controlDirRoot = controlDirRoot,
             sandboxProfile = config.sandboxProfile,
-            // RP034-H / ADR-0101 clause 3.1: the CLI default is local-first. The
+            // The CLI default is local-first. The
             // workspace origin is decided once, here at the boundary, and BOTH
             // facts cross into the runtime: the shared directory and its owner.
             // `--isolated` preserves the historical PipelineK-managed scratch;
@@ -1169,12 +1145,12 @@ fun main(args: Array<String>) {
             workspaceBase = workspaceTransport.base,
             workspaceOwnership = workspaceTransport.ownership,
             withCredentialsExecutor = withCredentialsExecutor,
-            // H5-B: same on the canonical run path. The credential seam is offered on
+            // Same on the canonical run path. The credential seam is offered on
             // EVERY path or it is offered inconsistently, and an inconsistently
             // admitted Step is a Step whose behaviour depends on which branch the CLI
             // happened to take.
             credentialProvider = credentialProvider,
-            // S6/G: the frozen composition, not a step registry plus a classloader.
+            // The frozen composition, not a step registry plus a classloader.
             composition = composition,
             secretPatternRegistry = secretPatternRegistry,
             allowNetwork = config.allowNetwork,
@@ -1188,16 +1164,16 @@ fun main(args: Array<String>) {
         else -> compileOutcome
     }
 
-    // WU-LPR-089 + WU-LPR-011 regression fix: the WU-LPR-042 single-writer thread
+    // The single-writer thread
     // is non-daemon and processes events asynchronously. We must FLUSH the pending
     // writes BEFORE reading the events back from SQL, otherwise async events emitted
     // just before run-finished (e.g. StashCreated/StashRestored from a final stage)
     // are lost from the stdout JSON envelope (the SQL row exists but hasn't been
-    // committed when eventsFor(runId) runs). After flush, close() stops the writer
+    // committed when eventsFor(runId) runs). After flush, close stops the writer
     // and releases the persistent connection; the JVM exits cleanly because
-    // DestroyJavaVM no longer waits on queue.take().
+    // DestroyJavaVM no longer waits on queue.take.
     rawEventStore.flush()
-    // WU-RP-044 (M5 RSS debt): stream the JSON envelope to stdout one event at a
+    // Stream the JSON envelope to stdout one event at a
     // time (identical byte output to JsonEventLog.encode) and track only the last
     // event for the legacy outcome branch — never materialise the full list or a
     // single monolithic JSON String (1 GiB transcripts made this multi-GB).
@@ -1220,7 +1196,7 @@ fun main(args: Array<String>) {
     rawEventStore.close()
     Pair(outcome, lastEventCaptured)
     } finally {
-        // S2-R0: release ownership on every exit path, including the
+        // Release ownership on every exit path, including the
         // exception paths, so a crashed run is immediately recoverable by the
         // next owner instead of waiting for the OS to reap the lock.
         runCatching { leaseStore.release(requireNotNull(runOwner)) }
@@ -1264,32 +1240,26 @@ fun main(args: Array<String>) {
 }
 
 /**
- * H8-D2 — says WHY the run failed, on the stream an operator is already reading.
- *
+ * Says WHY the run failed, on the stream an operator is already reading.
  * ## The defect this exists to end
- *
  * The exit decision has always been correct: a failure exits 1. But the exit carried
  * no reason. stderr said "Pipeline finished with FAILURE", the JSON envelope's
  * `RunFinished` carried an empty `diagnostics`, and the typed `PipelineFailure`
  * message went nowhere an operator could see it.
- *
  * That silence is not cosmetic — it is the reason three separate delivery defects
  * shipped: a Step refused at admission, refused at execute-time, and refused for a
  * missing network permission all produced **byte-identical** output. A user filing
  * that report could not have told them apart, and neither could triage.
- *
  * ## Why stderr and not the event stream
- *
  * The `RunFinished` event is a lifecycle bookend and its shape is a published
  * contract; widening it is a separate decision. stderr is where the outcome is
  * already summarised one line above, and where `--allow-network` and every other
  * operator-facing diagnostic already goes. A message that is emitted nowhere is a
  * message that does not exist, and this one is the difference between a bug report
  * and a fix.
- *
  * The message is printed as-is, with no prefix of its own: the failure kinds are
  * already typed, and re-labelling them here would create a second vocabulary.
- */
+*/
 private fun reportRunFailure(failure: PipelineFailure) {
     System.err.println("  cause [${failure.kind}]: ${failure.message}")
     failure.cause?.let { System.err.println("  origin: $it") }
@@ -1297,36 +1267,28 @@ private fun reportRunFailure(failure: PipelineFailure) {
 
 
 /**
- * OBS-E4: the run-time output observer, started before the pipeline and stopped after it.
- *
+ * The run-time output observer, started before the pipeline and stopped after it.
  * ## What this is for
- *
  * `ConsolePrintingEventSink` mirrors the EVENT spine as events are appended. Process output is not
  * on that spine — it lives in the Output Plane — so before this the bytes a step printed were
  * durable and unobservable until someone ran `pipeline console` against the control directory, which
  * is not a public verb. A build's progress was therefore invisible while the build ran.
- *
  * ## Why a thread, and why the run never waits for it
- *
  * The observer polls, so it cannot run on the thread that is executing the pipeline. That makes the
  * backpressure law the reason for its existence as much as the convenience: the run does not wait on
  * it, so a wedged terminal, a closed pipe or a slow reader can delay only its own output. The
  * consumer-backpressure law says no observation consumer may reach the execution path, and a
  * terminal that can block the run is exactly that.
- *
  * ## Why the owner stops it, not the plane
- *
  * `ShExecution` seals a step's streams from INSIDE `invoke`, while the run continues, so there is a
  * window in which every stream the run has is sealed and the run is not over. An observer that
  * treated "all sealed" as "done" would end inside that window and drop the output of every later
  * step. `runFinished` is therefore the terminator, and the tail states only classify how it ended.
- *
  * ## `json` is the one format that does not stream
- *
  * A JSON array is a document, and a document cannot be streamed. So for `--format json` this starts
  * NO thread and collects nothing; the end-of-run document already renders every event, and adding
  * output to it is the job of a later block rather than of a half-measure here.
- */
+*/
 private fun startLiveOutputObserver(
     runId: String,
     controlDirRoot: java.nio.file.Path,
@@ -1371,41 +1333,36 @@ private fun startLiveOutputObserver(
 
 /**
  * How long a finished run waits for its observer to notice and flush.
- *
  * Bounded because the run has already produced its result and holding the terminal for an unbounded
  * wait would turn a slow reader into a hung command. What is lost by stopping early is nothing the
  * run owns: the bytes are committed and `observe` can read them afterwards.
- */
+*/
 private const val OBSERVER_JOIN_TIMEOUT_MS = 5_000L
 
 /**
  * Opt-in system property that registers the redaction canaries.
- *
  * ## Why it exists rather than the canaries being unconditional
- *
  * A registered secret is not only something to scrub: its encoded length IS the redactor's
  * lookahead, and the lookahead is the number of bytes that must be seen before the first byte can
  * be published. Registering a 28-character canary therefore claims a 56-byte window (its hex form)
  * and withholds up to 56 bytes of live output on EVERY run — including the runs that have no
  * credentials at all and could not leak anything.
- *
  * So the canaries are test material and are requested by tests. The round-gates that need them set
  * this property, which makes the proof explicit and keeps the default run's latency at
  * `MIN_SECRET_WINDOW`.
- */
+*/
 private const val REDACTION_CANARY_PROPERTY = "pipelinek.redaction.canaries"
 
 /**
- * PK-1 / ADR-PK1-IDENTITY — emit the [RunCorrelated] event on the
+ * Emit the [RunCorrelated] event on the
  * supplied event sink AND the [LaunchReceipt] JSON line on stdout.
- *
  * Called at the moment durable state is established (lease acquired for
  * the durable branch; RunIdDirectory record for the in-memory branch).
  * The event is the durable witness of the correlation; the receipt is
  * the immediate stdout confirmation. Both are emitted in the same
  * order so a consumer reading the event log + stdout can join them
  * without an out-of-order window.
- */
+*/
 private fun emitCorrelationAndReceipt(
     eventStore: dev.rubentxu.pipeline.v2.events.EventSink,
     runId: dev.rubentxu.pipeline.v2.domain.RunId,
@@ -1433,7 +1390,7 @@ private fun emitCorrelationAndReceipt(
         controlDir = controlDir,
     )
     val bytes = LaunchReceipt.encode(receipt).toByteArray(Charsets.UTF_8)
-    // ADR-PK-NEXT-R0.3: in TEXT view the receipt goes to stderr so the
+    // In TEXT view the receipt goes to stderr so the
     // human console is not polluted. In JSON / JSON_LINES view the
     // receipt is the first stdout line so a machine consumer can
     // join it to the event stream by line index. Either way, the
@@ -1453,15 +1410,14 @@ private fun emitCorrelationAndReceipt(
 }
 
 // ------------------------------------------------------------------------
-// PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING — opt-in output protocol helpers.
+// Opt-in output protocol helpers.
 // ------------------------------------------------------------------------
 
 /**
  * Resolve the operator-supplied `--output-protocol` tokens to a
  * concrete [OutputProtocol] or fail closed with
  * [CliExit.InvalidArgument] (exit 2).
- *
- * Rules (ADR-PK1-OUTPUT-FRAMING):
+ * Rules:
  * - Empty list → [OutputProtocol.DEFAULT] (Published). No change
  *   in behaviour for callers that did not opt in.
  * - The token list is the CLIENT'S PREFERENCE ORDER. The first id
@@ -1474,10 +1430,9 @@ private fun emitCorrelationAndReceipt(
  *   envelope listing every supported id. The server NEVER falls
  *   back to Published on an unknown request — silent degradation
  *   is the exact defect the ADR was written to prevent.
- *
  * Resolution lives in [OutputProtocol.negotiate]; this wrapper
  * only translates "no intersection" into the typed CLI envelope.
- */
+*/
 private fun negotiateOutputProtocolOrExit(tokens: List<String>): OutputProtocol {
     val resolved = OutputProtocol.negotiate(tokens)
     if (resolved != null) return resolved
@@ -1502,14 +1457,13 @@ private fun negotiateOutputProtocolOrExit(tokens: List<String>): OutputProtocol 
  * Write the end-of-run event document to the channel the negotiated
  * protocol dictates. The bytes do not change between protocols; the
  * channel does.
- *
  * - [OutputProtocol.Published] (default) → stdout.
  * - [OutputProtocol.SeparatedV2] → stderr (machine events go to
  *   stderr; the receipt is unaffected and stays on stdout via
  *   [emitCorrelationAndReceipt]).
  * - TEXT view is unaffected in both protocols; this helper is
  *   only called for JSON / JSON_LINES.
- */
+*/
 private fun writeEventDocument(
     events: List<dev.rubentxu.pipeline.v2.events.DomainEvent>,
     view: dev.rubentxu.pipeline.v2.application.observation.ObservationView,
@@ -1528,40 +1482,33 @@ private fun writeEventDocument(
 
 /**
  * Compile the DSL into the canonical form, or refuse it.
- *
  * ## Why this wrapper exists
- *
  * `DslCompiledPipelineCompiler` rejects an invalid definition with `error()`, which is the right call
  * from inside a compiler that has no idea how a CLI reports things. What it did NOT have was a caller
  * that knew it was being handed user input rather than a programmer's bug, and the consequence was
  * measured:
- *
  * ```console
  * $ pipelinek run --format json mixed-body-and-sibling.pipeline.kts
  * stdout: {"schema":"pipelinek.launch/1",...,"status":"Launched"}
  * stderr: Exception in thread "main" java.lang.IllegalStateException:
  *             Stage 'ParallelTest' cannot mix a parallel body with sibling steps
- *             at ...DslCompiledPipelineCompiler.stageNode(DslCompiledPipelineCompiler.kt:107)
- *             at ...MainKt.main(Main.kt:498)
+ *             ...DslCompiledPipelineCompiler.stageNode(DslCompiledPipelineCompiler.kt:107)
+ *             ...MainKt.main(Main.kt:498)
  * exit 1
  * ```
- *
  * Correct verdict, right exit code, right message — delivered as an uncaught exception. A stack trace
  * tells the author that something broke inside the runtime, when what happened is that their pipeline
  * is wrong and the runtime is working. AGENTS.md reserves exceptions for adapter boundaries and
- * programmer defects (STRICT TYPED FUNCTIONAL DESIGN §11); a stage that mixes a `parallel` body with
+ * programmer defects (STRICT TYPED FUNCTIONAL DESIGN); a stage that mixes a `parallel` body with
  * sibling steps is neither.
- *
  * ## What it does NOT swallow
- *
  * The catch is scoped to this one call and to [IllegalStateException], which is what the guards throw.
  * Nothing else is converted: a `NullPointerException` or a `ClassCastException` inside the compiler is
  * a defect, and it still surfaces as a defect with its stack trace intact. The refusal prints the
  * message verbatim, because the message is the part the author needs.
- *
  * Exit code is 1, matching every other definition-level failure (`CliCompileErrorExitsOneTest`); 2 is
  * reserved for admission refusals, which are a different decision about a different thing.
- */
+*/
 private fun compileOrRefuse(
     spec: dev.rubentxu.pipeline.v2.dsl.PipelineSpec,
     sourcePath: String,

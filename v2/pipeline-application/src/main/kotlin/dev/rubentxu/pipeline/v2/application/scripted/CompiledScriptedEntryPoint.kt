@@ -30,26 +30,24 @@ import dev.rubentxu.pipeline.v2.scripting.ScriptedStepFacade
  * Generated code calls this façade with a source-derived [ScriptedCallSiteId].
  * The façade has no replay or orchestration logic; it builds a typed command
  * and delegates the durable decision to the operation runtime.
- */
+*/
 internal class RuntimeScriptedStepFacade(
     private val scope: ScriptedScope,
     private val registryInvoker: ScriptedRegistryInvoker? = null,
 ) : ScriptedStepFacade {
 
     /**
-     * S4-A1 — the façade's single seam to durable execution.
-     *
+     * The façade's single seam to durable execution.
      * Everything a runtime-returning call needs before it can name a Step is
      * here, once: the invoker must exist (fail loud, never a fabricated value),
      * the scope identity, the call-site ordinal, the Step's declared input and
      * output codecs, and the typed-failure translation.
-     *
      * A façade body is therefore reduced to the only part that is genuinely
      * Step-specific — which definition, which input, and which projection of
      * the typed output. Six near-identical thirty-line bodies collapse to six
      * three-line ones, and the part that decides durable semantics lives in one
      * place instead of six that could drift.
-     */
+*/
     private suspend fun <I : Any, O : Any> call(
         callSite: ScriptedCallSiteId,
         definition: dev.rubentxu.pipeline.v2.domain.step.StepDefinition<I, O>,
@@ -60,7 +58,7 @@ internal class RuntimeScriptedStepFacade(
                 "runtime-returning scripted steps require a registry invoker; " +
                     "wire ScriptedRegistryInvoker into this entry point runtime",
             )
-        // S4-D2: `invokeTyped` hands back the value AND the canonical outcome. The outcome is
+        // `invokeTyped` hands back the value AND the canonical outcome. The outcome is
         // recorded here — the one place that sees every runtime-returning call — and only the
         // value crosses into Kotlin. The program never sees, and must never set, the outcome.
         val settled = invoker.invokeTyped(
@@ -82,16 +80,15 @@ internal class RuntimeScriptedStepFacade(
     }
 
     /**
-     * S4-A1 — all three `sh` shapes reach the durable engine through the registry,
+     * All three `sh` shapes reach the durable engine through the registry,
      * so the scripted frontend admits `core.sh`'s declared
      * `SHELL_OPERATIONS_CAPABILITY` on the same path a declarative `sh` does.
-     *
      * They previously routed to `scope.invokeAt`, which is the eager
      * `ScriptedOperationRuntime` seam. In production that seam is now
      * registry-routed too, so either way the capability is admitted; routing the
      * façade directly is what makes that true by construction rather than by
      * remembering which runtime was wired.
-     */
+*/
     override suspend fun sh(
         callSite: ScriptedCallSiteId,
         script: String,
@@ -133,36 +130,32 @@ internal class RuntimeScriptedStepFacade(
     ).result
 
     /**
-     * LFC-2R / R2 — the first runtime-returning scripted consumer of the generic
+     * The first runtime-returning scripted consumer of the generic
      * scripted→registry seam. This is a THIN ADAPTATION: identity + encoded unit
      * input → [ScriptedRegistryInvoker] → encoded output → the Step's OWN
      * [dev.rubentxu.pipeline.v2.domain.step.StepCodec] → Boolean.
-     *
      * Classification authority stays exclusively inside the registry Step: this
      * façade must never read the platform, classify, or hand-decode the payload
      * (architecture fitness pins the absence of those identifiers).
-     *
-     * The nullable [registryInvoker] keeps R1's shell-only entry points compiling;
+     * The nullable [registryInvoker] keeps 's shell-only entry points compiling
      * when it is absent, the runtime-returning surface is unavailable (fail loud,
      * never a fabricated value).
-     */
+*/
     override suspend fun isUnix(callSite: ScriptedCallSiteId): Boolean =
         call(callSite, CoreIsUnixStep.definition, IsUnixInput).isUnix
 
     /**
-     * WU-LPR-402 — runtime-returning workspace query façade. Mirrors [isUnix]
+     * Runtime-returning workspace query façade. Mirrors [isUnix]
      * in shape: identity + encoded input → [ScriptedRegistryInvoker] →
      * encoded output → the Step's OWN [StepCodec] → String path.
-     *
      * Two durable StepKeys, decided by [tmp]:
      *   - `core.pwd`     — `CorePwdStep` (registry, READ_ONLY + MEMOIZED)
      *   - `core.pwd.tmp` — `CorePwdTmpStep` (registry, deterministic tmp dir)
-     *
      * The StepKey routing is owned here, NOT inside the registry or the codec.
      * The mapper emits a single `ScriptedCallKind.Pwd(tmp)`; the façade picks
      * the registry authority. Replay never re-observes; it reproduces the
      * persisted `PwdOutput.path`.
-     */
+*/
     override suspend fun pwd(callSite: ScriptedCallSiteId, tmp: Boolean): String =
         if (tmp) {
             call(callSite, CorePwdTmpStep.definition, PwdTmpInput).path
@@ -171,15 +164,14 @@ internal class RuntimeScriptedStepFacade(
         }
 
     /**
-     * WU-LPR-087 (LFC-2R2) — runtime-returning file-read façade. Mirrors the
+     * Runtime-returning file-read façade. Mirrors the
      * existing `pwd` impl shape: identity + encoded input → invoker → encoded
      * output → Step's declared codec → String.
-     *
      * The StepKey is `core.readFile`, registered in
      * [dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory] alongside
      * `core.pwd`. Missing registry → typed Rejection, never a fabricated empty
      * String.
-     */
+*/
     override suspend fun readFile(
         callSite: ScriptedCallSiteId,
         file: String,
@@ -207,11 +199,11 @@ internal class RuntimeScriptedStepFacade(
     }
 
     /**
-     * WU-LPR-087 (LFC-2R2) — runtime-returning file-existence check façade.
+     * Runtime-returning file-existence check façade.
      * Mirrors the existing `isUnix` impl shape (returns Boolean): identity +
      * encoded input → invoker → encoded output → Step's declared codec →
      * Boolean. The StepKey is `core.fileExists`.
-     */
+*/
     override suspend fun fileExists(
         callSite: ScriptedCallSiteId,
         file: String,
@@ -259,7 +251,7 @@ internal class ScriptedArtifactRuntime(
     /**
      * Selects only a typed compiled entry point from the host result. Legacy
      * script values and compile failures are explicit non-effectful outcomes.
-     */
+*/
     suspend fun execute(
         runId: String,
         compilation: ScriptCompilationResult,

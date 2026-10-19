@@ -19,17 +19,16 @@ import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 
 /**
- * S6/C — the junit plugin's DECLARATION, in one place.
- *
+ * The junit plugin's DECLARATION, in one place.
  * Same contract as the other three official plugins: one declaration read by both the
  * contributor at runtime and the build at build time, so the emitted document cannot drift
  * away from the code it describes.
- */
+*/
 object JUnitPluginDeclaration {
 
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/junit-release.properties"
 
-    /** PK-RC-PLUGIN-001 — the apiRange is no longer a literal. The policy in
+    /** The apiRange is no longer a literal. The policy in
      * `buildSrc/PluginCompatibilityPolicy` reads `rootProject.version` and emits
      * the resource this declaration reads at runtime. The literal moved out;
      * a future product-version bump is observable from the build, not from a
@@ -121,10 +120,9 @@ object JUnitPluginDeclaration {
 
 /**
  * Build-time entry point: emit the manifest document to stdout.
- *
  * A non-zero exit from missing provenance stops the build instead of shipping a JAR whose
  * manifest is absent — and a JAR without a manifest is refused at runtime.
- */
+*/
 fun main() {
     print(PluginManifestCodec.encode(JUnitPluginDeclaration.manifest()))
 }

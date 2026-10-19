@@ -12,12 +12,11 @@ import java.nio.file.Paths
  * (`~/.pipeline/credentials.bin`) and two copies of `<controlRoot>/../credentials.bin`. A user
  * who followed the documented flow — add a credential, then run a pipeline — saw no
  * credentials. The fix is to take the env var or the home default and nothing else.
- *
  * The tests pin the three rules: env value present -> use it, env blank -> treat as absent,
  * env absent -> use the home default. They are written so an edit that restores the old
  * `<controlRoot>/../credentials.bin` default would have to also add a control-root parameter
- * to keep the tests passing, which is the property AGENTS.md §1 calls for.
- */
+ * to keep the tests passing, which is the property AGENTS.md calls for.
+*/
 class CredentialsStorePathTest {
 
     @Test

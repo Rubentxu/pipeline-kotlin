@@ -320,10 +320,10 @@
     <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null</ID>
     <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val stepMetadataResolver: StepMetadataResolver? = null</ID>
     <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val waitUntilControlJournal: WaitUntilControlJournal? = null</ID>
-    <ID>UnusedPrivateProperty:CleanWsOperationsAdapter.kt:CleanWsOperationsAdapter$/** Optional project-workspace override (--workspace).*/ private val workspaceBase: java.nio.file.Path? = null</ID>
+    <ID>UnusedPrivateProperty:CleanWsOperationsAdapter.kt:CleanWsOperationsAdapter$/** Optional project-workspace override (--workspace). */ private val workspaceBase: java.nio.file.Path? = null</ID>
     <ID>UnusedPrivateProperty:CleanWsOperationsAdapter.kt:CleanWsOperationsAdapter$private val controlDirRoot: java.nio.file.Path</ID>
     <ID>UnusedPrivateProperty:CoreWaitUntilStep.kt:CoreWaitUntilStep$private const val DEADLINE_MS = Long.MAX_VALUE</ID>
-    <ID>UnusedPrivateProperty:DeleteDirOperationsAdapter.kt:DeleteDirOperationsAdapter$/** Optional project-workspace override (--workspace).*/ private val workspaceBase: java.nio.file.Path? = null</ID>
+    <ID>UnusedPrivateProperty:DeleteDirOperationsAdapter.kt:DeleteDirOperationsAdapter$/** Optional project-workspace override (--workspace). */ private val workspaceBase: java.nio.file.Path? = null</ID>
     <ID>UnusedPrivateProperty:DeleteDirOperationsAdapter.kt:DeleteDirOperationsAdapter$private val controlDirRoot: java.nio.file.Path</ID>
     <ID>UnusedPrivateProperty:FileBasedRetryControlJournal.kt:FileBasedRetryControlJournal$private val controlDirRoot: Path</ID>
     <ID>UnusedPrivateProperty:FileBasedWaitUntilControlJournal.kt:FileBasedWaitUntilControlJournal$private val controlDirRoot: Path</ID>

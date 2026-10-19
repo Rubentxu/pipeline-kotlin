@@ -18,44 +18,37 @@ import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 
 /**
- * S6/C — the utilities plugin's DECLARATION, in one place.
- *
+ * The utilities plugin's DECLARATION, in one place.
  * ## Why this object exists
- *
  * The manifest has to be emitted into the artifact at BUILD time and read back at RUN time.
  * The tempting way to do that is to write the JSON by hand in `build.gradle.kts`, and that
  * would be a second authority: a hand-typed list of Step keys that the Kotlin code never
  * consults, free to drift until a plugin ships a document describing steps it does not have.
- *
  * So the declaration lives here, in code, and BOTH consumers read it:
- *
  * - [CoreUtilsStepDefinitionContributor] at runtime, when it builds its provider metadata;
  * - [main] below, invoked by Gradle at build time to emit the document.
- *
  * One authority, two readers. If a Step is added, both sides change together or neither does.
- *
  * ## Why the manifest declares a digest it cannot cover
- *
  * [manifest] reports the digest of the artifact's content EXCLUDING the manifest document
  * itself, which is the same convention the existing `utilities-release.properties` digest
  * uses. The alternative — a digest over the JAR including the manifest that carries it — has
  * no fixed point and cannot be computed at all. This is stated rather than left implicit
- * because "what the digest covers" is a contract question, and ADR-EVO-003 makes it a
+ * Because "what the digest covers" is a contract question, and makes it a
  * contested one.
- */
+*/
 object UtilitiesPluginDeclaration {
 
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/utilities-release.properties"
 
     /**
-     * PK-RC-PLUGIN-001 — the apiRange is no longer a literal. The policy in
+     * The apiRange is no longer a literal. The policy in
      * `buildSrc/PluginCompatibilityPolicy` reads `rootProject.version` and emits
      * the resource this declaration reads at runtime. The literal moved out;
      * a future product-version bump is observable from the build, not from a
      * per-plugin edit. The previous hand-typed upper bound (0.52.0 / 0.53.0)
      * drifted away from the product version on every release and the v0.56.0-rc3
      * candidate shipped with `apiRange=[0.47.0, 0.53.0)` while the host was 0.56.0.
-     */
+*/
     val API_RANGE: PipelineKApiRange
         get() = PluginCompatibilityResource.load(UtilitiesPluginDeclaration::class.java.classLoader)
 
@@ -63,11 +56,10 @@ object UtilitiesPluginDeclaration {
      * Build-time provenance is consumed from [RELEASE_PROPERTIES_RESOURCE]
      * inside the JAR. System properties override the resource values when
      * present (so unit tests can pin metadata without rebuilding).
-     *
      * Fail-closed: if neither source yields publisher / digest, the
      * contributor refuses to register. Production wiring always threads
      * these values through Gradle.
-     */
+*/
     fun provider(classLoader: ClassLoader = UtilitiesPluginDeclaration::class.java.classLoader): StepProviderMetadata {
         val props = releaseProperties(classLoader)
         val publisher = System.getProperty("pipeline.utilities.publisher")
@@ -104,10 +96,9 @@ object UtilitiesPluginDeclaration {
 
     /**
      * The declaration, as the domain type.
-     *
      * The Step list is the SAME literal the contributor validates against at runtime, which
      * is what makes the emitted document trustworthy rather than a second opinion.
-     */
+*/
     fun manifest(
         classLoader: ClassLoader = UtilitiesPluginDeclaration::class.java.classLoader,
     ): PluginManifest {
@@ -165,15 +156,13 @@ object UtilitiesPluginDeclaration {
 
 /**
  * Build-time entry point: emit the manifest document to stdout.
- *
  * Gradle runs this through `JavaExec` after the provenance digest exists and redirects the
  * output to `build/resources/main/META-INF/pipelinek/plugin-manifest.json`, so the document
  * ships inside the JAR at [dev.rubentxu.pipeline.v2.domain.step.PluginManifestCodec.RESOURCE_PATH].
- *
  * It prints rather than writes so the build decides the destination, and it FAILS LOUDLY:
  * a non-zero exit from missing provenance stops the build instead of shipping a JAR whose
  * manifest is absent.
- */
+*/
 fun main() {
     val manifest = UtilitiesPluginDeclaration.manifest()
     print(dev.rubentxu.pipeline.v2.domain.step.PluginManifestCodec.encode(manifest))

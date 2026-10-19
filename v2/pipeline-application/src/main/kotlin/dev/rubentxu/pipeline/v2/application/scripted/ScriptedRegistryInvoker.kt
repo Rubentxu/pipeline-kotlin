@@ -37,25 +37,22 @@ import kotlinx.serialization.json.put
 
 /**
  * Closed outcome of one scripted registry-step invocation. Never a fabricated value.
- *
  * This ADT is about DELIVERY, not semantics. It answers "did the durable invocation hand the
  * program a usable value?", and it deliberately does not answer "was that value unstable?":
- *
  * - [Success] — the durable invocation produced or restored a usable ENCODED value. It says
  *   nothing about the Step's semantic outcome, which is recovered from the decoded value through
  *   [dev.rubentxu.pipeline.v2.domain.durable.outcomeOf].
  * - [Failed] — the invocation CANNOT deliver a value to the program. This is broader than a
  *   transport error: it also covers a real semantic `StepOutcome.Failure`, a replay/protocol
  *   incompatibility, an admission refusal, and a payload the Step's own codec cannot decode.
- *
  * Widening this ADT with a `Unstable` case would duplicate a semantic fact the typed carrier
  * already owns, and would create a second authority able to disagree with it.
- */
+*/
 sealed interface ScriptedRegistryResult {
     /**
      * The invocation delivered a usable encoded value: either freshly executed, or restored from
      * the journal. NOT "the Step succeeded" — the semantic outcome lives in the decoded value.
-     */
+*/
     data class Success(val encodedOutput: EncodedStepValue) : ScriptedRegistryResult
 
     /** The invocation cannot deliver a value to the program; carries the typed reason. */
@@ -63,33 +60,26 @@ sealed interface ScriptedRegistryResult {
 }
 
 /**
- * S4-D2 — what [ScriptedRegistryInvoker.invokeTyped] hands back: the decoded value the Kotlin
+ * What [ScriptedRegistryInvoker.invokeTyped] hands back: the decoded value the Kotlin
  * program receives, and the canonical outcome recovered from it.
- *
  * Both frontend call paths need both halves. The program needs the value; the run needs the
  * outcome. Returning only the value is what made `Unstable` unrepresentable at this seam.
- *
  * ## The carrier TRANSPORTS; it never CLASSIFIES
- *
  * The constructor is private and the only way in is [from], which derives the outcome from the
  * value it is given. A public `ScriptedTypedResult(value, outcome)` would permit
- *
  * ```kotlin
  * ScriptedTypedResult(value = unstableCarrier, outcome = StepOutcome.Success)   // illegal
  * ```
- *
  * and that is precisely the defect this slice removes: two sources of truth about one fact,
  * free to disagree. Here they cannot be built apart.
- *
  * ## Why there is no separate "outcome the boundary already decided" factory
- *
  * Because the invoker does not use the boundary's `StepOutcome` at all. FRESH and REUSE both
  * arrive here as `Success(encoded)`, are decoded by the Step's own `outputCodec`, and read the
  * outcome from the decoded carrier. That single line is what makes
  * `outcome(FRESH) == outcome(REUSE)` true BY CONSTRUCTION. Threading the boundary's outcome
  * alongside it would reintroduce two answers to the same question — the canonical one and the
- * scripted one — which is the two-authority shape ADR-0103 R1-E removed.
- */
+ * Scripted one — which is the two-authority shape removed
+*/
 class ScriptedTypedResult<O : Any> private constructor(
     val value: O,
     val outcome: dev.rubentxu.pipeline.v2.domain.StepOutcome,
@@ -111,12 +101,11 @@ class ScriptedTypedResult<O : Any> private constructor(
 }
 
 /**
- * Durable identity of one scripted registry-step call site (LFC-2R / R1).
- *
+ * Durable identity of one scripted registry-step call site
  * Reuses EXACTLY the scripted identity model proven for `sh` (runId, entry point,
  * call site, dynamic scope path, per-scope invocation ordinal) — plus the generic
  * [stepKey]. No Step-specific identity is ever created.
- */
+*/
 data class ScriptedRegistryCall(
     val runId: String,
     val entryPointId: String,
@@ -126,10 +115,10 @@ data class ScriptedRegistryCall(
     val stepKey: PluginStepId,
     val encodedInput: EncodedStepValue,
     /**
-     * S4-A1: the compiled artifact identity, carried in the operation input so the
+     * The compiled artifact identity, carried in the operation input so the
      * fingerprint is bound to it. Without this a scripted registry step replays
      * across two different compiled artifacts of the same source position.
-     */
+*/
     val definitionDigest: String,
 ) {
     init {
@@ -146,36 +135,29 @@ data class ScriptedRegistryCall(
 }
 
 /**
- * LFC-2R / R1 — THE generic scripted→registry seam.
- *
+ * THE generic scripted→registry seam.
  * Responsibility (and NOTHING else): call-site identity + step identity + encoded
- * input → durable execute-or-reuse → encoded output. The invoker is STEP-AGNOSTIC:
+ * Input → durable execute-or-reuse → encoded output. The invoker is
  * it must never name or special-case any concrete Step. Architecture fitness
  * enforces that by scanning this source with comments stripped.
- *
- * ## ADR-0103 RPL-4 — this class no longer interprets durable state
- *
+ * This class no longer interprets durable state
  * It used to answer `when (existing.status)` with its own table — `SUCCEEDED` → restore,
  * everything else → `REPLAY_COMPATIBILITY` — and to hash its fingerprint with a hardcoded
  * `ReplayPolicy.MEMOIZED` regardless of what the Step declared. That made it a SECOND
  * replay authority with a SECOND, stricter policy than the canonical one: a journalled
  * FAILED operation failed closed here, while the same operation under the descriptor's own
  * `RERUN` policy would have been re-executed by the canonical spine.
- *
  * It now does the only three things a frontend may do:
- *
  * ```text
  * 1. ADDRESS     operationId + OperationInput + fingerprint
  * 2. RESOLVE     declared metadata (effects / replayPolicy / recoveryPolicy)
- * 3. FINGERPRINT over the DECLARED policy          ← ADR-0103 RPL-3
+ * 3. FINGERPRINT over the DECLARED policy ←
  * 4. OBSERVE     journal.get(operationId)          ← obtaining a fact, not interpreting one
- * 5. DELEGATE    DurableInvocationResolver.reconcileInvocation(...)
+ * 5. DELEGATE    DurableInvocationResolver.reconcileInvocation
  * ```
- *
  * and then interprets the CLOSED [InvocationReconciliation] ADT — never an
  * [OperationStatus].
- *
- * A note on what was claimed here before ADR-0103 R1-E, because the claim was false and the code
+ * A note on what was claimed here before, because the claim was false and the code
  * is the authority: the `when (existing.status)` table and the `memoized` import did go, but the
  * `ReplayPolicy` literal in the fingerprint call did **not**. It was still there, hashing every
  * scripted operation under `MEMOIZED` while the canonical dispatcher hashed
@@ -184,14 +166,11 @@ data class ScriptedRegistryCall(
  * change that the code did not make is worse than no KDoc: it stops the next reader from looking.
  * The literal is gone now, and step 3 exists so that its absence is structural — the policy that
  * enters the hash is read from the descriptor, so there is no longer a value there to hardcode.
- *
- * The two responsibilities that stay are the ones RPL-1 and D4 explicitly reserve for a
+ * The two responsibilities that stay are the ones and explicitly reserve for a
  * frontend: ADDRESSING, and turning a durable row into a typed value through the Step's
  * DECLARED output codec. The latter is [restoredOutput], which is materialisation, not
  * decision — it is why a runtime-returning call can hand user Kotlin a real `O`.
- *
  * ## What each resolution means here
- *
  * ```text
  * Diverged        → REPLAY_COMPATIBILITY   the durable row is not this invocation
  * RejectedAbort   → REPLAY_COMPATIBILITY   the Step's policy forbids reusing this history
@@ -200,49 +179,39 @@ data class ScriptedRegistryCall(
  * RecoveryUnobservable → REPLAY_COMPATIBILITY  the substrate could not be observed; see below
  * Execute         → admit, then DurableStepExecutor, then the declared outputCodec
  * ```
- *
- * `RecoveryUnobservable` is the ADR-0103 R1-E case and the reason this invoker has a fifth arm at
+ * `RecoveryUnobservable` is the case and the reason this invoker has a fifth arm at
  * all. Before it, a required recovery whose substrate could not be inspected was not a resolution
  * — it was the absence of one, and the invoker fell through to `Execute`. It is now its own
  * fail-closed case, and the journal row is left `RUNNING` by the interpretation engine: an
  * operation whose external effect is unknown is neither re-run nor closed.
- *
  * ## `RecoverRunning` — a recovered value, or an honest refusal
- *
  * This arm used to be `notReplayable(...)` unconditionally, and the KDoc here used to justify that
  * by claiming the value could not be reconstructed. That claim was the second manifestation of
- * ADR-S4-R1's `implementation conformance: PARTIAL`, and it was wrong in a way worth stating
+ * PARTIAL`, and it was wrong in a way worth stating
  * precisely, because the error was not "over-claiming a capability" but "mis-labelling an absence of
  * evidence as an absence of capability".
- *
  * The substrate OBSERVED the facts. An exit code sits in `result.txt`; captured stdout sits in
  * `output.txt`. What was missing was not the evidence but the route from that evidence to the one
  * component that knows what it means — because the answer depends on the invocation's `returnMode`,
  * which lives in the Step's own input behind the Step's own codec. So the observer was guessing, and
- * F1-C0 measured the cost: `sh(returnStatus = true)` with exit 42 journalled FAILED, while the
+ * `sh(returnStatus = true)` with exit 42 journalled FAILED, while the
  * contract says `Status(42) · Success`.
- *
- * The route now exists (ADR-S4-R1 §2.7). This arm asks the interpretation engine, which asks the
+ * The route now exists. This arm asks the interpretation engine, which asks the
  * Step's own `RecoveredStepProjection`, and receives back the encoded value — or an outcome that
  * says why not. The distinction that remains is the one that was always real:
- *
  * ```text
  * terminal carried the facts this contract needs   →  the value is returned
  *   Exited(42) under STATUS                        →  Status(42) · Success
  *   Exited(0, "abc") under STDOUT                  →  Stdout("abc") · Success
  *   Exited(0, "") under STDOUT                     →  Stdout("") · Success
- *
  * terminal did not, or the contract cannot use it  →  fails closed, with the reason
  *   Exited(0) under STDOUT, no output file         →  no value was ever observed
  *   LOST / no control root / expired window        →  no exit code was ever observed
  * ```
- *
  * The second group is not a defect and never was. `Status(0)` where the substrate recorded nothing
  * would be a fabricated value, and the arm below still refuses to invent one — it just refuses for
  * the right reason, and returns real values everywhere else.
- *
  * ## Fresh/reuse law
- *
  * - FRESH: fail-closed capability admission BEFORE any effect → execute the typed handler
  *   exactly once through [dev.rubentxu.pipeline.v2.application.durable.CommonExecutionBoundary]
  *   → journal the terminal row with the encodedOutput → return it.
@@ -250,10 +219,9 @@ data class ScriptedRegistryCall(
  *   reconstructs or consults runtime capabilities just to discover that the operation
  *   already succeeded. The persisted output is decoded through the Step's own codec.
  *   `reuse_value == persisted_value` and handler count is unchanged.
- *
  * Replay does NOT require capabilities, and this invoker does not advance the run replay
- * cursor: a scripted call has no canonical stage position (ADR-0103 D7).
- */
+ * Cursor: a scripted call has no canonical stage position
+*/
 internal class ScriptedRegistryInvoker(
     private val registry: StepRegistry,
     private val journal: OperationJournal,
@@ -263,7 +231,7 @@ internal class ScriptedRegistryInvoker(
      * runtime context; harnesses may substitute a bridge whose OBSERVATION sources
      * are synthetic (e.g. a non-host platform) without changing any production logic.
      * Admission stays fail-closed and replay never consults this factory.
-     */
+*/
     private val capabilityAccessFactory: (CanonicalRuntimeContext) -> CanonicalRuntimeCapabilityAccess =
         { context -> CanonicalRuntimeCapabilityAccess(context) },
     /**
@@ -271,7 +239,7 @@ internal class ScriptedRegistryInvoker(
      * holds, so scripted and canonical resolve a Step's effects, replay policy and recovery
      * policy through the SAME composite rather than through a second lookup. Overridable for
      * harnesses that need a different authority, never for production.
-     */
+*/
     private val metadataResolver: StepMetadataResolver =
         dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver.composite(registry),
     private val eventSink: EventSink,
@@ -286,35 +254,30 @@ internal class ScriptedRegistryInvoker(
         registry.definition(key)
 
     /**
-     * S4-A1 — THE single typed authority for scripted → registry invocation.
-     *
+     * THE single typed authority for scripted → registry invocation.
      * Everything a runtime-returning scripted call needs is here, exactly once:
      * the durable identity tuple, the Step's DECLARED input codec, the
      * execute-or-reuse decision with fail-closed capability admission, the
      * Step's DECLARED output codec, and the typed-failure translation. A caller
      * supplies only the call site, the Step it wants, and its typed input; it
      * receives the typed output or a typed step exception.
-     *
      * The StepKey is read from [StepDefinition.contract] rather than passed
      * separately, because a caller that could name a key different from the
      * definition it handed over would have two sources of truth for one Step.
      * That is a real drift hazard, not a style preference: the key selects the
      * definition at admission time, and the definition supplies the codecs that
      * encode and decode the payload.
-     *
-     * This method stays STEP-AGNOSTIC. It must never name or special-case any
+     * This method stays. It must never name or special-case any
      * concrete Step; architecture fitness enforces that by scanning this source
      * with comments stripped.
-     *
      * It is `internal` on purpose. An external library contributes a
      * [StepDefinition] and the core invokes it; the library never invokes this
      * seam itself, so publishing it would widen the surface for no consumer.
-     *
      * Decoding happens HERE rather than in each caller so that "a persisted
      * payload the Step's own codec cannot read" is one typed
      * [FailureKind.REPLAY_COMPATIBILITY] failure instead of six hand-written
      * copies that could drift.
-     */
+*/
     internal suspend fun <I : Any, O : Any> invokeTyped(
         identity: ScriptedScopeIdentity,
         callSiteId: ScriptedCallSiteId,
@@ -334,7 +297,7 @@ internal class ScriptedRegistryInvoker(
                 definitionDigest = identity.definitionDigest,
             ),
         )
-        // S4-D2: FRESH and REUSE converge on ONE line. Both arrive here as
+        // FRESH and REUSE converge on ONE line. Both arrive here as
         // `Success(encoded)`, both are decoded through the Step's own declared codec, and both
         // recover their outcome from the decoded carrier. That is why outcome(FRESH) ==
         // outcome(REUSE) holds by construction rather than by two implementations happening to
@@ -360,7 +323,7 @@ internal class ScriptedRegistryInvoker(
     }
 
     suspend fun invoke(call: ScriptedRegistryCall): ScriptedRegistryResult {
-        // 1. ADDRESS — the frontend's own durable coordinate system (ADR-0103 RPL-1).
+        // 1. ADDRESS — the frontend's own durable coordinate system
         val stepId = scriptedStepId(call.stepKey)
         val input = OperationInput(
             stepId = stepId,
@@ -376,13 +339,11 @@ internal class ScriptedRegistryInvoker(
             runId = call.runId,
             attempt = ATTEMPT,
         )
-        // 2. RESOLVE THE DECLARED METADATA — ADR-0103 RPL-2/RPL-3, before anything hashes against it.
-        //
+        // 2. RESOLVE THE DECLARED METADATA —/, before anything hashes against it
         // Pre-decode metadata (effects, replay policy, recovery policy) is the Step's own
         // descriptor, resolved by the SAME composite the canonical coordinator uses. This is
-        // the concrete form of ADR-0103's "StepDescriptor is the single authority": scripted
+        // The concrete form of 's "StepDescriptor is the single authority": scripted
         // does not get to have an opinion about what its Steps declare.
-        //
         // The authority signals an unknown key two ways — `null` on the port, or an
         // `EngineInvariantViolation` from the composite's hard-defect default — so both are
         // translated here. Translating at THIS seam is the point: an unknown key is an
@@ -399,9 +360,8 @@ internal class ScriptedRegistryInvoker(
                 ),
             )
 
-        // 3. FINGERPRINT — ADR-0103 RPL-3. The policy that goes INTO the hash is the policy that
+        // 3. FINGERPRINT —. The policy that goes INTO the hash is the policy that
         //    actually governs reconciliation for this operation, which is the declared one.
-        //
         //    This used to hardcode `ReplayPolicy.MEMOIZED` here while the canonical dispatcher
         //    hashed `metadata.replayPolicy`, so the two surfaces disagreed about the identity of
         //    the same declared policy: a scripted `core.sh` (RERUN) and a declarative one were
@@ -413,7 +373,7 @@ internal class ScriptedRegistryInvoker(
         )
         val operationId = call.operationId()
 
-        // 4. OBSERVE — obtaining the durable fact. ADR-0103 D4: reading a fact is not
+        // 4. OBSERVE — obtaining the durable fact.: reading a fact is not
         //    interpreting a protocol. What the fact MEANS is decided below, by the resolver.
         val journaled: DurableOperation? = journal.get(operationId)
         val currentOperation = RerunOperation(
@@ -441,18 +401,16 @@ internal class ScriptedRegistryInvoker(
             )
 
             // Reuse materialises, it does not decide. The ADT carries no output by design:
-            // mixing the decision with the materialisation is exactly what RPL-5 forbids.
+            // Mixing the decision with the materialisation is exactly what forbids
             InvocationReconciliation.ReuseCompleted -> restoredOutput(journaled?.output)
 
-            // S4-F1-C2 — a recovered terminal now DOES yield a typed value, and this is where a
+            // A recovered terminal now DOES yield a typed value, and this is where a
             // scripted call finally receives one. The interpretation engine owns the projection and
             // the journal write; this arm only reads the carrier it hands back.
-            //
             // It used to be `notReplayable(...)` unconditionally, with the class KDoc claiming the
             // value could not be reconstructed. That was true of the SPINE then and false of the
             // FACTS: an observed exit code is not a fabricated value, and `sh(returnStatus = true)`
             // with exit 42 was being failed rather than returned as `42`.
-            //
             // The shape below is deliberately the same as [execute]'s, so a recovered value and a
             // fresh value reach user Kotlin by one path and one set of rules.
             is InvocationReconciliation.RecoverRunning -> {
@@ -464,7 +422,7 @@ internal class ScriptedRegistryInvoker(
                         input = input,
                         lifecycleContext = lifecycleFor(call),
                         definition = registry.definition(call.stepKey),
-                        // S4-F1-C2: this surface's durable input is the IDENTITY WRAPPER, so the
+                        // This surface's durable input is the IDENTITY WRAPPER, so the
                         // Step's own payload is the nested `encodedInput` the call already carries.
                         // Passing it verbatim is what lets a recovered value be materialised here
                         // exactly as it is on the canonical surface.
@@ -489,7 +447,7 @@ internal class ScriptedRegistryInvoker(
                 }
             }
 
-            // ADR-0103 R1-E. The observer could not inspect the substrate, so there is nothing to
+            // The observer could not inspect the substrate, so there is nothing to
             // interpret and nothing to materialise: no recovery terminal was produced, and
             // inventing one would be the fabricate-a-runtime-value defect in a new place. The
             // failure surfaces through the same typed seam every other fail-closed case uses, and
@@ -507,7 +465,7 @@ internal class ScriptedRegistryInvoker(
      * The Execute arm. Capability admission stays fail-closed and happens BEFORE any effect,
      * and the effective execution plus the durable fold are the canonical ones — this class
      * contributes no `beginOperation`, no terminal append and no cursor write of its own.
-     */
+*/
     private suspend fun execute(
         call: ScriptedRegistryCall,
         operationId: String,
@@ -557,24 +515,21 @@ internal class ScriptedRegistryInvoker(
     }
 
     /**
-     * S4-C4 — TOTAL. A durable payload this runtime cannot read is a typed
+     * TOTAL. A durable payload this runtime cannot read is a typed
      * [ScriptedRegistryResult.Failed], never a thrown [ClassCastException].
-     *
      * The previous `else -> Success(EncodedStepValue((raw as JsonPrimitive).content))`
      * was the one malformed-durable-state case in this method that was NOT typed,
      * while every other one already carried a [FailureKind]. `OperationOutput.result` is
      * a `JsonElement`, so a `JsonObject` or `JsonArray` written by a different codec
      * version reached that cast and escaped `invoke` as an exception.
-     *
      * `REPLAY_COMPATIBILITY` is the exact kind — "A persisted operation cannot be
      * safely replayed by this runtime" — because a foreign payload IS that.
-     *
      * The match is exhaustive over the closed `JsonElement` ADT, so a shape added
      * later cannot fall through to a fabricated value. `JsonNull` is a
      * `JsonPrimitive` whose `content` is the four-character string `"null"`, so
      * accepting it as a primitive would hand a caller a fabricated value for a
      * step that persisted nothing: it is rejected with the same typed failure.
-     */
+*/
     private fun restoredOutput(output: OperationOutput?): ScriptedRegistryResult =
         when (val raw = output?.result) {
             null -> notReplayable("SUCCEEDED scripted registry step has no persisted output")
@@ -599,13 +554,12 @@ internal class ScriptedRegistryInvoker(
 
     /**
      * Lifecycle coordinates for an execution this frontend performs.
-     *
      * These are the coordinates the scripted runner ALREADY assigns its
      * [CanonicalRuntimeContext] (`stageName = "scripted"`, `stageIndex = 0`,
      * `stepIndex = invocationOrdinal`), reused verbatim rather than invented here. They
      * name WHERE the execution happened for observability; they are not a cursor position,
-     * and this frontend advances no cursor (ADR-0103 D7).
-     */
+     * And this frontend advances no cursor
+*/
     private fun lifecycleFor(call: ScriptedRegistryCall): StepLifecycleContext = StepLifecycleContext(
         runId = call.runId,
         stageIndex = 0,
@@ -618,7 +572,7 @@ internal class ScriptedRegistryInvoker(
      * Total metadata lookup. `EngineInvariantViolation` is the composite resolver's documented
      * signal for a key that is neither legacy-executable nor registered; it is an ordinary
      * admission outcome at this boundary, so it becomes a value rather than an exception.
-     */
+*/
     private fun resolveMetadataOrNull(key: PluginStepId) =
         try {
             metadataResolver.resolve(key)

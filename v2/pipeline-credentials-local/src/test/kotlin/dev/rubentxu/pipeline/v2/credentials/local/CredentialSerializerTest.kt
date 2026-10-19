@@ -23,11 +23,10 @@ import java.io.ByteArrayOutputStream
  * [CredentialSerializer] is the on-disk format of every credential part. The bytes it
  * writes are the bytes the [CredentialPartReader] reads; the two objects share one
  * contract, and the test below pins that contract.
- *
  * Each test is round-trip: write the credential, read it back, and assert equality. A
  * silent edit to the layout would either fail the read with a different shape or succeed
  * with the wrong fields; both outcomes are visible.
- */
+*/
 class CredentialSerializerTest {
 
     private val id = CredentialsId.from("aws-prod")
@@ -337,7 +336,6 @@ class CredentialSerializerTest {
         // serialized form that reads back as the credential it was written from.
         // This is the guarantee the store rests on — a file it wrote must decrypt
         // to the credential the caller handed it.
-        //
         // Note what is deliberately NOT asserted here: that each kind has a distinct
         // byte length. KIND_USERNAME_PASSWORD and KIND_USERNAME_COLON_PASSWORD write
         // the same two-part layout (username, password) and differ only in the kind

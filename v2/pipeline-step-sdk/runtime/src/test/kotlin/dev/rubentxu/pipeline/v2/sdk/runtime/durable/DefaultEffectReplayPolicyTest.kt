@@ -13,17 +13,15 @@ import org.junit.jupiter.api.Test
  * operator: a `SKIP` serves a journalled result instead of running the work again. Too many `SKIP`s
  * and a resumed pipeline reports work it never redid; too few and every resume re-executes side
  * effects that already happened.
- *
  * [DefaultEffectReplayPolicy.decide] is therefore a table whose ORDER is the contract, and the order
  * is not derivable from the rules read one at a time. It already contradicted the implementation
  * twice, both times because nothing asserted it: the `RERUN` row did not match the enum's own
  * documentation, and `ABORTS_PIPELINE` was unreachable for a `RERUN` Step because the policy branch
  * returned first. This file is what makes a third contradiction impossible to merge quietly.
- *
  * Each test names the ROW it pins, and the rows are the KDoc's matrix verbatim, so a change to the
  * table is a change to a test that says why. Pure: no journal, no filesystem, no clock — the whole
  * input is four values.
- */
+*/
 class DefaultEffectReplayPolicyTest {
 
     private val policy = DefaultEffectReplayPolicy()
@@ -39,7 +37,7 @@ class DefaultEffectReplayPolicyTest {
 
     @Test
     fun `row 1 a first execution runs, even under NEVER and even when the effect aborts`() {
-        // THE discriminator for rule 1. `ABORTS_PIPELINE` means "this Step, WHEN EXECUTED, aborts
+        // THE discriminator for. `ABORTS_PIPELINE` means "this Step, WHEN EXECUTED, aborts
         // the pipeline"; refusing to execute it would drop the abort silently, because a Step that
         // never runs never aborts. `CoreErrorStep` is exactly this case, so hoisting this row above
         // the containment row is what keeps a first run of a pipeline with an error step working.
@@ -165,7 +163,7 @@ class DefaultEffectReplayPolicyTest {
     @Test
     fun `row 7 MEMOIZED re-executes a purely read-only NON-reusable completion`() {
         // The effect set is right and the outcome is not, so the row's third condition fails. This
-        // is the case that separates rule 6 from rule 7: nothing about the effect set can rescue it.
+        // is the case that separates the two rules: nothing about the effect set can rescue it.
         assertEquals(ReplayDecision.RERUN, decide(ReplayPolicy.MEMOIZED, setOf(Effect.READ_ONLY), true, OperationStatus.FAILED))
     }
 
@@ -261,3 +259,4 @@ class DefaultEffectReplayPolicyTest {
         )
     }
 }
+

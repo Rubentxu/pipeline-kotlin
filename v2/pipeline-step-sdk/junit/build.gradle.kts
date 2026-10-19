@@ -28,8 +28,7 @@ kotlin {
     }
 }
 
-// JUnit OFFICIAL_PLUGIN provenance (F5.2).
-//
+// JUnit OFFICIAL_PLUGIN provenance.
 // Same shape as scm-git: a Gradle Exec task computes the SHA-256 of
 // every compiled class + resource (excluding the provenance file
 // itself to avoid chicken-and-egg), stored in
@@ -45,11 +44,9 @@ val junitReleaseProps = layout.buildDirectory.file("resources/main/META-INF/juni
 val junitClassesDir = layout.buildDirectory.dir("classes/kotlin/main")
 val junitResourcesDir = layout.buildDirectory.dir("resources/main")
 
-// AUD-01 (B0.2): exclusions by EXACT FRAMED relative path, which is
+// Exclusions by EXACT FRAMED relative path, which is
 // `<root name>/<relative path>`, NOT an absolute filesystem path.
-//
 // Two separate defects are fixed here, and they are distinct:
-//
 // 1. ABSOLUTE PATHS IN THE MATERIAL. This script used
 //    `sha256sum $all | sha256sum` over ABSOLUTE paths, and `sha256sum` PRINTS THE
 //    FILENAME IT WAS GIVEN, so the checkout path entered the digest. Measured on
@@ -58,14 +55,12 @@ val junitResourcesDir = layout.buildDirectory.dir("resources/main")
 //    shipped ZIP digests differed (ea9078de… vs ba0b1d07…) for byte-identical sources.
 //    The shared ProvenanceDigest frames only the root NAME and the RELATIVE path, so
 //    the absolute path never enters the material.
-//
 // 2. A LEAKED TEMPORARY FILE. The shell pipeline wrote `${out}.digest` inside the
 //    resources directory and deleted it afterwards. A build interrupted between the
 //    write and the delete — or simply ordered differently — left that scratch file
-//    inside `META-INF/`, where `processResources` packaged it into the jar. Measured:
+//    Inside `META-INF/`, where `processResources` packaged it into the jar. Measured
 //    `http-0.48.0.jar` shipped `META-INF/http-release.properties.digest` in one checkout
 //    and not the other. A plain in-process digest has no scratch file to leak.
-//
 //    The two exclusions are the documents this task feeds: the properties file the
 //    digest is WRITTEN into, and the manifest that reads it back. Excluding both by
 //    exact framed path is what keeps the digest a fixed point.
@@ -153,12 +148,10 @@ fun loadPropsAsMap(file: File): Map<String, String> {
 }
 
 // ----------------------------------------------------------------------------
-// S6/C — the manifest DOCUMENT, derived from the code, not typed by hand.
-//
+// The manifest DOCUMENT, derived from the code, not typed by hand.
 // The declaration object is the one authority: the contributor reads it at runtime
 // and this task reads it at build time. Typing the JSON here instead would create a
 // second authority able to describe Steps the code does not have.
-//
 // The digest task MUST run first: the manifest reports the digest and fails closed
 // for lack of provenance. The declared digest covers the artifact content EXCLUDING
 // this document, the same convention the release-properties file already uses.
@@ -232,20 +225,17 @@ tasks.named("jar") {
     dependsOn(emitJunitManifest)
 }
 
-// Unit-test wiring REMOVED (2026-10-18, testing RESET).
-//
+// Unit-test wiring REMOVED .
 // This module carries no unit tests: it is the `junit.results` STEP parser, which consumes
 // JUnit XML as DATA -- a JUnit-on-JUnit test cannot exercise it. Its verification is the
 // executable E2E layer -- `.pipeline.kts` pipelines under `v2/examples/`, driven by
 // `v2/examples/run.sh` -- and not a JUnit class.
-//
 // The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
 // Left in place they were a SILENT green: a `Test` task whose source set is empty reports
 // success while executing zero classes. Gradle 8.14 exposes no `failOnNoDiscoveredTests`
 // property -- the setting does not exist in this version, so nothing inside the build can
 // turn that green into a failure, and a build file asserting otherwise is describing a flag
 // it cannot compile.
-//
 // What turns it into a failure lives outside Gradle: `scripts/verify-all.sh` enumerates the
 // modules it asks from the filesystem and fails when a module that has a test source produces
 // no JUnit XML. The wiring that could have produced the misleading green is gone from the

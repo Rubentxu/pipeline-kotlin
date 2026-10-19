@@ -2,11 +2,9 @@ package dev.rubentxu.pipeline.v2.runtime.recover
 
 /**
  * Bounded audit of what recovery did.
- *
  * The recover port reports what it observed and what it wrote so a caller can
  * verify the "no-rerun" invariant on its own.
- *
- */
+*/
 data class RecoverReport(
     /** Number of journal rows reconciled (terminal rows committed). */
     val journalRowsCommitted: Int,

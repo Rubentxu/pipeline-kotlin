@@ -11,11 +11,10 @@ import java.util.UUID
 
 /**
  * Identity and presentation data required for one emitted step lifecycle.
- *
  * This is deliberately distinct from domain's `StepExecutionContext`, which
  * is the typed `StepDispatcher` contract. This application value supplies
  * event coordinates only; it must not become a second dispatcher context.
- */
+*/
 data class StepLifecycleContext(
     val runId: String,
     val stageIndex: Int,
@@ -26,11 +25,10 @@ data class StepLifecycleContext(
 
 /**
  * The single lifecycle owner for a canonical step execution.
- *
  * Dispatchers return a [StepOutcome]; they do not publish lifecycle failures.
  * Unexpected exceptions deliberately propagate so engine and scope invariants
  * cannot be reclassified as ordinary step failures.
- */
+*/
 class StepExecutionBoundary(
     private val eventSink: EventSink,
 ) {

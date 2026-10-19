@@ -6,8 +6,7 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * In-house parser for the canonical Ant/Maven JUnit XML report.
- *
- * Scope (frozen at E1.1 design):
+ * Scope (frozen at design)
  *   - Accepts `<testsuites>` (root with N `<testsuite>` children) or
  *     `<testsuite>` (single suite) as the root element.
  *   - Aggregates the totals from each `<testsuite>` element's
@@ -21,14 +20,12 @@ import javax.xml.parsers.DocumentBuilderFactory
  *       * root element not in {testsuites, testsuite}
  *       * non-canonical schema extensions (any element not in the
  *         known set, surfaced as UnsupportedSchema)
- *
  * Pure function: given bytes + path, returns either a [JunitReport]
  * or throws a [JunitParseException] (the handler catches and maps to
  * the typed result algebra). No I/O beyond reading the byte array;
  * the caller owns file access.
- *
  * The parser does NOT depend on any non-stdlib library.
- */
+*/
 object JunitParser {
 
     private val dbFactory: DocumentBuilderFactory by lazy {
@@ -45,12 +42,11 @@ object JunitParser {
 
     /**
      * Parse [bytes] as a JUnit XML report.
-     *
-     * @param bytes UTF-8 bytes of the XML file (caller reads the file)
+     * @param bytes bytes of the XML file (caller reads the file)
      * @param reportPath absolute path of the file (recorded in the result)
      * @return a fully-populated [JunitReport]
      * @throws JunitParseException on any parser-level failure
-     */
+*/
     fun parse(bytes: ByteArray, reportPath: String): JunitReport {
         val doc = try {
             dbFactory.newDocumentBuilder().parse(bytes.inputStream())
@@ -222,12 +218,11 @@ object JunitParser {
 
     /**
      * Canonical children of a `<testsuite>` element.
-     *
      * `<properties>` is accepted as a no-op container (Ant/Maven
      * often emits it). `<system-out>` / `<system-err>` are accepted
      * as no-op text containers (their content is NOT parsed). Any
      * other element is rejected as unsupported schema.
-     */
+*/
     private val KNOWN_SUITE_CHILDREN = setOf(
         "testcase",
         "properties",
@@ -241,6 +236,6 @@ object JunitParser {
  * parsed as a canonical JUnit XML report. Carries a typed
  * [JunitParseFailure] so the handler can surface a precise failure
  * kind without losing the schema variant.
- */
+*/
 class JunitParseException(val failure: JunitParseFailure) :
     RuntimeException(failure.toString())

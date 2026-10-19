@@ -19,46 +19,39 @@ import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 
 /**
- * S6/I — the external BLOCK plugin's DECLARATION, in one place.
- *
+ * The external BLOCK plugin's DECLARATION, in one place.
  * ## Why this file exists now
- *
- * Because until here this plugin declared itself through `META-INF/services` and nothing else.
- * That made it an UNADMITTED plugin: once pass 1 of S6/COMPOSITION reached the product,
+ * Because until here this plugin declared itself through `META-INF/services` and nothing else
+ * That made it an UNADMITTED plugin: once pass 1 of/COMPOSITION reached the product
  * `PreLoadPluginAdmission` refused this artifact with `no manifest at
  * META-INF/pipelinek/plugin-manifest.json` and every run that had the plugin on its classpath
  * exited 2. Measured, not predicted — 12 `UatLocal009TopStepsTest` rows failed naming this exact
  * jar.
- *
  * The finding is the point, not the fix. A ServiceLoader descriptor is a claim that the artifact
  * CONTRIBUTES; the manifest is the claim about WHAT it contributes. Before this file the artifact
  * made the first claim and silently omitted the second, and nothing in the repository objected
  * because the only admission gate had no production caller. Adding one is what surfaced it.
- *
  * ## One declaration, two readers
- *
  * The manifest is emitted into the artifact at BUILD time and read back at RUN time, and both must
  * read THIS object. A JSON document typed by hand in `build.gradle.kts` would be a second
  * authority free to describe a Step this code does not have — the defect BLOCK 1-H removed from the
  * KSP, in a different file.
- */
+*/
 object RepeatPluginDeclaration {
 
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/example-block-release.properties"
 
     /**
      * Compatibility range, DERIVED at build time from the resolved SDK.
-     *
      * It used to be `PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 53, 0))`, a literal that had
      * already gone stale once: at host 0.56.0 it declared a range the host sits outside, and
      * admission refused this plugin on its own distribution. A literal held by a plugin that does
      * not control the host's release cadence cannot stay correct, so the values come from the
      * same release-properties resource that already carries this plugin's provenance — one
      * authority, read once, fail-closed.
-     *
      * Fail-closed rather than defaulted: a missing range key must refuse the plugin, because a
      * silent fallback to a guessed range would admit it against hosts nobody measured.
-     */
+*/
     val API_RANGE: PipelineKApiRange by lazy {
         val props = releaseProperties(RepeatPluginDeclaration::class.java)
         val minRaw = props["pipeline.example.block.compatibility.min"]
@@ -78,12 +71,11 @@ object RepeatPluginDeclaration {
 
     /**
      * What the Steps collectively demand.
-     *
      * Written as the union of the contracts rather than as a hand-kept list, for the same reason
      * the atomic plugin does it: a hand-written list drifts from the code the moment a Step is
      * added, and the cross-check would then refuse a plugin for a difference nobody introduced on
      * purpose.
-     */
+*/
     private val DECLARED_CAPABILITIES: Set<StepCapability> =
         setOf(BODY_CONTINUATION_CAPABILITY)
 
@@ -95,11 +87,10 @@ object RepeatPluginDeclaration {
 
     /**
      * Fail-closed provenance: never accept a hand-typed digest.
-     *
      * A digest nobody measured is worse than no digest, because admission would read it as a
      * MEASURED identity — which is exactly what `MeasuredArtifactIdentity` exists to keep
      * separable from what a document merely claims.
-     */
+*/
     fun provider(
         classLoader: ClassLoader = RepeatPluginDeclaration::class.java.classLoader,
     ): StepProviderMetadata {
@@ -137,11 +128,10 @@ object RepeatPluginDeclaration {
 
     /**
      * One Step, no directives, no events.
-     *
      * The declared capability set is the contract's own `requiredCapabilities` rather than a
      * transcription of it: the cross-check compares the manifest against the contract exactly, so
      * a divergence here would refuse this plugin for a difference that cannot exist.
-     */
+*/
     fun manifest(
         classLoader: ClassLoader = RepeatPluginDeclaration::class.java.classLoader,
     ): PluginManifest {
@@ -170,13 +160,12 @@ object RepeatPluginDeclaration {
     }
 
     internal fun releaseProperties(ownClass: Class<*>): Map<String, String> {
-        // PK-RELEASE-CONSOLIDATION D1.9: the resource MUST come from THIS plugin's JAR, not from
+        // The resource MUST come from THIS plugin's JAR, not from
         // whichever JAR happens to be first on the system classpath with the same path. `getResource`
         // on the system classloader walks the URL chain in classpath order, and a sibling JAR that
-        // also contains `META-INF/example-block-release.properties` would silently win. Measured:
+        // Also contains `META-INF/example-block-release.properties` would silently win. Measured
         // a forged sibling JAR with `compatibility.min=9.9.9` overrides the plugin's real value the
         // instant it lands earlier on the classpath.
-        //
         // Resolving through the `ProtectionDomain` of the plugin's own class pins the read to the
         // exact JAR the JVM loaded this `object` from. If the class was loaded from a directory
         // (test classpath, exploded jar) the URL is a `file:` entry, and the resource is read from
@@ -195,7 +184,7 @@ object RepeatPluginDeclaration {
     }
 
     private fun readFromJar(jarUrl: java.net.URL, resourcePath: String): Map<String, String>? {
-        // PK-RELEASE-CONSOLIDATION D1.9: open the JAR by file path, not by JarURLConnection.
+        // Open the JAR by file path, not by JarURLConnection.
         // A `file:` URL that points at a `.jar` is NOT a `JarURLConnection`; casting throws
         // ClassCastException, the catch swallows it, and we fall back to the system classloader
         // — which is exactly the lookup that returns the wrong (forged) resource. Open the file
@@ -240,12 +229,11 @@ object RepeatPluginDeclaration {
 
 /**
  * Build-time entry point: emit the manifest document to stdout.
- *
  * A non-zero exit from missing provenance stops the build instead of shipping a JAR whose manifest
  * is absent — and a JAR without a manifest is refused at runtime, so a silent skip here would
  * produce an artifact that passes its own build and fails its own admission. That is precisely how
  * this plugin ran for as long as it did.
- */
+*/
 fun main() {
     print(PluginManifestCodec.encode(RepeatPluginDeclaration.manifest()))
 }

@@ -7,12 +7,10 @@ import org.junit.jupiter.api.Test
 /**
  * What a `--follow` consumer is promised: it stops exactly when the output lane is
  * final, and not one round earlier.
- *
  * The guarantee is single-valued and lives entirely in [followDecision], which is
  * pure — three inputs, one sealed answer, no clock, no filesystem, no run state.
  * That makes the cheapest instrument that can fail a direct call, and there is no
  * reason to reach for a CLI, a subprocess or an installed distribution to check it.
- *
  * The row that matters is [a sealed stream is not enough while the run is still
  * live]. Sealing every known stream answers "the output plane has nothing
  * pending", not "the run is over": between two steps there is a round in which
@@ -21,7 +19,7 @@ import org.junit.jupiter.api.Test
  * reports a clean exit over an unfinished run. The other two rows exist because
  * the same answer must also be reachable: without them, the fix for that row
  * could be "always read again", which never terminates anything.
- */
+*/
 class FollowDecisionTest {
     @Test
     fun `a sealed stream is not enough while the run is still live`() {

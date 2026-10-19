@@ -6,33 +6,26 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
 /**
  * Sealed specification describing HOW a [Credential] is bound to environment
  * variables for a `withCredentials` step.
- *
- * This is the LF-0401 typed binding model. It replaces the flat DSL
+ * This is the typed binding model. It replaces the flat DSL
  * `StepSpec.CredentialsBinding` (which is a single data class with 7 nullable
  * fields) and the four-way duplicate in `:pipeline-binding-factory` /
  * `:pipeline-credentials-api` / `:pipeline-credentials-executor`.
- *
- * ## Why a sealed hierarchy (INV-L6-CR-001)
- *
+ * ## Why a sealed hierarchy
  * The kind is a static type, not a runtime tag. Each subtype carries only the
  * fields that ARE valid for that binding — so a `StringBinding` cannot mention
  * a `usernameVariable`, and the JVM / Kotlin compiler enforces it.
- *
  * The sealed shape mirrors the Jenkins Credentials Binding Plugin. Field order
  * on each constructor is Jenkins-verbatim; the ergonomic factory methods in the
  * companion object preserve credentialsId-first ordering for call sites.
- *
  * ## Module placement
- *
  * Lives in `:pipeline-domain` so that:
  *  - [CredentialProjection][dev.rubentxu.pipeline.v2.domain.credentials.CredentialProjection]
  *    (which consumes the spec) can sit in domain.
  *  - `:pipeline-credentials-executor` can depend on the domain type instead of
  *    the DSL type (inverts the prior direction).
  *  - `:pipeline-binding-factory` becomes redundant (delete it).
- *
  * @see Credential for the corresponding sealed hierarchy of typed credentials.
- */
+*/
 sealed interface CredentialBindingSpec {
     val credentialsId: CredentialsId
     val kind: String
@@ -41,7 +34,7 @@ sealed interface CredentialBindingSpec {
 /**
  * String binding — maps to Jenkins "Secret text" credential.
  * Jenkins verbatim field order: credentialsId, variable.
- */
+*/
 data class StringBindingSpec(
     override val credentialsId: CredentialsId,
     val variable: String,
@@ -52,10 +45,9 @@ data class StringBindingSpec(
 /**
  * Username/password binding — maps to Jenkins "Username with password" credential.
  * Jenkins verbatim field order: credentialsId, usernameVariable, passwordVariable.
- *
  * Two different env vars are injected — usernameVariable and passwordVariable are
  * NOT the same handle (see [dev.rubentxu.pipeline.v2.domain.credentials.CredentialProjection]).
- */
+*/
 data class UsernamePasswordBindingSpec(
     override val credentialsId: CredentialsId,
     val usernameVariable: String,
@@ -67,15 +59,13 @@ data class UsernamePasswordBindingSpec(
 /**
  * SSH user private key binding — maps to Jenkins "SSH Username with private key" credential.
  * Jenkins verbatim field order: credentialsId, keyFileVariable, passphraseVariable?, usernameVariable?.
- *
  * Three DIFFERENT handles are injected:
  *  - keyFileVariable: path to the materialized private key file
  *  - passphraseVariable: the passphrase (if present) — wrapped via a `SecretHandle.secret`
  *  - usernameVariable: the SSH username (NOT secret, but masked)
- *
  * The legacy bug where all three received the SAME masked file-path handle is fixed
  * by [dev.rubentxu.pipeline.v2.domain.credentials.DefaultCredentialProjector].
- */
+*/
 data class SshUserPrivateKeyBindingSpec(
     override val credentialsId: CredentialsId,
     val keyFileVariable: String,
@@ -88,7 +78,7 @@ data class SshUserPrivateKeyBindingSpec(
 /**
  * File binding — maps to Jenkins "File" credential.
  * Jenkins verbatim field order: credentialsId, variable.
- */
+*/
 data class FileBindingSpec(
     override val credentialsId: CredentialsId,
     val variable: String,
@@ -100,9 +90,8 @@ data class FileBindingSpec(
  * Certificate binding — maps to Jenkins "Certificate" credential.
  * Jenkins verbatim field order: keystoreVariable, credentialsId, aliasVariable?, passwordVariable?.
  * (Note: Jenkins uses keystoreVariable FIRST.)
- *
  * Three DIFFERENT handles are injected (see SshUserPrivateKeyBindingSpec rationale).
- */
+*/
 data class CertificateBindingSpec(
     val keystoreVariable: String,
     override val credentialsId: CredentialsId,
@@ -115,7 +104,7 @@ data class CertificateBindingSpec(
 /**
  * Zip binding — maps to Jenkins "Zip" credential.
  * Jenkins verbatim field order: variable, credentialsId.
- */
+*/
 data class ZipBindingSpec(
     val variable: String,
     override val credentialsId: CredentialsId,
@@ -126,7 +115,7 @@ data class ZipBindingSpec(
 /**
  * Username:password binding — maps to Jenkins "Username Colon Password" credential.
  * Jenkins verbatim field order: variable, credentialsId.
- */
+*/
 data class UsernameColonPasswordBindingSpec(
     val variable: String,
     override val credentialsId: CredentialsId,
@@ -135,18 +124,16 @@ data class UsernameColonPasswordBindingSpec(
 }
 
 /**
- * AUD-07 single authority: the ONLY mapping from a credential binding kind to
+ * Single authority: the ONLY mapping from a credential binding kind to
  * its audit [BoundPurpose].
- *
  * Total over the sealed family — the compiler enforces that every binding kind
  * is mapped, so a `file` / `certificate` / `zip` / `usernameColonPassword`
  * binding can never be silently reported as [BoundPurpose.API_KEY] (the defect
  * this replaces was a partial `when` with `else -> API_KEY`).
- *
  * An unknown raw `kind` token is unrepresentable at this seam: the compiled
  * payload codec rejects it fail-closed before it can become a
  * [CredentialBindingSpec], and once a spec exists its kind is a static type.
- */
+*/
 val CredentialBindingSpec.boundPurpose: BoundPurpose
     get() = when (this) {
         is StringBindingSpec -> BoundPurpose.API_KEY
@@ -162,11 +149,10 @@ val CredentialBindingSpec.boundPurpose: BoundPurpose
  * Ergonomic factory methods that mirror the legacy
  * `:pipeline-binding-factory/CredentialsBindingFactory` shape but produce
  * `:pipeline-domain` sealed types.
- *
  * Field ordering follows Jenkins-verbatim conventions (keystoreVariable first on
  * certificate, etc.) but the *factory* signature keeps credentialsId-first where
  * the Jenkins shape allows it, for ergonomic DSL/script calls.
- */
+*/
 object CredentialBindingSpecFactory {
 
     fun string(credentialsId: CredentialsId, variable: String): StringBindingSpec =

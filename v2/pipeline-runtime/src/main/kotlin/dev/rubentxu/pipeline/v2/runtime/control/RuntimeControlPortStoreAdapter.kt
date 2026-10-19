@@ -22,33 +22,26 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * M2 — production [RuntimeControlPort] adapter backed by the existing
+ * Production [RuntimeControlPort] adapter backed by the existing
  * `RunExecutionLease` decider, the existing `OperationJournal`, and the existing
  * `OutputFrameIndex` + `OutputSealPort` composition.
- *
  * ## What this adapter is and is not
- *
  * The adapter is a thin composition: it does NOT introduce a new lease, a new
  * fencing scheme, a new journal schema, or a new scheduler. Every authority it
  * composes is named below.
- *
  * ## Lease boundary (audit B.2, B.8, G.3)
- *
  * The adapter consults the existing `RunExecutionLease.acquire` decider with
  * the current lease record (read-only via `FileBackedRunExecutionLeaseStore
  * .observe`) and a synthetic request. A `LeaseAcquisition.AlreadyOwned` verdict
  * surfaces as [CancelRefusal.LeaseHeldByAnother]. The adapter does NOT call
  * `FileBackedRunExecutionLeaseStore.acquire`, so cancel does NOT take a fresh
  * lease (audit B.8).
- *
  * ## Idempotency (audit D.3)
- *
  * A cancel call made N times produces one terminal state. The second call
  * returns [CancelOutcome.AlreadyCancelled] by reading the durable journal
- * terminal row. The contract test `CancelIdempotencyTest` (§7.2 of the
+ * terminal row. The contract test `CancelIdempotencyTest` ( of the
  * design) pins the invariant.
- *
- */
+*/
 class RuntimeControlPortStoreAdapter(
     private val journal: OperationJournal,
     private val lease: FileBackedRunExecutionLeaseStore,
@@ -63,9 +56,9 @@ class RuntimeControlPortStoreAdapter(
     },
 ) : RuntimeControlPort {
 
-    // The cancel() body interleaves lease observation, lease-decision application,
+    // The cancel body interleaves lease observation, lease-decision application,
     // and storage-error refusal emission. The try/catch ordering and short-circuit
-    // returns are contract-bearing for the M2 control surface; extracting helpers
+    // Returns are contract-bearing for the control surface; extracting helpers
     // would risk reordering the rejection seams. The body's length is intentional.
     @Suppress("LongMethod")
     override fun cancel(runId: String, reason: CancelReason): CancelOutcome {
@@ -175,8 +168,8 @@ class RuntimeControlPortStoreAdapter(
             )
         }
 
-        // 4. Recover the output store first (ADR-M1 O3 — `SegmentOutputStore
-        //    .seal()` requires `OutputRecoveryPort.recover()` to have run
+        // 4. Recover the output store first (— `SegmentOutputStore
+        //.seal` requires `OutputRecoveryPort.recover` to have run
         //    first). The recover call is itself idempotent, so a cancel that
         //    lands on an already-recovered store is a no-op.
         try {

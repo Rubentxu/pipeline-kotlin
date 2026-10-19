@@ -1,29 +1,26 @@
 package dev.rubentxu.pipeline.v2.scripting
 
 /**
- * LFC-2R / R3 — Compiler-backed lowering of a mapped `.pipeline.kts` body into a
+ * Compiler-backed lowering of a mapped `.pipeline.kts` body into a
  * generated Kotlin source artifact implementing [CompiledScriptedEntryPoint].
- *
  * The lowering is DETERMINISTIC and driven by the compiler-verified
  * [ScriptedSourceMapping.Mapped] calls — never by regex over raw text:
- *
  * ```
  * user source (top-level statements)
- *   → ScriptedSourceMapper (PSI: exact isUnix()/sh() call sites)
+ *   → ScriptedSourceMapper (PSI: exact isUnix/sh call sites)
  *   → generated source:
- *       object : CompiledScriptedEntryPoint {
+ *       object: CompiledScriptedEntryPoint {
  *           override suspend fun execute(steps: ScriptedStepFacade) {
- *               <body with isUnix() rewritten to steps.isUnix(callSite)>
+ *               <body with isUnix rewritten to steps.isUnix(callSite)>
  *           }
  *       }
  *   → Kotlin host compiles and evaluates it (exactly ONE script evaluation;
  *     the user's Kotlin continuation stays suspended around each runtime call)
  * ```
- *
  * Call-site identity comes from the mapped source locations through
  * [ScriptedSourceLocation.unixCallSite]: same source + same position → same
  * callSite, independent of the checkout path.
- */
+*/
 object ScriptedSourceLowering {
 
     sealed interface LoweringResult {
@@ -44,7 +41,7 @@ object ScriptedSourceLowering {
      * pure function of (sourceId, sourceText, dslApi, compiler, runtime, plugins,
      * facade schema): any incompatible facade/compiler-mapping change flows into
      * `facadeSchemaDigest` and therefore into the artifact compatibility identity.
-     */
+*/
     fun lower(
         sourceId: ScriptedSourceId,
         sourceText: String,
@@ -53,7 +50,7 @@ object ScriptedSourceLowering {
     ): LoweringResult = when (val mapping = mapper.map(ScriptedSource(sourceId, sourceText))) {
         is ScriptedSourceMapping.InvalidSyntax -> LoweringResult.InvalidSyntax(mapping.diagnostics)
         is ScriptedSourceMapping.Mapped -> when (val rewritten = rewrite(sourceText, mapping.calls, mapping.loopScopes)) {
-            // S4-SRANGE: an unlocatable call refuses the whole lowering. It used to be skipped,
+            // An unlocatable call refuses the whole lowering. It used to be skipped,
             // which reported `Generated` while the call survived as a bare `sh(...)` with no
             // receiver — the author then met `Unresolved reference 'sh'` in GENERATED code they
             // never wrote. The information needed to explain it existed and was discarded in
@@ -78,8 +75,7 @@ object ScriptedSourceLowering {
     }
 
     /**
-     * S4-IDENTITY I2 — one edit pass, every offset resolved against the ORIGINAL text.
-     *
+     * One edit pass, every offset resolved against the ORIGINAL text.
      * This replaces an offset-locked rewriter that resolved each call's position
      * against the *already-rewritten* buffer. That worked only because the loop
      * wrappers did not exist: a wrapper spanning a body changes the offsets of
@@ -88,7 +84,6 @@ object ScriptedSourceLowering {
      * immutable source text, and applying them back-to-front makes the two
      * composable and removes the "mis-attribution is bounded by line/column
      * uniqueness" caveat entirely.
-     *
      * Two kinds of edit:
      *  - call rewrites, over [ScriptedMappedCall.sourceLength] — the call's real
      *    source extent, not the length of a canonical spelling;
@@ -96,7 +91,7 @@ object ScriptedSourceLowering {
      *    before `}`), which is what makes nested loops fall out correctly: an
      *    insertion never invalidates an offset, and back-to-front application keeps
      *    every earlier offset exact.
-     */
+*/
     private fun rewrite(
         text: String,
         calls: List<ScriptedMappedCall>,
@@ -157,12 +152,11 @@ object ScriptedSourceLowering {
 
     /**
      * A mapped call was either rewritten, or the lowering refuses.
-     *
      * Not a `String?` and not a thrown exception: the caller needs to distinguish "here is your
      * program" from "here is what is wrong with your source", and the only honest way to carry
      * both is a closed pair. Every diagnostic for every offending call is returned, so one run
      * tells the operator everything that is wrong rather than the first thing.
-     */
+*/
     private sealed interface RewriteResult {
         data class Rewritten(val text: String) : RewriteResult
         data class Unlocatable(val diagnostics: List<ScriptedSourceDiagnostic>) : RewriteResult
@@ -171,7 +165,7 @@ object ScriptedSourceLowering {
     /**
      * How to name a mapped call in a diagnostic, in the author's own vocabulary. Without it a
      * message saying "the call" is a message the author cannot act on.
-     */
+*/
     private fun ScriptedCallKind.describeForDiagnostic(): String = when (this) {
         is ScriptedCallKind.Shell -> "shell call `sh(...)`"
         is ScriptedCallKind.IsUnix -> "`isUnix()` call"
@@ -182,10 +176,9 @@ object ScriptedSourceLowering {
 
     /**
      * One text substitution, resolved against the original source.
-     *
      * [order] exists only to make same-offset edits deterministic; it is not part of
      * the substitution's meaning.
-     */
+*/
     private class TextEdit(
         val offset: Int,
         val length: Int,
@@ -201,7 +194,7 @@ object ScriptedSourceLowering {
             val callSite = call.location.pwdCallSite(tmp = tmp).value
             "steps.pwd(ScriptedCallSiteId(\"$callSite\"), tmp = $tmp)"
         }
-        // S4-DATA: the author's own path EXPRESSION is re-scoped into the
+        // The author's own path EXPRESSION is re-scoped into the
         // façade call, exactly as `sh` does with its script. A literal `""`
         // was written here before, which both dropped the path and left the
         // argument's text trailing after the rewritten call.
@@ -232,12 +225,11 @@ object ScriptedSourceLowering {
 
     /**
      * The mapper's 1-based line/column to a character offset in [text].
-     *
      * Resolved once, against the untouched source. `-1` when the location does not
      * exist in this text, in which case the call is left alone rather than rewritten
      * at a guessed offset — the same refusal `offsetOfAt` made, now without the
      * buffer it used to consult.
-     */
+*/
     private fun offsetOf(text: String, location: ScriptedSourceLocation): Int {
         var offset = 0
         var line = 1
@@ -270,17 +262,14 @@ object ScriptedSourceLowering {
 
     /**
      * The scripted artifact's `sourceDigest`, and the body digest in the unlocatable rewrite.
-     *
-     * Routed through [Sha256] (B0). This is DURABLE identity, not an observability value: it
-     * participates in `ScriptedArtifactIdentity`, which DR-10 protects, so a change to the bytes
+     * Routed through [Sha256]. This is DURABLE identity, not an observability value: it
+     * Participates in `ScriptedArtifactIdentity`, which protects, so a change to the bytes
      * hashed here would reinterpret existing history.
-     *
      * The bytes hashed are unchanged. The previous expression used `input.toByteArray()` with
-     * no charset, which resolves to the platform default; JEP 400 made that UTF-8 in JDK 18, so
+     * No charset, which resolves to the platform default; JEP 400 made that in JDK 18, so
      * on every supported toolchain this migration is byte-identical and no committed identity
-     * moves. What it removes is the dependency on that default being UTF-8 rather than an
+     * Moves. What it removes is the dependency on that default being rather than an
      * assumption about it.
-     *
      * UNPINNED, and this KDoc used to say otherwise: it named
      * `Sha256MigrationCharsetInvariantTest` as the assertion that held this. That test existed and
      * the test RESET removed it in `2aa071aab`. `git ls-files` returns nothing for it now, which
@@ -288,25 +277,23 @@ object ScriptedSourceLowering {
      * is not evidence about the history. The property is real and still holds by the toolchain, but nothing here checks it,
      * so a future edit could reintroduce a platform-default charset and the digests would move
      * silently. The line above states the invariant; it does not claim a guard that is absent.
-     */
+*/
     internal fun sha256(input: String): String =
         dev.rubentxu.pipeline.v2.domain.digest.Sha256.ofText(input)
 
     private const val DSL_API_VERSION = "r3-dsl-v1"
     private const val COMPILER_ADAPTER_VERSION = "r3-compiler-v1"
-    // ADR-0103 D6. Bumped r3 -> r4 by R1-E, in the SAME cut that stopped hashing scripted
+    // Bumped r3 -> r4 in the SAME cut that stopped hashing scripted
     // operations under a hardcoded memoized policy and started hashing the declared one. The
     // fingerprint of every scripted operation whose Step declares anything other than the
     // memoized default therefore changes: the shell Step and the error Step among them. Those
     // existing `scripted.*` rows now diverge and the divergence gate answers
     // REPLAY_COMPATIBILITY, which is the intended outcome — an explicit incompatibility rather
     // than a silent re-execution of an effect believed to be fresh.
-    //
     // No row is rewritten, rehashed or migrated. This constant is the dimension that already
-    // exists to declare a durable model change, which is why D6 chose it over a parallel schema
+    // Exists to declare a durable model change, which is why chose it over a parallel schema
     // version. Bumping it separately from the behaviour change would let an artifact built
     // before the change be reused by a runtime that no longer shares its identity law.
-    //
     // The type this constant belongs to is deliberately not named here. It used to be, with a
     // stated reason: naming it would register a phantom consumer in
     // `SharedModelCompositionFitnessTest`, whose `consumersOf` was a raw text search. That test
@@ -321,11 +308,9 @@ object ScriptedSourceLowering {
      * Facade schema identity of the GENERATED surface. Bump when the generated
      * call shape or the facade contract changes incompatibly: artifacts compiled
      * against an older schema must never be silently reusable (user law 7).
-     *
-     * S4-A1 bumped it from `…-shReturnStdout-v1`, and the bump was mandatory, not
+     * Bumped it from `…-shReturnStdout-v1`, and the bump was mandatory, not
      * cosmetic. Three incompatible changes to the GENERATED call shape happened at
      * once, and the constant previously advertised a method that no longer exists:
-     *
      *  - the eager `sh` is now rewritten at all. It used to survive into the
      *    generated Kotlin as a bare `sh(...)` with no receiver, so the host
      *    rejected the script at compile time;
@@ -336,13 +321,12 @@ object ScriptedSourceLowering {
      *  - the call-site identity gained its return mode (`:sh:none` / `:sh:ro` /
      *    `:sh:rs`), so a durable identity written under `r4-v1` is not the same
      *    identity as the one the same source position produces now.
-     *
      * Leaving it at `v1` would have let an artifact compiled against a
      * call shape that cannot be reused present the same
      * [dev.rubentxu.pipeline.v2.scripting.ScriptedArtifactIdentity.facadeSchemaDigest]
      * as one compiled against this one — a declared compatibility dimension with
      * no discriminating power, the same class of defect as the `PLUGIN_LOCK_DIGEST`
-     * constant recorded in the S4-A0 characterization §3.6.
-     */
+     * Constant recorded in the characterization
+*/
     const val FACADE_SCHEMA_VERSION = "facade-r4-pwd-readFile-fileExists-shSpine-v2"
 }

@@ -18,7 +18,6 @@ class HttpCodecException(message: String) : IllegalArgumentException(message)
 
 /**
  * THE single authority for the `http.request` wire format.
- *
  * Nothing else writes this format. The DSL façade ([httpRequest] in `HttpDsl.kt`)
  * builds a typed [HttpRequestInput] and calls [encode]; the compiler has no branch
  * for this key and must never acquire one. `core.sh` is the frozen counter-example of
@@ -27,12 +26,11 @@ class HttpCodecException(message: String) : IllegalArgumentException(message)
  * became a compatibility shim added after the divergence instead of a bug fixed
  * before it. `Lfc2HttpOfficiallyPluginBoundaryFitnessTest` refuses to manufacture
  * that debt for httpRequest.
- *
  * The schema below is kept honest against [encode] by
  * `HttpRequestStepContractTest`, which fails when the two disagree — a declared
  * schema that no longer describes the bytes is how a consumer ends up rejecting
  * valid payloads.
- */
+*/
 object HttpRequestCodec : StepCodec<HttpRequestInput> {
 
     private val json = Json
@@ -44,11 +42,10 @@ object HttpRequestCodec : StepCodec<HttpRequestInput> {
             put("httpMode", value.method.wireName)
             if (value.customHeaders.isNotEmpty()) {
                 // An ARRAY of {name, value}, never a JSON object keyed by name.
-                //
                 // The object form looks tidier and is the obvious choice, and it was
                 // the first one written here — until the contract test caught it
                 // silently dropping every value but the last of a repeated header.
-                // `Set-Cookie` repeats by design, and D1 makes repetition part of the
+                // `Set-Cookie` repeats by design, and makes repetition part of the
                 // contract. A wire format that cannot represent the value it carries is
                 // not a tidier encoding; it is a lossy one.
                 put(
@@ -158,24 +155,22 @@ object HttpRequestCodec : StepCodec<HttpRequestInput> {
 
 /**
  * The authority for the `http.request` OUTPUT wire.
- *
  * Split out of the Step, as `CoreInputOutputCodec` was, so the contract test can pin the
  * format without going through the handler.
- */
+*/
 object HttpResponseCodec : StepCodec<HttpResponseOutput> {
 
     private val json = Json
 
     /**
      * The wire form of the carrier.
-     *
      * It records the ATTEMPT, not a flattened response, and that is the change
      * that makes the durable record honest. The previous shape wrote
      * `status = 0` for a request that never answered, so a refused request and a
      * step that never ran were indistinguishable in the journal — and a reader
      * could not tell success from failure without re-deriving it. The attempt
      * case is explicit here, so the round-trip preserves WHICH thing happened.
-     */
+*/
     override fun encode(value: HttpResponseOutput): EncodedStepValue {
         val obj: JsonObject = buildJsonObject {
             put("kind", "httpAttempt")
@@ -201,7 +196,7 @@ object HttpResponseCodec : StepCodec<HttpResponseOutput> {
                 is HttpAttempt.Failed -> {
                     put("attempt", "failed")
                     put("failure", attempt.failure.diagnostic)
-                    // H4-Q: the DIAGNOSTIC STRING is for humans and cannot be decoded.
+                    // The DIAGNOSTIC STRING is for humans and cannot be decoded.
                     // Without the case written down, every failure came back as
                     // `Unreachable` on replay — so a TIMEOUT was durably recorded as a
                     // network fact, and a body cut short at 37 MiB was recorded as a
@@ -319,13 +314,12 @@ object HttpResponseCodec : StepCodec<HttpResponseOutput> {
 
     /**
      * Rebuilds the exact failure case, or the best available reading of a legacy record.
-     *
      * Records written before `failureKind` existed carry only a diagnostic string, and
      * a string is not a case. Those fall back to [HttpFailure.Unreachable] — the same
      * reading the previous decoder gave everything — and the fallback is stated rather
      * than hidden, because the alternative is inventing a fact the record does not
      * contain.
-     */
+*/
     private fun decodeFailure(obj: JsonObject): HttpFailure = when (obj.stringField("failureKind")) {
         "unreachable" -> HttpFailure.Unreachable(obj.stringField("failure") ?: "the request failed")
         "expired" -> HttpFailure.Expired(obj.longField("failureAfterMs") ?: 0L)
@@ -349,14 +343,13 @@ object HttpResponseCodec : StepCodec<HttpResponseOutput> {
 
     /**
      * Rebuilds the egress refusal, falling back the way the old world actually was.
-     *
-     * Records written before H6 carry no reason, and they could only ever have been
+     * Records written before carry no reason, and they could only ever have been
      * written by a runtime that handed out the single static `Denied` verdict — so
      * [EgressRefusal.NetworkNotPermitted] is not a guess for them, it is the one
      * thing that build was able to say. Reading an unknown future name as
      * `NetworkNotPermitted` is the same choice applied to a record this build cannot
      * interpret: refuse, and say so in closed terms, rather than invent a fact.
-     */
+*/
     private fun decodeEgressRefusal(obj: JsonObject): EgressRefusal {
         val name = obj.stringField("failureEgressReason") ?: return EgressRefusal.NetworkNotPermitted
         return EgressRefusal.entries.firstOrNull { it.name == name }
@@ -365,12 +358,11 @@ object HttpResponseCodec : StepCodec<HttpResponseOutput> {
 
     /**
      * Rebuilds the credential rejection, keeping the id.
-     *
      * An older record has no `rejectionKind`, and its only content is a sentence. The
      * id is taken from the record when present and the sentence is kept as the
      * diagnostic, so nothing is invented — but a rejection whose id is genuinely
      * absent says so instead of inventing a placeholder name.
-     */
+*/
     private fun decodeRejection(obj: JsonObject): CredentialRejection {        val id = obj.stringField("rejectionId")
         return when (obj.stringField("rejectionKind")) {
             "notFound" -> CredentialRejection.NotFound(id ?: "the named credential")
@@ -422,19 +414,17 @@ object HttpResponseCodec : StepCodec<HttpResponseOutput> {
 
     /**
      * The schema of the ATTEMPT, which is what [encode] writes.
-     *
      * It used to declare `kind: "httpResponse"` while the encoder wrote
      * `"httpAttempt"`, and to require `status` — a field that does not exist for a
      * failed or unauthorized attempt, which are exactly the cases a reader most needs
      * to recognise. A schema that rejects valid payloads is not documentation, it is a
      * second, wrong contract, and the only honest fix is to describe the bytes that
      * are actually produced.
-     *
      * `status` is therefore required only where it exists: inside the `answered` and
      * `refused` cases. The case discriminators are `attempt` and, for a failure,
      * `failureKind` — which is what makes [decodeFailure] able to rebuild the case
      * rather than guess it from a sentence.
-     */
+*/
     override fun schema(): String = """
         {
           "type": "object",
@@ -510,11 +500,10 @@ private fun JsonObject.booleanField(name: String): Boolean? = when (val raw = st
 
 /**
  * A JSON string field, or `null` when absent, JSON null, or a non-primitive.
- *
  * Total on purpose: a wire payload is untrusted input, and a helper that threw
  * would turn a malformed record into an exception crossing a replay path
  * instead of a typed codec failure.
- */
+*/
 private fun JsonObject.stringOrNull(name: String): String? =
     get(name)?.takeIf { it is JsonPrimitive }?.primitiveText()
 

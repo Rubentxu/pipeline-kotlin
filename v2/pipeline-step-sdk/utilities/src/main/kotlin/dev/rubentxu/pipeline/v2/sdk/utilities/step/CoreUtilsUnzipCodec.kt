@@ -30,22 +30,19 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * `core-utils.unzip` codecs (LFC-2E2 utilities, Slice 2 / S2.5).
- *
+ * `core-utils.unzip` codecs (utilities, Slice 2 /.5)
  * Envelope shape (durable eligible):
- *   input  : { "path": <string>,
+ *   input: { "path": <string>,
  *              "destination": <string|null>,
  *              "glob": <string|null>,
  *              "mode": "extract" | "read" | "test" }
- *   output : { "extracted":   <object|null>, | "readEntries": <object|null>,
+ *   output: { "extracted":   <object|null>, | "readEntries": <object|null>,
  *              "testReport":  <object|null> }
- *
  * Exactly one of the three output fields is set; the codec enforces
  * this invariant on decode.
- *
- * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * Migrated to `PipelineJson` / `JsonAccessors`. Wire
  * format unchanged.
- */
+*/
 object CoreUtilsUnzipInputCodec : StepCodec<UnzipInput> {
 
     override fun encode(input: UnzipInput): EncodedStepValue = PipelineJson.encode(

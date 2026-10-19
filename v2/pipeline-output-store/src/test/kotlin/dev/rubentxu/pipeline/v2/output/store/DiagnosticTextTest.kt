@@ -8,13 +8,12 @@ import org.junit.jupiter.api.Test
 /**
  * [DiagnosticText] is the narrowing every Output Plane refusal depends on before it reaches a
  * consumer that prints one line per record.
- *
  * The rule it exists for: an exception message is not ours to bound. A path carrying a newline is
  * legal on Linux, and Output Plane stream ids reach the CLI as arguments, so an `IOException` raised
  * while reading one can carry a newline that the consumer would render as an extra record-shaped
  * line. Before this rule had a name, three call sites implemented it and one -- `MainInspectCli` --
  * did not, and the one that did not is the defect these tests lock shut.
- */
+*/
 class DiagnosticTextTest {
 
     /** A named throwable, so the rendered simple name is deterministic. */
@@ -99,7 +98,7 @@ class DiagnosticTextTest {
 
     @Test
     fun `a message that is only newlines is blank, not content`() {
-        // take() keeps the newlines, then the replace turns them into spaces, which IS blank. The
+        // take keeps the newlines, then the replace turns them into spaces, which IS blank. The
         // blank check therefore has to run AFTER the narrowing, and it does.
         assertEquals("Boom", DiagnosticText.from(Boom("\n\n")))
     }

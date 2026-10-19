@@ -7,19 +7,17 @@ import java.nio.file.Paths
 
 /**
  * The directory chain `CredentialMaterializer.close()` needs in order to actually delete.
- *
  * `Files.createDirectories` reports only the leaf, so a nested Zip entry (`certs/server.pem`)
  * silently creates every intermediate level on disk while the materializer tracks none of them.
  * `close()` then deletes the top directory, raises `DirectoryNotEmptyException`, and swallows it
  * -- leaving the extracted credential bytes on disk after a run that reported success. That is a
  * credential-retention defect, not a cosmetic one, and it is invisible at runtime: the run is
  * green and the file is still there.
- *
  * The property pinned here is ORDER. `close()` walks `trackedDirs` in reverse insertion order, so
  * a child must be inserted after its parent for the child to be deleted first. Deepest-first is
  * just as plausible to write and fails every time, which is why this file exists rather than a
  * comment.
- */
+*/
 class CreateDirectoriesFromTest {
 
     private val root: Path = Paths.get("/tmp/pipeline-zip-abc123-archive-cred")

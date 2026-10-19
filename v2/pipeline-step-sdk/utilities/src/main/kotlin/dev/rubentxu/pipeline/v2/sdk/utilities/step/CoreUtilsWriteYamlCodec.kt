@@ -23,16 +23,14 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * JSON codec for [WriteYamlInput] (LFC-2E2 utilities OFFICIAL_PLUGIN).
- *
+ * JSON codec for [WriteYamlInput] (utilities OFFICIAL_PLUGIN)
  * Encodes the sealed [WriteYamlDestination] and [WriteYamlPayload]
  * hierarchies as discriminated unions. Decode validates the mutual-exclusion
  * invariants the type system already enforces at construction time, so a
  * corrupt journal that violates them fails closed at decode time.
- *
- * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * Migrated to `PipelineJson` / `JsonAccessors`. Wire
  * format unchanged (roundtrip byte-identical to pre-refactor).
- */
+*/
 object CoreUtilsWriteYamlInputCodec : StepCodec<WriteYamlInput> {
 
     override fun encode(value: WriteYamlInput): EncodedStepValue = PipelineJson.encode(
@@ -157,8 +155,8 @@ object CoreUtilsWriteYamlInputCodec : StepCodec<WriteYamlInput> {
 }
 
 /**
- * JSON codec for [WriteYamlOutput]. D-012 migration.
- */
+ * JSON codec for [WriteYamlOutput]. migration
+*/
 object CoreUtilsWriteYamlOutputCodec : StepCodec<WriteYamlOutput> {
 
     override fun encode(value: WriteYamlOutput): EncodedStepValue = PipelineJson.encode(
@@ -229,12 +227,11 @@ object CoreUtilsWriteYamlOutputCodec : StepCodec<WriteYamlOutput> {
 
 /**
  * Shared YamlDocument ↔ JsonElement codec (also used by ReadYamlOutput).
- *
  * Extracted so the Read and Write codecs agree on the canonical encoding of
  * the closed YamlDocument ADT. Without this, the two codecs would drift and
  * a value read by `readYaml` could not be re-encoded by `writeYaml` without
  * a transformation step.
- */
+*/
 internal object YamlDocumentCodec {
 
     fun encodeDocument(doc: YamlDocument): kotlinx.serialization.json.JsonElement =

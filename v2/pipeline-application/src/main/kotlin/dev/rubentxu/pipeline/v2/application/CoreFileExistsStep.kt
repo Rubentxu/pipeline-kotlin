@@ -23,11 +23,10 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Typed input payload of `core.fileExists` (WU-LPR-104).
- *
+ * Typed input payload of `core.fileExists`
  * Decoding validates the complete canonical envelope before the handler can create an
  * effect: non-blank `file`.
- */
+*/
 data class CoreFileExistsInput(val file: String) {
     init {
         require(file.isNotBlank()) { "core.fileExists requires a non-blank file" }
@@ -35,12 +34,11 @@ data class CoreFileExistsInput(val file: String) {
 }
 
 /**
- * Typed successful output for `core.fileExists` (WU-LPR-087, LFC-2R2).
- *
+ * Typed successful output for `core.fileExists`
  * Jenkins semantics: `fileExists` is a predicate, NOT an assertion — `exists == false`
  * is a legitimate success outcome, not a step failure. The runtime-returning façade
  * decodes this typed field back to `Boolean` for the scripted caller.
- */
+*/
 data class CoreFileExistsOutput(
     val exists: Boolean,
 ) : TypedStepOutput {
@@ -48,19 +46,16 @@ data class CoreFileExistsOutput(
 }
 
 /**
- * Registry authority for `core.fileExists` (WU-LPR-104, blocker closure for the
+ * Registry authority for `core.fileExists` (, blocker closure for the
  * LPR certification checkpoint).
- *
  * The handler reaches workspace file operations ONLY through the typed
  * [WorkspaceOperations] seam (capability `WORKSPACE_OPERATIONS_CAPABILITY`), which binds
  * the certified `FileExistsExecutor` substrate. The handler:
- *
  *  - does NOT probe the filesystem itself,
  *  - does NOT emit `FileExistsChecked` (the adapter is the single emitter),
  *  - does NOT resolve stage identity (the adapter binds the runtime context's values).
- *
  * Capability admission is fail-closed at prepare-time via `RegistryExecutionPreparation`.
- */
+*/
 object CoreFileExistsStep {
     val KEY: PluginStepId = PluginStepId("core.fileExists")
 
@@ -68,7 +63,7 @@ object CoreFileExistsStep {
      * Canonical dsl-v1 envelope, byte-identical to the compile lowering emitted by
      * `DslCompiledPipelineCompiler.fileExistsPayload`:
      * `{"kind":"fileExists","file":...}`.
-     */
+*/
     private val inputCodec = object : StepCodec<CoreFileExistsInput> {
         override fun encode(value: CoreFileExistsInput): EncodedStepValue =
             EncodedStepValue(

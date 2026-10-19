@@ -30,10 +30,10 @@ import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeC
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
-// WU-G5R.5: durable waitUntil reconciliation driver and identity factory.
+// Durable waitUntil reconciliation driver and identity factory.
 import dev.rubentxu.pipeline.v2.application.durable.WaitUntilIdentityFactory
 
-// RETRY-D: control journal + reconciliation driver (ADR-0075 §11).
+// Control journal + reconciliation driver.
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.RetryIdentityFactory
 import dev.rubentxu.pipeline.v2.application.durable.retry.RetryReconciliationDriver
@@ -110,30 +110,27 @@ internal val canonicalStepIds: Set<String> =
         CoreStepRegistryFactory.registry().keys().map { it.value }
 
 /**
- * Block Step families whose body is executed by THIS engine (B10 / W1c).
- *
+ * Block Step families whose body is executed by THIS engine
  * Derived from the declared [StepDescriptor] metadata, never from a list of StepKeys: a
  * Step is canonical-body-eligible when it declares a body row
- * (`StepBody.Declared`) whose `BodyExecution.owner` is this engine. Since W1d that row has
+ * (`StepBody.Declared`) whose `BodyExecution.owner` is this engine. Since that row has
  * no implicit owner, so a new body Step cannot become eligible by omission. `core.catchError` / `core.warnError` declare
  * `LEGACY_LINEAR` because their semantics live in the legacy workflow-control rewrite,
  * so they stay refused here rather than being executed as empty shells.
- *
  * Adding a body Step therefore takes ONE descriptor row and no engine change, and this
  * engine cannot silently gain a body family it does not implement.
- */
+*/
 internal val canonicalBodyStepIds: Set<PluginStepId> =
     StepDescriptorRegistry.standard().bodyStepIds(BodyExecutionOwner.CANONICAL_ENGINE)
 
 /**
  * Describes a non-canonical step detected during pipeline analysis.
- *
  * @property stageIndex Index of the stage containing the non-canonical step
  * @property stepIndex Index of the step within the stage
  * @property stepId Human-readable step ID (from the pipeline definition)
  * @property pluginStepId The plugin step ID (e.g. "custom.step")
  * @property reason Why the step is non-canonical (e.g. "not in canonical core step IDs")
- */
+*/
 data class NonCanonicalStep(
     val stageIndex: Int,
     val stepIndex: Int,
@@ -145,9 +142,9 @@ data class NonCanonicalStep(
 /**
  * Analyzes the compiled pipeline and returns the list of non-canonical steps.
  * An empty list means the pipeline is fully canonical and eligible for canonical durable execution.
- */
+*/
 fun CompiledPipeline.analyzeCanonicalDurableExecution(effectiveRegistry: StepRegistry? = null): List<NonCanonicalStep> {
-    // LB-02 / EP-6: eligibility is registry-derived. When the caller has already
+    // Eligibility is registry-derived. When the caller has already
     // composed the production registry (core + external plugin contributions),
     // its keys participate in the gate; when null, the default derivation (core
     // metadata + the production core factory) applies — behaviour unchanged for
@@ -157,7 +154,7 @@ fun CompiledPipeline.analyzeCanonicalDurableExecution(effectiveRegistry: StepReg
     } else {
         canonicalStepIds
     }
-    // WU-RP-035: a block Step's canonical eligibility is its DECLARED body owner, resolved
+    // A block Step's canonical eligibility is its DECLARED body owner, resolved
     // from the effective registry so an external HANDLER_CONTINUATION Step enters exactly
     // like a core CANONICAL_ENGINE one. The static core derivation remains the fallback so
     // the null-registry path behaves exactly as before.
@@ -191,9 +188,9 @@ fun CompiledPipeline.supportsCanonicalDurableExecution(effectiveRegistry: StepRe
 
 /**
  * Default body-owner resolver over the static core descriptor registry. Preserves the
- * pre-RP-035 behaviour for callers that do not thread an effective registry: core
+ * previous behaviour for callers that do not thread an effective registry: core
  * CANONICAL_ENGINE rows are eligible, everything else is refused exactly as before.
- */
+*/
 internal val standardBodyOwnerOf: (PluginStepId) -> dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner? =
     { key ->
         dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry.standard()
@@ -206,7 +203,7 @@ internal fun StepNode.checkCanonicalExecution(
 ): String? {
     return when (this) {
         is BlockStepNode -> {
-            // WU-RP-035: CANONICAL_ENGINE and HANDLER_CONTINUATION are both canonical-durable
+            // CANONICAL_ENGINE and HANDLER_CONTINUATION are both canonical-durable
             // eligible — the first lets the engine run the body, the second lets the Step's
             // own handler drive it through the bound continuation. Both execute on the same
             // durable spine. LEGACY_LINEAR and unknown keys stay refused: their semantics are
@@ -240,7 +237,7 @@ internal sealed interface StageTimeoutProjection {
 }
 
 internal fun StageNode.projectShellOptions(base: ShOptions): ShOptions {
-    // WS-S-005: merge stage environment (EnvironmentSpec.values: Map<String, String>)
+    // Merge stage environment (EnvironmentSpec.values: Map<String, String>)
     // into ShOptions.env (Map<String, SecretHandle>)
     val stageEnv: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle> =
         environment.values
@@ -257,20 +254,16 @@ internal fun StageNode.projectShellOptions(base: ShOptions): ShOptions {
 }
 
 internal fun StageNode.timeoutProjection(): StageTimeoutProjection {
-    // S3.3: a CLOSED match over the typed carrier.
-    //
+    // A CLOSED match over the typed carrier.
     // The previous shape discriminated on a name string and re-parsed the value:
-    //
     //     val timeoutOptions = options.filter { it.name == "timeout" }
     //     require(timeoutOptions.size == 1) { "...multiple timeout options" }
-    //     val seconds = timeoutOptions.single().value?.toLongOrNull()
+    //     val seconds = timeoutOptions.single.value?.toLongOrNull
     //         ?: throw IllegalArgumentException("...invalid timeout option")
     //     require(seconds > 0) { "...timeout must be positive" }
     //     StageTimeoutProjection.Present(Math.multiplyExact(seconds, 1_000L))
-    //
     // Five failure modes, all of them exceptions, all of them reachable from
     // ordinary author input — and every one of them now impossible:
-    //
     //   - "no timeout" is the EMPTY LIST, not a filter that matched nothing;
     //   - "more than one timeout" is unrepresentable, because [StageOption] has
     //     one case carrying the duration and the DSL has one `timeout` field;
@@ -279,7 +272,6 @@ internal fun StageNode.timeoutProjection(): StageTimeoutProjection {
     //   - "non-positive" is rejected by [StageOption.Timeout]'s own invariant;
     //   - "overflow" moved to the compiler, where `multiplyExact` can only be
     //     reached by an author who wrote a timeout of ~292 million years.
-    //
     // The `check` below is an INVARIANT assertion, not author input handling:
     // two timeouts cannot be authored (one case, one payload, one DSL field), so
     // seeing two means a compiler bug. `check` is the honest expression of that,
@@ -314,18 +306,16 @@ internal sealed interface CanonicalContinuation {
 
 /**
  * Whether the decision core considers recovery REQUIRED for this operation.
- *
- * ADR-0103 RPL-2: `effects`, `replayPolicy` and `recoveryPolicy` come from the Step's descriptor,
+ * `effects`, `replayPolicy` and `recoveryPolicy` come from the Step's descriptor,
  * and no execution surface substitutes a literal for a declared one. This ADT is where the WHEN is
  * decided, and it is a closed pair because the alternatives are exactly two — the declared policy
  * does not ask for a subprocess observation, or it does and the row is in flight.
- *
  * It is declared here, beside [InvocationReconciliation], and NOT in the observer, because the
- * observer cannot see the declared policy. That asymmetry is the whole point: the S4-R-REC spike
+ * Observer cannot see the declared policy. That asymmetry is the whole point: the spike
  * measured that an observer asked to decide this question answered it by collapsing three distinct
  * facts into one sentinel, and the third of them — required but unobservable — fell through to the
  * replay kernel and re-executed an external effect of unknown prior state.
- */
+*/
 internal sealed interface RecoveryRequirement {
     /** No recovery is owed. The replay policy applies unchanged. */
     data object NotApplicable : RecoveryRequirement
@@ -335,15 +325,13 @@ internal sealed interface RecoveryRequirement {
 }
 
 /**
- * Resolution of the durable replay/reconcile decision (B1.2c2-a2.2), derived from the real branches
+ * Resolution of the durable replay/reconcile decision (.2c2-a2.2), derived from the real branches
  * in `dispatch`: divergence detection, running-shell recovery and the effect-aware replay policy.
- *
  * These are genuinely distinct protocol states with distinct terminal semantics, so each carries only
  * the data its own handling needs; incoherent combinations (e.g. a reuse that also re-executes) are not
  * representable.
- *
  * @property operationId Reproduced for error messages only; no journal/cursor is touched by the resolver.
- */
+*/
 internal sealed interface InvocationReconciliation {
     /** Fingerprint divergence was detected; the invocation must fail closed without executing. */
     data class Diverged(val operationId: String) : InvocationReconciliation
@@ -353,31 +341,28 @@ internal sealed interface InvocationReconciliation {
      * possible. The invocation fails closed WITHOUT appending a terminal row and WITHOUT advancing
      * the cursor: the RUNNING row is left exactly as it is, because it is the only evidence a later,
      * correctly configured run would need to reconcile this operation.
-     *
      * This is the arm the `NotRunningShell` sentinel could not express. It is deliberately its own
      * case rather than a `Diverged` with a different message: diverging is a statement about
      * identity, being unable to look is a statement about observability, and a caller that has to
      * ask which one it got has not been told anything it can act on.
-     */
+*/
     data class RecoveryUnobservable(val operationId: String) : InvocationReconciliation
 
     /**
      * A RUNNING shell was recovered to a durable terminal without re-invoking it.
-     *
      * Carries a [DurableTaskTerminal] and nothing else — no `StepOutcome`, no `OperationStatus`,
      * and no `RecoveredTerminal` either. All three are projections: the outcome is the Step's, the
      * status is the journal's, and the semantic terminal is whichever authority legitimately owns
      * the one that applies. A caller that needs any of them asks [RecoveryInterpretationEngine],
      * which is the single place that knows how to persist this decision.
-     *
-     * S4-F1-C1: the payload was `RecoveredTerminal` (retired with the type itself), and that let
+     * The payload was `RecoveredTerminal` (retired with the type itself), and that let
      * the OBSERVER decide semantics —
      * it answered a non-zero exit code with `Failed(FailureKind.SCRIPT)` without knowing the
-     * invocation's `returnMode`. F1-C0 measured what that cost: `sh(returnStatus = true)` with exit
+     * Invocation's `returnMode`. measured what that cost: `sh(returnStatus = true)` with exit
      * 42 journalled FAILED, while the contract says `Status(42) · Success`. The exit code was
      * observed. The carrier is now the substrate's own fact type, which the Step-owned projection
      * already knows how to read.
-     */
+*/
     data class RecoverRunning(val terminal: DurableTaskTerminal) : InvocationReconciliation
 
     /** The journaled result is reusable; return the cached success without executing. */
@@ -397,33 +382,32 @@ internal sealed interface BlockShellScope {
     data class EnvScope(val overrides: List<String>, val parentEnv: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle>) : BlockShellScope
 
     /**
-     * B13/E-EM-11: body-deadline contract projected from the `core.timeout` payload.
+     * Body-deadline contract projected from the `core.timeout` payload.
      * The deadline flows to child ShOptions as the certified per-invocation Sh
      * watchdog budget (min of own and inherited remaining), so cancellation
      * propagates to the child subprocess through the kill seam.
-     */
+*/
     data class Timeout(val budgetMs: Long) : BlockShellScope
 
     /**
-     * B13/E-EM-11: body-attempt contract projected from the `core.retry` payload.
+     * Body-attempt contract projected from the `core.retry` payload.
      * The body is re-dispatched up to [maxAttempts] times; each attempt carries a
      * deterministic journal identity (attempt BlockSegment appended to bodyPath),
      * so restart/replay reconstructs attempt state from the journal, not memory.
-     */
+*/
     data class Retry(val maxAttempts: Int) : BlockShellScope
 
     /**
-     * WU-G5R.3: body-polling contract projected from the `core.waitUntil` payload.
+     * Body-polling contract projected from the `core.waitUntil` payload.
      * The body (a condition script) is re-dispatched until it succeeds (exit 0) or
      * backoff exceeds MAX_BACKOFF_MS.  Each poll carries a deterministic journal identity
      * so restart/replay reconstructs poll state from the journal, not memory.
-     *
      * initialRecurrencePeriod: initial delay in ms before first poll
      * maxBackoffMs: ceiling for exponential backoff, DECODED from the block payload
      *   (see [projectWaitUntilScope]). Required rather than defaulted: an absent key means
      *   [dev.rubentxu.pipeline.v2.domain.step.WaitUntilShape.maxBackoffMs], so a default here
      *   would be a second authority for a value the projection always supplies explicitly.
-     */
+*/
     data class WaitUntilScope(
         val initialRecurrencePeriod: Long,
         val maxBackoffMs: Long,
@@ -431,13 +415,12 @@ internal sealed interface BlockShellScope {
 }
 
 /**
- * How one body is executed, decided from its DECLARED policy (B10 / W1c).
- *
+ * How one body is executed, decided from its DECLARED policy
  * Total over [BodyExecutionPolicy]: every declared shape either has an interpretation
  * here or is named as rejected. No case carries a StepKey, and no case falls back to
  * "run the children in sequence" — a shape without an interpretation is refused, so a
  * body family can never be executed by an engine that does not implement it.
- */
+*/
 internal sealed interface BodyExecutionProjection {
 
     /** The generic body machinery runs this body with [scope] projected around it. */
@@ -447,12 +430,11 @@ internal sealed interface BodyExecutionProjection {
      * The body runs under a bound credential lease (acquire -> environment overlay ->
      * always close). Not a `BlockShellScope`: a lease is not a context dimension children
      * inherit from [ShOptions], because its value only exists AFTER the acquisition effect.
-     *
      * Carries the decoded bindings, so the payload is decoded exactly once, in the pure
      * projector, and a malformed payload is a typed [InvalidInput] before any effect. Before
-     * W1d this projection was a bare marker and the payload was decoded a second time inside
+     * this projection was a bare marker and the payload was decoded a second time inside
      * the credential-specific execution path.
-     */
+*/
     data class CredentialLease(
         val bindings: List<CredentialBindingSpec>,
     ) : BodyExecutionProjection
@@ -465,18 +447,17 @@ internal sealed interface BodyExecutionProjection {
      * construction (policy resolution rejects a shape outside
      * [BodyExecutionSupport]), kept total so that widening the support without
      * implementing the shape fails closed instead of silently degrading.
-     */
+*/
     data class Unimplemented(val shape: BodyExecutionPolicyShape) : BodyExecutionProjection
 }
 
 /**
  * Projects body execution from the DECLARED policy and the node's typed payload.
- *
  * `(policy, options) -> BodyExecutionProjection`: pure, no effects, no Step name. The
  * SHAPE is the declaration; the runtime VALUES (`dir`'s path, `timeout`'s seconds,
  * `retry`'s budget) are decoded input. Malformed input is returned as a typed
  * [BodyExecutionProjection.InvalidInput], never thrown as domain control flow.
- */
+*/
 internal fun BlockStepNode.projectBodyExecution(
     policy: BodyExecutionPolicy,
     options: ShOptions,
@@ -484,7 +465,7 @@ internal fun BlockStepNode.projectBodyExecution(
     is BodyExecutionPolicy.Sequential -> BodyExecutionProjection.Scope(BlockShellScope.None)
     is BodyExecutionPolicy.Scoped -> projectScopedBody(policy.projection, options)
     is BodyExecutionPolicy.Retrying -> {
-        // WU-LPR-301: dispatch is policy-driven, not StepKey-driven. A Retrying body that
+        // Dispatch is policy-driven, not StepKey-driven. A Retrying body that
         // declares a WaitUntilShape projects to WaitUntilScope using the declared cadence;
         // any other Retrying body projects to the shared Retry scope with the decoded
         // attempt budget. The body-routing dispatch is a closed ADT match on
@@ -500,22 +481,19 @@ internal fun BlockStepNode.projectBodyExecution(
 /**
  * Projects the polling contract of a `core.waitUntil` block: the SHAPE is the declaration
  * ([BodyExecutionPolicy.WaitUntilShape]), the backoff CEILING is decoded input.
- *
  * That split is the shape's own contract, not an invention here: `WaitUntilShape` documents
  * itself as *"a structural property of the Step KIND, not runtime data: the attempt budget
  * and the deadline still arrive as decoded typed input."*
- *
  * Why it is decoded HERE and nowhere else: this projector is the single place the
  * coordinator asks for a body scope, and both polling branches read the ceiling from it —
  * the durable branch at `BodyExecutionEngine` (`WaitUntilEngine(maxBackoffMs = scope.maxBackoffMs)`)
  * and the inline branch below it. A value read anywhere else could only ever reach one of
  * them, which is precisely how the previous regex side-channel behaved: it was consumed
  * solely by the inline branch, so in production the durable poll always ran at the default.
- *
  * Absent key means [DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS]; a present but
  * unusable one is a typed [BodyExecutionProjection.InvalidInput], matching this function's
  * declared contract rather than throwing.
- */
+*/
 private fun BlockStepNode.projectWaitUntilScope(
     shape: WaitUntilShape,
 ): BodyExecutionProjection {
@@ -552,11 +530,10 @@ private fun BlockStepNode.projectWaitUntilScope(
 
 /**
  * Reads a JSON number that may be absent, and refuses one that is present but not a number.
- *
  * Absence is not an error: a payload written before a field existed, or by hand in a fixture,
  * falls back to the declared default. Presence with an unusable value IS an error, because
  * silently substituting a default there would make a typo indistinguishable from an omission.
- */
+*/
 private fun kotlinx.serialization.json.JsonObject.longOrDefault(
     key: String,
     default: Long,
@@ -580,24 +557,21 @@ internal fun BlockStepNode.projectScopedBody(
 /**
  * Projects the declared working directory onto a [BlockShellScope.Directory], refusing anything
  * that lands outside the authorised boundary.
- *
  * The boundary is [ShOptions.workingDirectory] when the body already moved, else
  * [ShOptions.workspaceRoot], and BOTH sides of the comparison are normalised: an unnormalised
  * root silently refuses its own children, because `/ws/./sub` does not start with `/ws/./`.
- *
  * Absolute paths are held to the same boundary as relative ones. They used to be exempt, and
- * that exemption was a hole rather than a decision: ADR-0100 section 8/9 states that an absolute
+ * That exemption was a hole rather than a decision: section 8/9 states that an absolute
  * path inside the root is accepted and one outside it is rejected, [WorkspacePathResolver]
  * implements that policy, and [DirExecutor.resolveTargetPath] implements it too -- but the latter
  * has no production construction site, so this function was the live guard and it was the only
  * one of the three letting an absolute path through unchecked. A `.pipeline.kts` could say
  * `dir("/etc/cron.d")`, this projection accepted it, and `BodyExecutionEngine` then ran
  * `Files.createDirectories` on it and handed it to the child as its CWD.
- *
  * `Path.startsWith` compares NAME ELEMENTS and `String.startsWith` compares characters, which
  * differ exactly on the sibling that shares a prefix -- the sibling an attacker picks, because
  * `/ws/base-evil` begins with `/ws/base` as a string. See [DirExecutor.resolveTargetPath].
- */
+*/
 internal fun BlockStepNode.projectWorkingDirectory(options: ShOptions): BodyExecutionProjection {
     val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
     val path = payload["path"]?.jsonPrimitive?.contentOrNull
@@ -620,7 +594,7 @@ internal fun BlockStepNode.projectEnvironment(options: ShOptions): BodyExecution
     return BodyExecutionProjection.Scope(BlockShellScope.EnvScope(overrides = overrides, parentEnv = options.env))
 }
 
-// B13/E-EM-11: fail-closed contract decode — malformed deadline/attempt payloads are
+// Fail-closed contract decode — malformed deadline/attempt payloads are
 // typed schema rejections, never a silent plain-sequence fallback.
 internal fun BlockStepNode.decodeDeadline(): BodyExecutionProjection {
     val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
@@ -630,9 +604,9 @@ internal fun BlockStepNode.decodeDeadline(): BodyExecutionProjection {
     return BodyExecutionProjection.Scope(BlockShellScope.Timeout(budgetMs = seconds * 1000L))
 }
 
-// EM-7/LFC-5.3 (INC-022): the credential bindings are decoded HERE, in the pure projection,
+// The credential bindings are decoded HERE, in the pure projection,
 // so an invalid payload is a typed schema rejection before the acquisition effect runs and
-// before any child is dispatched. There is no second decode on the execution path (W1d).
+// before any child is dispatched. There is no second decode on the execution path.
 internal fun BlockStepNode.decodeCredentialBindings(): BodyExecutionProjection =
     try {
         BodyExecutionProjection.CredentialLease(CredentialBindingsPayload.decode(payload.encoded))
@@ -650,8 +624,7 @@ internal fun BlockStepNode.decodeAttemptBudgetMaxAttempts(): Int {
 
 /**
  * Project a [dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch] from
- * [BodyInvocationContext] onto the parent [ExecutionContext] (Phase 1b, WU-LPR-302).
- *
+ * [BodyInvocationContext] onto the parent [ExecutionContext] (Phase 1b,)
  * Each variant of the closed [BodyContextProjection] family maps to its existing
  * pure derivation. The projection's rejection cases
  * ([dev.rubentxu.pipeline.v2.domain.step.BodyContextRejection.HandledOutsideOverlay],
@@ -661,10 +634,9 @@ internal fun BlockStepNode.decodeAttemptBudgetMaxAttempts(): Int {
  * `executeCredentialLeasedBody` preamble, not by the reentry seam. A dropped
  * patch falls through to the parent unchanged; rejection stays inside the typed
  * algebra, never as an exception.
- *
- * The parent is preserved (CTX-P: derivation never mutates `parent.overlays`).
+ * The parent is preserved (: derivation never mutates `parent.overlays`)
  * `None` returns the parent verbatim.
- */
+*/
 internal fun applyPatchToContext(
     parent: dev.rubentxu.pipeline.v2.domain.ExecutionContext,
     patch: dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch,

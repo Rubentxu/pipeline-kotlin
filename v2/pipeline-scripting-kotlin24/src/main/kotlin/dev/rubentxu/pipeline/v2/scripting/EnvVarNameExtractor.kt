@@ -4,18 +4,16 @@ package dev.rubentxu.pipeline.v2.scripting
  * Recursive-descent parser that extracts environment-variable names bound inside
  * `withCredentials { StepSpec.CredentialsBinding.<factory>(..., "ENV_VAR", ...) }`
  * blocks in a pipeline script.
- *
  * Only string literals that appear as the env-var-name argument are extracted.
  * String literals inside lambdas, nested `withCredentials`, or comments are ignored.
- */
+*/
 internal object EnvVarNameExtractor {
 
     /**
      * Extracts all environment-variable names bound by `withCredentials` in [scriptText].
-     *
      * @param scriptText the raw pipeline script content
      * @return a deduplicated set of env-var names (e.g. `{"USERNAME", "PASSWORD"}`)
-     */
+*/
     fun extract(scriptText: String): Set<String> {
         val result = mutableSetOf<String>()
         extractImpl(scriptText, 0, result)
@@ -39,7 +37,7 @@ internal object EnvVarNameExtractor {
                 continue
             }
 
-            // Search backward from lambdaBrace to find the ) that closes withCredentials(
+            // Search backward from lambdaBrace to find ) that closes withCredentials(
             val blockEnd = findClosingParenBackward(text, lambdaBrace)
             if (blockEnd == -1) {
                 pos = lambdaBrace + 1
@@ -61,7 +59,7 @@ internal object EnvVarNameExtractor {
      * Finds the first `{` at brace depth 0 (the lambda body's opening brace)
      * that appears after [from] within [limit].
      * Ignores braces inside strings.
-     */
+*/
     private fun findLambdaBrace(text: String, from: Int, limit: Int = text.length): Int {
         var depth = 0
         var inString = false
@@ -86,7 +84,7 @@ internal object EnvVarNameExtractor {
     /**
      * Search backward from [start] to find the `)` that closes the `withCredentials(` call.
      * The `withCredentials(` opens at or before [start], and we need its matching `)`.
-     */
+*/
     private fun findClosingParenBackward(text: String, start: Int): Int {
         var depth = 0
         var i = start - 1
@@ -106,7 +104,7 @@ internal object EnvVarNameExtractor {
     /**
      * Finds the index of the opening `{` that starts the lambda block inside withCredentials.
      * The binding call list ends just before this brace.
-     */
+*/
     private fun findOpeningBrace(text: String, from: Int, before: Int): Int {
         var depth = 0
         var inString = false
@@ -132,7 +130,7 @@ internal object EnvVarNameExtractor {
 
     /**
      * Finds the matching `)` for the `(` at [openParen], respecting nested `()` and strings.
-     */
+*/
     private fun findMatchingParen(text: String, openParen: Int): Int {
         var depth = 1
         var inString = false
@@ -163,7 +161,7 @@ internal object EnvVarNameExtractor {
     /**
      * Scans [text][from..before) for `StepSpec.CredentialsBinding.<factory>(..., "VAR", ...)`
      * calls and adds each "VAR" to [acc].
-     */
+*/
     private fun scanBindingCalls(text: String, from: Int, before: Int, acc: MutableSet<String>) {
         var i = from
 
@@ -253,7 +251,7 @@ internal object EnvVarNameExtractor {
     /**
      * If [text] starting at [pos] begins with a `StepSpec.CredentialsBinding.<factory>(` call,
      * returns the factory name and the index of the closing paren; otherwise null.
-     */
+*/
     private fun matchFactoryCall(text: String, pos: Int, before: Int): FactoryMatch? {
         val prefix = "StepSpec.CredentialsBinding."
         if (!text.startsWith(prefix, pos)) return null
@@ -278,7 +276,7 @@ internal object EnvVarNameExtractor {
     /**
      * Inside a factory call's argument list, finds ALL env-var string literals and returns them.
      * The search scans through nested parentheses. Skips non-env-var strings (e.g., credentialsId).
-     */
+*/
     private fun extractEnvVarFromFactoryCall(text: String, from: Int, before: Int): Pair<Set<String>, Int> {
         var depth = 0
         var inString = false

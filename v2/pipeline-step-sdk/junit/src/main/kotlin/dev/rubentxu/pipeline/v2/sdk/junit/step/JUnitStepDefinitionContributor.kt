@@ -22,18 +22,16 @@ import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import java.nio.file.Path
 
 /**
- * JUnit OFFICIAL_PLUGIN contributor (F5.2 / LFC-2E2).
- *
+ * JUnit OFFICIAL_PLUGIN contributor
  * Same shape as [ScmGitStepDefinitionContributor]:
- *
  *  - registered via [java.util.ServiceLoader] in
  *    META-INF/services/dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor.
- *  - system properties win over the META-INF/junit-release.properties
+ * System properties win over the META-INF/junit-release.properties
  *    fallback (so tests can pin metadata without rebuilding the JAR).
  *  - fail-closed if neither source yields publisher / digest.
- *  - validator (C5) cross-checks the manifest capabilities against
+ * Validator cross-checks the manifest capabilities against
  *    the contract's requiredCapabilities.
- */
+*/
 class JUnitStepDefinitionContributor : StepDefinitionContributor {
 
     override val id: String = "junit"
@@ -58,7 +56,7 @@ class JUnitStepDefinitionContributor : StepDefinitionContributor {
  * with explicit metadata (CI fixtures, golden tests). Production wires
  * the contributor directly through [JUnitStepDefinitionContributor]
  * and Gradle.
- */
+*/
 fun dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder.registerJUnit(
     publisher: String,
     namespace: String = "pipeline.junit",

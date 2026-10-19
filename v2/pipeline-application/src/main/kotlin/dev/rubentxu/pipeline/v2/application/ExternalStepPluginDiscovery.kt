@@ -5,32 +5,28 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import java.util.ServiceLoader
 
 /**
- * Runtime discovery adapter for external Step plugins (LB-02 / EP-4).
- *
+ * Runtime discovery adapter for external Step plugins
  * The domain defines the [StepDefinitionContributor] SPI but never calls
  * [ServiceLoader] itself: discovery is a runtime-adapter concern. This adapter
  * is the ONLY place ServiceLoader is used for Steps.
- *
  * Admission order (single composition authority remains
  * [CoreStepRegistryFactory.builder]): core Steps are composed first; external
  * contributions are composed afterwards. [StepRegistryBuilder.add] fails closed on a
  * duplicate key, so an external plugin can never silently shadow a core Step.
- *
  * Fail-open-vs-closed: a contributor that throws during discovery aborts
  * composition (fail-closed) — a broken plugin JAR must not degrade into a
  * partial registry.
- */
+*/
 object ExternalStepPluginDiscovery {
 
     /**
      * Discovers contributors from the RUNTIME classpath and registers them into [registry].
-     *
      * Uses the additive [StepDefinitionContributor.registrations] path
-     * (LFC-2E2 / F5.1 / ADR-0092). The default implementation wraps each
+     * . The default implementation wraps each
      * [StepDefinition] in a [StepRegistration] with legacy-shape provider
      * metadata, so contributors that only override `definitions()` continue
-     * to work unchanged (C10 backwards-compat).
-     */
+     * To work unchanged (backwards-compat)
+*/
     fun registerInto(builder: StepRegistryBuilder): List<String> {
         val registered = mutableListOf<String>()
         val loader = ServiceLoader.load(StepDefinitionContributor::class.java)

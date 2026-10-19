@@ -18,8 +18,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventQuery
 import dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope
 
 /**
- * R4 / WU-R4.2 — the events CLI now participates in the unified observability surface.
- *
+ * The events CLI now participates in the unified observability surface.
  *   pipeline events --db <path> <runId>
  *                   [--kind K] [--subject v1:kind:ID...|v1:stage:ID:N|...]
  *                   [--limit N] [--after-cursor TOKEN]
@@ -27,69 +26,62 @@ import dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope
  *                   [--fields SEQ,KIND,EVENTID,SUBJECT,SOURCE]
  *                   [--context N] [--tail N]
  *                   [--typed]
- *
- * What the R4 WU adds on top of the original EVT-2 surface:
- *
+ * What the WU adds on top of the original surface
  *   * `--follow` reuses the event-lane poll loop (one read per round trip) so a caller can watch
  *     a run finish without re-issuing `--after-cursor`. The typed projection also gets it; the
  *     follow terminates on `RunFinished` or on the JVM shutdown signal.
- *   * `--fields` is a closed ADT of envelope fields (5 cases, `EventField` from WU-LPR-051) and
+ * * `--fields` is a closed ADT of envelope fields (5 cases, `EventField` from) and
  *     produces a header line + one narrowed line per envelope.
  *   * `--context N` builds a context window around envelopes whose `kind` matches the `--kind`
  *     filter (or around every envelope when no filter is set): N preceding + the match + N following,
  *     deduped. The pure transform is `EventInspection.contextWindow`.
  *   * `--tail N` keeps the last N envelopes. The pure transform is `EventInspection.tail`.
- *
  * What this slice is NOT:
- *
- *   * NOT a wholesale fold of the events parser into `CliParser.parseObservation` (CC-1 territory).
+ * * NOT a wholesale fold of the events parser into `CliParser.parseObservation` (territory)
  *     The local `while` loop stays; a future slice can promote the option list when the four
  *     verbs share a typed option table. The events-only flags (`--subject`, `--after-cursor`,
  *     `--typed`) are deliberately NOT in `CliParser`.
- *   * NOT a wakeup-based follow. The follow polls the durable authority for its position; OBS-2
- *     wakeups are still unimplemented (R4_CLI_GAP_ANALYSIS §5 CC-6).
+ * * NOT a wakeup-based follow. The follow polls the durable authority for its position
+ * Wakeups are still unimplemented (_CLI_GAP_ANALYSIS)
  *   * NOT a typed-`EventReadRefusal` ADT. Refusals stay on stderr as `evt-refusal-v1:...`; the
- *     events-only refused-record carrier is `EventRecordRead.Undecodable` (CC-7 territory).
- *
- * ## R4 / WU-R4.2 — `--typed` × `--fields / --context / --tail` are mutually exclusive
- *
+ * Events-only refused-record carrier is `EventRecordRead.Undecodable` (territory)
+ * `--typed` × `--fields / --context / --tail` are mutually exclusive
  * `EventField` is bound to `PipelineEventEnvelope` (the wire envelope, not the typed
  * `DomainEvent`). `--typed` produces `JsonEventLog.encodeOne(DomainEvent)` lines whose
  * shape is a different closed record. Projecting or windowing typed lines would either mean
  * re-deriving an envelope nobody read (lossy) or admitting a second field ADT. The verb
  * refuses `--typed` together with any of `--fields / --context / --tail` so the caller's
  * intent is not silently narrowed.
- */
+*/
 /**
  * TooManyFunctions (16) and CyclomaticComplexMethod are suppressed at the
- * object and function level respectively. CC-1 (R4 / WU-R4.7) moved the option table to
+ * Object and function level respectively. moved the option table to
  * [CliParser.parseEvents], which now owns the parser cyclomatic count; this verb still carries
  * eleven CLI flags (--db, --kind, --subject, --limit, --after-cursor, --typed, --follow,
- * --fields, --context, --tail, plus the AUD-04 unknown-option arm) and every helper carries a
+ * Fields, --context, --tail, plus the unknown-option arm) and every helper carries a
  * real concern (the [parseEventsInspectionFlags] sub-parser, the follow loop, the typed branch,
  * the four EventInspection transforms, the exit-code ADT, the refusal/continuation reporters).
  * The complexity is structural to the verb surface, not a quality signal (the same
  * justification `MainInspectCli.parseInspect` documents).
- */
+*/
 @Suppress("TooManyFunctions")
 object MainEventsCli {
 
     /**
-     * R4 / WU-R4.2 — the closed ADT of NEW flags added to the events CLI.
-     *
+     * The closed ADT of NEW flags added to the events CLI.
      * Distinct from the existing CLI surface (--db, --kind, --subject, --limit, --after-cursor,
      * --typed), which is parsed inline in [main]. Each case here carries the typed payload the
      * rest of the read needs: a follow decision, a field whitelist, a window size, or a tail count.
      * Adding a sixth case is a compile-time break for every caller of [parseEventsInspectionFlags].
-     */
+*/
     sealed class EventsInspectionFlag {
         /** `--follow` — keep reading the event lane until `RunFinished` or the JVM shuts down. */
         data object Follow : EventsInspectionFlag()
 
         /**
-         * `--fields F1,F2,...` — closed ADT of envelope fields. Empty means a refusal (the user
+         * Closed ADT of envelope fields. Empty means a refusal (the user
          * typed `--fields` with no value).
-         */
+*/
         data class Fields(val fields: List<EventField>) : EventsInspectionFlag()
 
         /** `--context N` — N preceding + match + N following, deduped, around `--kind` matches. */
@@ -100,26 +92,24 @@ object MainEventsCli {
     }
 
     /**
-     * Typed outcome of parsing the R4 / WU-R4.2 inspection flags.
-     *
-     * Kept separate from the verb's main usage error channel so the existing AUD-04 / AUD-05
+     * Typed outcome of parsing the / inspection flags
+     * Kept separate from the verb's main usage error channel so the existing /
      * contract (`Error: ...` on stderr, exit 2) keeps one shape. A [EventsInspectionFlag] is
      * recognised, then validated; a [EventsInspectionParseResult.Rejected] carries the typed
      * reason so the caller renders it as `Error: ...` exactly once.
-     */
+*/
     sealed class EventsInspectionParseResult {
         data class Parsed(val flags: List<EventsInspectionFlag>) : EventsInspectionParseResult()
         data class Rejected(val reason: String) : EventsInspectionParseResult()
     }
 
     /**
-     * Parse the new R4 / WU-R4.2 flags from a sub-list of args. `--follow` consumes nothing;
+     * Parse the new / flags from a sub-list of args. `--follow` consumes nothing
      * the valued flags (`--fields`, `--context`, `--tail`) consume the next token.
-     *
      * Returns a closed ADT of [EventsInspectionFlag] values plus any typed rejection. The caller
      * is responsible for turning the rejection into the same `Error: ...` stderr + exit 2
      * shape the rest of the parser uses (do not duplicate the prefix here).
-     */
+*/
     fun parseEventsInspectionFlags(args: Array<String>): EventsInspectionParseResult {
         val out = mutableListOf<EventsInspectionFlag>()
         var i = 0
@@ -160,7 +150,7 @@ object MainEventsCli {
                     i += 2
                 }
                 else -> {
-                    // Not a R4 / WU-R4.2 flag. Skip one position so the caller (which has the
+                    // Not a / flag. Skip one position so the caller (which has the
                     // original while loop) can recognise it as its own. The caller is the
                     // single source of truth for unknown-option refusal.
                     i++
@@ -173,7 +163,7 @@ object MainEventsCli {
     /**
      * Parse `--fields` into a closed [EventField] list. Comma-separated, case-insensitive.
      * Returns null on the first unknown token so the caller names it.
-     */
+*/
     private fun parseFieldsToken(raw: String): List<EventField>? {
         if (raw.isBlank()) return null
         val out = mutableListOf<EventField>()
@@ -200,8 +190,8 @@ object MainEventsCli {
     }
 
     fun main(args: Array<String>): Int {
-        // CC-1 / R4 / WU-R4.7 — admission is [CliParser.parseEvents]. The wire prefix `Error:`
-        // (the AUD-04 / AUD-05 contract for events argument refusals) is preserved here in the
+        // Admission is [CliParser.parseEvents]. The wire prefix `Error:`
+        // (the / contract for events argument refusals) is preserved here in the
         // translation, exactly as before. Refusal of the data-plane read (a different concern, the
         // one [MainEventsCli.reportRefusals] emits on stdout / stderr as `evt-refusal-v1:` /
         // `evt-refusals-v1:`) is downstream of this and unchanged.
@@ -218,9 +208,9 @@ object MainEventsCli {
      * Run the typed read after [CliParser.parseEvents] has succeeded: validate the store path, decode
      * the cursor, build the query, then dispatch to the follow loop, the typed projection, or
      * the envelope projection.
-     */
+*/
     private fun runWithArgs(p: EventsCliArgs): Int {
-        // D3 — this verb had its own copy of the admission rule, written out here and once more in
+        // This verb had its own copy of the admission rule, written out here and once more in
         // MainEventsVerifyCli. Three reactions to one condition had accumulated across the verbs;
         // the decision now lives in `admitEventStore` and only the exit code stays here.
         val dbAdmission = admitEventStore(p.db, EventStorePurpose.Read)
@@ -258,7 +248,7 @@ object MainEventsCli {
                     )
                 else -> EventQuery.All
             }
-            // R4 / WU-R4.2 — `--follow` is a different execution shape: poll the event lane
+            // `--follow` is a different execution shape: poll the event lane
             // until `RunFinished` (or JVM shutdown). Routing it BEFORE the drain keeps the
             // typed-vs-envelope check in one place.
             if (p.follow) {
@@ -315,18 +305,16 @@ object MainEventsCli {
     }
 
     /**
-     * R4 / WU-R4.2 — apply the [EventInspection] transforms in their order of composition:
-     *
+     * Apply the [EventInspection] transforms in their order of composition:
      *  1. `contextWindow(kind, n, n)` when `--context` is set, around `--kind` matches (or every
      *     envelope when no `--kind` was given).
      *  2. `tail(n)` when `--tail` is set, on the result of step 1.
      *  3. `projectFields(fields)` when `--fields` is set, on the result of step 2.
-     *
      * Each step is a pure transform over the previous list. The composition is right-to-left
      * in the pure sense: a `tail` of a `contextWindow` keeps the LAST N envelopes of the windowed
      * view, which is what a caller asking for both meant (a tail of the un-windowed set would
      * drift the context off the records the caller cared about).
-     */
+*/
     private fun emitEnvelopes(
         envelopes: List<PipelineEventEnvelope>,
         contextWindow: Int,
@@ -354,17 +342,16 @@ object MainEventsCli {
     }
 
     /**
-     * R4 / WU-R4.2 — `--follow` poll loop. Reads pages through the same drain used by the
+     * `--follow` poll loop. Reads pages through the same drain used by the
      * one-shot path, advances the cursor, and sleeps briefly when the store has caught up.
      * Terminates on `RunFinished` (the kind the events domain closes a run with) or on the
      * JVM shutdown signal (so a Ctrl-C does not leave a polling thread behind).
-     *
      * The follow is the same shape for both projections: one page per round trip, the same
      * drain, the same exit-status mapping. `--fields / --context / --tail` were already
      * rejected on top of `--typed` at admission, so the projection is the envelope here
      * (the typed branch is a follow over [EventPageDrain.drainTyped], kept on the same page
      * shape, with the typed codec).
-     */
+*/
     private fun runFollow(
         store: SqliteEventStore,
         run: ResourceRef,
@@ -469,7 +456,6 @@ object MainEventsCli {
     /**
      * The `--typed` branch: the same read, the same query, the same cursor and the same status
      * contract as the envelope branch, printed through the typed codec instead.
-     *
      * It is a separate method rather than a branch inside the envelope loop because the two
      * projections genuinely carry different things: [dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope]
      * has identity, and the [dev.rubentxu.pipeline.v2.events.DomainEvent] has the semantic fields the
@@ -477,7 +463,7 @@ object MainEventsCli {
      * is the part that must not fork, so it calls the SAME [reportRefusals] and [reportContinuation]
      * the envelope path uses and returns the SAME [exitCodeFor] mapping by routing through
      * [EventPageDrain.drainTyped]'s outcome.
-     */
+*/
     private fun reportTyped(
         store: dev.rubentxu.pipeline.v2.events.EventStore,
         run: ResourceRef,
@@ -510,20 +496,16 @@ object MainEventsCli {
 
     /**
      * The exit-code contract, stated once and total over [EventPageDrain.Outcome].
-     *
      * ## Why this exists rather than a bare `return 0`
-     *
      * The command returned `0` on both [EventPageDrain.Outcome.Answered] and
      * [EventPageDrain.Outcome.Stalled], and nothing recorded that as a decision. A `Stalled` page
      * means the store claimed more rows existed and the continuation could not reach them; the
      * diagnostic goes to stderr as a structured token and the status is still `0`. That is the
      * intended contract (observation is read-only and reports what it saw), but it was an accident
-     * of the code rather than a pinned contract (AUD-05). Routing both cases through one exhaustive
+     * Of the code rather than a pinned contract. Routing both cases through one exhaustive
      * function makes the value a decision: adding a case to `Outcome` forces a status to be chosen,
      * and a test asserts both cells.
-     *
      * ## Contract
-     *
      * ```text
      * 0     the observation completed. Whether it carried refusals (Answered) or the store
      *       reported more rows than were reachable (Stalled), the read did what was asked and
@@ -534,7 +516,7 @@ object MainEventsCli {
      * other an unhandled exception escaped main; the JVM produced that status, this command did
      *       not choose it. That is a defect, not a designed outcome.
      * ```
-     */
+*/
     internal fun exitCodeFor(outcome: EventPageDrain.Outcome): Int = when (outcome) {
         is EventPageDrain.Outcome.Answered -> 0
         // The stall is reported on stderr (evt-stalled-v1:...); the process still completed an
@@ -544,7 +526,6 @@ object MainEventsCli {
 
     /**
      * The SAME exit-code contract as [exitCodeFor], stated over the typed outcome.
-     *
      * It is a second statement of one rule rather than a second rule. The two ADTs differ in the
      * payload they carry — [EventPageDrain.TypedPage] holds `DomainEvent`s where [EventPageDrain.Page]
      * holds envelopes — and nothing else: both are `Answered` or `Stalled`, and the status depends
@@ -552,9 +533,8 @@ object MainEventsCli {
      * into the other to reuse a single function would either fabricate envelopes nobody reads or
      * weaken [exitCodeFor] to take a flag, and both trade a real property (exhaustiveness over a
      * closed ADT) for a cosmetic one (a shorter file).
-     *
      * A change to one that is not mirrored in the other is a defect in the contract, not in the code.
-     */
+*/
     internal fun typedExitCodeFor(outcome: EventPageDrain.TypedOutcome): Int = when (outcome) {
         is EventPageDrain.TypedOutcome.Answered -> 0
         // Same reasoning as the envelope branch: the stall is named on stderr as `evt-stalled-v1:...`
@@ -576,7 +556,7 @@ object MainEventsCli {
      * The store's own position, encoded by [EventCursor.encode] rather than by string
      * interpolation here. This command both emits and accepts that token, and a hand-built copy of
      * its wire form is a second place that can disagree with the one that parses it.
-     */
+*/
     private fun reportContinuation(nextCursor: EventCursor?) {
         val cursor = nextCursor ?: return
         System.err.println(cursor.encode())
@@ -594,7 +574,7 @@ object MainEventsCli {
     /**
      * Parses a canonical ResourceRef text (`v1:kind:seg0:seg1...`) back to a
      * ResourceRef by re-joining segments after the version/kind prefix.
-     */
+*/
     private fun decodeSubject(text: String): ResourceRef? {
         val colonParts = text.split(":", limit = 3)
         if (colonParts.size < 3 || colonParts[0] != "v1") return null
@@ -614,9 +594,9 @@ object MainEventsCli {
 private const val ABSENT = "-"
 
 /**
- * R4 / WU-R4.2 — follow poll interval, in milliseconds. The same value
+ * Follow poll interval, in milliseconds. The same value
  * `MainObserveCli.FOLLOW_IDLE_MILLIS` uses; the events follow reads the same durable
- * authority and has the same latency budget. Wakeup-based follow is OBS-2 territory and
+ * Authority and has the same latency budget. Wakeup-based follow is territory and
  * is not in this slice.
- */
+*/
 private const val FOLLOW_POLL_MILLIS: Long = 25L

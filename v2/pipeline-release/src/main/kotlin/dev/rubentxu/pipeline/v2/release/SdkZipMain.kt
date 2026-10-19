@@ -7,21 +7,18 @@ import kotlin.system.exitProcess
 
 /**
  * Build entry point for [SdkZipBuilder].
- *
  * The Gradle task `:pipeline-release:sdkZip` shells out to this main
  * because Gradle cannot call Kotlin project code directly. The classpath
  * is the same as `:pipeline-release`'s main runtime classpath, so the
  * Kotlin code runs as compiled project code, not as a copy.
- *
  * ```text
- * usage: sdk-zip <sdkRepo> <version> <distDir> <group:artifact> [<group:artifact> ...]
+ * usage: sdk-zip <sdkRepo> <version> <distDir> <group:artifact> [<group:artifact>...]
  * exit  0 = built, 1 = failed
  * ```
- *
  * The managed coordinates are passed as `group:artifact` pairs on the
  * command line; the builder completes each with the version. The pair
  * list must be non-empty (an empty BOM is a defect, not a no-op).
- */
+*/
 fun main(args: Array<String>) {
     if (args.size < 4) {
         System.err.println(

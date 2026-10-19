@@ -1,13 +1,12 @@
 package dev.rubentxu.pipeline.v2.application
 
 /**
- * PK-1 / ADR-PK1-IDENTITY — exhaustive mapping from [CliError] to [CliExit].
- *
+ * Exhaustive mapping from [CliError] to [CliExit].
  * Every [CliError] case is mapped to exactly one [CliExit] case. The
  * mapping is total: a missing branch is a compile error. New [CliError]
  * cases added without a corresponding branch here will fail to compile,
  * forcing the author to decide the exit taxonomy.
- */
+*/
 fun CliError.toCliExit(): CliExit = when (this) {
     CliError.MissingCommand -> CliExit.InvalidArgument(
         message = "no command provided; expected one of: ${CLI_VERBS.joinToString(", ") { it.first }}",

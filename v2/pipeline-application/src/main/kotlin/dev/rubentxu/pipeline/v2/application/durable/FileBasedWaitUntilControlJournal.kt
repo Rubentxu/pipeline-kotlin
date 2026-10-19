@@ -20,19 +20,16 @@ import java.nio.file.StandardCopyOption
 
 /**
  * Single-writer durable store for waitUntil control rows.
- *
- * WU-G5R.5 — mirrors [FileBasedRetryControlJournal] but for the waitUntil
+ * Mirrors [FileBasedRetryControlJournal] but for the waitUntil
  * predicate polling loop. File at `{controlDirRoot}/wait-until-control/{sha256(controlOpId)}.attempts.json`.
- *
  * ## Single-writer law
  * No other component writes to the control file. The dispatch loop in
  * [CanonicalDurableRunCoordinator] is the only caller of [beginAttempt] and
  * [updateStatus].
- *
  * ## Persist-before-effects contract
  * [beginAttempt] writes the control row to the file BEFORE returning. The caller
  * MUST launch any predicate body effect only after [beginAttempt] has returned.
- */
+*/
 class FileBasedWaitUntilControlJournal(
     private val controlDirRoot: Path,
 ) : WaitUntilControlJournal {
@@ -46,7 +43,7 @@ class FileBasedWaitUntilControlJournal(
         waitUntilControlDir.resolve("${fileKey(controlOpId)}.attempts.json")
 
     private fun fileKey(controlOpId: String): String {
-        // Shared utility (B0). Same bytes, same lowercase hex: existing waitUntil control rows
+        // Shared utility. Same bytes, same lowercase hex: existing waitUntil control rows
         // keep their opId.
         return Sha256.ofText(controlOpId)
     }

@@ -25,21 +25,19 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 
 /**
- * HTTP OFFICIAL_PLUGIN contributor (LFC-2E3 / WU-093; ADR-0092 pattern).
- *
+ * HTTP OFFICIAL_PLUGIN contributor (/; pattern)
  * Discovered through `ServiceLoader`, exactly like `scm-git`, `junit` and
  * `utilities`. A `.pipeline.kts` that writes `httpRequest(...)` works because
  * this contributor is on the classpath — not because the compiler was taught
  * about the key. That is the delivery classification doing real work.
- *
  * **Digest source of truth.** The [PluginReleaseRef.digest] is computed at
  * JAR-build time by the `computeHttpDigest` Gradle task and exposed as
  * `META-INF/http-release.properties` inside the artefact, overridable by the
  * `pipeline.http.release.digest` system property so tests can pin metadata
  * without rebuilding. If neither source yields a digest, registration fails
- * closed with a diagnostic that names the missing property: F5.1 commits to
+ * Closed with a diagnostic that names the missing property: commits to
  * "no fabricated SHA", and an unprovenanced plugin must not enter a run.
- */
+*/
 class HttpStepDefinitionContributor : StepDefinitionContributor {
 
     override val id: String = "http"
@@ -50,7 +48,7 @@ class HttpStepDefinitionContributor : StepDefinitionContributor {
 
     override fun registrations(): Iterable<StepRegistration<*, *>> {
         val provider = HttpPluginDeclaration.provider()
-        // C5 cross-check before constructing the registration. Deterministic and
+        // Cross-check before constructing the registration. Deterministic and
         // fail-closed: a manifest that disagrees with contract.requiredCapabilities
         // is rejected here, never coerced downstream.
         val manifest = HttpPluginDeclaration.manifest()
@@ -65,12 +63,11 @@ class HttpStepDefinitionContributor : StepDefinitionContributor {
 
 /**
  * Registers the HTTP OFFICIAL_PLUGIN with pinned provenance.
- *
  * Mirrors `registerScmGit`: the override path exists for CI fixtures and golden
  * corpora that need a fixed digest WITHOUT going through Gradle, while still
  * exercising [PluginManifestValidator]. It is NOT the production path — that one
  * always reads the properties the build wrote.
- */
+*/
 fun StepRegistryBuilder.registerHttp(
     publisher: String,
     namespace: String = "pipeline-plugin-http",

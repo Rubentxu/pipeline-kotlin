@@ -23,20 +23,18 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * `core-utils.findFiles` codecs (input + output) (LFC-2E2, Slice 2 / S2.3).
- *
+ * `core-utils.findFiles` codecs (input + output) (, Slice 2 /.3)
  * Envelope shape (durable eligible):
- *   input  : { "base": <string>, "pattern": { "kind": "none" } |
+ *   input: { "base": <string>, "pattern": { "kind": "none" } |
  *                                            { "kind": "glob",
  *                                              "glob": <string>,
  *                                              "excludes": <string|null> } }
- *   output : { "basePath": <string>, "patternEcho": <pattern>,
- *              "files": [{ "name": ..., "path": ..., "directory": ...,
- *                          "length": ..., "lastModified": ... }, ...] }
- *
- * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ *   output: { "basePath": <string>, "patternEcho": <pattern>,
+ *              "files": [{ "name":..., "path":..., "directory":...,
+ *                          "length":..., "lastModified":... },...] }
+ * Migrated to `PipelineJson` / `JsonAccessors`. Wire
  * format unchanged.
- */
+*/
 object CoreUtilsFindFilesInputCodec : StepCodec<FindFilesInput> {
 
     override fun encode(input: FindFilesInput): EncodedStepValue = PipelineJson.encode(
@@ -80,7 +78,7 @@ object CoreUtilsFindFilesInputCodec : StepCodec<FindFilesInput> {
      * input codec (during decode) and the output codec (to rehydrate
      * `patternEcho`). Exposed as an object-level function so the two
      * codecs cannot drift.
-     */
+*/
     fun parsePattern(elem: kotlinx.serialization.json.JsonElement): FindFilesPattern {
         val obj = elem.jsonObject
         return when (val kind = obj.requiredString("kind")) {

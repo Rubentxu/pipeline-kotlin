@@ -1,5 +1,4 @@
-// LFC-2E2 utilities OFFICIAL_PLUGIN live fixture (Slice 2 / S2.4 + S2.5).
-//
+// Utilities OFFICIAL_PLUGIN live fixture (Slice 2 /.4 +.5)
 // End-to-end exercise of zip + unzip. The fixture zips a directory
 // tree, then extracts it to a different sub-directory. The contents
 // must match by SHA-256 (per-entry durability proof).

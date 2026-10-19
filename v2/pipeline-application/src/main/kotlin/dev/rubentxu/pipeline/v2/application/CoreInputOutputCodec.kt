@@ -16,18 +16,16 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * THE single wire authority for the `core.input` OUTPUT (RP6-B / WU-092).
- *
+ * THE single wire authority for the `core.input` OUTPUT
  * A named authority rather than a private object inside the Step, for the same
  * reason [CoreInputWireCodec] is one: the journal reader, the tests and the Step
  * must all agree on the spelling, and a contract test cannot pin what it cannot
  * reach.
- *
  * Written out rather than derived from a serializer because the output carries two
  * closed ADTs ([InputDecision] and [InputDenialReason]) whose case identity IS the
  * contract: a reader of the journal must be able to tell "a human refused" from
  * "nobody answered", and both end in a failed run.
- */
+*/
 object CoreInputOutputCodec : StepCodec<CoreInputOutput> {
 
     override fun encode(value: CoreInputOutput): EncodedStepValue {

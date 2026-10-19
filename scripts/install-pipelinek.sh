@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
 # install-pipelinek.sh — Autonomous installer for the PipelineK CLI
-#
 # Authority:
-#   - DIST-2: the canonical artifact is the ZIP.
-#   - TRAIN P1: SHA256SUMS authority, transactional install,
+#   -: the canonical artifact is the ZIP.
+#   - TRAIN: SHA256SUMS authority, transactional install,
 #     exact runtime identity, doctor diagnostics.
-#
 # Verification status: the contract tests that used to cover this installer
-# (scripts/test_install_pipelinek.py, exercised by the former P-UAT-05 / P-UAT-06)
-# were deleted by the 2026-10-18 testing RESET, and the current policy forbids the
+# (scripts/test_install_pipelinek.py, exercised by the former /)
+# were deleted by the testing reset, and the current policy forbids the
 # subprocess-based unit tests that would replace them. These guarantees are
 # therefore NOT covered by an automated check today; `doctor` is the manual
 # diagnostic a user can run against a real installation.
-#
 # Usage:
 #   install-pipelinek.sh install <version>          # download + verify + install
 #   install-pipelinek.sh use <version>              # switch active symlink
@@ -20,25 +17,21 @@
 #   install-pipelinek.sh uninstall <version>        # remove a non-active version
 #   install-pipelinek.sh doctor                     # run pipelinek doctor (active)
 #   install-pipelinek.sh help
-#
 # Pre-conditions:
 #   - bash 4+ (associative arrays, [[ ]])
 #   - curl, sha256sum, unzip in PATH
 #   - The user can write to $PIPELINEK_HOME (default ~/.local/share/pipelinek)
 #   - The remote ZIP exists at the canonical GitHub Releases URL
-#
 # Environment overrides:
 #   PIPELINEK_HOME             override install root (default ~/.local/share/pipelinek)
-#   PIPELINEK_RELEASE_BASE_URL override base URL (MUST match allowlist; see §URL_ALLOWLIST)
+#   PIPELINEK_RELEASE_BASE_URL override base URL (MUST match allowlist; see URL_ALLOWLIST)
 #   PIPELINEK_MIRROR_BASE_URL  install from a different base (e.g. a local mirror or
 #                              an air-gapped copy). Loopback hosts are always allowed;
 #                              any other host MUST still satisfy the allowlist.
 #   PIPELINEK_SHA256_<VERSION> override expected SHA-256 (else read from $BASE/SHA256SUMS)
-#
 # Idempotent: install is no-op if version already present; uninstall is no-op if absent.
 # Never uses sudo. Never writes to /usr or /opt. Never spawns a daemon.
-#
-# Install is TRANSACTIONAL (P1.2): download, digest verification, extraction
+# Install is TRANSACTIONAL: download, digest verification, extraction
 # and identity verification all happen in a private temporary directory. The
 # final version directory is created by a single rename after everything has
 # been verified, so a failed install can never leave a half-populated
@@ -154,20 +147,16 @@ version_dir() { printf '%s/versions/%s' "${PIPELINEK_HOME}" "$1"; }
 current_link() { printf '%s/current' "${PIPELINEK_HOME}"; }
 asset_zip()    { printf 'pipelinek-%s.zip' "$1"; }
 
-# Look up the expected digest of an asset in a SHA256SUMS manifest (P1.1).
+# Look up the expected digest of an asset in a SHA256SUMS manifest.
 # SHA256SUMS is the digest authority: one file lists every asset of a release,
 # so a release does not need one sidecar file per asset. The per-asset
 # PIPELINEK_SHA256_<VERSION> override still wins when the caller sets it.
-#
 # Echoes "<digest>" and returns 0 when the asset has an entry.
 # Returns 1 when the asset is absent or the entry is malformed.
-#
 # The published manifest records the path the asset had INSIDE the release
 # build, not the bare download name. Observed on the real v0.41.0-rc1
 # release:
-#
 #   d49edc08...  dist/candidates/v0.41.0-rc1/pipelinek-0.41.0-rc1.zip
-#
 # so the asset is matched on its BASENAME. Matching the full field would make
 # every real install fail closed, which is the safe direction but still wrong.
 lookup_sha256sums_entry() {
@@ -229,7 +218,7 @@ cmd_install() {
   local expected_sha_var="PIPELINEK_SHA256_${version//./_}"
   local expected_sha="${!expected_sha_var:-}"
 
-  # P1.2 TRANSACTIONAL INSTALL. Everything happens in a private temporary
+  # TRANSACTIONAL INSTALL. Everything happens in a private temporary
   # directory; ${target_dir} is created by a single rename at the very end,
   # only after download, digest, extraction and identity have all passed. A
   # failure therefore cannot leave a partial versions/<version> behind.
@@ -252,7 +241,7 @@ cmd_install() {
     die "Failed to download ZIP from ${zip_url}"
   fi
 
-  # P1.1 SHA256SUMS is the digest authority. The old ${asset}.sha256
+  # SHA256SUMS is the digest authority. The old ${asset}.sha256
   # sidecar is gone: a release ships one manifest listing every asset.
   local expected_digest=""
   if [ -n "${expected_sha}" ]; then
@@ -308,7 +297,7 @@ cmd_install() {
     die "Archive root is '${observed_root}' but version ${version} requires '${expected_root}'. Nothing was installed."
   fi
 
-  # P1.3 EXACT RUNTIME IDENTITY. A warning is not enough: the point of the
+  # EXACT RUNTIME IDENTITY. A warning is not enough: the point of the
   # release-evolution protocol is that the installed binary reports exactly
   # the version that was requested. A mismatch is a hard failure.
   local staged_root="${top[0]}"
@@ -335,7 +324,7 @@ cmd_install() {
     die "Refusing to install ${version}: the extracted binary is ${observed_version}. Nothing was installed."
   fi
 
-  # P1.2 final step: one rename creates the installed version. versions/ is
+  # final step: one rename creates the installed version. versions/ is
   # created only now, so a refusal above never touches the install root.
   log_info "Publishing verified install to ${target_dir}"
   mkdir -p "$(dirname "${target_dir}")"
@@ -455,7 +444,7 @@ cmd_doctor() {
     die "Active binary not found or not executable: ${binary}"
   fi
 
-  # P1.4 DIAGNOSTICS. Report where the binary actually comes from and what
+  # DIAGNOSTICS. Report where the binary actually comes from and what
   # it claims to be, BEFORE delegating. A support conversation about "the
   # wrong version on my PATH" is usually a stale symlink, a shadowed binary,
   # or a mismatch between the requested and installed identity; naming the

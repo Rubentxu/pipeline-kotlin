@@ -15,19 +15,17 @@ import java.util.zip.ZipInputStream
 /**
  * Builds one credential of each supported kind from plain values, applying
  * every rule about what makes a value acceptable.
- *
  * Two callers need this and they must not disagree. An interactive terminal
  * collects the values one question at a time; a redirected stream receives them
  * already assembled. Both end up here, so a store seeded from a pipe holds the
  * same bytes as one seeded at the prompt, and an empty password is rejected by
  * the same check either way. The rules live here once; the two callers only
  * decide where the values come from.
- *
  * Nothing in this object reads the console, a stream or the filesystem: the
  * file-backed kinds take bytes the caller has already read. That keeps the
  * checks pure and testable, and keeps a path typed at a terminal from becoming
  * a second way to reach a file the caller did not choose.
- */
+*/
 internal object CredentialValues {
 
     /**
@@ -36,7 +34,7 @@ internal object CredentialValues {
      * never the one that matters -- but [CredentialsId] rejects a blank value,
      * so it cannot be left empty. A name that is obviously not a real id makes
      * an accidental use of it visible instead of plausible.
-     */
+*/
     private val PENDING_STORE_ID = CredentialsId("<pending-store-id>")
 
     fun secretText(bytes: ByteArray): SecretText {

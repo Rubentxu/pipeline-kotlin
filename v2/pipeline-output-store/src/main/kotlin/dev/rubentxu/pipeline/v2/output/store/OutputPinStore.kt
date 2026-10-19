@@ -9,33 +9,26 @@ import java.nio.file.StandardCopyOption
 import java.util.concurrent.locks.ReentrantLock
 
 /**
- * M3 — file-backed durable store of [OutputPin] records.
- *
+ * File-backed durable store of [OutputPin] records.
  * ## Layout
- *
  * ```text
  * <root>/pins.tsv     the durable pin manifest (TSV: tab-separated)
  * <root>/pins.tsv.tmp the staging file used by [save] for atomic rename
  * ```
- *
  * TSV (tab-separated values, one record per line) is the on-disk format
  * because it is simpler than JSON, has no escaping concerns, and parses
  * in one pass without an external library. The design's default cap of
  * 1024 pins per stream means the file stays small (a few hundred KiB
  * even at max), and an atomic temp-write-rename is a few-ms operation.
- *
  * ## Threading
- *
  * All public methods take a single [lock]. The lock is held for the
  * duration of the I/O so two concurrent pin ops cannot observe a torn
  * read. This mirrors the per-stream lock discipline
  * [SegmentOutputStore] uses.
- *
  * ## Compactness
- *
  * The on-disk shape omits any framing. Adding fields later is a format
- * change and will be noted in the `M1-P1` adapter rule.
- */
+ * Change and will be noted in the `` adapter rule
+*/
 internal class OutputPinStore(
     private val root: Path,
     private val maxPinsPerStream: Int = 1024,
@@ -95,12 +88,11 @@ internal class OutputPinStore(
     /**
      * Pins whose [OutputStreamId] folds to [safeName] (the on-disk directory
      * name).
-     *
      * This is the consult primitive the canPrune adapter uses: it iterates
      * run-scoped stream directories (whose file names ARE the safe fold of
      * their stream id) and asks the pin store for any pin that touches the
      * bytes of that directory.
-     */
+*/
     fun pinsForSafeName(safeName: String): List<OutputPin> = withLock {
         readAll().asSequence()
             .filter { !it.isExpiredAt(now()) }

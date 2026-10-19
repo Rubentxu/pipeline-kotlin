@@ -10,7 +10,6 @@ import java.math.BigInteger
 /**
  * Pure mapping from SnakeYAML's safe-constructor output to the closed
  * [YamlDocument] ADT.
- *
  * The safe constructor only emits:
  *   - null
  *   - Boolean
@@ -19,12 +18,11 @@ import java.math.BigInteger
  *   - String / Character                          → YamlDocument.Str
  *   - java.util.List / arrays of primitives      → YamlDocument.Seq
  *   - java.util.Map with String keys             → YamlDocument.Map
- *
  * Anything outside that set is a [PluginStepException] USER-class failure.
  * The exhaustive `when` is intentional: a future SnakeYAML release that adds
  * a new safe type MUST show up here as a compile-time warning rather than a
  * silent runtime loss.
- */
+*/
 internal object SnakeYamlAdapter {
 
     fun toDocument(value: Any?): YamlDocument = when (value) {

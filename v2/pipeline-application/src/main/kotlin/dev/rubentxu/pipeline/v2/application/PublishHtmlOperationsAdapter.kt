@@ -18,55 +18,50 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Production adapter for [PublishHtmlOperations] (WU-LPR-090 / Tier B #2).
- *
+ * Production adapter for [PublishHtmlOperations] (/ Tier B #2)
  * Storage layout: `<controlDirRoot>/reports/<runId>/<sanitizedName>/`. The
  * reports directory is a SIBLING of `stashes/` and `artefacts/`, so
  * `WorkspaceResolver.cleanupAfterComplete()` does NOT destroy published
  * reports when the producing stage finishes.
- *
  * The adapter is the ONLY place that:
  * - reads workspace files matching the glob,
  * - copies them into the run-scoped reports archive,
  * - generates the `index.html` wrapper,
  * - computes per-file sha256 / size,
  * - emits `HtmlReportPublished` / `HtmlReportSkipped` / `HtmlReportFailed` events.
- *
  * The handler reaches ONLY [PublishHtmlOperations] via the
  * [PUBLISH_HTML_OPERATIONS_CAPABILITY] typed seam — it never touches `Files`,
  * `MessageDigest`, or `EventSink` directly.
- *
  * Reference: jenkinsci/htmlpublisher-plugin master @ 6a536b8d
  *   `HtmlPublisher.archiveReports()` + `HTMLReportTarget.getArchive()`.
  *   Pipeline-K deviation: no symlink alternative (rejected for cross-platform
  *   portability); no `keepAll` run-overlap (rejected for
  *   v1 determinism; `keepAll` remains a typed input but the adapter treats it as
  *   a hint for future replay-aware archival).
- */
+*/
 class PublishHtmlOperationsAdapter(
     private val runIdString: String,
     private val stageIdentity: StageIdentity,
     private val controlDirRoot: Path,
     private val eventSink: EventSink,
-    /** WU-LPR-062 parity: optional project-workspace override (--workspace). */
+    /** Optional project-workspace override (--workspace). */
     private val workspaceBase: Path? = null,
     /**
-     * RP034-F: the shared execution location. `null` keeps the previous
+     * The shared execution location. `null` keeps the previous
      * reconstruction for direct construction; the bridge always supplies it and
-     * retiring the fallback is RP034-I.
-     */
+     * retiring the fallback is.
+*/
     private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation? = null,
 ) : PublishHtmlOperations {
 
     /**
      * The directory `reportDir` is resolved against.
-     *
-     * RP034-F: the report directory is a user path, so it anchors on
+     * The report directory is a user path, so it anchors on
      * CURRENT_DIRECTORY and a `dir(...)` scope moves it. With no scope this is
      * the stage workspace — what the private resolver returned — so behaviour
      * at the root is unchanged. The published archive is a separate durable
      * store under `controlDirRoot/artefacts/...`.
-     */
+*/
     private fun sourceRoot(resolver: WorkspaceResolver): Path {
         val shared = executionLocation?.cwd
         if (shared != null) {
@@ -77,7 +72,7 @@ class PublishHtmlOperationsAdapter(
     }
 
     override fun publish(input: PublishHtmlInput): PublishHtmlResult {
-        // S0 Semantic Honesty Gate: keepAll has NO v1 interpreter (the adapter
+        // KeepAll has NO v1 interpreter (the adapter
         // always overwrites the run archive; the flag was kept as a
         // "hint" nobody consumed). A declared-but-dropped policy is a silent
         // lie, so a request that sets it is rejected instead of honoured-and-ignored.
@@ -99,7 +94,7 @@ class PublishHtmlOperationsAdapter(
             return PublishHtmlFailed(FailureKind.SCRIPT, reason)
         }
 
-        // WU-RP-011 r2 — paths confinement. Resolves the reportDir's real
+        // Paths confinement. Resolves the reportDir's real
         // (canonical, symlink-following) path and rejects if it escapes the
         // workspace. `normalize()` alone does NOT follow symlinks, so a
         // symlinked reportDir pointing outside the workspace would slip past
@@ -140,7 +135,7 @@ class PublishHtmlOperationsAdapter(
             return PublishHtmlFailed(FailureKind.SCRIPT, reason)
         }
 
-        // R1/R2: missing directory.
+        // Missing directory.
         if (!Files.exists(reportDir)) {
             if (input.allowMissing) {
                 val skip = PublishHtmlSkipped(PublishHtmlSkipReason.DIRECTORY_MISSING)
@@ -163,7 +158,7 @@ class PublishHtmlOperationsAdapter(
             return PublishHtmlFailed(FailureKind.SCRIPT, reason)
         }
 
-        // R3: glob matching.
+        // Glob matching.
         val matched: List<Path> = try {
             AntStyleGlob(input.reportFiles).match(
                 root = reportDir,
@@ -198,7 +193,7 @@ class PublishHtmlOperationsAdapter(
             return PublishHtmlFailed(FailureKind.SCRIPT, reason)
         }
 
-        // R5/R6: copy into the run-scoped reports archive. Reject symlinks (R7).
+        // Copy into the run-scoped reports archive. Reject symlinks.
         val sanitized = PublishHtmlSanitiser.sanitize(input.name, input.escapeUnderscores)
         val reportRoot = reportsRoot(runIdString, sanitized)
         return try {
@@ -213,7 +208,7 @@ class PublishHtmlOperationsAdapter(
             val entries = mutableListOf<HtmlReportEntry>()
             for (file in matched) {
                 if (Files.isSymbolicLink(file)) {
-                    // R7: refuse to follow symlinks (security: avoid escaping reportDir).
+                    // Refuse to follow symlinks (security: avoid escaping reportDir).
                     val reason = "reportDir contains symlink at '$file'; refusing for safety"
                     eventSink.append(htmlReportFailedEvent(input, reason, FailureKind.SCRIPT))
                     return PublishHtmlFailed(FailureKind.SCRIPT, reason)
@@ -231,7 +226,7 @@ class PublishHtmlOperationsAdapter(
                 )
             }
 
-            // R8: index.html with one <a> per published file (sorted by relPath).
+            // Index.html with one <a> per published file (sorted by relPath).
             val indexHtml = buildIndexHtml(entries)
             val indexPath = reportRoot.resolve("index.html")
             Files.writeString(indexPath, indexHtml)
@@ -282,16 +277,15 @@ class PublishHtmlOperationsAdapter(
         )
 
     private fun sha256Of(file: Path): String {
-        // Shared utility (B0): the same streaming loop with the same 8192-byte buffer, so the
+        // The same streaming loop with the same 8192-byte buffer, so the
         // digest value is unchanged for every entry already stashed.
         return Sha256.ofFile(file)
     }
 
     /**
-     * Generates the index.html wrapper (R8). Sorted by relPath for determinism
+     * Generates the index.html wrapper. Sorted by relPath for determinism
      * (replay-stable fingerprint).
-     *
-     * Per WU-RP-011: `e.relPath` is the canonical source of HTML context. On
+     * `e.relPath` is the canonical source of HTML context. On
      * any filesystem that allows non-slash, non-NUL bytes in filenames (ext4,
      * NTFS, APFS, …) a hostile report author can craft a filename that, when
      * interpolated unescaped, breaks out of the href attribute or injects an
@@ -299,13 +293,12 @@ class PublishHtmlOperationsAdapter(
      * need escaping. Both helpers below are context-aware per OWASP "contextual
      * output encoding" — the href attribute and the element body have distinct
      * dangerous sets.
-     *
-     * Visible to the test package so WU-RP-011 regression tests can drive the
+     * Visible to the test package so regression tests can drive the
      * function directly with synthetic `HtmlReportEntry` payloads, without
      * having to materialise malicious filenames on the real filesystem (some
      * names that are valid HTML-injection payloads contain characters that
      * some filesystems reject, e.g. `<` on Windows-reserved names).
-     */
+*/
     internal fun buildIndexHtml(entries: List<HtmlReportEntry>): String {
         val sb = StringBuilder()
         sb.appendLine("<!DOCTYPE html>")
@@ -326,7 +319,7 @@ class PublishHtmlOperationsAdapter(
      * set to defuse injection is `&`, `"`, `<`, `>`; `'` is included for
      * defensive symmetry (some legacy UAs treat it as an attribute delimiter
      * in quirks mode).
-     */
+*/
     private fun escapeHtmlAttribute(s: String): String {
         val sb = StringBuilder(s.length)
         for (ch in s) {
@@ -346,7 +339,7 @@ class PublishHtmlOperationsAdapter(
      * Escapes the three characters that have special meaning in HTML text
      * content (per OWASP "HTML Body Encoder"): `&`, `<`, `>`. Quote characters
      * are NOT escaped here because they are inert inside element text.
-     */
+*/
     private fun escapeHtmlText(s: String): String {
         val sb = StringBuilder(s.length)
         for (ch in s) {

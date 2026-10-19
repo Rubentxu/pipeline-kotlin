@@ -17,41 +17,34 @@ import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 
 /**
- * S6/I — the external DIRECTIVE plugin's DECLARATION, in one place.
- *
+ * The external DIRECTIVE plugin's DECLARATION, in one place.
  * ## Why this file exists now
- *
- * Because until here this plugin declared itself through `META-INF/services` and nothing else,
- * which made it an UNADMITTED plugin: pass 1 of S6/COMPOSITION refuses any discovered artifact
+ * Because until here this plugin declared itself through `META-INF/services` and nothing else
+ * which made it an UNADMITTED plugin: pass 1 of/COMPOSITION refuses any discovered artifact
  * without `META-INF/pipelinek/plugin-manifest.json`. Its sibling `example-block-plugin` was
  * refused for exactly this reason, and this one would have been next.
- *
  * A `ServiceLoader` descriptor is a claim that the artifact CONTRIBUTES; the manifest is the claim
  * about WHAT it contributes. This artifact made the first and omitted the second.
- *
  * ## One declaration, two readers
- *
  * Emitted into the artifact at BUILD time and read back at RUN time; both read THIS object. A
  * hand-typed JSON document in `build.gradle.kts` would be a second authority free to describe a
  * directive this code does not have.
- */
+*/
 object LockPluginDeclaration {
 
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/example-directive-release.properties"
 
     /**
      * Compatibility range, DERIVED at build time from the resolved SDK.
-     *
      * It used to be `PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 57, 0))`, a literal that had
      * already gone stale once: at host 0.56.0 it declared a range the host sits outside, and
      * admission refused this plugin on its own distribution. A literal held by a plugin that does
      * not control the host's release cadence cannot stay correct, so the values come from the
      * same release-properties resource that already carries this plugin's provenance — one
      * authority, read once, fail-closed.
-     *
      * Fail-closed rather than defaulted: a missing range key must refuse the plugin, because a
      * silent fallback to a guessed range would admit it against hosts nobody measured.
-     */
+*/
     val API_RANGE: PipelineKApiRange by lazy {
         val props = releaseProperties(LockPluginDeclaration::class.java)
         val minRaw = props["pipeline.example.directive.compatibility.min"]
@@ -77,11 +70,10 @@ object LockPluginDeclaration {
 
     /**
      * Fail-closed provenance: never accept a hand-typed digest.
-     *
      * A digest nobody measured is worse than no digest, because admission would read it as a
      * MEASURED identity — which is exactly what `MeasuredArtifactIdentity` exists to keep
      * separable from what a document merely claims.
-     */
+*/
     fun provider(
         classLoader: ClassLoader = LockPluginDeclaration::class.java.classLoader,
     ): StepProviderMetadata {
@@ -119,12 +111,11 @@ object LockPluginDeclaration {
 
     /**
      * One directive, no Steps, no events.
-     *
      * The directive key is taken from the definition's own `KEY` rather than retyped, for the same
      * reason the Step plugins take their capabilities from the contract: the cross-check compares
      * the manifest against real contributions exactly, so a transcription here would be a
      * difference nobody introduced on purpose.
-     */
+*/
     fun manifest(
         classLoader: ClassLoader = LockPluginDeclaration::class.java.classLoader,
     ): PluginManifest {
@@ -148,13 +139,12 @@ object LockPluginDeclaration {
     }
 
     internal fun releaseProperties(ownClass: Class<*>): Map<String, String> {
-        // PK-RELEASE-CONSOLIDATION D1.9: the resource MUST come from THIS plugin's JAR, not from
+        // The resource MUST come from THIS plugin's JAR, not from
         // whichever JAR happens to be first on the system classpath with the same path. `getResource`
         // on the system classloader walks the URL chain in classpath order, and a sibling JAR that
-        // also contains `META-INF/example-directive-release.properties` would silently win.
+        // Also contains `META-INF/example-directive-release.properties` would silently win
         // Measured: a forged sibling JAR with `compatibility.min=9.9.9` overrides the plugin's real
         // value the instant it lands earlier on the classpath.
-        //
         // Resolving through the `ProtectionDomain` of the plugin's own class pins the read to the
         // exact JAR the JVM loaded this `object` from. If the class was loaded from a directory
         // (test classpath, exploded jar) the URL is a `file:` entry, and the resource is read from
@@ -173,7 +163,7 @@ object LockPluginDeclaration {
     }
 
     private fun readFromJar(jarUrl: java.net.URL, resourcePath: String): Map<String, String>? {
-        // PK-RELEASE-CONSOLIDATION D1.9: open the JAR by file path, not by JarURLConnection.
+        // Open the JAR by file path, not by JarURLConnection.
         // A `file:` URL that points at a `.jar` is NOT a `JarURLConnection`; casting throws
         // ClassCastException, the catch swallows it, and we fall back to the system classloader
         // — which is exactly the lookup that returns the wrong (forged) resource. Open the file
@@ -218,11 +208,10 @@ object LockPluginDeclaration {
 
 /**
  * Build-time entry point: emit the manifest document to stdout.
- *
  * A non-zero exit from missing provenance stops the build instead of shipping a JAR whose manifest
  * is absent — and a JAR without a manifest is refused at runtime, so a silent skip here would
  * produce an artifact that passes its own build and fails its own admission.
- */
+*/
 fun main() {
     print(PluginManifestCodec.encode(LockPluginDeclaration.manifest()))
 }

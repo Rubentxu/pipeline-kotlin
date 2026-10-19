@@ -83,7 +83,7 @@ import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
 /**
  * The JSON writers shared by [JsonEventLog]'s encoder and by
  * [EventJsonDecoder]'s nested serializers.
- */
+*/
 internal object EventJsonWriter {
 
     fun serializeStashedEntries(entries: List<StashedEntry>): String {
@@ -114,7 +114,7 @@ internal object EventJsonWriter {
         return sb.toString()
     }
 
-    // WU-LPR-089 — Stash decoders (inverse of the serializers above).
+    // Stash decoders (inverse of the serializers above).
     // The `files`/`entries` array is a compact JSON list of objects; we
     // delegate to the existing stringField/longField helpers plus
     fun serializeHtmlReportEntries(entries: List<HtmlReportEntry>): String {
@@ -131,17 +131,15 @@ internal object EventJsonWriter {
         return sb.toString()
     }
     /**
-     * P3-E E6 — the write half of the optional-field convention.
-     *
+     * The write half of the optional-field convention.
      * Pairs with [EventJsonFields.optionalStringField], which maps the same encoding back to
      * `null`. Both existed as independent literals before: thirteen `?: ""` here and thirteen
      * `takeIf { it.isNotEmpty() }` there, with nothing asserting that the two sets of fields
      * correspond. A field added on one side only would compile, run, and silently decode wrong.
-     *
      * The encoding is the empty string because that is what every historical record already
      * carries; what changes is that the convention now has one name and a fitness test that
      * pins the two sides to the same field set.
-     */
+*/
     fun optionalJsonString(value: String?): String = jsonString(value ?: EventJsonFields.ABSENT_ON_WIRE)
 
     fun jsonString(s: String): String {
@@ -181,7 +179,7 @@ internal object EventJsonWriter {
                 sb.append(",\"scriptPath\":")
                 sb.append(EventJsonWriter.jsonString(event.scriptPath))
             }
-            // PK-1 / ADR-PK1-IDENTITY: persist the correlation + owner fields
+            // Persist the correlation + owner fields
             // in the JSON envelope so a consumer reading the durable event
             // log can join runs to external invoker identities.
             is RunCorrelated -> {
@@ -387,7 +385,7 @@ internal object EventJsonWriter {
                 sb.append(",\"credentialsId\":")
                 sb.append(EventJsonWriter.jsonString(event.credentialsId.value))
             }
-            // L5 SCM Events
+            // SCM Events
             is GitCheckoutStarted -> {
                 sb.append(",\"url\":")
                 sb.append(EventJsonWriter.jsonString(event.url))
@@ -439,7 +437,7 @@ internal object EventJsonWriter {
                 sb.append(",\"newSha\":")
                 sb.append(EventJsonWriter.jsonString(event.newSha))
             }
-            // L7 Jenkins File + Artefact Events (ML-R7)
+            // Jenkins File + Artefact Events
             is FileWritten -> {
                 sb.append(",\"path\":")
                 sb.append(EventJsonWriter.jsonString(event.path.toString()))
@@ -494,7 +492,7 @@ internal object EventJsonWriter {
                 sb.append(",\"reason\":")
                 sb.append(EventJsonWriter.jsonString(event.reason))
             }
-            // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
+            // Core.stash/core.unstash durable cross-stage data movement
             is StashCreated -> {
                 sb.append(",\"stageName\":")
                 sb.append(EventJsonWriter.jsonString(event.stageName))
@@ -521,7 +519,7 @@ internal object EventJsonWriter {
                 sb.append(",\"reason\":")
                 sb.append(EventJsonWriter.jsonString(event.reason))
             }
-            // WU-LPR-090 — core.publishHTML durable HTML report publishing
+            // Core.publishHTML durable HTML report publishing
             is HtmlReportPublished -> {
                 sb.append(",\"stageName\":")
                 sb.append(EventJsonWriter.jsonString(event.stageName))
@@ -692,7 +690,7 @@ internal object EventJsonWriter {
                 sb.append(",\"reason\":")
                 sb.append(EventJsonWriter.jsonString(event.reason))
             }
-            // RP6-A / WU-091 §6 lock events
+            // / lock events
             is LockRequested -> {
                 sb.append(",\"resource\":")
                 sb.append(EventJsonWriter.jsonString(event.resource))
@@ -721,8 +719,8 @@ internal object EventJsonWriter {
                 sb.append(",\"reason\":")
                 sb.append(EventJsonWriter.jsonString(event.reason))
             }
-            // RP6-C / WU-093 §5 httpRequest events. Metadata only: no body, no
-            // header values (INV-L6-EVT-001).
+            // httpRequest events. Metadata only: no body, no
+            // header values.
             is HttpRequestStarted -> {
                 sb.append(",\"url\":")
                 sb.append(EventJsonWriter.jsonString(event.url))
@@ -753,7 +751,7 @@ internal object EventJsonWriter {
                 sb.append(",\"reason\":")
                 sb.append(EventJsonWriter.jsonString(event.reason))
             }
-            // RP6-B / WU-092 §6 input events
+            // / input events
             is InputRequested -> {
                 sb.append(",\"message\":")
                 sb.append(EventJsonWriter.jsonString(event.message))
@@ -786,14 +784,14 @@ internal object EventJsonWriter {
                 sb.append(",\"durationMs\":")
                 sb.append(event.durationMs)
             }
-            // ML-R9 T-08 timestamps decorator events
+            // Timestamps decorator events
             is TimestampsEntered -> {
                 // no extra fields
             }
             is TimestampsExited -> {
                 // no extra fields
             }
-            // S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation (WU-1)
+            // durable-spine admission observation
             is StepAdmissionObserved -> {
                 sb.append(",\"stageIndex\":")
                 sb.append(event.stageIndex)

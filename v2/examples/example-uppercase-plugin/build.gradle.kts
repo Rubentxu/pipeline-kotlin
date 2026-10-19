@@ -11,16 +11,14 @@ import java.security.MessageDigest
 group = "example.uppercase"
 version = "0.1.0"
 
-// INDEPENDENT BUILD (EP-3): separate Gradle boundary. It depends ONLY on public
+// INDEPENDENT BUILD: separate Gradle boundary. It depends ONLY on public
 // SDK artifacts (pipeline-domain: StepDefinitionContributor/StepRegistry contracts
 // + domain value types; pipeline-scripting-api: the DSL facade surface). No
 // internal application/runtime imports.
-//
 // Lane R: the SDK is consumed as ordinary module coordinates resolved from a
 // build-local Maven repository produced by the v2 build from the SAME source
 // revision. It is deliberately NOT a `files(...)` dependency on a committed
 // jar: a stale SDK must fail this build rather than silently satisfy it.
-//
 //   -PsdkRepo=<dir>     repository holding the SDK artifacts
 //   -PsdkVersion=<ver>  SDK version to resolve
 val sdkRepo: String = providers.gradleProperty("sdkRepo").getOrElse("../../v2/build/sdk-repo")
@@ -28,7 +26,7 @@ val sdkRepo: String = providers.gradleProperty("sdkRepo").getOrElse("../../v2/bu
 // No default version, on purpose. `0.1.0-SNAPSHOT` was here for a long time and it cannot resolve
 // anything: the build then failed in a dependency-resolution message naming a version nobody asked
 // for, hundreds of lines below the line that matters. The v2 build already omitted `-PsdkVersion`
-// once, on 2026-09-19, and paid exactly that. Failing here names the real cause.
+// once, on, and paid exactly that. Failing here names the real cause.
 val sdkVersion: String = requireNotNull(providers.gradleProperty("sdkVersion").orNull) {
     """
     -PsdkVersion is required: this plugin resolves the published SDK contracts and has no default
@@ -38,13 +36,11 @@ val sdkVersion: String = requireNotNull(providers.gradleProperty("sdkVersion").o
 }
 
 // ----------------------------------------------------------------------------
-// PK-RELEASE-CONSOLIDATION D1 — the apiRange is derived from the resolved SDK.
-//
+// The apiRange is derived from the resolved SDK.
 // Two derivations, deliberately not one:
 //   - CEILING from sdkVersion, because the host version is the thing that moves.
 //   - FLOOR from `uppercaseApiRangeMin`, a property of THIS plugin, because how far back it works
 //     is a claim about this plugin that no other build can make.
-//
 // Fail-closed on a malformed version: a ceiling that silently became "0.0.0" would produce a
 // range that refuses every host, which looks like a plugin defect rather than a bad property.
 val sdkCore: Triple<Int, Int, Int> = sdkVersion.substringBefore("-").let { raw ->
@@ -62,7 +58,7 @@ require(sdkCore.first >= 0 && sdkCore.second >= 0 && sdkCore.third >= 0) {
 // equal to sdkVersion would make this plugin refuse the host that loads it.
 val nextMinor: String = "${sdkCore.first}.${sdkCore.second + 1}.0"
 
-// D1 rule 3: the floor is the plugin's own property. D1 rule 4: with no measured evidence that
+// The floor is the plugin's own property.: with no measured evidence that
 // this plugin works against an older SDK, the conservative floor IS the resolved SDK version.
 val uppercaseApiRangeMin: String = providers.gradleProperty("uppercaseApiRangeMin").getOrElse(sdkVersion)
 val uppercaseApiRangeCeiling: String = nextMinor
@@ -85,7 +81,7 @@ configurations.all {
 dependencies {
     compileOnly("dev.rubentxu.pipeline.v2:pipeline-domain:$sdkVersion")
     compileOnly("dev.rubentxu.pipeline.v2:pipeline-scripting-api:$sdkVersion")
-    // P3-D / S6.4: the Event Plane's published contract. Carrying the plugin's own event
+    // The Event Plane's published contract. Carrying the plugin's own event
     // definition and the emission seam as `compileOnly` is the point: the JAR ships only its
     // classes, and the host supplies the registry, the codec types and the capability at runtime.
     // A plugin that had to bundle the Event Plane would be able to run a SECOND registry beside
@@ -101,20 +97,18 @@ kotlin {
 tasks.jar {
     manifest {}
     // Nothing else: the plugin JAR carries only its own classes. The ServiceLoader
-    // descriptor (EP-4) is a resource; the SDK contracts come from the host at runtime.
+    // Descriptor is a resource; the SDK contracts come from the host at runtime
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
 }
 
 // ----------------------------------------------------------------------------
-// S6/I — provenance and the manifest DOCUMENT, both derived, neither typed by hand.
-//
+// Provenance and the manifest DOCUMENT, both derived, neither typed by hand.
 // Until this block the plugin shipped no manifest at all, which meant it was never ADMITTED:
 // `PluginAdmissionGate` refuses any contributor whose artifact lacks
 // META-INF/pipelinek/plugin-manifest.json. It ran because `PluginComposition.resolve` discovers
 // contributors on a path that does not consult the gate. Naming that here is the point; the two
 // tasks below are what close it.
-//
 // The digest is measured over this artifact's own content EXCLUDING the release-properties
 // document it is about to write, so the value has a fixed point. A digest that included the file
 // carrying it could not be computed at all.
@@ -132,18 +126,16 @@ val uppercaseNamespace = providers
 
 /**
  * The SDK, on the runtime classpath of the BUILD-TIME emitter only.
- *
  * Every dependency above is `compileOnly`, and that is the plugin's whole point: it ships classes
  * only, and the host supplies the contracts at runtime. The consequence is that
  * `sourceSets.main.runtimeClasspath` is EMPTY of them, and the manifest emitter — which has to run
  * the real declaration against the real codec — dies with `NoClassDefFoundError:
  * PluginManifestCodec`. Measured, not predicted: that is the first run of this task.
- *
  * So the emitter gets its own configuration. It does not leak into the JAR: this configuration
  * never reaches `jar`, and widening the plugin's own runtime scope to make a build task work would
  * have put PipelineK's contracts inside an artifact whose defining property is that it carries
  * only its own classes.
- */
+*/
 val sdkForManifestEmission by configurations.creating {
     extendsFrom(configurations.compileOnly.get())
 }
@@ -157,7 +149,7 @@ val computeUppercaseRelease = tasks.register("computeUppercaseRelease") {
     val namespaceName = uppercaseNamespace
     val releaseVersion = version.toString()
 
-    // R4 / WU-R4.0.0 — declare sdkVersion as an explicit input so the
+    // Declare sdkVersion as an explicit input so the
     // apiRange is regenerated when the host version changes (see
     // example-block-plugin for the same change with the full story).
     inputs.property("sdkVersion", sdkVersion)
@@ -219,9 +211,9 @@ val computeUppercaseRelease = tasks.register("computeUppercaseRelease") {
                 appendLine("pipeline.example.uppercase.namespace=${namespaceName.get()}")
                 appendLine("pipeline.example.uppercase.release.version=$releaseVersion")
                 appendLine("pipeline.example.uppercase.release.digest=sha256:$hex")
-                // PK-RELEASE-CONSOLIDATION D1: the compatibility range is DERIVED, not typed.
+                // The compatibility range is DERIVED, not typed.
                 // The ceiling is the NEXT MINOR of the resolved SDK, not the resolved version itself:
-                // PipelineKApiRange.accepts() is `runtime < untilExclusive`, so a ceiling equal to
+                // PipelineKApiRange.accepts is `runtime < untilExclusive`, so a ceiling equal to
                 // sdkVersion would make the plugin refuse the very host that loads it. See ADR.
                 appendLine("pipeline.example.uppercase.compatibility.min=$uppercaseApiRangeMin")
                 appendLine("pipeline.example.uppercase.compatibility.untilExclusive=$nextMinor")
@@ -242,7 +234,7 @@ val emitUppercaseManifest = tasks.register<JavaExec>("emitUppercaseManifest") {
     dependsOn(computeUppercaseRelease)
     mainClass.set("example.uppercase.UppercasePluginDeclarationKt")
 
-    // The main() reads its release properties off ITS OWN classpath, so the freshly generated
+    // The main reads its release properties off ITS OWN classpath, so the freshly generated
     // resources directory has to be on it — and so do the SDK contracts, which are compileOnly and
     // therefore absent from runtimeClasspath. See sdkForManifestEmission for why that is right.
     // `files(...)` rather than `+`: mixing a FileCollection with a NamedDomainObjectProvider

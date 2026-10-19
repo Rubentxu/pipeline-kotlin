@@ -13,35 +13,27 @@ import dev.rubentxu.pipeline.v2.events.registry.PluginEventEmission
 
 /**
  * BLOCK 1-J — the artefacto del no-core-change proof.
- *
  * This Step exists to be ADDED, and the interesting thing about it is not what it does. It was
  * added to an external plugin with **zero changes to core production code**, and the diff over
  * `v2/<module>/src/main` was empty. That is the whole claim of the External Library Constitution,
  * until now nothing in the repository had demonstrated it as an event rather than as a sentence.
- *
  * ## Why THIS construct and not a simpler one
- *
  * Because "a plugin can add a Step" was already covered three times over by `uppercase`,
  * `uppercaseObserved` and `uppercase.cased`. A fourth simple Step would prove nothing new.
- *
  * This one declares **two** capabilities at once, and they are of different kinds:
- *
  * ```text
  * example.uppercase.case-table   SUPPLIED BY THIS PLUGIN   (a value it hands the host)
  * plugin.event-emission          SUPPLIED BY THE HOST     (a seam only the host has)
  * ```
- *
  * That combination is what makes it a real test of the seam. A Step may depend on a capability it
  * supplies itself AND on one it does not, and the manifest has to say so correctly for both, and
  * the registry has to admit it without knowing either name. If the composition path were secretly
  * single-owner, this Step is the one that fails.
- *
  * ## What it must NOT need
- *
  * No new `StepKey` case in a dispatcher. No branch anywhere in core. No registry edit. If adding
  * this Step had required any of those, the law would be a sentence and this file would be a
  * demonstration that the sentence was false.
- */
+*/
 object UppercaseAnnouncedCasedStepDefinition : StepDefinition<UppercaseInput, UppercaseOutput> {
 
     val KEY = PluginStepId("example.uppercase.announcedCased")

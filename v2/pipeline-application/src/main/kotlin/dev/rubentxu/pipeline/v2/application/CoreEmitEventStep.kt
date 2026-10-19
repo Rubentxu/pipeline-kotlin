@@ -33,28 +33,26 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Typed input payload of `core.emit.event` (S2-A4 / G1).
- *
+ * Typed input payload of `core.emit.event`
  * Deliberately OPEN with respect to `kind`: the legacy wire decoder is total (any dsl-v1
  * payload with a `kind` string decodes), and the whitelist is SEMANTIC policy of the Step,
  * not of the wire codec. Keeping the whitelist in the handler preserves the legacy failure
  * layering — `unknown kind -> StepOutcome.Failure(SCHEMA)` — instead of shifting it to a
  * decode failure. The codec validates only the ENVELOPE STRUCTURE (`kind` present as a
  * string); it does NOT validate whitelist membership or field requirements.
- */
+*/
 data class CoreEmitEventInput(
     val kind: String,
     val payload: Map<String, String?>,
 )
 
 /**
- * Typed output ADT for `core.emit.event` (S2-A4 / G1).
- *
+ * Typed output ADT for `core.emit.event`
  * The handler NEVER uses exceptions as normal semantics: every legitimate rejection
  * (unknown kind, missing `message`, missing/invalid FileWritten fields) surfaces as
  * [EmitEventRejected] carrying the typed [PipelineFailure], projected to
  * `StepOutcome.Failure` by the definition's result mapping.
- */
+*/
 sealed interface CoreEmitEventOutput : TypedStepOutput {
     override val outcome: StepOutcome
 
@@ -72,34 +70,30 @@ sealed interface CoreEmitEventOutput : TypedStepOutput {
 }
 
 /**
- * Registry candidate for `core.emit.event` (S2-A4 / G1 registry seam proof).
- *
- * G1 registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy decoder,
+ * Registry candidate for `core.emit.event` (/ registry seam proof)
+ * Registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy decoder
  * the metadata row, or the legacy dispatcher: `StructuralFamilyResolver`'s
  * legacy-membership-wins rule keeps LegacyCore as the production authority until the
- * G3/G4 flip.
- *
- * APPROVED FIX CANDIDATE (classification finalized at G2): the legacy dispatcher escapes
+ * / flip.
+ * APPROVED FIX CANDIDATE: the legacy dispatcher escapes
  * untyped `IllegalStateException`s from `error(...)` on valid-kind incomplete payloads
  * (`StageMarkedUnstable` without `message`, `FileWritten` missing fields or non-numeric
  * `size`), which the run loop maps to INFRASTRUCTURE. The candidate validates these in the
  * handler and produces typed [CoreEmitEventOutput.EmitEventRejected] with
  * `FailureKind.SCHEMA` and ZERO events. Legacy behaviour remains byte-compatible until
  * the flip.
- *
- * Whitelist authority is preserved verbatim (ADR-0054 §D6): all four kinds KEEP their
+ * Whitelist authority is preserved verbatim: all four kinds KEEP their
  * place in the supported contract; classification as internal marker / runtime-used /
  * dead callsite is a separate dimension, not a burn-down concern.
- *
  * Capabilities: the handler reaches the event sink ONLY through [EVENT_SINK_CAPABILITY]
  * and the current stage identity ONLY through [STAGE_IDENTITY_CAPABILITY] (narrow
  * `StageIdentity(name, index)`; `StepHandlerContext` stays free of stage data and the
  * runtime context is never handed to the handler).
- */
+*/
 object CoreEmitEventStep {
     val KEY: PluginStepId = PluginStepId("core.emit.event")
 
-    /** ADR-0054 §D6 whitelist, byte-equivalent to the legacy authority. */
+    /**whitelist, byte-equivalent to the legacy authority */
     private val ALLOWED_KINDS = setOf(
         "CatchErrorEntered",
         "CatchErrorTriggered",
@@ -111,7 +105,7 @@ object CoreEmitEventStep {
      * Canonical dsl-v1 envelope, byte-identical to the legacy decode form emitted by
      * `DslCompiledPipelineCompiler.emitEventPayload`: `kind` first, then fields in map
      * order, with null values encoded as JSON `null`.
-     */
+*/
     private val inputCodec = object : StepCodec<CoreEmitEventInput> {
         override fun encode(value: CoreEmitEventInput): EncodedStepValue =
             EncodedStepValue(
@@ -171,7 +165,7 @@ object CoreEmitEventStep {
     /**
      * Projects a typed output to a StepOutcome. Kept total: Rejected carries its own
      * PipelineFailure, so no exception mapping is needed on this path.
-     */
+*/
     private val capabilityRoutedHandler: StepHandler<CoreEmitEventInput, CoreEmitEventOutput> =
         StepHandler { input, ctx ->
             if (input.kind !in ALLOWED_KINDS) {
@@ -186,7 +180,7 @@ object CoreEmitEventStep {
             val sink: dev.rubentxu.pipeline.v2.events.EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
             when (input.kind) {
                 // Scope-only markers: the coordinator handles scope push/pop and publishes
-                // the real CatchErrorTriggered event at the fold-walk (EM-5/EM-6 D5).
+                // The real CatchErrorTriggered event at the fold-walk
                 "CatchErrorEntered" -> CoreEmitEventOutput.EmitEventSuccess
                 "CatchErrorTriggered" -> CoreEmitEventOutput.EmitEventSuccess
                 "StageMarkedUnstable" -> {

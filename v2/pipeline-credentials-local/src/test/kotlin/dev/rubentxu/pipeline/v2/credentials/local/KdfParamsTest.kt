@@ -10,12 +10,11 @@ import org.junit.jupiter.api.Test
  * The local credential store persists [KdfParams] in its file header and uses them every time it
  * derives a key. If a value below the OWASP floor were accepted, a header written by an older
  * binary would silently get weaker parameters on every read.
- *
  * The floor and the upgrade are tiny, but they are the only line of defence against a future
  * value being authored lower than the current policy, and the only place where the
  * "is it the floor" decision is centralized. The class has no IO, no clock and no globals,
  * so the whole contract fits in this file.
- */
+*/
 class KdfParamsTest {
 
     @Test
@@ -76,8 +75,8 @@ class KdfParamsTest {
 
         val upgraded = stronger.upgradeToFloor()
 
-        // The stronger values survive; a strict copy() would have left them but a strict
-        // override would have clobbered them. maxOf() is the contract.
+        // The stronger values survive; a strict copy would have left them but a strict
+        // override would have clobbered them. maxOf is the contract.
         assertEquals(32_768, upgraded.m, "memory is preserved when already at or above the floor")
         assertEquals(3, upgraded.t, "iterations are preserved when already above the floor")
         assertEquals(4, upgraded.p, "parallelism is preserved when already above the floor")
@@ -104,7 +103,7 @@ class KdfParamsTest {
         val c = KdfParams(19_456, 2, 1, salt = byteArrayOf(1, 2, 4))
 
         // Two ByteArray instances with the same contents are equal but not the same instance;
-        // without contentEquals, the data class' generated equals() would compare references.
+        // without contentEquals, the data class' generated equals would compare references.
         assertNotEquals(a.salt, b.salt, "sanity: the two salts are not the same object")
         assertEquals(a, b, "KdfParams.equals must compare salts by content")
         assertNotEquals(a, c, "one byte of difference in the salt is enough to make them unequal")

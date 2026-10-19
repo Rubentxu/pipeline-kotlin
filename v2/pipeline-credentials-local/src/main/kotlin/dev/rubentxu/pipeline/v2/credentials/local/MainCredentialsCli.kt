@@ -6,17 +6,13 @@ import java.nio.file.Path
 
 /**
  * Main credentials CLI — subcommand dispatcher for credential store operations.
- *
  * ## Exit Codes
- *
  * - 0: Success
  * - 1: Usage error
  * - 2: Missing store
  * - 3: Wrong passphrase
  * - 4: Tamper detected
- *
  * ## Subcommands
- *
  * - `add [--kind <kind>] [--from-stdin] <id>` — stores a credential. Without
  *   `--from-stdin` the value is asked for at the terminal; with it, the value
  *   is read from standard input.
@@ -24,9 +20,7 @@ import java.nio.file.Path
  * - `remove <id>` — removes a credential
  * - `rotate [--kind <kind>] [--from-stdin] <id>` — replaces a stored credential
  *   with a new value, read the same way `add` reads it.
- *
  * ## Seeding without a terminal
- *
  * `--from-stdin` exists so a store can be prepared by a script. The passphrase
  * already arrives through the environment, but the value itself used to have
  * exactly one possible source, an interactive terminal, which left every
@@ -34,9 +28,7 @@ import java.nio.file.Path
  * integration -- with no way in. The value never reaches a log either way: it
  * is read once, held in memory for as long as the call takes, and handed
  * straight to the store.
- *
  * ## Supported Kinds (--kind)
- *
  * - `secret-text`: raw string secret (default if --kind omitted)
  * - `username-password`: username + password pair
  * - `ssh-private-key`: SSH private key with optional passphrase
@@ -44,12 +36,12 @@ import java.nio.file.Path
  * - `certificate`: PKCS#12 keystore
  * - `zip`: ZIP archive
  * - `username-colon-password`: colon-joined user:pass string
- */
+*/
 object MainCredentialsCli {
 
     // The store location is decided by CredentialsStorePath, the ONE authority.
     // This comment used to spell the rule out here AND claim the runtime agreed
-    // (Main.kt, composeWithCredentialsExecutor) — and the runtime resolved a
+    // And the runtime resolved a
     // different default, because it took <controlRoot>/../credentials.bin. Two
     // copies of one rule is how `credentials add` came to write somewhere the run
     // never looked. See CredentialsStorePath's KDoc.
@@ -58,8 +50,8 @@ object MainCredentialsCli {
     /**
      * The CLI's store path, delegated to [CredentialsStorePath] rather than
      * recomputed. Internal visibility exists for the contract regression test
-     * (R2, WU-RP-042): CLI and runtime MUST resolve the same store.
-     */
+     * CLI and runtime MUST resolve the same store.
+*/
     internal fun resolveStoreFile(): Path = CredentialsStorePath.fromEnvironment(System.getenv())
 
     // Supported credential kinds
@@ -222,7 +214,7 @@ object MainCredentialsCli {
      * do with the result. Returns null after printing the reason, so a caller
      * never has to invent a usage string of its own and two commands cannot
      * disagree about which flags exist.
-     */
+*/
     private fun parseWriteArguments(args: List<String>): WriteArguments? {
         var kind: CredentialKind? = null
         var id: String? = null

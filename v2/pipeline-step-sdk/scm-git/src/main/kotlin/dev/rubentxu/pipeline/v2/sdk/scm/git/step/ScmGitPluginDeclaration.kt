@@ -19,17 +19,16 @@ import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 
 /**
- * S6/C — the scm-git plugin's DECLARATION, in one place.
- *
+ * The scm-git plugin's DECLARATION, in one place.
  * Same contract as `UtilitiesPluginDeclaration` and `HttpPluginDeclaration`: the manifest is
  * emitted at BUILD time and read at RUN time, so both readers read ONE declaration rather than
  * a document typed into the build by hand.
- */
+*/
 object ScmGitPluginDeclaration {
 
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/scm-git-release.properties"
 
-    /** PK-RC-PLUGIN-001 — the apiRange is no longer a literal. The policy in
+    /** The apiRange is no longer a literal. The policy in
      * `buildSrc/PluginCompatibilityPolicy` reads `rootProject.version` and emits
      * the resource this declaration reads at runtime. The literal moved out;
      * a future product-version bump is observable from the build, not from a
@@ -44,10 +43,9 @@ object ScmGitPluginDeclaration {
      * provenance (Gradle writes them to [RELEASE_PROPERTIES_RESOURCE]
      * inside the JAR). System properties override the resource values when
      * present so tests can pin metadata without rebuilding the JAR.
-     *
      * Fail-closed if neither source yields the publisher / digest — the
      * contract requires real provenance, not self-declared values.
-     */
+*/
     fun provider(classLoader: ClassLoader = ScmGitPluginDeclaration::class.java.classLoader): StepProviderMetadata {
         val props = releaseProperties(classLoader)
         val publisher = System.getProperty("pipeline.scm-git.publisher")
@@ -129,10 +127,9 @@ object ScmGitPluginDeclaration {
 
 /**
  * Build-time entry point: emit the manifest document to stdout.
- *
  * A non-zero exit from missing provenance stops the build instead of shipping a JAR whose
  * manifest is absent — and a JAR without a manifest is refused at runtime.
- */
+*/
 fun main() {
     print(PluginManifestCodec.encode(ScmGitPluginDeclaration.manifest()))
 }

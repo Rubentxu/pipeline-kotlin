@@ -20,19 +20,16 @@ dependencies {
     implementation(project(":pipeline-scripting-api"))
 }
 
-// Unit-test wiring RESTORED (2026-10-19).
-//
-// The RESET removed it on 2026-10-18 with this reasoning: "This module carries no unit tests:
+// Unit-test wiring RESTORED .
+// The RESET removed it on with this reasoning: "This module carries no unit tests:
 // it is a workflow-control STEP whose subject is multi-step pipeline execution. Its
 // verification is the executable E2E layer."
-//
 // That reasoning was correct about `execute()` and wrong about the module. `resolveTargetPath`
 // is pure arithmetic on `java.nio.file.Path` -- no filesystem, no clock, no subprocess -- and it
 // is the confinement guard that decides whether a `dir(...)` scope may leave the workspace. It
 // was therefore sitting untested behind a claim about a different function, and it was wrong:
 // a `target.toString().startsWith(workspaceStr)` guard admitted every sibling directory whose
 // name begins with the workspace root's. See `ResolveTargetPathTest`.
-//
 // So the premise is inverted rather than restored blindly. These lines exist because a test
 // source does, and `scripts/verify-all.sh` fails the build when a module with a test source
 // produces no JUnit XML. Gradle 8.14 exposes no `failOnNoDiscoveredTests` property -- the

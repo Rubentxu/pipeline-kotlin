@@ -36,38 +36,29 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * `core.sh` registered as an open [StepDefinition] (LB-02 / G1 registry seam proof).
- *
+ * `core.sh` registered as an open [StepDefinition] (/ registry seam proof)
  * Follows the same generic mechanism an external plugin uses. The contract
  * shape mirrors [CoreEchoStep]: typed input codec, typed output codec,
  * required capabilities, replay policy on the contract, and the handler
  * returns a typed [CoreShellOutput].
- *
- * ## G1 — registry seam proof
- *
+ * ## — registry seam proof
  * The codec round-trip, key uniqueness, and required-capabilities contract
  * hold without depending on `ShExecution.invokeShell` or the legacy canonical-core
  * decode/dispatch path. The codec encodes well-formed JSON objects, fulfilling
  * durable-spine eligibility CDE.3-e1/e2.
- *
- * ## G3 — REGISTRY_PRIMARY (this slice, A4.2)
- *
+ * ## — REGISTRY_PRIMARY (this slice,)
  * Real sh execution is reached through the declared
  * `SHELL_OPERATIONS_CAPABILITY`. The handler:
- *
  *  1. Asks the [StepHandlerContext.capabilities] for `ShellOperations`.
  *     This is the ONLY runtime side a handler holds for shell execution.
  *  2. Invokes the typed seam once per call and returns a typed
  *     [CoreShellOutput]. It MUST NOT re-implement process launching.
- *
  * The [ShellOperations] implementation is wired by the runtime bridge
  * (canonical seam binds it to `ShExecution.invokeShell` via
  * [ShOperationsAdapter]). Capability admission is fail-closed at prepare-time:
  * `RegistryExecutionPreparation.prepare()` rejects with the missing capability
  * before the handler ever runs.
- *
- * ## A4.2 invariants preserved
- *
+ *  invariants preserved
  * - Closed execution structure, open Step registry: the canonical
  *   coordinator and dispatcher are unchanged in this slice; legacy decode /
  *   dispatch / metadata row for `core.sh` are intact.
@@ -77,19 +68,19 @@ import kotlinx.serialization.json.jsonPrimitive
  * - Process-engine authority lives in [ShExecution] (single emitter of
  *   `EchoOutputCaptured`). The adapter delegates; the handler MUST NOT
  *   emit.
- * - Recovery stays at the descriptor (A4.1.3 declares `recoveryPolicy`); this
+ * Recovery stays at the descriptor (declares `recoveryPolicy`); this
  *   slice does NOT touch the recovery substrate.
- */
+*/
 object CoreShellStep {
 
     val KEY: PluginStepId = PluginStepId("core.sh")
 
     /**
-     * G1 input codec: encodes the durable subset (`{kind, script, encoding?,
+     * Input codec: encodes the durable subset (`{kind, script, encoding?
      * label?, returnMode}`) as a well-formed JSON object. Per-call runtime
      * args are filled from capability-resolved seams at execute-time; they
      * MUST NOT be encoded into the durable payload.
-     */
+*/
     private val inputCodec = object : StepCodec<CoreShellInput> {
         override fun encode(value: CoreShellInput): EncodedStepValue {
             val obj: JsonObject = buildJsonObject {
@@ -104,7 +95,7 @@ object CoreShellStep {
 
         override fun decode(encoded: EncodedStepValue): CoreShellInput {
             val obj = Json.parseToJsonElement(encoded.value).jsonObject
-            // A4 flip: accept BOTH canonical kind spellings — the production DSL compiler
+            // Flip: accept BOTH canonical kind spellings — the production DSL compiler
             // (DslCompiledPipelineCompiler.shellPayload) emits `"sh"`, while the codec's
             // own self-encoded form uses `"shell"`. Both name the same Step family; rejecting
             // either would break the registry path for real `.pipeline.kts` files. Anything
@@ -113,13 +104,13 @@ object CoreShellStep {
             require(kind == "shell" || kind == "sh") {
                 "shell payload kind must be 'shell' or 'sh'"
             }
-            // A4 flip: the production DSL compiler emits `"command"`, while the codec's
+            // Flip: the production DSL compiler emits `"command"`, while the codec's
             // own self-encoded form uses `"script"`. Both name the same data; accept either
             // so the codec's self-round-trip AND real `.pipeline.kts` files both decode.
             val script = obj["command"]?.jsonPrimitive?.content
                 ?: obj["script"]?.jsonPrimitive?.content
                 ?: throw IllegalArgumentException("Shell payload must include 'command' or 'script'")
-            // A4 flip: the DSL compiler emits `"returnStdout"` (Jenkins boolean) and
+            // Flip: the DSL compiler emits `"returnStdout"` (Jenkins boolean) and
             // `"isScriptBlock"` (canonical flag). The codec's own self-encoded form uses
             // `"returnMode"` (closed enum). Both shapes are canonical for the same Step;
             // we accept either so registry routing works for real `.pipeline.kts` files.
@@ -140,8 +131,7 @@ object CoreShellStep {
     }
 
     /**
-     * G7 output codec: deterministic, lossless for contractual fields, malformed-fail.
-     *
+     * Output codec: deterministic, lossless for contractual fields, malformed-fail
      * The encoded JSON shape (see [decode] for the symmetric reader):
      *  - `kind` (mandatory): discriminant matching the existing scripted-runtime names
      *    (`UNIT` / `STDOUT` / `STATUS` / `FAILED` / `INTERRUPTED`).
@@ -164,19 +154,16 @@ object CoreShellStep {
      *        optional `causedBy: String`, optional `deadlineEpochMillis: Long`,
      *        optional `details: Map<String,String>`.
      *      - `UNIT` -> no payload fields.
-     *
      * `outcome = FAILURE` MUST appear iff the variant payload carries a `failureKind`
      * (or for `INTERRUPTED`, an `interruptionKind` whose classifier maps to TIMEOUT).
      * The decode rule below enforces this.
-     *
      * Determinism: encode uses `buildJsonObject` with explicit `put` ordering; the
      * optional fields appear in fixed positions and are omitted when not present.
      * No Map iteration, no timestamps, no identity — same instance produces byte-identical
      * bytes across calls.
-     *
      * Failure modes (decode): [StepCodec.decode] throws a subclass of [RuntimeException]
      * with a typed reason; the boundary never silently coerces malformed payloads.
-     */
+*/
     private val outputCodec = object : StepCodec<CoreShellOutput> {
         override fun encode(value: CoreShellOutput): EncodedStepValue {
             val obj: JsonObject = buildJsonObject {
@@ -376,10 +363,9 @@ object CoreShellStep {
 
     /**
      * Build the canonical [PipelineFailure] for the `outcome = FAILURE` projection.
-     *
      * Used by [decode] when the encoded `outcome` says `FAILURE` — the failure MUST
      * carry the same kind/message carried by the variant payload.
-     */
+*/
     private fun pipelineFailureFor(result: ShellInvocationResult): PipelineFailure =
         when (result) {
             is ShellInvocationResult.Failed -> result.failure
@@ -398,11 +384,10 @@ object CoreShellStep {
      * the outcome discriminant MUST be `FAILURE`; if the variant says `UNIT` / `STDOUT` /
      * `STATUS`, the outcome discriminant MUST be `SUCCESS` (or `UNSTABLE`, which is
      * currently never produced for `core.sh` but is accepted if the producer chose it).
-     *
      * Operating on the discriminant string avoids invoking `pipelineFailureFor` on a
      * non-failure variant, which would throw `IllegalStateException` instead of the
      * typed `CoreShellCodecException`.
-     */
+*/
     private fun crossCheckOutcomeDiscriminant(
         result: ShellInvocationResult,
         outcomeKind: String,
@@ -443,16 +428,15 @@ object CoreShellStep {
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.EXECUTES_SUBPROCESS),
         replayPolicy = ReplayPolicy.RERUN,
-        // LB-02 / G3-A4.1.3: recovery is a declared Step property. Mirrors the
+        // Recovery is a declared Step property. Mirrors the
         // CanonicalCoreStepMetadata["core.sh"] row so the registry-resolved
-        // metadata is byte-equivalent to the legacy one before A4.8 flips routing.
+        // Metadata is byte-equivalent to the legacy one before flips routing
         recoveryPolicy = RecoveryPolicy.ExternalSubprocess,
     )
 
     /**
-     * G3-A4.2 capability-routed handler: delegates to the typed
+     * Capability-routed handler: delegates to the typed
      * [ShellOperations] seam reached through [SHELL_OPERATIONS_CAPABILITY].
-     *
      * The handler:
      * - asks the runtime capability access for the seam (fail-closed admission
      *   is the engine's responsibility — `RegistryExecutionPreparation` rejects
@@ -462,14 +446,13 @@ object CoreShellStep {
      * - projects the typed `ShellInvocationResult` into a [CoreShellOutput] that
      *   ALSO carries the canonical [dev.rubentxu.pipeline.v2.domain.StepOutcome]
      *   computed by the single authority
-     *   [dev.rubentxu.pipeline.v2.application.durable.toStepOutcome] (LB-02 / G3-A4.3).
+     *   [dev.rubentxu.pipeline.v2.application.durable.toStepOutcome].
      *   No string parsing; no event emission; the [ShExecution] substrate is
      *   the single authority for `EchoOutputCaptured` — on the NON-durable path.
-     *   Measured 2026-10-18: with a `controlRoot` the same bytes are sealed in the Output
+     *   Measured in an earlier build: with a `controlRoot` the same bytes are sealed in the Output
      *   Plane and NO `EchoOutputCaptured` is emitted, so `run`'s console — which renders
      *   events — shows a successful `sh` with no transcript. Reading it as "the substrate
-     *   emits it" is what makes that gap look like a caller bug. Tracked as H1.5.
-     *
+     * Emits it" is what makes that gap look like a caller bug. Tracked as
      * It MUST NOT:
      * - reach `CanonicalRuntimeContext`,
      * - reach the journal,
@@ -478,7 +461,7 @@ object CoreShellStep {
      * - read or write filesystem state.
      * - re-implement the outcome classifier (it MUST call
      *   `toStepOutcome()` so legacy and registry paths share one authority).
-     */
+*/
     private val capabilityRoutedHandler: StepHandler<CoreShellInput, CoreShellOutput> =
         StepHandler { input, ctx ->
             val ops: ShellOperations = ctx.capabilities.get(SHELL_OPERATIONS_CAPABILITY)
@@ -487,7 +470,7 @@ object CoreShellStep {
                 runId = ctx.runId,
                 stepIndex = ctx.stepIndex,
             )
-            // A4.3 — outcome is the SINGLE classifier output (NOT re-derived downstream).
+            // Outcome is the SINGLE classifier output (NOT re-derived downstream).
             // `CommonExecutionBoundary` reads `outcome` from the typed carrier via
             // `produced as? TypedStepOutput`; the boundary stays Step-agnostic.
             CoreShellOutput(
@@ -497,31 +480,26 @@ object CoreShellStep {
         }
 
     /**
-     * S4-F1-C2 — the Step-owned projection for a RECOVERED terminal.
-     *
+     * The Step-owned projection for a RECOVERED terminal.
      * This is where «what does exit code 42 mean?» is answered, and the answer is: whatever this
      * invocation's `returnMode` says, which is why the method takes the decoded [CoreShellInput]
      * rather than being handed a pre-decided terminal. The mapping itself is NOT restated here — it
      * is the existing single authority [classifyShellTerminal], the same function the fresh path
      * calls, so a recovered `42` and a fresh `42` cannot disagree.
-     *
      * ## The insufficient-evidence guard, and why it is HERE
-     *
      * [classifyShellTerminal] maps `STDOUT` to `Stdout(capturedStdout.orEmpty())`. For the FRESH
      * path that is right: the runtime just ran the process in this JVM, so a null capture means the
      * program printed nothing, and `""` is the correct answer rather than a fabrication.
-     *
      * For a RECOVERED terminal it is wrong, and silently so. There, `null` means nobody ever wrote
      * `output.txt` — there is no evidence of what the program printed — while `""` means the file
      * exists and is empty, which IS the fact "it printed nothing". `orEmpty()` collapses those two
      * into one value, so a recovered `returnStdout` would answer a question nobody observed.
-     *
      * Putting the guard in [classifyShellTerminal] instead would mean teaching a shared authority
      * about the difference between "just ran it" and "found it later", which is exactly the kind of
      * context it must not carry: it is called from the fresh path, where the guard would be dead
      * code, and a rule that is inert on one path and decisive on another is a rule nobody can reason
      * about. So the check lives with the Step that knows which return mode needs which evidence.
-     */
+*/
     private val recoveredProjection = RecoveredStepProjection<CoreShellInput, CoreShellOutput> { input, terminal ->
         val needsCapturedStdout = input.command.returnMode == ShellReturnMode.STDOUT &&
             terminal is DurableTaskTerminal.Exited && terminal.exitCode == 0
@@ -549,7 +527,7 @@ object CoreShellStep {
             descriptor = descriptor,
             inputCodec = inputCodec,
             outputCodec = outputCodec,
-            // LB-02 / G3-A4.2: capability declaration. The handler reaches
+            // Capability declaration. The handler reaches
             // shell execution ONLY through this token; admission is fail-closed
             // at prepare-time when the runtime bridge does not provide it.
             requiredCapabilities = setOf(SHELL_OPERATIONS_CAPABILITY),
@@ -557,7 +535,7 @@ object CoreShellStep {
 
         override val handler: StepHandler<CoreShellInput, CoreShellOutput> = capabilityRoutedHandler
 
-        // S4-F1-C2: materialising a recovered terminal is NOT executing, so it needs no capability
+        // Materialising a recovered terminal is NOT executing, so it needs no capability
         // and never reaches the handler above. The engine finds it by asking for the INTERFACE.
         override fun project(
             input: CoreShellInput,

@@ -14,7 +14,6 @@ version = "0.1.0"
 // + domain value types; pipeline-scripting-api is NOT needed: the directive DSL
 // already accepts open-world keys as plain strings, so no DSL extension is
 // required for directives).
-//
 //   -PsdkRepo=<dir>     repository holding the SDK artifacts
 //   -PsdkVersion=<ver>  SDK version to resolve
 val sdkRepo: String = providers.gradleProperty("sdkRepo").getOrElse("../../v2/build/sdk-repo")
@@ -22,7 +21,7 @@ val sdkRepo: String = providers.gradleProperty("sdkRepo").getOrElse("../../v2/bu
 // No default version, on purpose. `0.1.0-SNAPSHOT` was here for a long time and it cannot resolve
 // anything: the build then failed in a dependency-resolution message naming a version nobody asked
 // for, hundreds of lines below the line that matters. The v2 build already omitted `-PsdkVersion`
-// once, on 2026-09-19, and paid exactly that. Failing here names the real cause.
+// once, on, and paid exactly that. Failing here names the real cause.
 val sdkVersion: String = requireNotNull(providers.gradleProperty("sdkVersion").orNull) {
     """
     -PsdkVersion is required: this plugin resolves the published SDK contracts and has no default
@@ -32,18 +31,15 @@ val sdkVersion: String = requireNotNull(providers.gradleProperty("sdkVersion").o
 }
 
 // ----------------------------------------------------------------------------
-// PK-RELEASE-CONSOLIDATION D1 — the apiRange is derived from the resolved SDK.
-//
+// The apiRange is derived from the resolved SDK.
 // It used to be a Kotlin literal, `PipelineKApiRange(SemVer(0,47,0), SemVer(0,57,0))`, which went
 // stale the moment the host moved: 0.56.0 fell outside `[0.47.0, 0.57.0)` only by accident of how
 // the official plugins evolved, and the directive plugin would have stayed broken. A literal held
 // by a plugin that does not control the host's release cadence cannot stay correct.
-//
 // Two derivations, deliberately not one:
 //   - CEILING from sdkVersion, because the host version is the thing that moves.
 //   - FLOOR from `directiveApiRangeMin`, a property of THIS plugin, because how far back it works
 //     is a claim about this plugin that no other build can make.
-//
 // Fail-closed on a malformed version: a ceiling that silently became "0.0.0" would produce a
 // range that refuses every host, which looks like a plugin defect rather than a bad property.
 val sdkCore: Triple<Int, Int, Int> = sdkVersion.substringBefore("-").let { raw ->
@@ -61,7 +57,7 @@ require(sdkCore.first >= 0 && sdkCore.second >= 0 && sdkCore.third >= 0) {
 // equal to sdkVersion would make this plugin refuse the host that loads it.
 val nextMinor: String = "${sdkCore.first}.${sdkCore.second + 1}.0"
 
-// D1 rule 3: the floor is the plugin's own property. D1 rule 4: with no measured evidence that
+// The floor is the plugin's own property.: with no measured evidence that
 // this plugin works against an older SDK, the conservative floor IS the resolved SDK version.
 val directiveApiRangeMin: String = providers.gradleProperty("directiveApiRangeMin").getOrElse(sdkVersion)
 val directiveApiRangeCeiling: String = nextMinor
@@ -93,19 +89,17 @@ tasks.jar {
     // Reproducible by construction. Without these two, the archive carries
     // the source files' mtimes and orders entries by filesystem iteration,
     // so the same commit produces a different digest in every checkout --
-    // which makes the S2-D byte pin impossible to hold anywhere but the
+    // Which makes the byte pin impossible to hold anywhere but the
     // machine that set it.
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
 }
 
 // ----------------------------------------------------------------------------
-// S6/I — provenance and the manifest DOCUMENT, both derived, neither typed by hand.
-//
+// Provenance and the manifest DOCUMENT, both derived, neither typed by hand.
 // This plugin declared itself through META-INF/services and shipped no manifest, so pass 1 of
-// S6/COMPOSITION would refuse it exactly as it refused example-block-plugin. The ServiceLoader
+// The composition would refuse it exactly as it refused example-block-plugin. The ServiceLoader
 // descriptor asserts that the artifact CONTRIBUTES; the manifest asserts WHAT it contributes.
-//
 // The digest is measured over this artifact's own content EXCLUDING the release-properties
 // document it is about to write, so the value has a fixed point. A digest that included the file
 // carrying it could not be computed at all.
@@ -123,14 +117,13 @@ val directiveNamespace = providers
 
 /**
  * The SDK, on the runtime classpath of the BUILD-TIME emitter only.
- *
  * Every dependency above is `compileOnly`, and that is the plugin's whole point: it ships classes
  * only, and the host supplies the contracts at runtime. So `sourceSets.main.runtimeClasspath` is
  * EMPTY of them and the emitter would die with `NoClassDefFoundError: PluginManifestCodec`. This
  * configuration never reaches `jar`: widening the plugin's own runtime scope to make a build task
  * work would put PipelineK's contracts inside an artifact whose defining property is that it
  * carries only its own classes.
- */
+*/
 val sdkForManifestEmission by configurations.creating {
     extendsFrom(configurations.compileOnly.get())
 }
@@ -144,7 +137,7 @@ val computeDirectiveRelease = tasks.register("computeDirectiveRelease") {
     val namespaceName = directiveNamespace
     val releaseVersion = version.toString()
 
-    // R4 / WU-R4.0.0 — declare sdkVersion as an explicit input so the
+    // Declare sdkVersion as an explicit input so the
     // apiRange is regenerated when the host version changes (see
     // example-block-plugin for the same change with the full story).
     inputs.property("sdkVersion", sdkVersion)
@@ -159,7 +152,7 @@ val computeDirectiveRelease = tasks.register("computeDirectiveRelease") {
         val out = propsFile.get().asFile
         // The digest MUST exclude both this provenance file (it carries the digest itself, so
         // including it would be a fixed-point equation with no solution) AND the
-        // plugin-manifest.json emitted by `emitDirectiveManifest` (S6/I), which can be left in
+        // plugin-manifest.json emitted by `emitDirectiveManifest`, which can be left in
         // `resourcesDir` by a previous run of that task and so reintroduced into the digest input
         // on every re-execution of `computeDirectiveRelease`. Including the manifest's bytes
         // makes the digest depend on content whose own value contains the digest, so on a polluted
@@ -205,9 +198,9 @@ val computeDirectiveRelease = tasks.register("computeDirectiveRelease") {
                 appendLine("pipeline.example.directive.namespace=${namespaceName.get()}")
                 appendLine("pipeline.example.directive.release.version=$releaseVersion")
                 appendLine("pipeline.example.directive.release.digest=sha256:$hex")
-                // PK-RELEASE-CONSOLIDATION D1: the compatibility range is DERIVED, not typed.
+                // The compatibility range is DERIVED, not typed.
                 // The ceiling is the NEXT MINOR of the resolved SDK, not the resolved version itself:
-                // PipelineKApiRange.accepts() is `runtime < untilExclusive`, so a ceiling equal to
+                // PipelineKApiRange.accepts is `runtime < untilExclusive`, so a ceiling equal to
                 // sdkVersion would make the plugin refuse the very host that loads it. See ADR.
                 appendLine("pipeline.example.directive.compatibility.min=$directiveApiRangeMin")
                 appendLine("pipeline.example.directive.compatibility.untilExclusive=$nextMinor")

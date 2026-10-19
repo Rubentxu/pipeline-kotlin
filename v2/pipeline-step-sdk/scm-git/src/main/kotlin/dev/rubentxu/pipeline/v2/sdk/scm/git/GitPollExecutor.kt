@@ -16,14 +16,11 @@ import java.util.UUID
 
 /**
  * Executes `git ls-remote <url> <branch>` to get the remote SHA.
- *
  * Structured argv — no secrets in args. Honors inherited env from
  * GitCredentialsApplier (GIT_CONFIG_GLOBAL + HOME for credential helper).
- *
- * INV-L5-CR-006: synchronous poll, no daemon.
- *
+ * Synchronous poll, no daemon.
  * @param timeoutSeconds max wait for git command (default 30)
- */
+*/
 class GitPollExecutor(
     private val timeoutSeconds: Long = 30,
     private val taskRuntime: DurableTaskRuntime? = null,
@@ -38,12 +35,11 @@ class GitPollExecutor(
 
     /**
      * Execute git ls-remote and return the remote SHA.
-     *
      * @param url Repository URL (https or file://)
      * @param branch Branch name
      * @param credentialsApplier GitCredentialsApplier for env injection (may be null — no-op)
      * @return Result containing SHA string, or failure classification
-     */
+*/
     fun execute(url: String, branch: String, credentialsApplier: GitCredentialsApplier? = null): Result<String> {
         return try {
             val args = listOf("git", "ls-remote", url, branch)
@@ -85,7 +81,7 @@ class GitPollExecutor(
 
     /**
      * Classifies git failure based on stderr/stdout content.
-     */
+*/
     private fun classifyFailure(output: String, exitCode: Int): Exception {
         val lower = output.lowercase()
         return when {

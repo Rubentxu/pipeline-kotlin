@@ -7,16 +7,14 @@ import org.junit.jupiter.api.Test
 /**
  * The guarantee: a consumer that asks "did this task succeed?" through [isSuccessFromDecision]
  * is never told `true` for a task the watchdog killed or that was cancelled.
- *
  * That question is not academic. [decideTaskTerminal] is published ABI of `pipeline-domain` and
  * four call sites depend on it -- `ShExecution`, `TarWriter`, `runCaptured` and
  * `ProcessDurableTaskRuntime` -- and the two of them that abort work on failure do it by asking
  * this one question. The watchdog kill is the case a boolean pair gets wrong: the process can
  * leave an exit code that a naive `exitCode == 0` would read as success, and the whole reason
  * the ADT exists is that the CAUSE survives the projection.
- *
- * `elapsedMs` is deliberately not asserted: measured 2026-10-19, no consumer reads it.
- */
+ * `elapsedMs` is deliberately not asserted: measured in an earlier build, no consumer reads it.
+*/
 class TaskTerminalDecisionTest {
 
     @Test

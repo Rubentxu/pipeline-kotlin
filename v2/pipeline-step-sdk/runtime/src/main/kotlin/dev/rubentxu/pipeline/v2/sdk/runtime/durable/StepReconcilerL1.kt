@@ -7,59 +7,45 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Step-level reconciler for L1 durable shell (ML-R1 / ADR-0046).
- *
+ * Step-level reconciler for durable shell
  * This reconciler classifies RUNNING step rows into:
  * - **COMPLETE**: result.txt exists and heartbeat is fresh → use cached exit code
  * - **REATTACH**: result.txt missing but heartbeat is fresh → re-run with same fingerprint
- * - **TIMED_OUT**: timeout.flag present → watchdog killed the process (ML-R2)
- * - **LOST**: result.txt missing AND heartbeat is stale → fail-closed per UAT-REC-002
- *
- * ## UAT-REC-002 (Fail-Closed LOST)
- *
+ * **TIMED_OUT**: timeout.flag present → watchdog killed the process
+ * **LOST**: result.txt missing AND heartbeat is stale → fail-closed
+ *  (Fail-Closed LOST)
  * > "worker dies during durable process; reconciliation must not assume success"
- *
  * If the worker (JVM) died during a `sh` step:
  * 1. The subprocess may still be running detached (nohup), OR
  * 2. The subprocess may have crashed, OR
  * 3. The result.txt may never have been written
- *
  * In ALL cases, we must NOT assume the step succeeded. LOST means:
  * - Do NOT mark as SUCCEEDED
  * - Do NOT skip the step
  * - Schedule a new attempt with the SAME fingerprint
- *
- * ## ML-R2 TimedOut (ADR-0047)
- *
+ *  TimedOut
  * > "timeout.flag written BEFORE kill"
- *
  * If the watchdog timer fires:
  * 1. timeout.flag is written to the control directory
  * 2. SIGKILL is sent to the process tree
  * 3. On resume, the reconciler detects timeout.flag → TIMED_OUT
- *
  * TIMED_OUT is distinct from LOST: we KNOW it was killed by deadline,
  * whereas LOST means worker crash with unknown outcome.
- *
  * ## Fingerprint Check
- *
  * The fingerprint is computed from OperationInput + stepId + ReplayPolicy + attempt.
  * If the fingerprint matches a prior RUNNING row, we know:
  * - Same script was being executed
  * - Same attempt number
  * - Same inputs
- *
  * This allows safe re-run without re-executing divergent code.
- *
  * @param clock The clock for heartbeat staleness checks.
  * @param controlDirRoot The root directory for all control directories.
  * @param config The durable shell configuration.
  * @param journal The operation journal for querying RUNNING rows during resume.
- *
- * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
- * @see <a href="ADR-0047">ADR-0047 — FAILED_TIMEOUT Terminal State</a>
- * @see <a href="UAT-REC-002">UAT-REC-002 — Fail-Closed LOST</a>
- */
+ * Durable sh Pattern</a>
+ * FAILED_TIMEOUT Terminal State</a>
+ * @see <a href=""> — Fail-Closed LOST</a>
+*/
 class StepReconcilerL1(
     private val clock: Clock,
     private val controlDirRoot: Path,
@@ -68,65 +54,56 @@ class StepReconcilerL1(
 ) {
     /**
      * Classification of a RUNNING step row during reconciliation.
-     */
+*/
     sealed class Classification {
         /**
          * Step completed; result.txt exists and heartbeat is fresh.
          * Use the cached exit code from result.txt.
-         */
+*/
         data class Complete(val exitCode: Int) : Classification()
 
         /**
          * Step may still be running or completed but result.txt not yet written.
          * Heartbeat is fresh (log file was touched recently).
          * Re-run with the SAME fingerprint is safe.
-         */
+*/
         data class Reattach(val controlDir: Path) : Classification()
 
         /**
          * Step was killed by watchdog timeout (SIGKILL).
-         *
          * The timeout.flag file was written before kill, signaling that
          * the watchdog triggered. This is distinct from LOST (worker crash)
          * because we KNOW the process was killed by deadline.
-         *
          * TIMED_OUT is terminal: FAILED_TIMEOUT is journaled and the step
-         * will NOT be re-executed on resume per TMO-S-007 / DSE-S-025.
-         */
+         * Will NOT be re-executed on resume /
+*/
         data class TimedOut(val controlDir: Path, val logPath: Path) : Classification()
 
         /**
          * Step outcome is unknown. result.txt missing AND heartbeat is stale.
-         * Fail-closed per UAT-REC-002: must not assume success.
-         *
+         * Fail-closed: must not assume success
          * The caller should mark this as LOST and schedule a new attempt.
-         */
+*/
         data object Lost : Classification()
     }
 
     /**
      * Classifies a RUNNING step's control directory.
-     *
      * Checks (in order):
-     * 1. Is timeout.flag present? → TIMED_OUT (per TMO-S-005: flag written BEFORE kill)
+     * 1. Is timeout.flag present? → TIMED_OUT (: flag written BEFORE kill)
      * 2. Is result.txt present? → COMPLETE
      * 3. Is heartbeat fresh (log file touched within checkInterval + minimumDelta)? → REATTACH
      * 4. Heartbeat is stale → LOST
-     *
      * ## Fail-Closed Invariant
-     *
      * If we cannot determine the outcome with certainty, we classify as LOST.
-     * This is the UAT-REC-002 contract: "must not assume success".
-     *
+     * This is the contract: "must not assume success"
      * ## Timeout Priority
-     *
-     * Per TMO-S-005: timeout.flag is written BEFORE kill, so we check it FIRST.
+     * Per: timeout.flag is written BEFORE kill, so we check it FIRST
      * This ensures that even if heartbeat is stale due to slow I/O, the presence
      * of timeout.flag correctly identifies a timeout-killed process.
-     *
      * @param opId The operation ID (used to find the control directory).
      * @return The classification of this step's current state.
-     */
+*/
     fun classify(opId: String): Classification {
         val controlDir = controlDirRoot.resolve(opId)
         return classifyControlDir(controlDir)
@@ -134,16 +111,15 @@ class StepReconcilerL1(
 
     /**
      * Classifies a step by its control directory path.
-     *
      * @param controlDir The control directory for this step.
      * @return The classification of this step's current state.
-     */
+*/
     fun classifyControlDir(controlDir: Path): Classification {
         val resultFile = controlDir.resolve("result.txt")
         val logFile = DurableShellFiles.resolveConsoleLog(controlDir)
         val timeoutFlag = controlDir.resolve("timeout.flag")
 
-        // Check 0: Is timeout.flag present? (check BEFORE heartbeat per TMO-S-005)
+        // Check 0: Is timeout.flag present? (check BEFORE heartbeat)
         if (Files.exists(timeoutFlag)) {
             return Classification.TimedOut(controlDir, logFile)
         }
@@ -173,20 +149,18 @@ class StepReconcilerL1(
             }
         }
 
-        // Check 3: Heartbeat is stale → LOST (fail-closed per UAT-REC-002)
+        // Check 3: Heartbeat is stale → LOST (fail-closed)
         return Classification.Lost
     }
 
     /**
      * Maps a RUNNING row's OperationStatus to a classification.
-     *
      * This is used by the walk loop to determine what action to take
      * when encountering a RUNNING row during resume.
-     *
      * @param status The current status (must be RUNNING for this reconciler).
      * @param opId The operation ID.
      * @return The classification based on the control directory state.
-     */
+*/
     fun classifyRunning(status: OperationStatus, opId: String): Classification {
         require(status == OperationStatus.RUNNING) {
             "StepReconcilerL1 only handles RUNNING status, got $status"
@@ -196,15 +170,11 @@ class StepReconcilerL1(
 
     /**
      * Reconciles RUNNING durable shell steps for a given runId.
-     *
      * Queries the journal for RUNNING rows with stepType "sh" (shell steps),
      * classifies each via [classifyControlDir], and returns a map keyed by opId.
-     *
      * This is called during resume after [ctx.branchReconciler.reconcileRunningOperations]
      * to handle the case where a JVM worker died during a `sh` step.
-     *
      * ## Resume Flow
-     *
      * 1. `walkPipelineSpecDurable` calls `ctx.stepReconcilerL1.reconcile(runId)`
      * 2. For each RUNNING "sh" opId, classify via result.txt + timeout.flag + heartbeat
      * 3. Thread the resulting map into `executeDurableStepImpl`
@@ -213,10 +183,9 @@ class StepReconcilerL1(
      *    - **Reattach(controlDir)** → poll/await existing control-dir result
      *    - **TimedOut** → journal FAILED_TIMEOUT, emit StepFailed fail-closed
      *    - **Lost** → journal LOST + emit StepFailed (fail-closed)
-     *
      * @param runId The run identifier to reconcile.
      * @return Map of opId → Classification for all RUNNING shell steps.
-     */
+*/
     suspend fun reconcile(runId: String): Map<String, Classification> {
         if (journal == null) return emptyMap()
 
@@ -250,13 +219,11 @@ class StepReconcilerL1(
 
     /**
      * Determines if a LOST step should be re-run.
-     *
-     * Per UAT-REC-002, a LOST step should always be re-run (not skipped).
+     * Per, a LOST step should always be re-run (not skipped)
      * The fingerprint remains the same, so the journal will accept the new attempt.
-     *
      * @param status The status to check.
      * @return true if the status is LOST (should re-run).
-     */
+*/
     fun shouldRerun(status: OperationStatus): Boolean {
         return status == OperationStatus.LOST
     }

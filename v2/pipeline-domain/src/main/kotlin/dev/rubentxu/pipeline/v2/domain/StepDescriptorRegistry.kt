@@ -12,47 +12,41 @@ import dev.rubentxu.pipeline.v2.domain.step.resolveBodyExecutionPolicy
 
 /**
  * Registry for [StepDescriptor] metadata, populated at compile time.
- *
  * Provides a lookup for step kinds to determine body-handling characteristics, declared
- * as ONE value ([StepBody] since B10 / W1d).
- *
+ * As ONE value ([StepBody] since /)
  * Seeded with canonical core step descriptors. The registry is consulted by
  * [CompiledPipelineValidator] to enforce body-declaration constraints.
- */
+*/
 class StepDescriptorRegistry private constructor(
     private val descriptors: Map<PluginStepId, StepDescriptor>,
 ) {
     /**
      * Returns the [StepDescriptor] for the given [PluginStepId], or null if not found.
-     */
+*/
     fun get(id: PluginStepId): StepDescriptor? = descriptors[id]
 
     /**
      * All registered step kinds, in declaration order.
-     *
      * Read-only view used by structural fitness (e.g. every body-bearing row must
      * declare a coherent body execution policy) and by policy tooling that needs to
      * enumerate declarations without naming any Step.
-     */
+*/
     fun keys(): Set<PluginStepId> = descriptors.keys
 
     /**
-     * Every body Step whose body is executed by [owner] (B10 / W1c).
-     *
+     * Every body Step whose body is executed by [owner]
      * This is the authority from which an engine derives the body Step families it
      * may execute. It replaces a hard-coded list of StepKeys in the engine with a
      * declared property of the Step:
-     *
      * ```text
      * canonical eligibility  <- declared ownership, never a StepKey list
      * a new body Step        <- ONE descriptor row, no engine change
      * ```
-     *
      * Derived from [StepDescriptor.body], never from a hard-coded key list: a terminal
      * Step ([StepBody.None]) has no body to own, and a body Step
-     * ([StepBody.Declared]) declares who owns it. W1d removed the possibility of a body
+     * ([StepBody.Declared]) declares who owns it. removed the possibility of a body
      * Step with an implicit owner, so this filter cannot silently mis-route a new row.
-     */
+*/
     fun bodyStepIds(owner: BodyExecutionOwner): Set<PluginStepId> =
         descriptors.filter { (_, descriptor) ->
             descriptor.body.declared?.execution?.owner == owner
@@ -63,7 +57,7 @@ class StepDescriptorRegistry private constructor(
      * families that are declared here without a registered handler (the core block
      * Steps). Same laws as [dev.rubentxu.pipeline.v2.domain.step.RegistryBodyPolicyResolver]:
      * unknown, incoherent, and unsupported declarations are rejected, never defaulted.
-     */
+*/
     fun bodyPolicyResolver(support: BodyExecutionSupport): BodyPolicyResolver =
         BodyPolicyResolver { key -> resolveBodyExecutionPolicy(key, get(key), support) }
 
@@ -74,16 +68,14 @@ class StepDescriptorRegistry private constructor(
     companion object {
         /**
          * Creates a registry with the standard canonical core step descriptors.
-         *
          * The rows are grouped by the property they declare — who executes the body, or
          * that there is no body at all — rather than by convenience. A new body Step is one
          * row in the group whose owner runs it; the engine reads ownership from the
          * descriptor, never from a StepKey list.
-         *
          * Every group is a list of key-to-descriptor rows, and declaration order is the
          * order of that list: [StepDescriptorRegistry.keys] exposes it, and policy tooling
          * enumerates declarations from it.
-         */
+*/
         fun standard(): StepDescriptorRegistry = StepDescriptorRegistry(
             buildMap {
                 legacyLinearBodyRows().forEach { (key, descriptor) -> put(key, descriptor) }
@@ -94,10 +86,9 @@ class StepDescriptorRegistry private constructor(
 
         /**
          * Body rows folded by the legacy workflow-control rewrite.
-         *
          * Containment and output decoration are properties of the legacy linear engine, so
          * the canonical body engine does not own these bodies. Declared, never inferred.
-         */
+*/
         private fun legacyLinearBodyRows(): List<Pair<PluginStepId, StepDescriptor>> = listOf(
             PluginStepId("core.catchError") to StepDescriptor(
                 stepId = "core.catchError",
@@ -108,7 +99,7 @@ class StepDescriptorRegistry private constructor(
                     // Containment is a FOLD of the body's typed outcome, not an execution
                     // reshape: the body still runs once, in the caller's own context.
                     execution = BodyExecution(
-                        // W1c: containment semantics live in the legacy workflow-control
+                        //: containment semantics live in the legacy workflow-control
                         // rewrite (`CatchErrorOverlay` propagation), not in the canonical body
                         // engine, so this Step's body is NOT owned there. Declared, not inferred:
                         // `Sequential` is also the shape of a plain body the canonical engine runs.
@@ -126,7 +117,7 @@ class StepDescriptorRegistry private constructor(
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.AT_MOST_ONCE,
                     execution = BodyExecution(
-                        // W1c: output decoration is applied by the legacy workflow-control
+                        //: output decoration is applied by the legacy workflow-control
                         // rewrite, same reasoning as `core.catchError`.
                         owner = BodyExecutionOwner.LEGACY_LINEAR,
                         policy = BodyExecutionPolicy.Sequential,
@@ -138,11 +129,10 @@ class StepDescriptorRegistry private constructor(
 
         /**
          * Body rows executed by the canonical body engine.
-         *
          * Each row names the scope it projects, or the retry shape it polls under. The
          * coordinator derives eligibility from [BodyExecutionOwner.CANONICAL_ENGINE], so
          * adding a row here is what makes a body Step routable.
-         */
+*/
         private fun canonicalEngineBodyRows(): List<Pair<PluginStepId, StepDescriptor>> = listOf(
             PluginStepId("core.withEnv") to StepDescriptor(
                 stepId = "core.withEnv",
@@ -206,7 +196,7 @@ class StepDescriptorRegistry private constructor(
                     invocation = BodyInvocationPolicy.ONCE,
                     execution = BodyExecution(
                         owner = BodyExecutionOwner.CANONICAL_ENGINE,
-                        // W1c: closes the declared W1b gap. The coordinator already projects a
+                        //: closes the declared gap. The coordinator already projects a
                         // timestamp scope around this body; the row is what makes that routing
                         // registry-derived instead of a hard-coded StepKey.
                         policy = BodyExecutionPolicy.Scoped(BodyContextProjection.Timestamps),
@@ -231,7 +221,7 @@ class StepDescriptorRegistry private constructor(
                     introduces = null,
                 ),
             ),
-            // WU-LPR-301: waitUntil polls a condition body until satisfied or backoff exceeds ceiling.
+            // WaitUntil polls a condition body until satisfied or backoff exceeds ceiling.
             // The polling cadence is declared structurally via the `waitUntil` sub-shape of
             // BodyExecutionPolicy.Retrying; the canonical body engine reads the sub-shape and
             // dispatches the loop without a per-StepKey branch. The WaitUntilShape defaults
@@ -256,11 +246,10 @@ class StepDescriptorRegistry private constructor(
 
         /**
          * Terminal steps: a declared absence of body.
-         *
          * A terminal row has no body to own, so the engine never has to decide whether it
          * may execute one. The pair is the table, because every terminal row differs only in
          * its key and display name.
-         */
+*/
         private fun terminalRows(): List<Pair<PluginStepId, StepDescriptor>> = listOf(
             "core.emit.event" to "emitEvent",
             "core.sh" to "sh",

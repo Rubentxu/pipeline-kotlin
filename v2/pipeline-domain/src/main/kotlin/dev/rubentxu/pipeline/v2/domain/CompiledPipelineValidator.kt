@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.domain
 
 /**
  * Thrown when block nesting depth exceeds the maximum allowed depth.
- */
+*/
 class BlockNestingExceededException(
     val depth: Int,
     val maxDepth: Int = BlockNestingConstants.MAX_BLOCK_DEPTH,
@@ -10,13 +10,12 @@ class BlockNestingExceededException(
 
 /**
  * Structural validation for the canonical compiled pipeline IR.
- *
  * Enforces:
  * - Stage uniqueness
  * - Step uniqueness within same parent block or stage
  * - Block nesting depth <= 3
  * - BlockStepNode.pluginStepId must declare a body (StepBody.Declared) in the registry
- */
+*/
 object CompiledPipelineValidator {
     private val descriptorRegistry = StepDescriptorRegistry.standard()
 
@@ -40,7 +39,7 @@ object CompiledPipelineValidator {
                 is StageBody.Matrix -> require(body.matrix.axes.isNotEmpty()) {
                     "Matrix stage '${stage.name}' must define at least one axis"
                 }
-                // S4-F2: a scripted body is validated BY CONSTRUCTION. `ScriptedStageRef`'s init
+                // A scripted body is validated BY CONSTRUCTION. `ScriptedStageRef`'s init
                 // rejects a blank artifact key or entry point, so there is nothing left to assert
                 // here and inventing an assertion would only be a restatement of the type. What
                 // cannot be checked statically is whether the artifact RESOLVES, and that is an
@@ -57,11 +56,10 @@ object CompiledPipelineValidator {
 
     /**
      * Validates a step recursively with depth tracking and intra-block scope.
-     *
      * @param step The step to validate
      * @param parentPath Human-readable path for error messages
      * @param depth Current block nesting depth (incremented on BlockStepNode)
-     */
+*/
     private fun visitStep(
         step: StepNode,
         parentPath: String,
@@ -74,7 +72,7 @@ object CompiledPipelineValidator {
                 }
             }
             is BlockStepNode -> {
-                // W1d: the declaration is one value. A node that carries a body must resolve to a
+                //: the declaration is one value. A node that carries a body must resolve to a
                 // declared body row; a terminal row (StepBody.None) has no cardinality to consult.
                 val declaredBody = descriptorRegistry.get(step.pluginStepId)?.body?.declared
                 require(declaredBody != null) {

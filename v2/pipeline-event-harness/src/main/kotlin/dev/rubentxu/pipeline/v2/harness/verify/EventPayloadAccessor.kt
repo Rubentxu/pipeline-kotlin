@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.harness.model.FieldMatch
 
 /**
  * Pair of the observable envelope with its decoded typed payload.
- */
+*/
 data class TypedEvent(
     val envelope: PipelineEventEnvelope,
     val event: DomainEvent,
@@ -20,7 +20,7 @@ data class TypedEvent(
  * named domain fields via exhaustive matching over the relevant kinds.
  * A match on a kind that does not carry that field is simply false (selector
  * mismatch), never an error — errors are reserved for decode corruption.
- */
+*/
 object EventPayloadAccessor {
 
     fun matches(event: TypedEvent, where: List<FieldMatch>): Boolean =
@@ -30,7 +30,7 @@ object EventPayloadAccessor {
         val e = event.event
         return when (m) {
             is FieldMatch.CatchBuildResult ->
-                // P3-E D3: the event field is typed, the scenario DSL still declares a token
+                // The event field is typed, the scenario DSL still declares a token
                 // string. `.wireToken` keeps the harness's external contract unchanged instead
                 // of pushing the vocabulary onto every scenario author.
                 (e as? dev.rubentxu.pipeline.v2.events.CatchErrorTriggered)

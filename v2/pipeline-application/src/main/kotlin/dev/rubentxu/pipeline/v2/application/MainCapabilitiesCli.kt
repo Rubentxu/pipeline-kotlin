@@ -8,21 +8,19 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * PK-1 / ADR-PK1-IDENTITY — `pipeline capabilities` subcommand.
- *
+ * `pipeline capabilities` subcommand.
  * Emits the SDK capability registry on stdout as a single line of
  * `pipelinek.capabilities/1` JSON. The output is side-effect-free:
  * no run is started, no state is mutated, no events are written.
- *
  * Exit code 0 always (a consumer can rely on the subcommand returning
  * 0 even when the list is empty).
- */
+*/
 object MainCapabilitiesCli {
     const val SCHEMA: String = "pipelinek.capabilities/1"
 
     /**
      * @return 0 on success (always).
-     */
+*/
     @Suppress("UnusedParameter") // args is required by the JVM main signature.
     fun main(args: Array<String>): Int {
         val obj: JsonObject = buildJsonObject {

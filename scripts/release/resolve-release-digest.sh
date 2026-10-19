@@ -1,25 +1,19 @@
 #!/usr/bin/env bash
 # resolve-release-digest.sh — read an asset's expected SHA-256 from a
 # SHA256SUMS manifest on stdin.
-#
 # Usage:
 #   curl -fsSL "$RELEASE_BASE/v$VERSION/SHA256SUMS" | resolve-release-digest.sh pipelinek-$VERSION.zip
-#
 # Prints the 64-hex digest on stdout and exits 0. On any problem it names the
 # reason on stderr and exits non-zero. This script NEVER prints a digest it
 # did not read from the manifest: an absent or malformed entry is a hard
 # failure, not an empty value a caller might accidentally accept.
-#
 # Why basename matching
 # ---------------------
 # The published SHA256SUMS records the path the asset had inside the release
 # BUILD, not its download name. Observed on the real v0.41.0-rc1 release:
-#
 #   d49edc08...  dist/candidates/v0.41.0-rc1/pipelinek-0.41.0-rc1.zip
-#
 # Comparing the whole field would fail every real release closed. Both the
 # prefixed and the flat form are accepted; only the basename is significant.
-#
 # The old `${asset}.sha256` sidecar is NOT consulted. That URL returns 404 on
 # real releases: a release publishes one manifest, not one sidecar per asset.
 

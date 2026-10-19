@@ -14,10 +14,9 @@ import org.junit.jupiter.api.Test
  * be deleted". Every other combination has to answer `null`, so the matrix IS the contract: it is
  * written out in full rather than sampled, because a policy that quietly starts authorising a case
  * it should refuse is indistinguishable from data loss until someone reads the diff.
- *
  * There are three policies and two lifecycles; six cells, all pinned, so a future `when` that drops
  * a branch fails here instead of in a prune of live output.
- */
+*/
 class OutputRetentionTest {
 
     private val policies = listOf(
@@ -102,7 +101,7 @@ class OutputRetentionTest {
 
     @Test
     fun `a prune report accepts zero and rejects nothing, including negative counts`() {
-        // Pinned AS-IS: `OutputPruneReport` carries no validation, so a caller can construct a
+        // Pinned: `OutputPruneReport` carries no validation, so a caller can construct a
         // report claiming bytes were released without any having been. That is a carrier, not a
         // decision -- the decision is `OutputPruneIntent` -- so if validation is ever added this
         // test fails and says exactly which invariant moved.

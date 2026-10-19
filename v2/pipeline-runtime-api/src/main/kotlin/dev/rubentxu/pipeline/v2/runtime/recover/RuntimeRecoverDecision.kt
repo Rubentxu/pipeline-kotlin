@@ -6,32 +6,26 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 
 /**
- * M2 — public pure decider the recover port composes.
- *
+ * Public pure decider the recover port composes.
  * Returns a [RecoveryChoice] that the recover port interprets into a
  * [RecoverOutcome]. The decider is PURE: same inputs always yield the same
  * outputs; no I/O, no clock, no process id.
- *
  * `Reattach` / `ReuseTerminal` / `FailClosed` are the three substrate cases;
  * the fourth, `AlreadyRecovered`, makes the idempotency check observable from
  * outside the implementation.
- *
  * The decider is consulted with a `JournalProof` snapshot — the journal rows for
  * the run + the cursor state — so it does NOT call the journal itself. The
  * caller is responsible for fetching this from
  * `OperationJournal.listForRun` + `ReplayCursorStore.load` and passing it in.
- *
- */
+*/
 object RuntimeRecoverDecision {
 
     /**
      * Decide what to do with `observation` given the durable `journal` proof.
-     *
      * The function is PURE and TOTAL: every (observation, journal) tuple maps to
      * exactly one [RecoveryChoice]. The contract test
-     * `RuntimeRecoverDecisionTableFitnessTest` (§7.3) pins every cell of the
+     * `RuntimeRecoverDecisionTableFitnessTest` pins every cell of the
      * matrix.
-     *
      * @param observation The run-level view from
      *   [dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPort.inspect].
      * @param journal     A `JournalProof` snapshot — the journal rows for the run
@@ -39,7 +33,7 @@ object RuntimeRecoverDecision {
      *   the proof the caller passes in.
      * @return A [RecoveryChoice] that the recover port interprets into a
      *   [RecoverOutcome].
-     */
+*/
     fun decideRecovery(
         observation: RuntimeObservation,
         journal: JournalProof,
@@ -47,26 +41,25 @@ object RuntimeRecoverDecision {
 
     /**
      * A snapshot of the journal state the decider needs.
-     *
      * The caller is responsible for fetching this from
      * `OperationJournal.listForRun` + `ReplayCursorStore.load` and passing it in;
      * the decider does not call the journal itself.
-     */
+*/
     data class JournalProof(
         val terminalRow: TerminalRow?,
         val replayCursor: ReplayCursor?,
         val operations: List<OperationSnapshot>,
         /**
          * The journal schema version. Used to pin the `JournalIncompatible`
-         * recovery case. The M2 first cut ships the same version PK has shipped
-         * since M3-R1 (`1`).
-         */
+         * Recovery case. The first cut ships the same version has shipped
+         * since (`1`).
+*/
         val journalSchemaVersion: String = CURRENT_JOURNAL_SCHEMA_VERSION,
     )
 
     /**
      * The terminal journal row, if any. `null` when the run is not terminal.
-     */
+*/
     data class TerminalRow(
         val outcome: String,
         val terminalAtMs: Long,
@@ -102,20 +95,19 @@ object RuntimeRecoverDecision {
     )
 
     /**
-     * The current journal schema version this PK can read.
-     *
+     * The current journal schema version this can read.
      * Bumping this constant is a contract-affecting change: a journal row whose
      * schema version is greater than this is rejected as
-     * [RecoverRefusal.JournalIncompatible]. The M2 first cut ships the same
-     * version PK has shipped since M3-R1 (`1`).
-     */
+     * [RecoverRefusal.JournalIncompatible]. The first cut ships the same
+     * Version has shipped since (`1`)
+*/
     const val CURRENT_JOURNAL_SCHEMA_VERSION: String = "1"
 
     private fun decide(
         observation: RuntimeObservation,
         journal: JournalProof,
     ): RecoveryChoice {
-        // P0: if the observation is itself Unobservable, the substrate cannot be
+        // If the observation is itself Unobservable, the substrate cannot be
         // served. Mirror it as FailClosed(StorageError) so the port returns
         // RecoverOutcome.FailClosed.
         if (observation is RuntimeObservation.Unobservable) {
@@ -124,7 +116,7 @@ object RuntimeRecoverDecision {
             )
         }
 
-        // P1: schema version mismatch (cross-version PK reading older journal is
+        // Schema version mismatch (cross-version reading older journal is
         // unsupported).
         if (journal.journalSchemaVersion != CURRENT_JOURNAL_SCHEMA_VERSION) {
             return RecoveryChoice.FailClosed(
@@ -132,7 +124,7 @@ object RuntimeRecoverDecision {
             )
         }
 
-        // P2: cancelled-run is terminal; there is nothing to recover.
+        // Cancelled-run is terminal; there is nothing to recover.
         val terminalOutcome = journal.terminalRow?.outcome?.lowercase()
         if (terminalOutcome == "cancelled") {
             return RecoveryChoice.AlreadyRecovered(
@@ -141,7 +133,7 @@ object RuntimeRecoverDecision {
             )
         }
 
-        // P3: terminal observation AND terminal row → the run is fully reconciled.
+        // Terminal observation AND terminal row → the run is fully reconciled.
         if (observation is RuntimeObservation.Terminal && journal.terminalRow != null) {
             return RecoveryChoice.AlreadyRecovered(
                 attempt = observation.attempt,
@@ -149,7 +141,7 @@ object RuntimeRecoverDecision {
             )
         }
 
-        // P4: LiveButEmpty with an empty journal → substrate observed but yields
+        // LiveButEmpty with an empty journal → substrate observed but yields
         // nothing recoverable.
         if (observation is RuntimeObservation.LiveButEmpty && journal.operations.isEmpty()) {
             return RecoveryChoice.FailClosed(
@@ -157,7 +149,7 @@ object RuntimeRecoverDecision {
             )
         }
 
-        // P5: Running with lease released AND operations all terminal in the
+        // Running with lease released AND operations all terminal in the
         // journal → reuse the journal's terminal observation. The lease was
         // released cleanly.
         if (observation is RuntimeObservation.Running && observation.leaseHolder == null) {
@@ -172,7 +164,7 @@ object RuntimeRecoverDecision {
             }
         }
 
-        // P6: Terminal observation but journal terminalRow is null → the
+        // Terminal observation but journal terminalRow is null → the
         // observation is the source of truth; materialise from it.
         if (observation is RuntimeObservation.Terminal && journal.terminalRow == null) {
             return RecoveryChoice.ReuseTerminal(
@@ -183,7 +175,7 @@ object RuntimeRecoverDecision {
             )
         }
 
-        // P7: terminal row exists in journal, succeeded/failed/unstable, AND the
+        // Terminal row exists in journal, succeeded/failed/unstable, AND the
         // cursor advances → reuse the journal's terminal.
         if (journal.terminalRow != null &&
             (terminalOutcome == "succeeded" ||
@@ -199,7 +191,7 @@ object RuntimeRecoverDecision {
             )
         }
 
-        // P8: Running with a live lease holder AND at least one RUNNING op in the
+        // Running with a live lease holder AND at least one RUNNING op in the
         // journal → reattach. The deadline is a 30 s offset that the recover
         // adapter may finalise at the call site.
         if (observation is RuntimeObservation.Running &&
@@ -215,7 +207,7 @@ object RuntimeRecoverDecision {
             }
         }
 
-        // P9: Running with the lease holder marked dead (`alive == false`) → the
+        // Running with the lease holder marked dead (`alive == false`) → the
         // owner is gone but no terminal yet; treat as reattach with the standard
         // 30 s deadline. The decider is data-only and cannot call `clock.now()`,
         // so the deadline is the run-attempt-relative `fencingToken + 30_000L`
@@ -227,7 +219,7 @@ object RuntimeRecoverDecision {
             )
         }
 
-        // P10: nothing else matches → fail closed.
+        // Nothing else matches → fail closed.
         return RecoveryChoice.FailClosed(
             RecoverRefusal.SubstrateUnavailable(
                 "no terminal row, no terminal observation, and no RUNNING operation to reattach to",
@@ -274,18 +266,16 @@ object RuntimeRecoverDecision {
 }
 
 /**
- * M2 — closed ADT returned by [RuntimeRecoverDecision.decideRecovery].
- *
+ * Closed ADT returned by [RuntimeRecoverDecision.decideRecovery].
  * The recovery-choice ADT, plus an `AlreadyRecovered` idempotency case.
- *
- */
+*/
 sealed interface RecoveryChoice {
 
     /**
      * The substrate is still reattachable and no terminal has been observed.
      * The recover port returns [RecoverOutcome.ReattachPending] with the
      * deadline.
-     */
+*/
     data class Reattach(
         val attempt: AttemptId,
         val deadlineMs: Long,
@@ -296,7 +286,7 @@ sealed interface RecoveryChoice {
      * observation; the recover port materialises the terminal and returns
      * [RecoverOutcome.RecoveredTerminal]. This is the ONLY case that does NOT
      * re-execute external effects (audit D.4).
-     */
+*/
     data class ReuseTerminal(
         val receipt: TerminalReceipt,
     ) : RecoveryChoice
@@ -304,7 +294,7 @@ sealed interface RecoveryChoice {
     /**
      * The recovery cannot proceed. The recover port returns
      * [RecoverOutcome.FailClosed] with the closed reason.
-     */
+*/
     data class FailClosed(
         val cause: RecoverRefusal,
     ) : RecoveryChoice
@@ -312,7 +302,7 @@ sealed interface RecoveryChoice {
     /**
      * The run was already recovered by a prior call. The recover port returns
      * [RecoverOutcome.AlreadyRecovered] without touching the substrate.
-     */
+*/
     data class AlreadyRecovered(
         val attempt: AttemptId,
         val terminalAtMs: Long,
@@ -321,10 +311,9 @@ sealed interface RecoveryChoice {
 
 /**
  * The typed terminal receipt the recover port materialises.
- *
  * Mirrors [TerminalObservation] but carries the original `ReplayDecision` per
  * operation so the audit trail is observable.
- */
+*/
 data class TerminalReceipt(
     val terminal: TerminalObservation,
     val perOperationDecisions: List<PerOperationDecision>,
@@ -335,3 +324,4 @@ data class PerOperationDecision(
     val opId: String,
     val replayDecision: String,
 )
+

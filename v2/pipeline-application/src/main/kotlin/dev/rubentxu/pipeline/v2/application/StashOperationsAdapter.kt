@@ -18,48 +18,43 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Production adapter for [StashOperations] (WU-LPR-089 / Tier B #1).
- *
+ * Production adapter for [StashOperations] (/ Tier B #1)
  * Storage layout: `<controlDirRoot>/stashes/<runId>/<name>/`. The stash directory
  * is a SIBLING of `<controlDirRoot>/workspace/...` and `<controlDirRoot>/artefacts/...`,
  * so `WorkspaceResolver.cleanupAfterComplete()` does NOT destroy stashes when the
- * producing stage finishes (F-ARCH-L7 workspace-cleanup integrity preserved).
- *
+ * Producing stage finishes (workspace-cleanup integrity preserved)
  * The adapter is the ONLY place that:
  * - reads/writes the stash directory on disk,
  * - computes per-file sha256 / size,
  * - emits `StashCreated` / `StashRestored` / `StashFailed` events.
- *
  * The handler reaches ONLY [StashOperations] via the [STASH_OPERATIONS_CAPABILITY]
  * typed seam — it never touches `Files`, `MessageDigest`, or `EventSink` directly.
- */
+*/
 class StashOperationsAdapter(
     private val runIdString: String,
     private val stageIdentity: StageIdentity,
     private val controlDirRoot: Path,
     private val eventSink: EventSink,
-    /** WU-LPR-062 parity: optional project-workspace override (--workspace). */
+    /** Optional project-workspace override (--workspace). */
     private val workspaceBase: Path? = null,
     /**
-     * RP034-E / ADR-0100: the shared execution location.
-     *
+     * The shared execution location.
      * `stash` and `unstash` operate on the current directory (anchor matrix),
      * so they must read the same location every other workspace-aware Step
      * reads instead of re-deriving `controlDirRoot/stageName/index` themselves
-     * — the reconstruction the domain resolver exists to eliminate (INV-WS-012).
+     * The reconstruction the domain resolver exists to eliminate
      * `null` keeps direct construction working; the bridge always supplies it.
-     */
+*/
     private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation? = null,
 ) : StashOperations {
 
     /**
      * The directory a stash is taken from and restored into.
-     *
      * A caller-chosen `dir(...)` scope moves it; with no scope it is the stage
      * workspace the location reports, which is what the old resolver returned.
      * The stash *store* stays under `controlDirRoot/stashes/...` and is never a
      * workspace anchor (INTERNAL_STORE in the anchor matrix).
-     */
+*/
     private fun sourceRoot(): Path {
         val shared = executionLocation?.cwd
         if (shared != null) {
@@ -73,7 +68,7 @@ class StashOperationsAdapter(
     override fun stash(input: StashInput): StashResult {
         val workspaceRoot = sourceRoot()
 
-        // WU-RP-012 — paths confinement for stash.
+        // Paths confinement for stash.
         // Resolve the workspace's real path so we can detect symlinks that
         // escape (or point to an external location) at any level.
         val workspaceRootReal: Path = try {
@@ -109,7 +104,7 @@ class StashOperationsAdapter(
             return StashFailed(failureKind = FailureKind.SCRIPT, message = reason)
         }
 
-        // WU-RP-012 — symlink filter. After AntStyleGlob.match (which uses
+        // Symlink filter. After AntStyleGlob.match (which uses
         // Files.walk with FOLLOW_LINKS=true), every `matched` path may resolve
         // to an external target via a symlink. We reject:
         //   (a) any matched path that IS a symlink (refuses to copy symlink targets);
@@ -216,7 +211,7 @@ class StashOperationsAdapter(
             return StashFailed(failureKind = FailureKind.USER, message = reason)
         }
 
-        // WU-RP-012 — paths confinement for unstash.
+        // Paths confinement for unstash.
         // The stashRoot itself MUST NOT be a symlink (otherwise the walk below
         // could follow it). Resolve real paths for both stashRoot and workspaceRoot.
         val stashRootReal: Path = try {
@@ -284,14 +279,13 @@ class StashOperationsAdapter(
 
         return try {
             val entries = mutableListOf<RestoredEntry>()
-            // WU-RP-012 — symlink filter on the source. Files.walk with the
+            // Symlink filter on the source. Files.walk with the
             // JVM default FOLLOW_LINKS=true would expose files from a
             // symlink-to-file (which `Files.isRegularFile` returns true for
             // because it follows the link). Refuse any regular file that is
             // actually a symlink, with a typed SCRIPT-level rejection (not
             // INFRASTRUCTURE — symlinks in the archive are a script-author
             // decision, not a runtime crash).
-            //
             // Materialise the walk first (the walk follows links; filtering
             // afterwards is safe because each returned Path is the entry as
             // found, not its target). Then iterate with normal `break` so
@@ -369,23 +363,21 @@ class StashOperationsAdapter(
     /**
      * Both glob fields of [StashInput] are comma-separated LISTS carried in a [String], and both
      * are split here so the convention lives in exactly one place.
-     *
      * `excludes` was already split this way; `includes` was not, which made the pair read as
      * "one pattern plus a list" while the type said neither. `AntStyleGlob` cannot absorb the
      * difference for both: a comma inside a real pattern is part of that pattern (Ant brace
      * alternation such as `*.{jar,war}`, or a legal POSIX filename such as `data/a,b.txt`), so
      * splitting inside the glob would shred both. The list therefore has to be split by the caller
      * that knows the field is a list -- which is exactly what `excludes` already did.
-     *
      * Consequence, stated rather than hidden: a `stash` of a file whose name contains a comma is
      * not expressible through this field. That was already true before the split moved here, so
      * nothing is newly refused; it is the one honest price of a list-in-a-String.
-     */
+*/
     private fun splitPatterns(patterns: String): List<String> =
         patterns.split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
     private fun sha256Of(file: Path): String {
-        // Shared utility (B0): the same streaming loop with the same 8192-byte buffer, so the
+        // The same streaming loop with the same 8192-byte buffer, so the
         // digest value is unchanged for every entry already stashed.
         return Sha256.ofFile(file)
     }

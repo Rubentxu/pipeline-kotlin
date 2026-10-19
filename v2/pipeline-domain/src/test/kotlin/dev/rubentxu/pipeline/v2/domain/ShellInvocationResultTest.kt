@@ -10,22 +10,19 @@ import org.junit.jupiter.api.Test
 /**
  * The guarantee: whether a non-zero exit is a FAILURE or a VALUE depends on the
  * return mode the caller asked for, and nothing else.
- *
  * The capacity this serves: `pipeline console` / a step that requested `returnStatus` treats a
  * non-zero code as the answer to its question — "what did the tool print on exit", which is how
  * `grep -c 0` returns 1 and still means success. Under `NONE` or `STDOUT` the same code is a
  * failure. That asymmetry is the whole reason this algebra exists; the type KDoc says a status
  * exit code "can be a successful shell value even when it is non-zero". Collapse it and every
  * caller either fails healthy commands or stops seeing the codes it asked for.
- *
  * Both mappings here sit on a published boundary that production callers depend on, and neither
  * had any coverage of its own.
- *
  * [decideShellReturnMode] is pinned as the closure it claims: four boolean combinations, three
  * legal, and the fourth REJECTED rather than silently collapsed into one of the three. A silent
  * collapse would be the defect this row exists to prevent, so the rejection is asserted with its
  * exception type, not just its absence.
- */
+*/
 class ShellInvocationResultTest {
 
     private fun exited(exitCode: Int, stdout: String? = null) =

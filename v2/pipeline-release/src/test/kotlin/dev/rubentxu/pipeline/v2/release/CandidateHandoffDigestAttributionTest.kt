@@ -9,17 +9,15 @@ import org.junit.jupiter.api.Test
  * Which digest disagreed is the difference between two root causes, and a
  * consumer that groups [HandoffVerdict.Rejected] violations by
  * [HandoffViolationCode] cannot tell them apart when one code covers both.
- *
  * The guarantee under test is narrow: a wrong `artifact.sha256` reports a code
  * that names the ARTIFACT, and a wrong `candidate_id` reports one that names
  * the CANDIDATE. Nothing here asserts that either check fires in production —
  * that is a separate question about the caller, and [CandidateMaterializer]
  * supplies all three digests from one measurement, which is why this file
  * constructs its own independent `measuredZipSha256`.
- *
  * Pure: [evaluateCandidateHandoff] takes values and returns a decision. No
  * filesystem, no clock, no subprocess.
- */
+*/
 class CandidateHandoffDigestAttributionTest {
 
     private val version = ProductVersion.parseOrThrow("0.44.0")

@@ -4,19 +4,15 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * WU-LPR-051 — Agent-efficient event inspection.
- *
+ * Agent-efficient event inspection.
  * `MainEventsCli` applies these transforms to envelopes it has already read and
  * filtered, for callers that need a narrower view (a single field, a context window, the tail
  * of a long run). The inspection is a pure transformation over the envelopes: no query
  * language, no arbitrary predicates — callers pass typed values (`EventField` whitelist +
  * `EventContextWindow`) and get a typed result.
- *
  * This does NOT sit on top of [EventViewProjection]. That projection has no caller and no
  * overlap with these transforms: the CLI never calls it, and reaches these directly.
- *
  * ## What this is NOT
- *
  *  - NOT a query language. There is no `WHERE` clause, no expression
  *    evaluator, no regex matcher. The contract is: agents express
  *    intent with closed typed ADTs.
@@ -24,17 +20,16 @@ import kotlinx.serialization.json.JsonPrimitive
  *    already has; it does not read the store, and it does not project.
  *  - NOT an effect. Inspection is pure; `MainEventsCli` is the effectful boundary
  *    and the only caller.
- */
+*/
 object EventInspection {
 
     /**
      * Project the [envelopes] into a field-narrowed view: each envelope is
      * rendered as a one-line summary carrying only the whitelisted fields.
-     *
      * @param envelopes The query result, in sequence order.
      * @param fields The whitelisted fields to include in each line.
      * @return One line per envelope, in the same order as the input.
-     */
+*/
     fun projectFields(
         envelopes: List<PipelineEventEnvelope>,
         fields: List<EventField>,
@@ -53,16 +48,14 @@ object EventInspection {
      * plus up to [before] envelopes preceding it and up to [after]
      * envelopes following it. Duplicates are removed (a window that
      * overlaps with the previous window's tail collapses).
-     *
      * The output preserves the original envelope order; the matched
      * envelope is the center of each window.
-     *
      * @param envelopes The query result, in sequence order.
      * @param kindFilter The kind to match (exact string equality).
      * @param before Number of preceding envelopes to include (>= 0).
      * @param after Number of following envelopes to include (>= 0).
      * @return The deduped context-window lines.
-     */
+*/
     fun contextWindow(
         envelopes: List<PipelineEventEnvelope>,
         kindFilter: String,
@@ -87,7 +80,7 @@ object EventInspection {
     /**
      * Project the tail of the run: the last [count] envelopes (or fewer if
      * the run has fewer). Preserves sequence order; oldest first.
-     */
+*/
     fun tail(envelopes: List<PipelineEventEnvelope>, count: Int): List<PipelineEventEnvelope> {
         require(count >= 0) { "count must be >= 0, got $count" }
         if (envelopes.isEmpty() || count == 0) return emptyList()
@@ -99,7 +92,7 @@ object EventInspection {
      * sequence, return only the envelopes whose sequence is strictly
      * greater than [afterSequence]. The caller uses the returned
      * envelopes' last sequence as the next cursor token.
-     */
+*/
     fun follow(
         envelopes: List<PipelineEventEnvelope>,
         afterSequence: Long,
@@ -111,7 +104,7 @@ object EventInspection {
  * string value from a [PipelineEventEnvelope]. Closed ADT — adding a new
  * field forces every consumer of [EventInspection.projectFields] to be
  * revisited (compile-time exhaustiveness check).
- */
+*/
 sealed interface EventField {
     val header: String
 

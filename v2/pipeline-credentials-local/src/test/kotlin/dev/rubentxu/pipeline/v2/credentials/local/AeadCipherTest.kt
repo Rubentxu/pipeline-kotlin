@@ -13,10 +13,9 @@ import javax.crypto.AEADBadTagException
  * [AeadCipher] is the single layer between credential plaintexts and the bytes that hit the
  * disk. Three properties keep it sound: a ciphertext plus a non-matching AAD must fail, a
  * tampered ciphertext must fail, and a fresh encryption must not produce the same bytes twice.
- *
- * Each test names the property it pins, and the encryption is over a single 32-byte AES-256 key
+ * Each test names the property it pins, and the encryption is over a single 32-byte key
  * generated inside the test. Nothing in the file touches the filesystem or the network.
- */
+*/
 class AeadCipherTest {
 
     private val key: ByteArray = ByteArray(32) { (it * 7 + 3).toByte() }

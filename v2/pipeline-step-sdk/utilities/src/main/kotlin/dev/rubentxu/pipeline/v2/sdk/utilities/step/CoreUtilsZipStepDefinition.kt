@@ -30,21 +30,19 @@ import kotlin.io.path.relativeTo
 import kotlin.streams.toList
 
 /**
- * `core-utils.zip` OFFICIAL_PLUGIN Step (LFC-2E2 utilities, Slice 2 / S2.4).
- *
+ * `core-utils.zip` OFFICIAL_PLUGIN Step (utilities, Slice 2 /.4)
  * Jenkins reference: pipeline-utility-steps-plugin::ZipStep
  * (MIT, CloudBees).
- *
  * Security:
  *  - Every source path is resolved against its declared base (workspace
  *    root for FromGlob/FromFiles, the explicit directory for FromDirectory).
- *  - Resolution refuses to escape the workspace root (CVE-2023-32981-style
+ * Resolution refuses to escape the workspace root (CVE-2023-32981-style
  *    defence applied to the archive side: a malicious archive source cannot
  *    smuggle a path that escapes the base).
  *  - Symlinks under the source base are followed and archived as regular
  *    files (Jenkins' FilePath.zip behaviour). The behaviour is documented;
  *    this Step is NOT a symbolic-link-preserving archiver.
- */
+*/
 class CoreUtilsZipStepDefinition : StepDefinition<ZipInput, ZipOutput> {
 
     override val contract: StepContract<ZipInput, ZipOutput> =
@@ -147,7 +145,7 @@ class CoreUtilsZipStepDefinition : StepDefinition<ZipInput, ZipOutput> {
     /**
      * Resolve a glob against [base] and return every regular file in the
      * match set. The list is filtered to entries that resolve inside [base].
-     */
+*/
     private fun materialiseGlob(base: Path, glob: String): List<Pair<Path, String>> {
         // FindFiles semantics: the glob is rooted at base. We use NIO's
         // PathMatcher with the same Jenkins-compat fallback that
@@ -212,7 +210,7 @@ class CoreUtilsZipStepDefinition : StepDefinition<ZipInput, ZipOutput> {
 
     private fun materialiseFiles(location: ExecutionSite, paths: List<String>): List<Pair<Path, String>> {
         // Each path resolves against the current directory, and the workspace
-        // root is the boundary it may not cross (CVE-2023-32981 containment,
+        // Root is the boundary it may not cross (containment
         // archive-creation side). The two differ under `dir(...)`: anchoring
         // the check on the cwd would refuse a file that is legitimately inside
         // the workspace but outside the active scope.
@@ -244,7 +242,7 @@ class CoreUtilsZipStepDefinition : StepDefinition<ZipInput, ZipOutput> {
  * Wraps an underlying [java.io.OutputStream] and forwards every write
  * verbatim. Used as the outer sink of [DigestOutputStream] so the
  * ZipOutputStream chain ends up writing straight to the target file.
- */
+*/
 internal class CounterOutputStream(private val sink: java.io.OutputStream) : java.io.OutputStream() {
     override fun write(b: Int) { sink.write(b) }
     override fun write(b: ByteArray, off: Int, len: Int) { sink.write(b, off, len) }

@@ -1,11 +1,9 @@
 // buildSrc: build-only support code shared by the plugin SDK build scripts.
-//
-// Scope (B0.2): the three plugin modules (http, scm-git, utilities) used to carry
+// The three plugin modules (http, scm-git, utilities) used to carry
 // three near-identical copies of the provenance-digest walk + framing + exclusion
 // logic. A defect fixed in one copy could silently survive in the other two. This
 // project hosts ONE implementation of the hashing primitive; the three build
 // scripts consume it and keep only their module-specific wiring.
-//
 // This is build-only: nothing here ships inside a plugin artifact or is on any
 // runtime/test classpath of the main build. It is plain Java (no Gradle API, no
 // Kotlin DSL) so it cannot pull a new build dependency into the configuration.

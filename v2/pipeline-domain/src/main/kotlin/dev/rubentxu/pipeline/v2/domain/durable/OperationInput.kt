@@ -7,17 +7,14 @@ import kotlinx.serialization.json.JsonNull
 
 /**
  * Immutable, serializable carrier for the input of a durable operation.
- *
  * Encoded as canonical JSON for fingerprint computation. The [validate] function
  * enforces size and content constraints that prevent non-determinism and
  * ensure the fingerprint is safe to use as a cache key.
- *
  * @param stepId   Stable identifier for the step being executed.
  * @param params   Arbitrary JSON parameters passed to the step.
  * @param runId    Deterministic run identifier derived from script path + content.
  * @param attempt  Monotonically increasing attempt number within the run (≥ 1).
- *
- */
+*/
 @Serializable
 data class OperationInput(
     val stepId: String,
@@ -45,7 +42,7 @@ data class OperationInput(
         /**
          * Allowlist of keys that look like secrets but are intentionally allowed.
          * These keys do NOT contain actual secret values, only identifiers.
-         */
+*/
         private val ALLOWED_KEYS = setOf(
             "credentialsId",
         )
@@ -55,7 +52,7 @@ data class OperationInput(
          * - No secret keys
          * - No unbounded string values (> 64 KiB when serialized)
          * - No Throwable values (not serializable)
-         */
+*/
         fun validate(params: Map<String, JsonElement>) {
             for ((key, value) in params) {
                 val lowerKey = key.lowercase()

@@ -12,12 +12,10 @@ import java.nio.file.Path
 
 /**
  * The single path-resolution entry point for OFFICIAL_PLUGIN Steps.
- *
- * **RP034-E / ADR-0100.** A workspace-aware Step resolves a user path by
+ * ** /.** A workspace-aware Step resolves a user path by
  * declaring an anchor and reading the current [ExecutionLocation]. It never
  * rebuilds its own base out of a capability value, and it never consults
  * process-global state.
- *
  * Before this seam existed, each plugin carried its own resolver. The utilities
  * family shared one — `CoreUtilsReadJsonStepDefinition.resolvePath` — which was
  * `if (absolute) path else workspaceRoot.resolve(path)`: no confinement, no `..`
@@ -27,25 +25,22 @@ import java.nio.file.Path
  * workspace boundary. Inside a `dir(...)` scope those two notions diverge, so a
  * path legitimately inside the workspace could be refused, and an unnormalised
  * `sub/../..` path could pass the prefix check.
- *
  * [WorkspacePathResolver] is pure and total, so confinement is decided before
  * any byte is read and is testable without a filesystem. This file adds only the
  * binding from a typed rejection to the plugin failure algebra — no policy.
- *
  * Deliberately dependency-inward: the plugins consume `ExecutionLocation`
  * straight from `:pipeline-domain` rather than the application-side
  * `ExecutionLocationCapability` interface, so the plugin never depends on the
  * adapter that produces it.
- */
+*/
 object WorkspacePathAnchors {
 
     /**
      * Resolve [userPath] against [location.cwd].
-     *
      * The `CURRENT_DIRECTORY` anchor is what `dir(...)` moves: relative inputs
      * follow the active scope, while the workspace root stays the boundary a
      * resolved path must not escape.
-     */
+*/
     fun currentDirectory(
         location: ExecutionLocation,
         stepKey: String,
@@ -55,7 +50,7 @@ object WorkspacePathAnchors {
     /**
      * Resolve [userPath] against [anchor], returning an authorised absolute path
      * or raising a USER-class plugin failure carrying the typed reason.
-     */
+*/
     fun resolve(
         location: ExecutionLocation,
         anchor: PathAnchor,
@@ -73,19 +68,17 @@ object WorkspacePathAnchors {
 
     /**
      * Resolve [userPath] against an explicit [base] the caller chose.
-     *
      * Some Step contracts carry a base of their own — `junit.results` takes a
      * `workspaceRoot` input so a CI caller can point the report lookup at a
      * specific directory, including one outside the pipeline workspace. That is
      * explicit caller authority, not ambient state, so [base] is honoured rather
      * than overridden by [ExecutionLocation.cwd].
-     *
      * Naming a base is a statement about *where the Step operates*, so [base]
      * also becomes the boundary: the resolved path must stay inside it. That
      * keeps `..` traversal and stray absolute host paths refused, while letting
      * a caller legitimately retarget the Step — which confinement to
      * `location.workspace.root` would have made impossible.
-     */
+*/
     fun against(
         base: Path,
         stepKey: String,
@@ -111,11 +104,10 @@ object WorkspacePathAnchors {
 
     /**
      * Project a typed refusal into the diagnostic a pipeline author sees.
-     *
      * Total and exhaustive over [WorkspacePathError]: adding a case to the ADT
      * breaks this function at compile time rather than silently falling through
      * to a generic message.
-     */
+*/
     private fun describe(reason: WorkspacePathError): String = when (reason) {
         is WorkspacePathError.InvalidPath ->
             "path is empty"

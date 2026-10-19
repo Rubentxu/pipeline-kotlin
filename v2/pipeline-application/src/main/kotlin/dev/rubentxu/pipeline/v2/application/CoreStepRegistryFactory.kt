@@ -5,76 +5,72 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 
 /**
  * Single production authority for the core [StepDefinition]s registered into a [StepRegistry]
- * (B1.2c3-S2.2).
- *
+ * .
  * The registry is the ONE composition point for Step semantics (closed structure, open Steps). Core
  * registers its public [StepDefinition]s through the SAME mechanism an external plugin uses
  * ([CoreEchoStep] today, more core Steps as they migrate off their legacy dispatch). The coordinator
  * and dispatcher never hardcode which definitions are registered here and never mutate it.
- *
  * Compose external plugin definitions by registering them onto the returned mutable registry at the
  * composition root:
  * ```
- * val registry = CoreStepRegistryFactory.registry()
+ * val registry = CoreStepRegistryFactory.registry
  * externalPlugin.registerInto(registry)
  * CanonicalDurableRunCoordinator(..., stepRegistry = registry)
  * ```
- *
  * Deterministic and fresh per call; no global/singleton registry. The caller owns the returned
  * registry's lifecycle.
- */
+*/
 object CoreStepRegistryFactory {
 
     /**
      * A fresh BUILDER seeded with every registered core Step.
-     *
-     * S6/F: the composition root composes and the runtime reads. Exposing a builder here rather
+     * The composition root composes and the runtime reads. Exposing a builder here rather
      * than a finished registry is what lets external plugins join the SAME composition before
      * anything is frozen — there is no post-hoc mutation path for them to take, because none
      * exists.
-     */
+*/
     fun builder(): StepRegistryBuilder = StepRegistryBuilder().apply {
         CoreEchoStep.registerInto(this)
-        // LB-02 / A4 WU2: register CoreShellStep alongside CoreEchoStep.
-        // After the structural flip (WU3, removal of "core.sh" from LEGACY_PLUGIN_IDS),
+        // Register CoreShellStep alongside CoreEchoStep.
+        // After the structural flip (the removal of "core.sh" from LEGACY_PLUGIN_IDS),
         // CoreShellStep is the production routing authority for `sh(...)` invocations.
         // The classifier `StructuralFamilyResolver.classify("core.sh", registry)` returns
         // `Registry` because the key is no longer in the legacy set; this composes the
         // typed input/output codecs and the SHELL_OPERATIONS_CAPABILITY declaration.
         // Single composition authority — no per-call-site wiring.
         CoreShellStep.registerInto(this)
-        // LFC-2E1-S2-A1 / G2: register CoreErrorStep alongside CoreEchoStep and CoreShellStep.
+        // Register CoreErrorStep alongside CoreEchoStep and CoreShellStep.
         // IMPORTANT: this is REGISTRATION only, not a production routing flip.
         // While "core.error" remains in LEGACY_PLUGIN_IDS, StructuralFamilyResolver.classify
         // returns StructuralStepFamily.LegacyCore for this key (legacy membership wins per
-        // the resolver contract). Production behavior is UNCHANGED at G2. The flip to
-        // Registry family is G5, after G3 parity proof and G4 architecture fitness.
-        // Counter invariant at G2: LEGACY_PLUGIN_IDS == 12, metadata rows == 12,
+        // The resolver contract). Production behavior is UNCHANGED at. The flip to
+        // Registry family is, after parity proof and architecture fitness
+        // Counter invariant at: LEGACY_PLUGIN_IDS == 12, metadata rows == 12
         // dispatcher classes == 12. The legacy decoder/dispatcher/metadata row are not
-        // mutated by this edit — they remain the production authority until G6.
+        // Mutated by this edit — they remain the production authority until
         CoreErrorStep.registerInto(this)
-        // LFC-2E1-S2-A2 / G1: candidate registration only. `core.sleep` remains in
+        // Candidate registration only. `core.sleep` remains in
         // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
         // keeps LegacyCore as the canonical production authority. No legacy decoder,
         // metadata, dispatcher, or catalogue entry changes in this gate.
         CoreSleepStep.registerInto(this)
-        // LFC-2E1-S2-A3 / G1: candidate registration only. `core.file.writeFile` remains in
+        // Candidate registration only. `core.file.writeFile` remains in
         // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
         // keeps LegacyCore as the canonical production authority. No legacy decoder,
         // metadata, dispatcher, or catalogue entry changes in this gate.
         CoreWriteFileStep.registerInto(this)
-        // WU-LPR-104: readFile / fileExists blocker closure for the LPR certification
+        // ReadFile / fileExists blocker closure for the LPR certification
         // checkpoint. Candidate registration through the same open registry seam.
         CoreReadFileStep.registerInto(this)
         CoreFileExistsStep.registerInto(this)
-        // LFC-2E1 S2-B10 / G1: candidate registration.
-        // LFC-2E1 S2-B10 / G4 (2026-09-13): REGISTRY_PRIMARY flip. `core.archiveArtifacts`
+        // Candidate registration.
+        // REGISTRY_PRIMARY flip. `core.archiveArtifacts`
         // was removed from LEGACY_PLUGIN_IDS, so StructuralFamilyResolver.classify now
         // returns Registry for this key and this definition is the canonical production
         // authority. Legacy decoder branch / metadata row / dispatcher file are NOT changed
-        // in this gate (physical removal is G5); they are UNREACHABLE in production from here.
+        // In this gate (physical removal is); they are UNREACHABLE in production from here
         CoreArchiveArtifactsStep.registerInto(this)
-        // LFC-2E1 / E1.ecosystem-local-first: `core.artifact.query` is the
+        // `core.artifact.query` is the
         // bridge Step that lets the pipeline ask "where is the JAR named
         // 'app'?" after `core.archiveArtifacts(name='app', ...)`. It reads
         // the ARTIFACT_INDEX_CAPABILITY (admitted via InMemoryArtifactIndex
@@ -82,107 +78,96 @@ object CoreStepRegistryFactory {
         // StructuralFamilyResolver returns Registry from the moment of
         // registration.
         CoreArtifactQueryStep.registerInto(this)
-        // LFC-2E1-S2-A4 / G1: candidate registration only. `core.emit.event` remains in
+        // Candidate registration only. `core.emit.event` remains in
         // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
         // keeps LegacyCore as the canonical production authority. No legacy decoder,
         // metadata, dispatcher, or catalogue entry changes in this gate.
         CoreEmitEventStep.registerInto(this)
-        // LFC-2E1-S2-A5 / G1: candidate registration only. `core.isUnix` remains in
+        // Candidate registration only. `core.isUnix` remains in
         // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
         // keeps LegacyCore as the canonical production authority. No legacy decoder,
         // metadata, dispatcher, or catalogue entry changes in this gate. The candidate
         // exposes TYPED_RUNTIME_OUTPUT (CANDIDATE_ARCHITECTURAL_DELTA, NOT YET APPROVED)
-        // and classifies with PATH_B verbatim; the canonical-policy decision is G2.
+        // And classifies with PATH_B verbatim; the canonical-policy decision is
         CoreIsUnixStep.registerInto(this)
-        // LFC-2E1-S2-A6 / G1: candidate registration only. `core.pwd` remains in
+        // Candidate registration only. `core.pwd` remains in
         // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
         // keeps LegacyCore as the canonical production authority. No legacy decoder,
         // metadata, dispatcher, or catalogue entry changes in this gate.
-        //
-        // The candidate is SCOPED to `pwd(tmp=false)` only (decision D3 frozen at G2).
+        // The candidate is SCOPED to `pwd(tmp=false)` only (decision frozen at)
         // The input codec rejects `tmp=true` at decode time (PWD_TMP_TRUE_DISPOSITION);
         // therefore the StepKey authority CANNOT be flipped for `core.pwd` until a
-        // separate disposition lands for `tmp=true`. See S2_A6_CORE_PWD_G0.
-        //
-        // Capability: requires the new WORKSPACE_IDENTITY_CAPABILITY (S2-A6 / G1),
+        // separate disposition lands for `tmp=true`. See__CORE_PWD_.
+        // Capability: requires the new WORKSPACE_IDENTITY_CAPABILITY
         // mirroring the PLATFORM_IDENTITY pattern from core.isUnix — narrow
         // observation of the canonical stage workspace path, derived by the bridge
         // from context.shOptions.workspaceRoot.
         CorePwdStep.registerInto(this)
-        // LFC-2E1-S2-A6 / G3T: register CorePwdTmpStep as the new deterministic
+        // Register CorePwdTmpStep as the new deterministic
         // tmp-workspace Step (`core.pwd.tmp`). This is the INTERNAL contract for
         // `pwd(tmp=true)`; the public DSL (`PipelineDsl.pwd(tmp=true)`) is NOT
-        // rewired yet — that lower-binding is G3R (LFC-2R runtime-return consumer).
-        //
+        // Rewired yet — that lower-binding is (runtime-return consumer)
         // Production routing:
-        //   - `core.pwd`     stays in LEGACY_PLUGIN_IDS → LegacyCore (post-G1 invariant)
+        //   `core.pwd` stays in LEGACY_PLUGIN_IDS → LegacyCore ( invariant)
         //   - `core.pwd.tmp` is NOT in LEGACY_PLUGIN_IDS → Registry from the moment
         //                    of registration (see StructuralFamilyResolver.classify
         //                    rule: legacy membership wins OR registry resolves the
         //                    key, but `core.pwd.tmp` is never legacy-routed).
-        //
         // The candidate uses the new DURABLE_OPERATION_IDENTITY_CAPABILITY to derive
         // the deterministic temp path from the canonical OpId.format string — NO
         // timestamp, NO random. Same OpId ⇒ same path; distinct OpId ⇒ distinct path.
         CorePwdTmpStep.registerInto(this)
-        // LFC-2E1-S2-A7 / G3-fix: candidate registration only. `core.deleteDir` remains in
+        // Candidate registration only. `core.deleteDir` remains in
         // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
         // keeps LegacyCore as the canonical production authority. No legacy decoder,
         // metadata, dispatcher, or catalogue entry changes in this gate.
-        //
         // Capability: DELETE_DIR_OPERATIONS_CAPABILITY — conditionally exposed only when
         // controlDirRoot != null (fail-closed admission if absent).
-        //
         // Effects: WRITES_WORKSPACE (matches legacy metadata)
-        // ReplayPolicy: MEMOIZED (matches legacy metadata, idempotent via .deleted marker)
+        // ReplayPolicy: MEMOIZED (matches legacy metadata, idempotent.deleted marker)
         CoreDeleteDirStep.registerInto(this)
-        // LFC-2E1-S2-A10 / G1: candidate registration only. `core.cleanWs` remains in
+        // Candidate registration only. `core.cleanWs` remains in
         // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
         // keeps LegacyCore as the canonical production authority. No legacy decoder,
         // metadata, dispatcher, or catalogue entry changes in this gate.
-        //
         // Capability: CLEAN_WS_OPERATIONS_CAPABILITY — conditionally exposed only when
         // controlDirRoot != null (fail-closed admission if absent). The adapter is the
         // single WsCleaned emission authority over the existing CleanWsExecutor SDK
         // substrate (same construction as the legacy CanonicalCleanWsNodeDispatcher).
-        //
         // Effects: WRITES_WORKSPACE (matches legacy metadata)
-        // ReplayPolicy: MEMOIZED (matches legacy metadata; idempotent via .cleaned marker)
-        // RecoveryPolicy: None (per WAVE-2 G0-G3 prep inventory)
+        // ReplayPolicy: MEMOIZED (matches legacy metadata; idempotent.cleaned marker)
+        // RecoveryPolicy: None (prep inventory)
         CoreCleanWsStep.registerInto(this)
-        // LFC-2E1-S2-A9 / G1: candidate registration only. `core.milestone` remains in
+        // Candidate registration only. `core.milestone` remains in
         // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver's legacy-membership-wins rule
         // keeps LegacyCore as the canonical production authority. No legacy decoder,
         // metadata, dispatcher, or catalogue entry changes in this gate.
-        //
         // Capability: requires EVENT_SINK_CAPABILITY only — the handler reaches the event
         // sink ONLY through the declared capability (capability-routed handler discipline,
-        // LB-02 / G3-A4.2).
-        //
+        // /).
         // Semantics: strictly increasing ordinal -> MilestoneReached + Success;
-        // non-increasing ordinal -> MilestoneAborted + Unstable (record-only, per ML-R9 T-09
-        // and ADR-0046 §ML — local single-run model, no cross-build coordination).
-        //
+        // Non-increasing ordinal -> MilestoneAborted + Unstable (record-only
+        // Local single-run model, no cross-build coordination).
         // State: MilestoneStateStore is run-scoped (coordinator-owned); see the
         // CanonicalDurableRunCoordinator wiring.
         CoreMilestoneStep.registerInto(this)
-        // WU-LPR-301: register CoreWaitUntilStep. The descriptor declares
-        // BodyExecutionPolicy.Retrying(waitUntil = WaitUntilShape()), so the
+        // Register CoreWaitUntilStep. The descriptor declares
+        // BodyExecutionPolicy.Retrying(waitUntil = WaitUntilShape), so the
         // canonical body engine dispatches the polling loop from the declaration,
         // not from a per-StepKey branch in the coordinator.
         CoreWaitUntilStep.registerInto(this)
-        // WU-LPR-089: register CoreStashStep + CoreUnstashStep (Tier B batch 1).
+        // Register CoreStashStep + CoreUnstashStep (Tier B batch 1).
         // Both Steps reach the typed STASH_OPERATIONS_CAPABILITY seam through
         // the adapter wired at composition time; the registry seam is the only
         // path that produces a StashCreated/StashRestored/StashFailed event.
         CoreStashStep.registerInto(this)
         CoreUnstashStep.registerInto(this)
-        // WU-LPR-090: register CorePublishHtmlStep (Tier B batch 2).
+        // Register CorePublishHtmlStep (Tier B batch 2).
         // Reaches the typed PUBLISH_HTML_OPERATIONS_CAPABILITY seam through
         // the adapter wired at composition time; the registry seam is the only
         // path that produces HtmlReportPublished/HtmlReportSkipped/HtmlReportFailed.
         CorePublishHtmlStep.registerInto(this)
-        // RP6-A / WU-091 G4: core.lock production registration. The key is NOT in
+        // Core.lock production registration. The key is NOT in
         // LEGACY_PLUGIN_IDS, so StructuralFamilyResolver returns Registry from the
         // moment of registration — there is no legacy decoder/dispatcher row to
         // retire (this Step was born behind the registry). Admission is fail-closed
@@ -191,9 +176,9 @@ object CoreStepRegistryFactory {
         // BODY_CONTINUATION_CAPABILITY (only when a body is bound) and
         // EXECUTION_LANE_CAPABILITY (always bridge-derived). The wire payload is
         // produced by CoreLockWireCodec, the single wire authority shared with the
-        // DSL compiler (G3.4).
+        // DSL compiler.
         CoreLockStep.registerInto(this)
-        // RP6-B / WU-092 G4: core.input production registration, with the same
+        // Core.input production registration, with the same
         // shape as the lock above: the key is NOT in LEGACY_PLUGIN_IDS, so
         // StructuralFamilyResolver returns Registry from the moment of registration
         // and there is no legacy row to retire. Admission is fail-closed on
@@ -203,15 +188,14 @@ object CoreStepRegistryFactory {
         // BODY_CONTINUATION_CAPABILITY (only when a body is bound; the body is the
         // conditional part, it runs ONLY on Proceed). The wire payload is produced
         // by CoreInputWireCodec, the single wire authority shared with the DSL
-        // compiler (G3.4).
+        // compiler.
         CoreInputStep.registerInto(this)
     }
 
     /**
      * A finished, immutable registry carrying every core Step.
-     *
      * Prefer [builder] when external plugins still have to join the composition; this shortcut
      * exists for the call sites that genuinely have nothing left to add.
-     */
+*/
     fun registry(): StepRegistry = builder().build()
 }

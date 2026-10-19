@@ -12,18 +12,16 @@ import org.junit.jupiter.api.Test
 /**
  * The artifact-integrity guarantee: a plugin whose measured bytes disagree with the
  * digest its own manifest declares is refused.
- *
  * This is the one admission refusal that is not a policy decision. Every other refusal
  * asks whether an operator pinned something; this one asks whether the artifact is the
  * artifact it claims to be, and it is answerable from the bytes alone. That is why it runs
  * before the trust database is consulted — a manifest that lies about itself does not
  * become truthful because someone signed it.
- *
  * The three cases below are the whole state space of the decision, and the third is the
  * one that makes it a guarantee rather than a formality: `measuredDigest = null` is NOT a
  * pass. Collapsing "nobody measured" into "nothing to object to" is the fail-open that
  * [MeasuredArtifactIdentity] exists to prevent, so it must stay a distinct outcome.
- */
+*/
 class MeasuredVsDeclaredRefusalTest {
 
     private val origin = ArtifactOrigin.LocalClasspathEntry("/plugins/example.jar")

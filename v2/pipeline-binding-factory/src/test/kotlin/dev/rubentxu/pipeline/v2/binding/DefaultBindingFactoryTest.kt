@@ -12,13 +12,12 @@ import org.junit.jupiter.api.Test
  * resolvers. Six of the seven differ only in WHICH FIELD of the binding names the
  * environment variable that receives the handle, so the interesting contract is the
  * field selection, not the count of entries.
- *
  * The `kind` strings are declared twice — once as `override val kind` on each data
  * class in [CredentialsBinding], and once as the literals in the factory's
  * `SUPPORTED_KINDS`. Nothing links the two sets. A kind renamed on one side would
  * silently stop matching on the other, and a binding whose kind is not advertised
  * can never be routed. That correspondence is what this class freezes.
- */
+*/
 class DefaultBindingFactoryTest {
 
     private val factory = DefaultBindingFactory()

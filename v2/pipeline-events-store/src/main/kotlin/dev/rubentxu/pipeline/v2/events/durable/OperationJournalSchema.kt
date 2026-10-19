@@ -2,24 +2,18 @@ package dev.rubentxu.pipeline.v2.events.durable
 
 /**
  * SQL DDL constants for the operation journal and replay cursor tables.
- *
  * These tables are created alongside the existing `events` table in the same
  * SQLite database (`pipeline.db`) via [SqliteConnectionFactory].
- *
  * ## operation_journal
- *
  * Stores one row per durable operation execution, keyed by [op_id].
  * The [fingerprint] column stores the SHA-256 fingerprint at the time of execution.
  * [input] and [output] store the canonical JSON serialization of the operation's
  * input and output payloads.
- *
  * ## replay_cursor
- *
  * Stores the replay cursor for each run, keyed by [run_id].
  * The cursor tracks the last successfully journaled operation ([last_op_id])
  * and the [stage_index] at which execution should resume.
- *
- */
+*/
 object OperationJournalSchema {
 
     const val CREATE_OPERATION_JOURNAL = """
@@ -56,9 +50,8 @@ object OperationJournalSchema {
 
     /**
      * Creates both tables if they do not already exist.
-     *
      * @param connection An open SQLite connection (must be in WAL mode).
-     */
+*/
     fun create(connection: java.sql.Connection) {
         connection.createStatement().use { stmt ->
             stmt.execute(CREATE_OPERATION_JOURNAL)

@@ -7,11 +7,10 @@ import java.nio.file.Path
 
 /**
  * Result of a deleteDir operation.
- *
  * @property path Resolved absolute path that was deleted
  * @property deletedCount Number of files/directories deleted (0 if already deleted)
- * @property sha256 SHA-256 hex of the .deleted marker content
- */
+ * @property sha256 SHA-256 hex.deleted marker content
+*/
 data class DeleteDirResult(
     val path: Path,
     val deletedCount: Int,
@@ -20,34 +19,27 @@ data class DeleteDirResult(
 
 /**
  * Executor for [StepSpec.DeleteDir] — atomic workspace directory deletion.
- *
  * ## Behavior
- *
  * 1. Resolves `path` against workspace (default ".")
  * 2. Checks for MEMOIZED marker at `<path>/.deleted` — if sha matches, returns deletedCount=0 (no-op)
  * 3. Deletes all contents recursively using walk+delete (post-order)
  * 4. Writes `.deleted` marker with sha256 for MEMOIZED replay
- *
  * ## Path Safety
- *
  * - Enforces workspace-root guard: resolved path MUST start with workspace root
  * - Throws [IllegalArgumentException] if path escapes workspace
  * - Throws [IllegalArgumentException] if the target IS the workspace root while
- *   [rootDestruction] does not permit it (C8). With `--workspace <dir>` the
+ * [rootDestruction] does not permit it. With `--workspace <dir>` the
  *   workspace root is the user's own project, and the default `deleteDir()` (path ".")
  *   resolves to exactly that root, so the Step's own default would erase the
  *   checkout. The default per-stage workspace is disposable scratch space, so
- *   wiping it stays allowed and WCL-S-001/S-002 keep their contract.
- *
+ * Wiping it stays allowed and/ keep their contract
  * ## Idempotency
- *
  * - Re-execution with same marker sha = no-op (deletedCount=0)
- *
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
  * @param rootDestruction Whether the root may be wiped. A closed type, not a
  *   boolean: [RootDestruction.DecidedElsewhere] is the case the previous
  *   `protectWorkspaceRoot: Boolean` could not express, and it fails closed.
- */
+*/
 class DeleteDirExecutor(
     private val workspaceResolver: (stageName: String, stageIndex: Int) -> Path,
     val rootDestruction: RootDestruction = RootDestruction.DecidedElsewhere,
@@ -55,14 +47,13 @@ class DeleteDirExecutor(
 
     /**
      * Executes a [StepSpec.DeleteDir] step.
-     *
      * @param stageName The stage name
      * @param stageIndex The stage index
      * @param stepIndex The step index (unused — event emission deferred to dispatcher)
      * @param spec The deleteDir step specification
      * @return [DeleteDirResult]
      * @throws IllegalArgumentException if path escapes workspace root
-     */
+*/
     fun execute(stageName: String, stageIndex: Int, stepIndex: Int, spec: StepSpec.DeleteDir): DeleteDirResult {
         val workspace = workspaceResolver(stageName, stageIndex)
 
@@ -71,7 +62,6 @@ class DeleteDirExecutor(
         // `targetPath` that IS a link keeps its in-workspace name while every
         // operation on it — including writing the MEMOIZED marker — lands on
         // the link's target, outside the workspace.
-        //
         // Both the containment check and the marker must be anchored to the
         // real path, or a symlink becomes an exit from a workspace that never
         // appears to leave. `toRealPath` fails when the leaf does not exist, so
@@ -91,12 +81,11 @@ class DeleteDirExecutor(
             "deleteDir path '${spec.path}' escapes workspace root"
         }
 
-        // C8 interlock: a shared user workspace (--workspace) is the user's own
+        // A shared user workspace (--workspace) is the user's own
         // project, so the root's contents are never deletable. `deleteDir()`
         // with no argument resolves here, which would otherwise erase the
         // checkout. Scratch workspaces are unaffected and stay wipeable, and an
         // unresolved ownership question fails closed alongside UserOwned.
-        //
         // Matched on the cases rather than on a `permitsRootWipe` bit: a bit
         // would make UserOwned and DecidedElsewhere indistinguishable here, and
         // a fourth state would silently inherit whichever value the bit gave it.
@@ -117,7 +106,6 @@ class DeleteDirExecutor(
         if (Files.exists(markerFile)) {
             // A marker this executor wrote is a SHA-256 of the marker content; anything else in
             // the file was not written here (a hand edit, a truncated write, a different producer).
-            //
             // Such a file is treated as NOT a marker, and the cleanup proceeds normally, rather
             // than refusing. The refusal was the obvious form and it is wrong: it wedges the
             // workspace permanently, because once a bad marker exists no future run could clean
@@ -145,7 +133,7 @@ class DeleteDirExecutor(
         val deletedCount = countItems(realTarget)
 
         // Delete all contents recursively (but NOT the root targetPath itself)
-        // This preserves the workspace root and allows the .deleted marker to be written inside it
+        // This preserves the workspace root and allows.deleted marker to be written inside it
         // Same reason: the walk is anchored to the real path, so a link named
         // `escape` is removed as a link and never followed into its target.
         val walked = realTarget
@@ -190,25 +178,23 @@ class DeleteDirExecutor(
 
     /**
      * Dereference [path] as far as it exists, tolerating a missing leaf.
-     *
      * Delegates to [WorkspaceAnchoring.realPathAllowingMissing], which is the
      * module's single implementation. This executor was where the behaviour
      * was first written and needed; `readFile`, `fileExists` and `writeFile`
      * had been deciding containment lexically while only this one resolved
      * symlinks, so a link out of the workspace was refused by `deleteDir` and
      * honoured by the other three. One implementation, one behaviour.
-     */
+*/
     private fun toRealPathAllowingMissing(path: Path): Path =
         WorkspaceAnchoring.realPathAllowingMissing(path)
 
     companion object {
         /**
-         * SHA-256 hex of [bytes], routed through the shared utility (B0).
-         *
+         * SHA-256 hex of [bytes], routed through the shared utility
          * Byte-identical to the local implementation this replaces: same algorithm, same
          * lowercase hex, same input. The value is emitted in the Step's observability event,
          * so an external observer comparing digests keeps matching.
-         */
+*/
         fun sha256(bytes: ByteArray): String = Sha256.ofBytes(bytes)
     }
 }

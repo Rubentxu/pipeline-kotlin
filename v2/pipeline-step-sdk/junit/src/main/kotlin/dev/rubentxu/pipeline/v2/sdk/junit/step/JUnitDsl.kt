@@ -6,14 +6,12 @@ import dev.rubentxu.pipeline.v2.dsl.StageScope
 
 /**
  * Ergonomic Kotlin DSL extension for the `junit.results` Step
- * (F5.2 / LFC-2E2).
- *
+ * .
  * Same shape as the SCM/Git façade:
  *  - constructs the typed [JUnitResultsInput] from positional/named
  *    arguments;
  *  - encodes it with the plugin's own [JUnitResultsInputCodec];
  *  - lowers to the generic [StageScope.registryStep] primitive.
- *
  * @param reportPath      Workspace-relative or absolute path to the XML.
  * @param workspaceRoot   The directory the relative path resolves
  *                        against. Usually the pipeline --workspace.
@@ -23,7 +21,7 @@ import dev.rubentxu.pipeline.v2.dsl.StageScope
  *                        but still emits the typed summary.
  * @param maxReportBytes  Hard cap on the report file size we will
  *                        read (default 10 MiB).
- */
+*/
 fun StageScope.junitResults(
     reportPath: String,
     workspaceRoot: String,

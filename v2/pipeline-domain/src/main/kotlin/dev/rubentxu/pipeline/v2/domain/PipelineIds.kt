@@ -24,23 +24,18 @@ value class RunId(val value: String) {
 }
 
 /**
- * PK-1 / ADR-PK1-IDENTITY — external-supplied correlation token.
- *
+ * External-supplied correlation token.
  * A [CorrelationId] is the identity an EXTERNAL invoker (CI, Fabric, a
  * script) assigns to a single invocation. PipelineK preserves it through
  * the durable state and emits it in:
- *
  *  - The [dev.rubentxu.pipeline.v2.events.RunCorrelated] event.
- *
  *  ## Where it lands in the timeline, and why it is stated rather than inferred
- *
  *  `RunCorrelated` is the FIRST event of a run: it precedes
  *  `CompilationStarted`, which in turn precedes `RunStarted`. That is a
  *  promise this document now makes explicitly, because the previous wording —
  *  "before the first [RunStarted]" — was true but under-determined. It left the
  *  position relative to compilation unstated, and three UATs filled the gap by
  *  asserting an order no document had ever promised.
- *
  *  The reason it goes first is not tidiness. `RunCorrelated` is emitted at the
  *  moment the run acquires a durable identity — after the execution lease is
  *  held, and together with the `last-run.json` control record that `--resume`
@@ -50,17 +45,15 @@ value class RunId(val value: String) {
  *  and nothing to resume. The order is what makes an early failure observable.
  *  - The `LaunchReceipt` JSON envelope on stdout.
  *  - The `last-run.json` file in the control dir.
- *
  * A [CorrelationId] is NOT a [RunId] — two concurrent invocations with
  * the same [CorrelationId] get different [RunId]s, because the
- * [RunId] remains PK's authority. The [CorrelationId] is the
+ * [RunId] remains's authority. The [CorrelationId] is the
  * invoker-side join key: it groups runs a single CI job initiated, or
  * a single Fabric workflow executes.
- *
- * PK generates a UUIDv4 if the invoker does not supply one via
- * `--correlation-id`. The value is opaque to PK; only the non-blank
+ *  generates a UUIDv4 if the invoker does not supply one via
+ * `--correlation-id`. The value is opaque to; only the non-blank
  * invariant is enforced.
- */
+*/
 @JvmInline
 @Serializable
 value class CorrelationId(val value: String) {
@@ -116,10 +109,9 @@ value class OperationId(val value: String) {
 
 /**
  * Segment of a block's body path, encoding the child index and plugin step ID
- * for length-prefix body dispatch (ADR-0066 §1).
- *
+ * For length-prefix body dispatch
  * Format: "{index}:{pluginStepId.value}"
- */
+*/
 @JvmInline
 @Serializable
 value class BlockSegment(val encoded: String) {
@@ -147,12 +139,11 @@ data class DefinitionIdentityInput(
 
 /**
  * Deterministic identity functions used by the local-first domain.
- *
  * The definition algorithm intentionally preserves the legacy format so that
  * existing durable data remains addressable while callers migrate to the
  * typed contract. Invocation identity is deliberately not derived here:
  * repeated invocations of one definition must be distinguishable.
- */
+*/
 object DeterministicIdGenerator {
     fun definitionId(input: DefinitionIdentityInput): DefinitionId {
         val payload = ByteArrayOutputStream().use { bytes ->
@@ -179,7 +170,7 @@ object DeterministicIdGenerator {
     /**
      * Derives the canonical definition identity from the legacy source tuple.
      * The 36-character SHA-256 prefix is part of the compatibility contract.
-     */
+*/
     fun definitionId(scriptPath: String, scriptContent: String): DefinitionId {
         require(scriptPath.isNotBlank()) { "scriptPath must not be blank" }
         return DefinitionId(legacyDigest("$scriptPath|$scriptContent"))
@@ -187,11 +178,10 @@ object DeterministicIdGenerator {
 
     /**
      * The 36-character legacy definition digest.
-     *
      * The truncation is the compatibility contract, not a shortcut, and it is preserved here
      * byte for byte: [Sha256] returns the same 64-character lowercase hex the local `toHex`
      * produced, and `.take(36)` still cuts the same prefix.
-     */
+*/
     private fun legacyDigest(input: String): String = Sha256.ofText(input).take(36)
 
     private const val TYPED_DEFINITION_FORMAT_VERSION = 1

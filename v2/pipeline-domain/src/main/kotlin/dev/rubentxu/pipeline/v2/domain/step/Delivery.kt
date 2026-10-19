@@ -2,13 +2,12 @@ package dev.rubentxu.pipeline.v2.domain.step
 
 /**
  * Distribution classification of a Step family (PLUGIN_IDENTITY_MODEL,
- * STEP_PLUGIN_SDK §11).
- *
+ * STEP_PLUGIN_SDK).
  * Delivery is **metadata, never a verdict**. The runtime MUST NOT grant
  * or deny execution based on the delivery value: identity-based admission
  * is enforced by the registry (duplicate-key) and by capability admission;
  * delivery is read by the future policy engine and by audit consumers.
- */
+*/
 enum class Delivery {
     /** Code shipped with pipelinek itself (core Steps). */
     CORE,

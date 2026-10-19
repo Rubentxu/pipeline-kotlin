@@ -18,17 +18,15 @@ import java.nio.file.Paths
 /**
  * The teardown of a credential binding has three phases — wipe the materialisations, append
  * `CredentialUnbound`, wipe the in-memory handles — and each releases something no later phase can.
- *
  * `BoundCredentials.close()` used to call them in sequence with no `try/finally`, so the first
  * throwable ended the teardown. The append is the phase that throws in production: `UNIQUE(run_id,
  * sequence)` made the event store fail closed rather than accept a duplicated sequence, which is a
  * real failure, not a hypothetical one. When it threw, every [SecretHandle] byte array stayed
  * resident and `closed` had already been set, so the retry was a no-op.
- *
  * These tests are pure by construction. The materialisation is an anonymous subclass of the `open`
  * [MaterializedCredentialDomain], so a wipe failure is manufactured without a filesystem, and the
  * handle is a real [SecretHandle] whose wipe is observable through [SecretHandle.bytesView].
- */
+*/
 class CredentialTeardownTest {
 
     private val orphan = Paths.get("/tmp/pipelinek-orphan-key.pem")
@@ -36,12 +34,11 @@ class CredentialTeardownTest {
 
     /**
      * A [ProjectionResult] whose materialisation cannot be wiped, naming [path] as the orphan.
-     *
      * The materialisation carries a real [Path] but writes nothing, and it throws from its own
      * `close` rather than throwing a hand-built [ProjectionResult.WipeException]: [ProjectionResult.close]
      * derives the orphan list from `materialized.path`, so a fake with a null path would produce an
      * EMPTY orphan list and every assertion below would pass against the very defect it names.
-     */
+*/
     private fun failingWipe(path: Path = orphan): ProjectionResult =
         projectionWiping(path) { throw IllegalStateException("delete refused: $path") }
 
@@ -118,7 +115,7 @@ class CredentialTeardownTest {
         assertEquals(2, failed.firstFailure.throwable.suppressed.size)
     }
 
-    // --- A4: an append failure no longer leaks the handles ------------------------
+    // An append failure no longer leaks the handles
 
     @Test
     fun `a rejected unbound append still wipes the secret handle`() {
@@ -129,7 +126,7 @@ class CredentialTeardownTest {
         }
 
         assertEquals("append rejected", failure.message)
-        // THE assertion. Before the fix the append threw out of close() before closeHandles() ran,
+        // THE assertion. Before the fix the append threw out of close before closeHandles ran,
         // so these bytes were still resident and nothing about the throwable said so.
         assertArrayEquals(ByteArray(secretBytes.size), handle.bytesView())
     }

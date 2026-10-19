@@ -17,27 +17,21 @@ import kotlinx.serialization.json.longOrNull
  * Helpers for [StepCodec][dev.rubentxu.pipeline.v2.domain.step.StepCodec]
  * implementations that build a JSON payload via the kotlinx.serialization runtime
  * API (no plugin, manual `buildJsonObject`).
- *
- * C3 / D-011 (audit 2026-09-26, H14): 44 production codec sites in
+ * 44 production codec sites in
  * `pipeline-step-sdk` repeat the same three operations:
- *
  * ```kotlin
  * val obj = buildJsonObject { put("k", v) }
- * EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
- *
+ * EncodedStepValue(Json.encodeToString(JsonObject.serializer, obj))
  * val obj = Json.parseToJsonElement(encoded.value).jsonObject
  * obj.getValue("k").jsonPrimitive.content
  * ```
- *
  * This object wraps that pattern. The wire format is unchanged: identical
  * `Json` configuration (`encodeDefaults = true`), identical JSON encoding
  * (`JsonObject.serializer()`), identical decoder access (`jsonPrimitive.content`).
  * Every migrated codec roundtrips byte-identical to its pre-refactor output.
- *
  * Usage:
- *
  * ```kotlin
- * object MyInputCodec : StepCodec<MyInput> {
+ * object MyInputCodec: StepCodec<MyInput> {
  *     override fun encode(value: MyInput) = PipelineJson.encode {
  *         put("path", value.path)
  *         put("retries", value.retries)
@@ -51,7 +45,7 @@ import kotlinx.serialization.json.longOrNull
  *     }
  * }
  * ```
- */
+*/
 object PipelineJson {
 
     /**
@@ -59,7 +53,7 @@ object PipelineJson {
      * centralised ensures all `encode`/`decode` operations share identical
      * behaviour. `encodeDefaults = true` matches the convention used by every
      * Pattern A codec surveyed.
-     */
+*/
     val json: Json = Json { encodeDefaults = true }
 
     /**
@@ -69,7 +63,7 @@ object PipelineJson {
      * already-built `JsonObject` and serialises it. Migration is mechanical:
      * replace `EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))`
      * with `PipelineJson.encode(obj)`.
-     */
+*/
     fun encode(obj: JsonObject): EncodedStepValue =
         EncodedStepValue(json.encodeToString(JsonObject.serializer(), obj))
 
@@ -77,7 +71,7 @@ object PipelineJson {
      * Inverse of [encode]: parses an `EncodedStepValue` and returns its top-level
      * `JsonObject`. Replaces the `Json.parseToJsonElement(encoded.value).jsonObject`
      * dance.
-     */
+*/
     fun decode(encoded: EncodedStepValue): JsonObject =
         json.parseToJsonElement(encoded.value).jsonObject
 }
@@ -86,17 +80,14 @@ object PipelineJson {
  * Convenience accessors for [JsonObject] that replace the repeated
  * `obj.getValue("k").jsonPrimitive.content` and
  * `obj["k"]?.jsonPrimitive?.contentOrNull` chains.
- *
  * Each function returns the typed value or throws when the key is missing AND
  * the field is required (suffix-free variant). For optional fields, use the
  * `*OrNull` variants which return `null` when the key is absent or the value
  * has the wrong primitive kind.
- *
  * These extensions live alongside `PipelineJson` because every Pattern A
  * codec surveyed needed at least the `string` and `longOrNull` accessors.
  * The other variants are provided for completeness and to absorb future
  * migrations without further API churn.
- *
  * The detekt rule `TooManyFunctions` operates per file. Splitting this object
  * into `JsonScalarAccessors` + `JsonAggregateAccessors` would just produce
  * two objects each under the threshold but force every codec consumer to
@@ -107,7 +98,7 @@ object PipelineJson {
  * functions (one pair per primitive type), plus requiredObject and
  * requiredArray, total twelve functions in a single closed dispatch over
  * JsonElement primitives.
- */
+*/
 @Suppress("TooManyFunctions")
 object JsonAccessors {
 
@@ -148,7 +139,7 @@ object JsonAccessors {
      * extractors are still typed accessors that operate on scalars; this
      * one accepts nested objects because Pattern A codecs frequently
      * encode discriminated unions and nested shape decisions.
-     */
+*/
     fun JsonObject.requiredObject(key: String): JsonObject = getValue(key).jsonObject
 
     /**
@@ -157,6 +148,6 @@ object JsonAccessors {
      * array (e.g. an object / primitive / null). Pattern A codecs use
      * arrays for repeated-element payloads (e.g. `documents: List<YamlDocument>`
      * inside `WriteYamlPayload.Multiple.items`).
-     */
+*/
     fun JsonObject.requiredArray(key: String): kotlinx.serialization.json.JsonArray = getValue(key) as kotlinx.serialization.json.JsonArray
 }

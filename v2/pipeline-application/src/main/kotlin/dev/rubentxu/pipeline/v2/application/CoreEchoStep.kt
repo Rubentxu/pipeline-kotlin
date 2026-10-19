@@ -26,25 +26,24 @@ import kotlinx.serialization.json.jsonPrimitive
 data class EchoInput(val text: String)
 
 /**
- * `core.echo` registered as an open [StepDefinition] (B1.2b, ADR-0070).
- *
+ * `core.echo` registered as an open [StepDefinition] (.2b,)
  * Registers through the SAME generic mechanism an external plugin would use. The handler reuses the
  * existing SDK echo runtime authority and emits [dev.rubentxu.pipeline.v2.events.EchoOutputCaptured]
  * via the [EventSink] it receives as a declared capability. It returns the echo payload (the content
  * line) as its typed result.
- */
+*/
 object CoreEchoStep {
 
     val KEY: PluginStepId = PluginStepId("core.echo")
 
     /**
-     * B1.2c3-slice1: echo's durable input codec emits the SAME canonical dsl-v1 envelope the compiler
+     * Echo's durable input codec emits the SAME canonical dsl-v1 envelope the compiler
      * produces for `core.echo` (`{"kind":"echo","text":...}`, byte-identical via the same kotlinx JSON
      * serializer). This makes the registry definition durable-spine eligible (a well-formed JSON-object
      * payload, per the CDE.3-e1/e2 boundary) AND keeps fingerprint/journal identity continuous across
      * the eventual echo migration (legacy-routed today and registry-routed after the flip share the
      * exact durable payload string). Round-trip `encode(I) -> payload.encoded -> decode` is lossless.
-     */
+*/
     private val inputCodec = object : StepCodec<EchoInput> {
         override fun encode(value: EchoInput): EncodedStepValue =
             EncodedStepValue(

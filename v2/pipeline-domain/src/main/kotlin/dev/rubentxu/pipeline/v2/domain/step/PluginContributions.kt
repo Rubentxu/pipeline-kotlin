@@ -5,10 +5,8 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 
 /**
- * S6/B1 — what a plugin CONTRIBUTS, as distinct from what it IS.
- *
+ * What a plugin CONTRIBUTS, as distinct from what it IS.
  * ## Why this is separate from [PluginFamily]
- *
  * [PluginFamily] answers "what domain is this plugin for" (SCM, NETWORK, TESTING,
  * ...). Its own KDoc records that the runtime does not branch on it and that it is
  * metadata rather than a verdict. These types answer "which structural shapes does
@@ -16,22 +14,18 @@ import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
  * from the other: a TESTING family plugin contributes Steps, and a NETWORK family
  * plugin contributes a Step plus a Capability. Keeping both, rather than merging
  * them, is what lets admission check structure without having to invent a taxonomy.
- *
  * ## Why these are typed lists and not a `Map<String, Any?>`
- *
  * Every entry names one contribution and carries only the payload that contribution
  * means. A Step declares the capabilities it requires; a Directive and an Event do
  * not, so they do not get a nullable capability field. The union is a sealed set of
  * shapes, not an open map of anything.
- *
  * ## Why Reactor is absent
- *
- * S5.5 was deferred, and S6 was named as where a plugin-contributed reactive
+ * 5 was deferred, and was named as where a plugin-contributed reactive
  * construct belongs. This is that place, and it still does not declare one:
  * a manifest slot with no consumer is the same defect the deferral refused to
- * let S5.5 commit, reached by another road. Reactor joins this hierarchy as a
+ * Let.5 commit, reached by another road. Reactor joins this hierarchy as a
  * fifth shape when a real producer exists behind it.
- */
+*/
 data class PluginStepContribution(
     val stepKey: PluginStepId,
     val declaredCapabilities: Set<StepCapability>,
@@ -52,12 +46,11 @@ data class PluginEventContribution(
 /**
  * The four contribution families this release supports: Step, Directive, Event and
  * Capability.
- *
  * Duplicate detection lives here, at construction, because a manifest that declares
  * the same Step twice is not a document that a consumer can interpret — it is a
  * contradiction, and it must fail before any contributor is loaded rather than
  * becoming a first-wins/last-wins question at registration time.
- */
+*/
 data class PluginContributions(
     val steps: List<PluginStepContribution> = emptyList(),
     val directives: List<PluginDirectiveContribution> = emptyList(),
@@ -84,14 +77,13 @@ data class PluginContributions(
 }
 
 /**
- * S6/B1 — the PipelineK API range a plugin declares compatibility with.
- *
- * §2 of the plugin SDK package requires `apiRange`, and it is what makes admission
+ * The PipelineK API range a plugin declares compatibility with.
+ *  of the plugin SDK package requires `apiRange`, and it is what makes admission
  * able to refuse a plugin before its classes load: a plugin built against PipelineK
  * 0.48 is not silently loadable into 0.52. Exclusive upper bound, because a
  * compatibility range states where a plugin stops being supported, not where it
  * stops being parseable.
- */
+*/
 data class PipelineKApiRange(
     val fromInclusive: SemVer,
     val untilExclusive: SemVer,
@@ -124,12 +116,11 @@ data class PipelineKApiRange(
 
 /**
  * Version of the manifest SCHEMA, not of the plugin.
- *
  * Separate from [PluginReleaseRef.version] on purpose: a plugin can be released
  * twice under the same version with different digests, and the schema that decoded
  * it is a property of the document format. Conflating them would make "which codec
  * read this" indistinguishable from "which build wrote this".
- */
+*/
 @JvmInline
 value class ManifestSchemaVersion(val value: Int) {
     init {
@@ -144,11 +135,10 @@ value class ManifestSchemaVersion(val value: Int) {
 
         /**
          * Parse of the only legal spelling.
-         *
          * A decoder that accepted an unrecognised schema would be admitting documents
          * whose meaning it cannot vouch for, which is the fail-open behaviour the whole
          * plugin constitution exists to prevent.
-         */
+*/
         fun parseOrNull(text: String): ManifestSchemaVersion? {
             val prefix = "manifest/v"
             if (!text.startsWith(prefix)) return null

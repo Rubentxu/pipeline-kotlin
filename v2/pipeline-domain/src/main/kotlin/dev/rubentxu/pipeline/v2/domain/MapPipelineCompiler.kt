@@ -3,9 +3,7 @@ package dev.rubentxu.pipeline.v2.domain
 /**
  * Deterministic, test-friendly [PipelineCompiler] backed by a frozen map
  * of pre-built [PipelineDefinition]s.
- *
  * ## Resolution rules
- *
  * - The compiler's "source string" is the [DefinitionId.value] of the
  *   target definition. Any string that matches a key in the backing map
  *   resolves to that definition.
@@ -16,21 +14,17 @@ package dev.rubentxu.pipeline.v2.domain
  * - The source is not echoed back in the diagnostic message to avoid
  *   leaking potentially-sensitive content (a legacy Pipelinefile may carry
  *   credential references).
- *
  * ## Why this exists
- *
- * The M2 characterise-parity gate needs a [PipelineCompiler] that behaves
+ * The characterise-parity gate needs a [PipelineCompiler] that behaves
  * deterministically and never touches the file system, environment, or
  * any I/O. [MapPipelineCompiler] is that adapter. It is the moral
  * equivalent of [MapRuntimeConfig] for the [RuntimeConfig] seam.
- *
  * ## Migration status
- *
  * This adapter is intentionally trivial. It does NOT parse the source; it
  * only resolves an id. Real parsing (Kotlin Script DSL, Groovy Script DSL,
- * plain text) lands with `SimplePipelineCompiler` in LF-0201 and with the
- * full DSL migration in LF-0205.
- */
+ * Plain text) lands with `SimplePipelineCompiler` in and with the
+ * Full DSL migration in
+*/
 class MapPipelineCompiler(
     definitions: Map<String, PipelineDefinition>,
 ) : PipelineCompiler {

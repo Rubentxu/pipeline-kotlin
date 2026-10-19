@@ -27,13 +27,11 @@ import kotlin.io.path.isRegularFile
 import kotlin.io.path.readBytes
 
 /**
- * `core-utils.readYaml` OFFICIAL_PLUGIN Step (LFC-2E2 utilities, Slice 2 / S2.1).
- *
+ * `core-utils.readYaml` OFFICIAL_PLUGIN Step (utilities, Slice 2 /.1)
  * Reference: Jenkins `readYaml` (Pipeline Utility Steps Plugin, master).
  *   - docs:    https://www.jenkins.io/doc/pipeline/steps/pipeline-utility-steps/#readyaml-read-yaml-from-files-in-workspace-or-text
  *   - source:  ReadYamlStep.java / ReadYamlStep.Execution in
  *              `https://github.com/jenkinsci/pipeline-utility-steps-plugin/blob/master/src/main/java/org/jenkinsci/plugins/pipeline/utility/steps/conf/ReadYamlStep.java`
- *
  * Adaptation:
  *  - file XOR text is encoded by the sealed [ReadYamlSource] hierarchy.
  *  - SnakeYAML 2.3 + [SafeConstructorOnlyOptions] + explicit tag allow-list.
@@ -41,12 +39,11 @@ import kotlin.io.path.readBytes
  *    safe constructor refuses to produce arbitrary Java classes; the closed
  *    ADT preserves that invariant across the durable boundary.
  *  - Workspace enforcement via the declared `WORKSPACE_IDENTITY_CAPABILITY`.
- *
  * Effects: `READ_ONLY` (parse-only; no writes).
  * ReplayPolicy: `MEMOIZED` (input is deterministic modulo file content).
  * RecoveryPolicy: `None` (no transient failure modes — the only failures are
  *   typed USER-class errors for missing files, unsafe tags, malformed input).
- */
+*/
 class CoreUtilsReadYamlStepDefinition : StepDefinition<ReadYamlInput, ReadYamlOutput> {
 
     override val contract = StepContract(

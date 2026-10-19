@@ -30,17 +30,14 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Example external BLOCK plugin (WU-RP-035, slice D).
- *
- * This is the plugin ADR-0081 claimed was possible: an external Step that owns a body and
+ * Example external BLOCK plugin (, slice D)
+ * This is the plugin claimed was possible: an external Step that owns a body and
  * whose OWN logic decides whether, when and how many times that body runs. It depends only
  * on public SDK contracts (`pipeline-domain`) and the public DSL (`pipeline-scripting-api`),
  * contains no import of `pipeline-application`, and is discovered through
  * [StepDefinitionContributor] via ServiceLoader. Zero core edits.
- *
  * What it proves that an atomic plugin cannot:
- *
- *  1. The handler is actually INVOKED for a body-bearing external Step. Before RP-035 the
+ * 1. The handler is actually INVOKED for a body-bearing external Step. Before the
  *     engine short-circuited a `BlockStepNode` straight to the body dispatcher, so this
  *     handler would never have run and `times` would have been ignored.
  *  2. The handler reaches its body only through the bound [BodyContinuation]. It never sees a
@@ -52,7 +49,7 @@ import kotlinx.serialization.json.Json
  *     body twice WITHOUT a segment would replay the journal instead of duplicating effects —
  *     which is the exactly-once law doing its job, and the reason a naive repeat would have
  *     been a lie.
- */
+*/
 @Serializable
 data class RepeatInput(val times: Int) {
     init {
@@ -66,17 +63,15 @@ data class RepeatInput(val times: Int) {
 
 /**
  * Typed output AND the typed outcome carrier ([TypedStepOutput]).
- *
  * A registry handler has exactly one way to report an expected operational failure: return a
  * value that carries the outcome. Throwing would be wrong — the boundary classifies a thrown
  * handler as `FailureKind.ENGINE`, which is the classification for a programmer defect, not
  * for a body that legitimately failed. Cancellation is the single exception, and it is
  * rethrown as structured control (see the handler).
- *
  * The failure travels as two plain serializable fields and is rebuilt into the same
  * [PipelineFailure] it arrived as, so the kind and message survive the durable round trip
  * instead of being flattened.
- */
+*/
 @Serializable
 data class RepeatOutput(
     val invocations: Int,
@@ -134,11 +129,10 @@ object RepeatBodyStepDefinition : StepDefinition<RepeatInput, RepeatOutput> {
 
     /**
      * The per-iteration identity key, OWNED BY THIS PLUGIN.
-     *
      * It must not be a child Step's key: if it were, re-shaping the body would rewrite the
      * durable identity of every iteration already journaled, and a past run could no longer
      * be told apart from a differently-shaped one.
-     */
+*/
     val REPEAT_ATTEMPT_KEY = PluginStepId("example.repeat-attempt")
 
     override val contract = StepContract(
@@ -206,7 +200,7 @@ object RepeatBodyStepDefinition : StepDefinition<RepeatInput, RepeatOutput> {
 /**
  * ServiceLoader entry point, identical in shape to the atomic example plugin: the runtime
  * discovers the contributor generically and never learns the name `repeat`.
- */
+*/
 class RepeatContributor : StepDefinitionContributor {
     override val id: String = "example.repeat"
 

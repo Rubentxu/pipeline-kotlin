@@ -31,7 +31,7 @@
     <ID>UnusedImport:OperationJournal.kt:import kotlinx.serialization.encodeToString</ID>
     <ID>UnusedImport:SqliteEventStore.kt:import dev.rubentxu.pipeline.v2.events.UndecodableReason</ID>
     <ID>UnusedPrivateFunction:SqliteEventStore.kt:SqliteEventStore$private fun withConnection</ID>
-    <ID>UnusedPrivateProperty:SqliteEventFollowHandle.kt:SqliteEventFollowHandle$/** One-shot flag for the [EventFollowEvent.Completed] end of the natural-tail / until-condition path.*/ private var completedEmitted = false</ID>
+    <ID>UnusedPrivateProperty:SqliteEventFollowHandle.kt:SqliteEventFollowHandle$/** One-shot flag for the [EventFollowEvent.Completed] end of the natural-tail / until-condition path. */ private var completedEmitted = false</ID>
     <ID>UnusedVariable:EventJsonFields.kt:EventJsonFields$val next = raw[i + 1]</ID>
     <ID>UseCheckOrError:InMemoryOperationJournal.kt:InMemoryOperationJournal$throw IllegalStateException("Operation $opId attempt $attempt already journaled")</ID>
     <ID>UseCheckOrError:OperationJournal.kt:SqliteOperationJournalImpl$throw IllegalStateException( "Operation $opId attempt $attempt already journaled" )</ID>
@@ -82,6 +82,6 @@
     <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringListField(s, "directiveKeys") ?: emptyList()</ID>
     <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringListField(s, "selectedConditions") ?: emptyList()</ID>
     <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringListField(s, "skippedConditions") ?: emptyList()</ID>
-    <ID>VarCouldBeVal:SqliteEventFollowHandle.kt:SqliteEventFollowHandle$/** One-shot flag for the [EventFollowEvent.Completed] end of the natural-tail / until-condition path.*/ private var completedEmitted = false</ID>
+    <ID>VarCouldBeVal:SqliteEventFollowHandle.kt:SqliteEventFollowHandle$/** One-shot flag for the [EventFollowEvent.Completed] end of the natural-tail / until-condition path. */ private var completedEmitted = false</ID>
   </CurrentIssues>
 </SmellBaseline>

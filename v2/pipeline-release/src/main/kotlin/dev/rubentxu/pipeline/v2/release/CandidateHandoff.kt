@@ -11,9 +11,8 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 
 /**
- * P0.4 — the candidate handoff descriptor, emitted by `pipeline-kotlin` for
+ * The candidate handoff descriptor, emitted by `pipeline-kotlin` for
  * the external `pipelinek-release-harness`.
- *
  * The single most important property is that [candidateId] is the SHA-256 of
  * the distribution ZIP and nothing else. It is NOT a branch, an
  * isolated Git SHA, a mutable tag, `latest`, or a human RC name. Those remain
@@ -21,12 +20,11 @@ import kotlinx.serialization.encoding.Encoder
  * but they never substitute for the digest. This is the type-level expression
  * of "BUILD ONCE, CERTIFY EXACT BYTES, PUBLISH SAME BYTES": if the digest
  * changes, it is a different candidate, no matter what it is called.
- *
  * Candidate state lives entirely in this document. The product identity lives
  * in the bytes ([ProductVersion]) and in the distribution manifest. Keeping
  * them in separate documents is what makes promotion-rewriting structurally
  * impossible rather than merely discouraged.
- */
+*/
 @Serializable
 data class CandidateHandoff(
     @SerialName("schema_version") val schemaVersion: String = SCHEMA_VERSION,
@@ -47,14 +45,14 @@ data class CandidateHandoff(
      * this candidate. When present, distinct from [sbom] by content
      * (SDK ZIP carries JARs and POMs; SBOM is a dependency inventory
      * with hashes).
-     */
+*/
     val sdk: CandidateFileRef?,
     /**
      * SDK BOM as a JSON manifest of managed coordinates. Optional:
      * the build omits it when no BOM has been synthesised. When
      * present, distinct from [sbom] by structure (BOM is a flat list
      * of `group:artifact:version` triples; SBOM is a graph).
-     */
+*/
     val bom: CandidateFileRef?,
 ) {
     init {
@@ -75,11 +73,10 @@ data class CandidateHandoff(
 
 /**
  * A candidate's material identity: the digest of the distribution ZIP.
- *
  * Wrapped in a value class with a private constructor so a `CandidateId` can
  * only be built from a real 64-hex digest. This makes "the candidate id is
  * whatever the tag said" unrepresentable rather than merely discouraged.
- */
+*/
 @Serializable(with = CandidateIdSerializer::class)
 @JvmInline
 value class CandidateId private constructor(val digest: String) {
@@ -107,11 +104,10 @@ value class CandidateId private constructor(val digest: String) {
 /**
  * Serialises [CandidateId] in the canonical `sha256:<hex>` wire form, and
  * validates on the way back in.
- *
  * Validating in [deserialize] matters: a descriptor authored by hand (or
  * rewritten downstream) must not be able to smuggle a name in as a candidate
  * id. The rule is enforced at the boundary, not only at construction.
- */
+*/
 object CandidateIdSerializer : KSerializer<CandidateId> {
 
     override val descriptor: SerialDescriptor =
@@ -140,7 +136,7 @@ data class CandidateArtifact(
     /**
      * `Implementation-Version` observed inside the archive. Carried here so
      * the harness can reject a mismatched candidate before installing it.
-     */
+*/
     @SerialName("implementation_version") val implementationVersion: String?,
 )
 
@@ -148,6 +144,6 @@ data class CandidateArtifact(
 data class CandidateFileRef(
     val name: String,
     val sha256: String,
-    /** ISO-8601 instant the file was produced. */
+    /** Instant the file was produced */
     @SerialName("built_at") val builtAt: String,
 )

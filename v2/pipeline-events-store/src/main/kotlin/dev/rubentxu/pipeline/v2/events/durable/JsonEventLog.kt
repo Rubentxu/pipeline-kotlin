@@ -87,7 +87,7 @@ import java.time.Instant
 /**
  * JSON wire format encoder/decoder for domain events.
  * Wire shape: single-line JSON array, tagged `kind` field.
- */
+*/
 object JsonEventLog {
 
     fun encode(events: List<DomainEvent>): String {
@@ -102,9 +102,7 @@ object JsonEventLog {
 
     /**
      * ONE event as ONE JSON object, with no array wrapper.
-     *
      * ## Why this exists rather than slicing [encodeTo]'s output
-     *
      * [encode] and [encodeTo] are DOCUMENT codecs: their wire form is a bracketed array. A paged
      * command cannot use them directly, because a page boundary has to land between two objects —
      * and the two ways to get there are both wrong. Re-implementing the field writing here would
@@ -112,18 +110,17 @@ object JsonEventLog {
      * the store never wrote. Wrapping a single event in an array and stripping the brackets would
      * mean parsing what was just serialized, and would break on any field whose value legitimately
      * contains the delimiter.
-     *
      * So this delegates. The field order, the escaping and the `kind` tag are produced by the same
      * [EventJsonWriter.encodeEvent] the store itself uses, and an event encoded here is byte-for-byte
      * the same element [encode] would put at that index.
-     */
+*/
     fun encodeOne(event: DomainEvent): String = EventJsonWriter.encodeEvent(event)
 
     /**
-     * WU-RP-044 (M5 RSS debt): streams the same JSON array as [encode] to
+     * Streams the same JSON array as [encode] to
      * [out] one event at a time so the full document is never materialised as
      * a single in-memory String. Byte-for-byte identical output.
-     */
+*/
     fun encodeTo(events: Sequence<DomainEvent>, out: java.io.Writer) {
         out.append('[')
         var index = 0
@@ -137,25 +134,21 @@ object JsonEventLog {
 
     /**
      * Decodes a JSON ARRAY of events, skipping any element that will not decode.
-     *
-     * ## This is a DOCUMENT codec, and it is NOT the durable read path (P3-E E4c)
-     *
+     * ## This is a DOCUMENT codec, and it is NOT the durable read path (E4c)
      * The `?: continue` below is deliberate and it is why this method must not be used to read
      * stored rows. Its unit is a DOCUMENT, and a document has no per-element identity to report: a
      * caller cannot say "the record at sequence 41 exists and I could not read it" from an empty
      * list, because the sequence was never in this method's hands. Inventing one would create a
      * second authority for position, which is precisely what the store's sequence law forbids.
-     *
      * What this codec CAN do — and what the store must not do for it — is be told the answer it
      * actually has. The row carries its identity in its own COLUMNS, so the refusal belongs to the
      * store, at [decodeStoredRow] / `SqliteEventStore.readRecord`. That is where an `Undecodable`
      * gets a real sequence instead of a guess.
-     *
      * The split is held by the RETURN TYPE, not by a test: `List<DomainEvent>` has nowhere to put a
      * position, so this method cannot answer "row 41 exists and is unreadable" even if it tried to.
      * A caller that needs that answer has to go through [decodeStoredRow], whose `StoredRowDecode`
      * can carry one.
-     */
+*/
     fun decode(payload: String): List<DomainEvent> {
         val document = arrayBoundsOf(payload) ?: return emptyList()
         if (payload.substring(document.first, document.last + 1) == "[]") return emptyList()
@@ -179,16 +172,14 @@ object JsonEventLog {
 
     /**
      * Decodes the FIRST event object in [payload] and keeps what happened to it.
-     *
      * [decodeStoredRow] needs this because its unit of work is one row, and a row that exists but
      * did not decode has to be answered for — not silently reduced to an empty list. Routing
      * through [decode] and taking `firstOrNull()` would throw away the failure, which is the
      * information the store is obliged to report.
-     *
      * A payload with no decodable object at all is a failure of the DOCUMENT shape, reported as a
      * quoted payload rather than a named field: there is no field to name when the array itself
      * could not be read.
-     */
+*/
     private fun decodeFirstOutcome(payload: String): EventDecodeOutcome {
         if (payload.isBlank() || payload == "[]") {
             return EventDecodeOutcome.Failed(
@@ -214,31 +205,26 @@ object JsonEventLog {
 
     /**
      * Decodes ONE stored payload into a closed outcome, rather than a list that may be shorter than
-     * one. P3-E E4c.
-     *
+     * one. E4c.
      * [decode] answers "which events are in this document", and for a document assembled from
      * stdout that is the whole question. It is the WRONG shape for a durable row, where the caller's
      * unit is one row that the store has already identified and must answer for: an empty list there
      * has to become a refusal carrying that row's sequence, and expressing it as `List<DomainEvent>`
      * forces every caller to write `firstOrNull()` and decide — which is precisely the discarding the
      * read-side law forbids.
-     *
      * So this is the codec's own statement of "the row did not decode", and it carries a REASON so
      * the store does not have to guess one by re-parsing. An unknown `kind` and a known kind with an
      * unsatisfiable payload are different facts and they stay different here.
-     *
      * [rowKind] is the row's `kind` COLUMN, passed in rather than parsed from [payload], because
      * classification must not depend on the thing being classified.
-     *
      * The null payload case is a refusal too, not an absence: the row exists, the column is the
      * only thing that could have held it, and it held nothing.
-     */
+*/
     fun decodeStoredRow(payload: String?, rowKind: String?): StoredRowDecode = when {
         payload == null -> StoredRowDecode.Refused(
             dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload("payload column is null")
         )
         // The kind comes from the ROW COLUMN, and that ordering is the whole point of the parameter.
-        //
         // The first version of this read the kind out of the payload, which makes the classification
         // wrong exactly when it matters: a row can be unreadable *because* of its payload, and then
         // the payload is the one thing that cannot be trusted to name the row. The column is written
@@ -275,23 +261,20 @@ object JsonEventLog {
 
     /**
      * Why ONE event object inside a payload did not become a [DomainEvent], naming the field.
-     *
      * This exists because a bare `null` cannot answer a question the store is obliged to ask. When
      * `decodeStoredRow` refuses a row, it used to quote the payload — but a real payload can be
      * GiB-scale, so the quote is truncated at [STORED_ROW_DETAIL_CHARS] and the offending field is
      * routinely cut off. Measured: a 339-character payload with a diagnostics blob produced a
      * refusal whose detail ended mid-filler, with neither the field name nor the offending value
      * present. An operator reading a refused row could not learn WHICH field failed.
-     *
      * So the cause travels with the refusal instead of being recoverable from an echo of the very
      * bytes that were unreadable. [UnreadableField] is the cause; [UnknownEventKind] is kept
      * separate because an unknown kind is version skew and is reported through
      * `UndecodableReason.UnknownKind` by a caller that can act on it, while an unreadable field in
      * a known kind is corruption.
-     *
      * This is private on purpose. [decode] and [decodeStoredRow] keep their public shapes, so no
      * caller outside this file can depend on the codec's internal failure vocabulary.
-     */
+*/
     private sealed interface EventDecodeFailure {
 
         /** The cause, rendered for [dev.rubentxu.pipeline.v2.events.UndecodableReason.MalformedPayload]. */
@@ -316,11 +299,10 @@ object JsonEventLog {
 
     /**
      * What [decodeEvent] produced: the event, or the cause it could not produce.
-     *
      * Carries its own payload on each side so a caller cannot be tempted to read a null as
      * "nothing to report" — that is the exact confusion this type removes. [decodeStoredRow] MUST
      * answer for the row it was given, so it needs the failure, not its absence.
-     */
+*/
     private sealed interface EventDecodeOutcome {
 
         data class Decoded(val event: DomainEvent) : EventDecodeOutcome
@@ -329,32 +311,29 @@ object JsonEventLog {
     }
 
     /**
-     * Does this binary have a decoder for [kind]? P3-E E4c.
-     *
+     * Does this binary have a decoder for [kind]? E4c
      * [decode] answers with events and cannot say WHY one is missing: an unknown `kind` and a known
      * `kind` with a bad payload both come back as "no event". A durable read that has to report a
      * refusal needs that distinction — "this runtime is older than the row" is version skew worth
      * surfacing upward, and "this runtime knows the row and cannot read it" is corruption — so it
      * cannot infer one from the other.
-     *
      * It is also the answer to the question the `else -> null` arm of [decodeEvent] raises. That arm
      * is correct as a REJECTION: an unknown kind must not become a fabricated event. What it cannot
      * be, on its own, is silent, because the caller has no way to report it.
-     *
      * The set is the closed vocabulary [decodeEvent] switches on, restated. Duplication rather than
      * reflection is deliberate: it is already the practice in this file, it is checked against the
      * `when` by `Rp030EventCodecsConnascenceFitnessTest`, and a reflective scan of a `when` over
      * string literals would be a compiler-plugin job wearing a fitness's clothes.
-     */
+*/
     fun knowsKind(kind: String): Boolean = kind in KNOWN_KINDS
 
     /**
      * The wire discriminators this binary can decode. The single list both [knowsKind] and the
      * architecture fitness read, so "what can be read" has one answer rather than two that can
      * drift.
-     */
+*/
     private val KNOWN_KINDS: Set<String> = setOf(
-        // PK-1 / ADR-PK1-IDENTITY: RunCorrelated carries the external
+        // RunCorrelated carries the external
         // correlationId + ownerId + startedAtMs bound to the runId.
         "RunCorrelated", "RunStarted", "CompilationStarted", "CompilationFinished", "RunFinished",
         "StageStarted", "StageFinished", "StepStarted", "StepFinished",
@@ -384,18 +363,16 @@ object JsonEventLog {
 
     /**
      * Locates the JSON event array inside [payload], returning its `[` and `]` as indices.
-     *
-     * PK-RC-RENDER-001: `decode` assumed the array started at index 0 and ended at the last
+     * `decode` assumed the array started at index 0 and ended at the last
      * character. That is right for a document from [encode], but the CLI writes the
      * `LaunchReceipt` (`pipelinek.launch/1`) to the same stream first, so positional slicing
      * removed the receipt's `}` and the last progress line instead of the array's own brackets.
-     *
      * Balance alone is not enough to find the array: the receipt and the progress lines contain
      * `[` and `]`, and `[PipelineK] …` opens and closes a pair on one line. So each candidate
      * pair is checked to actually hold a list of JSON objects, and the first that does is the
      * array. Brackets inside JSON strings are skipped, so an event whose field contains a bracket
      * cannot truncate the document, and an unterminated array is never read as a partial list.
-     */
+*/
     private fun arrayBoundsOf(payload: String): IntRange? {
         for (open in payload.indices) {
             if (payload[open] != '[') continue
@@ -433,7 +410,7 @@ object JsonEventLog {
     /**
      * Splits a JSON array content into individual event strings.
      * Handles nested objects and strings correctly.
-     */
+*/
     private fun splitArray(s: String): List<String> {
         val result = mutableListOf<String>()
         var depth = 0
@@ -480,7 +457,7 @@ object JsonEventLog {
         val occurredAtStr = EventJsonFields.stringField(s, "occurredAt")
             ?: return absent("occurredAt")
         // An occurredAt that is present but unparseable is refused. Falling back to
-        // Instant.now() stamped every replayed row with the time of READING it, so
+        // Instant.now stamped every replayed row with the time of READING it, so
         // an event from months ago claimed to have happened during the replay, and
         // two reads of the same row produced two different events.
         val occurredAt = try {
@@ -503,7 +480,7 @@ object JsonEventLog {
                     scriptPath = scriptPath,
                 )
             }
-            // PK-1 / ADR-PK1-IDENTITY: decode the correlation event so
+            // Decode the correlation event so
             // the durable log can re-emit it on a replay / observe
             // without losing the correlationId binding.
             "RunCorrelated" -> {
@@ -752,7 +729,7 @@ object JsonEventLog {
                     credentialsId = CredentialsId(credIdStr),
                 )
             }
-            // L5 SCM Events
+            // SCM Events
             "GitCheckoutStarted" -> {
                 val url = EventJsonFields.stringField(s, "url") ?: ""
                 val branch = EventJsonFields.stringField(s, "branch") ?: ""
@@ -817,7 +794,7 @@ object JsonEventLog {
                     newSha = newSha,
                 )
             }
-            // L7 Jenkins File + Artefact Events (ML-R7)
+            // Jenkins File + Artefact Events
             "FileWritten" -> {
                 val pathStr = EventJsonFields.stringField(s, "path") ?: ""
                 val path = java.nio.file.Paths.get(pathStr)
@@ -884,7 +861,7 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
-            // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
+            // Core.stash/core.unstash durable cross-stage data movement
             "StashCreated" -> {
                 val stageName = EventJsonFields.stringField(s, "stageName")
                     ?: return absent("stageName")
@@ -935,7 +912,7 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
-            // WU-LPR-090 — core.publishHTML durable HTML report publishing
+            // Core.publishHTML durable HTML report publishing
             "HtmlReportPublished" -> {
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 val reportName = EventJsonFields.stringField(s, "reportName") ?: ""
@@ -1133,13 +1110,13 @@ object JsonEventLog {
             }
             "CatchErrorTriggered" -> {
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
-                // P3-E D3 — both results now cross the codec as a CLOSED vocabulary.
+                // Both results now cross the codec as a CLOSED vocabulary.
                 // `buildResult` stays nullable (a declared absence is legitimate: the DSL's
                 // default), but a PRESENT token outside the vocabulary is corruption and is
                 // refused, exactly like the absent-and-required `stageResult` below.
                 val buildResult = EventJsonFields.optionalStringField(s, "buildResult")
                     ?.let { CatchErrorBuildResult.parse(it) ?: return unreadable("buildResult", it) }
-                // P3-E E4 — was `?: "UNSTABLE"`. That default turned a MISSING field into a
+                // Was `?: "UNSTABLE"`. That default turned a MISSING field into a
                 // semantic claim, and the claim was not neutral: UNSTABLE means the run
                 // continues while FAILURE aborts it. A record whose stageResult could not be
                 // read therefore came back describing a different run than the one that
@@ -1148,7 +1125,7 @@ object JsonEventLog {
                 // 4/4 historical occurrences), so absence is corruption rather than a
                 // version this runtime predates — and the key being present with a JSON null
                 // is a real encoding, because the field is nullable.
-                // `stageResult` is a NON-NULL String in the event, so a JSON null is not a
+                // `stageResult` is a String in the event, so a JSON null is not a
                 // legitimate encoding of "not declared" — it is corruption, exactly like the
                 // key being absent. One reader covers both, which is why no hasField probe
                 // is needed here even though `buildResult` right above it IS nullable.
@@ -1210,12 +1187,11 @@ object JsonEventLog {
             "WaitUntilCompleted" -> {
                 val totalAttempts = EventJsonFields.intField(s, "totalAttempts") ?: 0
                 val totalDurationMs = EventJsonFields.longField(s, "totalDurationMs") ?: 0L
-                // P3-E E4 — was `?: "completed"`. Same defect, opposite direction: a missing
+                // Was `?: "completed"`. Same defect, opposite direction: a missing
                 // outcome decoded as SATISFACTION. `completed` is the one value that means
                 // the wait condition held, so the default reported success for a record that
                 // said nothing at all. The field is non-null in the event and the writer
                 // always emits it, so absence is malformed and the line stays unclassified.
-                //
                 // Vocabulary validation is deliberately NOT here: whether these three tokens
                 // are one concept is the open E4b.4 question, and validating against an
                 // undecided vocabulary would freeze it by accident.
@@ -1283,7 +1259,7 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
-            // RP6-A / WU-091 §6 lock events
+            // / lock events
             "LockRequested" -> {
                 val resource = EventJsonFields.stringField(s, "resource") ?: ""
                 val reason = EventJsonFields.optionalStringField(s, "reason")
@@ -1336,7 +1312,7 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
-            // RP6-C / WU-093 §5 httpRequest events
+            // / httpRequest events
             "HttpRequestStarted" -> {
                 HttpRequestStarted(
                     eventId = eventId,
@@ -1380,7 +1356,7 @@ object JsonEventLog {
                     reason = EventJsonFields.stringField(s, "reason") ?: "",
                 )
             }
-            // RP6-B / WU-092 §6 input events
+            // / input events
             "InputRequested" -> {
                 val message = EventJsonFields.stringField(s, "message") ?: ""
                 val submitter = EventJsonFields.optionalStringField(s, "submitter")
@@ -1440,7 +1416,7 @@ object JsonEventLog {
                     durationMs = durationMs,
                 )
             }
-            // WU-RP-030 — connascence fix: these three variants were encodable
+            // Connascence fix: these three variants were encodable
             // but NOT decodable (decodeEvent returned null), silently dropping
             // them from every replay/observation surface that reads persisted
             // history through JsonEventLog.
@@ -1474,9 +1450,8 @@ object JsonEventLog {
                     executorCalls = executorCalls,
                 )
             }
-            // P3 slice 2 — the plugin carrier. Written by EventJsonWriter as
+            // The plugin carrier. Written by EventJsonWriter as
             // registryKind/schemaVersion/payload/emittedBy.
-            //
             // The two identity fields are NOT defaulted the way the fields above are, and the
             // difference is deliberate. A StageSkipped with no `reason` is still the StageSkipped
             // that happened. A PluginEventEmitted with no `registryKind` or no `schemaVersion` is
@@ -1510,12 +1485,11 @@ object JsonEventLog {
 
     /**
      * Unreachable by construction, and stated rather than asserted.
-     *
      * The `when (kind)` above is exhaustive over every decodable kind, and its only fallthrough arm
      * is the `else` that already returned. Kotlin cannot see that, so this arm exists to make the
      * exhaustiveness a checked property rather than an `!!`: a kind added to the decoder without a
      * matching arm lands HERE at compile time instead of becoming a null at runtime.
-     */
+*/
     private fun malformedBranch(kind: String): EventDecodeOutcome = EventDecodeOutcome.Failed(
         EventDecodeFailure.UnreadableField("kind", "the decoder produced no event for kind \"$kind\"")
     )

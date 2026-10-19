@@ -22,19 +22,17 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * `core-utils.zip` codecs (input + output) (LFC-2E2, Slice 2 / S2.4).
- *
+ * `core-utils.zip` codecs (input + output) (, Slice 2 /.4)
  * Envelope shape (durable eligible):
- *   input  : { "path": <string>, "overwrite": <bool>,
+ *   input: { "path": <string>, "overwrite": <bool>,
  *              "sources": { "kind": "glob", "glob": <string> }
  *                       | { "kind": "directory", "directory": <string> }
- *                       | { "kind": "files", "paths": [<string>, ...] } }
- *   output : { "absolutePath": <string>, "byteSize": <long>,
+ *                       | { "kind": "files", "paths": [<string>,...] } }
+ *   output: { "absolutePath": <string>, "byteSize": <long>,
  *              "sha256Hex": <string>, "entryCount": <int> }
- *
- * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * Migrated to `PipelineJson` / `JsonAccessors`. Wire
  * format unchanged.
- */
+*/
 object CoreUtilsZipInputCodec : StepCodec<ZipInput> {
 
     override fun encode(input: ZipInput): EncodedStepValue = PipelineJson.encode(

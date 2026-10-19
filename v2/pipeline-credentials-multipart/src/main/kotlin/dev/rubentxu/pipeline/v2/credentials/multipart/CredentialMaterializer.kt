@@ -22,17 +22,14 @@ import java.util.UUID
 
 /**
  * Materializes file-based credentials to temporary files with proper permissions.
- *
  * Materialization kinds:
  * - [MaterializationKind.SecretFile]: creates temp file with 0600 permissions
  * - [MaterializationKind.SshPrivateKey]: creates temp file for key + optionally for passphrase
  * - [MaterializationKind.Certificate]: creates temp file for keystore + optionally for password
  * - [MaterializationKind.Zip]: extracts to temp directory with 0700 permissions
- *
  * All materialized paths are tracked and wiped on [close].
- *
  * @param store The secret store to retrieve credentials from
- */
+*/
 class CredentialMaterializer(
     private val store: SecretStore
 ) : AutoCloseable {
@@ -53,14 +50,13 @@ class CredentialMaterializer(
 
     /**
      * Materializes a credential to a temporary file/path based on its kind.
-     *
      * @param credential The credential to materialize
      * @param kind The materialization kind (must match credential type)
      * @return [MaterializedCredential] with path or handle
      * @throws MaterializationKindUnsupportedException if kind doesn't match credential type
      * @throws LinkedSecretReferenceNotFoundException if referenced credential doesn't exist
      * @throws LinkedSecretReferenceTypeMismatchException if referenced credential is wrong type
-     */
+*/
     fun materialize(credential: Credential, kind: MaterializationKind): MaterializedCredential {
         val cacheKey = credential.id to kind
         materializationCache[cacheKey]?.let { return it }
@@ -92,7 +88,7 @@ class CredentialMaterializer(
     }
 
     private fun materializeSecretFile(credential: SecretFile): MaterializedCredential {
-        // Create parent dir with 0700 perms (mkstemp-style) to satisfy CR-MZ-001 spec
+        // Create parent dir with 0700 perms (mkstemp-style) to satisfy spec
         val parentDir = createTempDir(
             prefix = "pipeline-secret-dir-",
             suffix = "-${credential.id.value}"
@@ -243,7 +239,7 @@ class CredentialMaterializer(
     /**
      * Closes the materializer, wiping all tracked paths.
      * Files are zeroed and deleted, directories are deleted.
-     */
+*/
     override fun close() {
         // Wipe and delete files
         for (path in trackedPaths.reversed()) {
@@ -281,21 +277,18 @@ class CredentialMaterializer(
 
 /**
  * The directories between [from] (exclusive) and [to] (inclusive), shallowest first.
- *
  * `Files.createDirectories` creates every missing level in one call and reports only the leaf, so
  * the intermediate directories have to be recovered if they are to be tracked. Walking from the
  * leaf up to [from] and reversing gives creation order, which is the order `close()` needs: it
  * deletes tracked directories in reverse insertion order, so a child inserted after its parent
  * is removed first.
- *
  * The ordering is not cosmetic. With only the top directory tracked, `close()` reached
  * `Files.delete(tempDir)` while a nested `sub/` was still inside it, took a
  * `DirectoryNotEmptyException`, and swallowed it -- leaving the extracted credential on disk.
- *
  * `internal` and top-level rather than private so the decision is reachable without a filesystem:
  * the only thing that reads it is a `Files.createDirectories` call, and AGENTS.md section 2
  * forbids that in a unit test.
- */
+*/
 internal fun createDirectoriesFrom(from: Path, to: Path): List<Path> {
     // Both ends are normalised rather than trusted. Walked raw, `a/./x/../b` yields
     // `a/./x/..`, `a/./x` and `a/.` -- three levels `Files.createDirectories` never created, and
@@ -314,24 +307,20 @@ internal fun createDirectoriesFrom(from: Path, to: Path): List<Path> {
 
 /**
  * Where a `Zip` entry may be written, or a refusal naming the entry that may not.
- *
  * Zip Slip. `Zip.entries` is a `Map<String, ByteArray>` of free-form names read out of the
  * secret store, so `..` is not a malformed archive -- it is a legal key. With no confinement,
  * `../escape` and `../../etc/cron.d/x` resolve outside the temp directory and
  * `materializeZip` writes the entry's bytes there and chmods it 0600: an arbitrary write to an
  * arbitrary path, with attacker-chosen content, during credential materialization.
- *
  * `Path.startsWith` compares name ELEMENTS, so the sibling-prefix form (`<tmpdir>-evil`) is
  * refused too. A character prefix would admit exactly the case an attacker picks -- the same
  * distinction `DirExecutor.resolveTargetPath` was corrected for.
- *
  * `internal` and top-level rather than private and inline so the decision is reachable without
  * a filesystem: `materializeZip` calls `Files.createDirectories` and `Files.write`, and
  * AGENTS.md section 2 forbids both in a unit test. A guard whose only path runs through a file
  * write is a guard with no coverage.
- *
  * @throws ZipEntryEscapesMaterializationException if [entryName] leaves [tempDir]
- */
+*/
 internal fun resolveZipEntryPath(credentialsId: CredentialsId, tempDir: Path, entryName: String): Path {
     val entryPath = tempDir.resolve(entryName).normalize()
     if (!entryPath.startsWith(tempDir)) {
@@ -342,18 +331,16 @@ internal fun resolveZipEntryPath(credentialsId: CredentialsId, tempDir: Path, en
 
 /**
  * Thrown when a `Zip` credential carries an entry name that leaves its materialization directory.
- *
  * Declared here rather than beside [MaterializationKindUnsupportedException] in
  * `:pipeline-credentials-api` because that module has an `api/` compatibility gate, and
  * AGENTS.md section 1 forbids changing a published artifact's surface without an authorised
  * versioned break. The refusal belongs to this materializer, which is the only thing that
  * decides where an entry may land.
- *
  * @property credentialsId the archive whose entry escaped
  * @property entryName the offending key, verbatim -- this is what an operator has to find in
  *   the store to fix it, and a resolved absolute path is a consequence they cannot act on
  * @property resolvedPath where the entry would have been written
- */
+*/
 class ZipEntryEscapesMaterializationException(
     val credentialsId: CredentialsId,
     val entryName: String,

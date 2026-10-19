@@ -15,12 +15,11 @@ import java.nio.ByteOrder
 
 /**
  * Pure cryptographic and entry-encoding primitives of the local secret store.
- *
  * Every operation here is a function of its arguments only: no file handles,
  * no locks and no cached state. The passphrase is passed in explicitly rather
  * than read from an instance field, which is what makes this object safe to
  * extract from [LocalSecretStore] without changing the derived key material.
- */
+*/
 internal object CredentialCrypto {
 
     private const val OWASP_M = 19456  // KiB
@@ -52,7 +51,7 @@ fun deriveKek(passphrase: CharArray, salt: ByteArray): ByteArray {
 }
 
 fun wrapDek(kek: ByteArray, dek: ByteArray): ByteArray {
-    // AES-KWP (RFC 3394) - wrap returns the ciphertext directly
+    // (RFC 3394) - wrap returns the ciphertext directly
     val kwp = AESWrapEngine()
     kwp.init(true, KeyParameter(kek))
     return kwp.wrap(dek, 0, dek.size)
@@ -163,7 +162,7 @@ fun readEntries(fileBytes: ByteArray): Map<String, V2EntryData> {
 /**
  * Read v1 format entries (no kindId field).
  * Used by v1 back-compat methods (put, rotateBytes).
- */
+*/
 fun readEntriesV1(fileBytes: ByteArray): Map<String, EntryData> {
     val result = mutableMapOf<String, EntryData>()
     var offset = HEADER_SIZE_V1

@@ -6,18 +6,17 @@ import java.time.Clock
 import java.util.UUID
 
 /**
- * The fail-closed bridge between a registered [EventDefinition] and the event stream (P3 slice
+ * The fail-closed bridge between a registered [EventDefinition] and the event stream (slice
  * 2): emission requires registration, encoding goes through the registered codec, and the
  * sequence comes from the store's own authority — this class never invents one.
- *
  * Laws:
- *  - an UNREGISTERED kind cannot be emitted at all (Constitution §9: no registration, no
+ *  - an UNREGISTERED kind cannot be emitted at all (Constitution: no registration, no
  *    event — the refusal is typed, not an exception);
  *  - the payload bytes are produced by the definition's own codec, so what a reader decodes
  *    is provably what the contributor emitted;
  *  - emission is an INTERPRETER of a pure decision: everything decidable (registered? encodes?)
  *    is decided before the store is touched, and the store append is the only effect.
- */
+*/
 class RegistryEventEmitter(
     private val registry: EventRegistry,
     private val sink: EventSink,
@@ -28,7 +27,7 @@ class RegistryEventEmitter(
      * Emits [payload] under [kind] into [runId]'s stream. The sequence is the store-assigned
      * one (`appendAssigned`), so the returned event is the authority's own decision, never a
      * local echo.
-     */
+*/
     fun <P : Any> emit(
         kind: String,
         runId: String,
@@ -61,7 +60,7 @@ class RegistryEventEmitter(
     /**
      * Typed read-back: decodes a carried plugin event through the registry. A core event is not
      * a plugin event; a carried event whose kind is no longer registered fails closed.
-     */
+*/
     fun decode(carrier: PluginEventEmitted): PayloadDecode<Any> {
         val definition = registry.definition(carrier.registryKind)
             ?: return PayloadDecode.Malformed(

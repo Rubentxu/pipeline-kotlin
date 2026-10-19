@@ -1,8 +1,6 @@
-// LFC-2E2 utilities OFFICIAL_PLUGIN live fixture (Slice 2 / S2.5 corpus).
-//
+// Utilities OFFICIAL_PLUGIN live fixture (Slice 2 /.5 corpus)
 // End-to-end exercise of all five utilities Steps in one pipeline:
 //   writeYaml, readYaml, findFiles, zip, unzip.
-//
 // The whole chain lives in ONE stage, and that is a correction rather than a
 // simplification. Every hand-off in this scenario goes through the workspace
 // filesystem: the manifest written by `writeYaml` is read back by `readYaml`,
@@ -13,7 +11,6 @@
 // different trees. Sibling fixtures already state this rule in their own
 // comments: smoke/10 keeps `archiveArtifacts` in the SAME stage as its build,
 // and output/30 spells it out — "seed and archive must live in the SAME stage".
-//
 // Stages are shared only when the run is launched with an explicit
 // `--workspace`, which run.sh deliberately does not pass. The stage boundary
 // was never the subject here; the utilities round trip was.

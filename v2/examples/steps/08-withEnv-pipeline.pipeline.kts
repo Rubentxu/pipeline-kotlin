@@ -6,7 +6,6 @@ pipeline {
             // fresh environment and observe nothing -- an assertion written as
             // a second step would pass on an empty variable while reading as a
             // proof that `isScriptBlock` had executed its body.
-            //
             // `${'$'}` because this is a Kotlin raw string: a bare `$MY_VAR` is
             // a Kotlin template reference and the scenario fails to COMPILE
             // rather than failing for the reason it is about.

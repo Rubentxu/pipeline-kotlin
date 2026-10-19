@@ -30,13 +30,11 @@ import java.util.UUID
 
 /**
  * Typed input payload of `core.milestone`.
- *
  * Mirrors the legacy dsl-v1 envelope produced by `DslCompiledPipelineCompiler.milestonePayload`:
  * `{"kind":"milestone","ordinal":N,"label":"optional-label-or-absent"}`.
- *
  * The codec encodes/decodes the ordinal (required, positive Int) and the optional label.
  * Validation: ordinal MUST be > 0 (fail-closed at decode time).
- */
+*/
 data class MilestoneInput(
     val ordinal: Int,
     val label: String?,
@@ -52,7 +50,7 @@ data class MilestoneInput(
  * TYPED_RUNTIME_OUTPUT — milestone does not produce a consumable runtime value (unlike `core.pwd`);
  * this type serves as the typed output carrier for the pipeline engine, carrying the ordinal,
  * label, and the reach/abort status as a sealed ADT.
- */
+*/
 data class MilestoneOutput(
     val ordinal: Int,
     val label: String?,
@@ -66,16 +64,14 @@ data class MilestoneOutput(
 
 /**
  * Closed outcome algebra for a milestone invocation.
- *
  * A milestone either:
  * - [Reached]: the ordinal was strictly greater than the previously reached ordinal
  *   within this pipeline run → [MilestoneReached] event emitted.
  * - [Aborted]: the ordinal was not greater than the previously reached ordinal
  *   within this pipeline run → [MilestoneAborted] event emitted.
- *
  * In the local single-run model, an aborted milestone records the event and returns
- * [StepOutcome.Unstable] but does NOT abort the pipeline (per ML-R9 T-09, ADR-0046 §ML).
- */
+ * [StepOutcome.Unstable] but does NOT abort the pipeline
+*/
 sealed class MilestoneStatus {
     abstract val kind: String
 
@@ -87,44 +83,37 @@ sealed class MilestoneStatus {
     /**
      * The ordinal was not strictly greater than the previously reached ordinal.
      * @property reason Human-readable reason for abortion (e.g. "ordinal-already-reached").
-     */
+*/
     data class Aborted(val reason: String) : MilestoneStatus() {
         override val kind: String get() = "aborted"
     }
 }
 
 /**
- * Registry candidate for `core.milestone` (S2-A9 / G1 registry seam proof).
- *
- * G1 registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy
+ * Registry candidate for `core.milestone` (/ registry seam proof)
+ * Registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy
  * decoder, the metadata row, or the legacy dispatcher:
  * `StructuralFamilyResolver`'s legacy-membership-wins rule keeps LegacyCore as
- * the production authority until the G3/G4 flip. Counters stay 6 / 6 / 6.
- *
- * **Semantics (per Jenkins verbatim, ADR-0046 §ML / ML-R9 T-09):**
+ * The production authority until the/ flip. Counters stay 6 / 6 / 6
+ * **Semantics: **
  * - Strictly increasing ordinal (within this pipeline run) → MilestoneReached event + Success.
  * - Non-increasing ordinal → MilestoneAborted event + Unstable (record-only, never aborts run).
- *
  * **State tracking:** the handler delegates ordinal state to [MILESTONE_OPERATIONS_CAPABILITY].
  * The capability is backed by a [MilestoneStateStore] created at coordinator construction time,
  * giving it the same per-run scope as the legacy [CanonicalMilestoneNodeDispatcher]. The handler
  * itself holds no mutable state.
- *
  * ## Capability separation
- *
  * - [MILESTONE_OPERATIONS_CAPABILITY] provides milestone ordinal state operations
  *   (`peek`, `advance`). The handler delegates state management to this capability.
  * - [EVENT_SINK_CAPABILITY] publishes the durable MilestoneReached/MilestoneAborted
  *   observation. The handler reaches the event sink ONLY through the declared capability.
- *
  * **Input codec:** encodes `{"kind":"milestone","ordinal":N,"label":...}` — byte-identical
  * to the legacy `DslCompiledPipelineCompiler.milestonePayload` output, ensuring durable
  * fingerprint continuity across the eventual flip.
- *
  * **Output codec:** encodes the MilestoneOutput as JSON
  * `{"ordinal":N,"label":?,"status":"reached"|"aborted","reason":"..."}` for durable
  * eligibility (MEMOIZED replay needs a well-formed JSON object).
- */
+*/
 object CoreMilestoneStep {
 
     val KEY: PluginStepId = PluginStepId("core.milestone")
@@ -273,3 +262,4 @@ object CoreMilestoneStep {
         builder.add(definition)
     }
 }
+

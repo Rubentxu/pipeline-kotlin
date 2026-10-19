@@ -21,40 +21,34 @@ import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import dev.rubentxu.pipeline.v2.events.registry.PLUGIN_EVENT_EMISSION_CAPABILITY
 
 /**
- * S6/I — the external plugin's DECLARATION, in one place.
- *
- * ## Why this file exists now and not in BLOCK 1-A..1-H
- *
+ * The external plugin's DECLARATION, in one place.
+ * ## Why this file exists
  * Because until here this plugin had no manifest at all. That was not a smaller plugin, it was an
  * UNADMITTED one: `PluginAdmissionGate` refuses any contributor whose artifact has no
  * `META-INF/pipelinek/plugin-manifest.json`, and the reason this JAR was running at all is that
  * it is discovered by a path — `PluginComposition.resolve` — that never asks the gate. Two
  * routes, one of them guarded. Naming that here matters more than the code below.
- *
  * ## One declaration, two readers
- *
  * The manifest is emitted into the artifact at BUILD time and read back at RUN time. Both readers
  * must read THIS object. A JSON document typed by hand in `build.gradle.kts` would be a second
  * authority able to describe a Step this code does not have — the same defect as the KSP in
  * BLOCK 1-H, in a different file.
- */
+*/
 object UppercasePluginDeclaration {
 
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/example-uppercase-release.properties"
 
     /**
      * Compatibility range, DERIVED at build time from the resolved SDK.
-     *
      * It used to be `PipelineKApiRange(SemVer(0, 47, 0), SemVer(0, 57, 0))`, a literal that had
      * already gone stale once: at host 0.56.0 it declared a range the host sits outside, and
      * admission refused this plugin on its own distribution. A literal held by a plugin that does
      * not control the host's release cadence cannot stay correct, so the values come from the
      * same release-properties resource that already carries this plugin's provenance — one
      * authority, read once, fail-closed.
-     *
      * Fail-closed rather than defaulted: a missing range key must refuse the plugin, because a
      * silent fallback to a guessed range would admit it against hosts nobody measured.
-     */
+*/
     val API_RANGE: PipelineKApiRange by lazy {
         val props = releaseProperties(UppercasePluginDeclaration::class.java)
         val minRaw = props["pipeline.example.uppercase.compatibility.min"]
@@ -75,14 +69,13 @@ object UppercasePluginDeclaration {
     /**
      * What the Steps collectively demand, and it is written as the union of the three contracts
      * rather than as a hand-kept list.
-     *
      * That is the whole reason the validator can be a cross-check instead of a comparison against
      * prose: `uppercase` demands nothing, `uppercaseObserved` demands the host's event-emission
      * seam, and `uppercase.cased` demands the table this JAR supplies. Note the second one is a
      * seam the plugin does NOT supply and is not expected to — a manifest's capability set states
      * what the plugin NEEDS, not what it hands over. `http` declares `BASIC_CREDENTIALS` for the
      * same reason, and a model that conflated the two would refuse it.
-     */
+*/
     private val DECLARED_CAPABILITIES: Set<StepCapability> =
         setOf(PLUGIN_EVENT_EMISSION_CAPABILITY, EXAMPLE_CASE_TABLE_CAPABILITY)
 
@@ -94,12 +87,11 @@ object UppercasePluginDeclaration {
 
     /**
      * Fail-closed provenance: never accept a hand-typed digest.
-     *
      * If the build did not write a release-properties document, this throws instead of inventing
      * one. A digest nobody measured is worse than no digest, because admission would read it as a
      * measured identity — that is the whole claim `MeasuredArtifactIdentity` exists to keep
      * separable from what is declared.
-     */
+*/
     fun provider(
         classLoader: ClassLoader = UppercasePluginDeclaration::class.java.classLoader,
     ): StepProviderMetadata {
@@ -175,13 +167,12 @@ object UppercasePluginDeclaration {
     }
 
     internal fun releaseProperties(ownClass: Class<*>): Map<String, String> {
-        // PK-RELEASE-CONSOLIDATION D1.9: the resource MUST come from THIS plugin's JAR, not from
+        // The resource MUST come from THIS plugin's JAR, not from
         // whichever JAR happens to be first on the system classpath with the same path. `getResource`
         // on the system classloader walks the URL chain in classpath order, and a sibling JAR that
-        // also contains `META-INF/example-uppercase-release.properties` would silently win.
+        // Also contains `META-INF/example-uppercase-release.properties` would silently win
         // Measured: a forged sibling JAR with `compatibility.min=9.9.9` overrides the plugin's real
         // value the instant it lands earlier on the classpath.
-        //
         // Resolving through the `ProtectionDomain` of the plugin's own class pins the read to the
         // exact JAR the JVM loaded this `object` from. If the class was loaded from a directory
         // (test classpath, exploded jar) the URL is a `file:` entry, and the resource is read from
@@ -200,7 +191,7 @@ object UppercasePluginDeclaration {
     }
 
     private fun readFromJar(jarUrl: java.net.URL, resourcePath: String): Map<String, String>? {
-        // PK-RELEASE-CONSOLIDATION D1.9: open the JAR by file path, not by JarURLConnection.
+        // Open the JAR by file path, not by JarURLConnection.
         // A `file:` URL that points at a `.jar` is NOT a `JarURLConnection`; casting throws
         // ClassCastException, the catch swallows it, and we fall back to the system classloader
         // — which is exactly the lookup that returns the wrong (forged) resource. Open the file
@@ -245,11 +236,10 @@ object UppercasePluginDeclaration {
 
 /**
  * Build-time entry point: emit the manifest document to stdout.
- *
  * A non-zero exit from missing provenance stops the build instead of shipping a JAR whose manifest
  * is absent — and a JAR without a manifest is refused at runtime, so a silent skip here would
  * produce an artifact that passes its own build and fails its own admission.
- */
+*/
 fun main() {
     print(PluginManifestCodec.encode(UppercasePluginDeclaration.manifest()))
 }

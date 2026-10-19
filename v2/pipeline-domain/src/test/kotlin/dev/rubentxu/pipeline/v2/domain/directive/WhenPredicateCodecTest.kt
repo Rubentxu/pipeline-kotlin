@@ -7,9 +7,8 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
 /**
- * The `when` gate codec is a FAIL-CLOSED boundary, so these are the two
+ * The `when` gate codec is a boundary, so these are the two
  * guarantees worth protecting permanently.
- *
  * `WhenPredicateCodec`'s KDoc records a real defect, not a hypothetical one: the
  * first version serialized a compound predicate to a readable multi-line block
  * and re-parsed it with a regex, which silently failed on a nested combinator
@@ -17,7 +16,7 @@ import org.junit.jupiter.api.Test
  * runs when it should have been held. The format was replaced with prefix
  * notation over length-prefixed strings precisely to make that unrepresentable,
  * and this class is what keeps the replacement honest.
- */
+*/
 class WhenPredicateCodecTest {
 
     /**
@@ -25,7 +24,7 @@ class WhenPredicateCodecTest {
      * files. If they can disagree, a predicate changes meaning between authoring
      * and execution — the same silent-lie class the ADT exists to remove. This
      * enumerates every constructor case and asserts the pair is an identity.
-     */
+*/
     @Nested
     @DisplayName("the encoder and decoder are exact inverses")
     inner class RoundTrip {
@@ -54,7 +53,7 @@ class WhenPredicateCodecTest {
          * The historical defect, kept as a named case rather than left to a
          * reader of the commit log. Nesting appears at both depths the DSL can
          * build: a compound inside a compound, and a negation wrapping one.
-         */
+*/
         @Test
         fun `a nested combinator round trips`() {
             val predicate = WhenPredicate.AllOf(
@@ -81,7 +80,7 @@ class WhenPredicateCodecTest {
          * a space. A space-delimited token would truncate `feature/my branch` to
          * `feature/my`, which then compares unequal and flips the gate — a
          * silently different value, the worst possible outcome here.
-         */
+*/
         @Test
         fun `a value containing spaces is read whole`() {
             val predicate = WhenPredicate.VariableEquals("BRANCH", "feature/my branch")
@@ -95,7 +94,7 @@ class WhenPredicateCodecTest {
         /**
          * Length prefixes exist so no character needs escaping. If that claim is
          * false, this assertion is the cheapest thing that notices.
-         */
+*/
         @Test
         fun `values holding delimiter characters survive intact`() {
             for (awkward in listOf("a b c", "brace { } here", "quote \" here", "new\nline", "colon: here", "")) {
@@ -114,7 +113,7 @@ class WhenPredicateCodecTest {
      * Every unparseable input must be a typed refusal. The alternative — a
      * partial predicate, or an exception escaping into the gate — is the
      * fail-OPEN defect the whole design exists to prevent.
-     */
+*/
     @Nested
     @DisplayName("an unreadable payload is refused, never guessed")
     inner class FailClosed {

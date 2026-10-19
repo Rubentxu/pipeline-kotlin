@@ -4,25 +4,23 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * P0.3 build wiring — the interpreter at the candidate boundary.
- *
+ * The interpreter at the candidate boundary.
  * The pure deciders ([evaluateDistributionIdentity], [evaluateCandidateHandoff])
  * are the authority on whether a candidate is admissible. This class is the
  * effectful interpreter that turns their verdict into a build outcome: it
  * materializes the candidate, prints the operator diagnostic, and returns a
  * value the Gradle task can fail on.
- *
  * Keeping the pass/fail decision out of here is deliberate. A build script
  * that re-derived the rules could disagree with the model, and the model is
  * what the tests pin. This only reports and refuses.
- */
+*/
 object CandidateAdmission {
 
     /**
      * Run the cheap identity admission for [zip] and emit the candidate
      * material next to it. Returns the outcome; the caller decides whether to
      * fail the build.
-     */
+*/
     fun admit(
         zip: Path,
         productVersion: String,
@@ -38,10 +36,9 @@ object CandidateAdmission {
         outDir: Path,
         provenanceFacts: SourceProvenanceFacts? = null,
     ): AdmissionOutcome {
-        // P0.5 — source provenance law. Evaluated BEFORE anything is written,
+        // Source provenance law. Evaluated BEFORE anything is written,
         // so a candidate whose recorded commit would be a lie about the bytes
         // never produces a manifest for the harness to trust.
-        //
         // The verdict is not merely logged: an unverifiable or refused
         // provenance aborts admission. Refusing here is what makes the law
         // real; a warning would have left the original defect in place.
@@ -96,13 +93,12 @@ object CandidateAdmission {
         return when (result) {
             is MaterializationResult.Refused -> AdmissionOutcome.Refused(result.reason)
             is MaterializationResult.Materialized -> {
-                // PK-R1 R1-C: fail-closed bundled-plugin compatibility gate.
+                // Fail-closed bundled-plugin compatibility gate.
                 // Runs AFTER the manifest is written so the operator's failure
                 // diagnostic carries the candidate id, but BEFORE the outcome
                 // is reported as Admitted, so a host version the bundled
                 // plugins refuse is refused at the candidate boundary and
                 // never reaches the certifier.
-                //
                 // The check is observable from the distribution ZIP alone
                 // (the same bytes the identity gate just measured) and
                 // reproducible, so it can be re-run from the certifier
@@ -148,7 +144,7 @@ sealed interface AdmissionOutcome {
      * The candidate is admissible. [identityVerdict] is the identity gate's
      * own diagnostic, carried through verbatim so the build log shows what the
      * gate actually concluded rather than a flattened "OK".
-     */
+*/
     data class Admitted(
         val candidateId: String,
         val manifestPath: Path,

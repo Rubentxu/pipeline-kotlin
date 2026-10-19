@@ -21,15 +21,13 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipSources
 import kotlinx.serialization.json.JsonElement
 
 /**
- * Ergonomic Kotlin DSL façade for the LFC-2E2 utilities OFFICIAL_PLUGIN.
- *
+ * Ergonomic Kotlin DSL façade for the utilities OFFICIAL_PLUGIN
  * Mirrors the scm-git pattern: narrow extension functions that build the
  * typed value, encode it via the plugin's own codec, and lower to the
  * generic [StageScope.registryStep] primitive that core provides.
- *
  * The extensions MUST NOT resolve the runtime registry, MUST NOT execute
  * the handler, and MUST NOT inspect any global mutable state.
- */
+*/
 
 /** Public step-key accessors. */
 fun coreUtilsReadJsonStepKey(): PluginStepId = CoreUtilsReadJsonKey.VALUE
@@ -43,15 +41,13 @@ fun coreUtilsUnzipStepKey(): PluginStepId = CoreUtilsUnzipKey.VALUE
 
 /**
  * `core-utils.readJson` DSL façade.
- *
- * Reads a UTF-8 JSON file from disk and returns a typed value.
- *
+ * Reads a JSON file from disk and returns a typed value
  * @param path workspace-relative or absolute path to the JSON file.
  * @param prettyPrint when true (default), pretty-printed JSON is accepted and
  *   preserved as-is in [ReadJsonOutput.rawText].
  * @param returnRawText when true, the parsed `JsonElement` is null and only
  *   the raw text is returned. Defaults to false (typed parse).
- */
+*/
 fun StageScope.readJson(
     path: String,
     prettyPrint: Boolean = true,
@@ -71,15 +67,13 @@ fun StageScope.readJson(
 
 /**
  * `core-utils.writeJson` DSL façade.
- *
  * Writes a typed JSON value to disk. Parent directories are created if
  * missing. The file content is deterministic given identical inputs.
- *
  * @param path workspace-relative or absolute target file path.
  * @param value the typed JSON value to serialise.
  * @param prettyPrint when true (default), the file is written with 2-space
  *   indentation; otherwise compact JSON.
- */
+*/
 fun StageScope.writeJson(
     path: String,
     value: JsonElement,
@@ -100,10 +94,9 @@ fun StageScope.writeJson(
 
 /**
  * `core-utils.writeJson` raw-text DSL façade.
- *
  * Writes a pre-serialised JSON document to disk verbatim. Use only when the
  * caller already holds a JSON string and does not want it re-formatted.
- */
+*/
 fun StageScope.writeJsonRaw(
     path: String,
     rawText: String,
@@ -124,15 +117,13 @@ fun StageScope.writeJsonRaw(
 
 /**
  * `core-utils.sha256` DSL façade.
- *
  * Streams the file content through `MessageDigest` and returns a lowercase
  * hex digest.
- *
  * @param path workspace-relative or absolute target file path.
  * @param algorithm the message-digest algorithm to use; allowed values are
  *   `SHA-256` (default) and `SHA-1`. Anything else is rejected at runtime
  *   with a typed USER-class failure.
- */
+*/
 fun StageScope.sha256(
     path: String,
     algorithm: String = "SHA-256",
@@ -150,16 +141,14 @@ fun StageScope.sha256(
 
 /**
  * `core-utils.readYaml` DSL façade (file source).
- *
- * Reads a UTF-8 YAML file from disk and returns a typed [dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlOutput].
- *
+ * Reads a YAML file from disk and returns a typed [dev.rubentxu.pipeline.v2.sdk.utilities.domain.ReadYamlOutput]
  * @param path workspace-relative or absolute path to the YAML file.
  * @param codePointLimit override for the input size cap. `null` uses the
  *   Step default (8 MiB). Values <= 0 are rejected at runtime as a typed
  *   USER-class failure.
  * @param maxAliasesForCollections override for the recursive collection alias
  *   cap. `null` uses the Step default (64).
- */
+*/
 fun StageScope.readYaml(
     path: String,
     codePointLimit: Int? = null,
@@ -179,12 +168,11 @@ fun StageScope.readYaml(
 
 /**
  * `core-utils.readYaml` DSL façade (inline text source).
- *
  * Parses an inline YAML string instead of reading from disk. The
  * `file XOR text` invariant is enforced by the typed source: this function
  * builds [ReadYamlSource.FromText], the `readYaml(path: ...)` overload
  * builds [ReadYamlSource.FromFile], and both are mutually exclusive.
- */
+*/
 fun StageScope.readYamlText(
     text: String,
     codePointLimit: Int? = null,
@@ -204,11 +192,10 @@ fun StageScope.readYamlText(
 
 /**
  * `core-utils.writeYaml` DSL façade (file destination, single document).
- *
- * Writes a typed [YamlDocument] to disk as a UTF-8 YAML file. Refuses to
+ * Writes a typed [YamlDocument] to disk as a YAML file. Refuses to
  * overwrite an existing file unless [overwrite] is explicitly `true` (Jenkins'
  * default behaviour). Parent directories are created automatically.
- */
+*/
 fun StageScope.writeYaml(
     path: String,
     value: YamlDocument,
@@ -227,10 +214,9 @@ fun StageScope.writeYaml(
 
 /**
  * `core-utils.writeYaml` DSL façade (file destination, multiple documents).
- *
  * Writes a sequence of typed YAML documents as one file using SnakeYAML's
  * `dumpAll` (each document separated by `---`).
- */
+*/
 fun StageScope.writeYamlMultiple(
     path: String,
     documents: List<YamlDocument>,
@@ -252,12 +238,11 @@ fun StageScope.writeYamlMultiple(
 
 /**
  * `core-utils.zip` DSL façade (archive a directory subtree).
- *
  * Creates a zip file at [path] (workspace-relative or absolute). Refuses
  * to overwrite an existing archive unless [overwrite] is true (Jenkins
  * default). Symlinks inside [directory] are followed and archived as
  * regular files.
- */
+*/
 fun StageScope.zipDir(
     path: String,
     directory: String,
@@ -277,10 +262,9 @@ fun StageScope.zipDir(
 
 /**
  * `core-utils.zip` DSL façade (archive a glob of files).
- *
  * Globs are interpreted with the same Java NIO + Jenkins-compat two-
  * stars-slash fallback that `findFiles` uses.
- */
+*/
 fun StageScope.zipGlob(
     path: String,
     glob: String,
@@ -300,7 +284,7 @@ fun StageScope.zipGlob(
 
 /**
  * `core-utils.zip` DSL façade (archive a literal list of paths).
- */
+*/
 fun StageScope.zipFiles(
     path: String,
     paths: List<String>,
@@ -323,18 +307,16 @@ fun StageScope.zipFiles(
 
 /**
  * `core-utils.findFiles` DSL façade (file-system scanner).
- *
  * Enumerates entries under a workspace-relative directory, optionally
  * filtered by a glob and an exclusion glob. An empty glob lists direct
  * children (Jenkins `findFiles()` default). The handler never follows
  * symlinks — they appear in the listing as themselves.
- *
  * @param base workspace-relative or absolute path to scan.
  * @param glob optional glob pattern. Java NIO glob syntax.
  *   Use `*.txt` for direct children, or `two stars slash star.txt` for
  *   recursive matching.
  * @param excludes optional glob pattern to drop matches against.
- */
+*/
 fun StageScope.findFiles(
     base: String,
     glob: String? = null,
@@ -355,14 +337,12 @@ fun StageScope.findFiles(
 
 /**
  * `core-utils.unzip` DSL façade (extract mode, default Jenkins behaviour).
- *
  * Extracts every entry of [path] into [destination] (or the workspace root
  * when [destination] is null). Applies a [glob] filter if provided.
- *
  * Security: every entry is checked against the destination root (Zip Slip /
- * CVE-2023-32981 containment applied to the extraction side). Entries that
+ * Containment applied to the extraction side). Entries that
  * resolve outside the workspace are rejected before any byte is written.
- */
+*/
 fun StageScope.unzip(
     path: String,
     destination: String? = null,
@@ -383,10 +363,9 @@ fun StageScope.unzip(
 
 /**
  * `core-utils.unzip` DSL façade (read mode — `read: true` Jenkins equivalent).
- *
- * Reads each matched entry as a UTF-8 string and returns it as
+ * Reads each matched entry as a string and returns it as
  * `Map<String, String>` instead of writing files to disk.
- */
+*/
 fun StageScope.unzipRead(
     path: String,
     glob: String? = null,
@@ -406,10 +385,9 @@ fun StageScope.unzipRead(
 
 /**
  * `core-utils.unzip` DSL façade (test mode — `test: true` Jenkins equivalent).
- *
  * Performs a CRC32 sweep over every entry without writing anything to disk
  * and returns `TestReport(ok, entryCount, badEntries)`.
- */
+*/
 fun StageScope.unzipTest(
     path: String,
     glob: String? = null,

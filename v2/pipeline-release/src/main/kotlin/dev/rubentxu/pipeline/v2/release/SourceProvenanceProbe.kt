@@ -15,24 +15,22 @@ import java.util.UUID
 /**
  * The effectful half of [SourceProvenance]: reads the facts the pure decider
  * needs. Git execution goes through the canonical [DurableTaskRuntime]
- * (LF-0309: ProcessDurableTaskRuntime is the single authorised process home);
+ * ProcessDurableTaskRuntime is the single authorised process home);
  * this module constructs processes as little as the runtime lets it — which
  * is to say, never directly.
- *
  * Every query degrades to [SourceProvenance.PROVENANCE_UNKNOWN] or a zero
  * count when Git cannot answer, and the decider decides what an unanswered
  * question means. The probe never decides — it observes.
- */
+*/
 object SourceProvenanceProbe {
 
     /**
      * Snapshot version control state for the repository containing [repoRoot].
-     *
      * Note the asymmetry that matters: a *failed dirty check* is reported as
      * `SourceProvenance.PROVENANCE_UNKNOWN` rather than as "clean". If Git is
      * unavailable we cannot prove the tree is clean, and reporting zero
      * modified files would turn an outage into a pass.
-     */
+*/
     fun probe(repoRoot: Path, runtime: DurableTaskRuntime = defaultRuntime()): SourceProvenanceFacts {
         val head = git(runtime, repoRoot, listOf("rev-parse", "HEAD"))
             ?.trim()
@@ -76,7 +74,7 @@ object SourceProvenanceProbe {
      * is absent, the directory is not a repository, or the command fails. A
      * `null` means "no answer", which is a real state the decider must handle —
      * never an implicit zero.
-     */
+*/
     private fun git(runtime: DurableTaskRuntime, repoRoot: Path, args: List<String>): String? = try {
         val request = TaskExecutionRequest(
             task = TaskSpec.ExecTask(argv = listOf("git") + args),

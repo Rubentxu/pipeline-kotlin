@@ -7,19 +7,15 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * AEAD cipher using AES-256-GCM.
- *
  * ## Format
- *
  * sealed = nonce(12) || ciphertext || tag(16)
  * Total overhead = 12 + 16 = 28 bytes
- *
- * ## Design (ADR-0049 D2)
- *
+ * ## Design
  * Uses Java JCE AES/GCM/NoPadding (backed by bouncycastle bcprov).
- * - AES-256 key (KEY_SIZE_BYTES = 32)
+ * Key (KEY_SIZE_BYTES = 32)
  * - GCM standard nonce (NONCE_SIZE_BYTES = 12)
  * - GCM authentication tag (TAG_SIZE_BYTES = 16)
- */
+*/
 object AeadCipher {
     private const val KEY_SIZE_BYTES = 32  // AES-256
     internal const val NONCE_SIZE_BYTES = 12  // GCM standard nonce (96 bits)
@@ -29,12 +25,10 @@ object AeadCipher {
 
     /**
      * Sealed blob containing the encrypted data.
-     *
      * The raw ciphertext stored includes the nonce prepended:
      * raw = nonce(12) || ciphertext || tag(16)
-     *
      * This compact format simplifies encoding/decoding — no separate nonce field needed.
-     */
+*/
     data class SealedBlob(
         /** Ciphertext with nonce prepended: nonce(12) || ciphertext || tag(16) */
         val raw: ByteArray,
@@ -48,7 +42,7 @@ object AeadCipher {
         /**
          * Returns the total sealed blob as a single byte array.
          * Format: nonce(12) || ciphertext || tag(16)
-         */
+*/
         fun toByteArray(): ByteArray = raw
 
         override fun equals(other: Any?): Boolean {
@@ -62,13 +56,12 @@ object AeadCipher {
     }
 
     /**
-     * Encrypts a plaintext using AES-256-GCM.
-     *
+     * Encrypts a plaintext using
      * @param key 32-byte AES key
      * @param plaintext The data to encrypt
      * @param aad Additional authenticated data (authenticated but not encrypted)
      * @return SealedBlob with nonce || ciphertext || tag
-     */
+*/
     fun encrypt(key: ByteArray, plaintext: ByteArray, aad: ByteArray): SealedBlob {
         require(key.size == KEY_SIZE_BYTES) { "Key must be 32 bytes" }
 
@@ -90,13 +83,12 @@ object AeadCipher {
 
     /**
      * Decrypts a sealed blob and verifies GCM authentication tag.
-     *
      * @param key 32-byte AES key
      * @param blob The sealed blob (nonce || ciphertext || tag)
      * @param aad Additional authenticated data
      * @return The plaintext bytes
      * @throws javax.crypto.AEADBadTagException if tag verification fails
-     */
+*/
     fun decrypt(key: ByteArray, blob: SealedBlob, aad: ByteArray): ByteArray {
         require(key.size == KEY_SIZE_BYTES) { "Key must be 32 bytes" }
 
@@ -115,7 +107,7 @@ object AeadCipher {
 
     /**
      * Decrypts from a combined byte array (nonce || ciphertext || tag).
-     */
+*/
     fun decrypt(key: ByteArray, combined: ByteArray, aad: ByteArray): ByteArray {
         require(key.size == KEY_SIZE_BYTES) { "Key must be 32 bytes" }
         require(combined.size > NONCE_SIZE_BYTES + TAG_SIZE_BYTES) {

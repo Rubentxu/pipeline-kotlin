@@ -6,24 +6,21 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 /**
  * Materializes the canonical waitUntil identities used for durable journal
  * persistence and reconciliation.
- *
  * Mirrors [RetryIdentityFactory]. The waitUntil aggregate has a simpler identity
  * model than retry: it polls the same body repeatedly until the predicate succeeds
  * or the backoff ceiling is reached.
- *
  * ## Determinism
  * All inputs that drive identity are pure values (no clock, no random).
  * Two calls with the same `(runId, stageIndex, stepIndex, parentBodyPath)` produce
  * byte-identical strings.
- */
+*/
 object WaitUntilIdentityFactory {
 
     /**
      * Canonical waitUntil CONTROL operation identifier.
-     *
      * Stable across poll attempts: every attempt's control row for one waitUntil
      * logical invocation shares this opId.
-     */
+*/
     fun controlOperationId(
         runId: String,
         stageIndex: Int,

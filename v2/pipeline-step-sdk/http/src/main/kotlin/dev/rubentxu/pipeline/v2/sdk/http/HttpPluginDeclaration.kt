@@ -24,43 +24,38 @@ import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import dev.rubentxu.pipeline.v2.sdk.runtime.PluginCompatibilityResource
 
 /**
- * S6/C — the http plugin's DECLARATION, in one place.
- *
+ * The http plugin's DECLARATION, in one place.
  * Same contract as [dev.rubentxu.pipeline.v2.sdk.utilities.step.UtilitiesPluginDeclaration], and
  * for the same reason: the manifest is emitted into the artifact at BUILD time and read back
  * at RUN time, so both readers must read ONE declaration. A JSON document typed by hand in
  * `build.gradle.kts` would be a second authority able to describe a Step the code does not have.
- *
  * The declared digest covers the artifact content EXCLUDING this document, matching the
  * `http-release.properties` convention already in use. A digest that included the manifest
  * carrying it would have no fixed point.
- */
+*/
 object HttpPluginDeclaration {
 
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/http-release.properties"
 
     /**
-     * PK-RC-PLUGIN-001 — the apiRange is no longer a literal.
-     *
+     * The apiRange is no longer a literal.
      * Before this refactor, the upper bound was hand-typed here, and a product version
      * bump from 0.53.x to 0.54.x was published without updating the literal: the
      * v0.56.0-rc3 candidate shipped with `apiRange=[0.47.0, 0.53.0)` while the host
      * was 0.56.0, and `PluginAdmissionGate` would refuse every official plugin on
      * its own distribution.
-     *
      * The apiRange is now a CONSUMER of the policy-derived resource. The literal
      * moved to `buildSrc/PluginCompatibilityPolicy`, which reads `rootProject.version`
      * and emits the range. Editing this class to widen the range manually would
      * re-introduce the drift.
-     *
      * Nothing pins that property automatically any more. `BuiltPluginManifestArtifactTest`
      * and `PluginCompatibilityResourceTest` both existed and both were removed by the
-     * 2026-10-18 testing RESET, because they were QA scaffolding rather than product
+     * the testing reset, because they were QA scaffolding rather than product
      * behaviour. The guarantee now rests on the single derivation above plus the
      * round trip a real `pipelinek run` performs against the shipped plugin JAR, so
      * treat a version bump that moves `rootProject.version` as needing that manual
      * read rather than assuming a gate caught it.
-     */
+*/
     val API_RANGE: PipelineKApiRange
         get() = PluginCompatibilityResource.load(HttpPluginDeclaration::class.java.classLoader)
 
@@ -150,10 +145,9 @@ object HttpPluginDeclaration {
 
 /**
  * Build-time entry point: emit the manifest document to stdout.
- *
  * A non-zero exit from missing provenance stops the build instead of shipping a JAR whose
  * manifest is absent — and a JAR without a manifest is refused at runtime.
- */
+*/
 fun main() {
     print(PluginManifestCodec.encode(HttpPluginDeclaration.manifest()))
 }

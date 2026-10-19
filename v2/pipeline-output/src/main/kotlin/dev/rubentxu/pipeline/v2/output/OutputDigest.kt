@@ -3,30 +3,24 @@ package dev.rubentxu.pipeline.v2.output
 import java.security.MessageDigest
 
 /**
- * M3 — a deterministic content hash of the committed bytes in `[from, to)`
+ * A deterministic content hash of the committed bytes in `[from, to)`
  * of a stream.
- *
  * ## Algorithm
- *
  * The default is [DEFAULT_ALGORITHM] ("SHA-256"), the same algorithm the
  * journal's `Fingerprint` uses (`OperationJournal.beginOperation`).
  * The value class itself does NOT carry the algorithm name (the hash
  * is opaque at the wire), so a future hardened SHA-3-256 may ship
  * without an ABI break.
- *
  * ## Idempotency
- *
  * `OutputDigest` is a deterministic function of `(stream, from, to)`:
  * for any two calls that name the same `(from, to)` range of the same
  * committed bytes, the digest is identical.
- *
  * The wire shape is the **64-lowercase-hex** encoding of SHA-256. The
  * in-memory shape is the same hex string for stable `equals` / `hashCode`
  * across JVM restarts and cross-process round-trips.
- *
  * @property hex lowercase 64-char hex digest (SHA-256 output is 32 bytes
  *            = 64 hex chars)
- */
+*/
 @JvmInline
 value class OutputDigest(val hex: String) {
     init {

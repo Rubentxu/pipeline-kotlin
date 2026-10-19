@@ -25,24 +25,20 @@ import kotlin.io.path.exists
 import kotlin.io.path.isRegularFile
 
 /**
- * `core-utils.sha256` OFFICIAL_PLUGIN Step (LFC-2E2 utilities).
- *
+ * `core-utils.sha256` OFFICIAL_PLUGIN Step (utilities)
  * Capability discipline: declares `WORKSPACE_IDENTITY_CAPABILITY` and reads
  * the canonical workspace root from the typed capability seam.
- *
  * Effects: `READ_ONLY` (read-only stream over the file).
  * ReplayPolicy: `MEMOIZED` (file content is deterministic; replay may reuse
  *   the cached output when the durable fingerprint matches).
  * RecoveryPolicy: `None`.
- *
  * Algorithms supported in this slice: `SHA-256` (default) and `SHA-1`. We
  * deliberately do NOT accept any other algorithm name — a caller asking for
  * `MD5` is rejected at admission time with a typed USER-class failure rather
  * than silently substituted.
- *
  * Determinism: identical inputs (file content + algorithm) always produce
  * identical `hexDigest`.
- */
+*/
 class CoreUtilsSha256StepDefinition : StepDefinition<Sha256Input, Sha256Output> {
 
     override val contract = StepContract(

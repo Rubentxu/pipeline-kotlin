@@ -15,21 +15,18 @@ import org.junit.jupiter.api.Test
  * Recover is the one verb that answers "what happened to that run?" after the fact, so every branch
  * of this decider is a claim about a run the operator cannot see any more. Two of them are dangerous
  * in opposite directions:
- *
  *  - `Reattach` re-attaches to a run it believes is still live. Being wrong about that means the
  *    operator believes a dead run is progressing.
  *  - `ReuseTerminal` serves a journalled terminal receipt instead of re-reading the substrate.
  *    Being wrong about that means the operator is shown a result for work that did not happen.
- *
  * Both are decided here, from two snapshots, with no clock and no process. The decider is TOTAL:
  * every (observation, journal) pair yields exactly one [RecoveryChoice], and the last one is a
  * refusal rather than a guess.
- *
  * The precedence is the design. Reading the rules one at a time gives a different table, because
  * several of them match the same input and only the ORDER says which one was meant. So each test
  * below is named for the branch it pins, and the branches are the source's own P-numbering rather
  * than a re-derivation.
- */
+*/
 class RuntimeRecoverDecisionTest {
 
     private fun decide(observation: RuntimeObservation, journal: RuntimeRecoverDecision.JournalProof) =
@@ -66,7 +63,7 @@ class RuntimeRecoverDecisionTest {
 
     private fun row(outcome: String, atMs: Long = 9_000L) = RuntimeRecoverDecision.TerminalRow(outcome, atMs)
 
-    // --- P0: the substrate could not be inspected -------------------------------
+    // The substrate could not be inspected -------------------------------
 
     @Test
     fun `P0 an unobservable substrate fails closed with its own reason`() {
@@ -106,7 +103,7 @@ class RuntimeRecoverDecisionTest {
         )
     }
 
-    // --- P1: schema version ----------------------------------------------------
+    // Schema version ----------------------------------------------------
 
     @Test
     fun `P1 a journal written by another schema version is refused, not guessed at`() {
@@ -126,7 +123,7 @@ class RuntimeRecoverDecisionTest {
         assertTrue(choice is RecoveryChoice.FailClosed, "got $choice")
     }
 
-    // --- P2: a cancelled run is terminal ----------------------------------------
+    // A cancelled run is terminal ----------------------------------------
 
     @Test
     fun `P2 a cancelled terminal row is already recovered, whoever observed what`() {
@@ -138,10 +135,9 @@ class RuntimeRecoverDecisionTest {
 
     @Test
     fun `P2 the cancelled rule reports attempt one whatever the observed attempt was`() {
-        // The source hard-codes `AttemptId(1)` here, while P3 reports the OBSERVED attempt for the
+        // The source hard-codes `AttemptId(1)` here, while reports the OBSERVED attempt for the
         // same `AlreadyRecovered` case. Those two rows disagree, and this pins the disagreement
         // rather than hiding it: a fifth attempt that was cancelled is reported as attempt one.
-        //
         // It is pinned, not endorsed. The authority that would settle which is right is the design
         // Markdown this repository deleted, so the honest state is "observed, unverified". If this
         // value is changed, the diff IS the decision, and the roadmap entry should move with it.
@@ -159,7 +155,7 @@ class RuntimeRecoverDecisionTest {
         assertEquals(9_999L, recovered.terminalAtMs, "the JOURNAL row is the terminal authority")
     }
 
-    // --- P4: known run, nothing to recover from ---------------------------------
+    // Known run, nothing to recover from ---------------------------------
 
     @Test
     fun `P4 a live-but-empty substrate with an empty journal cannot be served`() {
@@ -171,7 +167,7 @@ class RuntimeRecoverDecisionTest {
 
     @Test
     fun `P4 LiveButEmpty with journalled operations is not this row`() {
-        // The contrast that makes P4 mean something: the same observation with a non-empty journal
+        // The contrast that makes mean something: the same observation with a non-empty journal
         // falls through to the refusal at the END, whose cause names a different fact.
         val empty = RuntimeObservation.LiveButEmpty(AttemptId(1), "no events yet")
 
@@ -182,7 +178,7 @@ class RuntimeRecoverDecisionTest {
         )
     }
 
-    // --- P5: a released lease with a reconciled journal -------------------------
+    // A released lease with a reconciled journal -------------------------
 
     @Test
     fun `P5 a running run whose lease was released and whose journal is settled reuses the journal`() {
@@ -210,7 +206,7 @@ class RuntimeRecoverDecisionTest {
         )
     }
 
-    // --- P6: the observation is the only terminal there is ----------------------
+    // The observation is the only terminal there is ----------------------
 
     @Test
     fun `P6 a terminal observation with no journal row materialises from the observation`() {
@@ -220,7 +216,7 @@ class RuntimeRecoverDecisionTest {
         assertEquals(TerminalObservation.Succeeded(7_777L), reuse.receipt.terminal)
     }
 
-    // --- P7: a settled journal row plus a cursor -------------------------------
+    // A settled journal row plus a cursor -------------------------------
 
     @Test
     fun `P7 a settled row with a replay cursor is reused`() {
@@ -250,7 +246,7 @@ class RuntimeRecoverDecisionTest {
         assertTrue(choice !is RecoveryChoice.ReuseTerminal, "got $choice")
     }
 
-    // --- P8: reattach to a live owner -------------------------------------------
+    // Reattach to a live owner -------------------------------------------
 
     @Test
     fun `P8 a live lease with an operation in flight reattaches`() {
@@ -277,7 +273,7 @@ class RuntimeRecoverDecisionTest {
         assertTrue(choice is RecoveryChoice.Reattach, "got $choice")
     }
 
-    // --- P9: a dead owner -------------------------------------------------------
+    // A dead owner -------------------------------------------------------
 
     @Test
     fun `P9 a lease whose owner is known dead reattaches without a RUNNING operation`() {
@@ -288,7 +284,7 @@ class RuntimeRecoverDecisionTest {
         assertEquals(42L + 30_000L, reattach.deadlineMs)
     }
 
-    // --- P10: nothing matched ---------------------------------------------------
+    // Nothing matched ---------------------------------------------------
 
     @Test
     fun `P10 an input that matches nothing fails closed rather than guessing`() {
@@ -343,9 +339,9 @@ class RuntimeRecoverDecisionTest {
             ),
         )
 
-        // A terminal observation with no journal row (P6) is the shortest path to a receipt, so this
-        // test measures the MAP and not the rule that happened to reach it. The P5 route would not:
-        // one of these operations is RUNNING, which makes the journal unsettled and sends P5 onward.
+        // A terminal observation with no journal row is the shortest path to a receipt, so this
+        // Test measures the MAP and not the rule that happened to reach it. The route would not
+        // One of these operations is RUNNING, which makes the journal unsettled and sends onward
         val reuse = decide(
             terminal(attempt = 3),
             proof(operations = operations),

@@ -1,35 +1,28 @@
 package dev.rubentxu.pipeline.v2.domain.directive
 
 /**
- * S2-A — the `when` predicate wire format.
- *
- * This file is the PURE half of S2-A: a sealed predicate ADT, its total
+ * The `when` predicate wire format.
+ * This file is the PURE half of: a sealed predicate ADT, its total
  * encoder, and its total decoder. The bundled directive's NAME and its
  * [DirectiveDefinition] live in `pipeline-application` beside the other
- * `core.*` definitions, because the S1 kernel fitness rule rejects namespaced
+ * `core.*` definitions, because the kernel fitness rule rejects namespaced
  * literals here — a concrete name is a composition fact, not part of the seam.
  * What stays here is exactly what the kernel is allowed to own: the structural
  * vocabulary a gate is written in.
- *
  * The decoder is deliberately strict. A gate that is silently discarded is a
  * fail-OPEN defect, so every unparseable input is a typed
  * [DirectiveDecodeResult.Malformed] rather than a dropped or partial predicate.
- *
  * ## The encoding
- *
  * Arguments are encoded as a STRUCTURAL, single-line, self-delimiting format
  * rather than a readable expression language.
- *
  * This was a real defect, not a stylistic choice. The first version serialized a
  * compound predicate to a readable multi-line block and re-parsed it with a
  * regex, which silently failed on a nested combinator: the DSL encoded
  * `all { ... any { ... } ... }`, the decoder returned `Malformed`, and the gate
- * was discarded. A test caught it (S2A-DSL-005), but a format that can
+ * Was discarded. A test caught it, but a format that can
  * silently lose a predicate is not acceptable for a gate, where a discarded
  * predicate means fail-OPEN.
- *
  * So the encoding is prefix notation with LENGTH-PREFIXED strings:
- *
  * ```
  *   T                          always true
  *   F                          always false
@@ -39,7 +32,6 @@ package dev.rubentxu.pipeline.v2.domain.directive
  *   O <n> <child>...            disjunction of n children
  *   N <child>                   negation
  * ```
- *
  * Properties this buys, all of them structural rather than hoped-for:
  *   - ONE line, so no multi-line bookkeeping and no brace matching;
  *   - EXPLICIT arity, so a truncated payload is a typed Malformed, never a
@@ -48,20 +40,18 @@ package dev.rubentxu.pipeline.v2.domain.directive
  *     value (spaces, newlines, braces, quotes) with no escaping rules to get
  *     wrong and therefore no input that can corrupt the parse;
  *   - TOTAL, and it never throws on user input.
- *
  * Human readability was traded away deliberately: the DSL is where a human
  * reads the predicate, and a dropped gate is far worse than a terse one.
- */
+*/
 
 /**
  * Inverse of [WhenPredicateCodec.decode].
- *
  * The DSL needs it because the builder must produce the SAME text the runtime
  * will read back. A divergent pair would let a predicate change meaning
  * between authoring and execution, which is the same silent-lie class the ADT
  * was introduced to remove. Round-tripping is covered by a test over every
  * predicate case.
- */
+*/
 object WhenPredicateEncoder {
 
     fun encode(predicate: WhenPredicate): String = when (predicate) {
@@ -78,27 +68,24 @@ object WhenPredicateEncoder {
 
     /**
      * `<charCount>:<text>`.
-     *
-     * The count is CHARACTERS, not UTF-8 bytes: the decoder counts characters
+     * The count is CHARACTERS, not bytes: the decoder counts characters
      * with the same rule, so the two can never disagree about where a value
      * ends. A length prefix makes every character legal inside a value, so
      * there is no escape sequence to get wrong.
-     */
+*/
     private fun lengthPrefixed(text: String): String = "${text.length}:$text"
 }
 
 /**
  * The `when` gate argument codec — the exact inverse of [WhenPredicateEncoder].
- *
  * Pure and total: it either yields a [WhenPredicate] or a typed
  * [DirectiveDecodeResult.Malformed] naming what it could not read. It never
  * throws on user input and never returns a partially built predicate, because a
  * half-built gate would be evaluated as if it were whole.
- *
  * Implemented as a real cursor-based reader rather than a regex, so nesting is
  * consumed by STRUCTURE and a truncated or surplus payload is a typed failure
  * instead of a silent misread.
- */
+*/
 object WhenPredicateCodec {
 
     fun decode(encodedArguments: String): DirectiveDecodeResult<WhenPredicate> {
@@ -153,7 +140,6 @@ object WhenPredicateCodec {
 
         /**
          * Reads one mandatory `<length>:<text>` token.
-         *
          * The length prefix means the value is read as EXACTLY that many
          * characters from the position after the colon, NOT as a
          * space-delimited token. This distinction is load-bearing: a branch name
@@ -161,13 +147,12 @@ object WhenPredicateCodec {
          * would truncate it to `feature/my` — a silently different value that
          * then compares unequal and flips the gate. The prefix is what makes
          * every character, including spaces, unambiguous.
-         *
          * Returns a PAIRED value: the text, or the reason it is absent, so a
          * caller cannot obtain a string while silently dropping the reason it
          * was missing. Modelled as a local ADT rather than a nullable string
          * so the "absent" case carries its own reason instead of collapsing to
          * null.
-         */
+*/
         fun readString(): ReadString {
             skipSpaces()
             // Read the numeric length prefix up to the colon.

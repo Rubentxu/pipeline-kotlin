@@ -5,10 +5,9 @@ import kotlinx.serialization.Serializable
 
 /**
  * Durable, transport-safe provenance for a failure observed by a task adapter.
- *
  * A [Throwable] may be retained by an in-process exception for diagnostics, but
  * it is deliberately not part of this persisted contract.
- */
+*/
 @Serializable
 data class FailureRecord(
     val code: String,
@@ -79,7 +78,7 @@ enum class InterruptionKind {
  * A non-terminal observation of a durable task. It is intentionally separate
  * from [DurableTaskTerminal] so a caller awaiting completion cannot receive a
  * launching or running value through the terminal interface.
- */
+*/
 @Serializable
 sealed interface DurableTaskSnapshot {
     val operationId: String
@@ -103,22 +102,18 @@ sealed interface DurableTaskSnapshot {
 
 /**
  * Reference to durable output retained by the task substrate.
- *
  * ## This type carries a VALUE, never a transcript
- *
  * [capturedStdout] is the explicit typed VALUE requested by a capture mode (`returnStdout`). It is
  * present only when somebody asked for stdout, and it is the process's stdout, exact.
- *
  * The console transcript is deliberately **absent from this type**. Process output has exactly one
  * durable authority — the Output Plane, read through `OutputReadPort` — and a terminal that also
  * carried the transcript would be a second copy of an observable authority, held in memory, that
  * nothing could keep consistent with the store. A field like that does not stay unused: the next
  * consumer reaches for it, and the single-byte-authority law has quietly become two authorities.
- *
  * The consequence for callers is a real change of shape, not a nullability detail: an empty
  * transcript is `capturedStdout == null`, and the observable transcript must be read from the read
  * port rather than found on the terminal.
- */
+*/
 @Serializable
 data class DurableTaskOutput(
     val controlDir: String,
@@ -131,9 +126,8 @@ data class DurableTaskOutput(
 
 /**
  * The only result shape returned by a durable await seam.
- *
  * Non-terminal [DurableTaskSnapshot] values are excluded by type.
- */
+*/
 @Serializable
 sealed interface DurableTaskTerminal {
     @Serializable

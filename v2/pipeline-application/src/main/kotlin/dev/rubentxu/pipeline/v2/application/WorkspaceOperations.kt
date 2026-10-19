@@ -20,36 +20,31 @@ import java.time.Instant
 
 /**
  * Typed seam that a registry-routed Step handler calls to perform stage-workspace
- * file operations (S2-A3 / G1).
- *
+ * file operations.
  * This interface is the *only* contract a Step handler holds for workspace file
  * writes. The handler MUST NOT carry filesystem logic itself; it adapts to this
  * typed seam, which is implemented by the certified
  * [FileWriteExecutor] substrate (atomic temp+rename write, path-traversal guard,
  * reserved `.v2` guard). The capability system wires the adapter in
  * [dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess].
- *
  * ## Why a typed seam and not `FileWriteExecutor` directly?
- *
- * AGENTS.md §1 (a handler must adapt to the existing named ports/adapters).
+ * AGENTS.md (a handler must adapt to the existing named ports/adapters).
  * Mirrors [ShellOperations] for `core.sh`: the substrate
  * stays the single authority for `FileWritten` emission; the handler neither writes
  * files nor emits events.
- *
  * ## Scope
- *
  * The interface intentionally hides:
  * - control-dir root — owned by the canonical runtime context;
  * - stage identity (name/index) — owned by the canonical runtime context;
  * - the event sink — owned by the runtime context; the substrate is the single
  *   `FileWritten` emitter.
- */
+*/
 interface WorkspaceOperations {
 
     /**
      * Atomically writes [text] to [file] (relative to the current stage workspace)
      * with [encoding], returning the closed typed [FileWriteResult].
-     */
+*/
     fun writeFile(file: String, text: String, encoding: String): FileWriteResult
 
     /**
@@ -57,50 +52,48 @@ interface WorkspaceOperations {
      * returning the typed [FileReadResult] (exists=false for out-of-workspace,
      * reserved-.v2, or missing targets — the substrate owns the path guard).
      * The adapter is the single `FileRead` event emitter; content NEVER enters
-     * the event channel (INV-L6-EVT-001).
-     */
+     * the event channel.
+*/
     fun readFile(file: String, encoding: String): FileReadResult
 
     /**
      * Checks whether [file] exists in the current stage workspace using the
      * same path guard as [readFile]. Emits a `FileExistsChecked` event via the
      * adapter (single emitter).
-     */
+*/
     fun fileExists(file: String): FileExistsResult
 }
 
 /**
  * Runtime adapter binding [WorkspaceOperations] to the certified [FileWriteExecutor]
  * substrate and the canonical [WorkspaceResolver]. The handler never sees either.
- */
+*/
 class WorkspaceOperationsAdapter(
     private val stageName: String,
     private val stageIndex: Int,
     private val controlDirRoot: Path?,
     private val eventSink: EventSink,
     private val runId: String = "",
-    /** WU-LPR-062: optional project-workspace override (--workspace). */
+    /** Optional project-workspace override (--workspace). */
     private val workspaceBase: Path? = null,
     /**
-     * RP034-D (ADR-0100): the shared execution location for this step.
-     *
+     * The shared execution location for this step.
      * When present, file Steps resolve against the same current directory the
      * shell vertical observes, so a `dir` scope applies uniformly instead of
      * only to `sh`. When null (legacy callers and unit tests that build this
      * adapter directly), the adapter falls back to the per-stage
      * [WorkspaceResolver] it always used.
-     */
+*/
     private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation? = null,
 ) : WorkspaceOperations {
 
     /**
      * The base directory file paths resolve against for the current scope.
-     *
-     * RP034-D: this prefers the shared [executionLocation] cwd and falls back to
+     * This prefers the shared [executionLocation] cwd and falls back to
      * the stage workspace. Keeping one method here is what makes the verticals
      * agree: every file operation resolves through this, so none of them can
      * drift back to a private reconstruction.
-     */
+*/
     private fun effectiveWorkspaceRoot(controlRoot: Path): Path {
         val fromLocation = executionLocation?.let { capability ->
             dev.rubentxu.pipeline.v2.domain.workspace.WorkspacePathResolver
@@ -112,7 +105,7 @@ class WorkspaceOperationsAdapter(
     override fun writeFile(file: String, text: String, encoding: String): FileWriteResult {
         val root = controlDirRoot
             ?: throw IllegalStateException("controlDirRoot is required for workspace file operations")
-        // RP034-D: resolve against the shared execution location so a `dir`
+        // Resolve against the shared execution location so a `dir`
         // scope applies to file Steps exactly as it does to `sh`.
         val base = effectiveWorkspaceRoot(root)
         Files.createDirectories(base)
@@ -126,8 +119,8 @@ class WorkspaceOperationsAdapter(
             0,
             StepSpec.WriteFile(file = file, text = text, encoding = encoding),
         )
-        // Single-emitter: the adapter is the ONLY FileWritten emitter (WU-LPR-071
-        // fix, CR-U9 family): the executor substrate carries the write evidence but
+        // Single-emitter: the adapter is the ONLY FileWritten emitter (
+        // The executor substrate carries the write evidence but
         // event emission was left to a dispatcher that does not exist on the registry
         // path, silently dropping the FileWritten contract.
         eventSink.append(
@@ -153,7 +146,7 @@ class WorkspaceOperationsAdapter(
             workspaceResolver = { _, _ -> base },
         ).execute(stageName, stageIndex, 0, StepSpec.ReadFile(file = file, encoding = encoding))
         // Single-emitter: the adapter is the ONLY FileRead emitter. Payload is
-        // restricted to path + sha256 + size — never content (INV-L6-EVT-001).
+        // Restricted to path + sha256 + size — never content
         eventSink.append(
             FileRead(
                 eventId = UUID.randomUUID().toString(),

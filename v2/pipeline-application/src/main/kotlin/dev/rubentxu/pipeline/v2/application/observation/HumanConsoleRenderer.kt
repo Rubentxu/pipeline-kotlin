@@ -76,9 +76,7 @@ import dev.rubentxu.pipeline.v2.events.WsCleaned
 
 /**
  * Pure projection from domain events to human-readable console text.
- *
  * ## Laws
- *
  * 1. **Presentation only.** No clock, no filesystem, no process, no ambient
  *    state. The same input list always yields the same string, which is what
  *    makes this testable without a coordinator, a store or a running pipeline.
@@ -99,7 +97,7 @@ import dev.rubentxu.pipeline.v2.events.WsCleaned
  *    still visible under [ObservationView.EVENTS].
  * 5. **Closed structural match, never a key switch.** The `when` matches event
  *    TYPE. There is no `if (kind == "...")` anywhere.
- */
+*/
 object HumanConsoleRenderer {
 
     /** Observable families; each view decides which of them a reader sees. */
@@ -122,11 +120,10 @@ object HumanConsoleRenderer {
 
     /**
      * One rendered line plus what the view filter needs.
-     *
      * [verbatim] marks deliberate script output: Jenkins prints an `echo` as the
      * message itself with no engine prefix, and prefixing it would corrupt the
      * user's own output.
-     */
+*/
     internal data class Line(
         val family: Family,
         val text: String,
@@ -143,13 +140,12 @@ object HumanConsoleRenderer {
     /**
      * Incremental renderer for a live run: one event at a time, carrying the
      * stage scope forward so a Step line still names its stage.
-     *
      * [render] folds a whole list, which is right for a completed run and wrong
      * for a live one: waiting for the end is exactly the behaviour this exists
      * to remove. Both share the same [line] and [format], so a live stream and
      * a post-hoc render of the same events agree — a live line is never a
      * different presentation than the printed one.
-     */
+*/
     fun stream(view: ObservationView): ConsoleStream = ConsoleStream(view)
 
     /** One live console. Not thread-safe; owned by the single appending thread. */
@@ -182,24 +178,22 @@ object HumanConsoleRenderer {
 
     /**
      * Stage names seen so far, keyed by index.
-     *
      * Step events carry `stageIndex` but not the stage's name, and a console
      * line is far more readable when it names the stage. The association is
      * read from the events themselves — the renderer never invents it.
-     */
+*/
     internal data class Scope(val stageNames: Map<Int, String> = emptyMap()) {
         fun stage(index: Int): String = stageNames[index] ?: "stage $index"
 
         /**
          * The scope AFTER [event], which is the only question either walk has to ask.
-         *
          * [fold] and [ConsoleStream.accept] each used to carry their own copy of "if this is a
          * StageStarted, remember the name". Two copies of a state transition is precisely how a live
          * stream and a post-hoc render of the same events come to disagree about which stage a Step
          * line belongs to — and the disagreement would be invisible, because both would still print a
          * plausible stage. One function, called by both, is the only version where SCOPE-* is a
          * property of the model rather than of the caller.
-         */
+*/
         fun after(event: DomainEvent): Scope =
             if (event is StageStarted) Scope(stageNames + (event.stageIndex to event.stageName)) else this
     }
@@ -216,18 +210,16 @@ object HumanConsoleRenderer {
 
     /**
      * The routing table: every [DomainEvent] to the one family that renders it.
-     *
      * This `when` is exhaustive and constructs nothing. Both halves of that matter: exhaustiveness
      * is what turns a new event into a compile error rather than a line nobody wrote, and
      * constructing nothing is what keeps the list of what exists separate from the list of what each
      * case looks like.
-     *
      * @see RendererRoutePartitionTest for the check that routing and rendering agree.
-     */
+*/
     @Suppress("DEPRECATION") // AgentResolved has no producer but is part of the sealed hierarchy.
     internal fun line(event: DomainEvent, scope: Scope): Line = when (event) {
         is RunStarted, is RunFinished, is CompilationStarted, is CompilationFinished,
-        // PK-1 / ADR-PK1-IDENTITY: RunCorrelated is run-scoped metadata
+        // RunCorrelated is run-scoped metadata
         // (not a lifecycle bookend). For the text console it shares the
         // run-line rendering with the other run-family events; the
         // correlationId is in the event data and surfaces through the

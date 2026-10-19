@@ -7,48 +7,41 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 
 /**
  * Local credential provider adapter — wraps [LocalSecretStore] to implement [CredentialProvider] SPI.
- *
  * The shape is:
  * - Implements [CredentialProvider] SPI port
  * - Wraps [LocalSecretStore] and delegates [resolve] to [SecretStore.getAsSecretHandle]
  * - [close] delegates to [SecretStore.close] — LocalSecretStore manages its own lifecycle
- *
- * This is the H0 adapter for credential resolution. The executor depends ONLY on the
+ * This is the adapter for credential resolution. The executor depends ONLY on the
  * [CredentialProvider] SPI port, NOT on this concrete implementation.
- *
  * @param store The underlying secret store to delegate to
- */
+*/
 class LocalCredentialProvider(
     private val store: SecretStore
 ) : CredentialProvider {
 
     /**
      * Unique identifier for this provider: "local"
-     */
+*/
     override val providerId: String = "local"
 
     /**
      * Resolves a credential by ID, returning a [SecretHandle].
-     *
      * Delegates directly to [SecretStore.getAsSecretHandle].
-     *
      * @param id The credential identifier
      * @return [SecretHandle] wrapping the secret bytes
      * @throws dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException if not found or tampered
-     */
+*/
     override fun resolve(id: CredentialsId): SecretHandle {
         return store.getAsSecretHandle(id)
     }
 
     /**
      * Resolves a credential by ID, returning the full typed [Credential].
-     *
      * Delegates directly to [SecretStore.get].
-     *
      * @param id The credential identifier
      * @return [Credential] typed credential
      * @throws dev.rubentxu.pipeline.v2.credentials.api.SecretStoreException if not found or tampered
-     */
+*/
     override fun resolveToCredential(id: CredentialsId): dev.rubentxu.pipeline.v2.domain.credentials.Credential {
         return store.get(id)
     }
@@ -56,7 +49,7 @@ class LocalCredentialProvider(
     /**
      * Closes this provider by closing the underlying store.
      * Idempotent — [SecretStore.close] is idempotent.
-     */
+*/
     override fun close() {
         store.close()
     }

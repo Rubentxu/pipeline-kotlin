@@ -86,9 +86,8 @@ object EnvelopeProjector {
      * Projects a domain event into its envelope using the **legacy** path
      * with no [ProviderProvenance] projection. Kept stable for all
      * existing call sites that do not pass a provider seam.
-     *
      * Equivalent to `project(event, null)`.
-     */
+*/
     fun project(event: DomainEvent): PipelineEventEnvelope = project(event, null)
 
     /**
@@ -96,11 +95,10 @@ object EnvelopeProjector {
      * [ProviderProvenance] audit projection when [providerLookup] is
      * supplied and the event is Step-emitted by a Step registered with
      * provider metadata.
-     *
      * The lookup is O(1) (the registry's `providerOf(key)`); the
      * projector does NOT scan and does NOT branch on [dev.rubentxu.pipeline.v2.domain.step.Delivery]
      * (delivery is metadata, never a verdict).
-     */
+*/
     fun project(event: DomainEvent, providerLookup: ((PluginStepId) -> StepProviderMetadata?)?): PipelineEventEnvelope {
         val runRef = ResourceRefs.run(event.runId)
         val subject: ResourceRef = subjectOf(event, runRef)
@@ -121,7 +119,7 @@ object EnvelopeProjector {
      * Resolves the audit [ProviderProvenance] for Step-emitted events when
      * a [providerLookup] seam is available. Returns `null` otherwise
      * (legacy path, run-lifecycle events, file-IO events).
-     */
+*/
     private fun provenanceOf(
         event: DomainEvent,
         providerLookup: ((PluginStepId) -> StepProviderMetadata?)?,
@@ -142,11 +140,11 @@ object EnvelopeProjector {
         return provider.toProvenance()
     }
 
-    /** Adapter: [StepProviderMetadata] → [ProviderProvenance] (C8 audit projection). */
+    /** Adapter: [StepProviderMetadata] → [ProviderProvenance] (audit projection) */
     private fun StepProviderMetadata.toProvenance(): ProviderProvenance {
         val ns = plugin.segments.firstOrNull() ?: ""
         val identity = if (plugin.segments.size >= 3) {
-            // segments = [namespace, "plugin", identity, ...]
+            // segments = [namespace, "plugin", identity,...]
             plugin.segments.drop(2).joinToString("/")
         } else {
             ""
@@ -182,16 +180,16 @@ object EnvelopeProjector {
         is StageFinished -> ResourceRefs.stage(event.runId, event.stageIndex)
         is ParallelBranchStarted -> ResourceRefs.stage(event.runId, event.parentStageIndex)
         is ParallelBranchFinished -> ResourceRefs.stage(event.runId, event.parentStageIndex)
-        // RUN subject: stepIndex exists but no stage identity (frozen EVT-1 law)
+        // RUN subject: stepIndex exists but no stage identity (frozen law)
         is StepFailed -> runRef
         is EchoOutputCaptured -> runRef
         is CredentialUsed -> runRef
         // RUN subject: a plugin event's only stable identity is the run itself; the kind
-        // lives in the envelope's `kind` mirror, not in the subject hierarchy (P3 slice 2).
+        // Lives in the envelope's `kind` mirror, not in the subject hierarchy
         is PluginEventEmitted -> runRef
         // RUN subject: run lifecycle / no finer stable identity in the event
         is RunStarted,
-        // PK-1 / ADR-PK1-IDENTITY: correlation event is also a run-scoped
+        // Correlation event is also a run-scoped
         // event; its subject is the run itself, the correlationId rides
         // along in the envelope's data fields.
         is RunCorrelated,
@@ -213,13 +211,13 @@ object EnvelopeProjector {
         is StashCreated,
         is StashFailed,
         is StashRestored,
-        // S1-C — directive seam observability (run-scoped: no stage resource
+        // Directive seam observability (run-scoped: no stage resource
         // exists yet; denial aborts before StageStarted creates one)
         is DirectiveAdmitted,
         is DirectiveDenied,
         is ExecutionTargetResolved,
         is GateEvaluated,
-        // WU-LPR-090 — core.publishHTML (Tier B #2)
+        // Core.publishHTML (Tier B #2)
         is HtmlReportPublished,
         is HtmlReportSkipped,
         is HtmlReportFailed,
@@ -236,14 +234,14 @@ object EnvelopeProjector {
         is UnixDetected,
         is MilestoneReached,
         is MilestoneAborted,
-        // RP6-A / WU-091 §6: lock lifecycle is run-scoped (no stage/step index in
+        // Lock lifecycle is run-scoped (no stage/step index in
         // the event payload; the step events carry the position).
         is LockRequested,
         is LockAcquired,
         is LockReleased,
         is LockSkipped,
         is LockAcquireFailed,
-        // RP6-B / WU-092: input lifecycle is run-scoped (no stage/step index;
+        // Input lifecycle is run-scoped (no stage/step index;
         // the step events around it carry the position).
         is InputRequested,
         is InputProceed,
@@ -265,5 +263,5 @@ object EnvelopeProjector {
  * forward compatibility: adding a new DomainEvent kind without updating
  * [EnvelopeProjector] must surface as a compile error (exhaustive `when`), and any
  * dynamic miss must fail closed rather than degrade identity.
- */
+*/
 class UnprojectableEventException(message: String) : IllegalStateException(message)

@@ -14,54 +14,46 @@ import kotlinx.coroutines.CancellationException
 
 /**
  * Registry strategy executor behind the [CommonExecutionBoundary] (CDE.3-d3).
- *
  * A [PreparedRegistryExecution] already passed registry resolution, capability admission and typed
  * decode during [RegistryExecutionPreparation.prepare]; it carries the admitted definition and its
  * already-decoded input. Therefore [CommonExecutionBoundary.execute] here runs the typed handler
  * WITHOUT re-decoding (the prepare/codec split is preserved).
- *
  * Direction: PreparedRegistryExecution -> capability admission (re-checked against the runtime access,
  * fail-closed) -> [StepCapabilityAccess] (via [CanonicalRuntimeCapabilityAccess], never the raw
  * context) -> typed handler -> durable outcome. The handler receives only a narrow
  * [StepHandlerContext] built from the runtime identity plus its declared capabilities; it never sees a
  * [CanonicalRuntimeContext].
- *
- * ## LB-02 / G3-A3: atomic outcome + encodedOutput
- *
+ * ## /: atomic outcome + encodedOutput
  * The registry boundary returns the same shape as every other [CommonExecutionBoundary]
  * implementation: a [CommonExecutionResult] carrying both `outcome` and `encodedOutput?`. The encoded
  * output is the Step's typed `O` after `outputCodec.encode(O)`. After this boundary returns, the typed
  * `O` is GONE — only the `EncodedStepValue` (a `String` under a value class) crosses the seam.
  * The boundary NEVER persists either field; durability is a separate concern.
- *
  * A Step whose handler returns `Unit` reduces to `encodedOutput = null` (mirroring echo's
  * `EchoInput -> String` shape; echo's typed output crosses via `EVENT_SINK`, not via this slot).
  * A thrown handler is an adapter/engine defect and surfaces as `StepOutcome.Failure` (`ENGINE`);
  * the encoded output in that case is `null` because there is no successful terminal to encode.
- *
- * ## Atomicity / no-retention invariant (A3.6 user rule)
- *
+ * ## Atomicity / no-retention invariant (user rule)
  * The boundary MUST NOT retain execution output after `execute` returns. The carrier is the
  * single source of truth and is computed in one pass — there is no `lastOutput` field, no
  * thread-local, no per-key cache. Future parallel / remote / retry scenarios rely on the
  * atomicity of the carrier value.
- */
+*/
 object RegistryExecutionBoundary {
 
     /**
      * Creates a [CommonExecutionBoundary] that executes registry Steps.
      * Uses a default [CanonicalRuntimeCapabilityAccess] without milestone store support.
-     */
+*/
     fun adapt(): CommonExecutionBoundary = adapt(milestoneStateStore = null)
 
     /**
      * Creates a [CommonExecutionBoundary] that executes registry Steps, with optional
      * [MilestoneStateStore] support for milestone Steps.
-     *
      * @param milestoneStateStore Optional store for milestone ordinal state. When provided,
      *   the MILESTONE_OPERATIONS_CAPABILITY is populated for core.milestone execution.
      *   Always non-null in production; nullable for test/adapter flexibility.
-     */
+*/
     fun adapt(milestoneStateStore: MilestoneStateStore?): CommonExecutionBoundary =
         adapt(
             milestoneStateStore = milestoneStateStore,
@@ -69,23 +61,20 @@ object RegistryExecutionBoundary {
         )
 
     /**
-     * E1.ecosystem-local-first / T1: per-run artifact index threaded
+     * Per-run artifact index threaded
      * into the registry boundary's capability bridge. The same instance
      * is shared between the producer (core.archiveArtifacts) and the
      * consumer (core.artifact.query). When null the capability stays
      * unexposed and both Steps fail closed at registry-prepare-time.
-     *
-     * WU-093 H7-D: the EXECUTE-time capability access must be built from the same
+     * The EXECUTE-time capability access must be built from the same
      * [RuntimeCapabilityContributor] the PREPARE-time admission used. It was not, and
      * the effect was that every plugin Step declaring a contributor-provided capability
      * — `http.transport`, `credentials.basic` — was ADMITTED and then threw
      * `EngineInvariantViolation` on execute. `http.request` could not run at all.
-     *
-     * The gap was invisible to H4.5's own proof because that proof asserted the
+     * The gap was invisible to 's own proof because that proof asserted the
      * capability was *available* from a hand-built access; nothing ran a Step through
      * this boundary. A capability nobody can reach is not a capability, and the
      * honest test for one is executing.
-     *
      * @param milestoneStateStore Optional store for milestone ordinal state. When provided,
      *   the MILESTONE_OPERATIONS_CAPABILITY is populated for core.milestone execution.
      *   Always non-null in production; nullable for test/adapter flexibility.
@@ -97,7 +86,7 @@ object RegistryExecutionBoundary {
      *   any Step declaring one fails closed at the execute-time re-check — which is the
      *   correct direction for a missing capability, but it is NOT a substitute for
      *   production passing the real one.
-     */
+*/
     fun adapt(
         milestoneStateStore: MilestoneStateStore?,
         artifactIndex: ArtifactIndexCapability?,
@@ -123,7 +112,7 @@ object RegistryExecutionBoundary {
      * Executes a [PreparedRegistryExecution] and returns both the closed
      * [dev.rubentxu.pipeline.v2.domain.StepOutcome] AND the encoded typed `O` (or `null` if the
      * handler returned `Unit`, threw, or surfaced a Failure).
-     */
+*/
     @Suppress("UNCHECKED_CAST")
     suspend fun coexecute(
         prepared: PreparedRegistryExecution,
@@ -134,7 +123,7 @@ object RegistryExecutionBoundary {
      * Overload with an explicit capability-bridge factory. Production callers use the
      * canonical bridge; harnesses that substitute OBSERVATION sources (e.g. a synthetic
      * platform) supply a factory returning a bridge with the same fail-closed contract.
-     */
+*/
     @Suppress("UNCHECKED_CAST")
     suspend fun coexecute(
         prepared: PreparedRegistryExecution,
@@ -165,7 +154,7 @@ object RegistryExecutionBoundary {
 
         return try {
             val produced: Any = definition.handler.execute(prepared.decodedInput, handlerContext)
-            // A1/A3: persist typed O only when it is NOT `Unit`. Encoded under the
+            // Persist typed O only when it is NOT `Unit`. Encoded under the
             // Step's declared output codec so the durable layer can replay-decode only
             // through that same codec, never through opaque assumptions.
             val encoded: EncodedStepValue? = if (produced is Unit) {
@@ -176,15 +165,14 @@ object RegistryExecutionBoundary {
                     as dev.rubentxu.pipeline.v2.domain.step.StepCodec<Any>)
                 codec.encode(produced)
             }
-            // A4.3: project the canonical `StepOutcome` from the typed output
+            // Project the canonical `StepOutcome` from the typed output
             // when the carrier implements `TypedStepOutput`. Steps whose handler
             // returns `Unit` or a non-typed payload default to `Success` (the
             // legacy convention preserved by `core.echo`'s EventSink-shaped
             // output). The boundary stays Step-agnostic — it NEVER branches on
             // `core.sh` or any other concrete StepKey; the typed carrier is the
             // only authority for the outcome projection.
-            //
-            // S4-D2: the projection itself now lives in `outcomeOf`, beside the
+            // The projection itself now lives in `outcomeOf`, beside the
             // carrier, because the scripted frontend needs the identical answer.
             // Calling it here is what makes the boundary and the scripted path
             // ONE authority instead of two inline copies of one rule.

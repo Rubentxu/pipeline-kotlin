@@ -1,30 +1,25 @@
 #!/usr/bin/env bash
 # build-release-manifest.sh — produce the SHA256SUMS digest authority for a release.
-#
 # Why this is a separate script
 # -----------------------------
 # `resolve-release-digest.sh` is the CONSUMER half of the same contract: it
 # resolves an asset's expected digest out of a published manifest. This is the
 # PRODUCER half. Splitting them means the format has exactly one producer and
 # exactly one consumer, and both are testable without a GitHub release.
-#
 # What the spec requires (and what this therefore emits)
 # ------------------------------------------------------
-# §4 lists what is "published alongside" the distribution ZIP:
-#
+#  lists what is "published alongside" the distribution ZIP:
 #   - the ZIP
 #   - SHA256SUMS      <- this script's output
 #   - the SBOM
 #   - release notes
 #   - (optional) signature/provenance attestation
-#
 # SHA256SUMS is described there as "the single digest authority for the whole
 # release". That word `whole` is the requirement this script exists to satisfy:
 # every asset published on the release other than SHA256SUMS itself must carry
 # an entry. A manifest that lists the ZIP and silently omits the SBOM is not a
 # weaker digest authority, it is a wrong one — a consumer that trusts the
 # manifest cannot detect a swapped SBOM.
-#
 # What is deliberately NOT invented
 # ----------------------------------
 # The output is the ordinary `sha256sum` text format (`<64 hex>  <name>`), which
@@ -32,20 +27,16 @@
 # parse. No header comment, no JSON wrapper, no extra columns. `sha256sum -c`
 # reads it as-is, so a certifier can verify with the standard tool instead of a
 # project-specific reader.
-#
 # SHA256SUMS cannot contain its own digest — that value is not known until the
 # file is written. `sha256sum` has the same property, and every real release
 # manifest in the wild excludes itself for the same reason. The script refuses
 # the file rather than emitting a self-entry that would be a lie.
-#
 # Usage:
-#   build-release-manifest.sh --out <path> <file> [<file> ...]
-#
+#   build-release-manifest.sh --out <path> <file> [<file>...]
 # <file> paths are recorded as GIVEN, so callers should pass paths relative to
 # the directory the manifest will live in (or use --basenames). The consumer
-# matches on basename anyway (see resolve-release-digest.sh §"Why basename
+# matches on basename anyway (see resolve-release-digest.sh "Why basename
 # matching"), but a manifest whose entries resolve on disk is easier to audit.
-#
 # Exit 0 on success (the manifest exists, was verified, and covers exactly the
 # requested set). Non-zero on any missing file, duplicate, self-inclusion, or
 # verification failure. It never emits a manifest it has not re-read.
@@ -112,8 +103,7 @@ main() {
   mkdir -p "$manifest_dir"
 
   # Entry names are recorded RELATIVE TO THE MANIFEST'S OWN DIRECTORY.
-  #
-  # The spec (§4) says entries carry "the build-time path, not the download
+  # The spec ( ) says entries carry "the build-time path, not the download
   # name", and the consumer resolves on basename, so any path would technically
   # work. But an ABSOLUTE path is a build-machine detail: it does not resolve
   # after a consumer downloads the assets and runs `sha256sum -c` beside them,

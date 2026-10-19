@@ -9,18 +9,16 @@ import java.nio.file.Paths
 
 /**
  * Where a `Zip` credential is allowed to be unpacked.
- *
  * This is the only guard between a free-form entry name read out of the secret store and a
  * `Files.write` with attacker-chosen bytes. `Zip.entries` is a `Map<String, ByteArray>`: `..` is
  * not a malformed archive there, it is a legal key, so confinement has to be decided here rather
  * than hoped for.
- *
  * The entry names below are the ones an archive actually carries. The materializer itself is
  * untestable as a unit test -- it creates directories and writes files, and AGENTS.md section 2
  * forbids both -- which is why the decision lives in a pure function rather than inline in
  * `materializeZip`. The consequence is stated plainly: this pins WHERE an entry may land, not
  * that the write happened.
- */
+*/
 class ResolveZipEntryPathTest {
 
     private val id = CredentialsId("archive-cred")

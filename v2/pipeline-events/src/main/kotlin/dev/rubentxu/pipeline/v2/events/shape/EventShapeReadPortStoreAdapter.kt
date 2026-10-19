@@ -8,26 +8,20 @@ import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
 
 /**
- * M7 — production [EventShapeReadPort] adapter.
- *
+ * Production [EventShapeReadPort] adapter.
  * ## What this adapter is and is not
- *
  * The adapter is a thin composition: it does not introduce a new event
- * store, a new journal, or a new lease. The composition rule (M7 design
- * §A) is: read the typed events the journal recorded for a run (via the
+ * Store, a new journal, or a new lease. The composition rule (design
+ * A) is: read the typed events the journal recorded for a run (via the
  * [readTypedEvents] callback) and project them to the closed [TypedEvent]
  * ADT. The callback is supplied by the application layer; in tests it
  * points at the in-memory event store's internal list; in production it
  * points at a future internal API that reads from the durable event log.
- *
  * The adapter does NOT itself re-implement the event log scan; it
  * composes the existing event store. It is read-only by construction.
- *
  * ## Read-only by construction
- *
  * `eventShapesForRun` MUST NOT mutate durable state. The composition
  * rule limits it to reads and a projection pass.
- *
  * There is no test guarding this today, and the sentence that used to say
  * otherwise ("the contract test `EventShapeReadPortAdapterTest` pins this")
  * was deleted along with that test in `2aa071aab`, leaving the claim behind.
@@ -36,7 +30,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
  * a production caller appears, and the first thing that should be written then
  * is a concurrency test, because "does not mutate" is a claim about two
  * callers at once and a single-threaded check cannot make it.
- */
+*/
 class EventShapeReadPortStoreAdapter(
     private val readTypedEvents: (runId: String) -> List<Any>,
     private val runExists: (runId: String) -> Boolean,
@@ -81,9 +75,9 @@ class EventShapeReadPortStoreAdapter(
 
     /**
      * Project a raw event to a typed [TypedEvent]. Returns null when
-     * the raw event is not one of the five M7-typed cases (so the M7
+     * The raw event is not one of the five cases (so the
      * shape is restricted to the audit's source-of-truth set).
-     */
+*/
     private fun projectTyped(raw: Any, runId: String): TypedEvent? = when (raw) {
         is StageStarted -> StageStartedTyped(
             runId = raw.runId,
@@ -136,7 +130,7 @@ class EventShapeReadPortStoreAdapter(
  * directly; production wires this convenience. The reader is a SAM
  * `(runId) -> List<Any>` so the test fixture does not have to expose
  * the typed events.
- */
+*/
 fun eventShapeReadPortFromReader(
     reader: (runId: String) -> List<Any>,
     runExists: (runId: String) -> Boolean,

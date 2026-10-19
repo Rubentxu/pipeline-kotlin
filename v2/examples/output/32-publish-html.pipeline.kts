@@ -1,25 +1,20 @@
-// WU-LPR-090 — `core.publishHTML` installed-CLI canary (Tier B #2).
-//
+// `core.publishHTML` installed-CLI canary (Tier B #2).
 // Exercises the registry-path `core.publishHTML` Step through the DSL surface.
 // Stage "build" creates an HTML report directory under reports/ in the
 // workspace and publishes it under the logical name "lpr090-html".
-//
 // Failures here mean one of:
 //   - registry resolution broke (StepKey "core.publishHTML" not found)
 //   - the registry handler regressed (no HtmlReportPublished, or wrong path shape)
 //   - the DSL lowering reverted to a legacy StepSpec
-//
 // Storage layout: <controlRoot>/reports/<runId>/<lpr090-html>/. The reports
 // directory is a SIBLING of <controlRoot>/workspace/ so cleanup of the build
 // stage workspace does NOT destroy the published report.
-//
 // Verification: the installed CLI runs this fixture end-to-end. What this
 // comment used to claim, and what was false, is that an orchestrator asserted
 // the events include exactly one HtmlReportPublished "verified in
 // UatCompat001CorpusSmokeRunTest". That test does not exist -- it was removed in
 // the RESET -- and every source file that mentions the event lives in
 // src/main, none in a test. So the canary had no coverage of the event it names.
-//
 // What is actually checked here is narrower and stated as such: the step
 // resolves, runs, and leaves its two report files behind with their own bytes.
 // Asserting the EMITTED EVENT would need the journal to be read back, which

@@ -7,16 +7,14 @@ import org.junit.jupiter.api.Test
 
 /**
  * What the product is allowed to say about its own output, and what it is not.
- *
  * [OutputAdoption] is the checkable form of the ADR that chose segment reservation with recovery
- * over three other candidates. Its answer decides whether "S2 is implemented" is a claim or a
+ * Over three other candidates. Its answer decides whether " is implemented" is a claim or a
  * hope, so the two functions here are guards rather than documentation -- and both have already
  * been wrong once, in ways the compiler could not see. Each of those two defects gets its own test
  * below, named after the mistake rather than after the method.
- *
  * Nothing here touches a filesystem: the whole contract is set algebra over two enums, which is why
  * a unit test is the right instrument and why this file can exist at all.
- */
+*/
 class OutputAdoptionTest {
 
     private val all: Set<OutputAdoptionObligation> = OutputAdoptionObligation.entries.toSet()
@@ -61,7 +59,7 @@ class OutputAdoptionTest {
         // reported the exact inverse of the truth -- a run with every obligation discharged was
         // certified as blocked by all six invariants. A name the caller can confuse with its
         // negation is a defect the compiler will not catch, so the only defence is a test that
-        // says which way round the argument goes. Handing it a set missing only O1 must report
+        // Says which way round the argument goes. Handing it a set missing only must report
         // everything blocked; the inverted version reports nothing.
         val withoutWriter = all - OutputAdoptionObligation.WRITER_RESERVES_BEFORE_APPEND
 
@@ -74,12 +72,11 @@ class OutputAdoptionTest {
     fun `two independent gaps block the invariants of both`() {
         // THE SHORT-CIRCUIT DEFECT. This function once returned on the first match it found, so a
         // pipeline that reserved correctly but had neither a committed-offset reader nor a recovery
-        // entry point reported only I3 blocked and quietly vouched for I5 and I6 -- precisely the
+        // Entry point reported only blocked and quietly vouched for and -- precisely the
         // two that recovery underpins. The failure mode is silent: the returned list is a real
         // list of real invariants, just too short, so nothing downstream can tell it from a
         // deliberate answer.
-        //
-        // O1 is DISCHARGED here on purpose. If it were not, the first branch would addAll all six
+        // Is DISCHARGED here on purpose. If it were not, the first branch would addAll all six
         // and mask whether the later branches run at all -- which is why the earlier version of
         // this test was unable to distinguish the union from the short circuit.
         val onlyWriterReserved = setOf(OutputAdoptionObligation.WRITER_RESERVES_BEFORE_APPEND)
@@ -96,8 +93,8 @@ class OutputAdoptionTest {
 
     @Test
     fun `a missing reader blocks only the density invariant`() {
-        // O2 alone. I3 is the invariant that stops being meaningful without a committed offset to
-        // be dense about; I5 and I6 belong to recovery, which is a separate entry point.
+        // Alone. is the invariant that stops being meaningful without a committed offset to
+        // Be dense about; and belong to recovery, which is a separate entry point
         val withoutReader = all - OutputAdoptionObligation.READER_RESUMES_FROM_COMMITTED
 
         assertEquals(
@@ -122,7 +119,7 @@ class OutputAdoptionTest {
     @Test
     fun `an empty discharge blocks everything in declaration order`() {
         // Order is part of the answer, not an accident of a Set's iteration: a caller that renders
-        // this list to an operator has to see I1..I6 in the order the enum states them.
+        // This list to an operator has to see.. in the order the enum states them
         assertEquals(
             listOf(
                 OutputCrashInvariant.I1_ACKNOWLEDGED_SURVIVES,
@@ -151,7 +148,7 @@ class OutputAdoptionTest {
 
     @Test
     fun `invariant identifiers are the ones the ADR uses`() {
-        // I1..I6 are the identifiers cited by ADR-0002 and by every conformance artefact written
+        // Are the identifiers cited by and by every conformance artefact written
         // against it. A rename here is a wire-visible change in the vocabulary operators read,
         // so it is pinned rather than left to a rename refactor.
         assertEquals(

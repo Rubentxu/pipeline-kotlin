@@ -26,8 +26,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Typed input payload of `core.cleanWs` (LFC-2E1-S2-A10 / G1).
- *
+ * Typed input payload of `core.cleanWs`
  * The legacy wire payload for `core.cleanWs` is
  * `{"kind":"cleanWs","deleteDirs":<bool>,"patterns":[...]}` — the compiler
  * `encodePayload` else-branch (`declarativeValue`) is NEVER reached for
@@ -36,7 +35,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * decoder (`CanonicalCoreStepDecoder` CLEAN_WS_PLUGIN_ID branch) accepts the
  * same envelope with tolerant defaults: `deleteDirs` defaults to `true` and a
  * missing/null `patterns` array defaults to an empty list.
- */
+*/
 data class CleanWsInput(
     val deleteDirs: Boolean = true,
     val patterns: List<String> = emptyList(),
@@ -44,17 +43,15 @@ data class CleanWsInput(
 
 /**
  * Typed runtime output of `core.cleanWs`.
- *
  * The legacy durable path produces `StepOutcome.Success` and emits `WsCleaned`
  * with deletedFiles, deletedDirs, patterns, and sha256. The candidate exposes
  * these as a typed result.
- *
  * Durable law: fresh/rerun CLEANS the workspace and emits a new `WsCleaned`
  * with current counts; resume/reuse REPRODUCES the persisted observation
  * (`CleanWsOutput` + original `WsCleaned`) without re-executing the handler.
  * Idempotence: cleaning an already-clean workspace SUCCEEDS with
  * deletedFiles=0 / deletedDirs=0.
- */
+*/
 data class CleanWsOutput(
     val deletedFiles: Int,
     val deletedDirs: Int,
@@ -65,46 +62,37 @@ data class CleanWsOutput(
 }
 
 /**
- * Registry candidate for `core.cleanWs` (LFC-2E1-S2-A10 / G1).
- *
+ * Registry candidate for `core.cleanWs`
  * ## Architecture
- *
  * The handler is a thin typed seam — it receives [CleanWsInput] and returns
  * [CleanWsOutput]. Zero infrastructure in the handler:
  * - NO `CleanWsExecutor` construction
  * - NO `EventSink` access
  * - NO `Files.*` calls
  * - NO sha256 computation (comes from typed operation result)
- *
  * All filesystem semantics, workspace resolution, and event emission live in
  * [dev.rubentxu.pipeline.v2.application.durable.CleanWsOperationsAdapter],
  * accessed via [CLEAN_WS_OPERATIONS_CAPABILITY]. This follows the certified
- * pattern of `CoreDeleteDirStep` / `DeleteDirOperations` (S2-A7 / G3-fix).
- *
+ * Pattern of `CoreDeleteDirStep` / `DeleteDirOperations`
  * ## Capability discipline
- *
  * [CLEAN_WS_OPERATIONS_CAPABILITY] is the ONLY declared capability. The handler
  * does NOT consume `EVENT_SINK_CAPABILITY` or `STAGE_IDENTITY_CAPABILITY`
  * directly — those are bound by the adapter, which is the single `WsCleaned`
  * emission authority (no duplicate events; console/transcript rule analogue).
- *
  * ## Conditional exposure
- *
  * The capability is only registered into the runtime capability table when
  * `controlDirRoot != null` (eager null-check at capability-access construction).
  * If `controlDirRoot` is absent, capability admission fails closed for
  * `core.cleanWs` and the step is never dispatched — the rest of the registry
  * is unaffected.
- *
  * ## Classification
- *
  * Effectful (workspace-mutating, WRITES_WORKSPACE), non-recoverable
  * (RecoveryPolicy.None). ReplayPolicy MEMOIZED matches the legacy metadata row
  * (`CanonicalCoreStepMetadata["core.cleanWs"]`). While `core.cleanWs` remains
  * in LEGACY_PLUGIN_IDS, StructuralFamilyResolver's legacy-membership-wins rule
  * keeps LegacyCore as the production authority; this registration is
- * candidate-only (G1).
- */
+ * candidate-only.
+*/
 object CoreCleanWsStep {
 
     val KEY: PluginStepId = PluginStepId("core.cleanWs")
@@ -184,12 +172,11 @@ object CoreCleanWsStep {
 
     /**
      * Thin handler — zero infrastructure.
-     *
      * The handler reaches the typed [CleanWsOperations] seam via
      * [CLEAN_WS_OPERATIONS_CAPABILITY] and delegates to `ops.clean(input)`.
      * All filesystem semantics, workspace resolution, and `WsCleaned` emission
      * live in [dev.rubentxu.pipeline.v2.application.durable.CleanWsOperationsAdapter].
-     */
+*/
     private val capabilityRoutedHandler: StepHandler<CleanWsInput, CleanWsOutput> =
         StepHandler { input, ctx ->
             val ops: CleanWsOperations = ctx.capabilities.get(CLEAN_WS_OPERATIONS_CAPABILITY)

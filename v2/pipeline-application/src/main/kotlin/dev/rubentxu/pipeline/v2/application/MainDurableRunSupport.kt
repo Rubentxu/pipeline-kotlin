@@ -4,23 +4,20 @@ import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunIdGenerator
 
 /**
- * D-031 (audit D-011 H3.c): durable run selection helpers extracted from Main.kt.
- *
+ * Durable run selection helpers extracted from Main.kt.
  * - [selectDurableRun] routes a [DurableRunPolicy] to either a resumed/reused run
  *   or a fresh one. When the policy requires reuse but no prior run is found, it
  *   falls back to [startFreshRun] (the in-memory equivalent of "first run ever").
  * - [startFreshRun] records a new run id into [RunIdDirectory] and returns it
  *   wrapped as a [DurableRunSelection.StartedFresh].
- *
  * Both helpers are stateless (no closures over Main.kt state), so they live
  * alongside the durable-run types ([DurableRunPolicy], [RunIdDirectory],
  * [StoredRunId], [DurableRunSelection], [RunIdGenerator]) in the same package.
- *
- * PK-1 / ADR-PK1-IDENTITY: a [CorrelationId] is plumbed through
+ * A [CorrelationId] is plumbed through
  * [selectDurableRun] and persisted alongside the [dev.rubentxu.pipeline.v2.domain.RunId]
  * via [RunIdDirectory.record]. The correlation is durable and survives
  * the durable run selection.
- */
+*/
 internal fun selectDurableRun(
     policy: DurableRunPolicy,
     runIdDirectory: RunIdDirectory,

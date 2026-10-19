@@ -31,17 +31,15 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Typed input payload of `core.pwd` (S2-A6 / G1).
- *
+ * Typed input payload of `core.pwd`
  * The legacy wire payload for `core.pwd(false)` is `{"kind":"pwd"}` (compiler
  * `encodePayload` else-branch); the `tmp` field defaults to `false`. The
  * codec preserves the legacy envelope structure and decodes the `tmp` flag.
- *
  * `tmp=true` is the PWD_TMP_TRUE_DISPOSITION blocker: the candidate MUST
  * reject it at decode time (fail-closed) so the StepKey authority cannot be
  * flipped for `core.pwd` while `tmp=true` remains a pre-existing legacy-only
  * branch with side effects and a non-deterministic timestamp path.
- */
+*/
 data class PwdInput(
     val tmp: Boolean = false,
 ) {
@@ -54,22 +52,20 @@ data class PwdInput(
 }
 
 /**
- * TYPED_RUNTIME_OUTPUT — APPROVED_ARCHITECTURAL_DELTA (S2-A6 / G2, decision D2).
- *
+ * TYPED_RUNTIME_OUTPUT — APPROVED_ARCHITECTURAL_DELTA (/, decision)
  * Legacy durable path produces NO typed output (`StepOutcome.Success` only; the
  * path is observable solely through the `PwdResolved` event). The candidate
  * deliberately exposes the resolved absolute path as a typed result because the
  * product baseline requires `pwd` to be a runtime-valued Step (the eventual
  * reconnection of `PipelineDsl.pwd` to a real canonical workspace observation
  * depends on it).
- *
- * Durable law (G2): fresh/rerun OBSERVE the canonical stage workspace;
+ * Durable law: fresh/rerun OBSERVE the canonical stage workspace;
  * resume/reuse REPRODUCE the persisted observation (`PwdOutput` + original
  * `PwdResolved`) without re-executing the handler or re-reading
  * `WorkspaceIdentity`. A stale observation after a workspaceRoot change is
  * correct durable semantics, not a bug — matches `core.isUnix` precedent
- * (D4 frozen at `{READ_ONLY} + MEMOIZED`).
- */
+ * (frozen at `{READ_ONLY} + MEMOIZED`)
+*/
 data class PwdOutput(
     val path: String,
 ) : TypedStepOutput {
@@ -77,38 +73,33 @@ data class PwdOutput(
 }
 
 /**
- * Registry candidate for `core.pwd` (S2-A6 / G1 registry seam proof).
- *
- * G1 registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy
+ * Registry candidate for `core.pwd` (/ registry seam proof)
+ * Registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy
  * decoder, the metadata row, or the legacy dispatcher:
  * `StructuralFamilyResolver`'s legacy-membership-wins rule keeps LegacyCore as
- * the production authority until the G3/G4 flip. Counters stay 7 / 7 / 7.
- *
- * The `tmp=false` truth is PATH_B verbatim (G0 characterization): the resolved
+ * The production authority until the/ flip. Counters stay 7 / 7 / 7
+ * The `tmp=false` truth is PATH_B verbatim: the resolved
  * absolute path comes from `WorkspaceIdentity.workspaceRoot`, which the capability bridge
  * populates from `context.shOptions.workspaceRoot` — the SAME source the
  * legacy `pwdContext()` consumed.
- *
  * Capability separation (mirrors `core.isUnix` precedent):
  * - [EXECUTION_LOCATION_CAPABILITY] owns the canonical workspace OBSERVATION
  *   (`workspaceRoot: Path`); the bridge derives it from the runtime context,
  *   the handler never reaches `user.dir` / `controlDirRoot` directly.
  * - The Step owns the projection POLICY (absolute path string + sha256).
  * - [EVENT_SINK_CAPABILITY] publishes the durable `PwdResolved` observation.
- *
  * Adjacent guarantees: input codec preserves the legacy `{"kind":"pwd"}`
  * envelope; the handler is total (no exceptions as semantics outside the
  * `tmp=true` rejection at decode); `PwdResolved` fields mirror the legacy
  * dispatcher byte-for-byte (uuid eventId, sequence 0L, sha256 hex of path,
  * `workspaceRoot` echoed alongside the resolved path).
- *
  * **Scope firewall**: `tmp=true` is rejected at decode (see [PwdInput.init])
  * because the legacy `tmp=true` path mints a `tmp-pwd-<timestamp>` directory
  * with non-deterministic naming — incompatible with `MEMOIZED` replay and
  * with `READ_ONLY` effect classification. This is the
  * PWD_TMP_TRUE_DISPOSITION blocker; the StepKey authority cannot be flipped
  * for `core.pwd` until a separate disposition lands.
- */
+*/
 object CorePwdStep {
 
     val KEY: PluginStepId = PluginStepId("core.pwd")
@@ -176,16 +167,15 @@ object CorePwdStep {
     )
 
     /**
-     * RP034-E: `pwd` reports the current directory, not the workspace root.
-     *
+     * `pwd` reports the current directory, not the workspace root.
      * The legacy seam handed this handler a single `Path` built as
      * `workingDirectory ?: workspaceRoot`, so a `dir` scope could not be
      * distinguished from the run root: both `path` and `workspaceRoot` were
-     * filled with the same collapsed value. ADR-0100 requires `pwd()` to return
+     * Filled with the same collapsed value. requires `pwd()` to return
      * `cwd`, and the two authorities to stay observably distinct, so this now
      * reads the typed execution location and reports each authority from its own
      * field.
-     */
+*/
     private val capabilityRoutedHandler: StepHandler<PwdInput, PwdOutput> =
         StepHandler { _, ctx ->
             val location: ExecutionSite =
@@ -210,13 +200,12 @@ object CorePwdStep {
 
     /**
      * The `core.pwd` payload digest, emitted in `PwdEntered.sha256`.
-     *
-     * Routed through [Sha256] (B0). The bytes hashed are UNCHANGED on a UTF-8 platform, which
-     * every supported toolchain is (JEP 400 made UTF-8 the default in JDK 18), so an existing
+     * Routed through [Sha256]. The bytes hashed are UNCHANGED on a platform, which
+     * Every supported toolchain is (JEP 400 made the default in JDK 18), so an existing
      * observer comparing digests keeps matching. What changed is that the charset is now
      * stated rather than inherited: the previous `input.toByteArray()` resolved to the platform
      * default, so this value silently depended on the JVM's locale.
-     */
+*/
     internal fun sha256(input: String): String = Sha256.ofText(input)
 
     val definition: StepDefinition<PwdInput, PwdOutput> =

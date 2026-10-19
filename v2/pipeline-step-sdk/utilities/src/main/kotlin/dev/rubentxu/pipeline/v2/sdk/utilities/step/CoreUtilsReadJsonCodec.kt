@@ -12,17 +12,14 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * JSON codec for [ReadJsonInput] (LFC-2E2 utilities OFFICIAL_PLUGIN).
- *
+ * JSON codec for [ReadJsonInput] (utilities OFFICIAL_PLUGIN)
  * Uses kotlinx.serialization runtime JSON (no plugin) following the canonical
  * pattern in `pipeline-step-sdk/scm-git` and `pipeline-step-sdk/junit`.
- *
  * `encodeDefaults = true` semantics are preserved by explicit `put` for every
  * field, so a codec roundtrip losslessly preserves optional defaults.
- *
- * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * Migrated to `PipelineJson` / `JsonAccessors`. Wire
  * format unchanged (roundtrip byte-identical to pre-refactor).
- */
+*/
 object CoreUtilsReadJsonInputCodec : StepCodec<ReadJsonInput> {
 
     override fun encode(value: ReadJsonInput): EncodedStepValue = PipelineJson.encode(
@@ -61,14 +58,12 @@ object CoreUtilsReadJsonInputCodec : StepCodec<ReadJsonInput> {
  * JSON codec for [ReadJsonOutput]. Symmetric to the input codec so a handler
  * failure that returns the typed value lands at the same JSON shape on the
  * wire.
- *
  * The output codec encodes BOTH the raw text and the parsed element. The
  * raw text is preserved for diagnostics; the parsed element is the canonical
  * shape used by downstream Steps.
- *
- * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * Migrated to `PipelineJson` / `JsonAccessors`. Wire
  * format unchanged.
- */
+*/
 object CoreUtilsReadJsonOutputCodec : StepCodec<ReadJsonOutput> {
 
     override fun encode(value: ReadJsonOutput): EncodedStepValue = PipelineJson.encode(

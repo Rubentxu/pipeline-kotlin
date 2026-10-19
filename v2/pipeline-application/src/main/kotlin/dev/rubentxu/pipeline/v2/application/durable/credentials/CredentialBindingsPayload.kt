@@ -21,21 +21,19 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * EM-7 / LFC-5.3 — Symmetric JSON codec for credential binding specs across the
+ * Symmetric JSON codec for credential binding specs across the
  * compiled BlockStepNode payload seam.
- *
  * [CredentialBindingSpec] is a sealed ADT and deliberately NOT
  * `@Serializable` (the IR must never carry secret values; only env-var *names*
  * and the non-secret [CredentialsId] travel in the node payload). This codec is
  * the single symmetric pair (encode in the compiler, decode in the coordinator)
  * so a payload produced by `compile` round-trips through `acquire`'s decode.
- *
  * The JSON shape is `{"bindings":[{"kind": <discriminator>, ...fields}, ...]}`.
  * Only the fields valid for each kind are present (mirror of the sealed subtype).
  * A missing required field or an unknown kind throws [IllegalArgumentException],
  * which the coordinator maps to a typed schema `StepOutcome.Failure` — the body
  * is never dispatched (fail-closed).
- */
+*/
 object CredentialBindingsPayload {
 
     /** Payload key under which the binding array is carried on a withCredentials node. */
@@ -44,7 +42,7 @@ object CredentialBindingsPayload {
     /**
      * Encodes a list of domain [CredentialBindingSpec] into the canonical
      * withCredentials node payload JSON string.
-     */
+*/
     fun encode(specs: List<CredentialBindingSpec>): String {
         val bindings = JsonArray(
             specs.map { spec ->
@@ -81,10 +79,9 @@ object CredentialBindingsPayload {
     /**
      * Decodes a withCredentials node payload JSON string back into a typed
      * [CredentialBindingSpec] list. Exhaustive over the sealed family.
-     *
      * @throws IllegalArgumentException if the payload is malformed, a kind is
      *         unknown, or a required field is missing
-     */
+*/
     fun decode(payload: String): List<CredentialBindingSpec> {
         val root = Json.parseToJsonElement(payload).jsonObject
         val bindings = root[BINDINGS_KEY]?.jsonArray

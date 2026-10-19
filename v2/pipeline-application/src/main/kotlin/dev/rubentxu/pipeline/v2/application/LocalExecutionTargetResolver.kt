@@ -8,48 +8,37 @@ import dev.rubentxu.pipeline.v2.domain.directive.TargetLeaseResult
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
 /**
- * S3.1 — the local execution-target resolver.
- *
+ * The local execution-target resolver.
  * The single-host profile. It answers every [ExecutionTargetRequirement] case
  * with a typed result, and it is the ONLY place in the runtime that decides
  * whether a target exists, because a resolver is the only thing allowed to.
- *
  * ## What "local" can honestly satisfy
- *
  * [ExecutionTargetRequirement.LocalAny] always succeeds: the run is already
  * executing on the machine it will use.
- *
  * [ExecutionTargetRequirement.LocalLabels] is decided against the labels the
  * host actually advertises, derived from [RuntimeConfig.osName]. This is
  * deliberately a real, observable property of the machine and not a
  * configuration file: `agent { label 'linux' }` succeeds on Linux and is
  * refused on Windows, which is what a Jenkins user expects and what a
  * hard-coded label list would only simulate.
- *
  * [ExecutionTargetRequirement.CapabilitySet] is decided against the
  * capabilities the runtime was actually granted, not against a static table of
  * capabilities that exist in principle. A target that cannot supply what a
  * step needs is not a target this run may use, and reading the granted set is
  * what keeps the two in agreement.
- *
  * ## What it refuses, and why that is the feature
- *
  * [ExecutionTargetRequirement.Remote] is refused. There is no remote allocator
- * until RP-8, and a resolver that "succeeded" for a remote selector would be
+ * Until, and a resolver that "succeeded" for a remote selector would be
  * running the stage somewhere the author named while the runtime never
  * contacted it — the exact silent semantic drop this train exists to remove.
- *
- * The diagnostic names RP-8 rather than saying "unsupported", because the
+ * The diagnostic names rather than saying "unsupported", because the
  * author needs to know whether to restructure their pipeline or wait. The
  * distinction between "nothing here satisfies this" and "this runtime cannot
  * satisfy it at all" is preserved in the wording of [TargetLeaseResult.Refused]
  * and is carried through into the run failure.
- *
  * ## Why the defaults are the defaults
- *
  * Both parameters default, and both defaults are decisions rather than
  * placeholders.
- *
  * The [RuntimeConfig] default is [SystemRuntimeConfig], which is the adapter
  * that reads the host. It is not the only one — no gate says it is — so this
  * resolver earns its single authority by asking the port instead of reading
@@ -60,7 +49,6 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * acquire time rather than construction time, which is what [RuntimeConfig]
  * documents and what keeps the answer honest if the JVM is reconfigured
  * mid-flight.
- *
  * The empty [grantedCapabilities] default makes a [ExecutionTargetRequirement.CapabilitySet]
  * fail closed WITH a diagnostic, whereas a resolver seeded with "everything the
  * runtime could provide in principle" would GRANT requirements nobody
@@ -68,7 +56,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * capabilities are bound per invocation in the execution boundary — so the
  * honest answer until a composition root really knows the granted set is to
  * refuse, and refusing is observable rather than silent.
- */
+*/
 class LocalExecutionTargetResolver(
     private val runtimeConfig: RuntimeConfig = SystemRuntimeConfig(),
     private val grantedCapabilities: Set<StepCapability> = emptySet(),
@@ -127,12 +115,11 @@ class LocalExecutionTargetResolver(
 
     /**
      * Labels the local host advertises.
-     *
      * `unix` is added for every non-Windows platform because that is the label
      * Jenkins authors actually write, and a label set that only ever contains
      * the raw os.name would refuse `agent { label 'unix' }` on a machine that
      * obviously is one.
-     */
+*/
     private fun advertisedLabels(osName: String): Set<AgentLabel> = buildSet {
         add(AgentLabel(osName.lowercase()))
         if (!osName.startsWith("windows", ignoreCase = true)) {

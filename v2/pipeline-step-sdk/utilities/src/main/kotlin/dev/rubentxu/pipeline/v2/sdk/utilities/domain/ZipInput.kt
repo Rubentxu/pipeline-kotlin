@@ -3,14 +3,12 @@ package dev.rubentxu.pipeline.v2.sdk.utilities.domain
 import kotlinx.serialization.Serializable
 
 /**
- * `core-utils.zip` typed Input (LFC-2E2 utilities, Slice 2 / S2.4).
- *
+ * `core-utils.zip` typed Input (utilities, Slice 2 /.4)
  * Jenkins reference: pipeline-utility-steps-plugin::ZipStep.
- *
  * The shape is closed: exactly one of the three [ZipSources] cases is
  * chosen by the caller. The dst `path` is workspace-relative unless
  * absolute.
- */
+*/
 @Serializable
 data class ZipInput(
     val path: String,
@@ -28,13 +26,12 @@ data class ZipInput(
  * Closed Sources ADT for the zip step. Modelled after Jenkins' single
  * `archive: '...'` string, but typed: each case carries its own
  * payload and mixing them is unrepresentable at compile time.
- *
  * - [FromGlob] resolves a glob against the workspace root and walks
  *   every match (file or directory, recursively).
  * - [FromDirectory] archives a literal directory subtree.
  * - [FromFiles] archives a list of literal file paths, each resolved
  *   against the workspace root.
- */
+*/
 @Serializable
 sealed interface ZipSources {
     @Serializable

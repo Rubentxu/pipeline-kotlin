@@ -11,10 +11,8 @@ import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 
 /**
  * Trivial line-based [PipelineCompiler] used to demonstrate and exercise
- * the M2 contract without committing to a full DSL parser.
- *
+ * The contract without committing to a full DSL parser
  * ## Syntax
- *
  * ```text
  * # comment lines start with #
  * name hello                              # required: pipeline name
@@ -22,29 +20,24 @@ import dev.rubentxu.pipeline.v2.domain.StepDescriptor
  * step <type> <id> [configRef]            # one per step; configRef defaults to id
  * edge <fromId> <toId> [SEQUENTIAL|PARALLEL|CONDITIONAL]   # one per edge
  * ```
- *
  * Blank lines and lines starting with `#` are ignored. Whitespace is
  * collapsed but otherwise significant. The source identifier (the `String`
  * passed to [compile]) is the [DefinitionId.value] of the resulting
  * pipeline — callers typically derive it from the source path with
  * [dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator].
- *
  * ## Why this exists
- *
- * The M2 characterise-parity gate needs an application-side adapter to
+ * The characterise-parity gate needs an application-side adapter to
  * satisfy the canonical-authority pin in `FArchM2CanonicalPipelineCompilerTest`.
- * This is the trivial placeholder that ships in LF-0201. The real
- * DSL parser (Kotlin Script / Groovy Script) lands in LF-0205 along with
+ * This is the trivial placeholder that ships in. The real
+ * DSL parser (Kotlin Script / Groovy Script) lands in along with
  * the [RunCoordinator] migration; the test-friendly [MapPipelineCompiler]
  * already covers characterisation needs.
- *
  * ## Forward-compatibility note
- *
  * The compiler intentionally does NOT fail on `PARALLEL` or `CONDITIONAL`
- * edges — those are forward declarations accepted by the M2 surface, with
+ * Edges — those are forward declarations accepted by the surface, with
  * runtime semantics flattened to sequential by [RunCoordinator] until
- * LF-0207 / LF-0307 land. See [Edge] KDoc for the migration cadence.
- */
+ * those seams land. See [Edge] KDoc for the migration cadence
+*/
 class SimplePipelineCompiler : PipelineCompiler {
 
     override fun compile(source: String): CompileResult {

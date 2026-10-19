@@ -9,23 +9,19 @@ import dev.rubentxu.pipeline.v2.domain.scm.Scm
 
 /**
  * Shared mutable state for the stage DSL builders.
- *
- * S0-C1 (Pure Builder Consumption Gate): `[MustUseReturnValues]` is applied at
+ * `[MustUseReturnValues]` is applied at
  * CLASS level, not per function, because Kotlin 2.4 restricts the annotation to
  * targets `file` and `class` (OBSERVED: compiling it on a member function fails
  * with "not applicable to target 'member function'").
- *
  * Class level is also the semantically right granularity here: it covers every
  * pure builder declared on this scope, so a future `PURE_BUILDER` added to this
  * class inherits the gate without anyone having to remember to annotate it. The
  * class is annotated rather than the file because the file also declares the
  * top-step scope, whose functions are a different concern.
- *
  * The annotation constrains the FATE OF A RETURNED CARRIER, not effects: the
  * `PURE_BUILDER`s here still emit no step and no event. Functions returning
  * `Unit` are unaffected, as are fail-closed stubs returning `Nothing` (a
  * `Nothing` result is never discarded — it never returns).
- *
  * SCOPE HONESTY: this annotation is inherited by the whole scope hierarchy
  * (`StageScope` -> `StageScopeTopSteps` -> this), which also covers
  * `SCRIPTED_RUNTIME_CALL` builders such as `pwd(..)` and `isUnix()` declared in
@@ -33,12 +29,11 @@ import dev.rubentxu.pipeline.v2.domain.scm.Scm
  * discarding the returned value loses nothing. The manifest records them as
  * MAY_DISCARD, and the compile-time checker cannot be scoped per-builder — it is
  * all-or-nothing per compilation, so it stays silent for them.
- *
  * The real, enforced gate is the admission-time carrier registry below, which
  * classifies each carrier individually and therefore CANNOT be over-applied.
  * The annotation is retained as a free first line of defence that starts
  * biting the day the scripting host honours `-Xreturn-value-checker=check`.
- */
+*/
 @MustUseReturnValues
 open class StageScopeCore(
     protected val stageName: String,
@@ -47,9 +42,8 @@ open class StageScopeCore(
     protected val steps = mutableListOf<StepSpec>()
 
     // ------------------------------------------------------------------
-    // S0-C1 (Pure Builder Consumption Gate) — admission-time enforcement
+    // Admission-time enforcement
     // ------------------------------------------------------------------
-    //
     // WHY THIS EXISTS NEXT TO `@MustUseReturnValues`
     // ================================================
     // The annotation is the FIRST line of defence and it is not sufficient
@@ -63,7 +57,6 @@ open class StageScopeCore(
     // succeeds with an empty stage. The annotation is kept because it
     // costs nothing and starts working the day the host does; this
     // registry is what makes the gate REAL today.
-    //
     // The rule is expressed as DATA, not as a per-builder name check:
     // a PURE_BUILDER registers the carrier it hands out, and a consumer
     // marks that exact carrier as consumed. Anything registered and never
@@ -74,7 +67,7 @@ open class StageScopeCore(
     /**
      * Records that [carrier] was produced by a pure builder and must be
      * consumed by the end of the stage.
-     */
+*/
     protected fun <T : Any> registerMustConsume(carrier: T, builderName: String): T {
         unconsumedCarriers[carrier] = builderName
         return carrier
@@ -85,7 +78,7 @@ open class StageScopeCore(
      * "some builder was called": `checkout(scmGit(..).scm)` reads a
      * PROPERTY of the carrier, so the carrier object itself is what has to
      * be marked, not the `scm` value inside it.
-     */
+*/
     protected fun markCarrierConsumed(carrier: Any) {
         unconsumedCarriers.remove(carrier)
     }
@@ -94,7 +87,7 @@ open class StageScopeCore(
      * Fails closed when a MUST_CONSUME carrier was produced and discarded.
      * Called at stage construction, which is before any step, event or
      * process is admitted — so the gate cannot produce a partial effect.
-     */
+*/
     internal fun rejectUnconsumedCarriers() {
         if (unconsumedCarriers.isEmpty()) return
         val detail = unconsumedCarriers.entries.joinToString(", ") { (carrier, name) ->
@@ -131,15 +124,13 @@ open class StageScopeCore(
 
     /**
      * The STABLE historical spelling, kept as a validated adapter.
-     *
      * `error` is STABLE, so `error("boom", "USER")` keeps
      * compiling. What it no longer does is ACCEPT anything: the token is validated here, at
      * script-construction time, and an unrecognised one refuses the pipeline before a run
      * exists. See [LegacyResultVocabulary].
-     *
      * `failureKind` has no default so that `error("boom")` is not ambiguous between the two
      * overloads; the bare call resolves to the typed one.
-     */
+*/
     fun error(message: String, failureKind: String) {
         steps.add(StepSpec.Error(message, LegacyResultVocabulary.failureKind(failureKind)))
     }
@@ -153,14 +144,13 @@ open class StageScopeCore(
     }
 
     /**
-     * S0-C1 consuming overload: takes the whole [CheckoutSpec] so the carrier
+     * Takes the whole [CheckoutSpec] so the carrier
      * itself can be marked consumed, not just the `scm` inside it.
-     *
      * The existing `checkout(scm: Scm)` stays because it is part of the public
      * surface and a caller may legitimately own a bare [Scm] with no carrier to
      * track. Keeping both is why the gate needs no migration of existing
      * scripts.
-     */
+*/
     fun checkout(spec: CheckoutSpec) {
         markCarrierConsumed(spec)
         checkout(spec.scm)
@@ -168,17 +158,14 @@ open class StageScopeCore(
     /**
      * PURE_CONSTRUCTOR (Semantic Conservation Law): builds the [CheckoutSpec] and
      * emits nothing.
-     *
      * It used to `steps.add(StepSpec.Checkout(spec.scm))` as well, which made
      * `git(..)` — defined as `checkout(scmGit(..).scm)` — emit TWO `Checkout`
      * steps for one checkout. OBSERVED before the fix: a single `git(..)` call
      * produced two identical `Checkout` rows, and three calls produced six.
-     *
      * A side effect here is invisible to the `non-canonical plugins` bridge gate
      * because every emitted step is canonical, which is how the duplicate
      * survived an audit that recorded the surface as gated.
-     *
-     * S0-C1 (Pure Builder Consumption Gate): purity constrains EFFECTS, not the
+     * Purity constrains EFFECTS, not the
      * fate of the carrier. `[MustUseReturnValues]` makes discarding the
      * `[CheckoutSpec]` a compile error inside `.pipeline.kts` (the scripting host
      * enables `-Xreturn-value-checker=check`). OBSERVED before the gate: a
@@ -186,7 +173,7 @@ open class StageScopeCore(
      * an empty stage and zero checkouts — the author asked for a checkout and
      * silently got nothing. The annotation does not change purity: this still
      * returns a value and still emits no step and no event.
-     */
+*/
     fun scmGit(
         url: String,
         branch: String = "master",
@@ -196,7 +183,7 @@ open class StageScopeCore(
         relativeTargetDir: String = ".",
     ): CheckoutSpec {
         require(url.isNotBlank()) { "Missing required parameter: url" }
-        // S0-C1: the carrier is registered as MUST_CONSUME. `checkout(..)` marks
+        // The carrier is registered as MUST_CONSUME. `checkout(..)` marks
         // it consumed. Nothing else in this file names a builder, so a future
         // PURE_BUILDER inherits the gate by calling this one method.
         return registerMustConsume(
@@ -301,8 +288,7 @@ open class StageScopeTopSteps(
 ) : StageScopeCore(stageName, runtimeConfig) {
 
     /**
-     * REMOVED (S0 Semantic Honesty Gate / Semantic Conservation Law).
-     *
+     * REMOVED (Semantic Honesty Gate / Semantic Conservation Law)
      * The step-retrofit overload projected a full
      * [dev.rubentxu.pipeline.v2.domain.durable.RetryPolicy] (maxAttempts +
      * baseMs + jitterMs) onto the preceding step, but NO runtime consumer ever
@@ -310,12 +296,10 @@ open class StageScopeTopSteps(
      * from the `core.retry` block-step payload, and baseMs/jitterMs were never
      * executed by any code path. Declaring a delay was a silent lie, and a
      * policy nobody reads is metadata-without-an-interpreter.
-     *
      * The supported surface is the block form `retry(n) { ... }`, which lowers
      * to a `core.retry` Block Step and is honoured by the coordinator.
-     *
      * @throws IllegalArgumentException always.
-     */
+*/
     @Suppress("UnusedParameter") // parameters retained so a rejected call fails
     // with THIS diagnostic instead of a bare Kotlin signature error.
     fun retry(count: Int, delaySeconds: Long? = null): Nothing = throw IllegalArgumentException(
@@ -405,22 +389,20 @@ open class StageScopeTopSteps(
     }
 
     /**
-     * Holds a named resource for the duration of the nested block (RP6-A /
-     * WU-091; Jenkins `lock` verbatim: resource, timeout, reason, skipIfLocked).
-     *
+     * Holds a named resource for the duration of the nested block (/
+     * Resource, timeout, reason, skipIfLocked).
      * Declarative construction only: this builder records a [StepSpec.Lock];
      * exclusion semantics, admission and events belong to the `core.lock`
      * handler behind the registry. `timeoutSeconds` is in seconds, the engine's
      * deadline unit (`timeoutUnit` of Jenkins is not exposed). `skipIfLocked`
      * with a `timeoutSeconds` is a contradictory declaration and is rejected as
      * typed input by the Step, not silently resolved here.
-     *
      * @param resource name of the resource to hold. Mandatory, as in Jenkins.
      * @param timeoutSeconds maximum wait once the resource is contended;
      *   `null` waits indefinitely.
      * @param reason human-readable motive surfaced in the lock events.
      * @param skipIfLocked when the resource is held, run nothing and succeed.
-     */
+*/
     fun lock(
         resource: String,
         timeoutSeconds: Int? = null,
@@ -442,14 +424,12 @@ open class StageScopeTopSteps(
     }
 
     /**
-     * Asks a human and runs the body only if they say yes (RP6-B / WU-092; Jenkins
+     * Asks a human and runs the body only if they say yes (/; Jenkins
      * `input`: message, ok, submitter, id).
-     *
      * Declarative construction only: this builder records a [StepSpec.Input]. Whether
      * the body runs, and what an abort means, belongs to the `core.input` handler
      * behind the registry — including the rejection of a blank `message` or `ok`,
      * which is a typed declaration error, not a silent pass-through.
-     *
      * @param message what to ask. Mandatory, and blank is rejected.
      * @param ok label of the affirmative answer, Jenkins `ok`.
      * @param submitter attribution of who is expected to answer. NOT an
@@ -457,7 +437,7 @@ open class StageScopeTopSteps(
      * @param id correlation id for the request, Jenkins `id`.
      * @param timeoutSeconds bound on the wait; `null` waits until the enclosing
      *   block budget runs out.
-     */
+*/
     fun input(
         message: String,
         ok: String = "Proceed",

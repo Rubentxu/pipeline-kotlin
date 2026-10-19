@@ -11,12 +11,11 @@ import java.nio.file.StandardCopyOption
 
 /**
  * Result of a file write operation.
- *
  * @property path Resolved absolute path of the written file
  * @property sha256 SHA-256 hex digest of the file content
  * @property size Size in bytes
  * @property atomicallyMoved True if ATOMIC_MOVE succeeded; false if cross-fs fallback was used
- */
+*/
 data class FileWriteResult(
     val path: Path,
     val sha256: String,
@@ -26,34 +25,25 @@ data class FileWriteResult(
 
 /**
  * Executor for [StepSpec.WriteFile] — atomic temp+rename file write.
- *
- * ## Atomic Write Strategy (D9)
- *
+ * ## Atomic Write Strategy
  * 1. Write content to `<target>.tmp` in the SAME directory as target (guarantees same filesystem)
  * 2. Atomically rename via `Files.move(tmp, target, ATOMIC_MOVE, REPLACE_EXISTING)`
  * 3. On `AtomicMoveNotSupportedException` (cross-filesystem): fall back to `REPLACE_EXISTING`
- *
  * ## Path Safety
- *
  * - Resolves `file` against workspace
  * - Enforces the path traversal guard on REAL paths, so a symlink out of the
  *   workspace is refused rather than written through
- * - Enforces reserved .v2 directory guard
+ * - Enforces reserved.v2 directory guard
  * - Auto-creates parent directories
- *
  * ## Encoding
- *
- * - `encoding = "UTF-8"` (default): `text.toByteArray(UTF_8)`
+ * `encoding = ""` (default): `text.toByteArray(UTF_8)`
  * - `encoding = "Base64"`: decodes text via `Base64.getDecoder().decode(text)`
- *
  * ## Events
- *
- * Event emission is handled by the dispatcher (T-09) which has access to DomainEvent types.
+ * Event emission is handled by the dispatcher which has access to DomainEvent types
  * The [FileWriteResult] carries all data needed for event creation.
- *
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
  * @param eventSink Event sink (passed for future event emission by dispatcher)
- */
+*/
 class FileWriteExecutor(
     private val workspaceResolver: (stageName: String, stageIndex: Int) -> Path,
     @Suppress("UNUSED_PARAMETER") private val eventSink: EventSink = NullEventSink,
@@ -61,14 +51,13 @@ class FileWriteExecutor(
 
     /**
      * Executes a [StepSpec.WriteFile] step.
-     *
      * @param stageName The stage name (used as workspace identifier)
      * @param stageIndex The stage index (passed to workspace resolver)
      * @param stepIndex The step index (unused — event emission deferred to dispatcher)
      * @param spec The writeFile step specification
      * @return [FileWriteResult] on success
-     * @throws IllegalArgumentException if path escapes workspace or targets .v2 directory
-     */
+     * @throws IllegalArgumentException if path escapes workspace or targets.v2 directory
+*/
     fun execute(stageName: String, stageIndex: Int, stepIndex: Int, spec: StepSpec.WriteFile): FileWriteResult {
         val workspace = workspaceResolver(stageName, stageIndex)
         // Two paths, deliberately not one. `declaredPath` is what the caller wrote and is what
@@ -128,12 +117,11 @@ class FileWriteExecutor(
 
     companion object {
         /**
-         * SHA-256 hex of [bytes], routed through the shared utility (B0).
-         *
+         * SHA-256 hex of [bytes], routed through the shared utility
          * Byte-identical to the local implementation this replaces: same algorithm, same
          * lowercase hex, same input. The value is emitted in the Step's observability event,
          * so an external observer comparing digests keeps matching.
-         */
+*/
         fun sha256(bytes: ByteArray): String = Sha256.ofBytes(bytes)
     }
 }

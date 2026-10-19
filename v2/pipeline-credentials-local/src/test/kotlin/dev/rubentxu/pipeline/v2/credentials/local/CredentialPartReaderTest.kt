@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test
  * [CredentialPartReader] consumes the bytes [CredentialSerializer] writes. The two
  * objects are paired: a reader edit that misaligns with the writer is a silent defect
  * (a part gets read as the next part's name), and the tests below pin the contract.
- */
+*/
 class CredentialPartReaderTest {
 
     @Test

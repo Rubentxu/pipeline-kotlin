@@ -12,34 +12,28 @@ import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * M3 — production [OutputPinPort] backed by [OutputPinStore].
- *
+ * Production [OutputPinPort] backed by [OutputPinStore].
  * The adapter is a thin composition: it does NOT introduce a new
  * authority, a new lock, a new file format, or a new persistence
  * mechanism. It translates the port's sealed ADTs onto the store's
  * simpler CRUD.
- *
  * ## What the adapter refuses
- *
  * - A pin request against a stream the store has never opened
  *   (`PinRefusal.UnknownStream`).
  * - A pin request whose range starts past the stream's committed extent
  *   (`PinRefusal.RangeBeyondCommitted`).
  * - A pin request beyond [OutputPinPort.DEFAULT_MAX_PINS_PER_STREAM]
  *   active pins for the same stream (`PinRefusal.TooManyPins`).
- *
  * Expired pins are NOT a refusal — they are released on read so a
  * consumer that holds an expired pin does not get blocked. The audit
- * §B.3's "expired pin is RELEASED, not refused" rule.
- *
+ * B.3's "expired pin is RELEASED, not refused" rule.
  * ## Threading
- *
  * The internal [OutputPinStore] takes its own lock; the adapter holds
  * no lock of its own. Reads ([pinsOf], [isPinned]) are O(active-pins)
  * and O(active-pins), respectively; the audit's O(1) target for
  * [isPinned] is approximated by the linear scan being O(constant) for
  * the default cap.
- */
+*/
 class OutputPinPortStoreAdapter(
     private val root: Path,
     private val reads: OutputReadPort,
@@ -58,7 +52,7 @@ class OutputPinPortStoreAdapter(
      * Pin [range] of [stream] against retention pruning. The pin
      * survives any subsequent `OutputRetentionPort.prune(intent)` UNLESS
      * the pin's `holder` explicitly `release`s it OR `expiresAtMs` passes.
-     */
+*/
     override fun pin(
         stream: OutputStreamId,
         range: LongRange,
@@ -101,7 +95,7 @@ class OutputPinPortStoreAdapter(
     /**
      * Release the pin identified by [pinId]. Idempotent: a second
      * call returns [PinReleaseOutcome.AlreadyReleased].
-     */
+*/
     override fun release(pinId: OutputPinId): PinReleaseOutcome {
         if (closed.get()) {
             return PinReleaseOutcome.StorageError("pin store is closed")
@@ -132,7 +126,7 @@ class OutputPinPortStoreAdapter(
      * Active pins whose stream id folds to [safeName] — the on-disk
      * directory name. Used by the canPrune consult to enumerate a run's
      * streams by directory rather than by id reconstruction.
-     */
+*/
     fun pinsForSafeName(safeName: String): List<OutputPin> {
         if (closed.get()) return emptyList()
         return try {
@@ -154,10 +148,9 @@ class OutputPinPortStoreAdapter(
 
     /**
      * Mark the adapter as closed; subsequent calls return refusal cases.
-     *
      * The pin store file is not deleted — durability outlives revocation of
      * the live adapter.
-     */
+*/
     override fun close() {
         closed.set(true)
     }

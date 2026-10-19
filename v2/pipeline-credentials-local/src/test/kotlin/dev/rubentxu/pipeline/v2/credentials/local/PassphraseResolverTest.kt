@@ -12,11 +12,10 @@ import org.junit.jupiter.api.Test
  * Its rules are tiny but the consequences are not: an env value leaked to stdout becomes a
  * secret; a TTY read not zeroed becomes a secret; a wrong precedence order strands an
  * automation run.
- *
  * The tests cover the three branches through the public [resolve] function, and pin the two
  * security rules declared in the source KDoc: the env value is never echoed back, and the
  * returned array is always a defensive copy.
- */
+*/
 class PassphraseResolverTest {
 
     @Test

@@ -1,38 +1,31 @@
 package dev.rubentxu.pipeline.v2.output
 
 /**
- * The adoption contract for S2, and the checkable form of [ADR-M1 D4].
- *
+ * The adoption contract for, and the checkable form of [ ]
  * `05-§Strategy 2 / Risks` requires reserve/commit or a recoverable intent protocol, because a crash
  * between the byte append and the index commit loses the global order for those bytes. RCE
- * `ADR-0002` compared four candidates and decided **ADOPT D, segment reservation with recovery**,
+ * `` compared four candidates and decided **ADOPT D, segment reservation with recovery**
  * failing none of six invariants across four protocols x eight crash scenarios.
- *
  * So the design exists and the decision is taken. What that ADR did not write is the sentence that
- * connects it to a product: **what the adopter has to do for "S2 is implemented" to be a claim
+ * Connects it to a product: **what the adopter has to do for " is implemented" to be a claim
  * rather than a hope.** This file is that sentence, and it now lives in `src/main` rather than in a
  * test harness — the earlier placement is the reason the gap survived as long as it did.
- *
  * ## Why obligations and not invariants
- *
  * An invariant is a property the result *has*. An obligation is something the adopter *must do*.
  * Conflating them is how a design gets credited with an implementation, so the two vocabularies
  * are kept in separate types here and never mixed in a single claim.
- *
  * ## What moved from RCE
- *
  * The RCE contract was stated over **frames** carrying a **sequence**. This store is stated over
- * **byte ranges** carrying a **committed offset**, because [ADR-M1 D3] makes the committed byte
+ * **byte ranges** carrying a **committed offset**, because [ ] makes the committed byte
  * offset the unit of continuation. The obligations are unchanged; the unit they are discharged in
  * is not.
- */
+*/
 
 /**
  * The six invariants the strategy was selected on, restated as the acceptance bar.
- *
  * Deliberately not re-derived. They were measured against four candidates under a hostile fault
  * model; re-deriving them here would assert numbers this file cannot produce.
- */
+*/
 enum class OutputCrashInvariant(
     val id: String,
     val statement: String,
@@ -57,11 +50,10 @@ enum class OutputCrashInvariant(
 
     /**
      * Density, not monotonicity.
-     *
-     * The distinction is the point of I3: a permanent hole leaves a reader unable to tell "those
+     * The distinction is the point of: a permanent hole leaves a reader unable to tell "those
      * bytes are gone" from "those bytes have not arrived yet" — the same conflation the
      * content-identity work forbids on the replication side.
-     */
+*/
     I3_ORDER_IS_DENSE(
         "I3",
         "the recovered byte order is dense, and new appends continue it without a hole",
@@ -96,9 +88,8 @@ enum class OutputCrashInvariant(
 
 /**
  * The three obligations an adoption of D creates.
- *
  * Not invariants. A conjunction, and any single gap disqualifies.
- */
+*/
 enum class OutputAdoptionObligation(
     val id: String,
     val obligation: String,
@@ -107,10 +98,9 @@ enum class OutputAdoptionObligation(
 ) {
     /**
      * The writer reserves before it writes.
-     *
      * This is the obligation D exists for. Without it the store is a byte log with no protocol and
      * every invariant below is unbacked.
-     */
+*/
     WRITER_RESERVES_BEFORE_APPEND(
         "O1",
         "the writer reserves the byte range before writing into it, and the acknowledgement is the " +
@@ -120,11 +110,10 @@ enum class OutputAdoptionObligation(
 
     /**
      * The reader resumes from the committed offset, never from a file's size.
-     *
      * This is where the byte-authority item and the crash-consistency item become one. An index is
      * what a cursor requires, so implementing a cursor is what *creates* this obligation rather than
      * discharging it.
-     */
+*/
     READER_RESUMES_FROM_COMMITTED(
         "O2",
         "a reader resumes from a committed offset, not from the size of a byte file",
@@ -134,11 +123,10 @@ enum class OutputAdoptionObligation(
 
     /**
      * Recovery is an entry point, not a branch inside the reader.
-     *
-     * I5 and I6 are properties of what happens *after* a crash, and the recovery path is exercised
+     * And are properties of what happens *after* a crash, and the recovery path is exercised
      * only when something has already gone wrong — which is exactly why it cannot be folded into
      * the reader.
-     */
+*/
     RECOVERY_IS_AN_ENTRY_POINT(
         "O3",
         "recovery is a distinct entry point that reconciles reservations and the committed offset " +
@@ -150,23 +138,21 @@ enum class OutputAdoptionObligation(
 
 /**
  * Properties this adoption explicitly does **not** establish.
- *
  * An ADR's "what this does not establish" section erodes first: nothing is deleted when a claim is
  * inherited, it just stops being written down, and the next reader finds a proven-looking result
  * with no mention of the limits that shaped it.
- */
+*/
 enum class OutputNotEstablished(
     val notEstablished: String,
     val whatItWouldTake: String,
 ) {
     /**
      * Not durability across power loss.
-     *
      * The fault model is process death. Bytes already issued to a file descriptor live in the page
      * cache; they do not survive a machine crash without an `fsync` discipline. The proven
      * property is *"a process that dies loses nothing it acknowledged"* — real and useful, and not
      * the property most people mean by durable.
-     */
+*/
     POWER_LOSS_DURABILITY(
         "durability across power loss",
         "an fsync discipline on this store's storage — data, then metadata and index — and a fault " +
@@ -176,11 +162,10 @@ enum class OutputNotEstablished(
 
     /**
      * Not cross-stream global order.
-     *
      * D recovers order *within* each stream by merging that stream's segments. Two streams have no
      * defined interleaving, because the Output Plane does not claim one: the product's console
      * order is a presentation concern and belongs to whatever renders it, not to the store.
-     */
+*/
     CROSS_STREAM_GLOBAL_ORDER(
         "a global order across streams",
         "an ordering authority over stream identities themselves. This store deliberately has " +
@@ -198,27 +183,25 @@ object OutputAdoption {
 
     val notEstablished: List<OutputNotEstablished> = OutputNotEstablished.entries.toList()
 
-    /** Whether the product may say "S2 is implemented". Requires every obligation discharged. */
+    /** Whether the product may say " is implemented". Requires every obligation discharged */
     fun mayClaimCrashConsistency(discharged: Set<OutputAdoptionObligation>): Boolean =
         discharged.containsAll(obligations)
 
     /**
      * The invariants that are meaningless until the obligations are discharged.
-     *
      * The parameter is the **discharged** set and the complement is taken inside. A parameter whose
      * name can be confused with its negation is a defect the compiler will not catch — the first
      * version of this contract took `undischarged`, and its own test passed it the discharged set,
      * type-checked, and reported the exact inverse of the truth.
-     *
-     * Not a ranking. I3 and I6 describe a reserved-slot world; citing them as satisfied today would
+     * Not a ranking. and describe a reserved-slot world; citing them as satisfied today would
      * be describing the design rather than the system.
-     */
+*/
     fun invariantsBlockedBy(discharged: Set<OutputAdoptionObligation>): List<OutputCrashInvariant> {
         val undischarged = obligations.toSet() - discharged
 
         // A union, not an if/else-if chain. The first version returned on the first match, so a
-        // writer that reserved but had no recovery entry point reported only I3 blocked and quietly
-        // vouched for I5 and I6 — precisely the two that recovery underpins.
+        // Writer that reserved but had no recovery entry point reported only blocked and quietly
+        // Precisely the two that recovery underpins.
         val blocked = buildList {
             if (OutputAdoptionObligation.WRITER_RESERVES_BEFORE_APPEND in undischarged) {
                 // Nothing the writer does is recoverable, so nothing is established.

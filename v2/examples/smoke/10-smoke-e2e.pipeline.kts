@@ -1,8 +1,7 @@
 // Compatibility fixture 10: smoke end-to-end (checkout → build+archive).
-// LF-0208 note: under the Single Runtime Spine each stage gets its own
+// Note: under the Single Runtime Spine each stage gets its own
 // workspace, so archiveArtifacts lives in the SAME stage as the build step
 // (Jenkins-faithful workspace continuity).
-//
 // The fixture repository used to be created at /tmp/smoke-repo and cloned from
 // that absolute path. Two rules were broken at once: AGENTS.md section 3 gives
 // every example a private temporary directory and forbids shared marker paths,

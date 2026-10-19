@@ -23,7 +23,6 @@ pipeline {
             // resolved to a no-op the file would survive and this scenario
             // would still have been green, which is the failure mode a
             // destructive step cannot afford.
-            //
             // The witness path carries the `workflow-test/` prefix on purpose.
             // `touch marker` ran INSIDE `dir`, so the file it created is
             // `workflow-test/marker`; checking bare `marker` at the stage root

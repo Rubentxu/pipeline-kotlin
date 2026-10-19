@@ -1,15 +1,13 @@
 package dev.rubentxu.pipeline.v2.domain.directive
 
 /**
- * S2-C — gate composition: the PURE decision layer over an already-admitted
+ * Gate composition: the PURE decision layer over an already-admitted
  * set of gate directives.
- *
  * The stage's admitted gates (a pure [StageDirectivePlanner] outcome) carry,
  * per directive, the policy the DEFINITION declared. Decoding each gate's
  * arguments is the interpreter's job (injected decoder, typed failure);
  * composition — how several gates become ONE predicate — is a pure domain
  * decision and lives here. No clock, no filesystem, no events.
- *
  * Composition law (declarative, not discretionary):
  * - Declaration order is composition order.
  * - Several gates compose a single [WhenPredicate.AllOf]; one gate composes to
@@ -20,7 +18,7 @@ package dev.rubentxu.pipeline.v2.domain.directive
  *   declarations would hide one of them.
  * - Identical predicates under DIFFERENT keys are NOT a conflict: AND with
  *   itself is idempotent, so there is nothing to hide.
- */
+*/
 object GateCompositionPlanner {
 
     /** One gate directive already decoded by the interpreter's injected decoder. */
@@ -32,7 +30,7 @@ object GateCompositionPlanner {
     /**
      * Compose [gates] (in declaration order) into the stage's single gate
      * predicate, or report a typed conflict.
-     */
+*/
     fun compose(gates: List<DeclaredGate>): GateCompositionDecision {
         val duplicate = gates.groupBy { it.key }.entries.firstOrNull { it.value.size > 1 }
         if (duplicate != null) {
@@ -55,7 +53,7 @@ object GateCompositionPlanner {
 /**
  * The typed outcome of composing one stage's gates. A coordinator reads this
  * value; it MUST NOT re-derive composition itself.
- */
+*/
 sealed interface GateCompositionDecision {
     /** The single predicate the stage's gates compose to. */
     data class Composite(val predicate: WhenPredicate) : GateCompositionDecision
@@ -66,7 +64,7 @@ sealed interface GateCompositionDecision {
     /**
      * The declaration conflicts (a key declared twice). Fail-closed: the
      * stage never starts, and [reason] names the offending key.
-     */
+*/
     data class Conflicting(
         val key: DirectiveKey,
         val reason: String,

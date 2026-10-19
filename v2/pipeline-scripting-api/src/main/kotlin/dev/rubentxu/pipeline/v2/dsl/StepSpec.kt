@@ -11,11 +11,10 @@ import dev.rubentxu.pipeline.v2.domain.scm.Scm
 
 /**
  * Sealed hierarchy of steps that a stage can contain.
- *
  * This interface extends [dev.rubentxu.pipeline.v2.domain.durable.StepSpec] to enable
  * the domain layer's [dev.rubentxu.pipeline.v2.domain.durable.BranchSpec] to reference
- * DSL steps without creating a domain→DSL dependency (ADR-0033).
- */
+ * DSL steps without creating a domain→DSL dependency
+*/
 sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     override val name: String
     override val type: String
@@ -56,42 +55,34 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     }
 
     /**
-     * P3-E E4 — [failureKind] defaults to [FailureKind.USER], not `UNKNOWN`.
-     *
+     * [failureKind] defaults to [FailureKind.USER], not `UNKNOWN`.
      * `error("msg")` is a deliberate, human-authored abort: somebody wrote it, on purpose,
      * with a message. `USER` is what that is. `UNKNOWN` means "this runtime could not
      * classify the failure" — which is what a decoder returns for a token it does not
      * recognise, a materially different epistemic state.
-     *
      * The old default made every un-annotated `error()` indistinguishable in the durable
      * stream from a fault nobody understood, which is precisely the distinction an
-     * external observer needs (P3-E E1, §5.7). Narrowing it also removes a fail-open edge:
+     * External observer needs it. Narrowing it also removes a fail-open edge
      * the default used to be the one value that could only ever have come from nobody
      * choosing.
-     *
-     * P3-E E6 — [failureKind] is now [FailureKind], not a [String].
-     *
+     * [failureKind] is now [FailureKind], not a [String].
      * As a String, a typo compiled. `error("boom", "USR")` produced a pipeline that ran, and
      * only failed when `CoreErrorStep`'s decoder reached a token outside the vocabulary — a
      * failure discovered at admission, mid-run, about a decision the author had already made
      * and believed was accepted. The author was wrong about the world and had no way to learn
      * so until something executed.
-     *
      * Typed, that is a compile error against the vocabulary itself, which is the only place it
      * can be caught without running anything. This closes the last `String` in this module that
-     * a P3-E authored semantic decision passed through.
-     *
+     * A authored semantic decision passed through
      * Two things this deliberately does NOT change:
-     *
-     *  - The wire. `D3`/the IR encoder projects `failureKind.name`, and every `FailureKind`
+     * The wire. ``/the IR encoder projects `failureKind.name`, and every `FailureKind`
      *    case's `name` is its historical token, so `dsl-v1` payloads are byte-identical.
      *  - The authoring ceremony. `error("msg")` — the overwhelming majority — still needs no
      *    import, no vocabulary and no ceremony, because the default carries it. Only the
      *    explicit non-default case names `FailureKind.X`, and that case is the one where a
      *    compile-time check is worth an import.
-     *
      * Recorded as a deliberate binary break in `published-contract-exceptions.json`.
-     */
+*/
     data class Error(
         val message: String,
         val failureKind: FailureKind = FailureKind.USER,
@@ -296,7 +287,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
             "remains as the rewrite's input shape; do not introduce new direct uses.",
     )
     data class CatchError(
-        // P3-E D3: typed at authoring. `FailureKind` on Error did the same for error handling;
+        // Typed at authoring. `FailureKind` on Error did the same for error handling;
         // catchError had the identical shape of defect — a free string that only a runtime
         // `else` ever read — and it was the worse of the two, because that `else` SUPPRESSED
         // the failure. No String overload is kept on purpose: two spellings for one decision,
@@ -416,19 +407,18 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
 
     /**
      * `lock(resource) { ... }` — hold a named resource while the enclosed body
-     * runs (RP6-A / WU-091). declarative structural IR only: the compiler
+     * Runs. declarative structural IR only: the compiler
      * lowers this variant through [dev.rubentxu.pipeline.v2.application.CoreLockInput]
      * and the single wire authority `CoreLockWireCodec`; this type carries no
      * wire vocabulary of its own.
-     *
-     * Source-compatibility note (G3.6 classification):
+     * Source-compatibility note:
      * adding a case to this sealed hierarchy is binary-compatible but is
      * SOURCE-ADDITIVE for consumers holding an exhaustive `when(step)` without
      * an `else` branch. In this repository the only concrete-case consumer is
      * the DSL compiler itself, whose dispatch is guarded by
      * `Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest` and the lock
      * wire-authority fitness.
-     */
+*/
     data class Lock(
         val resource: String,
         val timeoutSeconds: Int? = null,
@@ -442,12 +432,12 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
 
     /**
      * `input(message) { ... }` — ask a human and continue only if they say yes
-     * (RP6-B / WU-092). declarative structural IR only: the compiler lowers this
+     * . declarative structural IR only: the compiler lowers this
      * variant through
      * [dev.rubentxu.pipeline.v2.application.CoreInputInput] and the single wire
      * authority `CoreInputWireCodec`; this type carries no wire vocabulary of its
      * own.
-     */
+*/
     data class Input(
         val message: String,
         val ok: String = "Proceed",
@@ -460,3 +450,4 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
         override val type: String get() = "input"
     }
 }
+

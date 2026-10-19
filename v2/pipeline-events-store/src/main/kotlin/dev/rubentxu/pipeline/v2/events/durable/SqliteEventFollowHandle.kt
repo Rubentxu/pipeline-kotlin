@@ -18,51 +18,43 @@ import java.util.concurrent.locks.Condition
 import java.util.concurrent.locks.ReentrantLock
 
 /**
- * M1-C — production [dev.rubentxu.pipeline.v2.events.follow.EventFollowHandle]
+ * Production [dev.rubentxu.pipeline.v2.events.follow.EventFollowHandle]
  * driven by a polling loop on the consumer's thread, backed by the
- * M1-A [EventRecordReadPort].
- *
+ *  [EventRecordReadPort].
  * ## What this is and what it is not
- *
  * The handle is the live state of one
  * [dev.rubentxu.pipeline.v2.events.follow.EventFollower.open] call. It
  * holds:
  *  - the run being followed ([runId]),
- *  - the read-side collaborator ([port], the M1-A read port),
+ * The read-side collaborator ([port], the read port)
  *  - the **[runExists] callback** used to distinguish a run that does
  *    not exist from a run that exists but has not yet produced any
- *    event. The M1-A adapter owns this distinction at the page
+ * Event. The adapter owns this distinction at the page
  *    boundary; the follow honours it at the open boundary so an empty
  *    first page is unambiguous.
  *  - the **[EventCursor]** cursor, which advances through
  *    [EventRecordReadPort.readRecords] pages using
  *    [EventRecordSlice.nextCursor].
- *
  * ## Polling, not push
- *
  * The wakeup vocabulary (`ObservationWakeup`) is not wired to a real
  * emitter in this repository, so the first cut polls. The handle
  * sleeps [EventFollowOptions.pollIntervalMs] between cycles on the
  * consumer's thread. A future non-breaking addition can swap the
  * implementation for one that honours `ObservationWakeup` without
  * changing the public type.
- *
  * ## Terminal detection
- *
  * Terminal detection follows one rule: a
  * `DomainEvent.kind == "RunFinished"` observation transitions the follow
  * from [EventFollowState.Live] to
  * [EventFollowState.RunFinished] and then [EventFollowEvent.Completed].
  * The Event Plane is the source of truth for run terminality (the
  * Output Plane learns of it by joining this plane).
- *
  * The follow also reaches [EventFollowEvent.Completed] once the
  * consumer's [EventFollowOptions.until] condition is met
  * ([EventFollowUntil.UntilRunFinished] / [EventFollowUntil.UntilSequence])
  * or once the page has been drained to the current tail with no
  * further events visible (the natural-end semantic for an empty
  * history).
- *
  * `EventFollowUntil.UntilSequence(lastSequence)` is honoured by
  * truncating the page the read port returned so the follow delivers
  * only rows with `sequence <= lastSequence` and then emits
@@ -70,9 +62,7 @@ import java.util.concurrent.locks.ReentrantLock
  * explicit bound and takes priority over [RunFinished] observation:
  * a [RunFinished] row beyond `lastSequence` is NOT emitted and the
  * follow does not transition to [EventFollowState.RunFinished].
- *
  * ## Single-observer, idempotent close
- *
  * The handle is single-observer: calling [iterator] returns the SAME
  * [FollowIterator] every time (the design rule "One iterator per
  * handle. Calling this method on a handle returns the same iterator
@@ -82,12 +72,10 @@ import java.util.concurrent.locks.ReentrantLock
  * [close] is idempotent and interrupts a mid-poll consumer: after
  * `close`, the next [FollowIterator.hasNext] returns `false` and no
  * half-page is delivered.
- *
  * ## Refusal translation
- *
  * The follow has only THREE [EventFollowRefusal] cases by design
  * ([EventFollowRefusal.UnknownRun], [EventFollowRefusal.RetentionLost],
- * [EventFollowRefusal.Cancelled]). The M1-A read port exposes a
+ * [EventFollowRefusal.Cancelled]). The read port exposes a
  * richer set:
  *  - [EventRecordReadRefusal.UnknownRun] →
  *    [EventFollowRefusal.UnknownRun] (same identity, the run has
@@ -102,7 +90,7 @@ import java.util.concurrent.locks.ReentrantLock
  *    hierarchy, and a transient storage fault at the follow
  *    boundary is surfaced as a refusal that the consumer can
  *    decide to retry by reopening the handle).
- */
+*/
 internal class SqliteEventFollowHandle(
     private val port: EventRecordReadPort,
     private val runExists: (String) -> Boolean,
@@ -117,7 +105,7 @@ internal class SqliteEventFollowHandle(
      * from a thread that calls [close]; the lock serialises both so the
      * closed state is observed atomically with the [idleCondition]
      * `signalAll` that wakes the sleeping consumer.
-     */
+*/
     private var closed = false
 
     /** Signalled by [close] so an [idle] consumer unblocks within `pollIntervalMs`. */
@@ -131,7 +119,7 @@ internal class SqliteEventFollowHandle(
      * initial [EventFollowState.Live] value and is carried on every
      * subsequent [EventFollowEvent.Page] / [EventFollowEvent.StateChanged]
      * so the consumer can see how far the follow has progressed.
-     */
+*/
     private var lastEmittedSequence: Long = options.after?.lastSequence ?: 0L
 
     /** The initial state change has been emitted, so subsequent polls do not re-announce it. */
@@ -149,7 +137,7 @@ internal class SqliteEventFollowHandle(
     /**
      * One or more events produced by the current poll cycle, drained
      * one-per-[FollowIterator.next].
-     */
+*/
     private val pending: ArrayDeque<EventFollowEvent> = ArrayDeque()
 
     /**
@@ -157,7 +145,7 @@ internal class SqliteEventFollowHandle(
      * call to [iterator] and cached, so subsequent calls return the
      * SAME instance — the design rule "One iterator per handle.
      * Calling this method returns the same iterator (idempotent)".
-     */
+*/
     private var iteratorRef: FollowIterator? = null
 
     override fun iterator(): Iterator<EventFollowEvent> {
@@ -176,7 +164,6 @@ internal class SqliteEventFollowHandle(
      * collaborators (the read port, the run-existence callback) are
      * owned by the [SqliteEventFollower] factory, not by this handle,
      * so the handle has no resources of its own to release.
-     *
      * A consumer sleeping inside [idle] on [idleCondition] is released
      * by [idleCondition.signalAll]; the next [FollowIterator.hasNext]
      * observes the closed flag and returns `false` promptly. Without this
@@ -184,7 +171,7 @@ internal class SqliteEventFollowHandle(
      * iterator blocked until the full `pollIntervalMs` elapsed; the lock +
      * condition pair is what turns the operator's "close releases waits"
      * correction into a sub-cycle response.
-     */
+*/
     override fun close() {
         lock.lock()
         try {
@@ -215,9 +202,8 @@ internal class SqliteEventFollowHandle(
             //   - `RunFinished` observed (queueCompleted in 3d)
             // A page with `hasMore=false` is NOT terminal: it
             // signals "no new data right now", and the consumer's
-            // next `hasNext()` call will re-poll. This is the F2
-            // fix from the PK-58A T1 audit.
-            //
+            // Next `hasNext()` call will re-poll. This is the
+            // Fix from the audit
             // The bounded-wait `idle()` sleeps `pollIntervalMs`
             // (default 25 ms) between quiet polls. A consumer that
             // wants to cancel the wait calls `close()`; the close
@@ -283,7 +269,7 @@ internal class SqliteEventFollowHandle(
      * produces for this round. Returns `true` if at least one event
      * was queued, `false` if the cycle was quiet (the caller may want
      * to idle and retry).
-     */
+*/
     private fun drainOnce(): Boolean {
         lock.lock()
         try {
@@ -293,7 +279,7 @@ internal class SqliteEventFollowHandle(
         }
 
         // 1. First poll: detect unknown run BEFORE the initial state
-        // change. The callback is the store-side authority the M1-A
+        // Change. The callback is the store-side authority the
         // adapter also uses, so the follow and the read port agree
         // on what "unknown" means. The design KDoc rule: the first
         // event is either StateChanged or Refused — a cursor past
@@ -307,7 +293,7 @@ internal class SqliteEventFollowHandle(
             // either StateChanged (when the page was served) or
             // Refused (when the read port refused). A cursor past
             // the tail surfaces here as CursorBeyondTail from the
-            // M1-A adapter, which the follow translates to
+            // Adapter, which the follow translates to
             // EventFollowRefusal.UnknownRun (the closed event-follow
             // refusal hierarchy has no CursorBeyondTail case).
             val firstResult: EventRecordReadResult = try {
@@ -343,7 +329,7 @@ internal class SqliteEventFollowHandle(
             }
         }
 
-        // 2. Subsequent polls: read a page through the M1-A read
+        // 2. Subsequent polls: read a page through the read
         // port. The port is total and refuses closed — no exception
         // can leak out of here. The try is a defensive net for the
         // `port` reference itself becoming invalid.
@@ -372,7 +358,7 @@ internal class SqliteEventFollowHandle(
      * any rows. Honors [EventFollowUntil.UntilSequence] by
      * truncating the page so the follow delivers only rows with
      * `sequence <= lastSequence`.
-     */
+*/
     private fun handlePage(slice: EventRecordSlice): Boolean {
         // 3a. Honour EventFollowUntil.UntilSequence by truncating the
         // page to the bound. The consumer's explicit bound wins
@@ -396,7 +382,7 @@ internal class SqliteEventFollowHandle(
         // 3b. Detect [RunFinished] inside the typed rows. A page
         // can carry at most one RunFinished per run because the
         // store rejects duplicate (runId, sequence) pairs
-        // (M1-A's UNIQUE(run_id, sequence) authority). If a
+        // ('s UNIQUE(run_id, sequence) authority). If a
         // refusal row hides the RunFinished, the consumer still
         // sees it via `slice.refusals`; the follow's terminal
         // detection does not lose it.
@@ -450,10 +436,9 @@ internal class SqliteEventFollowHandle(
         // empty `Page`; a consumer that wants live follow does not
         // close and the follow continues to deliver new events as
         // they appear.
-        //
         // The historical behavior of this branch (queueCompleted
         // on the first quiet page) conflated snapshot with live
-        // follow and is the F2 finding from the PK-58A T1 audit.
+        // Follow and is the finding from the audit
         // It is removed; the falsifier
         // `SqliteEventFollowLiveTailTest` pins the new contract.
         return pending.isNotEmpty()
@@ -465,7 +450,7 @@ internal class SqliteEventFollowHandle(
      * to the last kept row and [EventRecordSlice.hasMore] set to
      * `false` (the truncated page is the terminal page for the
      * consumer).
-     */
+*/
     private fun truncateToBound(slice: EventRecordSlice, bound: Long): EventRecordSlice {
         val kept = slice.records.filter { it.sequence <= bound }
         return if (kept.isEmpty()) {
@@ -489,7 +474,7 @@ internal class SqliteEventFollowHandle(
      * Map a read-port refusal to the closed event-follow refusal
      * hierarchy. See the class KDoc's "Refusal translation" section
      * for the per-case rationale.
-     */
+*/
     private fun translateRefusal(refusal: EventRecordReadRefusal): EventFollowRefusal =
         when (refusal) {
             is EventRecordReadRefusal.UnknownRun ->
@@ -506,19 +491,18 @@ internal class SqliteEventFollowHandle(
      * `pollIntervalMs = FOLLOW_IDLE_MILLIS = 25L` as the baseline;
      * a test that wants a faster turnaround passes `pollIntervalMs
      * = 0` (which the options allow because the predicate is `>= 0`).
-     */
+*/
     /**
      * Sleep on the consumer's thread for [pollIntervalMs], interruptible
      * by [close].
-     *
      * Replaces a plain [Thread.sleep] (which only wakes on
      * [Thread.interrupt], not on a flag check) with a [Condition.awaitNanos]
-     * bound by [lock]. [close] does `lock.lock(); closed = true;
-     * idleCondition.signalAll(); lock.unlock()`, so a consumer that
+     * bound by [lock]. [close] does `lock.lock; closed = true;
+     * idleCondition.signalAll; lock.unlock`, so a consumer that
      * closed the handle from another thread wakes within the bounded
      * wait. The baseline cadence is `pollIntervalMs = FOLLOW_IDLE_MILLIS
      * = 25L`; passing `0L` short-circuits and yields immediately.
-     */
+*/
     private fun idle() {
         val ms = options.pollIntervalMs
         if (ms <= 0) return
@@ -541,7 +525,7 @@ internal class SqliteEventFollowHandle(
      * Set the terminal flag, queue an [EventFollowEvent.Completed],
      * and return `true` so the iterator knows the cycle produced at
      * least one event.
-     */
+*/
     private fun queueCompleted(): Boolean {
         terminated = true
         pending.add(EventFollowEvent.Completed)
@@ -552,7 +536,7 @@ internal class SqliteEventFollowHandle(
      * Queue an [EventFollowEvent.Refused], set the terminal flag,
      * and return `true` so the iterator knows the cycle produced an
      * event.
-     */
+*/
     private fun queueRefusal(reason: EventFollowRefusal): Boolean {
         terminated = true
         pending.add(EventFollowEvent.Refused(reason))

@@ -6,29 +6,25 @@ import org.junit.jupiter.api.Test
 
 /**
  * The rule that keeps a candidate from being shipped under a GA identity.
- *
  * The v0.43.0 incident: an artifact that was internally consistent at
  * `0.43.0-rc1` was later presented under a GA identity. A gate that only
  * compared the build's own surfaces against each other would have been GREEN on
  * exactly those bytes -- all six agreed, they simply agreed on something that
  * is not a product identity.
- *
  * So the guarantee under test is narrow and specific: **an identity carrying a
  * candidate suffix can never reach `Consistent`**, no matter how many surfaces
  * agree on it. The first test below is the one that carries that guarantee, and
  * it is built so that nothing except [ProductVersion] can decide it: every
  * surface reports the same suffixed string. Remove the refusal and the case
  * passes a perfectly harmonious distribution.
- *
  * The `UNKNOWN` placeholder is pinned for the same reason `ApiRangeContainsTest`
  * pins its fail-closed choices: `UNKNOWN` is `0.0.0`, a real, comparable version.
  * It exists to fill the `expected` slot of `Incomplete` and `Divergent`, where
  * there is genuinely no expected value. If it ever reached `Consistent`, an
  * unreadable build would report as an identity that agrees with itself.
- *
  * Everything here is a pure decision over strings: no build, no ZIP, no JAR and
  * no clock.
- */
+*/
 class ProductVersionIdentityTest {
 
     // --- the incident itself: every surface agrees, and the verdict is still not green ---

@@ -8,16 +8,14 @@ import java.nio.file.Paths
 
 /**
  * The confinement `dir(...)` applies before a nested step runs anywhere.
- *
  * `dir("x")` runs arbitrary nested steps with `x` as their context, so where `x` resolves is the
  * boundary between "the pipeline wrote this" and "the pipeline reached something it did not
  * name". The KDoc on [DirExecutor.execute] promises a [PathTraversalException] when the path
  * escapes the workspace, which makes this a stated contract rather than an internal detail.
- *
  * Every path below is one a pipeline author can type. Nothing here touches a filesystem: the
  * resolution is arithmetic on [Path], so the guard is decidable without creating a directory —
  * which is the only reason [DirExecutor.resolveTargetPath] is `internal` rather than `private`.
- */
+*/
 class ResolveTargetPathTest {
 
     private val workspace: Path = Paths.get("/home/rub/proyecto")

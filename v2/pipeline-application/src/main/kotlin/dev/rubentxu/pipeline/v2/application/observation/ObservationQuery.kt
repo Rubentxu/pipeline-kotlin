@@ -12,51 +12,39 @@ import dev.rubentxu.pipeline.v2.output.OutputChannel
 
 /**
  * Read-side query over a run's observations.
- *
  * ## Combining rule
- *
- * **AND across dimensions, OR within one dimension** — the rule ADR-0088 fixes.
+ * **AND across dimensions, OR within one dimension** — the rule fixes
  * Three `--kind` values union; `--stage X --kind Y` intersects. Nothing else is
  * offered, and in particular there is no expression language: an operator that
  * cannot be expressed as "union inside a dimension, intersect across" is not
  * expressible at all.
- *
  * ## `channel`, and the KDoc that used to be wrong about it
- *
- * This dimension was absent until OBS-D, and its absence was justified here with a claim that has
+ * This dimension was absent until, and its absence was justified here with a claim that has
  * since become false:
- *
  * > ~~`channel` is absent. The durable transcript merges stdout and stderr and no byte range
  * > carries its origin, so a channel filter would be a declared dimension with no producer.~~
- *
- * OBS-C2.3 removed the merge: `DurableShellExecutor` runs two independent pumps, and
+ * `DurableShellExecutor` runs two independent pumps, and
  * [ObservationRecord.Output.channel] rides on the frame of every committed range, durably. The
  * producer exists, so the honest options were to deliver the dimension or to delete a false claim —
  * and a query that cannot select stderr is not a smaller feature, it is a wrong one.
- *
  * ## A dimension a record cannot satisfy EXCLUDES it
- *
  * That is the AND rule stated literally, and `channel` makes it visible where `stage` already had
  * it: a `StageStarted` carries no channel, so `--channel stderr` excludes it rather than ignoring the
  * dimension. `--channel stderr` therefore means "stderr bytes", not "stderr bytes plus the lifecycle
  * that happened to run alongside them". A reader wanting both asks for the view that carries both.
- *
  * ## What the text dimension reaches
- *
  * Text for script messages (`[EchoOutputCaptured]`) and text for committed process bytes
  * ([ObservationRecord.Output.text]). It reaches process output because those bytes are durable and
- * progressively readable, which is what OBS-B and OBS-C established — before that, `--grep` could
+ * Progressively readable, which is what and established — before that, `--grep` could
  * only ever have meant script messages, and saying otherwise would have been a dead semantic
  * parameter.
- *
  * ## Records with no text are not constrained by the text dimension
- *
  * `--grep` discriminates among records that HAVE text. A `StageStarted` carries
  * none, so the text dimension does not apply to it and it survives. The
  * alternative — treating "no text" as "text did not match" — would silently
  * delete every structural line from `--stage build --grep ERROR`, which is not
  * what any caller means. This is a stated rule, not a silent default.
- */
+*/
 data class ObservationQuery(
     val stageNames: Set<String> = emptySet(),
     val stepNames: Set<String> = emptySet(),
@@ -77,11 +65,10 @@ data class ObservationQuery(
 
 /**
  * Text carried by an observation record, or `null` when the record carries none.
- *
  * Deliberately a small function rather than a property on every event: only one
  * event type models human script output today. Process transcript is a separate
  * plane (see the class KDoc).
- */
+*/
 fun textCarriedBy(event: DomainEvent): String? = when (event) {
     is EchoOutputCaptured -> event.content
     else -> null
@@ -144,10 +131,9 @@ data class CompiledObservationQuery(
 
 /**
  * Compiles [query] once, failing typed when the text dimension is unusable.
- *
  * Pure. A bad pattern or an empty selector list is returned as a value so the
  * CLI can reject it before any effect.
- */
+*/
 fun compileQuery(query: ObservationQuery): SelectorCompileResult<CompiledObservationQuery> =
     when (val compiledLines = compileLineSelector(query.lines)) {
         is SelectorCompileResult.Invalid -> compiledLines
@@ -156,11 +142,10 @@ fun compileQuery(query: ObservationQuery): SelectorCompileResult<CompiledObserva
 
 /**
  * Applies [compiled] to [records], preserving order.
- *
  * Selection never reorders: a reader's line 3 is the same line whether or not
  * they filtered, and any future interleaving rule stays a property of the view,
  * not of the query.
- */
+*/
 fun selectRecords(
     records: List<ObservationRecord>,
     compiled: CompiledObservationQuery,
@@ -168,10 +153,9 @@ fun selectRecords(
 
 /**
  * [selectRecords] over events only.
- *
  * Kept because most callers hold a list of semantic facts and have no output to select over; it is
  * not a second selection rule, it is the same compiled query applied to the event lane.
- */
+*/
 fun selectObservations(
     events: List<DomainEvent>,
     compiled: CompiledObservationQuery,

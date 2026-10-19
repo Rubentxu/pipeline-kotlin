@@ -17,16 +17,15 @@ import java.time.Instant
 
 /**
  * Observable-projection envelope wrapping a [DomainEvent] with typed cross-system
- * identity (EVT-1).
- *
+ * identity.
  * Laws:
  * - identity projection only: adding envelopes MUST NOT change journal schema,
  *   fingerprints, replay, outcomes, or the event's own semantics;
  * - `sequence` appears as PROJECTION of the store-assigned value; the store
- *   remains the sequence authority (EVT-0 §2);
+ * Remains the sequence authority
  * - explicit version ([VERSION]); decoding an unknown major version fails typed;
  * - no `Map<String, Any>`: identity is closed, typed data.
- */
+*/
 @Serializable(with = PipelineEventEnvelopeSerializer::class)
 data class PipelineEventEnvelope(
     val version: Int,
@@ -38,30 +37,30 @@ data class PipelineEventEnvelope(
     val causation: EventRef? = null,
     val correlation: EventRef? = null,
     /**
-     * LFC-2E2-prep / ADR-0092 / C8: audit projection of the provider
+     * Audit projection of the provider
      * metadata for the Step that produced the event. `null` for Steps
      * registered via the legacy `register(StepDefinition)` overload
-     * (C10 backwards-compat) and for events not emitted by a Step
+     * (backwards-compat) and for events not emitted by a Step
      * (run lifecycle, compile lifecycle, file-IO events, etc.).
-     */
+*/
     val provenance: ProviderProvenance? = null,
 ) {
     companion object {
         /**
          * Envelope format version. Major bump = breaking codec change.
          * Version is NOT bumped for the additive `provenance` field:
-         * a V1 wire form without `provenance` decodes to
+         * A wire form without `provenance` decodes to
          * `provenance = null`. An encoder that does not know about
-         * `provenance` continues to produce a V1 form that the new
+         * `provenance` continues to produce a form that the new
          * decoder accepts (the field is optional).
-         */
+*/
         const val VERSION: Int = 1
     }
 }
 
 /**
  * Typed failure when decoding an envelope with an unsupported format version.
- */
+*/
 class UnsupportedEnvelopeVersionException(val found: Int) :
     IllegalArgumentException("Unsupported PipelineEventEnvelope version: $found (supported: ${PipelineEventEnvelope.VERSION})")
 
@@ -69,7 +68,7 @@ class UnsupportedEnvelopeVersionException(val found: Int) :
  * Hand-written serializer keeping the wire form closed and versioned:
  * `{version, eventRef:{source:{kind,segments},id}, kind, occurredAt, sequence,
  *   subject:{...}, causation?, correlation?}`.
- */
+*/
 object PipelineEventEnvelopeSerializer : KSerializer<PipelineEventEnvelope> {
 
     private val refSerializer = ResourceRefSerializer
@@ -137,7 +136,7 @@ object PipelineEventEnvelopeSerializer : KSerializer<PipelineEventEnvelope> {
 /**
  * Closed serializer for ResourceRef: `{kind, segments:[...]}` — canonical text is
  * derived, never parsed back from free-form strings.
- */
+*/
 object ResourceRefSerializer : KSerializer<ResourceRef> {
     @Serializable
     private data class Wire(val kind: String, val segments: List<String>)
@@ -164,11 +163,10 @@ object ResourceRefSerializer : KSerializer<ResourceRef> {
 
 /**
  * Closed serializer for [EventRef]: `{source:{kind, segments}, id}`.
- *
  * Added with BLOCK 2, when the envelope's `causation` and `correlation` were found to be declared on
  * the wire and dropped on encode. The shape is the one [PipelineEventEnvelope] already uses for its
  * own `eventRef`, so a consumer reading an envelope sees one ref encoding rather than two.
- */
+*/
 object EventRefSerializer : KSerializer<EventRef> {
     @Serializable
     private data class Wire(
@@ -189,8 +187,8 @@ object EventRefSerializer : KSerializer<EventRef> {
 }
 
 /**
- * Minimal codec facade for envelope JSON round-trips (spec R3/R4).
- */
+ * Minimal codec facade for envelope JSON round-trips (spec/)
+*/
 object EnvelopeCodec {
     val json: Json = Json { ignoreUnknownKeys = false; encodeDefaults = true }
 
@@ -208,10 +206,10 @@ object EnvelopeCodec {
 }
 
 /**
- * Characterization-only CloudEvents mapping (spec R5). Deliberately NOT a
+ * Characterization-only CloudEvents mapping (spec). Deliberately NOT a
  * transport or SDK adapter: no HTTP, no bindings, no SDK types. Values are
  * plain strings so a future adapter can freeze its wire form separately.
- */
+*/
 data class CloudEventsCharacterization(
     val id: String,
     val source: String,

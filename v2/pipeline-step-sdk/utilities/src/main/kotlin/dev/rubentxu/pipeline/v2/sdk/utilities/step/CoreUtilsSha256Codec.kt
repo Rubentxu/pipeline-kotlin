@@ -13,17 +13,15 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * JSON codec for [Sha256Input] (LFC-2E2 utilities OFFICIAL_PLUGIN).
- *
+ * JSON codec for [Sha256Input] (utilities OFFICIAL_PLUGIN)
  * Note: the codec accepts arbitrary string for [Sha256Input.algorithm] but
  * the handler refuses anything other than `SHA-256` (default) or `SHA-1`,
  * producing a typed USER-class failure rather than silently substituting
  * another algorithm. This is part of the explicit-tolerance contract.
- *
- * C3 / D-011 (audit 2026-09-26, H14): migrated to `PipelineJson` /
+ * Migrated to `PipelineJson` /
  * `JsonAccessors`. Wire format unchanged (roundtrip byte-identical to the
  * pre-refactor `Json.encodeToString(JsonObject.serializer(), obj)` shape).
- */
+*/
 object CoreUtilsSha256InputCodec : StepCodec<Sha256Input> {
 
     override fun encode(value: Sha256Input): EncodedStepValue = PipelineJson.encode(
@@ -56,8 +54,8 @@ object CoreUtilsSha256InputCodec : StepCodec<Sha256Input> {
 }
 
 /**
- * JSON codec for [Sha256Output]. Migrated to `PipelineJson` (C3 / D-011).
- */
+ * JSON codec for [Sha256Output]. Migrated to `PipelineJson`
+*/
 object CoreUtilsSha256OutputCodec : StepCodec<Sha256Output> {
 
     override fun encode(value: Sha256Output): EncodedStepValue = PipelineJson.encode(

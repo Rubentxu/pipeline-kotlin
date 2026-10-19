@@ -6,29 +6,26 @@ import java.nio.ByteOrder
 
 /**
  * Reader for the canonical credential part format.
- *
  * A credential is a sequence of parts, each written as
  * `[nameLen:1][name:nameLen][len:4 BE][payload]`, preceded by a single part
  * count. A part that links to another credential instead of carrying bytes has
  * no length prefix: its payload is a 4-byte marker followed by the referenced
  * id, and the reader still consumes the part name before the marker.
- *
  * This is a pure reader over a buffer. It holds no store state and never touches
  * the filesystem, so the same bytes always produce the same result. The store
  * owns the surrounding concerns: encryption, the linked-ref chain, and the
  * cycle guard.
- *
  * The layout is an on-disk contract. `CredentialPartLayoutTest` pins the bytes
  * of a single part, and the fixtures under `src/test/resources/compat` were
  * written by an earlier implementation of the store, so a change here has to
  * keep reading what is already on disk.
- */
+*/
 internal object CredentialPartReader {
 
     /**
      * Payload marker of a part that links to another credential. The
      * referenced id follows the marker, without a length prefix of its own.
-     */
+*/
     private const val LINKED_REF_MARKER = -1
 
     /** Payload marker of a part that is declared but has no value. */
@@ -37,7 +34,7 @@ internal object CredentialPartReader {
     /**
      * Reads a part header and returns its payload length, leaving the buffer
      * positioned at the first payload byte.
-     */
+*/
     fun readPartHeader(buf: ByteBuffer): Int {
         val nameLen = buf.get().toInt() and 0xFF
         if (nameLen > buf.remaining()) {
@@ -66,7 +63,7 @@ internal object CredentialPartReader {
     /**
      * Reads an inline part, after skipping [skipBefore] preceding parts of the
      * same kind.
-     */
+*/
     fun readInlinePart(buf: ByteBuffer, skipBefore: Int): ByteArray {
         repeat(skipBefore) { skipPart(buf) }
         return readPartValue(buf)
@@ -75,7 +72,7 @@ internal object CredentialPartReader {
     /**
      * Reads the referenced id of a linked-ref part whose header is at the
      * buffer, or returns null when the part is marked absent.
-     */
+*/
     fun readLinkedRefPart(buf: ByteBuffer, credentialLabel: String): CredentialsId? {
         val nameLen = buf.get().toInt() and 0xFF
         buf.position(buf.position() + nameLen)
@@ -95,7 +92,7 @@ internal object CredentialPartReader {
      * Resolves the position of a named inline part within a credential whose
      * parts are stored in a fixed order, or returns null when the name is not
      * one of them.
-     */
+*/
     fun partOffset(partName: String, vararg orderedParts: Pair<String, Int>): Int? =
         orderedParts.firstOrNull { (name, _) -> name == partName }?.second
 
@@ -107,13 +104,13 @@ internal object CredentialPartReader {
      * The credential bytes are not readable in the form the store hands them
      * over, so the reader reports what it finds and the store decides what that
      * means. The store owns the type its callers catch.
-     */
+*/
     class MalformedEnvelopeException(message: String) : RuntimeException(message)
 
     /**
      * Reads a part whose position within its credential is fixed, as opposed to
      * the Zip case where the name is searched for.
-     */
+*/
     fun readPositionalPart(
         buf: ByteBuffer,
         partName: String,
@@ -128,7 +125,7 @@ internal object CredentialPartReader {
     /**
      * Finds a named entry in a Zip credential. Entries are keyed by name
      * rather than by a fixed position, so the reader walks them.
-     */
+*/
     fun readZipPart(buf: ByteBuffer, partName: String): ByteArray {
         val partCount = buf.get().toInt()
         // metadata: _entryCount (normal)

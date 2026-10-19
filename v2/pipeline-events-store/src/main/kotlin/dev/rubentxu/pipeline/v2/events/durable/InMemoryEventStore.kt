@@ -80,7 +80,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Thread-safe in-memory event store.
- */
+*/
 class InMemoryEventStore : EventSink {
 
     private val store = ConcurrentHashMap<String, MutableList<DomainEvent>>()
@@ -90,7 +90,7 @@ class InMemoryEventStore : EventSink {
         appendAssigned(event)
     }
 
-    /** WU-LPR-105: returns the store-assigned event (explicit write-side acknowledgement). */
+    /** Returns the store-assigned event (explicit write-side acknowledgement). */
     override fun appendAssigned(event: DomainEvent): DomainEvent {
         val counter = sequenceCounters.computeIfAbsent(event.runId) { AtomicLong() }
         val assignedSequence = if (event.sequence == 0L) {
@@ -104,7 +104,7 @@ class InMemoryEventStore : EventSink {
         }
         val eventWithSequence = when (event) {
             is RunStarted -> event.copy(sequence = assignedSequence)
-            // PK-1 / ADR-PK1-IDENTITY: RunCorrelated carries the assigned
+            // RunCorrelated carries the assigned
             // sequence just like every other durable event; it must
             // appear in the when for the assignment to take effect.
             is RunCorrelated -> event.copy(sequence = assignedSequence)
@@ -129,54 +129,54 @@ class InMemoryEventStore : EventSink {
             is CredentialBound -> event.copy(sequence = assignedSequence)
             is CredentialUsed -> event.copy(sequence = assignedSequence)
             is CredentialUnbound -> event.copy(sequence = assignedSequence)
-            // L5 SCM Events
+            // SCM Events
             is GitCheckoutStarted -> event.copy(sequence = assignedSequence)
             is GitCheckoutCompleted -> event.copy(sequence = assignedSequence)
             is GitCheckoutFailed -> event.copy(sequence = assignedSequence)
             is GitPollChanged -> event.copy(sequence = assignedSequence)
-            // L7 Jenkins File + Artefact Events (ML-R7)
+            // Jenkins File + Artefact Events
             is FileWritten -> event.copy(sequence = assignedSequence)
             is FileRead -> event.copy(sequence = assignedSequence)
             is FileExistsChecked -> event.copy(sequence = assignedSequence)
             is ArtifactArchived -> event.copy(sequence = assignedSequence)
             is ArtifactArchiveFailed -> event.copy(sequence = assignedSequence)
-            // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
+            // Core.stash/core.unstash durable cross-stage data movement
             is StashCreated -> event.copy(sequence = assignedSequence)
             is StashRestored -> event.copy(sequence = assignedSequence)
             is StashFailed -> event.copy(sequence = assignedSequence)
-            // WU-LPR-090 — core.publishHTML durable HTML report publishing
+            // Core.publishHTML durable HTML report publishing
             is HtmlReportPublished -> event.copy(sequence = assignedSequence)
             is HtmlReportSkipped -> event.copy(sequence = assignedSequence)
             is HtmlReportFailed -> event.copy(sequence = assignedSequence)
-            // ML-R9 workflow-control events
+            // Workflow-control events
             is DirEntered -> event.copy(sequence = assignedSequence)
             is DirExited -> event.copy(sequence = assignedSequence)
-            // ML-R9 workspace-cleanup events (T-05)
+            // Workspace-cleanup events
             is DirDeleted -> event.copy(sequence = assignedSequence)
             is WsCleaned -> event.copy(sequence = assignedSequence)
-            // ML-R9 error-handling events (T-06)
+            // Error-handling events
             is CatchErrorTriggered -> event.copy(sequence = assignedSequence)
             is DirectiveAdmitted -> event.copy(sequence = assignedSequence)
             is ExecutionTargetResolved -> event.copy(sequence = assignedSequence)
             is DirectiveDenied -> event.copy(sequence = assignedSequence)
             is GateEvaluated -> event.copy(sequence = assignedSequence)
             is StageMarkedUnstable -> event.copy(sequence = assignedSequence)
-            // ML-R9 workflow-utility events (T-07)
+            // Workflow-utility events
             is WorkflowLoaded -> event.copy(sequence = assignedSequence)
             is WaitUntilPolled -> event.copy(sequence = assignedSequence)
             is WaitUntilCompleted -> event.copy(sequence = assignedSequence)
             is PwdResolved -> event.copy(sequence = assignedSequence)
             is UnixDetected -> event.copy(sequence = assignedSequence)
-            // ML-R9 T-09 milestone events
+            // Milestone events
             is MilestoneReached -> event.copy(sequence = assignedSequence)
             is MilestoneAborted -> event.copy(sequence = assignedSequence)
-            // RP6-A / WU-091 §6 lock events
+            // / lock events
             is LockRequested -> event.copy(sequence = assignedSequence)
             is LockAcquired -> event.copy(sequence = assignedSequence)
             is LockReleased -> event.copy(sequence = assignedSequence)
             is LockSkipped -> event.copy(sequence = assignedSequence)
             is LockAcquireFailed -> event.copy(sequence = assignedSequence)
-            // RP6-B / WU-092 §6 input events
+            // / input events
             is InputRequested -> event.copy(sequence = assignedSequence)
             is HttpRequestStarted -> event.copy(sequence = assignedSequence)
             is HttpResponseReceived -> event.copy(sequence = assignedSequence)
@@ -185,12 +185,12 @@ class InMemoryEventStore : EventSink {
             is InputProceed -> event.copy(sequence = assignedSequence)
             is InputAborted -> event.copy(sequence = assignedSequence)
             is InputDenied -> event.copy(sequence = assignedSequence)
-            // ML-R9 T-10 timeout events
+            // Timeout events
             is TimeoutTriggered -> event.copy(sequence = assignedSequence)
-            // ML-R9 T-08 timestamps decorator events
+            // Timestamps decorator events
             is TimestampsEntered -> event.copy(sequence = assignedSequence)
             is TimestampsExited -> event.copy(sequence = assignedSequence)
-            // S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation (WU-1)
+            // durable-spine admission observation
             is StepAdmissionObserved -> event.copy(sequence = assignedSequence)
         }
         store.computeIfAbsent(event.runId) { mutableListOf() }.let { list ->
@@ -206,8 +206,7 @@ class InMemoryEventStore : EventSink {
     }
 
     /**
-     * M1-A — authoritatively answer "has this run ever been written to".
-     *
+     * Authoritatively answer "has this run ever been written to".
      * The [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
      * adapter needs to distinguish a run that does not exist from a
      * run that exists but has not yet produced any event. The in-memory
@@ -215,13 +214,12 @@ class InMemoryEventStore : EventSink {
      * `append`ed. (Note: a runId with a key but an empty list cannot
      * happen in the in-memory store — `append` always inserts, and the
      * map is created on first `append`.)
-     */
+*/
     fun hasRun(runId: String): Boolean = store.containsKey(runId)
 
     /**
-     * M1-A — the durable `MAX(sequence)` of the in-memory list, or
+     * The durable `MAX(sequence)` of the in-memory list, or
      * `null` if the run has no rows.
-     *
      * Mirrors [dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore.tailSequence]
      * so the [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
      * adapter can refuse a cursor past the tail uniformly across the
@@ -229,37 +227,31 @@ class InMemoryEventStore : EventSink {
      * in this store — `append` always inserts and the map is created
      * on first `append` — so the empty-run case reduces to a missing
      * key here.
-     */
+*/
     fun tailSequence(runId: String): Long? =
         store[runId]?.maxOfOrNull { it.sequence }
 
     /**
      * Cuts the page inside the list instead of filtering a full [eventsFor] scan.
-     *
      * The read holds the same monitor the write does. `eventsFor` hands out `asSequence()` over
      * the live list without taking it, so a caller iterating while the producer appends is reading
      * a `MutableList` that is being mutated — the sequence is lazy, so the hazard is at iteration
      * time, not at the call. The inherited default is safe to override precisely because it reads
      * through the same `eventsFor`; this one does not, so it takes the lock itself.
-     *
-     * ## Every row here decodes, and that is a property of the TYPE, not an assumption (P3-E E4c)
-     *
+     * ## Every row here decodes, and that is a property of the TYPE, not an assumption (E4c)
      * The store holds `DomainEvent` objects, so there is no wire payload to misread and no `kind`
      * this binary might not know: an undecodable row is not a case that can occur here, and every
      * record is therefore [EventRecordRead.Decoded]. That is why this override does not need a
      * refusal branch — not because it forgot one.
-     *
      * It is also why this store cannot disagree with the SQLite one about a well-formed run: there
      * is no refusal path here that could answer differently. The divergence only becomes observable
      * on a malformed row, which is a property of SQLite's storage and not of this type.
-     *
      * ## What holds this to the inherited meaning, and what does not (no test does)
-     *
      * The cross-store equivalence is a per-subclass obligation with no central witness; see
      * [dev.rubentxu.pipeline.v2.events.EventStore.readRecords]. What holds the meaning HERE is
      * structural rather than witnessed: there is no undecodable case to disagree about, and the
      * page/cursor law lives in the inherited default rather than in a second copy of it.
-     */
+*/
     override fun readRecords(
         runId: String,
         after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,

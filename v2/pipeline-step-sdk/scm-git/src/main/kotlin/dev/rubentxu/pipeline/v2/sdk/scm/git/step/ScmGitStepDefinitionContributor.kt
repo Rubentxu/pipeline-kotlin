@@ -28,44 +28,40 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * SCM/Git OFFICIAL_PLUGIN contributor (LFC-2E2 / F5.1 / ADR-0092).
- *
+ * SCM/Git OFFICIAL_PLUGIN contributor
  * Carries real [StepProviderMetadata] built from a typed [PluginManifest],
  * so events emitted during real execution of `scm-git.checkout` carry the
  * audit projection in their [dev.rubentxu.pipeline.v2.events.identity.ProviderProvenance].
- *
  * **Digest source of truth:** the [PluginReleaseRef.digest] is computed at
  * JAR-build time by a Gradle task and exposed via the system property
  * `pipeline.scm-git.release.digest`. This means the digest IS the SHA-256
  * of the actual JAR bytes produced by `:pipeline-step-sdk:scm-git:jar`,
  * not a self-declared value the plugin author chose. If the property is
  * absent at registration time, the contributor fails closed with an
- * `IllegalStateException` that names the missing property — F5.1
+ * `IllegalStateException` that names the missing property
  * commits to "no fabricated SHA".
- *
  * **Version source of truth:** the [SemVer] is exposed via the system
  * property `pipeline.scm-git.release.version`, defaulted to `0.0.0-dev`
  * when unset. Production wires the property from Gradle.
- *
  * **Publisher / namespace source of truth:** `pipeline.scm-git.publisher`
  * and `pipeline.scm-git.namespace`. Defaults: `pipeline-kotlin` and
  * `pipeline.scm-git`.
- */
+*/
 class ScmGitStepDefinitionContributor : StepDefinitionContributor {
 
     override val id: String = "scm-git"
 
     /**
-     * Single Step family the contributor exposes in F5.1. Future slices
+     * Single Step family the contributor exposes in. Future slices
      * (poll, changelog, merge, …) will extend this list.
-     */
+*/
     private val checkoutStep: GitCheckoutStepDefinition = GitCheckoutStepDefinition()
 
     override fun definitions(): Iterable<StepDefinition<*, *>> = listOf(checkoutStep)
 
     override fun registrations(): Iterable<StepRegistration<*, *>> {
         val provider = ScmGitPluginDeclaration.provider()
-        // Validate the manifest C5 cross-check before constructing the
+        // Validate the manifest cross-check before constructing the
         // registration. The validator is deterministic and fail-closed: a
         // mismatch between manifest.declaredCapabilities and
         // contract.requiredCapabilities is rejected here, never silently
@@ -82,14 +78,13 @@ class ScmGitStepDefinitionContributor : StepDefinitionContributor {
  * the SCM/Git OFFICIAL_PLUGIN contributor with manual metadata
  * (CI fixtures, golden-test corpora). Production wires the contributor
  * directly through [ScmGitStepDefinitionContributor] and Gradle.
- *
  * The override path lets a test fix the digest / version WITHOUT going
  * through Gradle, while still exercising the
- * [PluginManifestValidator] (C5) and the
- * [EnvelopeProjector] C8 projection. It is intentionally NOT the path
+ * [PluginManifestValidator] and the
+ * [EnvelopeProjector] projection. It is intentionally NOT the path
  * used by the production runtime — the production path always reads
  * the properties from the Gradle build.
- */
+*/
 fun StepRegistryBuilder.registerScmGit(
     publisher: String,
     namespace: String = "pipeline.scm-git",
@@ -121,7 +116,7 @@ fun StepRegistryBuilder.registerScmGit(
  * Computes the SHA-256 of [jarPath] in the canonical `sha256:<64-hex>`
  * form expected by [Digest]. Used by the Gradle task and by tests that
  * need a real digest from a fixture JAR.
- */
+*/
 fun sha256DigestOf(jarPath: Path): String {
     require(Files.exists(jarPath)) { "JAR does not exist: $jarPath" }
     // `ofFile` streams the JAR rather than reading it whole: the previous

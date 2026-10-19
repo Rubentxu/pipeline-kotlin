@@ -19,20 +19,16 @@ import dev.rubentxu.pipeline.v2.output.OutputTailPort
 import dev.rubentxu.pipeline.v2.output.OutputTailState
 
 /**
- * M2 — production [RuntimeIntrospectionPort] adapter backed by the existing
- * M1 read-side ports and the existing PK internal stores.
- *
+ * Production [RuntimeIntrospectionPort] adapter backed by the existing
+ * Read-side ports and the existing internal stores
  * ## What this adapter is and is not
- *
  * The adapter is a thin composition: it does not introduce a new lease, a new
  * journal, or a new event/output store. Every authority it composes is named in
  * the "Read-only by construction" list below. Wiring it in production is
  * the application-layer's job; this adapter takes the read-side ports and the
  * internal stores as constructor arguments so the tests can wire them up
  * against `@TempDir` SQLite + segment stores.
- *
  * ## Read-only by construction
- *
  * The adapter MUST NOT mutate durable state. The only operations it calls are
  * SELECTs (the journal's [OperationJournal.listForRun] /
  * [dev.rubentxu.pipeline.v2.events.durable.OperationJournal.getEndedAt]), tail-
@@ -41,8 +37,7 @@ import dev.rubentxu.pipeline.v2.output.OutputTailState
  * the durable cursor ([ReplayCursorStore.load]), and the pure lease decider
  * ([RunExecutionLease.acquire]) with a synthetic [dev.rubentxu.pipeline.v2.events.durable.LeaseRequest].
  * The `IntrospectionDoesNotMutateStateTest` contract test pins this.
- *
- */
+*/
 class RuntimeIntrospectionPortStoreAdapter(
     private val eventReads: EventRecordReadPort,
     private val tails: OutputTailPort,
@@ -52,23 +47,23 @@ class RuntimeIntrospectionPortStoreAdapter(
     private val lease: FileBackedRunExecutionLeaseStore,
     private val syntheticObserverId: String = "m2-observer",
     /**
-     * M7 — optional typed-event read port. When present, `runStructure`
+     * Optional typed-event read port. When present, `runStructure`
      * uses it to drive event-driven grouping (the audit's I.6 PARTIAL
-     * closure). When null, the adapter falls back to the M6 synthetic
+     * Closure). When null, the adapter falls back to the synthetic
      * single-stage / single-step view. The pattern this signature states:
-     * the M7 surface is additive, the M6 fallback is preserved.
-     */
+     * The surface is additive, the fallback is preserved
+*/
     private val eventShapeRead: EventShapeReadPort? = null,
 ) : RuntimeIntrospectionPort {
 
-    // The inspect() body composes M1-A (lease-or-event-plane) knownness, M1-B tail
-    // openness, and M1-D frame-index declaration; the orchestration order is the
+    // The inspect body composes (lease-or-event-plane) knownness, tail
+    // Openness, and frame-index declaration; the orchestration order is the
     // contract. Splitting helpers would re-derive the sequencing invariants inside
     // each one. The body's length is intentional.
     @Suppress("LongMethod")
     override fun inspect(runId: String): RuntimeIntrospectionResult {
         return try {
-            // M1-A composition: a run is "known" if the lease has ever recorded a
+            // A run is "known" if the lease has ever recorded a
             // record for it OR the event plane has an envelope for it. Unknown
             // (Empty-refusal) is the distinguished case where neither holds.
             val knownViaLease = lease.isKnown(runId)
@@ -154,7 +149,6 @@ class RuntimeIntrospectionPortStoreAdapter(
             }
 
             // No terminal row → Running (with lease authority) OR LiveButEmpty.
-            //
             // Reaching this line means the run is known via a DURABLE lease record
             // that nothing currently holds (`lease.isKnown` is row-presence, not the
             // live lock table), or via a non-empty journal. The lease alone cannot
@@ -162,7 +156,6 @@ class RuntimeIntrospectionPortStoreAdapter(
             // here for the one fact it uniquely carries: did the run ever emit an
             // envelope. That is a genuine second input, not a redundant authority —
             // it is the ONLY input that separates "running" from "released and empty".
-            //
             // What it must not be is a Boolean. The previous expression collapsed
             // every refusal into `false`, so a transient store failure surfaced as a
             // confidently-worded positive claim about a run that exists. `Presence`
@@ -253,15 +246,13 @@ class RuntimeIntrospectionPortStoreAdapter(
 
     /**
      * The Output Plane's view of [runId]'s streams, in declaration order.
-     *
      * Pure shape, no policy: every stream's tail state is projected, and a stream the
      * tail port has never heard of is reported as an open tail at offset 0 rather
      * than dropped — the frame index declared it, so it is a fact about the run even
      * when the writer has not opened it yet.
-     *
      * Exceptions are deliberately NOT handled here. The caller decides what a failure
      * becomes, and there is exactly one such decision in this class's [inspect].
-     */
+*/
     private fun outputTailsOf(runId: String): List<OutputTailView> =
         frames.streamsOfRun(runId).map { streamId ->
             val tail: OutputTailState? = tails.tailState(streamId)
@@ -279,18 +270,16 @@ class RuntimeIntrospectionPortStoreAdapter(
     /**
      * Whether the event plane can answer "does [runId] have an envelope", and
      * whether it answered at all.
-     *
      * Three states because the port has three. A `Page` — even an empty one — is
      * the store saying "I looked, here is the answer", which is [Present]: the
      * run exists in this store's world. [Absent] is the store naming the run as
      * unknown. [Unreadable] is the store failing for some other reason, and it
      * carries the already-mapped refusal so the caller never has to translate
      * the event-store vocabulary itself.
-     *
      * A `Boolean` return could not carry all three, and the arm that got dropped
      * was the dangerous one: folding `StorageError` into "no envelopes" reports a
      * transient failure as a confident fact about a run that does exist.
-     */
+*/
     private fun evStorePresenceOf(runId: String): EventStorePresence =
         when (
             val r = eventReads.readRecords(
@@ -317,7 +306,7 @@ class RuntimeIntrospectionPortStoreAdapter(
      * port's. Every site that reads events through [EventRecordReadPort] maps
      * through here, so `StorageError` cannot be re-labelled as `UnknownRun` in
      * one place and preserved in another.
-     */
+*/
     private fun asIntrospectionRefusal(
         refusal: dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal,
         runId: String,
@@ -371,33 +360,29 @@ class RuntimeIntrospectionPortStoreAdapter(
         return if (msg.isNullOrBlank()) cls else "$cls: $msg"
     }
 
-    // ── M6 (additive) — runStructure + inspectOperation ───────────────────
-    //
-    // The composition is inherited: every primitive the M6 methods
+    // RunStructure + inspectOperation ───────────────────
+    // The composition is inherited: every primitive the methods
     // call is one already composed by `inspect` (OperationJournal.listForRun,
-    // OperationJournal.get, OutputFrameIndex.streamsOfRun). The M6 methods do
+    // OperationJournal.get, OutputFrameIndex.streamsOfRun). The methods do
     // NOT introduce a new lease, a new scheduler, or a new query engine — they
     // read the existing stores and project to closed ADTs.
-    //
     // ## First-cut scope
-    //
-    // The M6 design's audit-cited group of operations by their enclosing
+    // The design's audit-cited group of operations by their enclosing
     // stage / step would require reading the typed `StageStarted` / `StepStarted`
     // events from the event plane. The published `PipelineEventEnvelope`
     // projection strips the type-specific fields, exposing only `kind`,
     // `occurredAt`, and `sequence`; the stageIndex / stepOrdinal / stageName
-    // are not on the envelope. A follow-up M-block (or M6.x patch) that
+    // Are not on the envelope. A follow-up (or.x patch) that
     // exposes a typed event-shape read port can lift this limitation; until
-    // then, the M6 first cut uses a SYNTHETIC single-stage single-step view
+    // Then, the first cut uses a SYNTHETIC single-stage single-step view
     // derived from the journal alone. The contract test
     // `RuntimeIntrospectionPortStructureAdapterTest` pins the synthetic
-    // grouping explicitly; a future M-block that adds event-shape correlation
+    // Grouping explicitly; a future that adds event-shape correlation
     // will update the test to pin the event-driven grouping.
-    //
     // The audit's I.6 PARTIAL closure is therefore "synthetic grouping in
-    // M6 first cut; event-driven grouping in a follow-up M-block". The
+    // First cut; event-driven grouping in a follow-up ". The
     // PARTIAL is honest: a consumer that needs true event-driven grouping
-    // must wait for the follow-up, and the M6 candidate's release-receipt
+    // Must wait for the follow-up, and the candidate's release-receipt
     // documents this.
 
     override fun runStructure(
@@ -419,9 +404,9 @@ class RuntimeIntrospectionPortStoreAdapter(
                     cursor = null,
                 )
             }
-            // M7 I.6 PARTIAL closure: read the typed events to drive
+            // Read the typed events to drive
             // event-driven grouping. An absent plane, an unconfigured plane
-            // or an event-free run falls back to the M6 synthetic view —
+            // Or an event-free run falls back to the synthetic view
             // all three describe a stable property of the build. A plane
             // that FAILED, or that does not know a run the journal has rows
             // for, refuses instead: those are claims about the READ, and
@@ -497,9 +482,9 @@ class RuntimeIntrospectionPortStoreAdapter(
                     IntrospectionRefusal.StorageError(e.shortDiagnostic()),
                 )
             } ?: return OperationInspectionResult.Refused(
-                // M7 B.2 hardening: typed UnknownOperation refusal for
-                // the "no row" case. The M6 first-cut used a generic
-                // StorageError with a cause string; the M7 audit's
+                // Typed UnknownOperation refusal for
+                // The "no row" case. The first-cut used a generic
+                // StorageError with a cause string; the audit's
                 // recommendation is a typed case so a consumer can
                 // `when` on it without parsing strings.
                 IntrospectionRefusal.UnknownOperation(
@@ -535,8 +520,8 @@ class RuntimeIntrospectionPortStoreAdapter(
                     operationId = operationId,
                     attempt = attempt,
                     runId = runId,
-                    stageOrdinal = 0, // synthetic in M6 first cut
-                    stepOrdinal = 0,  // synthetic in M6 first cut
+                    stageOrdinal = 0, // Synthetic in first cut
+                    stepOrdinal = 0,  // Synthetic in first cut
                     status = op.status,
                     startedAtMs = startedAtMs,
                     endedAtMs = endedAtMs,
@@ -552,15 +537,15 @@ class RuntimeIntrospectionPortStoreAdapter(
         }
     }
 
-    // ── M6 helpers (private) ──────────────────────────────────────────────
+    // ── helpers (private) ──────────────────────────────────────────────
 
     /**
      * Read the declared stdout / stderr streams of an operation. Uses the
      * existing [OutputFrameIndex.streamsOfRun] projection and matches by
      * stream-name convention `runId::operationId::stdout` / `::stderr`.
-     * The convention is the M1 + M3 publish pattern; when a run has no
+     * The convention is the + publish pattern; when a run has no
      * declared streams, both fields are null.
-     */
+*/
     private fun streamsForOperation(runId: String, operationId: String): OperationOutputStreams {
         val streams = try {
             frames.streamsOfRun(runId)
@@ -599,27 +584,25 @@ class RuntimeIntrospectionPortStoreAdapter(
         return StepState.Pending
     }
 
-    // ── M7 helpers (private) ──────────────────────────────────────────────
+    // ── helpers (private) ──────────────────────────────────────────────
 
     /**
      * What the event shape plane answered for [runId].
-     *
      * Three cases because the plane has three, and two of them are claims
      * about the RUN while the third is a claim about the READ — the same
      * distinction [EventStorePresence] draws one function above.
-     *
      * - [Available] — typed events are present; grouping can be event-driven.
      * - [Unavailable] — there is no event-driven grouping to have. Three
      *   distinct inputs collapse here because they are the same *state of
-     *   the build*, not three ways of failing: the port is absent (the M6
+     * The build*, not three ways of failing: the port is absent (the
      *   path, a build with no event plane wired), the run is known but has
      *   no typed events yet, or the plane reports it is not configured
      *   ([dev.rubentxu.pipeline.v2.events.shape.EventShapeRefusal.NoEventStore]).
-     *   The M6 synthetic view is the correct answer for all three.
+     * The synthetic view is the correct answer for all three
      * - [Unreadable] — the plane could not answer. This is NOT a statement
      *   that the run has no events, and rendering it as one is the defect
      *   this case exists to prevent.
-     */
+*/
     private sealed interface TypedEventAvailability {
         data class Available(val events: List<TypedEvent>) : TypedEventAvailability
 
@@ -631,18 +614,17 @@ class RuntimeIntrospectionPortStoreAdapter(
     /**
      * Read the typed events for [runId] via the constructor's
      * [eventShapeRead] port, keeping [TypedEventAvailability.Unavailable]
-     * (a legitimate M6 state) distinct from
+     * (a legitimate state) distinct from
      * [TypedEventAvailability.Unreadable] (the plane failed, or does not
      * know the run).
-     *
      * The two are not the same fact and must not share an answer. Pre-fix
      * this function returned `emptyList()` for a `Refused` as well, so a
      * transient substrate failure and a build with no event plane both
      * produced an identical synthetic structure — a confident claim about
-     * the run's shape that no caller could falsify. The M6 fallback keeps
+     * The run's shape that no caller could falsify. The fallback keeps
      * its meaning for [TypedEventAvailability.Unavailable], which describes
      * a stable property of the build; only a failure stops degrading.
-     */
+*/
     private fun readTypedEventsForRun(runId: String): TypedEventAvailability {
         val port = eventShapeRead ?: return TypedEventAvailability.Unavailable
         return when (val r = port.eventShapesForRun(
@@ -676,12 +658,12 @@ class RuntimeIntrospectionPortStoreAdapter(
     }
 
     /**
-     * Build the synthetic single-stage / single-step view (the M6
+     * Build the synthetic single-stage / single-step view (the
      * fallback). Every operation is placed under a synthetic stage 0
      * / step 0. The test `RuntimeIntrospectionPortStructureAdapterTest`
-     * pins this fallback explicitly; the M6 contract test row for
+     * Pins this fallback explicitly; the contract test row for
      * "synthetic grouping" lives on.
-     */
+*/
     private fun buildSyntheticStage(
         runId: String,
         operations: List<DurableOperation>,
@@ -730,11 +712,10 @@ class RuntimeIntrospectionPortStoreAdapter(
      * `startedAtMs`; the operation's step is the most recent
      * [StepStartedTyped] for that stage. When no events match, the
      * operation falls back to a synthetic "ungrouped" stage 0 / step 0.
-     *
      * The grouping is in execution order: stages by `stageOrdinal`,
      * steps within a stage by `stepKey`, operations within a step by
      * their journal `startedAtMs`.
-     */
+*/
     private fun groupEventDriven(
         runId: String,
         operations: List<DurableOperation>,
@@ -823,18 +804,16 @@ class RuntimeIntrospectionPortStoreAdapter(
 
 /**
  * What the event plane answered when asked whether [runId] has an envelope.
- *
  * Three states because [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
  * has three, and two of them are claims about the RUN rather than about the READ:
  * [Present] ("I looked; the run is here") and [Absent] ("I looked; the run is
  * unknown to me"). The third, [Unreadable], is a claim about neither — the store
  * failed — and it carries the refusal already translated into this port's
  * vocabulary so no caller re-derives it.
- *
  * The distinction that matters: `Absent` is an answer a reader acts on, and
  * `Unreadable` is not. Collapsing the second into the first reports a transient
  * failure as a confident statement that a run does not exist.
- */
+*/
 private sealed interface EventStorePresence {
     data object Present : EventStorePresence
     data object Absent : EventStorePresence

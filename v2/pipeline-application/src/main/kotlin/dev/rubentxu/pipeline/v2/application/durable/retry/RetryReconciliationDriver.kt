@@ -14,37 +14,32 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciler
 /**
  * Driver that ties together the durable control journal and the pure
  * [RetryReconciler] into a single decision point.
- *
- * ADR-0075 §4, §6, §7 — the driver is the THINKER, not the WRITER. It:
+ * The driver is the THINKER, not the WRITER. It:
  *  1. Reads the durable state for the given retry logical invocation;
  *  2. Builds a [RetryReconciliationInput];
  *  3. Calls the pure [RetryReconciler] and returns the
  *     [RetryReconciliationDecision].
- *
  * The driver MUST NOT mutate the journal directly. The caller (the
  * dispatch loop in
  * [dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator])
- * is the single writer (ADR-0075 §11) — it persists the plan BEFORE
+ * It persists the plan BEFORE
  * launching any child effect, and only the driver plans.
- *
  * ## Plan-only contract
  * [plan] is a pure function from the durable state to a decision. The
  * test [RetryReconciliationDriverTest] verifies that the planner does NOT
  * mutate the journal between reads. The caller (dispatch loop) is the
  * component that calls `beginAttempt` and `updateStatus` based on the
  * returned decision.
- *
  * ## Identity anchoring
  * The driver is bound to a specific retry logical invocation via the
  * [RetryControlIdentity] (operationId + schemaVersion). The Reconciler
  * uses the operationId to populate the [RetryReconciliationDecision.RejectDivergence]
  * diagnostics.
- *
  * ## Fingerprint anchoring
  * [fingerprint] is the retry contract fingerprint computed at the dispatch
  * site (parent bodyPath + maxAttempts + body digest). Stored and read
- * attempts are compared against this value by the Reconciler (ADR-0075 §9).
- */
+ * Attempts are compared against this value by the Reconciler
+*/
 class RetryReconciliationDriver(
     private val journal: FileBasedRetryControlJournal,
     private val identity: RetryControlIdentity,
@@ -64,7 +59,6 @@ class RetryReconciliationDriver(
     /**
      * Plan-only reconciliation. Pure: returns the
      * [RetryReconciliationDecision] without mutating the journal.
-     *
      * The dispatch loop is expected to:
      *  - On [RetryReconciliationDecision.ScheduleAttempt]: persist the
      *    control row BEFORE launching the child effect.
@@ -80,7 +74,7 @@ class RetryReconciliationDriver(
      *    aggregate is already terminal.
      *  - On [RetryReconciliationDecision.RejectDivergence]: surface as
      *    a step failure with the reason carried by the variant.
-     */
+*/
     fun plan(): RetryReconciliationDecision {
         val state = journal.readState(
             controlOpId = controlOpId,

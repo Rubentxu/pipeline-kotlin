@@ -229,6 +229,21 @@ escrito en la cabecera del propio escenario.
 Cada uno con test de regresión mutation-verificado (el test muere al revertir
 el arreglo; los demás siguen verdes).
 
+- **Doce KDoc citaban una sección de `AGENTS.md` que el RESET renombró**
+  (`d8b0c413`). Doce citas en nueve ficheros de `pipeline-application`
+  apuntaban a «AGENTS.md STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9». Ni
+  `STEP IMPLEMENTATION` ni `OPERATIVE GUIDE` son secciones del fichero vivo, que
+  numera 0 a 6. Lo que lo excluye es invisible a un censo de documentos
+  borrados: `AGENTS.md` **existe**, así que la pregunta «¿existe este
+  fichero?» responde sí y da el caso por limpio. El defecto no era un puntero
+  muerto sino un **rótulo muerto sobre un fichero vivo**. La regla invocada
+  sigue vigente en §1 —el trabajo con efectos vive en puertos y adaptadores
+  nombrados, y las decisiones son puras e inmutables cuando se puede—, así que
+  se sustituyó el rótulo por la sección que existe y el enunciado pasó a decir
+  la regla en vez del nombre. Cero líneas de código. Lo **no** se tocó son las
+  citas «AGENTS.md section 1» y «section 3», que se comprobaron una a una
+  contra el fichero vivo y **siguen resolviendo bien**: un barrido por nombre
+  de fichero habría roto las correctas y dejado las rotas.
 - **Fuga de secretos.** `SecretPatternRegistry.buildUrlEncodedVariant` descartaba
   todo carácter no reservado, así que `p@ss w0rd` codificaba a `%40%20`. La
   variante no casaba ni con la forma codificada (fuga) ni con nada legítimo, y
@@ -802,13 +817,14 @@ busqué las guardas con una ventana de 6 líneas alrededor del campo, y
 `OutputPin` las tiene 15 líneas más abajo. Un instrumento más estrecho que su
 sujeto reporta un número con seguridad y con error.
 
-**j) 296 líneas en 120 ficheros citan documentos ADR que no existen.** La misma
+**j) ~297 líneas en 120 ficheros citan documentos ADR que no existen.** La misma
 clase que 2.2 e, pero **once veces más grande**. Medido con `git grep -cE` y
-pathspec recursivo sobre `v2/**/*.kt` y este fichero:
+pathspec recursivo sobre `v2/**/*.kt`, `v2/**/*.kts` y este fichero, al cierre
+de este ciclo (`28667109`):
 
 | Token | Líneas | Ficheros |
 |---|---|---|
-| `ADR-0…` | 296 | 120 |
+| `ADR-0…` | 297 | 120 |
 | `INV-L…` | 61 | 20 |
 | `docs/` | 12 | 11 |
 | `FArchL` | 1 | 1 |
@@ -825,25 +841,34 @@ Los tokens más citados son `ADR-0075` (64), `ADR-0103` (37), `ADR-0046` (30),
 La primera redacción de este bloque las trataba a todas igual —«llevan la razón
 dentro del comentario»— y eso es falso para una de ellas:
 
-1. **27 líneas con el token dentro de una cadena de código**, no de un comentario.
-   Comportamiento observable, no documentación. Dos ejemplos, de clases distintas:
-   `WAIT_UNTIL_CONTROL_ROW("ADR-0075 (waitUntil control journal, WU-G5R.5
-   analog)")` es el **identificador de una fila de control**, y
-   `"sandbox-profile 'os' requires ADR-0016 M5/M9; rejected in L3. Accepted:
-   {none, local}. Got: 'os'."` es un **mensaje de error que lee el operador**.
-   Borrar el token no limpia nada: cambia el valor persistido o el texto que
-   el operador lee. Cualquier barrido de «comentarios que citan documentos
-   borrados» aplicado sobre el árbol entero corrompe estos 27.
-2. **5 apariciones de `Pre-ADR-0075`** en 4 ficheros, con el prefijo `Pre-`. No es
-   navegación: es un **marcador de frontera de formato** —«filas persistidas
-   antes de este formato». Sin el token la frase queda en «filas Pre-», que no
-   significa nada.
+1. **4 literales de cadena en 3 ficheros**, no 27. Comportamiento observable, no
+   documentación. Los cuatro, textuales:
+   - `CliParser.kt:141` — `"…user directory; choose one (ADR-0101 clause 3.4)."`
+   - `CliParser.kt:151` — `"UnsupportedSandboxProfile(value=$value, ref=ADR-0016/M5/M9: …"`
+   - `RunnerTrustProfile.kt:53` — `"RunnerTrustProfile.multiTenantConstrained requires ADR-0016 M5/M9 …"`
+   - `SandboxProfile.kt:61` — `"sandbox-profile 'os' requires ADR-0016 M5/M9; rejected in L3. …"`
+   Son mensajes de error que **lee el operador**. Borrar el token no limpia nada:
+   cambia el texto que el operador lee. Cualquier barrido de «comentarios que
+   citan documentos borrados» aplicado sobre el árbol entero los corrompe.
+   *La cifra anterior de 27 líneas incluía 2 comentarios Kotlin de cola de línea y
+   5 comentarios `#` de shell dentro de `raw strings` de script embebido en
+   `GitCredentialsApplier`. No son literales: son comentarios que el grep no
+   distingue de una cadena porque comparten línea con código. El cierre de la
+   cuenta lo confirma: 359 líneas con el token = 348 comentarios puros + 11
+   resto, y esas 11 = 4 literales + 5 shell + 2 de cola.*
+   El ejemplo que antes ilustraba esta clase,
+   `WAIT_UNTIL_CONTROL_ROW("ADR-0075 (waitUntil control journal, …)")`, **ya no
+   existe**: era el valor del campo `authority`, reescrito en `28667109`.
+2. **6 apariciones de `Pre-ADR-0075`** en 4 ficheros de `v2` —más una en este
+   ROADMAP, que es esta misma frase—, con el prefijo `Pre-`. No es navegación:
+   es un **marcador de frontera de formato** —«filas persistidas antes de este
+   formato». Sin el token la frase queda en «filas Pre-», que no significa nada.
 3. El resto, comentarios y KDoc. Ahí sí aplica lo de 2.2 e: la cita es a veces la
    única razón escrita, y borrarla deja una afirmación sin porqué.
 
 Por eso la deuda es real pero el arreglo no es un barrido: es decidir por
 fichero, y hay 120. Una pasada automática sería más rápida que leer 120 ficheros
-y sería el error más caro del ciclo, porque los 27 de la clase 1 **no fallan
+y sería el error más caro del ciclo, porque los 4 de la clase 1 **no fallan
 ningún test**: cambian en silencio.
 
 La otra mitad de la pregunta —si un mensaje de error debe citarle un ADR al
@@ -857,35 +882,48 @@ documento donde la regla está escrita.
 cambiado. Quedan 119; es el primero que se resuelve, y por el mismo motivo que en
 (f): no por ser el más numeroso, sino por ser el que sostiene una decisión.
 
-**k) La identidad declarada de un plugin se mide y luego se tira — CERRADO POR ABI.**
-Un agente affirmationó «los bytes nunca se miden en producción». **Es falso, y lo
-medí antes de creérselo**: `PreResolvedComposition.kt` mide cada artefacto con
-`PluginManifestResourceReader.digestOfArtifactAt`, rechaza `ArtifactNotMeasurable`,
-deduplica por bytes **medidos** y vuelve a medir al final rechazando
-`ArtifactChangedDuringAdmission` — o sea, el TOCTOU está cubierto, y con buen
-razonamiento escrito (el `releaseDigest` lo declara el propio plugin, así que es
-precisamente el caso en que mentiría). El hueco real es otro y es más estrecho:
+**k) La identidad declarada de un plugin: la premisa de este bloque era falsa.**
+Un agente afirmó «los bytes nunca se miden en producción» y, corrigiendo eso, una
+redacción anterior de este bloque concludes que «nada compara los bytes medidos
+contra el `release.digest` declarado por el manifiesto». **Ambas son falsas**, y lo
+comprobé abriendo el call site antes de aceptarlas:
 
-- `PreLoadPluginAdmission.kt:98` llama a `PluginManifestResourceReader.measure`, que
-  está `@Deprecated`, y pasa **`measuredDigest = null`** — tira una medición que su
-  propio llamador ya había hecho.
-- `PluginAdmission.admit` recibe `identity: MeasuredArtifactIdentity` y **nunca lee
-  `identity.verdict` ni `identity.measuredDigest`**: solo comprueba identidad
-  duplicada y rango de API.
+- `PluginAdmissionGate` mide los bytes reales con
+  `PluginManifestResourceReader.measureArtifactBytes` (línea 162) **cuando hay
+  trust database**; y en ese mismo caso llama a `b32TrustRefusal` (línea 176),
+  que compara `measuredDigest` contra `declaredDigest` **antes que cualquier otra
+  cosa** y devuelve `AdmissionRefusal.RefusedDigestMismatch` (línea 354). El
+  veredicto se consume en la línea 187 mapeándolo a `TrustMetadata.Mismatch`. La
+  garantía de integridad está implementada, conectada y es el primer control de
+  la cadena.
+- Sin trust database no se mide ni se compara, y eso **no es un hueco**: no hay
+  ningún digest afirmado por el operador contra el que un plugin pueda mentir. La
+  rama sin ancla cae en el `measure` deprecado, que devuelve
+  `measuredDigest = null` por diseño.
+- El TOCTOU también está cubierto por otra vía: `PreResolvedComposition` mide con
+  `digestOfArtifactAt`, rechaza `ArtifactNotMeasurable`, deduplica por bytes
+  medidos y vuelve a medir al final rechazando `ArtifactChangedDuringAdmission`.
+
+**Lo que sí queda abierto, y es más pequeño que el bloque que sustituye:**
+
+- `PreLoadPluginAdmission.kt:98` llama al `measure` deprecado y recibe
+  `measuredDigest = null`: pide una medición y tira el resultado. Es el residuo
+  real, no la ausencia de la comparación.
 - `ArtifactIdentityVerdict` (Verified / Mismatch / Unverified) tiene **cero
-  lectores de producción**. Por eso el veredicto es siempre `Unverified` y por eso
-  observarlo no cambiaría nada.
-- El resultado es que **nada compara los bytes medidos contra el `release.digest`
-  declarado por el manifiesto**. La medición existe, se deduplica con ella, y luego
-  no se contrasta con la afirmación que el plugin hace sobre sí mismo.
+  lectores de producción**. Es una segunda forma de expresar una garantía que ya
+  se expresa con un `if` en línea. No es un fallo de seguridad: es exactamente el
+  «second authority» que AGENTS.md §1 prohíbe. Retirarlo tocaría
+  `pipeline-domain.api`, así que espera al mismo break versionado que (h) e (i).
+- **Ningún test cubre `RefusedDigestMismatch`**: `git grep` sobre `*/src/test/*`
+  no devuelve ni una línea. Una comprobación de integridad de artefactos que sí
+  funciona carece de regresión permanente. Este es el único punto de este bloque
+  que es un defecto material y **no** está bloqueado por ABI: es un test que
+  falta, no una firma que quitar.
 
-No lo medio-arreglo, y la razón es concreta: `PluginManifestRejection` no tiene un
-caso de discrepancia de digest (sí lo tiene `AdmissionRejection`, que es otro
-tipo). Añadirlo cambia `pipeline-domain.api`, y ese módulo tiene `maven-publish` en
-la línea 4 y dump `.api` en el repo. **Es la misma pared de ABI que bloquea (h) e
-(i)**, y a diferencia de ellos aquí no se puede ni siquiera cambiar el veredicto de
-`Unverified` a `Verified`/`Mismatch` sin romper el binario. Autorización que
-necesita: un break versionado explícito en `pipeline-domain`.
+**Por qué importa la corrección:**Taken al pie de la letra, este bloque pedía
+añadir un caso de discrepancia a `PluginManifestRejection`. Eso habría creado una
+segunda autoridad sobre un control que ya funciona — el error caro — mientras
+dejaba sin cubrir el control que sí importa.
 
 **l) Los *bookends* de run y stage se vuelven a emitir en cada reanudación durable.**
 Trazado a mano, extremo a extremo:
@@ -954,19 +992,34 @@ el contador monotónico. La deuda está vigente; **su explicación del mecanismo
 - `PRODUCT-GATE` (certificador externo, RC publicada) = **`BLOCKED_EXTERNAL`**.
   No hay CI remoto en este repositorio. La ausencia de CI **nunca** se declara
   `PASS`.
-- **Presupuesto de tiempo: CERRADO**, medido sobre `2d4fdf38`. Tres ensayos
-  desde salidas de build limpias dieron **224 s, 227 s, 231 s**: el peor, **231 s**
-  frente al límite duro de 900 s, leído del XML de JUnit (**522 tests, 54/54
+- **Presupuesto de tiempo: CERRADO**, medido sobre `28667109`. Tres ensayos
+  desde salidas de test limpias dieron **228 s, 215 s, 215 s**: el peor, **228 s**
+  frente al límite duro de 900 s, leído del XML de JUnit (**526 tests, 55/55
   informes reescritos por la corrida, 0 fallos, 0 skips**) y no del código de
   salida. Los tres imprimieron `PASS … gaps=1 not_run`, así que el hueco del
   escenario `NOT_RUN` viaja dentro del veredicto en lugar de al lado.
-  Sustituye a la medición caducada sobre `18d3148a` (242 / 211 / 213 s, 400
-  tests), que sigue siendo cierta para aquel SHA y para ninguno más. El margen
-  es holgado y no viene de recortar: el gate crece más despacio que el trabajo —
-  `detektTest` mide 3 s sobre 26 subprocesos—, y desde la medición caducada el
-  número de tests subió de 400 a 522 mientras el peor tiempo bajó de 242 a 231 s.
-  Un gate verde por inercia sería peor que uno marcado caducado; por eso esto se
-  vuelve a medir en cada vez que `HEAD` avanza.
+  Host de referencia: Intel Xeon E5-2682 v4 @ 2.50 GHz, 64 hilos, 94 GiB, JDK
+  Temurin 21.0.8, Gradle 8.14.5, cachés de dependencia ya pobladas.
+  **Las salidas de test se limpian antes de CADA ensayo, no solo al principio**:
+  el guard de stage 2 rechaza un full run cuyo grafo esté entero `UP-TO-DATE`,
+  y sin esa limpieza los ensayos 2 y 3 cachean todo y salen a los 29 s. Ese
+  rechazo es correcto y hay que obedecerlo, no sortearlo —medir un cache hit
+  como si fuera el coste del gate es justo lo que ese guard existe para
+  impedir.
+  Serie anterior sobre `2d4fdf38` (224 / 227 / 231 s, 522 tests), que sigue
+  siendo cierta para aquel SHA y para ninguno más. Desde entonces los tests
+  subieron de 522 a 526 y el peor tiempo bajó de 231 a 228 s. Un gate verde
+  por inercia sería peor que uno marcado caducado; por eso esto se vuelve a
+  medir cada vez que `HEAD` avanza.
+  El commit posterior `d8b0c413` (solo comentarios, **cero líneas de código**)
+  midió **249 s** en una corrida completa con las mismas 55/55 y 526 tests:
+  coherente con la serie de tres, que es lo esperable en un cambio que no
+  toca lógica. La cifra que se cita como peor sigue siendo **228 s**.
+- **Presupuesto de LOC: CERRADO**, medido en la misma corrida.
+  `VERIFY_LOC = 6870` / `PRODUCT_LOC = 61637` = **0.111**, muy por debajo del
+  límite duro de 2. Los dos módulos con test más densos también pasan con
+  holgura: `pipeline-credentials-local` 1103 / 1750 = 0.63 y
+  `pipeline-artefacts-local` 84 / 251 = 0.335.
 
 ---
 

@@ -431,13 +431,13 @@ class GitCredentialsApplier(
      */
     companion object {
         fun guardProcessBuilderArgs(args: List<String>) {
-            for (arg in args) {
+            for ((index, arg) in args.withIndex()) {
                 val lower = arg.lowercase()
                 if (lower.contains("extraheader") || lower.contains("authorization")) {
                     throw IllegalArgumentException(
                         "Forbidden substring in argv: 'extraHeader' and 'Authorization' " +
                         "must not appear in process arguments (credentials must use GIT_CONFIG_GLOBAL env). " +
-                        "Found in: $arg"
+                        "Found in ${describeForDiagnostics(arg, index)}"
                     )
                 }
                 // Detect embedded credentials in URLs: https://user:pass@host/path
@@ -446,9 +446,34 @@ class GitCredentialsApplier(
                     throw IllegalArgumentException(
                         "Forbidden: URL with embedded credentials detected. " +
                         "Credentials must not appear in process arguments (argv) — " +
-                        "use GIT_ASKPASS or credential helper instead. Found in: $arg"
+                        "use GIT_ASKPASS or credential helper instead. " +
+                        "Found in ${describeForDiagnostics(arg, index)}"
                     )
                 }
+            }
+        }
+
+        /**
+         * Describe [arg] for a message that gets PERSISTED, without reproducing it.
+         *
+         * This message is not a local throwaway. The guard runs outside
+         * [GitCheckoutExecutor.execute]'s `try`, so its exception is not caught by the
+         * `scrub` that every other failure on that path passes through, and
+         * `RegistryExecutionBoundary` copies `e.message` into a durable `StepFailed`
+         * event. The previous version interpolated `$arg` itself, which meant the
+         * argument the guard had just identified as carrying a credential had its
+         * credential written to the event log — the guard was the leak.
+         *
+         * The host is what an operator actually needs to act, and [extractHost] strips
+         * userinfo before returning it, so naming it costs nothing sensitive. Everything
+         * else reduces to a length, which locates the argument without disclosing it.
+         */
+        private fun describeForDiagnostics(arg: String, index: Int): String {
+            val host = runCatching { extractHost(arg) }.getOrNull()
+            return if (host.isNullOrBlank()) {
+                "argv[$index] (${arg.length} chars)"
+            } else {
+                "argv[$index] ($host, ${arg.length} chars)"
             }
         }
 
@@ -471,7 +496,14 @@ class GitCredentialsApplier(
                 .substringBefore("/")
                 .substringBefore(":")
             return clean.ifEmpty {
-                throw IllegalArgumentException("Cannot extract host from URL: $url")
+                // The URL is NOT echoed. This function's callers are exactly the ones
+                // handling a URL that may carry `user:pass@`, so interpolating it here
+                // published the credential in the one message whose whole purpose is to
+                // say the URL was unusable. The length locates the input; the value
+                // stays where it came from.
+                throw IllegalArgumentException(
+                    "Cannot extract host: the URL has no host segment (${url.length} chars)",
+                )
             }
         }
     }

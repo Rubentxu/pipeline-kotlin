@@ -16,6 +16,15 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
 
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+}
+
+tasks.test {
+    useJUnitPlatform()
+    testLogging {
+        events("passed", "skipped", "failed")
+    }
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -254,21 +263,27 @@ tasks.named("jar") {
     dependsOn(emitScmGitManifest)
 }
 
-// Unit-test wiring REMOVED (2026-10-18, testing RESET).
+// Unit-test wiring RESTORED (2026-10-19), and the reason it went is still worth keeping.
 //
-// This module carries no unit tests: it is a git STEP whose guarantee is that a pipeline
-// mutates a real repository. Its verification is the executable E2E layer -- `.pipeline.kts`
-// pipelines under `v2/examples/`, driven by `v2/examples/run.sh` -- and not a JUnit
-// class.
+// It was REMOVED on 2026-10-18 by the testing RESET, on the grounds that this module is a git
+// STEP whose guarantee is that a pipeline mutates a real repository, so its verification belongs
+// to the executable E2E layer -- `.pipeline.kts` pipelines under `v2/examples/`, driven by
+// `v2/examples/run.sh` -- and not to a JUnit class. The reasoning about that guarantee stands,
+// and the E2E layer is still where this module's I/O behaviour is verified.
 //
-// The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
-// Left in place they were a SILENT green: a `Test` task whose source set is empty reports
-// success while executing zero classes. Gradle 8.14 exposes no `failOnNoDiscoveredTests`
-// property -- the setting does not exist in this version, so nothing inside the build can
-// turn that green into a failure, and a build file asserting otherwise is describing a flag
-// it cannot compile.
+// What the reasoning did NOT cover is that this module also holds PURE decisions, and one of
+// them had a defect no E2E scenario could have caught: `GitCredentialsApplier.guardProcessBuilderArgs`
+// refused argv carrying a credential by echoing that very argv into its exception message, and
+// the guard runs OUTSIDE `GitCheckoutExecutor`'s `try`, so the exception never reached the
+// scrub and `RegistryExecutionBoundary` copied the message into a durable `StepFailed` event.
+// The password the guard existed to keep out of the process was therefore written to the event
+// log. Both functions involved are pure predicates over `String` -- no filesystem, no
+// subprocess, no clock -- which is exactly what AGENTS.md section 2 says a unit test is for.
 //
-// What turns it into a failure lives outside Gradle: `scripts/verify-all.sh` enumerates the
+// The part of the original note that still applies is the warning: a `Test` task whose source
+// set is empty reports success while executing zero classes. Gradle 8.14 exposes no
+// `failOnNoDiscoveredTests` property -- the setting does not exist in this version -- so what
+// turns that green into a failure lives outside Gradle. `scripts/verify-all.sh` enumerates the
 // modules it asks from the filesystem and fails when a module that has a test source produces
-// no JUnit XML. The wiring that could have produced the misleading green is gone from the
-// modules that have no tests, so no module reaches that check in silence.
+// no JUnit XML. Wiring without a test source would reintroduce exactly the silent green this
+// note was written to prevent, so the wiring and the test landed together.

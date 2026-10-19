@@ -541,36 +541,67 @@ if [ ${#STAGED_PATHS[@]} -eq 0 ]; then
     exit 1
 fi
 
-# Note: the SHA256SUMS file itself is not in STAGED_PATHS at this point
-# (we are about to generate it), so it is naturally excluded from the
-# manifest. A digest cannot carry its own digest.
-"${REPO_ROOT}/scripts/release/build-release-manifest.sh" \
-    --out "$SUMS" \
-    "${STAGED_PATHS[@]}"
-
-# The gate's SHA256SUMS covers exactly the four artefacts, which are exactly
-# the paths just staged, so regenerating it over the staged bytes must
-# reproduce the digest the manifest already names. That equality is checked
-# rather than assumed: SHA256SUMS is the digest authority a consumer verifies
-# the download against, and a producer that overwrote it with different bytes
-# would publish sums that disagree with the manifest in its own release.
+# SHA256SUMS is regenerated over everything staged EXCEPT itself. The gate's
+# copy is staged (it lives beside the receipt, and the manifest names it), so
+# it IS in STAGED_PATHS by now -- and passing it to the generator makes the
+# generator refuse, correctly: a manifest cannot carry its own digest. It is
+# dropped here explicitly rather than left to a comment claiming it is not
+# there, because that comment was written when the staged copy did not exist.
 #
-# It is rewritten for one reason only: the staged set is what gets uploaded, so
-# the published sums must describe the staged bytes.
-STAGED_SUMS_SHA="$(sha256sum "$SUMS" | awk '{print $1}')"
-DECLARED_SUMS_SHA="$(read_manifest_field 'sha256sums.sha256' '')"
-if [ -n "$DECLARED_SUMS_SHA" ] && [ "$DECLARED_SUMS_SHA" != "$STAGED_SUMS_SHA" ]; then
-    echo "release-pipelinek: regenerated SHA256SUMS ($STAGED_SUMS_SHA) does not match" >&2
-    echo "    the digest the gate recorded ($DECLARED_SUMS_SHA). The staged bytes are not" >&2
-    echo "    the bytes the candidate was admitted against; refusing to publish a release" >&2
-    echo "    whose digest authority contradicts its own manifest." >&2
+# The written file is the same path ($SUMS), so dropping the staged copy from
+# the input list costs nothing: the freshly generated one replaces it, and the
+# digest check below is what proves the replacement is equivalent.
+GATE_SUMS_STAGED="${RECEIPT_DIR}/$(read_manifest_field 'sha256sums.name' 'none')"
+HASH_INPUTS=()
+for p in "${STAGED_PATHS[@]}"; do
+    [ "$p" = "$GATE_SUMS_STAGED" ] && continue
+    [ "$p" = "$SUMS" ] && continue
+    HASH_INPUTS+=("$p")
+done
+if [ ${#HASH_INPUTS[@]} -eq 0 ]; then
+    echo "release-pipelinek: nothing to hash after excluding SHA256SUMS." >&2
     rm -rf "$EVIDENCE_DIR"
     exit 1
 fi
+"${REPO_ROOT}/scripts/release/build-release-manifest.sh" \
+    --out "$SUMS" \
+    "${HASH_INPUTS[@]}"
+
+# The published SHA256SUMS must agree with the gate's, entry by entry, on
+# every artefact the gate admitted. It is NOT compared as a whole-file digest:
+# the published file also covers the provenance artefacts staged after the gate
+# ran, so it is necessarily longer, and its own digest cannot equal the gate's.
+# Comparing whole-file digests here refused a correct release for the right
+# reason in the wrong words.
+#
+# What must hold is that every line the gate recorded is still present, with
+# the same digest, in the file that ships. A dropped or altered line means the
+# staged bytes are not the bytes the candidate was admitted against, and a
+# release whose digest authority contradicts its own gate must not publish.
+if [ -f "$GATE_SUMS_STAGED" ]; then
+    while read -r want name; do
+        [ -n "${name:-}" ] || continue
+        case "$want" in \#*) continue ;; esac
+        got="$(awk -v n="$name" '$2 == n || $2 == "*"n {print $1}' "$SUMS" | head -1)"
+        if [ "$got" != "$want" ]; then
+            echo "release-pipelinek: SHA256SUMS disagrees with the gate on '${name}'." >&2
+            echo "    gate recorded ${want}, published file has ${got:-<nothing>}." >&2
+            echo "    The staged bytes are not the bytes the candidate was admitted" >&2
+            echo "    against; refusing to publish." >&2
+            rm -rf "$EVIDENCE_DIR"
+            exit 1
+        fi
+    done < "$GATE_SUMS_STAGED"
+    echo "release-pipelinek: SHA256SUMS agrees with the gate on every admitted artefact"
+fi
 
 # Now SHA256SUMS is staged. Add it to the upload list but NOT to the
-# SHA256SUMS coverage (a manifest cannot carry its own digest).
-STAGED_PATHS+=("$SUMS")
+# SHA256SUMS coverage (a manifest cannot carry its own digest). HASH_INPUTS
+# already holds everything staged minus the gate's own copy, so appending the
+# regenerated file to STAGED_PATHS would upload both copies of the same
+# artefact under two paths; STAGED_PATHS is rebuilt instead, with the
+# regenerated file in place of the gate's.
+STAGED_PATHS=("${HASH_INPUTS[@]}" "$SUMS")
 
 # ----------------------------------------------------------------------------
 # 6. Tag, then confirm the tag landed where the handoff says it would.

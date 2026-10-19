@@ -71,4 +71,13 @@ data class CanonicalRuntimeContext(
     // so the capability stays unexposed and a Step that declares it is refused at admission
     // instead of reaching a handler with a null seam.
     val pluginEventEmitter: dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter? = null,
+    // SAGA / PK-1: the compensation intent port, bound to THIS invocation.
+    //
+    // It is built per dispatch, not per run, because it carries the forward operation's
+    // identity: the compensation an obligation names is the compensation OF that operation.
+    // Null when the run has no durable Saga store wired (and for every pre-existing
+    // construction site), so the capability stays unexposed and a Step that declares
+    // SAGA_COMPENSATION_CAPABILITY is refused at admission instead of reaching a handler
+    // with a port that cannot keep a promise.
+    val sagaCompensation: dev.rubentxu.pipeline.v2.domain.saga.CompensationOperations? = null,
 )

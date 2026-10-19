@@ -196,6 +196,16 @@ class CanonicalDurableRunCoordinator(
      * degrading into a stage that quietly did nothing.
      */
     private val scriptedStageExecution: ScriptedStageExecution? = null,
+
+    /**
+     * SAGA / PK-1: the per-run Saga seam.
+     *
+     * When bound, every dispatch of this run can offer the compensation intent port, and the
+     * obligations it writes land in the run's own database. When null (every pre-existing
+     * call site), the capability stays unexposed and a Step that declares it is refused at
+     * admission — the fail-closed direction, never a port that silently forgets a promise.
+     */
+    private val sagaBinding: SagaCompensationBinding? = null,
 ) {
     // B10/W1c + WU-RP-033: the body execution policy authority. The production default
     // composes TWO declared-policy authorities, both fail-closed and neither key-specific:
@@ -330,6 +340,9 @@ class CanonicalDurableRunCoordinator(
         workspaceBase = workspaceBase,
         secretPatternRegistry = secretPatternRegistry,
         capabilityContributor = capabilityContributor,
+        // SAGA / PK-1: the per-run Saga seam, forwarded so the dispatch can build the
+        // invocation-bound intent port.
+        sagaBinding = sagaBinding,
     )
     // TRAIN H4 / PR-020: a parallel stage is a composite with its own durable aggregate, not a
     // Step, so it does not belong to the step spine. It dispatches branch steps back through

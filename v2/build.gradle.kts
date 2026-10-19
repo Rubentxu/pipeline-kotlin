@@ -149,7 +149,14 @@ repositories {
 // of having to read the durable rows to find out. New event kinds are new
 // published API, and the version that carries them cannot be the version that
 // shipped without them.
-version = "0.68.0"
+// 2026-10-19: the 0.68.0 train closes at v0.68.0-rc1. The 0.69.0 train opens
+// here (ProductVersion 0.69.0) so the next candidate can be tagged
+// v0.69.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
+// The distribution grew in this train: the external Saga consumer now travels
+// with the shipped product, because the E2E scenarios have to reach the Saga
+// contract the way a real plugin does — from OUTSIDE, through published
+// capabilities, with the engine owning the durable state.
+version = "0.69.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

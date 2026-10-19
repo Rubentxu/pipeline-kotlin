@@ -10,8 +10,16 @@
 //
 // Left here rather than deleted on purpose. The coverage gap is real and the
 // seven-kind contract is a security boundary, so the scenario stays in the
-// inventory and keeps compiling: the day a non-interactive seeding path exists,
-// deleting the directive above turns this back into a running check.
+// inventory: the day a non-interactive seeding path exists, deleting the
+// directive above turns this back into a running check.
+//
+// The launcher COMPILES this file even while it cannot run it (`run.sh`
+// validates before declaring NOT_RUN). That is not a formality: the seven
+// `CredentialsBinding` factories below are the DSL surface of a security
+// boundary, and a rename of any one of them used to leave the verdict
+// unchanged — the scenario was skipped before anything read it, so a broken
+// factory and a healthy one produced the same `gaps=1 not_run`. A scenario that
+// cannot execute is still a scenario whose source has to hold together.
 pipeline {
     stages {
         stage("credentials-bindings") {

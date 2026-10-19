@@ -51,14 +51,15 @@ enum class SandboxProfile {
     /**
      * Factory for [OS] profile. Throws because OS profile is not available in L3.
      *
-     * @throws SandboxProfileUnsupportedException always, citing ADR-0016 M5/M9
+     * @throws SandboxProfileUnsupportedException always
      */
     companion object {
         /**
          * @throws SandboxProfileUnsupportedException always
          */
         fun OS(): Nothing = throw SandboxProfileUnsupportedException(
-            "sandbox-profile 'os' requires ADR-0016 M5/M9; rejected in L3. Accepted: {none, local}. Got: 'os'."
+            "sandbox-profile 'os' requires OS-level isolation, which is out of scope here. " +
+                "Accepted: {none, local}. Got: 'os'."
         )
     }
 }

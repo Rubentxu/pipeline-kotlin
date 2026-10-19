@@ -138,7 +138,7 @@ sealed interface CliError {
         override fun toString(): String =
             "ConflictingWorkspaceModes(workspace=$workspace): --isolated requests a " +
                 "PipelineK-managed scratch workspace while --workspace attaches a " +
-                "user directory; choose one (ADR-0101 clause 3.4)."
+                "user directory; choose one."
     }
     data class InvalidSandboxProfile(val value: String) : CliError
     data class UnsupportedSandboxProfile(val value: String) : CliError {
@@ -148,9 +148,9 @@ sealed interface CliError {
         // isolation, M9 multi-tenant gate). The value token echoes the rejected
         // input verbatim so log scrapers can correlate.
         override fun toString(): String =
-            "UnsupportedSandboxProfile(value=$value, ref=ADR-0016/M5/M9: " +
+            "UnsupportedSandboxProfile(value=$value: " +
                 "'os' requires OS-level isolation which is out of scope for L3; " +
-                "use 'none' or 'local' instead.)"
+                "use 'none' or 'local' instead."
     }
     data class UnknownOption(val value: String) : CliError
     data object MissingScriptPath : CliError

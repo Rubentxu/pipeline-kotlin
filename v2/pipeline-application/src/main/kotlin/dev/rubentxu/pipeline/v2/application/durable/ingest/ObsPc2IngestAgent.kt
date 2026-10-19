@@ -342,7 +342,7 @@ object ObsPc2IngestAgent {
     private fun openRendezvous(path: Path): SeekableByteChannel {
         require(isFifo(path)) {
             "$path is not a FIFO. Draining it would accept a plaintext spool on disk, " +
-                "which ADR-OBS-003 excludes and which raw_secret_on_disk == 0 is meant to catch."
+                "which the raw_secret_on_disk == 0 invariant is meant to catch."
         }
         // R2.3(b): open O_RDONLY. The O_RDONLY open on a named pipe blocks until
         // a writer appears, which is exactly the rendezvous we want: the

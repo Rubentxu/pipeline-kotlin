@@ -1485,7 +1485,8 @@ private fun negotiateOutputProtocolOrExit(tokens: List<String>): OutputProtocol 
     val requested = tokens.joinToString(", ")
     val exit = CliExit.InvalidArgument(
         message = "no acceptable --output-protocol in [$requested]. Supported: $supported",
-        hint = "see ADR-PK1-OUTPUT-FRAMING for the negotiation contract",
+        hint = "pass a preference-ordered list; the first listed id this binary " +
+            "supports is the one used",
     )
     System.err.write(exit.encodeEnvelope().toByteArray(Charsets.UTF_8))
     System.err.flush()

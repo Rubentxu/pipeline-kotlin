@@ -41,19 +41,19 @@ sealed interface RunnerTrustProfile {
     }
 
     /**
-     * Multi-tenant constrained execution. NOT constructible in L3: filesystem
-     * jail, CPU/memory limits and egress blocking require ADR-0016 M5/M9.
-     * Any attempt fails closed with a machine-checkable ADR citation.
+     * Multi-tenant constrained execution. NOT constructible here: a filesystem
+     * jail, CPU/memory limits and egress blocking are not implemented.
+     * Any attempt fails closed, naming what is missing and what exists instead.
      */
     companion object {
         /**
-         * @throws SandboxProfileUnsupportedException always, until ADR-0016 M5/M9 lands.
+         * @throws SandboxProfileUnsupportedException always.
          */
         fun multiTenantConstrained(): Nothing = throw SandboxProfileUnsupportedException(
-            "RunnerTrustProfile.multiTenantConstrained requires ADR-0016 M5/M9 " +
-                "(filesystem jail, CPU/memory limits, egress block); rejected in L3. " +
-                "No untrusted-execution profile exists today; capabilities that are " +
-                "best-effort remain OUTSIDE the untrusted profile.",
+            "RunnerTrustProfile.multiTenantConstrained is not available: it requires " +
+                "a filesystem jail, CPU/memory limits and egress blocking, none of which " +
+                "exist here. No untrusted-execution profile exists today; capabilities " +
+                "that are best-effort remain OUTSIDE the untrusted profile.",
         )
     }
 }

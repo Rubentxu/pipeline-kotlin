@@ -391,7 +391,7 @@ class SegmentOutputStore(
         // available to everyone and therefore performed by everyone.
         check(recoveryPermitted) {
             "this store was opened for READING and must not recover: a read-only verb that reconciles " +
-                "can truncate a live writer's range (ADR-OBS-002). Open a writing store instead."
+                "can truncate a live writer's range. Open a writing store instead."
         }
         val streamRoot = root.resolve(STREAMS_DIR)
         Files.createDirectories(streamRoot)

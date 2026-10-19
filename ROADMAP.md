@@ -862,6 +862,34 @@ fichero, no en barrido. Abrir ahora un barrido sobre 71 sitios sería exactament
 la campaña que la regla prohíbe, y cada reescritura tocaría producto sin un
 cambio de comportamiento que la justifique.
 
+**Corrección posterior a esa decisión, porque el censo mezclaba dos cosas
+distintas.** Las 91 citas no son de una clase: hay comentarios que **narran**
+(*«used to freeze»*, *«a deleted X used to pin»*) y comentarios que **afirman en
+presente** (*«X enforces»*, *«asserted by X»*, *«X pins this»*). Clasificadas por
+tiempo verbal sobre las mismas 91: **7 narración, 13 afirmación viva, 71 sin
+clasificar por el instrumento**. La narración es arqueología honesta y no se toca;
+una afirmación viva es distinto — dice que una garantía la sujeta un test que no
+existe, y eso ya no es una promesa pendiente sino una afirmación falsa sobre el
+estado del árbol. Peor: `EventSliceParityLawsTest` se describía como borrado en
+`EventStore.kt:111` y como «is what holds this» en dos implementaciones, es decir,
+el repositorio se contradecía a sí mismo sobre el mismo nombre.
+
+**Las tres de `pipeline-events-store` están corregidas** (`54e2e9512`), y la
+sustitución no fue una prosa más bonita sino lo que la lente exige: cada una nombra
+la garantía real y dice si algo la observa. Dos eran estructurales —`List<DomainEvent>`
+no tiene dónde poner una posición, y el store en memoria no tiene caso
+ilegible que discutir— y la tercera NO es unit-testable: `SqliteConnectionFactory.open`
+abre una conexión nueva por llamada, así que `:memory:` saldría vacío en cada
+lectura y el store es file-backed por diseño; ejercitarlo exige almacenamiento
+durable, que AGENTS.md §2 prohíbe a un test unitario. Por eso se **conservó la
+afirmación** y se borró la cita al test, y no al revés.
+
+**Las otras 10 afirmaciones vivas siguen NOT_RUN.** No se corrigen aquí, y no se
+declaran cerradas: corregirlas exige leer cada uno de sus ficheros para saber qué
+garantía nombra, y ese trabajo no se ha hecho. La regla que las gobierna sigue
+siendo la de arriba —se reescriben al tocar el fichero—, con una única excepción
+acotada: una afirmación viva comprobada como falsa no espera al próximo toque.
+
 **Censo histórico — los nueve módulos que la lista vieja nombraba, no los seis
 que quedan.** Se conserva porque su hallazgo sigue siendo cierto y explica por
 qué esos cinco se priorizaron: un módulo «sin test» no es un módulo sin lógica;

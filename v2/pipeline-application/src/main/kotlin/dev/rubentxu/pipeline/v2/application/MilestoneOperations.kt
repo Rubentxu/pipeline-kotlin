@@ -10,8 +10,7 @@ package dev.rubentxu.pipeline.v2.application
  *
  * ## Why a typed seam and not a var in the handler?
  *
- * AGENTS.md §STEP IMPLEMENTATION — OPERATIVE GUIDE (handler must NOT hold
- * mutable state). `CoreMilestoneStep` is a singleton `object`; its
+ * AGENTS.md §1 (a handler must NOT hold mutable state). `CoreMilestoneStep` is a singleton `object`; its
  * `private var lastReachedOrdinal: Int? = null` is global classloader state.
  * The legacy `CanonicalMilestoneNodeDispatcher` tracks state per-coordinator
  * instance (per run). A singleton handler does not provide equivalent isolation:

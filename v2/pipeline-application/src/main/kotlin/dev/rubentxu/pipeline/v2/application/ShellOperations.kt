@@ -16,8 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
  *
  * ## Why a typed seam and not `ShExecution.invokeShell` directly?
  *
- * AGENTS.md §STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (handler must
- * adapt to existing certified infrastructure). The previous Step
+ * AGENTS.md §1 (a handler must adapt to the existing named ports/adapters). The previous Step
  * (`core.echo`) does not embed event emission in its handler either: it
  * reaches the typed [dev.rubentxu.pipeline.v2.events.EventSink] capability.
  * `core.sh` follows that same shape, only it reaches this shell-execution

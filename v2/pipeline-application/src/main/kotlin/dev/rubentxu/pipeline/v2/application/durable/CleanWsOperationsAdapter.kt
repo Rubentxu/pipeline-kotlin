@@ -21,8 +21,8 @@ import java.util.UUID
  *
  * ## Why an adapter rather than inlining the IO into the handler
  *
- * AGENTS.md STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (effectful handlers adapt
- * to existing certified infrastructure, never embed process/IO logic). By symmetry
+ * AGENTS.md §1: effectful work resides at an existing named port, never embedded
+ * in a handler. By symmetry
  * with the certified `core.deleteDir → DeleteDirOperations → DeleteDirOperationsAdapter`
  * pattern, the registry `core.cleanWs` reaches the existing `CleanWsExecutor` SDK
  * authority through THIS adapter — reached through `CLEAN_WS_OPERATIONS_CAPABILITY`.

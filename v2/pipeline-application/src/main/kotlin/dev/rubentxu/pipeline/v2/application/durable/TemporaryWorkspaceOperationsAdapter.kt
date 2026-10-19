@@ -16,9 +16,9 @@ import java.util.UUID
  *
  * ## Why an adapter rather than inlining the IO into the handler
  *
- * AGENTS.md STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (effectful handlers adapt
- * to existing certified infrastructure, never embed process/IO logic). The
- * certified `core.sh` Step reaches `ShExecution.invokeShell` through a
+ * AGENTS.md §1: effectful work resides at an existing named port, never embedded
+ * in a handler. The certified `core.sh` Step reaches `ShExecution.invokeShell`
+ * through a
  * `ShellOperations` capability. By symmetry, the registry `core.pwd.tmp` reaches
  * `Files.createDirectories` + `PwdResolved` emission through THIS adapter —
  * reached through `TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY`.

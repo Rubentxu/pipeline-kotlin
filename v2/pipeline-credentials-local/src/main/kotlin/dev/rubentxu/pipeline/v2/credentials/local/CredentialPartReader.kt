@@ -135,7 +135,12 @@ internal object CredentialPartReader {
         val metaNameLen = buf.get().toInt()
         buf.position(buf.position() + metaNameLen)
         buf.int // skip count value
-        buf.get() // consume metadata content byte (1)
+        // Metadata content is a 4-byte big-endian int (the constant 1, written by
+        // CredentialSerializer). A previous version consumed only 1 byte here, which
+        // made the first entry's name length read one byte too far and produced a
+        // misaligned parse for every Zip credential that did not start with a 1-byte
+        // entry-name length of 0. The serializer agrees on 4 bytes; the reader now does.
+        buf.int
 
         repeat(partCount - 1) {
             val entryNameLen = buf.get().toInt()

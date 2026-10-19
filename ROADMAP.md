@@ -712,9 +712,37 @@ Los tres primeros son **los que ordenan el ataque**, y no por tamaño:
    > **Nada abierto.** Ni `fromUserOwned` (eliminado, cero llamadores) ni la
    > duplicación de los `when`, que no es deuda: ver el razonamiento de arriba.
 2. **`pipeline-release` — qué se publica.** `BundledPluginCompatibility` decide
-   «este candidato se publica o se rechaza» y tiene un defecto vivo ya registrado:
-   un `apiRange` obsoleta en plugins de ejemplo empaquetados es la causa anotada
-   del arreglo de ejecución de R4/WU-R4.0.0. Cero tests.
+   «este candidato se publica o se rechaza» y tenía un defecto vivo ya
+   registrado: un `apiRange` obsoleta en plugins de ejemplo empaquetados es la
+   causa anotada del arreglo de ejecución de R4/WU-R4.0.0.
+
+   > **Medido y corregido 2026-10-19.** El punto decía «Cero tests». Es falso,
+   > y lo era en la dirección que hace creer que no hay nada que proteger:
+   > `src/test` ya tenía `ApiRangeContainsTest` (20 tests) y
+   > `CandidateHandoffDigestAttributionTest` (3), **23 verdes leídos del XML, 0
+   > fallos, 0 skips**. El ratio de la tabla de abajo arrastraba el mismo retraso.
+   >
+   > Lo que sí faltaba era una garantía concreta, y es la que sostiene el tipo
+   > cuya razón de existir es un incidente: **`ProductVersion` no tiene ningún
+   > test**, y `evaluateDistributionIdentity` tampoco. Sin ellos, el refusal que
+   > impide blanquear un candidato como GA no lo observaba nadie.
+   >
+   > Añadido `ProductVersionIdentityTest`, 8 tests. La garantía es estrecha: *una
+   > identidad con sufijo de candidato no puede alcanzar `Consistent`*. El caso
+   > que la sostiene está construido para que **nada más pueda decidirlo** — las
+   > seis superficies reportan la misma cadena con sufijo, así que el harmonies
+   > es perfecto y sólo el refusal puede mantenerlo rojo. Sin ese control
+   > positivo, un veredicto siempre-rojo habría pasado la primera fila igual.
+   >
+   > **Mutación leída de vuelta antes de leer el resultado**: el regex que rechaza
+   > el sufijo pasó a aceptarlo (`(-.*)?`). 4 de 8 rojos, `exit=1`. Las cuatro son
+   > exactamente las que hablan del sufijo; sobreviven el control positivo, el
+   > desacuerdo entre superficies, la versión ilegible y la superficie no
+   > observada. Sin daño colateral. Restaurado byte a byte, diff vacío.
+   >
+   > Un hallazgo lateral del mismo barrido: el comentario de este `build.gradle.kts`
+   > afirmaba «`src/test` is empty here» en presente. Era cierto al escribirse y
+   > dejó de serlo cuando aterrizó la primera de esas clases.
 3. **`pipeline-output` — `OutputAdoption.invariantsBlockedBy`.** Es el decider que
    autoriza decir «el Output Plane es crash-consistente», y su propio KDoc
    registra **dos defectos materiales ya corregidos exactamente en esas dos

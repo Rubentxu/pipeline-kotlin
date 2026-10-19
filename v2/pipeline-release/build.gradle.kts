@@ -406,11 +406,18 @@ tasks.register("releaseGate") {
 // properties, and the `releaseGate` entries that depended on `:test` and on
 // `:pipeline-application:test`.
 //
-// Gradle 8.14 has no `Test.failOnNoDiscoveredTests` property and `src/test` is empty here, so
-// that lane reported a distribution certification while executing zero classes -- the most
-// expensive false green in the build, because it names a real ZIP and a real SBOM. The gate
-// entries go with it: a `dependsOn(":pipeline-application:test")` on an empty source set makes
-// `releaseGate` slower and no more honest.
+// Gradle 8.14 has no `Test.failOnNoDiscoveredTests` property and `src/test` was empty here at
+// the time, so that lane reported a distribution certification while executing zero classes --
+// the most expensive false green in the build, because it names a real ZIP and a real SBOM. The
+// gate entries go with it: a `dependsOn(":pipeline-application:test")` on an empty source set
+// makes `releaseGate` slower and no more honest.
+//
+// `src/test` is no longer empty. It holds the pure release decisions --
+// `ApiRangeContainsTest`, `CandidateHandoffDigestAttributionTest`,
+// `ProductVersionIdentityTest` -- which is exactly what the lane was not for: they decide from
+// strings, with no ZIP and no SBOM. The clause above used to read "is empty here" in the
+// present tense, and it stopped being true when the first of those landed. A comment that
+// asserts a property of the build outlives the state it described unless someone edits it.
 //
 // Its replacement is the executable E2E layer: `scripts/verify-all.sh` stages the distribution
 // once (`:pipeline-application:installDist`) and `v2/examples/run.sh` runs the real binary

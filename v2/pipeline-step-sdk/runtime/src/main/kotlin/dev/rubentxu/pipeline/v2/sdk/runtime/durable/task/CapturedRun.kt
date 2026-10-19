@@ -25,8 +25,9 @@ import java.util.Collections
  * still applies at the construction site: [runCaptured] routes through
  * [decideTaskTerminal] so the boolean pair is read in exactly one place
  * (the decider), and the boolean fields here are translated from that
- * single decision. This is the same architectural rule that
- * `TaskTerminalDecisionFitnessTest` enforces, just for a parallel domain.
+ * single decision. It is the same rule as [TaskExecutionResult]'s, for a
+ * parallel domain, and it is held the same way: by the routing above, with no
+ * gate that could notice a second reader.
  */
 data class CapturedRun(
     val exitCode: Int,

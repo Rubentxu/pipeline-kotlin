@@ -20,7 +20,9 @@ import org.junit.jupiter.api.Test
  * state, so a fresh instance is full isolation and no test can observe another's
  * registration; there is nothing to tear down and no order to depend on. Each
  * secret is at least [SecretPatternRegistry.MIN_MASKABLE_LENGTH] characters,
- * because a shorter value is refused at registration and would test nothing.
+ * because a shorter value is silently left unregistered and would therefore
+ * not be scrubbed at all — the assertion below would see an untouched string
+ * and read as a redactor failure rather than as an under-length input.
  */
 class SecretPatternRegistryUrlEncodingTest {
 

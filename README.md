@@ -255,7 +255,7 @@ code that implements each surface:
 | Every CLI flag and exit code | `pipelinek --help`, `pipelinek run --help`, and the flag table in `Main.kt` |
 | The certified DSL surface | The KDoc on `StageScope.kt` and `PipelineDsl.kt` in `:pipeline-scripting-api`, which is where the DSL is declared |
 | `--workspace`, `--db`, `--control-root` | The KDoc on `WorkspaceResolver.kt` in `:pipeline-application` |
-| Secret redaction and credentials | The KDoc on `PassphraseResolver.kt` and `CredentialsStorePath.kt` in `:pipeline-credentials-local` |
+| Secret redaction and credentials | Redaction: the KDoc on `SecretPatternRegistry.kt` in `:pipeline-credentials-api`, which also states that a bound secret of fewer than `MIN_MASKABLE_LENGTH` (8) characters runs normally but is **not** masked, so it reaches the transcript in the clear. Store access: `PassphraseResolver.kt` and `CredentialsStorePath.kt` in `:pipeline-credentials-local` |
 | Typed events, transcripts, recovery | The KDoc on `JsonEventLog.kt` in `:pipeline-events-store` |
 | How the build is verified, and what is out of bounds | `AGENTS.md` in the repository root |
 

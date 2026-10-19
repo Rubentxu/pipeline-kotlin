@@ -730,6 +730,15 @@ que es la forma más difícil de detectar después: nada falla, el código funci
 nadie ya no distingue una extracción correcta de una que cambió algo. Cuenta
 dentro de las 87 de arriba; no es un hallazgo aparte.
 
+**Ese caso ya está corregido** — es el primero de los 120 sitios en resolverse, y se
+eligió primero a propósito: no por ser el más numeroso, sino por ser el único que
+sostiene una afirmación estructural. El KDoc de `RunLifecycleEngine` ahora dice la
+verdad —que la extracción está sin verificar y por qué no se restauró el testigo—
+y además corrige una segunda afirmación del mismo párrafo que tampoco se sostenía:
+decía que los eventos de lifecycle «siempre llevan sequence 0», cuando 0 es la
+*petición* de secuencia asignada y lo que llega al store es `counter.incrementAndGet()`.
+Quedan 119 sitios.
+
 **g) El digest de `Fingerprint` cambió** al corregir la igualdad de `Map`, lo
 que altera cualquier digest emitido antes. Consignado, no revertido: el
 comportamiento anterior era incorrecto.

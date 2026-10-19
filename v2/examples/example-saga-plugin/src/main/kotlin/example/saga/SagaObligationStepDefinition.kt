@@ -11,11 +11,14 @@ import dev.rubentxu.pipeline.v2.domain.saga.CompensationKind
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationOperations
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationPolicy
 import dev.rubentxu.pipeline.v2.domain.saga.EffectEvidence
+import dev.rubentxu.pipeline.v2.domain.saga.EffectReceiptRef
 import dev.rubentxu.pipeline.v2.domain.saga.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_COMPENSATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_PLAN_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
+import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
@@ -27,15 +30,15 @@ import kotlinx.serialization.json.Json
 import java.security.MessageDigest
 
 /**
- * The external consumer of the Saga intent port.
+ * The external consumer of the Saga contract.
  *
  * ## What this artifact proves
  *
  * That the Saga contract is usable from OUTSIDE the repository, against the PUBLISHED SDK
  * artifact, by a plugin that has no access to anything internal. This JAR compiles against
- * `pipeline-domain` alone and reaches the compensation machinery through ONE published
- * capability. It never sees the event store, the operation journal or the durable table: it
- * declares an intent and reads back what the engine decided.
+ * `pipeline-domain` alone and reaches the Saga machinery through TWO published capabilities.
+ * It never sees the event store, the operation journal or the durable table: it declares an
+ * intent, reports what it observed, and reads back what the engine decided.
  *
  * That is the whole claim of the seam. A plugin that could append events or journal operations
  * could forge the very evidence that compensation obligations are judged by, so the port is
@@ -43,10 +46,15 @@ import java.security.MessageDigest
  *
  * ## What it does NOT do
  *
- * It does not compensate anything. The obligation is armed and read back, and the forward effect
- * is never performed, because the guarantee under test is that the PROMISE is durable and visible
- * — not that a compensation runs. A compensation that actually fired here would be a second
- * milestone pretending to be the first.
+ * It does not compensate anything, and it does not perform a real effect: there is no provider
+ * in this example. The forward effect is REPORTED as confirmed, which is what the plugin would
+ * report after a call that really happened, and the guarantee under test is the CONTRACT — that
+ * the promise is durable, that the lifecycle can be walked through the published port, and
+ * that the engine answers what the Saga owes — not the behaviour of a provider.
+ *
+ * What actually runs the compensation is the ENGINE, through the same dispatcher that ran the
+ * forward effect. A plugin that compensated its own resource here would be a second authority
+ * pretending to be the first.
  */
 @Serializable
 data class SagaObligationInput(
@@ -68,6 +76,10 @@ data class SagaObligationOutput(
     val compensationOpId: String,
     /** What the engine decided about the forward effect. */
     val decision: String,
+    /** What the engine says the Saga owes, asked through the PLAN port. */
+    val owed: String,
+    /** The obligation's status after the lifecycle the plugin walked. */
+    val finalStatus: String,
 )
 
 object SagaObligationCodec : StepCodec<SagaObligationInput> {
@@ -113,9 +125,11 @@ object SagaObligationStepDefinition : StepDefinition<SagaObligationInput, SagaOb
         ),
         inputCodec = SagaObligationCodec,
         outputCodec = SagaObligationOutputCodec,
-        // The ONE capability this plugin needs, and it does not supply it: only the host knows
-        // the run, the durable store and the lease.
-        requiredCapabilities = setOf(SAGA_COMPENSATION_CAPABILITY),
+        // The TWO capabilities this plugin needs, and it does not supply either of them: only
+        // the host knows the run, the durable store and the lease. The first port makes the
+        // promise; the second one moves the promise along its lifecycle and answers what the
+        // Saga owes.
+        requiredCapabilities = setOf(SAGA_COMPENSATION_CAPABILITY, SAGA_PLAN_CAPABILITY),
     )
 
     override val handler = StepHandler<SagaObligationInput, SagaObligationOutput> { input, context ->
@@ -123,6 +137,8 @@ object SagaObligationStepDefinition : StepDefinition<SagaObligationInput, SagaOb
         // event store or the journal: only this narrow port, already bound to this invocation.
         val operations: CompensationOperations =
             context.capabilities.get(SAGA_COMPENSATION_CAPABILITY)
+        val plan: SagaPlanOperations =
+            context.capabilities.get(SAGA_PLAN_CAPABILITY)
 
         val declaration = CompensationDeclaration(
             sagaId = SagaId.of(input.sagaId),
@@ -143,6 +159,21 @@ object SagaObligationStepDefinition : StepDefinition<SagaObligationInput, SagaOb
             policy = CompensationPolicy.NotReconcilable,
         )
 
+        // The lifecycle, walked through the PLAN port.
+        //
+        // There is NO provider in this example, so the effect is not really performed. What is
+        // under test is the CONTRACT: that a plugin can declare that an effect is about to
+        // happen, report what happened, and read back what the engine says the Saga owes —
+        // all of it through a published port, with the durable state owned by the host.
+        plan.beginForward(declaration.key)
+        plan.recordForward(
+            declaration.key,
+            EffectEvidence.Confirmed(EffectReceiptRef.of("example-receipt")),
+        )
+        val owed = plan.next(declaration.sagaId, CompensationPolicy.NotReconcilable)
+
+        val finalStatus = operations.read(declaration.key)?.status?.name ?: "MISSING"
+
         SagaObligationOutput(
             armOutcome = when (armed) {
                 is dev.rubentxu.pipeline.v2.domain.saga.CompensationArmOutcome.Armed -> "Armed"
@@ -157,6 +188,8 @@ object SagaObligationStepDefinition : StepDefinition<SagaObligationInput, SagaOb
             status = stored?.status?.name ?: "MISSING",
             compensationOpId = stored?.compensationOpId ?: "",
             decision = decision.toString(),
+            owed = owed.toString(),
+            finalStatus = finalStatus,
         )
     }
 

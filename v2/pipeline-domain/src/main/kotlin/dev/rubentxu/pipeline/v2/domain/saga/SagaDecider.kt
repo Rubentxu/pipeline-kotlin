@@ -69,6 +69,123 @@ object SagaDecider {
     }
 
     /**
+     * Decides what the engine must do NEXT with a Saga's compensations.
+     *
+     * ## The order is the compensation order
+     *
+     * The obligations are walked NEWEST FIRST, so the compensation that runs is the one for the
+     * most recent effect. That is LIFO, and for a sequential Saga it is also the only order that
+     * makes sense: undoing the newest action usually needs the state the older actions left
+     * behind, so the older ones may only be undone after it.
+     *
+     * The walk STOPS at the first obligation that needs something. An obligation that is
+     * unresolved blocks the older ones, because compensating an older resource while a newer
+     * one is in doubt can destroy the state the newer compensation would have needed.
+     *
+     * ## What the decision is made of
+     *
+     * Only the durable state of the obligations. The store, the clock and the run are not
+     * consulted, so the answer is the same in the process that armed the promises and in the
+     * process that resumes the run after a crash. That is what makes the answer trustworthy
+     * enough to compensate a real resource with.
+     *
+     * ## The states that need a human
+     *
+     * Two situations stop the Saga instead of continuing:
+     *
+     *  - The outcome of an effect is not established and nothing can query the provider.
+     *  - A compensation ran and either failed or left an indeterminate result.
+     *
+     * In both cases the remaining obligations stay pending and durable. They are not silently
+     * dropped and they are not compensated against a state that may not exist.
+     *
+     * @param snapshot the durable obligations of one Saga.
+     * @param policy whether an outcome that is not established can be settled by querying the
+     * provider.
+     */
+    fun nextCompensation(
+        snapshot: SagaSnapshot,
+        policy: CompensationPolicy,
+    ): CompensationDirective {
+        for (obligation in snapshot.inArmOrder.asReversed()) {
+            val directive = directiveFor(obligation, policy)
+            if (directive != null) {
+                return directive
+            }
+        }
+        return CompensationDirective.Settled(snapshot.sagaId)
+    }
+
+    /**
+     * What one obligation demands, or `null` when it demands nothing.
+     *
+     * `null` means "keep walking": the obligation owes nothing, so an older one may still owe
+     * something. It never means "skip this one and do the rest" — the walk stops at the first
+     * obligation that demands something.
+     */
+    private fun directiveFor(
+        obligation: CompensationObligation,
+        policy: CompensationPolicy,
+    ): CompensationDirective? = when (obligation.status) {
+        // Nothing is owed: the promise was never used (the forward effect was never
+        // dispatched), the forward effect had no effect, or the compensation already ran.
+        CompensationObligationStatus.ARMED,
+        CompensationObligationStatus.EFFECT_ABSENT,
+        CompensationObligationStatus.COMPENSATED,
+        -> null
+
+        // The forward effect happened. Its compensation is owed, and it is owed before any
+        // older one.
+        CompensationObligationStatus.EFFECT_CONFIRMED ->
+            CompensationDirective.Compensate(obligation)
+
+        // The forward effect's outcome is not established. Ask the provider when there is one
+        // that can be asked; a human decides when there is not.
+        CompensationObligationStatus.EFFECT_PENDING,
+        CompensationObligationStatus.EFFECT_UNKNOWN,
+        -> when (policy) {
+            CompensationPolicy.Reconcilable -> CompensationDirective.Reconcile(obligation)
+            CompensationPolicy.NotReconcilable ->
+                CompensationDirective.NeedsIntervention(
+                    obligation,
+                    InterventionReason.UNKNOWN_EFFECT,
+                )
+        }
+
+        // The compensation was dispatched and its answer was lost. It may already have been
+        // applied, so it is never applied again on a guess.
+        CompensationObligationStatus.COMPENSATION_PENDING -> when (policy) {
+            CompensationPolicy.Reconcilable -> CompensationDirective.Reconcile(obligation)
+            CompensationPolicy.NotReconcilable ->
+                CompensationDirective.NeedsIntervention(
+                    obligation,
+                    InterventionReason.COMPENSATION_UNCERTAIN,
+                )
+        }
+
+        // The compensation ran and did not put the resource back.
+        CompensationObligationStatus.COMPENSATION_FAILED ->
+            CompensationDirective.NeedsIntervention(
+                obligation,
+                InterventionReason.COMPENSATION_FAILED,
+            )
+
+        // The compensation ran and nobody knows whether it put the resource back.
+        CompensationObligationStatus.COMPENSATION_UNCERTAIN ->
+            CompensationDirective.NeedsIntervention(
+                obligation,
+                InterventionReason.COMPENSATION_UNCERTAIN,
+            )
+
+        // A human was already asked. The obligation waits.
+        CompensationObligationStatus.NEEDS_INTERVENTION ->
+            CompensationDirective.NeedsIntervention(
+                obligation,
+                InterventionReason.UNKNOWN_EFFECT,
+            )
+    }
+
+    /**
      * Decides what an `arm` means, given the obligation that is already stored under the key.
      *
      * The rule is the one the Saga contract states out loud: the SAME key armed twice with the

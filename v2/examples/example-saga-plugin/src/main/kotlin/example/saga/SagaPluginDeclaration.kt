@@ -17,6 +17,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_COMPENSATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_PLAN_CAPABILITY
 
 /**
  * S6/I — the external plugin's DECLARATION, in one place.
@@ -74,13 +75,13 @@ object SagaPluginDeclaration {
      * What the Steps collectively demand, and it is written as the union of the contracts
      * rather than as a hand-kept list.
      *
-     * This plugin declares exactly ONE capability, the Saga intent port, and it is a seam the
-     * plugin does NOT supply and is not expected to: a manifest's capability set states what the
-     * plugin NEEDS, not what it hands over. The host provides the port because only the host
-     * knows the run, the durable store and the lease.
+     * This plugin declares exactly TWO capabilities, the Saga intent port and the Saga plan
+     * port, and they are seams the plugin does NOT supply and is not expected to: a manifest's
+     * capability set states what the plugin NEEDS, not what it hands over. The host provides
+     * the ports because only the host knows the run, the durable store and the lease.
      */
     private val DECLARED_CAPABILITIES: Set<StepCapability> =
-        setOf(SAGA_COMPENSATION_CAPABILITY)
+        setOf(SAGA_COMPENSATION_CAPABILITY, SAGA_PLAN_CAPABILITY)
 
     private fun parseSemVer(raw: String): SemVer {
         val parts = raw.split("-")[0].split(".")
@@ -131,7 +132,7 @@ object SagaPluginDeclaration {
         )
     }
 
-    /** One family, one Step: the external consumer of the Saga intent port. */
+    /** One family, one Step: the external consumer of the Saga contract. */
     fun manifest(
         classLoader: ClassLoader = SagaPluginDeclaration::class.java.classLoader,
     ): PluginManifest {
@@ -149,7 +150,7 @@ object SagaPluginDeclaration {
                 steps = listOf(
                     PluginStepContribution(
                         SagaObligationStepDefinition.KEY,
-                        setOf(SAGA_COMPENSATION_CAPABILITY),
+                        setOf(SAGA_COMPENSATION_CAPABILITY, SAGA_PLAN_CAPABILITY),
                     ),
                 ),
                 directives = emptyList(),

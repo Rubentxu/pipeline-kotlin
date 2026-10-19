@@ -106,6 +106,70 @@ class SqliteSagaObligationStore(
         }
     }
 
+    override fun updateOutcome(update: SagaObligationUpdate): SagaUpdatePersistence {
+        require(update.runId.isNotBlank()) { "runId must not be blank" }
+        require(update.leaseEpoch >= 0) {
+            "leaseEpoch must not be negative, got ${update.leaseEpoch}"
+        }
+
+        return DbLock.forPath(dbPath).withLock {
+            val connection = connectionFactory()
+            try {
+                val updated = connection.prepareStatement(UPDATE_OBLIGATION).use { statement ->
+                    statement.setString(1, update.status.name)
+                    if (update.receiptRef == null) {
+                        statement.setNull(2, java.sql.Types.VARCHAR)
+                    } else {
+                        statement.setString(2, update.receiptRef.value)
+                    }
+                    statement.setLong(3, update.updatedAtMs)
+                    statement.setString(4, update.runId)
+                    statement.setString(5, update.key.sagaId.value)
+                    statement.setString(6, update.key.actionId.value)
+                    statement.setString(7, update.key.compensationId.value)
+                    // The guard's two parameters: the run whose high-water mark is read, and the
+                    // epoch of this writer.
+                    statement.setString(8, update.runId)
+                    statement.setLong(9, update.leaseEpoch)
+                    statement.executeUpdate()
+                }
+
+                if (updated > 0) {
+                    val stored = selectByKey(
+                        connection,
+                        update.runId,
+                        update.key.sagaId,
+                        update.key.actionId,
+                        update.key.compensationId,
+                    )
+                    // The row was just written, so it is there. Reading it back is what makes the
+                    // answer the truth on disk rather than the truth this process believes.
+                    return@withLock SagaUpdatePersistence.Updated(
+                        stored ?: error("the obligation vanished in the same transaction"),
+                    )
+                }
+
+                // Nothing was written. Either there is no promise under that key, or the guard
+                // refused this writer. The difference matters: one of them is a missing
+                // obligation and the other is a lost lease.
+                val stored = selectByKey(
+                    connection,
+                    update.runId,
+                    update.key.sagaId,
+                    update.key.actionId,
+                    update.key.compensationId,
+                )
+                if (stored == null) {
+                    SagaUpdatePersistence.NotFound
+                } else {
+                    SagaUpdatePersistence.Fenced(currentEpochOf(connection, update.runId))
+                }
+            } finally {
+                connection.close()
+            }
+        }
+    }
+
     override fun find(runId: String, key: CompensationKey): SagaObligationRow? {
         val connection = connectionFactory()
         try {
@@ -268,6 +332,22 @@ class SqliteSagaObligationStore(
         const val SELECT_BY_KEY = """
             SELECT * FROM saga_obligation
             WHERE run_id = ? AND saga_id = ? AND action_id = ? AND compensation_id = ?
+        """
+
+        /**
+         * The conditional update.
+         *
+         * The trailing WHERE is the fencing guard, in the same statement as the write, so a
+         * writer that lost the run cannot win a race between a check and an update. The row's
+         * OWN lease epoch is not touched: it belongs to the promise, not to the state.
+         */
+        const val UPDATE_OBLIGATION = """
+            UPDATE saga_obligation
+            SET status = ?, receipt_ref = ?, updated_at_ms = ?
+            WHERE run_id = ? AND saga_id = ? AND action_id = ? AND compensation_id = ?
+              AND (
+                SELECT COALESCE(MAX(lease_epoch), -1) FROM saga_obligation WHERE run_id = ?
+              ) <= ?
         """
 
         const val SELECT_RUN_OBLIGATIONS = """

@@ -18,7 +18,6 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaDecision
 import dev.rubentxu.pipeline.v2.events.CompensationArmed
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.SagaArmPersistence
-import dev.rubentxu.pipeline.v2.events.durable.SagaObligationRow
 import dev.rubentxu.pipeline.v2.events.durable.SagaObligationStore
 import java.util.UUID
 
@@ -95,7 +94,7 @@ class SagaCompensationOperations(
             updatedAtMs = nowMs,
         )
 
-        return when (val persistence = store.arm(requested.toRow())) {
+        return when (val persistence = store.arm(requested.toRow(runId))) {
             is SagaArmPersistence.Inserted -> {
                 // The obligation is committed. Only now is it honest to say so out loud.
                 emitArmed(requested)
@@ -152,38 +151,4 @@ class SagaCompensationOperations(
             ),
         )
     }
-
-    private fun CompensationObligation.toRow(): SagaObligationRow = SagaObligationRow(
-        runId = runId,
-        sagaId = sagaId,
-        actionId = actionId,
-        compensationId = compensationId,
-        intentVersion = intentVersion,
-        planFingerprint = planFingerprint,
-        resourceRef = resourceRef,
-        kind = kind,
-        status = status,
-        forwardOpId = forwardOpId,
-        compensationOpId = compensationOpId,
-        leaseEpoch = leaseEpoch,
-        createdAtMs = createdAtMs,
-        updatedAtMs = updatedAtMs,
-        receiptRef = null,
-    )
-
-    private fun SagaObligationRow.toObligation(): CompensationObligation = CompensationObligation(
-        sagaId = sagaId,
-        actionId = actionId,
-        compensationId = compensationId,
-        planFingerprint = planFingerprint,
-        resourceRef = resourceRef,
-        kind = kind,
-        intentVersion = intentVersion,
-        forwardOpId = forwardOpId,
-        compensationOpId = compensationOpId,
-        status = status,
-        leaseEpoch = leaseEpoch,
-        createdAtMs = createdAtMs,
-        updatedAtMs = updatedAtMs,
-    )
 }

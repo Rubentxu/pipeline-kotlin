@@ -18,13 +18,13 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `a5cc2fe9` | `git rev-parse HEAD` |
+| SHA | `57de2440` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
-| Módulos con test unitario permanente | **16** | `src/test/kotlin` con al menos un `*Test.kt` |
-| Módulos sin test | 11 | ídem |
+| Módulos con test unitario permanente | **17** | `src/test/kotlin` con al menos un `*Test.kt` |
+| Módulos sin test | 10 | ídem |
 | Tests unitarios ejecutados | **505** (51/51 informes reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
 | Escenarios E2E | 36 (**35 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **6203 / 61624 = 0.101** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **6310 / 61628 = 0.102** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
 | `VERIFY_ALL_WALL_CLOCK` | **236 s**, peor de tres ensayos (233 / 236,48 / 223,71), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -49,6 +49,14 @@ propia latencia y **no** va dentro de este número.
 Una cifra de reloj heredada de otro commit es exactamente el tipo de verde que
 esta tabla existe para no declarar: por eso cada fila lleva el SHA al que se
 midió.
+
+`VERIFY_LOC` sale de `git ls-files`, así que **solo cuenta ficheros
+trackeados**. Al añadir `ProjectWorkingDirectoryTest.kt` (155 líneas) la cifra
+no se movió: 6203 antes y 6203 después, porque el fichero todavía no estaba
+versionado. El número real es **6310**, y solo aparece al medir después del
+commit. Es la forma que toma aquí «una cifra válida con un verbo falso»: el
+censo era correcto, lo que era incorrecto era medirlo antes de commitear. Por
+eso la fila de arriba se escribe siempre contra un SHA ya versionado.
 
 Los ratios por módulo de §2.2 a) son mediciones independientes del gate, hechas
 sobre el mismo árbol con el mismo criterio de recuento (líneas efectivas,
@@ -188,6 +196,28 @@ el arreglo; los demás siguen verdes).
   contaba XML JUnit de suites borradas por el RESET. Los 17 ficheros de build que
   afirmaban que la raíz fijaba `failOnNoDiscoveredTests` describían una bandera
   que **no existe en Gradle 8.14.5**.
+- **La decisión de `--follow` no tenía nada que la sostuviera.** El RESET borró
+  `ObservationWakeupTest.kt` (13 métodos) en `2aa071aa`, y el hueco no lo cubrió
+  nadie: medido, `followDecision` —que decide si un follower sigue leyendo o
+  termina— tiene **cero tests unitarios y cero ejemplos E2E**, sobre la función
+  que resolvió el defecto RC4 («ningún follow podía observar un sello»). No es un
+  tipo trivial: es una función pura de tres parámetros y salida `sealed`, sin
+  reloj ni ficheros, o sea el instrumento más barato que puede fallar. Cuatro
+  filas la cubren, mutation-verificadas por partida doble: quitar la rama
+  `RunPlane.Live -> ReadAgain` deja `tests=4 failures=1`, y la única roja es la
+  que nombra el defecto; cambiar `else -> Finished` por `ReadAgain` deja
+  `failures=2`, y son exactamente las dos filas que esa rama sostiene. Esa segunda
+  cifra es la razón de existir de esas dos filas: sin ellas, la primera podría
+  «arreglarse» con `return ReadAgain` siempre y ningún test lo notaría.
+- **Una sobrecarga `Boolean` que el propio tipo prohíbe.** Junto a la anterior
+  vivía `followDecision(moreFrames, tailStates, runFinished: Boolean)`, un shim
+  que su propio KDoc describía como «mientras los llamadores de tres estados
+  migran». Los tres llamadores ya migraron —verificado uno por uno, los tres
+  pasan `RunPlane`— y no está en ningún volcado ABI (enumerados los 7 módulos que
+  tienen uno; ninguno es `pipeline-application`). Era la forma exacta que
+  `RunPlane` existe para eliminar: un bit donde el tercer estado importa, y un
+  llamador futuro obtendría `Unavailable` —o sea un `Finished` prematuro. La
+  misma forma que `fromUserOwned`, el punto 1 de §2.2. Eliminado.
 - **El overload combinado de `AeadCipher` nunca pudo descifrar.** Pasaba el array
   completo `nonce||ciphertext||tag` a `GCMParameterSpec` como IV. El JCE acepta
   un IV de más de 12 bytes e interpreta silenciosamente un IV distinto del que
@@ -396,7 +426,7 @@ publicar un binario.
 
 | Módulo | Ficheros main | Con lógica pura | Dónde está la decisión |
 |---|---|---|---|
-| `pipeline-step-sdk/files` | 6 | 3 | `RootDestruction.fromUserOwned`, los dos `when (rootDestruction)` de `CleanWsExecutor:91` y `DeleteDirExecutor:103`, `antPatternToRegex` (`CleanWsExecutor:221-269`) |
+| `pipeline-step-sdk/files` | 6 | 3 | `RootDestruction.from`, los dos `when (rootDestruction)` de `CleanWsExecutor:91` y `DeleteDirExecutor:103` (**no es deuda**, ver punto 1), `antPatternToRegex` (`CleanWsExecutor:221-269`) |
 | `pipeline-release` | 18 | **10** | `ProductVersion.parseOrNull`, `DistributionIdentity.evaluateDistributionIdentity`, `CandidateHandoffValidation.evaluateCandidateHandoff`, `SourceProvenance.evaluate`, `CandidateTagProvenance.evaluate`, `BundledPluginCompatibility.apiRangeContains` / `semverCompare` |
 | `pipeline-credentials-executor` | 3 | 2 | `ProviderBackedSource.resolve` (donde `NotFound` es inalcanzable a propósito), `SpiMaterializationAdapter.materialize`, y el orden reverse-LIFO de `BoundCredentials.close` |
 | `pipeline-artefacts-local` | 3 | 1 | `AntStyleGlob`: la lista de 13 exclusiones por defecto, el contrato ida/vuelta de `fromList`/`vararg` con `,`, y el `require` de glob vacío |
@@ -404,25 +434,38 @@ publicar un binario.
 
 Los tres primeros son **los que ordenan el ataque**, y no por tamaño:
 
-1. **`pipeline-step-sdk/files` — qué se borra.** `RootDestruction` existe para
-   que un tercer estado no pueda heredar un veredicto, y su KDoc afirma que la
-   regla «se dice una sola vez aquí». Medido: **no es cierto**. `fromUserOwned` no
-   tiene ni un solo llamador, y la regla vive en dos bloques `when` que hoy son
-   **byte-idénticos**. La severidad que se le dio a este punto en un informe previo
-   estaba inflada, y conviene decirlo: no hay defecto hoy. Un `when` sobre enum
-   usado como expresión es exhaustivo en Kotlin, así que añadir un cuarto estado
-   rompe la compilación en los dos sitios, y los dos cuerpos coinciden hoy. Lo que
-   queda es un KDoc que afirma una autoridad inexistente y una duplicación de
-   cuatro líneas hoy consistente. El KDoc además cita
-   `FArchL7JenkinsVerbatimSignatureReflectionTest (WCL-S-008, FIL-ALL-001)`, y
-   **`git ls-files` no devuelve ningún fichero con ese nombre**.
+1. **`pipeline-step-sdk/files` — qué se borra.** **CERRADO 2026-10-19, sin
+   defecto que corregir.** `RootDestruction` existe para que un tercer estado no
+   pueda heredar un veredicto. La regla que de verdad decide —«¿esta operación
+   puede borrar la raíz?»— la escribía además `fromUserOwned(Boolean)`, sin un
+   solo llamador: un bit que re-deriva una regla ya tipada. Eso sí era la
+   duplicación, y se eliminó; hoy la regla se dice **exactamente una vez**, en
+   `RootDestruction.from(DestructiveAuthorization)`, que recibe la autorización en
+   vez de un bit de ella. Los dos adaptadores pasan por ahí.
 
-   > **Parcialmente cerrado 2026-10-19.** `fromUserOwned(Boolean)` se eliminó
-   > (cero llamadores, verificado con `grep` antes de borrar) y lo sustituyó
-   > `from(DestructiveAuthorization)`, que recibe la autorización en vez de un
-   > bit de ella. Los dos adaptadores pasan ahora por esa función, y `grep`
-   > encuentra la regla escrita **exactamente una vez**. El KDoc ya no afirma
-   > una autoridad inexistente: ahora existe.
+   Quedaba una segunda «duplicación»: los dos bloques `when (rootDestruction)` de
+   `CleanWsExecutor:91` y `DeleteDirExecutor:103`. Medido: **6 líneas, 214 bytes,
+   mismo sha256** — byte-idénticos, como decía este documento. **No es deuda y no
+   debe extraerse**, por dos razones que se midieron:
+
+   - Un `when` sobre enum usado como expresión es exhaustivo en Kotlin, así que
+     añadir un cuarto estado rompe la compilación en los dos sitios. Los dos
+     cuerpos no pueden divergir sin que el compilador lo impida.
+   - El KDoc del propio enum rechaza esa extracción **por nombre**: bajo el
+     título *«Why this exposes no `permitsRootWipe: Boolean`»*, explica que una
+     propiedad que colapse los tres estados otra vez en un bit reintroduciría el
+     defecto exacto bajo otro nombre, y que «consumers `when`-match the cases
+     instead, so a new case is a compile error in every consumer». Un duplicado
+     cuyo texto es la garantie, y cuya divergencia la detecta el compilador, es
+     lo contrario de una deuda: es el patrón que el tipo chose a propósito.
+
+   Extraerlo sería contraproducente: cambiaría dos sitios que deben romperse a la
+   vez por uno que se rompe solo, y lo haría para ahorrar 6 líneas que hoy no
+   divergen. El enum tiene 3 constantes, comprobado.
+
+   > **Parcialmente cerrado 2026-10-19** (absorvido por el cierre de arriba).
+   > `fromUserOwned(Boolean)` se eliminó (cero llamadores, verificado con `grep`
+   > antes de borrar) y lo sustituyó `from(DestructiveAuthorization)`.
    >
    > **Cita cerrada 2026-10-19.** El KDoc apuntaba a
    > `FArchL7JenkinsVerbatimSignatureReflectionTest`, borrado por el RESET
@@ -435,9 +478,8 @@ Los tres primeros son **los que ordenan el ataque**, y no por tamaño:
    > compilar, y la etapa 3 de `scripts/verify-all.sh` se pone roja. La cita
    > se repuntó al testigo real y se dijo por qué se movió de custodio.
    >
-   > **Lo que queda abierto es solo la duplicación** —los dos bloques
-   > `when (rootDestruction)` byte-idénticos hoy—, que es deuda de
-   > mantenimiento sin comportamiento observable.
+   > **Nada abierto.** Ni `fromUserOwned` (eliminado, cero llamadores) ni la
+   > duplicación de los `when`, que no es deuda: ver el razonamiento de arriba.
 2. **`pipeline-release` — qué se publica.** `BundledPluginCompatibility` decide
    «este candidato se publica o se rechaza» y tiene un defecto vivo ya registrado:
    un `apiRange` obsoleta en plugins de ejemplo empaquetados es la causa anotada

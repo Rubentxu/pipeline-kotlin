@@ -1,3 +1,4 @@
+//@ expect-stdout x is positive
 pipeline {
     stages {
         stage("conditional") {

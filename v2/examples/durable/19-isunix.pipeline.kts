@@ -1,14 +1,14 @@
-// S2-A5/G8 — core.isUnix installed-CLI evidence (fresh + replay).
+//@ expect-stdout is unix: true
+
+// The subject is a detected boolean reaching the script as a typed value. The
+// step's effect emits a single typed domain event carrying the boolean, and the
+// echo below proves the value arrived rather than merely running the step.
 //
-// Exercises the registry-path `core.isUnix` Step through the DSL surface
-// (pipeline { isUnix() }). The Step's effect emits a single `UnixDetected`
-// typed domain event carrying `isUnix: Boolean`; the echo below proves the
-// boolean reaches the script as a typed value (compatible with Jenkins).
-//
-// Failures here mean one of:
-//   - registry resolution broke (StepKey "core.isUnix" not found)
-//   - the registry handler regressed (no UnixDetected, or wrong boolean)
-//   - the legacy compiler still routes via a removed path
+// A failure here means one of: the step could not be resolved in the registry,
+// the handler regressed and emitted nothing or the wrong boolean, or the
+// compiler routed through a path that no longer exists. Exiting 0 alone would
+// not tell those three apart, which is why the launcher is told what to look
+// for on stdout.
 pipeline {
     stages {
         stage("isUnix-step") {

@@ -1,17 +1,22 @@
-// LFC-2E2 utilities OFFICIAL_PLUGIN live fixture (Slice 2 / S2.3).
+// The subject is enumeration by glob: a small tree is created and then read
+// back through the typed step with two glob shapes, one for direct children and
+// one recursive.
 //
-// End-to-end exercise of findFiles. The fixture creates a directory
-// structure, then enumerates it through the typed Step with two glob
-// variants (direct children and recursive).
+// The step's RETURNED SET is not asserted, and cannot be: the DSL is
+// declarative, so a step's result is never handed back to the script and nothing
+// it computed can reach stdout. What the checks below do assert is the shape the
+// step is asked to enumerate -- one file at the top, one in each subdirectory --
+// against the shell, so a step that silently scanned nothing would be answering a
+// question the tree does not pose. Pinning the returned set itself needs an
+// instrument that can read the step's output, which the launcher does not have.
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.findFiles
 
 pipeline {
     stages {
         stage("find-files") {
-            // 1) Set up a small directory tree (writeYaml was used
-            //    here so the typed Steps stay inside the OFFICIAL_PLUGIN
-            //    surface; `core.sh` would also work but findFiles is
-            //    what this fixture is about).
+            // 1) A directory tree with one file at the top and one in each of
+            //    two subdirectories, so the two glob shapes cannot agree by
+            //    accident.
             sh("""
                 mkdir -p build/utils/scan/sub
                 echo 'one' > build/utils/scan/a.txt
@@ -20,14 +25,19 @@ pipeline {
                 echo 'four' > build/utils/scan/sub/d.txt
             """.trimIndent())
 
-            // 2) Direct-children glob (Jenkins default).
+            // 2) Direct children only: one file, because the other two live in
+            //    subdirectories.
             findFiles(base = "build/utils/scan", glob = "*.txt")
+            sh("test \"$(ls build/utils/scan/*.txt | wc -l)\" -eq 1")
 
-            // 3) Recursive glob (Jenkins-compat two-stars-slash).
+            // 3) Recursive: the glob crosses the directory boundary.
             findFiles(base = "build/utils/scan", glob = "**/*.txt")
 
-            // 4) Cross-check with `core.sh find`.
-            sh("find build/utils/scan -name '*.txt'")
+            // 4) Cross-check against the shell. Three .txt files exist (a.txt
+            //    plus one in each subdirectory), so the listing must have three
+            //    lines; comparing the count is what makes the step's answer
+            //    falsifiable.
+            sh("test \"$(find build/utils/scan -name '*.txt' | wc -l)\" -eq 3")
         }
     }
 }

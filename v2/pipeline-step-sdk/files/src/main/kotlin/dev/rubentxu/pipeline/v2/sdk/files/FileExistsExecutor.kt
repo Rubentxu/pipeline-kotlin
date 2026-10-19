@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.files
 
+import dev.rubentxu.pipeline.v2.domain.workspace.PathResolution
 import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import java.nio.file.Files
 import java.nio.file.Path
@@ -22,8 +23,12 @@ data class FileExistsResult(
  *
  * - Returns `Boolean` to caller (no event emission per spec)
  * - `Files.exists(path)` is the oracle
- * - Path outside workspace → false
- * - .v2 reserved directory → false
+ * - Path outside workspace → false, INCLUDING a path that only leaves the
+ *   workspace through a symlink: `normalize()` does not dereference links, so
+ *   `<workspace>/link/passwd` starts with the workspace while `link` may point
+ *   anywhere. The check is anchored on the real path.
+ * - .v2 reserved directory → false, anchored on the real path too, so a link
+ *   pointing at `.v2` cannot probe the reserved area under another name
  *
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
  */
@@ -42,19 +47,23 @@ class FileExistsExecutor(
      */
     fun execute(stageName: String, stageIndex: Int, stepIndex: Int, spec: StepSpec.FileExists): FileExistsResult {
         val workspace = workspaceResolver(stageName, stageIndex)
-        val targetPath = workspace.resolve(spec.file).normalize()
-
-        // Path safety: outside workspace → false
-        if (!targetPath.startsWith(workspace)) {
-            return FileExistsResult(targetPath, false)
+        // Two paths, deliberately not one. `declaredPath` is what the caller wrote and is what
+        // FileExistsResult.path reports, because that field is an observable, serialized output.
+        // `realPath` is where the filesystem is actually consulted, and it is what both guards are
+        // anchored to — a lexical `startsWith` passes `<workspace>/link/anything` for any link.
+        val declaredPath = workspace.resolve(spec.file).normalize()
+        val realWorkspace = WorkspaceAnchoring.realWorkspace(workspace)
+        val realPath = when (val resolution = WorkspaceAnchoring.authorize(workspace, declaredPath)) {
+            is PathResolution.Resolved -> resolution.path
+            is PathResolution.Rejected -> return FileExistsResult(declaredPath, false)
         }
 
-        // Reserved .v2 directory → false
-        if (targetPath.startsWith(workspace.resolve(".v2"))) {
-            return FileExistsResult(targetPath, false)
+        // Reserved .v2 directory → false, on real paths.
+        if (realPath.startsWith(realWorkspace.resolve(".v2"))) {
+            return FileExistsResult(declaredPath, false)
         }
 
-        val exists = Files.exists(targetPath)
-        return FileExistsResult(targetPath, exists)
+        val exists = Files.exists(realPath)
+        return FileExistsResult(declaredPath, exists)
     }
 }

@@ -712,6 +712,48 @@ manda para valorar riesgo.
 
 **El orden de ataque se rehace cuando la medición exista, no antes.**
 
+#### 2.2.0 El censo de consumidores de los seis: uno de los seis no tiene a quién servir
+
+La tabla de arriba pregunta «¿tiene tests?». No pregunta «¿tiene **consumidor**?», y
+son preguntas distintas: una segunda autoridad puede tener tests y seguir sin lector.
+Para los seis módulos de la tabla, el censo de consumidores es el que ordena el
+ataque, y aquí está el que se pudo verificar entero.
+
+**Instrumento, tres comprobaciones sobre ficheros versionados de cualquier tipo:**
+(1) ¿el módulo está en el `include(` de `settings.gradle.kts`? (2) ¿algún
+`build.gradle.kts` —propio o ajeno— contiene `project(":pipeline-runtime")`?
+(3) ¿algún módulo fuera de él importa el paquete?
+
+**Dos fallos del instrumento, porque sin ellos el resultado se lee al revés:**
+
+- Un `git grep` con **pathspec de comodín** (`'v2/*/src/main/kotlin'`) devuelve
+  **NADA**, no cero. Leído como «cero consumidores» produce exactamente la
+  conclusión que uno quiere oír. Hubo que repetirlo sin pathspec.
+- El paquete raíz `dev.rubentxu.pipeline.v2.runtime` **no identifica el módulo**:
+  `:pipeline-runtime-api` —que sí está publicado, en las tres listas de
+  `v2/build.gradle.kts:349,413,436` y en el BOM— comparte ese mismo raíz. Sólo un
+  censo **por símbolo** separa uno de otro.
+
+**Resultado para `:pipeline-runtime`: 4 ficheros, 1.598 LOC, 0 tests y 0
+consumidores.** Las tres clases que declara —`RuntimeRecoverPortStoreAdapter`,
+`RuntimeControlPortStoreAdapter` y `RuntimeIntrospectionPortStoreAdapter`— sólo
+aparecen en su propio fichero, en su `build.gradle.kts` y en su
+`detekt-baseline-main.xml`. La única referencia desde fuera del módulo está en
+`pipeline-runtime-api/.../inspect/RunStructure.kt:195` y es una frase de KDoc que
+lo dice sin rodeos: **«Latent, not shipped.»** En el árbol versionado ningún ADR
+lo autoriza; el único `.md` que lo nombra es este `ROADMAP.md`.
+
+**Decisión: no se borra en este ciclo, y el motivo es de ciclo de vida, no de temida.**
+Borrarlo es una ruptura de la superficie que AGENTS.md §1 reserva a una ruptura
+versionada autorizada, y no existe tal autorización en el árbol. Lo que sí se
+registra es el hecho medido, para que la próxima decisión tenga la evidencia delante
+en vez de un módulo sin tests que parece vivo: **antes de elegir qué testar en esta
+tabla, hay que elegir qué merece existir.**
+
+**Lo que este censo NO cubre:** los otros cinco módulos de la tabla. Que un agente
+les haya entregados un análisis no lo convierte en medición; aquí no se publica su
+tabla porque no ha pasado por el mismo instrumento.
+
 #### 2.2.1 `BlockStepFlattener` borrado: la segunda autoridad de una regla viva
 
 Un agente midió los cuatro módulos de scripting y señaló a `BlockStepFlattener`

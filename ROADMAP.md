@@ -18,48 +18,60 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `05902e5c` | `git rev-parse HEAD` |
+| SHA | `18d3148a` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | `v2/settings.gradle.kts` |
-| Módulos con test unitario permanente | **9** | `src/test/kotlin` con al menos un `*Test.kt` |
-| Módulos sin test | 18 | ídem |
-| Tests unitarios ejecutados | **346** (37 informes XML, 0 fallidos, 0 saltados) | etapa 2 del gate |
+| Módulos con test unitario permanente | **10** | `src/test/kotlin` con al menos un `*Test.kt` |
+| Módulos sin test | 17 | ídem |
+| Tests unitarios ejecutados | **400** (41 informes XML, 0 fallidos, 0 saltados) | etapa 2 del gate |
 | Escenarios E2E | 35 (34 pasan, **1 `NOT_RUN`**) | etapa 3 del gate |
-| `VERIFY_LOC / PRODUCT_LOC` | **4579 / 61404 = 0.075** (límite 2) | etapa 4 del gate |
-| `VERIFY_ALL_WALL_CLOCK` | **peor de tres ensayos = 233 s** (233 / 213 / 210) (límite 900 s) | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_LOC / PRODUCT_LOC` | **5044 / 61420 = 0.082** (límite 2) | etapa 4 del gate |
+| `VERIFY_ALL_WALL_CLOCK` | **peor de tres ensayos = 242 s** (242 / 211 / 213) (límite 900 s) | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 Los ratios por módulo de §2.2 a) son mediciones independientes del gate, hechas
 sobre el mismo árbol con el mismo criterio de recuento (líneas efectivas,
 sin blancos, comentarios ni generados). El gate los agrega, no los contradice.
 
-Los tres ensayos de reloj se ejecutaron sobre el **mismo** SHA `05902e5c`. El
-primero (233 s) es el peor y es el que cuenta: sigue a la corrección de un
-commit, con cachés de Gradle frías. Los otros dos (213 s, 210 s) son el régimen
+Los tres ensayos de reloj se ejecutaron sobre el **mismo** SHA `18d3148a`. El
+primero (242 s) es el peor y es el que cuenta: sigue a la corrección de un
+commit, con cachés de Gradle frías. Los otros dos (211 s, 213 s) son el régimen
 estable. `AGENTS.md` §4 exige el peor de tres, así que el número que se declara
-es 233 s y no la media.
+es 242 s y no la media. Cablear `detektTest` a la etapa 1 no se notó: cuesta
+3 s y el gate bajó de 240 s a 242 s en el peor ensayo.
 
-### Los 9 módulos con test
+### Los 10 módulos con test
 
 `pipeline-domain`, `pipeline-events-store`, `pipeline-step-sdk/runtime`,
-`pipeline-credentials-api`, `pipeline-binding-factory`, `pipeline-runtime-api`,
-`pipeline-credentials-local`, `pipeline-output`, `pipeline-output-store`.
+`pipeline-step-sdk/http`, `pipeline-credentials-api`, `pipeline-binding-factory`,
+`pipeline-runtime-api`, `pipeline-credentials-local`, `pipeline-output`,
+`pipeline-output-store`.
 
-Los nueve módulos de la lista, con sus clases y tests medidos. El recuento de
-XML es **recursivo**: `pipeline-step-sdk/runtime` es un módulo anidado, y un
-`glob` de un nivel lo cuenta como ausente — que es exactamente lo que pasó con
-la primera medición de este ciclo (332 tests leídos como 307).
+Los diez módulos de la lista, con sus ficheros, clases y tests medidos. El
+recuento de XML es **recursivo**: `pipeline-step-sdk/runtime` y
+`pipeline-step-sdk/http` son módulos anidados, y un `glob` de un nivel los cuenta
+como ausentes — que es exactamente lo que pasó con la primera medición de este
+ciclo (332 tests leídos como 307).
 
-| Módulo | Clases `*Test.kt` | Tests | Saltados | Fallidos |
-|---|---|---|---|---|
-| `pipeline-credentials-local` | 8 | 92 | 0 | 0 |
-| `pipeline-output` | 5 | 74 | 0 | 0 |
-| `pipeline-domain` | 5 | 64 | 0 | 0 |
-| `pipeline-events-store` | 3 | 31 | 0 | 0 |
-| `pipeline-output-store` | 2 | 26 | 0 | 0 |
-| `pipeline-step-sdk/runtime` | 2 | 25 | 0 | 0 |
-| `pipeline-runtime-api` | 1 | 21 | 0 | 0 |
-| `pipeline-binding-factory` | 1 | 7 | 0 | 0 |
-| `pipeline-credentials-api` | 1 | 6 | 0 | 0 |
+**Ficheros y clases no son lo mismo, y por eso van en dos columnas.** Gradle
+emite un informe XML por clase JUnit, y una clase `@Nested` cuenta como clase
+propia: `pipeline-domain` tiene 6 ficheros y 15 informes. Un recuento que
+confundiera ambos leería 9 clases inexistentes aquí — es el mismo residuo que ya
+se había confundido una vez en este ciclo, y se squashó al verificar en disco en
+vez de reportarlo.
+
+| Módulo | Ficheros `*Test.kt` | Clases JUnit | Tests | Saltados | Fallidos |
+|---|---|---|---|---|---|
+| `pipeline-credentials-local` | 8 | 8 | 92 | 0 | 0 |
+| `pipeline-domain` | 6 | 15 | 82 | 0 | 0 |
+| `pipeline-output` | 5 | 5 | 74 | 0 | 0 |
+| `pipeline-output-store` | 3 | 3 | 36 | 0 | 0 |
+| `pipeline-events-store` | 3 | 3 | 31 | 0 | 0 |
+| `pipeline-step-sdk/http` | 2 | 2 | 26 | 0 | 0 |
+| `pipeline-step-sdk/runtime` | 2 | 2 | 25 | 0 | 0 |
+| `pipeline-runtime-api` | 1 | 1 | 21 | 0 | 0 |
+| `pipeline-binding-factory` | 1 | 1 | 7 | 0 | 0 |
+| `pipeline-credentials-api` | 1 | 1 | 6 | 0 | 0 |
+| **total** | **32** | **41** | **400** | **0** | **0** |
 
 ### El `NOT_RUN` que no es verde
 
@@ -156,6 +168,77 @@ el arreglo; los demás siguen verdes).
   declarado pasa a ser cierto en vez de reescribir el contrato para que dijera lo
   que el código hacía.
 
+- **Un `IOException` podía inyectar una fila en la salida de `inspect`.**
+  `MainInspectCli` construía `OutputRefusal.StorageError(e.message ?:
+  e.javaClass.simpleName)` sin acotar, y su render lo imprime como
+  `<unreadable: ...>` en **una** línea. Los mensajes de excepción no son
+  nuestros: un path del Output Plane con un salto de línea es legal en Linux
+  (los stream id llegan al CLI como argumentos), así que el mensaje podía
+  añadir una línea con el mismo formato que una fila real. Sus dos hermanos ya
+  se negaban a hacerlo; ese sitio era el que no.
+  La regla tiene ahora nombre y sitio: `DiagnosticText.from` en
+  `:pipeline-output-store`, que ya tenía a los dos consumidores vivos.
+  **La primera versión la puso en `:pipeline-output` y el gate la rechazó**:
+  `apiCheck` falló porque `:pipeline-output` es el SDK publicado del Output
+  Plane y arrastra un gate de compatibilidad binaria, y un helper público de
+  texto no es una ampliación que esa superficie deba absorber por un consumidor
+  interno. Correr `apiDump` para aceptarlo habría sido **autorizarme a mí
+  mismo** el cambio de ABI, que es justo lo que `AGENTS.md` §1 protege.
+  `:pipeline-output-store` aplica `maven-publish` pero no declara `publishing`,
+  y el BOM del SDK lo excluye por nombre: no tiene esa superficie.
+  `:pipeline-application` usa `implementation` sobre él, así que ya lo veía.
+  `:pipeline-events-store` conserva su copia, y el motivo queda escrito en vez
+  de quedar por redescubrir: `:pipeline-output` **no** depende de
+  `:pipeline-events` ni de `:pipeline-domain`, y su propio build file dice que
+  la independencia del output plane respecto del event plane es el objeto de
+  ADR-M1 D3. Añadir esa dependencia para borrar cuatro líneas duplicadas
+  invertiría la frontera; primero escribí esa refactorización, luego la
+  revertí al leer el build file.
+  **Escribir el test primero encontró un agujero en la regla que estaba
+  consolidando**: sustituía `\n` pero no `\r`, y un CR suelto devuelve el
+  cursor a la columna 0, de modo que la escritura siguiente **reescribe** una
+  línea ya emitida — tan eficaz como un salto de línea en un consumidor que
+  no dobla CR en CRLF. El `shortCause` heredado tenía el mismo hueco. 10 tests,
+  mutation-verificados: revertir solo la sustitución de CR convierte 10/10 en
+  1 fallo. `:pipeline-application` no tiene tests permanentes y no puede crecer
+  aquí —el sitio corregido es código de CLI, que `AGENTS.md` §2 prohíbe
+  probar—, así que esa mitad la cubren los tests de la autoridad compartida en
+  lugar de fingir cobertura.
+- **`StatusRange.parse` no era total, y su propio KDoc lo promete.**
+  Las dos ramas de su `when` no se decían lo mismo: la rama `Single` se
+  comprobaba en `parse` y devolvía `null`; la rama `Span` solo comprobaba el
+  orden y **construía** `StatusRange.Span`, cuyo `init` guarda con `require`.
+  Así que `parse("50:60")` escapaba un `IllegalArgumentException` por una
+  función cuya razón de existir es que un rango mal escrito sea un error de
+  *declaración*, no una sorpresa que llega después de que la petición ya salió
+  al mundo. La asimetría era el indicio: una regla validada de dos maneras, una
+  de las cuales lanza. 15 tests; al revertir solo la pre-validación de banda
+  caen 5, y los 10 que no tocan esa rama siguen verdes.
+- **Un puerto explícito inválido se sustituía por el puerto por defecto.**
+  `egressDestinationOf` reducía una URL al destino por el que se pregunta al
+  gate, y esa reducción **no distinguía un puerto ausente de un puerto presente
+  que no puede existir**: `URI` reporta el primero como `-1` y el segundo como
+  sí mismo, así que la comprobación de dos estados `uri.port in 1..65535`
+  mandaba ambos por la misma rama. `https://api.example.test:0` se reducía a
+  `https://api.example.test:443`, y `:99999` y `:65536` igual. La ejecución
+  abría un socket hacia un destino que nadie escribió, y —peor— **preguntaba
+  al gate por ese**. Una allowlist escrita para `:443` gobierna una petición
+  que el autor apuntó a otro sitio: es la dirección del error que convierte un
+  permiso en una puerta abierta. Medido antes de arreglar (`URI` devuelve 0,
+  99999 y 65536, y `-1` solo cuando no hay puerto); 11 tests escritos antes del
+  arreglo y confirmados rojos por él. Un censo del patrón en todo `v2` no
+  encontró otra copia.
+- **`detektTest` estaba declarado en todos los módulos y no se ejecutaba en
+  ninguno.** `check` corre `detekt`, que sí tiene source set, y no
+  `detektTest`, que también. 13 ficheros de test repartidos en 7 módulos
+  llevaban tiempo sin salto de línea final porque **nada estaba en posición de
+  decirlo**. El recuento de 78 hallazgos que este roadmap llevaba anotado
+  contra esa tarea venía de un baseline que ningún productor escribe: la tarea
+  está **verde de verdad** en los 10 módulos con test, y cuesta 3 s. Cablearla a
+  la etapa 1 no engorda el gate —ejecuta uno que el build ya declaraba, sobre
+  las fuentes que esa etapa ya compila— y el riesgo que queda es que volvería
+  a estar ciego al primer fichero que se añadiera sin ese salto.
+
 ### 2.2 Lo que queda abierto, por valor operativo
 
 **a) 18 módulos sin test unitario permanente.** No es un objetivo de paridad.
@@ -166,7 +249,7 @@ el arreglo; los demás siguen verdes).
 | 1 | `pipeline-credentials-local` | Red de seguridad de materialización y borrado de secretos. Ninguna prueba que observe fugas de credenciales puede eliminarse sin cobertura equivalente. | **Hecho** — 92 tests, 8 clases. Encontró 2 defectos materiales de producción (`AeadCipher` IV, `CredentialPartReader` metadata). |
 | 2 | `pipeline-output` | Los *value types* que **emiten** lo que el Output Plane promete. Un rango sin guarda produce la sustitución silenciosa del punto 2.1. | **Hecho** — 74 tests, 5 clases. Encontró 1 defecto material (`StreamingUtf8Decoder`). |
 | 3 | `pipeline-output-store` | Continuación del Output Plane por offset comprometido. Un segmento mal dirigido duplica o pierde bytes ya emitidos. | **Hecho** — 26 tests, 2 clases. Encontró 2 defectos materiales (`parseSealed` sin guarda de rango, el `coerceAtLeast` que sustituía bytes). |
-| 4 | `pipeline-step-sdk/http` | Red, reintentos, códigos no-2xx. Adaptador con pocas reglas puras extraíbles. | Pendiente |
+| 4 | `pipeline-step-sdk/http` | Red, reintentos, códigos no-2xx. Adaptador con pocas reglas puras extraíbles. | **Hecho** — 26 tests, 2 clases. Encontró 2 defectos materiales (`StatusRange.parse` no total, el puerto de egreso explícito inválido sustituido por el default). La mitad de dominio —la allowlist— se añadió en `pipeline-domain`, donde vive el tipo. |
 | 5 | `pipeline-runtime-api` | `RuntimeRecoverDecision` es un decider puro y público: la misma clase que `RunExecutionLease`, coste de test bajo y valor alto. | **Hecho** — `RuntimeRecoverDecisionTest`. |
 | — | `pipeline-events` | Su único candidato (`EventViewProjection`) no tiene consumidor: ver 2.2 b. Sin consumidor, un test es coste sin destinatario. | Bloqueado por decisión de producto |
 
@@ -174,13 +257,14 @@ Los 18 restantes son adaptadores finos o módulos sin clases
 (`pipeline-sdk-bom`). No se les asigna test por asignar.
 
 Ratios por módulo, medidos con `scripts/check-budgets.py --json` sobre este mismo
-árbol (VERIFY / PRODUCT), los nueve con unit tests:
+árbol (VERIFY / PRODUCT), los diez con unit tests:
 `pipeline-output` 576/714 = **0.807**, `pipeline-credentials-local` 1103/1750 =
 0.630, `pipeline-binding-factory` 123/289 = 0.426, `pipeline-runtime-api`
-239/574 = 0.416, `pipeline-step-sdk:runtime` 269/2092 = 0.129, `pipeline-domain`
-587/6270 = 0.094, `pipeline-output-store` 154/1775 = 0.087,
-`pipeline-credentials-api` 62/751 = 0.083, `pipeline-events-store` 288/4534 =
-0.064. El más alto es `pipeline-output` con 0.807, y aun así queda a **2.5 veces**
+239/574 = 0.416, `pipeline-step-sdk:http` 223/1499 = 0.149,
+`pipeline-step-sdk:runtime` 269/2092 = 0.129, `pipeline-output-store` 228/1779 =
+0.128, `pipeline-domain` 746/6270 = 0.119, `pipeline-credentials-api` 62/751 =
+0.083, `pipeline-events-store` 288/4534 = 0.064. Global **5044/61420 = 0.082**.
+El más alto es `pipeline-output` con 0.807, y aun así queda a **2.5 veces**
 del límite 2: el presupuesto no es lo que frena la cobertura, es la elección de
 qué riesgo merece un test. Nótese que los dos módulos del Output Plane son los
 dos ratios más altos, lo que confirma que «valor operativo» y «densidad de tests»
@@ -242,22 +326,49 @@ retirar un caso de un ADT cerrado es una ruptura de ABI, que `AGENTS.md` §1
 prohíbe sin autorización explícita de una ruptura versionada. Es, junto con 2.2 b,
 lo único que queda bloqueado por una decisión de producto y no por trabajo.
 
+**i) 92 campos de texto libre, 3 clases acotadas.** El motivo de 2.1
+—`DiagnosticText`— no es una preference: sin él, el texto que un refusal lleva
+termina en un sink por líneas. Midiendo el denominador: **92** declaraciones
+`val cause|reason|details: String` en `src/main` de todo el árbol, y solo **3
+clases** las acotan y prohíben CR/LF a la vez — `OutputRefusal.Corrupt.reason`,
+`PruneRefusal.StorageError.cause` y `OutputPin.reason`/`holder` (dos campos).
+`RecoverRefusal.StorageError`, `IntrospectionRefusal.StorageError`,
+`IntrospectionRefusal.InconsistentLeaseState` y `OutputRefusal.StorageError`
+prometen «short» o «one-line diagnostic» **en su KDoc** y no lo aplican.
+**No se barren las 92 en este ciclo**, y el motivo es concreto: añadir un
+`require` a un `data class` de un ADT publicado convierte una construcción que
+hoy es válida en un `IllegalArgumentException` en tiempo de ejecución. Eso es un
+cambio de comportamiento de V2, y `AGENTS.md` §1 lo prohíbe sin una ruptura
+versionada autorizada. Lo que sí se hizo es cerrar el único camino con salida
+por líneas demostrado —el de `inspect`— y nombrar la regla para que el siguiente
+sitio la encuentre. Nota de método: el primer recuento dio **2** clases porque
+busqué las guardas con una ventana de 6 líneas alrededor del campo, y
+`OutputPin` las tiene 15 líneas más abajo. Un instrumento más estrecho que su
+sujeto reporta un número con seguridad y con error.
+
 ### 2.3 Cierre de ciclo
 
 - `PRODUCT-GATE` (certificador externo, RC publicada) = **`BLOCKED_EXTERNAL`**.
   No hay CI remoto en este repositorio. La ausencia de CI **nunca** se declara
   `PASS`.
 - **Presupuesto de tiempo: CERRADO.** Tres ensayos de `scripts/verify-all.sh`
-  sobre el mismo SHA `05902e5c`, con cachés de dependencias locales ya pobladas
-  y sin red: **233 s, 213 s, 210 s**. El peor de los tres es **233 s** frente al
+  sobre el mismo SHA `18d3148a`, con cachés de dependencias locales ya pobladas
+  y sin red: **242 s, 211 s, 213 s**. El peor de los tres es **242 s** frente al
   límite de 900 s, que es lo que `AGENTS.md` §4 exige para declarar conformidad
   estable. El primero es el peor porque sigue a la corrección de un commit, con
-  cachés de Gradle frías; los otros dos (213 s, 210 s) son el régimen estable. Los
-  tres imprimen `executed=346 failed=0 skipped=0` leído del XML de JUnit, no del
-  código de salida. La cifra anterior de este bloque (209/212/211 s sobre
-  `e7d18e14`) quedó obsoleta en cuanto este ciclo añadió 100 tests y 6 clases.
+  cachés de Gradle frías; los otros dos (211 s, 213 s) son el régimen estable. Los
+  tres imprimen `executed=400 failed=0 skipped=0` leído del XML de JUnit, no del
+  código de salida. La cifra anterior de este bloque (233/213/210 s sobre
+  `05902e5c`) quedó obsoleta en cuanto este ciclo añadió 54 tests, cambió 13
+  ficheros de test y metió `detektTest` en la etapa 1. El peor ensayo subió
+  **+9 s** (233 → 242) para todo eso, y `detektTest` por sí solo mide 3 s sobre
+  26 subproyectos: la holgura sigue siendo de cuatro quintas partes del
+  presupuesto. La cifra no se redondea hacia abajo porque una holgura medida en
+  contra es una hipótesis, y este es un bloque de cierre.
 - **Presupuesto de LOC: CERRADO** con dos órdenes de magnitud de holgura
-  (`0.075` sobre un límite de `2`; 4579 verify / 61404 product).
+  (`0.082` sobre un límite de `2`; 5044 verify / 61420 product). El alza frente
+  a la medición anterior (+465 verify) es exactamente este ciclo: 44 tests
+  nuevos y sus 21 líneas de arreglo.
 
 ---
 

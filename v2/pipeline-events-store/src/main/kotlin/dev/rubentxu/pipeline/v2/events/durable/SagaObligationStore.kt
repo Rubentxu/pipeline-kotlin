@@ -69,6 +69,49 @@ sealed interface SagaArmPersistence {
 }
 
 /**
+ * The durable write that moves ONE obligation to a new state.
+ *
+ * ## Why a write and not a whole row
+ *
+ * The row is the store's business: it carries the run, the plan and the timestamps of the
+ * moment the promise was made, and none of that changes when the promise is discharged. What
+ * changes is the STATE and the receipt that belongs with it, so the write carries exactly
+ * those two facts plus the epoch that fences it.
+ */
+data class SagaObligationUpdate(
+    val runId: String,
+    val key: dev.rubentxu.pipeline.v2.domain.saga.CompensationKey,
+    val status: CompensationObligationStatus,
+    val receiptRef: EffectReceiptRef?,
+    val updatedAtMs: Long,
+    val leaseEpoch: Long,
+)
+
+/**
+ * What an [SagaObligationStore.updateOutcome] call actually did.
+ *
+ * As with the arm, the store reports the STORAGE outcome and leaves the judgement to the
+ * domain: whether the move is legal is decided by
+ * [dev.rubentxu.pipeline.v2.domain.saga.CompensationLifecycle], not by a JDBC adapter.
+ */
+sealed interface SagaUpdatePersistence {
+
+    /** The row now holds the new state. */
+    data class Updated(val row: SagaObligationRow) : SagaUpdatePersistence
+
+    /** No row is stored under that key, so nothing was written. */
+    data object NotFound : SagaUpdatePersistence
+
+    /**
+     * Nothing was written because a newer epoch already owns the run.
+     *
+     * [currentEpoch] is the run's high-water mark at the moment of refusal, so the caller can
+     * report WHICH epoch superseded it rather than only that it was superseded.
+     */
+    data class Fenced(val currentEpoch: Long) : SagaUpdatePersistence
+}
+
+/**
  * The durable store of Saga compensation obligations.
  *
  * ## Same authority, no second coordination
@@ -89,6 +132,16 @@ interface SagaObligationStore {
      * has lost the run to a takeover.
      */
     fun arm(row: SagaObligationRow): SagaArmPersistence
+
+    /**
+     * Moves the obligation under [update]'s key to the state [update] carries.
+     *
+     * The call is FENCED exactly like the arm: a writer that lost the run to a takeover writes
+     * nothing. It does NOT decide whether the move is legal — that is the domain's rule — and
+     * it does not create a row that is not there: a key with no promise behind it stays
+     * unpromised.
+     */
+    fun updateOutcome(update: SagaObligationUpdate): SagaUpdatePersistence
 
     /** The row stored under [runId]/[key], or `null` when there is none. */
     fun find(

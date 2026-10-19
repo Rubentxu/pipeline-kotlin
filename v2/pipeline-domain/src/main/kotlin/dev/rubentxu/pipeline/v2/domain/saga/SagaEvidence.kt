@@ -17,6 +17,24 @@ enum class UncertaintyReason {
 
     /** The provider answered, and the answer does not settle whether the effect happened. */
     PROVIDER_INDETERMINATE,
+
+    /**
+     * The call was CANCELLED before an answer came back.
+     *
+     * It may still have reached the provider: a cancellation that is not acknowledged is the
+     * same uncertainty as a lost acknowledgement, and it is named apart from it because the
+     * remediation differs — the run was stopped on purpose, and the effect may have been
+     * applied before the stop arrived.
+     */
+    CALL_CANCELLED,
+
+    /**
+     * The call TIMED OUT before an answer came back.
+     *
+     * The provider may still be working on it. A timeout is not a failure of the effect, and a
+     * Saga that treats it as one skips a compensation it owes.
+     */
+    CALL_TIMED_OUT,
 }
 
 /**
@@ -89,6 +107,22 @@ enum class InterventionReason {
 
     /** The obligation was armed under a plan that does not match the current one. */
     PLAN_DIVERGENCE,
+
+    /**
+     * A compensation ran and FAILED.
+     *
+     * The compensations that depend on it are not attempted: a dependent compensation against
+     * a state that was not restored can destroy more than the failure it was recovering from.
+     */
+    COMPENSATION_FAILED,
+
+    /**
+     * A compensation ran and its outcome is UNKNOWN.
+     *
+     * The same rule as a failed compensation, with one more reason to stop: the effect may
+     * have happened, so running the compensation again would double it.
+     */
+    COMPENSATION_UNCERTAIN,
 }
 
 /**

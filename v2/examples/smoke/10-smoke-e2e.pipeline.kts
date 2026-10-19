@@ -2,11 +2,20 @@
 // LF-0208 note: under the Single Runtime Spine each stage gets its own
 // workspace, so archiveArtifacts lives in the SAME stage as the build step
 // (Jenkins-faithful workspace continuity).
+//
+// The fixture repository used to be created at /tmp/smoke-repo and cloned from
+// that absolute path. Two rules were broken at once: AGENTS.md section 3 gives
+// every example a private temporary directory and forbids shared marker paths,
+// so two concurrent runs fought over one directory; and the `rm -rf` aimed at a
+// shared location would have deleted whatever else was sitting there. Both are
+// gone with a relative path -- `repo` resolves inside this stage's own
+// workspace, so the clone exercises the same git operation without leaving the
+// authorised root.
 pipeline {
     stages {
         stage("checkout") {
-            sh("cd /tmp && rm -rf smoke-repo && git init -q smoke-repo && cd smoke-repo && echo smoke > README.md && git add . && git -c user.email=s@l -c user.name=s commit -qm init")
-            sh("git clone /tmp/smoke-repo .")
+            sh("rm -rf repo && mkdir -p repo && cd repo && git init -q . && echo smoke > README.md && git add . && git -c user.email=s@l -c user.name=s commit -qm init")
+            sh("git clone repo checkout")
         }
         stage("build") {
             sh("mkdir -p build/libs && echo jar > build/libs/smoke.jar")

@@ -36,8 +36,15 @@ Los tres ensayos de reloj se ejecutaron sobre el **mismo** SHA `18d3148a`. El
 primero (242 s) es el peor y es el que cuenta: sigue a la corrección de un
 commit, con cachés de Gradle frías. Los otros dos (211 s, 213 s) son el régimen
 estable. `AGENTS.md` §4 exige el peor de tres, así que el número que se declara
-es 242 s y no la media. Cablear `detektTest` a la etapa 1 no se notó: cuesta
-3 s y el gate bajó de 240 s a 242 s en el peor ensayo.
+es 242 s y no la media. Cablear `detektTest` a la etapa 1 costó 3 s medidos
+sobre 26 subproyectos; el peor ensayo subió +9 s respecto al ciclo anterior
+(233 → 242 s) contando además 54 tests nuevos y 13 ficheros reescritos.
+
+El SHA medido es `18d3148a`, y `HEAD` ha avanzado desde entonces por dos commits
+que no tocan código de producto: este documento y el propio `verify-all.sh`. La
+tabla dice el SHA en el que se **midió**, no el SHA actual; un gate que se
+atribuyera a un commit que no lo ejecutó sería la misma clase de mentira que
+esta tabla evita al declarar la procedencia.
 
 ### Los 10 módulos con test
 
@@ -241,7 +248,7 @@ el arreglo; los demás siguen verdes).
 
 ### 2.2 Lo que queda abierto, por valor operativo
 
-**a) 18 módulos sin test unitario permanente.** No es un objetivo de paridad.
+**a) 17 módulos sin test unitario permanente.** No es un objetivo de paridad.
 `AGENTS.md` §2 manda por riesgo, no por cuota. El orden de ataque es:
 
 | Prioridad | Módulo | Riesgo que justifica el test | Estado |
@@ -253,8 +260,9 @@ el arreglo; los demás siguen verdes).
 | 5 | `pipeline-runtime-api` | `RuntimeRecoverDecision` es un decider puro y público: la misma clase que `RunExecutionLease`, coste de test bajo y valor alto. | **Hecho** — `RuntimeRecoverDecisionTest`. |
 | — | `pipeline-events` | Su único candidato (`EventViewProjection`) no tiene consumidor: ver 2.2 b. Sin consumidor, un test es coste sin destinatario. | Bloqueado por decisión de producto |
 
-Los 18 restantes son adaptadores finos o módulos sin clases
-(`pipeline-sdk-bom`). No se les asigna test por asignar.
+Los 17 restantes son adaptadores finos o módulos sin clases
+(`pipeline-sdk-bom`). No se les asigna test por asignar. El denominador es
+`settings.gradle.kts`: 27 proyectos declarados, 10 con `src/test`, 17 sin él.
 
 Ratios por módulo, medidos con `scripts/check-budgets.py --json` sobre este mismo
 árbol (VERIFY / PRODUCT), los diez con unit tests:
@@ -301,13 +309,19 @@ destruye historia sin fusionar. **No se tocan sin confirmación explícita.**
 prohíbe bajo `docs/`. No está en Git, así que borrarlo es **irrecuperable**:
 requiere confirmación explícita antes de hacerlo.
 
-**e) 25 líneas en 17 ficheros que citan `design.md §`.** Routes a documentos
+**e) 26 líneas en 18 ficheros que citan `design.md §`.** Routes a documentos
 borrados por el RESET. Son referencias rotas en KDoc y comentarios, no enlaces
 que alguien pueda seguir. Medido con `git grep -c` y pathspec **recursivo**: la
 primera medición de este bloque usó `v2/*/src/main` y devolvió 0, porque
-`pipeline-step-sdk/runtime` es un módulo anidado. Reparto por módulo:
-`pipeline-domain` 10, `pipeline-events-store` 5, `pipeline-step-sdk/runtime` 1,
-`pipeline-scripting-kotlin24` 1; más 1 en este ROADMAP.md.
+`pipeline-step-sdk/runtime` es un módulo anidado. Del total, 25 líneas caen en
+**17 ficheros de código** y una en este ROADMAP.md. Reparto por módulo, en
+líneas: `pipeline-domain` 12, `pipeline-events-store` 11,
+`pipeline-step-sdk/runtime` 1, `pipeline-scripting-kotlin24` 1; en ficheros:
+10, 5, 1, 1. Nota: la primera redacción de este bloque decía «25 líneas en 17
+ficheros» y daba el reparto por módulo **en ficheros** bajo un encabezado que
+prometía líneas, de modo que las dos sumas cerraban a 17 y nadie notó que la
+cifra de líneas era 26. El denominador es lo que hace la contradicción visible:
+cada número necesita el suyo al lado.
 
 **f) `EffectReplayPolicy`**, KDoc que cita una clase de test eliminada.
 

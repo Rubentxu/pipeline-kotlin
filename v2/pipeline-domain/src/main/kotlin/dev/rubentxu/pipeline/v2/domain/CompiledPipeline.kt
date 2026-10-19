@@ -56,9 +56,17 @@ data class EnvironmentSpec(val values: Map<String, String>) {
  * from one that is. It compiled, serialized, and did nothing — the silent drop
  * the Semantic Constitution names as a defect class.
  *
- * @see StageOption for the carrier that replaced it. No production source
- *   constructs this type; `FArchS3TypedOptionCarrierFitnessTest` pins that, so
- *   it cannot quietly return as a producer.
+ * @see StageOption for the carrier that replaced it.
+ *
+ * NOTHING ENFORCES THAT IT STAYS UNUSED. This comment used to say a
+ * `FArchS3TypedOptionCarrierFitnessTest` pinned "no production source
+ * constructs this type"; that file is gone. The guard it described was a
+ * SOURCE-TEXT FITNESS -- it grepped the tree -- which AGENTS.md §2 bans
+ * inside unit tests, so it could not simply be rewritten. What holds the line
+ * today is only the deprecation itself: a construction site would have to name
+ * a deprecated type on purpose. The residual risk is real and small -- a
+ * migration that reintroduces the name/value pair would reintroduce the silent
+ * drop -- and it is recorded here rather than closed.
  */
 @Deprecated(
     message = "OptionSpec is a name/value bag with no type-level statement of which options " +

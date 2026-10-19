@@ -20,20 +20,29 @@ dependencies {
     implementation(project(":pipeline-scripting-api"))
 }
 
-// Unit-test wiring REMOVED (2026-10-18, testing RESET).
+// Unit-test wiring RESTORED (2026-10-19).
 //
-// This module carries no unit tests: it is a workflow-control STEP whose subject is multi-step
-// pipeline execution. Its verification is the executable E2E layer -- `.pipeline.kts` pipelines
-// under `v2/examples/`, driven by `scripts/run-e2e-pipelines.sh` -- and not a JUnit class.
+// The RESET removed it on 2026-10-18 with this reasoning: "This module carries no unit tests:
+// it is a workflow-control STEP whose subject is multi-step pipeline execution. Its
+// verification is the executable E2E layer."
 //
-// The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
-// Left in place they were a SILENT green: a `Test` task whose source set is empty reports
-// success while executing zero classes. Gradle 8.14 exposes no `failOnNoDiscoveredTests`
-// property -- the setting does not exist in this version, so nothing inside the build can
-// turn that green into a failure, and a build file asserting otherwise is describing a flag
-// it cannot compile.
+// That reasoning was correct about `execute()` and wrong about the module. `resolveTargetPath`
+// is pure arithmetic on `java.nio.file.Path` -- no filesystem, no clock, no subprocess -- and it
+// is the confinement guard that decides whether a `dir(...)` scope may leave the workspace. It
+// was therefore sitting untested behind a claim about a different function, and it was wrong:
+// a `target.toString().startsWith(workspaceStr)` guard admitted every sibling directory whose
+// name begins with the workspace root's. See `ResolveTargetPathTest`.
 //
-// What turns it into a failure lives outside Gradle: `scripts/verify-all.sh` enumerates the
-// modules it asks from the filesystem and fails when a module that has a test source produces
-// no JUnit XML. The wiring that could have produced the misleading green is gone from the
-// modules that have no tests, so no module reaches that check in silence.
+// So the premise is inverted rather than restored blindly. These lines exist because a test
+// source does, and `scripts/verify-all.sh` fails the build when a module with a test source
+// produces no JUnit XML. Gradle 8.14 exposes no `failOnNoDiscoveredTests` property -- the
+// setting does not exist in this version -- so the guarantee that makes this wiring safe lives
+// in that script, not here.
+dependencies {
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+}
+
+tasks.test {
+    useJUnitPlatform()
+}

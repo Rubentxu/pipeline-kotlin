@@ -51,8 +51,7 @@ fun interface RuntimeRecoverPortIntrospect {
  *
  * The adapter is a thin composition: it does NOT introduce a new lease, a new
  * fencing scheme, a new journal schema, a new output store, or a new scheduler.
- * Every authority it composes is named with module:file:line in the design's
- * composition table (M2 design §6).
+ * Every authority it composes is named below.
  *
  * The adapter consults the existing [RuntimeIntrospectionPort] to get the typed
  * observation, fetches the journal's terminal row + cursor via the existing

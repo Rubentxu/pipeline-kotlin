@@ -882,7 +882,7 @@ internal class StepDispatchEngine(
 
     /**
      * EM-7/LFC-5.3 — folds a body outcome and the scope cleanup outcome into a single
-     * total StepOutcome per design §73. Cleanup is idempotent and never throws.
+     * total StepOutcome. Cleanup is idempotent and never throws.
      *
      * Total algebra: cleanup Failed over Success, Unstable or Failure always yields a
      * typed operational Failure (INFRASTRUCTURE). Cleaned leaves the body outcome intact.

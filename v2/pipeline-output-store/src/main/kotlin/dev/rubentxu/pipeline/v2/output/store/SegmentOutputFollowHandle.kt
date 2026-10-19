@@ -260,11 +260,8 @@ internal class SegmentOutputFollowHandle(
                 val probe = OutputStreamId("$runId/__follow_probe__/stdout")
                 return queueRefusal(OutputRefusal.UnknownStream(probe))
             }
-            // Known run with no declared streams. Per the design §2.1
-            // ("Open on a run with no declared streams produces the
-            // first event as `FollowState.Unobservable`"), the follow
-            // is unobservable for output and reaches `Completed` after
-            // the state change.
+            // Known run with no declared streams. The follow is unobservable
+            // for output and reaches `Completed` after the state change.
             if (!unobservableEmitted) {
                 unobservableEmitted = true
                 pending.add(

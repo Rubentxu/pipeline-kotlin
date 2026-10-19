@@ -33,7 +33,7 @@ package dev.rubentxu.pipeline.v2.runtime.inspect
  * ## Read-only by construction
  *
  * Every method on this port MUST NOT write to durable state. The composition
- * rule (M2 design §3.4, M6 design §C) limits them to SELECTs, tail-state
+ * rule limits them to SELECTs, tail-state
  * queries, and `load`. A consumer that wants recovery invokes
  * `RuntimeRecoverPort.recover`, not `inspectOperation`.
  *
@@ -116,7 +116,7 @@ interface RuntimeIntrospectionPort {
          * Implementation default, NOT a contract surface. Documented so the UAT
          * matrix can pin it; the implementation MUST honour it. The M6 methods
          * `runStructure` and `inspectOperation` inherit the same budget by
-         * construction — the M6 design §C names the rule.
+         * construction.
          */
         const val DEFAULT_INSPECT_TIMEOUT_MS: Long = 5_000L
 

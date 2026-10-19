@@ -775,6 +775,34 @@ prometía líneas, de modo que las dos sumas cerraban a 17 y nadie notó que la
 cifra de líneas era 26. El denominador es lo que hace la contradicción visible:
 cada número necesita el suyo al lado.
 
+**Cerrado en este ciclo — y la limpieza dejó un residuo peor que el original.**
+El commit `5a8124b29` quitó las 25 líneas de código; hoy
+`git grep -n 'design\.md' -- v2` devuelve **cero**. Pero al borrar el *nombre*
+del documento se dejaron **32 líneas en 20 ficheros** con el puntero sin
+antecedente: `design §2.1`, `design §8.3`, `M6 design §C`. Un enlace con nombre
+roto se detecta al pulsarlo; un puntero que ya no nombra nada, no. Junto a él, la
+misma pasada dejó 7 sitios más que solo citaban `research §N` o `ADR-0051`, y
+`git ls-files` no devuelve ni un `ADR-*.md` ni ningún fichero `research*`: el
+repositorio entero tiene **5** `.md` trackeados (cuatro README/AGENTS y este).
+
+Total eliminado aquí: **39 sitios en 22 ficheros** — 32 punteros `design §N`,
+6 citas `ADR-0051` y 2 `research §N`, con una línea que llevaba dos de ellos. El
+cambio es **100 % comentarios**, verificado con un diff que no contiene una sola
+línea no-comentario, y `:pipeline-application:compileKotlin` recompiló de verdad
+(7 tareas `compileKotlin` ejecutadas, no `UP-TO-DATE`; 0 errores, 0 avisos).
+
+**El contenido no se perdió, y eso era lo que había que comprobar antes de
+borrar.** En los 32 casos la regla ya estaba transcrita dos o tres líneas más
+abajo: la tabla de `canPrune`, el orden 1/2/3 del teardown, la fórmula de la
+ventana de bytes, las dos capas de redacción. Se borró la procedencia, no la
+afirmación. El caso que **no** se resolvió por intercambio de tokens es
+`SegmentOutputStore.canPrune`: su comentario registra una **divergencia
+deliberada** de la especificación desaparecida (la especificación pedía
+`Refused(UnknownStream)`; el código rechaza por *run* desconocido, a propósito).
+Borrar la cita ahí habría destruido el único rastro de que alguien se apartó de
+una norma por motivo. Ese sitio lleva ahora una frase que dice el motivo sin
+señalar un fantasma.
+
 **f) 87 clases de test eliminadas citadas desde producción — MEDIDO, y era 1.**
 La redacción anterior de este bloque era una sola línea: *«`EffectReplayPolicy`,
 KDoc que cita una clase de test eliminada»*. Es real, pero la cifra era la de
@@ -875,20 +903,40 @@ busqué las guardas con una ventana de 6 líneas alrededor del campo, y
 `OutputPin` las tiene 15 líneas más abajo. Un instrumento más estrecho que su
 sujeto reporta un número con seguridad y con error.
 
-**j) ~297 líneas en 120 ficheros citan documentos ADR que no existen.** La misma
-clase que 2.2 e, pero **once veces más grande**. Medido con `git grep -cE` y
-pathspec recursivo sobre `v2/**/*.kt`, `v2/**/*.kts` y este fichero, al cierre
-de este ciclo (`28667109`):
+**j) ~295 líneas de código en 126 ficheros citan documentos ADR que no existen.**
+La misma clase que 2.2 e, pero **diez veces más grande**. Medido con
+`git grep -cE 'ADR-0'` sobre todo lo trackeado: **309 líneas / 126 ficheros**, de
+las cuales **14 están en este mismo ROADMAP.md** —el censo contándose a sí mismo—
+y **295 en código**. Reparto por módulo: `pipeline-application` 136,
+`pipeline-domain` 79, `pipeline-step-sdk` 50, `pipeline-events-store` 7, y once
+módulos más con 1–3 cada uno. Los tres primeros son el **90 %** del total.
+
+**La cifra que este bloque declaraba antes —«~297 líneas en 120 ficheros» medido
+en `28667109`— no se reproduce hoy con ningún instrumento que yo haya podido
+construir.** Los números que sí salen: 292 (sin ROADMAP ni `src/test`), 286
+(solo `src/main`), 295 (solo código), 309 (todo lo trackeado), y 312/128 sobre
+el árbol exacto de `28667109`. Ninguno es 297. Se deja constancia en lugar de
+sustituir un número por otro igual de arbitrario: lo que **sí** es estable y
+verificable es el denominador — `git ls-files` devuelve **cero** `ADR-*.md`— y
+que 6 de esas citas (las de `ADR-0051`) se han eliminado en este ciclo como parte
+del barrido de 2.2 e.
+
 
 | Token | Líneas | Ficheros |
 |---|---|---|
-| `ADR-0…` | 297 | 120 |
-| `INV-L…` | 61 | 20 |
-| `docs/` | 12 | 11 |
-| `FArchL` | 1 | 1 |
+| `ADR-0…` | 295 (309 con este ROADMAP) | 126 |
+| `INV-L…` | 63 | 22 |
+| `docs/` | 23 | 10 |
+| `FArchL` | 2 | 1 |
 | `WCL-S` | 2 | 2 |
 | `FIL-ALL` | 1 | 1 |
-| `design.md §` | 2 | 2 |
+| `design.md §` | 0 en código (2 son las de este ROADMAP) | 1 |
+
+Todas las filas de esta tabla se remedieron con **un solo instrumento**,
+`git grep -n <token> -- .` sobre todo lo trackeado, que **incluye este
+ROADMAP.md**. Las cifras anteriores mezclaban instrumentos: por eso las de
+`ADR-0…` no cuadraban con su propia prosa.
+
 
 El denominador que lo confirma: **`git ls-files` no devuelve ni un solo
 `ADR-*.md` ni `INV-*.md`** — cero. Los documentos no están en otra rama; no están.

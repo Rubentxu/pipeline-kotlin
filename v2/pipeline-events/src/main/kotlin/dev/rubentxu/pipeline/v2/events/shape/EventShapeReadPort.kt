@@ -16,7 +16,7 @@ package dev.rubentxu.pipeline.v2.events.shape
  *
  * The port composes the same primitives `EventRecordReadPort` composes
  * (the event sink + the typed event decoder) but projects to typed
- * events instead of envelopes. The composition rule (M7 design §A) is:
+ * events instead of envelopes. The composition rule is:
  *
  *  - `eventReads` (the M1 EventRecordReadPort) for the read-page
  *  - the typed event decoder for `StageStarted` / `StageFinished` /
@@ -48,8 +48,7 @@ fun interface EventShapeReadPort {
      * page passes the result's cursor back as `options.cursor`.
      * Forward-only pagination; the cursor is opaque to consumers.
      *
-     * @param runId The run to read. `String`, NOT a typed `RunId` (the
-     *   M1 design §7 pins `runId` as `String`).
+     * @param runId The run to read. `String`, NOT a typed `RunId`.
      * @param options The bounded-scan + resume-cursor options. A
      *   convenience overload below accepts no options; this method
      *   is the SAM so it cannot have a default parameter value.

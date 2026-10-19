@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.credentials.spi
 /**
  * Capabilities descriptor for credential providers.
  *
- * Design (design §2.4, research §4.6-proposed):
+ * The shape is:
  * - `supportsLease`: provider can lease credentials for time-bounded usage
  * - `supportsRevocation`: provider supports credential revocation
  * - `supportsAcl`: provider supports access control lists

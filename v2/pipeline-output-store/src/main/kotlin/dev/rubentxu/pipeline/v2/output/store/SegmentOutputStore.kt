@@ -569,7 +569,7 @@ class SegmentOutputStore(
      * [PruneAuthorisation.Granted] unconditionally — the test fixtures and
      * the M1/M2 paths do not need the consult-before-act primitive.
      *
-     * The composition table from the design §8.3:
+     * The composition table:
      *
      * ```text
      * canPrune(intent):
@@ -586,7 +586,9 @@ class SegmentOutputStore(
         val pins = pinPort ?: return PruneAuthorisation.Granted
         val streamDirs = runStreamDirs(intent.runId)
         if (streamDirs.isEmpty()) {
-            // The design §8.3 has a `Refused(UnknownStream)` case, but the
+            // An earlier design specified a `Refused(UnknownStream)` case for
+            // this branch. That document no longer exists in the tree, but the
+            // reasoning it stood for does, and it is preserved here: the
             // intent names a runId, not a stream. The pragmatic translation:
             // unknown run = no output to protect, refused with a Storage
             // cause so the caller can route rather than re-freeze on an

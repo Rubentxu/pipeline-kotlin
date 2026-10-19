@@ -30,8 +30,7 @@ import kotlinx.serialization.json.JsonPrimitive
  *
  * The adapter is a thin composition: it does NOT introduce a new lease, a new
  * fencing scheme, a new journal schema, or a new scheduler. Every authority it
- * composes is named with module:file:line in the design's composition table
- * (M2 design §6).
+ * composes is named below.
  *
  * ## Lease boundary (audit B.2, B.8, G.3)
  *

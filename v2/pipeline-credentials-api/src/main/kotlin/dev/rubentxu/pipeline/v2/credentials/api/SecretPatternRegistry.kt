@@ -303,7 +303,7 @@ class SecretPatternRegistry {
      * registered secrets and all encoding variants. Uses the SAME [generateEncodedVariants]
      * seam as [buildActivePatterns] to ensure consistent enumeration without duplication.
      *
-     * Per [StreamingRedactor] design §Byte-window redaction algorithm:
+     * Per the [StreamingRedactor] byte-window redaction algorithm:
      * - `secret_window = max(registeredPatternLiteralLength) - 1`
      * - `buffer capacity = secret_window + chunkSize`
      *

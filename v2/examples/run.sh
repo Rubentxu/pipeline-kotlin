@@ -10,6 +10,7 @@
 #   //@ expect-exit 1                 default is 0
 #   //@ expect-stderr <substring>     the refusal must be this specific, not
 #                                     merely a nonzero exit
+#   //@ durable-once                  run ONCE against a real durable store
 #   //@ durable                       run twice against one control root and
 #                                     require the second run not to repeat the
 #                                     effect; the pipeline itself asserts the
@@ -94,6 +95,7 @@ run_scenario() {
     local expect_exit=0
     local expect_stderr=""
     local durable=0
+    local durable_once=0
     local needs_seeded_credentials=0
     local directive
     while IFS= read -r directive; do
@@ -101,6 +103,7 @@ run_scenario() {
             '//@ expect-exit '*)   expect_exit="${directive#//@ expect-exit }" ;;
             '//@ expect-stderr '*) expect_stderr="${directive#//@ expect-stderr }" ;;
             '//@ durable')         durable=1 ;;
+            '//@ durable-once')    durable_once=1 ;;
             '//@ requires-seeded-credentials') needs_seeded_credentials=1 ;;
         esac
     done < <(grep -m 20 '^//@ ' "$script" || true)
@@ -155,8 +158,18 @@ run_scenario() {
     # script, but against a volatile store, so "the effect did not repeat"
     # was never actually on trial. One store, two runs, one control root: the
     # second run RESUMES the first one.
+    # `durable-once` is the same promise as `durable` with ONE difference: the
+    # scenario is not re-run over the same control root, so the workspace is
+    # not compared between two runs.
+    #
+    # It exists because a Saga legitimately changes the world in its FIRST run
+    # and must NOT change it in the second: the compensation happens once, and
+    # a resumed run that compensated again would be the bug. The workspace
+    # comparison of `durable` cannot express that, because the two runs
+    # SHOULD leave different worlds. What such a scenario asserts is inside
+    # the script, against the state the first run left.
     local db_args=()
-    if [[ "$durable" == 1 ]]; then
+    if [[ "$durable" == 1 || "$durable_once" == 1 ]]; then
         db_args=(--db "$root/durable.sqlite")
     fi
 
@@ -194,6 +207,8 @@ run_scenario() {
     local label="$name"
     if [[ "$durable" == 1 ]]; then
         label="$name (durable x2)"
+    elif [[ "$durable_once" == 1 ]]; then
+        label="$name (durable x1)"
     fi
 
     if [[ "$code" == "$expect_exit" ]]; then
@@ -204,6 +219,7 @@ run_scenario() {
             failures+=("$name: exit matched but expected stderr substring absent")
             return
         fi
+
         if [[ "$durable" == 1 ]]; then
             # The second half of the durable guarantee: the resumed run must
             # not have touched the workspace. A completed effect whose

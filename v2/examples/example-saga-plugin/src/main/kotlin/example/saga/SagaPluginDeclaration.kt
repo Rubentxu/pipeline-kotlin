@@ -2,6 +2,7 @@ package example.saga
 
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
+import dev.rubentxu.pipeline.v2.domain.step.BODY_SLOT_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.Delivery
 import dev.rubentxu.pipeline.v2.domain.step.Digest
 import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion
@@ -18,6 +19,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_COMPENSATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_PLAN_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_RUNTIME_CAPABILITY
 
 /**
  * S6/I — the external plugin's DECLARATION, in one place.
@@ -81,7 +83,12 @@ object SagaPluginDeclaration {
      * the ports because only the host knows the run, the durable store and the lease.
      */
     private val DECLARED_CAPABILITIES: Set<StepCapability> =
-        setOf(SAGA_COMPENSATION_CAPABILITY, SAGA_PLAN_CAPABILITY)
+        setOf(
+            SAGA_COMPENSATION_CAPABILITY,
+            SAGA_PLAN_CAPABILITY,
+            SAGA_RUNTIME_CAPABILITY,
+            BODY_SLOT_CAPABILITY,
+        )
 
     private fun parseSemVer(raw: String): SemVer {
         val parts = raw.split("-")[0].split(".")
@@ -151,6 +158,15 @@ object SagaPluginDeclaration {
                     PluginStepContribution(
                         SagaObligationStepDefinition.KEY,
                         setOf(SAGA_COMPENSATION_CAPABILITY, SAGA_PLAN_CAPABILITY),
+                    ),
+                    PluginStepContribution(
+                        SagaChainStepDefinition.KEY,
+                        setOf(
+                            SAGA_COMPENSATION_CAPABILITY,
+                            SAGA_PLAN_CAPABILITY,
+                            SAGA_RUNTIME_CAPABILITY,
+                            BODY_SLOT_CAPABILITY,
+                        ),
                     ),
                 ),
                 directives = emptyList(),

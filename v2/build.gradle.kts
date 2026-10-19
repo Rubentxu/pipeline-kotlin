@@ -677,13 +677,14 @@ val stageExternalExamples by tasks.registering {
         "plugins (block, directive, uppercase) into pipeline-application/lib/ so " +
         "the distribution ZIP carries them as bundled plugins."
 
-    dependsOn(buildExamplePlugin, buildExternalDirectivePlugin, buildExampleBlockPlugin)
+    dependsOn(buildExamplePlugin, buildExternalDirectivePlugin, buildExampleBlockPlugin, buildExampleSagaPlugin)
 
     val appLibDir = file("pipeline-application/build/install/pipelinek/lib")
     val targets = listOf(
         file("examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar") to "example-uppercase-plugin-0.1.0.jar",
         file("examples/example-directive-plugin/build/libs/example-directive-plugin-0.1.0.jar") to "example-directive-plugin-0.1.0.jar",
         file("examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar") to "example-block-plugin-0.1.0.jar",
+        file("examples/example-saga-plugin/build/libs/example-saga-plugin-0.1.0.jar") to "example-saga-plugin-0.1.0.jar",
     )
 
     inputs.files(targets.map { it.first })
@@ -727,11 +728,13 @@ project(":pipeline-application").pluginManager.withPlugin("org.jetbrains.kotlin.
         "example-uppercase-plugin-0.1.0.jar",
         "example-directive-plugin-0.1.0.jar",
         "example-block-plugin-0.1.0.jar",
+        "example-saga-plugin-0.1.0.jar",
     )
     val externalBuildTasks = listOf(
         "buildExamplePlugin",
         "buildExternalDirectivePlugin",
         "buildExampleBlockPlugin",
+        "buildExampleSagaPlugin",
     )
     appProject.tasks.matching {
         it.name == "distZip" || it.name == "installDist" || it.name == "startScripts"

@@ -1500,36 +1500,50 @@ Verificado: diff solo de comentarios (0 líneas de código), `apiCheck` y ambos
 `compileKotlin` verdes, dump ABI sin cambios. Coherente con que
 `effective_loc()` excludes comentarios: `PRODUCT_LOC` no se movió.
 
-### 2.4b `v2/pipeline-protocol/` — no es vestigial: el build no lo ve
+### 2.4b `v2/pipeline-protocol/` — el build no lo ve, y el defecto es la desincronización
 
-**La premisa de este bloque era falsa, y equivocarse importa.** No es «un módulo
-que nadie usa». `v2/settings.gradle.kts` **no lo incluye**: sus 28 `include` no
-contienen `pipeline-protocol`, y no existe `v2/pipeline-protocol/build/`, que
-Gradle habría creado al compilarlo. Gradle no lo ha compilado nunca. Verificado
+**Aviso de lectura: este bloque ya no es una novedad.** La tabla de la sección 1
+(«Estado medido», fila 7) afirmaba desde antes que el módulo está versionado y no
+declarado, y Gradle nunca lo compila. Lo que sigue **corrige** el bloque que este
+roadmap escribió después como si lo hubiera descubierto, y **retira** el defecto
+que le atribuía al instrumento del gate.
+
+**Lo que sigue siendo cierto.** `v2/settings.gradle.kts` **no lo incluye** (sus
+28 `include` no contienen `pipeline-protocol`) y no existe
+`v2/pipeline-protocol/build/`, que Gradle habría creado al compilarlo. Verificado
 por cuatro instrumentos independientes, porque el primero mintió: `grep -c` sobre
 el `include` imprime el número *y* devuelve 0, así que una cadena `&&`/`||`
-encadenada sobre él lee «ausente» cuando acaba de imprimir «1».
+encadenada sobre él lee «ausente» justo después de imprimir «1».
 
-**El defecto material es otro, y no lo arregla borrarlo.** `scripts/check-budgets.py`
-define `PRODUCT_LOC` con globs de disco (`v2/*/src/main/*`, `v2/*/build.gradle.kts`,
-líneas 62-66) que **no consultan `settings.gradle.kts`**. Las **511** líneas de
-este módulo entran en el denominador de 61.652 aunque el build nunca las compile
-— 8 `.proto` (432 efectivas) y `ProtocolCore.kt` (37). El gate mide contra un
-`PRODUCT_LOC` inflado por código invisible para él.
+**Lo que se retira: el defecto no era de `check-budgets.py`.** Este bloque afirmó
+que sus globs de disco cuentan 511 líneas que el build nunca compila, y propuso
+«derivar el denominador de los módulos que `settings.gradle.kts` declara». **Medido
+y falso: ese filtro habría restado producto real.** Cinco directorios tienen
+`src/main` sin figurar en el `include` raíz, y cuatro de ellos **son builds**:
 
-Su efecto en el ratio es pequeño y va en la dirección honesta: borrarlo deja
-`ratio` en **0.118** (hoy 0.117, `VERIFY_LOC` 7.229 sin cambios), porque el
-denominador baja 511 líneas que el build nunca tuvo. No es un autónomo: es un
-`git rm -r` de 10 ficheros versionados. Queda preparado y medido, no ejecutado —
-esperando autorización explícita junto a `docs/` sin trackear y los 10 worktrees.
+| directorio | líneas | qué es |
+|---|---:|---|
+| `v2/buildSrc` | 302 | convention plugins que compilan el producto entero |
+| `v2/examples/example-block-plugin` | 598 | build independiente, JAR en la distribución (`runtimeOnly`) |
+| `v2/examples/example-uppercase-plugin` | 932 | ídem |
+| `v2/examples/example-directive-plugin` | 410 | ídem |
+| `v2/pipeline-protocol` | 511 | el único sin `include` **y** sin consumidor |
 
-**Lo que sí se puede hacer sin borrar, y es el arreglo real:** que
-`check-budgets.py` derive el denominador de los módulos que `settings.gradle.kts`
-declara, en vez de de los que el disco contiene. Eso corrige la clase de defecto
-—«el gate cuenta lo que existe, no lo que se construye»— y sobrevive a que el
-siguiente módulo entre o salga del `include`. Es un cambio en el instrumento del
-gate, así que él mismo exige evidencia: mutar el denominador debe poner en rojo
-la fila correcta.
+Los cuatro primeros suman **2.242** líneas de producto real. Un denominador
+derivado del `include` habría hecho el gate **más verde por la razón
+equivocada**, que es el peor modo de fallar un instrumento de presupuesto.
+
+**El defecto real, y sí es de este módulo:** un `build.gradle.kts` de 42 líneas
+escrito para un módulo que el `include` raíz no declara. El fichero de build y la
+declaración están desincronizados; uno de los dos miente. Eso es lo que hay que
+decidir, y la decisión sigue siendo de ciclo de vida: **borrar** (10 ficheros,
+511 líneas, ratio 0.117 → **0.118** medido) **o incluirlo** (y entonces compila,
+y sus 8 `.proto` entran en build). Ninguna de las dos es un autónomo.
+
+**Instrumento del gate: sin cambio, y con motivo.** Los globs cuentan directorios
+con fichero de build, que es exactamente la condición para que un directorio sea
+construible. `pipeline-protocol` lo tiene; que su `include` falte es la
+inconsistencia de ese módulo, no la del gate.
 
 ### 2.5 Las promesas colgantes que quedan — medido, no estimado
 
@@ -1614,9 +1628,46 @@ de producto en una frontera de seguridad; la segunda engorda el lanzador justo
 donde la política lo acota. Se deja **decidida y medida**, no perdida.
 
 Lo que sí es de este ciclo y no se pierde: el `NOT_RUN` está declarado, el motivo
-está verificado contra el código, y el escenario sigue compilando dentro del
-inventario. El día que haya bandera, borrar la directiva lo convierte en una
-comprobación que corre — el escenario ya está escrito para eso.
+está verificado contra el código, y el escenario está dentro del inventario. El
+día que haya bandera, borrar la directiva lo convierte en una comprobación que
+corre — el escenario ya está escrito para eso.
+
+### 2.6.1 El defecto que la propia §2.6 describía sin ver
+
+Al escribir el párrafo anterior, el propio documento afirmaba en dos sitios que
+el escenario «sigue compilando». **Era falso, y lo era por una causa concreta:**
+`examples/run.sh` leía la directiva `requires-seeded-credentials` y hacía
+`return` en la línea 99; el binario no se invocaba hasta la línea 131. Un
+escenario que no puede ejecutarse no se compilaba tampoco, así que la superficie
+DSL de una frontera de seguridad —las siete fábricas `CredentialsBinding`— se
+podía romper sin que el veredicto cambiase. `gaps=1 not_run` era el mismo número
+para una fábrica sana y para una fábrica renombrada.
+
+**Lo corregido**, no lo retocado: la rama ahora valida antes de declarar
+`NOT_RUN`, y un fallo de compilación cuenta como `FAIL` —la ejecución está
+bloqueada, la compilación no—. El estado `NOT_RUN` se sigue declarando, y por
+encima del `return`, para que no dependa de una ejecución cuyo resultado nunca
+se observó.
+
+**Discriminado en las dos direcciones**, que es la única forma de que un
+instrumento nuevo sea creíble. Mutación aplicada y leída de vuelta antes de leer
+el resultado: `CredentialsBinding.file(` → `fileMutado(`, un cambio de una
+línea confirmado en el diff.
+
+| | antes del cambio | después del cambio |
+|---|---|---|
+| escenario intacto | `NOT_RUN`, `exit=0` | `NOT_RUN`, `exit=0` |
+| con `fileMutado(` | `NOT_RUN`, `exit=0` | `FAIL … does not compile`, `exit=1` |
+
+La fila que se puso roja es la correcta: `Unresolved reference 'fileMutado'`,
+el error de compilación real. Restaurado byte a byte y confirmado con diff vacío.
+Un cambio que solo funciona en verde no demuestra nada; la mitad interesante es
+que la mutación se puso roja.
+
+Lo mismo se aplicó al propio comentario del escenario, que decía «keeps
+compiling» describiendo un comportamiento que no ocurría. Un comentario que
+afirma una propiedad del código es una promesa: si el código no la cumple, es el
+código el que miente.
 
 ---
 

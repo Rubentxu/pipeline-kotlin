@@ -18,23 +18,37 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `46205fb9` | `git rev-parse HEAD` |
+| SHA | `2d4fdf38` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **17** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 10 | ídem |
-| Tests unitarios ejecutados | **519** (53/53 informes reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
+| Tests unitarios ejecutados | **522** (54/54 informes reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
 | Escenarios E2E | 36 (**35 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **6692 / 61623 = 0.109** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **6805 / 61618 = 0.110** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **226 s**, peor de tres ensayos (225 / 223 / 226), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **231 s**, peor de tres ensayos (224 / 227 / 231), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
-Los tres ensayos se ejecutaron tras `rm -rf` de las salidas de build reales —las
-cuyo padre declara `build.gradle.kts`— y los tres reelectionaron los 53
-informes JUnit, que es la condición que hace que la cifra de reloj mida el gate
-y no una restauración de caché. Un total correcto con el verbo equivocado ya no
-puede colarse: la etapa 2 separa `rewritten` de `read` y **falla** si no
-reescribe ninguno.
+Los tres ensayos se ejecutaron desde salidas de build limpias y los tres
+reeelccionaron los **54** informes JUnit, que es la condición que hace que la
+cifra de reloj mida el gate y no una restauración de caché. Un total correcto
+con el verbo equivocado ya no puede colarse: la etapa 2 separa `rewritten` de
+`read` y **falla** si no reescribe ninguno.
+
+**Limpiar «los `build/`» es más peligroso de lo que parece, y por eso el
+criterio importa.** Una primera tanda de ensayos limpió con
+`find v2 -type d -name build` ymidió **48 de 54** informes reescritos: ese
+`build/` de un solo nivel deja fuera once directorios de módulos anidados, como
+`v2/pipeline-step-sdk/*/build`, y el árbol queda medio tibio. Al corregirlo a
+`find` sin `-maxdepth` se descubrió el peor fallo posible: ese mismo criterio
+**borra `v2/buildSrc/src/main/java/dev/rubentxu/pipeline/build`, que es un
+paquete Java, no una salida de construcción**, y con él las dos fuentes de las
+que dependen los scripts de los módulos de plugin. El gate falla entonces
+compilando un *script*, con `Unresolved reference: rubentxu`, que se lee como un
+problema de entorno. Restaurado desde Git y verificado: es el único directorio
+`build/` del árbol cuyo padre no declara `build.gradle.kts`. El criterio que se
+usa ahora, y el que debe usarse, es **borrar un `build/` solo si su padre
+declara `build.gradle.kts` o `build.gradle`**.
 
 El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
 declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
@@ -79,9 +93,9 @@ contra el texto del plan. «Medido» significa que el número salió de una
 | 1 | 0 Markdown bajo `docs/` y `v2/` | **PASS** | `git ls-files ':(glob)docs/**/*.md'` = 0; `:(glob)v2/**/*.md` = 0. En la raíz solo quedan `AGENTS.md`, `README*.md`, `ROADMAP.md` |
 | 2 | 0 `@Test` UAT/E2E/AAT/harness | **PASS** | 0 en `pluginContractTest`/`installedContractTest`/`integrationTest`/`functionalTest`; 0 `@Disabled` |
 | 3 | 0 clases legacy trasladadas | **PASS** | `v2/test-harness`, `v2/pipeline-testkit`, `v2/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
-| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 35 escenarios en 8 categorías bajo `v2/examples/`; 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` (186 líneas) invocado por `scripts/verify-all.sh:246` |
-| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 5256 / 61461 = 0.086; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
-| 6 | `verify-all` local ≤ 900 s | **PENDIENTE** | requiere los tres ensayos sobre el SHA de la tabla |
+| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 36 escenarios en 8 categorías bajo `v2/examples/`; 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` (186 líneas) invocado por `scripts/verify-all.sh:246` |
+| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 6805 / 61618 = 0.110; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
+| 6 | `verify-all` local ≤ 900 s | **PASS** | tres ensayos sobre `2d4fdf38`: 224 / 227 / **231 s**, peor 231 contra el límite de 900. Los tres con 54/54 informes reescritos, 522 tests, 0 fallos, 0 skips |
 | 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS con una excepción** | 27 módulos declarados compilan; `v2/pipeline-protocol/` está versionado y **no está declarado**, luego Gradle nunca lo compila |
 
 Sobre el límite 4: el mandato escribe el lanzador como `examples/run.sh`, y en
@@ -96,18 +110,37 @@ Versionado, con su `build.gradle.kts`, y sin declarar en
 `v2/settings.gradle.kts`. Cuatro hechos independientes, todos medidos:
 
 - **`ProtocolCore.kt` no compilaría aunque se declarase.** Referencia
-  `dev.rubentxu.pipeline.v2.protocol.Version`, que solo produce `protoc`; el
-  fichero no está versionado y no existe `v2/pipeline-protocol/build/`, o sea
-  que `protoc` nunca se ejecutó.
+  `dev.rubentxu.pipeline.v2.protocol.Version`, que solo produce `protoc`. El
+  Kotlin que `protoc` generaría **no está versionado** —`ProtocolCore.kt` sí lo
+  está— y no existe `v2/pipeline-protocol/build/`, o sea que `protoc` nunca se
+  ejecutó y el tipo del que depende nunca existió.
 - **Cero consumidores** de `ProtocolModules`, `ProtocolGovernance` y
   `ProtocolVersion` fuera del propio módulo, y cero referencias a `v2.protocol`.
-- **Diez ficheros versionados**: un `.kt` y ocho `.proto`.
-- **Último toque `2aa071aa`**, el commit masivo de política, no un cambio de
-  producto.
+- **Diez ficheros versionados**: un `.kt` (44 líneas) y ocho `.proto` (513
+  líneas). Son 557 líneas que el gate nunca compila ni cuenta.
+- **No publica y no está en el gate de ABI**: su `build.gradle.kts` declara
+  `group` pero no aplica `maven-publish`, y el módulo no tiene dump `.api`. Por
+  eso retirarlo no rompe ni un artefacto publicado ni el gate de compatibilidad.
+- **La cuarentena que lo mantenía fuera del árbol ya no existe.** El test
+  `` `V2 settings excludes pipeline-protocol` `` vivía en
+  `pipeline-architecture-tests/Lfc0V1QuarantineFitnessTest.kt`, y RESET borró ese
+  módulo. Nada en el árbol vigente comprueba hoy que `settings.gradle.kts` siga
+  sin declararlo.
+- **Sus únicas referencias restantes están fuera del árbol.** Un barrido desde la
+  raíz las encuentra todas bajo `.worktrees/pr134-review/`, **dentro** del
+  directorio de trabajo pero fuera del árbol versionado: `.worktrees/` contiene
+  diez worktrees registrados de este mismo repositorio (`git worktree list`), y
+  git los excluye de `status` porque cada uno tiene una rama ya comprobada, pero
+  eso **no** los excluye de un `grep`. Quien mida consumidores desde la raíz sin
+  excluir ese directorio concluirá que el módulo tiene dependientes que ya no
+  existen: a este documento le pasó al medirlo.
 
 No se borra en este ciclo: no figura en la lista del mandato y borrar ficheros
 versionados es del usuario. La decisión pendiente es declararlo (y arreglarlo)
-o retirarlo.
+o retirarlo; los cinco puntos anteriores son la evidencia para decidir, y la
+última es la razón por la que no se le pone un test —una comprobación de que
+`settings.gradle.kts` no contiene una cadena es *source-text fitness*, que
+`§2` prohíbe, y `§2` prohíbe también resucitar `:pipeline-architecture-tests`.
 
 ### Los 17 módulos con test
 
@@ -134,8 +167,10 @@ o retirarlo.
 > lista escrita a mano en un documento es un segundo censo, y un segundo censo
 > es donde aparecen las contradicciones. La tabla por módulo de más abajo
 > conserva los números de aquella ejecución: **los tests y su recuento los
-> sustituye la medición de `scripts/verify-all.sh`**, que sigue siendo la fila
-> `pendiente` de §1. Hasta esa medición, el recuento por módulo es histórico.
+> sustituye la medición de `scripts/verify-all.sh`**, cuyo total vigente está en
+> la tabla de §1. El desglose por módulo sigue siendo histórico hasta que ese
+> gate se vuelva a ejecutar: `pipeline-release` ganó tres tests después de que
+> se tomara esta tabla.
 
 Esa lista sale de enumerar `src/test/kotlin/**/*Test.kt` en cada módulo
 declarado, no de `check-budgets.py`. El motivo de no usar el informe de
@@ -521,25 +556,40 @@ comentario menciona y da 28 en vez de 27: **27 declarados, 12 con `src/test`,
 15 sin él**. Los dos módulos con test nuevos son los de las filas 6 y 7.
 
 Ratios por módulo, **re-medidos sobre este árbol** con
-`python3 scripts/check-budgets.py --json` (VERIFY / PRODUCT), los **doce** con
-unit tests:
+`python3 scripts/check-budgets.py --json` (VERIFY / PRODUCT), los **diecisiete**
+con unit tests, ordenados de mayor a menor:
 
 | Ratio | Módulo | VERIFY / PRODUCT |
 |---|---|---|
 | **1.633** | `pipeline-step-sdk:workflow-control` | 80 / 49 |
-| 0.807 | `pipeline-output` | 576 / 714 |
+| **1.009** | `pipeline-credentials-executor` | 349 / 346 |
+| 0.965 | `pipeline-output` | 689 / 714 |
 | 0.630 | `pipeline-credentials-local` | 1103 / 1750 |
 | 0.545 | `pipeline-credentials-multipart` | 132 / 242 |
 | 0.426 | `pipeline-binding-factory` | 123 / 289 |
 | 0.416 | `pipeline-runtime-api` | 239 / 574 |
+| 0.335 | `pipeline-artefacts-local` | 84 / 251 |
+| 0.219 | `pipeline-release` | 280 / 1281 |
+| 0.196 | `pipeline-step-sdk:files` | 87 / 444 |
 | 0.149 | `pipeline-step-sdk:http` | 223 / 1499 |
-| 0.129 | `pipeline-step-sdk:runtime` | 269 / 2092 |
+| 0.137 | `pipeline-domain` | 865 / 6306 |
 | 0.128 | `pipeline-output-store` | 228 / 1779 |
-| 0.119 | `pipeline-domain` | 746 / 6270 |
+| 0.128 | `pipeline-step-sdk:runtime` | 269 / 2094 |
 | 0.083 | `pipeline-credentials-api` | 62 / 751 |
 | 0.064 | `pipeline-events-store` | 288 / 4534 |
+| 0.008 | `pipeline-application` | 172 / 22101 |
 
-Global **5256 / 61461 = 0.086**, contra el límite duro de 2.0.
+La tabla anterior listaba **once** filas y omitía seis módulos, entre ellos
+`pipeline-credentials-executor`, cuyo 1.009 supera a cinco de las que sí estaban
+—y a `pipeline-output`, cuya fila declaraba 576/714 donde la medición da
+689/714. Una tabla escrita a mano no se desincroniza: se queda quieta mientras
+el árbol avanza, y su silencio no se distingue del de una fila correcta. Por eso
+las diecisiete filas de arriba son una transcripción de `check-budgets.py` y no
+una lista elegida.
+
+Global **6805 / 61618 = 0.110**, contra el límite duro de 2.0. La cifra vigente
+está en la tabla de §1, que es su único origen: repetirla aquí fue exactamente
+lo que dejó cuatro copias distintas de un mismo número en este documento.
 
 **El ratio más alto del repositorio es ahora `workflow-control`, a 1.633, y
 conviene decirlo en lugar de esconderlo.** El módulo tiene 49 líneas de producto
@@ -687,20 +737,19 @@ documento donde la regla está escrita.
 - `PRODUCT-GATE` (certificador externo, RC publicada) = **`BLOCKED_EXTERNAL`**.
   No hay CI remoto en este repositorio. La ausencia de CI **nunca** se declara
   `PASS`.
-- **Presupuesto de tiempo: MEDICIÓN CADUCADA, pendiente de repetir.** El
-  ensayo anterior dio **242 s, 211 s, 213 s** sobre `18d3148a` — el peor, 242 s
-  frente al límite de 900 s, leído del XML de JUnit (`executed=400 failed=0
-  skipped=0`) y no del código de salida. Esos números **siguen siendo ciertos
-  para ese SHA y ninguno más**: desde entonces `HEAD` ha avanzado cinco commits,
-  dos de los cuales añaden 16 tests nuevos y compilan dos módulos que antes no
-  compilaban para test. Repetir el ensayo es lo que devuelve esta línea a
-  `CERRADO`; hasta entonces **no** se declara conformidad. Se conserva el
-  desglose del ensayo antiguo porque explica el margen, no porque autorice el
-  actual: `detektTest` mide 3 s sobre 26 subproyectos, y el alza de +9 s
-  (233 → 242) correspondió a 54 tests, 13 ficheros de test y `detektTest` en la
-  etapa 1 — es decir, el gate crece mucho más despacio que el trabajo. Un gate
-  verde por inercia es peor que un gate marcado caducado: el segundo se lee y el
-  primero se acepta sin mirarlo.
+- **Presupuesto de tiempo: CERRADO**, medido sobre `2d4fdf38`. Tres ensayos
+  desde salidas de build limpias dieron **224 s, 227 s, 231 s**: el peor, **231 s**
+  frente al límite duro de 900 s, leído del XML de JUnit (**522 tests, 54/54
+  informes reescritos por la corrida, 0 fallos, 0 skips**) y no del código de
+  salida. Los tres.impresionaron `PASS … gaps=1 not_run`, así que el hueco del
+  escenario `NOT_RUN` viaja dentro del veredicto en lugar de al lado.
+  Sustituye a la medición caducada sobre `18d3148a` (242 / 211 / 213 s, 400
+  tests), que sigue siendo cierta para aquel SHA y para ninguno más. El margen
+  es holgado y no viene de recortar: el gate crece más despacio que el trabajo —
+  `detektTest` mide 3 s sobre 26 subprocesos—, y desde la medición caducada el
+  número de tests subió de 400 a 522 mientras el peor tiempo bajó de 242 a 231 s.
+  Un gate verde por inercia sería peor que uno marcado caducado; por eso esto se
+  vuelve a medir en cada vez que `HEAD` avanza.
 
 ---
 

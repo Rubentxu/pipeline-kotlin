@@ -19,10 +19,16 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaActionPlan
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlan
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
+import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations
 import dev.rubentxu.pipeline.v2.domain.step.BodyInvocationContext
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker
+import dev.rubentxu.pipeline.v2.events.CompensationFinished
+import dev.rubentxu.pipeline.v2.events.CompensationStarted
+import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.NullEventSink
+import dev.rubentxu.pipeline.v2.events.SagaTerminal
 import dev.rubentxu.pipeline.v2.events.durable.SqliteConnectionFactory
 import dev.rubentxu.pipeline.v2.events.durable.SqliteSagaObligationStore
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -112,6 +118,25 @@ class SagaCompensationInterpreterTest {
         )
     }
 
+    /**
+     * The interpreter under test, with the ports it needs.
+     *
+     * The event sink is a parameter because the EVENTS are part of what the loop owes the
+     * outside world: a compensation that started, one that finished, and the Saga's terminal
+     * state are facts a reader of the event plane needs.
+     */
+    private fun interpreter(
+        slots: BodySlotInvoker,
+        operations: SagaPlanOperations = planOperations(),
+        events: EventSink = RecordingEventSink(),
+    ) = SagaCompensationInterpreter(
+        runId = "run-1",
+        planOperations = operations,
+        slotInvoker = slots,
+        eventSink = events,
+        clock = FixedClock,
+    )
+
     private fun planOf(vararg actions: SagaActionPlan) = SagaPlan(
         sagaId = SAGA,
         policy = CompensationPolicy.NotReconcilable,
@@ -134,7 +159,7 @@ class SagaCompensationInterpreterTest {
         val slots = RecordingSlotInvoker()
 
         val report = runBlocking {
-            SagaCompensationInterpreter(planOperations(), slots).compensate(
+            interpreter(slots).compensate(
                 planOf(
                     actionPlan("reserve", "compensate-reserve"),
                     actionPlan("charge", "compensate-charge"),
@@ -162,7 +187,7 @@ class SagaCompensationInterpreterTest {
         }
 
         runBlocking {
-            SagaCompensationInterpreter(planOperations(), slots).compensate(
+            interpreter(slots).compensate(
                 planOf(actionPlan("reserve", "compensate-reserve")),
             )
         }
@@ -193,7 +218,7 @@ class SagaCompensationInterpreterTest {
         )
 
         val report = runBlocking {
-            SagaCompensationInterpreter(planOperations(), slots).compensate(
+            interpreter(slots).compensate(
                 planOf(
                     actionPlan("reserve", "compensate-reserve"),
                     actionPlan("charge", "compensate-charge"),
@@ -213,6 +238,95 @@ class SagaCompensationInterpreterTest {
     }
 
     @Test
+    fun `the loop announces what it did, in order`() {
+        armAndConfirm("reserve", "release")
+        armAndConfirm("charge", "refund")
+        val events = RecordingEventSink()
+        val slots = RecordingSlotInvoker()
+
+        runBlocking {
+            interpreter(slots, events = events).compensate(
+                planOf(
+                    actionPlan("reserve", "compensate-reserve"),
+                    actionPlan("charge", "compensate-charge"),
+                ),
+            )
+        }
+
+        // Two facts per compensation and one for the Saga: what started, what finished, and
+        // how the Saga ended. The order is the order in which they happened.
+        assertEquals(
+            listOf(
+                "CompensationStarted", "CompensationFinished",
+                "CompensationStarted", "CompensationFinished",
+                "SagaTerminal",
+            ),
+            events.events.map { it.kind },
+        )
+
+        val started = assertInstanceOf<CompensationStarted>(events.events[0])
+        assertEquals("checkout", started.sagaId)
+        assertEquals("charge", started.actionId)
+        // The SLOT is the join with the journal: it is the plugin step key of the body that
+        // ran, and the newest effect is the first one undone.
+        assertEquals("compensate-charge", started.slot)
+
+        val finished = assertInstanceOf<CompensationFinished>(events.events[1])
+        assertEquals("CONFIRMED", finished.outcome)
+        assertEquals("compensate-charge", finished.slot)
+
+        val terminal = assertInstanceOf<SagaTerminal>(events.events[4])
+        assertEquals("SETTLED", terminal.state)
+        // The Saga says WHICH actions it compensated, and in WHICH order.
+        assertEquals(listOf("charge", "reserve"), terminal.compensatedActions)
+    }
+
+    @Test
+    fun `the compensation is announced BEFORE its body runs`() {
+        armAndConfirm("reserve", "release")
+        val events = RecordingEventSink()
+        var eventsWhenTheBodyRan = -1
+        val slots = RecordingSlotInvoker { _ -> eventsWhenTheBodyRan = events.events.size }
+
+        runBlocking {
+            interpreter(slots, events = events).compensate(
+                planOf(actionPlan("reserve", "compensate-reserve")),
+            )
+        }
+
+        // The announcement of a compensation that is ABOUT to run is what makes a crash in
+        // the body visible: a reader that finds a start with no finish knows the answer was
+        // lost. An announcement that came AFTER the body would leave a crash in the body
+        // with nothing at all to show for it.
+        assertEquals(1, eventsWhenTheBodyRan)
+        assertEquals("CompensationStarted", events.events[0].kind)
+    }
+
+    @Test
+    fun `a compensation that was not dispatched is announced as such, and no body runs`() {
+        armAndConfirm("reserve", "release", leaseEpoch = 2L)
+        val events = RecordingEventSink()
+        val slots = RecordingSlotInvoker()
+
+        runBlocking {
+            interpreter(
+                slots,
+                operations = planOperations(leaseEpoch = 1L),
+                events = events,
+            ).compensate(planOf(actionPlan("reserve", "compensate-reserve")))
+        }
+
+        // The body never ran, so there is nothing to announce about it: what the reader gets
+        // is the terminal state and the reason. An announcement of a compensation that never
+        // happened would be a lie in the only log a reader may not have.
+        assertEquals(listOf("SagaTerminal"), events.events.map { it.kind })
+        val terminal = assertInstanceOf<SagaTerminal>(events.events[0])
+        assertEquals("NEEDS_INTERVENTION", terminal.state)
+        assertEquals("COMPENSATION_NOT_DISPATCHED", terminal.reason)
+        assertEquals(emptyList<String>(), terminal.compensatedActions)
+    }
+
+    @Test
     fun `a Saga that lost the lease does not compensate at all`() {
         // The promise was armed and confirmed by the process that owned the run back then.
         armAndConfirm("reserve", "release", leaseEpoch = 2L)
@@ -220,7 +334,7 @@ class SagaCompensationInterpreterTest {
 
         val report = runBlocking {
             // This process is behind the run's high-water mark: it lost the run to a takeover.
-            SagaCompensationInterpreter(planOperations(leaseEpoch = 1L), slots).compensate(
+            interpreter(slots, operations = planOperations(leaseEpoch = 1L)).compensate(
                 planOf(actionPlan("reserve", "compensate-reserve")),
             )
         }
@@ -246,7 +360,7 @@ class SagaCompensationInterpreterTest {
         }
 
         val report = runBlocking {
-            SagaCompensationInterpreter(planOperations(), slots).compensate(
+            interpreter(slots).compensate(
                 planOf(actionPlan("reserve", "compensate-reserve")),
             )
         }
@@ -268,7 +382,7 @@ class SagaCompensationInterpreterTest {
         val slots = RecordingSlotInvoker()
 
         val report = runBlocking {
-            SagaCompensationInterpreter(planOperations(), slots).compensate(
+            interpreter(slots).compensate(
                 planOf(actionPlan("reserve", "compensate-reserve")),
             )
         }
@@ -297,6 +411,23 @@ class SagaCompensationInterpreterTest {
             onInvoke(slot)
             return outcomes[slot] ?: BodyOutcome.Completed(StepOutcome.Success)
         }
+    }
+
+    /**
+     * The event sink, recorded.
+     *
+     * The loop announces three facts and the order matters: a compensation that started, the
+     * compensation that finished, and the Saga's terminal state. A reader that sees a start
+     * with no finish knows the answer was lost.
+     */
+    private class RecordingEventSink : EventSink {
+        val events = mutableListOf<DomainEvent>()
+
+        override fun append(event: DomainEvent) {
+            events += event
+        }
+
+        override fun eventsFor(runId: String): Sequence<DomainEvent> = events.asSequence()
     }
 
     private object FixedClock : Clock {

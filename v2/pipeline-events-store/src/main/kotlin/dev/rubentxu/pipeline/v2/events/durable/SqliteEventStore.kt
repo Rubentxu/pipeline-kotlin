@@ -6,6 +6,9 @@ import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.CompensationArmed
+import dev.rubentxu.pipeline.v2.events.CompensationFinished
+import dev.rubentxu.pipeline.v2.events.CompensationStarted
+import dev.rubentxu.pipeline.v2.events.SagaTerminal
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.CredentialBound
@@ -462,6 +465,9 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 // sequence like every other durable event; without this branch it would be
                 // written with sequence 0 and collide on the run-sequence uniqueness index.
                 is CompensationArmed -> event.copy(sequence = assignedSequence)
+            is CompensationStarted -> event.copy(sequence = assignedSequence)
+            is CompensationFinished -> event.copy(sequence = assignedSequence)
+            is SagaTerminal -> event.copy(sequence = assignedSequence)
             }
 
             // Enqueue for the single writer. Bounded queue: blocks when full

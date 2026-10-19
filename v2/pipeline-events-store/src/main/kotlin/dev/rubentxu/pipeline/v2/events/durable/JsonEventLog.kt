@@ -381,6 +381,11 @@ object JsonEventLog {
         // SAGA / PK-1: the armed-obligation notification. The payload carries the promise's
         // identity and plan, never the provider's content.
         "CompensationArmed",
+        // SAGA / PK-2: the three facts of the compensation loop. The slot travels with them
+        // because it is the join with the journal rows of the body that ran.
+        "CompensationStarted",
+        "CompensationFinished",
+        "SagaTerminal",
     )
 
     /**
@@ -1508,6 +1513,20 @@ object JsonEventLog {
             // event is encoded lives in CompensationArmedCodec, so the dispatcher here stays a
             // dispatcher and does not grow one branch per event.
             "CompensationArmed" -> CompensationArmedCodec.decode(
+                s = s,
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+            )
+            // SAGA / PK-2: the loop's three facts. Their knowledge of how they are encoded
+            // lives in SagaLoopCodec, so the dispatcher here stays a dispatcher and the file
+            // does not grow one branch per event.
+            "CompensationStarted",
+            "CompensationFinished",
+            "SagaTerminal",
+            -> SagaLoopCodec.decode(
+                kind = kind,
                 s = s,
                 eventId = eventId,
                 runId = runId,

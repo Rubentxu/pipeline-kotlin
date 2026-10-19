@@ -26,9 +26,15 @@ pipeline {
             sh("mkdir -p build/utils/mix && echo 'alpha' > build/utils/mix/a.txt && echo 'beta' > build/utils/mix/b.txt")
             archiveArtifacts(
                 artifacts = "build/utils/mix/**",
+                // `allowEmptyArchive = true` means an archive step that matched
+                // nothing still succeeds, which is precisely the failure the
+                // comment above describes as "weaker evidence". The seeds are
+                // asserted here so that a glob which stopped matching turns the
+                // scenario red instead of quietly archiving an empty file set.
                 allowEmptyArchive = true,
                 name = "mix",
             )
+            sh("test -s build/utils/mix/a.txt && test -s build/utils/mix/b.txt")
         }
         stage("query-by-name") {
             artifactQuery("mix")

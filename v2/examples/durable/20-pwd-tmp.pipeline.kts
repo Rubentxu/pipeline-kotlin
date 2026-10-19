@@ -25,6 +25,20 @@ pipeline {
             // (different stepIndex ⇒ different OpId ⇒ different sha256).
             val dir2 = pwd(tmp = true)
             echo("pwd(tmp=true) second invocation: " + dir2)
+            // DO NOT assert `dir != dir2` here. It was written, and it is
+            // wrong: both values are the literal string `<workspace>`.
+            // `StageScope.pwd` records the step and returns the
+            // `runtimeConfig.userDir()` placeholder -- its KDoc states the
+            // placeholder "MUST NOT be used as if it were the real runtime
+            // path" and that scripts needing the real value must route through
+            // the scripted runtime context. So the distinctness invariant
+            // above is REAL but not observable through this return value, and
+            // asserting on it manufactures a defect that does not exist.
+            //
+            // The real path arrives as the step's output event. Reaching it
+            // needs a third launcher directive (`//@ expect-stdout`), which is
+            // the open product decision recorded in ROADMAP.md, not something
+            // a scenario may grow on its own.
             // And the legacy `pwd()` must still work — proves core.pwd not
             // accidentally re-routed.
             val legacy = pwd()

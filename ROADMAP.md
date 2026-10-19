@@ -153,8 +153,8 @@ contra el texto del plan. «Medido» significa que el número salió de una
 | 2 | 0 `@Test` UAT/E2E/AAT/harness | **PASS** | 0 en `pluginContractTest`/`installedContractTest`/`integrationTest`/`functionalTest`; 0 `@Disabled` |
 | 3 | 0 clases legacy trasladadas | **PASS** | `v2/test-harness`, `v2/pipeline-testkit`, `v2/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
 | 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 36 escenarios en 8 categorías bajo `v2/examples/`; 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` (186 líneas) invocado por `scripts/verify-all.sh:246` |
-| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 6805 / 61618 = 0.110; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
-| 6 | `verify-all` local ≤ 900 s | **PASS** | tres ensayos sobre `2d4fdf38`: 224 / 227 / **231 s**, peor 231 contra el límite de 900. Los tres con 54/54 informes reescritos, 522 tests, 0 fallos, 0 skips |
+| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 6981 / 61644 = 0.113; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
+| 6 | `verify-all` local ≤ 900 s | **PASS** | peor de tres ensayos sobre `12eea7a89` + este bloque: 228 / 227 / **228 s**, y **241 s** en la corrida de cierre sobre `f4dd21a47`, contra el límite de 900. Todas con 56/56 informes reescritos, 531 tests, 0 fallos, 0 errores, 0 skips |
 | 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS con una excepción** | 27 módulos declarados compilan; `v2/pipeline-protocol/` está versionado y **no está declarado**, luego Gradle nunca lo compila |
 
 Sobre el límite 4: el mandato escribe el lanzador como `examples/run.sh`, y en
@@ -1044,46 +1044,92 @@ Nota menor, del mismo tipo que las de 2.1: el KDoc de `EventHarness` explica el
 alcance «con secuencias que se reinician», pero `appendAssigned` reasigna `0L` con
 el contador monotónico. La deuda está vigente; **su explicación del mecanismo ya no**.
 
-**d) 24 de 36 escenarios E2E sólo comprueban el código de salida.** Es el
-siguiente bloque desbloqueado y el más barato de los que quedan.
+**d) 13 de 36 escenarios E2E sólo comprueban el código de salida.** Era 24 al
+abrirse este bloque; queda en 13.
 
-Censo reproducible el 2026-10-19 sobre los 36 `.pipeline.kts` del árbol. El
-lanzador sólo conoce dos aserciones, `//@ expect-exit` y `//@ expect-stderr`, y
-las dos comparan un valor de salida o una subcadena de stderr. Todo lo demás
-tiene que afirmarlo el propio escenario, y no todos lo hacen:
+Censo reproducible sobre los 36 `.pipeline.kts` del árbol. El lanzador sólo
+conoce dos aserciones, `//@ expect-exit` y `//@ expect-stderr`, y las dos
+comparan un valor de salida o una subcadena de stderr. Todo lo demás tiene que
+afirmarlo el propio escenario, y no todos lo hacen:
 
 | | Qué afirma | N |
 |---|---|---|
 | A | `//@ expect-stderr`: el lanzador exige **este** texto de negativa, no un código cualquiera | 4 |
-| B | Una comprobación dentro del cuerpo (`test -f`, `grep -q`, `cat`, `find`, `test "$X" =`) que falla si el efecto no ocurrió | 8 |
-| C | **Nada.** El lanzador compara el código de salida y ya está | **24** |
+| B | Una comprobación dentro del cuerpo (`test`, `grep -q`, `cat`, `find`, `wc -l`, `test "$X" =`) que falla si el efecto no ocurrió | 19 |
+| C | **Nada** que compruebe el efecto; el lanzador compara el código de salida y ya está | **13** |
 
-El recuento por *grep* dio primero 12 y después 26 porque el patrón era más
-estrecho que el sujeto: buscaba `test -f` y `grep`, y se le escapaban `cat`,
-`find`, `wc -l` y `ls`, que son igual de asertivas porque devuelven distinto
-código de salida cuando el efecto no ocurrió. Un censo cuyo instrumento es más
-estrecho que su sujeto da un número confiado y equivocado, y esa es la tercera
-vez que pasa en este ciclo.
+Los trece que pasaron de C a B en este ciclo: `steps/18-cleanWs`,
+`smoke/02-environment`, `control-flow/11-workflow-control`, `steps/08-withEnv`,
+`output/23-readfile`, `smoke/09-sh-then-echo`, `output/30-artifact-query-bridge`,
+`output/32-publish-html`, `security/14-credentials-bindings`, `smoke/10-smoke-e2e`,
+`steps/17-writeFile`, `control-flow/06-loop` y `plugins/repeat-block`.
 
-**Un código de salida verde no es un comportamiento verde.** `smoke/01-basic`
-es `echo("hello world")` y nada más: si el motor escribiera la cadena en otro
-sitio, o dos veces, o no la escribiera, el escenario seguiría en verde. Lo mismo
-con `steps/04-sh`. El daño es mayor donde el efecto es destructivo o
-persistente —`steps/18-cleanWs` borra un directorio y no comprueba que lo borró—
-porque ahí una regresión deja datos de otra corrida en disco y nadie se entera.
+De los trece, **ocho llevan la mutación que los pone en rojo, leída de vuelta
+antes de leer el resultado** —una aserción no vale si no se ha visto fallar—:
+`18-cleanWs`, `02-environment`, `08-withEnv` y `11-workflow-control` (este
+último por inversión de la propia aserción), más `smoke/10`, `17-writeFile`,
+`06-loop` y `plugins/repeat-block`. Los cinco restantes se validaron en verde
+pero **no** se vieron fallar: `23-readfile`, `09-sh-then-echo`,
+`30-artifact-query-bridge`, `32-publish-html` y `14-credentials-bindings`. Este
+último además **nunca se ejecuta** —está en `NOT_RUN` por
+`requires-seeded-credentials`—, así que su aserción está escrita y compilada
+pero no ha corrido nunca. Declararlo probado sería falso.
 
-Por qué no se cierra en este ciclo: los 36 escenarios son el sujeto de la
-medición de reloj que acaba de hacerse, y editar el sujeto invalida la
-medición. Un número de reloj tomado sobre un árbol que ya no existe es un
-número inventado. El orden correcto es medir, luego cambiar, luego volver a
-medir; y volver a medir cuesta otros tres ensayos completos.
+**El instrumento de este censo falló cuatro veces antes de reconciliar**, y es
+la cuarta vez que aparece en este ciclo que un censo da un número confiado y
+equivocado. La secuencia vale más que el número: `test -[efdLrn]` no veía `s`
+ni el `!` de `test ! -e`; `test [^|&;]*-x` se detenía en el `&&` de un `&&` y
+por eso declaraba sin aserción un escenario que acababa de escribir; un parser
+que extraía el argumento de cada `sh(...)` se comió los `sh` de varios
+ficheros; y sólo el cuarto —buscar el token en el código ya sin comentarios y
+**mostrar en cada fila el token que la prueba**— reconcilió. La columna de
+evidencia es la parte que evita la quinta: una cifra que no puede mostrar su
+propio instrumento no debería publicarse.
 
-Coste por defecto de cerrarlo: cada uno de los 24 recibe **una** comprobación
+**Un código de salida verde no es un comportamiento verde**, y el daño es mayor
+donde el efecto es destructivo o persistente: `steps/18-cleanWs` borraba un
+directorio sin comprobar que lo borrara, y `control-flow/11` escribía un marker
+dentro de `dir` sin comprobar que `deleteDir` se lo llevara. En ambos, una
+regresión dejaba datos de otra corrida en disco y nadie se enteraba.
+
+### Lo que queda en C no es todo cerrable con el vocabulario actual
+
+Clasificados uno a uno, los 13 no son el mismo problema, y llamar «sin
+cobertura» a todo lo que queda sería volver a mentir con una cifra plana:
+
+- **Uno ya está cubierto y el censo no lo ve.** `negative/12-error-handling`
+  mete un `sh("exit 1")` dentro de `catchError` y `warnError`, y su garantía
+  es que **el proceso continúe**. El lanzador exige salida 0 por defecto, así
+  que una regresión en `catchError` —que abortaría la corrida— lo pone en
+  rojo. El código de salida *es* la aserción aquí; contarlo como C es un
+  artefacto de buscar un token `test`, no una ausencia real.
+- **Dos dependen de un valor que el DSL no devuelve.** `steps/26-find-files`
+  ejercita `findFiles`, que devuelve `Unit` y no escribe nada en disco;
+  `durable/20-pwd-tmp` dice en un comentario que dos invocaciones de
+  `pwd(tmp=true)` deben dar paths distintos, y la aserción natural —comparar
+  los dos valores devueltos— **es incorrecta**: ambos son el placeholder
+  literal `<workspace>`, y el KDoc de `StageScope.pwd` dice que ese placeholder
+  «MUST NOT be used as if it were the real runtime path». Se retiró esa
+  aserción y se dejó escrito el motivo dentro del propio escenario, para que
+  el defecto no vuelva a reportarse como si fuera del producto.
+- **Los diez restantes son `echo`.** `smoke/01`, `smoke/03`, `steps/04`,
+  `steps/13`, `steps/16`, `control-flow/05`, `durable/19`, `durable/21`,
+  `plugins/lock-directive` y `plugins/uppercase` no producen ningún fichero,
+  ningún directorio y ningún valor consultable: producen **líneas de salida**.
+  Escribirles un `sh("test …")` no comprobaría su sujeto, sólo añadiría ruido.
+
+O sea: **el C restante es, en su mayor parte, una única decisión de producto** —
+una tercera directiva `//@ expect-stdout`, para la cual el lanzador ya guarda
+`stdout.txt` pero cuyo encabezado declara que no tiene nociones de aserción más
+allá de sus dos directivas opcionales. Adoptarla es cambiar un invariante
+declarado del lanzador, y por eso no se decide dentro de un escenario.
+
+Coste por defecto de cerrar el resto: cada uno recibe **una** comprobación
 pequeña sobre un efecto que ya produce —el fichero que escribe, la línea que
 emite, el directorio que debe quedar vacío—, no un `Shell` que reimprima lo que
-el escenario ya hizo. La lente de este bloque es `change-impact`: la garantía es
-«el escenario falla cuando el efecto público no ocurrió», y el instrumento más
-barato es una aserción dentro del propio pipeline, que no cuesta un proceso
+el escenario ya hizo. La lente de este bloque es `change-impact`: la garantía
+es «el escenario falla cuando el efecto público no ocurrió», y el instrumento
+más barato es una aserción dentro del propio pipeline, que no cuesta un proceso
 extra ni un segundo vocabulario en el lanzador.
 
 

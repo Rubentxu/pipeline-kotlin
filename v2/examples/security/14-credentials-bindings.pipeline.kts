@@ -2,31 +2,31 @@
 // NOT_RUN in the local gate, and that is deliberate rather than a shrug.
 //
 // This scenario's subject is the seven binding kinds. Resolving any of them
-// needs a credential store that already holds those entries, and the product's
-// only writer, `pipelinek credentials add`, prompts "Enter secret value:" on
-// the TTY and refuses without one. The launcher has no business synthesising a
-// seeded store: a TTY-driven seeder would be exactly the harness this tree
-// deleted, and a hand-built encrypted file would test the hand-built file.
+// needs a credential store that already holds those entries, and the only
+// writer of that store reads every value from an interactive terminal and
+// refuses to run without one. The launcher does not synthesise a seeded store:
+// a terminal-driven seeder would be a harness in its own right, and a
+// hand-built encrypted file would only test the hand-built file.
 //
 // Left here rather than deleted on purpose. The coverage gap is real and the
 // seven-kind contract is a security boundary, so the scenario stays in the
-// inventory: the day a non-interactive seeding path exists, deleting the
+// inventory: once a store can be seeded without a terminal, removing the
 // directive above turns this back into a running check.
 //
 // The launcher COMPILES this file even while it cannot run it (`run.sh`
 // validates before declaring NOT_RUN). That is not a formality: the seven
-// `CredentialsBinding` factories below are the DSL surface of a security
-// boundary, and a rename of any one of them used to leave the verdict
-// unchanged — the scenario was skipped before anything read it, so a broken
-// factory and a healthy one produced the same `gaps=1 not_run`. A scenario that
-// cannot execute is still a scenario whose source has to hold together.
+// binding factories below are the DSL surface of a security boundary, and a
+// rename of any one of them used to leave the verdict unchanged — the
+// scenario was skipped before anything read it, so a broken factory and a
+// healthy one produced the same `gaps=1 not_run`. A scenario that cannot
+// execute is still a scenario whose source has to hold together.
 pipeline {
     stages {
         stage("credentials-bindings") {
-            // Exercise all 5 NEW binding kinds ( widened in ML-R10 / commit 682d4e5 )
-            // plus the 2 pre-existing kinds for a complete 7-kind corpus entry.
-            // DSL syntax: reconcile against fixture 08-withEnv + widened factories.
-            // Rule 13: shell variable expansion in strings. The CORRECT Kotlin
+            // Every binding kind the DSL offers, so the seven-kind corpus is
+            // complete.
+            //
+            // Shell variable expansion inside a string. The CORRECT Kotlin
             // escape is `\${VAR}` (a single backslash before `$`, then the
             // braced identifier). The form `\${'$'}VAR` looks similar but is
             // a TRAP: Kotlin compiles `${'$'}` to a literal `$`, then `VAR`
@@ -35,38 +35,38 @@ pipeline {
             // form instead.
 
             withCredentials(listOf(
-                // Kind.STRING (pre-existing) — pure DSL, no FQCN imports
+                // STRING — pure DSL
                 StepSpec.CredentialsBinding.string(
                     "string-creds",
                     "API_KEY"
                 ),
-                // Kind.USERNAME_PASSWORD (pre-existing) — pure DSL
+                // USERNAME_PASSWORD — pure DSL
                 StepSpec.CredentialsBinding.usernamePassword(
                     "userpass-creds",
                     "DB_USER",
                     "DB_PASS"
                 ),
-                // Kind.SSH_USER_PRIVATE_KEY (NEW in ML-R10) — pure DSL
+                // SSH_USER_PRIVATE_KEY
                 StepSpec.CredentialsBinding.sshUserPrivateKey(
                     "ssh-creds",
                     "SSH_KEY_FILE"
                 ),
-                // Kind.FILE (NEW in ML-R10) — pure DSL
+                // FILE
                 StepSpec.CredentialsBinding.file(
                     "file-creds",
                     "SECRET_FILE"
                 ),
-                // Kind.CERTIFICATE (NEW in ML-R10) — pure DSL
+                // CERTIFICATE
                 StepSpec.CredentialsBinding.certificate(
                     "cert-creds",
                     "KEYSTORE_PATH"
                 ),
-                // Kind.ZIP (NEW in ML-R10) — pure DSL
+                // ZIP
                 StepSpec.CredentialsBinding.zip(
                     "zip-creds",
                     "ZIP_PATH"
                 ),
-                // Kind.USERNAME_COLON_PASSWORD (NEW in ML-R10) — pure DSL
+                // USERNAME_COLON_PASSWORD
                 StepSpec.CredentialsBinding.usernameColonPassword(
                     "ucp-creds",
                     "U_P"

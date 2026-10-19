@@ -18,8 +18,8 @@ import org.junit.jupiter.api.Test
  * exit code "can be a successful shell value even when it is non-zero". Collapse it and every
  * caller either fails healthy commands or stops seeing the codes it asked for.
  *
- * Both functions here are published ABI of `pipeline-domain` with production call sites in
- * `CoreShellStep` and `ShExecution`, and neither had a single test.
+ * Both mappings here sit on a published boundary that production callers depend on, and neither
+ * had any coverage of its own.
  *
  * [decideShellReturnMode] is pinned as the closure it claims: four boolean combinations, three
  * legal, and the fourth REJECTED rather than silently collapsed into one of the three. A silent

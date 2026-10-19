@@ -8,29 +8,28 @@ import org.junit.jupiter.api.Test
 /**
  * The guarantee: registering a credential for masking must not consume it.
  *
- * The capacity this serves: a call site that registers a handle the pipeline still owns — a
- * bound credential that `sh` is about to run — must find that credential intact afterwards.
- * Masking is an observation of the bytes, not a transfer of ownership.
+ * The capacity this serves: a caller that registers a credential the pipeline still owns — a
+ * bound value that a step is about to run — must find it intact afterwards. Masking is an
+ * observation of the bytes, not a transfer of ownership.
  *
- * This is a regression guard for a defect that was real. `addSecret` used to call `handle.use`,
- * which wipes the buffer in a `finally`. Registering a bound credential therefore destroyed it
- * before the step ran. The canary call sites never caught it because they register handles they
- * just built and throw away; the failure only reaches a caller that keeps the handle. So the
- * property is asserted on the handle AFTER the call, which is the only place it can be observed.
+ * Registration used to consume the value, wiping its buffer in a cleanup block. Registering a
+ * bound credential therefore destroyed it before the step ran. Call sites that only register a
+ * value they built and discard never noticed, because nothing afterwards read it; the failure
+ * reaches a caller that keeps the value. So the property is asserted on the value after the
+ * call, which is the only place it can be observed.
  *
- * Both halves are asserted. Non-consumption alone would also pass if `addSecret` became a no-op,
- * and a redactor that registers nothing leaves the secret in the log — so the second assertion
- * pins that the registration still happens. A guard that survives being made harmless is not a
- * guard.
+ * Both halves are asserted. Non-consumption alone would also pass if registration became a
+ * no-op, and a redactor that registers nothing leaves the secret in the log — so the second
+ * assertion pins that the registration still happens. A guard that survives being made harmless
+ * is not a guard.
  *
- * `SecretHandle.plain` is an in-memory factory and `materialize` reads the buffer directly, so
- * this is a pure domain test: no clock, no filesystem, no credentials, no I/O. The wipe fills the
- * array with NULs rather than truncating it, so the failure surface is a string of NULs, not an
- * empty string.
+ * Everything here is a pure in-memory value: no clock, no filesystem, no credentials, no I/O.
+ * The wipe fills the buffer with NUL characters rather than shortening it, so a consumed
+ * credential surfaces as a run of NUL characters, not as an empty string.
  */
 class SecretPatternRegistryHandleTest {
 
-    /** 9 chars, above [SecretPatternRegistry.MIN_MASKABLE_LENGTH] so it really is registered. */
+    /** Long enough to clear the shortest maskable value, so it really is registered. */
     private val secret = "p@ss w0rd"
 
     @Test

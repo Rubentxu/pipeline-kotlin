@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
+import dev.rubentxu.pipeline.v2.events.CompensationArmed
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.CredentialBound
@@ -457,6 +458,10 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is TimestampsExited -> event.copy(sequence = assignedSequence)
                 // S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation (WU-1)
                 is StepAdmissionObserved -> event.copy(sequence = assignedSequence)
+                // SAGA / PK-1: the armed-obligation notification carries the assigned
+                // sequence like every other durable event; without this branch it would be
+                // written with sequence 0 and collide on the run-sequence uniqueness index.
+                is CompensationArmed -> event.copy(sequence = assignedSequence)
             }
 
             // Enqueue for the single writer. Bounded queue: blocks when full

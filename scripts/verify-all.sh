@@ -108,11 +108,20 @@ echo "    JAVA_HOME=$JAVA_HOME"
 # --- Stage 1: compile, static analysis, API compatibility, distribution -------
 # One Gradle invocation, so the distribution is assembled exactly once and the
 # tests below reuse the same compiled classes rather than recompiling.
+#
+# `detektTest` sits beside `detektMain` because they are the same analysis over
+# two source sets, and only one of them used to be in this list. Every module
+# declares both; nothing ran the second. Thirteen test files across seven
+# modules were missing a trailing newline for as long as that held, and no
+# gate was in a position to say so -- the analysis was green in the only sense
+# that a task nobody invokes is green. It fans out to 26 subprojects and costs
+# 3s, so running it adds no new gate: it runs one that was already declared.
 
-log "stage 1/5  compile + detekt + apiCheck + installDist"
+log "stage 1/5  compile + detekt + detektTest + apiCheck + installDist"
 stage_started_at=$(date +%s)
 ./v2/gradlew --no-daemon -p v2 \
     detektMain \
+    detektTest \
     apiCheck \
     :pipeline-application:installDist \
     > "${TMPDIR:-/tmp}/verify-all-stage1.log" 2>&1 \

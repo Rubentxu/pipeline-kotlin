@@ -10,6 +10,7 @@ import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
+import dev.rubentxu.pipeline.v2.events.CompensationArmed
 import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
@@ -256,6 +257,10 @@ object EnvelopeProjector {
         is TimeoutTriggered,
         is TimestampsEntered,
         is TimestampsExited,
+        // SAGA / PK-1: a compensation obligation is a run-scoped fact. The obligation's
+        // identity is (run, saga, action, compensation), and none of those three finer
+        // identities is a stage or a step, so the run is the honest subject.
+        is CompensationArmed,
         -> runRef
     }.let { it }
 }

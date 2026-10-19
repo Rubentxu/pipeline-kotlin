@@ -119,6 +119,14 @@ internal fun runCanonicalPipeline(
     // A parameter that documents a role it no longer has is a smaller lie than a default that
     // drops plugins, and it is removed rather than left with a stale comment.
     composition: PreResolvedComposition,
+    /**
+     * SAGA / PK-1: the per-run Saga seam.
+     *
+     * Null when the caller did not compose a durable Saga store, and then the compensation
+     * intent port is not exposed at all: a Step that declares it is refused at admission
+     * rather than reaching a handler that could not keep the promise it is about to make.
+     */
+    sagaBinding: dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding? = null,
 ): RunOutcome = runBlocking {
     CanonicalDurableRunCoordinator(
         // P3-B/P3-C: the ONE registry this run resolves plugin event kinds against, on the write
@@ -180,6 +188,8 @@ internal fun runCanonicalPipeline(
         // frozen by PluginComposition before this call.
         stepRegistry = composition.steps,
         secretPatternRegistry = secretPatternRegistry,
+        // SAGA / PK-1: forwarded so the dispatch can build the invocation-bound intent port.
+        sagaBinding = sagaBinding,
         // RETRY-D (ADR-0075): production wire-up. The retry aggregate is reconciled against
         // the on-disk control journal so a `run` invocation with the same --db and
         // --control-root reuses the prior aggregate terminal state and does not re-launch

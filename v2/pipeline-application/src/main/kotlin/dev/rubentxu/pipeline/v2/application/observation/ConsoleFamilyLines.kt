@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
+import dev.rubentxu.pipeline.v2.events.CompensationArmed
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.CredentialBound
@@ -358,6 +359,13 @@ internal object ConsoleFamilyLines {
             Family.NOTE,
             "post conditions for ${event.stageName}: selected ${event.selectedConditions.size}, " +
                 "skipped ${event.skippedConditions.size}",
+        )
+
+        // SAGA / PK-1: the promise, not the effect. The line says the obligation was armed;
+        // it deliberately does not say anything happened, because nothing has happened yet.
+        is CompensationArmed -> Line(
+            Family.NOTE,
+            "compensation armed: ${event.sagaId}/${event.actionId} -> ${event.compensationId}",
         )
 
         else -> unrouted(event, this)

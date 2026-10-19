@@ -124,6 +124,14 @@ internal class StepDispatchEngine(
     // WU-093 H2b: handed to PREPARE so admission and execution observe the same set.
     private val capabilityContributor: dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor =
         dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor { emptyMap() },
+    // SAGA / PK-1: the per-run Saga seam. The PORT itself is built per dispatch, because it
+    // carries the forward operation's identity; this binding only carries the run-level facts
+    // (the durable store and the lease epoch that fences writes).
+    //
+    // Null when the run has no durable Saga store: the capability then stays unexposed and a
+    // Step that declares it is refused at admission rather than reaching a handler that could
+    // not keep the promise it is about to make.
+    private val sagaBinding: SagaCompensationBinding? = null,
 ) {
 
     /**
@@ -206,6 +214,19 @@ internal class StepDispatchEngine(
         secretPatternRegistry = secretPatternRegistry,
         workspaceBase = workspaceBase,
         pluginEventEmitter = pluginEventEmitter(eventRegistry, eventSink, clock),
+        // SAGA / PK-1: the intent port for THIS invocation. Built here, where the forward
+        // operation's identity is known, so the compensation an obligation names is the
+        // compensation OF that operation and not of some other step in the same run.
+        sagaCompensation = sagaBinding?.let { binding ->
+            SagaCompensationOperations(
+                runId = runId.value,
+                forwardOpId = opId.format(),
+                leaseEpoch = binding.leaseEpoch,
+                store = binding.store,
+                eventSink = eventSink,
+                clock = clock,
+            )
+        },
     )
 
     /**

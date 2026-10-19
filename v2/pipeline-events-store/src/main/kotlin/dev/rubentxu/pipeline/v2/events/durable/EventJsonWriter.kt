@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
+import dev.rubentxu.pipeline.v2.events.CompensationArmed
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.CredentialBound
@@ -805,6 +806,28 @@ internal object EventJsonWriter {
                 sb.append(EventJsonWriter.jsonString(event.law))
                 sb.append(",\"executorCalls\":")
                 sb.append(event.executorCalls)
+            }
+            // SAGA / PK-1: the armed-obligation notification. The fields are the ones a
+            // reader of the event plane needs to correlate the promise with the durable
+            // row: which saga, which action, under which plan, and where the compensation
+            // will run.
+            is CompensationArmed -> {
+                sb.append(",\"sagaId\":")
+                sb.append(EventJsonWriter.jsonString(event.sagaId))
+                sb.append(",\"actionId\":")
+                sb.append(EventJsonWriter.jsonString(event.actionId))
+                sb.append(",\"compensationId\":")
+                sb.append(EventJsonWriter.jsonString(event.compensationId))
+                sb.append(",\"planFingerprint\":")
+                sb.append(EventJsonWriter.jsonString(event.planFingerprint))
+                sb.append(",\"intentVersion\":")
+                sb.append(event.intentVersion)
+                sb.append(",\"resourceRef\":")
+                sb.append(EventJsonWriter.jsonString(event.resourceRef))
+                sb.append(",\"compensationOpId\":")
+                sb.append(EventJsonWriter.jsonString(event.compensationOpId))
+                sb.append(",\"leaseEpoch\":")
+                sb.append(event.leaseEpoch)
             }
         }
         sb.append("}")

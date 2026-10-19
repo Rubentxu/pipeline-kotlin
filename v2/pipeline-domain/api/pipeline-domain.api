@@ -3792,6 +3792,7 @@ public final class dev/rubentxu/pipeline/v2/domain/durable/Effect : java/lang/En
 	public static final field EXECUTES_SUBPROCESS Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
 	public static final field NETWORKS Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
 	public static final field READ_ONLY Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
+	public static final field WRITES_DURABLE_STATE Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
 	public static final field WRITES_WORKSPACE Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/durable/Effect;
@@ -5202,6 +5203,553 @@ public final class dev/rubentxu/pipeline/v2/domain/post/StageOutcome$Unstable : 
 	public fun equals (Ljava/lang/Object;)Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/saga/ArmRejection {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/ArmRejection$LeaseSuperseded : dev/rubentxu/pipeline/v2/domain/saga/ArmRejection {
+	public fun <init> (JJ)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun copy (JJ)Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection$LeaseSuperseded;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection$LeaseSuperseded;JJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection$LeaseSuperseded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCurrentEpoch ()J
+	public final fun getHeldEpoch ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/ArmRejection$NotAuthorized : dev/rubentxu/pipeline/v2/domain/saga/ArmRejection {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection$NotAuthorized;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection$NotAuthorized;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection$NotAuthorized;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/ArmRejection$StoreUnavailable : dev/rubentxu/pipeline/v2/domain/saga/ArmRejection {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection$StoreUnavailable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection$StoreUnavailable;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection$StoreUnavailable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/ArmRejection$UnsupportedIntentVersion : dev/rubentxu/pipeline/v2/domain/saga/ArmRejection {
+	public fun <init> (I)V
+	public final fun component1 ()I
+	public final fun copy (I)Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection$UnsupportedIntentVersion;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection$UnsupportedIntentVersion;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection$UnsupportedIntentVersion;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getVersion ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$AlreadyArmed : dev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$AlreadyArmed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$AlreadyArmed;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$AlreadyArmed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getObligation ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$Armed : dev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$Armed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$Armed;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$Armed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getObligation ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$PlanDivergence : dev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome {
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;
+	public final fun component2-EgDSVYM ()Ljava/lang/String;
+	public final fun copy-J0q2BjM (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$PlanDivergence;
+	public static synthetic fun copy-J0q2BjM$default (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$PlanDivergence;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$PlanDivergence;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExisting ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;
+	public final fun getRequestedFingerprint-EgDSVYM ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$Rejected : dev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$Rejected;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$Rejected;Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome$Rejected;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/domain/saga/ArmRejection;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationDeclaration {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-YTsXdgg ()Ljava/lang/String;
+	public final fun component2-l_DKfx8 ()Ljava/lang/String;
+	public final fun component3--p2rSqk ()Ljava/lang/String;
+	public final fun component4-EgDSVYM ()Ljava/lang/String;
+	public final fun component5-9W-23fU ()Ljava/lang/String;
+	public final fun component6 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;
+	public final fun component7 ()I
+	public final fun copy-NN2O0IQ (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;I)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDeclaration;
+	public static synthetic fun copy-NN2O0IQ$default (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDeclaration;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDeclaration;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActionId-l_DKfx8 ()Ljava/lang/String;
+	public final fun getCompensationId--p2rSqk ()Ljava/lang/String;
+	public final fun getIntentVersion ()I
+	public final fun getKey ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKey;
+	public final fun getKind ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;
+	public final fun getPlanFingerprint-EgDSVYM ()Ljava/lang/String;
+	public final fun getResourceRef-9W-23fU ()Ljava/lang/String;
+	public final fun getSagaId-YTsXdgg ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationId {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/saga/CompensationId$Companion;
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationId;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationId$Companion {
+	public final fun of-WscFO5Q (Ljava/lang/String;)Ljava/lang/String;
+	public final fun ofOrNull-hTLzCQ8 (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationKey {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-YTsXdgg ()Ljava/lang/String;
+	public final fun component2-l_DKfx8 ()Ljava/lang/String;
+	public final fun component3--p2rSqk ()Ljava/lang/String;
+	public final fun copy-W2ou4tE (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKey;
+	public static synthetic fun copy-W2ou4tE$default (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKey;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKey;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActionId-l_DKfx8 ()Ljava/lang/String;
+	public final fun getCompensationId--p2rSqk ()Ljava/lang/String;
+	public final fun getSagaId-YTsXdgg ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationKind : java/lang/Enum {
+	public static final field DELETE Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;
+	public static final field NO_OP Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;
+	public static final field RESTORE Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationObligation {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;JJJLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-YTsXdgg ()Ljava/lang/String;
+	public final fun component10 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;
+	public final fun component11 ()J
+	public final fun component12 ()J
+	public final fun component13 ()J
+	public final fun component2-l_DKfx8 ()Ljava/lang/String;
+	public final fun component3--p2rSqk ()Ljava/lang/String;
+	public final fun component4-EgDSVYM ()Ljava/lang/String;
+	public final fun component5-9W-23fU ()Ljava/lang/String;
+	public final fun component6 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;
+	public final fun component7 ()I
+	public final fun component8 ()Ljava/lang/String;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy-AyCLFVk (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;JJJ)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;
+	public static synthetic fun copy-AyCLFVk$default (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;JJJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getActionId-l_DKfx8 ()Ljava/lang/String;
+	public final fun getCompensationId--p2rSqk ()Ljava/lang/String;
+	public final fun getCompensationOpId ()Ljava/lang/String;
+	public final fun getCreatedAtMs ()J
+	public final fun getForwardOpId ()Ljava/lang/String;
+	public final fun getIntentVersion ()I
+	public final fun getKey ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKey;
+	public final fun getKind ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;
+	public final fun getLeaseEpoch ()J
+	public final fun getPlanFingerprint-EgDSVYM ()Ljava/lang/String;
+	public final fun getResourceRef-9W-23fU ()Ljava/lang/String;
+	public final fun getSagaId-YTsXdgg ()Ljava/lang/String;
+	public final fun getStatus ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;
+	public final fun getUpdatedAtMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus : java/lang/Enum {
+	public static final field ARMED Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;
+	public static final field COMPENSATED Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;
+	public static final field EFFECT_ABSENT Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;
+	public static final field EFFECT_CONFIRMED Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;
+	public static final field NEEDS_INTERVENTION Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligationStatus;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/saga/CompensationOperations {
+	public abstract fun arm (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDeclaration;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome;
+	public abstract fun decide (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;Ldev/rubentxu/pipeline/v2/domain/saga/EffectEvidence;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaDecision;
+	public abstract fun read (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKey;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationOperationsKt {
+	public static final fun getSAGA_COMPENSATION_CAPABILITY ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy$NotReconcilable : dev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy$NotReconcilable;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy$Reconcilable : dev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy$Reconcilable;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$Failed : dev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$Failed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$Failed;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$Failed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$NeedsIntervention : dev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$NeedsIntervention;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$NeedsIntervention;Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$NeedsIntervention;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$NotRequired : dev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$NotRequired;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$Pending : dev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$Pending;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$Succeeded : dev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-dDJaR2s ()Ljava/lang/String;
+	public final fun copy-GYkx164 (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$Succeeded;
+	public static synthetic fun copy-GYkx164$default (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$Succeeded;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict$Succeeded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReceipt-dDJaR2s ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/saga/EffectEvidence {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/EffectEvidence$Absent : dev/rubentxu/pipeline/v2/domain/saga/EffectEvidence {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/saga/EffectEvidence$Absent;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/EffectEvidence$Confirmed : dev/rubentxu/pipeline/v2/domain/saga/EffectEvidence {
+	public synthetic fun <init> (Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-e75fhHI ()Ljava/lang/String;
+	public final fun copy-9D6LRdY (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/EffectEvidence$Confirmed;
+	public static synthetic fun copy-9D6LRdY$default (Ldev/rubentxu/pipeline/v2/domain/saga/EffectEvidence$Confirmed;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/EffectEvidence$Confirmed;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReceipt-e75fhHI ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/EffectEvidence$NotAttempted : dev/rubentxu/pipeline/v2/domain/saga/EffectEvidence {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/saga/EffectEvidence$NotAttempted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/EffectEvidence$Unknown : dev/rubentxu/pipeline/v2/domain/saga/EffectEvidence {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/saga/UncertaintyReason;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/saga/UncertaintyReason;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/saga/UncertaintyReason;)Ldev/rubentxu/pipeline/v2/domain/saga/EffectEvidence$Unknown;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/EffectEvidence$Unknown;Ldev/rubentxu/pipeline/v2/domain/saga/UncertaintyReason;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/EffectEvidence$Unknown;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/domain/saga/UncertaintyReason;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/EffectReceiptRef {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/saga/EffectReceiptRef$Companion;
+	public static final field MAX_LENGTH I
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/EffectReceiptRef;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/EffectReceiptRef$Companion {
+	public final fun of-BX19kqM (Ljava/lang/String;)Ljava/lang/String;
+	public final fun ofOrNull-Jzn4Bxw (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/ForwardDenial : java/lang/Enum {
+	public static final field ARM_NOT_PERSISTED Ldev/rubentxu/pipeline/v2/domain/saga/ForwardDenial;
+	public static final field OBLIGATION_NOT_ARMED Ldev/rubentxu/pipeline/v2/domain/saga/ForwardDenial;
+	public static final field PLAN_DIVERGENCE Ldev/rubentxu/pipeline/v2/domain/saga/ForwardDenial;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/ForwardDenial;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/saga/ForwardDenial;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/InterventionReason : java/lang/Enum {
+	public static final field OBLIGATION_NOT_ARMED Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;
+	public static final field PLAN_DIVERGENCE Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;
+	public static final field UNKNOWN_EFFECT Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision$DenyForward : dev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/saga/ForwardDenial;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/saga/ForwardDenial;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/saga/ForwardDenial;)Ldev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision$DenyForward;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision$DenyForward;Ldev/rubentxu/pipeline/v2/domain/saga/ForwardDenial;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision$DenyForward;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/domain/saga/ForwardDenial;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision$NeedsIntervention : dev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;)Ldev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision$NeedsIntervention;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision$NeedsIntervention;Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision$NeedsIntervention;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision$ProceedForward : dev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision$ProceedForward;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision$Reconcile : dev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision$Reconcile;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/ResourceRef {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/saga/ResourceRef$Companion;
+	public static final field MAX_LENGTH I
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/ResourceRef;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/ResourceRef$Companion {
+	public final fun of-AChlJhk (Ljava/lang/String;)Ljava/lang/String;
+	public final fun ofOrNull-LCou5hg (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaActionId {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/saga/SagaActionId$Companion;
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaActionId;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaActionId$Companion {
+	public final fun of-sVpSYu8 (Ljava/lang/String;)Ljava/lang/String;
+	public final fun ofOrNull-ugsw5EA (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaDecider {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/saga/SagaDecider;
+	public final fun armOutcome (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationArmOutcome;
+	public final fun decide (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;Ldev/rubentxu/pipeline/v2/domain/saga/EffectEvidence;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaDecision;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/saga/SagaDecision {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaDecision$Compensate : dev/rubentxu/pipeline/v2/domain/saga/SagaDecision {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaDecision$Compensate;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/SagaDecision$Compensate;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaDecision$Compensate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getVerdict ()Ldev/rubentxu/pipeline/v2/domain/saga/CompensationVerdict;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaDecision$Forward : dev/rubentxu/pipeline/v2/domain/saga/SagaDecision {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaDecision$Forward;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/SagaDecision$Forward;Ldev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaDecision$Forward;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDecision ()Ldev/rubentxu/pipeline/v2/domain/saga/ReconciliationDecision;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaId {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/saga/SagaId$Companion;
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaId;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaId$Companion {
+	public final fun of-xMCdd1I (Ljava/lang/String;)Ljava/lang/String;
+	public final fun ofOrNull-h1b7qEo (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaIntentContract {
+	public static final field CURRENT_VERSION I
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/saga/SagaIntentContract;
+	public static final field MIN_SUPPORTED_VERSION I
+	public final fun requireSupported (I)I
+	public final fun supports (I)Z
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaOperationIdentity {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/saga/SagaOperationIdentity;
+	public static final field VERSION_TAG Ljava/lang/String;
+	public final fun derive-nfyzdlk (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/SagaOperationPhase;Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaOperationPhase : java/lang/Enum {
+	public static final field COMPENSATE Ldev/rubentxu/pipeline/v2/domain/saga/SagaOperationPhase;
+	public static final field FORWARD Ldev/rubentxu/pipeline/v2/domain/saga/SagaOperationPhase;
+	public static final field RECONCILE Ldev/rubentxu/pipeline/v2/domain/saga/SagaOperationPhase;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getSlot ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaOperationPhase;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/saga/SagaOperationPhase;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaPlanFingerprint {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/saga/SagaPlanFingerprint$Companion;
+	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaPlanFingerprint;
+	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
+	public fun equals (Ljava/lang/Object;)Z
+	public static fun equals-impl (Ljava/lang/String;Ljava/lang/Object;)Z
+	public static final fun equals-impl0 (Ljava/lang/String;Ljava/lang/String;)Z
+	public final fun getHex ()Ljava/lang/String;
+	public fun hashCode ()I
+	public static fun hashCode-impl (Ljava/lang/String;)I
+	public fun toString ()Ljava/lang/String;
+	public static fun toString-impl (Ljava/lang/String;)Ljava/lang/String;
+	public final synthetic fun unbox-impl ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaPlanFingerprint$Companion {
+	public final fun ofOrNull-bIFW15w (Ljava/lang/String;)Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/UncertaintyReason : java/lang/Enum {
+	public static final field ACK_LOST Ldev/rubentxu/pipeline/v2/domain/saga/UncertaintyReason;
+	public static final field PROVIDER_INDETERMINATE Ldev/rubentxu/pipeline/v2/domain/saga/UncertaintyReason;
+	public static final field PROVIDER_UNREACHABLE Ldev/rubentxu/pipeline/v2/domain/saga/UncertaintyReason;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/UncertaintyReason;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/saga/UncertaintyReason;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/scm/CheckoutSpec {

@@ -1463,3 +1463,43 @@ data class HttpRequestFailed(
 ) : DomainEvent {
     override val kind: String get() = "HttpRequestFailed"
 }
+
+/**
+ * A compensation obligation was armed and committed.
+ *
+ * ## What this event is, and what it is not
+ *
+ * This is the NOTIFICATION that the engine has taken on a promise: the durable obligation now
+ * exists, so a forward effect may run behind it. It is emitted AFTER the durable write has
+ * committed, never before, because the order is the whole point — an event that announced a
+ * promise which then failed to persist would be a promise nobody can keep.
+ *
+ * It is NOT the truth. The truth is the `saga_obligation` row in the run's own database; this
+ * event is a projection of it, and it carries no payload that could not be read back from that
+ * row. If the emission fails, the obligation still stands and the run can be reconstructed from
+ * the store.
+ *
+ * ## Why it says `Armed` and not `EffectApplied`
+ *
+ * The two are different facts and the vocabulary keeps them apart on purpose. `Armed` is a
+ * PROMISE made BEFORE any effect happened; an effect that actually happened is a separate
+ * observation, with its own receipt and its own uncertainty. An event that conflated them would
+ * let a reader believe a compensation was owed when nothing had been attempted yet, or believe
+ * an effect had landed when only a promise existed.
+ */
+data class CompensationArmed(
+    override val eventId: String,
+    override val runId: String,
+    override val sequence: Long,
+    override val occurredAt: Instant,
+    val sagaId: String,
+    val actionId: String,
+    val compensationId: String,
+    val planFingerprint: String,
+    val intentVersion: Int,
+    val resourceRef: String,
+    val compensationOpId: String,
+    val leaseEpoch: Long,
+) : DomainEvent {
+    override val kind: String get() = "CompensationArmed"
+}

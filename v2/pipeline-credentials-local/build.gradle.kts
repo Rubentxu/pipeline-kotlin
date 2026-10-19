@@ -20,23 +20,19 @@ dependencies {
     implementation(libs.bouncycastle.bcprov)
     implementation(libs.bouncycastle.bcpkix)
     implementation(libs.bouncycastle.bcutil)
+
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 }
 
-// Unit-test wiring REMOVED (2026-10-18, testing RESET).
-//
-// This module carries no unit tests: it is a credential STORE -- filesystem and OS-keychain
-// persistence, whose behaviour depends on a real store and is proven by running the pipeline.
-// Its verification is the executable E2E layer -- `.pipeline.kts` pipelines under
-// `v2/examples/`, driven by `scripts/run-e2e-pipelines.sh` -- and not a JUnit class.
-//
-// The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
-// Left in place they were a SILENT green: a `Test` task whose source set is empty reports
-// success while executing zero classes. Gradle 8.14 exposes no `failOnNoDiscoveredTests`
-// property -- the setting does not exist in this version, so nothing inside the build can
-// turn that green into a failure, and a build file asserting otherwise is describing a flag
-// it cannot compile.
-//
-// What turns it into a failure lives outside Gradle: `scripts/verify-all.sh` enumerates the
-// modules it asks from the filesystem and fails when a module that has a test source produces
-// no JUnit XML. The wiring that could have produced the misleading green is gone from the
-// modules that have no tests, so no module reaches that check in silence.
+tasks.test {
+    useJUnitPlatform()
+}
+
+// Tests cover the EIGHT pure primitives in this module: KdfParams, AeadCipher,
+// PassphraseResolver, CredentialsStorePath, CredentialsStorePosix (assertSupported only),
+// CredentialCrypto, CredentialSerializer and CredentialPartReader. The store file's
+// IO is exercised by the E2E pipelines under `v2/examples/security/`, not by JUnit; the
+// AGENTS.md §2 rule against filesystem persistence in unit tests is what scopes the
+// suite this way. Each primitive is a `data class` or a pure `object`; the test
+// functions take arguments and return values without touching disk, network or clock.

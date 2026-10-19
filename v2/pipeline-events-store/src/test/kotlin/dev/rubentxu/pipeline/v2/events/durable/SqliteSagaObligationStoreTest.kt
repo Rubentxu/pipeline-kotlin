@@ -150,6 +150,22 @@ class SqliteSagaObligationStoreTest {
 
             assertInstanceOf<SagaArmPersistence.Inserted>(persistence)
         }
+
+        @Test
+        fun `two promises armed in the same millisecond keep the order they were armed in`() {
+            val store = store()
+            // The SAME millisecond for both: the arm order must not be an accident of the
+            // identifiers, because the compensation order is the reverse of the arm order.
+            store.arm(row(createdAtMs = 1_000L).copy(compensationId = CompensationId.of("zebra")))
+            store.arm(row(createdAtMs = 1_000L).copy(compensationId = CompensationId.of("alpha")))
+
+            val listed = store.listForRun("run-1")
+
+            assertEquals(
+                listOf("zebra", "alpha"),
+                listed.map { it.compensationId.value },
+            )
+        }
     }
 
     @Nested

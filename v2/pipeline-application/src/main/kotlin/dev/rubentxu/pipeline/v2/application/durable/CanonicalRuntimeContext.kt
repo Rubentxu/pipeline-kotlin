@@ -91,6 +91,16 @@ data class CanonicalRuntimeContext(
     // SAGA_PLAN_CAPABILITY is refused at admission instead of reaching a handler that cannot
     // keep the state it is about to write.
     val sagaPlan: dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations? = null,
+    // SAGA / PK-2: the compensation RUNTIME, bound to THIS invocation.
+    //
+    // It is the engine's loop: ask the durable state what is owed, dispatch the body that
+    // owes it, record what happened, ask again. The plugin hands over the plan (data) and
+    // gets back what the engine decided and in which order.
+    //
+    // Null unless the run has a durable Saga store AND this Step owns a body to compensate
+    // through, so a Step that declares SAGA_RUNTIME_CAPABILITY without both is refused at
+    // admission instead of reaching a handler that could not keep the promise.
+    val sagaRuntime: dev.rubentxu.pipeline.v2.domain.saga.SagaRuntime? = null,
     // SAGA / PK-2: the slot seam. A handler whose body is already bound may run ONE
     // named child of that body, chosen by it, and the engine dispatches it through the
     // same canonical spine — so the slot's durable identity is the identity it would

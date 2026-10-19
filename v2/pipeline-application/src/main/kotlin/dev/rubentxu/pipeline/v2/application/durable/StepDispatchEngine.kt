@@ -267,6 +267,24 @@ internal class StepDispatchEngine(
                 clock = clock,
             )
         },
+        // SAGA / PK-2: the compensation RUNTIME for THIS invocation. It needs the Saga store
+        // (the loop decides on durable state) and the slot seam (the compensation bodies are
+        // children of this Step's own body). Both, or neither: a runtime without a body to
+        // compensate through could only stop, and a runtime without durable state could only
+        // guess.
+        sagaRuntime = if (sagaBinding != null && bodySlotInvoker != null) {
+            SagaCompensationInterpreter(
+                planOperations = SagaPlanOperationsAdapter(
+                    runId = runId.value,
+                    leaseEpoch = sagaBinding.leaseEpoch,
+                    store = sagaBinding.store,
+                    clock = clock,
+                ),
+                slotInvoker = bodySlotInvoker,
+            )
+        } else {
+            null
+        },
     )
 
     /**

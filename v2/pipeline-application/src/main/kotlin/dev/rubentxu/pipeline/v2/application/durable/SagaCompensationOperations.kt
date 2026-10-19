@@ -96,9 +96,15 @@ class SagaCompensationOperations(
 
         return when (val persistence = store.arm(requested.toRow(runId))) {
             is SagaArmPersistence.Inserted -> {
+                // The row is the promise, and the row is what the STORE decided: the arm
+                // timestamp it recorded is the one the promise was made at, and it may differ
+                // from the requested one (the store makes it strictly increasing per Saga).
+                // Answering with the requested value would be answering with a promise nobody
+                // made.
+                val persisted = persistence.row.toObligation()
                 // The obligation is committed. Only now is it honest to say so out loud.
-                emitArmed(requested)
-                SagaDecider.armOutcome(existing = null, requested = requested)
+                emitArmed(persisted)
+                SagaDecider.armOutcome(existing = null, requested = persisted)
             }
 
             is SagaArmPersistence.Existing ->

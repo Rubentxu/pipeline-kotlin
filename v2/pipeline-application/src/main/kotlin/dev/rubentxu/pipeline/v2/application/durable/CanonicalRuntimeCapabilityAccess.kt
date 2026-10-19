@@ -55,6 +55,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_COMPENSATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_PLAN_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_RUNTIME_CAPABILITY
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
@@ -327,6 +328,15 @@ open class CanonicalRuntimeCapabilityAccess(
         // must not reach a handler whose write would go nowhere.
         context.sagaPlan?.let { plan ->
             builder[SAGA_PLAN_CAPABILITY] = plan
+        }
+        // SAGA / PK-2: the compensation RUNTIME.
+        //
+        // Exposed ONLY when the engine bound one for this invocation, for the same reason as
+        // the two ports above: a Step that asks the engine to run a compensation must not
+        // reach a handler that has no durable state to decide from, no body to compensate
+        // through, or no way to record what happened.
+        context.sagaRuntime?.let { runtime ->
+            builder[SAGA_RUNTIME_CAPABILITY] = runtime
         }
     }
 

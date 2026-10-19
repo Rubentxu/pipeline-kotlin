@@ -80,4 +80,13 @@ data class CanonicalRuntimeContext(
     // SAGA_COMPENSATION_CAPABILITY is refused at admission instead of reaching a handler
     // with a port that cannot keep a promise.
     val sagaCompensation: dev.rubentxu.pipeline.v2.domain.saga.CompensationOperations? = null,
+    // SAGA / PK-2: the slot seam. A handler whose body is already bound may run ONE
+    // named child of that body, chosen by it, and the engine dispatches it through the
+    // same canonical spine — so the slot's durable identity is the identity it would
+    // have had if the engine had dispatched it.
+    //
+    // Null for every other Step (and for every pre-existing construction site), which
+    // is what keeps the fail-closed admission honest: a handler that declares
+    // BODY_SLOT_CAPABILITY without the engine having bound it never runs.
+    val bodySlotInvoker: dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker? = null,
 )

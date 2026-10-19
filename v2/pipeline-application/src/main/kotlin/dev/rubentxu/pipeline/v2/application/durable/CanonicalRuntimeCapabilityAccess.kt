@@ -46,6 +46,7 @@ import dev.rubentxu.pipeline.v2.application.ARTIFACT_INDEX_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
 import dev.rubentxu.pipeline.v2.domain.step.BODY_CONTINUATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.BODY_INVOKER_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.BODY_SLOT_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
@@ -590,6 +591,15 @@ open class CanonicalRuntimeCapabilityAccess(
         // binding never runs at all.
         context.bodyContinuation?.let { continuation ->
             builder[BODY_CONTINUATION_CAPABILITY] = continuation
+        }
+        // SAGA / PK-2: the slot seam. Exposed ONLY when the engine bound a slot
+        // invoker for this invocation, which it does only for a
+        // HANDLER_CONTINUATION Step whose body is already bound — the same
+        // condition as the continuation above, and for the same reason: a
+        // handler that asks for a slot of a body it does not have must fail
+        // closed at admission, never receive a seam that cannot honour it.
+        context.bodySlotInvoker?.let { slotInvoker ->
+            builder[BODY_SLOT_CAPABILITY] = slotInvoker
         }
 
         // P3-C / S6.4: the plugin event seam, bound ONLY when the composition actually produced a

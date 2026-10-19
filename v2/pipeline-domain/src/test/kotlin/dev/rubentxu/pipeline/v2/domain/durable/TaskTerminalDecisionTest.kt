@@ -48,7 +48,8 @@ class TaskTerminalDecisionTest {
     }
 
     @Test
-    fun aPlainZeroExitIsTheOnlySuccess() {
+    fun aPlainZeroExitIsASuccess() {
+        // The "only" half of that claim is the other three tests: nothing else may answer true.
         assertTrue(isSuccessFromDecision(decideTaskTerminal(result(exitCode = 0))))
     }
 

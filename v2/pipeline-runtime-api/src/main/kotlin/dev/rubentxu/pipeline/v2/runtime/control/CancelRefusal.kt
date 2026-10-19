@@ -10,7 +10,6 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.FencingToken
  * terminal state that is not `Cancelled` (e.g. a run that already reached
  * `Succeeded` or `Failed`).
  *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §4.4.
  */
 sealed interface CancelRefusal {
 

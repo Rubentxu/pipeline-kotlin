@@ -14,11 +14,8 @@ import kotlinx.serialization.encoding.Encoder
  * P0.4 — the candidate handoff descriptor, emitted by `pipeline-kotlin` for
  * the external `pipelinek-release-harness`.
  *
- * Authority: `docs/pipelinek-release-evolution/shared/03-handoff-schemas.md` §1
- * and `shared/01-cross-repo-contract.md` §4.
- *
  * The single most important property is that [candidateId] is the SHA-256 of
- * the distribution ZIP and nothing else. Per contract §4 it is NOT a branch, an
+ * the distribution ZIP and nothing else. It is NOT a branch, an
  * isolated Git SHA, a mutable tag, `latest`, or a human RC name. Those remain
  * as mandatory *metadata* ([sourceCommit], [releaseTrain], [candidateSequence])
  * but they never substitute for the digest. This is the type-level expression

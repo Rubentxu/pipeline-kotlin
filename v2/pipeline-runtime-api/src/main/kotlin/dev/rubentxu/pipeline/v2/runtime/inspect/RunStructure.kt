@@ -21,7 +21,6 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
  * the same one [RuntimeObservation.LiveButEmpty] pins for the inspect port:
  * "known but empty" vs "substrate unobservable".
  *
- * @see M6_CONTEXT_PRESSURE_DESIGN.md §B.1.
  */
 sealed interface RunStructure {
     /**

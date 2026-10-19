@@ -52,7 +52,6 @@ package dev.rubentxu.pipeline.v2.runtime.recover
  *  - Introduce a new scheduler. The recover path is pull-by-call.
  *  - Modify output bytes already persisted.
  *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §5.
  */
 interface RuntimeRecoverPort {
 

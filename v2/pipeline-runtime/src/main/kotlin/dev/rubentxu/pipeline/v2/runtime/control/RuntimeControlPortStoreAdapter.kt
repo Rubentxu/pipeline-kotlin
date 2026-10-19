@@ -49,7 +49,6 @@ import kotlinx.serialization.json.JsonPrimitive
  * terminal row. The contract test `CancelIdempotencyTest` (§7.2 of the
  * design) pins the invariant.
  *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §4 and §6.
  */
 class RuntimeControlPortStoreAdapter(
     private val journal: OperationJournal,

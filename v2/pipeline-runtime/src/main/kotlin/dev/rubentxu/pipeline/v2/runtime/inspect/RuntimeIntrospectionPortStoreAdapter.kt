@@ -42,7 +42,6 @@ import dev.rubentxu.pipeline.v2.output.OutputTailState
  * ([RunExecutionLease.acquire]) with a synthetic [dev.rubentxu.pipeline.v2.events.durable.LeaseRequest].
  * The `IntrospectionDoesNotMutateStateTest` contract test pins this.
  *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §3 and §6.
  */
 class RuntimeIntrospectionPortStoreAdapter(
     private val eventReads: EventRecordReadPort,

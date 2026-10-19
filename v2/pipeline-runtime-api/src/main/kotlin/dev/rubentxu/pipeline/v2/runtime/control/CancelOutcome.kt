@@ -8,7 +8,6 @@ import dev.rubentxu.pipeline.v2.domain.AttemptId
  * Each case names a real outcome of a cancel call; new cases are compile errors
  * at every `when` site. Mirrors the M1 refusal-extension pattern.
  *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §4.3.
  */
 sealed interface CancelOutcome {
 

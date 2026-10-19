@@ -10,7 +10,6 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
  * Mirrors the audit's B.3 shape and the `PK-SPEC-02-RUNTIME-OBSERVATION.md`
  * `RecoveryChoice` ADT (plus the `AlreadyRecovered` idempotency case).
  *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §5.3.
  */
 sealed interface RecoverOutcome {
 

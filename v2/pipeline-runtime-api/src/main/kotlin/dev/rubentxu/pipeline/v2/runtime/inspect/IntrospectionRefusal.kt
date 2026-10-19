@@ -10,7 +10,6 @@ package dev.rubentxu.pipeline.v2.runtime.inspect
  * `LeaseHeldByAnother`. This design formalises those plus the substrate gaps
  * the audit's §C unmasked (`InconsistentLeaseState`).
  *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §3.3.
  */
 sealed interface IntrospectionRefusal {
 

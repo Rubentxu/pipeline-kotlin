@@ -6,7 +6,6 @@ package dev.rubentxu.pipeline.v2.runtime.recover
  * The recover port reports what it observed and what it wrote so a caller can
  * verify the "no-rerun" invariant on its own.
  *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §5.3.
  */
 data class RecoverReport(
     /** Number of journal rows reconciled (terminal rows committed). */

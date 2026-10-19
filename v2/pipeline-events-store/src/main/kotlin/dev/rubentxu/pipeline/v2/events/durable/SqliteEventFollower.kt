@@ -15,9 +15,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort
  * The follower is a **factory**: it owns no state of its own, and each
  * call to [open] returns a fresh [SqliteEventFollowHandle] driven by a
  * polling loop on the consumer's thread. No background thread, no
- * coroutine, no new write path. The composition rule lives in
- * `M1_FOLLOW_DESIGN.md` §4 in
- * `docs/pipelinek-coordinated-evolution/m1-design/`.
+ * coroutine, no new write path.
  *
  * The constructor takes the M1-A read port
  * ([EventRecordReadPort]) plus a [runExists] callback that decides
@@ -86,11 +84,10 @@ class SqliteEventFollower(
     companion object {
         /**
          * The standard 25 ms polling cadence that the in-tree
-         * `pipeline observe --follow` loop has used since S5. The M1
-         * design pins it as the baseline, on the explicit reasoning
-         * that the wakeup transport (`ObservationWakeup`) is not
-         * wired to a real emitter in this repository (cf.
-         * `M1_FOLLOW_DESIGN.md` §6).
+         * `pipeline observe --follow` loop has used since S5. The
+         * baseline rests on an explicit reason: the wakeup transport
+         * (`ObservationWakeup`) is not wired to a real emitter in this
+         * repository.
          *
          * Mirrors the constant in
          * `SegmentOutputFollower.FOLLOW_IDLE_MILLIS` so both follow

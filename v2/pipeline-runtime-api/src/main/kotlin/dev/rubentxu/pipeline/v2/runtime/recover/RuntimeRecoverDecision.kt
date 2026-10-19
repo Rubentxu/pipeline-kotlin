@@ -22,7 +22,6 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
  * caller is responsible for fetching this from
  * `OperationJournal.listForRun` + `ReplayCursorStore.load` and passing it in.
  *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §5.5.
  */
 object RuntimeRecoverDecision {
 
@@ -281,7 +280,6 @@ object RuntimeRecoverDecision {
  * Mirrors `PK-SPEC-02-RUNTIME-OBSERVATION.md` lines 29-33 plus an
  * `AlreadyRecovered` idempotency case.
  *
- * @see M2_INSPECT_RECOVER_CANCEL_DESIGN.md §5.5.
  */
 sealed interface RecoveryChoice {
 

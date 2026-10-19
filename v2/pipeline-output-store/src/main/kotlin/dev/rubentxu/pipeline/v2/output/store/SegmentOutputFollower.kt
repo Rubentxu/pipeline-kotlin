@@ -17,8 +17,7 @@ import dev.rubentxu.pipeline.v2.output.follow.OutputFollowOptions
  * The follower is a **factory**: it owns no state of its own, and each call
  * to [open] returns a fresh [SegmentOutputFollowHandle] driven by a polling
  * loop on the consumer's thread. No background thread, no coroutine, no new
- * write path. The composition rule lives in `M1_FOLLOW_DESIGN.md` §4 in
- * `docs/pipelinek-coordinated-evolution/m1-design/`.
+ * write path.
  *
  * The constructor takes the three read-side ports the design requires
  * ([OutputReadPort], [OutputFrameIndex], [OutputTailPort]) plus a
@@ -87,10 +86,9 @@ class SegmentOutputFollower(
     companion object {
         /**
          * The standard 25 ms polling cadence that the in-tree `pipeline observe
-         * --follow` loop has used since S5. The M1 design pins it as the
-         * baseline, on the explicit reasoning that the wakeup transport
-         * (`ObservationWakeup`) is not wired to a real emitter in this
-         * repository (cf. `M1_FOLLOW_DESIGN.md` §6).
+         * --follow` loop has used since S5. The baseline rests on an
+         * explicit reason: the wakeup transport (`ObservationWakeup`) is
+         * not wired to a real emitter in this repository.
          */
         const val FOLLOW_IDLE_MILLIS: Long = 25L
 
@@ -98,14 +96,11 @@ class SegmentOutputFollower(
          * Read the tail state of a stream as a [Boolean] of the same shape
          * the public port uses: `true` for [OutputTailState.Open], `false`
          * for [OutputTailState.Sealed], and `null` for "the store does not
-         * know this stream" — which is the form the design names
-         * [dev.rubentxu.pipeline.v2.output.OutputRefusal.UnknownStream].
+         * know this stream" — the shape
+         * [dev.rubentxu.pipeline.v2.output.OutputRefusal.UnknownStream] takes.
          *
-         * Exposed because the design uses it as part of the composition
-         * contract (cf. `M1_FOLLOW_DESIGN.md` §4) and tests assert it
-         * directly. Implementation is a one-liner; the constant is here
-         * so a test does not have to import the [OutputTailState] ADT to
-         * express the same question.
+         * Exposed so a test can assert the same question without importing
+         * the [OutputTailState] ADT. Implementation is a one-liner.
          */
         fun tailStateOrNull(tails: OutputTailPort, stream: dev.rubentxu.pipeline.v2.output.OutputStreamId): OutputTailState? =
             tails.tailState(stream)

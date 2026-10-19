@@ -16,8 +16,6 @@ package dev.rubentxu.pipeline.v2.events.shape
  * `Either`/`Result` reuse. The distinction between [Empty] and
  * [Refused] is the same one [Events.Empty] / [Events.Refused] pin
  * for the read ports: "known but empty" vs "substrate unobservable".
- *
- * @see M7_FINAL_HARDENING_DESIGN.md §A.3.
  */
 sealed interface EventShapeResult {
 

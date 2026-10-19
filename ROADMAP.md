@@ -1138,13 +1138,17 @@ extra ni un segundo vocabulario en el lanzador.
 - `PRODUCT-GATE` (certificador externo, RC publicada) = **`BLOCKED_EXTERNAL`**.
   No hay CI remoto en este repositorio. La ausencia de CI **nunca** se declara
   `PASS`.
-- **Presupuesto de tiempo: CERRADO**, medido sobre `9c4bd7b8`. Tres ensayos
-  desde salidas de test limpias dieron **234 s, 223 s, 223 s**: el peor, **234 s**
-  frente al límite duro de 900 s, leído del XML de JUnit (**531 tests, 56/56
-  informes reescritos por la corrida, 0 fallos, 0 skips**) y no del código de
-  salida. E2E: 36 escenarios, 35 pasan, 0 fallan, 1 `NOT_RUN`, 1 rerun durable.
-  Host de referencia: Intel Xeon E5-2682 v4 @ 2.50 GHz, 64 hilos, 94 GiB, JDK
-  Temurin 21.0.8, Gradle 8.14.5, cachés de dependencia ya pobladas.
+- **Presupuesto de tiempo: CERRADO**, medido sobre `09e68a794`. Tres ensayos
+  desde salidas de test limpias dieron **233 s, 222 s, 218 s**: el peor, **233 s**
+  frente al límite duro de 900 s, leído del XML de JUnit (**539 tests, 57/57
+  informes reescritos por la corrida, 0 fallos, 0 errores, 0 skips**) y no del
+  código de salida. Los 57 informes se comprobaron uno a uno contra la hora de
+  inicio del ensayo (el más viejo es de las 19:15:11, el ensayo arrancó a las
+  19:14:44): ninguno es residuo de una corrida anterior, porque un recuento sin
+  ese corte cuenta suites que este ensayo no ejecutó. E2E: 36 escenarios, 35
+  pasan, 0 fallan, 1 `NOT_RUN`, 1 rerun durable, 189 s. Host de referencia:
+  Intel Xeon E5-2682 v4 @ 2.50 GHz, 64 hilos, 94 GiB, JDK Temurin 21.0.8,
+  Gradle 8.14.5, cachés de dependencia ya pobladas.
   **Las salidas de test se limpian antes de CADA ensayo, no solo al principio**:
   el guard de stage 2 rechaza un full run cuyo grafo esté entero `UP-TO-DATE`,
   y sin esa limpieza los ensayos 2 y 3 cachean todo y salen a los 29 s. Ese
@@ -1152,19 +1156,82 @@ extra ni un segundo vocabulario en el lanzador.
   como si fuera el coste del gate es justo lo que ese guard existe para
   impedir.
   **El veredicto de estos tres ensayos es `INCOMPLETE … gaps=1 not_run`, no
-  `PASS`.** Las series anteriores (`28667109`: 228 / 215 / 215 s, 526 tests;
-  `2d4fdf38`: 224 / 227 / 231 s, 522 tests; `d8b0c413`: 249 s) imprimían
-  `PASS … gaps=1` y leían «verde con un hueco anotado». Ese era el defecto que
-  `f37cd0234` corrigió: hoy el lanzador dice literalmente *«This is not the
-  gate»* y se niega a llamarlo aprobado mientras un escenario no se haya
-  ejecutado. Series y cifras anteriores siguen siendo ciertas **para su propio
-  SHA** y para ninguno más; se vuelven a medir en cada avance de `HEAD` porque
-  un gate verde por inercia sería peor que uno marcado caducado.
+  `PASS`.** Las series anteriores (`9c4bd7b8`: 234 / 223 / 223 s, 531 tests;
+  `28667109`: 228 / 215 / 215 s, 526 tests; `2d4fdf38`: 224 / 227 / 231 s, 522
+  tests; `d8b0c413`: 249 s) seguían siendo ciertas para su propio SHA. La serie
+  de `9c4bd7b8` y las anteriores a ella imprimían `PASS … gaps=1` y leían
+  «verde con un hueco anotado»; ese era el defecto que `f37cd0234` corrigió. Hoy
+  el lanzador dice literalmente *«This is not the gate»* y se niega a llamarlo
+  aprobado mientras un escenario no se haya ejecutado. Series y cifras anteriores
+  siguen siendo ciertas **para su propio SHA** y para ninguno más; se vuelven a
+  medir en cada avance de `HEAD` porque un gate verde por inercia sería peor que
+  uno marcado caducado.
 - **Presupuesto de LOC: CERRADO**, medido en la misma corrida.
-  `VERIFY_LOC = 6995` / `PRODUCT_LOC = 61644` = **0.113**, muy por debajo del
-  límite duro de 2. Los dos módulos con test más densos también pasan con
-  holgura: `pipeline-credentials-local` 1103 / 1750 = 0.63 y
-  `pipeline-artefacts-local` 84 / 251 = 0.335.
+  `VERIFY_LOC = 7055` / `PRODUCT_LOC = 61653` = **0.114**, muy por debajo del
+  límite duro de 2. El censo cuenta sólo ficheros **rastreados** (`git ls-files`),
+  así que esta cifra es del árbol ya commiteado: un test recién añadido sin
+  commit todavía no está en el denominador y rebajaría la ratio a blows.
+  **Los dos módulos con test más densos ya no son los que se citaban antes.**
+  Los de verdad son `pipeline-step-sdk:workflow-control` 80 / 49 = **1.633** y
+  `pipeline-credentials-executor` 349 / 346 = **1.009**. La versión anterior de
+  este párrafo nombraba `pipeline-credentials-local` (0.63) y
+  `pipeline-artefacts-local` (0.335) como los dos primeros, y era una
+  afirmación caduca: siguen en esa posición, pero ya no son los más densos.
+  Ninguno de los dos primeros viola el límite de 2, pero un ratio por encima de
+  1 significa más líneas de test que de producto en el módulo, y eso merece una
+  revisión de valor —más instrumentación que garantía— antes de añadir nada más
+  ahí.
+
+### 2.4 `pipeline-events` — el siguiente bloque desbloqueado
+
+24 ficheros de producción (4315 LOC), **cero** tests: el directorio
+`src/test/kotlin` no existe. Es el módulo de producto más grande sin cobertura,
+y su caso tiene la misma forma que cerró `findFiles`: **la capa E2E no puede
+observarlo**. `v2/examples/run.sh` lee el exit code y, como mucho, una subcadena
+de `stderr`; captura `stdout` a fichero y **nunca lo abre**. Una garantía rota
+en este módulo no cambia ninguno de los dos hechos que el lanzador mira.
+
+La lente `regression-promotion` ordena exploration de cobertura antes que
+escritura, y esa exploración dio un resultado que sostiene el bloque: un `grep`
+sobre **todos** los `src/test` del árbol principal encuentra cuatro ficheros que
+importan algo de `pipeline.v2.events`, y los cuatro lo usan como **fixture de
+entrada o stub** —no uno ejerce una invariante del módulo. No hay cobertura
+equivalente, luego un test aquí no es un segundo test de nada.
+
+Decidido por garantía, discriminancia y coste:
+
+- **`EventCursor.encode`/`decode` — PROMOTE.** Garantía: `decode(encode(c))`
+  devuelve `c` para todo `runId`, **incluido uno con `:`** —que es la forma real,
+  porque `ResourceRef.canonicalText()` es `v<version>:<kind>:<segments>`— y
+  `decode` devuelve `null` ante prefijo, número de partes, secuencia o `runId`
+  inválidos. El defecto **ya ocurrió aquí** y lo corrigieron; lo que se borró fue
+  su guardián en `2aa071aab`, así que la regresión volvería en silencio. Quitar el
+  `URLEncoder` de la línea 39 lo reproduce exactamente. Función pura
+  `String`↔`String`: el instrumento más barato de los tres.
+- **`EventRegistry` — PROMOTE.** Garantía: un `kind` duplicado devuelve
+  `DuplicateKind` y **no sobrescribe**; tras `build()`, reutilizar el `Builder`
+  no muta el registry ya entregado; un `kind` desconocido devuelve `null`, no un
+  placeholder. Es *fail-closed* de seguridad: dos plugins reclamando el mismo
+  `kind` volverían ambiguos para siempre todos los payloads ya grabados, y esa
+  ambigüedad no la detecta ningún exit code. Puro.
+- **`EventViewProjection` — DEFER, y no es un test.** 166 LOC y **cero
+  productores**; su propio KDoc lo confiesa («This projection has no production
+  caller at all»). Un test que pasa sobre código muerto es una afirmación falsa.
+  La pregunta correcta no es «¿cómo lo pruebo?» sino «¿esto se borra?», que es
+  una decisión de ciclo de vida y no una garantía. Se plantea antes de escribir
+  una línea.
+
+Dos tareas de deuda que **no** son cobertura y salen del mismo vistazo:
+
+- `v2/pipeline-events/build.gradle.kts` declara `tasks.test { inputs.dir(…
+  pipeline-events-store/src/main/kotlin) }` justificándolo con un
+  `EventSchemaNoMapStringStringTest` que `2aa071aab` borró. Es una entrada de
+  build cache sin consumidor: paga coste de hashing en cada corrida para nada.
+- Cuatro KDoc prometen una garantía que ya nadie verifica, porque nombran tests
+  borrados: `EventRegistry.kt:8` («Laws, each pinned by `[EventRegistryTest]`»),
+  `EventStore.kt:107`, `EventShapeReadPortStoreAdapter.kt:30` y `TypedEvent.kt:9`.
+  Es el patrón de «un comentario afirma una propiedad que el cableado ya no
+  tiene»: aquí el lector conclusiona que hay un guardián y no lo hay.
 
 ---
 

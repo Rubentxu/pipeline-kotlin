@@ -47,15 +47,18 @@ dependencies {
 }
 
 tasks.test {
-    // `EventSchemaNoMapStringStringTest` shells out to `grep` over two source trees, and one of
-    // them belongs to ANOTHER module. Gradle's up-to-date check only sees declared inputs, so
-    // without this the task stayed UP-TO-DATE when the store's codecs changed and the guard kept
-    // reporting the previous run's answer: a gate that had stopped guarding and still reported
-    // green. Declared as an input, editing a codec re-runs the gate that reads it.
-    inputs.dir(rootProject.layout.projectDirectory.dir("pipeline-events-store/src/main/kotlin"))
-        .withPropertyName("eventPlaneStoreSources")
-        .withPathSensitivity(PathSensitivity.RELATIVE)
-
+    // This block USED to declare `inputs.dir(.../pipeline-events-store/src/main/kotlin)` because
+    // `EventSchemaNoMapStringStringTest` shelled out to `grep` over a source tree belonging to
+    // ANOTHER module, and Gradle's up-to-date check only sees declared inputs. That test was
+    // deleted in 2aa071aab, so the declaration lost its only consumer: it kept hashing a foreign
+    // source tree on every run to invalidate nothing, and its comment kept asserting a guarantee
+    // about a test that no longer existed. Removed rather than re-pointed -- no test here reads
+    // another module's sources, so there is nothing for a cross-module input to guard. If one ever
+    // does, the honest fix is to make that test read the tree through a Gradle-provided property,
+    // not to re-add a directory whose hash nothing consumes.
+    //
+    // `useJUnitPlatform()` is load-bearing, not decorative: without it Gradle defaults to the JUnit 4
+    // runner, discovers zero JUnit 5 tests, and reports BUILD SUCCESSFUL over an empty result set.
     useJUnitPlatform()
 }
 

@@ -26,9 +26,16 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
  * ## Read-only by construction
  *
  * `eventShapesForRun` MUST NOT mutate durable state. The composition
- * rule limits it to reads and a projection pass. The contract test
- * `EventShapeReadPortAdapterTest` pinna this with a 100-concurrent-
- * caller test (mirroring the M2 `IntrospectionDoesNotMutateStateTest`).
+ * rule limits it to reads and a projection pass.
+ *
+ * There is no test guarding this today, and the sentence that used to say
+ * otherwise ("the contract test `EventShapeReadPortAdapterTest` pins this")
+ * was deleted along with that test in `2aa071aab`, leaving the claim behind.
+ * That is acceptable while [EventShapeReadPort] stays EXPERIMENTAL and
+ * nothing outside this module consumes it; it stops being acceptable the day
+ * a production caller appears, and the first thing that should be written then
+ * is a concurrency test, because "does not mutate" is a claim about two
+ * callers at once and a single-threaded check cannot make it.
  */
 class EventShapeReadPortStoreAdapter(
     private val readTypedEvents: (runId: String) -> List<Any>,

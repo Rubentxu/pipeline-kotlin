@@ -107,13 +107,21 @@ interface EventFollower {
  * finished" and emitted `Completed` on the first quiet page; that
  * conflated snapshot with live follow and was the F2 finding from the
  * PK-58A T1 audit. The natural tail is now a state the follow re-polls
- * past while the handle is open. The falsifiers that pin this
- * contract are:
+ * past while the handle is open.
  *
- * - `dev.rubentxu.pipeline.v2.events.durable.SqliteEventFollowLiveTailTest`
- *   (in-process, R1.1)
- * - `dev.rubentxu.pipeline.v2.application.follow.M1DCrossJvmFollowTest.7 UAT-PK-M1-007`
- *   (cross-JVM, R1.2)
+ * THAT DEFECT HAS NO GUARDIAN. This comment used to name the two
+ * falsifiers that pinned it — an in-process live-tail test and a
+ * cross-JVM one — and both were deleted in `2aa071aab`. Nothing else in
+ * the repository replaces them: a follow emits `Completed` on a quiet
+ * page, and no E2E scenario observes the event stream, because
+ * `examples/run.sh` reads the process exit code and at most a stderr
+ * substring. So the state machine below can regress to the exact defect
+ * its own KDoc describes and the whole executable suite stays green.
+ *
+ * This is the most consequential thing recorded in this module, and it is
+ * not closed. Writing the guard needs a live tail that stays open across a
+ * quiet page, which means a store or a follower double — a decision about
+ * what to fake, taken before the fake is written, not a test to add later.
  *
  * ## Refusal and cursor past tail
  *

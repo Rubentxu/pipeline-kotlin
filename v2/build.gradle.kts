@@ -113,7 +113,16 @@ repositories {
 // The public SDK contracts grew in this train: the Saga SLOT seam
 // (BodySlotInvoker, BodySlots, SlotResolution) is new published API, so the
 // version that carries it cannot be the version that shipped without it.
-version = "0.64.0"
+//
+// 2026-10-19: the 0.64.0 train closes at v0.64.0-rc1. The 0.65.0 train opens
+// here (ProductVersion 0.65.0) so the next candidate can be tagged
+// v0.65.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
+// The public SDK contracts grew again in this train: the Saga PLAN port
+// (SagaPlanOperations, SAGA_PLAN_CAPABILITY, CompensationDirective,
+// SagaSnapshot, CompensationLifecycle, CompensationObservation) and the Saga
+// obligation lifecycle states are new published API, so the version that
+// carries them cannot be the version that shipped without them.
+version = "0.65.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

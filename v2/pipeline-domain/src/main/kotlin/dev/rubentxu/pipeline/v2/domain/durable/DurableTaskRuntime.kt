@@ -56,9 +56,11 @@ fun interface ExecutionOutputSink {
  * read them directly. The single source of truth for "did this task succeed"
  * is [decideTaskTerminal] + [isSuccessFromDecision] in `TaskTerminalDecision.kt`,
  * which keeps the sealed ADT (`TaskTerminalDecision.Exited`/`TimedOut`/`Cancelled`)
- * as the only classification shape. `TaskTerminalDecisionFitnessTest` enforces
- * that no `.kt` source under `pipeline-application/src/main` reads
- * `.timedOut` / `.cancelled` outside the decider.
+ * as the only classification shape. Reading the booleans anywhere else is the defect this
+ * paragraph exists to prevent, and NOTHING mechanically prevents it: a test that reads source
+ * text to police this is forbidden by AGENTS.md section 2, so what holds the rule is the
+ * routing, not a gate. A second reader would stay invisible until it disagreed with the
+ * decider.
  */
 data class TaskExecutionResult(
     val exitCode: Int,

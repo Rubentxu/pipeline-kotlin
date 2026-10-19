@@ -1044,6 +1044,47 @@ Nota menor, del mismo tipo que las de 2.1: el KDoc de `EventHarness` explica el
 alcance «con secuencias que se reinician», pero `appendAssigned` reasigna `0L` con
 el contador monotónico. La deuda está vigente; **su explicación del mecanismo ya no**.
 
+**`INC-EVT3-1` recibe la entrada que le faltaba — CERRADO como hueco, abierto como deuda.**
+
+El hueco era real y estaba enunciado en el punto anterior: una deuda basal cuyas
+únicas apariciones en todo el árbol eran **dos líneas de KDoc** en
+`EventHarness.kt`, sin ninguna entrada que la siguiera. Ahora tiene una. Lo que se
+corrigió al hacerlo, en `pipeline-event-harness`:
+
+1. **Las dos frases sobre el mecanismo eran falsas.** Decían «re-appends skeleton
+   events with restarting sequences» y «deterministic under INC-EVT3-1
+   **duplicate-sequence** debt». No hay ni reinicio ni duplicado de secuencia:
+   `appendAssigned` trata `0L` como *petición de reasignación* y devuelve
+   `counter.incrementAndGet()`, así que el segundo `RunStarted` toma la
+   secuencia siguiente y no colisiona con `UNIQUE(run_id, sequence)`. Lo que se
+   duplica es el **evento**. El KDoc nuevo dice por qué, porque la corrección es
+   la parte no obvia: sin ella, el próximo que lo lea «arregla» la deuda
+   buscando un reinicio de secuencias que no existe.
+2. **Había un KDoc huérfano.** Dos bloques seguidos: `lastSegment` se quedaba con
+   el de abajo y **`verify` quedaba sin documentar**, con su nota de pureza
+   adherida a la función equivocada. `verify` recupera su KDoc.
+
+Lo que sobrevive intacto, y es lo que hace que la deuda sea *portadora* y no
+descuido: `AFTER_LAST_RUN_STARTED` corta por **orden de inserción**, nunca por un
+timestamp, y eso sigue siendo lo que hace separable el intento actual.
+
+**Medido de paso, y no se tapa:** `lastSegment` **no tiene consumidor**.
+`git grep` la encuentra sólo en su propia declaración; lo vivo es
+`Scope.AFTER_LAST_RUN_STARTED`, al que llegan `verify`, `accept` y `report` por
+`scoped()`. No se borra porque `:pipeline-event-harness` es artefacto publicado y
+retirar una función pública es una ruptura de ABI que no está autorizada aquí.
+
+**Ruta de cierre de `INC-EVT3-1`, escrita donde faltaba.** La deuda se cierra
+insertando un discriminador de intento explícito en el esqueleto de eventos, en
+lugar de reusar `RunStarted` como marcador de segmento. La condición de cierre
+no es opcional y se escribe ahora para que nadie la descubra al cerrar la deuda:
+**`AFTER_LAST_RUN_STARTED` debe conservar un significado definido**, o la
+migración cambia el alcance por defecto de `verify` y `accept` sin que nadie lo
+haya pedido. Si el discriminador es un campo nuevo en el evento, es ruptura de
+formato y necesita versión; si es un evento nuevo, `AFTER_LAST_RUN_STARTED` pasa
+a significar «desde el último `<nuevo evento>`» y hay que migrarlo en el mismo
+cambio. Hoy no hay fecha ni responsable; hay ruta.
+
 **d) 13 de 36 escenarios E2E sólo comprueban el código de salida.** Era 24 al
 abrirse este bloque; queda en 13.
 

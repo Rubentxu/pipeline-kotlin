@@ -74,8 +74,8 @@ val generateVersionResource by tasks.registering {
     //
     // A product version names a release LINE, not a commit: every commit on 0.60.0 reports
     // `pipeline 0.60.0`. So a harness holding two binaries cannot separate them by asking the
-    // binary, and that is not hypothetical — the five corpus failures in
-    // CDH_PLANE_DIAGNOSTIC_RECEIPT.md were a stale binary reporting the correct version.
+    // binary, and that is not hypothetical — five corpus failures seen in the
+    // field were a stale binary reporting the correct version.
     //
     // Read through a Provider so the value is resolved at execution time and participates in
     // up-to-date checking. When the commit cannot be read the build still succeeds and records

@@ -23,8 +23,8 @@ pipeline {
             // braced identifier). The form `\${'$'}VAR` looks similar but is
             // a TRAP: Kotlin compiles `${'$'}` to a literal `$`, then `VAR`
             // is adjacent text, and bash receives `${'$'}VAR` which it
-            // rejects as `sustitución errónea`. See CHARACTERISATION.md §5.3
-            // for the byte-level proof. The line below uses the safe form.
+            // rejects as `sustitución errónea`. The line below uses the safe
+            // form instead.
 
             withCredentials(listOf(
                 // Kind.STRING (pre-existing) — pure DSL, no FQCN imports

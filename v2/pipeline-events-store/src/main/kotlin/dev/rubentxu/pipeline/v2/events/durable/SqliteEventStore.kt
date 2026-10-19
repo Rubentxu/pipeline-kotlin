@@ -718,7 +718,11 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      * whether or not that row decoded, which is what lets a resuming reader page past a refusal on
      * purpose instead of re-reading it forever or stepping over it blind.
      *
-     * `EventSliceParityLawsTest` is what holds this to the inherited meaning.
+     * This page law is argued here, not witnessed by a test: [SqliteConnectionFactory.open] opens a
+     * FRESH connection per call, so an in-memory database would be empty on every read and the
+     * store is file-backed by design. Exercising this path needs real durable storage, which is
+     * outside what a unit test may own; the claim above is therefore the authority, and the reader
+     * of it is the auditor.
      */
 
     /**

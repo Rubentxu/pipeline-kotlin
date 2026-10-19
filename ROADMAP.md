@@ -68,7 +68,12 @@ propia latencia y **no** va dentro de este número.
 
 Una cifra de reloj heredada de otro commit es exactamente el tipo de verde que
 esta tabla existe para no declarar: por eso cada fila lleva el SHA al que se
-midió.
+midió. Desde la medición, `HEAD` avanzó a `d47e10ad`, que solo toca este
+fichero: `check-budgets.py` devuelve los mismos **6805 / 61618** antes y después
+y ninguna tarea del gate lee `ROADMAP.md`, así que la traslación está medida y
+no supuesta. En cuanto entre un commit que toque código de producto o de
+verificación, esta tabla vuelve a estar caducada y hay que repetir los tres
+ensayos.
 
 `VERIFY_LOC` sale de `git ls-files`, así que **solo cuenta ficheros
 trackeados**. Al añadir un test nuevo la cifra puede no moverse, porque el

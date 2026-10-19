@@ -1138,15 +1138,13 @@ extra ni un segundo vocabulario en el lanzador.
 - `PRODUCT-GATE` (certificador externo, RC publicada) = **`BLOCKED_EXTERNAL`**.
   No hay CI remoto en este repositorio. La ausencia de CI **nunca** se declara
   `PASS`.
-- **Presupuesto de tiempo: CERRADO**, medido sobre `09e68a794`. Tres ensayos
-  desde salidas de test limpias dieron **233 s, 222 s, 218 s**: el peor, **233 s**
-  frente al límite duro de 900 s, leído del XML de JUnit (**539 tests, 57/57
+- **Presupuesto de tiempo: CERRADO**, medido sobre `a2342405b`. Tres ensayos
+  desde salidas de test limpias dieron **227 s, 223 s, 226 s**: el peor, **227 s**
+  frente al límite duro de 900 s, leído del XML de JUnit (**557 tests, 59/59
   informes reescritos por la corrida, 0 fallos, 0 errores, 0 skips**) y no del
-  código de salida. Los 57 informes se comprobaron uno a uno contra la hora de
-  inicio del ensayo (el más viejo es de las 19:15:11, el ensayo arrancó a las
-  19:14:44): ninguno es residuo de una corrida anterior, porque un recuento sin
-  ese corte cuenta suites que este ensayo no ejecutó. E2E: 36 escenarios, 35
-  pasan, 0 fallan, 1 `NOT_RUN`, 1 rerun durable, 189 s. Host de referencia:
+  código de salida. Los 59 informes reescritos en las tres pasadas son la prueba
+  de que ninguna lectura es residuo de un ensayo anterior. E2E: 36 escenarios, 35
+  pasan, 0 fallan, 1 `NOT_RUN`, 1 rerun durable. Host de referencia:
   Intel Xeon E5-2682 v4 @ 2.50 GHz, 64 hilos, 94 GiB, JDK Temurin 21.0.8,
   Gradle 8.14.5, cachés de dependencia ya pobladas.
   **Las salidas de test se limpian antes de CADA ensayo, no solo al principio**:
@@ -1162,30 +1160,34 @@ extra ni un segundo vocabulario en el lanzador.
   de `9c4bd7b8` y las anteriores a ella imprimían `PASS … gaps=1` y leían
   «verde con un hueco anotado»; ese era el defecto que `f37cd0234` corrigió. Hoy
   el lanzador dice literalmente *«This is not the gate»* y se niega a llamarlo
-  aprobado mientras un escenario no se haya ejecutado. Series y cifras anteriores
-  siguen siendo ciertas **para su propio SHA** y para ninguno más; se vuelven a
-  medir en cada avance de `HEAD` porque un gate verde por inercia sería peor que
-  uno marcado caducado.
+  aprobado mientras un escenario no se haya ejecutado. El hueco es **uno y solo
+  uno**, y §2.6 lo analyse: no es un escenario que falle, es uno que `run.sh`
+  salta antes de ejecutarlo. Series y cifras anteriores siguen siendo ciertas
+  **para su propio SHA** y para ninguno más; se vuelven a medir en cada avance de
+  `HEAD` porque un gate verde por inercia sería peor que uno marcado caducado.
 - **Presupuesto de LOC: CERRADO**, medido en la misma corrida.
-  `VERIFY_LOC = 7055` / `PRODUCT_LOC = 61653` = **0.114**, muy por debajo del
+  `VERIFY_LOC = 7229` / `PRODUCT_LOC = 61650` = **0.117**, muy por debajo del
   límite duro de 2. El censo cuenta sólo ficheros **rastreados** (`git ls-files`),
   así que esta cifra es del árbol ya commiteado: un test recién añadido sin
-  commit todavía no está en el denominador y rebajaría la ratio a blows.
+  commit todavía no está en el numerador y rebajaría la ratio a la baja.
   **Los dos módulos con test más densos ya no son los que se citaban antes.**
   Los de verdad son `pipeline-step-sdk:workflow-control` 80 / 49 = **1.633** y
-  `pipeline-credentials-executor` 349 / 346 = **1.009**. La versión anterior de
-  este párrafo nombraba `pipeline-credentials-local` (0.63) y
-  `pipeline-artefacts-local` (0.335) como los dos primeros, y era una
-  afirmación caduca: siguen en esa posición, pero ya no son los más densos.
-  Ninguno de los dos primeros viola el límite de 2, pero un ratio por encima de
-  1 significa más líneas de test que de producto en el módulo, y eso merece una
-  revisión de valor —más instrumentación que garantía— antes de añadir nada más
-  ahí.
+  `pipeline-credentials-executor` 349 / 346 = **1.009**; la serie de este ciclo
+  los confirma. La versión anterior de este párrafo nombraba
+  `pipeline-credentials-local` (0.63) y `pipeline-artefacts-local` (0.335) como
+  los dos primeros, y era una afirmación caduca: siguen cerca, pero no son los
+  más densos. Un tercero se ha acercado — `pipeline-output` 689 / 714 = **0.965**—
+  y conviene vigilarlo: un ratio por encima de 1 significa más líneas de test que
+  de producto en el módulo, y eso merece una revisión de valor —más
+  instrumentación que garantía— antes de añadir nada más ahí.
 
 ### 2.4 `pipeline-events` — el siguiente bloque desbloqueado
 
+*(Estado: **EJECUTADO** en `29d6aa31e`. Se conserva el razonamiento que lo
+justificó, porque explica por qué se eligieron estas dos garantías y no otras.)*
+
 24 ficheros de producción (4315 LOC), **cero** tests: el directorio
-`src/test/kotlin` no existe. Es el módulo de producto más grande sin cobertura,
+`src/test/kotlin` no existía. Era el módulo de producto más grande sin cobertura,
 y su caso tiene la misma forma que cerró `findFiles`: **la capa E2E no puede
 observarlo**. `v2/examples/run.sh` lee el exit code y, como mucho, una subcadena
 de `stderr`; captura `stdout` a fichero y **nunca lo abre**. Una garantía rota
@@ -1308,6 +1310,47 @@ sostiene es la propia `@Deprecated` y la propia totality fail-closed.
 que este encargo prohíbe explícitamente. Se registran aquí con su cifra y su
 instrumento. La regla que sí se adopta, para el trabajo que venga: **una promesa en
 KDoc se reescribe cuando se toca el fichero, no en una campaña.**
+
+### 2.6 El `NOT_RUN` que impide el `PASS` — y por qué no se ha cerrado
+
+El veredicto del gate local es **INCOMPLETE**, no `PASS`, y la diferencia es un
+único escenario: `v2/examples/security/14-credentials-bindings.pipeline.kts`.
+Desde §2.3 venía justificado por «necesita un almacén de credenciales sembrado
+sobre una TTY». Ese motivo era una hipótesis. **Ahora está medido.**
+
+`examples/run.sh` no lo intenta nunca: la directiva `//@ requires-seeded-credentials`
+provoca el `NOT_RUN` incondicionalmente, antes de cualquier ejecución. Así que el
+escenario no está fallando — está saltado a mano, y el gate tiene razón en negarse
+a llamarlo aprobado.
+
+**Lo que se comprobó en el producto**, no en el comentario del escenario:
+
+- Las dos únicas rutas de escritura, `add` y `rotate`, construyen la credencial
+  exclusivamente a través de `CredentialPrompts` (`MainCredentialsCli.kt:140-146`
+  y `253-259`). No hay rama alternativa.
+- Las siete funciones de `CredentialPrompts` leen el secreto con
+  `System.console()?.readPassword()`, y `System.console()` devuelve `null` sin TTY
+  — una tubería no es una TTY. Las que piden solo `readLine()` funcionarían; las
+  que piden contraseña, no. Es la contraseña la que bloquea.
+
+Por tanto: **hoy no existe ruta de siembra no interactiva**, y no es una decisión
+del escenario, es una limitación estructural del escritor. El escenario acertó.
+
+**Las dos formas de cerrarlo, con su coste real:**
+
+| opción | qué añade | coste |
+|---|---|---|
+| `credentials add --value-stdin` | producto: una bandera nueva en la superficie pública de un escritor de credenciales | decisión de producto y de seguridad (un secreto entra por tubería); merece ADR propio |
+| sembrador con **pty** en el lanzador | arnés: 7 secuencias de prompts, más un keystore PKCS#12 y un ZIP que fabricar | contradice `AGENTS.md` §3 («`run.sh` no debe convertirse en un marco de pruebas») y lo que el propio escenario dice de un «seeder dirigido por TTY» |
+
+Ninguna de las dos se toma de forma unilateral aquí: la primera cambia superficie
+de producto en una frontera de seguridad; la segunda engorda el lanzador justo
+donde la política lo acota. Se deja **decidida y medida**, no perdida.
+
+Lo que sí es de este ciclo y no se pierde: el `NOT_RUN` está declarado, el motivo
+está verificado contra el código, y el escenario sigue compilando dentro del
+inventario. El día que haya bandera, borrar la directiva lo convierte en una
+comprobación que corre — el escenario ya está escrito para eso.
 
 ---
 

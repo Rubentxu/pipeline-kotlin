@@ -19,7 +19,6 @@ package dev.rubentxu.pipeline.v2.events.durable
  * The cursor tracks the last successfully journaled operation ([last_op_id])
  * and the [stage_index] at which execution should resume.
  *
- * @see <a href="design.md §E4-03">Design §E4-03</a>
  */
 object OperationJournalSchema {
 

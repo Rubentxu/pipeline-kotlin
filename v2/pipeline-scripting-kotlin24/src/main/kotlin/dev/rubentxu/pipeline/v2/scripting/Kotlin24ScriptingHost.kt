@@ -28,7 +28,7 @@ import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromT
  * stored compilation) and
  * exposes the [ScriptingHost] contract from `:pipeline-scripting-api`.
  *
- * Design contract (see design.md §"Adapter shape"):
+ * Design contract:
  *  - Uses the canonical V1 pattern: `createJvmCompilationConfigurationFromTemplate<Any>`
  *    which resolves to the built-in Kotlin script definition (no custom
  *    `@KotlinScript` annotation needed — the file extension is conveyed

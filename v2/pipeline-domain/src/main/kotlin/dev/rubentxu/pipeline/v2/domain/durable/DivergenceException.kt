@@ -13,7 +13,6 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * @param runId    The run identifier.
  * @param stageIndex The stage index at which divergence was detected.
  *
- * @see <a href="design.md §E4-05">Design §E4-05</a>
  */
 class DivergenceException(
     val expected: Fingerprint,

@@ -51,7 +51,6 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * the same epoch. If a future change ever REMOVES or renames a case, that is a new durable
  * epoch and requires versioning at the journal layer before it lands — not this enum.
  *
- * @see <a href="design.md §E4-01">Design §E4-01</a>
  * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
  * @see <a href="ADR-0047">ADR-0047 — FAILED_TIMEOUT Terminal State</a>
  */

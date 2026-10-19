@@ -8,7 +8,6 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * (with capability declarations) is deferred to M3-R2 when the `script {}`
  * block needs it.
  *
- * @see <a href="design.md §R4">Design §R4 — Context capability API deferral</a>
  */
 interface OperationContext {
     /** Deterministic run identifier derived from script path + content. */

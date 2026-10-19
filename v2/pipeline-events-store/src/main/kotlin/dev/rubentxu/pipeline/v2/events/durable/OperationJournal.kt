@@ -20,10 +20,9 @@ import kotlinx.serialization.json.Json
  *
  * ## M3-R1 → M3-R2 Contract
  *
- * This interface is stable for M3-R2 consumption per [design.md §8].
+ * This interface is stable for M3-R2 consumption.
  * The concrete implementation [SqliteOperationJournalImpl] uses SQLite WAL mode.
  *
- * @see <a href="design.md §E4-03">Design §E4-03</a>
  */
 interface OperationJournal {
     /**
@@ -130,7 +129,7 @@ interface OperationJournal {
  *
  * All write operations ([append]) are synchronized to ensure serialized
  * writes to the WAL-enabled SQLite database. This is the single-writer
- * guarantee required by SQLite WAL mode and documented per [design.md §R-A].
+ * guarantee required by SQLite WAL mode.
  *
  * ## Serialization
  *
@@ -145,7 +144,6 @@ interface OperationJournal {
  * @param json The [Json] instance to use for serialization. Defaults to
  *             canonical encoding with [Json][kotlinx.serialization.json.Json].
  *
- * @see <a href="design.md §E4-03">Design §E4-03</a>
  */
 class SqliteOperationJournalImpl(
     private val connectionFactory: () -> Connection,

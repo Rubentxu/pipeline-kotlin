@@ -18,27 +18,33 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `57de2440` | `git rev-parse HEAD` |
+| SHA | `46205fb9` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
-| Módulos con test unitario permanente | **17** | `src/test/kotlin` con al menos un `*Test.kt` |
+| Módulos con test unitario permanente | **17** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 10 | ídem |
-| Tests unitarios ejecutados | **505** (51/51 informes reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
+| Tests unitarios ejecutados | **519** (53/53 informes reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
 | Escenarios E2E | 36 (**35 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **6310 / 61628 = 0.102** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **6692 / 61623 = 0.109** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **236 s**, peor de tres ensayos (233 / 236,48 / 223,71), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **226 s**, peor de tres ensayos (225 / 223 / 226), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
-Ensayos 2 y 3 se ejecutaron tras `rm -rf` de las salidas de build reales —las
-cuyo padre declara `build.gradle.kts`— y ambos reelectionaron los 51 informes
-JUnit, que es la condición que hace que la cifra de reloj mida el gate y no una
-restauración de caché. Ensayo 1.reportó 505 tests en 17 s con 48 informes
-frescos: el total era correcto y el verbo mentía, por eso la etapa 2 separa
-`rewritten` de `read` y **falla** si no reescribe ninguno.
+Los tres ensayos se ejecutaron tras `rm -rf` de las salidas de build reales —las
+cuyo padre declara `build.gradle.kts`— y los tres reelectionaron los 53
+informes JUnit, que es la condición que hace que la cifra de reloj mida el gate
+y no una restauración de caché. Un total correcto con el verbo equivocado ya no
+puede colarse: la etapa 2 separa `rewritten` de `read` y **falla** si no
+reescribe ninguno.
 
 El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
 declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
-fabricar credenciales. `NOT_RUN` no es un aprobado y así queda escrito.
+fabricar credenciales. `NOT_RUN` no es un aprobado, y desde `5240feac` tampoco se
+confunde con uno: la línea de veredicto lleva el hueco **dentro**, como
+`PASS  sha=…  elapsed=226s  budget=900s  gaps=1 not_run`. Antes el conteo se
+imprimía y no se leía —la etapa 3 solo hacía `grep` del resumen—, así que el
+peor caso (`--scenario 'security/*'`: 0 pasan, 0 fallan, 1 no ejecutado) salía
+vestido de `PASS`. Un tercer estado no se propaga porque la capa de abajo lo
+imprima: si el hueco necesita el log de la etapa para entenderse, no ha viajado.
 
 Host de referencia, exigido por `§4`: 64 núcleos lógicos Intel Xeon E5-2682 v4
 @ 2,50 GHz, 94,2 GiB de RAM, Linux 7.2.9-ogc3.1.fc44.x86_64, Temurin
@@ -51,12 +57,12 @@ esta tabla existe para no declarar: por eso cada fila lleva el SHA al que se
 midió.
 
 `VERIFY_LOC` sale de `git ls-files`, así que **solo cuenta ficheros
-trackeados**. Al añadir `ProjectWorkingDirectoryTest.kt` (155 líneas) la cifra
-no se movió: 6203 antes y 6203 después, porque el fichero todavía no estaba
-versionado. El número real es **6310**, y solo aparece al medir después del
-commit. Es la forma que toma aquí «una cifra válida con un verbo falso»: el
-censo era correcto, lo que era incorrecto era medirlo antes de commitear. Por
-eso la fila de arriba se escribe siempre contra un SHA ya versionado.
+trackeados**. Al añadir un test nuevo la cifra puede no moverse, porque el
+fichero todavía no está versionado. Es la forma que toma aquí «una cifra válida
+con un verbo falso»: el censo era correcto, lo que era incorrecto era medirlo
+antes de commitear. Por eso la fila de arriba se escribe siempre contra un SHA
+ya versionado, y por eso no se reescribe aquí el número: la tabla lo tiene y
+esta nota explica por qué ese número es el único que vale.
 
 Los ratios por módulo de §2.2 a) son mediciones independientes del gate, hechas
 sobre el mismo árbol con el mismo criterio de recuento (líneas efectivas,
@@ -103,25 +109,30 @@ No se borra en este ciclo: no figura en la lista del mandato y borrar ficheros
 versionados es del usuario. La decisión pendiente es declararlo (y arreglarlo)
 o retirarlo.
 
-### Los 16 módulos con test
+### Los 17 módulos con test
 
-`pipeline-domain`, `pipeline-events-store`, `pipeline-step-sdk/runtime`,
-`pipeline-step-sdk/http`, `pipeline-step-sdk/workflow-control`,
-`pipeline-step-sdk/files`, `pipeline-credentials-api`,
-`pipeline-credentials-local`, `pipeline-credentials-multipart`,
-`pipeline-credentials-executor`, `pipeline-binding-factory`,
-`pipeline-artefacts-local`, `pipeline-runtime-api`, `pipeline-output`,
-`pipeline-output-store`, `pipeline-release`.
+`pipeline-application`, `pipeline-domain`, `pipeline-events-store`,
+`pipeline-step-sdk/runtime`, `pipeline-step-sdk/http`,
+`pipeline-step-sdk/workflow-control`, `pipeline-step-sdk/files`,
+`pipeline-credentials-api`, `pipeline-credentials-local`,
+`pipeline-credentials-multipart`, `pipeline-credentials-executor`,
+`pipeline-binding-factory`, `pipeline-artefacts-local`,
+`pipeline-runtime-api`, `pipeline-output`, `pipeline-output-store`,
+`pipeline-release`.
 
 > **Censo remedido 2026-10-19 desde el disco.** Sobre los 27 módulos que declara
-> el `include(` de `settings.gradle.kts`: **16 con `src/test/kotlin/**/*Test.kt`,
-> 11 sin él**. Las tres cifras que había aquí —«los 12 módulos con test»,
-> «17 módulos sin test», «quedan 15»— estaban caducadas: el censo se tomó antes
-> de que este ciclo añadiera `OutputAdoptionTest`, `ApiRangeContainsTest`,
-> `AntStyleGlobPatternTest` y el test de `files`, y nadie lo volvió a medir. El
-> recuento por módulo sale de enumerar ficheros, no de directorios ni de un
-> `glob` de un nivel, porque los módulos anidados (`pipeline-step-sdk:*`) se
-> leen como ausentes con un solo nivel. La tabla por módulo de más abajo
+> el `include(` de `settings.gradle.kts`: **17 con `src/test/kotlin/**/*Test.kt`,
+> 10 sin él**. La lista de arriba omitía `pipeline-application`, que ya tiene
+> `ProjectWorkingDirectoryTest.kt`, y por eso se contradecía con la fila de §1.
+> Las cifras anteriores a esta —«los 12 módulos con test», «17 módulos sin
+> test», «quedan 15», y el «16 con test / 11 sin él» de una remedición
+> intermedia— estaban todas caducadas: el censo se tomó antes de que este ciclo
+> añadiera `OutputAdoptionTest`, `ApiRangeContainsTest`,
+> `AntStyleGlobPatternTest`, el test de `files` y el de `pipeline-application`,
+> y nadie lo volvió a medir. El recuento sale de lo que **imprime la etapa 2
+> del gate**, que ya recorre los módulos y no puede desincronizarse de él: una
+> lista escrita a mano en un documento es un segundo censo, y un segundo censo
+> es donde aparecen las contradicciones. La tabla por módulo de más abajo
 > conserva los números de aquella ejecución: **los tests y su recuento los
 > sustituye la medición de `scripts/verify-all.sh`**, que sigue siendo la fila
 > `pendiente` de §1. Hasta esa medición, el recuento por módulo es histórico.
@@ -308,10 +319,13 @@ el arreglo; los demás siguen verdes).
   línea ya emitida — tan eficaz como un salto de línea en un consumidor que
   no dobla CR en CRLF. El `shortCause` heredado tenía el mismo hueco. 10 tests,
   mutation-verificados: revertir solo la sustitución de CR convierte 10/10 en
-  1 fallo. `:pipeline-application` no tiene tests permanentes y no puede crecer
-  aquí —el sitio corregido es código de CLI, que `AGENTS.md` §2 prohíbe
-  probar—, así que esa mitad la cubren los tests de la autoridad compartida en
-  lugar de fingir cobertura.
+  1 fallo. `:pipeline-application` **no tiene test permanente para este sitio** y
+  no puede crecerlo aquí —el sitio corregido es código de CLI, que `AGENTS.md` §2
+  prohíbe probar—, así que esa mitad la cubren los tests de la autoridad
+  compartida en lugar de fingir cobertura. El módulo sí tiene test permanente
+  desde este ciclo (`ProjectWorkingDirectoryTest.kt`); lo que no tiene es uno
+  para la sustitución de CR, y decirlo sin ese matiz convertía una afirmación
+  verdadera en un censo equivocado.
 - **`StatusRange.parse` no era total, y su propio KDoc lo promete.**
   Las dos ramas de su `when` no se decían lo mismo: la rama `Single` se
   comprobaba en `parse` y devolvía `null`; la rama `Span` solo comprobaba el

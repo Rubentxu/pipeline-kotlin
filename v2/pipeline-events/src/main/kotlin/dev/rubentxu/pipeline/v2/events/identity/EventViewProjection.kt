@@ -11,9 +11,15 @@ import kotlinx.serialization.json.JsonObject
  * It claimed that [MainEventsCli][dev.rubentxu.pipeline.v2.application.MainEventsCli]
  * "accepts `--view <mode>` and `--format <fmt>` and delegates the projection" here. It accepts
  * neither flag: its parser is `--db / --runId / --kind / --subject / --limit / --after-cursor` and
- * nothing else. **This projection has no production caller at all** — only its own test reaches
- * it. That was found by RCE's promotion of the OUT-B item and confirmed here against the current
- * HEAD.
+ * nothing else. **This projection has no caller at all** — production or test. `project`, and
+ * both enums it takes, have zero references anywhere in the tree; the two tests this module has
+ * (`EventCursorTest`, `EventRegistryTest`) do not reach it. That was found by RCE's promotion of
+ * the OUT-B item and confirmed here against the current HEAD.
+ *
+ * It is not deleted because it is public API: `EventViewProjection`, `ViewMode` and
+ * `OutputFormat` are all in `api/pipeline-events.api`, the dump `binary-compatibility-validator`
+ * gates on. Removing them is an ABI break, not a cleanup, and needs an authorised versioned
+ * break. So it stays, unreachable, until someone decides that.
  *
  * The claim was not harmless documentation drift. It described an integration that a reader would
  * reasonably go looking for, and the way to find it was `--view console`.
@@ -37,10 +43,10 @@ import kotlinx.serialization.json.JsonObject
  *    StageFinished, RunFinished, StepStarted, StepFinished. Drops
  *    EchoOutputCaptured / UnixDetected / PwdResolved / ParallelBranchStarted
  *    / ParallelBranchFinished / etc. The agent-friendly default.
- *  - `full` — alias for `events` (every envelope). Reserved for explicit
- *    parity with the `--view full` CLI surface.
+ *  - `full` — alias for `events` (every envelope). No CLI surface selects it.
  *  - `console` — DEPRECATED. Selects `EchoOutputCaptured` envelopes, which since M1-P2 carry the
- *    semantic `core.echo` event and NOT process output. It cannot show a process console. Use
+ *    semantic `core.echo` event and NOT process output. It cannot show a process console, and
+ *    nothing selects it. A real console is read through
  *    [dev.rubentxu.pipeline.v2.application.ConsoleReadService].
  *  - `quiet` — only `RunFinished` envelopes (the aggregate outcome).
  *
@@ -51,8 +57,8 @@ import kotlinx.serialization.json.JsonObject
  *  - `text` — a one-line-per-envelope human-readable summary
  *    (`<sequence> <kind> <key=value pairs...>`).
  *
- * Pure, total, no effects. The CLI is the effectful boundary that
- * materializes the projection lines onto stdout.
+ * Pure, total, no effects. Nothing calls it, so there is no boundary to materialise on today:
+ * the CLI named above is the one that would, and it has no flags that reach this.
  */
 object EventViewProjection {
 

@@ -16,12 +16,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
 
-    testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
-}
-
-tasks.test {
-    useJUnitPlatform()
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -249,4 +243,30 @@ tasks.named("processResources") {
 
 tasks.named("jar") {
     dependsOn(emitHttpManifest)
+}
+
+// Unit-test wiring RESTORED (2026-10-19).
+//
+// It was REMOVED on 2026-10-18 under the premise that this module carries no unit tests: it is an
+// HTTP STEP whose guarantee is that a pipeline performs a real request, verified by the executable
+// E2E layer under `v2/examples/` rather than by a JUnit class. That premise held for the STEP
+// itself and stopped holding for the module: `StatusRange.parse` is a pure decode rule reached from
+// a JSON payload at request time, with no socket and no clock, and it now has a test.
+//
+// The reason the wiring was pulled out is still true and is why the removal was the right call THEN:
+// a `Test` task whose source set is empty reports success while executing zero classes -- a silent
+// green. Gradle 8.14 exposes no `failOnNoDiscoveredTests` property, so nothing inside this build can
+// turn that green into a failure, and a build file asserting otherwise would be describing a flag it
+// cannot compile. What catches it lives outside Gradle: `scripts/verify-all.sh` enumerates the
+// modules it asks from the filesystem and fails when a module that HAS a test source produces no
+// JUnit XML. That check is what keeps this wiring honest -- the test source set is no longer empty,
+// and if it ever goes empty again the gate fails here rather than reporting a vacuous pass.
+
+dependencies {
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

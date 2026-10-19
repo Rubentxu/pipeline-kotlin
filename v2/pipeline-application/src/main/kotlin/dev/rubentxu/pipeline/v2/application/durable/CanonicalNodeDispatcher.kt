@@ -24,7 +24,7 @@ import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
  *
  * C1-A (2026-09-26): the `CanonicalRuntimeContext` data class that previously lived here
  * has been extracted to `CanonicalRuntimeContext.kt` (same package). The extraction
- * follows the H1/H2/H3 partition plan (`docs/v2/06-quality/C1_ISOLATION_2026_09_26.md`)
+ * follows the H1/H2/H3 partition plan
  * and is bit-equivalent at the FQN level: 62 referencing files continue to compile
  * without import edits because the import path
  * `dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext` is unchanged.

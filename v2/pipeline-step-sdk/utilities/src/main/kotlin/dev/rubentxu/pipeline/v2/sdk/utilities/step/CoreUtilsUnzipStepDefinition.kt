@@ -31,8 +31,7 @@ import java.util.zip.ZipFile
  * `core-utils.unzip` OFFICIAL_PLUGIN Step (LFC-2E2 utilities, Slice 2 / S2.5).
  *
  * Jenkins reference: pipeline-utility-steps-plugin::UnZipStep
- * (MIT, CloudBees). Behaviour summary in
- * `docs/v2/07-uat/S2_UNZIP_JENKINS_REFERENCE.md`.
+ * (MIT, CloudBees).
  *
  * Security (CVE-2023-32981 / SECURITY-2196):
  *  - For every entry, the resolved target path MUST be a descendant of

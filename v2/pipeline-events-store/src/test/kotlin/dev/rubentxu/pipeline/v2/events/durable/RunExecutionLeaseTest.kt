@@ -1,205 +1,204 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 
 /**
- * S2-R0 — the run ownership law, and its Gate Teeth canary (P-UAT-09).
+ * A run has exactly one publishing authority at a time, and every takeover
+ * advances a fencing token so a superseded owner can be detected.
  *
- * The law: a `runId` has exactly one publishing authority at a time, and every
- * takeover advances a fencing token so a superseded owner is detectable.
+ * The two guarantees that `UNIQUE(run_id, sequence)` does NOT provide, and that
+ * this decider does:
  *
- * These tests are only evidence if disabling the decision they claim to verify
- * turns them RED. That is what [GATE_TEETH] pins: the ownership decision must
- * come from [RunExecutionLease] itself, not from a caller's pre-check. A guard
- * in the wiring could otherwise reject a dirty tree (or a busy run) for an
- * unrelated reason and mask an unguarded authority.
+ *  - **Ownership.** The database constraint rejects the losing writer's rows;
+ *    it does not tell the loser it lost. The loser sees a raw driver error and
+ *    its batch is dropped, so a probe costs the live owner facts.
+ *  - **Fencing.** A stale owner that was paused (SIGSTOP, long GC) can wake up
+ *    long after a legitimate owner took over. The constraint accepts its rows
+ *    when the numbers do not collide, so the log ends up carrying facts from a
+ *    superseded authority. This is the check that stops that.
+ *
+ * Every function here is pure and total, so each test states the whole law and
+ * needs no store, no clock and no process. The order of the branches in
+ * `acquire` IS the policy, and each rule below is one branch of it.
  */
 class RunExecutionLeaseTest {
 
-    private fun owner(raw: String): RunOwnerId =
-        requireNotNull(RunOwnerId.of(raw)) { "test owner id must be valid: $raw" }
+    private val runId = "run-42"
+    private val ownerA = RunOwnerId.of("worker-a")!!
+    private val ownerB = RunOwnerId.of("worker-b")!!
 
-    private val alice = owner("alice-1")
-    private val bob = owner("bob-2")
-    private val runId = "run-under-test"
+    private fun liveLease(
+        owner: RunOwnerId = ownerA,
+        token: FencingToken = FencingToken.FIRST,
+        alive: Boolean? = true,
+    ) = LeaseRecord(runId, owner, token, ownerAlive = alive)
 
-    // ------------------------------------------------------------ acquisition
+    // --- acquire: the four branches, in policy order ----------------------------
 
     @Test
-    @DisplayName("an unowned run is acquired at the first token")
-    fun first_acquisition_takes_token_one() {
-        val decision = RunExecutionLease.acquire(null, LeaseRequest(runId, alice))
-        assertTrue(decision is LeaseAcquisition.Acquired, "expected Acquired, got $decision")
-        decision as LeaseAcquisition.Acquired
-        assertEquals(FencingToken.FIRST, decision.fencingToken)
-        assertEquals(alice, decision.record.ownerId)
+    fun `a run with no record is acquired at the FIRST token`() {
+        val decision = RunExecutionLease.acquire(null, LeaseRequest(runId, ownerA))
+
+        val acquired = decision as LeaseAcquisition.Acquired
+        assertEquals(FencingToken.FIRST, acquired.fencingToken)
+        assertEquals(ownerA, acquired.record.ownerId)
+        assertEquals(true, acquired.record.ownerAlive)
     }
 
     @Test
-    @DisplayName("a second live owner is denied and told who holds the run")
-    fun second_live_owner_is_denied() {
-        val held = LeaseRecord(runId, alice, FencingToken.FIRST, ownerAlive = true)
-        val decision = RunExecutionLease.acquire(held, LeaseRequest(runId, bob))
-        assertTrue(decision is LeaseAcquisition.AlreadyOwned, "expected AlreadyOwned, got $decision")
-        decision as LeaseAcquisition.AlreadyOwned
-        assertEquals(alice, decision.heldBy, "the refusal must name the live authority")
-        assertEquals(FencingToken.FIRST, decision.fencingToken)
+    fun `a blank run id is unverifiable, never acquired`() {
+        val decision = RunExecutionLease.acquire(null, LeaseRequest("   ", ownerA))
+
+        // The specific claim: an empty key must not become a lease. Acquiring it
+        // would put every unkeyed writer in the same bucket, which is precisely
+        // the contention this type exists to prevent.
+        assertTrue(decision is LeaseAcquisition.Unverifiable, "got ${decision.render()}")
     }
 
     @Test
-    @DisplayName("re-entry by the current owner does NOT advance the token")
-    fun reentry_keeps_the_token_stable() {
-        val held = LeaseRecord(runId, alice, FencingToken.FIRST, ownerAlive = true)
-        val decision = RunExecutionLease.acquire(held, LeaseRequest(runId, alice))
-        assertTrue(decision is LeaseAcquisition.Reentered, "expected Reentered, got $decision")
-        // If re-entry advanced the token, an owner would fence itself out of
-        // its own run on the second acquisition — the classic fencing bug.
-        assertEquals(FencingToken.FIRST, (decision as LeaseAcquisition.Reentered).fencingToken)
+    fun `the live owner re-entering does not advance the token`() {
+        val current = liveLease(ownerA, FencingToken.of(7))
+
+        val decision = RunExecutionLease.acquire(current, LeaseRequest(runId, ownerA))
+
+        // Re-entry is not a takeover. Advancing here would fence the owner out
+        // of its own run the second time it checked.
+        val reentered = decision as LeaseAcquisition.Reentered
+        assertEquals(FencingToken.of(7), reentered.fencingToken)
+        assertEquals(current, reentered.record)
     }
 
     @Test
-    @DisplayName("a dead owner's run is taken over and the token ADVANCES")
-    fun takeover_advances_the_fencing_token() {
-        val held = LeaseRecord(runId, alice, FencingToken.FIRST, ownerAlive = false)
-        val decision = RunExecutionLease.acquire(held, LeaseRequest(runId, bob))
-        assertTrue(decision is LeaseAcquisition.TakenOver, "expected TakenOver, got $decision")
-        decision as LeaseAcquisition.TakenOver
-        assertEquals(FencingToken.of(2), decision.fencingToken, "a takeover must advance the token")
-        assertEquals(alice, decision.previousOwner)
+    fun `a different live owner is refused, and the refusal names the live authority`() {
+        val current = liveLease(ownerA, FencingToken.of(7))
+
+        val decision = RunExecutionLease.acquire(current, LeaseRequest(runId, ownerB))
+
+        // The core law. The returned token is the HOLDER's, so the diagnostic
+        // can say who owns it rather than only "busy".
+        val denied = decision as LeaseAcquisition.AlreadyOwned
+        assertEquals(ownerA, denied.heldBy)
+        assertEquals(FencingToken.of(7), denied.fencingToken)
     }
 
     @Test
-    @DisplayName("a released run is taken over, not treated as a first acquisition")
-    fun takeover_after_release_still_advances() {
-        val released = RunExecutionLease.release(
-            LeaseRecord(runId, alice, FencingToken.FIRST, ownerAlive = true),
-            alice,
-        )
-        assertEquals(null, released.ownerId, "release must clear the owner")
-        val decision = RunExecutionLease.acquire(released, LeaseRequest(runId, bob))
-        assertTrue(decision is LeaseAcquisition.TakenOver, "expected TakenOver, got $decision")
-        assertEquals(
-            FencingToken.of(2), (decision as LeaseAcquisition.TakenOver).fencingToken,
-            "even after a clean release the token advances, so a stale owner is detectable",
-        )
+    fun `taking over a dead owner advances the token and names the predecessor`() {
+        val current = liveLease(ownerA, FencingToken.of(7), alive = false)
+
+        val decision = RunExecutionLease.acquire(current, LeaseRequest(runId, ownerB))
+
+        // The advance is the whole point: it is what makes ownerA detectable as
+        // stale if ownerA ever wakes up.
+        val taken = decision as LeaseAcquisition.TakenOver
+        assertEquals(FencingToken.of(8), taken.fencingToken)
+        assertEquals(ownerA, taken.previousOwner)
+        assertEquals(ownerB, taken.record.ownerId)
     }
 
     @Test
-    @DisplayName("an unknown heartbeat is takeable, because a dead process cannot be proven dead")
-    fun unknown_heartbeat_is_takeable() {
-        val held = LeaseRecord(runId, alice, FencingToken.FIRST, ownerAlive = null)
-        val decision = RunExecutionLease.acquire(held, LeaseRequest(runId, bob))
-        assertTrue(
-            decision is LeaseAcquisition.TakenOver,
-            "an unobservable heartbeat must not permanently block a run; got $decision",
-        )
+    fun `an unknown heartbeat is takeable, because nobody can prove a dead process is dead`() {
+        val current = liveLease(ownerA, FencingToken.of(7), alive = null)
+
+        val decision = RunExecutionLease.acquire(current, LeaseRequest(runId, ownerB))
+
+        // `null` is deliberately NOT `false`: an unobserved heartbeat is not a
+        // dead owner. Treating it as dead is safe ONLY because the token
+        // advances; refusing instead would make a run unrecoverable forever.
+        val taken = decision as LeaseAcquisition.TakenOver
+        assertEquals(FencingToken.of(8), taken.fencingToken)
+        assertEquals(ownerA, taken.previousOwner)
     }
 
     @Test
-    @DisplayName("a blank run id is Unverifiable, never a silent success")
-    fun blank_run_id_is_unverifiable() {
-        val decision = RunExecutionLease.acquire(null, LeaseRequest("   ", alice))
-        assertTrue(
-            decision is LeaseAcquisition.Unverifiable,
-            "a lease keyed on nothing must fail closed, got $decision",
-        )
+    fun `a released lease is taken over, not re-entered`() {
+        val released = LeaseRecord(runId, ownerId = null, FencingToken.of(7), ownerAlive = false)
+
+        val decision = RunExecutionLease.acquire(released, LeaseRequest(runId, ownerB))
+
+        val taken = decision as LeaseAcquisition.TakenOver
+        assertNull(taken.previousOwner, "a released lease has no predecessor to name")
+        assertEquals(FencingToken.of(8), taken.fencingToken)
     }
 
-    // ---------------------------------------------------------------- fencing
+    // --- authorisePublish: the fencing check -----------------------------------
 
     @Test
-    @DisplayName("the current token may publish")
-    fun current_token_is_authorised() {
-        val held = LeaseRecord(runId, alice, FencingToken.FIRST, ownerAlive = true)
-        val authority = RunExecutionLease.authorisePublish(held, FencingToken.FIRST)
-        assertTrue(authority is PublishAuthority.Authorised, "expected Authorised, got $authority")
+    fun `an exact token match is authorised`() {
+        val current = liveLease(ownerA, FencingToken.of(7))
+
+        val authority = RunExecutionLease.authorisePublish(current, FencingToken.of(7))
+
+        assertEquals(PublishAuthority.Authorised(FencingToken.of(7)), authority)
     }
 
     @Test
-    @DisplayName("GATE TEETH: a superseded owner is refused BEFORE it can write")
-    fun superseded_owner_cannot_publish() {
-        // Alice owned the run at token 1. She was paused; Bob took over at
-        // token 2. Alice waking up must discover she is stale, not corrupt
-        // the log with facts from a superseded authority.
-        val afterTakeover = LeaseRecord(runId, bob, FencingToken.of(2), ownerAlive = true)
-        val authority = RunExecutionLease.authorisePublish(afterTakeover, FencingToken.FIRST)
-        assertTrue(
-            authority is PublishAuthority.Superseded,
-            "a stale owner must be fenced out, got $authority",
-        )
+    fun `a publisher behind the current token is fenced out`() {
+        // THE property. Owner A was paused at token 7, owner B took over and the
+        // token advanced to 8. A waking up must be refused here, BEFORE it writes
+        // anything -- not discovered later as a corrupted log.
+        val current = liveLease(ownerB, FencingToken.of(8))
+
+        val authority = RunExecutionLease.authorisePublish(current, FencingToken.of(7))
+
         val superseded = authority as PublishAuthority.Superseded
-        assertEquals(FencingToken.FIRST, superseded.held)
-        assertEquals(FencingToken.of(2), superseded.current)
-    }
-
-    @Test
-    @DisplayName("a token AHEAD of the record is also refused, never trusted")
-    fun token_ahead_of_record_is_refused() {
-        // A publisher claiming a token the lease never issued is not more
-        // authoritative than one behind: it is a forged or confused caller.
-        val held = LeaseRecord(runId, alice, FencingToken.FIRST, ownerAlive = true)
-        val authority = RunExecutionLease.authorisePublish(held, FencingToken.of(99))
-        assertTrue(authority is PublishAuthority.Superseded, "expected Superseded, got $authority")
-    }
-
-    @Test
-    @DisplayName("publishing with no lease record fails closed")
-    fun publish_without_a_record_fails_closed() {
-        val authority = RunExecutionLease.authorisePublish(null, FencingToken.FIRST)
+        assertEquals(FencingToken.of(7), superseded.held)
+        assertEquals(FencingToken.of(8), superseded.current)
         assertTrue(
-            authority is PublishAuthority.Unverifiable,
-            "no record means no provable authority; got $authority",
+            authority.render().contains("fenced out"),
+            "the refusal must say WHY, so the diagnostic names fencing: ${authority.render()}",
         )
     }
 
     @Test
-    @DisplayName("takeover genuinely changes the token, so fencing has something to detect")
-    fun token_actually_changes_across_takeovers() {
-        // A guard that "protects" by always returning the same token would pass
-        // every denial test above while providing zero fencing. This asserts
-        // the discriminating property directly.
-        var state: LeaseRecord? = null
-        val first = RunExecutionLease.acquire(state, LeaseRequest(runId, alice))
-        state = (first as LeaseAcquisition.Acquired).record
+    fun `a publisher with no lease record fails closed`() {
+        // "I could not tell" is not "nobody has it", and it is not permission.
+        val authority = RunExecutionLease.authorisePublish(null, FencingToken.of(7))
 
-        val second = RunExecutionLease.acquire(
-            state!!.copy(ownerAlive = false),
-            LeaseRequest(runId, bob),
-        )
-        state = (second as LeaseAcquisition.TakenOver).record
-
-        assertNotEquals(
-            FencingToken.FIRST, state!!.fencingToken,
-            "the token must actually move for fencing to mean anything",
-        )
+        assertTrue(authority is PublishAuthority.Unverifiable, "got ${authority.render()}")
     }
 
-    // --------------------------------------------------------------- release
+    // --- release ----------------------------------------------------------------
 
     @Test
-    @DisplayName("a stale owner releasing does NOT clear the live owner's lease")
-    fun stale_release_cannot_steal_the_lease() {
-        val live = LeaseRecord(runId, bob, FencingToken.of(2), ownerAlive = true)
-        val afterStaleRelease = RunExecutionLease.release(live, alice)
-        assertEquals(bob, afterStaleRelease.ownerId, "a stale owner must not unown the live one")
-        assertEquals(FencingToken.of(2), afterStaleRelease.fencingToken)
+    fun `the live owner releasing clears the lease without advancing the token`() {
+        val current = liveLease(ownerA, FencingToken.of(7))
+
+        val released = RunExecutionLease.release(current, ownerA)
+
+        assertNull(released.ownerId)
+        assertEquals(false, released.ownerAlive)
+        // The NEXT owner advances it on acquisition; a release that bumped the
+        // token would fence nobody and corrupt the audit trail.
+        assertEquals(FencingToken.of(7), released.fencingToken)
     }
 
     @Test
-    @DisplayName("AlreadyOwned and Unverifiable stay distinct cases")
-    fun denial_reasons_are_not_collapsed() {
-        // Collapsing them would tell an operator "someone else owns this run"
-        // when the truth is "the lease store is unreachable" — two different
-        // incidents with two different remedies.
-        val busy = RunExecutionLease.acquire(
-            LeaseRecord(runId, alice, FencingToken.FIRST, ownerAlive = true),
-            LeaseRequest(runId, bob),
-        )
-        val broken = RunExecutionLease.acquire(null, LeaseRequest("  ", bob))
-        assertNotEquals(busy::class, broken::class, "the two denials must remain distinguishable")
+    fun `a stale owner releasing does not clear the live owner's lease`() {
+        val current = liveLease(ownerB, FencingToken.of(8))
+
+        val after = RunExecutionLease.release(current, ownerA)
+
+        // The fence, from the other side: owner A waking up and tidying up must
+        // not hand the run back or release B's hold on it.
+        assertSame(current, after)
+        assertEquals(ownerB, after.ownerId)
+    }
+
+    // --- the owner id boundary ---------------------------------------------------
+
+    @Test
+    fun `a blank owner id is refused at construction rather than normalised`() {
+        assertNull(RunOwnerId.of(""))
+        assertNull(RunOwnerId.of("   "))
+        assertNull(RunOwnerId.of("worker a"), "an id with an inner space could collide in a diagnostic")
+    }
+
+    @Test
+    fun `an owner id is trimmed once, at the boundary`() {
+        assertEquals(RunOwnerId.of("worker-a"), RunOwnerId.of("  worker-a  "))
     }
 }

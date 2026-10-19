@@ -79,18 +79,36 @@ class DirExecutor(
         )
     }
 
-    private fun resolveTargetPath(path: String, workspace: Path): Path {
+    /**
+     * Resolve [path] against [workspace], refusing anything that leaves it.
+     *
+     * `internal` rather than `private` so the confinement decision is reachable without a
+     * filesystem: [execute] calls `Files.createDirectories` before the nested steps run, and
+     * AGENTS.md section 2 forbids filesystem persistence in a unit test. A guard whose only
+     * reachable path runs through a directory creation is a guard with no coverage.
+     */
+    internal fun resolveTargetPath(path: String, workspace: Path): Path {
+        // The boundary is normalised too, or an unnormalised root silently refuses its own
+        // children: `/ws/./sub` does not start with `/ws/./`.
+        val root = workspace.normalize()
         val target = if (path.startsWith("/")) {
             // Absolute path — use as-is
             Paths.get(path)
         } else {
             // Relative path — resolve against workspace root (Jenkins semantics)
-            workspace.resolve(path)
+            root.resolve(path)
         }.normalize()
 
-        // Guard against path traversal outside workspace
-        val workspaceStr = workspace.toString()
-        if (!target.toString().startsWith(workspaceStr)) {
+        // Path.startsWith compares NAME ELEMENTS; String.startsWith compares characters.
+        //
+        // Those differ exactly on the sibling that shares a prefix, which is the sibling an
+        // attacker picks: for workspace `/home/rub/proyecto`, the character comparison admitted
+        // `/home/rub/proyecto2`, `../proyecto-evil` and `../proyectoX/inner` — three real
+        // directories outside the authorised root, each passing because its name begins with
+        // the root's. `WorkspacePathAnchors` already records this class of guard as the reason
+        // `core-utils.zip`/`.unzip` moved to `WorkspacePathResolver`; this file was the copy
+        // that stayed, and it had the string form on top of the wrong boundary.
+        if (!target.startsWith(root)) {
             throw PathTraversalException(path, "Path traversal attempt outside workspace: $target")
         }
 

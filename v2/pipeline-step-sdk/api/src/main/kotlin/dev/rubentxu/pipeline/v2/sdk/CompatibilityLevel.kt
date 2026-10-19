@@ -1,8 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk
 
 /**
- * Jenkins familiarity compatibility levels (F0..F3) per
- * docs/v2/01-product/JENKINS_FAMILIARITY.md L7-21 and ADR-0005.md:13.
+ * Jenkins familiarity compatibility levels (F0..F3).
  *
  * S6/H: the `@JenkinsSurface` annotation that carried this as a parameter is gone, together with
  * the KSP that read it. The type survives because it is a Jenkins compatibility LEVEL — a fact

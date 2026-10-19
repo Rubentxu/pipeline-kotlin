@@ -1,7 +1,0 @@
-<?xml version="1.0" ?>
-<SmellBaseline>
-  <ManuallySuppressedIssues/>
-  <CurrentIssues>
-    <ID>CyclomaticComplexMethod:BlockStepFlattener.kt:BlockStepFlattener$private fun flattenImpl</ID>
-  </CurrentIssues>
-</SmellBaseline>

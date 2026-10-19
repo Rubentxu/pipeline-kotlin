@@ -1,87 +1,124 @@
 package dev.rubentxu.pipeline.v2.credentials.local
 
-import java.nio.file.Path
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.Timeout
+import java.nio.file.Path
+import java.nio.file.Paths
 
 /**
- * The credentials store location, which used to have three answers.
+ * [CredentialsStorePath] is the single place that decides where the local store lives. Three
+ * readers used to answer that question and they did not agree: the documented default
+ * (`~/.pipeline/credentials.bin`) and two copies of `<controlRoot>/../credentials.bin`. A user
+ * who followed the documented flow — add a credential, then run a pipeline — saw no
+ * credentials. The fix is to take the env var or the home default and nothing else.
  *
- * The property under test is deliberately narrow: the store is located by the
- * ENVIRONMENT and by nothing else. `CredentialsStorePath`'s KDoc carries the
- * defect it removes; these rows pin the rule that replaced two of them.
+ * The tests pin the three rules: env value present -> use it, env blank -> treat as absent,
+ * env absent -> use the home default. They are written so an edit that restores the old
+ * `<controlRoot>/../credentials.bin` default would have to also add a control-root parameter
+ * to keep the tests passing, which is the property AGENTS.md §1 calls for.
  */
-@DisplayName("credentials store location")
-@Timeout(30)
 class CredentialsStorePathTest {
 
-    private val home = Path.of("/home/someone")
+    @Test
+    fun `env var name is PIPELINE_CREDENTIALS_STORE and nothing else`() {
+        // The contract for automation. The constant is the only thing the store checks; a
+        // typo here means nobody can override the path, and the operator has no way to
+        // know the typo except by reading the source.
+        assertEquals("PIPELINE_CREDENTIALS_STORE", CredentialsStorePath.ENV_VAR)
+    }
 
     @Test
-    fun `the env var decides the location when it is set`() {
+    fun `env var present uses the env value verbatim`() {
+        val home = Paths.get("/home/anyone")
+        val envValue = "/srv/custom/credentials.bin"
+
+        val resolved = CredentialsStorePath.resolve(envValue = envValue, userHome = home)
+
+        assertEquals(Paths.get(envValue), resolved, "the env value overrides the home default")
+    }
+
+    @Test
+    fun `env var absent uses the home pipeline directory`() {
+        val home = Paths.get("/home/anyone")
+
+        val resolved = CredentialsStorePath.resolve(envValue = null, userHome = home)
+
+        assertEquals(Paths.get("/home/anyone/.pipeline/credentials.bin"), resolved)
+    }
+
+    @Test
+    fun `env var blank is treated as absent, not as a path`() {
+        // `PIPELINE_CREDENTIALS_STORE=` in a CI job must not silently redirect the store
+        // to `credentials.bin` relative to the runner's cwd. The source KDoc declares this
+        // explicitly.
+        val home = Paths.get("/home/anyone")
+
+        val resolved = CredentialsStorePath.resolve(envValue = "  ", userHome = home)
+
         assertEquals(
-            Path.of("/srv/secrets/creds.bin"),
-            CredentialsStorePath.resolve("/srv/secrets/creds.bin", home),
-            "an explicit PIPELINE_CREDENTIALS_STORE must win over the default",
+            Paths.get("/home/anyone/.pipeline/credentials.bin"),
+            resolved,
+            "a blank env value must not produce a path inside the runner's cwd",
         )
     }
 
     @Test
-    fun `a blank env var is absent rather than the working directory`() {
-        // `PIPELINE_CREDENTIALS_STORE=` is what an unset-but-declared shell
-        // variable or a CI job with an empty value produces. Resolving it as a
-        // path would silently point the store at `credentials.bin` relative to
-        // whatever the runner's working directory happens to be.
-        assertEquals(
-            CredentialsStorePath.resolve(null, home),
-            CredentialsStorePath.resolve("", home),
-            "a blank value must resolve exactly as an absent one",
-        )
-        assertEquals(
-            CredentialsStorePath.resolve(null, home),
-            CredentialsStorePath.resolve("   ", home),
-            "whitespace is not a path either",
-        )
+    fun `the env value is used even when it points to a relative path`() {
+        // The store trusts the operator's env value: it is not the resolver's job to
+        // second-guess the location. A path the operator sets is used as-is, so the
+        // property to pin is that no normalization or homing happens on the env path.
+        val home = Paths.get("/home/anyone")
+        val envValue = "relative/path/credentials.bin"
+
+        val resolved = CredentialsStorePath.resolve(envValue = envValue, userHome = home)
+
+        assertEquals(Path.of(envValue), resolved)
+        assertNotEquals(Paths.get("/home/anyone/relative/path/credentials.bin"), resolved)
     }
 
     @Test
-    fun `with no env var the store is the documented user home file`() {
-        assertEquals(
-            home.resolve(".pipeline").resolve("credentials.bin"),
-            CredentialsStorePath.resolve(null, home),
-            "the default the CLI names in its own contract",
-        )
-    }
+    fun `fromEnvironment reads the env var key the constant names`() {
+        val home = "/home/fromenv"
 
-    @Test
-    fun `fromEnvironment reads the env var by the name every reader already used`() {
-        // If ENV_VAR and the string a reader passes to System.getenv ever differ,
-        // the override silently stops applying and the default wins — the exact
-        // shape of the divergence this object removed. Both sides are named here.
-        assertEquals(
-            "PIPELINE_CREDENTIALS_STORE",
-            CredentialsStorePath.ENV_VAR,
-            "the env var name is part of the contract, not a private detail",
-        )
-        assertEquals(
-            Path.of("/tmp/elsewhere.bin"),
-            CredentialsStorePath.fromEnvironment(
-                mapOf("HOME" to "/home/someone", CredentialsStorePath.ENV_VAR to "/tmp/elsewhere.bin"),
+        val resolved = CredentialsStorePath.fromEnvironment(
+            mapOf(
+                "PIPELINE_CREDENTIALS_STORE" to "/tmp/store",
+                "HOME" to home,
             ),
-            "fromEnvironment must apply the override for the real var name",
         )
+
+        assertEquals(Paths.get("/tmp/store"), resolved)
     }
 
     @Test
-    fun `fromEnvironment falls back to the real user home when HOME is absent`() {
-        // The JVM property is the last resort, not the first: a container that
-        // sets HOME must not have its home ignored.
+    fun `fromEnvironment without the env var uses HOME`() {
+        val resolved = CredentialsStorePath.fromEnvironment(
+            mapOf("HOME" to "/home/withouthEnv"),
+        )
+
+        assertEquals(Paths.get("/home/withouthEnv/.pipeline/credentials.bin"), resolved)
+    }
+
+    @Test
+    fun `fromEnvironment with a blank env var falls back to HOME`() {
+        val resolved = CredentialsStorePath.fromEnvironment(
+            mapOf("PIPELINE_CREDENTIALS_STORE" to "", "HOME" to "/home/blankEnv"),
+        )
+
+        assertEquals(Paths.get("/home/blankEnv/.pipeline/credentials.bin"), resolved)
+    }
+
+    @Test
+    fun `fromEnvironment without HOME uses the JVM's user home`() {
+        // The fallback is System.getProperty("user.home"). A HOME-less container still gets a
+        // usable path; the test pins that fallback by reading the JVM property and asserting
+        // equality, not by depending on its value.
+        val resolved = CredentialsStorePath.fromEnvironment(emptyMap())
+
         assertEquals(
-            CredentialsStorePath.resolve(null, Path.of(System.getProperty("user.home"))),
-            CredentialsStorePath.fromEnvironment(emptyMap()),
-            "with no HOME the JVM's user.home is the home",
+            Paths.get(System.getProperty("user.home"), ".pipeline", "credentials.bin"),
+            resolved,
         )
     }
 }

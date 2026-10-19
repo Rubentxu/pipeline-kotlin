@@ -48,11 +48,16 @@ dependencies {
     // only java.sql, so the driver is a classpath fact rather than a compile-time one.
     implementation(libs.sqlite.jdbc)
 
-    // Test-only. `RealHistoryParityTest` lives here rather than in `:pipeline-event-harness`
-    // because it drives a real `JsonEventLog`, and the harness is a leaf that may depend only
-    // inward on the contract — see `FArch020EventHarnessIsolationTest`. The harness's own contract
-    // test stays there; the parity test belongs beside the store it reads.
-    testImplementation(project(":pipeline-event-harness"))
+    // Test-only.
+    //
+    // This used to carry `testImplementation(project(":pipeline-event-harness"))`, justified by
+    // `RealHistoryParityTest` and `FArch020EventHarnessIsolationTest`. Both were deleted by the
+    // RESET, so the dependency had no consumer and the comment named two classes that no longer
+    // exist — the same stale-authority shape as the `failOnNoDiscoveredTests` claim this module's
+    // siblings carried.
+    //
+    // `:pipeline-event-harness` itself is NOT dead: `:pipeline-application` depends on it because
+    // it backs the `pipeline events verify` product command. This edge was the only other one.
     testImplementation(libs.kotlin.reflect)
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")

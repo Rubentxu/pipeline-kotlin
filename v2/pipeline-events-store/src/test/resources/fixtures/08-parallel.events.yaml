@@ -1,8 +1,0 @@
-version: 1
-name: 08-parallel-reuse
-expect:
-  runOutcome: SUCCESS
-constraints:
-  # verified over the sub-history AFTER the first run's cursor (sequence > cut)
-  - never: { event: ParallelBranchStarted }
-  - never: { event: StepStarted }

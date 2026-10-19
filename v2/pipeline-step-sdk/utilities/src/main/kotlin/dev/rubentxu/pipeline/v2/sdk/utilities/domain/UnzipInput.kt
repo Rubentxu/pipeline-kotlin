@@ -6,7 +6,6 @@ import kotlinx.serialization.Serializable
  * `core-utils.unzip` typed Input (LFC-2E2 utilities, Slice 2 / S2.5).
  *
  * Jenkins reference: pipeline-utility-steps-plugin::UnZipStep.
- * Behaviour summary in `docs/v2/07-uat/S2_UNZIP_JENKINS_REFERENCE.md`.
  *
  * Mode is closed: a caller picks exactly one of the three
  * [UnzipMode] cases. Mixing `read` and `test` is unrepresentable at

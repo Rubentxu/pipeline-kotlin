@@ -1,0 +1,13 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>UnusedImport:RecoverAdapters.kt:import dev.rubentxu.pipeline.v2.output.OutputPin</ID>
+    <ID>UnusedImport:RecoverAdapters.kt:import dev.rubentxu.pipeline.v2.output.OutputStreamId</ID>
+    <ID>UnusedImport:RuntimeControlPortStoreAdapter.kt:import kotlinx.serialization.encodeToString</ID>
+    <ID>UnusedImport:RuntimeIntrospectionPortStoreAdapter.kt:import dev.rubentxu.pipeline.v2.events.shape.StageFinishedTyped</ID>
+    <ID>UnusedImport:RuntimeIntrospectionPortStoreAdapter.kt:import dev.rubentxu.pipeline.v2.events.shape.StepFinishedTyped</ID>
+    <ID>UnusedVariable:RuntimeIntrospectionPortStoreAdapter.kt:RuntimeIntrospectionPortStoreAdapter$val cursor = try { cursors.load(runId) } catch (e: Exception) { return RuntimeIntrospectionResult.Refused( IntrospectionRefusal.StorageError(e.shortDiagnostic()), ) }</ID>
+    <ID>UseOrEmpty:RecoverAdapters.kt:RuntimeRecoverPortStoreAdapter$it.lastOpId ?: ""</ID>
+  </CurrentIssues>
+</SmellBaseline>

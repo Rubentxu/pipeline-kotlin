@@ -33,8 +33,7 @@ import kotlin.streams.toList
  * `core-utils.findFiles` OFFICIAL_PLUGIN Step (LFC-2E2 utilities, Slice 2 / S2.3).
  *
  * Jenkins reference: pipeline-utility-steps-plugin::FindFilesStep
- * (MIT, CloudBees). Behaviour summary in
- * `docs/v2/07-uat/S2_FINDFILES_JENKINS_REFERENCE.md`.
+ * (MIT, CloudBees).
  *
  * Strategy:
  *  - Pattern.None       -> direct children of the base directory only.

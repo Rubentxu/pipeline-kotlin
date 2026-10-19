@@ -27,8 +27,26 @@ import java.util.regex.Pattern
  *
  * ## Minimum Maskable Length
  *
- * Per GitLab rule, secrets shorter than 8 characters are NOT registered
- * for masking. They emit [SecretShorterThanMinimumMaskableLengthWarning] instead.
+ * Per GitLab rule, secrets shorter than [MIN_MASKABLE_LENGTH] are NOT registered for masking, and
+ * the discard is SILENT: nothing is thrown, nothing is reported, and the value simply never
+ * reaches [registeredSecrets].
+ *
+ * ## What this means for a caller, stated plainly
+ *
+ * A bound credential whose secret is shorter than [MIN_MASKABLE_LENGTH] runs normally and its value
+ * appears in the transcript IN THE CLEAR. The threshold governs MASKING, not VALIDITY — a short
+ * password is a weak password, not a malformed one, and refusing it would reject credentials that
+ * work perfectly well. So the product accepts the binding and the redaction simply does not apply.
+ *
+ * ## Why no warning is emitted
+ *
+ * [SecretShorterThanMinimumMaskableLengthWarning] exists in the published API but nothing constructs
+ * it. That is deliberate, not unfinished: the only production caller of the registration is
+ * [addSecret], which reads through `SecretHandle.peek` — a non-consuming observer whose contract
+ * cannot carry a result out — so there is no channel to emit through without changing the signature
+ * of a published API and adding a second authority for redaction reporting. The type is kept because
+ * it is already in the ABI dump, not because anything produces it. Do not read this section as a
+ * promise that a short secret is announced anywhere.
  *
  * ## Performance
  *
@@ -68,7 +86,9 @@ class SecretPatternRegistry {
      */
     fun addSecretValue(secretValue: String) {
         if (secretValue.length < MIN_MASKABLE_LENGTH) {
-            // Short secrets are not registered — emit warning handled by caller
+            // Silently unregistered, NOT refused: the caller gets no error and the secret stays
+            // usable, it just is not masked. See the class KDoc — there is no channel here to
+            // report it, and inventing one would mean a second redaction authority.
             return
         }
 
@@ -310,14 +330,27 @@ class SecretPatternRegistry {
 
     /**
      * Builds the URL-encoded variant of a secret.
-     * Returns empty string if no special chars requiring encoding are present.
+     *
+     * Characters that require encoding are percent-encoded; every other character is
+     * copied verbatim. A secret needing no encoding therefore comes back UNCHANGED,
+     * not empty, and [generateEncodedVariants] is what declines to register it — its
+     * `urlEncoded != secret` test is the seam that skips a redundant duplicate of the
+     * literal pattern.
      */
     private fun buildUrlEncodedVariant(secret: String): String {
         val sb = StringBuilder()
         for (ch in secret) {
-            URL_ENCODE_CHARS[ch]?.let { encoded ->
-                sb.append(encoded)
-            }
+            // A character that does not need encoding is COPIED, not dropped. A secret is
+            // mostly letters and digits, so "replace the ones that need it" has to mean
+            // "keep the rest": dropping them made `p@ss w0rd` encode to `%40%20`, a
+            // pattern that matches neither the encoded secret (`p%40ss%20w0rd`, which
+            // therefore passed through unredacted) nor anything else that carries the
+            // credential — while matching any unrelated text that happens to hold those
+            // two encodings adjacent. `generateEncodedVariants` already guards with
+            // `urlEncoded != secret`, which was unreachable while every unreserved
+            // character was discarded, and is the seam that skips a secret needing no
+            // encoding at all.
+            sb.append(URL_ENCODE_CHARS[ch] ?: ch.toString())
         }
         return sb.toString()
     }
@@ -390,7 +423,12 @@ class SecretPatternRegistry {
 }
 
 /**
- * Warning event emitted when a short secret is not registered for masking.
+ * Warning event for a short secret that was not registered for masking.
+ *
+ * **Nothing constructs or emits this type.** It is declared here and present in the published ABI
+ * dump, and that is the only reason it still exists — see the class KDoc for why emitting it is not
+ * a missing feature but a deliberate exclusion. Do not add a call site that builds one: nothing
+ * consumes it, and a value that is constructed and dropped is worse than one that is absent.
  *
  * @param credentialsId The credential ID that was not masked
  * @param length The actual length of the secret value

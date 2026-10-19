@@ -204,8 +204,8 @@ public final class dev/rubentxu/pipeline/v2/dsl/StageScope : dev/rubentxu/pipeli
 	public final fun unstable (Ljava/lang/String;)V
 	public final fun unstash (Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun unstash$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
-	public final fun waitUntil (JZLkotlin/jvm/functions/Function1;)V
-	public static synthetic fun waitUntil$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;JZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
+	public final fun waitUntil (JJLkotlin/jvm/functions/Function1;)V
+	public static synthetic fun waitUntil$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;JJLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public final fun warnError (Ljava/lang/String;ZLkotlin/jvm/functions/Function1;)V
 	public static synthetic fun warnError$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ljava/lang/String;ZLkotlin/jvm/functions/Function1;ILjava/lang/Object;)V
 	public final fun whenEnvIs (Ljava/lang/String;Ljava/lang/String;)V
@@ -835,18 +835,18 @@ public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Unstable : dev/rubentxu
 
 public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$WaitUntilBlock : dev/rubentxu/pipeline/v2/dsl/StepSpec {
 	public fun <init> ()V
-	public fun <init> (JZLjava/util/List;)V
-	public synthetic fun <init> (JZLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (JJLjava/util/List;)V
+	public synthetic fun <init> (JJLjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()J
-	public final fun component2 ()Z
+	public final fun component2 ()J
 	public final fun component3 ()Ljava/util/List;
-	public final fun copy (JZLjava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WaitUntilBlock;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WaitUntilBlock;JZLjava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WaitUntilBlock;
+	public final fun copy (JJLjava/util/List;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WaitUntilBlock;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WaitUntilBlock;JJLjava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$WaitUntilBlock;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getBody ()Ljava/util/List;
 	public final fun getInitialRecurrencePeriod ()J
+	public final fun getMaxBackoffMs ()J
 	public fun getName ()Ljava/lang/String;
-	public final fun getQuiet ()Z
 	public fun getType ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -978,7 +978,26 @@ public final class dev/rubentxu/pipeline/v2/scripting/CacheKey$Companion$v1 {
 
 public final class dev/rubentxu/pipeline/v2/scripting/CacheKey$Companion$v2 {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/scripting/CacheKey$Companion$v2;
-	public final fun compute (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+	public final fun compute (Ldev/rubentxu/pipeline/v2/scripting/CompilationIdentity;)Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/CompilationIdentity {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/scripting/CompilationIdentity;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/CompilationIdentity;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/CompilationIdentity;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getApprovedClasspath ()Ljava/lang/String;
+	public final fun getCompilerOptions ()Ljava/util/List;
+	public final fun getHostVersion ()Ljava/lang/String;
+	public final fun getKotlinVersion ()Ljava/lang/String;
+	public final fun getPipelineSource ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/scripting/CompiledScriptedEntryPoint {

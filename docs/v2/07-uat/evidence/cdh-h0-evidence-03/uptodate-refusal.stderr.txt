@@ -1,1 +1,0 @@
-FAIL: No XML falls inside the run boundary: 33 result file(s) exist under the results directory and none of them is inside it, so this report would certify zero tests. Either the boundary file was created AFTER the build instead of before it, or the build did not re-execute (an UP-TO-DATE task produces no new evidence). Both refuse; the distinction decides where to look.

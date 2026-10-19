@@ -150,16 +150,18 @@ class DeleteDirExecutor(
         // `escape` is removed as a link and never followed into its target.
         val walked = realTarget
         if (Files.exists(walked)) {
-            Files.walk(walked)
-                .filter { it != walked } // do NOT delete the root directory itself
-                .sorted(Comparator.reverseOrder())
-                .forEach { p ->
-                    try {
-                        Files.deleteIfExists(p)
-                    } catch (_: Exception) {
-                        // Ignore deletion errors for individual files
+            Files.walk(walked).use { walk ->
+                walk
+                    .filter { it != walked } // do NOT delete the root directory itself
+                    .sorted(Comparator.reverseOrder())
+                    .forEach { p ->
+                        try {
+                            Files.deleteIfExists(p)
+                        } catch (_: Exception) {
+                            // Ignore deletion errors for individual files
+                        }
                     }
-                }
+            }
         }
 
         // Write MEMOIZED marker inside targetPath
@@ -176,33 +178,28 @@ class DeleteDirExecutor(
 
     private fun countItems(path: Path): Int {
         if (!Files.exists(path)) return 0
-        return Files.walk(path)
-            .filter { it != path } // don't count the root itself
-            .count().toInt()
+        // `use`, not a bare chain: the Stream holds an open directory handle per
+        // level until it is closed. This runs once per deleteDir, and the leak
+        // is invisible until the process hits its descriptor limit.
+        return Files.walk(path).use { walk ->
+            walk
+                .filter { it != path } // don't count the root itself
+                .count().toInt()
+        }
     }
 
     /**
      * Dereference [path] as far as it exists, tolerating a missing leaf.
      *
-     * `Path.toRealPath` throws when the leaf does not exist, and `deleteDir`
-     * legitimately targets directories that have not been created yet. So the
-     * deepest existing ancestor is resolved and the remaining segments are
-     * re-appended. That yields the real path when the target exists and a
-     * correctly anchored guess when it does not.
+     * Delegates to [WorkspaceAnchoring.realPathAllowingMissing], which is the
+     * module's single implementation. This executor was where the behaviour
+     * was first written and needed; `readFile`, `fileExists` and `writeFile`
+     * had been deciding containment lexically while only this one resolved
+     * symlinks, so a link out of the workspace was refused by `deleteDir` and
+     * honoured by the other three. One implementation, one behaviour.
      */
-    private fun toRealPathAllowingMissing(path: Path): Path {
-        var ancestor: Path? = path
-        while (ancestor != null && !Files.exists(ancestor)) {
-            ancestor = ancestor.parent
-        }
-        val existing: Path = ancestor ?: return path
-        // `relativize` is the java.nio member. The kotlin.io `relativeTo`
-        // extension also exists and resolves to a File here, which does not
-        // compile; the member is the intended call anyway.
-        val suffix: Path = existing.relativize(path)
-        val resolved: Path = existing.toRealPath()
-        return resolved.resolve(suffix).normalize()
-    }
+    private fun toRealPathAllowingMissing(path: Path): Path =
+        WorkspaceAnchoring.realPathAllowingMissing(path)
 
     companion object {
         /**

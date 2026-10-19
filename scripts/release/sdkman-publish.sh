@@ -2,7 +2,6 @@
 # SDKMAN publish for pipelinek vX.Y.Z
 #
 # Authority:
-#   - docs/v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md §6 (SDKMAN publication)
 #   - SDKMAN Vendor API doc: https://sdkman.io/vendors
 #
 # Usage:

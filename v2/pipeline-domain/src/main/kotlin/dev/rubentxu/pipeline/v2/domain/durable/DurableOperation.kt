@@ -15,7 +15,6 @@ import kotlinx.serialization.json.JsonElement
  * - [MemoizedOperation]   — Re-executes only if no journal entry exists or fingerprints diverge.
  * - [CompositeOperation]  — Groups multiple operations that must all succeed or all fail together.
  *
- * @see <a href="design.md §E4-01">Design §E4-01</a>
  */
 sealed class DurableOperation {
     /** Unique identifier for this operation instance. */

@@ -115,15 +115,21 @@ class WorkspaceResolver(
      */
     fun cleanupAfterComplete(path: Path) {
         if (Files.exists(path)) {
-            Files.walk(path)
-                .sorted(Comparator.reverseOrder())
-                .forEach { p ->
-                    try {
-                        Files.deleteIfExists(p)
-                    } catch (_: Exception) {
-                        // Ignore deletion errors
+            // `use`, not a bare chain: `Files.walk` returns a Stream that holds an open
+            // directory handle for the duration of the walk, and this runs once per completed
+            // run. Without the close, each call leaks a descriptor until the process ends --
+            // which is a hard `Too many open files` failure on the usual 1024-fd limit once a
+            // long pipeline, a retry loop or a durable restart has run enough of them.
+            Files.walk(path).use { walk ->
+                walk.sorted(Comparator.reverseOrder())
+                    .forEach { p ->
+                        try {
+                            Files.deleteIfExists(p)
+                        } catch (_: Exception) {
+                            // Ignore deletion errors
+                        }
                     }
-                }
+            }
         }
     }
 

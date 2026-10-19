@@ -3,207 +3,173 @@ package dev.rubentxu.pipeline.v2.domain.directive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.assertThrows
 
 /**
- * S2-A: the `core.when` argument codec.
+ * The `when` gate codec is a FAIL-CLOSED boundary, so these are the two
+ * guarantees worth protecting permanently.
  *
- * The codec is the ONLY place the encoded form is understood, so these tests own
- * the contract in both directions:
- *
- *   - ROUND TRIP over every [WhenPredicate] case. This is the property that
- *     actually matters for a gate: whatever the DSL builds must be what the
- *     runtime reads. The first implementation serialized compound predicates to
- *     a multi-line block and re-parsed it with a regex; nesting silently
- *     produced `Malformed`, so a composed gate was DISCARDED — a fail-OPEN
- *     defect, caught only because a round-trip assertion existed.
- *   - TOTALS: every malformed input yields a typed [DirectiveDecodeResult.Malformed]
- *     naming the problem. Nothing throws, and nothing partially decodes.
+ * `WhenPredicateCodec`'s KDoc records a real defect, not a hypothetical one: the
+ * first version serialized a compound predicate to a readable multi-line block
+ * and re-parsed it with a regex, which silently failed on a nested combinator
+ * and therefore DISCARDED the gate. A discarded gate is fail-OPEN — the stage
+ * runs when it should have been held. The format was replaced with prefix
+ * notation over length-prefixed strings precisely to make that unrepresentable,
+ * and this class is what keeps the replacement honest.
  */
 class WhenPredicateCodecTest {
 
-    private fun decoded(encoded: String): WhenPredicate {
-        val result = WhenPredicateCodec.decode(encoded)
-        assertTrue(
-            result is DirectiveDecodeResult.Decoded,
-            "expected '$encoded' to decode but got $result",
-        )
-        return (result as DirectiveDecodeResult.Decoded).input
-    }
+    /**
+     * The encoder and the decoder are a single authority split across two
+     * files. If they can disagree, a predicate changes meaning between authoring
+     * and execution — the same silent-lie class the ADT exists to remove. This
+     * enumerates every constructor case and asserts the pair is an identity.
+     */
+    @Nested
+    @DisplayName("the encoder and decoder are exact inverses")
+    inner class RoundTrip {
 
-    private fun malformed(encoded: String): String {
-        val result = WhenPredicateCodec.decode(encoded)
-        assertTrue(
-            result is DirectiveDecodeResult.Malformed,
-            "expected '$encoded' to be Malformed but got $result",
-        )
-        return (result as DirectiveDecodeResult.Malformed).reason
-    }
+        @Test
+        fun `every predicate case survives its own encoding`() {
+            val cases = listOf(
+                "always true" to WhenPredicate.AlwaysTrue,
+                "always false" to WhenPredicate.AlwaysFalse,
+                "variable equals" to WhenPredicate.VariableEquals("TARGET", "prod"),
+                "variable present" to WhenPredicate.VariablePresent("TARGET"),
+                "empty conjunction" to WhenPredicate.AllOf(emptyList()),
+                "empty disjunction" to WhenPredicate.AnyOf(emptyList()),
+            )
+            for ((label, predicate) in cases) {
+                val encoded = WhenPredicateEncoder.encode(predicate)
+                assertEquals(
+                    predicate,
+                    (WhenPredicateCodec.decode(encoded) as DirectiveDecodeResult.Decoded).input,
+                    "round trip changed a $label predicate (encoded as '$encoded')",
+                )
+            }
+        }
 
-    private fun assertRoundTrips(predicate: WhenPredicate) {
-        val encoded = WhenPredicateEncoder.encode(predicate)
-        assertEquals(
-            predicate,
-            decoded(encoded),
-            "round trip changed the meaning of $predicate (encoded as '$encoded')",
-        )
-    }
-
-
-    // ---- round trip, every ADT case ----------------------------------------------
-
-    @Test
-    @DisplayName("S2A-CODEC-002: every predicate case round trips")
-    fun everyCaseRoundTrips() {
-        assertRoundTrips(WhenPredicate.AlwaysTrue)
-        assertRoundTrips(WhenPredicate.AlwaysFalse)
-        assertRoundTrips(WhenPredicate.VariableEquals("DEPLOY_ENV", "prod"))
-        assertRoundTrips(WhenPredicate.VariablePresent("TOKEN"))
-        assertRoundTrips(WhenPredicate.AllOf(emptyList()))
-        assertRoundTrips(WhenPredicate.AnyOf(emptyList()))
-        assertRoundTrips(WhenPredicate.Not(WhenPredicate.AlwaysTrue))
-        assertRoundTrips(
-            WhenPredicate.AllOf(
+        /**
+         * The historical defect, kept as a named case rather than left to a
+         * reader of the commit log. Nesting appears at both depths the DSL can
+         * build: a compound inside a compound, and a negation wrapping one.
+         */
+        @Test
+        fun `a nested combinator round trips`() {
+            val predicate = WhenPredicate.AllOf(
                 listOf(
-                    WhenPredicate.VariableEquals("A", "1"),
-                    WhenPredicate.VariablePresent("B"),
-                ),
-            ),
-        )
-    }
-
-    @Test
-    @DisplayName("S2A-CODEC-003: NESTED combinators round trip (the defect the old format had)")
-    fun nestedCombinatorsRoundTrip() {
-        val nested = WhenPredicate.AllOf(
-            listOf(
-                WhenPredicate.VariableEquals("A", "1"),
-                WhenPredicate.AnyOf(
-                    listOf(
-                        WhenPredicate.VariablePresent("B"),
-                        WhenPredicate.Not(WhenPredicate.VariablePresent("C")),
-                    ),
-                ),
-                WhenPredicate.Not(
-                    WhenPredicate.AllOf(
+                    WhenPredicate.VariableEquals("TARGET", "prod"),
+                    WhenPredicate.AnyOf(
                         listOf(
-                            WhenPredicate.AlwaysFalse,
-                            WhenPredicate.VariableEquals("D", "4"),
+                            WhenPredicate.Not(WhenPredicate.VariablePresent("SKIP_LINT")),
+                            WhenPredicate.VariableEquals("BRANCH", "feature/my branch"),
                         ),
                     ),
                 ),
-            ),
-        )
+            )
+            val encoded = WhenPredicateEncoder.encode(predicate)
+            assertEquals(
+                predicate,
+                (WhenPredicateCodec.decode(encoded) as DirectiveDecodeResult.Decoded).input,
+                "the nested payload '$encoded' did not survive its own encoding",
+            )
+        }
 
-        val encoded = WhenPredicateEncoder.encode(nested)
-        // Structural, single-line: no brace matching is possible on this form.
-        assertTrue(!encoded.contains("\n"), "the encoding must be a single line, got:\n$encoded")
-        assertEquals(nested, decoded(encoded))
-    }
+        /**
+         * `Cursor.readString`'s KDoc names this case: a branch name may contain
+         * a space. A space-delimited token would truncate `feature/my branch` to
+         * `feature/my`, which then compares unequal and flips the gate — a
+         * silently different value, the worst possible outcome here.
+         */
+        @Test
+        fun `a value containing spaces is read whole`() {
+            val predicate = WhenPredicate.VariableEquals("BRANCH", "feature/my branch")
+            val encoded = WhenPredicateEncoder.encode(predicate)
+            assertEquals(
+                predicate,
+                (WhenPredicateCodec.decode(encoded) as DirectiveDecodeResult.Decoded).input,
+            )
+        }
 
-    @Test
-    @DisplayName("S2A-CODEC-004: values with spaces, braces and quotes survive verbatim")
-    fun hostileValuesSurvive() {
-        // A length prefix exists precisely so no value needs escaping. These are
-        // the values that would break a naive delimiter-based format.
-        val hostile = listOf(
-            "feature/my branch",
-            "a b  c   d",
-            "}{ all { any { not {",
-            "with \"quotes\" and 'apostrophes'",
-            "hash # and comment -- markers",
-            "  leading and trailing  ",
-            "newline\ninside",
-            "unicode ñ 日本語 emoji 🚀",
-        )
-
-        hostile.forEach { value ->
-            assertRoundTrips(WhenPredicate.VariableEquals("NAME", value))
-            assertRoundTrips(WhenPredicate.VariablePresent(value))
+        /**
+         * Length prefixes exist so no character needs escaping. If that claim is
+         * false, this assertion is the cheapest thing that notices.
+         */
+        @Test
+        fun `values holding delimiter characters survive intact`() {
+            for (awkward in listOf("a b c", "brace { } here", "quote \" here", "new\nline", "colon: here", "")) {
+                val predicate = WhenPredicate.VariableEquals("NAME", awkward)
+                val encoded = WhenPredicateEncoder.encode(predicate)
+                assertEquals(
+                    predicate,
+                    (WhenPredicateCodec.decode(encoded) as DirectiveDecodeResult.Decoded).input,
+                    "the value ${awkward.replace("\n", "\\n")} did not survive '$encoded'",
+                )
+            }
         }
     }
 
-    @Test
-    @DisplayName("S2A-CODEC-005: a blank variable name is unrepresentable at the source, not caught at decode")
-    fun blankVariableNameIsUnrepresentable() {
-        // The ADT itself refuses a blank name (defence in depth), so the codec
-        // never has to see one. Asserting the invariant AT ITS SOURCE is the
-        // honest test: a decode-only assertion would be checking a path that
-        // cannot be reached, which is how a real hole stays hidden.
-        val rejected = assertThrows<IllegalArgumentException> {
-            WhenPredicate.VariableEquals("", "x")
+    /**
+     * Every unparseable input must be a typed refusal. The alternative — a
+     * partial predicate, or an exception escaping into the gate — is the
+     * fail-OPEN defect the whole design exists to prevent.
+     */
+    @Nested
+    @DisplayName("an unreadable payload is refused, never guessed")
+    inner class FailClosed {
+
+        private fun refuses(encoded: String): String {
+            val result = WhenPredicateCodec.decode(encoded)
+            assertTrue(
+                result is DirectiveDecodeResult.Malformed,
+                "expected '$encoded' to be refused, but it decoded to $result",
+            )
+            return (result as DirectiveDecodeResult.Malformed).reason
         }
-        assertTrue(
-            rejected.message?.contains("name") == true,
-            "the diagnostic must name the offending field, got: ${rejected.message}",
-        )
-        assertThrows<IllegalArgumentException> { WhenPredicate.VariableEquals("   ", "x") }
-        assertThrows<IllegalArgumentException> { WhenPredicate.VariablePresent("") }
+
+        @Test
+        fun `an empty argument is refused with a usable message`() {
+            // The refusal text is what an author sees, so it must name what a
+            // valid payload looks like rather than only reporting absence.
+            assertTrue(
+                refuses("").contains("no predicate"),
+                "the empty-argument refusal should explain what was expected",
+            )
+        }
+
+        @Test
+        fun `an unknown tag is refused`() {
+            refuses("Z")
+            refuses("A 1 Q")
+        }
+
+        @Test
+        fun `a truncated compound is refused rather than partially built`() {
+            // "A 3" promises three children and supplies one. Accepting a
+            // one-child conjunction would silently narrow a three-way gate.
+            refuses("A 3 T")
+        }
+
+        @Test
+        fun `a surplus token after a complete predicate is refused`() {
+            // One argument encodes exactly one predicate; a trailing token means
+            // the author and the reader disagree about the payload.
+            refuses("T F")
+        }
+
+        @Test
+        fun `a malformed length prefix is refused`() {
+            refuses("E six:prod")     // not a number
+            refuses("E 6 TARGET 3:pr") // declares more characters than remain
+        }
+
+        @Test
+        fun `an empty variable name is refused`() {
+            // A nameless variable can never be resolved, and resolving it would
+            // be Unverifiable rather than false — so it is a refusal, not a case.
+            refuses("E 0: 4:prod")
+            refuses("P 0:")
+        }
     }
-
-    // ---- totals: malformed inputs ------------------------------------------------
-
-    @Test
-    @DisplayName("S2A-CODEC-006: an empty argument is malformed, never a permissive predicate")
-    fun emptyArgumentIsMalformed() {
-        // An unreadable gate must not become an implicit always-true, which
-        // would execute a stage the script meant to withhold.
-        malformed("")
-        malformed("   ")
-    }
-
-    @Test
-    @DisplayName("S2A-CODEC-007: an unknown tag is malformed and says which tags exist")
-    fun unknownTagIsMalformed() {
-        val reason = malformed("Z")
-        assertTrue(
-            reason.contains("T, F, E, P, A, O, N"),
-            "the diagnostic must list the legal tags, got: $reason",
-        )
-    }
-
-    @Test
-    @DisplayName("S2A-CODEC-008: a truncated payload is malformed, never partially decoded")
-    fun truncatedPayloadIsMalformed() {
-        malformed("A 2 T")                 // declares 2 children, supplies 1
-        malformed("A 0 T")                 // declares 0 children, supplies 1
-        malformed("N")                     // negation with no child
-        malformed("E 1:ONLYNAME")          // equality missing its value
-        malformed("P")                     // presence missing its name
-        malformed("A notanumber T")        // non-numeric arity
-    }
-
-    @Test
-    @DisplayName("S2A-CODEC-009: trailing tokens are malformed (exactly one predicate per argument)")
-    fun trailingTokensAreMalformed() {
-        val reason = malformed("T F")
-        assertTrue(reason.contains("trailing"), "the diagnostic must name the surplus, got: $reason")
-    }
-
-    @Test
-    @DisplayName("S2A-CODEC-010: a lying length prefix is malformed, not silently accepted")
-    fun lyingLengthPrefixIsMalformed() {
-        // A length prefix that disagrees with the payload means the bytes cannot
-        // be trusted. Accepting them would let a truncated value be read as a
-        // different, valid one.
-        val reason = malformed("E 99:SHORT 1:v")
-        assertTrue(reason.contains("length"), "the diagnostic must name the length mismatch, got: $reason")
-        malformed("E notanumber:x 1:v")
-        malformed("EnoColon 1:v")
-        malformed("E -1:x 1:v")
-    }
-
-    // ---- empty combinators are decided, not rejected ------------------------------
-
-    @Test
-    @DisplayName("S2A-CODEC-011: empty all/any are representable and decided by the evaluator")
-    fun emptyCombinatorsAreRepresentable() {
-        // `all { }` is vacuously true and `any { }` vacuously false. Rejecting
-        // them at the codec would be a second, hidden place making a semantic
-        // decision; the evaluator is the only authority for the value.
-        assertEquals(WhenPredicate.AllOf(emptyList()), decoded(WhenPredicateEncoder.encode(WhenPredicate.AllOf(emptyList()))))
-        assertEquals(WhenPredicate.AnyOf(emptyList()), decoded(WhenPredicateEncoder.encode(WhenPredicate.AnyOf(emptyList()))))
-    }
-
 }

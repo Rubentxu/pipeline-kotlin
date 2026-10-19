@@ -34,6 +34,18 @@ enum class HandoffViolationCode {
     /** `candidate_id` is not the SHA-256 of the artifact it names. */
     CANDIDATE_ID_NOT_ARTIFACT_DIGEST,
 
+    /**
+     * `artifact.sha256` is not the measured digest of the ZIP.
+     *
+     * Separate from [CANDIDATE_ID_NOT_ARTIFACT_DIGEST] because the two name
+     * DIFFERENT fields and have different fixes: a wrong candidate_id is an
+     * identity defect, a wrong artifact.sha256 is a bytes defect. Folding them
+     * into one code made a build report the same code twice for two root
+     * causes, and a consumer that groups violations by code could not tell
+     * them apart — it only saw the detail string, which is prose, not a key.
+     */
+    ARTIFACT_DIGEST_NOT_MEASURED_ZIP,
+
     /** The handoff's product version differs from the manifest's. */
     PRODUCT_VERSION_DISAGREES_WITH_MANIFEST,
 
@@ -59,9 +71,33 @@ enum class HandoffViolationCode {
  * of the ZIP as it exists on disk.
  *
  * [measuredZipSha256] is supplied by the caller rather than read here so this
- * function stays pure and testable without a filesystem. Passing the handoff's
- * own declared digest instead of the measured one would make the
- * CANDIDATE_ID check vacuous, so the distinction is part of the signature.
+ * function stays pure and testable without a filesystem.
+ *
+ * **The parameter only bites when the caller received these documents from
+ * somewhere else.** Half of the checks below compare two values a producer
+ * building the candidate from one measurement already made equal, so on that
+ * path they compare `x` to `x` and cannot fire: CANDIDATE_ID,
+ * ARTIFACT_DIGEST_NOT_MEASURED_ZIP and ASSET_DIGEST_DISAGREES_WITH_MANIFEST
+ * all trace back to one `sha256Of(zip)`, and PRODUCT_VERSION_DISAGREES_WITH_
+ * MANIFEST traces back to one `productVersion`.
+ * [CandidateMaterializer] is exactly that path: it measures once, feeds the
+ * result into both documents, and passes the same value back here. That is
+ * construction, not verification, and the previous version of this paragraph
+ * claimed the opposite — that passing the declared digest would make the check
+ * vacuous "so the distinction is part of the signature" — while the only
+ * production call site did precisely that.
+ *
+ * The other four are live from that same call site, because they observe the
+ * archive rather than compare two documents: ASSET_NAME and ARCHIVE_ROOT read
+ * the ZIP's own name and layout, and the two IMPLEMENTATION_VERSION codes read
+ * the version embedded in the archive's JAR. The embedded-version check is the
+ * one that catches the v0.43.0 laundering shape, and it fires from
+ * [CandidateMaterializer] today.
+ *
+ * Independent re-measurement belongs to whoever RECEIVES the bytes: the
+ * certifier recomputes the digest of the published artifact. A producer-side
+ * gate that tried to re-read its own output would only re-derive the same
+ * measurement and call the result a check.
  */
 fun evaluateCandidateHandoff(
     handoff: CandidateHandoff,
@@ -82,7 +118,7 @@ fun evaluateCandidateHandoff(
 
     if (handoff.artifact.sha256 != measuredZipSha256) {
         violations += HandoffViolation(
-            HandoffViolationCode.CANDIDATE_ID_NOT_ARTIFACT_DIGEST,
+            HandoffViolationCode.ARTIFACT_DIGEST_NOT_MEASURED_ZIP,
             "handoff artifact.sha256 ${handoff.artifact.sha256} is not the measured ZIP digest " +
                 "($measuredZipSha256).",
         )

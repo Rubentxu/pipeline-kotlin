@@ -136,7 +136,6 @@ sealed interface CanonicalCoreStepCommand {
             // `ArtifactArchiveFailed: No files matched glob pattern 'build/libs/*.jar'`. The
             // registry path uses the certified AntStyleGlob engine (frozen delta D1), which turns
             // CompatibilityCorpusTest.fixture10SmokeE2E green (runFixtureFail -> runFixturePass).
-            // Evidence: docs/v2/07-uat/evidence/s2-b10-g2/fixture10-legacy-glob-defect.json
             // S2-B10 / G5 (2026-09-13): physical removal of legacy forms (LEGACY_REMOVED).
             // CanonicalCoreStepCommand.ArchiveArtifacts subtype, the ARCHIVE_ARTIFACTS_PLUGIN_ID
             // constant + decoder branch, the CanonicalCoreStepMetadata["core.archiveArtifacts"]

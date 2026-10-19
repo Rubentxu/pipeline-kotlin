@@ -5,7 +5,6 @@ package dev.rubentxu.pipeline.v2.domain.durable
  *
  * This is the single canonical authority.
  *
- * @see <a href="design.md §E4-06">Design §E4-06</a>
  */
 enum class Effect {
     /** Step only reads state and does not modify external resources. */

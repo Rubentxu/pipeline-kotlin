@@ -17,7 +17,7 @@ import java.nio.file.Path
  * the body-reentry seam.
  *
  * C1-A (2026-09-26): extracted from `CanonicalNodeDispatcher.kt` to its own file as part
- * of the H1/H2/H3 partition plan (`docs/v2/06-quality/C1_ISOLATION_2026_09_26.md`).
+ * of the H1/H2/H3 partition plan.
  * The data class is the canonical seam between the dispatcher body and the runtime
  * adapters; isolating it shrinks `CanonicalNodeDispatcher.kt` from 100 LOC to 67 LOC
  * and gives the field bundle its own focus. The FQN

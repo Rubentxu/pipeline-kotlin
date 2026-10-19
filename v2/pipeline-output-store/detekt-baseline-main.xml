@@ -1,0 +1,17 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ImplicitDefaultLocale:SegmentReader.kt:SegmentReader$"%02x".format(it)</ID>
+    <ID>UnsafeCallOnNullableType:OutputPinPortStoreAdapter.kt:OutputPinPortStoreAdapter$reads.committedExtent(stream)!!</ID>
+    <ID>UnusedImport:SegmentOutputStore.kt:import dev.rubentxu.pipeline.v2.output.OutputDigest</ID>
+    <ID>UnusedImport:SegmentOutputStore.kt:import dev.rubentxu.pipeline.v2.output.OutputPinResult</ID>
+    <ID>UnusedPrivateProperty:OutputPinPortStoreAdapter.kt:OutputPinPortStoreAdapter$private val now: () -&gt; Long = System::currentTimeMillis</ID>
+    <ID>UnusedPrivateProperty:OutputPinPortStoreAdapter.kt:OutputPinPortStoreAdapter$private val root: Path</ID>
+    <ID>UnusedVariable:SegmentOutputStore.kt:SegmentOutputStore$val owner = declaredTo[dir.fileName.toString()]</ID>
+    <ID>UseCheckOrError:SegmentOutputStore.kt:SegmentOutputStore.Reserve$throw IllegalStateException( "stream ${streamId.value}: an outstanding reservation exists; recover() must " + "resolve it before another is taken (O3)", )</ID>
+    <ID>UseOrEmpty:OutputPinStore.kt:OutputPinStore$pin.expiresAtMs?.toString() ?: ""</ID>
+    <ID>UseOrEmpty:SegmentFrameIndex.kt:SegmentFrameIndex$declaredByRun[runId]?.sortedBy { it.value } ?: emptyList()</ID>
+    <ID>VarCouldBeVal:SegmentOutputStore.kt:SegmentOutputStore$var pinError = false</ID>
+  </CurrentIssues>
+</SmellBaseline>

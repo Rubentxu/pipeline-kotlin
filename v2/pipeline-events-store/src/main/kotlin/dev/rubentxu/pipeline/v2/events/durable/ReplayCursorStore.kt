@@ -9,9 +9,8 @@ import java.sql.Connection
  *
  * ## M3-R1 → M3-R2 Contract
  *
- * This interface is stable for M3-R2 consumption per [design.md §8].
+ * This interface is stable for M3-R2 consumption.
  *
- * @see <a href="design.md §E4-04">Design §E4-04</a>
  */
 interface ReplayCursorStore {
     /**
@@ -95,7 +94,7 @@ value class StageIndex(val value: Int)
  *
  * ## R-C mitigation
  *
- * Per [design.md §R-C], [advance] must ONLY be called after
+ * [advance] must ONLY be called after
  * [OperationJournal.append] has returned successfully. Calling it before
  * the append succeeds could result in a cursor pointing to an operation
  * that was not actually persisted.
@@ -103,7 +102,6 @@ value class StageIndex(val value: Int)
  * @param connectionFactory A factory function that returns an open [Connection]
  *                           obtained from [SqliteConnectionFactory.open].
  *
- * @see <a href="design.md §E4-04">Design §E4-04</a>
  */
 class SqliteReplayCursorStoreImpl(
     private val connectionFactory: () -> Connection,

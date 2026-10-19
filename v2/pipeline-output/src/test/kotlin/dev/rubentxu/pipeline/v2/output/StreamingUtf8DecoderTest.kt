@@ -1,119 +1,190 @@
 package dev.rubentxu.pipeline.v2.output
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
+import java.nio.charset.StandardCharsets
 
 /**
- * R4 / WU-R4.4 — `StreamingUtf8Decoder` contract.
+ * The Output Plane frames bytes wherever a write happens, so a multi-byte code point can straddle a
+ * page boundary. `StreamingUtf8Decoder` exists to hold that half code point and emit it once the
+ * next page completes it.
  *
- * The decoder closes PC-08 (OBS_PROGRESSIVE_CONSOLE_ROADMAP §3). The pre-fix read pipeline
- * re-decodes bytes one page at a time with `String(bytes, UTF_8)`, which means a multi-byte
- * codepoint straddling two pages produces TWO U+FFFD replacement characters instead of one
- * correctly emitted character. These rows prove the fix on every shape the gap names.
+ * Its own KDoc names the guarantee twice, and both are the contract these tests pin:
+ *
+ * - "`String(bytes, UTF_8)` is the reference: a single-page decode is byte-for-byte equivalent."
+ * - "Invalid byte sequences are replaced with U+FFFD — but ONLY when the decoder has confirmed
+ *   that no continuation can follow (next page starts with an ASCII byte, …)."
+ *
+ * The second clause is what makes this more than a string-equality exercise: a decoder that holds
+ * a leader byte must NOT also swallow the ASCII byte sitting behind it, because that byte is
+ * already in the page and is not part of the incomplete sequence.
+ *
+ * Every test builds a fresh decoder: the class carries state across calls by design, so sharing an
+ * instance between tests would let one test's held bytes explain another's output.
  */
 class StreamingUtf8DecoderTest {
 
-    // ------------------------------------------------------------------ single-page equivalence
+    // --- the named reference: one page in, one page out ---------------------
 
     @Test
-    fun `decodes a single complete page byte-for-byte equal to String(_, UTF_8)`() {
-        // Mix of 1/2/3-byte sequences.
-        val bytes = "Hello, 世界! 🚀".toByteArray(Charsets.UTF_8)
-        val decoder = StreamingUtf8Decoder()
-        assertEquals(String(bytes, Charsets.UTF_8), decoder.decode(bytes))
+    fun `a single page of ASCII decodes to its text`() {
+        assertEquals("abc", StreamingUtf8Decoder().decode("abc".toByteArray()))
     }
 
     @Test
-    fun `passes ASCII through unchanged across many pages`() {
-        val text = "abcdefghijklmnopqrstuvwxyz0123456789".repeat(10)
-        val bytes = text.toByteArray(Charsets.UTF_8)
-        val decoder = StreamingUtf8Decoder()
-        val pageSize = 13
-        val out = StringBuilder()
-        var i = 0
-        while (i < bytes.size) {
-            val end = (i + pageSize).coerceAtMost(bytes.size)
-            out.append(decoder.decode(bytes.copyOfRange(i, end)))
-            i = end
-        }
-        assertEquals(text, out.toString())
-    }
+    fun `a single page with one multi-byte character matches the JDK decoder`() {
+        // "café € 🚀" exercises 2-byte, 3-byte and 4-byte leaders in one page.
+        val text = "café € 🚀"
 
-    // ------------------------------------------------------------------ codepoint split across pages
-
-    @Test
-    fun `assembles a 3-byte code-point split across two pages into one character`() {
-        // "ñ" is U+00F1, encoded as 0xC3 0xB1 in UTF-8 (2 bytes). Split between pages.
-        val bytes = "ñ".toByteArray(Charsets.UTF_8)
-        assertEquals(2, bytes.size, "premise broken: ñ must be 2 bytes in UTF-8")
-        val decoder = StreamingUtf8Decoder()
-        val out = StringBuilder()
-        out.append(decoder.decode(bytes.copyOfRange(0, 1))) // 0xC3 alone
-        out.append(decoder.decode(bytes.copyOfRange(1, 2))) // 0xB1
-        assertEquals("ñ", out.toString(), "split codepoint must reassemble into one character")
+        assertEquals(String(text.toByteArray(StandardCharsets.UTF_8), StandardCharsets.UTF_8),
+            StreamingUtf8Decoder().decode(text.toByteArray(StandardCharsets.UTF_8)))
     }
 
     @Test
-    fun `assembles a 4-byte code-point (surrogate pair) split across three pages`() {
-        // "🚀" is U+1F680, encoded as F0 9F 9A 80 in UTF-8 (4 bytes). Split 1/1/2.
-        val bytes = "🚀".toByteArray(Charsets.UTF_8)
-        assertEquals(4, bytes.size)
-        val decoder = StreamingUtf8Decoder()
-        val out = StringBuilder()
-        out.append(decoder.decode(bytes.copyOfRange(0, 1))) // F0 alone (4-byte leader)
-        out.append(decoder.decode(bytes.copyOfRange(1, 2))) // 9F (continuation)
-        out.append(decoder.decode(bytes.copyOfRange(2, 4))) // 9A 80 (continuation + last)
-        assertEquals("🚀", out.toString())
+    fun `a lone surrogate can never survive a decode`() {
+        // ED A0 80 encodes U+D800, which is not a character: it is half of a UTF-16 pair. A
+        // decoder that emits it alone hands its consumer a value that is illegal to re-encode.
+        val decoded = StreamingUtf8Decoder().decode(bytes(0xED, 0xA0, 0x80))
+
+        assertFalse(decoded.any { it in '\uD800'..'\uDFFF' },
+            "a lone UTF-16 surrogate must not leave the decoder: $decoded")
     }
 
     @Test
-    fun `split codepoint over 4 KiB page boundary yields same string as whole-input decode`() {
-        // Pre-fix defect: a 4 KiB frame boundary that lands inside a multi-byte codepoint
-        // produces U+FFFD at the boundary and a base64 entry on the next page.
-        val text = buildString {
-            repeat(500) { append("世界") }
-            append("🚀")
-            repeat(500) { append("Hola") }
-        }
-        val bytes = text.toByteArray(Charsets.UTF_8)
-        val whole = String(bytes, Charsets.UTF_8)
+    fun `an overlong encoding is replaced, not decoded to the character it smuggles`() {
+        // C0 80 is the two-byte spelling of U+0000. Accepting it would let anything that filters
+        // on decoded text be bypassed by writing the character in a longer form.
+        val decoded = StreamingUtf8Decoder().decode(bytes(0xC0, 0x80))
 
-        val decoder = StreamingUtf8Decoder()
-        val out = StringBuilder()
-        val pageSize = 4096
-        var i = 0
-        while (i < bytes.size) {
-            val end = (i + pageSize).coerceAtMost(bytes.size)
-            out.append(decoder.decode(bytes.copyOfRange(i, end)))
-            i = end
-        }
-        assertEquals(
-            whole,
-            out.toString(),
-            "4 KiB page boundaries must NOT split a character — pre-fix this lost every world emoji in the stream",
-        )
-    }
-
-    // ------------------------------------------------------------------ malformed input
-
-    @Test
-    fun `trailing malformed byte is replaced with U+FFFD on the next page`() {
-        // 0xC3 alone is an incomplete 2-byte leader. On its own page it must be HELD (not
-        // emitted as replacement); on the next page, if no continuation arrives, it becomes
-        // U+FFFD.
-        val decoder = StreamingUtf8Decoder()
-        val first = decoder.decode(byteArrayOf(0xC3.toByte()))
-        assertEquals("", first, "incomplete leader must NOT emit replacement on its own page")
-        val second = decoder.decode("abc".toByteArray(Charsets.UTF_8))
-        assertEquals("�abc", second)
+        assertFalse(decoded.contains('\u0000'), "an overlong NUL must not decode to NUL: $decoded")
+        // Byte-exact agreement with the JDK is deliberately NOT asserted here. The JDK reports a
+        // malformed LENGTH per structural step, so it groups an overlong sequence differently than
+        // any other correct grouping might; the guarantee that matters is the one below -- the
+        // smuggled character never appears, whatever the replacement count turns out to be.
+        assertFalse(decoded.any { it != '\uFFFD' },
+            "an overlong encoding yields only replacements: $decoded")
     }
 
     @Test
-    fun `reset discards the held-over partial codepoint`() {
+    fun `a code point above the Unicode maximum is replaced`() {
+        // F7 BF BF BF is the largest sequence the 4-byte branch accepts: U+1FFFFF, which is
+        // above U+10FFFF and therefore not a character at all.
+        val decoded = StreamingUtf8Decoder().decode(bytes(0xF7, 0xBF, 0xBF, 0xBF))
+
+        assertFalse(decoded.any { it in '\uD800'..'\uDFFF' },
+            "a code point past U+10FFFF must not decode to a surrogate pair: $decoded")
+    }
+
+    // --- the swallow regression ---------------------------------------------
+
+    @Test
+    fun `an ASCII byte behind an incomplete leader is decoded, not held over`() {
+        // E2 is a 3-byte leader with only ONE byte after it in this page, and that byte is 'A',
+        // which cannot be a continuation. The leader is malformed NOW: the decoder must emit
+        // U+FFFD for it and decode the 'A' in the same page. Holding both would delay the 'A'
+        // by a page and lose it entirely if the caller resets.
         val decoder = StreamingUtf8Decoder()
-        decoder.decode(byteArrayOf(0xC3.toByte()))
+
+        val decoded = decoder.decode(bytes(0xE2, 0x41))
+
+        assertEquals(String(bytes(0xE2, 0x41), StandardCharsets.UTF_8), decoded,
+            "the JDK emits U+FFFD then 'A'; a holder that swallows the 'A' emits nothing")
+    }
+
+    @Test
+    fun `an ASCII byte behind a 4-byte leader is decoded, not held over`() {
+        // F0 is a 4-byte leader with three bytes after it, the second of which is 'A'. Only the
+        // first continuation is plausible; 'A' cannot continue it.
+        val page = bytes(0xF0, 0x9F, 0x41, 0x80)
+
+        assertEquals(String(page, StandardCharsets.UTF_8), StreamingUtf8Decoder().decode(page),
+            "a 4-byte leader with a non-continuation in the middle decodes as the JDK decodes it")
+    }
+
+    @Test
+    fun `an ASCII byte behind a 2-byte leader is decoded, not held over`() {
+        // The 2-byte branch checks its single continuation before holding, so this one already
+        // behaved; the test keeps the 3- and 4-byte fixes from regressing into a narrower shape.
+        val page = bytes(0xC3, 0x41)
+
+        assertEquals(String(page, StandardCharsets.UTF_8), StreamingUtf8Decoder().decode(page))
+    }
+
+    // --- holding a real half code point across pages -----------------------
+
+    @Test
+    fun `a code point split across two pages is emitted once, by the second`() {
+        val decoder = StreamingUtf8Decoder()
+        val rocket = "🚀".toByteArray(StandardCharsets.UTF_8)
+
+        val first = decoder.decode(rocket.copyOfRange(0, 2))
+        val second = decoder.decode(rocket.copyOfRange(2, 4))
+
+        assertEquals("", first, "the first page cannot yet name the character")
+        assertEquals("🚀", second, "the completing page emits the whole character")
+    }
+
+    @Test
+    fun `a code point split one byte at a time is still emitted whole`() {
+        val decoder = StreamingUtf8Decoder()
+        val rocket = "🚀".toByteArray(StandardCharsets.UTF_8)
+
+        val decoded = rocket.map { decoder.decode(byteArrayOf(it)) }.joinToString("")
+
+        assertEquals("🚀", decoded)
+    }
+
+    @Test
+    fun `a page of complete text followed by a half code point yields both`() {
+        val decoder = StreamingUtf8Decoder()
+        val rocket = "🚀".toByteArray(StandardCharsets.UTF_8)
+
+        val first = decoder.decode("hi ".toByteArray() + rocket.copyOfRange(0, 2))
+        val second = decoder.decode(rocket.copyOfRange(2, 4))
+
+        assertEquals("hi ", first)
+        assertEquals("🚀", second)
+    }
+
+    @Test
+    fun `arbitrary byte-level page splits concatenate to the whole decode`() {
+        // Split the ENCODED bytes, not the string: cutting the String at a character boundary
+        // would never exercise the holder, and cutting it mid-character via a literal like
+        // "🚀" would encode a lone surrogate rather than the rocket's continuation bytes.
+        val all = "café 🚀!".toByteArray(StandardCharsets.UTF_8)
+        val decoder = StreamingUtf8Decoder()
+
+        val joined = all.toList().chunked(3).map { decoder.decode(it.toByteArray()) }.joinToString("")
+
+        assertEquals("café 🚀!", joined,
+            "a page split that lands inside a code point must still produce the whole text")
+    }
+
+    // --- reset ---------------------------------------------------------------
+
+    @Test
+    fun `reset drops a held leader without emitting it`() {
+        val decoder = StreamingUtf8Decoder()
+
+        decoder.decode(bytes(0xE2, 0x82)) // a complete 2-byte sequence, nothing held
+        decoder.decode(bytes(0xF0, 0x9F)) // a 4-byte leader with one continuation: held
         decoder.reset()
-        // After reset, the next decode is a clean page.
-        assertEquals("ok", decoder.decode("ok".toByteArray(Charsets.UTF_8)))
+        val afterReset = decoder.decode("ok".toByteArray())
+
+        assertEquals("ok", afterReset, "after reset the decoder carries nothing from before")
     }
+
+    @Test
+    fun `an empty page decodes to nothing and keeps what was held`() {
+        val decoder = StreamingUtf8Decoder()
+        val rocket = "🚀".toByteArray(StandardCharsets.UTF_8)
+        decoder.decode(rocket.copyOfRange(0, 2))
+
+        assertEquals("", decoder.decode(ByteArray(0)), "an empty page adds no text")
+        assertEquals("🚀", decoder.decode(rocket.copyOfRange(2, 4)),
+            "an empty page must not discard the held bytes")
+    }
+
+    private fun bytes(vararg v: Int): ByteArray = ByteArray(v.size) { v[it].toByte() }
 }

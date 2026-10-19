@@ -5,7 +5,7 @@ package dev.rubentxu.pipeline.v2.domain.durable
  *
  * ## M3-R1 → M3-R2 Contract
  *
- * This interface is stable for M3-R2 consumption per [design.md §8].
+ * This interface is stable for M3-R2 consumption.
  *
  * ## Fail-closed semantics
  *
@@ -14,7 +14,6 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * - **Fingerprints differ**: Returns [Result.failure] with [DivergenceException] —
  *   the operation has diverged and the pipeline must abort.
  *
- * @see <a href="design.md §E4-05">Design §E4-05</a>
  */
 interface DivergenceDetector {
     /**
@@ -34,7 +33,6 @@ interface DivergenceDetector {
  * Compares the [fingerprint] of the [current] operation against the [journaled]
  * operation (if any). If fingerprints differ, throws [DivergenceException].
  *
- * @see <a href="design.md §E4-05">Design §E4-05</a>
  */
 class StrictFingerprintDivergenceDetector : DivergenceDetector {
     /**

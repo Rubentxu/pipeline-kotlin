@@ -8,7 +8,6 @@ import java.time.Instant
  * F-ARCH-001 compliant: only uses `java.time.Instant`;
  * does not import `java.time.Clock`.
  *
- * @see <a href="design.md §E4-09">Design §E4-09</a>
  */
 interface Clock {
     /**

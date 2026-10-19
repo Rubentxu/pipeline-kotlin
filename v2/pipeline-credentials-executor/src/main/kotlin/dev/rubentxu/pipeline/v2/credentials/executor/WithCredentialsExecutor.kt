@@ -20,7 +20,7 @@ import java.util.UUID
 /**
  * Port-driven executor for withCredentials block execution.
  *
- * Design (design §8, research §4, erratum-1, ADR-0051 §D8):
+ * The shape is:
  * - Takes SPI ports: [CredentialProvider], [Clock], and a [CredentialProjector].
  * - Does NOT take concrete implementations (LocalSecretStore, CredentialMaterializer).
  * - Returns [BoundCredentials] with env map and idempotent close.
@@ -88,7 +88,7 @@ class WithCredentialsExecutor(
     /**
      * Binds credentials to environment variables and returns a [BoundCredentials].
      *
-     * Design (research §4 positive scope):
+     * The shape is:
      * - Emits [CredentialBound] for each binding BEFORE projection (INV-L10-CR-001 ordering)
      * - Returns [BoundCredentials] containing env map and idempotent close
      * - [BoundCredentials.close] is SOLE owner of [CredentialUnbound] emission
@@ -147,7 +147,7 @@ class WithCredentialsExecutor(
                 // local 7-arm copy was removed so there is exactly one mapping.
                 val purpose = spec.boundPurpose
 
-                // Emit CredentialBound BEFORE projection (ADR-0051 D8 ordering)
+                // Emit CredentialBound BEFORE projection
                 val boundEvent = CredentialBound(
                     eventId = UUID.randomUUID().toString(),
                     runId = runId,
@@ -356,7 +356,7 @@ private class SpiMaterializationAdapter(
  * Result of [WithCredentialsExecutor.bind] — contains env vars, acquired credential IDs,
  * and idempotent close handler.
  *
- * Design (research §4 positive scope, EM-7 §Scoped acquisition):
+ * The shape is:
  * - [env]: Map of environment variable names to secret handles
  * - [credentials]: the credential IDs that were acquired
  * - [retainedProjections]: retained [ProjectionResult] objects whose [ProjectionResult.close]
@@ -399,7 +399,7 @@ class BoundCredentials(
     /**
      * Closes all bound credentials and emits [CredentialUnbound] events.
      *
-     * Ordering (per ADR-0051 D8):
+     * Ordering:
      * 1. Close retained [ProjectionResult]s (secure file wipe, reverse-LIFO)
      * 2. Emit [CredentialUnbound] for each binding
      * 3. Close [SecretHandle]s

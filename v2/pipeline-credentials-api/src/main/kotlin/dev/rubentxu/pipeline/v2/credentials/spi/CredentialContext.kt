@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.credentials.spi
 /**
  * Context data carrier for credential binding operations.
  *
- * Design (design §2.2, research §4.4-proposed; gap G-9 multitenancy deferral to H1+):
+ * The shape is:
  * - `runId`: identifies the pipeline run for audit trail
  * - `subject`: identifies the execution context (default "local")
  *

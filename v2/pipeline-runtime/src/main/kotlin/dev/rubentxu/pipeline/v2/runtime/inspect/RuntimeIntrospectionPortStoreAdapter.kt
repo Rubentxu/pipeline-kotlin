@@ -26,7 +26,7 @@ import dev.rubentxu.pipeline.v2.output.OutputTailState
  *
  * The adapter is a thin composition: it does not introduce a new lease, a new
  * journal, or a new event/output store. Every authority it composes is named in
- * the design's composition table (M2 design §6). Wiring it in production is
+ * the "Read-only by construction" list below. Wiring it in production is
  * the application-layer's job; this adapter takes the read-side ports and the
  * internal stores as constructor arguments so the tests can wire them up
  * against `@TempDir` SQLite + segment stores.
@@ -55,8 +55,8 @@ class RuntimeIntrospectionPortStoreAdapter(
      * M7 — optional typed-event read port. When present, `runStructure`
      * uses it to drive event-driven grouping (the audit's I.6 PARTIAL
      * closure). When null, the adapter falls back to the M6 synthetic
-     * single-stage / single-step view. The audit's design §C names the
-     * pattern: the M7 surface is additive, the M6 fallback is preserved.
+     * single-stage / single-step view. The pattern this signature states:
+     * the M7 surface is additive, the M6 fallback is preserved.
      */
     private val eventShapeRead: EventShapeReadPort? = null,
 ) : RuntimeIntrospectionPort {
@@ -373,12 +373,11 @@ class RuntimeIntrospectionPortStoreAdapter(
 
     // ── M6 (additive) — runStructure + inspectOperation ───────────────────
     //
-    // The M6 design §C names the composition: every primitive the M6 methods
+    // The composition is inherited: every primitive the M6 methods
     // call is one already composed by `inspect` (OperationJournal.listForRun,
     // OperationJournal.get, OutputFrameIndex.streamsOfRun). The M6 methods do
     // NOT introduce a new lease, a new scheduler, or a new query engine — they
-    // read the existing stores and project to the closed ADTs the M6 design
-    // names in §B.
+    // read the existing stores and project to closed ADTs.
     //
     // ## First-cut scope
     //

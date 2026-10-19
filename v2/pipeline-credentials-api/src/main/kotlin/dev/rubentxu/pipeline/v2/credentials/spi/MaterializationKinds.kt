@@ -7,7 +7,7 @@ import java.nio.file.Path
 /**
  * Kind of materialization for file-based credential types.
  *
- * Design (design §2.3, E-24):
+ * The shape is:
  * - Part of the CredentialMaterialization SPI
  * - Reused from what was previously in :pipeline-credentials-multipart
  */
@@ -29,7 +29,7 @@ sealed interface MaterializationKind {
  * Result of credential materialization.
  * Either provides a path (for file-based kinds) or a SecretHandle (for in-memory kinds).
  *
- * Design (design §2.3, E-24):
+ * The shape is:
  * - Part of the CredentialMaterialization SPI
  * - Reused from what was previously in :pipeline-credentials-multipart
  */

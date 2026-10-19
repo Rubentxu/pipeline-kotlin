@@ -6,7 +6,7 @@ import java.nio.file.Path
 /**
  * Which phase of a credential teardown a failure came from.
  *
- * The three phases are the ADR-0051 D8 ordering, and they are NOT interchangeable: a wipe
+ * The three phases are the teardown ordering, and they are NOT interchangeable: a wipe
  * failure leaves credential BYTES on disk, while the other two leave an audit or memory
  * residue. [TeardownOutcome.Failed] uses this to decide what the caller is told.
  */
@@ -80,7 +80,7 @@ internal sealed interface TeardownOutcome {
  *
  * ## The rule this exists to enforce
  *
- * ADR-0051 D8 fixes three phases — wipe the materialisations, append `CredentialUnbound`, wipe the
+ * There are three phases — wipe the materialisations, append `CredentialUnbound`, wipe the
  * handles — and each one releases something that no later phase can release. The previous
  * implementation called them in sequence with no `try/finally`, so the first throwable ended the
  * teardown:

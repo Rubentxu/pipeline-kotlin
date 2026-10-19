@@ -799,7 +799,7 @@ fun main(args: Array<String>) {
     }
 
     // Durable mode: SqliteEventStore + PipelineOrchestrator for replay/divergence gating.
-    // Both stores are wrapped with RedactingEventSink at construction time (design §Data Flow).
+    // Both stores are wrapped with RedactingEventSink at construction time.
     // D3 — a run CREATES its event store, so the file is legitimately absent; only the DIRECTORY
     // has to exist. That is why the purpose is part of the admission and not a flag at each site:
     // `run` used to reach the same constructor as the read verbs and inherited neither the refusal

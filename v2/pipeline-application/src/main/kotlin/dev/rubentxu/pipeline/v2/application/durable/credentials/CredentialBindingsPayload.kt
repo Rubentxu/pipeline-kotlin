@@ -24,7 +24,7 @@ import kotlinx.serialization.json.put
  * EM-7 / LFC-5.3 — Symmetric JSON codec for credential binding specs across the
  * compiled BlockStepNode payload seam.
  *
- * [CredentialBindingSpec] is a sealed ADT (per ADR-0051) and deliberately NOT
+ * [CredentialBindingSpec] is a sealed ADT and deliberately NOT
  * `@Serializable` (the IR must never carry secret values; only env-var *names*
  * and the non-secret [CredentialsId] travel in the node payload). This codec is
  * the single symmetric pair (encode in the compiler, decode in the coordinator)

@@ -1,8 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 /**
- * S2-A5 / G2 — THE single canonical pure classifier for `core.isUnix` (decision D1/D2,
- * receipt `S2_A5_CORE_ISUNIX_G2_CANONICAL_DIFFERENTIAL_FREEZE.md`).
+ * S2-A5 / G2 — THE single canonical pure classifier for `core.isUnix` (decision D1/D2).
  *
  * Canonical contract "C2" = intent(PATH_A) + JVM-real alias from PATH_B ("mac os x")
  * - PATH_A's fake empty-string placeholder - PATH_B's substring heuristics.

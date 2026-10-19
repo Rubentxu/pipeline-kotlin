@@ -49,8 +49,7 @@ sealed interface InputDecision {
  *
  * A malformed response and a lost race are deliberately NOT cases here. A
  * malformed file is ignored and the wait continues; a lost race is a filesystem
- * fact on the answering side. Neither can be an outcome of the Step
- * (SPEC_WU092_INPUT.md §2, D4).
+ * fact on the answering side. Neither can be an outcome of the Step (D4).
  */
 sealed interface InputDenialReason {
     data class TimedOut(val waitedMillis: Long) : InputDenialReason

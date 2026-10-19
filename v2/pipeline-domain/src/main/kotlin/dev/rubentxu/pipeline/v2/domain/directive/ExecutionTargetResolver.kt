@@ -12,7 +12,7 @@ package dev.rubentxu.pipeline.v2.domain.directive
  *
  * ## Deliberate divergence from the proposal document
  *
- * `02-directive-model.md` §6 specifies this as
+ * The original proposal specified this as
  * `suspend fun acquire(requirement): TargetLeaseResult`. It is declared
  * `fun` here instead, and the reason is mechanical rather than preferential:
  * the durable coordinator's run loop is synchronous, so a `suspend` port would

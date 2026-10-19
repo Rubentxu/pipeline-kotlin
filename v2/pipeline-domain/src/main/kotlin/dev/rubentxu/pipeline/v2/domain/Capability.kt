@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.domain
 /**
  * Stable identifier of a consumer-negotiable capability advertised by a
  * PipelineK release. The `id` is the byte-exact string that appears in
- * `INTERFACE_CONTRACT.md` and in `WorkerHello` / manifest negotiation;
+ * `WorkerHello` / manifest negotiation;
  * equality, hashing, and rendering all derive from it.
  *
  * Introduced for CRIC-M1/M2 capability registration. Prior to this type the

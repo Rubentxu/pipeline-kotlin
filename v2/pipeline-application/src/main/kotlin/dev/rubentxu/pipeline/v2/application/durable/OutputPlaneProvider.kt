@@ -61,8 +61,8 @@ object OutputPlaneProvider {
      *
      * ADR-OBS-002: a reader must never reconcile durable state, because reconciliation truncates the
      * uncommitted tail of a stream and an uncommitted tail is exactly what a writer that is alive
-     * right now looks like. `OBSG_READER_RECOVERY_INTERFERENCE_RECEIPT.md` measured what that cost: a
-     * successful `console` query in a second JVM destroyed 4096 bytes a live writer had written and
+     * right now looks like. The measured cost of violating it: a successful
+     * `console` query in a second JVM destroyed 4096 bytes a live writer had written and
      * acknowledged, and the writer was never told.
      *
      * Reads are still honest without recovery. A reader only ever serves bytes at or below the

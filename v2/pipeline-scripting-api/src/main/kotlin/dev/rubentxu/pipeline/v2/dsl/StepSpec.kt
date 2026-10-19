@@ -421,7 +421,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * and the single wire authority `CoreLockWireCodec`; this type carries no
      * wire vocabulary of its own.
      *
-     * Source-compatibility note (G3.6 classification, SPEC_WU091_LOCK.md):
+     * Source-compatibility note (G3.6 classification):
      * adding a case to this sealed hierarchy is binary-compatible but is
      * SOURCE-ADDITIVE for consumers holding an exhaustive `when(step)` without
      * an `else` branch. In this repository the only concrete-case consumer is

@@ -105,8 +105,8 @@ value class CandidateId private constructor(val digest: String) {
 }
 
 /**
- * Serialises [CandidateId] in the canonical `sha256:<hex>` wire form required
- * by `shared/03-handoff-schemas.md` §1, and validates on the way back in.
+ * Serialises [CandidateId] in the canonical `sha256:<hex>` wire form, and
+ * validates on the way back in.
  *
  * Validating in [deserialize] matters: a descriptor authored by hand (or
  * rewritten downstream) must not be able to smuggle a name in as a candidate

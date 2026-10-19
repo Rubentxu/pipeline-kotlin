@@ -72,13 +72,13 @@ data class CacheKey(
         }
 
         /**
-         * The `v2` algorithm: the identity declared by `SCRIPTING_COMPILER_SPEC.md` §7.
+         * The `v2` algorithm: a seven-dimension identity.
          *
-         * That section names seven dimensions. Five are supplied here as real values; the
+         * Five of the seven dimensions are supplied here as real values; the
          * remaining two are **absent by measurement, not by oversight**, and naming them here is
          * what keeps them from being forgotten:
          *
-         * | spec dimension            | status in `v2`                        |
+         * | identity dimension        | status in `v2`                        |
          * |---------------------------|---------------------------------------|
          * | `pipelineSourceDigest`    | [CompilationIdentity.pipelineSource]  |
          * | `kotlinCompilerVersion`   | [CompilationIdentity.kotlinVersion]   |
@@ -121,18 +121,18 @@ data class CacheKey(
  * transposition a compile error.
  *
  * Every field is something the caller actually holds. A field that had to be invented to fill
- * the spec's table would be a fabricated dimension: it would look like coverage and change no
+ * the identity's seven-row table would be a fabricated dimension: it would look like coverage and change no
  * behaviour, which is the "dead semantic parameter" the Semantic Constitution forbids.
  */
 data class CompilationIdentity(
-    /** The script source text. Spec dimension: `pipelineSourceDigest`. */
+    /** The script source text. Identity dimension: `pipelineSourceDigest`. */
     val pipelineSource: String,
-    /** The Kotlin compiler version. Spec dimension: `kotlinCompilerVersion`. */
+    /** The Kotlin compiler version. Identity dimension: `kotlinCompilerVersion`. */
     val kotlinVersion: String,
-    /** The scripting host's own implementation version. Spec dimension: `scriptingAdapterVersion`. */
+    /** The scripting host's own implementation version. Identity dimension: `scriptingAdapterVersion`. */
     val hostVersion: String,
-    /** The resolved classpath, already sorted and joined by the caller. Spec dimension: `approvedClasspathDigest`. */
+    /** The resolved classpath, already sorted and joined by the caller. Identity dimension: `approvedClasspathDigest`. */
     val approvedClasspath: String,
-    /** The compiler options passed to the compiler, in the order passed. Spec dimension: `compilerOptionsDigest`. */
+    /** The compiler options passed to the compiler, in the order passed. Identity dimension: `compilerOptionsDigest`. */
     val compilerOptions: List<String>,
 )

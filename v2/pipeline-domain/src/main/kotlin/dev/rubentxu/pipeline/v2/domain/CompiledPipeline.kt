@@ -85,15 +85,14 @@ data class OptionSpec(val name: String, val value: String? = null) {
  *
  * ## Why only one case
  *
- * `02-directive-model.md` sketches `Timeout`, `Retry`, `SkipDefaultCheckout`
- * and `Timestamps`, then states the rule that decides it: *"Every option must
- * map to a real policy/interpreter or be rejected."* Only `Timeout` has one
- * (`StageNode.projectShellOptions` -> `ShOptions.timeoutMs`); the other three
- * were removed from the DSL surface in WU-RP-032 precisely because nothing
- * read them. Adding their cases here would re-create the defect the previous
- * shape had — a declared option with no interpreter — inside a more
- * respectable-looking type. The ADT grows a case on the day an interpreter
- * exists, not on the day the document lists it.
+ * The rule that decides it: *"Every option must map to a real
+ * policy/interpreter or be rejected."* Only `Timeout` has one
+ * (`StageNode.projectShellOptions` -> `ShOptions.timeoutMs`); `Retry`,
+ * `SkipDefaultCheckout` and `Timestamps` were removed from the DSL surface in
+ * WU-RP-032 precisely because nothing read them. Adding their cases here would
+ * re-create the defect the previous shape had — a declared option with no
+ * interpreter — inside a more respectable-looking type. The ADT grows a case on
+ * the day an interpreter exists, not on the day a design note lists it.
  *
  * ## Proof that the sealed-ness is load-bearing
  *

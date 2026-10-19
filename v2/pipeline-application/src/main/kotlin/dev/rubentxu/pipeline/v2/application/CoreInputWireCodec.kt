@@ -103,7 +103,7 @@ object InputAnswerCodec {
      *
      * `null` is the honest answer for "a human is still typing" and for "this is
      * not an answer at all". Neither may end the wait: a half-written file is not
-     * a refusal (SPEC_WU092_INPUT.md §3.4).
+     * a refusal.
      */
     fun decode(raw: String): InputDecision? {
         val obj = try {

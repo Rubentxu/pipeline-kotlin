@@ -28,7 +28,7 @@ package dev.rubentxu.pipeline.v2.application
  * }
  * ```
  *
- * Behavioural contract (R3 in WU-LPR-090/spec.md):
+ * Behavioural contract (R3):
  * - R3.a (alphanumeric): letter / digit / '-' / '_' (when not escape) preserved as-is;
  *   any other char replaced with '_' followed by 4-char lowercase hex of the char code.
  * - R3.b (traversal): even hostile chars (newlines, control, unicode) produce a value

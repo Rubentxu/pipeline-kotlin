@@ -6,8 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
  * Sealed interface for all credential binding types.
  * Each binding type corresponds to a Jenkins credential kind.
  *
- * Jenkins verbatim parameter order is preserved in data class constructors
- * (per JENKINS_FAMILIARITY_CATALOG.md §1.6 lines 109-115).
+ * Jenkins verbatim parameter order is preserved in data class constructors.
  * Ergonomic factory methods in companion objects provide credentialsId-first form.
  */
 sealed interface CredentialsBinding {

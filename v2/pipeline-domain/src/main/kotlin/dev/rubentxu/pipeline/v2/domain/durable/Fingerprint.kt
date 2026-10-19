@@ -32,10 +32,10 @@ import kotlinx.serialization.json.JsonObject
  * SHA-256 over bounded input (≤ 64 KiB enforced by [OperationInput.validate]) is
  * cryptographically collision-resistant for this use case.
  *
- * Provenance note: this comment used to cite `design.md §E4-02` and §R-B. Those
- * documents are not in the repository, so the citations were removed rather than
- * left pointing at nothing. ~27 sibling citations of the same shape survive
- * elsewhere in the Kotlin sources and need the same decision.
+ * Provenance note: this comment used to cite two design documents that are not
+ * in the repository, so the citations were removed rather than left pointing at
+ * nothing. Sibling citations of the same shape survive elsewhere in the Kotlin
+ * sources and need the same decision.
  *
  * @param hex 64-character lowercase hex string.
  */

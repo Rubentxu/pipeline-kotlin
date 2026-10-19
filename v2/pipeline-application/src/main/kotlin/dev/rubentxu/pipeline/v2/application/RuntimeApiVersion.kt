@@ -83,9 +83,8 @@ object RuntimeApiVersion {
      *
      * A product version is not provenance. `0.60.0` names a release line, and every commit on it
      * reports it, so a harness holding two binaries cannot tell them apart by asking the binary.
-     * That is not hypothetical: the five corpus failures recorded in
-     * `CDH_PLANE_DIAGNOSTIC_RECEIPT.md` were exactly a stale binary whose version matched the
-     * expected one, and nothing in the run said so.
+     * That is not hypothetical: a stale binary whose version matched the expected one is
+     * exactly this failure mode, and nothing in the run says so.
      *
      * Non-throwing and null-tolerant on purpose, unlike [current]. A local developer build has a
      * legitimate commit and a tree that is dirty; that is a reportable fact, not a packaging

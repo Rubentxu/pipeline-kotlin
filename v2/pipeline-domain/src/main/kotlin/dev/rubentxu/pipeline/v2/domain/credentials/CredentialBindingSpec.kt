@@ -18,9 +18,8 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
  * fields that ARE valid for that binding — so a `StringBinding` cannot mention
  * a `usernameVariable`, and the JVM / Kotlin compiler enforces it.
  *
- * The sealed shape mirrors the Jenkins Credentials Binding Plugin (see
- * `JENKINS_FAMILIARITY_CATALOG.md` §1.6 lines 109-115). Field order on each
- * constructor is Jenkins-verbatim; the ergonomic factory methods in the
+ * The sealed shape mirrors the Jenkins Credentials Binding Plugin. Field order
+ * on each constructor is Jenkins-verbatim; the ergonomic factory methods in the
  * companion object preserve credentialsId-first ordering for call sites.
  *
  * ## Module placement

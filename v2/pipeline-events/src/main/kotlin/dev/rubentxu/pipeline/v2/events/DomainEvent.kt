@@ -1281,8 +1281,8 @@ data class PostConditionSelected(
 }
 
 /**
- * RP6-A / WU-091 §6 — the five `core.lock` events (SPEC_WU091_LOCK.md §6,
- * `Dir*`/`Milestone*` convention, MilestoneReached shape). Emission authority:
+ * RP6-A / WU-091 §6 — the five `core.lock` events (`Dir*`/`Milestone*` convention,
+ * MilestoneReached shape). Emission authority:
  * the `core.lock` handler, through [dev.rubentxu.pipeline.v2.domain.step.EVENT_SINK_CAPABILITY].
  * No sensitive payload: `resource` is a pipeline-author-declared resource name.
  */
@@ -1343,7 +1343,7 @@ data class LockAcquireFailed(
 }
 
 /**
- * RP6-B / WU-092 §6 — the four `core.input` events (SPEC_WU092_INPUT.md §6).
+ * RP6-B / WU-092 §6 — the four `core.input` events.
  * Emission authority: the `core.input` handler, through the event sink
  * capability. No sensitive payload: `message` is written by the pipeline author.
  *

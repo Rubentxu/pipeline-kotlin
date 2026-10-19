@@ -330,7 +330,7 @@ class PostStepsScope {
     /**
      * The STABLE historical spelling, kept as a validated adapter.
      *
-     * `error` is STABLE in `DSL_SURFACE_MANIFEST.md`. E6b typed the representation
+     * `error` is STABLE. E6b typed the representation
      * (`StepSpec.Error.failureKind`) but this signature is the published authoring surface,
      * so `error("boom", "USER")` keeps compiling and is validated IMMEDIATELY at script
      * construction — see [LegacyResultVocabulary].
@@ -386,7 +386,7 @@ class BranchScope {
     /**
      * The STABLE historical spelling, kept as a validated adapter.
      *
-     * `error` is STABLE in `DSL_SURFACE_MANIFEST.md`. E6b typed the representation
+     * `error` is STABLE. E6b typed the representation
      * (`StepSpec.Error.failureKind`) but this signature is the published authoring surface,
      * so `error("boom", "USER")` keeps compiling and is validated IMMEDIATELY at script
      * construction — see [LegacyResultVocabulary].

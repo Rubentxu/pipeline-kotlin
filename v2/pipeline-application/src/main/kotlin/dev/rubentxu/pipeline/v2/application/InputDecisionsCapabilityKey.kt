@@ -18,8 +18,8 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * human input never sees this capability.
  *
  * Deliberately NOT an authorization surface: [InputRequest.submitter] is
- * attribution (SPEC_WU092_INPUT.md §3.5), because a headless runner has no user
- * database to authorize against.
+ * attribution only, because a headless runner has no user database to authorize
+ * against.
  */
 val INPUT_DECISIONS_CAPABILITY: StepCapability = StepCapability("inputDecisions")
 

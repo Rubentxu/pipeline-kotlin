@@ -12,7 +12,7 @@ package dev.rubentxu.pipeline.v2.domain
  *
  * ## Variants (ML-R6)
  *
- * Maps to Jenkins credentials-binding kinds per JENKINS_FAMILIARITY_CATALOG.md §1.6:
+ * Maps to Jenkins credentials-binding kinds as follows:
  * - [API_KEY]: Secret text credential — `string` binding → env variable
  * - [USERNAME_PASSWORD]: Username/password pair — `usernamePassword` binding
  * - [SSH_KEY]: SSH private key with optional passphrase — `sshUserPrivateKey` binding

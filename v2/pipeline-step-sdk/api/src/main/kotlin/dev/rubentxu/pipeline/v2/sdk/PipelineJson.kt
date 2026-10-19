@@ -58,7 +58,7 @@ object PipelineJson {
      * The single `Json` instance used by every migrated codec. Keeping it
      * centralised ensures all `encode`/`decode` operations share identical
      * behaviour. `encodeDefaults = true` matches the convention used by every
-     * Pattern A codec surveyed (see D-011 / H14 in `.agent/TECH_DEBT_BACKLOG.md`).
+     * Pattern A codec surveyed.
      */
     val json: Json = Json { encodeDefaults = true }
 

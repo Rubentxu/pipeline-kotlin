@@ -909,29 +909,44 @@ lifecycle sin deduplicar.
 Resultado tras un fallo en el stage 2 y su reanudación: **dos `RunStarted` para un
 run**, y cada stage ya completado vuelve a anunciarse.
 
-Lo que lo hace defecto y no decisión es la asimetría dentro del propio codebase:
-`RecoveryInterpretationEngine.kt:241` suprime deliberadamente los duplicados a
-nivel de **step** —«Reuse is the one arm that emits nothing: the journal row is
-already terminal, so re-emitting StepStarted/StepFinished would duplicate the
-record»— y **no hay equivalente en run/stage**. El mismo *resume* sabe evitar el
-duplicado en un nivel y no en el otro.
+**CORRECCIÓN: esto NO es un descuido, y el ROADMAP lo daba por tal.** La versión
+anterior de esta entrada argumentaba que la asimetría con el nivel de step delataba
+un oversight: `RecoveryInterpretationEngine.kt:241` suprime duplicados a nivel de
+**step** y no a nivel de run/stage. Esa era una inferencia mía, y el código fuente
+dice lo contrario. `EventHarness.kt:35` lo nombra literalmente:
 
-Contraargumento honesto, y por eso no lo he tocado: si cada invocación es un
-«intento» distinto, el duplicado es aceptable siempre que el evento lleve un
-discriminador de intento. **No lo lleva, y el `runId` es el mismo**, así que el
-consumidor no tiene forma de distinguirlos. Cerrarlo exige decidir qué es un
-run a través de una reanudación — si el `runId` es el intento o el pipeline — y esa
-es una decisión de producto, no una refactorización. Hasta que se decida, un
-consumidor que reconstruya el run desde el log obtiene una ejecución que empieza
-dos veces.
+> *Under BASELINE DEBT **INC-EVT3-1** durable reuse re-appends skeleton events with
+> restarting sequences; insertion order keeps the last execution segment a
+> contiguous suffix, so AFTER_LAST_RUN_STARTED scope stays deterministic WITHOUT
+> timestamps.*
 
-Lo que **no** afirmo: que el operador lo vea duplicado en consola. `ConsoleFamilyLines.kt:109`
-mapea un `RunStarted` a la línea «Run started: …», lo que significa que *si* el
-renderizador recibe el log durable completo de ese `runId` lo imprimiría dos veces,
-pero **no llegué a establecer quién lo alimenta**: un barrido de los productores de
-`ConsoleFamilyLines`/`HumanConsoleRenderer` fuera de su propio paquete no devolvió
-ningún resultado. Queda como la comprobación que convierte esto de deuda de log a
-defecto visible, y es barata.
+O sea que el re-emitido es una **deuda basal identificada**, y no un descuido: es
+la razón de que exista `Scope.AFTER_LAST_RUN_STARTED`, un ámbito que corta el log
+en «la última ejecución» justo por el último `RunStarted`. El duplicado es hoy
+**portador** — es lo que hace separable el intento actual — no un descuido que
+alguien olvidara. La lección operativa queda escrita porque es la que casi me hace
+escribir un «defecto» sobre una deuda ya documentada: **leer la autoridad antes de
+juzgarla**, y el instrumento para ello era un `grep INC-EVT3-1` que no hice.
+
+**La comprobación de consola sí la hice, y sale negativa.** `ConsolePrintingEventSink`
+es un **decorador del sink** que renderiza en vivo, dentro del proceso. Una
+reanudación arranca un proceso nuevo con un sink nuevo, así que la consola de esa
+corrida ve **un** `RunStarted`. `--log-tail` tampoco lo duplica: `MainInspectCli.kt`
+solo trata `RunFinished` de forma especial. El síntoma, por tanto, **no es visible
+para el operador**; queda confinado al log durable y al read model
+(`EventViewProjection` no deduplica).
+
+**Lo que queda abierto es una sola pregunta, y es de producto:** si `INC-EVT3-1` se
+cierra algún día —insertando un discriminador de intento explícito en lugar de
+reusar `RunStarted` como marcador de segmento—, `AFTER_LAST_RUN_STARTED` deja de
+tener su significado y hay que migrarlo. Hoy no hay ruta de cierre escrita para
+`INC-EVT3-1` en ningún sitio del árbol: sus dos únicas apariciones son esas dos
+líneas de KDoc, y **este ROADMAP tampoco lo recogía**. Eso sí es un hueco real: una
+deuda basal sin ninguna entrada que la siga.
+
+Nota menor, del mismo tipo que las de 2.1: el KDoc de `EventHarness` explica el
+alcance «con secuencias que se reinician», pero `appendAssigned` reasigna `0L` con
+el contador monotónico. La deuda está vigente; **su explicación del mecanismo ya no**.
 
 
 ### 2.3 Cierre de ciclo
@@ -943,7 +958,7 @@ defecto visible, y es barata.
   desde salidas de build limpias dieron **224 s, 227 s, 231 s**: el peor, **231 s**
   frente al límite duro de 900 s, leído del XML de JUnit (**522 tests, 54/54
   informes reescritos por la corrida, 0 fallos, 0 skips**) y no del código de
-  salida. Los tres.impresionaron `PASS … gaps=1 not_run`, así que el hueco del
+  salida. Los tres imprimieron `PASS … gaps=1 not_run`, así que el hueco del
   escenario `NOT_RUN` viaja dentro del veredicto en lugar de al lado.
   Sustituye a la medición caducada sobre `18d3148a` (242 / 211 / 213 s, 400
   tests), que sigue siendo cierta para aquel SHA y para ninguno más. El margen

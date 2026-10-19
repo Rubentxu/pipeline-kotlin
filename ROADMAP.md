@@ -2008,6 +2008,76 @@ una prueba ausente nunca sea PASS, y la palabra del veredicto ya lo cumple.
 
 ---
 
+### 2.7 La autoridad única de clasificación terminal no tenía ni un test
+
+Medido sin `pathspec` de comodín, porque ése devuelve **vacío** y un vacío se
+lee como «limpio»:
+
+| símbolo | ABI publicado | llamadas en `src/main` | ficheros de test |
+|---|---|---|---|
+| `decideTaskTerminal` | `pipeline-domain.api:4806` | 4 | **0** |
+| `isSuccessFromDecision` | `pipeline-domain.api:4807` | 1 | **0** |
+
+Los seis ficheros que nombran el ADT son todos `src/main`, más el volcado de
+ABI y un baseline de detekt. Es decir: la función que decide si una tarea
+durable «tuvo éxito» estaba publicada, la llamaban cuatro módulos, y **nadie
+la había mirado nunca**.
+
+Dos de esos cuatro la usan para **abortar trabajo**: `TarWriter` y
+`ShExecution`. El fallo que importa no es un código de salida mal copiado, es
+la pérdida de la *causa*: el watchdog mata el árbol de procesos y el código de
+salida puede quedar publicado como cero. La forma antigua
+`when { timedOut -> ...; else -> Exited(exitCode) }` devolvía `Exited(0)` y el
+consumidor leía «éxito» de un proceso que nadie dejó terminar. Ese estado
+cuarto es exactamente el que el ADT existe para hacer representable, y era el
+único que no tenía vigilancia.
+
+**Test añadido:** `TaskTerminalDecisionTest`, cuatro reglas puras, sin reloj ni
+E/S. Dos mitades de la misma garantía: una muerte por watchdog y una
+cancelación no son éxito **aun cuando el código de salida sea cero**, y un
+salida distinta de cero es un fallo que además conserva como causa «el proceso
+se extinguió», no «el watchdog». Las dos mitades hacen falta: quitar el
+`&& decision.exitCode == 0` de `isSuccessFromDecision` sólo lo ve la segunda,
+y quitar la rama `result.timedOut` del decider sólo lo ve la primera.
+
+**`elapsedMs` deliberadamente sin aserción.** Medido: ningún consumidor lo lee
+—las dos apariciones en `JdkHttpTransport` son una función privada homónima,
+no el campo del ADT—. Asertar un dato que nadie consume es coste de verificación
+sin consumidor, que es exactamente lo que este ciclo ha estado quitando.
+
+### 2.8 `CacheKey.v2` — el framing era la garantía y nadie lo miraba
+
+`:pipeline-scripting-api` no tenía ningún test. `CacheKey.v2` encuadra cada
+parte de la identidad por su longitud antes de hashear; unida con un separador
+sencillo, dos identidades distintas escriben ambas `a|b|c|d|` y comparten clave.
+La consecuencia no es teórica: `CompiledScriptCache.fileNameFor(key)` construye
+`"${key.version}-${key.value}.jar"`, así que dos compilaciones distintas
+compiten por **un nombre de fichero** y la segunda sobrescribe la primera.
+
+**Mutación verificada** (`framedDigest` → `parts.joinToString("|")`, sin marco):
+se ponen rojas **exactamente** `twoIdentitiesThatCollideWhenJoinedDoNotShareAKey`
+—con el mismo digest `<466c96d4…>` en ambos lados— y
+`theSameIdentityAlwaysProducesTheSameKey` sigue verde. Cero colateral. Revertido
+y el verde vuelve.
+
+**Medido además, y no supuesto:** `CacheKey.v1` y `CacheKey.v2` **no tienen
+ningún sitio de llamada en producción**. `Kotlin24ScriptingHost.kt:358` construye
+un `CompilationIdentity` y ahí termina. Coherente con su propio KDoc («nothing
+reads these values yet»), y significa que hoy no se está reinterpretando ningún
+valor durable: la garantía se añade antes de que exista el caché que la use.
+
+**Una rareza que queda registrada sin explicación inventada:** la forma abreviada
+`CacheKey.v2` **no resuelve** desde otro fichero del módulo, mientras que
+`CacheKey.Companion.v2` sí, y el bytecode confirma que ambas clases
+(`CacheKey$Companion$v1`, `CacheKey$Companion$v2`) se compilan. Se descartó
+explicación por el camino: el `Companion` se recompiló desde `clean` y dio el
+mismo resultado; el `classpath` de test sólo contiene `:pipeline-domain`, junit
+y kotlin-stdlib, sin nada que ensombrezca; `CacheKey.V2` (la constante) sí
+resuelve, así que el problema es del objeto anidado y no del receptor. El test
+usa la grafía que compila y **no** afirma una causa que no se ha establecido.
+
+---
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 
 - **No** crear un arnés de pruebas. El código de verificación vive en

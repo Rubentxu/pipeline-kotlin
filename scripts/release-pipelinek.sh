@@ -43,11 +43,19 @@
 #   pipelinek-bom-<train>.json     the SDK BOM JSON (if present)
 #   SHA256SUMS                     the digest authority, covering all of the above
 #
-# HANDOFF.md and git-head.txt stay in the EVIDENCE_DIR as small text
-# artefacts committed to git, but they are NOT release assets per AGENTS.md
-# §3 (HANDOFF.md is a report; git-head.txt is a receipt). They are not
-# uploaded to the GitHub release asset store. The handoff remains available
-# to consumers as the body of the GitHub release via --notes-file.
+# Plus two provenance artefacts, added 2026-10-19 and described in §5c:
+#
+#   manifest.json    schema `pipelinek-release-manifest-1`: the ZIP digest,
+#                    `tag_commit`, `version`, `release_tag`. This is the
+#                    consumer-facing receipt, and it is small JSON.
+#   git-head.txt     the same commit identity as a bare 40-hex line, for
+#                    consumers that would rather grep than parse.
+#
+# Both are text. Neither is a payload, and nothing heavy is uploaded beyond
+# the five §8 artefacts themselves.
+#
+# HANDOFF.md is a report and stays in the EVIDENCE_DIR only; it reaches
+# consumers as the body of the GitHub release via --notes-file.
 
 set -euo pipefail
 
@@ -385,6 +393,59 @@ stage_manifest_asset "sdk.name"     "${DIST_DIR}/$(read_manifest_field 'sdk.name
 stage_manifest_asset "bom.name"     "${DIST_DIR}/$(read_manifest_field 'bom.name' 'none')"
 stage_manifest_asset "sha256sums.name" "${DIST_DIR}/$(read_manifest_field 'sha256sums.name' 'none')"
 
+# ----------------------------------------------------------------------------
+# 5c. The provenance manifest.
+#
+#     §3 keeps the upstream DistributionManifest in the evidence dir only: it
+#     describes how THIS producer built, and its schema is internal. A consumer
+#     outside this repository cannot read it, because it is never uploaded.
+#     That is a real gap, not a policy preference: without an uploaded receipt
+#     naming the commit, a published ZIP carries no claim at all about which
+#     tree produced it, and every downstream consumer has to take the bytes on
+#     trust.
+#
+#     This emits the small, stable, consumer-facing contract —
+#     `pipelinek-release-manifest-1` — as a sibling of the ZIP. Four fields, no
+#     more: the digest of the ZIP, the commit it was built from, the version,
+#     and the tag. It is deliberately NOT the internal manifest, because the
+#     internal schema changes when the pipeline changes and a consumer pinned
+#     to it would break on every producer-side refactor.
+#
+#     `tag_commit` is PROSPECTIVE_TAG_COMMIT, which is a prediction at this
+#     point. Section 6 creates the tag and then refuses if the resolved commit
+#     is not the predicted one, so the value published here is a verified
+#     claim by the time any byte leaves the machine — it is never an unchecked
+#     prediction.
+#
+#     Staged BEFORE SHA256SUMS is built, so the digest authority covers the
+#     manifest as well as the payload it describes.
+# ----------------------------------------------------------------------------
+RELEASE_MANIFEST="${EVIDENCE_DIR}/manifest.json"
+python3 - "$RELEASE_MANIFEST" "$ASSET_FNAME" "$LOCAL_SHA" \
+                  "$PROSPECTIVE_TAG_COMMIT" "$PIPELINEK_RELEASE_TRAIN" \
+                  "$PIPELINEK_RELEASE_TAG" <<'PY'
+import json, sys
+out, asset, digest, commit, version, tag = sys.argv[1:7]
+with open(out, "w", encoding="utf-8") as fh:
+    json.dump({
+        "schema_version": "pipelinek-release-manifest-1",
+        "contents": {asset: {"sha256": digest}},
+        "tag_commit": commit,
+        "version": version,
+        "release_tag": tag,
+    }, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+PY
+STAGED_PATHS+=("$RELEASE_MANIFEST")
+echo "release-pipelinek: staged manifest.json (pipelinek-release-manifest-1) for ${PIPELINEK_RELEASE_TAG}"
+
+# git-head.txt is the same commit identity in its most minimal form, kept
+# uploaded for consumers that only want to grep a 40-hex string and do not
+# parse JSON. It is small text, not a payload: uploading it costs nothing and
+# makes the receipt readable without a JSON parser.
+STAGED_PATHS+=("${EVIDENCE_DIR}/git-head.txt")
+echo "release-pipelinek: staged git-head.txt"
+
 # Build SHA256SUMS over the staged set. The digests describe the STAGED bytes,
 # which are the bytes about to be uploaded.
 if [ ${#STAGED_PATHS[@]} -eq 0 ]; then
@@ -424,14 +485,26 @@ if [ "$TAG_COMMIT" != "$PROSPECTIVE_TAG_COMMIT" ]; then
 fi
 
 # ----------------------------------------------------------------------------
-# 7. Publish. The Prerelease URL is the receipt's permanent address.
+# 7. Publish. The release URL is the receipt's permanent address.
 #    PK-NEXT R0.1: the ZIP is uploaded to the GitHub release asset store
 #    (NOT copied into the git tree). The git tree carries only the small
 #    text artefacts (manifest, handoff, git-head).
+#
+#    Prerelease-ness is derived from the TRAIN, not passed in. A train whose
+#    version carries a pre-release suffix (`0.62.0-rc1`) publishes as a
+#    prerelease; a plain version (`0.62.0`) publishes as a full release. It
+#    used to be `--prerelease` unconditionally, which meant a GA tag was
+#    created but flagged prerelease on GitHub — a published "stable" that
+#    every consumer's tooling correctly refuses to treat as stable. The flag
+#    was the only thing marking intent, and it did not follow the tag.
 # ----------------------------------------------------------------------------
+PRELEASE_FLAG=""
+case "${PIPELINEK_RELEASE_TRAIN}" in
+    *-alpha*|*-beta*|*-rc*|*-dev*|*-M[0-9]*|*SNAPSHOT*) PRELEASE_FLAG="--prerelease" ;;
+esac
 
 gh release create "${PIPELINEK_RELEASE_TAG}" \
-    --prerelease \
+    ${PRELEASE_FLAG} \
     --title "PipelineK ${PIPELINEK_RELEASE_TAG} (release-gate PASS sha256:${LOCAL_SHA})" \
     --notes-file "${EVIDENCE_DIR}/HANDOFF.md" \
     "${STAGED_PATHS[@]}"

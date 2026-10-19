@@ -34,6 +34,18 @@ enum class HandoffViolationCode {
     /** `candidate_id` is not the SHA-256 of the artifact it names. */
     CANDIDATE_ID_NOT_ARTIFACT_DIGEST,
 
+    /**
+     * `artifact.sha256` is not the measured digest of the ZIP.
+     *
+     * Separate from [CANDIDATE_ID_NOT_ARTIFACT_DIGEST] because the two name
+     * DIFFERENT fields and have different fixes: a wrong candidate_id is an
+     * identity defect, a wrong artifact.sha256 is a bytes defect. Folding them
+     * into one code made a build report the same code twice for two root
+     * causes, and a consumer that groups violations by code could not tell
+     * them apart — it only saw the detail string, which is prose, not a key.
+     */
+    ARTIFACT_DIGEST_NOT_MEASURED_ZIP,
+
     /** The handoff's product version differs from the manifest's. */
     PRODUCT_VERSION_DISAGREES_WITH_MANIFEST,
 
@@ -82,7 +94,7 @@ fun evaluateCandidateHandoff(
 
     if (handoff.artifact.sha256 != measuredZipSha256) {
         violations += HandoffViolation(
-            HandoffViolationCode.CANDIDATE_ID_NOT_ARTIFACT_DIGEST,
+            HandoffViolationCode.ARTIFACT_DIGEST_NOT_MEASURED_ZIP,
             "handoff artifact.sha256 ${handoff.artifact.sha256} is not the measured ZIP digest " +
                 "($measuredZipSha256).",
         )

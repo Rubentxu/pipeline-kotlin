@@ -1,56 +1,57 @@
-#!/usr/bin/env bash
-# verify-all.sh — THE single local verification entrypoint (AGENTS.md section 5).
-#
-# It composes, in one process and on purpose no other:
-#
-#   1. the development distribution, built ONCE with installDist;
-#   2. static analysis (detekt) and the public-API compatibility check;
-#   3. the permanent unit tests of every module that has any;
-#   4. the tracked E2E scenarios in v2/examples/, run by examples/run.sh;
-#   5. the LOC budget gate (scripts/check-budgets.py);
-#   6. the wall-clock gate.
-#
-# It is not a test framework and it has no registry, no service, no database
-# and no tests-of-tests. It runs named commands in a fixed order, and it stops
-# at the first failing stage so a red run names the stage that is red.
-#
-#   scripts/verify-all.sh              # the whole gate
-#   scripts/verify-all.sh --no-budget  # skip only the LOC gate, for a quick loop
-#
-# SCOPED RUNS. The gate above is the unit of truth and always the default. For
-# the inner loop there are filters, and they are deliberately subordinate: any
-# filter switches the run to SUBSET mode, which prints its verdict in a
-# different shape and stops comparing the wall clock against AGENTS.md's 900 s.
-# That is not pedantry. A filtered run that ends with the same
-# `PASS sha=... elapsed=... budget=900s` line as the full gate is a line that
-# gets quoted as "the gate passed in N s" while having measured, say, one module
-# and three scenarios. A subset is a legitimate and cheap instrument; it is
-# never evidence about the whole.
-#
-#   scripts/verify-all.sh --list                      # resolve the plan, run nothing
-#   scripts/verify-all.sh --stage 1                  # progressive: compile + statics
-#   scripts/verify-all.sh --stage up-to-2            # through the unit tests
-#   scripts/verify-all.sh --stage 2 --module ':pipeline-domain'
-#   scripts/verify-all.sh --stage 2 --test '*ResolveTest' --test '*RejectTest'
-#   scripts/verify-all.sh --stage 3 --scenario 'control-flow/*'
-#
-# Filters compose; --list never invokes Gradle; a filter that selects nothing is
-# an error rather than a green, for the same reason an empty census is not zero.
-#
-# Exit 0 when every stage passed, 1 otherwise. The wall-clock gate prints its
-# own verdict even on failure; callers who want a hard ceiling should wrap the
-# whole command, as AGENTS.md section 5 describes:
-#
-#   timeout 900 scripts/verify-all.sh
-#
-# One environment note that is not optional. The repository declares
-# jvmToolchain(21), and Kotlin's embedded build-script compiler cannot parse
-# the Java version of a newer JDK: on Java 25 every Gradle invocation dies with
-# "IllegalArgumentException: 25.0.4.1" raised from JavaVersion.parse inside
-# KotlinScriptCompilationAndInstrumentation.compile, with a misleading
-# "What went wrong: 25.0.4.1" headline. This script therefore resolves a JDK 21
-# and refuses to run on anything else, rather than failing later with a message
-# that does not name its cause.
+!/usr/bin/env bash
+ verify-all.sh — THE single local verification entrypoint (AGENTS.md section 5).
+
+ It composes, in one process and on purpose no other:
+
+   0. a clean of the project's build outputs, so the run measures a real build;
+   1. the development distribution, built ONCE with installDist;
+   2. static analysis (detekt) and the public-API compatibility check;
+   3. the permanent unit tests of every module that has any;
+   4. the tracked E2E scenarios in v2/examples/, run by examples/run.sh;
+   5. the LOC budget gate (scripts/check-budgets.py);
+   6. the wall-clock gate.
+
+ It is not a test framework and it has no registry, no service, no database
+ and no tests-of-tests. It runs named commands in a fixed order, and it stops
+ at the first failing stage so a red run names the stage that is red.
+
+   scripts/verify-all.sh              # the whole gate
+   scripts/verify-all.sh --no-budget  # skip only the LOC gate, for a quick loop
+
+ SCOPED RUNS. The gate above is the unit of truth and always the default. For
+ the inner loop there are filters, and they are deliberately subordinate: any
+ filter switches the run to SUBSET mode, which prints its verdict in a
+ different shape and stops comparing the wall clock against AGENTS.md's 900 s.
+ That is not pedantry. A filtered run that ends with the same
+ `PASS sha=... elapsed=... budget=900s` line as the full gate is a line that
+ gets quoted as "the gate passed in N s" while having measured, say, one module
+ and three scenarios. A subset is a legitimate and cheap instrument; it is
+ never evidence about the whole.
+
+   scripts/verify-all.sh --list                      # resolve the plan, run nothing
+   scripts/verify-all.sh --stage 1                  # progressive: compile + statics
+   scripts/verify-all.sh --stage up-to-2            # through the unit tests
+   scripts/verify-all.sh --stage 2 --module ':pipeline-domain'
+   scripts/verify-all.sh --stage 2 --test '*ResolveTest' --test '*RejectTest'
+   scripts/verify-all.sh --stage 3 --scenario 'control-flow/*'
+
+ Filters compose; --list never invokes Gradle; a filter that selects nothing is
+ an error rather than a green, for the same reason an empty census is not zero.
+
+ Exit 0 when every stage passed, 1 otherwise. The wall-clock gate prints its
+ own verdict even on failure; callers who want a hard ceiling should wrap the
+ whole command, as AGENTS.md section 5 describes:
+
+   timeout 900 scripts/verify-all.sh
+
+ One environment note that is not optional. The repository declares
+ jvmToolchain(21), and Kotlin's embedded build-script compiler cannot parse
+ the Java version of a newer JDK: on Java 25 every Gradle invocation dies with
+ "IllegalArgumentException: 25.0.4.1" raised from JavaVersion.parse inside
+ KotlinScriptCompilationAndInstrumentation.compile, with a misleading
+ "What went wrong: 25.0.4.1" headline. This script therefore resolves a JDK 21
+ and refuses to run on anything else, rather than failing later with a message
+ that does not name its cause.
 
 set -Eeuo pipefail
 
@@ -73,13 +74,13 @@ scenario_given=0
 
 usage() { sed -n '2,57p' "$0"; }
 
-while [[ $# -gt 0 ]]; do
+while [[ $ -gt 0 ]]; do
     case "$1" in
-        # `--no-budget` is a subset flag as well as a budget skip. It used to set
-        # only skip_budget, so the run skipped stage 4 and then fell through to
-        # the SAME `PASS sha=… budget=900s` line the full gate prints -- a line
-        # naming a LOC budget this run never measured. The verdict belongs to the
-        # run that observed everything, so dropping a stage drops the claim with it.
+         `--no-budget` is a subset flag as well as a budget skip. It used to set
+         only skip_budget, so the run skipped stage 4 and then fell through to
+         the SAME `PASS sha=… budget=900s` line the full gate prints -- a line
+         naming a LOC budget this run never measured. The verdict belongs to the
+         run that observed everything, so dropping a stage drops the claim with it.
         --no-budget) skip_budget=1; subset=1 ;;
         --list)      list_only=1; subset=1 ;;
         --stage)     stage_spec="${2:-}"; stage_given=1; subset=1; shift ;;
@@ -92,11 +93,11 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-# An option that was GIVEN with an empty value is a mistake, and it is caught
-# here rather than where the value is used because after the assignment an
-# empty string is indistinguishable from "not given". `--test ''` is worse than
-# a typo: it would expand to a bare `--tests` and Gradle would then run every
-# class, i.e. a filter that silently runs everything.
+ An option that was GIVEN with an empty value is a mistake, and it is caught
+ here rather than where the value is used because after the assignment an
+ empty string is indistinguishable from "not given". `--test ''` is worse than
+ a typo: it would expand to a bare `--tests` and Gradle would then run every
+ class, i.e. a filter that silently runs everything.
 if [[ "$stage_given" == 1 && -z "${stage_spec// /}" ]]; then
     echo "verify-all: --stage was given an empty value" >&2; exit 2
 fi
@@ -110,14 +111,14 @@ for t in ${test_filters+"${test_filters[@]}"}; do
     [[ -n "$t" ]] || { echo "verify-all: --test was given an empty pattern" >&2; exit 2; }
 done
 
-# Stage selection. `--stage up-to-N` is the progressive form: everything from 1
-# to N. `--stage 1,3` is the explicit form. Both are a SUBSET by definition --
-# stage 5 alone, or stage 3 without stage 1, measures nothing about the gate.
+ Stage selection. `--stage up-to-N` is the progressive form: everything from 1
+ to N. `--stage 1,3` is the explicit form. Both are a SUBSET by definition --
+ stage 5 alone, or stage 3 without stage 1, measures nothing about the gate.
 want_stage() {
     [[ -z "$stage_spec" ]] && return 0
     local n spec up_to=""
     if [[ "$stage_spec" == up-to-* ]]; then
-        up_to="${stage_spec#up-to-}"; spec=""
+        up_to="${stage_specup-to-}"; spec=""
         [[ "$up_to" =~ ^[0-9]+$ ]] || { echo "verify-all: 'up-to-$up_to' is not a stage number" >&2; exit 2; }
         for n in 1 2 3 4 5; do [[ "$n" -le "$up_to" ]] && spec="${spec:+$spec,}$n"; done
     else
@@ -126,9 +127,9 @@ want_stage() {
     [[ ",$spec," == *",$1,"* ]]
 }
 
-# Module selection. The pattern is matched against the Gradle project path
-# (`:pipeline-step-sdk:runtime`), which is what the operator sees in Gradle's own
-# error messages -- not against the directory, which differs from it by a slash.
+ Module selection. The pattern is matched against the Gradle project path
+ (`:pipeline-step-sdk:runtime`), which is what the operator sees in Gradle's own
+ error messages -- not against the directory, which differs from it by a slash.
 module_selected() {
     [[ -z "$module_filter" ]] && return 0
     case "$1" in $module_filter) return 0 ;; esac
@@ -143,14 +144,14 @@ fail() { printf 'verify-all: FAILED at %s\n' "$*" >&2; exit 1; }
 
 elapsed() { printf '%s' "$(( $(date +%s) - $1 ))"; }
 
-# --- Plan resolution ---------------------------------------------------------
-# The plan is derived from the filesystem, not remembered. Stage 2 asks exactly
-# the modules that hold a src/test .kt file, stage 3 exactly the scenarios that
-# exist, and the filters cut those two lists. Deriving it twice -- once to print
-# with --list and once to execute -- is deliberate: a plan that can only be
-# printed by the same code that runs it is a claim about itself, not a census.
+ --- Plan resolution ---------------------------------------------------------
+ The plan is derived from the filesystem, not remembered. Stage 2 asks exactly
+ the modules that hold a src/test.kt file, stage 3 exactly the scenarios that
+ exist, and the filters cut those two lists. Deriving it twice -- once to print
+ with --list and once to execute -- is deliberate: a plan that can only be
+ printed by the same code that runs it is a claim about itself, not a census.
 
-gradle_path_of() { local p="${1#v2/}"; printf ':%s' "${p//\//:}"; }
+gradle_path_of() { local p="${1v2/}"; printf ':%s' "${p//\//:}"; }
 
 plan_modules_all() {
     local kt mod out=()
@@ -159,7 +160,7 @@ plan_modules_all() {
         out+=("$(gradle_path_of "$mod")")
     done < <(find v2 -path '*/src/test/*' -name '*.kt' -not -path '*/build/*' \
              | LC_ALL=C sort | awk -F'/src/test/' '!seen[$1]++')
-    [[ ${#out[@]} -eq 0 ]] || printf '%s\n' "${out[@]}"
+    [[ ${out[@]} -eq 0 ]] || printf '%s\n' "${out[@]}"
 }
 
 plan_modules() {
@@ -168,10 +169,10 @@ plan_modules() {
         [[ -n "$m" ]] || continue
         module_selected "$m" && keep+=("$m")
     done < <(plan_modules_all)
-    # `printf '%s\n' a b c` with no operands still prints one empty line, which
-    # the caller reads back as one empty path. An empty result must print
-    # NOTHING, so the empty case is spelled out rather than left to printf.
-    [[ ${#keep[@]} -eq 0 ]] || printf '%s\n' "${keep[@]}"
+     `printf '%s\n' a b c` with no operands still prints one empty line, which
+     the caller reads back as one empty path. An empty result must print
+     NOTHING, so the empty case is spelled out rather than left to printf.
+    [[ ${keep[@]} -eq 0 ]] || printf '%s\n' "${keep[@]}"
 }
 
 plan_scenarios() {
@@ -180,20 +181,23 @@ plan_scenarios() {
         if [[ -z "$scenario_filter" ]]; then
             keep+=("$rel")
         else
-            # shellcheck disable=SC2254 # the pattern is a user-supplied glob on purpose
+             shellcheck disable=SC2254 # the pattern is a user-supplied glob on purpose
             case "$rel" in $scenario_filter) keep+=("$rel") ;; esac
         fi
     done < <(find v2/examples -name '*.pipeline.kts' -not -path '*/build/*' \
              | LC_ALL=C sort | sed 's|^v2/examples/||')
-    # `printf '%s\n' a b c` with no operands still prints one empty line, which
-    # the caller then reads back as one empty path. An empty result must print
-    # NOTHING, so the empty case is spelled out rather than left to printf.
-    [[ ${#keep[@]} -eq 0 ]] || printf '%s\n' "${keep[@]}"
+     `printf '%s\n' a b c` with no operands still prints one empty line, which
+     the caller then reads back as one empty path. An empty result must print
+     NOTHING, so the empty case is spelled out rather than left to printf.
+    [[ ${keep[@]} -eq 0 ]] || printf '%s\n' "${keep[@]}"
 }
 
 print_plan() {
     local s m sc
     printf 'plan for sha %s\n' "$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    if [[ "$subset" == 0 ]]; then
+        printf '  prep      clean build outputs\n'
+    fi
     for s in 1 2 3 4 5; do
         want_stage "$s" || continue
         case "$s" in
@@ -205,7 +209,7 @@ print_plan() {
                     [[ -n "$m" ]] || continue
                     planned_modules=$((planned_modules + 1))
                     printf '             %s:test%s\n' "$m" \
-                        "$([[ ${#test_filters[@]} -gt 0 ]] && printf ' --tests %s' "$(IFS='|'; printf '%s' "${test_filters[*]}")")"
+                        "$([[ ${test_filters[@]} -gt 0 ]] && printf ' --tests %s' "$(IFS='|'; printf '%s' "${test_filters[*]}")")"
                 done < <(plan_modules)
                 if [[ "$planned_modules" -eq 0 ]]; then
                     printf 'verify-all: --module %s matched no module with a unit test.\n' "'$module_filter'" >&2
@@ -244,17 +248,17 @@ fi
 if [[ "$subset" == 1 ]]; then
     printf 'SUBSET RUN -- filters in effect: stage=%s module=%s test=%s scenario=%s\n' \
         "${stage_spec:-all}" "${module_filter:-all}" \
-        "$([[ ${#test_filters[@]} -gt 0 ]] && printf '%s ' "${test_filters[@]}" || printf 'all ')" \
+        "$([[ ${test_filters[@]} -gt 0 ]] && printf '%s ' "${test_filters[@]}" || printf 'all ')" \
         "${scenario_filter:-all}"
     printf 'This is NOT the AGENTS.md section 4 gate and its wall clock is not a gate measurement.\n\n'
 fi
 
-# --- JDK resolution ----------------------------------------------------------
-# Prefer an explicit JAVA_HOME that already satisfies the requirement; then the
-# asdf installations this repository has used; then whatever is on PATH.
+ --- JDK resolution ----------------------------------------------------------
+ Prefer an explicit JAVA_HOME that already satisfies the requirement; then the
+ asdf installations this repository has used; then whatever is on PATH.
 
 java_feature() {
-    # "21.0.8" -> 21
+     "21.0.8" -> 21
     local raw
     raw="$("$1/bin/java" -version 2>&1 | head -1 | sed -E 's/.*version "([0-9]+).*/\1/')" || return 1
     [[ "$raw" =~ ^[0-9]+$ ]] || return 1
@@ -304,15 +308,38 @@ echo "    JAVA_HOME=$JAVA_HOME"
 log_dir="${TMPDIR:-/tmp}/verify-all.$$"
 mkdir -p "$log_dir"
 
+# --- Preparation: clean build outputs -----------------------------------------
+# The full gate measures a real build, so it starts from one. AGENTS.md section 4
+# asks for the measurement to be taken "from clean build OUTPUTS with local
+# dependency caches already populated", and the difference is not pedantry: a run
+# whose test tasks are all UP-TO-DATE executes no test at all, and a wall clock
+# taken from it measures the cache rather than the work. Stage 2 refuses that run
+# outright, which is the right refusal -- but a gate that can only be measured
+# once is a gate nobody measures twice, so the outputs go first and the run is
+# measurable every time.
+# The clean is Gradle's own task rather than a hand-rolled deletion. The build
+# system knows which directories are its outputs, and a `find -name build` would
+# also match a package directory named `build` that holds tracked sources.
+# A subset run does not clean: it is the inner loop, it never quotes a wall
+# clock, and paying a full rebuild for it would defeat its purpose.
+if [[ "$subset" == 0 ]]; then
+    log "preparation  clean build outputs"
+    stage_started_at=$(date +%s)
+./v2/gradlew --no-daemon -p v2 clean > "$log_dir/clean.log" 2>&1 \
+        || { tail -40 "$log_dir/clean.log" >&2; fail "preparation (see "$log_dir/clean.log")"; }
+    echo "    ok in $(elapsed "$stage_started_at")s"
+else
+    log "preparation  SKIPPED (a subset run does not quote a wall clock)"
+fi
+
 # The logs are removed only when the run reaches a full pass. Every other
 # outcome leaves them in place, because that is when someone needs to read them.
-cleanup_logs() { [[ "${VERIFY_ALL_VERDICT:-FAIL}" == PASS* ]] && rm -rf "$log_dir"; }
+cleanup_logs { [[ "${VERIFY_ALL_VERDICT:-FAIL}" == PASS* ]] && rm -rf "$log_dir"; }
 trap cleanup_logs EXIT
 
 # --- Stage 1: compile, static analysis, API compatibility, distribution -------
 # One Gradle invocation, so the distribution is assembled exactly once and the
 # tests below reuse the same compiled classes rather than recompiling.
-#
 # `detektTest` sits beside `detektMain` because they are the same analysis over
 # two source sets, and only one of them used to be in this list. Every module
 # declares both; nothing ran the second. Thirteen test files across seven
@@ -328,7 +355,7 @@ stage_started_at=$(date +%s)
     detektMain \
     detektTest \
     apiCheck \
-    :pipeline-application:installDist \
+:pipeline-application:installDist \
     > "$log_dir/stage1.log" 2>&1 \
     || { tail -40 "$log_dir/stage1.log" >&2; fail "stage 1 (see "$log_dir/stage1.log")"; }
 echo "    ok in $(elapsed "$stage_started_at")s"
@@ -337,10 +364,10 @@ else
 fi
 
 # --- Stage 2: permanent unit tests ------------------------------------------
-# Every module runs its own :test. A module with no test source has nothing to
+# Every module runs its own:test. A module with no test source has nothing to
 # prove, and Gradle reports a Test task over an empty source set as GREEN, so
 # the modules that are actually asked are enumerated from the filesystem
-# instead of assumed: a module is asked only if src/test holds a .kt file.
+# instead of assumed: a module is asked only if src/test holds.kt file.
 
 if want_stage 2; then
 log "stage 2/5  permanent unit tests"
@@ -353,14 +380,14 @@ stage_started_at=$(date +%s)
 # source set sat in the tree for a whole cycle with no gate noticing and no
 # task compiling it. Enumerating only the permitted name would repeat the
 # blindness; so the forbidden names are searched for by name instead.
-stray_lanes=()
+stray_lanes=
 while IFS= read -r stray; do
     stray_lanes+=("$stray")
 done < <(find v2 -path '*/src/*' -name '*.kt' -not -path '*/build/*' \
              -not -path 'v2/buildSrc/*' -not -path 'v2/examples/*' \
              -not -path '*/src/main/*' -not -path '*/src/test/*' \
          | LC_ALL=C sort)
-if [[ ${#stray_lanes[@]} -gt 0 ]]; then
+if [[ ${stray_lanes[@]} -gt 0 ]]; then
     printf '    a Kotlin source set exists outside src/test, which AGENTS.md section 2\n' >&2
     printf '    forbids: it is either dead code or a lane no gate enumerates.\n' >&2
     printf '  %s\n' "${stray_lanes[@]}" >&2
@@ -372,40 +399,40 @@ while IFS= read -r kt; do
     mod="${kt%%/src/test/*}"
     modules_with_tests+=("$mod")
 done < <(find v2 -path '*/src/test/*' -name '*.kt' -not -path '*/build/*' | LC_ALL=C sort | awk -F'/src/test/' '!seen[$1]++')
-if [[ ${#modules_with_tests[@]} -eq 0 ]]; then
+if [[ ${modules_with_tests[@]} -eq 0 ]]; then
     echo "    no module has a unit test yet; nothing to run (NOT_RUN, not PASS)"
 else
     tasks=()
     selected=()
-    # `find v2 ...` yields paths relative to the repository root, so a module
-    # reads `v2/pipeline-domain`. Gradle is invoked with `-p v2`, which makes
-    # `v2` the Gradle ROOT rather than a project segment, so its project path is
-    # `:pipeline-domain` -- not `:v2/pipeline-domain`. Prefixing the find output
-    # verbatim made every task path unresolvable, and the stage failed with
-    # "Cannot locate tasks that match ':v2/pipeline-domain:test'" before running
-    # a single test. The unit tests had therefore never executed through this gate.
-    #
-    # A NESTED module needs the other half of the translation: settings.gradle.kts
-    # declares `:pipeline-step-sdk:runtime`, with a colon, while the directory is
-    # `pipeline-step-sdk/runtime`, with a slash. Stripping only the `v2/` prefix
-    # therefore resolved the flat modules and failed on the first nested one with
-    # "Cannot locate tasks that match ':pipeline-step-sdk/runtime:test' as project
-    # 'pipeline-step-sdk/runtime' not found". Gradle aborted the whole stage, so
-    # the flat modules ran and the nested ones never did -- and the census that
-    # follows could not have reported it, because the stage had already exited.
+     `find v2 ...` yields paths relative to the repository root, so a module
+     reads `v2/pipeline-domain`. Gradle is invoked with `-p v2`, which makes
+     `v2` the Gradle ROOT rather than a project segment, so its project path is
+     `:pipeline-domain` -- not `:v2/pipeline-domain`. Prefixing the find output
+     verbatim made every task path unresolvable, and the stage failed with
+     "Cannot locate tasks that match ':v2/pipeline-domain:test'" before running
+     a single test. The unit tests had therefore never executed through this gate.
+    
+     A NESTED module needs the other half of the translation: settings.gradle.kts
+     declares `:pipeline-step-sdk:runtime`, with a colon, while the directory is
+     `pipeline-step-sdk/runtime`, with a slash. Stripping only the `v2/` prefix
+     therefore resolved the flat modules and failed on the first nested one with
+     "Cannot locate tasks that match ':pipeline-step-sdk/runtime:test' as project
+     'pipeline-step-sdk/runtime' not found". Gradle aborted the whole stage, so
+     the flat modules ran and the nested ones never did -- and the census that
+     follows could not have reported it, because the stage had already exited.
     for m in "${modules_with_tests[@]}"; do
-        gradle_path="${m#v2/}"
+        gradle_path="${mv2/}"
         gradle_path="${gradle_path//\//:}"
         module_selected ":${gradle_path}" || continue
         tasks+=(":${gradle_path}:test")
         selected+=("$m")
     done
-    # A module filter that excluded every module would otherwise run an empty
-    # task list and report SUCCESS, which is the same silent green stage 2 exists
-    # to prevent -- reached now through a filter instead of through an empty
-    # source set. Selecting nothing is a mistake in the invocation, so it says so.
-    if [[ ${#tasks[@]} -eq 0 ]]; then
-        echo "verify-all: --module '$module_filter' matched none of the ${#modules_with_tests[@]}" >&2
+     A module filter that excluded every module would otherwise run an empty
+     task list and report SUCCESS, which is the same silent green stage 2 exists
+     to prevent -- reached now through a filter instead of through an empty
+     source set. Selecting nothing is a mistake in the invocation, so it says so.
+    if [[ ${tasks[@]} -eq 0 ]]; then
+        echo "verify-all: --module '$module_filter' matched none of the ${modules_with_tests[@]}" >&2
         echo "module(s) that have a unit test:" >&2
         for m in "${modules_with_tests[@]}"; do
             echo "  $(gradle_path_of "$m")" >&2
@@ -414,20 +441,20 @@ else
     fi
     modules_with_tests=("${selected[@]}")
     printf '    %s\n' "${modules_with_tests[@]}" | sed 's/^/    module: /'
-    # The instant the tests are asked for, so each report can be attributed to
-    # THIS run or to an up-to-date task Gradle legitimately reused. Cached test
-    # results are correct evidence -- the inputs did not change -- but calling
-    # them "executed" reports a number this invocation did not earn, and it made
-    # 505 tests read as a 17s stage when 36 of them came from the cache. The
-    # count is therefore split: how many reports this run rewrote, and how many
-    # it read.
+     The instant the tests are asked for, so each report can be attributed to
+     THIS run or to an up-to-date task Gradle legitimately reused. Cached test
+     results are correct evidence -- the inputs did not change -- but calling
+     them "executed" reports a number this invocation did not earn, and it made
+     505 tests read as a 17s stage when 36 of them came from the cache. The
+     count is therefore split: how many reports this run rewrote, and how many
+     it read.
     test_run_started=$(date +%s)
-    # `--tests` narrows which classes the Test tasks execute. It is appended per
-    # task, because Gradle binds `--tests` to the task named before it; a single
-    # trailing flag applies to the last task only, which is the same
-    # "the filter applied to one module" bug as a census scoped to a guess.
+     `--tests` narrows which classes the Test tasks execute. It is appended per
+     task, because Gradle binds `--tests` to the task named before it; a single
+     trailing flag applies to the last task only, which is the same
+     "the filter applied to one module" bug as a census scoped to a guess.
     gradle_args=()
-    if [[ ${#test_filters[@]} -gt 0 ]]; then
+    if [[ ${test_filters[@]} -gt 0 ]]; then
         for t in "${tasks[@]}"; do
             gradle_args+=("$t")
             for p in "${test_filters[@]}"; do gradle_args+=(--tests "$p"); done
@@ -438,17 +465,17 @@ else
     ./v2/gradlew --no-daemon -p v2 "${gradle_args[@]}" \
         > "$log_dir/stage2.log" 2>&1 \
         || { tail -40 "$log_dir/stage2.log" >&2; fail "stage 2 (see "$log_dir/stage2.log")"; }
-    # Gradle's exit status is not the result. A Test task can report success
-    # with its classes skipped or absent, so the executed/failed/skipped counts
-    # are read from the JUnit XML that the task wrote.
-    #
-    # The census is scoped to the modules just asked for, deliberately. A global
-    # `find v2 -path '*/build/test-results/*'` also collects the XML that the
-    # suites deleted by the RESET left behind: it reported "283 reports,
-    # executed=1880" for a run that asked one module and executed 56 tests in
-    # 13 reports, the other 230 reports coming from code that no longer exists.
-    # A count whose set cannot be attributed to a requested task is not a
-    # measurement, so the set is taken from the same list the tasks came from.
+     Gradle's exit status is not the result. A Test task can report success
+     with its classes skipped or absent, so the executed/failed/skipped counts
+     are read from the JUnit XML that the task wrote.
+    
+     The census is scoped to the modules just asked for, deliberately. A global
+     `find v2 -path '*/build/test-results/*'` also collects the XML that the
+     suites deleted by the RESET left behind: it reported "283 reports,
+     executed=1880" for a run that asked one module and executed 56 tests in
+     13 reports, the other 230 reports coming from code that no longer exists.
+     A count whose set cannot be attributed to a requested task is not a
+     measurement, so the set is taken from the same list the tasks came from.
     xml_total=0; xml_fail=0; xml_skip=0; xml_files=0; xml_fresh=0
     xml_fresh_tests=0; xml_fresh_fail=0; xml_fresh_skip=0
     silent_modules=()
@@ -464,12 +491,12 @@ else
             e=$(sed -nE 's/.*errors="([0-9]+)".*/\1/p' <<<"$line"); e=${e:-0}
             s=$(sed -nE 's/.*skipped="([0-9]+)".*/\1/p' <<<"$line"); s=${s:-0}
             xml_total=$((xml_total + t)); xml_fail=$((xml_fail + f + e)); xml_skip=$((xml_skip + s))
-            # A report written BEFORE this run started belongs to a previous
-            # invocation. With `--test` in play that is the common case, not the
-            # exception: the directory still holds the classes the filter just
-            # excluded, and counting them would report tests this run never
-            # executed. So the fresh-only totals are accumulated separately and
-            # a scoped run quotes those.
+             A report written BEFORE this run started belongs to a previous
+             invocation. With `--test` in play that is the common case, not the
+             exception: the directory still holds the classes the filter just
+             excluded, and counting them would report tests this run never
+             executed. So the fresh-only totals are accumulated separately and
+             a scoped run quotes those.
             if [[ "$(stat -c %Y "$xml")" -ge "$test_run_started" ]]; then
                 xml_fresh=$((xml_fresh + 1))
                 xml_fresh_tests=$((xml_fresh_tests + t))
@@ -477,8 +504,8 @@ else
                 xml_fresh_skip=$((xml_fresh_skip + s))
             fi
         done < <(find "$m/build/test-results" -name 'TEST-*.xml' 2>/dev/null | LC_ALL=C sort)
-        # A module with a test source but no discovered test is the same silent
-        # green Gradle 8 reports for an empty source set, one level deeper.
+         A module with a test source but no discovered test is the same silent
+         green Gradle 8 reports for an empty source set, one level deeper.
         if [[ "$mod_reports" -eq 0 ]]; then
             silent_modules+=("$m")
         fi
@@ -494,10 +521,10 @@ else
     fi
     if [[ "$xml_fresh" -eq 0 ]]; then
         if [[ "$subset" == 1 ]]; then
-            # For a scoped run this is the normal second invocation with no
-            # source change, and failing would punish the fast loop for the
-            # cache doing its job. It still says what happened, because a silent
-            # cache hit reads exactly like an executed test.
+             For a scoped run this is the normal second invocation with no
+             source change, and failing would punish the fast loop for the
+             cache doing its job. It still says what happened, because a silent
+             cache hit reads exactly like an executed test.
             echo "    note: every task was up to date; nothing was executed by this run."
         else
             echo "verify-all: no report was rewritten, so this run measured a fully" >&2
@@ -512,7 +539,7 @@ else
         echo "verify-all: no JUnit XML was produced, so the test result is UNKNOWN." >&2
         fail "stage 2: green with no evidence"
     fi
-    if [[ ${#silent_modules[@]} -gt 0 ]]; then
+    if [[ ${silent_modules[@]} -gt 0 ]]; then
         echo "verify-all: these modules have a test source but produced no JUnit XML," >&2
         echo "so their test task discovered nothing while reporting success:" >&2
         printf '  %s\n' "${silent_modules[@]}" >&2
@@ -524,20 +551,20 @@ else
   log "stage 2/5  SKIPPED by --stage"
 fi
 
-# --- Stage 3: E2E scenarios --------------------------------------------------
+ --- Stage 3: E2E scenarios --------------------------------------------------
 
-# How many scenarios the launcher declared but did not run. Zero here means
-# "the launcher said zero", NOT "stage 3 did not happen": e2e_stage3_ran
-# separates those two, because a count that cannot be observed must fail
-# rather than read as a clean zero.
+ How many scenarios the launcher selected but never reached a verdict on.
+ Zero here means "the launcher's own numbers reconcile", NOT "stage 3 did
+ not happen": e2e_stage3_ran separates those two, because a count that cannot
+ be observed must fail rather than read as a clean zero.
 e2e_not_run=0
 e2e_stage3_ran=0
 
-# The suffix travels WITH the verdict line. A gap that only exists in the
-# stage log disappears the moment somebody quotes the one line that says the
-# gate passed, which is the only line anybody actually reads. Same argument as
-# the subset marker below: the difference between this run and the full gate
-# has to be inside the line, not beside it.
+ The suffix travels WITH the verdict line. A gap that only exists in the
+ stage log disappears the moment somebody quotes the one line that says the
+ gate passed, which is the only line anybody actually reads. Same argument as
+ the subset marker below: the difference between this run and the full gate
+ has to be inside the line, not beside it.
 gaps_suffix() {
     if [[ "$e2e_stage3_ran" == 1 && "$e2e_not_run" -gt 0 ]]; then
         printf '  gaps=%s not_run' "$e2e_not_run"
@@ -554,25 +581,38 @@ else
     ./v2/examples/run.sh > "$log_dir/stage3.log" 2>&1 \
         || { tail -40 "$log_dir/stage3.log" >&2; fail "stage 3 (see "$log_dir/stage3.log")"; }
 fi
-# Reading the log with -a: the scenario output can carry NUL bytes, and without
-# it the match is reported as a binary file with no text, which is
-# indistinguishable from the summary being absent.
+ Reading the log with -a: the scenario output can carry NUL bytes, and without
+ it the match is reported as a binary file with no text, which is
+ indistinguishable from the summary being absent.
 stage3_summary="$(grep -aE '^[0-9]+ scenario' "$log_dir/stage3.log" || true)"
 printf '%s\n' "$stage3_summary" | sed 's/^/    /'
 if [[ -z "$stage3_summary" ]]; then
     fail "stage 3 printed no scenario summary; a missing count is not a zero count"
 fi
 e2e_stage3_ran=1
-e2e_not_run="$(printf '%s\n' "$stage3_summary" \
-    | sed -n 's/.*[^0-9]\([0-9][0-9]*\) not run.*/\1/p')"
-if [[ -z "$e2e_not_run" ]]; then
-    fail "stage 3 summary carries no not-run count: $stage3_summary"
+ The gap is derived, not read from a field. The launcher publishes three
+ independently produced counters -- selected, passed, failed -- and a scenario
+ that was selected but reached neither verdict was skipped. Deriving the gap
+ from all three cannot be fooled by a counter that is structurally zero, and it
+ cannot drift away from the launcher's own arithmetic the way a literal match
+ can: a summary that stops carrying a field is a broken contract, and a broken
+ contract fails here rather than reading as a clean zero.
+e2e_counts="$(printf '%s\n' "$stage3_summary" | tr ',' '\n')"
+e2e_selected="$(printf '%s\n' "$e2e_counts" | sed -n 's/^ *\([0-9][0-9]*\) scenario.*/\1/p' | head -1)"
+e2e_passed="$(printf '%s\n' "$e2e_counts" | sed -n 's/^ *\([0-9][0-9]*\) passed.*/\1/p' | head -1)"
+e2e_failed="$(printf '%s\n' "$e2e_counts" | sed -n 's/^ *\([0-9][0-9]*\) failed.*/\1/p' | head -1)"
+if [[ -z "$e2e_selected" || -z "$e2e_passed" || -z "$e2e_failed" ]]; then
+    fail "stage 3 summary carries no scenario counts: $stage3_summary"
+fi
+e2e_not_run=$(( e2e_selected - e2e_passed - e2e_failed ))
+if (( e2e_not_run < 0 )); then
+    fail "stage 3 summary does not reconcile: $stage3_summary"
 fi
 if [[ "$e2e_not_run" -gt 0 ]]; then
-    # NOT_RUN is a declared third state, not a pass: run.sh prints NOT_RUN
-    # before executing anything rather than inventing a credential store it
-    # cannot build without a TTY. The count is reported here so it reaches the
-    # verdict line, not only the stage log.
+     A scenario that was selected and never reached a verdict was skipped, and
+     a skipped scenario is a declared third state rather than a pass. The
+     count is reported here so it reaches the verdict line, not only the
+     stage log.
     echo "    ${e2e_not_run} scenario(s) NOT_RUN — declared unrunnable, NOT a pass"
 fi
 echo "    ok in $(elapsed "$stage_started_at")s"
@@ -580,7 +620,7 @@ else
   log "stage 3/5  SKIPPED by --stage"
 fi
 
-# --- Stage 4: LOC budget -----------------------------------------------------
+ --- Stage 4: LOC budget -----------------------------------------------------
 
 if ! want_stage 4; then
     log "stage 4/5  SKIPPED by --stage"
@@ -593,14 +633,14 @@ else
     echo "    ok in $(elapsed "$stage_started_at")s"
 fi
 
-# --- Stage 5: wall-clock -----------------------------------------------------
+ --- Stage 5: wall-clock -----------------------------------------------------
 
 total=$(elapsed "$started_at")
 log "stage 5/5  wall clock"
 if [[ "$subset" == 1 ]]; then
-    # A subset that spends 3 minutes instead of 240 is not a budget breach, and a
-    # subset that spends 900 is not evidence the gate would. Comparing either
-    # against 900 s would be a number about nothing, so none is printed.
+     A subset that spends 3 minutes instead of 240 is not a budget breach, and a
+     subset that spends 900 is not evidence the gate would. Comparing either
+     against 900 s would be a number about nothing, so none is printed.
     echo "    elapsed ${total}s (SUBSET: not compared against the ${BUDGET_SECONDS}s gate)"
     printf '\nPASS (subset)  sha=%s  elapsed=%ss%s\n' \
         "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$(gaps_suffix)"
@@ -616,25 +656,25 @@ if [[ "$total" -gt "$BUDGET_SECONDS" ]]; then
     fail "stage 5: wall clock ${total}s"
 fi
 
-# A scenario that did not run is not a scenario that passed. AGENTS.md section 4
-# says an absent test or a skipped task is never PASS, and the only artefact
-# anybody reads is the verdict line -- so a `gaps=1 not_run` suffix welded onto
-# `PASS` produced a sentence that contradicted itself, and the contradiction was
-# the part most likely to be quoted. The verdict word now follows the evidence.
-# The exit status stays 0 because every stage that DID run is still real
-# evidence, and a scenario the product cannot launch without a TTY is a gap to
-# name, not a defect to redden the whole gate over.
+ A scenario that did not run is not a scenario that passed. AGENTS.md section 4
+ says an absent test or a skipped task is never PASS, and the only artefact
+ anybody reads is the verdict line -- so a `gaps=1 not_run` suffix welded onto
+ `PASS` produced a sentence that contradicted itself, and the contradiction was
+ the part most likely to be quoted. The verdict word now follows the evidence.
+ The exit status stays 0 because every stage that DID run is still real
+ evidence, and a scenario the product cannot launch without a TTY is a gap to
+ name, not a defect to redden the whole gate over.
 if (( e2e_not_run > 0 )); then
     printf '\nINCOMPLETE  sha=%s  elapsed=%ss  budget=%ss  gaps=%s not_run\n' \
         "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" \
         "$BUDGET_SECONDS" "$e2e_not_run"
     printf 'Every stage above ran and passed, but %s scenario(s) never ran at all.\n' "$e2e_not_run"
-    printf 'This is not the gate: seed the credential store on a TTY, or accept the gap\n'
-    printf 'explicitly. AGENTS.md section 4 does not allow an unrun test to be a PASS.\n'
+    printf 'This is not the gate: a scenario that was selected and skipped is a gap\n'
+    printf 'to name, not a pass. AGENTS.md section 4 does not allow an unrun test to be a PASS.\n'
 else
-    # The only verdict that earns a clean exit is a full PASS. INCOMPLETE, a
-    # subset, and every `fail` keep their logs: those are exactly the runs an
-    # operator has to come back and read.
+     The only verdict that earns a clean exit is a full PASS. INCOMPLETE, a
+     subset, and every `fail` keep their logs: those are exactly the runs an
+     operator has to come back and read.
     VERIFY_ALL_VERDICT=PASS
     printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss\n' \
         "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS"

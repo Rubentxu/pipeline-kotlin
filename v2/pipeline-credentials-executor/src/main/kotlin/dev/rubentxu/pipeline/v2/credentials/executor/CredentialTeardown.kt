@@ -105,7 +105,7 @@ internal fun runTeardown(phases: List<TeardownPhase>): TeardownOutcome {
         } catch (t: Throwable) {
             failures += TeardownFailure(
                 phase = phase.name,
-                orphanPaths = (t as? ProjectionResult.WipeException)?.orphanPaths ?: emptyList(),
+                orphanPaths = (t as? ProjectionResult.WipeException)?.orphanPaths.orEmpty(),
                 throwable = t,
             )
         }

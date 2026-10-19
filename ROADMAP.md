@@ -79,22 +79,36 @@ No se borra en este ciclo: no figura en la lista del mandato y borrar ficheros
 versionados es del usuario. La decisión pendiente es declararlo (y arreglarlo)
 o retirarlo.
 
-### Los 12 módulos con test
+### Los 16 módulos con test
 
 `pipeline-domain`, `pipeline-events-store`, `pipeline-step-sdk/runtime`,
 `pipeline-step-sdk/http`, `pipeline-step-sdk/workflow-control`,
-`pipeline-credentials-api`, `pipeline-credentials-local`,
-`pipeline-credentials-multipart`, `pipeline-binding-factory`,
-`pipeline-runtime-api`, `pipeline-output`, `pipeline-output-store`.
+`pipeline-step-sdk/files`, `pipeline-credentials-api`,
+`pipeline-credentials-local`, `pipeline-credentials-multipart`,
+`pipeline-credentials-executor`, `pipeline-binding-factory`,
+`pipeline-artefacts-local`, `pipeline-runtime-api`, `pipeline-output`,
+`pipeline-output-store`, `pipeline-release`.
 
-La lista sale de los doce módulos que `check-budgets.py` informa con
-`verify_loc > 0`, no de contar directorios `src/test`: los dos módulos añadidos
-este ciclo (`credentials-multipart` y `step-sdk/workflow-control`) nacieron con
-defectos materiales corregidos, y un módulo puede tener `src/test` con cero
-`*Test.kt` —contarlo por directorios daría un número que no es el que se
-declara.
+> **Censo remedido 2026-10-19 desde el disco.** Sobre los 27 módulos que declara
+> el `include(` de `settings.gradle.kts`: **16 con `src/test/kotlin/**/*Test.kt`,
+> 11 sin él**. Las tres cifras que había aquí —«los 12 módulos con test»,
+> «17 módulos sin test», «quedan 15»— estaban caducadas: el censo se tomó antes
+> de que este ciclo añadiera `OutputAdoptionTest`, `ApiRangeContainsTest`,
+> `AntStyleGlobPatternTest` y el test de `files`, y nadie lo volvió a medir. El
+> recuento por módulo sale de enumerar ficheros, no de directorios ni de un
+> `glob` de un nivel, porque los módulos anidados (`pipeline-step-sdk:*`) se
+> leen como ausentes con un solo nivel. La tabla por módulo de más abajo
+> conserva los números de aquella ejecución: **los tests y su recuento los
+> sustituye la medición de `scripts/verify-all.sh`**, que sigue siendo la fila
+> `pendiente` de §1. Hasta esa medición, el recuento por módulo es histórico.
 
-Los diez módulos de la lista, con sus ficheros, clases y tests medidos. El
+Esa lista sale de enumerar `src/test/kotlin/**/*Test.kt` en cada módulo
+declarado, no de `check-budgets.py`. El motivo de no usar el informe de
+`check-budgets.py` sigue en pie: informa de los módulos con `verify_loc > 0`, y
+un módulo puede tener `src/test` con cero `*Test.kt` —contarlo por directorios
+daría un número que no es el que se declara.
+
+Los módulos de aquella ejecución, con sus ficheros, clases y tests medidos. El
 recuento de XML es **recursivo**: `pipeline-step-sdk/runtime` y
 `pipeline-step-sdk/http` son módulos anidados, y un `glob` de un nivel los cuenta
 como ausentes — que es exactamente lo que pasó con la primera medición de este
@@ -336,7 +350,7 @@ el arreglo; los demás siguen verdes).
 
 ### 2.2 Lo que queda abierto, por valor operativo
 
-**a) 17 módulos sin test unitario permanente.** No es un objetivo de paridad.
+**a) 11 módulos sin test unitario permanente.** No es un objetivo de paridad.
 `AGENTS.md` §2 manda por riesgo, no por cuota. El orden de ataque es:
 
 | Prioridad | Módulo | Riesgo que justifica el test | Estado |
@@ -350,7 +364,7 @@ el arreglo; los demás siguen verdes).
 | 7 | `pipeline-credentials-multipart` | El punto donde una credencial llega a disco. Una escritura arbitraria y una retención silenciosa, ambas en materialización. | **Hecho** — 16 tests, 2 clases. Encontró 2 defectos materiales: Zip Slip y la fuga de directorios anidados. |
 | — | `pipeline-events` | Su único candidato (`EventViewProjection`) no tiene consumidor: ver 2.2 b. Sin consumidor, un test es coste sin destinatario. | Bloqueado por decisión de producto |
 
-Quedan **15** módulos sin test. **Esta redacción anterior los llamaba
+Quedan **11** módulos sin test. **Esta redacción anterior los llamaba
 «adaptadores finos o módulos sin clases», y es falsa**: un censo de
 `src/main/kotlin` encontró lógica pura real en varios de ellos
 (`pipeline-artefacts-local`, `pipeline-step-sdk/files`, `pipeline-release`,
@@ -386,6 +400,16 @@ Los tres primeros son **los que ordenan el ataque**, y no por tamaño:
    cuatro líneas hoy consistente. El KDoc además cita
    `FArchL7JenkinsVerbatimSignatureReflectionTest (WCL-S-008, FIL-ALL-001)`, y
    **`git ls-files` no devuelve ningún fichero con ese nombre**.
+
+   > **Parcialmente cerrado 2026-10-19.** `fromUserOwned(Boolean)` se eliminó
+   > (cero llamadores, verificado con `grep` antes de borrar) y lo sustituyó
+   > `from(DestructiveAuthorization)`, que recibe la autorización en vez de un
+   > bit de ella. Los dos adaptadores pasan ahora por esa función, y `grep`
+   > encuentra la regla escrita **exactamente una vez**. El KDoc ya no afirma
+   > una autoridad inexistente: ahora existe. **Lo que queda abierto es la
+   > duplicación** —los dos bloques `when (rootDestruction)` byte-idénticos
+   > hoy— y la cita a un test que no está en el repositorio. Ninguna de las dos
+   > es un defecto con comportamiento observable; son deuda de mantenimiento.
 2. **`pipeline-release` — qué se publica.** `BundledPluginCompatibility` decide
    «este candidato se publica o se rechaza» y tiene un defecto vivo ya registrado:
    un `apiRange` obsoleta en plugins de ejemplo empaquetados es la causa anotada
@@ -394,8 +418,17 @@ Los tres primeros son **los que ordenan el ataque**, y no por tamaño:
    autoriza decir «el Output Plane es crash-consistente», y su propio KDoc
    registra **dos defectos materiales ya corregidos exactamente en esas dos
    funciones**: la inversión de polaridad de un parámetro, y un `return` en el
-   primer match que avalaba I5 e I6 en silencio. Ninguno está fijado por un test.
-   Un tercer fallo del mismo tipo pasa hoy sin nada que lo pare.
+   primer match que avalaba I5 e I6 en silencio.
+
+   > **Caducado, corregido 2026-10-19.** Este punto decía «Ninguno está fijado
+   > por un test». No es cierto: `OutputAdoptionTest` existe y fija **ambos**,
+   > con un test nombrado por cada error —`the parameter is the discharged
+   > set…` y `two independent gaps block the invariants of both`— más nueve más
+   > (13 verdes leídos del XML, 0 fallos). El segundoixa O1 descargado a
+   > propósito, porque con O1 pendiente la primera rama haría `addAll` de las
+   > seis y enmascararía si las otras se ejecutan: sin esa precaución el test no
+   > distingue la unión del cortocircuito. El punto se conserva solo como
+   > registro de que la afirmación se comprobó, no como trabajo pendiente.
 
 
 El denominador, derivado de `settings.gradle.kts` con los comentarios eliminados

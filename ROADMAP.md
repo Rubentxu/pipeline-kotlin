@@ -472,6 +472,34 @@ el arreglo; los demás siguen verdes).
   (`https://user:clave@`) no alcanza la rama `ifEmpty`, devuelve `user` y no lanza
   nunca. El dato correcto es `https://:clave@`. 4 tests, 0 fallos, 0 skips.
 
+- **Un KDoc defendía el diseño que el propio código había rechazado como bug.**
+  `ObsPc2IngestAgent` abre sus FIFOs con `openRendezvous`, que abre **O_RDONLY**.
+  Su KDoc de clase tenía una sección entera —*«Why it opens the FIFO O_RDWR»*—
+  que argumentaba a favor de **O_RDWR**, y el comentario de la línea de llamada
+  repetía el mismo motivo **dos líneas antes** de invocar la función que lo
+  desmiente. Quien leyera el rationale concluiría que el código está mal, y la
+  contradicción era legible en una sola pantalla. Tres afirmaciones, las tres
+  comprobadas antes de reescribir:
+
+  1. Decía que un `open` read-only «tiene éxito inmediato y reporta EOF hasta
+     que aparezca un escritor». Es lo contrario de lo que hace POSIX: el
+     `O_RDONLY` **bloquea**, y de ese bloqueo depende el diseño entero — es el
+     rendezvous.
+  2. Presentaba el defecto real de O_RDWR («el agente no puede ver EOF porque es
+     el mismo escritor») como un coste aceptable a mitigate con un sello
+     explícito. No era un coste: era **el fallo**. Tener una referencia de
+     escritura impedía que la tubería llegara a cero-escritores al salir el hijo,
+     y el redactor se quedaba bloqueado para siempre esperando un EOF que no
+     podía llegar.
+  3. Citaba `ADR-0085` como autoridad. Ese documento no existe en el árbol, y
+     además la premisa cambió: con O_RDONLY la señal de fin **es** la tubería.
+
+  Sin cambios de comportamiento: solo KDoc y comentarios, compilación observada
+  (`exit 0`). Se conserva el argumento del diseño rechazado en lugar de borrarlo,
+  porque es lo que impide que alguien lo vuelva a proponer; y se corrige también
+  el comentario de la línea de llamada, que es donde el ojo encuentra primero la
+  contradicción.
+
 ### 2.2 Lo que queda abierto, por valor operativo
 
 **a) 11 módulos sin test unitario permanente.** No es un objetivo de paridad.
@@ -822,6 +850,12 @@ La otra mitad de la pregunta —si un mensaje de error debe citarle un ADR al
 operador— es de diseño de producto y no se resuelve aquí. El mensaje debería
 decir la **regla** («un perfil de sandbox multi-tenant no puede ser `os`»), no el
 documento donde la regla está escrita.
+
+**Un sitio de los 120 ya está resuelto**: al corregir el KDoc de `ObsPc2IngestAgent`
+(ver 2.1) desapareció su cita a `ADR-0085`, que además era una cita *de autoridad*
+—«esto lo exige *ADR-0085`*— sobre un comportamiento que el propio código había
+cambiado. Quedan 119; es el primero que se resuelve, y por el mismo motivo que en
+(f): no por ser el más numeroso, sino por ser el que sostiene una decisión.
 
 **k) La identidad declarada de un plugin se mide y luego se tira — CERRADO POR ABI.**
 Un agente affirmationó «los bytes nunca se miden en producción». **Es falso, y lo

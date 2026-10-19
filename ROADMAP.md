@@ -1233,6 +1233,82 @@ Dos tareas de deuda que **no** son cobertura y salen del mismo vistazo:
   Es el patrón de «un comentario afirma una propiedad que el cableado ya no
   tiene»: aquí el lector conclusiona que hay un guardián y no lo hay.
 
+#### Ejecutado en `29d6aa31e`
+
+Las tres decisiones se aplicaron tal cual, y el bloque **no se cerró** en las
+promesas: se cerró en las afirmaciones.
+
+- `EventRegistryTest` (8 filas) y `EventCursorTest` (10 filas). **18 tests,
+  0 fallos, 0 errores, 0 skips**, leído del XML JUnit, con `:pipeline-events:detektTest`
+  como gate **separado** ejecutado en la misma pasada (los dos tasks no se
+  invocan entre sí). Cada garantía principal se verificó por mutación: aplicar,
+  **leer el diff de vuelta**, registrar qué filas se pusieron rojas, restaurar
+  byte a byte.
+- Una de las dos_rows de `EventCursorTest` turned out **no** ser un guardián
+  independiente: la fila de la barra oblicua falla por los dos puntos, porque su
+  `runId` también lleva `:`. El comentario que lo afirmaba era falso y se
+  reescribió con el resultado medido, no con el predicho.
+- `EventViewProjection` sigue **DEFER**. No se escribió un test sobre código sin
+  productores; la pregunta sigue siendo si se borra, y es decisión de ciclo de vida.
+- Las dos tareas de deuda se resolvieron: el `inputs.dir` huérfano se eliminó
+  (y `useJUnitPlatform()` quedó anotado como *load-bearing*: sin él Gradle corre
+  el runner de JUnit 4, descubre cero tests y reporta `BUILD SUCCESSFUL` sobre nada),
+  y las cuatro promesas de KDoc se reescribieron diciendo lo que es cierto.
+
+Una quinta, `EventFollower`, se trata en sentido contrario: su comentario
+afirmaba que el defecto F2 (`Completed` en una página silenciosa, que confunde
+snapshot con live follow) estaba clavado por dos falsificadores, y **los dos se
+borraron** en `2aa071aab`. Ningún escenario E2E observa el flujo de eventos, así que
+la máquina de estados puede volver al defecto exacto que su propio KDoc describe y
+toda la suite ejecutable sigue verde. El comentario ahora dice eso, en vez de
+nombrar dos guardianes ausentes.
+
+### 2.5 Las promesas colgantes que quedan — medido, no estimado
+
+El patrón anterior no era de `pipeline-events`. Se extendía.
+
+**Instrumento** (reproducible, sobre el árbol commiteado):
+
+```
+tracked=$(git ls-files '*src/test/*' | sed 's|.*/||; s|\.kt$||' | sort -u)
+grep -rhoE '\b[A-Z][A-Za-z0-9]*(Test|Tests|FitnessTest|FalsifierTest|LawsTest)\b' \
+     --include='*.kt' v2/*/src/main | sort -u   # menos los que $tracked contiene
+```
+
+**Cifras, con su denominador:**
+
+| magnitud | valor |
+|---|---|
+| referencias a clases de test citadas en `src/main` **sin** fichero que las declare | **73** |
+| ficheros de producción que contienen al menos una | **70** |
+| módulos afectados | **11** |
+| de esas 73, las que además **afirman** un instrumento (`pins`/`guarded`/`falsifier`/`asserts`) | **13** |
+
+Dos advertencias sobre el propio instrumento, porque sin ellas la cifra engaña:
+
+1. Con el sufijo `*Spec` el mismo barrido da **102**, no 73. La diferencia no son
+   tests faltantes: `ToolSpec`, `TaskSpec`, `TimeoutSpec` son ADTs de dominio. Un
+   censo que no conoce el vocabulario del repositorio cuenta su propia
+   exclamación como deuda.
+2. El censo cuenta **menciones**, no promesas. Las 2 referencias de
+   `pipeline-events` que sobreviven al filtro fuerte son menciones en pasado que
+   escribí yo al reescribir (`used to pin`). Quedan **11 abiertas de verdad**.
+
+**Lo que la clasificación cambia.** Casi todas las 73 prometían un instrumento que
+la política ya no permite: eran *source-text fitness*, tests que grepeaban el
+árbol de fuentes, y AGENTS.md §2 los prohíbe dentro de tests unitarios. No se
+pueden «reescribir» como test; solo honestarse o cerrarse. De las 13 fuertes, dos
+prometían un **negativo** —«ningún sitio de producción construye `OptionSpec`»,
+«nadie vuelve a llamar a `outcomeOf`»— que ningún test unitario puede sostener sin
+convertirse en un escaneo de fuentes. Esas dos se reescribieron esta misma pasada
+(`CompiledPipeline.kt`, `PostPlan.kt`): la verdad es que la única línea que las
+sostiene es la propia `@Deprecated` y la propia totality fail-closed.
+
+**Decisión: NO se reparan las 73.** Repararlas todas es la auditoría interminable
+que este encargo prohíbe explícitamente. Se registran aquí con su cifra y su
+instrumento. La regla que sí se adopta, para el trabajo que venga: **una promesa en
+KDoc se reescribe cuando se toca el fichero, no en una campaña.**
+
 ---
 
 ## 3. Decisiones tomadas en este ciclo, con su porque

@@ -74,10 +74,17 @@ enum class PostCondition {
          *
          * The planner now receives the ADT directly and this call is gone from the
          * runtime. It survives only because `pipeline-domain` is published ABI and its
-         * removal is a compatibility decision (P3-E E6), not a mechanical one. A fitness
-         * in `P3EProjectionBoundaryExhaustivityFitnessTest` pins that no production
-         * source calls it again, because a helper with no callers is exactly the kind
-         * of thing that gets "helpfully" reused.
+         * removal is a compatibility decision (P3-E E6), not a mechanical one.
+         *
+         * NOTHING PREVENTS IT BEING REUSED. This comment used to say a fitness in
+         * `P3EProjectionBoundaryExhaustivityFitnessTest` pinned that no production
+         * source calls it again, "because a helper with no callers is exactly the kind
+         * of thing that gets helpfully reused". That file is gone, and the guard it
+         * described was a SOURCE-TEXT FITNESS -- a scan of the tree -- which
+         * AGENTS.md §2 bans inside unit tests. The honest position is the one the
+         * paragraph below already takes for the helper itself: it is kept total and
+         * fail-closed PRECISELY because nothing keeps it unreachable. If it is reused,
+         * its first job is to refuse what the typed ADT refuses, not to succeed.
          *
          * It is kept total and fail-closed rather than deleted for as long as it exists:
          * an unknown string returns `null` instead of being read as success, which would

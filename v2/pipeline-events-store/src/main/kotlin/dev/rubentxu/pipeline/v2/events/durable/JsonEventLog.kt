@@ -151,8 +151,10 @@ object JsonEventLog {
      * store, at [decodeStoredRow] / `SqliteEventStore.readRecord`. That is where an `Undecodable`
      * gets a real sequence instead of a guess.
      *
-     * `DurableReadTruthFitnessTest` enforces the split mechanically: a `firstOrNull`/`mapNotNull`
-     * over this method in the read side fails the build.
+     * The split is held by the RETURN TYPE, not by a test: `List<DomainEvent>` has nowhere to put a
+     * position, so this method cannot answer "row 41 exists and is unreadable" even if it tried to.
+     * A caller that needs that answer has to go through [decodeStoredRow], whose `StoredRowDecode`
+     * can carry one.
      */
     fun decode(payload: String): List<DomainEvent> {
         val document = arrayBoundsOf(payload) ?: return emptyList()

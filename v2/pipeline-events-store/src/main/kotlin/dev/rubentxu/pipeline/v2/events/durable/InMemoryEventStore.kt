@@ -249,12 +249,16 @@ class InMemoryEventStore : EventSink {
      * record is therefore [EventRecordRead.Decoded]. That is why this override does not need a
      * refusal branch — not because it forgot one.
      *
-     * It is also why [EventSliceParityLawsTest] can hold the two stores to the same answer for a
-     * well-formed run: the in-memory one has no refusal path to disagree about. The divergence only
-     * becomes observable on a malformed row, and that is a property of SQLite's storage, which is
-     * exactly what `DurableReadTruthTest` covers.
+     * It is also why this store cannot disagree with the SQLite one about a well-formed run: there
+     * is no refusal path here that could answer differently. The divergence only becomes observable
+     * on a malformed row, which is a property of SQLite's storage and not of this type.
      *
-     * `EventSliceParityLawsTest` is what holds this to the inherited meaning.
+     * ## What holds this to the inherited meaning, and what does not (no test does)
+     *
+     * The cross-store equivalence is a per-subclass obligation with no central witness; see
+     * [dev.rubentxu.pipeline.v2.events.EventStore.readRecords]. What holds the meaning HERE is
+     * structural rather than witnessed: there is no undecodable case to disagree about, and the
+     * page/cursor law lives in the inherited default rather than in a second copy of it.
      */
     override fun readRecords(
         runId: String,

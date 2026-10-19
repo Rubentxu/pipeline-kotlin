@@ -992,14 +992,33 @@ y **295 en código**. Reparto por módulo: `pipeline-application` 136,
 módulos más con 1–3 cada uno. Los tres primeros son el **90 %** del total.
 
 **La cifra que este bloque declaraba antes —«~297 líneas en 120 ficheros» medido
-en `28667109`— no se reproduce hoy con ningún instrumento que yo haya podido
-construir.** Los números que sí salen: 292 (sin ROADMAP ni `src/test`), 286
-(solo `src/main`), 295 (solo código), 309 (todo lo trackeado), y 312/128 sobre
-el árbol exacto de `28667109`. Ninguno es 297. Se deja constancia en lugar de
-sustituir un número por otro igual de arbitrario: lo que **sí** es estable y
-verificable es el denominador — `git ls-files` devuelve **cero** `ADR-*.md`— y
-que 6 de esas citas (las de `ADR-0051`) se han eliminado en este ciclo como parte
-del barrido de 2.2 e.
+en `28667109`— se queda sin cifra.** Los cinco números que convivían aquí (292,
+286, 295, 309 y 312/128) eran cinco instrumentos distintos persiguiendo la misma
+pregunta, y publicar cinco es no publicar ninguno: un lector no puede saber
+cuál citar. En su lugar, **un instrumento y un resultado**:
+
+```
+git ls-files -z '*.kt' '*.kts' '*.java' '*.md' | grep -zv '^ROADMAP.md$' \
+  | xargs -0 grep -ohIE 'ADR-[0-9]{4}'
+```
+
+Patrón **anclado** (`ADR-` seguido de exactamente cuatro dígitos), y el census
+contándose a sí mismo excluido a mano: **305 sitios, 120 ficheros, 26 tokens
+distintos** en código. Sobre todo lo trackeado, con este mismo ROADMAP dentro,
+son **332 sitios en 121 ficheros**; la diferencia son las 27 coincidencias de
+este fichero.
+
+Dos instrumentos independientes dan los mismos 305: el `xargs` de arriba y una
+suma fichero a fichero sobre `git ls-files`. Una investigation delegada propuso
+297/119 con el mismo patrón y un filtro de exclusión casi idéntico; su cifra no
+se reproduce, y la diferencia —8 líneas— es del filtro, no del árbol. Por eso
+la cifra que se publica es la que dos instrumentos propios confirman, no la que
+llegó hecha.
+
+Lo que **sí** es estable desde el principio es el denominador: `git ls-files`
+devuelve **cero** ficheros `ADR-`. Los 26 tokens no existen en ninguna rama.
+Y 6 de esas citas —las de `ADR-0051`, que sólo aparecían aquí— se eliminaron en
+este ciclo como parte del barrido de 2.2 e.
 
 
 | Token | Líneas | Ficheros |
@@ -1020,8 +1039,11 @@ ROADMAP.md**. Las cifras anteriores mezclaban instrumentos: por eso las de
 
 El denominador que lo confirma: **`git ls-files` no devuelve ni un solo
 `ADR-*.md` ni `INV-*.md`** — cero. Los documentos no están en otra rama; no están.
-Los tokens más citados son `ADR-0075` (64), `ADR-0103` (37), `ADR-0046` (30),
-`ADR-0081` (22), `ADR-0016` (17).
+Los tokens más citados, con el instrumento de arriba y sin este ROADMAP, son
+`ADR-0075` (59), `ADR-0103` (37), `ADR-0046` (30), `ADR-0081` (23) y `ADR-0100`
+(17). Las cifras que estaban aquí antes —64, 22 y 17 para `ADR-0016`— no
+salen: `ADR-0016` tiene **11** sitios, y el 17 pertenece a `ADR-0100`. Tres
+números de un top-5 equivocado no son un detalle de redondeo.
 
 **No se borran en bloque, y al medir por qué aparecieron TRES clases, no una.**
 La primera redacción de este bloque las trataba a todas igual —«llevan la razón

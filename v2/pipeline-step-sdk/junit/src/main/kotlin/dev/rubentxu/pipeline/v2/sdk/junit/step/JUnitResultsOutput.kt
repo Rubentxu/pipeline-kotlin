@@ -16,8 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
  * Without this carrier, every handler-thrown `PluginStepException` would
  * be funnelled through the boundary's generic `catch (e: Exception)`
  * and re-classified as `FailureKind.ENGINE`, losing the original USER
- * declaration (see `docs/v2/07-uat/F5_2_JUNIT_CLOSURE_RECEIPT.md` and
- * the WU-LPR-FK characterisation).
+ * declaration (see the WU-LPR-FK characterisation).
  *
  * `JUnitResultsOutput` is ALWAYS emitted — on success and on typed
  * failure alike — so that downstream consumers and the durable journal

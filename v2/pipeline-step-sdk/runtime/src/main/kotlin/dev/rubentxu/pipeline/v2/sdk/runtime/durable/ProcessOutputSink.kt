@@ -268,9 +268,7 @@ data class ProcessOutputSinks(
  * unaffected: a step printing 100 B/s commits 100-byte chunks whatever this says. The window only
  * governs a producer that fills the pipe, and there it is pure cost.
  *
- * Measured over 8 MiB through the real `RedactingOutputIngress` and a real `SegmentOutputStore`
- * (`ObsFChunkCostMeasurementTest`; receipt
- * `docs/v2/07-uat/OBSF_PUBLISHED_READ_SIDE_AND_CHUNK_COST_RECEIPT.md`):
+ * Measured over 8 MiB through the real `RedactingOutputIngress` and a real `SegmentOutputStore`:
  *
  * ```text
  * window   transactions   frames=fsyncs   per MiB    MiB/s

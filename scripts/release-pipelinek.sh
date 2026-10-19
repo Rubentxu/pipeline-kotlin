@@ -19,8 +19,12 @@
 #     ./scripts/release-pipelinek.sh
 #
 # On success: the script exits 0, the ZIP and the full §8 asset set are
-# uploaded, the Prerelease is created on GitHub, and the receipt is committed
-# under docs/v2/07-uat/evidence/<tag>/.
+# uploaded and the Prerelease is created on GitHub. The receipt, HANDOFF and
+# SHA256SUMS are PUBLISHED as release assets and the HANDOFF becomes the release
+# notes; they are not committed to the repository. An earlier version did
+# `git add` them under docs/v2/07-uat/evidence/<tag>/, which reintroduced a
+# Markdown tree this repository's policy forbids and duplicated information the
+# release page already carries.
 #
 # On any refusal: non-zero exit, no upload, no Prerelease, no commit.
 #
@@ -39,11 +43,19 @@
 #   pipelinek-bom-<train>.json     the SDK BOM JSON (if present)
 #   SHA256SUMS                     the digest authority, covering all of the above
 #
-# HANDOFF.md and git-head.txt stay in the EVIDENCE_DIR as small text
-# artefacts committed to git, but they are NOT release assets per AGENTS.md
-# §3 (HANDOFF.md is a report; git-head.txt is a receipt). They are not
-# uploaded to the GitHub release asset store. The handoff remains available
-# to consumers as the body of the GitHub release via --notes-file.
+# Plus two provenance artefacts, added 2026-10-19 and described in §5c:
+#
+#   manifest.json    schema `pipelinek-release-manifest-1`: the ZIP digest,
+#                    `tag_commit`, `version`, `release_tag`. This is the
+#                    consumer-facing receipt, and it is small JSON.
+#   git-head.txt     the same commit identity as a bare 40-hex line, for
+#                    consumers that would rather grep than parse.
+#
+# Both are text. Neither is a payload, and nothing heavy is uploaded beyond
+# the five §8 artefacts themselves.
+#
+# HANDOFF.md is a report and stays in the EVIDENCE_DIR only; it reaches
+# consumers as the body of the GitHub release via --notes-file.
 
 set -euo pipefail
 
@@ -56,6 +68,19 @@ cd "$REPO_ROOT"
 
 : "${PIPELINEK_RELEASE_TAG:?PIPELINEK_RELEASE_TAG is required (e.g. v0.56.0-rc5)}"
 : "${PIPELINEK_RELEASE_TRAIN:?PIPELINEK_RELEASE_TRAIN is required (e.g. 0.56.0)}"
+
+# The tag names a directory (the staging path below) and is interpolated into
+# several `rm -rf` targets on the failure paths, all of which run BEFORE the
+# `git tag -a` that would reject a malformed name. So the name is validated
+# here, with git's own ref rule rather than a hand-written approximation: an
+# unvalidated `../..` would otherwise let those deletes leave the state tree.
+if ! git check-ref-format "refs/tags/${PIPELINEK_RELEASE_TAG}" >/dev/null 2>&1; then
+    echo "release-pipelinek: refusing a tag name git would not accept." >&2
+    echo "    PIPELINEK_RELEASE_TAG=${PIPELINEK_RELEASE_TAG}" >&2
+    echo "    A tag becomes a staging directory name here, so a name carrying" >&2
+    echo "    path segments is rejected before any path is built from it." >&2
+    exit 2
+fi
 
 EXPECTED_ZIP_NAME="pipelinek-${PIPELINEK_RELEASE_TRAIN}.zip"
 DIST_ZIP="v2/pipeline-application/build/distributions/${EXPECTED_ZIP_NAME}"
@@ -134,7 +159,7 @@ echo "release-pipelinek: gate PASSED. candidate_id = sha256:$LOCAL_SHA"
 
 if [ ! -f "$SBOM" ]; then
     echo "release-pipelinek: expected SBOM at $SBOM but it does not exist." >&2
-    echo "    DISTRIBUTION_RELEASE_SPEC.md §4 requires the SBOM to be published alongside the ZIP." >&2
+    echo "    The release asset set requires the SBOM to be published alongside the ZIP." >&2
     exit 1
 fi
 
@@ -142,8 +167,32 @@ echo "release-pipelinek: staging the §4 asset set for ${PIPELINEK_RELEASE_TAG} 
 
 # Evidence directory: small text artefacts only. The ZIP itself lives as
 # the GitHub release asset, not in git.
-EVIDENCE_DIR="docs/v2/07-uat/evidence/${PIPELINEK_RELEASE_TAG}"
+STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/pipelinek"
+EVIDENCE_DIR="${STATE_ROOT}/release-evidence/${PIPELINEK_RELEASE_TAG}"
 mkdir -p "$EVIDENCE_DIR"
+
+# This script issues `rm -rf "$EVIDENCE_DIR"` on several failure paths, so the
+# staging directory is required to be inside an ABSOLUTE STATE_ROOT before any of
+# it runs. A relative STATE_ROOT would otherwise both make that delete
+# unbounded and stage the upload inside whatever directory the release runs
+# from, which is the repository in the common case.
+case "$STATE_ROOT" in
+    /*) ;;
+    *)
+        echo "release-pipelinek: refusing a relative state root" >&2
+        echo "    STATE_ROOT=${STATE_ROOT}" >&2
+        exit 1
+        ;;
+esac
+case "$EVIDENCE_DIR" in
+    "${STATE_ROOT}/"*) ;;
+    *)
+        echo "release-pipelinek: refusing to stage outside the state root" >&2
+        echo "    STATE_ROOT=${STATE_ROOT}" >&2
+        echo "    EVIDENCE_DIR=${EVIDENCE_DIR}" >&2
+        exit 1
+        ;;
+esac
 cp "$RECEIPT" "${EVIDENCE_DIR}/distribution-manifest.json"
 
 # Sanity check the manifest's recorded digest matches the local ZIP. The
@@ -344,6 +393,59 @@ stage_manifest_asset "sdk.name"     "${DIST_DIR}/$(read_manifest_field 'sdk.name
 stage_manifest_asset "bom.name"     "${DIST_DIR}/$(read_manifest_field 'bom.name' 'none')"
 stage_manifest_asset "sha256sums.name" "${DIST_DIR}/$(read_manifest_field 'sha256sums.name' 'none')"
 
+# ----------------------------------------------------------------------------
+# 5c. The provenance manifest.
+#
+#     §3 keeps the upstream DistributionManifest in the evidence dir only: it
+#     describes how THIS producer built, and its schema is internal. A consumer
+#     outside this repository cannot read it, because it is never uploaded.
+#     That is a real gap, not a policy preference: without an uploaded receipt
+#     naming the commit, a published ZIP carries no claim at all about which
+#     tree produced it, and every downstream consumer has to take the bytes on
+#     trust.
+#
+#     This emits the small, stable, consumer-facing contract —
+#     `pipelinek-release-manifest-1` — as a sibling of the ZIP. Four fields, no
+#     more: the digest of the ZIP, the commit it was built from, the version,
+#     and the tag. It is deliberately NOT the internal manifest, because the
+#     internal schema changes when the pipeline changes and a consumer pinned
+#     to it would break on every producer-side refactor.
+#
+#     `tag_commit` is PROSPECTIVE_TAG_COMMIT, which is a prediction at this
+#     point. Section 6 creates the tag and then refuses if the resolved commit
+#     is not the predicted one, so the value published here is a verified
+#     claim by the time any byte leaves the machine — it is never an unchecked
+#     prediction.
+#
+#     Staged BEFORE SHA256SUMS is built, so the digest authority covers the
+#     manifest as well as the payload it describes.
+# ----------------------------------------------------------------------------
+RELEASE_MANIFEST="${EVIDENCE_DIR}/manifest.json"
+python3 - "$RELEASE_MANIFEST" "$ASSET_FNAME" "$LOCAL_SHA" \
+                  "$PROSPECTIVE_TAG_COMMIT" "$PIPELINEK_RELEASE_TRAIN" \
+                  "$PIPELINEK_RELEASE_TAG" <<'PY'
+import json, sys
+out, asset, digest, commit, version, tag = sys.argv[1:7]
+with open(out, "w", encoding="utf-8") as fh:
+    json.dump({
+        "schema_version": "pipelinek-release-manifest-1",
+        "contents": {asset: {"sha256": digest}},
+        "tag_commit": commit,
+        "version": version,
+        "release_tag": tag,
+    }, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+PY
+STAGED_PATHS+=("$RELEASE_MANIFEST")
+echo "release-pipelinek: staged manifest.json (pipelinek-release-manifest-1) for ${PIPELINEK_RELEASE_TAG}"
+
+# git-head.txt is the same commit identity in its most minimal form, kept
+# uploaded for consumers that only want to grep a 40-hex string and do not
+# parse JSON. It is small text, not a payload: uploading it costs nothing and
+# makes the receipt readable without a JSON parser.
+STAGED_PATHS+=("${EVIDENCE_DIR}/git-head.txt")
+echo "release-pipelinek: staged git-head.txt"
+
 # Build SHA256SUMS over the staged set. The digests describe the STAGED bytes,
 # which are the bytes about to be uploaded.
 if [ ${#STAGED_PATHS[@]} -eq 0 ]; then
@@ -383,14 +485,26 @@ if [ "$TAG_COMMIT" != "$PROSPECTIVE_TAG_COMMIT" ]; then
 fi
 
 # ----------------------------------------------------------------------------
-# 7. Publish. The Prerelease URL is the receipt's permanent address.
+# 7. Publish. The release URL is the receipt's permanent address.
 #    PK-NEXT R0.1: the ZIP is uploaded to the GitHub release asset store
 #    (NOT copied into the git tree). The git tree carries only the small
 #    text artefacts (manifest, handoff, git-head).
+#
+#    Prerelease-ness is derived from the TRAIN, not passed in. A train whose
+#    version carries a pre-release suffix (`0.62.0-rc1`) publishes as a
+#    prerelease; a plain version (`0.62.0`) publishes as a full release. It
+#    used to be `--prerelease` unconditionally, which meant a GA tag was
+#    created but flagged prerelease on GitHub — a published "stable" that
+#    every consumer's tooling correctly refuses to treat as stable. The flag
+#    was the only thing marking intent, and it did not follow the tag.
 # ----------------------------------------------------------------------------
+PRELEASE_FLAG=""
+case "${PIPELINEK_RELEASE_TRAIN}" in
+    *-alpha*|*-beta*|*-rc*|*-dev*|*-M[0-9]*|*SNAPSHOT*) PRELEASE_FLAG="--prerelease" ;;
+esac
 
 gh release create "${PIPELINEK_RELEASE_TAG}" \
-    --prerelease \
+    ${PRELEASE_FLAG} \
     --title "PipelineK ${PIPELINEK_RELEASE_TAG} (release-gate PASS sha256:${LOCAL_SHA})" \
     --notes-file "${EVIDENCE_DIR}/HANDOFF.md" \
     "${STAGED_PATHS[@]}"
@@ -412,24 +526,12 @@ for staged in "${STAGED_PATHS[@]}"; do
 done
 echo "release-pipelinek: published asset set verified complete (${#STAGED_PATHS[@]} assets, manifest-driven)."
 
-# Commit the SMALL TEXT evidence only. This commit is a *post-publish*
-# documentation commit; it does not move the tag, because the tag was
-# already pushed before this commit. That is exactly the DESCENDANT relationship
-# recorded in HANDOFF.md — reverting this commit does not unpublish the release.
-#
-# The ZIP and the SBOM are explicitly NOT added. PK-NEXT R0.1 puts them in the
-# GitHub release asset store; a `git add "$EVIDENCE_DIR"` would sweep a ~90 MB
-# blob and a ~1.3 MB blob into the repository, because they are staged in the
-# same directory purely as upload sources.
-git add "${EVIDENCE_DIR}/distribution-manifest.json" \
-        "${EVIDENCE_DIR}/HANDOFF.md" \
-        "${EVIDENCE_DIR}/git-head.txt" \
-        "${EVIDENCE_DIR}/SHA256SUMS"
-if ! git diff --cached --quiet; then
-    git commit -m "docs(uat): ${PIPELINEK_RELEASE_TAG} release-receipt"
-    git push origin HEAD
-else
-    echo "release-pipelinek: no evidence changes to commit (manifest already present)"
-fi
+# Nothing is committed here. The four text artefacts were already delivered:
+# they are release assets, and HANDOFF.md is the release notes body (see the
+# --notes-file above). Committing a second copy would put run-generated output
+# into the repository, which the testing policy forbids, and would duplicate the
+# release page. The tag was pushed before this point and is not moved below.
+echo "release-pipelinek: evidence published as release assets, not committed"
+echo "release-pipelinek: evidence also retained at ${EVIDENCE_DIR}"
 
 echo "release-pipelinek: PUBLISHED ${PIPELINEK_RELEASE_TAG} with candidate_id sha256:${LOCAL_SHA}"

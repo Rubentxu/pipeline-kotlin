@@ -2,10 +2,6 @@
 # resolve-release-digest.sh — read an asset's expected SHA-256 from a
 # SHA256SUMS manifest on stdin.
 #
-# Authority:
-#   - docs/pipelinek-release-evolution/pipeline-kotlin/03-roadmap.md TRAIN P1.1
-#   - docs/v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md
-#
 # Usage:
 #   curl -fsSL "$RELEASE_BASE/v$VERSION/SHA256SUMS" | resolve-release-digest.sh pipelinek-$VERSION.zip
 #

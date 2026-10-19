@@ -16,8 +16,6 @@ import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
  * returning `ShellInvocationResult.UnitValue`. The real sh execution path
  * is wired in G3 REGISTRY_PRIMARY by injecting the `SHELL_OPERATIONS`
  * capability adapter.
- *
- * @see docs/v2/00-context/LB02_CORE_SH_CONTRACT_DRAFT.md
  */
 data class CoreShellInput(
     val command: ShellCommand,

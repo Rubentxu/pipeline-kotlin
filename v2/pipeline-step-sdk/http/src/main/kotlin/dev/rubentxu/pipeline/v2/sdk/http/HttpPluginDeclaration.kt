@@ -51,9 +51,15 @@ object HttpPluginDeclaration {
      * The apiRange is now a CONSUMER of the policy-derived resource. The literal
      * moved to `buildSrc/PluginCompatibilityPolicy`, which reads `rootProject.version`
      * and emits the range. Editing this class to widen the range manually would
-     * re-introduce the drift; the test that pins this property is
-     * `BuiltPluginManifestArtifactTest` plus the
-     * `PluginCompatibilityResourceTest` round-trip.
+     * re-introduce the drift.
+     *
+     * Nothing pins that property automatically any more. `BuiltPluginManifestArtifactTest`
+     * and `PluginCompatibilityResourceTest` both existed and both were removed by the
+     * 2026-10-18 testing RESET, because they were QA scaffolding rather than product
+     * behaviour. The guarantee now rests on the single derivation above plus the
+     * round trip a real `pipelinek run` performs against the shipped plugin JAR, so
+     * treat a version bump that moves `rootProject.version` as needing that manual
+     * read rather than assuming a gate caught it.
      */
     val API_RANGE: PipelineKApiRange
         get() = PluginCompatibilityResource.load(HttpPluginDeclaration::class.java.classLoader)

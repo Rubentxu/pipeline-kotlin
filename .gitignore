@@ -1,5 +1,10 @@
-# Agent local state (per AGENTS.md § Persistent Testing State)
+# Agent local state (AGENTS.md § 3, ephemeral cycles)
 .agent/
+
+# Archives are never repository content. Release artifacts and plan packages
+# travel outside Git; the historical evidence the RESET needs lives in the
+# annotated tag pre-testing-reset-20261018, which is in the object store.
+*.zip
 
 .gradle
 build/
@@ -74,7 +79,7 @@ CLAUDE.md
 artifacts/*
 !artifacts/.gitkeep
 
-### Ephemeral cycle worktrees (BQ4) — see docs/v2/03-specifications/EPHEMERAL_CYCLE_LIFECYCLE_SPEC.md ###
+### Ephemeral cycle worktrees (AGENTS.md § 3) ###
 workspace/
 .pipelinek-cycles/
 
@@ -96,3 +101,15 @@ __pycache__/
 # Standing constraint: .agent/HANDOFF-S1-TRAIN-20260929.md ("do not
 # commit/delete"). Ignored rather than deleted so the file stays on disk.
 BACKLOG.md
+
+# Runtime-only E2E/UAT/AAT cycles: no scripts, fixtures or evidence checked in
+/.verification-cycles/
+/.verification-results/
+
+# No build or evidence output under examples
+/v2/examples/**/.pipelinek/
+/v2/examples/**/build/
+/v2/examples/**/*.db
+/v2/examples/**/*.sqlite*
+/v2/examples/**/*.log
+/v2/examples/**/*.jsonl

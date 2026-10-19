@@ -13,8 +13,7 @@ package dev.rubentxu.pipeline.v2.domain
  * observed behaviour matches the documented semantics.
  *
  * The contract is **mandatory for every site that needs the OS environment
- * or JVM system properties**. Per
- * `docs/v2/03-specifications/CANONICAL_CONTRACTS_SPEC.md` §Platform services:
+ * or JVM system properties**:
  *
  * > "Runtime recibe `Clock`, `IdGenerator`, `RuntimeConfig`. `Instant.now`,
  * >  `UUID.randomUUID`, `System.getenv` y `System.getProperty` quedan en

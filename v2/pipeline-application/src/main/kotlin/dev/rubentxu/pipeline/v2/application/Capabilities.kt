@@ -352,7 +352,9 @@ interface StashOperations {
  */
 data class StashInput(
     val name: String,
+    /** Comma-separated list of Ant patterns, same shape as [excludes]. */
     val includes: String,
+    /** Comma-separated list of Ant patterns. Empty means "exclude nothing". */
     val excludes: String = "",
 ) {
     init {

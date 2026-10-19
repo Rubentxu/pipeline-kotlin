@@ -35,9 +35,20 @@ include(
     ":pipeline-application",
     // DIST-PRODUCT P0: product identity, distribution manifest, candidate
     // handoff and the cheap identity gate. Pure contract plus the ZIP probe;
-    // the build wires the gate at candidate materialization. Kept separate from
-    // :pipeline-architecture-tests so the build can run these checks without
-    // depending on the fitness harness.
+    // the build wires the gate at candidate materialization.
+    //
+    // Three QA modules were REMOVED from this list (2026-10-18, testing RESET):
+    // `:test-harness` (35 sources, executable contract catalogue; sole consumer was
+    // `testImplementation` in pipeline-application), `:pipeline-testkit` (4 sources,
+    // ZERO consumers -- `PipelineFixture` was an empty class and `pipelineDefinitionShould`
+    // was `@Suppress("unused")`), and `:pipeline-architecture-tests` (a fitness harness whose
+    // last remaining consumer was `dependsOn(":pipeline-architecture-tests:test")` in
+    // :pipeline-release, also removed). None was reachable from `src/main`.
+    //
+    // NOT removed, despite the name: `:pipeline-event-harness` and `:pipeline-step-sdk:junit`
+    // stay `include`d because both are PRODUCT -- the first is the `pipeline events verify`
+    // CLI verb, the second is the `junit.results` OFFICIAL_PLUGIN, and both are wired with
+    // `implementation`, not `testImplementation`.
     ":pipeline-release",
     ":pipeline-scripting-api",
     // B2A: the SDK BOM. A `java-platform` whose only content is a version constraint per published
@@ -47,8 +58,6 @@ include(
     // distinction is load-bearing.
     ":pipeline-sdk-bom",
     ":pipeline-scripting-kotlin24",
-    ":pipeline-testkit",
-    ":pipeline-architecture-tests",
     ":pipeline-events",
     // The event plane's durable implementation: journal, replay cursor, run lease, and the
     // in-memory / JSON / SQLite stores. Split out of `:pipeline-events` so the published contract
@@ -94,12 +103,6 @@ include(
     ":pipeline-credentials-executor",
     ":pipeline-binding-factory",
     ":pipeline-artefacts-local",
-    // H0: the single harness. It owns the executable catalogue that binds each PipelineK
-    // capability to the contracts that protect it and to the minimum fidelity that can
-    // honestly speak to it. Deliberately a library of contracts, not a second framework: the
-    // product and its tests keep their own composition, and this module only says which
-    // obligations exist and which change invalidates them.
-    ":test-harness",
 )
 
 // A Gradle invocation mutates the shared v2/*/build tree. Two invocations on

@@ -1,1 +1,0 @@
-workspace/ar-g7-01-0/build/libs/artifact.jar

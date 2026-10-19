@@ -202,13 +202,22 @@ class CredentialMaterializer(
 
         // Extract entries
         for ((entryName, entryBytes) in credential.entries) {
-            val entryPath = tempDir.resolve(entryName)
+            val entryPath = resolveZipEntryPath(credential.id, tempDir, entryName)
+
             // Create parent directories for nested paths (e.g., "subdir/c.txt")
             val parent = entryPath.parent
             if (parent != null && Files.notExists(parent)) {
                 Files.createDirectories(parent)
                 // Set 0700 on created parent directories
                 Files.setPosixFilePermissions(parent, CredentialFilePermissions.OWNER_READ_WRITE_EXECUTE)
+                // Track them. Only the top directory was tracked before, so `close()` reached
+                // `Files.delete(tempDir)` while a nested `sub/` was still inside it, took a
+                // DirectoryNotEmptyException, and swallowed it -- leaving the extracted credential
+                // on disk. `close()` deletes trackedDirs in reverse insertion order, so adding a
+                // subdirectory after its parent removes the child first.
+                for (created in createDirectoriesFrom(tempDir, parent)) {
+                    trackedDirs.add(created)
+                }
             }
             Files.write(entryPath, entryBytes)
             Files.setPosixFilePermissions(entryPath, CredentialFilePermissions.OWNER_READ_WRITE)
@@ -225,8 +234,10 @@ class CredentialMaterializer(
 
     private fun createTempDir(prefix: String, suffix: String): Path {
         val tempDir = System.getProperty("java.io.tmpdir").let { Path.of(it) }
-        val uniqueName = "$prefix${UUID.randomUUID()}$suffix"
-        return Files.createTempDirectory(tempDir, uniqueName + suffix)
+        // `uniqueName` already carries `suffix`; the previous `uniqueName + suffix` appended it
+        // a second time, naming the directory `<prefix><uuid>-<id>-<id>`. Cosmetic, but the
+        // credential id appears twice in a path that operators read in logs.
+        return Files.createTempDirectory(tempDir, "$prefix${UUID.randomUUID()}$suffix")
     }
 
     /**
@@ -267,3 +278,87 @@ class CredentialMaterializer(
         materializationCache.clear()
     }
 }
+
+/**
+ * The directories between [from] (exclusive) and [to] (inclusive), shallowest first.
+ *
+ * `Files.createDirectories` creates every missing level in one call and reports only the leaf, so
+ * the intermediate directories have to be recovered if they are to be tracked. Walking from the
+ * leaf up to [from] and reversing gives creation order, which is the order `close()` needs: it
+ * deletes tracked directories in reverse insertion order, so a child inserted after its parent
+ * is removed first.
+ *
+ * The ordering is not cosmetic. With only the top directory tracked, `close()` reached
+ * `Files.delete(tempDir)` while a nested `sub/` was still inside it, took a
+ * `DirectoryNotEmptyException`, and swallowed it -- leaving the extracted credential on disk.
+ *
+ * `internal` and top-level rather than private so the decision is reachable without a filesystem:
+ * the only thing that reads it is a `Files.createDirectories` call, and AGENTS.md section 2
+ * forbids that in a unit test.
+ */
+internal fun createDirectoriesFrom(from: Path, to: Path): List<Path> {
+    // Both ends are normalised rather than trusted. Walked raw, `a/./x/../b` yields
+    // `a/./x/..`, `a/./x` and `a/.` -- three levels `Files.createDirectories` never created, and
+    // the `..` level normalises back to `a`, which is not empty, so the reverse-order delete
+    // fails on it exactly as it did before. The only caller passes an already-normalised path
+    // today, which is precisely why this is not a precondition to write down and hope for.
+    val root = from.normalize()
+    val created = mutableListOf<Path>()
+    var current: Path? = to.normalize()
+    while (current != null && current != root) {
+        created.add(current)
+        current = current.parent
+    }
+    return created.reversed()
+}
+
+/**
+ * Where a `Zip` entry may be written, or a refusal naming the entry that may not.
+ *
+ * Zip Slip. `Zip.entries` is a `Map<String, ByteArray>` of free-form names read out of the
+ * secret store, so `..` is not a malformed archive -- it is a legal key. With no confinement,
+ * `../escape` and `../../etc/cron.d/x` resolve outside the temp directory and
+ * `materializeZip` writes the entry's bytes there and chmods it 0600: an arbitrary write to an
+ * arbitrary path, with attacker-chosen content, during credential materialization.
+ *
+ * `Path.startsWith` compares name ELEMENTS, so the sibling-prefix form (`<tmpdir>-evil`) is
+ * refused too. A character prefix would admit exactly the case an attacker picks -- the same
+ * distinction `DirExecutor.resolveTargetPath` was corrected for.
+ *
+ * `internal` and top-level rather than private and inline so the decision is reachable without
+ * a filesystem: `materializeZip` calls `Files.createDirectories` and `Files.write`, and
+ * AGENTS.md section 2 forbids both in a unit test. A guard whose only path runs through a file
+ * write is a guard with no coverage.
+ *
+ * @throws ZipEntryEscapesMaterializationException if [entryName] leaves [tempDir]
+ */
+internal fun resolveZipEntryPath(credentialsId: CredentialsId, tempDir: Path, entryName: String): Path {
+    val entryPath = tempDir.resolve(entryName).normalize()
+    if (!entryPath.startsWith(tempDir)) {
+        throw ZipEntryEscapesMaterializationException(credentialsId, entryName, entryPath)
+    }
+    return entryPath
+}
+
+/**
+ * Thrown when a `Zip` credential carries an entry name that leaves its materialization directory.
+ *
+ * Declared here rather than beside [MaterializationKindUnsupportedException] in
+ * `:pipeline-credentials-api` because that module has an `api/` compatibility gate, and
+ * AGENTS.md section 1 forbids changing a published artifact's surface without an authorised
+ * versioned break. The refusal belongs to this materializer, which is the only thing that
+ * decides where an entry may land.
+ *
+ * @property credentialsId the archive whose entry escaped
+ * @property entryName the offending key, verbatim -- this is what an operator has to find in
+ *   the store to fix it, and a resolved absolute path is a consequence they cannot act on
+ * @property resolvedPath where the entry would have been written
+ */
+class ZipEntryEscapesMaterializationException(
+    val credentialsId: CredentialsId,
+    val entryName: String,
+    val resolvedPath: Path,
+) : Exception(
+    "Zip credential '$credentialsId' entry '$entryName' resolves to '$resolvedPath', " +
+        "outside its materialization directory; refusing to write outside it",
+)

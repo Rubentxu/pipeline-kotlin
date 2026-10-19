@@ -15,13 +15,6 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     // SAX XML parsing (JAXP is part of the JDK; we declare no external dep).
 
-    testImplementation(project(":pipeline-application"))
-    testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
-}
-
-tasks.test {
-    useJUnitPlatform()
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -159,21 +152,6 @@ fun loadPropsAsMap(file: File): Map<String, String> {
     return map
 }
 
-tasks.withType<Test>().configureEach {
-    val props = loadPropsAsMap(junitReleasePropsFile.get().asFile)
-    if (props.isNotEmpty()) {
-        for ((k, v) in props) systemProperty(k, v)
-    } else {
-        // Fallback so test runs do not fail-closed when the jar is not
-        // built yet; the contributor still requires sha256:<64-hex> shape.
-        systemProperty("pipeline.junit.release.digest", "sha256:" + "0".repeat(64))
-        systemProperty("pipeline.junit.release.version", junitVersion.get())
-        systemProperty("pipeline.junit.publisher", junitPublisher.get())
-        systemProperty("pipeline.junit.namespace", junitNamespace.get())
-    }
-}
-
-
 // ----------------------------------------------------------------------------
 // S6/C — the manifest DOCUMENT, derived from the code, not typed by hand.
 //
@@ -253,3 +231,22 @@ tasks.named("processResources") {
 tasks.named("jar") {
     dependsOn(emitJunitManifest)
 }
+
+// Unit-test wiring REMOVED (2026-10-18, testing RESET).
+//
+// This module carries no unit tests: it is the `junit.results` STEP parser, which consumes
+// JUnit XML as DATA -- a JUnit-on-JUnit test cannot exercise it. Its verification is the
+// executable E2E layer -- `.pipeline.kts` pipelines under `v2/examples/`, driven by
+// `v2/examples/run.sh` -- and not a JUnit class.
+//
+// The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
+// Left in place they were a SILENT green: a `Test` task whose source set is empty reports
+// success while executing zero classes. Gradle 8.14 exposes no `failOnNoDiscoveredTests`
+// property -- the setting does not exist in this version, so nothing inside the build can
+// turn that green into a failure, and a build file asserting otherwise is describing a flag
+// it cannot compile.
+//
+// What turns it into a failure lives outside Gradle: `scripts/verify-all.sh` enumerates the
+// modules it asks from the filesystem and fails when a module that has a test source produces
+// no JUnit XML. The wiring that could have produced the misleading green is gone from the
+// modules that have no tests, so no module reaches that check in silence.

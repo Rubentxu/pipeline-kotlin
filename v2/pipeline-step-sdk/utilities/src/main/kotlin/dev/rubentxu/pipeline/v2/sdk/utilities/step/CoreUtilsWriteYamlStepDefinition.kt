@@ -34,7 +34,7 @@ import java.nio.file.Path
  *   - source:  WriteYamlStep.java in
  *              `https://github.com/jenkinsci/pipeline-utility-steps-plugin/blob/master/src/main/java/org/jenkinsci/plugins/pipeline/utility/steps/conf/WriteYamlStep.java`
  *
- * Adaptation (full table in `docs/v2/07-uat/S2_READYAML_WRITEYAML_JENKINS_REFERENCE.md`):
+ * Adaptation:
  *  - `data XOR datas` and `file XOR returnText` are sealed-hierarchy invariants.
  *  - SnakeYAML 2.3 + DumperOptions matching Jenkins (`FlowStyle.BLOCK`,
  *    `splitLines=false`).

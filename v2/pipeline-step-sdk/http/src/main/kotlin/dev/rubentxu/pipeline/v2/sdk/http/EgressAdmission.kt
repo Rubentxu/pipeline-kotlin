@@ -87,9 +87,16 @@ internal fun egressDestinationOf(url: String): EgressDestination? {
     // `api.example.test` matched each other as rules while producing two different
     // destinations — and a destination is what the refusal names in the journal.
     val host = uri.host?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
+    // Three states, not two. `URI` reports an ABSENT port as -1 and a PRESENT one as its value,
+    // so `:0`, `:99999` and `:65536` arrive here as themselves. The previous `port in 1..65535`
+    // test could not tell those apart from an absent port and fell through to the scheme default,
+    // so `https://h.test:0` opened `https://h.test:443` -- a destination nobody wrote down,
+    // consulted with the gate under a value the author never asked for. An explicit port is still
+    // a port: if it is present it must be one that can exist, or the whole URL is undeterminable.
     val port = when {
+        uri.port == -1 -> defaultEgressPortFor(scheme) ?: return null
         uri.port in 1..65535 -> uri.port
-        else -> defaultEgressPortFor(scheme) ?: return null
+        else -> return null
     }
     // Userinfo is deliberately not read. `https://user:secret@host/` is a real URL
     // shape, and copying any part of the authority other than the host is how a

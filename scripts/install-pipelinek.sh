@@ -2,15 +2,16 @@
 # install-pipelinek.sh — Autonomous installer for the PipelineK CLI
 #
 # Authority:
-#   - docs/v2/05-roadmap/DISTRIBUTION_ROADMAP.md §2 (DIST-2)
-#   - docs/v2/03-specifications/DISTRIBUTION_RELEASE_SPEC.md §1 (canonical artifact is ZIP)
-#   - docs/v2/04-adrs/ADR-0089-distribution-artifact-authority-sdkman.md
-#   - docs/pipelinek-release-evolution/pipeline-kotlin/03-roadmap.md TRAIN P1
-#     (P1.1 SHA256SUMS authority, P1.2 transactional install,
-#      P1.3 exact runtime identity, P1.4 doctor diagnostics)
-#   - docs/pipelinek-release-evolution/pipeline-kotlin/04-uat.md P-UAT-05 / P-UAT-06
+#   - DIST-2: the canonical artifact is the ZIP.
+#   - TRAIN P1: SHA256SUMS authority, transactional install,
+#     exact runtime identity, doctor diagnostics.
 #
-# Contract tests: python3 scripts/test_install_pipelinek.py
+# Verification status: the contract tests that used to cover this installer
+# (scripts/test_install_pipelinek.py, exercised by the former P-UAT-05 / P-UAT-06)
+# were deleted by the 2026-10-18 testing RESET, and the current policy forbids the
+# subprocess-based unit tests that would replace them. These guarantees are
+# therefore NOT covered by an automated check today; `doctor` is the manual
+# diagnostic a user can run against a real installation.
 #
 # Usage:
 #   install-pipelinek.sh install <version>          # download + verify + install

@@ -145,48 +145,72 @@ pipelinek validate pipeline.kts
 pipelinek run --workspace . pipeline.kts
 ```
 
-The full walk-through (workspaces, `--db`, secret redaction, run
-inspection) is in
-[`docs/user/quickstart.md`](docs/user/quickstart.md).
+For the walk-through of workspaces, `--db`, secret redaction and run
+inspection, use the CLI's own help, which is generated from the code
+that implements each flag:
+
+```bash
+pipelinek --help
+pipelinek run --help
+```
 
 ## Examples
 
-The [`examples/`](examples/) directory contains ten runnable
+The [`v2/examples/`](v2/examples/) directory holds 35 runnable
 pipelines that exercise the real CLI of the published `v0.39.0`
-distribution. If you installed via SDKMAN or unzipped the GitHub
-artifact, you can run any example directly:
+distribution, grouped by what they cover:
 
-```bash
-pipelinek run --workspace /tmp/pk-example examples/03-shell.pipeline.kts
-```
-
-If you cloned the repository, the [`examples/run.sh`](examples/run.sh)
-script automates the assertions (exit code, terminal outcome, event
-contract for 07–10):
-
-```bash
-# Build the local binary first, then run the assertions
-./gradlew -p v2 :pipeline-application:installDist
-examples/run.sh 03-shell.pipeline.kts
-examples/run.sh            # run all ten
-```
-
-| Example | What it shows | Expected exit code |
+| Category | Scenarios | What it covers |
 |---|---|---|
-| `01-hello.pipeline.kts` | Minimal pipeline: one stage, one `echo` | `0` |
-| `02-multi-stage.pipeline.kts` | Stages execute in declaration order | `0` |
-| `03-shell.pipeline.kts` | Real OS processes via `sh`, including a shell `for` loop | `0` |
-| `04-kotlin-control-flow.pipeline.kts` | Kotlin control flow inside `script {}` blocks | `0` |
-| `05-failing-step.pipeline.kts` | Typed failure: `sh` exits 3 → `StepFailed(kind=SCRIPT)`, outcome `failure` | `1` |
-| `06-durable.pipeline.kts` | Durable execution with `--db`: journal, fingerprints, crash resume | `0` |
-| `07-catch-error.pipeline.kts` | Nested `catchError`: inner `FAILURE` → outer `UNSTABLE`, pipeline continues | `0` |
-| `08-parallel.pipeline.kts` | Two concurrent branches with their own durable identity | `0` |
-| `09-retry.pipeline.kts` | `retry`: first attempt fails, second succeeds | `0` |
-| `10-timeout.pipeline.kts` | `timeout` deadline aborts an over-running `sh`, outcome `failure` | `1` |
+| `smoke/` | 5 | The shortest path through the DSL: one stage, several stages, environment, `sh` then `echo`, and a checkout → build → archive round trip |
+| `steps/` | 7 | One scenario per step: `sh`, `withEnv`, the workspace helpers, `sleep`, `writeFile`, `cleanWs`, `findFiles` |
+| `control-flow/` | 3 | Kotlin control flow inside `script {}`, `repeat` loops, workflow control |
+| `durable/` | 5 | Durable execution over the journal: `isUnix`, `pwd` to a temp path, milestones, `waitUntil`, `stash`/`unstash` |
+| `security/` | 2 | Credential bindings, and a ZIP-slip path-traversal defence |
+| `output/` | 7 | The output plane: file reads, utilities and YAML round trips, ZIP/unzip, cross-step artifact queries, HTML publishing |
+| `negative/` | 3 | Deliberate failures that must fail closed, including an unregistered directive key |
+| `plugins/` | 3 | The three external example plugins, discovered from the distribution classpath: `uppercase`, `repeat`, and a contributed directive |
 
-See [`examples/README.md`](examples/README.md) for the durable-execution
-demo, the event-contract details, and the known limitations of each
-example.
+If you installed via SDKMAN or unzipped the GitHub artifact, you can run
+any one directly:
+
+```bash
+pipelinek run --workspace /tmp/pk-example v2/examples/smoke/01-basic.pipeline.kts
+```
+
+If you cloned the repository, build the local distribution once and let
+[`v2/examples/run.sh`](v2/examples/run.sh) run the whole set. The
+launcher takes no arguments — it discovers every scenario, gives each
+one a private control root and a generated passphrase, and judges each
+on its exit code plus at most one substring of its stderr:
+
+```bash
+cd v2 && ./gradlew :pipeline-application:installDist
+cd .. && v2/examples/run.sh
+```
+
+A scenario may carry these directives as `//@` comments near its top,
+and nothing else about a scenario is interpreted:
+
+```kotlin
+//@ expect-exit 1              // the default is 0
+//@ expect-stderr <substring>  // the refusal must be this specific, not
+                              // merely a nonzero exit
+//@ durable                    // run twice over one control root; the
+                              // pipeline itself asserts the effect did
+                              // not repeat, this only makes it happen
+```
+
+That is the entire vocabulary. The launcher is not a framework: it has
+no registry, no fixtures and no assertions of its own.
+
+`//@` is an ordinary Kotlin comment rather than a `#!` line, and that
+is deliberate. `#!` only ever worked by accident: the script compiler
+strips a shebang from the *first* line of a file, so a second `#!` line
+became a syntax error and the scenario failed to compile instead of
+failing for its own reason. The `@` then keeps a directive from matching
+prose, since real scenarios already carry comments like
+`// durable execution over the journal`.
 
 ## Capabilities
 
@@ -218,26 +242,26 @@ PipelineK `0.39.0` ships with:
 
 ## Documentation
 
-The full user documentation lives in [`docs/user/`](docs/user/):
+There is no separate user-documentation tree in this repository. The
+versioned Markdown under `docs/` and `v2/` was removed by the 2026-10-18
+documentation RESET, and this section previously listed nine files under
+`docs/user/` that no longer existed — a promise the repository could not
+keep. Rather than restate them as links that 404, the authority is now the
+code that implements each surface:
 
-- [`installation.md`](docs/user/installation.md) — install on
-  Linux/macOS/Windows (WSL) from the GitHub Releases ZIP.
-- [`quickstart.md`](docs/user/quickstart.md) — your first pipeline,
-  end to end.
-- [`cli-reference.md`](docs/user/cli-reference.md) — every CLI flag
-  and exit code.
-- [`pipeline-dsl.md`](docs/user/pipeline-dsl.md) — the certified DSL
-  surface.
-- [`configuration-and-workspace.md`](docs/user/configuration-and-workspace.md) —
-  `--workspace`, `--db`, `--control-root`.
-- [`credentials-and-security.md`](docs/user/credentials-and-security.md) —
-  secret redaction.
-- [`events-and-troubleshooting.md`](docs/user/events-and-troubleshooting.md) —
-  typed events, transcripts, recovery.
-- [`upgrading.md`](docs/user/upgrading.md) — upgrade strategy (SDKMAN
-  section is a placeholder pending vendor onboarding).
-- [`cheat-sheet.md`](docs/user/cheat-sheet.md) — short, copyable,
-  exit-code table.
+| For | Read |
+|---|---|
+| Install on Linux/macOS/Windows (WSL) | The Releases ZIP below, and `scripts/install-pipelinek.sh`'s own `--help` |
+| Every CLI flag and exit code | `pipelinek --help`, `pipelinek run --help`, and the flag table in `Main.kt` |
+| The certified DSL surface | The KDoc on `StageScope.kt` and `PipelineDsl.kt` in `:pipeline-scripting-api`, which is where the DSL is declared |
+| `--workspace`, `--db`, `--control-root` | The KDoc on `WorkspaceResolver.kt` in `:pipeline-application` |
+| Secret redaction and credentials | Redaction: the KDoc on `SecretPatternRegistry.kt` in `:pipeline-credentials-api`, which also states that a bound secret of fewer than `MIN_MASKABLE_LENGTH` (8) characters runs normally but is **not** masked, so it reaches the transcript in the clear. Store access: `PassphraseResolver.kt` and `CredentialsStorePath.kt` in `:pipeline-credentials-local` |
+| Typed events, transcripts, recovery | The KDoc on `JsonEventLog.kt` in `:pipeline-events-store` |
+| How the build is verified, and what is out of bounds | `AGENTS.md` in the repository root |
+
+The reason to prefer this over a prose tree is not preference: a KDoc block
+and a Markdown file drift apart, and only the first one fails to compile when
+it does.
 
 ## Releases
 
@@ -254,8 +278,8 @@ channel consumes the same bytes; nothing is rebuilt per installer.
 | **GitHub Releases ZIP** | **Available** | Canonical artifact. ZIP + SHA-256 + CycloneDX SBOM + release manifest. |
 | **Multi-version installer** (`scripts/install-pipelinek.sh`) | **Available** | Bash installer in this repo: `install <v>` / `use <v>` / `list` / `uninstall <v>` / `doctor`. URL allowlist fail-closed; SHA-256-verified; no `sudo`. See [§1.1](#11-install-with-the-script-multi-version-manager). |
 | **Direct download** | **Available** | Same ZIP from the release page; no extra hop. |
-| **SDKMAN** (`pipelinek` candidate) | **Pending** | Vendor onboarding in progress; the publish script (`scripts/release/sdkman-publish.sh`) is ready but blocked on `SDKMAN_CONSUMER_KEY` / `SDKMAN_CONSUMER_TOKEN`. It resolves digests from the release `SHA256SUMS` manifest via `scripts/release/resolve-release-digest.sh` (the old `<asset>.sha256` sidecar is not published and 404s). Contract tests: `python3 scripts/release/test_sdkman_digest.py`. Track [WU-LPR-080](docs/v2/05-roadmap/LPR_WORK_UNITS.md). See [ADR-0089](docs/v2/04-adrs/ADR-0089-distribution-artifact-authority-sdkman.md). |
-| **Homebrew** (`rubentxu/tap/pipeline`) | **Future** | Project tap not started. Formulas will reuse the same ZIP. Listed as LFC9-004 in the historical distribution backlog (`docs/historico/2026-09-21/paquetes/pipeline-kotlin-local-foundation-consolidation/docs/v2/05-roadmap/IMPLEMENTATION_BACKLOG.md`). |
+| **SDKMAN** (`pipelinek` candidate) | **Pending** | Vendor onboarding in progress; the publish script (`scripts/release/sdkman-publish.sh`) is ready but blocked on `SDKMAN_CONSUMER_KEY` / `SDKMAN_CONSUMER_TOKEN`. It resolves digests from the release `SHA256SUMS` manifest via `scripts/release/resolve-release-digest.sh` (the old `<asset>.sha256` sidecar is not published and 404s). Its former contract tests were deleted by the 2026-10-18 testing RESET and no replacement covers digest resolution, so that behaviour is currently unverified by automated tests and rests on the manual release-page check before a publish. Tracked as WU-LPR-080; the SDKMAN artifact authority is decided in the publish script and in `CandidateTagProvenance` (`:pipeline-release`). |
+| **Homebrew** (`rubentxu/tap/pipeline`) | **Future** | Project tap not started. Formulas will reuse the same ZIP. Listed as LFC9-004 in the historical distribution backlog. |
 | **mise** (Aqua backend / GitHub release backend) | **Future (harness)** | Lives in the external `pipelinek-release-harness` repo: an Aqua registry entry (preferred) or a GitHub release backend stub. Not a plugin in this repo. |
 | **asdf** (`asdf-pipeline` plugin) | **Future (harness)** | Lives in the external `pipelinek-release-harness` repo: an `asdf-pipeline` plugin with `bin/install`, `bin/download`, `bin/list-bin`, sourced from the canonical ZIP. Not a plugin in this repo. |
 | **Scoop** (Windows-native manifest) | **Future** | Gated on Windows demand; would reuse the ZIP and `bin/pipelinek.bat`. Not started. |
@@ -263,17 +287,17 @@ channel consumes the same bytes; nothing is rebuilt per installer.
 
 No channel is going to bypass the GitHub Release ZIP: every installer
 above (when implemented) will download or reference the same canonical
-artifact and verify its SHA-256. The full distribution strategy lives
-in
-[`docs/historico/2026-09-21/paquetes/pipeline-kotlin-local-foundation-consolidation/docs/v2/07-distribution/DISTRIBUTION_STRATEGY.md`](docs/historico/2026-09-21/paquetes/pipeline-kotlin-local-foundation-consolidation/docs/v2/07-distribution/DISTRIBUTION_STRATEGY.md)
-(historical) and is referenced by
-[ADR-0089](docs/v2/04-adrs/ADR-0089-distribution-artifact-authority-sdkman.md)
-(active).
+artifact and verify its SHA-256. The one-artifact rule is enforced in
+the release scripts under `scripts/release/` and, for provenance, in
+`CandidateTagProvenance` (`:pipeline-release`).
 
-The `v0.39.0` ZIP is the public artifact authority today. SDKMAN will
-become the recommended channel only after the install UAT
-(`scripts/release/sdkman-install-uat.sh`) passes on a clean runner; until
-then the canonical path remains the ZIP download.
+The `v0.39.0` ZIP is the public artifact authority today. SDKMAN becomes
+the recommended channel only once its digest resolution has been exercised
+end to end against a clean runner. It has not been: the install contract
+tests that used to cover it were deleted by the 2026-10-18 testing RESET and
+AGENTS.md section 2 forbids the subprocess-based replacements that would have
+taken their place, so that coverage gap is open by decision rather than by
+oversight. Until it is closed, the canonical path remains the ZIP download.
 
 ### Verified against the published artifact
 

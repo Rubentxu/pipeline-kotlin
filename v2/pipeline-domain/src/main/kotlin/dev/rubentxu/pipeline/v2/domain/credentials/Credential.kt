@@ -324,15 +324,30 @@ data class Zip(
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
         other as Zip
-        return id == other.id &&
-                scope == other.scope &&
-                entries == other.entries
+        if (id != other.id) return false
+        if (scope != other.scope) return false
+        // entries is a Map<String, ByteArray>, so `==` would compare the arrays by
+        // reference and two byte-identical archives would not be equal. Every other
+        // credential in this file compares its byte fields with contentEquals; Zip
+        // has to compare the archive entry by entry, over the same key set.
+        if (entries.keys != other.entries.keys) return false
+        for ((name, bytes) in entries) {
+            if (!bytes.contentEquals(other.entries.getValue(name))) return false
+        }
+        return true
     }
 
     override fun hashCode(): Int {
         var result = id.hashCode()
         result = 31 * result + scope.hashCode()
-        result = 31 * result + entries.hashCode()
+        // Map.hashCode would use the array identities. Order-independent accumulation
+        // over per-entry content hashes keeps hashCode consistent with the equals
+        // above: two byte-identical archives must hash equally.
+        var entriesHash = 0
+        for ((name, bytes) in entries) {
+            entriesHash += 31 * name.hashCode() + bytes.contentHashCode()
+        }
+        result = 31 * result + entriesHash
         return result
     }
 }

@@ -1609,6 +1609,7 @@ public final class dev/rubentxu/pipeline/v2/domain/SecretHandle : dev/rubentxu/p
 	public final fun getSizeBytes ()I
 	public final fun isMasked ()Z
 	public final fun materialize ()Ljava/lang/String;
+	public final fun peek (Lkotlin/jvm/functions/Function1;)Ljava/lang/Object;
 	public fun toString ()Ljava/lang/String;
 	public final fun unwrap ()[B
 	public final fun use (Lkotlin/jvm/functions/Function1;)Ljava/lang/Object;
@@ -1704,6 +1705,7 @@ public final class dev/rubentxu/pipeline/v2/domain/ShellInvocationResult$UnitVal
 
 public final class dev/rubentxu/pipeline/v2/domain/ShellInvocationResultKt {
 	public static final fun classifyShellTerminal (Ldev/rubentxu/pipeline/v2/domain/durable/DurableTaskTerminal;Ldev/rubentxu/pipeline/v2/domain/ShellReturnMode;)Ldev/rubentxu/pipeline/v2/domain/ShellInvocationResult;
+	public static final fun decideShellReturnMode (ZZ)Ldev/rubentxu/pipeline/v2/domain/ShellReturnMode;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/ShellReturnMode : java/lang/Enum {
@@ -2639,6 +2641,7 @@ public final class dev/rubentxu/pipeline/v2/domain/credentials/ZipBindingSpec : 
 
 public final class dev/rubentxu/pipeline/v2/domain/digest/Sha256 {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/digest/Sha256;
+	public final fun isSha256Hex (Ljava/lang/String;)Z
 	public final fun ofBytes ([B)Ljava/lang/String;
 	public final fun ofBytesPrefix ([BI)Ljava/lang/String;
 	public final fun ofDirectory (Ljava/nio/file/Path;Ljava/util/Set;)Ljava/lang/String;
@@ -3404,28 +3407,22 @@ public final class dev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellSc
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellScope$TimestampsScope : dev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellScope {
-	public fun <init> (Ljava/lang/String;)V
-	public final fun component1 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellScope$TimestampsScope;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellScope$TimestampsScope;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellScope$TimestampsScope;
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellScope$TimestampsScope;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getRunId ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellScope$WaitUntilScope : dev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellScope {
-	public fun <init> (JZJ)V
-	public synthetic fun <init> (JZJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (JJ)V
+	public synthetic fun <init> (JJILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()J
-	public final fun component2 ()Z
-	public final fun component3 ()J
-	public final fun copy (JZJ)Ldev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellScope$WaitUntilScope;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellScope$WaitUntilScope;JZJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellScope$WaitUntilScope;
+	public final fun component2 ()J
+	public final fun copy (JJ)Ldev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellScope$WaitUntilScope;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellScope$WaitUntilScope;JJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/durable/CanonicalBlockShellScope$WaitUntilScope;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getInitialRecurrencePeriod ()J
 	public final fun getMaxBackoffMs ()J
-	public final fun getQuiet ()Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -4726,7 +4723,6 @@ public final class dev/rubentxu/pipeline/v2/domain/durable/TaskExecutionResult {
 	public final fun getEndedAtEpochMs ()J
 	public final fun getExitCode ()I
 	public final fun getStartedAtEpochMs ()J
-	public final fun getSucceeded ()Z
 	public final fun getTimedOut ()Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
@@ -4766,6 +4762,49 @@ public final class dev/rubentxu/pipeline/v2/domain/durable/TaskStream : java/lan
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/durable/TaskStream;
 	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/durable/TaskStream;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision$Cancelled : dev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Ldev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision$Cancelled;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision$Cancelled;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision$Cancelled;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getElapsedMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision$Exited : dev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision {
+	public fun <init> (IJ)V
+	public final fun component1 ()I
+	public final fun component2 ()J
+	public final fun copy (IJ)Ldev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision$Exited;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision$Exited;IJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision$Exited;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getElapsedMs ()J
+	public final fun getExitCode ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision$TimedOut : dev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Ldev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision$TimedOut;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision$TimedOut;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision$TimedOut;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getElapsedMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecisionKt {
+	public static final fun decideTaskTerminal (Ldev/rubentxu/pipeline/v2/domain/durable/TaskExecutionResult;)Ldev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision;
+	public static final fun isSuccessFromDecision (Ldev/rubentxu/pipeline/v2/domain/durable/TaskTerminalDecision;)Z
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/durable/TypedStepOutput {
@@ -5236,6 +5275,81 @@ public final class dev/rubentxu/pipeline/v2/domain/scm/SecretHandleRef {
 	public fun toString ()Ljava/lang/String;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal : dev/rubentxu/pipeline/v2/domain/step/AdmissionRejection {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedAlreadyAdmittedDifferentArtifact : dev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;)Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedAlreadyAdmittedDifferentArtifact;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedAlreadyAdmittedDifferentArtifact;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedAlreadyAdmittedDifferentArtifact;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeclaredDigest ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun getIdentity ()Ljava/lang/String;
+	public final fun getIncumbentOrigin ()Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedDigestMismatch : dev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/Digest;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/Digest;)Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedDigestMismatch;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedDigestMismatch;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/Digest;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedDigestMismatch;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeclared ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun getIdentity ()Ljava/lang/String;
+	public final fun getMeasured ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedIncompatibleVersion : dev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;Ldev/rubentxu/pipeline/v2/domain/step/SemVer;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/step/SemVer;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;Ldev/rubentxu/pipeline/v2/domain/step/SemVer;)Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedIncompatibleVersion;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedIncompatibleVersion;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;Ldev/rubentxu/pipeline/v2/domain/step/SemVer;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedIncompatibleVersion;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeclared ()Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;
+	public final fun getIdentity ()Ljava/lang/String;
+	public final fun getRuntime ()Ldev/rubentxu/pipeline/v2/domain/step/SemVer;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedNoManifest : dev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedNoManifest;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedNoManifest;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedNoManifest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContributor ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedUntrustedIdentity : dev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason;)Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedUntrustedIdentity;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedUntrustedIdentity;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRefusal$RefusedUntrustedIdentity;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIdentity ()Ljava/lang/String;
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/AdmissionRejection {
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/step/AdmittedPlugin {
 	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;Ldev/rubentxu/pipeline/v2/domain/step/MeasuredArtifactIdentity;)V
 	public final fun admitContributions (Ljava/util/List;Ljava/util/Set;Ljava/util/Set;)Ldev/rubentxu/pipeline/v2/domain/step/PluginContributionCrossCheck;
@@ -5347,6 +5461,13 @@ public final class dev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$ReusedCom
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$Unknown : dev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin$Unknown;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/step/AttemptSegment {
 	public synthetic fun <init> (ILjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public synthetic fun <init> (ILjava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -5420,25 +5541,19 @@ public final class dev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescripto
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescriptor$Timestamps : dev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescriptor {
-	public fun <init> (Ljava/lang/String;)V
-	public final fun component1 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescriptor$Timestamps;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescriptor$Timestamps;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescriptor$Timestamps;
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescriptor$Timestamps;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getRunId ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescriptor$WaitUntil : dev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescriptor {
-	public fun <init> (JZ)V
+	public fun <init> (J)V
 	public final fun component1 ()J
-	public final fun component2 ()Z
-	public final fun copy (JZ)Ldev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescriptor$WaitUntil;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescriptor$WaitUntil;JZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescriptor$WaitUntil;
+	public final fun copy (J)Ldev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescriptor$WaitUntil;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescriptor$WaitUntil;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/BlockShellScopeDescriptor$WaitUntil;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getInitialRecurrencePeriodMs ()J
-	public final fun getQuiet ()Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -5700,6 +5815,8 @@ public final class dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy$Sequ
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicyKt {
+	public static final field DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS J
+	public static final field DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS J
 	public static final fun resolveBodyExecutionPolicy (Ldev/rubentxu/pipeline/v2/domain/StepDescriptor;Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionSupport;)Ldev/rubentxu/pipeline/v2/domain/step/BodyPolicyResolution;
 	public static final fun resolveBodyExecutionPolicy (Ldev/rubentxu/pipeline/v2/domain/step/StepDefinition;Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionSupport;)Ldev/rubentxu/pipeline/v2/domain/step/BodyPolicyResolution;
 	public static final fun resolveBodyExecutionPolicy-BAaOoKQ (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/StepDescriptor;Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionSupport;)Ldev/rubentxu/pipeline/v2/domain/step/BodyPolicyResolution;
@@ -6415,12 +6532,12 @@ public final class dev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Ad
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Refused : dev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult {
-	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;)V
-	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;
-	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;)Ldev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Refused;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Refused;Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Refused;
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRejection;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRejection;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRejection;)Ldev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Refused;Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRejection;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginAdmissionResult$Refused;
 	public fun equals (Ljava/lang/Object;)Z
-	public final fun getRejection ()Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection;
+	public final fun getRejection ()Ldev/rubentxu/pipeline/v2/domain/step/AdmissionRejection;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -6510,8 +6627,10 @@ public final class dev/rubentxu/pipeline/v2/domain/step/PluginFamily : java/lang
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifest {
-	public synthetic fun <init> (ILdev/rubentxu/pipeline/v2/domain/identity/ResourceRef;Ldev/rubentxu/pipeline/v2/domain/step/PluginReleaseRef;Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;Ljava/lang/String;Ljava/util/Set;Ldev/rubentxu/pipeline/v2/domain/step/Delivery;Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata;Ldev/rubentxu/pipeline/v2/domain/step/PluginContributions;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (ILdev/rubentxu/pipeline/v2/domain/identity/ResourceRef;Ldev/rubentxu/pipeline/v2/domain/step/PluginReleaseRef;Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;Ljava/lang/String;Ljava/util/Set;Ldev/rubentxu/pipeline/v2/domain/step/Delivery;Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata;Ldev/rubentxu/pipeline/v2/domain/step/PluginContributions;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (ILdev/rubentxu/pipeline/v2/domain/identity/ResourceRef;Ldev/rubentxu/pipeline/v2/domain/step/PluginReleaseRef;Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;Ljava/lang/String;Ljava/util/Set;Ldev/rubentxu/pipeline/v2/domain/step/Delivery;Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata;Ldev/rubentxu/pipeline/v2/domain/step/PluginContributions;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1-xr2q4qU ()I
+	public final fun component10 ()Ljava/lang/String;
 	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/identity/ResourceRef;
 	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/step/PluginReleaseRef;
 	public final fun component4 ()Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;
@@ -6520,13 +6639,14 @@ public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifest {
 	public final fun component7 ()Ldev/rubentxu/pipeline/v2/domain/step/Delivery;
 	public final fun component8 ()Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata;
 	public final fun component9 ()Ldev/rubentxu/pipeline/v2/domain/step/PluginContributions;
-	public final fun copy-RBxDhtE (ILdev/rubentxu/pipeline/v2/domain/identity/ResourceRef;Ldev/rubentxu/pipeline/v2/domain/step/PluginReleaseRef;Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;Ljava/lang/String;Ljava/util/Set;Ldev/rubentxu/pipeline/v2/domain/step/Delivery;Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata;Ldev/rubentxu/pipeline/v2/domain/step/PluginContributions;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;
-	public static synthetic fun copy-RBxDhtE$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;ILdev/rubentxu/pipeline/v2/domain/identity/ResourceRef;Ldev/rubentxu/pipeline/v2/domain/step/PluginReleaseRef;Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;Ljava/lang/String;Ljava/util/Set;Ldev/rubentxu/pipeline/v2/domain/step/Delivery;Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata;Ldev/rubentxu/pipeline/v2/domain/step/PluginContributions;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;
+	public final fun copy-1GvN2ak (ILdev/rubentxu/pipeline/v2/domain/identity/ResourceRef;Ldev/rubentxu/pipeline/v2/domain/step/PluginReleaseRef;Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;Ljava/lang/String;Ljava/util/Set;Ldev/rubentxu/pipeline/v2/domain/step/Delivery;Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata;Ldev/rubentxu/pipeline/v2/domain/step/PluginContributions;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;
+	public static synthetic fun copy-1GvN2ak$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;ILdev/rubentxu/pipeline/v2/domain/identity/ResourceRef;Ldev/rubentxu/pipeline/v2/domain/step/PluginReleaseRef;Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;Ljava/lang/String;Ljava/util/Set;Ldev/rubentxu/pipeline/v2/domain/step/Delivery;Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata;Ldev/rubentxu/pipeline/v2/domain/step/PluginContributions;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifest;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getApiRange ()Ldev/rubentxu/pipeline/v2/domain/step/PipelineKApiRange;
 	public final fun getContributions ()Ldev/rubentxu/pipeline/v2/domain/step/PluginContributions;
 	public final fun getDelivery ()Ldev/rubentxu/pipeline/v2/domain/step/Delivery;
 	public final fun getFamilies ()Ljava/util/Set;
+	public final fun getOperatorTrustReference ()Ljava/lang/String;
 	public final fun getPlugin ()Ldev/rubentxu/pipeline/v2/domain/identity/ResourceRef;
 	public final fun getPublisher ()Ljava/lang/String;
 	public final fun getRelease ()Ldev/rubentxu/pipeline/v2/domain/step/PluginReleaseRef;
@@ -6575,7 +6695,35 @@ public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestDecodeResu
 	public fun toString ()Ljava/lang/String;
 }
 
-public abstract interface class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection {
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection : dev/rubentxu/pipeline/v2/domain/step/AdmissionRejection {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$ArtifactChangedDuringAdmission : dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$ArtifactChangedDuringAdmission;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$ArtifactChangedDuringAdmission;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$ArtifactChangedDuringAdmission;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifact ()Ljava/lang/String;
+	public final fun getFoundDigest ()Ljava/lang/String;
+	public final fun getMeasuredDigest ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$ArtifactNotMeasurable : dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$ArtifactNotMeasurable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$ArtifactNotMeasurable;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$ArtifactNotMeasurable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifact ()Ljava/lang/String;
+	public final fun getDetail ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection$DuplicateIdentity : dev/rubentxu/pipeline/v2/domain/step/PluginManifestRejection {
@@ -7007,9 +7155,69 @@ public final class dev/rubentxu/pipeline/v2/domain/step/StepRegistryKt {
 public abstract interface class dev/rubentxu/pipeline/v2/domain/step/TrustMetadata {
 }
 
-public final class dev/rubentxu/pipeline/v2/domain/step/TrustMetadata$Unverified : dev/rubentxu/pipeline/v2/domain/step/TrustMetadata {
-	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$Unverified;
+public final class dev/rubentxu/pipeline/v2/domain/step/TrustMetadata$Mismatch : dev/rubentxu/pipeline/v2/domain/step/TrustMetadata {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;)Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$Mismatch;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$Mismatch;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$Mismatch;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeclared ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun getMeasured ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun getOrigin ()Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/TrustMetadata$Unverified : dev/rubentxu/pipeline/v2/domain/step/TrustMetadata {
+	public fun <init> ()V
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;)V
+	public synthetic fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;)Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$Unverified;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$Unverified;Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$Unverified;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOrigin ()Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason$ArtifactNotMeasurable : dev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason$ArtifactNotMeasurable;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason$NoTrustedDigestAvailable : dev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason$NoTrustedDigestAvailable;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason$OutsideOperatorTrustPolicy : dev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$UnverifiedReason$OutsideOperatorTrustPolicy;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/TrustMetadata$Verified : dev/rubentxu/pipeline/v2/domain/step/TrustMetadata {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;)Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$Verified;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$Verified;Ldev/rubentxu/pipeline/v2/domain/step/Digest;Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/TrustMetadata$Verified;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDigest ()Ldev/rubentxu/pipeline/v2/domain/step/Digest;
+	public final fun getOrigin ()Ldev/rubentxu/pipeline/v2/domain/step/ArtifactOrigin;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -7056,15 +7264,15 @@ public final class dev/rubentxu/pipeline/v2/domain/step/WaitUntilPredicateOutcom
 public final class dev/rubentxu/pipeline/v2/domain/step/WaitUntilShape {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/step/WaitUntilShape$Companion;
 	public fun <init> ()V
-	public fun <init> (JZ)V
-	public synthetic fun <init> (JZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (JJ)V
+	public synthetic fun <init> (JJILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()J
-	public final fun component2 ()Z
-	public final fun copy (JZ)Ldev/rubentxu/pipeline/v2/domain/step/WaitUntilShape;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/WaitUntilShape;JZILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/WaitUntilShape;
+	public final fun component2 ()J
+	public final fun copy (JJ)Ldev/rubentxu/pipeline/v2/domain/step/WaitUntilShape;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/WaitUntilShape;JJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/WaitUntilShape;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getInitialRecurrencePeriodMs ()J
-	public final fun getQuiet ()Z
+	public final fun getMaxBackoffMs ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

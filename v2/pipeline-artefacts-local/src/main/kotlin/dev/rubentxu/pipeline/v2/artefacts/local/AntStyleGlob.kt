@@ -13,7 +13,25 @@ import java.nio.file.Path
  * Design: D7 — wraps Spring `AntPathMatcher` (already on classpath via spring-core).
  * Invariant: INV-L6-ANT-001 (default excludes verbatim), INV-L6-ANT-002 (traversal safety).
  */
-class AntStyleGlob private constructor(private val pattern: String) {
+// `patternList` is internal, not public: it is the decision `match()` acts on, and a unit test
+// cannot call `match()` at all because it walks a real directory. Exposing the list is what makes
+// "a pattern containing a comma stays one pattern" a testable fact instead of a comment -- the
+// matching itself stays E2E.
+class AntStyleGlob private constructor(internal val patternList: List<String>) {
+
+    /**
+     * One pattern. A comma inside it is part of the pattern, not a separator: `{jar,war}` is
+     * Ant alternation and `data/a,b.txt` is a legal POSIX filename.
+     */
+    constructor(pattern: String) : this(listOf(pattern)) {
+        require(pattern.isNotEmpty()) { "At least one pattern must be provided" }
+    }
+
+    /** Several patterns, each preserved whole. */
+    constructor(vararg patterns: String) : this(patterns.toList()) {
+        require(patterns.isNotEmpty()) { "At least one pattern must be provided" }
+    }
+
 
     companion object {
         /**
@@ -39,26 +57,24 @@ class AntStyleGlob private constructor(private val pattern: String) {
         /**
          * Factory for List<String> - joins to comma-separated string.
          */
+        /**
+         * Factory for [List] inputs.
+         *
+         * This used to flatten the list into one comma-separated string and re-split it inside the
+         * constructor, so a single element containing a comma came back as two broken fragments.
+         * That made the documented `{...}` alternation unmatchable -- `build/**/*.{jar,war}` became
+         * `build/**/*.{jar` plus `war}` -- and a caller passing a pattern rather than a list, which
+         * is what all four production call sites do, silently lost any pattern with a comma in it.
+         *
+         * The list is now carried as a list. There is no separator to collide with.
+         */
         fun fromList(patterns: List<String>): AntStyleGlob {
-            return AntStyleGlob(patterns.joinToString(","))
+            require(patterns.isNotEmpty()) { "At least one pattern must be provided" }
+            return AntStyleGlob(patterns.toList())
         }
     }
 
-    // Constructor for vararg patterns
-    constructor(vararg patterns: String) : this(patterns.joinToString(","))
-
     private val matcher = AntPathMatcher()
-
-    // Internal list storage - split comma-separated pattern back to list
-    private val patternList: List<String> = if (pattern.contains(",")) {
-        pattern.split(",").filter { it.isNotEmpty() }
-    } else {
-        listOf(pattern)
-    }
-
-    init {
-        require(pattern.isNotEmpty()) { "At least one pattern must be provided" }
-    }
 
     /**
      * Matches files under [root] against this glob's patterns.

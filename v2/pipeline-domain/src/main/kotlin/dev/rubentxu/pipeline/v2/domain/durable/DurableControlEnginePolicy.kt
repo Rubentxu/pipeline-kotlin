@@ -51,6 +51,9 @@ fun interface DurableControlEnginePolicy {
      * @param maxAttempts The decoded attempt budget (≥ 1). Any directive that
      *   would exceed this budget is reported as [EngineDirective.FailClosed]
      *   (the engine is fail-closed against decision/budget incoherence).
+     *   A budget below 1 is not specially rejected: `1..maxAttempts` is then an
+     *   empty range, so every launching decision fails closed on its own.
+     *   The function stays total — a bad budget cannot make it throw or launch.
      */
     fun directiveFor(decision: RetryReconciliationDecision, maxAttempts: Int): EngineDirective
 }
@@ -111,16 +114,20 @@ sealed interface EngineDirective {
  * | Decision                          | Precondition           | Directive                                   |
  * |-----------------------------------|------------------------|---------------------------------------------|
  * | `ScheduleAttempt(attempt)`        | `attempt ∈ [1..max]`   | `LaunchChild(attempt, fresh = true)`        |
- * | `ScheduleAttempt(attempt)`        | `attempt > max`        | `FailClosed("schedule beyond maxAttempts")` |
+ * | `ScheduleAttempt(attempt)`        | otherwise              | `FailClosed("cannot schedule attempt=… beyond maxAttempts=…")` |
  * | `ResumeAttempt(attempt)`          | `attempt ∈ [1..max]`   | `LaunchChild(attempt, fresh = false)`       |
- * | `ResumeAttempt(attempt)`          | `attempt > max`        | `FailClosed("resume beyond maxAttempts")`   |
+ * | `ResumeAttempt(attempt)`          | otherwise              | `FailClosed("cannot resume attempt=… beyond maxAttempts=…")`   |
  * | `CloseSuccessFromChild(attempt)`  | always                 | `CloseTerminal(success = true, attempt)`    |
  * | `AdvanceAfterFailure(from, to)`   | `to ∈ [1..max]`        | `LaunchChild(to, fresh = true)`             |
- * | `AdvanceAfterFailure(from, to)`   | `to > max`             | `FailClosed("advance beyond maxAttempts")`  |
+ * | `AdvanceAfterFailure(from, to)`   | otherwise              | `FailClosed("AdvanceAfterFailure target … exceeds maxAttempts=…")` |
  * | `ReuseSuccess(attempt)`           | always                 | `CloseTerminal(success = true, attempt)`    |
  * | `ReuseUnstable(attempt)`          | always                 | `CloseUnstableTerminal(attempt)`            |
  * | `ReuseFailure(attempt)`           | always                 | `CloseTerminal(success = false, attempt)`   |
  * | `RejectDivergence(_, reason)`     | always                 | `FailClosed(reason)`                        |
+ *
+ * The three closure decisions ([ReuseSuccess], [ReuseUnstable],
+ * [ReuseFailure]) and [CloseSuccessFromChild] ignore [maxAttempts]
+ * entirely: the budget bounds launching, and a closure launches nothing.
  *
  * Total over the decision ADT — adding a decision case forces this `when`
  * to be revisited (compile-time exhaustiveness check).

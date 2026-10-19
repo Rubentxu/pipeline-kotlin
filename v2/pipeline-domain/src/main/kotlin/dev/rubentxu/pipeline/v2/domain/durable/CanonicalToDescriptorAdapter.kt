@@ -61,9 +61,7 @@ object CanonicalToDescriptorAdapter {
             target = canonical.target,
             previous = canonical.previous,
         )
-        is CanonicalBlockShellScope.TimestampsScope -> BlockShellScopeDescriptor.Timestamps(
-            runId = canonical.runId,
-        )
+        is CanonicalBlockShellScope.TimestampsScope -> BlockShellScopeDescriptor.Timestamps
         is CanonicalBlockShellScope.EnvScope -> BlockShellScopeDescriptor.Env(
             overrides = canonical.overrides,
             parentEnv = canonical.parentEnv.mapValues { it.value.borrow { bytes -> String(bytes, Charsets.UTF_8) } },
@@ -153,7 +151,7 @@ object CanonicalToDescriptorAdapter {
 sealed interface CanonicalBlockShellScope {
     data object None : CanonicalBlockShellScope
     data class Directory(val target: Path, val previous: Path) : CanonicalBlockShellScope
-    data class TimestampsScope(val runId: String) : CanonicalBlockShellScope
+    data object TimestampsScope : CanonicalBlockShellScope
     data class EnvScope(
         val overrides: List<String>,
         val parentEnv: Map<String, CanonicalSecretHandle>,

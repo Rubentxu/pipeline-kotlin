@@ -194,9 +194,16 @@ class EventRecordReadPortStoreAdapter(
         }
     }
 
+    /**
+     * The same narrowing as `DiagnosticText.from` in `:pipeline-output`, kept here because the
+     * module graph forbids sharing it: `:pipeline-output` depends on nothing but the stdlib, by an
+     * explicit decision recorded in its own build file, and `:pipeline-events-store` is not
+     * downstream of it. Adding that dependency to delete four duplicated lines would invert the
+     * boundary that keeps the output plane independent of the event plane.
+     */
     private fun shortCause(e: Throwable): String {
         val cls = e::class.simpleName ?: e.javaClass.name
-        val msg = e.message?.take(120)?.replace('\n', ' ')
+        val msg = e.message?.take(120)?.replace('\r', ' ')?.replace('\n', ' ')
         return if (msg.isNullOrBlank()) cls else "$cls: $msg"
     }
 }

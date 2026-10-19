@@ -13,8 +13,7 @@ import kotlinx.serialization.Serializable
  *
  * The two safety knobs surfaced by Jenkins (`codePointLimit`,
  * `maxAliasesForCollections`) are optional. Defaults are documented on the
- * Step handler itself and follow the Jenkins-reference decision recorded in
- * `docs/v2/07-uat/S2_READYAML_WRITEYAML_JENKINS_REFERENCE.md`:
+ * Step handler itself and follow the Jenkins reference:
  *
  *  - `codePointLimit = 8 MiB`
  *  - `maxAliasesForCollections = 64`

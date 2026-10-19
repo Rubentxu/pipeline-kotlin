@@ -102,7 +102,11 @@ repositories {
 // 2026-10-16: the 0.61.0 train closes at v0.61.0-rc6. The 0.62.0 train
 // opens here (ProductVersion 0.62.0) so the next candidate can be tagged
 // v0.62.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
-version = "0.62.0"
+//
+// 2026-10-19: the 0.62.0 train closes at v0.62.0. The 0.63.0 train opens
+// here (ProductVersion 0.63.0) so the next candidate can be tagged
+// v0.63.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
+version = "0.63.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

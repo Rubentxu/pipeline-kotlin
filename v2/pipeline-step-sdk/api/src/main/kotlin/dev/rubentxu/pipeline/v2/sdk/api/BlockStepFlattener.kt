@@ -51,7 +51,6 @@ data class IndexedStep(
  * The flattener is generic: it handles ANY [StepSpec] that carries a `steps: List<StepSpec>`
  * field, not just [StepSpec.WithEnv].
  *
- * Design: D1, D2 (ADR-0052 §D1/D2)
  * R-1 mitigation: extracted before new step kinds land, locks shape for ml-r10..r13
  *
  * ## Extensibility

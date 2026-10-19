@@ -60,7 +60,58 @@ declara `build.gradle.kts` o `build.gradle`**.
 
 El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
 declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
-fabricar credenciales. `NOT_RUN` no es un aprobado, y desde `5240feac` tampoco se
+fabricar credenciales.
+
+**El bloqueo se investigó y se comprobaron las cuatro afirmaciones siguientes,
+una a una contra el fichero antes de darlas por buenas:**
+
+1. `credentials add` solo acepta `--kind` y un id posicional
+   (`MainCredentialsCli.kt:115-128`). El secreto sale de
+   `System.console()?.readPassword() ?: error("no TTY available")`
+   (`CredentialPrompts.kt:27-30`) — cableado a TTY, y con un pipe `console()` es
+   nulo, así que ni se intenta. Un barrido de `--stdin`, `--value`, `--from-file`
+   y `--secret` en `v2/`, `scripts/` y `examples/` devuelve **cero**.
+2. Ese TTY **no es una invariante de dominio**: vive entero en
+   `internal object CredentialPrompts`, un ayudante de prompts separables.
+3. **La API de abajo sí es pública y no tiene TTY**:
+   `SecretStore.add(id: CredentialsId, credential: Credential)`
+   (`SecretStore.kt:39`, implementada en `LocalSecretStore.kt:353`), clase pública
+   con constructor público. Sin lectura de consola, sin comprobación de TTY, sin
+   variables de entorno: va directo a la criptografía. No hay invariante que
+   saltar; el TTY es la elección de fuente de entrada de **un** call site.
+4. **El passphrase ya es headless**: `PIPELINE_STORE_PASSPHRASE` se mira primero
+   y su KDoc dice literalmente «no TTY prompt, preferred for automation»
+   (`PassphraseResolver.kt:20,41-45`).
+
+O sea: el hueco es **de un solo lado**. El almacén ya se abre sin TTY; lo único
+puenteado es *el material del secreto*, y la API soportada que lo resuelve está
+una capa más abajo, alcanzable desde código pero **expuesta por ningún verbo**.
+
+Y hay un dato que decide el caso: **0 de los 50 ficheros de test del árbol
+instancian `LocalSecretStore`, y 0 llaman a `store.add` o `store.put`.** Los ocho
+tests de `credentials-local` se quedan una capa más abajo
+(`CredentialSerializer`, `AeadCipher`) y el test del ejecutor usa un fake en
+memoria. El hueco que documenta el escenario es real y está bien medido.
+
+**Lo que desbloquearía, y por qué NO se ha hecho en este ciclo:** añadir un
+`--stdin` a `credentials add` que lea el secreto de la entrada estándar, y que
+el lanzador siembre el almacén con ese verbo antes de correr el escenario. Son
+unos veinte líneas y convierten el veredicto del gate. No se ha hecho por dos
+motivos, y los dos importan:
+
+- `--value` o cualquier bandera con el secreto **violaría la invariante P2 del
+  propio repositorio** —el contenido nunca aparece en un `argv`— así que solo
+  `--stdin` es admisible. Y `--stdin` es superficie de CLI nueva **sobre una
+  frontera de seguridad**: hace posible escribir secretos sin humano, que es un
+  cambio de capacidad y no un refactor.
+- El encabezado del escenario dice que el lanzador «no tiene negocio» con un
+  almacen sembrado, y el motivo que da es que un seeder sería «exactamente el
+  harness que este árbol borró». Un `--stdin` alimentado por el propio escritor
+  del producto no es ni un seeder de TTY ni un fichero cifrado hecho a mano, así
+  que la prohibición **no** cubre este caso —pero la decisión de si lo cubre es
+  de producto, y la lista de autorizaciones pendientes ya lo tiene marcado.
+
+`NOT_RUN` no es un aprobado, y desde `5240feac` tampoco se
 confunde con uno: la línea de veredicto lleva el hueco **dentro**. Antes el
 conteo se imprimía y no se leía —la etapa 3 solo hacía `grep` del resumen—, así
 que el peor caso (`--scenario 'security/*'`: 0 pasan, 0 fallan, 1 no ejecutado)

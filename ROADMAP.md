@@ -18,23 +18,23 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `8a823ca556` medido, gate completo sobre este árbol | `git rev-parse HEAD` |
+| SHA | `824353add` medido, gate completo sobre este árbol | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 9 | ídem |
-| Tests unitarios ejecutados | **571** (62 informes en disco, 53 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **583** (65 informes en disco, 65 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Escenarios E2E | 36 (**35 pasan, 0 fallan, 1 `NOT_RUN`**, 1 rerun durable) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **7408 / 61484 = 0.120** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **7580 / 61484 = 0.123** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **289 s** en el ensayo de `8a823ca556`; la serie del ciclo es 276 / 242 / 289, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **254 s** en el ensayo de `824353add`; la serie del ciclo es 276 / 242 / 289 / 254, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`INCOMPLETE`**, `gaps=1 not_run` — las cinco etapas corrieron y pasaron, pero el escenario de credenciales no llegó a ejecutarse | línea final de `verify-all.sh` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
-Los tres ensayos se ejecutaron desde salidas de build limpias y los tres
-reescribieron los **56** informes JUnit, que es la condición que hace que la
-cifra de reloj mida el gate y no una restauración de caché. Un total correcto
-con el verbo equivocado ya no puede colarse: la etapa 2 separa `rewritten` de
-`read` y **falla** si no reescribe ninguno.
+Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
+los **65** informes JUnit, que es la condición que hace que la cifra de reloj
+mida el gate y no una restauración de caché. Un total correcto con el verbo
+equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
+**falla** si no reescribe ninguno.
 
 **Los 18 informes son 18 proyectos Gradle, no 18 directorios de fuentes.** Un
 censo por `src/test/kotlin` devuelve 14, y la diferencia son los cinco
@@ -1285,7 +1285,7 @@ git ls-files -z '*.kt' '*.kts' '*.java' '*.md' | grep -zv '^ROADMAP.md$' \
   | xargs -0 grep -ohIE 'ADR-[0-9]{4}'
 ```
 
-Patrón **anclado** (`ADR-` seguido de exactamente cuatro dígitos), y el census
+Patrón **anclado** (`ADR-` seguido de exactamente cuatro dígitos), y el censo
 contándose a sí mismo excluido a mano: **305 sitios, 120 ficheros, 26 tokens
 distintos** en código. Sobre todo lo trackeado, con este mismo ROADMAP dentro,
 son **332 sitios en 121 ficheros**; la diferencia son las 27 coincidencias de
@@ -2115,6 +2115,95 @@ mismo resultado; el `classpath` de test sólo contiene `:pipeline-domain`, junit
 y kotlin-stdlib, sin nada que ensombrezca; `CacheKey.V2` (la constante) sí
 resuelve, así que el problema es del objeto anidado y no del receptor. El test
 usa la grafía que compila y **no** afirma una causa que no se ha establecido.
+
+
+#### 2.9 ABI publicado con consumidores de producción y ningún test — cerrado
+
+El mismo patrón que §2.7, buscando por censo en vez de por recuerdo: símbolos en los siete
+volcados `.api` de `v2/*/api/`, con sitios de llamada en `src/main/` y ninguna referencia en
+`src/test/`.
+
+**El instrumento es el resultado, no el número.** Un escaneo permisivo por nombre da **34**
+símbolos. Es una fabricación: 30 son homónimos. `add` (23 ficheros) era
+`MutableList.add`; `run` (7) eran bloques lambda `run { }`; `stringOrNull` tiene 45
+llamadas `.stringOrNull(` y resuelve a **cinco copias privadas** por módulo, no a la
+publicada. Los constructores del DSL (`script`, `sh`, `parallel`…) también caen: su
+aparente uso de 15 ficheros eran literales, claves JSON y variables locales.
+
+Quedan **4**, y los cuatro son decisiones puras con consumidores reales:
+
+| Símbolo | Consumidores | Qué decide |
+|---|---|---|
+| `addSecret` | 3 ficheros / 5 llamadas | observar el handle sin consumirlo |
+| `classifyShellTerminal` | 2 / 3 | si un código no cero es valor o fallo |
+| `foldAwaitAll` | 2 / 2 | severidad antes que índice |
+| `decideShellReturnMode` | 2 / 2 | la cuarta combinación se rechaza |
+
+**Los cuatro cerrados**, cada uno con su mutación leída de vuelta en el diff antes de correr:
+
+- `addSecret` — el más grave, porque su KDoc documenta una regresión real: usaba `handle.use`,
+  que pone a cero el buffer, así que registrar una credencial ligada la destruía antes de
+  que `sh` corriera. Volver a `use` pone roja **una** fila y deja verde la otra, porque
+  `use` registra antes de wipe. El mensaje del fallo es el wipe: `<p@ss w0rd>` contra
+  `<?????????>`.
+- `classifyShellTerminal` + `decideShellReturnMode` — **dos** mutaciones independientes. Sin
+  el `require` cae **una** fila, la del rechazo. Haciendo que STATUS trate el no cero como
+  fallo cae **una** fila, la de la asimetría, y la de salida cero sigue verde porque la
+  mutación no la toca.
+- `foldAwaitAll` — **dos** mutaciones. Plegar la inestabilidad antes del fallo cae **una**
+  fila, la de dominancia. Cambiar el desempate de `min` a `max` cae **una** fila, la del
+  desempate.
+
+**Dos fallos del propio instrumento, reportados porque un censo que no dice cómo se
+equivoca no es auditable.** La primera pasada de regex exigía un espacio antes de `(` y
+descartó los 36 `fun` de nivel superior. Y un test de getter sin argumentos leía
+`line[m.end(1)-1]` en vez de `line[m.end(1):]`, lo que dejó entrar los ~1700 accesores de
+data classes como candidatos. Los dos inflaban la cifra en silencio.
+
+**Lo que este bloque NO cierra:** «0 referencias textuales a un identificador» no es «sin
+cobertura». Un símbolo ejercitado sólo de extremo a extremo por la CLI no deja rastro de su
+nombre en un test. Y la resolución de sitios de llamada es textual más adjudicación manual
+del receptor, no un índice de compilador: un homónimo de otro paquete con la misma aridad
+se contaría mal.
+
+
+---
+#### 2.10 El gate perdió su propia evidencia y culpó a quien no era — cerrado
+
+La puerta completa falló en la etapa 3 con `printed no scenario summary`, un motivo que era
+falso: el resumen estaba escrito. Debajo había dos defectos del instrumento, no del producto.
+
+**El nombre del fichero de evidencia no identificaba a su escritor.** Todas las etapas
+escribían en una ruta fija compartida por cualquier puerta de la máquina. Dos puertas en
+checkouts distintos escribieron el mismo fichero: la segunda lo truncó mientras la primera
+conservaba el descriptor en su propio offset, de modo que la escritura siguiente de la
+primera cayó más allá del final nuevo. Medido sobre el artefacto: **1400 bytes NUL** en mitad
+del fichero, y **13 líneas de escenario** que ningún proceso había escrito sobre las que
+faltaban. La prueba directa no es una analogía: el proceso tenía sus descriptores 1 y 2
+abiertos sobre ese mismo path mientras corría.
+
+| Comprobación | Resultado |
+|---|---|
+| NUL en el log de la etapa 3 | 1465 bytes, entre texto por ambos lados |
+| Líneas de escenario esperadas / presentes | 36 / 23 |
+| Descriptores 1 y 2 del otro proceso | ambos sobre el mismo path |
+| Dos shells concurrentes con nombre por PID | 2 directorios distintos |
+
+**El instrumento de lectura no sabía leer su propio sujeto.** `grep` sin `-a` sobre un
+fichero con bytes NUL responde «fichero binario» y **no devuelve la coincidencia**. El
+envoltorio convertía eso en «no imprimió resumen» y era exactamente al revés: leído como
+texto, el mismo fichero da `36 scenario(s), 35 passed, 0 failed, 1 not run`.
+
+Dos cosas que este bloque deja dichas, porque las dos son la lección y no el arreglo:
+
+- Un mensaje de fallo que nombra una causa falsa es peor que no tener mensaje: dirige al
+  operador a una etapa que sí imprimió lo suyo.
+- El arreglo al que se llega por el síntoma (`grep -a`) es el menor de los dos. Sin el
+  nombre por PID, el fichero sigue sin ser reproducible aunque ahora sí se lea.
+
+**Lo que este bloque NO cierra:** dos puertas simultáneas sobre el mismo checkout siguen
+sin poder coincidir; esto evita que compartan fichero, no que compitan por la misma
+distribución.
 
 ---
 

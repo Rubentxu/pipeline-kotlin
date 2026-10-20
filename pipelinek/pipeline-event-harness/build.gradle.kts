@@ -31,20 +31,25 @@ dependencies {
     implementation(libs.snakeyaml)
 }
 
-// Unit-test wiring REMOVED .
-// This module carries no unit tests: it is the runtime behind the `pipeline events verify` CLI
-// verb -- product functionality whose proof is running the verb. Its verification is the
-// executable E2E layer -- `.pipeline.kts` pipelines under `examples/`, driven by
-// `examples/run.sh` (stage 3 of `scripts/verify-all.sh`) -- and not a JUnit class.
-// An earlier version of this comment named `scripts/run-e2e-pipelines.sh`, which does not exist
-// in this tree; `ls scripts/` is the evidence, and the runner has always been `examples/run.sh`.
-// The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
-// Left in place they were a SILENT green: a `Test` task whose source set is empty reports
-// success while executing zero classes. Gradle 8.14 exposes no `failOnNoDiscoveredTests`
-// property -- the setting does not exist in this version, so nothing inside the build can
-// turn that green into a failure, and a build file asserting otherwise is describing a flag
-// it cannot compile.
-// What turns it into a failure lives outside Gradle: `scripts/verify-all.sh` enumerates the
-// modules it asks from the filesystem and fails when a module that has a test source produces
-// no JUnit XML. The wiring that could have produced the misleading green is gone from the
-// modules that have no tests, so no module reaches that check in silence.
+// The module is the runtime behind the `pipeline events verify` verb, and the
+// executable layer does not reach it: the launcher runs a pipeline and reads its
+// exit code, while the verifier is a second command that needs a journal, a run
+// id and a contract file. No scenario drives that command, so the claim that the
+// end-to-end layer is this module's verification was true of no one. The
+// guarantee that a contract honoured comes back clean, and a contract broken
+// comes back with the rule it broke, had no observer at all — not a unit test,
+// not an example. `EventHarnessVerifyTest` is that observer.
+//
+// These lines exist because a test source does, and `scripts/verify-all.sh`
+// fails the build when a module with a test source produces no JUnit XML.
+// Gradle 8.14 exposes no `failOnNoDiscoveredTests` property — the setting does
+// not exist in this version — so the guarantee that makes this wiring safe
+// lives in that script, not here.
+dependencies {
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+tasks.test {
+    useJUnitPlatform()
+}

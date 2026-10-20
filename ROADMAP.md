@@ -18,16 +18,16 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `19998c146` medido, gate completo sobre este árbol | `git rev-parse HEAD` |
+| SHA | `0b52cff4f` medido, gate completo sobre este árbol | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` |
 | Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 9 | ídem |
-| Tests unitarios ejecutados | **590** (66 informes en disco, 66 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | **29 (29 pasan, 0 fallan)**, 1 rerun durable | `v2/examples/**/*.pipeline.kts` |
-| Escenarios que sólo comprueban el código de salida | **0** | censo por directiva, sobre los 29 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **7811 / 61465 = 0.127** (límite 2) | `scripts/check-budgets.py --json` |
+| Tests unitarios ejecutados | **594** (67 informes en disco, 67 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Escenarios E2E | **30 (30 pasan, 0 fallan)**, 1 rerun durable, 2 ejecuciones por escenario (con journal y sin él) | `v2/examples/**/*.pipeline.kts` |
+| Escenarios que sólo comprueban el código de salida | **0** | censo por directiva, sobre los 30 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **7962 / 61451 = 0.130** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **258 / 220 / 217** en los tres ensayos de `19998c146`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **445 / 406 / 404** en los tres ensayos de `0b52cff4f`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **807** entradas de baseline, ninguna nueva | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -97,7 +97,7 @@ afirmación con ella.
 
 `run.sh` admitía `//@ durable` desde su cabecera, pero **ninguno** de los 36
 escenarios lo declaraba: la segunda ejecución sobre el mismo `--control-root`
-nunca había corrido. Hoy lo declara uno de los 29, y es
+nunca había corrido. Hoy lo declara uno de los 30, y es
 `durable/22-wait-until.pipeline.kts`, que
 es el escenario que puede hablar del assunto y ningún otro puede — un cuerpo que
 ya llegó a `WaitUntilCompleted` no debe volver a consultarse al repetir, ni
@@ -130,9 +130,9 @@ propia latencia y **no** va dentro de este número.
 
 Una cifra de reloj heredada de otro commit es exactamente el tipo de verde que
 esta tabla existe para no declarar: por eso cada fila lleva el SHA al que se
-midió. Los tres ensayos de este bloque se ejecutaron sobre `19998c146`, y el
-commit que actualiza este documento no toca código de producto ni de
-verificación: `check-budgets.py` devuelve los mismos **7811 / 61465** antes y
+midió. Los tres ensayos de este bloque se ejecutaron sobre `0b52cff4f`, y los commits
+que actualizan este documento y los README no tocan código de producto ni de
+verificación: `check-budgets.py` devuelve los mismos **7962 / 61451** antes y
 después y ninguna tarea del gate lee `ROADMAP.md`, así que la traslación está
 medida y no supuesta. En cuanto entre un commit que toque código de producto o
 de verificación, esta tabla vuelve a estar caducada y hay que repetir los tres
@@ -161,9 +161,9 @@ contra el texto del plan. «Medido» significa que el número salió de una
 | 1 | 0 Markdown bajo `docs/` y `v2/` | **PASS** | `git ls-files ':(glob)docs/**/*.md'` = 0; `:(glob)v2/**/*.md` = 0. En la raíz solo quedan `AGENTS.md`, `README*.md`, `ROADMAP.md` |
 | 2 | 0 `@Test` UAT/E2E/AAT/harness | **PASS** | 0 en `pluginContractTest`/`installedContractTest`/`integrationTest`/`functionalTest`; 0 `@Disabled` |
 | 3 | 0 clases legacy trasladadas | **PASS** | `v2/test-harness`, `v2/pipeline-testkit`, `v2/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
-| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 29 escenarios en 8 categorías bajo `v2/examples/`; 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` invocado por la etapa 3 del gate |
-| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 7811 / 61465 = 0.127; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
-| 6 | `verify-all` local ≤ 900 s | **PASS** | tres ensayos sobre `19998c146`: 258 / 220 / 217, contra el límite de 900. Todos con 66/66 informes reescritos, 590 tests, 0 fallos, 0 errores, 0 skips |
+| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 30 escenarios en 8 categorías bajo `v2/examples/`; cada uno se ejecuta en las dos rutas del CLI (con journal y sin él); 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` invocado por la etapa 3 del gate |
+| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 7962 / 61451 = 0.130; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
+| 6 | `verify-all` local ≤ 900 s | **PASS** | tres ensayos sobre `0b52cff4f`: 445 / 406 / 404, contra el límite de 900. Todos con 67/67 informes reescritos, 594 tests, 0 fallos, 0 errores, 0 skips |
 | 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS con una excepción** | 27 módulos declarados compilan; `v2/pipeline-protocol/` está versionado y **no está declarado**, luego Gradle nunca lo compila |
 
 Sobre el límite 4: el mandato escribe el lanzador como `examples/run.sh`, y en
@@ -1539,10 +1539,10 @@ formato y necesita versión; si es un evento nuevo, `AFTER_LAST_RUN_STARTED` pas
 a significar «desde el último `<nuevo evento>`» y hay que migrarlo en el mismo
 cambio. Hoy no hay fecha ni responsable; hay ruta.
 
-**d) Ninguno de los 29 escenarios comprueba sólo el código de salida.** Era 13 de
-36 al abrirse este bloque; hoy es **0 de 29**.
+**d) Ninguno de los 30 escenarios comprueba sólo el código de salida.** Era 13 de
+36 al abrirse este bloque; hoy es **0 de 30**.
 
-Censo reproducible sobre los 29 `.pipeline.kts` del árbol. El lanzador conoce
+Censo reproducible sobre los 30 `.pipeline.kts` del árbol. El lanzador conoce
 cuatro aserciones: `//@ expect-exit`, `//@ expect-stderr`, `//@ expect-stdout` y
 `//@ expect-transcript`. Todo lo demás tiene que afirmarlo el propio escenario,
 y no todos lo hacen:
@@ -1550,7 +1550,7 @@ y no todos lo hacen:
 | | Qué afirma | N |
 |---|---|---|
 | A | `//@ expect-stderr`: el lanzador exige **este** texto de negativa, no un código cualquiera | 5 |
-| B | El efecto: `//@ expect-stdout`, `//@ expect-transcript`, o una comprobación dentro del cuerpo (`test`, `grep -q`, `cat`, `find`, `wc -l`) que falla si el efecto no ocurrió | 24 |
+| B | El efecto: `//@ expect-stdout`, `//@ expect-transcript`, o una comprobación dentro del cuerpo (`test`, `grep -q`, `cat`, `find`, `wc -l`) que falla si el efecto no ocurrió | 25 |
 | C | **Nada** que compruebe el efecto; el lanzador compara el código de salida y ya está | **0** |
 
 El único que quedaba era `plugins/uppercase`, y su comentario explicaba por qué
@@ -2161,40 +2161,51 @@ Dos cosas que este bloque deja dichas, porque las dos son la lección y no el ar
 sin poder coincidir; esto evita que compartan fichero, no que compitan por la misma
 distribución.
 
-### 2.10 El observador de salida en vivo existe y no entrega nada
+### 2.10 El observador de salida en vivo no arrancaba en la ruta que usa una CI
 
-**Medido, no supuesto, y re-verificado sobre este árbol.** Un `sh` que imprime
-no aparece en la consola del proceso cuando la corrida es durable:
+**Lo que se creía y lo que era.** Durante un ciclo entero se dio por hecho que
+el observador de salida en vivo estaba mal: arrancaba, leía el plano y no
+entregaba nada. La medición de este ciclo dice otra cosa, y la distingue una
+sonda que se ejecutó contra un plano real:
 
-```text
-pipelinek run --isolated --db ev.db --control-root ctl script.kts
-  stdout  -> la salida de `echo` sí, la de `sh` NO
-  plano   -> los bytes SÍ están: ctl/output-plane/frames/<runId>.frames
-```
+| Capa | Qué hace | Qué hacía |
+|---|---|---|
+| `SegmentFrameIndex.framesOfRun` | relee el log de frames del disco en cada llamada | correcto |
+| `SegmentOutputStore.read` | sirve los bytes hasta el offset confirmado | correcto |
+| `LiveOutputDrain.drain` | sondea, emite en orden, avanza el ordinal | correcto |
+| `LiveOutputPresentation.emit` | escribe el texto y lo vacía | correcto |
+| **el arranque** | quién lanza el hilo del observador | **sólo en la ruta volátil** |
 
-El mecanismo paraarlo ya está escrito. `Main.startLiveOutputObserver` arranca
-un hilo **antes** de la canalización que drena el plano de salida mientras la
-corrida está en vuelo, y su KDoc describe exactamente este hueco: *"A build's
-progress was therefore invisible while the build runs"*. El hilo se arranca,
-el plano tiene los frames indexados bajo el `runId` correcto, el `console` del
-producto lee ese plano sin problema, y el observador **no entrega ni una
-línea** en ninguno de los tres formatos (`text`, `jsonl`, `json`) y sin
-refusar: no hay refusal en stderr, que es lo que haría visible un fallo del
-lector.
+La sonda leyó el plano de una corrida real y devolvió los 18 bytes del marker
+en dos frames, con el texto exacto y el stream sellado. Todo lo que hay entre
+el plano y la consola funciona. Lo que no ocurría es que **nadie arrancaba el
+observador en la ruta durable** —la ruta con journal en SQLite, que es como
+corre un pipeline en una CI— porque `startLiveOutputObserver` sólo se llamaba
+en la rama sin `--db`.
 
-**Por qué el E2E no lo veía.** El suite siempre corrió en la rama sin
-`--db`, donde el sustrato de shell emite `EchoOutputCaptured` y la salida sí
-llega a stdout. Ese camino hace que `expect-stdout` sobre la salida de un `sh`
-funcione, y por eso ninguna señal de rojo salió nunca. La rama durable — la
-que usa una CI de verdad — no renderiza su transcripción. El suite llevaba un
-ciclo entero midiendo el camino que nadie usa en producción y sin tocar el
-que sí.
+**Por qué el E2E no lo veía, y por qué eso era un defecto del suite.** El
+lanzador ejecutaba los escenarios sin `--db`, es decir, por la rama volátil:
+justo la rama donde el observador sí arrancaba. La ruta que una CI usa no la
+medía nadie, y un suite que mide una sola de las dos rutas no puede saber que
+hay dos.
 
-**Lo que se ha hecho y lo que no.** Se ha medido y se ha dejado el mecanismo
-nombrado, con un reproductor de una línea y un sitio exacto donde mirar.
-Arreglarlo es un cambio de producto en la superficie de consola, y un cambio
-de producto no entra en un ciclo cuyo objeto es la higiene: necesita su propio
-test de regresión, y un test que no se ha visto rojo no prueba nada.
+**El arreglo.** Las dos rutas arrancan un observador y lo cierran cuando la
+corrida termina. Y el suite ejecuta **cada escenario en las dos rutas**, con
+las mismas expectativas: una divergencia entre rutas es un defecto, y sólo
+ejecutar las dos puede encontrarla.
+
+**La divergencia que encontró.** Las dos rutas informaban de una pipeline
+fallida de forma distinta: una ponía el mensaje en la misma línea y no nombraba
+el tipo de fallo, la otra lo ponía en la línea siguiente y sí lo nombraba. El
+mismo fallo producía dos informes distintos según tuviera el operador una base
+de datos o no. Ahora hay **una sola autoridad** para el informe de salida
+(`reportRunOutcome`), y las dos rutas la llaman: el resultado en una línea, la
+razón en la siguiente, con el tipo de fallo y su origen.
+
+**Lo que costó.** El suite pasó de 29 a 30 escenarios y de una ejecución por
+escenario a dos, y el reloj de la puerta sube con ello. A cambio, el E2E mide
+por fin la ruta de producción, y la diferencia entre las dos rutas es un
+defecto que ya no puede pasar inadvertido.
 
 ### 2.11 Los comentarios: 0 identificadores de tarea dentro
 
@@ -2240,8 +2251,8 @@ fichero que ninguna puerta leía.
 
 ### 2.12 El harness: menos escenarios, y los que quedan afirmando más
 
-El suite E2E pasó de **36 a 29 escenarios**, y no por gusto: cuatro no
-podían fallar.
+El suite E2E pasó de **36 a 30 escenarios**, y no por gusto: cuatro no
+podían fallar y uno se ha añadido para afirmar lo que un proceso escribe.
 
 | Retirado | Por qué no afirmaba nada |
 |---|---|
@@ -2316,6 +2327,26 @@ snapshot es **truthful**: 807 entradas, ninguna nueva, ninguna fantasma. Y la
 puerta de SAST sigue teniendo dientes, comprobado por mutación: una propiedad
 privada sin usar en `pipeline-domain` pone el build en rojo con el nombre de
 la regla y la línea.
+
+
+### 2.14 El drain tenía contrato y ningún test
+
+`LiveOutputDrain` es la pieza que decide **qué se muestra y en qué orden**, y
+tenía un KDoc que describía tres invariantes —el orden de emisión, el punto de
+reanudación y la forma de terminar— sin un solo test que los comprobara. Es
+justo el tipo de pieza que parece no necesitar un test porque su código es
+corto.
+
+Ahora hay uno, con el plano sustituido por un guion en memoria: el drain emite
+en orden de observación, pide la página siguiente desde el ordinal del último
+record, entrega los bytes que ya había leído aunque el dueño le dijera que
+parara, termina en `Drained` cuando todos los streams están sellados y en
+`Stopped` cuando alguno sigue abierto, y una refusal lo termina **en vez de**
+disfrazarse de página vacía.
+
+Se ha visto **rojo** antes de verde: invirtiendo el orden del drain —preguntar
+antes de leer— falla el test que fija esa invariante y **sólo** ese, porque la
+mutación no toca ni el orden de emisión ni el trato de la refusal.
 
 
 ---
@@ -2397,6 +2428,21 @@ la regla y la línea.
   árbol y que no queda ningún identificador de plan; se ejecutó en rojo antes
   de corregir y en verde después. Motivo: un README que miente cuesta más que
   un README que no existe, porque el lector no tiene forma de saber que miente.
+
+- **El suite ejecuta cada escenario en las dos rutas de ejecución.** Con
+  journal privado (como una CI) y sin él (como una corrida local), y las dos
+  tienen que cumplir las mismas expectativas. Motivo: una divergencia entre
+  rutas es un defecto, y un suite que mide una sola de ellas no puede saber que
+  hay dos. La divergencia que encontró —dos informes distintos para el mismo
+  fallo— llevaba un ciclo entero viva porque nadie ejecutaba la otra ruta.
+- **Un informe de salida tiene una sola autoridad.** Las dos rutas llaman a la
+  misma función, así que no pueden divergir. Motivo: dos copias de una decisión
+  de presentación son dos respuestas a la misma pregunta, y la que se escribe
+  segundo es la que gana.
+- **El fallo se informa con su tipo y su origen.** El resultado va en una
+  línea y la razón en la siguiente, y la razón nombra el tipo de fallo
+  (`cause [USER]`) y su origen. Motivo: un informe que obliga a adivinar por
+  qué falló algo no es un informe.
 
 ---
 

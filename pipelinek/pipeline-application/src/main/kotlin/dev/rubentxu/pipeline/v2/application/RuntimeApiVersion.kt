@@ -7,7 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.step.SemVer
  * ## Why this had to be extracted rather than written again
  * Admission compares each plugin's declared `apiRange` against the running version. Before this
  * type there was no production source for that value at all: every one of the eight existing
- * `PluginAdmissionGate` callers passed a literal `SemVer(0, 47, 0)` from a test. A gate that has
+ * admission-gate callers passed a literal `SemVer(0, 47, 0)` from a test. A gate that has
  * never seen a real version is not a gate, so wiring pass 1 forced the question.
  * Reusing [readImplementationVersion] rather than reading the resource a second time is the point:
  * the `version` subcommand already reports this value, and a second reader would be a second

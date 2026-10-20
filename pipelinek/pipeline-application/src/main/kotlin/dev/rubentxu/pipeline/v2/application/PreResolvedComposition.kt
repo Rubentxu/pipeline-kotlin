@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.durable.AdmissionControlJournal
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry
 import dev.rubentxu.pipeline.v2.domain.directive.ErasedDirectiveDefinition
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection
@@ -105,8 +106,16 @@ object PluginCompositionAdmitter {
      * @param pluginJars the `--plugin-jar` entries. Bundled plugins are discovered from the
      *   runtime classpath, so passing only these is correct and passing a list that omits them
      *   would under-admit.
+     * @param trust the operator's trust material, or `null` when the installation runs without a
+     *   trust policy. When it is there, every artifact the operator named with `--plugin-jar` has
+     *   to be the one their row pins, signed by the publisher they named.
+     * @param journal where the admission decision is recorded, when the caller has a control root.
 */
-    fun admitThenCompose(pluginJars: List<String>): CompositionOutcome {
+    fun admitThenCompose(
+        pluginJars: List<String>,
+        trust: PluginTrustSource? = null,
+        journal: AdmissionControlJournal? = null,
+    ): CompositionOutcome {
         val candidates = (computeBundledPlugins() + pluginJars).map { Path.of(it) }
 
         // Measure the REAL bytes of every candidate BEFORE any class from any of them is loaded.
@@ -149,6 +158,24 @@ object PluginCompositionAdmitter {
         }
         val artifacts = admitted.map { it.path }
 
+        // The digests the OPERATOR brought, and WHERE their copy is. The trust policy covers the
+        // artifacts named with `--plugin-jar`, and it covers them BY BYTES: an operator who names
+        // a plugin by two paths, or who names a copy of a plugin the installation already bundles,
+        // gets one answer about one artifact. The digests are taken from the readings made BEFORE
+        // deduplication, because deduplication may keep the bundled copy of an artifact the
+        // operator named by another path — and the operator's answer has to be about the bytes
+        // they named, not about the path that happened to survive. The publisher's signature
+        // travels beside the operator's copy, so that path is kept too.
+        // The bundled plugins the operator did not name are covered by the distribution they
+        // installed, not by a row they would have to write for each.
+        val operatorNamed = pluginJars.map { Path.of(it) }.toSet()
+        val measuredByPath = admitted.associate { measurement -> measurement.path to measurement.digest }
+        val operatorArtifacts = measurements
+            .filterIsInstance<PluginArtifactIntegrity.Measurement.Measured>()
+            .filter { measurement -> operatorNamed.contains(measurement.path) }
+            .associate { measurement -> measurement.digest.value.lowercase() to measurement.path }
+        val trustPolicy = trust?.let { source -> PluginTrustPolicy(source, operatorArtifacts) }
+
         if (artifacts.isEmpty()) {
             // Not a degraded case: an installation with no plugin JARs still composes, it just
             // composes core only. Written out rather than defaulted so "no plugins" stays a
@@ -167,10 +194,19 @@ object PluginCompositionAdmitter {
             return CompositionOutcome.RuntimeVersionUnavailable(e.message ?: "unknown version defect")
         }
 
-        return when (val admission = PreLoadPluginAdmission.admitAll(artifacts, runtimeVersion)) {
+        return when (
+            val admission = PreLoadPluginAdmission.admitAll(
+                artifacts = artifacts,
+                measured = measuredByPath,
+                runtimeVersion = runtimeVersion,
+                trust = trustPolicy,
+                journal = journal,
+            )
+        ) {
             is AdmittedArtifacts.Refused -> CompositionOutcome.Refused(
                 artifact = admission.artifact,
                 rejection = admission.rejection,
+                detail = admission.detail,
             )
 
             is AdmittedArtifacts.Admitted -> {
@@ -227,6 +263,8 @@ sealed interface CompositionOutcome {
     data class Refused(
         val artifact: Path,
         val rejection: dev.rubentxu.pipeline.v2.domain.step.AdmissionRejection,
+        /** The human sentence behind the refusal, when it has one. */
+        val detail: String? = null,
     ) : CompositionOutcome
 
     /** The running artifact carries no usable version, so no plugin could be judged. */

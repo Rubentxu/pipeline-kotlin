@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.durable.AdmissionControlJournal
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import java.nio.file.Files
 import java.nio.file.Path
@@ -115,11 +116,33 @@ internal fun computeBundledPlugins(): List<String> {
  * conflict above, and 3 is reserved for a packaging defect. A refused plugin is an operator-facing
  * refusal with a named artifact; a missing build version is a broken build. Collapsing them would
  * make the two indistinguishable from a log line.
+ * ## What the refusal says
+ * The typed rejection names WHAT happened, and the detail says WHY in the operator's words: two
+ * refusals of the same kind can have different causes, and an operator who is told only the kind
+ * has to go and read the code to find out which one they hit.
 */
-internal fun admitThenComposeOrExit(pluginJars: List<String>): PreResolvedComposition =
-    when (val outcome = PluginCompositionAdmitter.admitThenCompose(pluginJars)) {
+internal fun admitThenComposeOrExit(
+    pluginJars: List<String>,
+    trust: PluginTrustSource? = null,
+    journal: AdmissionControlJournal? = null,
+): PreResolvedComposition =
+    when (val outcome = PluginCompositionAdmitter.admitThenCompose(pluginJars, trust, journal)) {
         is CompositionOutcome.Composed -> {
             outcome.composition.also { composition ->
+                // The trust decision is reported BEFORE the composition, because admission comes
+                // first: an operator reading the report has to see which of their plugins the
+                // policy approved, and on what evidence, before the list of what the plugins
+                // contribute.
+                outcome.admitted.forEach { artifact ->
+                    val trust = artifact.trust
+                    if (trust != null) {
+                        System.err.println(
+                            "Plugin ${artifact.plugin.pluginId} admitted under the operator's trust " +
+                                "policy: bytes ${trust.digest.value}, publisher ${trust.publisher}, " +
+                                "key ${trust.keyId}",
+                        )
+                    }
+                }
                 if (outcome.admitted.isNotEmpty()) {
                     composition.reportTo { line -> System.err.println(line) }
                 }
@@ -127,7 +150,9 @@ internal fun admitThenComposeOrExit(pluginJars: List<String>): PreResolvedCompos
         }
 
         is CompositionOutcome.Refused -> {
-            System.err.println("Plugin admission refused for ${outcome.artifact}: ${outcome.rejection}")
+            val reason = outcome.rejection.toString()
+            val detail = outcome.detail?.let { " — $it" } ?: ""
+            System.err.println("Plugin admission refused for ${outcome.artifact}: $reason$detail")
             System.exit(2)
             error("unreachable: System.exit does not return")
         }
@@ -138,3 +163,26 @@ internal fun admitThenComposeOrExit(pluginJars: List<String>): PreResolvedCompos
             error("unreachable: System.exit does not return")
         }
     }
+
+/**
+ * The operator's trust material, read from the file they named, or `null` when they named none.
+ *
+ * ## Why the flag is opt-in
+ * A trust policy that cannot be turned on is not a policy; a policy that is always on is a
+ * behaviour change every installation would inherit. So the operator asks for it by naming their
+ * file, and until they do, the runtime admits plugins the way it always has — on the manifest's
+ * declaration and the API range.
+ *
+ * ## Where the publisher keys live
+ * Beside the trust file, in `<trust-file-dir>/keys/<keyId>.pub`. The keyring is a DIRECTORY
+ * rather than a field of the trust file on purpose: a row that carried its own public key could
+ * carry an attacker's key, while a row that can only NAME a key the operator already keeps cannot.
+ */
+internal fun pluginTrustSource(trustFile: String?): PluginTrustSource? {
+    val path = trustFile?.let { Path.of(it) } ?: return null
+    val keysDir = path.toAbsolutePath().parent?.resolve("keys") ?: Path.of("keys")
+    return PluginTrustSource(
+        trustDatabase = LocalFileOperatorTrustDatabase(path),
+        keyRing = FilePublisherKeyRing(keysDir),
+    )
+}

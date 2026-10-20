@@ -42,7 +42,7 @@ object HttpPluginDeclaration {
      * Before this refactor, the upper bound was hand-typed here, and a product version
      * bump from 0.53.x to 0.54.x was published without updating the literal: the
      * v0.56.0-rc3 candidate shipped with `apiRange=[0.47.0, 0.53.0)` while the host
-     * was 0.56.0, and `PluginAdmissionGate` would refuse every official plugin on
+     * was 0.56.0, and the runtime's admission pass would refuse every official plugin on
      * its own distribution.
      * The apiRange is now a CONSUMER of the policy-derived resource. The literal
      * moved to `buildSrc/PluginCompatibilityPolicy`, which reads `rootProject.version`

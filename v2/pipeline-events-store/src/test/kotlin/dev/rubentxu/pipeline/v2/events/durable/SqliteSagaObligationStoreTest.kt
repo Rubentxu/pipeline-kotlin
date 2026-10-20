@@ -41,13 +41,15 @@ class SqliteSagaObligationStoreTest {
 
     private fun row(
         runId: String = "run-1",
+        sagaId: SagaId = SagaId.of("checkout"),
+        actionId: SagaActionId = SagaActionId.of("reserve-stock"),
         planFingerprint: SagaPlanFingerprint = PLAN_A,
         leaseEpoch: Long = 1L,
         createdAtMs: Long = 1_000L,
     ) = SagaObligationRow(
         runId = runId,
-        sagaId = SagaId.of("checkout"),
-        actionId = SagaActionId.of("reserve-stock"),
+        sagaId = sagaId,
+        actionId = actionId,
         compensationId = CompensationId.of("release-stock"),
         intentVersion = SagaIntentContract.CURRENT_VERSION,
         planFingerprint = planFingerprint,
@@ -61,6 +63,36 @@ class SqliteSagaObligationStoreTest {
         updatedAtMs = createdAtMs,
         receiptRef = null,
     )
+
+    /**
+     * The key of one promise, as the domain derives it.
+     */
+    private fun keyOf(actionId: String, sagaId: SagaId = SagaId.of("checkout")) = CompensationKey(
+        sagaId = sagaId,
+        actionId = SagaActionId.of(actionId),
+        compensationId = CompensationId.of("release-stock"),
+    )
+
+    /**
+     * Reports that a promise's forward effect happened, as the PLAN port would.
+     */
+    private fun confirm(
+        store: SqliteSagaObligationStore,
+        actionId: String,
+        sagaId: SagaId = SagaId.of("checkout"),
+        leaseEpoch: Long = 1L,
+    ) {
+        store.updateOutcome(
+            SagaObligationUpdate(
+                runId = "run-1",
+                key = keyOf(actionId, sagaId),
+                status = CompensationObligationStatus.EFFECT_CONFIRMED,
+                receiptRef = null,
+                updatedAtMs = 2_000L,
+                leaseEpoch = leaseEpoch,
+            ),
+        )
+    }
 
     @Nested
     inner class Writing {
@@ -260,6 +292,123 @@ class SqliteSagaObligationStoreTest {
                 CompensationObligationStatus.ARMED,
                 store.find("run-1", KEY)?.status,
             )
+        }
+    }
+
+    @Nested
+    inner class MovingManyAtOnce {
+
+        @Test
+        fun `every obligation of the Saga moves, and the ones in another state do not`() {
+            val store = store()
+            store.arm(row(actionId = SagaActionId.of("reserve")))
+            store.arm(row(actionId = SagaActionId.of("charge")))
+            store.arm(row(actionId = SagaActionId.of("ship")))
+            confirm(store, "reserve")
+            confirm(store, "charge")
+
+            val move = store.moveAll(
+                runId = "run-1",
+                sagaId = SagaId.of("checkout"),
+                from = CompensationObligationStatus.EFFECT_CONFIRMED,
+                to = CompensationObligationStatus.EFFECT_KEPT,
+                updatedAtMs = 3_000L,
+                leaseEpoch = 1L,
+            )
+
+            val applied = assertInstanceOf<SagaBulkMove.Applied>(move)
+            assertEquals(2, applied.moved)
+            assertEquals(0, applied.remaining)
+            // The one that was never confirmed is not touched: the move says WHICH state it
+            // moves, and a promise that is not in that state is not the caller's business.
+            assertEquals(
+                CompensationObligationStatus.ARMED,
+                store.find("run-1", keyOf("ship"))?.status,
+            )
+            assertEquals(
+                CompensationObligationStatus.EFFECT_KEPT,
+                store.find("run-1", keyOf("reserve"))?.status,
+            )
+        }
+
+        @Test
+        fun `another Saga of the same run does not move`() {
+            val store = store()
+            store.arm(row(sagaId = SagaId.of("checkout"), actionId = SagaActionId.of("reserve")))
+            store.arm(row(sagaId = SagaId.of("shipping"), actionId = SagaActionId.of("ship")))
+            confirm(store, "reserve", sagaId = SagaId.of("checkout"))
+            confirm(store, "ship", sagaId = SagaId.of("shipping"))
+
+            val move = store.moveAll(
+                runId = "run-1",
+                sagaId = SagaId.of("checkout"),
+                from = CompensationObligationStatus.EFFECT_CONFIRMED,
+                to = CompensationObligationStatus.EFFECT_KEPT,
+                updatedAtMs = 3_000L,
+                leaseEpoch = 1L,
+            )
+
+            assertEquals(1, assertInstanceOf<SagaBulkMove.Applied>(move).moved)
+            assertEquals(
+                CompensationObligationStatus.EFFECT_CONFIRMED,
+                store.find("run-1", keyOf("ship", sagaId = SagaId.of("shipping")))?.status,
+            )
+        }
+
+        @Test
+        fun `a writer behind the run epoch moves nothing`() {
+            val store = store()
+            store.arm(row(leaseEpoch = 5L))
+            confirm(store, "reserve-stock", leaseEpoch = 5L)
+
+            val move = store.moveAll(
+                runId = "run-1",
+                sagaId = SagaId.of("checkout"),
+                from = CompensationObligationStatus.EFFECT_CONFIRMED,
+                to = CompensationObligationStatus.EFFECT_KEPT,
+                updatedAtMs = 3_000L,
+                leaseEpoch = 2L,
+            )
+
+            val fenced = assertInstanceOf<SagaBulkMove.Fenced>(move)
+            assertEquals(5L, fenced.currentEpoch)
+            // The state is exactly where it was: the stale writer wrote nothing.
+            assertEquals(
+                CompensationObligationStatus.EFFECT_CONFIRMED,
+                store.find("run-1", keyOf("reserve-stock"))?.status,
+            )
+        }
+
+        @Test
+        fun `the promise and the receipt survive the move`() {
+            val store = store()
+            store.arm(row(actionId = SagaActionId.of("reserve")))
+            store.updateOutcome(
+                SagaObligationUpdate(
+                    runId = "run-1",
+                    key = keyOf("reserve"),
+                    status = CompensationObligationStatus.EFFECT_CONFIRMED,
+                    receiptRef = EffectReceiptRef.of("rcpt-1"),
+                    updatedAtMs = 2_000L,
+                    leaseEpoch = 1L,
+                ),
+            )
+
+            store.moveAll(
+                runId = "run-1",
+                sagaId = SagaId.of("checkout"),
+                from = CompensationObligationStatus.EFFECT_CONFIRMED,
+                to = CompensationObligationStatus.EFFECT_KEPT,
+                updatedAtMs = 3_000L,
+                leaseEpoch = 1L,
+            )
+
+            // The receipt belongs to the EFFECT, which is still there, and the promise was made
+            // at a moment: moving the state moves neither.
+            val moved = store.find("run-1", keyOf("reserve"))
+            assertEquals("rcpt-1", moved?.receiptRef?.value)
+            assertEquals(1_000L, moved?.createdAtMs)
+            assertEquals(PLAN_A, moved?.planFingerprint)
         }
     }
 

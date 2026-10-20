@@ -787,12 +787,16 @@ fun main(args: Array<String>) {
                 }
             }
         } else {
+            // The LEGACY path: no typed outcome was produced, so there are only two stories —
+            // "it finished successfully" and "it did not". The "unstable" arm that used to live
+            // here was UNREACHABLE: the word it compared against could only be those two, so
+            // the arm could never run and only misled whoever read it.
             val lastEvent = events.lastOrNull()
-            val legacyOutcome = if (lastEvent is RunFinished && lastEvent.outcome == "success") "success" else "failure"
-            when (legacyOutcome) {
-                "success" -> { System.err.println("Pipeline finished with SUCCESS"); false }
-                "unstable" -> { System.err.println("Pipeline finished with UNSTABLE"); false }
-                else -> { System.err.println("Pipeline finished with FAILURE"); true }
+            val succeeded = lastEvent is RunFinished && lastEvent.outcome == RunOutcome.SUCCESS_TOKEN
+            if (succeeded) {
+                System.err.println("Pipeline finished with SUCCESS"); false
+            } else {
+                System.err.println("Pipeline finished with FAILURE"); true
             }
         }
         if (exitFailure) System.exit(1)
@@ -1281,12 +1285,16 @@ fun main(args: Array<String>) {
             }
         }
     } else {
+        // The LEGACY path: no typed outcome was produced, so there are only two stories —
+        // "it finished successfully" and "it did not". The "unstable" arm that used to live
+        // here was UNREACHABLE: the word it compared against could only be those two, so the
+        // arm could never run and only misled whoever read it.
         val last = lastEvent
-        val legacyOutcome = if (last is RunFinished && last.outcome == "success") "success" else "failure"
-        when (legacyOutcome) {
-            "success" -> { System.err.println("Pipeline finished with SUCCESS"); false }
-            "unstable" -> { System.err.println("Pipeline finished with UNSTABLE"); false }
-            else -> { System.err.println("Pipeline finished with FAILURE"); true }
+        val succeeded = last is RunFinished && last.outcome == RunOutcome.SUCCESS_TOKEN
+        if (succeeded) {
+            System.err.println("Pipeline finished with SUCCESS"); false
+        } else {
+            System.err.println("Pipeline finished with FAILURE"); true
         }
     }
     // SAGA: what happened to the Sagas of this run. It belongs in the verdict block, next

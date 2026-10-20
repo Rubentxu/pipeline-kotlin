@@ -48,12 +48,21 @@ object CompensationLifecycle {
 
         // The forward effect happened: the compensation is owed, and the obligation now moves
         // through the compensation's own lifecycle.
+        //
+        // Or the Saga COMPLETED: the effect is kept, the promise is void, and the obligation
+        // ends without ever being paid. That is the other exit from the same debt, and it is
+        // the only one that leaves the resource standing.
         CompensationObligationStatus.EFFECT_CONFIRMED -> setOf(
             CompensationObligationStatus.COMPENSATION_PENDING,
             CompensationObligationStatus.COMPENSATED,
             CompensationObligationStatus.COMPENSATION_FAILED,
             CompensationObligationStatus.COMPENSATION_UNCERTAIN,
+            CompensationObligationStatus.EFFECT_KEPT,
         )
+
+        // The forward effect happened and the Saga kept it: the obligation is discharged and
+        // stays discharged. Nothing is owed, and nothing may be undone.
+        CompensationObligationStatus.EFFECT_KEPT -> emptySet()
 
         // The forward effect had no effect: the obligation is closed and nothing follows.
         CompensationObligationStatus.EFFECT_ABSENT -> emptySet()

@@ -54,8 +54,10 @@ import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_COMPENSATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_LIFECYCLE_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_PLAN_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_RUNTIME_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SagaLifecycle
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
@@ -337,6 +339,16 @@ open class CanonicalRuntimeCapabilityAccess(
         // through, or no way to record what happened.
         context.sagaRuntime?.let { runtime ->
             builder[SAGA_RUNTIME_CAPABILITY] = runtime
+            // SAGA / PK-2 (3b-5): the Saga's LIFECYCLE — the runtime that can also KEEP the
+            // effects of a Saga that ended well, instead of only undoing them.
+            //
+            // Exposed ONLY when the bound runtime really is that port, for the same reason as
+            // the port above: a Step that asks to close a Saga must not reach a handler whose
+            // runtime cannot close one. The check is a type test on the bound object, so the
+            // capability and the port can never drift apart.
+            if (runtime is SagaLifecycle) {
+                builder[SAGA_LIFECYCLE_CAPABILITY] = runtime
+            }
         }
     }
 

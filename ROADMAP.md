@@ -27,8 +27,8 @@ una medición.
 | Escenarios que sólo comprueban el código de salida | **0**: cada uno afirma, con una directiva del lanzador o con una comprobación dentro del propio pipeline | censo por directiva y por cuerpo, sobre los 41 escenarios |
 | `VERIFY_LOC / PRODUCT_LOC` | **12026 / 64300 = 0.19** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **574** en el primer ensayo de `ac56e21fd`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
-| Veredicto del gate | **`PASS`**, sin `NOT_RUN` | línea final de `verify-all.sh` |
+| `VERIFY_ALL_WALL_CLOCK` | **574 / 559 / 586** en los tres ensayos (`ac56e21fd` y `6da7997d1`, que sólo difieren en esta tabla), peor 586 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **805** entradas de baseline | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 

@@ -1097,8 +1097,8 @@ fun main(args: Array<String>) {
     // single-writer thread is NON-daemon. If any exception escapes the run
     // or the stdout envelope streaming below, rawEventStore.close is
     // skipped, the writer keeps blocking on queue.take, and
-    // DestroyJavaVM hangs forever (observed: first replay of the dogfood
-    // receipt hung until manual kill). Compute the outcome and the last
+    // DestroyJavaVM hangs forever (observed: replaying a run receipt hung
+    // until it was killed by hand). Compute the outcome and the last
     // event inside the try; guarantee the close in finally on every path.
     val runOutcomeAndLastEvent: Pair<RunOutcome?, dev.rubentxu.pipeline.v2.events.DomainEvent?> = try {
     val outcome: RunOutcome? = when {

@@ -18,26 +18,27 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `8796dbcec` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP y los README, así que el código medido es el de `8796dbcec` | `git rev-parse HEAD` |
+| SHA | `2db814669` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP y los README, así que el código medido es el de `2db814669` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **857** (112 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | **46 (46 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios que sólo comprueban el código de salida | **0**: cada uno afirma, con una directiva del lanzador o con una comprobación dentro del propio pipeline | censo por directiva y por cuerpo, sobre los 46 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **13189 / 64820 = 0.203** (límite 2) | `scripts/check-budgets.py --json` |
+| Tests unitarios ejecutados | **861** (113 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Escenarios E2E | **47 (47 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios que sólo comprueban el código de salida | **0**: cada uno afirma, con una directiva del lanzador o con una comprobación dentro del propio pipeline | censo por directiva y por cuerpo, sobre los 47 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **13453 / 64831 = 0.208** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **598 / 581 / 563** en los tres ensayos, los tres sobre `8796dbcec`, peor 598 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **614 / 582 / 584** en los tres ensayos, los tres sobre `2db814669`, peor 614 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **805** entradas de baseline, ninguna nueva | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 Las cifras de este ciclo suben en lo que este ciclo añadió y sólo en eso:
-**857** tests (14 más que los 843 del ciclo anterior) y **46** escenarios (2
-más). Los 14 tests nuevos son 3 de la traducción pura, 4 del follower, 2 del
-guardián del live-tail, 4 del render de la negativa y 1 de la fila nueva del
-catálogo de capacidades. Los 2 escenarios nuevos son las dos negativas del
-event lane. El ratio de LOC sube de 0.197 a **0.203**, todavía muy por debajo
+**861** tests (4 más que los 857 del ciclo anterior) y **47** escenarios (1
+más). Los 4 tests nuevos son las 4 filas de `EventPageDrainTest`: la pérdida
+con filtro, la posición del cursor, la historia entera sin filtro y la
+proyección tipada contra el `InMemoryEventStore` real. El escenario nuevo es
+`events/01-external-reader-resumes`, el lector externo que corta entre
+páginas. El ratio de LOC sube de 0.203 a **0.208**, todavía muy por debajo
 del límite 2, y el peor módulo sigue siendo el mismo de siempre
 (`pipeline-step-sdk:workflow-control`, 1.633) porque este ciclo no lo tocó.
 
@@ -47,7 +48,7 @@ que es como manda `AGENTS.md` —la baseline se arregla arreglando el código—
 y el número de módulos con test sigue siendo 26 de 27.
 
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
-los **112** informes JUnit, que es la condición que hace que la cifra de reloj
+los **113** informes JUnit, que es la condición que hace que la cifra de reloj
 mida el gate y no una restauración de caché. Un total correcto con el verbo
 equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
 **falla** si no reescribe ninguno.
@@ -3172,7 +3173,7 @@ antiguo, ni una suite E2E en Kotlin, ni una campaña de mutaciones masiva.
 | Hito | Repositorio | Garantía | Instrumento más barato que puede fallar | Evidencia de cierre |
 |---|---|---|---|---|
 | **P0.1** Negativas de lectura diferenciadas | Core | Un consumidor de eventos distingue «el run no existe», «el cursor no vale» y «el almacenamiento falló». Hoy las tres son `UnknownRun` | Test unitario puro sobre el traductor de negativas del follow handle: tres entradas, tres salidas distintas. Sin disco: un `StorageError` se fabrica como valor | **Hecho** (§2.25): 3 clases de test y 2 escenarios ejecutables; 4 mutaciones vistas en rojo; publicación versionada (`events.follow.v2`, `events.follow.v1` DEPRECATED) y dump de ABI regenerado |
-| **P0.2** Seal externo de streaming | Core | Un cliente externo lee la historia por cursor, se desconecta y vuelve sin saltarse ni duplicar hechos | Ejemplo ejecutable en `examples/`: un lector externo (el verbo `events` con cursor) que lee, corta y reanuda; y el caso del cursor inválido, que debe salir con su negativa propia | El ejemplo falla si el cursor se resetea al reconectar o si la negativa degrada a «run desconocido» |
+| **P0.2** Seal externo de streaming | Core | Un cliente externo lee la historia por cursor, se desconecta y vuelve sin saltarse ni duplicar hechos | Ejemplo ejecutable en `examples/`: un lector externo (el verbo `events` con cursor) que lee, corta y reanuda; y el caso del cursor inválido, que debe salir con su negativa propia | **Hecho** (§2.26): el ejemplo `events/01-external-reader-resumes` falla si el cursor se resetea al reconectar (probado: en rojo nombrando el hecho perdido) y si la negativa degrada a «run desconocido» (ciclo anterior). 4 filas de test unitario sobre la regla de paginación; 2 mutaciones vistas en rojo |
 | **P0.3** Streaming incremental a Fabric | Fabric | Jenkins muestra progreso durante el run, no al final | Pruebas de `pipelinek-fabric`; en Core, sólo el contrato que consume | Fuera de este repositorio: su propio gate y su RC |
 | **P0.4** Persistencia y recuperación de Fabric | Fabric | Reiniciar el control plane no pierde, duplica ni inventa hechos | Igual que P0.3, con su cursor confirmado | Fuera de este repositorio |
 | **P1.1** API de Runtime | Core | El cancelador está cableado y expuesto; `inspect` y `recover` siguen sin exponerse porque serían un segundo plano y un segundo motor (§2.20) | El E2E `durable/39-cancel-dead-run` | Hecho en el ciclo anterior, y la decisión de no exponer los otros dos queda escrita y a la vista |
@@ -3362,7 +3363,160 @@ confunde tres negativas y un follow con guardián, que es lo que ese cliente
 externo necesita para no perder hechos. Y la versión del artefacto, la RC y
 la publicación siguen siendo `BLOCKED_EXTERNAL`: aquí no hay certificador.
 
+### 2.26 El cursor que adelantaba al cliente: un hecho perdido, en silencio
+
+Este ciclo cerró el hito **P0.2** de §2.23: el seam externo de streaming
+—«un cliente externo lee la historia por cursor, se desconecta y vuelve sin
+saltarse ni duplicar hechos»—. Lo que lo abrió fue una medición del binario
+publicado, no una lectura del código.
+
+**Lo que ya funcionaba, medido.** Un lector externo que pagina con el cursor
+del verbo y se desconecta entre páginas recibió **exactamente** los mismos
+hechos que una lectura completa, en **40 de 40** combinaciones: dos
+proyecciones (envoltorio y tipada), cinco filtros (`--kind` y `--subject`) y
+cuatro tamaños de página (1, 2, 3 y 7). El `--follow` también respeta el
+cursor: reanudando desde la fila 3 entregó las filas 4..29 sin repetir la 1..3.
+El cursor de otro run se rechaza (código 2), y el cursor más allá de la cola y
+el run inexistente tienen su propia negativa desde el ciclo anterior (§2.25).
+
+**El defecto, y dónde estaba.** La página del almacén está limitada por
+**filas**; el `--limit` del verbo cuenta **hechos que coinciden con el filtro**.
+Son dos cuentas sobre la misma página, y por eso el recorrido puede parar **a
+mitad de página**: cuando los hechos coincididos acumulados llegan al límite,
+el resto de la página —que el almacén ya leyó— se queda sin entregar. Y el
+cursor que se devolvía era **la posición del almacén**, no la del cliente: esos
+hechos sobrantes quedaban **detrás** del cursor, y el cliente que volvía no los
+veía jamás.
+
+Reproducido de punta a punta contra el binario publicado, con una historia
+cuyas filas 6, 7 y 8 son del mismo tipo (un bloque `parallel` las produce
+contiguas) y un límite de dos:
+
+```
+la verdad:   6 7 8
+el lector:  6 7          ← el 8 se perdió
+cursor tras la primera página: ...:8
+```
+
+Código de salida 0, sin error, sin marca de hueco: **el hecho simplemente
+desapareció**. Y el caso es reachable sin filtros raros: `--kind` sobre un
+bloque `parallel` basta.
+
+**Por qué la capa ejecutable no lo veía.** §2.4 ya lo había escrito: el
+lanzador lee el código de salida y, como mucho, una subcadena de `stderr`; el
+`stdout` lo captura a fichero y **nunca lo abre**. La garantía de este seam
+vive en dos canales —los hechos en `stdout`, el cursor en `stderr`— y el
+lanzador no miraba ninguno de los dos. Por eso el defecto llevaba años sin
+verse: **no había ningún instrumento que lo pudiera ver**.
+
+**El arreglo, y por qué es el del cliente.** El cursor es la posición del
+**último hecho entregado**. Es la única posición que no puede saltarse un
+hecho: lo que está después sigue por delante del cliente, y lo que está antes
+o se entregó o no coincidía con el filtro. Cuando la llamada no entregó nada,
+la respuesta es la posición del almacén (todas las filas que leyó se
+consideraron y ninguna coincidió, así que no se pierde nada al avanzar) y eso
+permite que un cliente cuyo filtro todavía no coincide siga avanzando en vez
+de reescanear la historia entera en cada llamada.
+
+**Sin filtro, nada cambia.** Cada fila coincide, el recorrido no puede parar a
+mitad de página (la página lleva como mucho `limit` filas y todas coinciden) y
+el último hecho entregado **es** la última fila: el cursor es exactamente la
+posición del almacén, como antes.
+
+**Una regla, dos proyecciones.** El drenador de envoltorios y el tipado leen
+por costuras distintas (`EventTail` y `EventStore.readRecords`) y tienen
+bucles propios, pero le deben al cliente **el mismo cursor**. La regla vive en
+una función y los dos la llaman, porque una regla de paginación que existe en
+una proyección y no en la otra es la divergencia que sobrevive a la revisión.
+
+**Los instrumentos, y por qué son dos.** La regla de paginación es pura: la
+vigila un test unitario con un doble en memoria del puerto, que además puede
+construir la historia que hace falta (y que ninguna corrida real produce con
+frecuencia). El **cableado del verbo** —cursor que entra, hechos y cursor que
+salen, entre procesos distintos— lo vigila un **ejemplo ejecutable**: el
+lanzador hace de cliente externo, lee en páginas de dos hechos, **corta entre
+páginas** (cada página es una invocación nueva, que es lo que hace un cliente
+que se desconecta) y compara lo recogido con la lectura completa, diciendo
+**qué** hecho se perdió o se repitió. Ninguno de los dos instrumentos ve lo
+que el otro ve, y el ejemplo es el que puede afirmar sobre el binario real.
+
+**Las mutaciones, vistas en rojo.** La regla nueva se rompió dos veces a
+propósito, una en cada capa:
+
+| Mutación | Lo que se encendió |
+|---|---|
+| El cursor vuelve a ser la posición del almacén | **3 filas** del test unitario: la pérdida en la proyección de envoltorios, la pérdida en la tipada y la del cursor — la fila «sin filtro» siguió **verde**, porque sin filtro el cursor no cambia |
+| Lo mismo, en el binario | El **ejemplo** falló diciendo el hecho perdido: `expected: 6 7 8 / delivered: 6 7 / lost: 8` |
+
+**El agujero de fondo, que es el hallazgo más grande.** Ni
+`EventTail.readAfter` ni `EventPageDrain.drain` —las dos piezas que sostienen
+la paginación— tenían **un solo test en todo el árbol**. La lectura del event
+lane, que es lo que un cliente externo consume, estaba sin vigilar por
+completo. No es que un test faltara: es que la Guarantee no tenía guardián.
+
+**La deuda de modelado que el arreglo deja a la vista, y su próximo paso.**
+`EventPage` (tipo publicado) lleva un solo campo `nextCursor` que ahora
+significa **dos cosas** según quién construya la página: la posición del
+**almacén** cuando la página viene del almacén, y la posición del **cliente**
+cuando viene de una lectura filtrada. La sobrecarga está contenida —`readAfter`
+tiene un solo cliente, y la página del drenador la consume sólo el verbo—, y
+las dos escrituras del KDoc del tipo published y del drenador la dicen
+explícitamente. Pero un tipo con un campo que significa dos cosas es una
+deuda, y el próximo paso es **separarlas**: que la página del cliente tenga
+su propio tipo, en el módulo de aplicación, con un campo que se llame por lo
+que es. No se hace en este ciclo porque el arreglo del defecto no la necesita
+para ser cierto, y porque tocar un tipo publicado por un modelo que ya funciona
+es crecer el cambio porque se encontró un cambio.
+
+**Lo que queda abierto, medido y con dueño.** El `--follow` **con un filtro
+que excluye `RunFinished` no termina nunca**: comprobado contra el binario
+(`exit 124`, el tiempo agotado) sobre un run acabado hacía tiempo, contra el
+mismo follow sin filtro que sí termina (`exit 0`). La autoridad de «el run
+terminó» es el evento `RunFinished`, y un filtro puede taparlo. No se arregla
+aquí porque no es el mismo hito y porque el arreglo no es una línea: la
+detección terminal del follow vive dentro del verbo, no en una función pura
+que se pueda vigilar, y decidir la autoridad de «el run se acabó» **bajo un
+filtro** es una pregunta de diseño del event plane. El siguiente paso
+concreto queda escrito: extraer la detección terminal del follow a una función
+pura, decidir esa autoridad, y vigilarla con un ejemplo que tenga un tiempo
+máximo.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **El cursor es la posición del cliente, no la del almacén.** La regla dice
+  «el cursor es la posición del último hecho entregado» y, cuando la llamada
+  no entregó nada, «la posición del almacén». No es un matiz: es lo que
+  distingue un cursor que salta hechos de uno que no. El cursor del almacén es
+  correcto para una lectura sin filtro y **pierde hechos** con filtro, porque la
+  página está limitada por filas y el límite cuenta coincidencias. Lo que el
+  cliente necesita saber es «dame lo que viene después de lo último que me
+  diste», y eso es exactamente lo que un hecho entregado significa.
+- **La regla de paginación vive en una función, y los dos drenadores la
+  llaman.** El drenador de envoltorios y el tipado leen por costuras distintas
+  y tienen bucles propios, pero la garantía es una: el mismo cursor para las
+  dos proyecciones. Dos copias de la regla son dos reglas, y divergen.
+- **Dos instrumentos, porque ven cosas distintas.** La regla de paginación es
+  pura y la vigila un test unitario con un doble en memoria, que puede
+  construir la historia que hace falta. El cableado del verbo lo vigila un
+  ejemplo ejecutable contra la distribución real, con el lanzador haciendo de
+  cliente externo: cada página es una invocación nueva, que es lo que hace un
+  cliente que se desconecta. Un test unitario no puede afirmar sobre el binario,
+  y un ejemplo no puede construir la historia que expose una regla de
+  paginación.
+- **El lanzador abre `stdout` para este seam, y sólo para él.** §2.4 dejó
+  escrito que el lanzador capturaba `stdout` a fichero y nunca lo abría, y por
+  eso una garantía rota en el event lane no cambiaba ninguno de los dos hechos
+  que el lanzador mira. Con el verbo `events` los hechos van por `stdout` y el
+  cursor por `stderr`: la garantía está partida en dos canales y ningún
+  instrumento miraba ninguno. El verbo ya sabe proyectar una fila como texto
+  plano (`--fields SEQ`), y eso es lo que permite al lanzador comparar hechos
+  sin interpretar JSON: el lanzador sigue sin saber de semántica de eventos.
+- **Un hueco medido no se arregla de paso, pero no se pierde.** El `--follow`
+  con un filtro que excluye `RunFinished` no termina nunca: comprobado
+  contra el binario. Se anota con su síntoma, su causa (la autoridad de «el
+  run terminó» es un evento que el filtro puede tapar) y su próximo paso
+  (extraer la detección terminal a una función pura y decidir esa autoridad).
+  Arreglarlo aquí sería crecer el cambio porque se encontró un cambio, y
+  además el arreglo no es trivial: la detección vive dentro del verbo.
 - **La versión del artefacto NO se toca, y la publicación del vocabulario se
   versiona con el identificador de capacidad.** Las dos cosas parecían la
   misma y no lo son. El identificador (`events.follow.v2`) es lo que un

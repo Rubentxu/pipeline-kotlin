@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `4b269fa59` | `git rev-parse HEAD` |
+| SHA | `4e397e6e8` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 9 | ídem |
-| Tests unitarios ejecutados | **660** (79 informes JUnit, 73 reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
-| Escenarios E2E | 43 (**42 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **9708 / 64827 = 0.150** (límite 2) | `scripts/check-budgets.py --json` |
+| Tests unitarios ejecutados | **686** (85 informes JUnit, 79 reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
+| Escenarios E2E | 44 (**43 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
+| `VERIFY_LOC / PRODUCT_LOC` | **10287 / 65087 = 0.158** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **350 s**, una corrida, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **381 s**, una corrida, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -34,8 +34,8 @@ calientes, y por eso **no** se compara con la de 2026-10-19 (226 s, la peor de
 tres ensayos tras `rm -rf` de las salidas de build reales, que es la condición
 que hace que la cifra mida el gate y no una restauración de caché). Un total
 correcto con el verbo equivocado ya no puede colarse: la etapa 2 separa
-`rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 73
-de los 79 informes.
+`rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 79
+de los 85 informes.
 
 El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
 declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
@@ -514,6 +514,21 @@ el arreglo; los demás siguen verdes).
   events verify`), y ese módulo es el que publica el verbo. Medido: al hacer
   que la ley no dispare mueren los dos tests que la esperan y ningún otro.
 
+- **Un Saga que terminaba bien se compensaba a sí mismo, y el run lo llamaba
+  `success`.** Medido con una cadena de dos acciones que las dos tuvieron éxito: el
+  mundo quedó `reserve`, `charge`, `refund`, `release`, y el run dijo `SUCCESS` con
+  el Saga en `SETTLED`. Un plano así no dice nada sospechoso: el veredicto verde y
+  el trabajo deshecho se contradicen, y nadie que lo leyera se enteraría. La causa
+  era semántica y no de API: `EFFECT_CONFIRMED` significa «debo compensar», y la
+  única salida de esa deuda era deshacer el efecto. Ahora el Saga que funcionó
+  **conserva** sus efectos, y el estado durable lo dice (`EFFECT_KEPT`).
+- **El manifiesto del plugin llevaba su propia copia de las capacidades de sus
+  Steps, y las dos copias se separaron.** El Step declaraba el puerto del ciclo de
+  vida y el manifiesto seguía declarando el del runtime; lo cazó la puerta de
+  admisión, que es la puerta funcionando, pero sólo por casualidad: un manifiesto
+  capaz de describir un Step que el código no tiene es una segunda autoridad que
+  puede mentir. Ahora el manifiesto **lee** las definiciones.
+
 ### 2.2 Lo que queda abierto, por valor operativo
 
 **a) 9 módulos sin test unitario permanente.** No es un objetivo de paridad.
@@ -865,50 +880,29 @@ operador— es de diseño de producto y no se resuelve aquí. El mensaje deberí
 decir la **regla** («un perfil de sandbox multi-tenant no puede ser `os`»), no el
 documento donde la regla está escrita.
 
-**k) El contrato del Saga no sabe expresar un Saga que termina bien — MEDIDO, y
-es el bloqueo real de PG-1.** El motor tiene un solo verbo para el cierre de un
-Saga: `SagaRuntime.compensate(plan)`. No hay un verbo para **confirmar** un Saga
-que terminó bien, y la ausencia no es un hueco de API: es un hueco de
-semántica. Una obligación cuyo forward quedó `CONFIRMED` está «debida» para
-siempre, así que un Saga cuyas acciones **todas** tuvo éxito es un Saga que debe
-compensarse. Y el plugin de ejemplo llama a `compensate` siempre, también en
-éxito, porque es la única llamada que existe.
-  Medido, con una cadena de dos acciones que las dos tuvieron éxito: el mundo
-  quedó `reserve`, `charge`, `refund`, `release` — el Saga **se compensó a sí
-  mismo** — y el run dijo `SUCCESS` con el Saga en `SETTLED`. O sea: un run
-  verde que deshizo lo que acababa de hacer, y un plano que no dice nada
-  sospechoso.
-  El arreglo NO es «no compenses en éxito»: sin un verbo de confirmación, las
-  obligaciones se quedan debidas en el almacén durable, y una corrida reanudada
-  las compensaría después. Hace falta un commit de verdad —un estado nuevo de
-  obligación y una forma de descargarla sin compensar— y el plugin de ejemplo
-  usándolo según el resultado de la cadena.
-  **No se arregla en este ciclo**, y el motivo es de tamaño: es un verbo nuevo
-  en un puerto publicado, un estado nuevo en un enum publicado, la semántica del
-  intérprete, el plugin, un escenario nuevo (hoy el camino feliz de un Saga no
-  tiene ninguno) y la ley de plano que hoy no se puede escribir —«un run verde
-  no puede haber compensado»— porque el producto la viola. Se abre como bloque
-  propio.
+**l) Las leyes del plano no las ejecuta ninguna puerta — PARCIALMENTE CERRADO.**
+`ProtocolGrammar` es la lista de leyes que el arnés comprueba, y el
+`build.gradle.kts` del módulo afirma que su prueba es la capa E2E: «Its
+verification is the executable E2E layer». **Medido: no es verdad.** El verbo que
+las ejecuta es `pipeline events verify`, que exige un contrato YAML, no hay ningún
+contrato en el repositorio y `v2/examples/run.sh` no lo invoca.
+  Lo que este ciclo cierra es la ley nueva: se prueba sobre un **plano real** — los
+  bytes que el motor escribió en una corrida de verdad, leídos por el códec de
+  producción — porque lo que puede perder información no es la ley sino el
+  decodificador, y un decodificador que leyese siempre `compensatedActions` vacío
+  dejaría una ley que no puede fallar. El resto del archivo de leyes sigue sin
+  prueba, y sigue faltando el contrato YAML: queda o el E2E invoca el verbo por
+  escenario, o las leyes se ejecutan desde la etapa 2 del gate sobre los planos que
+  el E2E acaba de producir.
 
-**l) Las leyes del plano no las ejecuta ninguna puerta.** `ProtocolGrammar` es
-la lista de leyes que el arnés comprueba, y el `build.gradle.kts` del módulo
-afirma que su prueba es la capa E2E: «Its verification is the executable E2E
-layer». **Medido: no es verdad.** El verbo que las ejecuta es `pipeline events
-verify`, que exige un contrato YAML, no hay ningún contrato en el repositorio y
-`v2/examples/run.sh` no lo invoca. Es decir: las leyes del plano —incluida la
-nueva, la del Saga pendiente sobre un run verde— **no las corre nadie**, y su
-proof declarado es una afirmación sin nada detrás.
-  La ley nueva de este ciclo tiene su propio test (en `:pipeline-application`),
-  pero el resto del archivo sigue sin prueba. Arreglarlo es trabajo de una
-  pieza: o el E2E invoca el verbo por escenario, o las leyes se ejecutan desde
-  la etapa 2 del gate sobre los planos que el E2E acaba de producir.
-
-**m) Dos colaterales del camino del veredicto, sin tocar en este ciclo.** El
-KDoc de `CancelReason` afirma que «la razón se lleva en el payload del
-`RunFinished` terminal», y es falso: viaja en la fila del journal. Y el brazo
-`legacyOutcome == "unstable"` de `Main.kt` es código muerto: `legacyOutcome`
-sólo puede valer `success` o `failure`. Ninguno de los dos miente al usuario, y
-ambos son de riesgo bajo; se anotan para que no se pierdan.
+**m) Los dos colaterales del camino del veredicto — CERRADOS.** El KDoc de
+`CancelReason` afirmaba que «la razón se lleva en el payload del `RunFinished`
+terminal», y es falso: viaja en la fila del journal. Y el brazo
+`legacyOutcome == "unstable"` de `Main.kt` era código muerto: `legacyOutcome`
+sólo podía valer `success` o `failure`, así que el brazo no podía ejecutarse y
+sólo confundía a quien lo leyera. Los dos se han cerrado en este ciclo: el KDoc
+dice la verdad, y el camino legacy dice lo que puede decir con el token del
+dominio y no con una cadena escrita a mano.
 
 
 ### 2.3 Cierre de ciclo
@@ -917,18 +911,19 @@ ambos son de riesgo bajo; se anotan para que no se pierdan.
   No hay CI remoto en este repositorio. La ausencia de CI **nunca** se declara
   `PASS`.
 - **Presupuesto de tiempo: MEDIDO, `CERRADO`.** El ensayo de este ciclo dio
-  **350 s** sobre `4b269fa59`, con el límite en 900 s, leído de la línea de
-  veredicto de la etapa 5 (`PASS  sha=…  elapsed=350s  budget=900s`) y no del
+  **381 s** sobre `4e397e6e8`, con el límite en 900 s, leído de la línea de
+  veredicto de la etapa 5 (`PASS  sha=…  elapsed=381s  budget=900s`) y no del
   código de salida. Cierra la línea que estaba caducada desde `18d3148a` (242 s,
   211 s, 213 s), cuyos números **seguían siendo ciertos para ese SHA y ninguno
   más**: desde entonces el árbol avanzó once commits y dos de los cambios de
   este ciclo añaden 35 tests nuevos, compilan dos módulos que antes no
   compilaban para test —`pipeline-events` y `pipeline-application`— y capturan
   dos planos reales como recursos. El margen sigue siendo de 2,5×.
-  Y el alza no es proporcional al trabajo: la etapa 2 mide 19 s sobre 79
+  Y el alza no es proporcional al trabajo: la etapa 2 mide 21 s sobre 85
   informes JUnit, y el total apenas se movió respecto del ciclo anterior
-  (345 s → 350 s) con 35 tests más. Un gate verde por inercia es peor que un
-  gate marcado caducado: el segundo se lee y el primero se acepta sin mirarlo.
+  (350 s → 381 s) con 26 tests más y un escenario E2E más. Un gate verde por
+  inercia es peor que un gate marcado caducado: el segundo se lee y el primero
+  se acepta sin mirarlo.
 
 ---
 
@@ -1034,6 +1029,41 @@ ambos son de riesgo bajo; se anotan para que no se pierdan.
   cambiaba la ontología del veredicto habría producido un tren con dos cambios
   sin relación, que es la forma que hace que una reversión duela. Se abre como
   bloque propio, con la medición adjunta.
+
+- **El verbo de cierre llega como un puerto NUEVO que EXTIENDE el viejo, y no como
+  método nuevo en el puerto viejo.** `SagaRuntime` está publicado desde 0.64.0 y no
+  puede ganar un método abstracto sin romper a cada consumidor ya compilado, así que
+  el verbo llega como `SagaLifecycle : SagaRuntime` con su propia capability. El
+  plugin que lo usa sostiene **una** manilla con los dos finales del Saga, y no
+  puede acabar con dos autoridades que discrepen sobre lo que el Saga debe.
+- **Quién dice «la cadena tuvo éxito» es el plugin; quién dice «qué se puede
+  cerrar» es el motor.** El plugin es el único que sabe si su cadena tuvo éxito, y
+  el estado durable no lo sabe: un cuerpo de plugin que se rompe después del
+  último forward deja todas las obligaciones confirmadas, y de ahí no se puede
+  deducir que el Saga funcionó. Por eso el verbo es una PREGUNTA con una respuesta
+  tipada, y no un deducedor.
+- **«El efecto ocurrió» y «se le debe una compensación» son dos hechos, y el
+  estado nuevo los separa.** `EFFECT_CONFIRMED` mezclaba los dos, y por eso no
+  tenía salida que no fuera deshacer. `EFFECT_KEPT` dice sólo lo segundo: el
+  efecto ocurrió y el Saga lo conserva, y la promesa queda anulada.
+- **Cerrar un Saga es UNA sentencia, no N.** Mover las obligaciones de una en una
+  deja un Saga a medio cerrar si el proceso muere en medio, y una corrida reanudada
+  compensaría después lo que quedara: deshacería media parte de un Saga que había
+  funcionado. Una sentencia es una transacción, así que el Saga queda cerrado o no
+  queda cerrado.
+- **Un cierre rechazado NO es un cierre.** El motor no escribe nada, el Saga sigue
+  debiendo, y un proceso posterior lee las mismas filas y llega a la misma
+  conclusión. Un «casi cerrado» es un Saga que se deshace más tarde, que es
+  exactamente el defecto que este bloque arregla.
+- **Una ley del plano mira TODOS los terminales del run, no sólo el último de cada
+  Saga.** Una compensación no es un estado: es algo que PASÓ, y un terminal
+  posterior no puede deshacerla. Un run reanudado reutiliza el run id, así que un
+  plano puede llevar un Saga que compensó en el primer intento y se liquidó vacío
+  en el segundo.
+- **El manifiesto de un plugin se DERIVA de sus Steps.** La copia a mano de las
+  capacidades se separó de la definición y la puerta de admisión la cazó; la
+  puerta funcionó, pero sólo por casualidad. Un manifiesto que describe Steps que
+  el código no tiene es una segunda autoridad capaz de mentir.
 
 ---
 

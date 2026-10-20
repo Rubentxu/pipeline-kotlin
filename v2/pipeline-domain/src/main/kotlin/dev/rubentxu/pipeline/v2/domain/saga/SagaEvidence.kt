@@ -77,6 +77,47 @@ sealed interface CompensationPolicy {
 }
 
 /**
+ * The state the engine announces when a Saga's recovery is over.
+ *
+ * ## Why the vocabulary lives in the DOMAIN
+ *
+ * The Event Plane carries this state as a word, so somebody has to translate between the word
+ * and the type. It used to be a pair of private constants in the engine, which means a reader
+ * outside that module could not name the words it reads: the vocabulary had exactly one owner
+ * and that owner could not be quoted.
+ *
+ * So the closed set is declared here, next to the other vocabularies of the Saga, and both
+ * sides cite it: the engine writes the name, the reader parses the name.
+ *
+ * ## The wire token is the NAME
+ *
+ * Same convention as [InterventionReason]: the word on the plane IS the name of the case, so
+ * there is no second list of spellings to drift.
+ */
+enum class SagaTerminalState {
+
+    /** The Saga closed and left nothing owed. */
+    SETTLED,
+
+    /** The Saga could not close, and a human has to decide. */
+    NEEDS_INTERVENTION,
+
+    ;
+
+    companion object {
+
+        /** The word this state is written as on the Event Plane is its own name. */
+        private val BY_TOKEN: Map<String, SagaTerminalState> = entries.associateBy { it.name }
+
+        /** Every word this runtime accepts, for diagnostics on a refused spelling. */
+        val supportedTokens: Set<String> = BY_TOKEN.keys
+
+        /** The state [token] names, or `null` when it names none of them. Never defaults. */
+        fun parse(token: String): SagaTerminalState? = BY_TOKEN[token]
+    }
+}
+
+/**
  * Why the forward effect must not proceed.
  */
 enum class ForwardDenial {
@@ -135,6 +176,54 @@ enum class InterventionReason {
      * knows what it did; here, nothing ran at all.
      */
     COMPENSATION_NOT_DISPATCHED,
+
+    /**
+     * The Saga's terminal state could not be read.
+     *
+     * Two causes, one consequence, and the consequence is the only thing that matters to the
+     * reader: **a human has to decide**, because nobody can say whether the Saga closed.
+     *
+     * - The plane announced a word this build does not know. That happens when the history was
+     *   written by a build with a wider vocabulary, and it is a fact about the READING, not
+     *   about the Saga.
+     * - The plane announced NO terminal at all, while the Saga had already armed an obligation.
+     *   Then the Saga did not close, and the absence is the evidence: a Saga that owes
+     *   something and never said how it ended is still open.
+     * - The plane announced a terminal that contradicts itself, or that arrives without the
+     *   detail it must carry (a `NEEDS_INTERVENTION` with no reason, a `SETTLED` with one).
+     *   A record that disagrees with itself cannot be taken at face value in either direction.
+     *
+     * It is here, and not folded into [UNKNOWN_EFFECT], because the two are not the same: an
+     * unknown effect is the engine saying "I applied the effect and cannot say what it did",
+     * and this one is a reader saying "I cannot read what the engine said" — or that it never
+     * said it. A reader that cannot read a terminal state must NOT read it as a settled one —
+     * that would turn a broken Saga into a finished one, which is the one mistake this
+     * vocabulary exists to prevent.
+     */
+    TERMINAL_UNREADABLE,
+
+    ;
+
+    companion object {
+
+        /**
+         * The reason this word names, or **null** for a word this build does not know.
+         *
+         * The Event Plane carries the reason as the NAME of the case, so somebody has to
+         * translate between the name and the type. This is that boundary, and it mirrors
+         * [dev.rubentxu.pipeline.v2.domain.FailureKind.parse]: the map is derived from [entries]
+         * rather than written out again, and it deliberately does NOT fall back to a default —
+         * a default here would turn a word this build does not know into a decision it appears
+         * to have made.
+         */
+        private val BY_TOKEN: Map<String, InterventionReason> = entries.associateBy { it.name }
+
+        /** Every word this runtime accepts, for diagnostics on a refused spelling. */
+        val supportedTokens: Set<String> = BY_TOKEN.keys
+
+        /** The reason [token] names, or `null` when it names none of them. Never defaults. */
+        fun parse(token: String): InterventionReason? = BY_TOKEN[token]
+    }
 }
 
 /**

@@ -25,10 +25,10 @@
 # Published asset set (AGENTS.md )
 # ---------------------------------
 # The publisher reads the asset set from the DistributionManifest (the typed
-# value at v2/pipeline-release/.../DistributionManifest.kt), which is the
+# value at pipelinek/pipeline-release/.../DistributionManifest.kt), which is the
 # single source of truth produced:pipeline-release:releaseGate. The five
 # slots are: asset (the ZIP), sbom, sdk, bom, sha256sums. Any non-null slot
-# is staged from v2/pipeline-application/build/distributions/ to the evidence
+# is staged from pipelinek/pipeline-application/build/distributions/ to the evidence
 # dir, hashed into SHA256SUMS, and uploaded. This is the  contract:
 #   pipelinek-<train>.zip          the candidate bytes
 #   pipelinek-<train>.sbom.json    the SBOM (if present in manifest)
@@ -67,8 +67,8 @@ if ! git check-ref-format "refs/tags/${PIPELINEK_RELEASE_TAG}" >/dev/null 2>&1; 
 fi
 
 EXPECTED_ZIP_NAME="pipelinek-${PIPELINEK_RELEASE_TRAIN}.zip"
-DIST_ZIP="v2/pipeline-application/build/distributions/${EXPECTED_ZIP_NAME}"
-RECEIPT="v2/pipeline-release/build/candidate/distribution-manifest.json"
+DIST_ZIP="pipelinek/pipeline-application/build/distributions/${EXPECTED_ZIP_NAME}"
+RECEIPT="pipelinek/pipeline-release/build/candidate/distribution-manifest.json"
 
 # ----------------------------------------------------------------------------
 # 2. Refuse to advance with a dirty tree or an existing tag.
@@ -96,7 +96,7 @@ fi
 # ----------------------------------------------------------------------------
 
 echo "release-pipelinek: running releaseGate (distZip + cyclonedxBom + candidateAdmission + test)"
-./v2/gradlew --no-daemon -p v2 :pipeline-release:releaseGate -Pcandidate.tag="${PIPELINEK_RELEASE_TAG}" -Pcandidate.sequence=1 "$@"
+./pipelinek/gradlew --no-daemon -p pipelinek :pipeline-release:releaseGate -Pcandidate.tag="${PIPELINEK_RELEASE_TAG}" -Pcandidate.sequence=1 "$@"
 
 # ----------------------------------------------------------------------------
 # 4. Verify the receipt names THIS ZIP, not a stale one.
@@ -136,7 +136,7 @@ fi
 # ----------------------------------------------------------------------------
 
 ARTIFACT_BUILD_COMMIT="$(git rev-parse HEAD)"
-SBOM="v2/pipeline-application/build/distributions/pipelinek-${PIPELINEK_RELEASE_TRAIN}.sbom.json"
+SBOM="pipelinek/pipeline-application/build/distributions/pipelinek-${PIPELINEK_RELEASE_TRAIN}.sbom.json"
 
 echo "release-pipelinek: gate PASSED. candidate_id = sha256:$LOCAL_SHA"
 
@@ -277,7 +277,7 @@ with \`scripts/release/resolve-release-digest.sh\`; never consult a per-asset
 2. Confirm \`git-head.txt\` equals the commit named above, and that the
    relationship row above is \`IDENTICAL\` or a \`DESCENDANT\` you have reasoned
    about. A \`DIVERGENT\` verdict is a hard stop.
-3. Re-run \`./v2/gradlew -p v2 :pipeline-release:releaseGate\` at
+3. Re-run \`./pipelinek/gradlew -p pipelinek :pipeline-release:releaseGate\` at
    \`${ARTIFACT_BUILD_COMMIT}\` and confirm it admits these same bytes.
 HANDOFF_EOF
 
@@ -299,7 +299,7 @@ fi
 # 5b. Manifest-driven asset staging.
 #     The DistributionManifest is the single source of truth for the  asset
 #     set. Each non-null field (asset, sbom, sdk, bom, sha256sums) names a
-#     file in v2/pipeline-application/build/distributions/. We stage each
+#     file in pipelinek/pipeline-application/build/distributions/. We stage each
 #     non-null one into the EVIDENCE_DIR, then hash the staged set into
 #     SHA256SUMS. The list is the same list the upload below consumes; an
 #     asset declared in the manifest but missing on disk fails the script
@@ -326,7 +326,7 @@ STAGED_PATHS=()
 
 stage_manifest_asset() {
     # $1 = manifest field path (e.g. "asset.name"); $2 = local source path
-    # (resolved against v2/pipeline-application/build/distributions/).
+    # (resolved against pipelinek/pipeline-application/build/distributions/).
     # Copies the named file to EVIDENCE_DIR and appends it to STAGED_PATHS.
     # A null field REFUSES. It used to print a note and `return 0`, and that
     # made the completeness check unverifiable: the verification loop after
@@ -363,7 +363,7 @@ if [ -z "$ASSET_FNAME" ]; then
     rm -rf "$EVIDENCE_DIR"
     exit 1
 fi
-DIST_DIR="v2/pipeline-application/build/distributions"
+DIST_DIR="pipelinek/pipeline-application/build/distributions"
 stage_manifest_asset "asset.name"   "${DIST_DIR}/${ASSET_FNAME}"
 stage_manifest_asset "sbom.name"    "${DIST_DIR}/$(read_manifest_field 'sbom.name' 'none')"
 stage_manifest_asset "sdk.name"     "${DIST_DIR}/$(read_manifest_field 'sdk.name' 'none')"

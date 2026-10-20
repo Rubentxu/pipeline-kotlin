@@ -48,29 +48,28 @@ RULES: list[tuple[str, str, str]] = [
     # Verification, most specific first.
     ("verify", "budget script", "scripts/check-budgets.py"),
     ("verify", "verification entrypoint", "scripts/verify-all.sh"),
-    ("verify", "E2E launcher", "v2/examples/run.sh"),
-    # Permanent unit tests. Two module depths: v2/<m> and v2/<g>/<m>.
-    ("verify", "unit tests", "v2/*/src/test/*"),
-    ("verify", "unit tests", "v2/*/*/src/test/*"),
+    ("verify", "E2E launcher", "examples/run.sh"),
+    # Permanent unit tests. Two module depths: pipelinek/<m> and pipelinek/<g>/<m>.
+    ("verify", "unit tests", "pipelinek/*/src/test/*"),
+    ("verify", "unit tests", "pipelinek/*/*/src/test/*"),
     # Persistent E2E pipelines, wherever they currently live.
-    ("verify", "E2E pipeline", "v2/examples/*.pipeline.kts"),
-    ("verify", "E2E pipeline", "v2/examples/*/*.pipeline.kts"),
-    ("verify", "E2E pipeline", "v2/examples/*/*/*.pipeline.kts"),
-    ("verify", "E2E pipeline", "v2/compatibility/*.pipeline.kts"),
+    ("verify", "E2E pipeline", "examples/*.pipeline.kts"),
+    ("verify", "E2E pipeline", "examples/*/*.pipeline.kts"),
+    ("verify", "E2E pipeline", "examples/*/*/*.pipeline.kts"),
     ("verify", "E2E pipeline", "ci/*.pipeline.kts"),
     # Production. Also two module depths.
-    ("product", "production source", "v2/*/src/main/*"),
-    ("product", "production source", "v2/*/*/src/main/*"),
-    ("product", "build script", "v2/settings.gradle.kts"),
-    ("product", "build script", "v2/build.gradle.kts"),
-    ("product", "build script", "v2/*/build.gradle.kts"),
-    ("product", "build script", "v2/*/*/build.gradle.kts"),
+    ("product", "production source", "pipelinek/*/src/main/*"),
+    ("product", "production source", "pipelinek/*/*/src/main/*"),
+    ("product", "build script", "pipelinek/settings.gradle.kts"),
+    ("product", "build script", "pipelinek/build.gradle.kts"),
+    ("product", "build script", "pipelinek/*/build.gradle.kts"),
+    ("product", "build script", "pipelinek/*/*/build.gradle.kts"),
     # The three example plugins are independent Gradle builds whose JARs the
     # distribution ships via runtimeOnly, so their build scripts are the
     # denominator even though they live under examples/.
-    ("product", "example plugin build", "v2/examples/*/settings.gradle.kts"),
-    ("product", "example plugin build", "v2/examples/*/build.gradle.kts"),
-    ("product", "example plugin source", "v2/examples/*/src/main/*"),
+    ("product", "example plugin build", "examples/*/settings.gradle.kts"),
+    ("product", "example plugin build", "examples/*/build.gradle.kts"),
+    ("product", "example plugin source", "examples/*/src/main/*"),
     # Remaining scripts/ are release and install tooling: they ship the
     # product, so they are the denominator, not the numerator.
     ("product", "release script", "scripts/*"),
@@ -104,15 +103,15 @@ def is_never(path: str) -> bool:
 def module_of(path: str) -> str | None:
     """Module path for a src/main or src/test file, else None.
 
-    v2/<m>/src/main/...            -> <m>
-    v2/<g>/<m>/src/main/...        -> <g>:<m>
+    pipelinek/<m>/src/main/...            -> <m>
+    pipelinek/<g>/<m>/src/main/...        -> <g>:<m>
     """
     parts = path.split("/")
     try:
         idx = parts.index("src")
     except ValueError:
         return None
-    if idx == 0 or parts[0] != "v2":
+    if idx == 0 or parts[0] != "pipelinek":
         return None
     if idx == 2:
         return parts[1]

@@ -5,7 +5,7 @@
 #   1. the development distribution, built ONCE with installDist;
 #   2. static analysis (detekt) and the public-API compatibility check;
 #   3. the permanent unit tests of every module that has any;
-#   4. the tracked E2E scenarios in v2/examples/, run by examples/run.sh;
+#   4. the tracked E2E scenarios in examples/, run by examples/run.sh;
 #   5. the LOC budget gate (scripts/check-budgets.py);
 #   6. the wall-clock gate.
 # It is not a test framework and it has no registry, no service, no database
@@ -141,14 +141,14 @@ elapsed() { printf '%s' "$(( $(date +%s) - $1 ))"; }
 # with --list and once to execute -- is deliberate: a plan that can only be
 # printed by the same code that runs it is a claim about itself, not a census.
 
-gradle_path_of() { local p="${1#v2/}"; printf ':%s' "${p//\//:}"; }
+gradle_path_of() { local p="${1#pipelinek/}"; printf ':%s' "${p//\//:}"; }
 
 plan_modules_all() {
     local kt mod out=()
     while IFS= read -r kt; do
         mod="${kt%%/src/test/*}"
         out+=("$(gradle_path_of "$mod")")
-    done < <(find v2 -path '*/src/test/*' -name '*.kt' -not -path '*/build/*' \
+    done < <(find pipelinek -path '*/src/test/*' -name '*.kt' -not -path '*/build/*' \
              | LC_ALL=C sort | awk -F'/src/test/' '!seen[$1]++')
     [[ ${#out[@]} -eq 0 ]] || printf '%s\n' "${out[@]}"
 }
@@ -174,8 +174,8 @@ plan_scenarios() {
             # shellcheck disable=SC2254 # the pattern is a user-supplied glob on purpose
             case "$rel" in $scenario_filter) keep+=("$rel") ;; esac
         fi
-    done < <(find v2/examples -name '*.pipeline.kts' -not -path '*/build/*' \
-             | LC_ALL=C sort | sed 's|^v2/examples/||')
+    done < <(find examples -name '*.pipeline.kts' -not -path '*/build/*' \
+             | LC_ALL=C sort | sed 's|^examples/||')
     # `printf '%s\n' a b c` with no operands still prints one empty line, which
     # the caller then reads back as one empty path. An empty result must print
     # NOTHING, so the empty case is spelled out rather than left to printf.
@@ -280,7 +280,7 @@ resolve_java_home() {
 log "resolving a JDK ${REQUIRED_JAVA_FEATURE} (jvmToolchain(${REQUIRED_JAVA_FEATURE}))"
 if ! java_home="$(resolve_java_home)"; then
     echo "verify-all: no JDK ${REQUIRED_JAVA_FEATURE} found." >&2
-    echo "  v2/build.gradle.kts declares jvmToolchain(${REQUIRED_JAVA_FEATURE}), and" >&2
+    echo "  pipelinek/build.gradle.kts declares jvmToolchain(${REQUIRED_JAVA_FEATURE}), and" >&2
     echo "  Kotlin's build-script compiler cannot parse a newer JDK, so running" >&2
     echo "  on a later one fails with an unrelated-looking 'IllegalArgumentException:" >&2
     echo "  <version>'. Install a JDK ${REQUIRED_JAVA_FEATURE} or point JAVA_HOME at one." >&2
@@ -315,7 +315,7 @@ mkdir -p "$log_dir"
 if [[ "$subset" == 0 ]]; then
     log "preparation  clean build outputs"
     stage_started_at=$(date +%s)
-    ./v2/gradlew --no-daemon -p v2 clean > "$log_dir/clean.log" 2>&1 \
+    ./pipelinek/gradlew --no-daemon -p pipelinek clean > "$log_dir/clean.log" 2>&1 \
         || { tail -40 "$log_dir/clean.log" >&2; fail "preparation (see "$log_dir/clean.log")"; }
     echo "    ok in $(elapsed "$stage_started_at")s"
 else
@@ -341,7 +341,7 @@ trap cleanup_logs EXIT
 if want_stage 1; then
 log "stage 1/5  compile + detekt + detektTest + apiCheck + installDist"
 stage_started_at=$(date +%s)
-./v2/gradlew --no-daemon -p v2 \
+./pipelinek/gradlew --no-daemon -p pipelinek \
     detektMain \
     detektTest \
     apiCheck \
@@ -373,8 +373,8 @@ stage_started_at=$(date +%s)
 stray_lanes=()
 while IFS= read -r stray; do
     stray_lanes+=("$stray")
-done < <(find v2 -path '*/src/*' -name '*.kt' -not -path '*/build/*' \
-             -not -path 'v2/buildSrc/*' -not -path 'v2/examples/*' \
+done < <(find pipelinek -path '*/src/*' -name '*.kt' -not -path '*/build/*' \
+             -not -path 'pipelinek/buildSrc/*' -not -path 'examples/*' \
              -not -path '*/src/main/*' -not -path '*/src/test/*' \
          | LC_ALL=C sort)
 if [[ ${#stray_lanes[@]} -gt 0 ]]; then
@@ -388,29 +388,29 @@ modules_with_tests=()
 while IFS= read -r kt; do
     mod="${kt%%/src/test/*}"
     modules_with_tests+=("$mod")
-done < <(find v2 -path '*/src/test/*' -name '*.kt' -not -path '*/build/*' | LC_ALL=C sort | awk -F'/src/test/' '!seen[$1]++')
+done < <(find pipelinek -path '*/src/test/*' -name '*.kt' -not -path '*/build/*' | LC_ALL=C sort | awk -F'/src/test/' '!seen[$1]++')
 if [[ ${#modules_with_tests[@]} -eq 0 ]]; then
     echo "    no module has a unit test yet; nothing to run (NOT_RUN, not PASS)"
 else
     tasks=()
     selected=()
-    # `find v2 ...` yields paths relative to the repository root, so a module
-    # reads `v2/pipeline-domain`. Gradle is invoked with `-p v2`, which makes
-    # `v2` the Gradle ROOT rather than a project segment, so its project path is
-    # `:pipeline-domain` -- not `:v2/pipeline-domain`. Prefixing the find output
+    # `find pipelinek ...` yields paths relative to the repository root, so a module
+    # reads `pipelinek/pipeline-domain`. Gradle is invoked with `-p pipelinek`, which makes
+    # `pipelinek` the Gradle ROOT rather than a project segment, so its project path is
+    # `:pipeline-domain` -- not `:pipelinek/pipeline-domain`. Prefixing the find output
     # verbatim made every task path unresolvable, and the stage failed with
-    # "Cannot locate tasks that match ':v2/pipeline-domain:test'" before running
+    # "Cannot locate tasks that match ':pipelinek/pipeline-domain:test'" before running
     # a single test. The unit tests had therefore never executed through this gate.
     # A NESTED module needs the other half of the translation: settings.gradle.kts
     # declares `:pipeline-step-sdk:runtime`, with a colon, while the directory is
-    # `pipeline-step-sdk/runtime`, with a slash. Stripping only the `v2/` prefix
+    # `pipeline-step-sdk/runtime`, with a slash. Stripping only the `pipelinek/` prefix
     # therefore resolved the flat modules and failed on the first nested one with
     # "Cannot locate tasks that match ':pipeline-step-sdk/runtime:test' as project
     # 'pipeline-step-sdk/runtime' not found". Gradle aborted the whole stage, so
     # the flat modules ran and the nested ones never did -- and the census that
     # follows could not have reported it, because the stage had already exited.
     for m in "${modules_with_tests[@]}"; do
-        gradle_path="${m#v2/}"
+        gradle_path="${m#pipelinek/}"
         gradle_path="${gradle_path//\//:}"
         module_selected ":${gradle_path}" || continue
         tasks+=(":${gradle_path}:test")
@@ -451,14 +451,14 @@ else
     else
         gradle_args=("${tasks[@]}")
     fi
-    ./v2/gradlew --no-daemon -p v2 "${gradle_args[@]}" \
+    ./pipelinek/gradlew --no-daemon -p pipelinek "${gradle_args[@]}" \
         > "$log_dir/stage2.log" 2>&1 \
         || { tail -40 "$log_dir/stage2.log" >&2; fail "stage 2 (see "$log_dir/stage2.log")"; }
     # Gradle's exit status is not the result. A Test task can report success
     # with its classes skipped or absent, so the executed/failed/skipped counts
     # are read from the JUnit XML that the task wrote.
     # The census is scoped to the modules just asked for, deliberately. A global
-    # `find v2 -path '*/build/test-results/*'` also collects the XML that the
+    # `find pipelinek -path '*/build/test-results/*'` also collects the XML that the
     # suites deleted by the RESET left behind: it reported "283 reports,
     # executed=1880" for a run that asked one module and executed 56 tests in
     # 13 reports, the other 230 reports coming from code that no longer exists.
@@ -560,13 +560,13 @@ gaps_suffix() {
 }
 
 if want_stage 3; then
-log "stage 3/5  E2E scenarios in v2/examples/"
+log "stage 3/5  E2E scenarios in examples/"
 stage_started_at=$(date +%s)
 if [[ -n "$scenario_filter" ]]; then
-    ./v2/examples/run.sh "$scenario_filter" > "$log_dir/stage3.log" 2>&1 \
+    ./examples/run.sh "$scenario_filter" > "$log_dir/stage3.log" 2>&1 \
         || { tail -40 "$log_dir/stage3.log" >&2; fail "stage 3 (see "$log_dir/stage3.log")"; }
 else
-    ./v2/examples/run.sh > "$log_dir/stage3.log" 2>&1 \
+    ./examples/run.sh > "$log_dir/stage3.log" 2>&1 \
         || { tail -40 "$log_dir/stage3.log" >&2; fail "stage 3 (see "$log_dir/stage3.log")"; }
 fi
 # Reading the log with -a: the scenario output can carry NUL bytes, and without

@@ -18,20 +18,22 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `824353add` medido, gate completo sobre este árbol | `git rev-parse HEAD` |
-| Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
+| SHA | `19998c146` medido, gate completo sobre este árbol | `git rev-parse HEAD` |
+| Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` |
 | Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 9 | ídem |
-| Tests unitarios ejecutados | **583** (65 informes en disco, 65 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | 36 (**35 pasan, 0 fallan, 1 `NOT_RUN`**, 1 rerun durable) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **7580 / 61484 = 0.123** (límite 2) | `scripts/check-budgets.py --json` |
+| Tests unitarios ejecutados | **590** (66 informes en disco, 66 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Escenarios E2E | **29 (29 pasan, 0 fallan)**, 1 rerun durable | `v2/examples/**/*.pipeline.kts` |
+| Escenarios que sólo comprueban el código de salida | **0** | censo por directiva, sobre los 29 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **7811 / 61465 = 0.127** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **254 s** en el ensayo de `824353add`; la serie del ciclo es 276 / 242 / 289 / 254, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
-| Veredicto del gate | **`INCOMPLETE`**, `gaps=1 not_run` — las cinco etapas corrieron y pasaron, pero el escenario de credenciales no llegó a ejecutarse | línea final de `verify-all.sh` |
+| `VERIFY_ALL_WALL_CLOCK` | **258 / 220 / 217** en los tres ensayos de `19998c146`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
+| Deuda estática congelada | **807** entradas de baseline, ninguna nueva | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
-los **65** informes JUnit, que es la condición que hace que la cifra de reloj
+los **66** informes JUnit, que es la condición que hace que la cifra de reloj
 mida el gate y no una restauración de caché. Un total correcto con el verbo
 equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
 **falla** si no reescribe ninguno.
@@ -58,78 +60,31 @@ problema de entorno. Restaurado desde Git y verificado: es el único directorio
 usa ahora, y el que debe usarse, es **borrar un `build/` solo si su padre
 declara `build.gradle.kts` o `build.gradle`**.
 
-El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
-declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
-fabricar credenciales.
+### El hueco de las credenciales se cerró
 
-**El bloqueo se investigó y se comprobaron las cuatro afirmaciones siguientes,
-una a una contra el fichero antes de darlas por buenas:**
+El escenario `security/14-credentials-bindings.pipeline.kts` declaraba
+`requires-seeded-credentials` y el lanzador lo marcaba `NOT_RUN` en vez de
+fabricar credenciales. El hueco era real y estaba bien medido: las dos únicas
+rutas de escritura, `add` y `rotate`, construían la credencial exclusivamente a
+través de `CredentialPrompts`, y las siete funciones de prompting leen el
+secreto con `System.console()?.readPassword()`, que devuelve `null` sin TTY. No
+existía ruta de siembra no interactiva, y el almacén abría sin TTY: el hueco
+era de un solo lado, el del material del secreto.
 
-1. `credentials add` solo acepta `--kind` y un id posicional
-   (`MainCredentialsCli.kt:115-128`). El secreto sale de
-   `System.console()?.readPassword() ?: error("no TTY available")`
-   (`CredentialPrompts.kt:27-30`) — cableado a TTY, y con un pipe `console()` es
-   nulo, así que ni se intenta. Un barrido de `--stdin`, `--value`, `--from-file`
-   y `--secret` en `v2/`, `scripts/` y `examples/` devuelve **cero**.
-2. Ese TTY **no es una invariante de dominio**: vive entero en
-   `internal object CredentialPrompts`, un ayudante de prompts separables.
-3. **La API de abajo sí es pública y no tiene TTY**:
-   `SecretStore.add(id: CredentialsId, credential: Credential)`
-   (`SecretStore.kt:39`, implementada en `LocalSecretStore.kt:353`), clase pública
-   con constructor público. Sin lectura de consola, sin comprobación de TTY, sin
-   variables de entorno: va directo a la criptografía. No hay invariante que
-   saltar; el TTY es la elección de fuente de entrada de **un** call site.
-4. **El passphrase ya es headless**: `PIPELINE_STORE_PASSPHRASE` se mira primero
-   y su KDoc dice literalmente «no TTY prompt, preferred for automation»
-   (`PassphraseResolver.kt:20,41-45`).
+Ahora existe, y la puerta la usa. `credentials add` acepta `--from-stdin`, que
+es la **única** forma admisible: un secreto en `argv` violaría la invariante
+del propio repositorio de que el contenido nunca aparece en la lista de
+argumentos. El lanzador siembra el almacén del propio escenario con el verbo
+del producto —contra un almacén cifrado y propio, no contra el del
+desarrollador— y el escenario afirma que **la vinculación resolvió**, nunca
+qué resolvió. La corrida completa siembra **7** credenciales y el escenario se
+ejecuta: el `NOT_RUN` ya no existe, y con él el veredicto `INCOMPLETE` que esta
+sección declaraba.
 
-O sea: el hueco es **de un solo lado**. El almacén ya se abre sin TTY; lo único
-puenteado es *el material del secreto*, y la API soportada que lo resuelve está
-una capa más abajo, alcanzable desde código pero **expuesta por ningún verbo**.
-
-Y hay un dato que decide el caso: **0 de los 50 ficheros de test del árbol
-instancian `LocalSecretStore`, y 0 llaman a `store.add` o `store.put`.** Los ocho
-tests de `credentials-local` se quedan una capa más abajo
-(`CredentialSerializer`, `AeadCipher`) y el test del ejecutor usa un fake en
-memoria. El hueco que documenta el escenario es real y está bien medido.
-
-**Lo que desbloquearía, y por qué NO se ha hecho en este ciclo:** añadir un
-`--stdin` a `credentials add` que lea el secreto de la entrada estándar, y que
-el lanzador siembre el almacén con ese verbo antes de correr el escenario. Son
-unos veinte líneas y convierten el veredicto del gate. No se ha hecho por dos
-motivos, y los dos importan:
-
-- `--value` o cualquier bandera con el secreto **violaría la invariante P2 del
-  propio repositorio** —el contenido nunca aparece en un `argv`— así que solo
-  `--stdin` es admisible. Y `--stdin` es superficie de CLI nueva **sobre una
-  frontera de seguridad**: hace posible escribir secretos sin humano, que es un
-  cambio de capacidad y no un refactor.
-- El encabezado del escenario dice que el lanzador «no tiene negocio» con un
-  almacen sembrado, y el motivo que da es que un seeder sería «exactamente el
-  harness que este árbol borró». Un `--stdin` alimentado por el propio escritor
-  del producto no es ni un seeder de TTY ni un fichero cifrado hecho a mano, así
-  que la prohibición **no** cubre este caso —pero la decisión de si lo cubre es
-  de producto, y la lista de autorizaciones pendientes ya lo tiene marcado.
-
-`NOT_RUN` no es un aprobado, y desde `5240feac` tampoco se
-confunde con uno: la línea de veredicto lleva el hueco **dentro**. Antes el
-conteo se imprimía y no se leía —la etapa 3 solo hacía `grep` del resumen—, así
-que el peor caso (`--scenario 'security/*'`: 0 pasan, 0 fallan, 1 no ejecutado)
-salía vestido de `PASS`. La primera forma fue un sufijo sobre la misma palabra,
-`PASS  sha=…  budget=900s  gaps=1 not_run`, que se contradecía a sí misma y
-cuya contradicción era justo lo que se acababa citando. Hoy la palabra del
-veredicto sigue a la evidencia:
-
-```
-INCOMPLETE  sha=…  elapsed=220s  budget=900s  gaps=1 not_run
-```
-
-`INCOMPLETE` y no `PASS` porque `AGENTS.md` §4 dice que una prueba ausente o
-omitida nunca es un aprobado. El código de salida sigue siendo 0: las etapas que
-sí corrieron son evidencia real, y un escenario que el producto no puede lanzar
-sin TTY es un hueco que hay que nombrar, no un defecto que deba poner el gate
-entero en rojo. Un tercer estado no se propaga porque la capa de abajo lo
-imprima: si el hueco necesita el log de la etapa para entenderse, no ha viajado.
+El `NOT_RUN` no era un aprobado, y sigue sin serlo: la línea de veredicto lleva
+el hueco **dentro** (`INCOMPLETE … gaps=1 not_run`) en vez de esconderlo detrás
+de la palabra `PASS`, y el código de salida sigue siendo 0 porque las etapas que
+sí corrieron son evidencia real.
 
 La misma regla se aplicó a `--no-budget`: ponía `skip_budget=1` y nada más, así
 que saltaba la etapa 4 y caía igualmente en la línea `PASS … budget=900s` del
@@ -142,7 +97,8 @@ afirmación con ella.
 
 `run.sh` admitía `//@ durable` desde su cabecera, pero **ninguno** de los 36
 escenarios lo declaraba: la segunda ejecución sobre el mismo `--control-root`
-nunca había corrido. `durable/22-wait-until.pipeline.kts` lo declara ahora, que
+nunca había corrido. Hoy lo declara uno de los 29, y es
+`durable/22-wait-until.pipeline.kts`, que
 es el escenario que puede hablar del assunto y ningún otro puede — un cuerpo que
 ya llegó a `WaitUntilCompleted` no debe volver a consultarse al repetir, ni
 fallar por no haber hecho nada nuevo, y una sola ejecución no lo observa.
@@ -174,11 +130,12 @@ propia latencia y **no** va dentro de este número.
 
 Una cifra de reloj heredada de otro commit es exactamente el tipo de verde que
 esta tabla existe para no declarar: por eso cada fila lleva el SHA al que se
-midió. Desde la medición, `HEAD` avanzó a `d47e10ad`, que solo toca este
-fichero: `check-budgets.py` devuelve los mismos **6805 / 61618** antes y después
-y ninguna tarea del gate lee `ROADMAP.md`, así que la traslación está medida y
-no supuesta. En cuanto entre un commit que toque código de producto o de
-verificación, esta tabla vuelve a estar caducada y hay que repetir los tres
+midió. Los tres ensayos de este bloque se ejecutaron sobre `19998c146`, y el
+commit que actualiza este documento no toca código de producto ni de
+verificación: `check-budgets.py` devuelve los mismos **7811 / 61465** antes y
+después y ninguna tarea del gate lee `ROADMAP.md`, así que la traslación está
+medida y no supuesta. En cuanto entre un commit que toque código de producto o
+de verificación, esta tabla vuelve a estar caducada y hay que repetir los tres
 ensayos.
 
 `VERIFY_LOC` sale de `git ls-files`, así que **solo cuenta ficheros
@@ -204,9 +161,9 @@ contra el texto del plan. «Medido» significa que el número salió de una
 | 1 | 0 Markdown bajo `docs/` y `v2/` | **PASS** | `git ls-files ':(glob)docs/**/*.md'` = 0; `:(glob)v2/**/*.md` = 0. En la raíz solo quedan `AGENTS.md`, `README*.md`, `ROADMAP.md` |
 | 2 | 0 `@Test` UAT/E2E/AAT/harness | **PASS** | 0 en `pluginContractTest`/`installedContractTest`/`integrationTest`/`functionalTest`; 0 `@Disabled` |
 | 3 | 0 clases legacy trasladadas | **PASS** | `v2/test-harness`, `v2/pipeline-testkit`, `v2/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
-| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 36 escenarios en 8 categorías bajo `v2/examples/`; 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` (186 líneas) invocado por `scripts/verify-all.sh:246` |
-| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 6981 / 61644 = 0.113; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
-| 6 | `verify-all` local ≤ 900 s | **PASS** | peor de tres ensayos sobre `12eea7a89` + este bloque: 228 / 227 / **228 s**, y **241 s** en la corrida de cierre sobre `f4dd21a47`, contra el límite de 900. Todas con 56/56 informes reescritos, 531 tests, 0 fallos, 0 errores, 0 skips |
+| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 29 escenarios en 8 categorías bajo `v2/examples/`; 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` invocado por la etapa 3 del gate |
+| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 7811 / 61465 = 0.127; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
+| 6 | `verify-all` local ≤ 900 s | **PASS** | tres ensayos sobre `19998c146`: 258 / 220 / 217, contra el límite de 900. Todos con 66/66 informes reescritos, 590 tests, 0 fallos, 0 errores, 0 skips |
 | 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS con una excepción** | 27 módulos declarados compilan; `v2/pipeline-protocol/` está versionado y **no está declarado**, luego Gradle nunca lo compila |
 
 Sobre el límite 4: el mandato escribe el lanzador como `examples/run.sh`, y en
@@ -1582,39 +1539,29 @@ formato y necesita versión; si es un evento nuevo, `AFTER_LAST_RUN_STARTED` pas
 a significar «desde el último `<nuevo evento>`» y hay que migrarlo en el mismo
 cambio. Hoy no hay fecha ni responsable; hay ruta.
 
-**d) 13 de 36 escenarios E2E sólo comprueban el código de salida.** Era 24 al
-abrirse este bloque; queda en 13.
+**d) Ninguno de los 29 escenarios comprueba sólo el código de salida.** Era 13 de
+36 al abrirse este bloque; hoy es **0 de 29**.
 
-Censo reproducible sobre los 36 `.pipeline.kts` del árbol. El lanzador sólo
-conoce dos aserciones, `//@ expect-exit` y `//@ expect-stderr`, y las dos
-comparan un valor de salida o una subcadena de stderr. Todo lo demás tiene que
-afirmarlo el propio escenario, y no todos lo hacen:
+Censo reproducible sobre los 29 `.pipeline.kts` del árbol. El lanzador conoce
+cuatro aserciones: `//@ expect-exit`, `//@ expect-stderr`, `//@ expect-stdout` y
+`//@ expect-transcript`. Todo lo demás tiene que afirmarlo el propio escenario,
+y no todos lo hacen:
 
 | | Qué afirma | N |
 |---|---|---|
-| A | `//@ expect-stderr`: el lanzador exige **este** texto de negativa, no un código cualquiera | 4 |
-| B | Una comprobación dentro del cuerpo (`test`, `grep -q`, `cat`, `find`, `wc -l`, `test "$X" =`) que falla si el efecto no ocurrió | 19 |
-| C | **Nada** que compruebe el efecto; el lanzador compara el código de salida y ya está | **13** |
+| A | `//@ expect-stderr`: el lanzador exige **este** texto de negativa, no un código cualquiera | 5 |
+| B | El efecto: `//@ expect-stdout`, `//@ expect-transcript`, o una comprobación dentro del cuerpo (`test`, `grep -q`, `cat`, `find`, `wc -l`) que falla si el efecto no ocurrió | 24 |
+| C | **Nada** que compruebe el efecto; el lanzador compara el código de salida y ya está | **0** |
 
-Los trece que pasaron de C a B en este ciclo: `steps/18-cleanWs`,
-`smoke/02-environment`, `control-flow/11-workflow-control`, `steps/08-withEnv`,
-`output/23-readfile`, `smoke/09-sh-then-echo`, `output/30-artifact-query-bridge`,
-`output/32-publish-html`, `security/14-credentials-bindings`, `smoke/10-smoke-e2e`,
-`steps/17-writeFile`, `control-flow/06-loop` y `plugins/repeat-block`.
-
-De los trece, **ocho llevan la mutación que los pone en rojo, leída de vuelta
-antes de leer el resultado** —una aserción no vale si no se ha visto fallar—:
-`18-cleanWs`, `02-environment`, `08-withEnv` y `11-workflow-control` (este
-último por inversión de la propia aserción), más `smoke/10`, `17-writeFile`,
-`06-loop` y `plugins/repeat-block`. Los cinco restantes se validaron en verde
-pero **no** se vieron fallar: `23-readfile`, `09-sh-then-echo`,
-`30-artifact-query-bridge`, `32-publish-html` y `14-credentials-bindings`. Este
-último además **nunca se ejecuta** —está en `NOT_RUN` por
-`requires-seeded-credentials`—, así que su aserción no ha corrido nunca.
-Declararlo probado sería falso. Y hasta el commit de este ciclo tampoco
-**compilaba**: el lanzador salía por el `NOT_RUN` antes de invocar al binario, de
-modo que las siete fábricas `CredentialsBinding` no tenían ninguna cobertura de
-compilación. Ver §2.6.
+El único que quedaba era `plugins/uppercase`, y su comentario explicaba por qué
+no afirmaba el texto transformado: el resultado de un paso no vuelve al script.
+La explicación era correcta y la conclusión no: lo que no se puede afirmar es
+**el valor**, no **que el paso se ejecutara**. El runtime anuncia el plugin que
+descubrió y la consola narra el paso que ejecutó, y las dos cosas se afirman
+ahora. Un run que resolvió el paso y no lo ejecutó imprime la etapa y sale con
+éxito: esa forma era verde y ahora es roja, y se ha visto roja por mutación
+—sustituir la llamada al paso por otra cosa la pone en rojo con el mensaje
+exacto—.
 
 **El instrumento de este censo falló cuatro veces antes de reconciliar**, y es
 la cuarta vez que aparece en este ciclo que un censo da un número confiado y
@@ -1929,6 +1876,12 @@ KDoc se reescribe cuando se toca el fichero, no en una campaña.**
 
 ### 2.6 El `NOT_RUN` que impide el `PASS` — y por qué no se ha cerrado
 
+> **Estado: cerrado en este ciclo.** El hueco que este bloque midió ya no
+> existe: `credentials add` acepta `--from-stdin`, el lanzador siembra el
+> almacén del escenario con el verbo del producto, y el escenario se
+> ejecuta y afirma. Lo que sigue se conserva como el relato de lo que se
+> midió y de por qué, no como el estado actual.
+
 El veredicto del gate local es **INCOMPLETE**, no `PASS`, y la diferencia es un
 único escenario: `v2/examples/security/14-credentials-bindings.pipeline.kts`.
 Desde §2.3 venía justificado por «necesita un almacén de credenciales sembrado
@@ -2016,6 +1969,9 @@ afirma una propiedad del código es una promesa: si el código no la cumple, es 
 código el que miente.
 
 ### 2.6.2 El gate completo en `9b211bf30`, con su veredicto exacto
+
+> **Estado: histórico.** El veredicto que este bloque transcribe era el de
+> entonces. El veredicto vigente está en §1.
 
 `scripts/verify-all.sh` sin filtros, sobre el árbol ya commiteado:
 
@@ -2205,6 +2161,163 @@ Dos cosas que este bloque deja dichas, porque las dos son la lección y no el ar
 sin poder coincidir; esto evita que compartan fichero, no que compitan por la misma
 distribución.
 
+### 2.10 El observador de salida en vivo existe y no entrega nada
+
+**Medido, no supuesto, y re-verificado sobre este árbol.** Un `sh` que imprime
+no aparece en la consola del proceso cuando la corrida es durable:
+
+```text
+pipelinek run --isolated --db ev.db --control-root ctl script.kts
+  stdout  -> la salida de `echo` sí, la de `sh` NO
+  plano   -> los bytes SÍ están: ctl/output-plane/frames/<runId>.frames
+```
+
+El mecanismo paraarlo ya está escrito. `Main.startLiveOutputObserver` arranca
+un hilo **antes** de la canalización que drena el plano de salida mientras la
+corrida está en vuelo, y su KDoc describe exactamente este hueco: *"A build's
+progress was therefore invisible while the build runs"*. El hilo se arranca,
+el plano tiene los frames indexados bajo el `runId` correcto, el `console` del
+producto lee ese plano sin problema, y el observador **no entrega ni una
+línea** en ninguno de los tres formatos (`text`, `jsonl`, `json`) y sin
+refusar: no hay refusal en stderr, que es lo que haría visible un fallo del
+lector.
+
+**Por qué el E2E no lo veía.** El suite siempre corrió en la rama sin
+`--db`, donde el sustrato de shell emite `EchoOutputCaptured` y la salida sí
+llega a stdout. Ese camino hace que `expect-stdout` sobre la salida de un `sh`
+funcione, y por eso ninguna señal de rojo salió nunca. La rama durable — la
+que usa una CI de verdad — no renderiza su transcripción. El suite llevaba un
+ciclo entero midiendo el camino que nadie usa en producción y sin tocar el
+que sí.
+
+**Lo que se ha hecho y lo que no.** Se ha medido y se ha dejado el mecanismo
+nombrado, con un reproductor de una línea y un sitio exacto donde mirar.
+Arreglarlo es un cambio de producto en la superficie de consola, y un cambio
+de producto no entra en un ciclo cuyo objeto es la higiene: necesita su propio
+test de regresión, y un test que no se ha visto rojo no prueba nada.
+
+### 2.11 Los comentarios: 0 identificadores de tarea dentro
+
+El árbol llevaba **719 ocurrencias de 214 identificadores distintos** que
+nombraban una tarea, una especificación o un nombre: `WU-LPR-062:`, `ADR-0088:`,
+`OBS-C2.3`, `S6/C`, `ML-R9`, `T-05`, `R2.3(b)`, `CDE.3-e4.5`, `HF0`, `rule 4`,
+`slice 2`. Un lector sin el plan leía un índice de referencias en lugar de
+documentación. El recuento final, con un censo que entiende los estados de
+comentario y de literal de Kotlin —no una expresión regular sobre el fichero
+entero— es **0**. También son 0 las fechas y los hashes de commit que quedaban:
+el plan se queda sin fecha y sin SHA.
+
+**Por qué no se hizo con una expresión regular.** Un barrido anterior, hecho
+con una, dejó prosa rota: `An inventory at found 29…`, `OBS- gives an
+operation…`, `R4 /.2 — content filters…`, y una cita de código que ya no
+compilaba (`System.console()?.readPassword()` → `System.console?.readPassword`).
+El instrumento de este ciclo reconoce la gramática del identificador, decide
+qué forma de comentario es, y **no toca lo que no reconoce**.
+
+**El instrumento tuvo que aprender tres cosas, y las aprendió rompiendo cosas.**
+Una línea de código que empieza por `*` es un operador de expansión, no un
+bullet de KDoc; un `/*` en shell es un glob (`$dir/*`), no el inicio de un
+comentario de bloque; y `"$#"` es el contador de argumentos, no un comentario.
+Cada uno de esos errores se vio **en el código roto** —la compilación en rojo
+con el fichero y la línea— y se corrigió antes de seguir. El criterio de
+aceptación del barrido no es que el fichero cambie, es que **la parte de
+código de cada línea sea idéntica antes y después**: se comparó línea a línea
+contra el árbol previo, y la diferencia es **0**.
+
+**Lo que salió de paso.** El `build.gradle.kts` raíz llevaba un changelog de
+trenes de release —qué versión subió cuándo, en qué commit, con qué fecha—
+que describía la v0.44 a v0.48 mientras el producto iba por la v0.62. Una
+copia del historial en un fichero de build es una copia que se queda vieja: el
+historial es de Git. Se sustituyó por **la ley que sigue viva** (qué significa
+la versión, quién la posee, qué publica este repositorio) en 28 líneas, y se
+borró el resto.
+
+**La deuda de detekt no se movió, y ahora se puede refrescar.** La baseline
+fingerprinta el KDoc, así que cambiar un KDoc rompe la coincidencia. Se
+regeneró y se comparó: **807** entradas, ninguna nueva. Y el arreglo que lo
+hace posible está en §2.13: la tarea que refresca la deuda escribía en un
+fichero que ninguna puerta leía.
+
+### 2.12 El harness: menos escenarios, y los que quedan afirmando más
+
+El suite E2E pasó de **36 a 29 escenarios**, y no por gusto: cuatro no
+podían fallar.
+
+| Retirado | Por qué no afirmaba nada |
+|---|---|
+| `smoke/01-basic` | un `echo` y nada que observar |
+| `smoke/03-stages` | tres `echo` sin ninguna forma de observar el orden |
+| `steps/04-sh` | un `sh` sin mirar su salida ni su efecto |
+| `steps/16-sleep` | un `sleep` y un `echo`; afirmar el retardo sería un test de reloj |
+
+Ninguna garantía se perdió: el orden de las etapas lo observan
+`smoke/10-smoke-e2e` (la etapa 2 archiva lo que la 1 clonó) y
+`negative/12-error-handling` (un milestone entre dos etapas); el efecto de
+`sh` lo observa `smoke/09-sh-then-echo`; y un retardo no es una garantía que
+un test pueda afirmar sin volverse frágil.
+
+Y tres parejas se fundieron en un escenario cada una, porque eran la misma
+capacidad partida en dos ficheros:
+
+- `output/24-utilities-roundtrip` + `output/25-yaml-roundtrip` → uno
+- `durable/19-isunix` + `durable/20-pwd-tmp` → `durable/19-platform-queries`
+- `control-flow/05-scripted-if` + `control-flow/06-loop` → uno
+
+**El harness creció en capacidad, no en vocabulario.** Cuatro cosas:
+
+1. `expect-stdout` y `expect-stderr` son **repetibles**. Un escenario que
+   cubre dos hechos tiene que poder decir los dos; al fundir escenarios, la
+   segunda afirmación se habría perdido por el camino.
+2. `expect-transcript <texto>` es nuevo: lee la **transcripción que la
+   corrida confirmó** en el Plano de Salida, a través del verbo `console` del
+   propio producto. Es la superficie durable, que es distinta de stdout: lo
+   que un paso imprimió queda confirmado en el plano, y una aserción sobre lo
+   que un paso IMPRIMIÓ se hace donde la impresión está confirmada.
+3. El lanzador ahora **rechaza su propia incoherencia**: una corrida de cero
+   escenarios es un error, no un verde, y los tres contadores que publica
+   tienen que reconciliar antes de que el resumen salga.
+4. Un fallo **nombra el texto que no encontró** y enseña lo que el pipeline
+   imprimió, sin la narración del producto. Antes el resumen publicaba
+   «exit matched but expected stdout substring absent»: un diagnóstico que no
+   dice qué faltaba y obliga a volver a correr para averiguarlo.
+
+**La fusión destapó una aserción que no podía pasar.** `durable/19-platform-queries`
+afirmaba `pwd is the workspace placeholder: true`, y el pipeline imprime
+`pwd() is the workspace placeholder: true`: el texto buscado no era subcadena
+del texto emitido, así que el escenario era rojo por construcción. No lo
+detectó nadie porque su mensaje de fallo era el genérico. Corregida la
+afirmación, el escenario se ha visto **rojo por una razón real**: se mutó el
+producto para que `pwd()` devolviera una ruta en lugar del placeholder, y el
+escenario pasó a rojo exactamente en esa línea. Un escenario que nunca puede
+pasar y uno que protege un contrato se parecen; sólo uno de los dos se
+distingue por haber sido visto rojo.
+
+Cada capacidad nueva se ha visto **roja** antes de declararse verde: se
+invirtió la expectativa y la fila pasó a rojo con el mensaje exacto, y
+restaurada volvió a verde.
+
+### 2.13 La deuda congelada no se podía refrescar
+
+**El defecto.** `./gradlew detektBaselineMain` escribe
+`detekt-baseline-main-main.xml` —detekt nombra su salida por el source set dos
+veces— y la puerta lee `detekt-baseline-main.xml`. El fichero que la puerta
+lee nunca se refrescaba, y el que se refrescaba no lo leía nadie. La deuda
+estática estaba congelada de una manera que no era una decisión: era un
+desajuste de nombres.
+
+**Lo que eso costaba.** La baseline arrastraba **20 entradas** de hallazgos que
+ya no existían. Con la baseline vieja, un hallazgo nuevo del mismo tipo en el
+mismo fichero podía coincidir con una entrada vieja y quedar **suprimido**: la
+deuda podía crecer en silencio. Congelar la deuda es una decisión; dejar un
+fichero de deuda que se desactualiza solo, no.
+
+**El arreglo.** La tarea de refresco escribe ahora donde el análisis lee, y el
+snapshot es **truthful**: 807 entradas, ninguna nueva, ninguna fantasma. Y la
+puerta de SAST sigue teniendo dientes, comprobado por mutación: una propiedad
+privada sin usar en `pipeline-domain` pone el build en rojo con el nombre de
+la regla y la línea.
+
+
 ---
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
@@ -2240,6 +2353,40 @@ distribución.
   lente activable: invocarla produce un enlace a nada. Las que sí están y sirven
   para este árbol son `change-impact`, `regression-promotion` y `failure-triage`.
   Se anota para que nadie la invoque esperando un procedimiento.
+
+- **La puerta se limpia a sí misma antes de medir.** La limpieza de las
+  salidas de build pasa a ser parte de la puerta completa, con la tarea
+  `clean` de Gradle, y no un paso manual. Motivo: una puerta que sólo se puede
+  medir una vez no se mide tres veces, que es lo que la política pide.
+- **El snapshot de deuda se refresca donde el análisis lee.** La tarea que
+  regenera la baseline escribe en el fichero que la puerta consume. Motivo: un
+  fichero de deuda que se actualiza solo en otro sitio no es un snapshot, es una
+  decoration, y sus 20 entradas fantasma eran una puerta por la que la
+  deuda nueva podía colarse en silencio.
+- **El barrido de comentarios se acepta sólo si la parte de código de cada
+  línea no cambia.** No basta con que el árbol compile: una muestra de código
+  en un comentario puede quedar rota y el compilador no se entera. Motivo: el
+  instrumento tiene que ser más estrecho que el daño que previene.
+- **El defecto del observador de salida en vivo se mide y se deja, no se
+  arregla de paso.** Es un cambio de producto, y un cambio de producto
+  necesita su propio test de regresión, visto rojo antes de verde. Motivo: un
+  arreglo sin test no es un arreglo, es una apuesta.
+- **`docs/` desaparece.** Contenía la continuación de un plan anterior al
+  RESET —`BQ1`–`BQ5`, `test-harness`, `cycle`— y un script de una sola vez
+  que la insertaba en el roadmap. `AGENTS.md` prohíbe markdown bajo `docs/`, y
+  el contenido está superado por este documento. Se borró de forma
+  recuperable. Motivo: un árbol limpio es un árbol del que se puede razonar.
+- **Un fallo que no dice qué faltaba se arregla antes que el fallo que sí lo
+  dice.** El defecto de la fusión era una línea mal escrita; el defecto que lo
+  escondía era un mensaje de fallo que no nombraba el texto ausente. El
+  segundo es el que cuesta el tiempo de todos los que vienen detrás. Motivo:
+  un diagnóstico que obliga a reejecutar para entenderse es un coste, no una
+  cortesía.
+- **Una explicación correcta no autoriza una conclusión mayor.** El escenario
+  del plugin externo afirmaba que su resultado no es observable, y lo es; de
+  ahí se concluyó que no había nada que afirmar, y no era cierto: el valor no
+  es observable, la ejecución sí. Motivo: un límite real aplicado a la
+  afirmación equivocada se convierte en una cobertura que nadie tiene.
 
 ---
 

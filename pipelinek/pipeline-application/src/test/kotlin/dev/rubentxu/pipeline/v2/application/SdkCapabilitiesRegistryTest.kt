@@ -18,7 +18,9 @@ import org.junit.jupiter.api.Test
  *  - the catalogue is exactly the list below, id by id, with its state and its first publication;
  *  - no id is announced twice, because two entries with one id would leave the reader choosing;
  *  - every id and every version is well-formed, because a malformed id is one no consumer can
- *    match against.
+ *    match against;
+ *  - every announced id is one the build delivers, so an id announced before it is delivered has to
+ *    be a deliberate act here rather than a silent lie in the table.
  *
  * What it cannot say is whether the product really delivers what it announces. That question has
  * an answer in the executable examples, and it is the reason the catalogue states, per state,
@@ -31,7 +33,7 @@ class SdkCapabilitiesRegistryTest {
         Triple("output.follow.v1", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.49.0-rc1"),
         Triple("events.follow.v1", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.49.0-rc1"),
         Triple("runtime.inspect.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.50.0-rc1"),
-        Triple("runtime.cancel.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.50.0-rc1"),
+        Triple("runtime.cancel.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.50.0-rc1"),
         Triple("runtime.recover.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.50.0-rc1"),
         Triple("output.read.digested.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.51.0-rc1"),
         Triple("output.pin.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.51.0-rc1"),
@@ -78,15 +80,16 @@ class SdkCapabilitiesRegistryTest {
     }
 
     @Test
-    @DisplayName("an id the build does not deliver is announced as DEPRECATED")
+    @DisplayName("every announced id is delivered, so none is announced as not delivered")
     fun `an undelivered id is announced as deprecated`() {
         val deprecated = SdkCapabilities.ALL.filter { it.status == SdkCapabilities.CapabilityStatus.DEPRECATED }
             .map { it.id }
 
         assertEquals(
-            listOf("runtime.cancel.v1"),
+            emptyList<String>(),
             deprecated,
-            "the set of announced-but-not-delivered capabilities changed",
+            "an id the build does not deliver was announced as delivered, or an " +
+                "announced-but-not-delivered id was added without deciding it here",
         )
     }
 }

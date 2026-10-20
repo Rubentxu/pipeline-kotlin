@@ -169,6 +169,12 @@ dependencies {
     implementation(project(":pipeline-credentials-multipart")) // wire CredentialMaterializer for file-based credential dispatch
     implementation(project(":pipeline-credentials-executor")) // port-driven withCredentials executor
     implementation(project(":pipeline-artefacts-local"))
+    // The control plane's adapters. This module is the ONE place that composes
+    // them, because it is the one place that owns the event store, the journal,
+    // the lease store and the Output Plane at the same time. The module is
+    // internal (not in `publishedContractModules`), so depending on it here
+    // does not put an adapter on any consumer's classpath.
+    implementation(project(":pipeline-runtime"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.sqlite.jdbc)
     implementation(libs.kotlinx.coroutines.core)

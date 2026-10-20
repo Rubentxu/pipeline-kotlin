@@ -98,6 +98,7 @@ internal val CLI_VERBS: List<Pair<String, String>> = listOf(
     "console" to "read one step's output plane as frames or lines",
     "events" to "read one run's domain events as text or json",
     "inspect" to "read a run id's digests, steps and provenance",
+    "runs cancel" to "close a run that no live process is working on (--db, --control-root, --reason)",
     "credentials" to "list registered credential material (redacted)",
     "doctor" to "report the installation's health",
     "version" to "print the product version (--json)",
@@ -330,6 +331,15 @@ fun main(args: Array<String>) {
     // canary that catches any regression here).
     if (args.firstOrNull() == "inspect") {
         val exitCode = MainInspectCli.main(args.drop(1).toTypedArray())
+        System.exit(exitCode)
+        return
+    }
+
+    // The control plane's verb. `runs cancel` closes a run that no live process
+    // is working on, and refuses to close one that is. It is a WRITE verb, and
+    // it is the first one in this CLI: every other verb reads.
+    if (args.firstOrNull() == "runs") {
+        val exitCode = MainRunsCli.main(args.drop(1).toTypedArray())
         System.exit(exitCode)
         return
     }

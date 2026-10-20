@@ -733,6 +733,25 @@ fun main(args: Array<String>) {
                 // permission; a run whose flag is ignored is a run where the
                 // operator believes they opened the network and did not.
                 allowNetwork = config.allowNetwork,
+                // P6: the Saga seam does NOT depend on `--db`. This branch binds the
+                // VOLATILE store, so the capabilities are the same ones the durable
+                // branch exposes and the SAME script behaves the same in both worlds.
+                // What changes is the DURABILITY of the promise, not the algorithm:
+                // nothing survives the process here, exactly like the journal and the
+                // event log of this branch.
+                //
+                // Before this binding, this branch bound NO saga store at all, so the
+                // Saga capabilities were never exposed and a script that declares them
+                // was refused at admission — the same script behaving differently with
+                // and without `--db`, which is the contradiction LF-0208 forbids.
+                //
+                // The epoch is 0 because a volatile run has no lease: there is no
+                // takeover to fence against, and one writer owns the run for as long as
+                // the process lives.
+                sagaBinding = dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding(
+                    store = dev.rubentxu.pipeline.v2.events.durable.InMemorySagaObligationStore(),
+                    leaseEpoch = 0,
+                ),
             )
             else -> {
                 // Fail-closed: non-canonical pipelines are not supported by the canonical bridge.
@@ -799,6 +818,13 @@ fun main(args: Array<String>) {
                 System.err.println("Pipeline finished with FAILURE"); true
             }
         }
+        // P6: the Saga verdict travels in BOTH worlds. A Saga can now run without
+        // `--db` —the volatile store is bound exactly like the durable one—, so the
+        // run has to SAY what happened to it, exactly as the durable path says. A
+        // Saga that settled without saying so is a Saga the operator cannot see,
+        // and "the run was green" is not a substitute for "the Saga was settled".
+        val sagaTerminals = events.filterIsInstance<dev.rubentxu.pipeline.v2.events.SagaTerminal>()
+        SagaVerdict.verdicts(sagaTerminals).forEach { System.err.println(it) }
         if (exitFailure) System.exit(1)
         return
     }
@@ -1301,9 +1327,11 @@ fun main(args: Array<String>) {
     // to the reason the run failed, because "the Saga settled" and "a human has to resolve
     // a pending obligation right now" are different worlds and the exit code cannot say
     // which one this was.
-    //
-    // Only the durable path reaches here with Sagas: without `--db` there is no Saga
-    // store, so no Saga can run and there is nothing to say.
+    // The Saga verdict: what happened to the Sagas this run executed, from the
+    // EVENT and not from the obligation store (the event is the published fact,
+    // and the store answers a different question: what is owed, not what was
+    // concluded). It is printed in BOTH worlds: a Saga can run with and without
+    // `--db` (P6), and a run that keeps its promises has to say so in each.
     SagaVerdict.verdicts(sagaTerminals).forEach { System.err.println(it) }
     if (exitFailure) System.exit(1)
 }

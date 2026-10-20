@@ -323,6 +323,28 @@
       ],
       "removal_boundary": "Three production call sites migrated (ExternalEventDefinitionDiscovery.compose and two EventRegistry.create() sites that needed no change because create() survives). Test call sites in pipeline-events and examples/fabric-contract-consumer migrated. The RegistrationOutcome return type is unchanged, so total rejection semantics are identical. pipeline-events is EXPERIMENTAL.",
       "supersedes": null
+    },
+    {
+      "module": "pipeline-events",
+      "sha": "de45a74abd0717c9b39e32d6f47bdc7e4676aace",
+      "surface": "StepFinished.outcome, StepFinishedTyped.outcome and StepFinishedTyped.stepType",
+      "change": "THREE changes in one commit, listed separately because they are three different facts a consumer has to act on. (1) StepFinished: added property `outcome: String?`; the eight-argument <init>(String, String, long, Instant, int, int, String, String), copy and copy$default all DISAPPEAR from the dump, and component9/getOutcome plus the nine-argument forms are added. (2) StepFinishedTyped: added property `stepType: String`; the five-argument <init>, copy and copy$default disappear and the six-argument forms are added. (3) StepFinishedTyped.outcome: same descriptor (String) but a DIFFERENT MEANING - it carried the step's TYPE and now carries the step's VERDICT. The capability id was re-versioned for that reason: runtime.eventshape.v1 is DEPRECATED and runtime.eventshape.v2 is what this build delivers",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "BINARY, in parts (1) and (2). An artifact compiled against 0.47.0 that constructs a StepFinished or a StepFinishedTyped receives a NoSuchMethodError. A consumer that REBUILDS against this build needs a source edit, and that is the point of the design: the field has NO default value, so every construction site has to say what it means.",
+        "",
+        "The alternative considered and rejected: give `outcome` a default of null, or add @JvmOverloads. Kotlin emits the full constructor plus a synthetic one taking a DefaultConstructorMarker and never the old eight-argument descriptor, so a default buys SOURCE compatibility and NO binary compatibility - and @JvmOverloads would keep the old form in the ABI. That old form would mean 'a terminal event with no verdict', a supported way to build an event that says nothing about the step's result: exactly the silence this change exists to remove, republished as a convenient overload. The EventPage.refusals entry refused the same shortcut for the same reason.",
+        "",
+        "Part (3) is not a break of the JVM signature at all, and that is precisely why it needs a capability id of its own. The field was a String before and it is a String now, so a consumer that was compiled against the old shape keeps linking and keeps reading - a step's TYPE where it expected a verdict. The old shape filled `outcome` with raw.stepType, under a field whose name promised a result: a consumer got a confident answer to a question nobody asked and no answer to the question it did ask. Nothing in the type says so, so nothing but a new id can say it.",
+        "",
+        "What this buys, stated as the defect it removes: the step boundary emits the terminal event from a finally, so the terminal event of a FAILED step is emitted too. Before this SHA a consumer could not tell a failed step from a successful one without joining the terminal event with the separate failure event - by a step index that does not say which stage the failure belongs to. The reviewer of this product called it: 'the translator can claim a Step finished successfully without enough evidence'. Now the verdict travels with the event that ends the step, and the reader that serves `inspect`'s OUTCOME column reads it from there.",
+        "",
+        "The wire did NOT change shape: the payload is a JSON TEXT column, so the new field needs no migration, and a row written before this SHA decodes to NO verdict - which is the honest reading, because that build published none. A consumer that needs to tell 'this build says unknown' from 'this build says nothing' negotiates events.stepoutcome.v1.",
+        "",
+        "What is NOT recorded here: the domain change that gives StepOutcome its canonical wire token. That one is purely additive - a new method and a new companion - and recording it would be a lie about what shipped, in a ledger whose whole purpose is to be the opposite."
+      ],
+      "removal_boundary": "n/a - the eight-argument StepFinished <init>, copy and copy$default, and the five-argument StepFinishedTyped <init>, copy and copy$default, are removed by THIS entry and are not coming back; the nine- and six-argument forms are the contract from this build onward. runtime.eventshape.v1 stays announced and not delivered: its `outcome` meant something else, and a consumer that negotiated it has to move to runtime.eventshape.v2",
+      "supersedes": null
     }
   ]
 }

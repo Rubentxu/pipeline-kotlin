@@ -178,6 +178,25 @@ enum class InterventionReason {
     COMPENSATION_NOT_DISPATCHED,
 
     /**
+     * The completion was NOT recorded, because the durable state refused the write.
+     *
+     * The mirror of [COMPENSATION_NOT_DISPATCHED]: there, the compensation never ran; here, the
+     * discharge never happened. Nothing was written, so the Saga is still OPEN and its effects
+     * are still owed — and a later process reads the same rows and reaches the same conclusion,
+     * which is the whole point of refusing instead of pretending.
+     */
+    COMPLETION_NOT_RECORDED,
+
+    /**
+     * The Saga was already compensated, so it cannot be completed.
+     *
+     * Its effects were undone. Completing it now would claim that a Saga whose resources are
+     * gone succeeded, and a run that says "success" while its Saga was undone is a lie about
+     * the world. A human decides what the resources that are left mean.
+     */
+    SAGA_ALREADY_COMPENSATED,
+
+    /**
      * The Saga's terminal state could not be read.
      *
      * Two causes, one consequence, and the consequence is the only thing that matters to the

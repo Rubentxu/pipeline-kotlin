@@ -128,10 +128,12 @@ object SagaDecider {
         policy: CompensationPolicy,
     ): CompensationDirective? = when (obligation.status) {
         // Nothing is owed: the promise was never used (the forward effect was never
-        // dispatched), the forward effect had no effect, or the compensation already ran.
+        // dispatched), the forward effect had no effect, the compensation already ran, or the
+        // Saga completed and kept the effect.
         CompensationObligationStatus.ARMED,
         CompensationObligationStatus.EFFECT_ABSENT,
         CompensationObligationStatus.COMPENSATED,
+        CompensationObligationStatus.EFFECT_KEPT,
         -> null
 
         // The forward effect happened. Its compensation is owed, and it is owed before any
@@ -183,6 +185,99 @@ object SagaDecider {
                 obligation,
                 InterventionReason.UNKNOWN_EFFECT,
             )
+    }
+
+    /**
+     * Decides whether a Saga may be COMPLETED, and what completing it keeps.
+     *
+     * ## What a completion means
+     *
+     * Completing a Saga says that its chain succeeded and that its effects STAY. The
+     * obligations whose forward effect was confirmed are discharged without being paid, and the
+     * promise they carry is void: nothing is owed afterwards, and a later process that reads the
+     * same durable rows reaches the same conclusion — it will not compensate a Saga that
+     * succeeded.
+     *
+     * ## What blocks it
+     *
+     * A completion claims the Saga ended well, so the durable state has to be able to say so
+     * too. It cannot when:
+     *
+     *  - an effect's outcome is not established (nobody can say whether the forward happened);
+     *  - a compensation failed or is uncertain (the Saga is in the middle of being undone);
+     *  - the Saga was already compensated (its effects are gone, and completing it would claim
+     *    a Saga whose resources do not exist).
+     *
+     * ## What does NOT block it
+     *
+     * An obligation that was never used (the forward was never dispatched) or whose effect had
+     * no effect demands nothing, and the Saga may close with those actions simply absent. The
+     * plugin is the authority on which actions its chain ran; the engine's job is to make sure
+     * that nothing stays owed.
+     *
+     * ## The order of the walk
+     *
+     * The obligations are walked NEWEST FIRST, like the compensation walk: the newest unsettled
+     * one is the one that needs attention, and the others depend on it.
+     *
+     * @param snapshot the durable obligations of one Saga.
+     */
+    fun completion(snapshot: SagaSnapshot): SagaCompletionDecision {
+        for (obligation in snapshot.inArmOrder.asReversed()) {
+            val reason = completionBlocker(obligation.status)
+            if (reason != null) {
+                return SagaCompletionDecision.Refused(obligation, reason)
+            }
+        }
+
+        val kept = snapshot.inArmOrder
+            .filter {
+                it.status == CompensationObligationStatus.EFFECT_CONFIRMED ||
+                    it.status == CompensationObligationStatus.EFFECT_KEPT
+            }
+            .map { it.actionId }
+        val discharge = snapshot.inArmOrder
+            .filter { it.status == CompensationObligationStatus.EFFECT_CONFIRMED }
+
+        return SagaCompletionDecision.Completable(kept = kept, discharge = discharge)
+    }
+
+    /**
+     * The reason this state blocks a completion, or `null` when it does not block it.
+     */
+    private fun completionBlocker(
+        status: CompensationObligationStatus,
+    ): InterventionReason? = when (status) {
+        // Nothing is owed and nothing was undone: the promise was never used, the effect had
+        // no effect, or the Saga already completed and kept it.
+        CompensationObligationStatus.ARMED,
+        CompensationObligationStatus.EFFECT_ABSENT,
+        CompensationObligationStatus.EFFECT_KEPT,
+        -> null
+
+        // The effect happened: this is what the completion keeps, and what it discharges.
+        CompensationObligationStatus.EFFECT_CONFIRMED -> null
+
+        // The effect's outcome is not established. Completing would claim a Saga whose
+        // resources nobody can describe.
+        CompensationObligationStatus.EFFECT_PENDING,
+        CompensationObligationStatus.EFFECT_UNKNOWN,
+        -> InterventionReason.UNKNOWN_EFFECT
+
+        // The Saga was already undone: its resources are gone.
+        CompensationObligationStatus.COMPENSATED -> InterventionReason.SAGA_ALREADY_COMPENSATED
+
+        // The compensation was dispatched and its answer was lost, or it came back
+        // indeterminate: the Saga is in the middle of being undone and nobody can say how far.
+        CompensationObligationStatus.COMPENSATION_PENDING,
+        CompensationObligationStatus.COMPENSATION_UNCERTAIN,
+        -> InterventionReason.COMPENSATION_UNCERTAIN
+
+        // The compensation ran and did not put the resource back.
+        CompensationObligationStatus.COMPENSATION_FAILED -> InterventionReason.COMPENSATION_FAILED
+
+        // A human was already asked: the obligation waits, and so does the Saga.
+        CompensationObligationStatus.NEEDS_INTERVENTION -> InterventionReason.UNKNOWN_EFFECT
     }
 
     /**

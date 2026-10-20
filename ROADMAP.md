@@ -407,6 +407,25 @@ el arreglo; los demás siguen verdes).
   prefijo de texto → ROJO 1/9; quitar `reverse()` → ROJO 4/7, y las tres que quedan
   verdes son los casos de un solo nivel donde el orden da igual; quitar la normalización →
   ROJO 1/7).
+- **Una llamada «en vuelo» se podía re-autorizar, y el efecto ocurría dos veces.**
+  `CompensationLifecycle.allows` trataba «re-escribir el estado que la obligación ya
+  tiene» como siempre permitido (`to == from`), un atajo que hace idempotente el
+  camino de escritura. Pero hay dos estados que **no** dicen «nada ha pasado»
+  todavía: `EFFECT_PENDING` (la llamada salió del proceso y su respuesta no ha
+  llegado) y `COMPENSATION_PENDING` (lo mismo, para la compensación). Re-escribir
+  uno de ellos no es un reintento: es una **segunda autorización** de la misma
+  llamada. Un proceso que vuelve después de un crash lee la fila, re-escribe el
+  mismo «en vuelo» —y despacha la llamada otra vez—, así que el efecto ocurre dos
+  veces y la fila queda **indistinguible** de la de un primer intento.
+  Medido de punta a punta, con proceso real y SQLite real: con la regla antigua,
+  el escenario `v2/examples/durable/35-saga-crash-effect.pipeline.kts` reanuda el
+  run tras el crash y **repite la reserva**; con la regla nueva el write-ahead se
+  rehusa y el Saga termina en `NEEDS_INTERVENTION (UNKNOWN_EFFECT)`, que es la
+  respuesta honesta cuando nadie puede preguntar al proveedor qué pasó. La regla
+  se expresa en el dominio y **no toca el esquema**: los estados en vuelo no
+  admiten re-escritura; los demás sí, porque re-confirmar o re-compensar escriben
+  el MISMO hecho y no autorizan nada nuevo. Test de regresión mutation-verificado:
+  dos filas que mueren al revertir el arreglo, y ninguna otra.
 
 ### 2.2 Lo que queda abierto, por valor operativo
 
@@ -802,6 +821,20 @@ documento donde la regla está escrita.
   mutación —forzar el `when(kindId)` a una sola rama— mata 10 tests. Un test que
   describe un formato equivocado no es un test débil: es un test que empuja a
   «arreglar» el producto para satisfacerlo.
+- **Una directiva nueva en el arnés, no un arnés nuevo.** Para demostrar las
+  ventanas de crash hacía falta una capacidad que el lanzador no tenía: relanzar
+  el run **reanudándolo** y tomar como veredicto el de la reanudación, porque la
+  primera ejecución murió antes de poder decir nada. Se añadió `//@ resume`
+  (reutiliza el camino de `durable`: un almacén, dos ejecuciones, el mundo
+  comparado entre las dos) en vez de un segundo lanzador, y **el escenario
+  provoca su propia muerte** con `SIGKILL` desde un comando, en el punto que
+  elige. La muerte se pide al proceso, no se simula: un `halt()` en el
+  producto habría ensuciado el producto con una puerta de test que el producto
+  no necesita, y un `sleep` no sería determinista. El PID lo escribe el propio
+  script, en el fichero que el lanzador le indica, **fuera** del directorio de
+  trabajo del escenario — ese directorio se compara entre las dos ejecuciones, y
+  dos procesos tienen dos PID: un fichero de PID dentro de él parecería «el
+  efecto se repitió».
 
 ---
 

@@ -69,6 +69,31 @@ class StageScope(
     runtimeConfig: RuntimeConfig = currentRuntimeConfig(),
 ) : StageScopeTopSteps(stageName, runtimeConfig) {
 
+    /**
+     * `slot("name") { ... }` — NAMES one step of the body it is written in.
+     *
+     * The name is the ADDRESS the plugin's own handler will use to ask for that step.
+     * It is independent of the step's kind, which is what lets a body hold two steps of
+     * the same kind: without a name the engine would find two of them and refuse to
+     * guess which one was meant.
+     *
+     * It names EXACTLY ONE step. A block that declares more than one is refused here,
+     * at authoring time, where the author can see it — and a body that names nothing
+     * keeps working exactly as before, addressed by kind.
+     *
+     * @param name the address the plugin will use for the step the block declares
+     * @throws IllegalArgumentException when the block does not declare exactly one step
+     */
+    fun slot(name: String, block: StageScope.() -> Unit) {
+        val inner = nestedScope()
+        inner.block()
+        val declared = inner.steps()
+        require(declared.size == 1) {
+            "A slot names exactly one step: '$name' names ${declared.size}"
+        }
+        steps.add(StepSpec.Slot(slotName = name, step = declared.single()))
+    }
+
     fun deleteDir(path: String = ".") {
         steps.add(StepSpec.DeleteDir(path = path))
     }

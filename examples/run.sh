@@ -305,6 +305,7 @@ run_scenario() {
     local -a seeds=()
     local plugin_jar=""
     local plugin_trust=""
+    local events_refusal=""
     local directive
     while IFS= read -r directive; do
         case "$directive" in
@@ -319,6 +320,7 @@ run_scenario() {
             '//@ credentials '*)   seeds+=("${directive#//@ credentials }") ;;
             '//@ plugin-jar '*)    plugin_jar="${directive#//@ plugin-jar }" ;;
             '//@ plugin-trust '*)  plugin_trust="${directive#//@ plugin-trust }" ;;
+            '//@ events-refusal '*) events_refusal="${directive#//@ events-refusal }" ;;
         esac
     done < <(grep -m 20 '^//@ ' "$script" || true)
 
@@ -475,7 +477,7 @@ run_scenario() {
     # durable scenario writes lives in this directory, so the second execution
     # would find the first one's effect and read it as a repeat.
     local run_volatile=1
-    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$cancel" == 1 ]]; then
+    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$cancel" == 1 || "$events_refusal" != "" ]]; then
         run_volatile=0
     fi
 
@@ -651,9 +653,69 @@ run_scenario() {
         code=0
     fi
 
+    if [[ "$events_refusal" != "" ]]; then
+        # The scenario's own run is the FIXTURE: it writes a history that the
+        # read verb is then asked about. So the run has to succeed — a scenario
+        # whose pipeline crashed would be asserting about a history nobody
+        # wrote.
+        if [[ "$code" != 0 ]]; then
+            printf 'FAIL %-52s the scenario run exited %s, expected 0 (it is the fixture the refusal is asked about)\n' \
+                "$name" "$code"
+            show_printed "$root/stderr.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the scenario run exited $code")
+            return
+        fi
+
+        # The id of the run that was written. The launcher reads it from the
+        # run's own record of its last run, because the id is a UUID the
+        # launcher cannot know in advance.
+        local run_id=""
+        local record
+        for record in "$root"/control/last-run/*; do
+            [[ -f "$record" ]] || continue
+            run_id="$(head -1 "$record")"
+            break
+        done
+        if [[ -z "$run_id" ]]; then
+            printf 'FAIL %-52s the run left no run id, so there is no history to read\n' "$name"
+            failed=$((failed + 1))
+            failures+=("$name: the run left no run id")
+            return
+        fi
+
+        # The read verb is asked the question the scenario is about. Its answer
+        # is the verdict: the run itself succeeded, and the REFUSAL is what
+        # the scenario is testing.
+        local refusal_code=0
+        case "$events_refusal" in
+            unknown-run)
+                "$binary" events "no-such-run-$run_id" --db "$root/events.db" \
+                    >"$root/stdout.events-refusal.txt" 2>"$root/stderr.events-refusal.txt" || refusal_code=$?
+                ;;
+            cursor-beyond-tail)
+                "$binary" events "$run_id" --db "$root/events.db" \
+                    --after-cursor "evt-cursor-v1:$run_id:999999999" \
+                    >"$root/stdout.events-refusal.txt" 2>"$root/stderr.events-refusal.txt" || refusal_code=$?
+                ;;
+            *)
+                printf 'FAIL %-52s unknown events-refusal fixture: %s\n' "$name" "$events_refusal"
+                failed=$((failed + 1))
+                failures+=("$name: unknown events-refusal fixture '$events_refusal'")
+                return
+                ;;
+        esac
+
+        verdict_stdout="$root/stdout.events-refusal.txt"
+        verdict_stderr="$root/stderr.events-refusal.txt"
+        code="$refusal_code"
+    fi
+
     local label="$name"
     if [[ "$cancel" == 1 ]]; then
         label="$name (cancel)"
+    elif [[ "$events_refusal" != "" ]]; then
+        label="$name (events-refusal)"
     elif [[ "$durable" == 1 ]]; then
         label="$name (durable x2)"
     elif [[ "$durable_once" == 1 ]]; then

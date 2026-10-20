@@ -38,6 +38,18 @@
 # Filters compose; --list never invokes Gradle; a filter that selects nothing is
 # an error rather than a green, for the same reason an empty census is not zero.
 #
+# THE VERDICT LINE. The last line is the one that gets pasted into a report, so
+# it carries the evidence of what the run did, not only that it passed:
+#
+#   PASS  sha=<sha>  elapsed=<n>s  budget=900s  tests=rewritten:<n> read:<n>  gaps=<n> not_run
+#
+# `tests=rewritten:` counts the tests in the reports THIS run wrote -- they
+# really ran. `tests=read:` counts the tests in the reports it did not write --
+# they were executed by an earlier invocation and read from disk. `gaps=` is the
+# E2E scenarios declared unrunnable, which is not a pass. A run that did not
+# ask for the tests says `tests=NOT_RUN`, because a silent field reads like a
+# zero.
+#
 # Exit 0 when every stage passed, 1 otherwise. The wall-clock gate prints its
 # own verdict even on failure; callers who want a hard ceiling should wrap the
 # whole command, as AGENTS.md section 5 describes:
@@ -326,6 +338,15 @@ fi
 # the modules that are actually asked are enumerated from the filesystem
 # instead of assumed: a module is asked only if src/test holds a .kt file.
 
+# What the verdict line will say about the tests. It is initialised HERE, and
+# not where it is computed, so that a run which skips stage 2 says NOT_RUN
+# instead of inheriting a number from an earlier invocation: a verdict line
+# that quotes a number nobody measured in THIS run is the very thing this
+# stage exists to prevent.
+stage2_ran=0
+xml_fresh_tests=0
+xml_read_tests=0
+
 if want_stage 2; then
 log "stage 2/5  permanent unit tests"
 stage_started_at=$(date +%s)
@@ -467,6 +488,12 @@ else
             silent_modules+=("$m")
         fi
     done
+    # The census splits in two, and the split is the point. The tests in the
+    # reports THIS run rewrote really ran; the tests in the reports it did not
+    # rewrite were executed by an earlier invocation and read from disk. A
+    # single total cannot say which of the two it is, and the total is what
+    # ends up quoted as "the gate ran N tests".
+    xml_read_tests=$(( xml_total - xml_fresh_tests ))
     if [[ "$subset" == 1 ]]; then
         echo "    JUnit XML (this run only): $xml_fresh_tests test(s) in $xml_fresh report(s)," \
              "failed=$xml_fresh_fail skipped=$xml_fresh_skip"
@@ -502,6 +529,10 @@ else
         printf '  %s\n' "${silent_modules[@]}" >&2
         fail "stage 2: green with no discovered test"
     fi
+    # The stage measured the tests, so the verdict line may quote the census.
+    # It is set here, at the end of a stage that did NOT fail, so that the
+    # number in the line always comes from a stage that really ran.
+    stage2_ran=1
 fi
 echo "    ok in $(elapsed "$stage_started_at")s"
 else
@@ -525,6 +556,27 @@ e2e_stage3_ran=0
 gaps_suffix() {
     if [[ "$e2e_stage3_ran" == 1 && "$e2e_not_run" -gt 0 ]]; then
         printf '  gaps=%s not_run' "$e2e_not_run"
+    fi
+}
+
+# The test evidence travels WITH the verdict line, for the same reason the gap
+# count does. The stage log is read by whoever ran the gate; the verdict line
+# is read by everyone else, and it is the one that gets pasted into a report.
+# A line that says "the gate passed" without saying how many tests really
+# executed is half a verdict: the reader cannot tell a measurement from a
+# cache hit.
+#
+#   rewritten   tests in reports THIS run wrote. They really ran.
+#   read        tests in reports this run did not write: executed by an earlier
+#               invocation and read from disk.
+#
+# A run that never asked for the tests says NOT_RUN instead of staying silent,
+# because a silent field reads like a zero.
+tests_suffix() {
+    if [[ "$stage2_ran" == 1 ]]; then
+        printf '  tests=rewritten:%s read:%s' "$xml_fresh_tests" "$xml_read_tests"
+    else
+        printf '  tests=NOT_RUN'
     fi
 }
 
@@ -592,8 +644,9 @@ if [[ "$subset" == 1 ]]; then
     # subset that spends 900 is not evidence the gate would. Comparing either
     # against 900 s would be a number about nothing, so none is printed.
     echo "    elapsed ${total}s (SUBSET: not compared against the ${BUDGET_SECONDS}s gate)"
-    printf '\nPASS (subset)  sha=%s  elapsed=%ss%s\n' \
-        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$(gaps_suffix)"
+    printf '\nPASS (subset)  sha=%s  elapsed=%ss%s%s\n' \
+        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" \
+        "$(tests_suffix)" "$(gaps_suffix)"
     printf 'This is not the gate. Quote scripts/verify-all.sh with no filters for that.\n'
     exit 0
 fi
@@ -613,14 +666,14 @@ fi
 # exactly the line somebody quotes as "the gate passed" while the contract it
 # checks was never measured.
 if [[ "$skip_budget" == 1 ]]; then
-    printf '\nPASS (no LOC budget)  sha=%s  elapsed=%ss  budget=%ss%s\n' \
+    printf '\nPASS (no LOC budget)  sha=%s  elapsed=%ss  budget=%ss%s%s\n' \
         "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS" \
-        "$(gaps_suffix)"
+        "$(tests_suffix)" "$(gaps_suffix)"
     printf 'The 2:1 LOC contract was NOT verified: stage 4 was skipped by --no-budget.\n'
     printf 'Quote scripts/verify-all.sh with no flags for that.\n'
     exit 0
 fi
 
-printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss%s\n' \
+printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss%s%s\n' \
     "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS" \
-    "$(gaps_suffix)"
+    "$(tests_suffix)" "$(gaps_suffix)"

@@ -306,6 +306,7 @@ run_scenario() {
     local plugin_jar=""
     local plugin_trust=""
     local events_refusal=""
+    local events_resume=""
     local directive
     while IFS= read -r directive; do
         case "$directive" in
@@ -321,6 +322,7 @@ run_scenario() {
             '//@ plugin-jar '*)    plugin_jar="${directive#//@ plugin-jar }" ;;
             '//@ plugin-trust '*)  plugin_trust="${directive#//@ plugin-trust }" ;;
             '//@ events-refusal '*) events_refusal="${directive#//@ events-refusal }" ;;
+            '//@ events-resume '*)  events_resume="${directive#//@ events-resume }" ;;
         esac
     done < <(grep -m 20 '^//@ ' "$script" || true)
 
@@ -477,7 +479,7 @@ run_scenario() {
     # durable scenario writes lives in this directory, so the second execution
     # would find the first one's effect and read it as a repeat.
     local run_volatile=1
-    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$cancel" == 1 || "$events_refusal" != "" ]]; then
+    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$cancel" == 1 || "$events_refusal" != "" || "$events_resume" != "" ]]; then
         run_volatile=0
     fi
 
@@ -711,11 +713,139 @@ run_scenario() {
         code="$refusal_code"
     fi
 
+    if [[ "$events_resume" != "" ]]; then
+        # The scenario writes a history and the launcher acts as an EXTERNAL
+        # client of it: it reads by cursor, cuts between pages — every page is
+        # a new process, which is what a client that disconnects does — and
+        # comes back with the cursor. What is asserted is that between one
+        # read and the next NO fact is skipped and NO fact is repeated.
+        #
+        # The comparison is the whole verdict, and it is made against the FULL
+        # read of the same history: the client that pages must end up having
+        # seen exactly what a single read sees.
+        if [[ "$code" != 0 ]]; then
+            printf 'FAIL %-52s the scenario run exited %s, expected 0 (it is the fixture the reader reads)\n' \
+                "$name" "$code"
+            show_printed "$root/stderr.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the scenario run exited $code")
+            return
+        fi
+
+        local run_id=""
+        local record
+        for record in "$root"/control/last-run/*; do
+            [[ -f "$record" ]] || continue
+            run_id="$(head -1 "$record")"
+            break
+        done
+        if [[ -z "$run_id" ]]; then
+            printf 'FAIL %-52s the run left no run id, so there is no history to read\n' "$name"
+            failed=$((failed + 1))
+            failures+=("$name: the run left no run id")
+            return
+        fi
+
+        local resume_kind="${events_resume%% *}"
+        local resume_limit="${events_resume##* }"
+        if [[ "$resume_kind" == "$resume_limit" ]]; then
+            printf 'FAIL %-52s events-resume needs <kind> <limit>, got: %s\n' "$name" "$events_resume"
+            failed=$((failed + 1))
+            failures+=("$name: events-resume needs <kind> <limit>")
+            return
+        fi
+
+        # The truth: the whole history of that kind, read in one go.
+        local expected read_code=0
+        expected="$("$binary" events "$run_id" --db "$root/events.db" --limit 1000 \
+            --kind "$resume_kind" --fields SEQ 2>/dev/null | tail -n +2 | tr '\n' ' ')" || read_code=$?
+        if [[ "$read_code" != 0 ]]; then
+            printf 'FAIL %-52s the full read exited %s\n' "$name" "$read_code"
+            failed=$((failed + 1))
+            failures+=("$name: the full read exited $read_code")
+            return
+        fi
+        expected="$(printf '%s' "$expected" | tr -s ' ' | sed 's/^ //;s/ $//')"
+        if [[ -z "$expected" ]]; then
+            printf 'FAIL %-52s the history holds no %s facts, so there is nothing to resume\n' \
+                "$name" "$resume_kind"
+            failed=$((failed + 1))
+            failures+=("$name: the history holds no $resume_kind facts")
+            return
+        fi
+
+        # The external client. Each page is a separate invocation: the
+        # disconnection is real, and the cursor is the only thing that travels.
+        local cursor="" delivered="" page next facts
+        local rounds=0
+        while (( rounds < 200 )); do
+            rounds=$((rounds + 1))
+            read_code=0
+            if [[ -z "$cursor" ]]; then
+                page="$("$binary" events "$run_id" --db "$root/events.db" --limit "$resume_limit" \
+                    --kind "$resume_kind" --fields SEQ 2>"$root/stderr.events-resume.txt")" || read_code=$?
+            else
+                page="$("$binary" events "$run_id" --db "$root/events.db" --limit "$resume_limit" \
+                    --kind "$resume_kind" --fields SEQ --after-cursor "$cursor" \
+                    2>"$root/stderr.events-resume.txt")" || read_code=$?
+            fi
+            if [[ "$read_code" != 0 ]]; then
+                printf 'FAIL %-52s a page read exited %s\n' "$name" "$read_code"
+                show_printed "$root/stderr.events-resume.txt"
+                failed=$((failed + 1))
+                failures+=("$name: a page read exited $read_code")
+                return
+            fi
+            next="$(grep -aoE 'evt-cursor-v1:[^ ]+' "$root/stderr.events-resume.txt" 2>/dev/null | tail -1 || true)"
+            facts="$(printf '%s\n' "$page" | tail -n +2 | tr '\n' ' ')"
+            delivered="$delivered $facts"
+            if [[ -z "$next" || "$next" == "$cursor" ]]; then
+                break
+            fi
+            cursor="$next"
+        done
+        delivered="$(printf '%s' "$delivered" | tr -s ' ' | sed 's/^ //;s/ $//')"
+
+        if [[ "$delivered" != "$expected" ]]; then
+            # The diff says WHAT was lost and WHAT was repeated: a bare
+            # "they differ" does not say whether the reader dropped a fact or
+            # handed one out twice.
+            local missing="" extra="" seq
+            for seq in $expected; do
+                case " $delivered " in
+                    *" $seq "*) ;;
+                    *) missing="$missing $seq" ;;
+                esac
+            done
+            for seq in $delivered; do
+                case " $expected " in
+                    *" $seq "*) ;;
+                    *) extra="$extra $seq" ;;
+                esac
+            done
+            printf 'FAIL %-52s the external reader did not resume cleanly (kind=%s limit=%s)\n' \
+                "$name" "$resume_kind" "$resume_limit"
+            printf '       | expected:  %s\n' "$expected"
+            printf '       | delivered: %s\n' "$delivered"
+            if [[ -n "$missing" ]]; then
+                printf '       | lost:      %s\n' "$missing"
+            fi
+            if [[ -n "$extra" ]]; then
+                printf '       | repeated:  %s\n' "$extra"
+            fi
+            failed=$((failed + 1))
+            failures+=("$name: the external reader lost or repeated facts while resuming")
+            return
+        fi
+    fi
+
     local label="$name"
     if [[ "$cancel" == 1 ]]; then
         label="$name (cancel)"
     elif [[ "$events_refusal" != "" ]]; then
         label="$name (events-refusal)"
+    elif [[ "$events_resume" != "" ]]; then
+        label="$name (events-resume)"
     elif [[ "$durable" == 1 ]]; then
         label="$name (durable x2)"
     elif [[ "$durable_once" == 1 ]]; then

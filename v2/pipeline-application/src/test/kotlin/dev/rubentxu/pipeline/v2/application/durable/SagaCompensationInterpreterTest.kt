@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.saga.CompensationArmOutcome
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationDeclaration
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationDirective
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationId
+import dev.rubentxu.pipeline.v2.domain.saga.CompensationKey
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationKind
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationObligationStatus
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationPolicy
@@ -17,12 +18,16 @@ import dev.rubentxu.pipeline.v2.domain.saga.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionPlan
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
+import dev.rubentxu.pipeline.v2.domain.saga.SagaOperationIdentity
+import dev.rubentxu.pipeline.v2.domain.saga.SagaOperationPhase
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlan
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations
+import dev.rubentxu.pipeline.v2.domain.saga.SagaRecordOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodyInvocationContext
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker
+import dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch
 import dev.rubentxu.pipeline.v2.events.CompensationFinished
 import dev.rubentxu.pipeline.v2.events.CompensationStarted
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -151,6 +156,144 @@ class SagaCompensationInterpreterTest {
         forwardSlot = PluginStepId("forward-$actionId"),
         compensateSlot = PluginStepId(compensateSlot),
     )
+
+    /**
+     * The plan of a Saga whose lost answers may be settled by ASKING THE PROVIDER.
+     *
+     * The difference is not cosmetic: a provider that can be asked is a provider that can
+     * turn "nobody knows" into "it is done", and that is the only way out of a lost answer
+     * that is not a human's job.
+     */
+    private fun reconcilablePlanOf(vararg actions: SagaActionPlan) = SagaPlan(
+        sagaId = SAGA,
+        policy = CompensationPolicy.Reconcilable,
+        actions = actions.toList(),
+    )
+
+    private fun keyOf(actionId: String, compensationId: String) = CompensationKey(
+        sagaId = SAGA,
+        actionId = SagaActionId.of(actionId),
+        compensationId = CompensationId.of(compensationId),
+    )
+
+    /**
+     * The operation key the engine hands to a body, as the domain derives it.
+     *
+     * The key identifies the OPERATION and not the attempt, so the same operation asked twice
+     * carries the same key — that is what lets a provider recognise "I already did this".
+     */
+    private fun operationKeyOf(
+        actionId: String,
+        compensationId: String,
+        phase: SagaOperationPhase,
+    ): String = SagaOperationIdentity.derive(
+        forwardOpId = "run-1|stage-0|step-$actionId",
+        phase = phase,
+        compensationId = CompensationId.of(compensationId),
+    )
+
+    /**
+     * A promise whose forward was DISPATCHED and whose answer was LOST.
+     *
+     * The row says "something may have happened", which is the only honest reading of a crash
+     * between the write-ahead and the answer.
+     */
+    private fun armAndDispatchForward(actionId: String, compensationId: String) {
+        armOnly(actionId, compensationId, leaseEpoch = 1L)
+        assertInstanceOf<SagaRecordOutcome.Recorded>(
+            planOperations().beginForward(keyOf(actionId, compensationId)),
+        )
+    }
+
+    /**
+     * A promise whose COMPENSATION was dispatched and whose answer was lost.
+     */
+    private fun armAndDispatchCompensation(actionId: String, compensationId: String) {
+        armAndConfirm(actionId, compensationId)
+        assertInstanceOf<SagaRecordOutcome.Recorded>(
+            planOperations().beginCompensation(keyOf(actionId, compensationId)),
+        )
+    }
+
+    @Test
+    fun `a forward whose answer was lost is asked again, with the same key and a new attempt`() {
+        armAndDispatchForward("reserve", "release")
+        val slots = RecordingSlotInvoker()
+
+        runBlocking {
+            interpreter(slots).compensate(
+                reconcilablePlanOf(actionPlan("reserve", "compensate-reserve")),
+            )
+        }
+
+        // The FORWARD body is the one that can say whether the effect happened, so it is the
+        // one that is asked again. The answer it gives is the FORWARD's own key, because the
+        // key identifies the operation and not the attempt: a provider that recognises the
+        // key can say "I already did that" instead of doing it twice.
+        assertEquals("forward-reserve", slots.invoked.first().value)
+        val forward = slots.contexts.first()
+        val forwardPatch = assertInstanceOf<ExecutionContextPatch.Environment>(forward.patch)
+        assertEquals(
+            operationKeyOf("reserve", "release", SagaOperationPhase.FORWARD),
+            forwardPatch.values[SagaOperationIdentity.OPERATION_KEY_ENV],
+        )
+        // A NEW attempt: the first attempt has a row of its own in the operation journal, and
+        // two attempts of one operation are two rows, not one row written twice.
+        assertEquals(2, forward.attempt?.index)
+    }
+
+    @Test
+    fun `a compensation whose answer was lost is asked again and the obligation is discharged`() {
+        armAndDispatchCompensation("reserve", "release")
+        val slots = RecordingSlotInvoker()
+
+        val report = runBlocking {
+            interpreter(slots).compensate(
+                reconcilablePlanOf(actionPlan("reserve", "compensate-reserve")),
+            )
+        }
+
+        // The compensation is the body that can say whether the resource is back, so it is the
+        // one that is asked again — with the COMPENSATION's own key, the very key the first
+        // attempt used, so a body that already did the work can recognise it and say so.
+        assertEquals(listOf("compensate-reserve"), slots.invoked.map { it.value })
+        val context = slots.contexts.single()
+        val patch = assertInstanceOf<ExecutionContextPatch.Environment>(context.patch)
+        assertEquals(
+            operationKeyOf("reserve", "release", SagaOperationPhase.COMPENSATE),
+            patch.values[SagaOperationIdentity.OPERATION_KEY_ENV],
+        )
+        assertEquals(2, context.attempt?.index)
+
+        // And the answer is durable now: the obligation is discharged and the Saga settles.
+        assertEquals(
+            CompensationObligationStatus.COMPENSATED,
+            store().find("run-1", KEY_OF_RESERVE)?.status,
+        )
+        assertInstanceOf<CompensationDirective.Settled>(report.directive)
+    }
+
+    @Test
+    fun `a provider that cannot answer is asked once, and then a human decides`() {
+        armAndDispatchForward("reserve", "release")
+        val slots = RecordingSlotInvoker(
+            outcomes = mapOf(
+                PluginStepId("forward-reserve") to BodyOutcome.Completed(StepOutcome.Unstable),
+            ),
+        )
+
+        val report = runBlocking {
+            interpreter(slots).compensate(
+                reconcilablePlanOf(actionPlan("reserve", "compensate-reserve")),
+            )
+        }
+
+        // One re-ask, and no more: a provider that cannot answer is a human's job, and a loop
+        // that keeps asking an obligation that will never settle is a hang, not a policy.
+        assertEquals(listOf("forward-reserve"), slots.invoked.map { it.value })
+        val directive = assertInstanceOf<CompensationDirective.NeedsIntervention>(report.directive)
+        assertEquals(InterventionReason.UNKNOWN_EFFECT, directive.reason)
+    }
 
     @Test
     fun `the NEWEST owed obligation is compensated first`() {
@@ -396,18 +539,23 @@ class SagaCompensationInterpreterTest {
      *
      * It answers with whatever the test scripted and remembers the order in which the bodies
      * were asked for: that order IS the compensation order, and it is the thing worth seeing.
+     * It also remembers the context each body was asked with, because the context carries
+     * the operation key and the attempt — the two facts that decide whether a second ask is
+     * the SAME operation or a new one.
      */
     private class RecordingSlotInvoker(
         private val outcomes: Map<PluginStepId, BodyOutcome> = emptyMap(),
         private val onInvoke: (PluginStepId) -> Unit = {},
     ) : BodySlotInvoker {
         val invoked = mutableListOf<PluginStepId>()
+        val contexts = mutableListOf<BodyInvocationContext>()
 
         override suspend fun invoke(
             slot: PluginStepId,
             context: BodyInvocationContext,
         ): BodyOutcome {
             invoked += slot
+            contexts += context
             onInvoke(slot)
             return outcomes[slot] ?: BodyOutcome.Completed(StepOutcome.Success)
         }

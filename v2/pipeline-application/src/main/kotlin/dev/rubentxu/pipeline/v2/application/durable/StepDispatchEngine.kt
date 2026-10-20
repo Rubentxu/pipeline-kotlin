@@ -426,19 +426,29 @@ internal class StepDispatchEngine(
                     val attemptSegment = bodyContext.attempt?.let { segment ->
                         listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(segment.index, segment.key))
                     } ?: emptyList()
-                    val contextForCall = applyPatchToContext(executionContext, bodyContext.patch)
-                    BodyOutcome.Completed(
-                        dispatchBody(
-                            block = step,
-                            runId = runId,
-                            stageName = stageName,
-                            stageIndex = stageIndex,
-                            stepIndex = stepIndex,
-                            stageShOptions = stageShOptions,
-                            parentBodyPath = bodyPath + attemptSegment,
-                            executionContext = contextForCall,
-                        ),
-                    )
+                    // The patch is projected onto BOTH surfaces — the context AND the options
+                    // the body is launched with — so a body that runs under a patched
+                    // environment really runs under it.
+                    when (val projection = projectInvocationPatch(executionContext, stageShOptions, bodyContext.patch)) {
+                        is InvocationPatchProjection.Refused -> BodyOutcome.Completed(
+                            StepOutcome.Failure(
+                                PipelineFailure(FailureKind.ENGINE, projection.reason),
+                            ),
+                        )
+
+                        is InvocationPatchProjection.Applied -> BodyOutcome.Completed(
+                            dispatchBody(
+                                block = step,
+                                runId = runId,
+                                stageName = stageName,
+                                stageIndex = stageIndex,
+                                stepIndex = stepIndex,
+                                stageShOptions = projection.shOptions,
+                                parentBodyPath = bodyPath + attemptSegment,
+                                executionContext = projection.context,
+                            ),
+                        )
+                    }
                 }
             } else {
                 if (step is BlockStepNode) {
@@ -498,20 +508,35 @@ internal class StepDispatchEngine(
                             val attemptSegment = slotContext.attempt?.let { segment ->
                                 listOf(BlockSegment(segment.index, segment.key))
                             }.orEmpty()
-                            val contextForCall = applyPatchToContext(executionContext, slotContext.patch)
                             val childBodyPath = bodyPath + attemptSegment +
                                 BlockSegment(childIndex, child.pluginStepId)
-                            val outcome = dispatch(
-                                child,
-                                runId,
-                                stageName,
-                                stageIndex,
-                                stepIndex,
-                                stageShOptions,
-                                childBodyPath,
-                                contextForCall,
-                            ).result.outcome
-                            BodyOutcome.Completed(outcome)
+                            // The patch is projected onto BOTH surfaces: the context AND the
+                            // options the child is launched with. A body that has to recognise
+                            // its own operation key can only do it if the key reaches the
+                            // process, and a process is launched with the options.
+                            when (
+                                val projection = projectInvocationPatch(
+                                    executionContext,
+                                    stageShOptions,
+                                    slotContext.patch,
+                                )
+                            ) {
+                                is InvocationPatchProjection.Refused -> slotFailure(projection.reason)
+
+                                is InvocationPatchProjection.Applied -> {
+                                    val outcome = dispatch(
+                                        child,
+                                        runId,
+                                        stageName,
+                                        stageIndex,
+                                        stepIndex,
+                                        projection.shOptions,
+                                        childBodyPath,
+                                        projection.context,
+                                    ).result.outcome
+                                    BodyOutcome.Completed(outcome)
+                                }
+                            }
                         }
                     }
                 }

@@ -307,6 +307,7 @@ run_scenario() {
     local plugin_trust=""
     local events_refusal=""
     local events_resume=""
+    local step_verdict=""
     local directive
     while IFS= read -r directive; do
         case "$directive" in
@@ -323,6 +324,7 @@ run_scenario() {
             '//@ plugin-trust '*)  plugin_trust="${directive#//@ plugin-trust }" ;;
             '//@ events-refusal '*) events_refusal="${directive#//@ events-refusal }" ;;
             '//@ events-resume '*)  events_resume="${directive#//@ events-resume }" ;;
+            '//@ step-verdict '*)   step_verdict="${directive#//@ step-verdict }" ;;
         esac
     done < <(grep -m 20 '^//@ ' "$script" || true)
 
@@ -479,7 +481,7 @@ run_scenario() {
     # durable scenario writes lives in this directory, so the second execution
     # would find the first one's effect and read it as a repeat.
     local run_volatile=1
-    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$cancel" == 1 || "$events_refusal" != "" || "$events_resume" != "" ]]; then
+    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$cancel" == 1 || "$events_refusal" != "" || "$events_resume" != "" || "$step_verdict" != "" ]]; then
         run_volatile=0
     fi
 
@@ -839,6 +841,71 @@ run_scenario() {
         fi
     fi
 
+    if [[ -n "$step_verdict" ]]; then
+        # The scenario declares what each step's verdict must be, and the launcher
+        # is an EXTERNAL consumer of the event lane: it asks for the step terminal
+        # events ONLY — never the failure event — and reads each one's verdict.
+        #
+        # A terminal event with no verdict leaves the consumer unable to tell a
+        # success from a failure: it would have to join the terminal event with the
+        # failure event, by a step index that does not even say which stage the
+        # failure belongs to. That is the defect this scenario exists to catch, and
+        # it is invisible to a reader that only looks at successful runs.
+        local sv_run_id=""
+        local record
+        for record in "$root"/control/last-run/*; do
+            [[ -f "$record" ]] || continue
+            sv_run_id="$(head -1 "$record")"
+            break
+        done
+        if [[ -z "$sv_run_id" ]]; then
+            printf 'FAIL %-52s the run left no run id, so there is no history to read\n' "$name"
+            failed=$((failed + 1))
+            failures+=("$name: the run left no run id")
+            return
+        fi
+
+        local sv_code=0
+        local sv_terminals
+        sv_terminals="$("$binary" events "$sv_run_id" --db "$root/events.db" \
+            --kind StepFinished --typed 2>"$root/stderr.step-verdict.txt")" || sv_code=$?
+        if [[ "$sv_code" != 0 ]]; then
+            printf 'FAIL %-52s reading the step terminals exited %s\n' "$name" "$sv_code"
+            show_printed "$root/stderr.step-verdict.txt"
+            failed=$((failed + 1))
+            failures+=("$name: reading the step terminals exited $sv_code")
+            return
+        fi
+
+        # Each terminal event, read as "<step>=<verdict>". A terminal event that
+        # carries no verdict reads as "<step>=", and that empty half is the whole
+        # difference the scenario is about.
+        local sv_delivered="" sv_line sv_step sv_verdict
+        while IFS= read -r sv_line; do
+            [[ -z "$sv_line" ]] && continue
+            sv_step="$(printf '%s' "$sv_line" \
+                | sed -n 's/.*"stepName"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+            sv_verdict="$(printf '%s' "$sv_line" \
+                | sed -n 's/.*"outcome"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+            sv_delivered="$sv_delivered $sv_step=$sv_verdict"
+        done <<< "$sv_terminals"
+        sv_delivered="$(printf '%s' "$sv_delivered" | tr -s ' ' | sed 's/^ //;s/ $//')"
+
+        # Which verdict belongs to which step is the point; the order is not.
+        local sv_expected sv_delivered_sorted sv_expected_sorted
+        sv_expected="$(printf '%s' "$step_verdict" | tr -s ' ' | sed 's/^ //;s/ $//')"
+        sv_delivered_sorted="$(printf '%s\n' $sv_delivered | sort | tr '\n' ' ')"
+        sv_expected_sorted="$(printf '%s\n' $sv_expected | sort | tr '\n' ' ')"
+        if [[ "$sv_delivered_sorted" != "$sv_expected_sorted" ]]; then
+            printf 'FAIL %-52s the external reader could not read the step verdicts\n' "$name"
+            printf '       | expected:  %s\n' "$sv_expected_sorted"
+            printf '       | delivered: %s\n' "$sv_delivered_sorted"
+            failed=$((failed + 1))
+            failures+=("$name: the external reader could not read the step verdicts")
+            return
+        fi
+    fi
+
     local label="$name"
     if [[ "$cancel" == 1 ]]; then
         label="$name (cancel)"
@@ -846,6 +913,8 @@ run_scenario() {
         label="$name (events-refusal)"
     elif [[ "$events_resume" != "" ]]; then
         label="$name (events-resume)"
+    elif [[ "$step_verdict" != "" ]]; then
+        label="$name (step-verdict)"
     elif [[ "$durable" == 1 ]]; then
         label="$name (durable x2)"
     elif [[ "$durable_once" == 1 ]]; then

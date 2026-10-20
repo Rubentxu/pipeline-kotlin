@@ -16,7 +16,7 @@ import kotlinx.serialization.json.Json
  * The plugin's SECOND family shape, and the one that is not a Step at all.
  * ## Why this plugin needed a directive to prove anything about directives
  * The existing external directive plugin (`acme.lock`) is a separate JAR with a separate build.
- * It proves a directive can be contributed externally, but it cannot prove what BLOCK 1-I needs
+ * It proves a directive can be contributed externally, but it cannot prove what this plugin needs
  * to prove: that **one** artifact contributes all four families, and that admission cross-checks
  * the directive family of that same artifact. Cross-checking is inherently per-artifact, so the
  * subject has to be an artifact that has a directive to cross-check.

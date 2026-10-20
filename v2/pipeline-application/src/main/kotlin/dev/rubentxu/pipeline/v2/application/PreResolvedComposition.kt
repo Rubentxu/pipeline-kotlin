@@ -21,7 +21,7 @@ import java.nio.file.Path
  * folded in, or an eligibility analysis already computed against a Step registry that a later
  * throw would discard. `runCanonicalPipeline` also defaulted `stepRegistry` to
  * `CoreStepRegistryFactory.registry()`, so a caller who forgot to pass one got a silent
- * registry — a fail-open path through exactly the admission guarantee BLOCK 1-D/1-E built.
+ * registry — a fail-open path through exactly the admission guarantee the composition builds.
  * ## The law this type states
  * A run either has a complete, frozen composition or it has none. There is no state in which
  * steps are composed and directives are not, because this value cannot be constructed that way:
@@ -85,7 +85,7 @@ data class PreResolvedComposition internal constructor(
  * ## Why this is a single function and not two call sites
  * `Main` reaches composition from two branches, the in-memory default and the durable one. Before
  * this function each one wrote its own `pluginClassLoaderFor(...)` followed by its own
- * `PluginComposition.resolve(...)` — and BLOCK 1-G already had to delete a duplicated Step-registry
+ * `PluginComposition.resolve(...)` — and the composition had to delete a duplicated Step-registry
  * composition for exactly that reason. Adding admission to both would have re-created the same
  * defect with a worse consequence: one branch could admit what the other refused.
  * ## The ordering, and why it is the whole point

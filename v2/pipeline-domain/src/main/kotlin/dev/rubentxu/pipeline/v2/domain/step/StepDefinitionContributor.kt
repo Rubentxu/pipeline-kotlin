@@ -11,7 +11,7 @@ package dev.rubentxu.pipeline.v2.domain.step
  * The builder's [StepRegistryBuilder.add] fails closed on a duplicate StepKey, so a duplicate
  * contribution (core + plugin, or plugin A + plugin B) is rejected rather than first-wins/last-wins.
  * The distinction is not cosmetic. While this paragraph still said "[StepRegistry.register]", it
- * named a method that BLOCK 1-F deleted, and it was the file a plugin author reads FIRST to learn
+ * named a method that no longer exists, and it was the file a plugin author reads FIRST to learn
  * how to contribute — so the seam's own documentation pointed at an API that could not be called.
  * It survived because no test compiles a sentence: KDoc correctness is not mechanical, and this is
  * the cost of that.

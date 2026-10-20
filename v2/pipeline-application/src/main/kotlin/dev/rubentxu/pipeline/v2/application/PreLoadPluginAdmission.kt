@@ -17,7 +17,7 @@ import java.util.jar.JarFile
 /**
  * Admit every plugin artifact BEFORE a line of plugin code runs.
  * ## What this closes
- * BLOCK 2 measured that [PluginAdmissionGate] had eight callers and every one of them was in
+ * A measurement found that [PluginAdmissionGate] had eight callers and every one of them was in
  * `src/test`. The installed product reached plugins through `PluginComposition.resolve`, which
  * never asked the gate, so the whole of/B..E was unreachable from any shipped command: an
  * artifact with no manifest executed, and so did a plugin whose manifest declared a Step it did

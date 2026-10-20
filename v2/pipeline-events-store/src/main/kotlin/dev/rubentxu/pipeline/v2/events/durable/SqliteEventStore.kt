@@ -336,7 +336,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
             }
         }
         check(duplicates.isEmpty()) {
-            "WU-RP-020: durable event log has duplicate (run_id, sequence) pairs, " +
+            "durable event log has duplicate (run_id, sequence) pairs, " +
                 "so UNIQUE(run_id, sequence) cannot be established: ${duplicates.joinToString("; ")}. " +
                 "This database was written by more than one store instance before the " +
                 "constraint existed. It cannot be repaired automatically without " +

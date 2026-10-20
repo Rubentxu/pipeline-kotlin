@@ -34,8 +34,8 @@ import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
  * ## One declaration, two readers
  * The manifest is emitted into the artifact at BUILD time and read back at RUN time, and both must
  * read THIS object. A JSON document typed by hand in `build.gradle.kts` would be a second
- * authority free to describe a Step this code does not have — the defect BLOCK 1-H removed from the
- * KSP, in a different file.
+ * authority free to describe a Step this code does not have — the same defect the KSP had, in a
+ * different file.
 */
 object RepeatPluginDeclaration {
 

@@ -27,8 +27,8 @@ data class EventCursor(val runId: String, val lastSequence: Long) {
      * the normal way does contain colons: `ResourceRef.canonicalText()` is
      * `v<version>:<kind>:<segments>`. The first version of this pair therefore round-tripped only
      * for hand-written run ids that no producer emits.
-     * It was found by the independent consumer build in `examples/fabric-contract-consumer`, which
-     * could not decode the token it had just encoded. The escaping deliberately matches
+     * It was found by an independent consumer build, which could not decode the token it had
+     * just encoded. The escaping deliberately matches
      * `OutputCursor`'s: two planes, two prefixes, and a token that decodes or fails loudly rather
      * than decoding to a different run.
 */

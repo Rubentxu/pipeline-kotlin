@@ -415,7 +415,37 @@ class GitCredentialsApplier(
      * Guards against argv containing forbidden substrings.
      * Fail-closed: throws IllegalArgumentException if any arg contains
      * `extraHeader`, `Authorization`, or URL credentials.
-*/
+     *
+     * ## The two URL rules, and why there are two
+     *
+     * The rule that used to live here recognised ONE shape of credential:
+     * `https://user:pass@host`. Two holes followed from that, and both were
+     * reachable from a real pipeline:
+     *
+     *  1. **A token used as the username.** `https://TOKEN@host/repo` is how a
+     *     personal access token is used against GitHub — the token IS the
+     *     username and there is no password at all. A rule that demands a
+     *     colon waves it through, and the token travels in `argv`, where every
+     *     user of the machine can read it out of `/proc`.
+     *  2. **The case of the scheme.** `HTTPS://user:pass@host` is the same URL.
+     *     The guard lowercased the argument for the substring rule and then
+     *     matched the URL pattern against the ORIGINAL text, so a capitalised
+     *     scheme was invisible to it.
+     *
+     * So the rule now reads the lowercased argument (one text, one rule) and
+     * recognises the credential by its SHAPE, not by one spelling of it:
+     *
+     *  - an http(s) URL with ANY userinfo is refused: the username alone is
+     *    enough, because it may be the token;
+     *  - any other scheme is refused only when its userinfo carries a
+     *    PASSWORD: `ssh://git@host` is a name, and SSH keys never travel in
+     *    `argv`, so refusing it would refuse an ordinary clone.
+     *
+     * A guard that refuses everything protects nothing, so the accepted shapes
+     * are pinned by the same test: an `@` in a path (`repo.git@v1`), a port
+     * (`github.com:443`), the scp syntax (`git@github.com:org/repo.git`) and
+     * the SSH user (`ssh://git@host`) are all allowed.
+     */
     companion object {
         fun guardProcessBuilderArgs(args: List<String>) {
             for ((index, arg) in args.withIndex()) {
@@ -433,12 +463,11 @@ class GitCredentialsApplier(
                         "must not appear in process arguments (credentials must use GIT_CONFIG_GLOBAL env). " +
                         "Found in ${describeForDiagnostics(arg, index)}"
                 }
-                // Detect embedded credentials in URLs: https://user:pass@host/path
-                require(
-                    !((lower.contains("://") || lower.contains("@")) &&
-                        URL_CREDENTIALS_PATTERN.containsMatchIn(arg)),
+                if (HTTP_USERINFO_PATTERN.containsMatchIn(lower) ||
+                    PASSWORD_USERINFO_PATTERN.containsMatchIn(lower)
                 ) {
-                    "Forbidden: URL with embedded credentials detected. " +
+                    throw IllegalArgumentException(
+                        "Forbidden: URL with embedded credentials detected. " +
                         "Credentials must not appear in process arguments (argv) — " +
                         "use GIT_ASKPASS or credential helper instead. " +
                         "Found in ${describeForDiagnostics(arg, index)}"
@@ -448,17 +477,18 @@ class GitCredentialsApplier(
 
         /**
          * Describe [arg] for a message that gets PERSISTED, without reproducing it.
+         *
          * This message is not a local throwaway. The guard runs outside
          * [GitCheckoutExecutor.execute]'s `try`, so its exception is not caught by the
          * `scrub` that every other failure on that path passes through, and
          * `RegistryExecutionBoundary` copies `e.message` into a durable `StepFailed`
-         * event. The previous version interpolated `$arg` itself, which meant the
-         * argument the guard had just identified as carrying a credential had its
-         * credential written to the event log — the guard was the leak.
+         * event. A version that interpolated the argument itself wrote the credential
+         * it had just identified into the event log: the guard was the leak.
+         *
          * The host is what an operator actually needs to act, and [extractHost] strips
-         * userinfo before returning it, so naming it costs nothing sensitive. Everything
+         * the userinfo before returning it, so naming it costs nothing sensitive. Everything
          * else reduces to a length, which locates the argument without disclosing it.
-*/
+         */
         private fun describeForDiagnostics(arg: String, index: Int): String {
             val host = runCatching { extractHost(arg) }.getOrNull()
             return if (host.isNullOrBlank()) {
@@ -468,7 +498,20 @@ class GitCredentialsApplier(
             }
         }
 
-        private val URL_CREDENTIALS_PATTERN = Regex("https?://[^/]+:[^/]+@")
+        /**
+         * An http(s) URL carrying ANY userinfo: `https://TOKEN@host` is a
+         * credential even without a password, because the username may be a
+         * personal access token.
+         */
+        private val HTTP_USERINFO_PATTERN = Regex("https?://[^/@]*@")
+
+        /**
+         * Any scheme whose userinfo carries a PASSWORD: `ssh://user:pass@host`.
+         *
+         * A username alone is not enough outside http(s): `ssh://git@host` is
+         * the ordinary SSH clone and carries no secret.
+         */
+        private val PASSWORD_USERINFO_PATTERN = Regex("[a-z][a-z0-9+.-]*://[^/@]*:[^/@]*@")
 
         fun extractHost(url: String): String {
             // Step 1: strip protocol prefix

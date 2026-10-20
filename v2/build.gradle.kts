@@ -169,6 +169,22 @@ repositories {
 // content cannot be the one that already went out without it.
 version = "0.70.0"
 
+// The product version is the IDENTITY the binary reports and the candidate is tagged
+// with. It is also the one declaration in this file that a long comment can swallow:
+// a `version = "..."` that ends up behind a `//` does not fail here, it fails LATER,
+// in a task that says "productVersion must be MAJOR.MINOR.PATCH, got: unspecified",
+// with no hint of where the version went. Measured: that cost a release attempt and
+// thirty-four seconds of four failing tasks.
+//
+// This check fails HERE, where the declaration lives, and says what to do. It is a
+// check, not a rule: the train is still chosen by hand, and a version that is not
+// MAJOR.MINOR.PATCH has no business being the identity of a published artifact.
+require(Regex("""\d+\.\d+\.\d+""").matches(version.toString())) {
+    "the product version must be MAJOR.MINOR.PATCH, got: '${version}'. It is declared at the " +
+        "bottom of this file, under a long comment: check that the `version = \"...\"` statement " +
+        "did not end up behind a `//`."
+}
+
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version
 // (which pipelinek reads at runtime via `version`). Subprojects inherit by default; we make

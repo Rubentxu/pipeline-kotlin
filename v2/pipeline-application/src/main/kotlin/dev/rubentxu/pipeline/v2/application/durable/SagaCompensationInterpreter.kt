@@ -13,12 +13,13 @@ import dev.rubentxu.pipeline.v2.domain.saga.EffectReceiptRef
 import dev.rubentxu.pipeline.v2.domain.saga.InterventionReason
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaCompensationReport
+import dev.rubentxu.pipeline.v2.domain.saga.SagaCompletionReport
+import dev.rubentxu.pipeline.v2.domain.saga.SagaLifecycle
 import dev.rubentxu.pipeline.v2.domain.saga.SagaOperationIdentity
 import dev.rubentxu.pipeline.v2.domain.saga.SagaOperationPhase
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlan
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations
 import dev.rubentxu.pipeline.v2.domain.saga.SagaRecordOutcome
-import dev.rubentxu.pipeline.v2.domain.saga.SagaRuntime
 import dev.rubentxu.pipeline.v2.domain.saga.SagaTerminalState
 import dev.rubentxu.pipeline.v2.domain.saga.UncertaintyReason
 import dev.rubentxu.pipeline.v2.domain.step.AttemptSegment
@@ -84,10 +85,11 @@ import java.util.UUID
 class SagaCompensationInterpreter(
     private val runId: String,
     private val planOperations: SagaPlanOperations,
+    private val completion: SagaCompletionOperations,
     private val slotInvoker: BodySlotInvoker,
     private val eventSink: EventSink,
     private val clock: Clock,
-) : SagaRuntime {
+) : SagaLifecycle {
 
     override suspend fun compensate(plan: SagaPlan): SagaCompensationReport {
         val compensated = mutableListOf<SagaActionId>()
@@ -199,6 +201,33 @@ class SagaCompensationInterpreter(
                 }
             }
         }
+    }
+
+    /**
+     * Closes the Saga by KEEPING its effects.
+     *
+     * ## What it does
+     *
+     * The completion port does the durable work — it discharges the obligations whose effect was
+     * confirmed, in one statement, and reads the rows back — and this method does the rest:
+     * announce the terminal, and hand the plugin the report.
+     *
+     * ## The order
+     *
+     * The terminal is announced AFTER the durable write, like every other fact the loop
+     * announces: an event never says something the store does not know. A completion that the
+     * durable state refused is announced as a terminal that needs a human, with the reason that
+     * says the completion did not happen.
+     *
+     * ## What is NOT here
+     *
+     * No body runs. A completion keeps the effects; it does not undo them, so there is nothing
+     * to dispatch and no compensation to write ahead of.
+     */
+    override suspend fun complete(plan: SagaPlan): SagaCompletionReport {
+        val report = completion.complete(plan.sagaId)
+        announceTerminal(plan, compensated = emptyList(), directive = report.directive)
+        return report
     }
 
     /**
@@ -364,6 +393,25 @@ class SagaCompensationInterpreter(
         compensated: List<SagaActionId>,
         directive: CompensationDirective,
     ): SagaCompensationReport {
+        announceTerminal(plan, compensated, directive)
+        return SagaCompensationReport(plan.sagaId, compensated, directive)
+    }
+
+    /**
+     * Announces the Saga's terminal state.
+     *
+     * One place for BOTH closings — the one that undoes the effects and the one that keeps them
+     * — so the terminal event cannot be emitted twice for one closing, nor forgotten for one of
+     * the ways a Saga can end.
+     *
+     * The event is a projection of the durable state: the write that makes it true has already
+     * happened, so the plane never announces something the store does not know.
+     */
+    private fun announceTerminal(
+        plan: SagaPlan,
+        compensated: List<SagaActionId>,
+        directive: CompensationDirective,
+    ) {
         val intervention = directive as? CompensationDirective.NeedsIntervention
         eventSink.append(
             SagaTerminal(
@@ -381,7 +429,6 @@ class SagaCompensationInterpreter(
                 compensatedActions = compensated.map { it.value },
             ),
         )
-        return SagaCompensationReport(plan.sagaId, compensated, directive)
     }
 
     /** Announces that the body of a compensation is about to be dispatched. */

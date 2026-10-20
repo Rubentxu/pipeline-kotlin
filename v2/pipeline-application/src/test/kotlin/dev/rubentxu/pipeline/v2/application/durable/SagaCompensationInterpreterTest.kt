@@ -129,16 +129,31 @@ class SagaCompensationInterpreterTest {
      * The event sink is a parameter because the EVENTS are part of what the loop owes the
      * outside world: a compensation that started, one that finished, and the Saga's terminal
      * state are facts a reader of the event plane needs.
+     *
+     * The completion port is the real one, against the same database: the interpreter does not
+     * decide what a closing means, it asks the durable state and announces the answer.
      */
     private fun interpreter(
         slots: BodySlotInvoker,
         operations: SagaPlanOperations = planOperations(),
         events: EventSink = RecordingEventSink(),
+        completion: SagaCompletionOperations = completion(),
     ) = SagaCompensationInterpreter(
         runId = "run-1",
         planOperations = operations,
+        completion = completion,
         slotInvoker = slots,
         eventSink = events,
+        clock = FixedClock,
+    )
+
+    /**
+     * The engine's side of a Saga's completion, against the same database as everything else.
+     */
+    private fun completion(leaseEpoch: Long = 1L) = SagaCompletionAdapter(
+        runId = "run-1",
+        leaseEpoch = leaseEpoch,
+        store = store(),
         clock = FixedClock,
     )
 
@@ -532,6 +547,91 @@ class SagaCompensationInterpreterTest {
 
         assertEquals(emptyList<SagaActionId>(), report.compensated)
         assertEquals(emptyList<PluginStepId>(), slots.invoked)
+    }
+
+    @Test
+    fun `a Saga that ended well keeps its effects, and says so`() {
+        armAndConfirm("reserve", "release")
+        val events = RecordingEventSink()
+        val slots = RecordingSlotInvoker()
+
+        val report = runBlocking {
+            interpreter(slots, events = events).complete(
+                planOf(actionPlan("reserve", "compensate-reserve")),
+            )
+        }
+
+        // The effect happened and the Saga succeeded, so the promise is void: the obligation is
+        // KEPT, not compensated, and nothing is owed afterwards.
+        assertEquals(
+            CompensationObligationStatus.EFFECT_KEPT,
+            store().find("run-1", KEY_OF_RESERVE)?.status,
+        )
+        assertEquals(listOf("reserve"), report.kept.map { it.value })
+        assertInstanceOf<CompensationDirective.Settled>(report.directive)
+
+        // No body ran: keeping an effect is not undoing it, so there is nothing to dispatch.
+        assertEquals(emptyList<PluginStepId>(), slots.invoked)
+
+        // And the plane says it: a Saga that settled, compensating nothing.
+        assertEquals(listOf("SagaTerminal"), events.events.map { it.kind })
+        val terminal = assertInstanceOf<SagaTerminal>(events.events[0])
+        assertEquals("SETTLED", terminal.state)
+        assertEquals(emptyList<String>(), terminal.compensatedActions)
+    }
+
+    @Test
+    fun `a Saga that was already compensated cannot be completed`() {
+        // The chain failed and the engine undid the effect. Completing it now would claim a
+        // Saga whose resources are gone.
+        armAndConfirm("reserve", "release")
+        runBlocking {
+            interpreter(RecordingSlotInvoker()).compensate(
+                planOf(actionPlan("reserve", "compensate-reserve")),
+            )
+        }
+        val events = RecordingEventSink()
+
+        val report = runBlocking {
+            interpreter(RecordingSlotInvoker(), events = events).complete(
+                planOf(actionPlan("reserve", "compensate-reserve")),
+            )
+        }
+
+        val directive = assertInstanceOf<CompensationDirective.NeedsIntervention>(report.directive)
+        assertEquals(InterventionReason.SAGA_ALREADY_COMPENSATED, directive.reason)
+        // The row still says the effect was undone: a refused completion does not rewrite it.
+        assertEquals(
+            CompensationObligationStatus.COMPENSATED,
+            store().find("run-1", KEY_OF_RESERVE)?.status,
+        )
+        val terminal = assertInstanceOf<SagaTerminal>(events.events.last())
+        assertEquals("NEEDS_INTERVENTION", terminal.state)
+        assertEquals("SAGA_ALREADY_COMPENSATED", terminal.reason)
+    }
+
+    @Test
+    fun `a completion that lost the lease keeps nothing and claims nothing`() {
+        // The promise was armed and confirmed by the process that owned the run back then.
+        armAndConfirm("reserve", "release", leaseEpoch = 2L)
+
+        val report = runBlocking {
+            // This process is behind the run's high-water mark: it lost the run to a takeover.
+            interpreter(
+                RecordingSlotInvoker(),
+                completion = completion(leaseEpoch = 1L),
+            ).complete(planOf(actionPlan("reserve", "compensate-reserve")))
+        }
+
+        // The write was refused, so the effect is still owed: the Saga is open, and saying it
+        // was kept would be a claim nobody can back.
+        assertEquals(
+            CompensationObligationStatus.EFFECT_CONFIRMED,
+            store().find("run-1", KEY_OF_RESERVE)?.status,
+        )
+        assertEquals(emptyList<SagaActionId>(), report.kept)
+        val directive = assertInstanceOf<CompensationDirective.NeedsIntervention>(report.directive)
+        assertEquals(InterventionReason.COMPLETION_NOT_RECORDED, directive.reason)
     }
 
     /**

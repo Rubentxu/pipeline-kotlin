@@ -319,12 +319,15 @@ run_scenario() {
         export PIPELINEK_E2E_PID_FILE="$root/runner.pid"
     fi
 
-    # A scenario about the journal runs on the journal path only. The volatile
-    # path has no journal at all: there is nothing to resume and nothing to
-    # compensate, so a run there would exercise a different product than the
-    # one the scenario is about, and its verdict would be about that product.
+    # A scenario that says anything about the journal runs on the journal path
+    # only. The volatile path has no journal at all: there is nothing to resume
+    # and nothing to compensate, so a run there would exercise a different
+    # product than the one the scenario is about, and its verdict would be about
+    # that product. It would also be unfair to the scenario: the marker a
+    # durable scenario writes lives in this directory, so the second execution
+    # would find the first one's effect and read it as a repeat.
     local run_volatile=1
-    if [[ "$durable_once" == 1 || "$resume" == 1 ]]; then
+    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 ]]; then
         run_volatile=0
     fi
 

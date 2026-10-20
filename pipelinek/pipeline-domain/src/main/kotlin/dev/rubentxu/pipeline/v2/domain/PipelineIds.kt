@@ -80,7 +80,21 @@ value class StepId(val value: String) {
     }
 }
 
-/** Stable identity of the plugin-owned step kind represented by a step node. */
+/**
+ * An identifier in the plugin's own namespace.
+ *
+ * Two things live in that namespace, and they share this type because they share the namespace:
+ *
+ * - the **kind** of a step — what runs. It is what the engine dispatches by, and it is
+ *   [StepNode.pluginStepId].
+ * - the **name of a slot** — the name a plugin gives to one of the steps of its own body, so
+ *   that two steps of the same kind can be told apart. It is [StepNode.slot], and it is what a
+ *   plugin asks for.
+ *
+ * They answer different questions and they are different fields; the type says **where** the name
+ * comes from, not what it is used for. Sharing one type is what lets a plugin address its own
+ * bodies without the engine and the plugin having to agree on two vocabularies.
+ */
 @JvmInline
 @Serializable
 value class PluginStepId(val value: String) {

@@ -155,6 +155,15 @@ pipelinek validate pipeline.kts
 pipelinek run --workspace . pipeline.kts
 ```
 
+A run whose writer was killed — the CI agent reaped, the machine rebooted —
+leaves the run unfinished: its journal says a step was still running and its
+history says it never finished. `runs cancel` closes it, and refuses to close
+one that a live process is still working on:
+
+```bash
+pipelinek runs cancel <runId> --db <db> --control-root <dir>
+```
+
 For the walk-through of workspaces, `--db`, secret redaction and run
 inspection, use the CLI's own help, which is generated from the code
 that implements each flag:
@@ -166,7 +175,7 @@ pipelinek run --help
 
 ## Examples
 
-The [`examples/`](examples/) directory holds 41 runnable
+The [`examples/`](examples/) directory holds 42 runnable
 pipelines that exercise the real CLI, grouped by what they cover:
 
 | Category | Scenarios | What it covers |
@@ -174,7 +183,7 @@ pipelines that exercise the real CLI, grouped by what they cover:
 | `smoke/` | 3 | The shortest path through the DSL: the environment, `sh` then `echo`, and a checkout → build → archive round trip |
 | `steps/` | 6 | One scenario per step: `withEnv`, the workspace helpers, `sleep`, `writeFile`, `cleanWs`, `findFiles` |
 | `control-flow/` | 2 | Kotlin control flow inside a compiled script, and workflow control |
-| `durable/` | 11 | Durable execution over the journal: platform queries, milestones, `waitUntil`, `stash`/`unstash`, the replay guarantee, and six Saga scenarios — compensation, intervention, a crash mid-effect and its reconciliation |
+| `durable/` | 12 | Durable execution over the journal: platform queries, milestones, `waitUntil`, `stash`/`unstash`, the replay guarantee, closing a run whose writer was killed, and six Saga scenarios — compensation, intervention, a crash mid-effect and its reconciliation |
 | `security/` | 2 | Credential bindings, and a ZIP-slip path-traversal defence |
 | `output/` | 7 | The output plane: file reads, a utilities round trip, ZIP/unzip, mixed utilities, cross-step artifact queries, HTML publishing, and the live output of a process |
 | `negative/` | 6 | Deliberate failures that must fail closed: error handling, the typed error step, a command that exits non-zero, a workspace symlink escape, an unregistered directive key, a plugin artifact whose bytes cannot be read |

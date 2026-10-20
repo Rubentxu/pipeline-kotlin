@@ -18,46 +18,49 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `ac56e21fd` medido en los tres ensayos; el commit que añade estas cifras es posterior y sólo toca esta tabla y los README | `git rev-parse HEAD` |
+| SHA | `15cd1441b` medido en los tres ensayos; el commit que añade estas cifras es posterior y sólo toca esta tabla y los README | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
-| Módulos con test unitario permanente | **25** | etapa 2 del gate, que imprime cada módulo por nombre |
-| Módulos sin test | 2 (`:pipeline-sdk-bom`, que no tiene código; `:pipeline-runtime`, que tiene código y ningún consumidor) | ídem |
-| Tests unitarios ejecutados | **813** (104 informes en disco, 104 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | **41 (41 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios que sólo comprueban el código de salida | **0**: cada uno afirma, con una directiva del lanzador o con una comprobación dentro del propio pipeline | censo por directiva y por cuerpo, sobre los 41 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **12026 / 64300 = 0.19** (límite 2) | `scripts/check-budgets.py --json` |
+| Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
+| Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
+| Tests unitarios ejecutados | **819** (105 informes en disco, 105 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Escenarios E2E | **42 (42 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios que sólo comprueban el código de salida | **0**: cada uno afirma, con una directiva del lanzador o con una comprobación dentro del propio pipeline | censo por directiva y por cuerpo, sobre los 42 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **12227 / 64630 = 0.19** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **574 / 559 / 586** en los tres ensayos (`ac56e21fd` y `6da7997d1`, que sólo difieren en esta tabla), peor 586 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **581 / 553 / 564** en los tres ensayos, los tres sobre `15cd1441b`, peor 581 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **805** entradas de baseline | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
-Las cifras de este ciclo son las de un árbol **reconciliado**: 813 tests y 41
-escenarios son la suma de lo que había en esta rama (644 y 32) y lo que `main`
-trajo (los tests del trabajo de Saga y sus seis escenarios), más lo que volvió
-con el trabajo ajeno y su propia justificación. El número de escenarios sólo
-comprueba el código de salida sigue en **0**, y ahora la cuenta tiene que
-mirar dos sitios: la directiva del lanzador y el cuerpo del pipeline, porque
-veinte de los escenarios afirman desde dentro —el pipeline falla si el mundo no
-es el que dice— y ninguno mira sólo el código de salida.
+Las cifras de este ciclo son las de un árbol **reconciliado** y con el verbo de
+control puesto: 819 tests y 42 escenarios son la suma de lo que había en esta
+rama (644 y 32) y lo que `main` trajo (los tests del trabajo de Saga y sus
+seis escenarios), más lo que volvió con el trabajo ajeno y su propia
+justificación, más el test de la regla de cancelación y el escenario que la
+prueba de punta a punta. El número de escenarios sólo comprueba el código de
+salida sigue en **0**, y ahora la cuenta tiene que mirar dos sitios: la
+directiva del lanzador y el cuerpo del pipeline, porque veinte de los
+escenarios afirman desde dentro —el pipeline falla si el mundo no es el que
+dice— y ninguno mira sólo el código de salida.
 
 La deuda estática baja de 807 a 805 entradas: cuatro de `main` se
 convirtieron en código arreglado en lugar de excepciones anotadas, y ninguna
 entrada nueva se añadió.
 
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
-los **104** informes JUnit, que es la condición que hace que la cifra de reloj
+los **105** informes JUnit, que es la condición que hace que la cifra de reloj
 mida el gate y no una restauración de caché. Un total correcto con el verbo
 equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
 **falla** si no reescribe ninguno.
 
-**El gate cuenta 25 proyectos Gradle con test, y un censo independiente por
-fichero cuenta los mismos 25.** La etapa 2 imprime un módulo por nombre, y un
+**El gate cuenta 26 proyectos Gradle con test, y un censo independiente por
+fichero cuenta los mismos 26.** La etapa 2 imprime un módulo por nombre, y un
 censo que enumera `src/test/kotlin/**/*Test.kt` sobre los 27 módulos declarados
-devuelve la misma lista. Los dos sin test son `pipeline-sdk-bom`, que no tiene
-clases que probar, y `pipeline-runtime`, que tiene código pero ningún
-consumidor. Aquí la cifra estaba caducada, y la lista con ella: se escribió
-«21» y «los seis sin test» cuando cuatro de esos seis ya no lo estaban
+devuelve la misma lista. El único sin test es `pipeline-sdk-bom`, que no tiene
+clases que probar; `:pipeline-runtime` dejó de estarlo en este ciclo, con el
+test de la regla que decide si una cancelación puede proceder. Aquí la cifra
+estaba caducada, y la lista con ella: se escribió «21» y «los seis sin test»
+cuando cuatro de esos seis ya no lo estaban
 (`pipeline-scripting-kotlin24`, `pipeline-event-harness`,
 `pipeline-step-sdk/api` y `pipeline-step-sdk/junit` tienen hoy su observador).
 La lección es la de siempre: un número escrito a mano envejece, y se vuelve a
@@ -208,7 +211,7 @@ formato de cable, porque el módulo no publicaba nada y no tenía contrato
 declarado. Retirar un módulo que el `include` raíz no declaraba no puede
 cambiar lo que un consumidor resuelve.
 
-### Los 25 módulos con test
+### Los 26 módulos con test
 
 `pipeline-application`, `pipeline-domain`, `pipeline-events`,
 `pipeline-events-store`, `pipeline-scripting-api`, `pipeline-scripting-kotlin24`,
@@ -220,12 +223,14 @@ cambiar lo que un consumidor resuelve.
 `pipeline-credentials-local`, `pipeline-credentials-multipart`,
 `pipeline-credentials-executor`, `pipeline-binding-factory`,
 `pipeline-artefacts-local`, `pipeline-event-harness`, `pipeline-runtime-api`,
-`pipeline-output`, `pipeline-output-store`, `pipeline-release`.
+`pipeline-runtime`, `pipeline-output`, `pipeline-output-store`,
+`pipeline-release`.
 
 > **Censo remedido desde el disco.** Sobre los 27 módulos que declara
-> el `include(` de `settings.gradle.kts`: **25 con `src/test/kotlin/**/*Test.kt`,
-> 2 sin él**. Los dos sin test son `pipeline-sdk-bom`, que no tiene clases que
-> probar, y `pipeline-runtime`, que tiene código y ningún consumidor.
+> el `include(` de `settings.gradle.kts`: **26 con `src/test/kotlin/**/*Test.kt`,
+> 1 sin él**. El único sin test es `pipeline-sdk-bom`, que no tiene clases que
+> probar. `:pipeline-runtime` entró en la lista en este ciclo, con el test de
+> la regla que decide si una cancelación puede proceder.
 >
 > Este censo ha sido corregido **dos veces**, y las dos por la misma razón: una
 > lista escrita a mano es un segundo censo, y un segundo censo es donde aparecen
@@ -306,8 +311,9 @@ vez de reportarlo.
 | `pipeline-step-sdk/api` | 1 | 1 | 7 | 0 | 0 |
 | `pipeline-step-sdk/junit` | 1 | 1 | 6 | 0 | 0 |
 | `pipeline-step-sdk/scm-git` | 1 | 1 | 4 | 0 | 0 |
+| `pipeline-runtime` | 1 | 1 | 6 | 0 | 0 |
 | `pipeline-scripting-api` | 1 | 1 | 2 | 0 | 0 |
-| **total** | **86** | **104** | **813** | **0** | **0** |
+| **total** | **87** | **105** | **819** | **0** | **0** |
 
 ### El `NOT_RUN` que no es verde
 
@@ -698,6 +704,14 @@ Queda además la advertencia que ya no depende del instrumento: el recuento es d
 **clases de test**, no de tests ejecutados. Un módulo con una clase no equivale a
 un módulo cubierto; por eso la tabla de ratios, que sí cuenta líneas, es la que
 manda para valorar riesgo.
+
+**Estado remedido en este ciclo: queda 1 módulo sin clase de test**
+(`:pipeline-sdk-bom`, que no compila nada y por eso no tiene sujeto). Los seis
+de la tabla de arriba tienen hoy su observador, y `:pipeline-runtime` recibió en
+este ciclo el test de la regla que decide si una cancelación puede proceder
+(§2.20). La tabla se conserva porque es la medición que ordenó el ataque, y
+porque volver a contarla sin criterio es exactamente el defecto que esta
+secciónCorrigió una vez.
 
 **El orden de ataque se rehace cuando la medición exista, no antes.**
 
@@ -2862,8 +2876,112 @@ eso es lo que este ciclo tiene que arreglar: no retirarlos —eso rompería un c
 publicado—, sino integrarlos en la composición del runtime para que la autoridad del
 journal sea la única y los verbos existan.
 
-## 3. Decisiones tomadas en este ciclo, con su porque
+### 2.20 El verbo que faltaba: cerrar un run cuyo escritor murió
 
+El encargo del ciclo anterior pedía tres cosas sobre `:pipeline-runtime`: no
+borrarlo, integrarlo por el SDK y la composición del runtime, y no declarar
+capacidades que el producto no entrega. Este ciclo hace la parte que se podía
+medir: **el verbo de control existe en el producto**, y existe porque se
+arregló, no porque se compusiera tal cual.
+
+**El hueco, medido.** El puerto `RuntimeControlPort` está publicado y su
+implementación estaba escrita. La implementación no podía cumplir su propio
+contrato, por dos razones que sólo aparecieron al ejecutarla:
+
+1. **La vivididad se leía del registro, y el registro no es un hecho de vida.**
+   El cancelador consultaba `FileBackedRunExecutionLeaseStore.observe`, que lee
+   el fichero de registro de la lease. Un escritor al que matan deja ese
+   fichero diciendo `owner_alive=true`. Medido sobre una ejecución muerta de
+   verdad (`kill -9` en mitad de un `sh`): el registro decía
+   `owner_id=cli-3137089-5980f1df, fencing_token=1, owner_alive=true`, con el
+   proceso ya inexistente. El cancelador respondía `LeaseHeldByAnother` —
+   exactamente la clase de ejecuciones que un operador quiere cerrar. El
+   **lock del sistema operativo** sí es el hecho: el núcleo lo concede sólo
+   cuando nadie lo tiene, y `acquire` ya lo usa. El cancelador, no.
+2. **«El run está terminado» se leía del hecho equivocado.** Buscaba la
+   primera fila de *operación* con estado terminal. Una ejecución a medias ya
+   tiene esa fila en cuanto su primer paso termina: la ejecución muerta de
+   arriba tenía `…-s0-0 SUCCEEDED` y `…-s0-1 RUNNING`. El cancelador leía
+   `SUCCEEDED` y respondía `RunTerminal("succeeded")` sobre un run que
+   claramente no había terminado. El hecho terminal del **run** es el libro de
+   fin del event lane, no una fila de operación; y el cancelador no escribía
+   ninguno de los dos.
+
+**Lo que hay ahora.** Un verbo de operador, `pipelinek runs cancel <runId>`,
+compuesto sobre el puerto publicado:
+
+- **La regla, pura y con su propio test.** `RunCancellationDecision` decide
+  sobre cuatro hechos observados —quién tiene la lease, si el run se conoce, si
+  ya terminó, si ya se registró una cancelación— y nada más. Vive en
+  `:pipeline-runtime`, que recupera su cableado de JUnit, y su test es el
+  primero de ese módulo: seis casos sobre una función sin E/S.
+- **El adaptador, honesto.** Toma la lease (la exclusividad es lo que hace
+  único el libro de fin), escribe el **mismo** hecho terminal que habría
+  escrito el escritor —`RunFinished` con el outcome `aborted` que ya usa el
+  producto—, registra la cancelación en el journal como fila de control
+  (`cancel-<runId>`, estado `SUCCEEDED`, que es lo que pasó: la cancelación
+  se cumplió; el run es lo que se abortó), y sella los flujos de salida que el
+  escritor muerto dejó abiertos.
+- **El E2E que lo prueba de punta a punta.** `examples/durable/39-cancel-dead-run`
+  mata a su propio escritor a mitad de un `sh`, y el lanzador comprueba las
+  tres mitades de la garantía: el primer cancel cierra el run, el segundo es un
+  *no-op* (no un rechazo), y la historia del run termina en un libro de fin.
+
+**Lo que el cancelador NO decide.** Si el paso que estaba en vuelo llegó a
+producir su efecto o no, no se puede saber desde fuera, así que la fila de esa
+operación se queda como estaba (`RUNNING`). Marcarla `ABORTED` afirmaría algo
+que nadie sabe, y un `resume` posterior vería «efecto fallido» donde la
+verdad es «efecto desconocido». La fila de control del cancel es `SUCCEEDED` y
+no `ABORTED` por la misma razón: el fallo del run se cuenta en el libro de
+fin, no como una operación fallida del run (el informe de fallos del producto
+selecciona por estado de fallo, y una fila de control `ABORTED` saldría ahí
+como una operación más que falló).
+
+**El texto del contrato publicado cambió, y hay que revisarlo.** El puerto
+`RuntimeControlPort` decía, y decía bien por escrito, que el cancelador «NO
+toma una lease nueva: consulta la existente». Eso es incompatible con escribir
+un hecho terminal exclusivo, y por eso el párrafo se reescribió: el cancelador
+**toma** la lease, lo cual es lo que le permite **no** cruzar una frontera
+viva (un escritor vivo tiene el lock, y la adquisición lo rechaza con
+`AlreadyOwned`, que es el rechazo publicado). La firma no cambia: el ABI es el
+mismo, y la regla de rechazo es la misma. Lo que cambia es la prosa de un
+contrato publicado, y por eso queda aquí, a la vista, para la revisión de quien
+lee. El mismo fichero afirmaba además que la implementación vivía «en el
+siguiente paso del trabajo» y que un test que ya no existe la sujetaba: las dos
+mentiras se han corregido.
+
+**Lo que queda fuera, y por qué.** Los otros dos verbos —`RuntimeIntrospectionPort`
+y `RuntimeRecoverPort`— **no** se exponen en este ciclo, y la razón es
+medida: el producto ya tiene un plano de lectura (`inspect`, sobre el event
+lane) y un plano de recuperación (`--resume`, sobre el journal y el cursor de
+replay). Exponerlos sería un **segundo** plano de lectura y un **segundo**
+motor de recuperación, y `AGENTS.md` prohíbe exactamente eso. Integrar el
+cancelador no sufre de ese problema porque no existía: no había nadie que
+pudiera cerrar un run muerto. Suulerlo es trabajo de otro ciclo, y el
+adaptador de introspección además tiene el mismo defecto que se corrigió aquí
+—lee la primera fila terminal de operación como si fuera el terminal del run—,
+que queda anotado para cuando se exponga.
+
+**La capacidad vuelve a `EXPERIMENTAL`.** `runtime.cancel.v1` estaba en
+`DEPRECATED` desde el ciclo anterior, con la razón exacta: «la implementación
+existe, pero nada la compone». Ahora algo la compone —el verbo, a través del
+puerto publicado—, así que vuelve a la columna de lo que el build entrega. El
+catálogo no Announces nada que no se entregue, y su observador (`SdkCapabilitiesRegistryTest`)
+pasa a exigir exactamente eso: el conjunto de ids anunciados-pero-no-entregados
+está vacío, y anunciar uno sin entregarlo es un acto deliberado que obliga a
+tocar el test.
+
+**La evidencia, en rojo y en verde.** El test puro se vio rojo dos veces, con
+las mutaciones aplicadas y leídas de vuelta: invertir la regla de idempotencia
+encendió 1 de 6 filas, y mover la regla del propietario vivo encendió 1 de 6,
+sin daño colateral. El E2E se vio rojo con la mutación que reproduce el
+defecto original —leer la fila terminal de una operación como si fuera la del
+run— y el fallo salió en el sitio esperado («la cancelación de un run muerto
+salió 2, esperado 0», con el diagnóstico «el run ya terminó con outcome
+'succeeded'»). El observador del catálogo se vio rojo al volver a poner
+`runtime.cancel.v1` en `DEPRECATED`: 2 de 5 filas, las dos esperadas.
+
+## 3. Decisiones tomadas en este ciclo, con su porque
 - **Reconciliar con `main` antes de seguir construyendo.** La rama estaba a 196
   commits de su lado y a 29 del suyo, con el trabajo de Saga y el tren de releases
   enteros fuera. Integrar sobre una base divergente es la forma de perder trabajo
@@ -3122,6 +3240,39 @@ journal sea la única y los verbos existan.
   medición de este ciclo dejó sin cobertura: `:pipeline-runtime`. La cadena no
   inventa trabajo, y un candidato cuya evidencia apunte a un fichero que no existe se
   descarta.
+
+- **El cancelador toma la lease, y el contrato publicado se reescribe para
+  decirlo.** La versión anterior del puerto decía que el cancelador «NO toma una
+  lease nueva». Eso y escribir un libro de fin exclusivo son incompatibles: sin
+  la exclusividad, dos procesos pueden escribir el terminal del mismo run, que es
+  justo la ambigüedad que el verbo existe para eliminar. La versión nueva toma la
+  lease —el lock del sistema operativo es el único hecho sobre «¿hay un proceso
+  vivo publicando este run?»— y por eso nunca cruza una frontera **viva**: un
+  escritor vivo tiene el lock y la adquisición lo rechaza, que es el rechazo que
+  el contrato ya publicaba. El ABI no cambia; la prosa de un contrato publicado
+  sí, y por eso se anota aquí para revisión.
+
+- **El terminal de un run es el libro de fin del event lane, y no una fila del
+  journal.** Una fila del journal es el estado de una *operación*, y una
+  operación llega a estado terminal mucho antes que el run: un run a medias
+  tiene ya una fila terminal en cuanto su primer paso termina. Confundir las
+  dos cosas hacía que el cancelador rechazara el run que precisamente quería
+  cerrar. Además, el cancelador **no** marca la operación que estaba en vuelo
+  como abortada: si su efecto ocurrió o no es algo que desde fuera no se sabe, y
+  un `resume` posterior tiene que seguir viendo «efecto desconocido» en vez de
+  un «efecto fallido» que nadie ha comprobado.
+
+- **Un solo verbo nuevo, y sólo el que no tenía sitio.** `cancel` se expone;
+  `inspect` y `recover` no, porque el producto ya tiene un plano de lectura y un
+  motor de recuperación, y exponer los puertos de runtime sería un segundo plano
+  de lectura y un segundo motor. La prohibición de `AGENTS.md` sobre las
+  segundas autoridades pesa más que la simetría de los tres verbos.
+
+- **La fila de control de la cancelación es `SUCCEEDED`, y su estado es
+  deliberado.** La cancelación se cumplió; el run es lo que se abortó. El
+  informe de fallos del producto selecciona las operaciones en estado de fallo,
+  así que una fila de control en `ABORTED` saldría ahí como una operación más
+  que falló, y no lo es.
 
 ---
 

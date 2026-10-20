@@ -178,7 +178,6 @@ object PluginAdmissionGate {
             b32TrustRefusal(
                 trustDatabase = trustDatabase,
                 manifest = accepted.manifest,
-                identity = identity,
                 origin = origin,
             )
         } else {
@@ -348,7 +347,6 @@ object PluginAdmissionGate {
     private fun b32TrustRefusal(
         trustDatabase: OperatorTrustDatabase,
         manifest: dev.rubentxu.pipeline.v2.domain.step.PluginManifest,
-        identity: MeasuredArtifactIdentity,
         origin: ArtifactOrigin,
     ): AdmissionRejection? {
         val pluginId = manifest.plugin.canonicalText()

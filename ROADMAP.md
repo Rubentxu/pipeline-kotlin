@@ -18,22 +18,22 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `f0968b144` medido, gate completo sobre este árbol | `git rev-parse HEAD` |
+| SHA | `c059b0fba` medido en los tres ensayos; el commit que añade estas cifras es posterior y sólo toca esta tabla y los README | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **25** | etapa 2 del gate, que imprime cada módulo por nombre |
-| Módulos sin test | 1 (`:pipeline-runtime`, que no tiene consumidor) | ídem |
-| Tests unitarios ejecutados | **639** (71 informes en disco, 71 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | **31 (31 pasan, 0 fallan)**, 1 rerun durable, 2 ejecuciones por escenario (con journal y sin él) | `examples/**/*.pipeline.kts` |
-| Escenarios que sólo comprueban el código de salida | **0** | censo por directiva, sobre los 31 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **8410 / 60909 = 0.138** (límite 2) | `scripts/check-budgets.py --json` |
+| Módulos sin test | 2 (`:pipeline-sdk-bom`, que no tiene código; `:pipeline-runtime`, que tiene código y ningún consumidor) | ídem |
+| Tests unitarios ejecutados | **644** (72 informes en disco, 72 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Escenarios E2E | **32 (32 pasan, 0 fallan)**, 1 rerun durable, 2 ejecuciones por escenario (con journal y sin él) | `examples/**/*.pipeline.kts` |
+| Escenarios que sólo comprueban el código de salida | **0** | censo por directiva, sobre los 32 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **8505 / 60929 = 0.14** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **401 / 415 / 402** en los tres ensayos de `263107231`, **415** en el de `e4daef35d`, **478** en el de `c3a23697b` y **423** en el de `9f2a2004f`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
-| Veredicto del gate | **`PASS`** en los seis ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
+| `VERIFY_ALL_WALL_CLOCK` | **448 / 449 / 450** en los tres ensayos de `c059b0fba`, **401 / 415 / 402** en los tres de `263107231`, **415** en el de `e4daef35d`, **478** en el de `c3a23697b` y **423** en el de `9f2a2004f`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| Veredicto del gate | **`PASS`** en los nueve ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **807** entradas de baseline, ninguna nueva | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
-los **67** informes JUnit, que es la condición que hace que la cifra de reloj
+los **72** informes JUnit, que es la condición que hace que la cifra de reloj
 mida el gate y no una restauración de caché. Un total correcto con el verbo
 equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
 **falla** si no reescribe ninguno.

@@ -79,6 +79,7 @@ object EventPayloadAccessor {
         is dev.rubentxu.pipeline.v2.events.RetryAttemptStarted -> "attempt=${e.attemptNumber}"
         is dev.rubentxu.pipeline.v2.events.CatchErrorTriggered -> "buildResult=${e.buildResult}"
         is dev.rubentxu.pipeline.v2.events.StepStarted -> "stage=${e.stageIndex} step=${e.stepIndex}"
+        is dev.rubentxu.pipeline.v2.events.StepFinished -> "stage=${e.stageIndex} step=${e.stepIndex}"
         is dev.rubentxu.pipeline.v2.events.StepFailed -> "msg~'${e.message.take(40)}'"
         is dev.rubentxu.pipeline.v2.events.TimeoutScheduled -> "timeout=${e.timeoutSeconds}s"
         else -> ""
@@ -103,6 +104,7 @@ object EventPayloadAccessor {
         is dev.rubentxu.pipeline.v2.events.StageStarted -> e.stageIndex
         is dev.rubentxu.pipeline.v2.events.StageFinished -> e.stageIndex
         is dev.rubentxu.pipeline.v2.events.StepStarted -> e.stageIndex
+        is dev.rubentxu.pipeline.v2.events.StepFinished -> e.stageIndex
         is dev.rubentxu.pipeline.v2.events.ParallelBranchStarted -> e.parentStageIndex
         is dev.rubentxu.pipeline.v2.events.ParallelBranchFinished -> e.parentStageIndex
         is dev.rubentxu.pipeline.v2.events.RetryAttemptStarted -> e.stageIndex
@@ -113,6 +115,7 @@ object EventPayloadAccessor {
 
     private fun payloadStepIndex(e: DomainEvent): Int? = when (e) {
         is dev.rubentxu.pipeline.v2.events.StepStarted -> e.stepIndex
+        is dev.rubentxu.pipeline.v2.events.StepFinished -> e.stepIndex
         is dev.rubentxu.pipeline.v2.events.RetryAttemptStarted -> e.stepIndex
         is dev.rubentxu.pipeline.v2.events.RetryAttemptFinished -> e.stepIndex
         is dev.rubentxu.pipeline.v2.events.TimeoutScheduled -> e.stepIndex

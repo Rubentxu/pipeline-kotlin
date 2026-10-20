@@ -15,6 +15,7 @@
 - Durable replay must never fabricate success or repeat a completed side effect. Preserve run/operation identity, ordered events, exact stdout/stderr bytes and cursors; never log or retain secrets accidentally. No destructive workspace operation may escape the authorized root.
 - Prefer meaningful Kotlin ADTs/value objects and small interfaces. No second event, Step, recovery or certification authority; remove dead legacy fallbacks rather than building adapters upon adapters.
 - Kotlin/JVM product: follow the Gradle toolchain already declared in the repository. Rust conventions inspire testing organization only; do not add Cargo manifests or Rust code to this Kotlin project.
+- **No external dependency for a couple of classes.** A library is a jar in the distribution, a transitive closure to audit, a licence to keep and a behaviour to inherit — paid for in bytes, supply chain and surprise. When what is needed is small and ours to own, it is **copied or implemented in this project**, with the attribution written down. The standing strategy is copy or implement here, not pull in. An existing dependency is not grandfathered either: it stays only if it carries something this project cannot reasonably own — an engine, a file format, an algorithm — and that has to be said explicitly, per dependency, rather than inherited by default.
 - No GitHub Actions introduced by default. CI, external certifier and remote publication constraints are external facts, not claims inferred from local success.
 
 ## 2. Permanent testing: unit tests ONLY

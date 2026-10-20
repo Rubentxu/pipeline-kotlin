@@ -42,7 +42,9 @@ class SdkCapabilitiesRegistryTest {
         Triple("output.refusal.retention.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.51.0-rc1"),
         Triple("runtime.structure.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.53.0-rc1"),
         Triple("runtime.operation.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.53.0-rc1"),
-        Triple("runtime.eventshape.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.54.0-rc1"),
+        Triple("runtime.eventshape.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.54.0-rc1"),
+        Triple("runtime.eventshape.v2", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
+        Triple("events.stepoutcome.v1", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
     )
 
     @Test
@@ -88,12 +90,37 @@ class SdkCapabilitiesRegistryTest {
             .map { it.id }
 
         assertEquals(
-            listOf("events.follow.v1"),
+            listOf("events.follow.v1", "runtime.eventshape.v1"),
             deprecated,
             "the ids this build announces but does NOT deliver are exactly the ones a consumer " +
                 "must not build on; anything else here is either an id the build stopped " +
                 "delivering without saying so, or an announced-but-not-delivered id added " +
                 "without deciding it here",
+        )
+    }
+
+    @Test
+    @DisplayName("the step verdict is delivered under the id this build announces")
+    fun `the step verdict is delivered under the announced id`() {
+        val announced = SdkCapabilities.ALL.map { it.id }
+
+        assertTrue(
+            announced.contains("events.stepoutcome.v1"),
+            "the build publishes the step's verdict in the event that ends the step, so it must " +
+                "announce the id that names it",
+        )
+        assertTrue(
+            SdkCapabilities.ALL.none {
+                it.id.startsWith("events.stepoutcome.") && it.status == SdkCapabilities.CapabilityStatus.PUBLICADA &&
+                    it.id != "events.stepoutcome.v1"
+            },
+            "only the id this build delivers may claim to be delivered; two ids for one " +
+                "vocabulary leave the consumer choosing between them",
+        )
+        assertTrue(
+            announced.contains("runtime.eventshape.v2"),
+            "the typed shape carries the same verdict, so the id that names it has to be announced " +
+                "too — otherwise a consumer of the shape has nothing to negotiate",
         )
     }
 

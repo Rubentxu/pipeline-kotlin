@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.harness.verify
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
@@ -177,7 +178,12 @@ class EventHarnessVerifyTest {
     )
 
     private fun stepFinished(sequence: Long, stage: Int, step: Int) = typed(
-        StepFinished("e$sequence", runId, sequence, Instant.ofEpochMilli(sequence), stage, step, "step$step", "sh"),
+        // The verdict travels with the terminal event: in this history the step succeeded, and the
+        // run that follows it reports success.
+        StepFinished(
+            "e$sequence", runId, sequence, Instant.ofEpochMilli(sequence), stage, step, "step$step", "sh",
+            StepOutcome.SUCCESS_TOKEN,
+        ),
     )
 
     private fun stepFailed(sequence: Long) = typed(

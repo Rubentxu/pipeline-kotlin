@@ -1000,6 +1000,28 @@ puerta sigue comparable entre corridas. `PIPELINEK_E2E_JOBS=1` devuelve el
 comportamiento serie exacto, que es lo que necesita un escenario que parezca
 intermitente.
 
+**s) Las dependencias que se quedan, y por qué — DECIDIDO en este ciclo.**
+AGENTS.md §1 no admite una dependencia externa para un par de clases, y dice
+que una dependencia existente **no se hereda por defecto**: se queda sólo si
+lleva algo que este proyecto no puede razonablemente poseer, y eso se dice
+**por dependencia**. La distribución son **45 jars y 96 MB** (medido sobre
+`installDist`), y sus pesos son:
+
+| Dependencia | Peso | Por qué se queda |
+|---|---|---|
+| `kotlin-compiler-embeddable` | **58 MB** | Es el **motor** que compila los scripts `.pipeline.kts`. No es una clase: es un compilador completo. |
+| `sqlite-jdbc` | **14 MB** | Motor de **persistencia** del estado durable. El formato de fichero y su página de formato son el contrato. |
+| `bcprov` / `bcpkix` / `bcutil` | **~9 MB** | **Criptografía**: firma y sobre de credenciales. Reimplementar PKCS#7 o X.509 es rehacer una biblioteca, no copiar un par de clases. |
+| `kotlin-reflect` | 2,9 MB | Necesario para el **scripting** de Kotlin. |
+| `kotlinx-coroutines-core` | 1,6 MB | Concurrencia estructurada; reimplementarla es rehacer un modelo, no copiar clases. |
+
+El criterio que se aplicó **no** es el tamaño —el compilador pesa 60× más que
+Spring y se queda igual— sino **qué es**: un motor, un formato de fichero o un
+algoritmo que el proyecto no puede poseer razonablemente. Y el mismo criterio
+deja fuera a `spring-core`, que era una clase con dos métodos. **Decidir el
+peso de verdad de la distribución es otra conversación, y no se ha hecho
+todavía**: esto dice qué se queda y por qué, no que no haya nada más que quitar.
+
 **r) El motor del glob era una dependencia entera por un puñado de clases —
 CERRADO en `f3d897a9`.** `AntStyleGlob` usaba
 `org.springframework.util.AntPathMatcher`: **una** clase de `spring-core`
@@ -1098,13 +1120,17 @@ anterior que parecía verdad se ha vuelto a medir antes de creerla —y era fals
   constructo que cruza un separador— en las que el motor viejo estaba roto. El
   rendimiento quedó en **paridad** (0,72-0,97×) porque el patrón se compila una
   vez, y el guard anti-ReDoS se conserva con el mismo límite.
-- **Lo que este ciclo NO cierra: el peso de verdad de la distribución.** Fuera
+- **El peso de verdad de la distribución, y qué se hace con él — DECIDIDO.** Fuera
   de `spring-core` quedan el compilador de Kotlin embebido (**58 MB**),
   `sqlite-jdbc` (**14 MB**) y BouncyCastle (**~9 MB**): 64× más que lo que se
-  acaba de quitar. La política escrita en AGENTS.md §1 se aplicó donde era
-  evidente —un par de clases—; decidir sobre el compilador embebido es otra
-  conversación, porque no es «copiar dos clases» sino una dependencia con un
-  peso y un precio distintos. **Queda dicho, no decidido.**
+  acaba de quitar. La política de AGENTS.md §1 dice que una dependencia se
+  queda si lleva algo que el proyecto no puede razonablemente poseer, y que eso
+  tiene que decirse **por dependencia**, no heredarse por defecto. La decisión
+  es que **esas tres se quedan**, y el motivo de cada una está en §2.2 s): no
+  son «un par de clases», sino un motor de compilación, un motor de
+  persistencia y criptografía. Lo que **no** se ha hecho es cerrar los ojos
+  delante: su peso está medido y publicado, y eso es lo que permite revisitarla
+  cuando toque.
 
 ---
 
@@ -1170,6 +1196,18 @@ anterior que parecía verdad se ha vuelto a medir antes de creerla —y era fals
   (~9 MB). La política se ha aplicado donde era evidente, pero **decidir sobre
   el compilador embebido es otra conversación**: no es «copiar dos clases», es
   una dependencia con un peso y un precio distintos. **Queda dicho, no decidido.**
+- **El criterio de «se queda» no es el tamaño: es qué es.** Decidido: el
+  compilador embebido, SQLite y BouncyCastle **se quedan**, y el motivo de
+  cada uno está escrito por dependencia en §2.2 s). No es una ventana que se
+  cierra por cansancio: el compilador de Kotlin es un **motor** (compila los `.pipeline.kts`), SQLite
+  es un **formato de fichero** con su página de formato como contrato, y
+  BouncyCastle es **criptografía** (PKCS#7, X.509). El mismo criterio deja
+  fuera a `spring-core`, que era una clase con dos métodos. Y por eso la regla
+  de AGENTS.md §1 se escribe como «una dependencia se queda si lleva algo que
+  el proyecto no puede razónablemente poseer»: **razonablemente** es la
+  palabra que evita tanto el «copiamos todo» como el «no tocamos nada». Lo que
+  no se ha hecho es cerrar los ojos: el peso de cada dependencia está medido y
+  publicado, que es lo que permite revisitarla.
 - **Un patrón que encuentra de más es un fallo de seguridad; uno que no encuentra
   es un fallo de silencio.** Los dos casos del glob se veían igual desde fuera
   («no archivó lo que pedí») y no lo eran: la alternancia leída como comodín

@@ -37,7 +37,7 @@ dependencies {
     // `bindSpecs` is `suspend`, so the end-to-end rollback test needs a coroutine to call it
     // through. Main needs no coroutines dependency: the function only ever awaits nothing.
     testImplementation(libs.kotlinx.coroutines.core)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks.test {

@@ -33,7 +33,7 @@ dependencies {
     // `api` dependency, and `:pipeline-domain` relies on exactly that. Declaring it here as
     // `implementation` overrode that to `runtime` scope in the POM, so one contract would have
     // shipped with two different stdlib scopes depending on which module a consumer reached first.
-    // BLOCK 2: `libs.sqlite.jdbc` is gone from this module, and that is the point of the split.
+    // `libs.sqlite.jdbc` is gone from this module, and that is the point of the split.
     // Nothing left here opens a connection — SqliteConnectionFactory, SqliteEventStore and
     // JsonEventLog moved to `:pipeline-events-store` — so a published event contract no longer
     // drags a JDBC driver onto a consumer's runtime classpath. A dependency that no code uses is
@@ -41,14 +41,14 @@ dependencies {
     testImplementation(libs.kotlin.reflect)
     testImplementation(libs.junit.jupiter)
     // Override BOM-enforced wrong version (junit-platform-launcher uses 1.x not 5.x)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks.test {
     // This block USED to declare `inputs.dir(.../pipeline-events-store/src/main/kotlin)` because
     // `EventSchemaNoMapStringStringTest` shelled out to `grep` over a source tree belonging to
     // ANOTHER module, and Gradle's up-to-date check only sees declared inputs. That test was
-    // deleted in 2aa071aab, so the declaration lost its only consumer: it kept hashing a foreign
+    // deleted, so the declaration lost its only consumer: it kept hashing a foreign
     // source tree on every run to invalidate nothing, and its comment kept asserting a guarantee
     // about a test that no longer existed. Removed rather than re-pointed -- no test here reads
     // another module's sources, so there is nothing for a cross-module input to guard. If one ever
@@ -59,7 +59,7 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// BLOCK 2: the published event contract. Consumers resolve it as ordinary Maven coordinates
+// The published event contract. Consumers resolve it as ordinary Maven coordinates
 // produced from THIS source revision, so `pipelinek-fabric` never needs a source or composite
 // dependency on this repository. Version is not declared here: the root project is the single
 // authority for it, and a per-module `version =` is a release-time defect.

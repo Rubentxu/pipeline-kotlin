@@ -33,15 +33,15 @@ dependencies {
     // was real but undeclared: it existed transitively, by accident of the module graph.
     api(project(":pipeline-domain"))
     testImplementation(libs.junit.jupiter)
-    testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.4.10")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testImplementation(libs.kotlin.reflect)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks.test {
     useJUnitPlatform()
 }
 
-// Lane R: publish this SDK module into a build-local Maven repository so the
+// Publish this SDK module into a build-local Maven repository so the
 // independent external plugin build can compile against artifacts produced from
 // THIS source revision. Replaces the committed libs/*.jar snapshots, which could
 // silently drift from the live SDK.

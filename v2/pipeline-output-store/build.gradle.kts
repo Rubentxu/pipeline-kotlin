@@ -7,8 +7,7 @@ group = "dev.rubentxu.pipeline.v2"
 // NOT published. `:pipeline-output` is the Output Plane's published contract; this module is its
 // segment/filesystem implementation. Publishing both would hand an external consumer a second
 // Authority over the same bytes, which is the double-writer removed. The absence of
-// `maven-publish` here is the mechanism, and `PublishedContractBoundaryFitnessTest` is what keeps
-// it from being re-added by accident.
+// `maven-publish` here is the mechanism that keeps it from being published by accident.
 
 kotlin {
     jvmToolchain(21)
@@ -28,7 +27,7 @@ dependencies {
     api(project(":pipeline-output"))
 
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks.test {

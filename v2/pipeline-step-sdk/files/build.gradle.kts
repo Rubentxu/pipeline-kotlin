@@ -20,7 +20,7 @@ dependencies {
     implementation(project(":pipeline-scripting-api"))
 
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 // One exception to "this module carries no unit tests", and it is the whole reason this block

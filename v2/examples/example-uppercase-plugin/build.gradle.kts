@@ -15,7 +15,7 @@ version = "0.1.0"
 // SDK artifacts (pipeline-domain: StepDefinitionContributor/StepRegistry contracts
 // + domain value types; pipeline-scripting-api: the DSL facade surface). No
 // internal application/runtime imports.
-// Lane R: the SDK is consumed as ordinary module coordinates resolved from a
+// The SDK is consumed as ordinary module coordinates resolved from a
 // build-local Maven repository produced by the v2 build from the SAME source
 // revision. It is deliberately NOT a `files(...)` dependency on a committed
 // jar: a stale SDK must fail this build rather than silently satisfy it.

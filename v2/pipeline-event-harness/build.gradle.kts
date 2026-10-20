@@ -17,9 +17,9 @@ dependencies {
     implementation(libs.kotlin.stdlib)
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-events"))
-    // BLOCK 2 removed the harness's dependency on `:pipeline-events-store`, and that is the point.
+    // The harness does not depend on `:pipeline-events-store`, and that is the point.
     // `RealHistoryParityTest` drove a real `JsonEventLog` to prove the harness agrees with a real
-    // history. `JsonEventLog` is an implementation, and BLOCK 2 moved it to `:pipeline-events-store`
+    // history. `JsonEventLog` is an implementation, and it lives in `:pipeline-events-store`
     // so the published event contract would carry no wire format and no JDBC. Reaching for it from
     // here would have made the verifier depend on the thing it verifies — the exact inversion
     // `FArch020EventHarnessIsolationTest` existed to prevent.

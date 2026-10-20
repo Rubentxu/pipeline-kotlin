@@ -6,7 +6,7 @@ plugins {
 group = "dev.rubentxu.pipeline.v2"
 
 // NOT published, and the absence of `maven-publish` is the mechanism.
-// BLOCK 2 publishes `:pipeline-events` so an external consumer can read envelopes and page
+// `:pipeline-events` is published so an external consumer can read envelopes and page
 // history without a source or composite dependency. Everything that touches SQLite, a filesystem,
 // the journal protocol or the replay cursor lives here instead: OperationJournal, ReplayCursorStore,
 // OperationJournalSchema, RunExecutionLease, JsonEventLog, SqliteEventStore and InMemoryEventStore.
@@ -54,7 +54,7 @@ dependencies {
     // it backs the `pipeline events verify` product command. This edge was the only other one.
     testImplementation(libs.kotlin.reflect)
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks.test {

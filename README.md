@@ -166,7 +166,7 @@ pipelinek run --help
 
 ## Examples
 
-The [`examples/`](examples/) directory holds 31 runnable
+The [`examples/`](examples/) directory holds 32 runnable
 pipelines that exercise the real CLI, grouped by what they cover:
 
 | Category | Scenarios | What it covers |
@@ -177,7 +177,7 @@ pipelines that exercise the real CLI, grouped by what they cover:
 | `durable/` | 4 | Durable execution over the journal: platform queries, milestones, `waitUntil`, `stash`/`unstash` |
 | `security/` | 2 | Credential bindings, and a ZIP-slip path-traversal defence |
 | `output/` | 7 | The output plane: file reads, a utilities round trip, ZIP/unzip, mixed utilities, cross-step artifact queries, HTML publishing, and the live output of a process |
-| `negative/` | 5 | Deliberate failures that must fail closed: error handling, the typed error step, a command that exits non-zero, a workspace symlink escape, an unregistered directive key |
+| `negative/` | 6 | Deliberate failures that must fail closed: error handling, the typed error step, a command that exits non-zero, a workspace symlink escape, an unregistered directive key, a plugin artifact whose bytes cannot be read |
 | `plugins/` | 3 | The three external example plugins, discovered from the distribution classpath: `uppercase`, `repeat`, and a contributed directive |
 
 Each scenario runs **twice** — once with a private journal database, which is

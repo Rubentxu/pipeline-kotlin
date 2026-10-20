@@ -196,6 +196,7 @@ public final class dev/rubentxu/pipeline/v2/dsl/StageScope : dev/rubentxu/pipeli
 	public final fun pwd (Z)Ljava/lang/String;
 	public static synthetic fun pwd$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;ZILjava/lang/Object;)Ljava/lang/String;
 	public final fun retry (ILkotlin/jvm/functions/Function1;)V
+	public final fun slot (Ljava/lang/String;Lkotlin/jvm/functions/Function1;)V
 	public final fun stash (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun stash$default (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
 	public final fun timeout (JLjava/lang/String;Lkotlin/jvm/functions/Function1;)V
@@ -785,6 +786,21 @@ public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Sleep : dev/rubentxu/pi
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getName ()Ljava/lang/String;
 	public final fun getSeconds ()J
+	public fun getType ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/dsl/StepSpec$Slot : dev/rubentxu/pipeline/v2/dsl/StepSpec {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/dsl/StepSpec;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/dsl/StepSpec;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/dsl/StepSpec;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Slot;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Slot;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/dsl/StepSpec;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/dsl/StepSpec$Slot;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getName ()Ljava/lang/String;
+	public final fun getSlotName ()Ljava/lang/String;
+	public final fun getStep ()Ldev/rubentxu/pipeline/v2/dsl/StepSpec;
 	public fun getType ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;

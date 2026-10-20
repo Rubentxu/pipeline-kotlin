@@ -6,7 +6,6 @@ import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindin
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
-import dev.rubentxu.pipeline.v2.domain.ContextOverlay
 import dev.rubentxu.pipeline.v2.domain.DefinitionId
 import dev.rubentxu.pipeline.v2.domain.DefinitionIdentityInput
 import dev.rubentxu.pipeline.v2.domain.Digest
@@ -19,7 +18,6 @@ import dev.rubentxu.pipeline.v2.domain.PostSpec
 import dev.rubentxu.pipeline.v2.domain.StageBody
 import dev.rubentxu.pipeline.v2.domain.StageId
 import dev.rubentxu.pipeline.v2.domain.StageNode
-import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.domain.StepId
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.SourceDescriptor
@@ -141,10 +139,28 @@ object DslCompiledPipelineCompiler {
     private fun stepNodes(steps: List<StepSpec>, parentToken: String): List<StepNode> {
         val occurrences = mutableMapOf<String, Int>()
         return steps.flatMap { step ->
-            val occurrence = occurrences.merge(step.name, 1, Int::plus)!! - 1
+            // The counter follows the INNER name (see [identityName]): two named `sh` steps
+            // are `sh-0` and `sh-1`. The name is what tells siblings apart.
+            val identity = step.identityName
+            val occurrence = occurrences[identity] ?: 0
+            occurrences[identity] = occurrence + 1
             stepNode(step, parentToken, occurrence)
         }
     }
+
+    /**
+     * The name that tells two siblings apart.
+     *
+     * A [StepSpec.Slot] is sugar: the step it names is the one that gets an identity, so
+     * the occurrence counter follows the INNER name and not the wrapper's. Two named `sh`
+     * steps are then `sh-0` and `sh-1`, exactly like two unnamed ones — and the name that
+     * tells them apart is carried by the node, not by its position in a string.
+     */
+    private val StepSpec.identityName: String
+        get() = when (this) {
+            is StepSpec.Slot -> step.identityName
+            else -> name
+        }
 
     /**
      * Converts one StepSpec into one or more canonical StepNode IR nodes.
@@ -183,6 +199,22 @@ object DslCompiledPipelineCompiler {
                     body = stepNodes(step.body, "$parentToken/${stableToken(step.name)}-body-$occurrence"),
                 ),
             )
+            is StepSpec.Slot -> {
+                // A named step. The name is the ADDRESS the plugin will use, and it is
+                // independent of the kind: two steps of the same kind can live in one body
+                // as long as the plugin named them apart.
+                if (step.step is StepSpec.Slot) {
+                    error("A slot cannot name another slot: '${step.slotName}'")
+                }
+                val named = stepNode(step.step, parentToken, occurrence)
+                if (named.size != 1) {
+                    error(
+                        "A slot names exactly one step: '${step.slotName}' lowered to " +
+                            "${named.size} steps",
+                    )
+                }
+                listOf(named.single().withSlot(PluginStepId(step.slotName)))
+            }
             is StepSpec.WriteFile -> listOf(
                 OpaqueStepNode(
                     id = StepId("$parentToken/${stableToken(step.name)}-$occurrence"),
@@ -211,59 +243,29 @@ object DslCompiledPipelineCompiler {
                 parentToken = parentToken,
                 occurrence = occurrence,
             )
-            is StepSpec.TimeoutBlock -> blockStepNode(
-                step = step,
-                parentToken = parentToken,
-                occurrence = occurrence,
-            )
-            is StepSpec.RetryBlock -> blockStepNode(
-                step = step,
-                parentToken = parentToken,
-                occurrence = occurrence,
-            )
-            is StepSpec.Dir -> blockStepNode(
-                step = step,
-                parentToken = parentToken,
-                occurrence = occurrence,
-            )
-            is StepSpec.WithCredentialsBlock -> blockStepNode(
-                step = step,
-                parentToken = parentToken,
-                occurrence = occurrence,
-            )
-            is StepSpec.Timestamps -> blockStepNode(
-                step = step,
-                parentToken = parentToken,
-                occurrence = occurrence,
-            )
-            is StepSpec.WithEnv -> blockStepNode(
-                step = step,
-                parentToken = parentToken,
-                occurrence = occurrence,
-            )
+            // Every body-owning step lowers through the SAME block machinery (EM-4
+            // substrate, JEP-020/021/022/029). The compiler does not pick the family:
+            // the DSL variant already says which one it is. The else ->
+            // OpaqueStepNode catch-all MUST NOT fire for any of these keys.
+            is StepSpec.TimeoutBlock, // JEP-020
+            is StepSpec.RetryBlock, // JEP-021
+            is StepSpec.Dir, // JEP-022
+            is StepSpec.WithCredentialsBlock,
+            is StepSpec.Timestamps,
+            is StepSpec.WithEnv,
             // WU-G5R.2: waitUntil projects to canonical BlockStepNode (body-owning).
-            // The else -> OpaqueStepNode catch-all MUST NOT fire for this key.
-            is StepSpec.WaitUntilBlock -> blockStepNode(
-                step = step,
-                parentToken = parentToken,
-                occurrence = occurrence,
-            )
+            is StepSpec.WaitUntilBlock,
             // WU-091 G3: core.lock lowers through the SAME block machinery; the
             // wire payload is produced exclusively by CoreLockWireCodec (G3.4).
-            // The else -> OpaqueStepNode catch-all MUST NOT fire for this key.
-            is StepSpec.Lock -> blockStepNode(
-                step = step,
-                parentToken = parentToken,
-                occurrence = occurrence,
-            )
+            is StepSpec.Lock,
             // WU-092 G3: core.input lowers through the SAME block machinery; the
             // wire payload is produced exclusively by CoreInputWireCodec (G3.4).
-            // The else -> OpaqueStepNode catch-all MUST NOT fire for this key.
-            is StepSpec.Input -> blockStepNode(
-                step = step,
-                parentToken = parentToken,
-                occurrence = occurrence,
-            )
+            is StepSpec.Input ->
+                blockStepNode(
+                    step = step,
+                    parentToken = parentToken,
+                    occurrence = occurrence,
+                )
             is StepSpec.Unstable -> rewriteUnstable(
                 message = step.message,
                 parentToken = parentToken,
@@ -289,7 +291,7 @@ object DslCompiledPipelineCompiler {
      * The body steps are compiled recursively via [stepNodes] to produce the flat
      * canonical child sequence. The step's metadata (buildResult, time/unit, count, etc.)
      * is not encoded in the BlockStepNode itself — it lives in the [StepDescriptor] looked
-     * up from [StepDescriptorRegistry.standard] and the runtime [ContextOverlay] pushed
+     * up from `StepDescriptorRegistry.standard` and the runtime `ContextOverlay` pushed
      * by the coordinator when dispatching the block.
      *
      * JEP-029 (body-execution IR): BlockStepNode is the canonical representation
@@ -297,6 +299,17 @@ object DslCompiledPipelineCompiler {
      * handles the body children with proper per-child journal rows and context-stack
      * restoration.
      */
+    /**
+     * The same node, addressed by [slot].
+     *
+     * The name travels with the node because that is where the engine reads it: the node
+     * IS the step, and the slot is one of its attributes.
+     */
+    private fun StepNode.withSlot(slot: PluginStepId): StepNode = when (this) {
+        is OpaqueStepNode -> copy(slot = slot)
+        is BlockStepNode -> copy(slot = slot)
+    }
+
     private fun blockStepNode(step: StepSpec, parentToken: String, occurrence: Int): List<StepNode> {
         val tokenPrefix = stableToken(step.name)
         val stepId = StepId("$parentToken/${tokenPrefix}-body-$occurrence")

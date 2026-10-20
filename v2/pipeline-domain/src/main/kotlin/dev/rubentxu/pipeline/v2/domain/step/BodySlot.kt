@@ -14,9 +14,11 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
  * This port is that choice, and nothing more:
  *
  *  - The slot is named by a [PluginStepId], and it names a child of the
- *    handler's OWN body. The engine resolves it; the handler never sees a
- *    [BodyRef], never holds one and never iterates children. The same
- *    separation the continuation keeps.
+ *    handler's OWN body. The name is the one the plugin gave that child when
+ *    it wrote the body, or the child's kind when it gave none — so a handler
+ *    can chain two bodies of the same kind and still tell them apart. The
+ *    engine resolves it; the handler never sees a [BodyRef], never holds one
+ *    and never iterates children. The same separation the continuation keeps.
  *  - The selected child is dispatched through the SAME canonical spine as any
  *    other body child, with the identity it would have had if the engine had
  *    dispatched it itself. One authority, one journal, one exactly-once law.
@@ -63,24 +65,30 @@ sealed interface SlotResolution {
 }
 
 /**
- * The resolution of a slot name against the keys of a body's children.
+ * The resolution of a slot name against the addresses of a body's children.
  *
- * PURE and TOTAL: it reads a list of keys and answers, and it never looks at
+ * PURE and TOTAL: it reads a list of addresses and answers, and it never looks at
  * the engine, the journal or the run. That is what makes it decidable in one
  * place and testable without a pipeline.
  */
 object BodySlots {
 
     /**
-     * The child [slot] names among [childKeys], in body order.
+     * The child [slot] names among [childAddresses], in body order.
+     *
+     * An address is the name the plugin gave a child, or the child's kind when
+     * nobody named it — so a body that names nothing is addressed exactly as it
+     * was before names existed, and a body that names its children can hold two
+     * children of the same kind without them colliding.
      *
      * Ambiguity is answered, not resolved by guessing: two children may share
-     * a key (two `sh` steps in one body do), and a name that fits both does
-     * not identify either. Picking the first would give the handler a body it
-     * did not ask for, with the identity of the other one.
+     * an address (two `sh` steps in one body do, and two steps with the same
+     * declared name do), and a name that fits both does not identify either.
+     * Picking the first would give the handler a body it did not ask for, with
+     * the identity of the other one.
      */
-    fun resolve(childKeys: List<PluginStepId>, slot: PluginStepId): SlotResolution {
-        val matches = childKeys.withIndex().filter { (_, key) -> key == slot }
+    fun resolve(childAddresses: List<PluginStepId>, slot: PluginStepId): SlotResolution {
+        val matches = childAddresses.withIndex().filter { (_, address) -> address == slot }
         return when (matches.size) {
             0 -> SlotResolution.Missing(slot)
             1 -> SlotResolution.Found(matches.first().index)

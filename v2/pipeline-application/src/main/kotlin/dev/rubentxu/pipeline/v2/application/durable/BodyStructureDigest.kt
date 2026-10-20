@@ -31,10 +31,12 @@ import dev.rubentxu.pipeline.v2.domain.StepNode
  *
  * ## What is hashed
  *
- * Each child contributes its `id`, its `pluginStepId` and its ENCODED PAYLOAD, in
- * declaration order. Payloads are included deliberately: a parent's typed output may
- * depend on what its body did, so a changed child must force the parent to re-run rather
- * than hand back a memoized result computed against different work.
+ * Each child contributes its `id`, its `pluginStepId`, its DECLARED SLOT NAME when it has one,
+ * and its ENCODED PAYLOAD, in declaration order. Payloads are included deliberately: a parent's
+ * typed output may depend on what its body did, so a changed child must force the parent to
+ * re-run rather than hand back a memoized result computed against different work. The slot name
+ * is included for the same reason and on the same terms: renaming a slot changes which child
+ * the parent's handler dispatches, and that is a change of work.
  *
  * ## Scope
  *
@@ -62,6 +64,19 @@ internal object BodyStructureDigest {
                 append('\u0000')
                 append(child.pluginStepId.value)
                 append('\u0000')
+                // The name the plugin gave this child, when it gave one. It is part of the
+                // shape: renaming a slot changes WHICH child the parent's handler dispatches,
+                // so the parent's work changes and the parent must not hand back a memoized
+                // result computed against the other one.
+                //
+                // It is appended ONLY when there is one, so a body that names nothing keeps
+                // the digest it had before names existed — and every journal row written by
+                // the published candidate stays valid.
+                child.slot?.let { slot ->
+                    append('\u001F')
+                    append(slot.value)
+                    append('\u0000')
+                }
                 append(child.payload.schemaVersion)
                 append('\u0000')
                 append(child.payload.encoded)

@@ -498,7 +498,11 @@ internal class StepDispatchEngine(
                 BodySlotInvoker { slot, slotContext ->
                     when (
                         val resolution = BodySlots.resolve(
-                            step.body.map { it.pluginStepId },
+                            // The ADDRESS of each child: the name the plugin gave it, or its
+                            // kind when nobody named it. So a body that names its children can
+                            // hold two of the same kind, and a body that names none behaves
+                            // exactly as it did before names existed.
+                            step.body.map { it.address },
                             slot,
                         )
                     ) {
@@ -508,7 +512,7 @@ internal class StepDispatchEngine(
 
                         is SlotResolution.Ambiguous -> slotFailure(
                             "body slot '${slot.value}' is ambiguous in the body of " +
-                                "'${step.pluginStepId.value}': ${resolution.matches} children share that key",
+                                "'${step.pluginStepId.value}': ${resolution.matches} children share that address",
                         )
 
                         is SlotResolution.Found -> {

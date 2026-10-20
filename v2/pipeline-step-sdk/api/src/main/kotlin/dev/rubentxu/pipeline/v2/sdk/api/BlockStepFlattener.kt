@@ -93,6 +93,14 @@ object BlockStepFlattener {
         blockPath: String,
         result: MutableList<FlattenedStep>,
     ) {
+        // A slot is authoring sugar: the step it names IS the step, and the name is an
+        // address rather than a level of nesting. So the tree keeps showing the real
+        // steps — the name lives in the compiled node, where the engine reads it.
+        if (step is StepSpec.Slot) {
+            flattenImpl(step.step, depth, blockPath, result)
+            return
+        }
+
         result.add(FlattenedStep(step, depth, blockPath))
 
         // Recurse into nested steps for any block-type step
@@ -101,16 +109,10 @@ object BlockStepFlattener {
             is StepSpec.RegistryStepSpec -> {}
             // WU-RP-033: registry Block form owns a body — flatten children like any block.
             is StepSpec.RegistryBlockSpec -> {
-                for ((idx, inner) in step.body.withIndex()) {
-                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
-                    flattenImpl(inner, depth + 1, childPath, result)
-                }
+                flattenChildren(step.body, depth, blockPath, result)
             }
             is StepSpec.WithEnv -> {
-                for ((idx, inner) in step.steps.withIndex()) {
-                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
-                    flattenImpl(inner, depth + 1, childPath, result)
-                }
+                flattenChildren(step.steps, depth, blockPath, result)
             }
             is StepSpec.Parallel -> {
                 for ((idx, branch) in step.branches.withIndex()) {
@@ -122,48 +124,27 @@ object BlockStepFlattener {
                 }
             }
             is StepSpec.WithCredentialsBlock -> {
-                for ((idx, inner) in step.steps.withIndex()) {
-                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
-                    flattenImpl(inner, depth + 1, childPath, result)
-                }
+                flattenChildren(step.steps, depth, blockPath, result)
             }
             // --- ML-R9 block-type steps (T-04..T-10) ---
             is StepSpec.Dir -> {
-                for ((idx, inner) in step.steps.withIndex()) {
-                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
-                    flattenImpl(inner, depth + 1, childPath, result)
-                }
+                flattenChildren(step.steps, depth, blockPath, result)
             }
             is StepSpec.CatchError -> {
-                for ((idx, inner) in step.steps.withIndex()) {
-                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
-                    flattenImpl(inner, depth + 1, childPath, result)
-                }
+                flattenChildren(step.steps, depth, blockPath, result)
             }
             is StepSpec.WarnError -> {
-                for ((idx, inner) in step.steps.withIndex()) {
-                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
-                    flattenImpl(inner, depth + 1, childPath, result)
-                }
+                flattenChildren(step.steps, depth, blockPath, result)
             }
             // ML-R9 T-08 output-decorators
             is StepSpec.Timestamps -> {
-                for ((idx, inner) in step.steps.withIndex()) {
-                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
-                    flattenImpl(inner, depth + 1, childPath, result)
-                }
+                flattenChildren(step.steps, depth, blockPath, result)
             }
             is StepSpec.AnsiColor -> {
-                for ((idx, inner) in step.steps.withIndex()) {
-                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
-                    flattenImpl(inner, depth + 1, childPath, result)
-                }
+                flattenChildren(step.steps, depth, blockPath, result)
             }
             is StepSpec.NodeNoOp -> {
-                for ((idx, inner) in step.steps.withIndex()) {
-                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
-                    flattenImpl(inner, depth + 1, childPath, result)
-                }
+                flattenChildren(step.steps, depth, blockPath, result)
             }
             // ML-R9 T-09 milestone
             is StepSpec.Milestone -> {
@@ -171,35 +152,23 @@ object BlockStepFlattener {
             }
             // ML-R9 T-10 timeout/retry blocks
             is StepSpec.TimeoutBlock -> {
-                for ((idx, inner) in step.steps.withIndex()) {
-                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
-                    flattenImpl(inner, depth + 1, childPath, result)
-                }
+                flattenChildren(step.steps, depth, blockPath, result)
             }
             is StepSpec.RetryBlock -> {
-                for ((idx, inner) in step.steps.withIndex()) {
-                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
-                    flattenImpl(inner, depth + 1, childPath, result)
-                }
+                flattenChildren(step.steps, depth, blockPath, result)
             }
             // RP6-A / WU-091: core.lock is a body-bearing block step — its body
             // flattens like any other block (G3.6 inventory: this exhaustive `when`
             // is the consumer a new sealed case BREAKS at source level, which is
             // exactly why the compiler caught it).
             is StepSpec.Lock -> {
-                for ((idx, inner) in step.steps.withIndex()) {
-                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
-                    flattenImpl(inner, depth + 1, childPath, result)
-                }
+                flattenChildren(step.steps, depth, blockPath, result)
             }
             // RP6-B / WU-092: core.input is body-bearing for the same reason: the
             // body is conditional (it runs only on a Proceed), so it must flatten
             // like any other block rather than disappear.
             is StepSpec.Input -> {
-                for ((idx, inner) in step.steps.withIndex()) {
-                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
-                    flattenImpl(inner, depth + 1, childPath, result)
-                }
+                flattenChildren(step.steps, depth, blockPath, result)
             }
             // --- Terminal steps — no recursion ---
             is StepSpec.Echo,
@@ -223,11 +192,32 @@ object BlockStepFlattener {
             }
             is dev.rubentxu.pipeline.v2.dsl.StepSpec.WaitUntilBlock -> {
                 // Body-bearing — recurse into the captured body steps.
-                for ((idx, inner) in step.body.withIndex()) {
-                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
-                    flattenImpl(inner, depth + 1, childPath, result)
-                }
+                flattenChildren(step.body, depth, blockPath, result)
             }
+            is StepSpec.Slot -> {
+                // Unreachable: a slot is unwrapped before this point. The branch exists so
+                // that the exhaustiveness of this dispatch stays a compile-time fact, and it
+                // fails loudly rather than silently dropping the step if that ever changes.
+                error("A slot is unwrapped before the flattening dispatch")
+            }
+        }
+    }
+
+    /**
+     * The children of a block-type step, one level deeper.
+     *
+     * The child path is the index of the child among its siblings, so the flattened tree can
+     * be walked back to the step it came from.
+     */
+    private fun flattenChildren(
+        children: List<StepSpec>,
+        depth: Int,
+        blockPath: String,
+        result: MutableList<FlattenedStep>,
+    ) {
+        for ((idx, inner) in children.withIndex()) {
+            val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
+            flattenImpl(inner, depth + 1, childPath, result)
         }
     }
 

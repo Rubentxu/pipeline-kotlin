@@ -429,6 +429,37 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * `Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest` and the lock
      * wire-authority fitness.
      */
+    /**
+     * `slot("name") { ... }` — a step of a body that the plugin gave a NAME.
+     *
+     * The name is the ADDRESS the plugin will use to ask for this step from its own
+     * handler. It is NOT the step's kind: the kind stays what runs, and the name says
+     * which of the plugin's own bodies this is.
+     *
+     * It exists because a body that cannot name its children cannot hold two children of
+     * the same kind: the engine would find two of them and refuse to guess. A plugin
+     * that chains N actions of one kind would then need 2N kinds of its own, which is an
+     * apaño of the fixture and not a pattern a consumer can copy.
+     *
+     * The wrapper is authoring sugar: the compiler lowers it away and puts the name on
+     * the compiled node, where the engine reads it.
+     *
+     * Source-compatibility note: same classification as [Lock] — adding a case to this
+     * sealed hierarchy is binary-compatible and source-additive for consumers holding an
+     * exhaustive `when(step)` without an `else` branch.
+     */
+    data class Slot(
+        val slotName: String,
+        val step: StepSpec,
+    ) : StepSpec {
+        init {
+            require(slotName.isNotBlank()) { "StepSpec.Slot.slotName must not be blank" }
+        }
+
+        override val name: String get() = "slot"
+        override val type: String get() = "slot"
+    }
+
     data class Lock(
         val resource: String,
         val timeoutSeconds: Int? = null,

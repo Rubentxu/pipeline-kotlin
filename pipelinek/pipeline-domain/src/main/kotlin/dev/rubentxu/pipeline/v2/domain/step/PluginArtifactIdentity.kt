@@ -88,22 +88,24 @@ sealed interface PluginManifestDecodeResult {
 /**
  * Identity of an artifact AS THE RUNTIME MEASURED IT.
  * ## Why this type exists at all
- * A manifest carries its own `digest` field, and refuses "self-declared digest
- * as proof": a plugin that can write its own digest can write any digest. So the runtime
- * keeps the measured bytes apart from the declared value, and it is the RUNTIME's digest
- * that is authoritative for identity — the declared one is provenance.
+ * A manifest carries its own `digest` field, and refuses "self-declared digest as proof": a
+ * plugin that can write its own digest can write any digest. So the runtime keeps the measured
+ * bytes apart from the declared value, and it is the RUNTIME's digest that is authoritative for
+ * identity — the declared one is provenance.
  * ## What does and does not do with it
- * [PluginAdmission] requires this type as an input, which means a caller CANNOT admit a
- * plugin by handing over a manifest alone. That is the structural half of the guarantee and
- * It is what delivers
- * The other half — actually hashing the JAR bytes and comparing them to the declared
- * Digest — is a capability that does not exist yet in this runtime, because has no notion
- * of where an artifact came from. That comparison is recorded as the opening condition of
- * EVO-M3b, where the generic artifact model lands. This type is the seam it will occupy:
- * it exists so the eventual verifier plugs in without changing admission's signature.
- * Declaring that limit here, in the type, is what keeps the seam honest. A type called
- * "artifact identity" that silently meant "the digest the plugin said about itself" is the
- * defect this naming prevents.
+ * [PluginAdmission] requires this type as an input, which means a caller CANNOT admit a plugin
+ * by handing over a manifest alone. That is the structural half of the guarantee and it is what
+ * delivers it.
+ * The other half — actually hashing the JAR bytes and comparing them to the declared digest —
+ * is a capability this runtime does not have, and the reason is worth stating in the type
+ * rather than leaving it to be discovered: the manifest declares a digest of the plugin's
+ * CONTENT and the runtime measures a digest of the FILE that carries that content, so the two
+ * are different magnitudes and never agree. What the runtime compares is the artifact with
+ * itself: the bytes read before admission have to be the bytes that are loaded.
+ * This type is the seam the verifier occupies: it exists so the verifier plugs in without
+ * changing admission's signature. Declaring that limit here, in the type, is what keeps the
+ * seam honest. A type called "artifact identity" that silently meant "the digest the plugin
+ * said about itself" is the defect this naming prevents.
 */
 data class MeasuredArtifactIdentity(
     val declaredDigest: Digest,
@@ -111,11 +113,15 @@ data class MeasuredArtifactIdentity(
     val origin: ArtifactOrigin,
 ) {
     /**
-     * True when the runtime could hash the artifact and the hash disagrees with the claim.
+     * What the runtime can say about the artifact's bytes against the manifest's claim.
      * `measuredDigest == null` means "the runtime did not measure", and that is deliberately
      * NOT a pass: it is an [Unverified] state, distinct from both agreement and disagreement.
      * Collapsing "nobody checked" into "checked and fine" is the fail-open this whole type
      * was written to prevent.
+     * A [ArtifactIdentityVerdict.Mismatch] here means the artifact and the manifest disagree.
+     * The two digests are different magnitudes, so this verdict is not an accusation, and
+     * nothing in the runtime acts on it: the refusal that does act on the bytes lives in the
+     * admission layer, which compares the artifact with itself.
 */
     val verdict: ArtifactIdentityVerdict
         get() = when {
@@ -138,7 +144,11 @@ sealed interface ArtifactIdentityVerdict {
     /** Bytes were measured and match the claim. */
     data class Verified(val digest: Digest) : ArtifactIdentityVerdict
 
-    /** Bytes were measured and CONTRADICT the claim. A plugin that lies about itself. */
+    /**
+     * Bytes were measured and they CONTRADICT the claim.
+     * The two digests are different magnitudes, so this says that the artifact and the
+     * manifest disagree, and nothing more: it is not, on its own, a statement about honesty.
+     */
     data class Mismatch(val declared: Digest, val measured: Digest) : ArtifactIdentityVerdict
 
     /**
@@ -221,10 +231,16 @@ sealed interface AdmissionRefusal : AdmissionRejection {
     data class RefusedNoManifest(val contributor: String) : AdmissionRefusal
 
     /**
-     * The runtime measured the artifact bytes and the digest disagrees with the manifest.
-     * The plugin is lying about itself. Both [declared] and [measured] are kept so the
-     * durable control row can be diagnosed from the journal alone. The [identity] is the
-     * canonical plugin text so the refusal can name the same key every call.
+     * The bytes the operator approved are not the bytes the runtime measured.
+     * Both [declared] and [measured] are kept so the durable control row can be diagnosed
+     * from the journal alone. The [identity] is the canonical plugin text so the refusal can
+     * name the same key every call.
+     * The runtime does not produce this refusal today, and it does not produce the older
+     * version of it either: the manifest declares a digest of the plugin's content while the
+     * runtime measures a digest of the file that carries it, and comparing the two accuses
+     * every plugin. It stays in the vocabulary because the refusal it names is a real one —
+     * the operator pinning BYTES rather than a declaration — and that policy is a decision
+     * about what the operator's file holds, not a defect to be patched here.
 */
     data class RefusedDigestMismatch(
         val identity: String,

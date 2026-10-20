@@ -60,6 +60,18 @@ import java.util.ServiceLoader
  * absence of the subject.
  * The fix is not "trust the manifest" and not "trust the classes": both sides are now measured in
  * the same window, from the same artifact, under the same scoping rule.
+ * ## Where this gate stands
+ * Nothing in this repository calls [admitThenLoad]. The admission that the shipped runtime
+ * performs is [PreLoadPluginAdmission], which reads the manifest, admits the declaration, and
+ * leaves the measurement of the bytes to [PluginArtifactIntegrity]. This gate is the stricter
+ * design — it admits a CONTRIBUTER CLASS, and it can consult an operator's trust database — and
+ * it is kept because the design is sound, not because it is wired.
+ * What it verifies, when it is called with a trust database, is the OPERATOR'S POLICY: that the
+ * manifest declares the digest the operator approved. What it does NOT verify is the bytes: the
+ * manifest declares a digest of the plugin's payload, the runtime measures a digest of the file
+ * that carries it, and those are two different magnitudes that never agree. An earlier version of
+ * this file compared them anyway and called the difference a plugin lying about itself; on a real
+ * plugin that comparison accuses every plugin, so it is not a check and it is not here.
 */
 object PluginAdmissionGate {
 
@@ -153,8 +165,10 @@ object PluginAdmissionGate {
                 origin = origin,
             )
         } else {
-            @Suppress("DEPRECATION")
-            PluginManifestResourceReader.measure(
+            // With no operator trust database there is nothing to measure against: the manifest
+            // declares what it declares and the bytes are verified where they CAN be compared
+            // with something else, against themselves, before and after admission.
+            PluginManifestResourceReader.declaredIdentity(
                 declaredDigest = accepted.manifest.release.digest,
                 origin = origin,
             )
@@ -317,39 +331,20 @@ object PluginAdmissionGate {
     }
 
     /**
-     * The artifact-integrity guarantee, as a pure decision with no I/O and no clock.
-     * A measured digest that disagrees with the declared one is refused BEFORE any
-     * operator row is consulted: the admission layer does not need a row to know the
-     * manifest is lying, and a plugin that lies about its own bytes is refused whether
-     * or not anyone pinned anything.
-     * `null` means the bytes did not contradict the claim. It does NOT mean verified:
-     * a `null` [MeasuredArtifactIdentity.measuredDigest] means nobody measured, and that
-     * stays a distinct state handled by the caller, never a silent pass.
-     * Split out from [b32TrustRefusal] so the guarantee is reachable from a test without
-     * building a whole [dev.rubentxu.pipeline.v2.domain.step.PluginManifest] — a fixture
-     * for eight unrelated fields would freeze the manifest's shape to guard a comparison.
-*/
-    internal fun measuredVsDeclaredRefusal(
-        pluginId: String,
-        identity: MeasuredArtifactIdentity,
-    ): AdmissionRefusal.RefusedDigestMismatch? {
-        val measured = identity.measuredDigest
-        if (measured != null && !measured.value.equals(identity.declaredDigest.value, ignoreCase = true)) {
-            return AdmissionRefusal.RefusedDigestMismatch(
-                identity = pluginId,
-                declared = identity.declaredDigest,
-                measured = measured,
-            )
-        }
-        return null
-    }
-
-    /**
      * Compute the trust refusal for a manifest + measured identity
      * Returns `null` when the plugin is admitted on trust grounds (i.e. the operator
-     * pinned the digest and the measured bytes match). Returns the first matching
+     * pinned the digest and the manifest declares the same one). Returns the first matching
      * [AdmissionRefusal] case otherwise.
-*/
+     *
+     * ## What the operator pins
+     * The digest the operator pins is the one the plugin PUBLISHES about its own payload, and
+     * that is what this compares it with. It is not the digest of the artifact file: the
+     * manifest declares a digest of the plugin's CONTENT and the runtime measures a digest of
+     * the file that carries it, so a comparison between the two is between two different
+     * magnitudes and could only ever accuse. Pinning the bytes of the file would be a stronger
+     * policy, and it would also be a different policy — a different value in the operator's
+     * file, and a decision about what that file is and where it lives.
+    */
     private fun b32TrustRefusal(
         trustDatabase: OperatorTrustDatabase,
         manifest: dev.rubentxu.pipeline.v2.domain.step.PluginManifest,
@@ -359,12 +354,7 @@ object PluginAdmissionGate {
         val pluginId = manifest.plugin.canonicalText()
         val releaseVersion = manifest.release.version
 
-        // 1) Compare measured vs declared FIRST. A measured mismatch is a measured
-        // mismatch, regardless of whether the operator has pinned anything. The
-        // admission layer does not need a row to know the manifest is lying.
-        measuredVsDeclaredRefusal(pluginId, identity)?.let { return it }
-
-        // 2) Look up the operator's row for (plugin, version). Three outcomes.
+        // Look up the operator's row for (plugin, version). Three outcomes.
         val row = trustDatabase.lookup(pluginId, releaseVersion)
         return when {
             row == null -> AdmissionRefusal.RefusedUntrustedIdentity(
@@ -379,7 +369,7 @@ object PluginAdmissionGate {
                     identity = pluginId,
                     reason = TrustMetadata.UnverifiedReason.OutsideOperatorTrustPolicy,
                 )
-            else -> null // Verified.
+            else -> null // The operator's policy accepts this declaration.
         }
     }
 

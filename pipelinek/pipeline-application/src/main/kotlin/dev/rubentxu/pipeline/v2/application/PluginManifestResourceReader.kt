@@ -81,41 +81,43 @@ object PluginManifestResourceReader {
     }
 
     /**
- * Record the artifact identity can actually establish — and no more
- * ## Why this returns an unmeasured identity rather than hashing something
- * An earlier version of this method read the manifest resource back and hashed it, then
- * offered that hash as `measuredDigest`. That was fabrication with a SHA-256 on top: the
- * declared digest covers the whole artifact, while the bytes reachable through a
- * [ClassLoader] are the declaration document, so the comparison is between a container and
- * its contents and can only ever disagree. Worse, it disagreed *meaningfully* — a Mismatch
- * verdict reads as "this plugin lied", and the plugin would have been telling the truth.
- * Producing a false accusation is worse than producing no measurement, so this returns
- * `measuredDigest = null`, which [MeasuredArtifactIdentity] renders as
- * [ArtifactIdentityVerdict.Unverified]: a named third state rather than a pass.
- * ## Why it is deprecated rather than removed
- * Introduces [measureArtifactBytes], which actually hashes the artifact bytes
- * resolved from the contributor's `protectionDomain.codeSource`. The deprecated entry
- * point stays so the legacy no-measurement decision shape is still reachable from a
- * single call site; new code MUST use [measureArtifactBytes] and the gate (Step 3) is
- * the only caller that decides between the two.
- * @deprecated use [measureArtifactBytes] to actually measure the artifact; this method
- *   returns an [ArtifactIdentityVerdict.Unverified] identity that the gate must NOT
- *   promote to admitted, and it stays in the code only to mark the legacy decision
- * Shape that the mutation specifically targets
-*/
-@Deprecated(
-    message = "Use measureArtifactBytes to actually hash the artifact. " +
-        "This returns a placeholder Unverified identity and must not be admitted.",
-    replaceWith = ReplaceWith("measureArtifactBytes(contributorClass, origin)"),
-)
-fun measure(
-    declaredDigest: Digest,
-    origin: ArtifactOrigin,
-): MeasuredArtifactIdentity = MeasuredArtifactIdentity(
-    declaredDigest = declaredDigest,
-    measuredDigest = null,
-    origin = origin,
-)
+     * The identity a manifest establishes about its own artifact, and nothing more.
+     *
+     * ## What this records
+     * Where the artifact came from, and what the manifest declares about itself. That is the
+     * whole of what a manifest can establish: a document cannot testify about the bytes that
+     * carry it.
+     *
+     * ## Why there is no measured digest here
+     * An earlier version of this method read the manifest resource back and hashed it, and
+     * offered that hash as `measuredDigest`. That was fabrication with a SHA-256 on top: the
+     * declared digest covers the plugin's payload, while the bytes reachable through a
+     * [ClassLoader] are the declaration document, so the comparison was between a container and
+     * its contents and could only ever disagree. Worse, it disagreed *meaningfully* — a
+     * mismatch reads as "this plugin lied", and the plugin would have been telling the truth.
+     * Producing a false accusation is worse than producing no measurement, so the measured
+     * digest stays `null`, which [MeasuredArtifactIdentity] renders as
+     * [ArtifactIdentityVerdict.Unverified]: a named third state rather than a pass.
+     *
+     * The bytes of the artifact ARE measured, in two places, and both of those comparisons are
+     * between two measurements of the same thing: [measureArtifactBytes] for an artifact whose
+     * classes are already linked, and [digestOfArtifactAt] for one about to be composed. What
+     * neither of them can do is compare the artifact with the digest the manifest declares,
+     * because the manifest declares a digest of the plugin's PAYLOAD and the runtime measures a
+     * digest of the FILE that carries it. Those are two different magnitudes, and on a real
+     * plugin they never agree.
+     *
+     * @param declaredDigest the digest the manifest declares about its own payload.
+     * @param origin where the artifact came from.
+     */
+    fun declaredIdentity(
+        declaredDigest: Digest,
+        origin: ArtifactOrigin,
+    ): MeasuredArtifactIdentity = MeasuredArtifactIdentity(
+        declaredDigest = declaredDigest,
+        measuredDigest = null,
+        origin = origin,
+    )
 
     /**
      * Measure the actual artifact bytes the contributor class was loaded from.

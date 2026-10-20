@@ -246,7 +246,10 @@ class ApiRangeContainsTest {
         )
         for (conflict in conflicts) {
             assertEquals("0.51.0", conflict.hostVersion)
-            assertTrue(conflict.apiRange.isNotBlank(), "${conflict.pluginId} conflict carries no range")
+            assertTrue(
+                conflict.apiRange.orEmpty().isNotBlank(),
+                "${conflict.pluginId} conflict carries no range",
+            )
             assertTrue(conflict.releaseVersion.isNotBlank(), "${conflict.pluginId} conflict carries no version")
         }
     }

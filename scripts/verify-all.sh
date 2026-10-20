@@ -191,7 +191,7 @@ print_plan() {
     for s in 1 2 3 4 5; do
         want_stage "$s" || continue
         case "$s" in
-            1) printf '  stage 1  detektMain detektTest apiCheck :pipeline-application:installDist\n' ;;
+            1) printf '  stage 1  detektMain detektTest apiCheck :pipeline-runtime:compileKotlin :pipeline-application:installDist\n' ;;
             2)
                 printf '  stage 2  unit tests\n'
                 planned_modules=0

@@ -2687,6 +2687,38 @@ coincidir con el del fichero.
   con test» y «los seis sin test» eran de un árbol anterior; hoy son 25 y dos. Un número
   escrito a mano envejece, y heredarlo es heredar una mentira con formato de dato.
 
+### 2.18 El módulo que nadie compila, y dos entradas que ya no existen
+
+**`:pipeline-runtime`: 1549 líneas que la puerta ni siquiera compila.** El censo del
+ciclo anterior lo dejó registrado como «latente», sin medir su peso. Medido hoy:
+
+| pregunta | respuesta medida |
+|---|---|
+| ¿quién lo depende? | nadie: `project(":pipeline-runtime")` no aparece en ningún `build.gradle.kts` del árbol |
+| ¿se publica? | no: no está en `publishedContractModules`, y su propio build file llama «código muerto inocuo» a su bloque de publicación |
+| ¿viaja en la distribución? | no: el `lib/` de la distribución instalada no contiene ningún jar suyo |
+| ¿lo compila la puerta? | no: la etapa 1 compila lo que la aplicación necesita y la etapa 2 sólo pregunta a los módulos con test |
+| ¿compila hoy? | sí, cuando se le pregunta: `:pipeline-runtime:clean :pipeline-runtime:compileKotlin` termina en verde |
+| ¿lo llama alguien? | no: es la única implementación de los puertos publicados de recover, control e introspección, y nada en el árbol los invoca |
+
+Su propio build file lo dice: «los puertos se publican a propósito, los adaptadores
+están escritos, y falta el cableado». Eso es trabajo a medias, no una pieza viva:
+1549 líneas que ningún artefacto lleva, que la puerta no compila y que nadie puede
+observar. El bloque (a) del censo ya no lo cuenta como «módulo con código y sin
+test», porque su código no llega a compilarse en ninguna corrida de la puerta.
+
+**Dos entradas que ya no existen.** Los bloques (c) y (d) de §2.2 describían
+`~/.worktrees/` y `docs/` como directorios pendientes de borrar, y ninguno de los
+dos está: el (c) se cerró con los gitlinks del árbol —`git ls-files` no lista ninguno
+y un clon real sale limpio— y el (d) con el RESET, que borró el Markdown versionado
+bajo `docs/`. Se quedaron en el ROADMAP porque el texto de un bloque no se mide solo.
+
+**La decisión que toca.** O los adaptadores se cablean a los puertos publicados y la
+garantía de recover, control e introspección tiene por fin una implementación que el
+runtime usa, o el módulo se retira y queda escrito que esos puertos publicados no
+tienen implementación en el runtime. Lo que no vale es seguir como está: código que
+nadie compila es un módulo que ya no es código, sólo peso.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 
 - **No** crear un arnés de pruebas. El código de verificación vive en
@@ -2902,6 +2934,22 @@ coincidir con el del fichero.
   traga lo que viene después— y esa versión sí se puso roja al romper el
   cierre del literal. Motivo: una suite que parece cubrir algo y no puede
   fallar es un documento que ocupa el sitio de un test.
+
+- **La cadena de objetivos se declara, pero el ROADMAP sigue siendo la autoridad.**
+  La misión continua del proyecto —su objetivo y su cola de trabajo— vive en un
+  fichero local e ignorado por Git, con la misma filosofía que el resto del estado
+  local: una herramienta que deja ficheros sin versionar en el repositorio de otra
+  persona se gana el mistrust de quien la usa. El ROADMAP sigue siendo la autoridad
+  del trabajo; la declaración sólo dice por dónde empieza la cadena y qué son sus
+  candidatos. Los presupuestos salen de una medición: un ciclo de este proyecto costó
+  del orden de 740 000 tokens en los cinco ciclos de esta sesión, así que el objetivo
+  lleva 1 000 000 y la misión 10 000 000.
+
+- **La cola de la misión se mide antes de escribirse.** Los tres candidatos que la
+  acompaña son bloques que el ROADMAP declara abiertos, y el primero es el que la
+  medición de este ciclo dejó sin cobertura: `:pipeline-runtime`. La cadena no
+  inventa trabajo, y un candidato cuya evidencia apunte a un fichero que no existe se
+  descarta.
 
 ---
 

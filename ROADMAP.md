@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `e9392ce4` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `4dee0b229` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 9 | ídem |
-| Tests unitarios ejecutados | **713** (89 informes JUnit, **89** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
+| Tests unitarios ejecutados | **713** (89 informes JUnit, **89** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:713 read:0` |
 | Escenarios E2E | 46 (**45 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **10928 / 65474 = 0.167** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **10979 / 65474 = 0.168** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **101 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **99 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -38,14 +38,22 @@ correcto con el verbo equivocado ya no puede colarse: la etapa 2 separa
 de los 89 informes —se limpiaron las salidas de test antes de correr, así que
 ninguno pudo venir de la caché—.
 
-La corrida que se publica es la de `e9392ce4` (**101 s**). El reloj de este gate
+**Y el total viaja ahora en la línea de veredicto**, que es la única que alguien
+pega en un informe: `tests=rewritten:713 read:0`. Antes esa línea decía
+`PASS  sha=…  elapsed=345s  budget=900s  gaps=1 not_run` y no decía **nada** de
+los tests: el dato estaba en el log de la etapa 2, y el log lo lee quien corrió la
+puerta, no quien la cita. Una cifra con el verbo equivocado ya no puede colarse
+ni por el lado del log ni por el lado de la línea (§2.2 u).
+
+La corrida que se publica es la de `4dee0b229` (**99 s**). El reloj de este gate
 tiene ruido, y publicarlo sin decirlo vuelve a ser una afirmación que nadie
 puede reproducir: el ciclo anterior (`f3d897a9`) midió **97 s** con 88
 informes, y otra corrida sobre ese **mismo** contenido, con los módulos tocados
-compilando de cero, midió 98 s. La diferencia entre 97 y 101 s entra de sobra en
-el ruido medido de este reloj (±10 s): este ciclo añadió **6 tests** y **1
-escenario**, y **cuánto cuesta el escenario nuevo por sí solo no se midió
-aislado**, así que no se afirma.
+compilando de cero, midió 98 s. La diferencia entre 97 y 99 s entra de sobra en
+el ruido medido de este reloj (±10 s). Este ciclo **no añadió ni un test ni un
+escenario** —tocó un script de verificación y la política escrita que lo
+governa—, así que su coste es el de la puerta anterior y **cuánto cuesta por sí
+solo el cambio no se midió aislado**, así que no se afirma.
 
 El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
 declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
@@ -1127,6 +1135,30 @@ y cambia de valor. La ley S8 permite cambiar el valor de un campo de texto y no
 la forma, y el valor nuevo es el que sirve: el *kind* no decía qué acción se
 compensó y el nombre sí.
 
+**u) La línea de veredicto no decía qué tests se ejecutaron — CERRADO en `4dee0b229`.**
+La etapa 2 separaba `rewritten` de `read` en el **log**, pero la línea que la gente
+pega en los informes —`PASS  sha=…  elapsed=…s  budget=900s`— no lo decía. Eso
+convertía un **censo de informes en disco** en una medición: en el ciclo del 3b-5
+fueron 686 tests en 85 informes, de los que sólo **9** reescribió la corrida, y la
+línea los daba por ejecutados.
+
+**La regla es una y es total**: la línea de veredicto lleva el campo `tests=`, con
+las dos mitades separadas —`rewritten:<n>` (los tests de los informes que **esta**
+corrida escribió: se ejecutaron de verdad) y `read:<n>` (los de los informes que no
+escribió: los ejecutó una invocación anterior y se leyeron de disco)—. Una corrida
+que no pidió los tests dice `tests=NOT_RUN`, porque un campo ausente se lee como un
+cero, y aquí no es un cero: es «no medido».
+
+**Mutación vista en rojo**: con la línea de HEAD, una corrida en caché que **no
+ejecutó ni un test** salía vestida de `PASS (subset)  sha=…  elapsed=16s`, y el
+log, dos líneas más abajo, decía `0 test(s) in 0 report(s)`. Con el campo, la misma
+corrida dice `tests=rewritten:0 read:161`. El rojo estaba **en la línea**, que es
+donde se lee, y no en el log.
+
+La política queda escrita en `AGENTS.md` §5, junto a la del marcador `SUBSET`: la
+diferencia entre esta corrida y la puerta tiene que ir **dentro** de la línea, no al
+lado. Es el mismo argumento que ya cerró dos veces el mismo patrón en este repo.
+
 
 ### 2.3 Cierre de ciclo
 
@@ -1192,6 +1224,15 @@ compensó y el nombre sí.
   `pipeline-domain` es EXPERIMENTAL y el ledger es el mecanismo del repo para
   romper con un recibo. Y el escenario nuevo `39-saga-two-same-kind` se **vio
   rojo** con el motor direccionando por *kind*.
+- **La línea de veredicto dice lo que corrió — cerrado en `4dee0b229`.** El campo
+  `tests=rewritten:<n> read:<n>` viaja **dentro** de la línea (§2.2 u). El defecto
+  era un falso verde de manual y medido: una corrida con el task de Gradle al día
+  ejecutaba **cero** tests, y su línea de veredicto no lo decía — el log lo decía,
+  dos líneas más abajo, y el log no es lo que se pega en un informe. Con el campo,
+  esa misma corrida dice `tests=rewritten:0 read:161`. La puerta sobre `4dee0b229`
+  da **99 s**, `tests=rewritten:713 read:0`, **713** tests en **89/89** informes
+  reescritos por la corrida, 46 escenarios (45 ok, 1 NOT_RUN) y LOC
+  `10979/65474 = 0.168`.
 
 ---
 
@@ -1422,6 +1463,14 @@ compensó y el nombre sí.
   constancia». El recibo va en `published-contract-exceptions.json`, y su SHA es
   **el commit ya fusionado** que introdujo el cambio: un recibo que nombre un SHA
   que no existe en `main` no es un recibo.
+- **La evidencia de una corrida va dentro de la línea que se cita.** La puerta ya
+  distinguía lo ejecutado de lo cacheado, pero lo distinguía en el log: el sitio
+  donde nadie lo mira cuando copia el veredicto a un informe. El campo `tests=` no
+  es una mejora de formato; es el cierre de un falso verde **real y medido** —una
+  corrida que ejecutaba cero tests decía `PASS`—. Y el caso `NOT_RUN` importa más
+  que el número: un campo ausente se lee como un cero, y «no medido» no es «cero».
+  Es el mismo criterio que ya cerró el marcador `SUBSET` y el hueco `gaps=`, y la
+  razón por la que los tres viajan en la misma línea y no en tres sitios distintos.
 
 ---
 

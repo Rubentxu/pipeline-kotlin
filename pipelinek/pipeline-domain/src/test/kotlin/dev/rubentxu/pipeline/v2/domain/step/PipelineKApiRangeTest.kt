@@ -10,12 +10,13 @@ import org.junit.jupiter.api.assertThrows
 /**
  * `apiRange` is the admission gate's only defence against loading a plugin
  * built for an incompatible host, so its interval arithmetic is worth pinning.
+ *
  * The shape this protects against is real, not hypothetical: `HttpPluginDeclaration`
  * used to carry a hand-typed upper bound, a release shipped `apiRange=[0.47.0, 0.53.0)`
  * on a 0.56.0 host, and `PluginAdmissionGate` then refused every official plugin on
  * the distribution that shipped them. The bound is now derived from
  * `rootProject.version`; what remains the domain's job is the interval rule itself.
-*/
+ */
 class PipelineKApiRangeTest {
 
     private fun v(major: Int, minor: Int, patch: Int) = SemVer(major, minor, patch)
@@ -60,7 +61,7 @@ class PipelineKApiRangeTest {
      * comparison is the classic mistake here: "0.9.0" > "0.10.0" as text, and
      * the reverse as versions, so the gate would admit exactly the hosts it
      * exists to refuse.
-*/
+     */
     @Nested
     @DisplayName("ordering is numeric, not lexicographic")
     inner class NumericOrdering {

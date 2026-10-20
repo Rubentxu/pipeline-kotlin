@@ -11,7 +11,7 @@ import java.util.regex.PatternSyntaxException
  * @property deletedFiles Number of files deleted
  * @property deletedDirs Number of directories deleted (recursive, includes now-empty parents)
  * @param patterns The glob patterns applied
- * @param sha256 SHA-256 hex.cleaned marker content
+ * @param sha256 SHA-256 hex of the .cleaned marker content
 */
 data class CleanWsResult(
     val deletedFiles: Int,
@@ -38,13 +38,13 @@ data class CleanWsResult(
  * - Patterns are relative to workspace root
  * ## Path Safety
  * - Operates only within workspace root
- * Never touches `.v2/artifacts/` invariant
- * Refuses the pattern-less form when [rootDestruction] does not permit it.
+ * - Never touches `.v2/artifacts/` per the invariant
+ * - Refuses the pattern-less form when [rootDestruction] does not permit it.
  *   `cleanWs(patterns = null)` means "delete every non-.v2 file", so against a
  *   `--workspace` root that is the user's whole project. See [CleanWsExecutor].
- * ## Why and share one type
+ * ## Why both share one type
  * Both Steps answer the same question — may this root be destroyed wholesale —
- * `deleteDir` has a sub-path form a caller
+ * and `cleanWs` is strictly more dangerous: `deleteDir` has a sub-path form a caller
  * could narrow by accident, `cleanWs` has no partial form at all. Two booleans
  * let one be wired to scratch while the other stayed user-owned, with nothing
  * observing the divergence. One [RootDestruction] makes that unrepresentable.
@@ -177,9 +177,9 @@ class CleanWsExecutor(
     /**
      * Resolves Ant-style glob patterns to actual file paths.
      * Handles:
-     * - all.class files recursively
+     * - all .class files recursively
      * - everything under build/
-     * - all.tmp files in root
+     * - all .tmp files in root
 */
     private fun resolveAntPattern(workspace: Path, pattern: String, v2ArtifactsRoot: Path): List<Path> {
         val results = mutableListOf<Path>()
@@ -223,12 +223,12 @@ class CleanWsExecutor(
                             sb.append(".*")
                             i += 2
                         } else if (pattern[i + 2] == '/') {
-                            // **/ — `(. */)*` already ends in `/`, so the separator is
+                            // **/ — `(.*/)*` already ends in `/`, so the separator is
                             // consumed together with it and nothing is left to emit.
                             sb.append("(.*/)*")
                             i += 3
                         } else {
-                            // ** followed by a literal. `(. */)*` does NOT end in `/` here,
+                            // ** followed by a literal. `(.*/)*` does NOT end in `/` here,
                             // so the literal still has to be emitted, by the next iteration.
                             // This branch used to be `else if (i + 2 < pattern.length)` with
                             // `i += 3`. That condition was a tautology — reaching it already
@@ -238,7 +238,7 @@ class CleanWsExecutor(
                             // matched `uild/x.txt` and refused `build/x.txt`: a silent,
                             // destructive off-by-one that deletes the wrong directory tree
                             // and reports a plausible file count. Only `**/` was unaffected,
-                            // because the `/` it swallowed is exactly the one `(. */)*` needs.
+                            // because the `/` it swallowed is exactly the one `(.*/)*` needs.
                             // The literal is now reached rather than skipped, and `***` /
                             // `****` no longer need their own case: they fall through here and
                             // the surplus stars are handled as ordinary `*` on later iterations.
@@ -274,7 +274,7 @@ class CleanWsExecutor(
     }
 
     /**
-     * Deletes empty parent directories bottom-up, excluding workspace root.v2 tree.
+     * Deletes empty parent directories bottom-up, excluding workspace root and .v2 tree.
 */
     private fun deleteEmptyParents(workspace: Path, v2ArtifactsRoot: Path): Int {
         var deleted = 0
@@ -303,7 +303,7 @@ class CleanWsExecutor(
 
     companion object {
         /**
-         * SHA-256 hex of [bytes], routed through the shared utility
+         * SHA-256 hex of [bytes], routed through the shared utility.
          * Byte-identical to the local implementation this replaces: same algorithm, same
          * lowercase hex, same input. The value is emitted in the Step's observability event,
          * so an external observer comparing digests keeps matching.

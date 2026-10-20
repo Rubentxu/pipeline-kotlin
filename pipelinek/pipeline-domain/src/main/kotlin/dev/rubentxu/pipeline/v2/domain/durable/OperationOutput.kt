@@ -6,10 +6,12 @@ import kotlinx.serialization.json.JsonNull
 
 /**
  * Immutable, serializable carrier for the output of a durable operation.
+ *
  * @param result     JSON-encoded result produced by the step.
  * @param durationMs Wall-clock duration in milliseconds.
  * @param finishedAt Epoch milliseconds at which execution completed.
-*/
+ *
+ */
 @Serializable
 data class OperationOutput(
     val result: JsonElement,

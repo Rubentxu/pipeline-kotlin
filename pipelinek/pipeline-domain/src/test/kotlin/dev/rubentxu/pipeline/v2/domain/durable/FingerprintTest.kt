@@ -13,12 +13,13 @@ import org.junit.jupiter.api.assertThrows
 /**
  * The fingerprint is the operation identity that replay, divergence and resume
  * are decided against, so its two guarantees are worth pinning permanently.
+ *
  * `Fingerprint`'s KDoc claims canonical encoding "guarantees stable field
  * ordering" and that this "ensures cross-process determinism". Both are claims
  * about behaviour, and both fail silently if untrue: a fingerprint that varies
  * with map iteration order would make a resumed run miss its own completion and
  * redo work, with nothing in the output to say why.
-*/
+ */
 class FingerprintTest {
 
     private fun input(
@@ -58,7 +59,7 @@ class FingerprintTest {
          * the encoder did not canonicalise, these two would disagree while
          * comparing as the same value. Nothing else in the type system would
          * have caught it.
-*/
+         */
         @Test
         fun `parameter map iteration order does not change the fingerprint`() {
             val forward = mapOf(
@@ -83,7 +84,7 @@ class FingerprintTest {
          * level would leave the nested keys order-dependent, which is the same
          * defect one level down and would pass a shallower version of the test
          * above while the identity remained unstable in practice.
-*/
+         */
 @Test
         fun `nested object key order does not change the fingerprint`() {
             val forward = buildJsonObject {
@@ -113,7 +114,7 @@ class FingerprintTest {
      * genuinely different operations sharing one identity — which is precisely
      * the collision the fingerprint exists to prevent. Naming the fields is
      * not evidence that they participate; this is.
-*/
+     */
     @Nested
     @DisplayName("every payload field participates in the identity")
     inner class FieldSensitivity {

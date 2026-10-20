@@ -12,20 +12,23 @@ import java.nio.file.Paths
 
 /**
  * The wipe of a materialized credential.
+ *
  * `MaterializedCredentialDomain.close()` used to wrap every delete in `runCatching { }` and return.
  * The consequence was not a slow leak but a SILENT one wearing a typed shape: `ProjectionResult.close`
  * accumulates a `WipeException` naming every orphan path, and against a `close` that cannot throw that
  * exception was never constructed. The materialised bytes stayed on disk and the pipeline reported
  * success. The tell was in the tree itself — every test double had to OVERRIDE `close` to manufacture
  * a wipe failure, because nothing in production could produce one.
+ *
  * The wipe now reports. What it reports is decided by [wipeMaterialization], which takes its
  * filesystem operations as arguments, so it is pinned here without touching a disk — AGENTS.md
  * section 2 forbids that in a unit test, and the rule under test is about which deletes are
  * ATTEMPTED and which failures are RECORDED, not about what the filesystem does.
+ *
  * What this does not cover is stated rather than implied: that `Files.deleteIfExists` throws at all
  * when a file is locked is the filesystem's behaviour, not this decision's. Every test double in the
  * tree had to simulate it precisely because nothing real could be provoked here.
-*/
+ */
 class MaterializedCredentialDomainWipeTest {
 
     private val key = Paths.get("/tmp/pipelinek-ssh-key")
@@ -119,6 +122,7 @@ class MaterializedCredentialDomainWipeTest {
         // `Files.walk` yields the directory before its children. A directory cannot be deleted
         // until it is empty, so reverse-sorted order is not an optimisation — it is the only order
         // in which a nested tree wipes at all.
+        //
         // Stated as the INVARIANT and not as a total order. `Path`'s natural order compares one
         // name element at a time, so a hard-coded expectation like `listOf(nested, key, certDir)`
         // would be asserting how this fixture's NAMES happen to sort -- and it is wrong on its own

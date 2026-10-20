@@ -72,7 +72,7 @@ object CandidateAdmission {
                     "Under the release-evolution protocol the binary identity must be the " +
                     "TARGET version (e.g. 0.44.0); candidate state lives in the candidate " +
                     "descriptor, not in the product version " +
-                    "(cross-repo contract v2 §4, §11).",
+                    "(the cross-repo contract).",
             )
 
         val result = CandidateMaterializer.materialize(

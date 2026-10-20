@@ -3,6 +3,7 @@ package example.block
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 import dev.rubentxu.pipeline.v2.domain.step.BODY_CONTINUATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.BODY_SLOT_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.Delivery
 import dev.rubentxu.pipeline.v2.domain.step.Digest
 import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion
@@ -77,7 +78,7 @@ object RepeatPluginDeclaration {
      * purpose.
 */
     private val DECLARED_CAPABILITIES: Set<StepCapability> =
-        setOf(BODY_CONTINUATION_CAPABILITY)
+        setOf(BODY_CONTINUATION_CAPABILITY, BODY_SLOT_CAPABILITY)
 
     private fun parseSemVer(raw: String): SemVer {
         val parts = raw.split("-")[0].split(".")
@@ -150,6 +151,10 @@ object RepeatPluginDeclaration {
                     PluginStepContribution(
                         RepeatBodyStepDefinition.KEY,
                         RepeatBodyStepDefinition.contract.requiredCapabilities,
+                    ),
+                    PluginStepContribution(
+                        SlotPlanStepDefinition.KEY,
+                        SlotPlanStepDefinition.contract.requiredCapabilities,
                     ),
                 ),
                 directives = emptyList(),

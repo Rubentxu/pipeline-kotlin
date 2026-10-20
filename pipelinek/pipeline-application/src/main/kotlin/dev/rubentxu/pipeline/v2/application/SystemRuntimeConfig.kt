@@ -8,7 +8,7 @@ import dev.rubentxu.pipeline.v2.domain.RuntimeConfig
  * This class was MEANT to be the only one reading the host directly, and a
  * fitness test used to say so. Neither the gate nor the premise survives in
  * this tree: `FArchM1CanonicalRuntimeConfigTest` was deleted by the RESET, and
- * a census over tracked `src/main/kotlin` on found
+ * a census over tracked `src/main/kotlin` found
  * `System.getenv` / `System.getProperty` calls in 36 files across 9 modules.
  * So this is the [RuntimeConfig] ADAPTER and not an enforcement point, and
  * nothing here stops another production class from bypassing the port. That is

@@ -46,12 +46,18 @@ import dev.rubentxu.pipeline.v2.application.ARTIFACT_INDEX_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
 import dev.rubentxu.pipeline.v2.domain.step.BODY_CONTINUATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.BODY_INVOKER_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.step.BODY_SLOT_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.step.NETWORK_EGRESS_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepCapabilityAccess
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_COMPENSATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_LIFECYCLE_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_PLAN_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_RUNTIME_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SagaLifecycle
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
@@ -291,6 +297,43 @@ open class CanonicalRuntimeCapabilityAccess(
             builder[INPUT_DECISIONS_CAPABILITY] = FileInputDecisions(
                 root.resolve("inputs"),
             )
+        }
+        // the compensation intent port.
+        //
+        // Exposed ONLY when the engine bound one for this invocation. The port is the only
+        // way a plugin may promise a compensation, and a promise that cannot be kept is
+        // worse than no promise at all, so its absence has to be a refusal at admission
+        // rather than a null the handler discovers halfway through a forward effect.
+        context.sagaCompensation?.let { operations ->
+            builder[SAGA_COMPENSATION_CAPABILITY] = operations
+        }
+        // the compensation PLAN port.
+        //
+        // Exposed ONLY when the engine bound one for this invocation, for the same reason as
+        // the intent port above: a Step that asks what a Saga owes must not reach a handler
+        // that has no durable state to answer from, and a Step that reports an observation
+        // must not reach a handler whose write would go nowhere.
+        context.sagaPlan?.let { plan ->
+            builder[SAGA_PLAN_CAPABILITY] = plan
+        }
+        // the compensation RUNTIME.
+        //
+        // Exposed ONLY when the engine bound one for this invocation, for the same reason as
+        // the two ports above: a Step that asks the engine to run a compensation must not
+        // reach a handler that has no durable state to decide from, no body to compensate
+        // through, or no way to record what happened.
+        context.sagaRuntime?.let { runtime ->
+            builder[SAGA_RUNTIME_CAPABILITY] = runtime
+            // the Saga's LIFECYCLE — the runtime that can also KEEP the
+            // effects of a Saga that ended well, instead of only undoing them.
+            //
+            // Exposed ONLY when the bound runtime really is that port, for the same reason as
+            // the port above: a Step that asks to close a Saga must not reach a handler whose
+            // runtime cannot close one. The check is a type test on the bound object, so the
+            // capability and the port can never drift apart.
+            if (runtime is SagaLifecycle) {
+                builder[SAGA_LIFECYCLE_CAPABILITY] = runtime
+            }
         }
     }
 
@@ -555,6 +598,15 @@ open class CanonicalRuntimeCapabilityAccess(
         // binding never runs at all.
         context.bodyContinuation?.let { continuation ->
             builder[BODY_CONTINUATION_CAPABILITY] = continuation
+        }
+        // the slot seam. Exposed ONLY when the engine bound a slot
+        // invoker for this invocation, which it does only for a
+        // HANDLER_CONTINUATION Step whose body is already bound — the same
+        // condition as the continuation above, and for the same reason: a
+        // handler that asks for a slot of a body it does not have must fail
+        // closed at admission, never receive a seam that cannot honour it.
+        context.bodySlotInvoker?.let { slotInvoker ->
+            builder[BODY_SLOT_CAPABILITY] = slotInvoker
         }
 
         // The plugin event seam, bound ONLY when the composition actually produced a

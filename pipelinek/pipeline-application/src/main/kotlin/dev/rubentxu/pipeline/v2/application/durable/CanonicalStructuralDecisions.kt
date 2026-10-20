@@ -48,7 +48,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciler
 import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciliationInput
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
-import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.ContextTransition
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.ContextOverlay
@@ -561,16 +560,13 @@ internal fun BlockStepNode.projectScopedBody(
  * [ShOptions.workspaceRoot], and BOTH sides of the comparison are normalised: an unnormalised
  * root silently refuses its own children, because `/ws/./sub` does not start with `/ws/./`.
  * Absolute paths are held to the same boundary as relative ones. They used to be exempt, and
- * That exemption was a hole rather than a decision: section 8/9 states that an absolute
+ * that exemption was a hole rather than a decision: section 8/9 states that an absolute
  * path inside the root is accepted and one outside it is rejected, [WorkspacePathResolver]
  * implements that policy, and [DirExecutor.resolveTargetPath] implements it too -- but the latter
  * has no production construction site, so this function was the live guard and it was the only
  * one of the three letting an absolute path through unchecked. A `.pipeline.kts` could say
  * `dir("/etc/cron.d")`, this projection accepted it, and `BodyExecutionEngine` then ran
  * `Files.createDirectories` on it and handed it to the child as its CWD.
- * `Path.startsWith` compares NAME ELEMENTS and `String.startsWith` compares characters, which
- * differ exactly on the sibling that shares a prefix -- the sibling an attacker picks, because
- * `/ws/base-evil` begins with `/ws/base` as a string. See [DirExecutor.resolveTargetPath].
 */
 internal fun BlockStepNode.projectWorkingDirectory(options: ShOptions): BodyExecutionProjection {
     val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
@@ -579,11 +575,8 @@ internal fun BlockStepNode.projectWorkingDirectory(options: ShOptions): BodyExec
     if (path.isBlank()) return BodyExecutionProjection.InvalidInput("path must not be blank")
 
     val previous = (options.workingDirectory ?: options.workspaceRoot).normalize()
-    val candidate = Path.of(path)
-    val target = (if (candidate.isAbsolute) candidate else previous.resolve(candidate)).normalize()
-    if (!target.startsWith(previous)) {
-        return BodyExecutionProjection.InvalidInput("path escapes the workspace: $path")
-    }
+    val target = resolveContainedDirectory(path, previous)
+        ?: return BodyExecutionProjection.InvalidInput("path escapes the workspace: $path")
     return BodyExecutionProjection.Scope(BlockShellScope.Directory(target, previous))
 }
 
@@ -620,52 +613,5 @@ internal fun BlockStepNode.decodeAttemptBudgetMaxAttempts(): Int {
         ?: throw IllegalArgumentException("requires integer maxAttempts")
     require(maxAttempts >= 1) { "maxAttempts must be >= 1, got $maxAttempts" }
     return maxAttempts
-}
-
-/**
- * Project a [dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch] from
- * [BodyInvocationContext] onto the parent [ExecutionContext] (Phase 1b,)
- * Each variant of the closed [BodyContextProjection] family maps to its existing
- * pure derivation. The projection's rejection cases
- * ([dev.rubentxu.pipeline.v2.domain.step.BodyContextRejection.HandledOutsideOverlay],
- * e.g. `Deadline` / `CredentialLease`) are intentionally **silently dropped**:
- * the seam is honest about what it does not do — deadlines are projected onto
- * `ShOptions.timeoutMs` and credential leases are projected by the
- * `executeCredentialLeasedBody` preamble, not by the reentry seam. A dropped
- * patch falls through to the parent unchanged; rejection stays inside the typed
- * algebra, never as an exception.
- * The parent is preserved (: derivation never mutates `parent.overlays`)
- * `None` returns the parent verbatim.
-*/
-internal fun applyPatchToContext(
-    parent: dev.rubentxu.pipeline.v2.domain.ExecutionContext,
-    patch: dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch,
-): dev.rubentxu.pipeline.v2.domain.ExecutionContext = when (patch) {
-    dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch.None -> parent
-    is dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch.Directory ->
-        when (
-            val d = dev.rubentxu.pipeline.v2.domain.step.deriveChildExecutionContext(
-                parent = parent,
-                projection = dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection.WorkingDirectory,
-                runtime = dev.rubentxu.pipeline.v2.domain.step.BodyRuntimeValue.DirectoryValue(patch.path),
-            )
-        ) {
-            is dev.rubentxu.pipeline.v2.domain.step.BodyContextDerivation.Derived -> d.context
-            is dev.rubentxu.pipeline.v2.domain.step.BodyContextDerivation.Rejected -> parent
-        }
-    is dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch.Environment ->
-        when (
-            val d = dev.rubentxu.pipeline.v2.domain.step.deriveChildExecutionContext(
-                parent = parent,
-                projection = dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection.Environment,
-                runtime = dev.rubentxu.pipeline.v2.domain.step.BodyRuntimeValue.EnvironmentValue(patch.values),
-            )
-        ) {
-            is dev.rubentxu.pipeline.v2.domain.step.BodyContextDerivation.Derived -> d.context
-            is dev.rubentxu.pipeline.v2.domain.step.BodyContextDerivation.Rejected -> parent
-        }
-    is dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch.CredentialLease ->
-        // Handled by `executeCredentialLeasedBody` preamble; the seam is honest.
-        parent
 }
 

@@ -204,5 +204,6 @@ object RepeatBodyStepDefinition : StepDefinition<RepeatInput, RepeatOutput> {
 class RepeatContributor : StepDefinitionContributor {
     override val id: String = "example.repeat"
 
-    override fun definitions(): Iterable<StepDefinition<*, *>> = listOf(RepeatBodyStepDefinition)
+    override fun definitions(): Iterable<StepDefinition<*, *>> =
+        listOf(RepeatBodyStepDefinition, SlotPlanStepDefinition)
 }

@@ -11,7 +11,7 @@ import java.nio.file.Paths
  * `cleanWs` is destructive: it removes real files from a real workspace. Its safety net is this
  * pure String -> String function, and the net had a hole in it.
  * The defect this file exists for was an off-by-one that consumed a literal. `**build/**`
- * compiled to `^(. */)*\Qu\E\Qi\E\Ql\E\Qd\E/.*$` — it matched `uild/x.txt` and refused
+ * compiled to `^(.*/)*\Qu\E\Qi\E\Ql\E\Qd\E/.*$` — it matched `uild/x.txt` and refused
  * `build/x.txt`. A pipeline asking to clean its build directory deleted a directory named
  * `uild` instead, deleted nothing it asked for, returned 0 (or some other plausible count), and
  * raised no error. Every layer above this function was reporting truthfully about the wrong
@@ -39,7 +39,7 @@ class AntPatternToRegexTest {
 
     @Test
     fun `a double star in front of a literal does not consume the literal`() {
-        // THE. The old branch advanced three positions past `**` plus the character
+        // THE OFF-BY-ONE. The old branch advanced three positions past `**` plus the character
         // that followed it, and that character was never written to the regex. `b` vanished.
         assertTrue(matches("**build/**", "build/x.txt"), "**build/** stopped matching build/x.txt")
     }
@@ -66,7 +66,7 @@ class AntPatternToRegexTest {
     @Test
     fun `a trailing double star followed by a slash is unaffected`() {
         // `**/` is why the off-by-one went unnoticed: the character it consumed was a `/`, and
-        // `(. */)*` needs exactly that `/`. Pinned so the ordinary form is stated before the odd
+        // `(.*/)*` needs exactly that `/`. Pinned so the ordinary form is stated before the odd
         // one, and so a future edit that "fixes" `**/` breaks a test that says it worked.
         assertTrue(matches("**/target/**", "target/debug/x.txt"))
         assertTrue(matches("**/target/**", "a/target/debug/x.txt"))

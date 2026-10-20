@@ -1,4 +1,4 @@
-// Utilities OFFICIAL_PLUGIN live fixture (Slice 2 /.5 corpus)
+// Utilities OFFICIAL_PLUGIN live fixture.
 // End-to-end exercise of all five utilities Steps in one pipeline:
 //   writeYaml, readYaml, findFiles, zip, unzip.
 // The whole chain lives in ONE stage, and that is a correction rather than a

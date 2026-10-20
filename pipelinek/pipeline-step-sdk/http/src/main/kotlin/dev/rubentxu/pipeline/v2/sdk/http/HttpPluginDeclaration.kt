@@ -50,7 +50,7 @@ object HttpPluginDeclaration {
      * re-introduce the drift.
      * Nothing pins that property automatically any more. `BuiltPluginManifestArtifactTest`
      * and `PluginCompatibilityResourceTest` both existed and both were removed by the
-     * the testing reset, because they were QA scaffolding rather than product
+     * testing reset, because they were QA scaffolding rather than product
      * behaviour. The guarantee now rests on the single derivation above plus the
      * round trip a real `pipelinek run` performs against the shipped plugin JAR, so
      * treat a version bump that moves `rootProject.version` as needing that manual

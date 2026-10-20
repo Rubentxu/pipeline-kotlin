@@ -144,7 +144,7 @@ fun DistributionIdentityVerdict.render(): String = when (this) {
         conflicts.forEach { appendLine("  - ${it.surface.name} reported '${it.reported}'") }
         append(
             "A candidate whose surfaces disagree is a build defect and MUST NOT be handed " +
-                "to the harness (cross-repo contract v2 §11).",
+                "to the harness (the cross-repo contract).",
         )
     }
 }

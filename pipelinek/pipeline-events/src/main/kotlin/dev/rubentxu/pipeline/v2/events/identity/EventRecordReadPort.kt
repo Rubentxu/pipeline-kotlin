@@ -75,7 +75,7 @@ sealed interface EventRecordReadResult {
 /**
  * Closed hierarchy of refusal reasons for [EventRecordReadPort]. Mirrors
  * the existing `OutputRefusal` convention in
- * `v2/pipeline-output/src/main/kotlin/.../output/OutputRefusal.kt`: a
+ * `pipelinek/pipeline-output/src/main/kotlin/.../output/OutputRefusal.kt`: a
  * closed sealed interface per port, no `Either`/`Result` re-use.
 */
 sealed interface EventRecordReadRefusal {

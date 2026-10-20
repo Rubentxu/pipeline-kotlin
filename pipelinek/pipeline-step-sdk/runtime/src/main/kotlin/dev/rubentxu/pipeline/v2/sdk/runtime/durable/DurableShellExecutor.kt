@@ -33,7 +33,7 @@ import kotlin.concurrent.withLock
  * Per: timeout.flag written BEFORE kill
 */
 @Deprecated(
-    message = "Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.",
+    message = "Legacy durable-shell state projection. Consume DurableTaskTerminal at the typed shell seam; this projection is on its way out.",
 )
 enum class DurableShellState {
     /** ProcessHandle acquired but not yet confirmed detached. */
@@ -70,7 +70,7 @@ enum class DurableShellState {
  * @property capturedStdout The captured stdout if returnStdout was enabled, or null.
 */
 @Deprecated(
-    message = "Legacy mixed durable-shell result. Consume DurableTaskTerminal at the typed shell seam; removal is scheduled for EM-10.",
+    message = "Legacy mixed durable-shell result. Consume DurableTaskTerminal at the typed shell seam; this projection is on its way out.",
 )
 data class DurableShellResult(
     val state: DurableShellState,
@@ -1443,7 +1443,7 @@ class DurableShellExecutor : DurableShellLaunching {
      * @return The execution result with optional captured stdout.
 */
     @Deprecated(
-        message = "Legacy durable-shell projection. Use executeTerminal() and consume DurableTaskTerminal; removal is scheduled for EM-10.",
+        message = "Legacy durable-shell projection. Use executeTerminal() and consume DurableTaskTerminal; this projection is on its way out.",
         replaceWith = ReplaceWith("executeTerminal(controlDir, scriptContent, opId, shOptions)"),
     )
     fun execute(
@@ -1879,7 +1879,7 @@ private enum class DurableShellTimeoutCompletion {
  * @return The execution result.
 */
 @Deprecated(
-    message = "Compatibility projection for PipelineRun's legacy String status flow. Migrate to DurableShellExecutor.executeTerminal with ShOptions and consume the typed terminal result; removal is scheduled for EM-10.",
+    message = "Compatibility projection for PipelineRun's legacy String status flow. Migrate to DurableShellExecutor.executeTerminal with ShOptions and consume the typed terminal result; this projection is on its way out.",
     replaceWith = ReplaceWith(
         "DurableShellExecutor().executeTerminal(controlDir, scriptContent, opId, ShOptions(timeoutMs = timeoutMs, env = env, sandbox = sandbox, workspaceRoot = workspaceRoot ?: controlDir))",
     ),

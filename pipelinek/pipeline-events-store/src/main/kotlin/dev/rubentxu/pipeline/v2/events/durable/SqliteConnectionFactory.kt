@@ -5,26 +5,32 @@ import java.sql.DriverManager
 
 /**
  * Factory for SQLite connections configured for WAL journal mode.
+ *
  * ## WAL mode
+ *
  * Every connection opened through this factory has:
  * - `PRAGMA journal_mode = WAL` — enables Write-Ahead Logging for concurrent
  *   readers and a single writer, improving durability and read concurrency.
  * - `PRAGMA synchronous = NORMAL` — balances performance and safety;
  *   WAL mode with NORMAL is durable under process crashes.
+ *
  * ## Verification
+ *
  * The factory verifies that WAL mode was successfully enabled by querying
  * `PRAGMA journal_mode` and throwing [IllegalStateException] if the result
  * is not `"wal"`. This prevents silent fallback to DELETE mode which would
  * bypass the durability guarantees of the operation journal.
-*/
+ *
+ */
 object SqliteConnectionFactory {
 
     /**
      * Opens a new SQLite connection with WAL mode enabled and verified.
+     *
      * @param file Path to the SQLite database file.
      * @return A JDBC [Connection] with WAL mode active.
      * @throws IllegalStateException if WAL mode is not successfully enabled.
-*/
+     */
     fun open(file: String): Connection {
         val connection = DriverManager.getConnection("jdbc:sqlite:$file")
         try {

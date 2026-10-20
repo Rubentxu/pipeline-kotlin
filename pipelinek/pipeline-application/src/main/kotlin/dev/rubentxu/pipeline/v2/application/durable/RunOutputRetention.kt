@@ -57,7 +57,7 @@ sealed interface RunOutputDisposition {
  * closed — a component that can only reach terminality here cannot become a second lifecycle oracle.
  * ## Why the port arrives as a supplier
  * `[OutputRetentionPort]` rather than an instance, so the store is touched **only if the policy
- * Actually authorises a release**. Recovering the plane is not free (` §`), and a
+ * Actually authorises a release**. Recovering the plane is not free, and a
  * configuration that retains everything must not pay for — nor be perturbed by — a recovery it never
  * uses. It also keeps the decision separable from the effect: [intentFor] is pure and needs no
  * filesystem at all.

@@ -21,7 +21,7 @@ import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
  * legacy envelope.
  * The `CanonicalRuntimeContext` data class that previously lived here
  * has been extracted to `CanonicalRuntimeContext.kt` (same package). The extraction
- * Follows the// partition plan
+ * follows the partition plan
  * and is bit-equivalent at the FQN level: 62 referencing files continue to compile
  * without import edits because the import path
  * `dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext` is unchanged.

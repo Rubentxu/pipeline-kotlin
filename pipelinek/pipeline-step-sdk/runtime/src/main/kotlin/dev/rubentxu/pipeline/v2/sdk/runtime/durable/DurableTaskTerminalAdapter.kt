@@ -42,7 +42,7 @@ fun StepReconcilerL1.terminalFromReconciliation(
 
 /** Transitional adapter retained for PipelineRun's projection; remove */
 @Deprecated(
-    message = "Legacy durable-shell projection. Consume DurableTaskTerminal directly; removal is scheduled for EM-10.",
+    message = "Legacy durable-shell projection. Consume DurableTaskTerminal directly; this projection is on its way out.",
 )
 fun DurableTaskTerminal.toLegacyShellResult(controlDir: Path): DurableShellResult = when (this) {
     is DurableTaskTerminal.Exited -> {
@@ -93,7 +93,7 @@ fun DurableTaskTerminal.toLegacyShellResult(controlDir: Path): DurableShellResul
  * [DurableShellExecutor.executeTerminal].
 */
 @Deprecated(
-    message = "Legacy durable-shell adapter. Produce DurableTaskTerminal at the executor seam; removal is scheduled for EM-10.",
+    message = "Legacy durable-shell adapter. Produce DurableTaskTerminal at the executor seam; this projection is on its way out.",
 )
 fun DurableShellResult.toDurableTaskTerminal(opId: String): DurableTaskTerminal = when (state) {
     DurableShellState.COMPLETE -> DurableTaskTerminal.Exited(
@@ -139,7 +139,7 @@ fun DurableShellResult.toDurableTaskTerminal(opId: String): DurableTaskTerminal 
 */
 @Suppress("DEPRECATION")
 @Deprecated(
-    message = "Legacy durable-shell compatibility bridge. Consume DurableTaskTerminal directly; removal is scheduled for EM-10.",
+    message = "Legacy durable-shell compatibility bridge. Consume DurableTaskTerminal directly; this projection is on its way out.",
 )
 fun DurableShellResult.throughTerminalAdapter(opId: String): DurableShellResult =
     toDurableTaskTerminal(opId).toLegacyShellResult(controlDir)

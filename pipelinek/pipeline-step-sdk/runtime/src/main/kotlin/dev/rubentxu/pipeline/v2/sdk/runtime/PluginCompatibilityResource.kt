@@ -42,7 +42,7 @@ object PluginCompatibilityResource {
         val resource = classLoader.getResource(RESOURCE_PATH)
             ?: throw IllegalStateException(
                 "$RESOURCE_PATH is absent on the classpath. The plugin was built without the " +
-                    "PK-RC-PLUGIN-001 compatibility resource. Run a clean build via Gradle so the " +
+                    "Plugin compatibility resource. Run a clean build via Gradle so the " +
                     "policy can emit the resource from rootProject.version. A plugin that does not " +
                     "declare compatibility cannot be admitted.",
             )

@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.output
 
 /**
  * The adoption contract for, and the checkable form of [ ]
- * `05-§Strategy 2 / Risks` requires reserve/commit or a recoverable intent protocol, because a crash
+ * the adoption strategy requires reserve/commit or a recoverable intent protocol, because a crash
  * between the byte append and the index commit loses the global order for those bytes. RCE
  * `` compared four candidates and decided **ADOPT D, segment reservation with recovery**
  * failing none of six invariants across four protocols x eight crash scenarios.

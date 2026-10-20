@@ -106,7 +106,7 @@ class RuntimeRecoverDecisionTest {
     // Schema version ----------------------------------------------------
 
     @Test
-    fun `P1 a journal written by another schema version is refused, not guessed at`() {
+    fun `a journal written by another schema version is refused, not guessed at`() {
         val choice = decide(terminal(), proof(schemaVersion = "2", terminalRow = row("succeeded")))
 
         val failed = choice as RecoveryChoice.FailClosed
@@ -114,7 +114,7 @@ class RuntimeRecoverDecisionTest {
     }
 
     @Test
-    fun `P1 outranks the cancelled rule`() {
+    fun `outranks the cancelled rule`() {
         // Ordering stated, not assumed: a mismatched schema with a CANCELLED row still refuses.
         // Reading this rule after the terminal ones would report the run as already recovered from
         // rows this version cannot interpret.
@@ -126,7 +126,7 @@ class RuntimeRecoverDecisionTest {
     // A cancelled run is terminal ----------------------------------------
 
     @Test
-    fun `P2 a cancelled terminal row is already recovered, whoever observed what`() {
+    fun `a cancelled terminal row is already recovered, whoever observed what`() {
         val choice = decide(running(), proof(terminalRow = row("cancelled")))
 
         val recovered = choice as RecoveryChoice.AlreadyRecovered
@@ -134,7 +134,7 @@ class RuntimeRecoverDecisionTest {
     }
 
     @Test
-    fun `P2 the cancelled rule reports attempt one whatever the observed attempt was`() {
+    fun `the cancelled rule reports attempt one whatever the observed attempt was`() {
         // The source hard-codes `AttemptId(1)` here, while reports the OBSERVED attempt for the
         // same `AlreadyRecovered` case. Those two rows disagree, and this pins the disagreement
         // rather than hiding it: a fifth attempt that was cancelled is reported as attempt one.

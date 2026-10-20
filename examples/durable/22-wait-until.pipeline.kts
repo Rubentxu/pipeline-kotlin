@@ -1,8 +1,8 @@
 //@ durable
-// 22-wait-until.pipeline.kts — / / installed-CLI canary
-// Real.pipeline.kts using the structural waitUntil block through the canonical
+// 22-wait-until.pipeline.kts — installed-CLI canary
+// Real .pipeline.kts using the structural waitUntil block through the canonical
 // dispatch path (BlockStepNode + BodyExecutionPolicy.RepeatUntil + dispatchRepeatUntilBody).
-// Validates that after (registry removal) and (durable journal), the DSL
+// Validates that after the registry removal and the durable journal, the DSL
 // `waitUntil(initialRecurrencePeriod) { body }` produces a correct durable trace with
 // WaitUntilPolled (≥1) + WaitUntilCompleted(origin=canonical).
 // `//@ durable` makes the launcher run this pipeline twice against one control

@@ -229,7 +229,7 @@ val uppercaseManifest =
 
 val emitUppercaseManifest = tasks.register<JavaExec>("emitUppercaseManifest") {
     group = "uppercase"
-    description = "S6/I: emit the machine-readable plugin manifest into the artifact."
+    description = "emit the machine-readable plugin manifest into the artifact."
 
     dependsOn(computeUppercaseRelease)
     mainClass.set("example.uppercase.UppercasePluginDeclarationKt")
@@ -264,7 +264,7 @@ val emitUppercaseManifest = tasks.register<JavaExec>("emitUppercaseManifest") {
         val text = captured.toString(Charsets.UTF_8)
         if (text.isBlank()) {
             throw GradleException(
-                "S6/I: manifest emission produced no output. The plugin would ship without " +
+                "manifest emission produced no output. The plugin would ship without " +
                     "META-INF/pipelinek/plugin-manifest.json and admission would refuse it at runtime.",
             )
         }

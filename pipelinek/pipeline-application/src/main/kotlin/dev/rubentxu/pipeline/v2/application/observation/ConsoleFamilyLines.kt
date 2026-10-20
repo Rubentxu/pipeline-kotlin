@@ -7,6 +7,10 @@ import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
+import dev.rubentxu.pipeline.v2.events.CompensationArmed
+import dev.rubentxu.pipeline.v2.events.CompensationFinished
+import dev.rubentxu.pipeline.v2.events.CompensationStarted
+import dev.rubentxu.pipeline.v2.events.SagaTerminal
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.CredentialBound
@@ -349,6 +353,29 @@ internal object ConsoleFamilyLines {
             Family.NOTE,
             "post conditions for ${event.stageName}: selected ${event.selectedConditions.size}, " +
                 "skipped ${event.skippedConditions.size}",
+        )
+
+        // the promise, not the effect. The line says the obligation was armed;
+        // it deliberately does not say anything happened, because nothing has happened yet.
+        is CompensationArmed -> Line(
+            Family.NOTE,
+            "compensation armed: ${event.sagaId}/${event.actionId} -> ${event.compensationId}",
+        )
+
+        is CompensationStarted -> Line(
+            Family.NOTE,
+            "compensation started: ${event.sagaId}/${event.actionId} -> ${event.slot}",
+        )
+
+        is CompensationFinished -> Line(
+            Family.NOTE,
+            "compensation finished: ${event.sagaId}/${event.actionId} -> ${event.outcome}",
+        )
+
+        is SagaTerminal -> Line(
+            Family.NOTE,
+            "saga terminal: ${event.sagaId} ${event.state}" +
+                event.reason?.let { " ($it)" }.orEmpty(),
         )
 
         else -> unrouted(event, this)

@@ -30,7 +30,7 @@ import kotlin.io.path.relativeTo
 import kotlin.streams.toList
 
 /**
- * `core-utils.findFiles` OFFICIAL_PLUGIN Step (utilities, Slice 2 /.3)
+ * `core-utils.findFiles` OFFICIAL_PLUGIN Step (utilities).
  * Jenkins reference: pipeline-utility-steps-plugin::FindFilesStep
  * (MIT, CloudBees).
  * Strategy:

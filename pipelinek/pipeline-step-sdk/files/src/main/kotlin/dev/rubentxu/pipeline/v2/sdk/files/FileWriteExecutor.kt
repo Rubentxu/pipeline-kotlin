@@ -33,14 +33,14 @@ data class FileWriteResult(
  * - Resolves `file` against workspace
  * - Enforces the path traversal guard on REAL paths, so a symlink out of the
  *   workspace is refused rather than written through
- * - Enforces reserved.v2 directory guard
+ * - Enforces reserved .v2 directory guard
  * - Auto-creates parent directories
  * ## Encoding
- * `encoding = ""` (default): `text.toByteArray(UTF_8)`
+ * - `encoding = "UTF-8"` (default): `text.toByteArray(UTF_8)`
  * - `encoding = "Base64"`: decodes text via `Base64.getDecoder().decode(text)`
  * ## Events
- * Event emission is handled by the dispatcher which has access to DomainEvent types
- * The [FileWriteResult] carries all data needed for event creation.
+ * - Event emission is handled by the dispatcher which has access to DomainEvent types.
+ *   The [FileWriteResult] carries all data needed for event creation.
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
  * @param eventSink Event sink (passed for future event emission by dispatcher)
 */
@@ -56,7 +56,7 @@ class FileWriteExecutor(
      * @param stepIndex The step index (unused — event emission deferred to dispatcher)
      * @param spec The writeFile step specification
      * @return [FileWriteResult] on success
-     * @throws IllegalArgumentException if path escapes workspace or targets.v2 directory
+     * @throws IllegalArgumentException if path escapes workspace or targets .v2 directory
 */
     fun execute(stageName: String, stageIndex: Int, stepIndex: Int, spec: StepSpec.WriteFile): FileWriteResult {
         val workspace = workspaceResolver(stageName, stageIndex)
@@ -117,7 +117,7 @@ class FileWriteExecutor(
 
     companion object {
         /**
-         * SHA-256 hex of [bytes], routed through the shared utility
+         * SHA-256 hex of [bytes], routed through the shared utility.
          * Byte-identical to the local implementation this replaces: same algorithm, same
          * lowercase hex, same input. The value is emitted in the Step's observability event,
          * so an external observer comparing digests keeps matching.

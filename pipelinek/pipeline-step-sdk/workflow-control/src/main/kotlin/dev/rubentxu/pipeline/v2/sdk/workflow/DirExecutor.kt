@@ -39,8 +39,8 @@ class DirExecutor(
 
     /**
      * Executes a dir block.
- * Resolves the target directory, executes the action, and returns the context paths.
- * The controller JVM working directory is never mutated.
+     * Resolves the target directory, executes the action, and returns the context paths.
+     * The controller JVM working directory is never mutated.
      * @param stageName The current stage name
      * @param stageIndex The current stage index
      * @param stepIndex The step index for this dir step

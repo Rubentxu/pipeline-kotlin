@@ -26,6 +26,17 @@
 #                                     require the second run not to repeat the
 #                                     effect; the pipeline itself asserts the
 #                                     count, this only re-runs it
+#   //@ durable-once                  run ONCE against a real durable store, and
+#                                     assert nothing about a second run: the
+#                                     scenario is about an effect that must
+#                                     happen exactly once in a single run, and
+#                                     re-running it would assert the opposite.
+#   //@ resume                        the first run is expected to DIE and the
+#                                     second run resumes it over the same store
+#                                     and the same control root. The verdict is
+#                                     the second run's, and the world must not
+#                                     change across it: an effect whose answer
+#                                     nobody has must not be dispatched twice.
 #   //@ credentials <id> <kind>       seed <id> into this scenario's own store
 #                                     before the run, so a pipeline that binds a
 #                                     credential has one to resolve. Repeatable.
@@ -152,6 +163,25 @@ show_printed() {
     fi
 }
 
+# The picture of a directory: the name and the digest of every file in it, in a
+# stable order. This is the observation a pipeline cannot make for itself: a
+# resumed run reuses the journalled completions, so every check inside the
+# script is REPLAYED from the first run and observes nothing. Whether the world
+# changed across the resume is only visible from out here.
+workspace_snapshot() {
+    local dir="$1"
+    if [[ ! -d "$dir" ]]; then
+        printf '(no directory)\n'
+        return 0
+    fi
+    (
+        cd "$dir" || exit 0
+        find . -type f -print0 \
+            | LC_ALL=C sort -z \
+            | xargs -0 -r sha256sum
+    ) 2>/dev/null || true
+}
+
 # One scenario, fully isolated. Nothing is read from the developer's HOME and
 # nothing is written outside $cycle_root.
 run_scenario() {
@@ -164,6 +194,8 @@ run_scenario() {
 
     local expect_exit=0
     local durable=0
+    local durable_once=0
+    local resume=0
     local -a expect_stdout=()
     local -a expect_stderr=()
     local -a expect_transcript=()
@@ -177,6 +209,8 @@ run_scenario() {
             '//@ expect-stderr '*) expect_stderr+=("${directive#//@ expect-stderr }") ;;
             '//@ expect-transcript '*) expect_transcript+=("${directive#//@ expect-transcript }") ;;
             '//@ durable')         durable=1 ;;
+            '//@ durable-once')    durable_once=1 ;;
+            '//@ resume')          resume=1 ;;
             '//@ credentials '*)   seeds+=("${directive#//@ credentials }") ;;
             '//@ plugin-jar '*)    plugin_jar="${directive#//@ plugin-jar }" ;;
         esac
@@ -264,6 +298,35 @@ run_scenario() {
 
     local stdout="$root/stdout.txt" stderr="$root/stderr.txt" code=0
     local vstdout="$root/stdout.volatile.txt" vstderr="$root/stderr.volatile.txt" vcode=0
+    local verdict_stdout="$stdout" verdict_stderr="$stderr"
+    local before_snapshot="" after_snapshot=""
+
+    # The scenario's own private directory, absolute, and unique per scenario.
+    # A scenario that needs a resource that SURVIVES between two runs cannot
+    # use a relative path: `--isolated` gives every run a fresh managed
+    # scratch workspace, and a fixed absolute path under /tmp is shared with
+    # every other run on the machine (and with whatever else runs next).
+    # This directory is removed with the scenario, so nothing leaks.
+    export PIPELINEK_E2E_HOME="$root/cwd"
+
+    # A scenario that kills its own process needs to know WHICH process to kill,
+    # and the launcher is the only one that can say where to put that answer.
+    # The file lives beside the store, NOT in the scenario's working directory:
+    # the working directory is compared between the two runs, and a PID file
+    # would differ between them (two processes, two PIDs) and look like "the
+    # effect repeated".
+    if [[ "$resume" == 1 ]]; then
+        export PIPELINEK_E2E_PID_FILE="$root/runner.pid"
+    fi
+
+    # A scenario about the journal runs on the journal path only. The volatile
+    # path has no journal at all: there is nothing to resume and nothing to
+    # compensate, so a run there would exercise a different product than the
+    # one the scenario is about, and its verdict would be about that product.
+    local run_volatile=1
+    if [[ "$durable_once" == 1 || "$resume" == 1 ]]; then
+        run_volatile=0
+    fi
 
     # `cd` in this shell, not a subshell: a subshell would discard the exit
     # code the verdict is built from, and every scenario would read as ok.
@@ -280,15 +343,59 @@ run_scenario() {
     "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" \
         ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} "$script" \
         >"$stdout" 2>"$stderr" || code=$?
-    "$binary" run --isolated --control-root "$root/control-volatile" \
-        ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} "$script" \
-        >"$vstdout" 2>"$vstderr" || vcode=$?
     cd "$caller_pwd"
+
+    if [[ "$run_volatile" == 1 ]]; then
+        cd "$root/cwd"
+        "$binary" run --isolated --control-root "$root/control-volatile" \
+            ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} "$script" \
+            >"$vstdout" 2>"$vstderr" || vcode=$?
+        cd "$caller_pwd"
+    fi
 
     if [[ "$durable" == 1 ]]; then
         # Second run over the same control root and the same journal. The
         # pipeline's own check decides whether the effect repeated; this only
         # makes the second run happen, and records its exit code separately.
+        # The second run has to SUCCEED: a resumed run that completed the work
+        # cannot end in failure, and a failure there is the durable guarantee
+        # broken.
+        local second=0
+        cd "$root/cwd"
+        "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" \
+            ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} "$script" \
+            >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
+        cd "$caller_pwd"
+        if [[ "$second" != 0 ]]; then
+            printf 'FAIL %-52s the resumed run exited %s, expected 0\n' "$name" "$second"
+            show_printed "$root/stderr.rerun.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the resumed run exited $second")
+            return
+        fi
+        durable_runs=$((durable_runs + 1))
+    fi
+
+    if [[ "$resume" == 1 ]]; then
+        # The FIRST run is the crash, and a scenario that says it will die and
+        # finishes cleanly has not exercised what it claims. That is a failure
+        # of the scenario, not a pass: a launcher that cannot tell "the crash
+        # happened" from "the crash did not happen" proves nothing about
+        # crashes.
+        if [[ "$code" == 0 ]]; then
+            printf 'FAIL %-52s the run was supposed to crash and finished cleanly\n' "$name"
+            failed=$((failed + 1))
+            failures+=("$name: the run was supposed to crash and did not")
+            return
+        fi
+
+        # The workspace picture BEFORE the resumed run. This is the observation
+        # the pipeline cannot make for itself: a resumed run reuses the
+        # journalled completions, so every check inside the script is REPLAYED
+        # from the first run and observes nothing. The state after the second
+        # run is only visible from out here.
+        before_snapshot="$(workspace_snapshot "$root/cwd")"
+
         local second=0
         cd "$root/cwd"
         "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" \
@@ -296,13 +403,19 @@ run_scenario() {
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
         code="$second"
-        expect_exit=0
-        durable_runs=$((durable_runs + 1))
+        # The verdict is the SECOND run's: the first one died before it could
+        # say anything about the outcome of the run.
+        verdict_stdout="$root/stdout.rerun.txt"
+        verdict_stderr="$root/stderr.rerun.txt"
     fi
 
     local label="$name"
     if [[ "$durable" == 1 ]]; then
         label="$name (durable x2)"
+    elif [[ "$durable_once" == 1 ]]; then
+        label="$name (durable x1)"
+    elif [[ "$resume" == 1 ]]; then
+        label="$name (resume x2)"
     fi
 
     # Checks ONE execution against every expectation the scenario declares.
@@ -386,19 +499,48 @@ run_scenario() {
         return 0
     }
 
-    # Both executions, and both against the same expectations. A scenario is
-    # ok when BOTH paths met them.
+    # The execution that decides the verdict, against every expectation the
+    # scenario declares. For a resumed scenario it is the SECOND run: the
+    # first one died before it could say anything.
     local check_detail=""
-    if ! check_execution "$label" "$stdout" "$stderr" "$code" "$root/control"; then
+    if ! check_execution "$label" "$verdict_stdout" "$verdict_stderr" "$code" "$root/control"; then
         failed=$((failed + 1))
         failures+=("$label: $check_detail")
         return
     fi
-    if ! check_execution "$label (volatile)" "$vstdout" "$vstderr" "$vcode" \
-        "$root/control-volatile"; then
-        failed=$((failed + 1))
-        failures+=("$label (volatile): $check_detail")
-        return
+
+    # The volatile path, when the scenario ran it. Both paths are held to the
+    # same expectations: a scenario is ok when BOTH met them.
+    if [[ "$run_volatile" == 1 ]]; then
+        if ! check_execution "$label (volatile)" "$vstdout" "$vstderr" "$vcode" \
+            "$root/control-volatile"; then
+            failed=$((failed + 1))
+            failures+=("$label (volatile): $check_detail")
+            return
+        fi
+    fi
+
+    # The second half of the durable guarantee: the resumed run must not have
+    # touched the workspace. A completed effect whose completion was reused
+    # does not happen twice, and the only place that shows up is the state of
+    # the world.
+    #
+    # For `resume` this is the whole point of the directive. The first run
+    # died in the middle of an effect, and the resumed run has to decide what
+    # to do about a call whose answer nobody has. If it dispatches the call
+    # again, the world changes here — twice the effect, and a row that looks
+    # exactly like a first attempt.
+    if [[ "$resume" == 1 ]]; then
+        after_snapshot="$(workspace_snapshot "$root/cwd")"
+        if [[ "$before_snapshot" != "$after_snapshot" ]]; then
+            printf 'FAIL %-52s the resumed run changed the workspace: the effect repeated\n' \
+                "$label"
+            diff <(printf '%s\n' "$before_snapshot") <(printf '%s\n' "$after_snapshot") \
+                | sed 's/^/       | /' | head -10
+            failed=$((failed + 1))
+            failures+=("$name: the resumed run changed the workspace")
+            return
+        fi
     fi
 
     printf 'ok   %-52s exit %s\n' "$label" "$code"

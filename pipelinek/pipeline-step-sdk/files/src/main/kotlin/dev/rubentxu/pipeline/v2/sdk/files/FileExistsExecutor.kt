@@ -24,7 +24,7 @@ data class FileExistsResult(
  *   workspace through a symlink: `normalize()` does not dereference links, so
  *   `<workspace>/link/passwd` starts with the workspace while `link` may point
  *   anywhere. The check is anchored on the real path.
- * -.v2 reserved directory → false, anchored on the real path too, so a link
+ * - .v2 reserved directory → false, anchored on the real path too, so a link
  *   pointing at `.v2` cannot probe the reserved area under another name
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
 */
@@ -53,7 +53,7 @@ class FileExistsExecutor(
             is PathResolution.Rejected -> return FileExistsResult(declaredPath, false)
         }
 
-        // Reserved.v2 directory → false, on real paths.
+        // Reserved .v2 directory → false, on real paths.
         if (realPath.startsWith(realWorkspace.resolve(".v2"))) {
             return FileExistsResult(declaredPath, false)
         }

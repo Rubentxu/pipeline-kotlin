@@ -178,7 +178,7 @@ sealed interface CliError {
         override fun toString(): String =
             "UnavailableView($view): this build cannot deliver the '$view' view. " +
                 "Process transcript belongs to `pipeline console`; `full` interleaving " +
-                "has no decided rule yet (CLI_OBSERVABILITY_SPEC §11)."
+                "has no decided rule yet."
     }
 
     /** `--format` named a value that is not a format. */

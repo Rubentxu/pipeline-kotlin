@@ -28,7 +28,7 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamAddress
  * rather than approximated.
  * ## Why it is not persisted
  * A record is a projection assembled at read time from two durable authorities. Persisting it would
- * Create a third copy of facts that already exist — the exact duplication ` §` forbids — and
+ * Create a third copy of facts that already exist — the exact duplication the product forbids — and
  * it would freeze a merged order into storage, converting a read-side decision into a fact that
  * later corrections could not reach.
  * @see ObservationQuery for how a record is selected.

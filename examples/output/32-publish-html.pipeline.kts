@@ -1,4 +1,4 @@
-// `core.publishHTML` installed-CLI canary (Tier B #2).
+// `core.publishHTML` installed-CLI canary.
 // Exercises the registry-path `core.publishHTML` Step through the DSL surface.
 // Stage "build" creates an HTML report directory under reports/ in the
 // workspace and publishes it under the logical name "lpr090-html".

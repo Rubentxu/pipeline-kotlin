@@ -359,6 +359,14 @@ object JsonEventLog {
         "TimeoutTriggered", "TimestampsEntered", "TimestampsExited",
         "StepAdmissionObserved", "PostConditionSelected", "StageSkipped",
         "PluginEventEmitted",
+        // the armed-obligation notification. The payload carries the promise's
+        // identity and plan, never the provider's content.
+        "CompensationArmed",
+        // the three facts of the compensation loop. The slot travels with them
+        // because it is the join with the journal rows of the body that ran.
+        "CompensationStarted",
+        "CompensationFinished",
+        "SagaTerminal",
     )
 
     /**
@@ -1478,6 +1486,30 @@ object JsonEventLog {
                     )
                 }
             }
+            // decode the armed-obligation notification. The knowledge of how this
+            // event is encoded lives in CompensationArmedCodec, so the dispatcher here stays a
+            // dispatcher and does not grow one branch per event.
+            "CompensationArmed" -> CompensationArmedCodec.decode(
+                s = s,
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+            )
+            // the loop's three facts. Their knowledge of how they are encoded
+            // lives in SagaLoopCodec, so the dispatcher here stays a dispatcher and the file
+            // does not grow one branch per event.
+            "CompensationStarted",
+            "CompensationFinished",
+            "SagaTerminal",
+            -> SagaLoopCodec.decode(
+                kind = kind,
+                s = s,
+                eventId = eventId,
+                runId = runId,
+                sequence = sequence,
+                occurredAt = occurredAt,
+            )
             else -> return EventDecodeOutcome.Failed(EventDecodeFailure.UnknownEventKind(kind))
         }
         return EventDecodeOutcome.Decoded(event ?: return malformedBranch(kind))

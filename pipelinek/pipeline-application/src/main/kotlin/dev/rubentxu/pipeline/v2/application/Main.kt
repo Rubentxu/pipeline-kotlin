@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
+import dev.rubentxu.pipeline.v2.application.durable.SagaVerdict
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
@@ -745,12 +746,16 @@ fun main(args: Array<String>) {
         val exitFailure: Boolean = if (runOutcome != null) {
             reportRunOutcome(runOutcome)
         } else {
+            // The LEGACY path: no typed outcome was produced, so there are only two stories —
+            // "it finished successfully" and "it did not". The "unstable" arm that used to live
+            // here was UNREACHABLE: the word it compared against could only be those two, so
+            // the arm could never run and only misled whoever read it.
             val lastEvent = events.lastOrNull()
-            val legacyOutcome = if (lastEvent is RunFinished && lastEvent.outcome == "success") "success" else "failure"
-            when (legacyOutcome) {
-                "success" -> { System.err.println("Pipeline finished with SUCCESS"); false }
-                "unstable" -> { System.err.println("Pipeline finished with UNSTABLE"); false }
-                else -> { System.err.println("Pipeline finished with FAILURE"); true }
+            val succeeded = lastEvent is RunFinished && lastEvent.outcome == RunOutcome.SUCCESS_TOKEN
+            if (succeeded) {
+                System.err.println("Pipeline finished with SUCCESS"); false
+            } else {
+                System.err.println("Pipeline finished with FAILURE"); true
             }
         }
         if (exitFailure) System.exit(1)
@@ -844,9 +849,13 @@ fun main(args: Array<String>) {
         java.util.UUID.randomUUID().toString().take(8))
     val leaseStore = FileBackedRunExecutionLeaseStore(controlDirRoot.resolve("leases"))
     val lease = leaseStore.acquire(LeaseRequest(runId, requireNotNull(runOwner)))
-    when (lease) {
-        is LeaseAcquisition.Acquired, is LeaseAcquisition.TakenOver,
-        is LeaseAcquisition.Reentered -> Unit
+    // The fencing token of the lease THIS process holds. It is the epoch the
+    // durable Saga store uses to refuse a write from a writer that lost the run to a
+    // takeover, so it has to travel from the acquisition to the store.
+    val leaseEpoch: Long = when (lease) {
+        is LeaseAcquisition.Acquired -> lease.fencingToken.value
+        is LeaseAcquisition.TakenOver -> lease.fencingToken.value
+        is LeaseAcquisition.Reentered -> lease.fencingToken.value
         is LeaseAcquisition.AlreadyOwned -> {
             // Typed admission rejection: this run already has a live owner.
             // Exit 2 (invocation/admission), not a pipeline failure.
@@ -1006,6 +1015,13 @@ fun main(args: Array<String>) {
     // Build orchestrator with all durable dependencies
     val clock: Clock = SystemClock()
     val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPathStr)
+    // The durable Saga obligations live in the SAME database as the journal and
+    // the event log, through the same connection factory. One authority for the run's durable
+    // state, not a second store with its own lifecycle.
+    val sagaObligationStore = dev.rubentxu.pipeline.v2.events.durable.SqliteSagaObligationStore(
+        connectionFactory = factory,
+        dbPath = dbPathStr,
+    )
     val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory, clock)
     val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
     val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
@@ -1093,6 +1109,17 @@ fun main(args: Array<String>) {
     // committed bytes are flushed.
     val outputObserver = startLiveOutputObserver(runId, controlDirRoot, config.format)
 
+    // The terminal state of the Sagas this run executed. The verdict block has to
+    // say it: a Saga that needs a human and a Saga that was fully compensated look
+    // identical on stderr otherwise, and they call for opposite responses from whoever
+    // reads the run.
+    //
+    // The EVENT, not the obligation store: the event is the published fact, and the store
+    // answers a different question (what is owed, not what was concluded). Declared HERE,
+    // outside the `try`, because the verdict is printed after it — and because a run that
+    // threw still has to say what it left behind.
+    val sagaTerminals = mutableListOf<dev.rubentxu.pipeline.v2.events.SagaTerminal>()
+
     // Collateral finding fix (shutdown race 1/3): the sqlite
     // single-writer thread is NON-daemon. If any exception escapes the run
     // or the stdout envelope streaming below, rawEventStore.close is
@@ -1144,6 +1171,12 @@ fun main(args: Array<String>) {
             composition = composition,
             secretPatternRegistry = secretPatternRegistry,
             allowNetwork = config.allowNetwork,
+            // The run's Saga seam — the durable store plus the lease epoch that
+            // fences a writer that lost this run to a takeover.
+            sagaBinding = dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding(
+                store = sagaObligationStore,
+                leaseEpoch = leaseEpoch,
+            ),
         )
         pipelineSpec != null -> {
             // Fail-closed: non-canonical pipelines are not supported by the canonical bridge
@@ -1175,6 +1208,7 @@ fun main(args: Array<String>) {
     RunObservationOutput.writeTo(
         eventSequence.map { event ->
             lastEventRef(event)
+            if (event is dev.rubentxu.pipeline.v2.events.SagaTerminal) sagaTerminals += event
             event
         },
         writer,
@@ -1205,14 +1239,26 @@ fun main(args: Array<String>) {
     val exitFailure: Boolean = if (runOutcome != null) {
         reportRunOutcome(runOutcome)
     } else {
+        // The LEGACY path: no typed outcome was produced, so there are only two stories —
+        // "it finished successfully" and "it did not". The "unstable" arm that used to live
+        // here was UNREACHABLE: the word it compared against could only be those two, so the
+        // arm could never run and only misled whoever read it.
         val last = lastEvent
-        val legacyOutcome = if (last is RunFinished && last.outcome == "success") "success" else "failure"
-        when (legacyOutcome) {
-            "success" -> { System.err.println("Pipeline finished with SUCCESS"); false }
-            "unstable" -> { System.err.println("Pipeline finished with UNSTABLE"); false }
-            else -> { System.err.println("Pipeline finished with FAILURE"); true }
+        val succeeded = last is RunFinished && last.outcome == RunOutcome.SUCCESS_TOKEN
+        if (succeeded) {
+            System.err.println("Pipeline finished with SUCCESS"); false
+        } else {
+            System.err.println("Pipeline finished with FAILURE"); true
         }
     }
+    // What happened to the Sagas of this run. It belongs in the verdict block, next
+    // to the reason the run failed, because "the Saga settled" and "a human has to resolve
+    // a pending obligation right now" are different worlds and the exit code cannot say
+    // which one this was.
+    //
+    // Only the durable path reaches here with Sagas: without `--db` there is no Saga
+    // store, so no Saga can run and there is nothing to say.
+    SagaVerdict.verdicts(sagaTerminals).forEach { System.err.println(it) }
     if (exitFailure) System.exit(1)
 }
 

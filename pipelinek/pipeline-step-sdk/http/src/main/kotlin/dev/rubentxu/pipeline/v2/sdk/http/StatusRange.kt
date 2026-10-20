@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.http
 
 /**
- * A range of acceptable status codes
+ * A range of acceptable status codes.
  * Jenkins takes this as the string `"100:399,404"` and parses it **after the request
  * has already been sent** (`HttpRequest.java:552-589`), so a typo in a pipeline
  * produces an `IllegalArgumentException` raised against a request that reached the

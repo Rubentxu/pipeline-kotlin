@@ -70,7 +70,7 @@ val candidateTag = providers.gradleProperty("candidate.tag")
 
 tasks.register<JavaExec>("candidateAdmission") {
     group = "distribution"
-    description = "DIST-PRODUCT P0.3: cheap identity admission for the distribution ZIP."
+    description = "cheap identity admission for the distribution ZIP."
 
     dependsOn(":pipeline-application:distZip")
     // Every admitted candidate carries its SBOM. The cyclonedx plugin
@@ -109,7 +109,7 @@ tasks.register<JavaExec>("candidateAdmission") {
         val zip = dist.resolve("pipelinek-$version.zip")
         if (!zip.isFile) {
             throw GradleException(
-                "DIST-PRODUCT P0.3: expected distribution ZIP at $zip but it does not exist. " +
+                "expected distribution ZIP at $zip but it does not exist. " +
                     "Run :pipeline-application:distZip first.",
             )
         }
@@ -125,9 +125,9 @@ tasks.register<JavaExec>("candidateAdmission") {
             .file("reports/bom.json").get().asFile
         if (!bomSource.isFile) {
             throw GradleException(
-                "DIST-PRODUCT: :pipeline-application:cyclonedxBom is a declared dependency of " +
+                "the cyclonedxBom is a declared dependency of " +
                     "this task but produced no $bomSource. Refusing to admit a candidate whose " +
-                    "SBOM is absent: §8 of the DISTRIBUTION-FIRST RELEASE POLICY lists " +
+                    "SBOM is absent: the release policy lists " +
                     "pipelinek-$version.sbom.json as a required asset, and an asset set with a " +
                     "hole in it is not a smaller candidate, it is a different product.",
             )
@@ -157,9 +157,9 @@ tasks.register<JavaExec>("candidateAdmission") {
         fun requiredAsset(asset: String, file: File, producedBy: String): File {
             if (!file.isFile) {
                 throw GradleException(
-                    "DIST-PRODUCT: $producedBy is a declared dependency of this task but " +
+                    "$producedBy is a declared dependency of this task but " +
                         "produced no $file. Refusing to admit a candidate without $asset; " +
-                        "§8 of the DISTRIBUTION-FIRST RELEASE POLICY fixes the asset set " +
+                        "the release policy fixes the asset set " +
                         "exactly, and a missing member is a defect to fix, not a variant to " +
                         "ship around.",
                 )
@@ -239,7 +239,7 @@ tasks.register<JavaExec>("candidateAdmission") {
 */
 tasks.register<JavaExec>("sdkZip") {
     group = "distribution"
-    description = "§8: build pipelinek-<v>.sdk.zip and pipelinek-bom-<v>.json " +
+    description = "build pipelinek-<v>.sdk.zip and pipelinek-bom-<v>.json " +
         "from build/sdk-repo/ (the local Maven repo populated by " +
         ":publishSdkForExternalPlugin)."
 
@@ -278,7 +278,7 @@ tasks.register<JavaExec>("sdkZip") {
         val sdkRepoDir = sdkRepo.get().asFile
         if (!sdkRepoDir.isDirectory) {
             throw GradleException(
-                "§8 sdkZip: expected SDK repository at $sdkRepoDir but the directory " +
+                "sdkZip: expected SDK repository at $sdkRepoDir but the directory " +
                     "does not exist. Did :publishSdkForExternalPlugin run?",
             )
         }
@@ -335,7 +335,7 @@ fun gitCommitOf(root: Project): String = try {
 
 tasks.register("releaseGate") {
     group = "distribution"
-    description = "PK-RC-PLUGIN-001 + PK-RC-RENDER-001 + PK-NEXT R0.2 + PK-RELEASE-CONSOLIDATION H1.4: " +
+    description = "run the candidate gate end-to-end: " +
         "run the candidate gate end-to-end. Dist ZIP + cyclonedxBom + candidateAdmission + " +
         "LaunchReceipt contract + SDK BOM alignment. Non-zero on any refusal."
     // The description used to enumerate four certifications that no longer run here: the

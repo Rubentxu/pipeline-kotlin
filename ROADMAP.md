@@ -2332,6 +2332,19 @@ podían fallar y uno se ha añadido para afirmar lo que un proceso escribe. Son
 | `steps/04-sh` | un `sh` sin mirar su salida ni su efecto |
 | `steps/16-sleep` | un `sleep` y un `echo`; afirmar el retardo sería un test de reloj |
 
+`steps/16-sleep` volvió con el trabajo de `main` y se queda, con una corrección a
+lo que se escribió aquí: lo que se rechazó fue **afirmar el retardo**, que es un
+test de reloj, no **ejercitar el paso**. El paso `core.sleep` no tiene ningún test
+unitario —la búsqueda en todo el árbol no encuentra uno que lo nombre—, así que
+un escenario que lo ejecuta es la única cobertura de que el paso está cableado y
+no se cuelga. Afirma el código de salida, que es una garantía real, y no el
+número de segundos que durmió, que no lo es.
+
+`durable/32-durable-replay` también volvió, y ahí la razón es más fuerte: afirma
+una garantía que el conjunto curado de aquí no cubría en ninguna parte —que un
+efecto completado no se repite al reanudar—, y una garantía que nadie mira no es
+una garantía.
+
 Ninguna garantía se perdió: el orden de las etapas lo observan
 `smoke/10-smoke-e2e` (la etapa 2 archiva lo que la 1 clonó) y
 `negative/12-error-handling` (un milestone entre dos etapas); el efecto de
@@ -2719,8 +2732,108 @@ runtime usa, o el módulo se retira y queda escrito que esos puertos publicados 
 tienen implementación en el runtime. Lo que no vale es seguir como está: código que
 nadie compila es un módulo que ya no es código, sólo peso.
 
+### 2.19 La rama se había divorced de `main`: 196 commits de trabajo ajeno
+
+El ciclo anterior dejó una decisión de código encima de una pregunta de integración:
+la rama de este trabajo tenía 29 commits propios y `main` tenía 196, y ninguna de las
+dos era ancestro de la otra. Medido, no supuesto:
+
+| pregunta | respuesta medida |
+|---|---|
+| ¿dónde está el punto de divergencia? | `6e1e99cfe`, el commit que arregló la fuga de credenciales del arnés |
+| ¿cuántos commits tiene cada lado? | `main` 196, esta rama 29 (los SHA no se comparten: `main` reconstruyó el mismo trabajo con otra historia) |
+| ¿las dos ramas son post-RESET? | sí, las dos: mismo `AGENTS.md` de política, las dos con `scripts/verify-all.sh` y `scripts/check-budgets.py`, 62 clases de test en `main` y 63 en esta rama |
+| ¿en qué se diferencian de verdad? | en el layout: `main` conserva `v2/` con los ejemplos en `v2/examples/` (82 ficheros); esta rama mudó el árbol a `pipelinek/` con los ejemplos en la raíz (60 ficheros) |
+| ¿qué cuesta una fusión a ciegas? | 265 ficheros en conflicto |
+| ¿qué cuesta con el layout unificado primero? | 209 ficheros en conflicto, sobre 762 ficheros que difieren en contenido |
+
+La divergencia no era de política sino de soporte: las dos ramas aplican la misma
+regla y arrived al mismo sitio por caminos distintos. Por eso la reconciliación no es
+una fusión de guise, sino una **composición con reglas**, y las reglas se escribieron
+antes de tocar un solo fichero:
+
+1. Ningún cambio sustantivo de ninguna de las dos caras se pierde. Si las dos
+   cambiaron lo mismo, se componen; si son alternativas, gana la que conserva *las dos*
+   garantías.
+2. El comportamiento de producción donde `main` cambió la semántica del producto (el
+   seam de Saga, las correcciones de runtime, la puerta de release) se queda con
+   `main`. El comportamiento donde esta rama lo cambió (la integridad del artefacto, el
+   rechazo del plugin no verificable, el arnés medible) se queda aquí.
+3. Un test que existe en una sola cara se conserva tal cual. Si existe en las dos, se
+   compone la unión de métodos.
+4. El cableado JUnit se queda donde el módulo tiene fuentes de test en el árbol
+   fusionado; las dependencias y publicaciones de `main` también.
+5. El árbol fusionado no lleva identificadores de tarea ni de documento en los
+   comentarios: se quita el identificador y se conserva la prosa.
+6. Un módulo que esta rama retiró y que nadie usa en ninguna de las dos caras sigue
+   retirado.
+7. Una sola autoridad: si el código de `main` duplica una regla que ya se poseía, se
+   queda la que ya se poseía.
+8. Nada de lo que `main` trae se descarta por ser de `main`, ni nada de lo que esta
+   rama trae se descarta por ser de aquí.
+
+**Lo que entró de `main` y no se negocia.** El seam de Saga completo (el parámetro
+`sagaBinding` y su reenvío en la composición del runtime, el intérprete de
+compensación, el veredicto y su lectura del plano de salida) y sus catorce escenarios;
+la puerta de release endurecida, que ahora **rechaza un plugin que no declara rango
+de API** en lugar de ignorarlo en silencio, con su propio diagnóstico; los dos
+artefactos de procedencia del release (`manifest.json` con el esquema
+`pipelinek-release-manifest-1` y `git-head.txt`); y las correcciones de runtime
+posteriores a la bifurcación.
+
+**Lo que se quedó de esta rama.** El arnés con etapas, filtros y presupuestos de
+líneas y de reloj, con su directorio de logs por corrida; los tests unitarios
+reconstruidos; los ejemplos con aserciones discriminantes; la decisión de integridad
+de artefacto; y la retirada de `:pipeline-protocol`, un módulo que `main` conservaba
+en el árbol sin que ni su `settings.gradle.kts` ni ningún otro fichero lo nombraran.
+
+**Lo que este ciclo NO hace.** No borra `:pipeline-runtime`. El censo de §2.18 sigue
+siendo cierto —cero consumidores, sin publicación, fuera de la distribución y fuera de
+la compilación de la puerta—, pero la ausencia de referencias no demuestra que un
+código sea prescindible, y aquí los tres adaptadores implementan un contrato
+**publicado** contra el journal, las leases y el plano de salida que ya existen. La
+decisión es integrarlos, no retirarlos; y la puerta tiene que compilar el módulo
+mientras tanto.
+
+**La comparación que pedía el encargo, medida en los cuatro sitios.** Los tres verbos
+—cancelar, inspeccionar, recuperar— existen en el ecosistema más de una vez, y cada
+copia tiene **contrato y autoridad propios**:
+
+| quién | contrato | autoridad sobre el estado | consume el SDK publicado |
+|---|---|---|---|
+| el runtime de PipelineK | `RuntimeControlPort`, `RuntimeRecoverPort`, `RuntimeIntrospectionPort` (publicados en `:pipeline-runtime-api`) | el journal, las leases y el plano de salida del propio runtime | — |
+| Studio | casos de uso propios de cancelar, recuperar e inspeccionar (`CancelRunUseCaseImpl`, `RecoveryUseCaseImpl`, `RunStateInspectionUseCaseImpl`) | su propio almacenamiento y su propio backend (Fabric o SDK) | sí, pero **estáticamente**: sondea el runtime y su manifiesto, no compila contra los puertos |
+| Fabric | `RunControl` con su *fencing* y `ProjectionSource` | su propio plano de control | no |
+| los plugins publicados (Saga, Policy, Assurance) | `pipeline-domain`, `pipeline-events`, `pipeline-output`, `pipeline-scripting-api` | ninguna: son consumidores | sí |
+
+La fila de los plugins es la que fija la costura: la costura de un plugin es el SDK
+publicado, y el SDK publicado que hoy consumen es el de dominio y eventos. Ningún
+plugin consume `pipeline-runtime-api`, ni en GitHub, ni en el Maven local, ni en
+ningún repositorio hermano de esta máquina. Los puertos de runtime son, hoy, un
+contrato publicado **sin implementación en el producto y sin un solo consumidor**, y
+eso es lo que este ciclo tiene que arreglar: no retirarlos —eso rompería un contrato
+publicado—, sino integrarlos en la composición del runtime para que la autoridad del
+journal sea la única y los verbos existan.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 
+- **Reconciliar con `main` antes de seguir construyendo.** La rama estaba a 196
+  commits de su lado y a 29 del suyo, con el trabajo de Saga y el tren de releases
+  enteros fuera. Integrar sobre una base divergente es la forma de perder trabajo
+  ajeno con buena intención: por eso la reconciliación va primero, con reglas
+  escritas y aplicadas fichero a fichero, y el trabajo propio del ciclo sigue
+  después, sobre el árbol ya integrado.
+- **No borrar `:pipeline-runtime`.** El censo dice que nadie lo llama, y lo difícil
+  no es que lo diga: es que un contrato publicado con una implementación
+  escrita contra el journal, las leases y el plano de salida que ya existen no es
+  código muerto mientras su consumidor sea posible. Se integra y se compila en la
+  puerta; si más adelante se demuestra que hay una implementación productiva
+  equivalente, la retirada se propone con la prueba delante y con revisión
+  explícita.
+- **Restringir la escritura remota mientras dura la reconciliación.** La misión
+  deja de poder escribir en remoto hasta que el árbol integrado esté verificado:
+  fusionar y publicar desde una rama divergente es exactamente lo que esta
+  reconciliación viene a evitar.
 - **No** crear un arnés de pruebas. El código de verificación vive en
   `scripts/verify-all.sh` (un entrypoint) y `scripts/check-budgets.py` (un
   script stdlib). Nada más.

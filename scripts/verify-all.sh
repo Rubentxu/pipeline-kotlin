@@ -337,6 +337,14 @@ trap cleanup_logs EXIT
 # gate was in a position to say so -- the analysis was green in the only sense
 # that a task nobody invokes is green. It fans out to 26 subprojects and costs
 # 3s, so running it adds no new gate: it runs one that was already declared.
+#
+# `:pipeline-runtime:compileKotlin` is there because the analysis above does not
+# compile: detekt parses the sources, and a module whose only defect is that it
+# no longer matches the contract it implements parses perfectly. This module
+# implements the published runtime ports, it is not published, and it does not
+# travel in the distribution, so nothing else in the gate would ever notice it
+# drifting away from the contract it is supposed to fulfil. Compiling it is the
+# cheapest instrument that can fail for that guarantee.
 
 if want_stage 1; then
 log "stage 1/5  compile + detekt + detektTest + apiCheck + installDist"
@@ -345,6 +353,7 @@ stage_started_at=$(date +%s)
     detektMain \
     detektTest \
     apiCheck \
+    :pipeline-runtime:compileKotlin \
     :pipeline-application:installDist \
     > "$log_dir/stage1.log" 2>&1 \
     || { tail -40 "$log_dir/stage1.log" >&2; fail "stage 1 (see "$log_dir/stage1.log")"; }

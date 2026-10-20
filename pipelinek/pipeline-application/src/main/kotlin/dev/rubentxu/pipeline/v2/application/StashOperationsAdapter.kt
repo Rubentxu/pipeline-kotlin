@@ -369,10 +369,7 @@ class StashOperationsAdapter(
      * alternation such as `*.{jar,war}`, or a legal POSIX filename such as `data/a,b.txt`), so
      * splitting inside the glob would shred both. The list therefore has to be split by the caller
      * that knows the field is a list -- which is exactly what `excludes` already did.
-     * Consequence, stated rather than hidden: a `stash` of a file whose name contains a comma is
-     * not expressible through this field. That was already true before the split moved here, so
-     * nothing is newly refused; it is the one honest price of a list-in-a-String.
-*/
+ */
     private fun splitPatterns(patterns: String): List<String> =
         patterns.split(',').map { it.trim() }.filter { it.isNotEmpty() }
 

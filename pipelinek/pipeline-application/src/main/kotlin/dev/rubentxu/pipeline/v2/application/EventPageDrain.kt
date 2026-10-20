@@ -39,6 +39,15 @@ import dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope
  * [EventTail] has exactly one method. A fail-open implementation is not a mistake here, it is
  * unrepresentable: this type cannot reach `history`, cannot name `EventSink`, and cannot see the
  * store. Reverting the CLI to `history` is possible; doing it here is not.
+ * ## Whose cursor the page carries
+ * The page this drain returns is a CLIENT's page, and its cursor is the client's position: the
+ * sequence of the last fact the consumer was handed. The store's page carries the store's
+ * position, and the two are not the same when a filter is in play — the page is bounded by rows
+ * and the limit counts matching facts, so the read can stop in the middle of a page, and a cursor
+ * that pointed past the facts that were read and not handed out would lose them. The rule that
+ * decides this lives in [clientCursor], and both drains call it. See
+ * [dev.rubentxu.pipeline.v2.events.identity.EventPage.nextCursor] for the two meanings side by
+ * side.
 */
 object EventPageDrain {
 
@@ -92,6 +101,7 @@ object EventPageDrain {
         val envelopes = ArrayList<PipelineEventEnvelope>(minOf(limit, DRAIN_PAGE_HINT))
         val refusals = ArrayList<EventRecordRead.Undecodable>()
         var readFrom = cursor
+        var lastDelivered: Long? = null
 
         while (true) {
             val page = tail.readAfter(run, readFrom, limit)
@@ -99,7 +109,10 @@ object EventPageDrain {
             refusals.addAll(page.refusals)
             for (envelope in page.envelopes) {
                 if (envelopes.size == limit) break
-                if (query.matches(envelope)) envelopes.add(envelope)
+                if (query.matches(envelope)) {
+                    envelopes.add(envelope)
+                    lastDelivered = envelope.sequence
+                }
             }
 
             val reachedLimit = envelopes.size == limit
@@ -110,7 +123,7 @@ object EventPageDrain {
                 return Outcome.Answered(
                     EventPage(
                         envelopes = envelopes.toList(),
-                        nextCursor = continuation,
+                        nextCursor = clientCursor(run.segments.last(), lastDelivered, continuation),
                         hasMore = page.hasMore,
                         refusals = refusals.toList(),
                     ),
@@ -120,7 +133,7 @@ object EventPageDrain {
                 return Outcome.Stalled(
                     page = EventPage(
                         envelopes = envelopes.toList(),
-                        nextCursor = continuation,
+                        nextCursor = clientCursor(run.segments.last(), lastDelivered, continuation),
                         hasMore = true,
                         refusals = refusals.toList(),
                     ),
@@ -167,6 +180,7 @@ object EventPageDrain {
         val events = ArrayList<DomainEvent>(minOf(limit, DRAIN_PAGE_HINT))
         val refusals = ArrayList<EventRecordRead.Undecodable>()
         var readFrom = cursor
+        var lastDelivered: Long? = null
 
         while (true) {
             val slice = store.readRecords(run.segments.last(), readFrom, limit)
@@ -177,6 +191,7 @@ object EventPageDrain {
                 if (record !is EventRecordRead.Decoded) continue
                 if (!query.matches(envelopeOf(record.event))) continue
                 events.add(record.event)
+                lastDelivered = record.event.sequence
             }
 
             val reachedLimit = events.size == limit
@@ -186,7 +201,7 @@ object EventPageDrain {
                 return TypedOutcome.Answered(
                     TypedPage(
                         events = events.toList(),
-                        nextCursor = continuation,
+                        nextCursor = clientCursor(run.segments.last(), lastDelivered, continuation),
                         hasMore = slice.hasMore,
                         refusals = refusals.toList(),
                     ),
@@ -196,7 +211,7 @@ object EventPageDrain {
                 return TypedOutcome.Stalled(
                     page = TypedPage(
                         events = events.toList(),
-                        nextCursor = continuation,
+                        nextCursor = clientCursor(run.segments.last(), lastDelivered, continuation),
                         hasMore = true,
                         refusals = refusals.toList(),
                     ),
@@ -241,3 +256,43 @@ object EventPageDrain {
 
 /** Only sizes the first allocation; the answer is bounded by `limit`, not by this. */
 private const val DRAIN_PAGE_HINT = 64
+
+/**
+ * The position a client may resume from, given what it was handed and where the store is.
+ *
+ * ## Why the store's position is not always the answer
+ * The store's page is bounded by ROWS; the verb's `--limit` counts FACTS THAT MATCH. Two counts
+ * over one page, and the drain can stop in the middle of a page: when the matching facts
+ * accumulated reach the limit, the rest of the page — which the store already read — is left
+ * undelivered. If the cursor were the store's position, those undelivered facts would sit BEHIND
+ * the cursor, and a client that resumed from it would never see them. Measured on this tree, with
+ * a history whose rows 2, 3 and 4 all match the filter and a limit of two: the first read
+ * delivered rows 2 and 3 and handed out a cursor at row 4, and row 4 was **lost** — silently, with
+ * exit code 0 and no gap marker.
+ *
+ * ## The rule
+ * The cursor is the position of the last fact the client was HANDED. That is the only position
+ * that cannot skip an undelivered fact: everything after it is still ahead of the client, and
+ * everything before it was either delivered or did not match the filter.
+ *
+ * When the call delivered nothing, there is no fact to point at, and the store's position is the
+ * answer: every row it read was considered and none of them matched, so nothing is lost by
+ * advancing to it. That is also what lets a client whose filter matches nothing yet keep polling
+ * forward instead of rescanning the whole history on every call.
+ *
+ * ## What it does not change
+ * Without a filter, every row matches, the drain cannot stop in the middle of a page (the page
+ * holds at most `limit` rows and all of them match), and the last delivered fact IS the last row
+ * of the page: the cursor is exactly the store's position, as before.
+ *
+ * ## One rule, two projections
+ * The envelope drain and the typed drain read through different seams but owe the client the same
+ * cursor, so the rule lives HERE and both call it. A paging rule that exists in one projection
+ * and not in the other is a divergence waiting to be discovered by a consumer that reads one of
+ * them.
+ */
+private fun clientCursor(
+    runId: String,
+    lastDeliveredSequence: Long?,
+    storePosition: EventCursor?,
+): EventCursor? = lastDeliveredSequence?.let { EventCursor(runId, it) } ?: storePosition

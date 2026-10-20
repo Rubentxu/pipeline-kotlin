@@ -130,6 +130,22 @@ build_binary_fixtures() {
     fi
 }
 
+# What a scenario PRINTED, as opposed to what the product LOGGED. The product
+# narrates every step on the same stream the scenario prints on, and that
+# narration buries the text an assertion is about: a failure that shows the
+# first twenty lines of a run can hide the very line that decides it, which
+# sends the reader looking for a defect that is not there. The check itself
+# always reads the whole stream; this only decides what a failure shows.
+show_printed() {
+    local stream="$1" printed
+    printed="$(grep -av '^\[PipelineK\]' "$stream" 2>/dev/null | head -40 || true)"
+    if [[ -z "$printed" ]]; then
+        printf '       | the run printed no text of its own\n'
+    else
+        printf '%s\n' "$printed" | sed 's/^/       | /'
+    fi
+}
+
 # One scenario, fully isolated. Nothing is read from the developer's HOME and
 # nothing is written outside $cycle_root.
 run_scenario() {
@@ -255,9 +271,9 @@ run_scenario() {
             if ! grep -aqF -- "$wanted" "$stdout"; then
                 printf 'FAIL %-52s exit %s as expected, but stdout lacked: %s\n' \
                     "$label" "$code" "$wanted"
-                sed -n '1,20p' "$stdout" | sed 's/^/       | /'
+                show_printed "$stdout"
                 failed=$((failed + 1))
-                failures+=("$name: exit matched but expected stdout substring absent")
+                failures+=("$name: stdout lacked: $wanted")
                 return
             fi
         done
@@ -265,9 +281,9 @@ run_scenario() {
             if ! grep -aqF -- "$wanted" "$stderr"; then
                 printf 'FAIL %-52s exit %s as expected, but stderr lacked: %s\n' \
                     "$label" "$code" "$wanted"
-                sed -n '1,20p' "$stderr" | sed 's/^/       | /'
+                show_printed "$stderr"
                 failed=$((failed + 1))
-                failures+=("$name: exit matched but expected stderr substring absent")
+                failures+=("$name: stderr lacked: $wanted")
                 return
             fi
         done
@@ -305,9 +321,9 @@ run_scenario() {
                 if ! grep -aqF -- "$wanted" "$transcript"; then
                     printf 'FAIL %-52s the committed transcript lacked: %s\n' \
                         "$label" "$wanted"
-                    sed -n '1,20p' "$transcript" | sed 's/^/       | /'
+                    head -40 "$transcript" | sed 's/^/       | /'
                     failed=$((failed + 1))
-                    failures+=("$name: the committed transcript lacked '$wanted'")
+                    failures+=("$name: transcript lacked: $wanted")
                     return
                 fi
             done

@@ -156,6 +156,99 @@ build_binary_fixtures() {
     fi
 }
 
+# The operator's trust material for a scenario: a publisher key pair, the detached signature over
+# the plugin's bytes, and the row that pins those bytes and names the publisher and the key.
+#
+# The key is generated HERE, for THIS scenario, and dies with the scenario's directory: nothing
+# private is written into the repository, and no key that ever existed elsewhere can have signed
+# these bytes. The row pins the digest of the artifact's FILE, which is what the runtime measures,
+# so the operator's pin and the runtime's measurement are the same quantity.
+#
+# `signed-then-tampered` changes the bytes AFTER the signature was made. That is the swap the
+# policy exists to refuse: the signature still says "I signed those bytes", and the bytes on
+# disk are not those bytes.
+build_plugin_trust_fixture() {
+    local root="$1" mode="$2" jar_name="$3"
+    local jar="$root/cwd/plugins/$jar_name"
+    local trust_dir="$root/trust"
+
+    if [[ ! -f "$jar" ]]; then
+        printf 'run.sh: the trust fixture needs the plugin artifact at %s\n' "$jar" >&2
+        return 1
+    fi
+    command -v openssl >/dev/null || {
+        printf 'run.sh: openssl is required to sign the plugin trust fixture\n' >&2
+        return 1
+    }
+    command -v unzip >/dev/null || {
+        printf 'run.sh: unzip is required to read the plugin manifest for the trust fixture\n' >&2
+        return 1
+    }
+
+    mkdir -p "$trust_dir/keys"
+
+    # The identity the operator's row is filed under: the plugin's own manifest says who it is
+    # and which release it is. Reading it from the artifact is what keeps the row and the plugin
+    # talking about the same thing.
+    local manifest plugin_id release_version publisher
+    manifest="$(unzip -p "$jar" META-INF/pipelinek/plugin-manifest.json 2>/dev/null || true)"
+    plugin_id="$(printf '%s\n' "$manifest" | sed -n 's/.*"plugin"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+    release_version="$(printf '%s\n' "$manifest" | sed -n 's/.*"releaseVersion"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+    publisher="$(printf '%s\n' "$manifest" | sed -n 's/.*"publisher"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+    if [[ -z "$plugin_id" || -z "$release_version" || -z "$publisher" ]]; then
+        printf 'run.sh: the plugin manifest does not carry the identity the trust row needs\n' >&2
+        return 1
+    fi
+
+    # The bytes the publisher signs, and the bytes the operator pins: one quantity, measured the
+    # same way the runtime measures them (SHA-256 over the artifact's file).
+    openssl dgst -sha256 -binary "$jar" >"$trust_dir/artifact.digest" || return 1
+    local digest_hex
+    digest_hex="$(od -An -tx1 -v "$trust_dir/artifact.digest" | tr -d ' \n')"
+
+    openssl genpkey -algorithm ed25519 -out "$trust_dir/publisher-key.pem" 2>/dev/null || return 1
+    openssl pkey -in "$trust_dir/publisher-key.pem" -pubout -outform DER 2>/dev/null \
+        | base64 -w0 >"$trust_dir/keys/example-key.pub" || return 1
+    openssl pkeyutl -sign -inkey "$trust_dir/publisher-key.pem" -rawin \
+        -in "$trust_dir/artifact.digest" -out "$trust_dir/signature.bin" || return 1
+
+    local signature
+    signature="$(base64 -w0 <"$trust_dir/signature.bin")"
+
+    cat >"$jar.sig" <<JSON
+{
+  "schemaVersion": 1,
+  "keyId": "example-key",
+  "algorithm": "Ed25519",
+  "signature": "$signature",
+  "digest": "sha256:$digest_hex"
+}
+JSON
+
+    cat >"$trust_dir/plugin-trust.json" <<JSON
+{
+  "$plugin_id@$release_version": {
+    "digest": "sha256:$digest_hex",
+    "publisher": "$publisher",
+    "signed": true,
+    "signedBy": "example-key"
+  }
+}
+JSON
+
+    if [[ "$mode" == "signed-then-tampered" ]]; then
+        command -v zip >/dev/null || {
+            printf 'run.sh: zip is required to tamper with the plugin fixture\n' >&2
+            return 1
+        }
+        printf 'tampered\n' >"$root/cwd/plugins/tampered.txt"
+        ( cd "$root/cwd/plugins" && zip -q "$jar" tampered.txt ) || {
+            printf 'run.sh: zip could not tamper with the plugin fixture\n' >&2
+            return 1
+        }
+    fi
+}
+
 # What a scenario PRINTED, as opposed to what the product LOGGED. The product
 # narrates every step on the same stream the scenario prints on, and that
 # narration buries the text an assertion is about: a failure that shows the
@@ -211,6 +304,7 @@ run_scenario() {
     local -a expect_transcript=()
     local -a seeds=()
     local plugin_jar=""
+    local plugin_trust=""
     local directive
     while IFS= read -r directive; do
         case "$directive" in
@@ -224,6 +318,7 @@ run_scenario() {
             '//@ cancel')          cancel=1 ;;
             '//@ credentials '*)   seeds+=("${directive#//@ credentials }") ;;
             '//@ plugin-jar '*)    plugin_jar="${directive#//@ plugin-jar }" ;;
+            '//@ plugin-trust '*)  plugin_trust="${directive#//@ plugin-trust }" ;;
         esac
     done < <(grep -m 20 '^//@ ' "$script" || true)
 
@@ -240,16 +335,58 @@ run_scenario() {
     # sandbox. `missing` is the artifact that is NOT there: the file the operator named and the
     # runtime cannot read, whose bytes therefore cannot be measured. That is the case the
     # admission path has to refuse, and the scenario is about the refusal.
+    # `bundled-uppercase` is the distribution's own copy of the example plugin, copied here so
+    # the scenario owns the file it points at: the operator brings a plugin, and what the operator
+    # brings is what the trust policy is about.
     local -a plugin_jar_args=()
     if [[ -n "$plugin_jar" ]]; then
         case "$plugin_jar" in
             missing)
                 plugin_jar_args=(--plugin-jar "$root/cwd/plugins/missing.jar")
                 ;;
+            bundled-uppercase)
+                local bundled_plugin
+                bundled_plugin="$(ls "$repo_root/pipelinek/pipeline-application/build/install/pipelinek/lib/"example-uppercase-plugin-*.jar 2>/dev/null | head -1 || true)"
+                if [[ -z "$bundled_plugin" ]]; then
+                    printf 'FAIL %-52s the distribution has no example plugin to point at\n' "$name"
+                    failed=$((failed + 1))
+                    failures+=("$name: the distribution has no example-uppercase-plugin JAR")
+                    return
+                fi
+                mkdir -p "$root/cwd/plugins"
+                cp "$bundled_plugin" "$root/cwd/plugins/uppercase.jar"
+                plugin_jar_args=(--plugin-jar "$root/cwd/plugins/uppercase.jar")
+                ;;
             *)
                 printf 'FAIL %-52s unknown plugin-jar fixture: %s\n' "$name" "$plugin_jar"
                 failed=$((failed + 1))
                 failures+=("$name: unknown plugin-jar fixture '$plugin_jar'")
+                return
+                ;;
+        esac
+    fi
+
+    # The operator's trust material, when the scenario asks for a trust policy. The launcher owns
+    # it: a key pair generated for this scenario, the publisher's detached signature over the
+    # plugin's bytes, and the row that pins those bytes and names the publisher and the key. The
+    # private key never leaves the scenario's directory and dies with it, so nothing in the
+    # repository can have signed these bytes and nothing outside the scenario can reuse the key.
+    local -a plugin_trust_args=()
+    if [[ -n "$plugin_trust" ]]; then
+        case "$plugin_trust" in
+            signed|signed-then-tampered)
+                if ! build_plugin_trust_fixture "$root" "$plugin_trust" "uppercase.jar"; then
+                    printf 'FAIL %-52s the plugin trust fixture could not be built\n' "$name"
+                    failed=$((failed + 1))
+                    failures+=("$name: the plugin trust fixture could not be built")
+                    return
+                fi
+                plugin_trust_args=(--plugin-trust "$root/trust/plugin-trust.json")
+                ;;
+            *)
+                printf 'FAIL %-52s unknown plugin-trust fixture: %s\n' "$name" "$plugin_trust"
+                failed=$((failed + 1))
+                failures+=("$name: unknown plugin-trust fixture '$plugin_trust'")
                 return
                 ;;
         esac
@@ -355,14 +492,14 @@ run_scenario() {
     local caller_pwd="$PWD"
     cd "$root/cwd"
     "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" \
-        ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} "$script" \
+        ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
         >"$stdout" 2>"$stderr" || code=$?
     cd "$caller_pwd"
 
     if [[ "$run_volatile" == 1 ]]; then
         cd "$root/cwd"
         "$binary" run --isolated --control-root "$root/control-volatile" \
-            ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} "$script" \
+            ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
             >"$vstdout" 2>"$vstderr" || vcode=$?
         cd "$caller_pwd"
     fi
@@ -377,7 +514,7 @@ run_scenario() {
         local second=0
         cd "$root/cwd"
         "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" \
-            ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} "$script" \
+            ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
         if [[ "$second" != 0 ]]; then
@@ -413,7 +550,7 @@ run_scenario() {
         local second=0
         cd "$root/cwd"
         "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" \
-            ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} "$script" \
+            ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
         code="$second"

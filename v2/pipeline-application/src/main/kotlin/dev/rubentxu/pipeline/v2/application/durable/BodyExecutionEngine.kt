@@ -391,22 +391,30 @@ internal class BodyExecutionEngine(
                 listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(seg.index, seg.key))
             } ?: emptyList()
             val attemptBasePath = parentBodyPath + attemptSegment
-            // Phase 1b: project `context.patch` onto the parent ExecutionContext.
-            // Unsupported patches fall through to the parent unchanged (the seam
-            // is honest about what it does not do; rejection stays inside the
-            // typed algebra, never as an exception).
-            val ctxForCall = applyPatchToContext(contextInBody, ctx.patch)
-            invokeBodyChildren(
-                block = block,
-                runId = runId,
-                stageName = stageName,
-                stageIndex = stageIndex,
-                stepIndex = stepIndex,
-                childShOptions = childShOptions,
-                parentBodyPath = attemptBasePath,
-                executionContext = ctxForCall,
-                dispatcher = dispatcher,
-            )
+            // Phase 1b: project `context.patch` onto the parent ExecutionContext AND onto
+            // the options the children are launched with. The two surfaces are projected
+            // together because a patch that reaches only one of them does not happen: the
+            // context would say `FOO=1` while the process runs without it.
+            when (val projection = projectInvocationPatch(contextInBody, childShOptions, ctx.patch)) {
+                is InvocationPatchProjection.Refused -> StepOutcome.Failure(
+                    PipelineFailure(
+                        dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                        projection.reason,
+                    ),
+                )
+
+                is InvocationPatchProjection.Applied -> invokeBodyChildren(
+                    block = block,
+                    runId = runId,
+                    stageName = stageName,
+                    stageIndex = stageIndex,
+                    stepIndex = stepIndex,
+                    childShOptions = projection.shOptions,
+                    parentBodyPath = attemptBasePath,
+                    executionContext = projection.context,
+                    dispatcher = dispatcher,
+                )
+            }
         }
 
         try {

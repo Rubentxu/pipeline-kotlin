@@ -268,6 +268,29 @@ object SagaOperationIdentity {
     const val VERSION_TAG: String = "saga-v1"
 
     /**
+     * The environment variable that carries a Saga operation's key to the body that runs it.
+     *
+     * ## Why the key has to reach the body
+     *
+     * A body that talks to the outside world needs a key that the outside world can RECOGNISE.
+     * Without one, a body that is asked twice cannot tell "I have never done this" from "I did
+     * it and lost the answer", and the only safe answer to that ambiguity is to do nothing and
+     * ask a human. With one, the second attempt is recognisable as the same operation, and the
+     * body can answer "already done" instead of doing it twice.
+     *
+     * That is the whole contract of [CompensationPolicy.Reconcilable]: the plugin declares it
+     * when its bodies are safe to ask twice, and the engine asks twice with the SAME key.
+     *
+     * ## The key is the OPERATION's, not the attempt's
+     *
+     * The value is [derive]d from the forward operation, the phase and the compensation, so it
+     * is the same in the first attempt and in every reconciliation. The engine's own attempt
+     * identity is a different thing and lives in the operation journal: two attempts of the
+     * same operation are two rows there, and one key here.
+     */
+    const val OPERATION_KEY_ENV: String = "PIPELINEK_SAGA_OPERATION_KEY"
+
+    /**
      * The identity of the compensation operation for [compensationId] within [forwardOpId].
      *
      * @param forwardOpId the identity of the forward operation being compensated.

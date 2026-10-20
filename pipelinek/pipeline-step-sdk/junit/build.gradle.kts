@@ -225,18 +225,30 @@ tasks.named("jar") {
     dependsOn(emitJunitManifest)
 }
 
-// Unit-test wiring REMOVED .
-// This module carries no unit tests: it is the `junit.results` STEP parser, which consumes
-// JUnit XML as DATA -- a JUnit-on-JUnit test cannot exercise it. Its verification is the
-// executable E2E layer -- `.pipeline.kts` pipelines under `examples/`, driven by
-// `examples/run.sh` -- and not a JUnit class.
-// The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
-// Left in place they were a SILENT green: a `Test` task whose source set is empty reports
-// success while executing zero classes. Gradle 8.14 exposes no `failOnNoDiscoveredTests`
-// property -- the setting does not exist in this version, so nothing inside the build can
-// turn that green into a failure, and a build file asserting otherwise is describing a flag
-// it cannot compile.
-// What turns it into a failure lives outside Gradle: `scripts/verify-all.sh` enumerates the
-// modules it asks from the filesystem and fails when a module that has a test source produces
-// no JUnit XML. The wiring that could have produced the misleading green is gone from the
-// modules that have no tests, so no module reaches that check in silence.
+// The module is the `junit.results` step and the parser behind it, and the
+// executable layer does not reach it: no scenario publishes a JUnit report for
+// a step to read. The earlier version of this comment said that a JUnit-on-JUnit
+// test cannot exercise a parser that consumes JUnit XML, and that the
+// executable E2E layer is the module's verification. Both were wrong. A parser
+// over bytes is as testable as any other pure function — the XML is data, not
+// a test runner — and no scenario drives the step, so the executable layer
+// verified nothing here either.
+//
+// What the module holds is a guarantee about data from outside the process: a
+// report may declare an external entity, and the parser must not resolve it.
+// `JUnitReportParserTest` is what keeps that hardening from being an
+// intention.
+//
+// These lines exist because a test source does, and `scripts/verify-all.sh`
+// fails the build when a module with a test source produces no JUnit XML.
+// Gradle 8.14 exposes no `failOnNoDiscoveredTests` property — the setting does
+// not exist in this version — so the guarantee that makes this wiring safe
+// lives in that script, not here.
+dependencies {
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+tasks.test {
+    useJUnitPlatform()
+}

@@ -69,6 +69,22 @@
 # trusts this program with a single scenario, because every scenario below is
 # judged by it.
 #
+# The scenarios run in PARALLEL, and they were built for it: each one gets its
+# own root, its own working directory, its own credential store, its own
+# durable database and its own control root, so two scenarios never share a
+# resource. That isolation was not incidental -- a scenario that used a fixed
+# `/tmp` path would race with every other run on the machine, which is
+# exactly why the launcher hands each one a private directory.
+#
+#   PIPELINEK_E2E_JOBS=1    one scenario at a time (the old serial behaviour)
+#   PIPELINEK_E2E_JOBS=8    eight at a time
+#
+# The default is `min(nproc, 8)`: the number of cores, capped, because a
+# scenario starts a JVM and a machine that is already busy should not be made
+# to thrash. The knob is the escape hatch: a scenario that looks flaky is
+# re-run serially, and the report is identical either way -- the verdicts are
+# written per scenario and printed in scenario order, not in completion order.
+#
 # Why `//@` and not `#!`. An earlier revision read directives from `#!` comment
 # lines, on the assumption that the product supported them. It does not: no
 # source under any `src/main` reads `#!`. The convention only ever worked by
@@ -261,12 +277,39 @@ cycle_root="$(mktemp -d "${TMPDIR:-/tmp}/pipelinek-e2e-XXXXXXXX")"
 cleanup() { rm -rf "$cycle_root"; }
 trap cleanup EXIT
 
+# The verdict of a scenario travels as TEXT, not as a counter. A parallel run
+# executes each scenario in a SUBSHELL -- it has to, because a scenario
+# exports its own environment (passphrase, credential store, private home, PID
+# file) and an exported variable in a parallel run would leak into the next
+# scenario -- and a counter incremented inside that subshell dies with it.
+# The parent counts the markers below and prints the human lines in scenario
+# order, so the report is the same shape as the sequential one.
+verdict_ok() {
+    printf '__VERDICT__ ok\n'
+}
+
+verdict_not_run() {
+    printf '__VERDICT__ not_run\n'
+}
+
+verdict_fail() {
+    # The reason travels with the verdict: the parent's array of failures is
+    # not reachable from the subshell that produced it.
+    printf '__VERDICT__ fail\n'
+    printf '__FAILURE__ %s\n' "$1"
+}
+
+# The name a scenario is known by, and the private directory it gets. Both
+# derive from the path relative to this directory, so two scenarios can never
+# share a root.
+scenario_slug() {
+    printf '%s' "${1#"$here"/}" | tr '/.' '--'
+}
+
 passed=0
 failed=0
 not_run=0
 failures=()
-
-scenario_index=0
 
 # A content-sensitive picture of a directory: its files, sorted, with their
 # digests. Two pictures that differ mean the world changed in between, which
@@ -290,10 +333,9 @@ workspace_snapshot() {
 run_scenario() {
     local script="$1"
     local relative="${script#"$here"/}"
-    scenario_index=$((scenario_index + 1))
     local name="$relative"
     local slug
-    slug="$(printf '%s' "$name" | tr '/.' '--')"
+    slug="$(scenario_slug "$script")"
 
     local expect_exit=0
     local expect_stderr=()
@@ -321,8 +363,7 @@ run_scenario() {
         if [[ "$directive_error" == "unknown directive: "* ]]; then
             printf '       known: expect-exit, expect-stderr, durable, durable-once, resume, requires-seeded-credentials\n'
         fi
-        failed=$((failed + 1))
-        failures+=("$name: $directive_error")
+        verdict_fail "$name: $directive_error"
         return
     fi
 
@@ -332,7 +373,7 @@ run_scenario() {
         # it is the honest third state, and it keeps the scenario in the
         # inventory so it cannot be forgotten the way a deleted file can.
         printf 'NOT_RUN %-50s needs a credential store seeded on a TTY\n' "$name"
-        not_run=$((not_run + 1))
+        verdict_not_run
         return
     fi
 
@@ -443,8 +484,7 @@ run_scenario() {
             if ! is_a_death "$code"; then
                 printf 'FAIL %-52s the run was supposed to die and exited with %s (a normal exit is not a death)\n' \
                     "$name" "$code"
-                failed=$((failed + 1))
-                failures+=("$name: the run was supposed to die and exited with $code")
+                verdict_fail "$name: the run was supposed to die and exited with $code"
                 return
             fi
             code="$second"
@@ -478,8 +518,7 @@ run_scenario() {
         if [[ -n "$missing" ]]; then
             printf 'FAIL %-52s exit %s as expected, but stderr lacked: %s\n' \
                 "$label" "$code" "$missing"
-            failed=$((failed + 1))
-            failures+=("$name: exit matched but expected stderr substring absent")
+            verdict_fail "$name: exit matched but expected stderr substring absent"
             return
         fi
 
@@ -500,13 +539,12 @@ run_scenario() {
                     "$label"
                 diff <(printf '%s\n' "$before_snapshot") <(printf '%s\n' "$after_snapshot") \
                     | sed 's/^/       | /' | head -10
-                failed=$((failed + 1))
-                failures+=("$name: the resumed run changed the workspace")
+                verdict_fail "$name: the resumed run changed the workspace"
                 return
             fi
         fi
         printf 'ok   %-52s exit %s\n' "$label" "$code"
-        passed=$((passed + 1))
+        verdict_ok
         return
     fi
 
@@ -519,8 +557,7 @@ run_scenario() {
     else
         sed 's/^/       | /' "$stderr" | head -20
     fi
-    failed=$((failed + 1))
-    failures+=("$name: exit $code, expected $expect_exit")
+    verdict_fail "$name: exit $code, expected $expect_exit"
 }
 
 # Optional glob filter, relative to this directory: `run.sh 'control-flow/*'`.
@@ -562,8 +599,71 @@ if [[ ${#selected[@]} -eq 0 ]]; then
     exit 2
 fi
 
+# How many scenarios run at once. The scenarios are isolated BY DESIGN -- each
+# one gets its own root, its own working directory, its own credential store,
+# its own durable database and its own control root -- so they do not need to
+# take turns. The limit is a knob, not a constant: a machine with fewer cores
+# gets fewer workers, and `PIPELINEK_E2E_JOBS=1` restores the old serial
+# behaviour exactly, which is what a flaky scenario needs to be diagnosed.
+jobs_limit="${PIPELINEK_E2E_JOBS:-0}"
+if [[ ! "$jobs_limit" =~ ^[0-9]+$ ]]; then
+    printf 'run.sh: PIPELINEK_E2E_JOBS needs a number, got: %s\n' "$jobs_limit" >&2
+    exit 2
+fi
+if [[ "$jobs_limit" -eq 0 ]]; then
+    cores="$(nproc 2>/dev/null || echo 4)"
+    (( cores > 8 )) && cores=8
+    jobs_limit="$cores"
+fi
+
+# Each scenario writes its verdict into its own file, and the parent prints
+# those files in SCENARIO ORDER at the end. Two reasons: the report is then
+# the same as the serial one, so a log can be compared between runs; and the
+# summary line -- the only thing the gate parses -- keeps its shape.
+verdict_dir="$cycle_root/verdicts"
+mkdir -p "$verdict_dir"
+
+running=0
 for script in ${selected[@]+"${selected[@]}"}; do
-    run_scenario "$script"
+    slug="$(scenario_slug "$script")"
+    ( run_scenario "$script" ) > "$verdict_dir/$slug.txt" 2>&1 &
+    running=$((running + 1))
+    if (( running >= jobs_limit )); then
+        # `wait -n` returns when the next job finishes. Its exit status is
+        # whatever that scenario's subshell ended with, which is not the
+        # runner's verdict -- the verdict travels in the file -- so it is
+        # deliberately not treated as a failure here.
+        wait -n || true
+        running=$((running - 1))
+    fi
+done
+# The exit status of the last background job is not the runner's verdict --
+# the verdict travels in the files -- so it is not allowed to abort the run.
+wait || true
+
+scenario_index="${#selected[@]}"
+for script in ${selected[@]+"${selected[@]}"}; do
+    slug="$(scenario_slug "$script")"
+    file="$verdict_dir/$slug.txt"
+    if [[ ! -f "$file" ]]; then
+        failed=$((failed + 1))
+        failures+=("${script#"$here"/}: the scenario produced no verdict at all")
+        continue
+    fi
+    # The human lines, in scenario order. The markers are the machine's
+    # reading of the same file and do not belong in the report.
+    grep -v -e '^__VERDICT__ ' -e '^__FAILURE__ ' "$file" || true
+    verdict_line="$(grep -m 1 '^__VERDICT__ ' "$file" 2>/dev/null || true)"
+    case "${verdict_line#__VERDICT__ }" in
+        ok)       passed=$((passed + 1)) ;;
+        not_run)  not_run=$((not_run + 1)) ;;
+        fail)     failed=$((failed + 1)) ;;
+        *)        failed=$((failed + 1))
+                  failures+=("${script#"$here"/}: the scenario produced no readable verdict") ;;
+    esac
+    while IFS= read -r reason; do
+        if [[ -n "$reason" ]]; then failures+=("$reason"); fi
+    done < <(grep '^__FAILURE__ ' "$file" 2>/dev/null | sed 's/^__FAILURE__ //' || true)
 done
 
 printf '\n%d scenario(s), %d passed, %d failed, %d not run\n' \

@@ -17,6 +17,7 @@ import dev.rubentxu.pipeline.v2.domain.saga.CompensationDeclaration
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationId
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationKind
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationOperations
+import dev.rubentxu.pipeline.v2.domain.saga.CompensationObligation
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationPolicy
 import dev.rubentxu.pipeline.v2.domain.saga.EffectEvidence
 import dev.rubentxu.pipeline.v2.domain.saga.EffectReceiptRef
@@ -27,6 +28,8 @@ import dev.rubentxu.pipeline.v2.domain.saga.SAGA_RUNTIME_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionPlan
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
+import dev.rubentxu.pipeline.v2.domain.saga.SagaOperationIdentity
+import dev.rubentxu.pipeline.v2.domain.saga.SagaOperationPhase
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlan
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations
@@ -40,6 +43,7 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyInvocationContext
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
+import dev.rubentxu.pipeline.v2.domain.step.ExecutionContextPatch
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepContract
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
@@ -70,6 +74,25 @@ enum class SagaProviderContract(
 
     /** Nobody can say whether the call took effect. */
     FailureMayHaveApplied("FailureMayHaveApplied"),
+
+    /**
+     * The provider RECOGNISES ITS OWN KEYS, so it can be asked twice.
+     *
+     * The bodies of this provider are idempotent by the operation key the engine hands them:
+     * asked a second time about the same key, they answer "already done" instead of doing it
+     * again. That is what lets the engine reconcile a lost answer instead of stopping.
+     *
+     * The answer is about the OPERATION and not about the attempt that asked. "Already done"
+     * and "not done" are both answers about the operation; "it failed this time" is an answer
+     * about the attempt, and the engine cannot read it as "not done" — a body that fails for
+     * reasons of its own would leave an applied effect standing. A provider that can only
+     * speak about its attempts does not keep this promise.
+     *
+     * The declaration is the provider's promise, and it is not free: a body that does NOT
+     * recognise its keys must not be asked twice, and asking it twice is how one effect becomes
+     * two. A plugin that cannot keep that promise must not pick this contract.
+     */
+    ReconcilableByKey("ReconcilableByKey"),
 }
 
 /**
@@ -240,10 +263,9 @@ object SagaChainStepDefinition : StepDefinition<SagaChainInput, SagaChainOutput>
             val declaration = declarationOf(sagaId, action)
 
             // 1. The promise, DURABLY, before the effect leaves the process.
-            when (operations.arm(declaration)) {
-                is CompensationArmOutcome.Armed,
-                is CompensationArmOutcome.AlreadyArmed,
-                -> Unit
+            val armed: CompensationObligation = when (val outcome = operations.arm(declaration)) {
+                is CompensationArmOutcome.Armed -> outcome.obligation
+                is CompensationArmOutcome.AlreadyArmed -> outcome.obligation
 
                 is CompensationArmOutcome.PlanDivergence -> {
                     // A different plan under the same key: the promise is not this one, and
@@ -266,7 +288,25 @@ object SagaChainStepDefinition : StepDefinition<SagaChainInput, SagaChainOutput>
             }
 
             // 3. The effect itself, through the SAME seam the engine will use to undo it.
-            val body = slots.invoke(PluginStepId(action.forwardSlot), BodyInvocationContext())
+            //
+            //    The body is handed the operation's key, so a body that recognises its own
+            //    keys can answer "already done" when the engine asks it a second time. The
+            //    key is the SAME one the engine will use if it has to reconcile this effect,
+            //    and the SAME one a resumed run would use.
+            val body = slots.invoke(
+                PluginStepId(action.forwardSlot),
+                BodyInvocationContext(
+                    patch = ExecutionContextPatch.Environment(
+                        mapOf(
+                            SagaOperationIdentity.OPERATION_KEY_ENV to SagaOperationIdentity.derive(
+                                armed.forwardOpId,
+                                SagaOperationPhase.FORWARD,
+                                armed.compensationId,
+                            ),
+                        ),
+                    ),
+                ),
+            )
             when (val step = (body as? BodyOutcome.Completed)?.outcome) {
                 is StepOutcome.Success -> {
                     plan.recordForward(
@@ -280,9 +320,16 @@ object SagaChainStepDefinition : StepDefinition<SagaChainInput, SagaChainOutput>
                     // What the failure MEANS is the provider's contract, not the plugin's
                     // convenience. A provider that promises "a failed call left nothing behind"
                     // is reported as ABSENT, and the engine moves on to the older obligations. A
-                    // provider that cannot promise that is reported as UNKNOWN, and the engine
-                    // stops: an effect that may have happened must not be undone twice, and
-                    // must not be declared absent either.
+                    // provider that cannot promise that is reported as UNKNOWN: an effect that
+                    // may have happened must not be undone twice, and must not be declared
+                    // absent either.
+                    //
+                    // A provider that RECOGNISES ITS OWN KEYS is also UNKNOWN, and this is the
+                    // part worth reading twice. Being able to recognise a key says NOTHING about
+                    // what a failed call left behind: a forward that applied the effect and
+                    // then failed would be recorded here as "no effect", and it would never be
+                    // undone. The re-ask is what tells the two apart, so the row stays open
+                    // until the provider has answered.
                     if (contract == SagaProviderContract.FailureLeavesNoEffect) {
                         plan.recordForward(declaration.key, EffectEvidence.Absent)
                         forwardOutcomes += "FAILED"
@@ -328,7 +375,13 @@ object SagaChainStepDefinition : StepDefinition<SagaChainInput, SagaChainOutput>
         val report = runtime.compensate(
             SagaPlan(
                 sagaId = sagaId,
-                policy = CompensationPolicy.NotReconcilable,
+                // The policy is the provider's promise, and the plugin is the provider: only a
+                // provider whose bodies recognise their own keys may be asked twice.
+                policy = if (contract == SagaProviderContract.ReconcilableByKey) {
+                    CompensationPolicy.Reconcilable
+                } else {
+                    CompensationPolicy.NotReconcilable
+                },
                 actions = input.actions.map { actionPlanOf(it) },
             ),
         )

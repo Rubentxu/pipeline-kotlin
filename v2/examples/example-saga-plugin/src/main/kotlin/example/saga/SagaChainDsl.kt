@@ -39,7 +39,7 @@ data class SagaChainScript(
  * }
  * ```
  *
- * ## Why this chain has THREE actions and SIX bodies
+ * ## Why this chain has TWO or THREE actions and four or six bodies
  *
  * A slot is addressed by the PLUGIN STEP KEY of a child of this Step's own body, and two children
  * of the SAME kind collide — the seam refuses an ambiguous name instead of guessing. So every
@@ -49,6 +49,12 @@ data class SagaChainScript(
  * That is why the demo uses six distinct core kinds: `core.dir`, `core.withEnv`, `core.timeout`,
  * `core.retry`, `core.sh` and `core.timestamps`. It is a property of the seam, not of the Saga: a
  * real plugin with a real body per action would give each action its own kind.
+ *
+ * A chain of TWO actions is allowed because a scenario that reconciles a lost compensation needs
+ * exactly that: with three actions the resumed run would also compensate the OLDEST obligation,
+ * and the world would change for a reason that has nothing to do with what the scenario is
+ * about. With two, the world after the resumed run must be the world the crashed run left, and
+ * that is the whole claim.
  *
  * ## Why every one of those six kinds RUNS A COMMAND
  *
@@ -69,8 +75,8 @@ fun StageScope.sagaChain(
     actions: List<SagaChainScript>,
     providerContract: SagaProviderContract = SagaProviderContract.FailureLeavesNoEffect,
 ) {
-    require(actions.size == 3) {
-        "the demo chain has three actions, and the third one is the one that fails"
+    require(actions.size in 2..3) {
+        "the demo chain has two or three actions, and the last one is the one that fails"
     }
     require(actions.all { it.forwardCommand.isNotBlank() }) {
         "every action needs a forward command"
@@ -80,14 +86,16 @@ fun StageScope.sagaChain(
             "is a compensation the scenario cannot prove was not run"
     }
 
-    val slots = listOf(
+    val slots = buildList {
         // The first action: a `dir` block, whose plugin step key is `core.dir`.
-        SagaChainSlots(action = actions[0], forward = FORWARD_FIRST, compensate = COMPENSATE_FIRST),
+        add(SagaChainSlots(action = actions[0], forward = FORWARD_FIRST, compensate = COMPENSATE_FIRST))
         // The second action: a `timeout` block, whose plugin step key is `core.timeout`.
-        SagaChainSlots(action = actions[1], forward = FORWARD_SECOND, compensate = COMPENSATE_SECOND),
-        // The third action: a bare `sh`, whose plugin step key is `core.sh`.
-        SagaChainSlots(action = actions[2], forward = FORWARD_THIRD, compensate = COMPENSATE_THIRD),
-    )
+        add(SagaChainSlots(action = actions[1], forward = FORWARD_SECOND, compensate = COMPENSATE_SECOND))
+        // The third action, when the chain has one: a bare `sh`, whose key is `core.sh`.
+        actions.getOrNull(2)?.let {
+            add(SagaChainSlots(action = it, forward = FORWARD_THIRD, compensate = COMPENSATE_THIRD))
+        }
+    }
 
     registryBlock(
         stepKey = SagaChainStepDefinition.KEY,
@@ -117,9 +125,12 @@ fun StageScope.sagaChain(
         timeout(60, "SECONDS") { sh(actions[1].forwardCommand) }
         retry(1) { sh(actions[1].compensateCommand) }
 
-        // 3. The third action's two bodies. The forward one FAILS, and that is the trigger.
-        sh(actions[2].forwardCommand)
-        timestamps { sh(actions[2].compensateCommand) }
+        // 3. The third action's two bodies, when the chain has three. The forward one FAILS,
+        //    and that is the trigger.
+        actions.getOrNull(2)?.let {
+            sh(it.forwardCommand)
+            timestamps { sh(it.compensateCommand) }
+        }
     }
 }
 

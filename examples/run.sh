@@ -32,6 +32,12 @@
 #                                     The value is a fixture, generated here:
 #                                     the scenario asserts that the binding
 #                                     RESOLVED, never what it resolved to.
+#   //@ plugin-jar <fixture>          the plugin artifact the run is pointed at, as
+#                                     a fixture the launcher owns inside the
+#                                     scenario's own root. `missing` names a plugin
+#                                     JAR that is not there: the artifact whose bytes
+#                                     cannot be read, and therefore cannot be
+#                                     verified before anything is loaded from it.
 # The distribution must already exist:
 #     cd pipelinek &&./gradlew:pipeline-application:installDist
 # Why `//@` and not `#!`. An earlier revision read directives from `#!` comment
@@ -162,6 +168,7 @@ run_scenario() {
     local -a expect_stderr=()
     local -a expect_transcript=()
     local -a seeds=()
+    local plugin_jar=""
     local directive
     while IFS= read -r directive; do
         case "$directive" in
@@ -171,6 +178,7 @@ run_scenario() {
             '//@ expect-transcript '*) expect_transcript+=("${directive#//@ expect-transcript }") ;;
             '//@ durable')         durable=1 ;;
             '//@ credentials '*)   seeds+=("${directive#//@ credentials }") ;;
+            '//@ plugin-jar '*)    plugin_jar="${directive#//@ plugin-jar }" ;;
         esac
     done < <(grep -m 20 '^//@ ' "$script" || true)
 
@@ -181,6 +189,26 @@ run_scenario() {
     # --control-root already isolate the pipeline's own workspace, and this
     # isolates the process CWD the pipeline is launched from.
     mkdir -p "$root/cwd"
+
+    # The plugin artifact this scenario points at, when it names one. The artifact belongs to the
+    # launcher and lives inside the scenario's own root, so a scenario never reaches outside its
+    # sandbox. `missing` is the artifact that is NOT there: the file the operator named and the
+    # runtime cannot read, whose bytes therefore cannot be measured. That is the case the
+    # admission path has to refuse, and the scenario is about the refusal.
+    local -a plugin_jar_args=()
+    if [[ -n "$plugin_jar" ]]; then
+        case "$plugin_jar" in
+            missing)
+                plugin_jar_args=(--plugin-jar "$root/cwd/plugins/missing.jar")
+                ;;
+            *)
+                printf 'FAIL %-52s unknown plugin-jar fixture: %s\n' "$name" "$plugin_jar"
+                failed=$((failed + 1))
+                failures+=("$name: unknown plugin-jar fixture '$plugin_jar'")
+                return
+                ;;
+        esac
+    fi
 
     # A per-scenario passphrase. The credentials gate refuses before any step
     # runs, even for a pipeline that never binds a credential, so a scenario
@@ -249,9 +277,11 @@ run_scenario() {
     # could not see that there was a choice to make.
     local caller_pwd="$PWD"
     cd "$root/cwd"
-    "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" "$script" \
+    "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" \
+        ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} "$script" \
         >"$stdout" 2>"$stderr" || code=$?
-    "$binary" run --isolated --control-root "$root/control-volatile" "$script" \
+    "$binary" run --isolated --control-root "$root/control-volatile" \
+        ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} "$script" \
         >"$vstdout" 2>"$vstderr" || vcode=$?
     cd "$caller_pwd"
 
@@ -261,7 +291,8 @@ run_scenario() {
         # makes the second run happen, and records its exit code separately.
         local second=0
         cd "$root/cwd"
-        "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" "$script" \
+        "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" \
+            ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} "$script" \
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
         code="$second"

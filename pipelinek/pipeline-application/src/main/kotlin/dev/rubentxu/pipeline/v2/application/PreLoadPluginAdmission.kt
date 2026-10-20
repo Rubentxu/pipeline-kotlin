@@ -83,10 +83,15 @@ object PreLoadPluginAdmission {
                     (decoded as PluginManifestDecodeResult.Rejected).rejection,
                 )
 
-            // The origin is the artifact PATH this decision is about. That is not a placeholder:
-            // it is the identity the runtime can actually establish today, and the one thing that
-            // distinguishes "admitted from here" from "admitted from somewhere on the classpath".
-            val identity = PluginManifestResourceReader.measure(
+            // The identity the runtime can actually establish today: WHERE the artifact came
+            // from, and WHAT the manifest declares about itself. It carries no measured digest,
+            // and that is the honest answer rather than a missing one. A manifest declares a
+            // digest of the plugin's PAYLOAD; the runtime measures a digest of the FILE that
+            // carries it. Those are two different magnitudes, they never agree, and comparing
+            // them would report every plugin as lying about itself. The bytes of the artifact
+            // are measured where they CAN be compared with something else: against themselves,
+            // before and after admission, in `PluginArtifactIntegrity`.
+            val identity = PluginManifestResourceReader.declaredIdentity(
                 declaredDigest = manifest.release.digest,
                 origin = ArtifactOrigin.LocalClasspathEntry(artifact.toString()),
             )

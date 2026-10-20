@@ -12,10 +12,21 @@ import java.nio.file.Path
  * Runtime was supposed to verify. That was the seam closes: the runtime now consults
  * An source of truth (the operator's local trust database) for the digest the
  * plugin's author cannot have written themselves.
- * The split is what the design's `PluginManifestResourceReader.measure` failure mode was
+ * The split is what the design's manifest-reading failure mode was
  * about: the runtime must NOT read the manifest document to learn the digest, because the
  * manifest document is the very thing the operator is cross-checking. A trust database that
  * lived inside the artifact would inherit the same defect.
+ * ## What a row pins, and what that does and does not buy
+ * A row pins the digest the plugin PUBLISHES about its own payload — the one its manifest
+ * declares — and the gate compares the two. That is a check on the DECLARATION: the artifact
+ * says what the operator approved. It is not a check on the bytes: the manifest declares a
+ * digest of the plugin's content, the runtime measures a digest of the file that carries it,
+ * and those are two different magnitudes that never agree. An artifact swapped for another
+ * one that carries the same manifest would pass this check, and the bytes are verified
+ * elsewhere, by measuring the artifact itself and comparing that measurement with itself
+ * before and after admission.
+ * Pinning the bytes would be a stronger policy. It is also a different policy — a different
+ * value in the operator's file, and a decision about what that file is and where it lives.
  * ## Lookup key — `(plugin, releaseVersion)`
  * Keying on `(plugin.canonicalText(), releaseVersion)` and NOT on `plugin` alone is
  * load-bearing: two releases of the same plugin are different things, and a downgrade from
@@ -29,7 +40,9 @@ interface OperatorTrustDatabase {
      * A row asserts that the operator has personally pinned a specific
      * `(plugin, releaseVersion, digest)` triple, and may carry an optional
      * [signedBy] provenance to make a forged entry detectable at audit time.
-     * @property digest the digest the operator observed when the plugin was published
+     * @property digest the digest the operator observed when the plugin was published: the
+     *   digest the manifest declares about the plugin's own payload, which is NOT the digest
+     *   of the artifact file
      * @property publisher the human-readable publisher name the operator has associated
      *   with this plugin (does NOT have to match the manifest's `publisher`; the
      *   manifest is the plugin's word, the trust row is the operator's)

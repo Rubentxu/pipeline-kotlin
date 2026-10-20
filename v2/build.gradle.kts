@@ -156,7 +156,7 @@ repositories {
 // with the shipped product, because the E2E scenarios have to reach the Saga
 // contract the way a real plugin does — from OUTSIDE, through published
 // capabilities, with the engine owning the durable state.
-version = "0.69.0"
+// 2026-10-19: the 0.69.0 train closes at v0.69.0-rc1. The 0.70.0 train opens // here (ProductVersion 0.70.0) so the next candidate can be tagged // v0.70.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces. // The distribution grew in this train: the run's verdict now says what // happened to its Saga, and the example plugin's provider contract is a closed // set instead of a String whose typo would have meant the opposite in // silence. The published ABI does NOT change — the five published artifacts // are identical — but the shipped product is not, and the version that carries // a content cannot be the one that already went out without it. version = "0.70.0"
 
 // WU-LPR-071: single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

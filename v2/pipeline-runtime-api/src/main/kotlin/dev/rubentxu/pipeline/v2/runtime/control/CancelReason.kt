@@ -3,9 +3,12 @@ package dev.rubentxu.pipeline.v2.runtime.control
 /**
  * M2 — closed ADT of cancel reasons a caller may pass.
  *
- * The reason is carried in the terminal `RunFinished` event payload and surfaces
- * in the journal row. New cases are compile errors at every `when` site that
- * exhausts this ADT.
+ * The reason is recorded in the run's JOURNAL ROW — the terminal operation that marks the
+ * cancellation — and NOT in the payload of the terminal `RunFinished` event. The event says
+ * that the run was aborted; the journal says why, and the journal is where a reader of the
+ * run's history goes to find it.
+ *
+ * New cases are compile errors at every `when` site that exhausts this ADT.
  */
 sealed interface CancelReason {
 
@@ -25,7 +28,7 @@ sealed interface CancelReason {
     }
 
     companion object {
-        /** The default `reason` carried in the terminal `RunFinished` event. */
+        /** The default reason when the caller does not give one. */
         val Default: CancelReason = UserRequested
     }
 }

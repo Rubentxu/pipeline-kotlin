@@ -166,25 +166,30 @@ pipelinek run --help
 
 ## Examples
 
-The [`examples/`](examples/) directory holds 32 runnable
+The [`examples/`](examples/) directory holds 41 runnable
 pipelines that exercise the real CLI, grouped by what they cover:
 
 | Category | Scenarios | What it covers |
 |---|---|---|
 | `smoke/` | 3 | The shortest path through the DSL: the environment, `sh` then `echo`, and a checkout → build → archive round trip |
-| `steps/` | 5 | One scenario per step: `withEnv`, the workspace helpers, `writeFile`, `cleanWs`, `findFiles` |
+| `steps/` | 6 | One scenario per step: `withEnv`, the workspace helpers, `sleep`, `writeFile`, `cleanWs`, `findFiles` |
 | `control-flow/` | 2 | Kotlin control flow inside a compiled script, and workflow control |
-| `durable/` | 4 | Durable execution over the journal: platform queries, milestones, `waitUntil`, `stash`/`unstash` |
+| `durable/` | 11 | Durable execution over the journal: platform queries, milestones, `waitUntil`, `stash`/`unstash`, the replay guarantee, and six Saga scenarios — compensation, intervention, a crash mid-effect and its reconciliation |
 | `security/` | 2 | Credential bindings, and a ZIP-slip path-traversal defence |
 | `output/` | 7 | The output plane: file reads, a utilities round trip, ZIP/unzip, mixed utilities, cross-step artifact queries, HTML publishing, and the live output of a process |
 | `negative/` | 6 | Deliberate failures that must fail closed: error handling, the typed error step, a command that exits non-zero, a workspace symlink escape, an unregistered directive key, a plugin artifact whose bytes cannot be read |
-| `plugins/` | 3 | The three external example plugins, discovered from the distribution classpath: `uppercase`, `repeat`, and a contributed directive |
+| `plugins/` | 4 | The four external example plugins, discovered from the distribution classpath: `uppercase`, `repeat`, a contributed directive, and the Saga consumer |
 
 Each scenario runs **twice** — once with a private journal database, which is
 how a CI runs a pipeline, and once without one, which is the default for a
 local run — and both executions have to meet the same expectations. The two
 execution paths are the same product answering the same question, and a
 difference between them is a defect.
+
+A scenario that declares a durable directive is about the journal, so it runs
+only on the journalled path: with no journal there is nothing to resume and
+nothing to compensate, and the marker such a scenario writes would be found by
+the second execution and read as a repeat.
 
 The scenarios live in this repository, not in the released ZIP: the ZIP ships
 the distribution alone. From an installed distribution you run your own

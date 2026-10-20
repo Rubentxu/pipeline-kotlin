@@ -34,11 +34,13 @@ import java.util.zip.ZipFile
  * (MIT, CloudBees).
  *
  * Security (CVE-2023-32981 / SECURITY-2196):
- *  - For every entry, the resolved target path MUST be a descendant of
- *    the destination root (normalised). Otherwise the whole archive is
- *    rejected with a USER failure.
- *  - Entry names with backslashes, drive letters or absolute prefixes
- *    are rejected.
+ *  - For every entry, in every mode, the resolved target path MUST be a
+ *    descendant of the destination root (normalised). Otherwise the whole
+ *    archive is rejected with a USER failure. The rule lives in
+ *    [resolveUnzipEntryPath], next to no filesystem at all, so it can be
+ *    asked a question.
+ *  - Entry names with backslashes, or that the platform cannot turn into a
+ *    path, are rejected.
  *  - Symlink entries (mode 0xA1ED) are not honoured: the entry is
  *    treated as an unsupported entry and the archive is rejected.
  *  - Resource caps: `MAX_ENTRIES = 1_000_000`,
@@ -119,8 +121,7 @@ class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
                             val entry = entries.nextElement()
                             val entryName = entry.name
                             if (globMatcher != null && !globMatcher.matches(Path.of(entryName))) continue
-                            refuseIfOutOfBounds(entryName)
-                            val target = resolveAndCheck(destRoot, entryName)
+                            val target = resolveUnzipEntryPath(destRoot, entryName)
                             if (entry.isDirectory) {
                                 Files.createDirectories(target)
                             } else {
@@ -179,7 +180,7 @@ class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
                             val entry = entries.nextElement()
                             val entryName = entry.name
                             if (globMatcher != null && !globMatcher.matches(Path.of(entryName))) continue
-                            refuseIfOutOfBounds(entryName)
+                            resolveUnzipEntryPath(destRoot, entryName)
                             if (entry.isDirectory) continue
                             if (entry.size > MAX_ENTRY_BYTES) {
                                 throw PluginStepException(
@@ -205,7 +206,7 @@ class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
                             if (entry.isDirectory) continue
                             val entryName = entry.name
                             if (globMatcher != null && !globMatcher.matches(Path.of(entryName))) continue
-                            refuseIfOutOfBounds(entryName)
+                            resolveUnzipEntryPath(destRoot, entryName)
                             entriesSeen++
                             checksum.reset()
                             zip.getInputStream(entry).use { stream ->
@@ -231,72 +232,18 @@ class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
             }
         }
 
-    /**
-     * Resolve the target path for [entryName] under [destRoot] and
-     * verify containment. This is the CVE-2023-32981 / Zip Slip
-     * mitigation: any entry whose normalised target escapes the
-     * destination root is rejected.
-     */
-    private fun resolveAndCheck(destRoot: Path, entryName: String): Path {
-        // Reject suspicious names before any path resolution.
-        if (entryName.contains('\\')) {
-            throw PluginStepException(
-                failure = PipelineFailure(
-                    kind = FailureKind.USER,
-                    message = "core-utils.unzip: entry name contains backslash (Zip Slip): $entryName",
-                ),
-            )
-        }
-        if (entryName.startsWith("/")) {
-            throw PluginStepException(
-                failure = PipelineFailure(
-                    kind = FailureKind.USER,
-                    message = "core-utils.unzip: entry has absolute path (Zip Slip): $entryName",
-                ),
-            )
-        }
-        val raw = Path.of(entryName)
-        if (raw.isAbsolute) {
-            throw PluginStepException(
-                failure = PipelineFailure(
-                    kind = FailureKind.USER,
-                    message = "core-utils.unzip: entry has absolute path (Zip Slip): $entryName",
-                ),
-            )
-        }
-        val target = destRoot.resolve(raw).toAbsolutePath().normalize()
-        if (!target.startsWith(destRoot)) {
-            throw PluginStepException(
-                failure = PipelineFailure(
-                    kind = FailureKind.USER,
-                    message = "core-utils.unzip: entry escapes destination (Zip Slip / CVE-2023-32981): $entryName",
-                ),
-            )
-        }
-        return target
-    }
-
-    private fun refuseIfOutOfBounds(entryName: String) {
-        // Reject names that smell like Zip Slip even before
-        // resolveAndCheck (e.g. a name that contains "..").
-        if (entryName.contains("..")) {
-            throw PluginStepException(
-                failure = PipelineFailure(
-                    kind = FailureKind.USER,
-                    message = "core-utils.unzip: entry has '..' segment (Zip Slip / CVE-2023-32981): $entryName",
-                ),
-            )
-        }
-    }
-
     private fun refuseIfSymlink(entry: ZipEntry) {
         // java.util.zip.ZipEntry does not expose external attributes
         // (Unix mode bits) directly. The JDK API cannot distinguish a
         // symlink from a regular file from the entry object alone.
-        // The name-based check in [resolveAndCheck] /
-        // [refuseIfOutOfBounds] catches the common symlink-as-traversal
-        // cases (entries named ".." or with absolute / backslash
-        // segments).
+        // The name-based confinement in [resolveUnzipEntryPath] catches
+        // the common symlink-as-traversal cases (entries that climb out
+        // or that name an absolute path).
+        //
+        // What it cannot catch is a symlink ALREADY inside the
+        // destination: the lexical rule cannot see it. That limitation
+        // is the tracked Slice 2 debt, and it is stated here rather
+        // than implied.
         //
         // Future hardening: parse the extra field manually to detect
         // mode 0xA1ED (Unix symlink) and reject it. Out of scope for

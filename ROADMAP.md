@@ -18,16 +18,16 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `b80e32bb5` (producto, tests y ejemplos) es el código medido; el commit posterior de documentación sólo toca este ROADMAP y los README | `git rev-parse HEAD` |
+| SHA | `808c14b76` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP y los README, así que el código medido es el de `808c14b76` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **819** (105 informes en disco, 105 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **843** (108 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Escenarios E2E | **44 (44 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios que sólo comprueban el código de salida | **0**: cada uno afirma, con una directiva del lanzador o con una comprobación dentro del propio pipeline | censo por directiva y por cuerpo, sobre los 44 escenarios |
 | `VERIFY_LOC / PRODUCT_LOC` | **12781 / 64760 = 0.20** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **581 / 553 / 564** en los tres ensayos, los tres sobre `15cd1441b`, peor 581 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **600 / 567 / 592** en los tres ensayos, los tres sobre `808c14b76`, peor 600 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **805** entradas de baseline | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -290,7 +290,7 @@ vez de reportarlo.
 | `pipeline-domain` | 16 | 34 | 185 | 0 | 0 |
 | `pipeline-credentials-local` | 9 | 9 | 99 | 0 | 0 |
 | `pipeline-output` | 6 | 6 | 87 | 0 | 0 |
-| `pipeline-application` | 11 | 11 | 76 | 0 | 0 |
+| `pipeline-application` | 14 | 14 | 100 | 0 | 0 |
 | `pipeline-events-store` | 7 | 10 | 59 | 0 | 0 |
 | `pipeline-release` | 4 | 4 | 39 | 0 | 0 |
 | `pipeline-events` | 3 | 5 | 37 | 0 | 0 |

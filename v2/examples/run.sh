@@ -18,6 +18,17 @@
 #                                     require the second run not to repeat the
 #                                     effect; the pipeline itself asserts the
 #                                     count, this only re-runs it
+#   //@ resume                        the FIRST run is expected to DIE where the
+#                                     scenario chooses, and the SECOND run resumes
+#                                     the same run over the same store. The
+#                                     verdict is the RESUMED run's: its exit code
+#                                     is the declared one (not forced to 0), and
+#                                     the declared stderr is looked for in the
+#                                     RESUMED run, because the first one died
+#                                     before it could say anything. The world
+#                                     must not change between the two: a resumed
+#                                     run that repeats the effect is the bug this
+#                                     directive exists to catch.
 #   //@ requires-seeded-credentials   NOT_RUN: the scenario needs a credential
 #                                     store seeded in advance, and the product
 #                                     offers no non-interactive way to seed one
@@ -114,6 +125,7 @@ run_scenario() {
     local expect_stderr=()
     local durable=0
     local durable_once=0
+    local resume=0
     local needs_seeded_credentials=0
     local directive
     while IFS= read -r directive; do
@@ -122,6 +134,7 @@ run_scenario() {
             '//@ expect-stderr '*) expect_stderr+=("${directive#//@ expect-stderr }") ;;
             '//@ durable')         durable=1 ;;
             '//@ durable-once')    durable_once=1 ;;
+            '//@ resume')          resume=1 ;;
             '//@ requires-seeded-credentials') needs_seeded_credentials=1 ;;
         esac
     done < <(grep -m 20 '^//@ ' "$script" || true)
@@ -187,8 +200,18 @@ run_scenario() {
     # SHOULD leave different worlds. What such a scenario asserts is inside
     # the script, against the state the first run left.
     local db_args=()
-    if [[ "$durable" == 1 || "$durable_once" == 1 ]]; then
+    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 ]]; then
         db_args=(--db "$root/durable.sqlite")
+    fi
+
+    # A scenario that kills its own process needs to know WHICH process to kill,
+    # and the launcher is the only one that can say where to put that answer.
+    # The file lives beside the store, NOT in the scenario's working directory:
+    # the working directory is compared between the two runs, and a PID file
+    # would differ between them (two processes, two PIDs) and look like "the
+    # effect repeated".
+    if [[ "$resume" == 1 ]]; then
+        export PIPELINEK_E2E_PID_FILE="$root/runner.pid"
     fi
 
     # `cd` in this shell, not a subshell: a subshell would discard the exit
@@ -199,7 +222,12 @@ run_scenario() {
         >"$stdout" 2>"$stderr" || code=$?
     cd "$caller_pwd"
 
-    if [[ "$durable" == 1 ]]; then
+    # Which stderr carries the verdict. In `durable` it is the FIRST run's (the
+    # second one replays the first one's checks); in `resume` it is the SECOND
+    # run's, because the first one died before it could say anything.
+    local verdict_stderr="$stderr"
+
+    if [[ "$durable" == 1 || "$resume" == 1 ]]; then
         # The workspace picture BEFORE the resumed run. This is the observation
         # the pipeline cannot make for itself: a resumed run reuses the
         # journalled completions, so every check inside the script is REPLAYED
@@ -218,8 +246,25 @@ run_scenario() {
         "$binary" run --isolated --control-root "$root/control" "${db_args[@]}" "$script" \
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
-        code="$second"
-        expect_exit=0
+
+        if [[ "$resume" == 1 ]]; then
+            # The FIRST run is the crash, and a scenario that says it will die
+            # and finishes cleanly has not exercised what it claims. That is a
+            # failure of the scenario, not a pass: a launcher that cannot tell
+            # "the crash happened" from "the crash did not happen" proves
+            # nothing about crashes.
+            if [[ "$code" == 0 ]]; then
+                printf 'FAIL %-52s the run was supposed to crash and finished cleanly\n' "$name"
+                failed=$((failed + 1))
+                failures+=("$name: the run was supposed to crash and did not")
+                return
+            fi
+            code="$second"
+            verdict_stderr="$root/stderr.rerun.txt"
+        else
+            code="$second"
+            expect_exit=0
+        fi
     fi
 
     local label="$name"
@@ -227,13 +272,15 @@ run_scenario() {
         label="$name (durable x2)"
     elif [[ "$durable_once" == 1 ]]; then
         label="$name (durable x1)"
+    elif [[ "$resume" == 1 ]]; then
+        label="$name (resume x2)"
     fi
 
     if [[ "$code" == "$expect_exit" ]]; then
         # Every declared stderr expectation must hold, not only the last one.
         local missing="" wanted
         for wanted in ${expect_stderr[@]+"${expect_stderr[@]}"}; do
-            if ! grep -qF -- "$wanted" "$stderr"; then
+            if ! grep -qF -- "$wanted" "$verdict_stderr"; then
                 missing="$wanted"
                 break
             fi
@@ -246,11 +293,17 @@ run_scenario() {
             return
         fi
 
-        if [[ "$durable" == 1 ]]; then
+        if [[ "$durable" == 1 || "$resume" == 1 ]]; then
             # The second half of the durable guarantee: the resumed run must
             # not have touched the workspace. A completed effect whose
             # completion was reused does not happen twice, and the only place
             # that shows up is the state of the world.
+            #
+            # For `resume` this is the whole point of the directive. The first
+            # run died in the middle of an effect, and the resumed run has to
+            # decide what to do about a call whose answer nobody has. If it
+            # dispatches the call again, the world changes here — twice the
+            # effect, and a row that looks exactly like a first attempt.
             after_snapshot="$(workspace_snapshot "$root/cwd")"
             if [[ "$before_snapshot" != "$after_snapshot" ]]; then
                 printf 'FAIL %-52s the resumed run changed the workspace: the effect repeated\n' \
@@ -268,10 +321,10 @@ run_scenario() {
     fi
 
     printf 'FAIL %-52s exit %s, expected %s\n' "$label" "$code" "$expect_exit"
-    # In durable mode the verdict is the SECOND run's exit code, so the stderr
-    # that explains it is the second run's stderr. Showing the first run's
-    # would point at a run that succeeded.
-    if [[ "$durable" == 1 ]]; then
+    # In durable and resume modes the verdict is the SECOND run's exit code, so
+    # the stderr that explains it is the second run's stderr. Showing the first
+    # run's would point at a run that died before it could say anything.
+    if [[ "$durable" == 1 || "$resume" == 1 ]]; then
         sed 's/^/       | /' "$root/stderr.rerun.txt" | head -20
     else
         sed 's/^/       | /' "$stderr" | head -20

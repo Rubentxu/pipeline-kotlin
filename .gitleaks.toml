@@ -8,7 +8,7 @@
 # contenía diez rutas: ocho fixtures bajo `src/test/` que imprimían canarios de alta
 # entropía o claves PEM para verificar el redactor y el ciclo de credenciales,
 # un recurso `core/src/test/resources/secretResolver/secret.key` del V1 ya
-# retirado, y un documento de evidencia bajo `docs/v2/07-uat/`. Todas elas
+# retirado, y un documento de evidencia bajo el árbol `docs/`. Todas elas
 # desaparecieron con la demolición del testing RESET: `pipelinek/**/src/test` contiene
 # hoy solo fuentes de test unitario, ningún fixture; no existe `core/`, y el árbol
 # `docs/` ya no está versionado.

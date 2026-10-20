@@ -18,8 +18,8 @@
 # uploaded and the Prerelease is created on GitHub. The receipt, HANDOFF and
 # SHA256SUMS are PUBLISHED as release assets and the HANDOFF becomes the release
 # notes; they are not committed to the repository. An earlier version did
-# `git add` them under docs/v2/07-uat/evidence/<tag>/, which reintroduced a
-# Markdown tree this repository's policy forbids and duplicated information the
+# `git add` them under a Markdown evidence tree, which reintroduced a
+# tree this repository's policy forbids and duplicated information the
 # release page already carries.
 # On any refusal: non-zero exit, no upload, no Prerelease, no commit.
 # Published asset set (AGENTS.md )

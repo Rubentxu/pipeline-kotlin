@@ -1,8 +1,8 @@
-//@ durable-once
+//@ storage-agnostic
 //@ expect-exit 0
 //@ expect-stderr saga [checkout]: SETTLED
 
-// A Saga CHAIN that SUCCEEDS, in a real process with a real SQLite.
+// A Saga CHAIN that SUCCEEDS, in a real process — and in BOTH storage worlds.
 //
 // Every other Saga scenario was a FAILURE, and a failure is the path the engine already knew.
 // The happy path is the one that did not exist: the engine had no way to say "this Saga ended
@@ -32,9 +32,11 @@
 // The markers live in PIPELINEK_E2E_HOME: the launcher's private directory for this scenario,
 // unique per scenario and removed with it.
 //
-// `durable-once` because the Saga needs a REAL durable store: the promises, the lifecycle and
-// the discharge live in SQLite, not in the process's memory. The scenario is not run twice,
-// because keeping the effects is something that happens once.
+// `storage-agnostic` because a Saga must NOT need a durable store to keep its promises. The
+// launcher runs this scenario TWICE — once with `--db` and once without — and BOTH runs have to
+// meet the expectations above. Before this, the in-memory branch bound no Saga store at all, so
+// the Saga capabilities were never exposed and this very script was REFUSED at admission
+// without `--db`: the same script, two behaviours, decided by a flag (P6).
 import example.saga.SagaChainScript
 import example.saga.sagaChain
 

@@ -32,6 +32,14 @@ enum class ViolationRule {
     LAW_FINISHED_WITHOUT_STARTED,
     LAW_PARENT_COMPLETED_BEFORE_CHILD,
     LAW_CONTRADICTORY_TERMINAL,
+
+    /**
+     * A run reported success while a Saga was still pending.
+     *
+     * The two facts contradict each other: a Saga that needs a human is work nobody has done,
+     * and a green run tells the operator there is none.
+     */
+    LAW_SAGA_PENDING_ON_SUCCESS,
 }
 
 /** One line of a counterexample trace: position in the history + short typed summary. */

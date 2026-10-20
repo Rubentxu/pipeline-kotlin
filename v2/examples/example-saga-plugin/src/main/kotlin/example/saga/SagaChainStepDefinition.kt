@@ -14,6 +14,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationArmOutcome
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationDeclaration
+import dev.rubentxu.pipeline.v2.domain.saga.CompensationDirective
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationId
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationKind
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationOperations
@@ -23,18 +24,18 @@ import dev.rubentxu.pipeline.v2.domain.saga.EffectEvidence
 import dev.rubentxu.pipeline.v2.domain.saga.EffectReceiptRef
 import dev.rubentxu.pipeline.v2.domain.saga.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_COMPENSATION_CAPABILITY
+import dev.rubentxu.pipeline.v2.domain.saga.SAGA_LIFECYCLE_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_PLAN_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.saga.SAGA_RUNTIME_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionPlan
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
+import dev.rubentxu.pipeline.v2.domain.saga.SagaLifecycle
 import dev.rubentxu.pipeline.v2.domain.saga.SagaOperationIdentity
 import dev.rubentxu.pipeline.v2.domain.saga.SagaOperationPhase
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlan
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations
 import dev.rubentxu.pipeline.v2.domain.saga.SagaRecordOutcome
-import dev.rubentxu.pipeline.v2.domain.saga.SagaRuntime
 import dev.rubentxu.pipeline.v2.domain.saga.UncertaintyReason
 import dev.rubentxu.pipeline.v2.domain.step.BODY_SLOT_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
@@ -152,6 +153,15 @@ data class SagaChainOutput(
     val reason: String?,
     /** The failure the chain ended with, when it ended with one. */
     val failure: String?,
+    /**
+     * The actions whose effects the engine KEPT, because the chain succeeded.
+     *
+     * Empty for a chain that failed: a failed chain ends by undoing, never by keeping.
+     *
+     * It has a default so an output written by an older build still decodes: a run that
+     * started before the closing verb existed must still be readable after it did.
+     */
+    val kept: List<String> = emptyList(),
 ) : TypedStepOutput {
     override val outcome: StepOutcome
         get() = failure?.let {
@@ -174,9 +184,14 @@ data class SagaChainOutput(
  *  3. The plugin REPORTS what happened, and it reports the truth: a body that failed says the
  *     effect was ABSENT, so the engine knows there is nothing to undo instead of stopping at
  *     an unknown outcome.
- *  4. The plugin ASKS the engine to compensate, and the engine decides what is owed and in
- *     which order. The plugin never compensates its own resource: a second authority here would
- *     be a second, divergent copy of the rule.
+ *  4. The plugin ASKS the engine to end the Saga, and the engine decides what that means. The
+ *     plugin says WHICH ending — undo the effects, or keep them — because only the plugin knows
+ *     whether its chain succeeded; and the engine says WHAT it owes, in which order, and what
+ *     the durable state allows. The plugin never compensates its own resource: a second
+ *     authority here would be a second, divergent copy of the rule.
+ *
+ *  5. A chain that SUCCEEDED keeps its effects, and the engine records it: the promises are
+ *     discharged without being paid, so a resumed run will not undo a Saga that worked.
  *
  * ## What it does NOT do
  *
@@ -237,12 +252,12 @@ object SagaChainStepDefinition : StepDefinition<SagaChainInput, SagaChainOutput>
         outputCodec = SagaChainOutputCodec,
         // FOUR capabilities, none of them supplied by this plugin: the host knows the run, the
         // durable store and the lease. The intent port makes the promise, the plan port moves it
-        // along its lifecycle, the runtime port runs the engine's compensation loop, and the
-        // slot seam is the only way to reach a body of this Step.
+        // along its lifecycle, the lifecycle port ends the Saga — undoing its effects or keeping
+        // them — and the slot seam is the only way to reach a body of this Step.
         requiredCapabilities = setOf(
             SAGA_COMPENSATION_CAPABILITY,
             SAGA_PLAN_CAPABILITY,
-            SAGA_RUNTIME_CAPABILITY,
+            SAGA_LIFECYCLE_CAPABILITY,
             BODY_SLOT_CAPABILITY,
         ),
     )
@@ -251,7 +266,7 @@ object SagaChainStepDefinition : StepDefinition<SagaChainInput, SagaChainOutput>
         val operations: CompensationOperations =
             context.capabilities.get(SAGA_COMPENSATION_CAPABILITY)
         val plan: SagaPlanOperations = context.capabilities.get(SAGA_PLAN_CAPABILITY)
-        val runtime: SagaRuntime = context.capabilities.get(SAGA_RUNTIME_CAPABILITY)
+        val saga: SagaLifecycle = context.capabilities.get(SAGA_LIFECYCLE_CAPABILITY)
         val slots: BodySlotInvoker = context.capabilities.get(BODY_SLOT_CAPABILITY)
 
         val sagaId = SagaId.of(input.sagaId)
@@ -369,37 +384,60 @@ object SagaChainStepDefinition : StepDefinition<SagaChainInput, SagaChainOutput>
             }
         }
 
-        // 4. The engine undoes what the Saga owes, in the order IT decides. The plugin only
-        //    hands over the PLAN; the durable state says what is owed, and the order is the
-        //    inverse of the order in which the obligations were armed.
-        val report = runtime.compensate(
-            SagaPlan(
-                sagaId = sagaId,
-                // The policy is the provider's promise, and the plugin is the provider: only a
-                // provider whose bodies recognise their own keys may be asked twice.
-                policy = if (contract == SagaProviderContract.ReconcilableByKey) {
-                    CompensationPolicy.Reconcilable
-                } else {
-                    CompensationPolicy.NotReconcilable
-                },
-                actions = input.actions.map { actionPlanOf(it) },
-            ),
+        // 4. The Saga ENDS, and the CHAIN is what says how.
+        //
+        //    A chain that succeeded KEEPS its effects: the engine discharges the promises
+        //    without paying them, so nothing is owed afterwards and a resumed run will not undo
+        //    a Saga that succeeded.
+        //
+        //    A chain that failed is UNDONE: the engine decides what is owed and in which order.
+        //    The plugin only hands over the PLAN; the durable state says what is owed, and the
+        //    order is the inverse of the order in which the obligations were armed.
+        val sagaPlan = SagaPlan(
+            sagaId = sagaId,
+            // The policy is the provider's promise, and the plugin is the provider: only a
+            // provider whose bodies recognise their own keys may be asked twice.
+            policy = if (contract == SagaProviderContract.ReconcilableByKey) {
+                CompensationPolicy.Reconcilable
+            } else {
+                CompensationPolicy.NotReconcilable
+            },
+            actions = input.actions.map { actionPlanOf(it) },
         )
 
-        val directive = report.directive
+        val directive: CompensationDirective
+        val compensated: List<String>
+        val kept: List<String>
+        if (failure == null) {
+            val completion = saga.complete(sagaPlan)
+            directive = completion.directive
+            compensated = emptyList()
+            kept = completion.kept.map { it.value }
+        } else {
+            val report = saga.compensate(sagaPlan)
+            directive = report.directive
+            compensated = report.compensated.map { it.value }
+            kept = emptyList()
+        }
+
+        // A closing that was REFUSED leaves a Saga that needs a human, and a run that says
+        // "success" while its Saga needs a human is a lie about the world. So the refusal
+        // becomes this step's failure.
+        val refusal = (directive as? CompensationDirective.NeedsIntervention)
+            ?.let { "the Saga could not be closed: ${it.reason.name}" }
+
         SagaChainOutput(
             forwardOutcomes = forwardOutcomes,
-            compensated = report.compensated.map { it.value },
+            compensated = compensated,
             terminal = when (directive) {
-                is dev.rubentxu.pipeline.v2.domain.saga.CompensationDirective.Settled -> "Settled"
-                is dev.rubentxu.pipeline.v2.domain.saga.CompensationDirective.NeedsIntervention ->
-                    "NeedsIntervention"
-                is dev.rubentxu.pipeline.v2.domain.saga.CompensationDirective.Compensate -> "Compensate"
-                is dev.rubentxu.pipeline.v2.domain.saga.CompensationDirective.Reconcile -> "Reconcile"
+                is CompensationDirective.Settled -> "Settled"
+                is CompensationDirective.NeedsIntervention -> "NeedsIntervention"
+                is CompensationDirective.Compensate -> "Compensate"
+                is CompensationDirective.Reconcile -> "Reconcile"
             },
-            reason = (directive as? dev.rubentxu.pipeline.v2.domain.saga.CompensationDirective.NeedsIntervention)
-                ?.reason?.name,
-            failure = failure,
+            reason = (directive as? CompensationDirective.NeedsIntervention)?.reason?.name,
+            failure = failure ?: refusal,
+            kept = kept,
         )
     }
 

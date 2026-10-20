@@ -2,7 +2,6 @@ package example.saga
 
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
-import dev.rubentxu.pipeline.v2.domain.step.BODY_SLOT_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.step.Delivery
 import dev.rubentxu.pipeline.v2.domain.step.Digest
 import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion
@@ -17,9 +16,6 @@ import dev.rubentxu.pipeline.v2.domain.step.SemVer
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
-import dev.rubentxu.pipeline.v2.domain.saga.SAGA_COMPENSATION_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.saga.SAGA_PLAN_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.saga.SAGA_RUNTIME_CAPABILITY
 
 /**
  * S6/I — the external plugin's DECLARATION, in one place.
@@ -74,21 +70,41 @@ object SagaPluginDeclaration {
     }
 
     /**
-     * What the Steps collectively demand, and it is written as the union of the contracts
-     * rather than as a hand-kept list.
+     * The Steps this plugin contributes, with the capabilities each one DECLARES.
      *
-     * This plugin declares exactly TWO capabilities, the Saga intent port and the Saga plan
-     * port, and they are seams the plugin does NOT supply and is not expected to: a manifest's
-     * capability set states what the plugin NEEDS, not what it hands over. The host provides
-     * the ports because only the host knows the run, the durable store and the lease.
+     * ## Why they are read and not written
+     *
+     * The manifest used to carry a hand-kept copy of each Step's capability set, and the two
+     * copies drifted: the chain Step declared the Saga LIFECYCLE while the manifest still
+     * declared the Saga RUNTIME, and the admission gate refused the plugin at runtime.
+     *
+     * The gate is what caught it, and that is the gate working — but a manifest that can describe
+     * a Step the code does not have is a second authority able to lie, and this file's own
+     * promise — "one declaration, two readers" — is only true while there is ONE declaration.
+     *
+     * So the manifest READS the definitions. The Step says what it needs, once, and the manifest
+     * says it out loud.
+     */
+    private val CONTRIBUTIONS: List<PluginStepContribution> = listOf(
+        PluginStepContribution(
+            SagaObligationStepDefinition.KEY,
+            SagaObligationStepDefinition.contract.requiredCapabilities,
+        ),
+        PluginStepContribution(
+            SagaChainStepDefinition.KEY,
+            SagaChainStepDefinition.contract.requiredCapabilities,
+        ),
+    )
+
+    /**
+     * What the Steps collectively demand, and it is the UNION of the contracts rather than a
+     * hand-kept list.
+     *
+     * A manifest's capability set states what the plugin NEEDS, not what it hands over. The host
+     * provides these seams because only the host knows the run, the durable store and the lease.
      */
     private val DECLARED_CAPABILITIES: Set<StepCapability> =
-        setOf(
-            SAGA_COMPENSATION_CAPABILITY,
-            SAGA_PLAN_CAPABILITY,
-            SAGA_RUNTIME_CAPABILITY,
-            BODY_SLOT_CAPABILITY,
-        )
+        CONTRIBUTIONS.flatMap { it.declaredCapabilities }.toSet()
 
     private fun parseSemVer(raw: String): SemVer {
         val parts = raw.split("-")[0].split(".")
@@ -154,21 +170,7 @@ object SagaPluginDeclaration {
             delivery = provider.delivery,
             trust = provider.trust,
             contributions = PluginContributions(
-                steps = listOf(
-                    PluginStepContribution(
-                        SagaObligationStepDefinition.KEY,
-                        setOf(SAGA_COMPENSATION_CAPABILITY, SAGA_PLAN_CAPABILITY),
-                    ),
-                    PluginStepContribution(
-                        SagaChainStepDefinition.KEY,
-                        setOf(
-                            SAGA_COMPENSATION_CAPABILITY,
-                            SAGA_PLAN_CAPABILITY,
-                            SAGA_RUNTIME_CAPABILITY,
-                            BODY_SLOT_CAPABILITY,
-                        ),
-                    ),
-                ),
+                steps = CONTRIBUTIONS,
                 directives = emptyList(),
                 events = emptyList(),
                 capabilities = DECLARED_CAPABILITIES,

@@ -18,7 +18,7 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `96220fdad` | `git rev-parse HEAD` |
+| SHA del censo | `96220fdad` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 9 | ídem |
@@ -26,7 +26,7 @@ una medición.
 | Escenarios E2E | 44 (**43 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
 | `VERIFY_LOC / PRODUCT_LOC` | **10578 / 65087 = 0.163** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **91 s**, una corrida, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **91 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -992,7 +992,10 @@ anterior que parecía verdad se ha vuelto a medir antes de creerla —y era fals
   ciclo dio **91 s** sobre `bc2acec7c` (árbol idéntico a `96220fdad`), con el
   límite en 900 s, leído de la línea de veredicto de la etapa 5
   (`PASS  sha=…  elapsed=91s  budget=900s`) y no del código de salida. El
-  margen contra el límite pasa de 2,4× a **9,9×**. No es que el trabajo
+  margen contra el límite pasa de 2,4× a **9,9×**. El reloj **varía ±10 s**
+  entre corridas por la caché de Gradle (medidas: 81, 91, 94 y 98 s), así que
+  la cifra se publica como un valor medido **con el ruido que tiene**, y no
+  como un número exacto que nadie podría reproducir. No es que el trabajo
   hiciese menos: es que **el harness costaba 86 % de la puerta** y eso se ha
   corregido (§2.2 q). La etapa 3 baja de 289 s a **45 s** — 44 escenarios en
   paralelo — y las etapas 1, 2 y 4 no se mueven. El resto de la historia: los

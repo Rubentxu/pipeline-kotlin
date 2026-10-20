@@ -144,6 +144,7 @@ parse_directives() {
     durable=0
     durable_once=0
     resume=0
+    storage_agnostic=0
     needs_seeded_credentials=0
 
     # More directives than the launcher reads is a SILENT TRUNCATION: the ones
@@ -163,6 +164,7 @@ parse_directives() {
             '//@ durable')         durable=1 ;;
             '//@ durable-once')    durable_once=1 ;;
             '//@ resume')          resume=1 ;;
+            '//@ storage-agnostic') storage_agnostic=1 ;;
             '//@ requires-seeded-credentials') needs_seeded_credentials=1 ;;
             *) directive_error="unknown directive: $directive"; return 1 ;;
         esac
@@ -201,21 +203,24 @@ self_check() {
 # in the same file as the code it protects: one authority, no second harness.
 self_test() {
     local failures=0
-    local expect_exit expect_stderr durable durable_once resume needs_seeded_credentials
+    local expect_exit expect_stderr durable durable_once resume storage_agnostic needs_seeded_credentials
     local directive_error
 
     # A valid set of directives is understood, and the flags are not confused
     # with each other.
     directive_error=""
-    parse_directives 3 <<'EOF' || true
+    parse_directives 4 <<'EOF' || true
 //@ expect-exit 1
 //@ expect-stderr algo
 //@ durable-once
+//@ storage-agnostic
 EOF
     self_check "expect-exit is read" "1" "$expect_exit" || failures=$((failures + 1))
     self_check "expect-stderr is read" "1" "${#expect_stderr[@]}" || failures=$((failures + 1))
     self_check "durable-once is read" "1" "$durable_once" || failures=$((failures + 1))
     self_check "durable is NOT confused with durable-once" "0" "$durable" || failures=$((failures + 1))
+    self_check "storage-agnostic is read" "1" "$storage_agnostic" || failures=$((failures + 1))
+    self_check "storage-agnostic is NOT confused with resume" "0" "$resume" || failures=$((failures + 1))
     self_check "a valid set has no error" "" "$directive_error" || failures=$((failures + 1))
 
     # An unknown directive is REFUSED. This is the one that used to be a
@@ -328,6 +333,22 @@ workspace_snapshot() {
     ) 2>/dev/null || true
 }
 
+# Whether ONE run met the scenario's declared expectations: the exit code AND
+# every declared stderr line, not only the last one.
+#
+# A helper because a scenario can be run in more than one world (P6), and the
+# rule has to be the SAME rule in each of them: checking one world with the
+# real code and the other with a copy of it is how two worlds drift apart.
+expectations_met() {
+    local run_code="$1" run_stderr="$2"
+    local wanted
+    [[ "$run_code" == "$expect_exit" ]] || return 1
+    for wanted in ${expect_stderr[@]+"${expect_stderr[@]}"}; do
+        grep -qF -- "$wanted" "$run_stderr" || return 1
+    done
+    return 0
+}
+
 # One scenario, fully isolated. Nothing is read from the developer's HOME and
 # nothing is written outside $cycle_root.
 run_scenario() {
@@ -342,6 +363,8 @@ run_scenario() {
     local durable=0
     local durable_once=0
     local resume=0
+    local storage_agnostic=0
+    local memory_code=0
     local needs_seeded_credentials=0
     local directive_error=""
 
@@ -428,7 +451,7 @@ run_scenario() {
     # SHOULD leave different worlds. What such a scenario asserts is inside
     # the script, against the state the first run left.
     local db_args=()
-    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 ]]; then
+    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$storage_agnostic" == 1 ]]; then
         db_args=(--db "$root/durable.sqlite")
     fi
 
@@ -449,6 +472,24 @@ run_scenario() {
     "$binary" run --isolated --control-root "$root/control" "${db_args[@]}" "$script" \
         >"$stdout" 2>"$stderr" || code=$?
     cd "$caller_pwd"
+
+    # P6: the same script has to behave the same WITH and WITHOUT a durable
+    # store. The run above was the DURABLE one; this is the VOLATILE one, with
+    # its own control root AND its own working directory: the volatile run must
+    # not see what the durable run left behind, or it would be testing the
+    # leftovers instead of the behaviour.
+    #
+    # The second run is NOT a resume: it asks for a fresh run in a world with
+    # no journal, which is the world `--db` decides.
+    if [[ "$storage_agnostic" == 1 ]]; then
+        mkdir -p "$root/cwd-memory"
+        export PIPELINEK_E2E_HOME="$root/cwd-memory"
+        cd "$root/cwd-memory"
+        "$binary" run --isolated --control-root "$root/control-memory" "$script" \
+            >"$root/stdout.memory.txt" 2>"$root/stderr.memory.txt" || memory_code=$?
+        cd "$caller_pwd"
+        export PIPELINEK_E2E_HOME="$root/cwd"
+    fi
 
     # Which stderr carries the verdict. In `durable` it is the FIRST run's (the
     # second one replays the first one's checks); in `resume` it is the SECOND
@@ -504,6 +545,29 @@ run_scenario() {
         label="$name (durable x1)"
     elif [[ "$resume" == 1 ]]; then
         label="$name (resume x2)"
+    elif [[ "$storage_agnostic" == 1 ]]; then
+        label="$name (both storages)"
+    fi
+
+    # P6: a scenario that declares itself storage-agnostic has to meet its
+    # expectations in BOTH worlds. The durable run happened above; the volatile
+    # one right after it. One world meeting them is not evidence: the point is
+    # that the storage choice does not change what the script does.
+    if [[ "$storage_agnostic" == 1 ]]; then
+        if ! expectations_met "$code" "$verdict_stderr"; then
+            printf 'FAIL %-52s the DURABLE run did not meet the expectations\n' "$label"
+            sed 's/^/       | /' "$verdict_stderr" | head -20
+            verdict_fail "$name: the durable run did not meet the expectations"
+            return
+        fi
+        if ! expectations_met "$memory_code" "$root/stderr.memory.txt"; then
+            printf 'FAIL %-52s the IN-MEMORY run did not meet the expectations\n' "$label"
+            sed 's/^/       | /' "$root/stderr.memory.txt" | head -20
+            verdict_fail "$name: the in-memory run did not meet the expectations"
+            return
+        fi
+        verdict_ok
+        return
     fi
 
     if [[ "$code" == "$expect_exit" ]]; then

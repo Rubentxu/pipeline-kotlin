@@ -27,8 +27,8 @@ una medición.
 | Escenarios que sólo comprueban el código de salida | **0** | censo por directiva, sobre los 31 escenarios |
 | `VERIFY_LOC / PRODUCT_LOC` | **7960 / 60878 = 0.131** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **401 / 415 / 402** en los tres ensayos de `263107231`, **415** en el de `e4daef35d` y **478** en el de `c3a23697b`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
-| Veredicto del gate | **`PASS`** en los cinco ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
+| `VERIFY_ALL_WALL_CLOCK` | **401 / 415 / 402** en los tres ensayos de `263107231`, **415** en el de `e4daef35d`, **478** en el de `c3a23697b` y **423** en el de `9f2a2004f`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| Veredicto del gate | **`PASS`** en los seis ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **807** entradas de baseline, ninguna nueva | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
@@ -166,7 +166,7 @@ contra el texto del plan. «Medido» significa que el número salió de una
 | 3 | 0 clases legacy trasladadas | **PASS** | `pipelinek/test-harness`, `pipelinek/pipeline-testkit`, `pipelinek/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
 | 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 31 escenarios en 8 categorías bajo `examples/`; cada uno se ejecuta en las dos rutas del CLI (con journal y sin él); 0 `src/test` dentro de `examples/*`; lanzador único `examples/run.sh` invocado por la etapa 3 del gate |
 | 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 7960 / 60878 = 0.131; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
-| 6 | `verify-all` local ≤ 900 s | **PASS** | cinco ensayos, el peor de 478 s contra el límite de 900: 401 / 415 / 402 sobre `263107231`, 415 sobre `e4daef35d` y 478 sobre `c3a23697b`. Todos con 67/67 informes reescritos, 594 tests, 0 fallos, 0 errores, 0 skips |
+| 6 | `verify-all` local ≤ 900 s | **PASS** | seis ensayos, el peor de 478 s contra el límite de 900: 401 / 415 / 402 sobre `263107231`, 415 sobre `e4daef35d`, 478 sobre `c3a23697b` y 423 sobre `9f2a2004f`. Todos con 67/67 informes reescritos, 594 tests, 0 fallos, 0 errores, 0 skips |
 | 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS** | 27 módulos declarados compilan; el único módulo versionado que el `include` no declaraba se retiró en este ciclo, así que ya no queda ninguno |
 
 Sobre el límite 4: el mandato escribe el lanzador como `examples/run.sh`, y este

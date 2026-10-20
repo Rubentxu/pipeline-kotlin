@@ -18,29 +18,30 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `46205fb9` | `git rev-parse HEAD` |
+| SHA | `7dc66bc0e` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **17** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 10 | ídem |
-| Tests unitarios ejecutados | **519** (53/53 informes reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
-| Escenarios E2E | 36 (**35 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **6692 / 61623 = 0.109** (límite 2) | `scripts/check-budgets.py --json` |
+| Tests unitarios ejecutados | **625** (72 informes JUnit, 38 reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
+| Escenarios E2E | 43 (**42 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
+| `VERIFY_LOC / PRODUCT_LOC` | **9087 / 64652 = 0.141** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **226 s**, peor de tres ensayos (225 / 223 / 226), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **345 s**, una corrida, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
-Los tres ensayos se ejecutaron tras `rm -rf` de las salidas de build reales —las
-cuyo padre declara `build.gradle.kts`— y los tres reelectionaron los 53
-informes JUnit, que es la condición que hace que la cifra de reloj mida el gate
-y no una restauración de caché. Un total correcto con el verbo equivocado ya no
-puede colarse: la etapa 2 separa `rewritten` de `read` y **falla** si no
-reescribe ninguno.
+La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
+calientes, y por eso **no** se compara con la de 2026-10-19 (226 s, la peor de
+tres ensayos tras `rm -rf` de las salidas de build reales, que es la condición
+que hace que la cifra mida el gate y no una restauración de caché). Un total
+correcto con el verbo equivocado ya no puede colarse: la etapa 2 separa
+`rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 38
+de los 72 informes.
 
 El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
 declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
 fabricar credenciales. `NOT_RUN` no es un aprobado, y desde `5240feac` tampoco se
 confunde con uno: la línea de veredicto lleva el hueco **dentro**, como
-`PASS  sha=…  elapsed=226s  budget=900s  gaps=1 not_run`. Antes el conteo se
+`PASS  sha=…  elapsed=345s  budget=900s  gaps=1 not_run`. Antes el conteo se
 imprimía y no se leía —la etapa 3 solo hacía `grep` del resumen—, así que el
 peor caso (`--scenario 'security/*'`: 0 pasan, 0 fallan, 1 no ejecutado) salía
 vestido de `PASS`. Un tercer estado no se propaga porque la capa de abajo lo
@@ -426,6 +427,28 @@ el arreglo; los demás siguen verdes).
   admiten re-escritura; los demás sí, porque re-confirmar o re-compensar escriben
   el MISMO hecho y no autorizan nada nuevo. Test de regresión mutation-verificado:
   dos filas que mueren al revertir el arreglo, y ninguna otra.
+- **Un parche de entorno no llegaba al proceso: el contexto mentía.**
+  `ExecutionContextPatch.Environment` se proyectaba **solo** sobre el
+  `ExecutionContext` (una capa `ContextOverlay.Environment`), y un proceso `sh` se
+  lanza con `ShOptions.env` y con nada más: la capa nunca se proyecta sobre el
+  `ProcessBuilder`. No era un parche a medias, era un parche **nulo** para un
+  cuerpo `sh` —y el KDoc del dominio lo define como la proyección de un ámbito
+  `withEnv`, y `withEnv` proyecta sobre **las dos** superficies, el contexto y
+  las opciones del proceso, que es exactamente por lo que los ámbitos del script
+  funcionan. La diferencia se midió: con la proyección del entorno eliminada, el
+  escenario 37 falla y los escenarios 33 a 36 siguen verdes.
+  La consecuencia no era cosmética: un cuerpo que tiene que reconocer su propia
+  clave de operación —todo el contrato de un proveedor reconciliable— no puede
+  reconocer una clave que nunca recibió, así que el `Reconcile` que vuelve a
+  despachar el cuerpo no era seguro: el cuerpo podía repetir el efecto. El
+  arreglo es **una** proyección pura (`projectInvocationPatch`) que proyecta el
+  parche sobre las dos superficies y se usa en los tres sitios que aplican un
+  parche; la variante de directorio se **rechaza** cuando se sale del workspace,
+  y la regla de contención —que el ámbito `dir` aplicaba en su sitio— pasa a
+  vivir en **un** sitio, para que las dos no puedan separarse. 10 tests nuevos
+  (7 de la proyección, 3 del intérprete): al quitar la proyección del entorno
+  mueren 2 de los 7 y nada más, y al quitar la reconciliación mueren 3 de los 12
+  del intérprete y nada más.
 
 ### 2.2 Lo que queda abierto, por valor operativo
 
@@ -835,6 +858,24 @@ documento donde la regla está escrita.
   trabajo del escenario — ese directorio se compara entre las dos ejecuciones, y
   dos procesos tienen dos PID: un fichero de PID dentro de él parecería «el
   efecto se repitió».
+- **La clave de operación viaja en el entorno, y el contrato del proveedor es
+  sobre la OPERACIÓN, no sobre el intento.** Dos decisiones encadenadas. La
+  primera: el `Reconcile` vuelve a despachar el cuerpo **con la misma clave**,
+  porque la clave identifica la operación y no el intento —es lo que permite que
+  un proveedor diga «ya está hecho» en vez de hacerlo dos veces—, y con un
+  `attempt` nuevo, porque dos intentos de una operación son dos filas del
+  registro de operaciones y no una fila leída dos veces. La segunda: un
+  proveedor que **reconoce sus claves** contesta **por la operación** —«ya está
+  hecho» o «no está hecho»—, no por el intento que preguntó. Por eso un fallo en
+  la repregunta se lee como «no está hecho» y no como «nadie sabe»: un cuerpo que
+  sólo supiera decir «ha fallado esta vez» no estaría contestando por la
+  operación, y leerlo así dejaría un efecto aplicado en pie para siempre. Y por
+  eso un forward fallido se reporta como **desconocido** aunque el proveedor sepa
+  reconocer sus claves: reconocer una clave no dice nada sobre lo que dejó un
+  fallo, y un forward que aplicó el efecto y luego falló tiene que seguir
+  debiendo su compensación. La suposición contraria se comprobó y se descartó:
+  reportarlo como ausente hacía que el Saga **no compensara** un efecto aplicado,
+  y el escenario 37 seguía verde —es decir, el test no la detectaba.
 
 ---
 

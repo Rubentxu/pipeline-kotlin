@@ -166,7 +166,7 @@ pipelinek run --help
 
 ## Examples
 
-The [`v2/examples/`](v2/examples/) directory holds 29 runnable
+The [`v2/examples/`](v2/examples/) directory holds 30 runnable
 pipelines that exercise the real CLI, grouped by what they cover:
 
 | Category | Scenarios | What it covers |
@@ -176,17 +176,24 @@ pipelines that exercise the real CLI, grouped by what they cover:
 | `control-flow/` | 2 | Kotlin control flow inside a compiled script, and workflow control |
 | `durable/` | 4 | Durable execution over the journal: platform queries, milestones, `waitUntil`, `stash`/`unstash` |
 | `security/` | 2 | Credential bindings, and a ZIP-slip path-traversal defence |
-| `output/` | 6 | The output plane: file reads, a utilities round trip, ZIP/unzip, mixed utilities, cross-step artifact queries, HTML publishing |
+| `output/` | 7 | The output plane: file reads, a utilities round trip, ZIP/unzip, mixed utilities, cross-step artifact queries, HTML publishing, and the live output of a process |
 | `negative/` | 4 | Deliberate failures that must fail closed: error handling, a failing step, a workspace symlink escape, an unregistered directive key |
 | `plugins/` | 3 | The three external example plugins, discovered from the distribution classpath: `uppercase`, `repeat`, and a contributed directive |
+
+Each scenario runs **twice** — once with a private journal database, which is
+how a CI runs a pipeline, and once without one, which is the default for a
+local run — and both executions have to meet the same expectations. The two
+execution paths are the same product answering the same question, and a
+difference between them is a defect.
 
 The scenarios live in this repository, not in the released ZIP: the ZIP ships
 the distribution alone. From an installed distribution you run your own
 `.pipeline.kts`; from a clone, build the local distribution once and let
 [`v2/examples/run.sh`](v2/examples/run.sh) run the whole set. The
 launcher discovers every scenario, gives each one a private control root, a
-private working directory and a generated passphrase, and judges each on its
-exit code and on the text the scenario asked for:
+private working directory and a generated passphrase, runs it on both execution
+paths, and judges each execution on its exit code and on the text the scenario
+asked for:
 
 ```bash
 cd v2 && ./gradlew :pipeline-application:installDist

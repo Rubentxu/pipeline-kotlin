@@ -38,14 +38,17 @@ mida el gate y no una restauración de caché. Un total correcto con el verbo
 equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
 **falla** si no reescribe ninguno.
 
-**El gate cuenta 21 proyectos Gradle con test, y un censo independiente por
-fichero cuenta los mismos 21.** La etapa 2 imprime un módulo por nombre, y un
+**El gate cuenta 25 proyectos Gradle con test, y un censo independiente por
+fichero cuenta los mismos 25.** La etapa 2 imprime un módulo por nombre, y un
 censo que enumera `src/test/kotlin/**/*Test.kt` sobre los 27 módulos declarados
-devuelve la misma lista. Los seis sin test son `pipeline-sdk-bom` y
-`pipeline-scripting-kotlin24`, que no tienen clases que probar, más
-`pipeline-event-harness`, `pipeline-runtime`, `pipeline-step-sdk/api` y
-`pipeline-step-sdk/junit`, cuyo comportamiento se comprueba desde fuera, en los
-ejemplos ejecutables. El denominador que cuenta el gate es el proyecto Gradle,
+devuelve la misma lista. Los dos sin test son `pipeline-sdk-bom`, que no tiene
+clases que probar, y `pipeline-runtime`, que tiene código pero ningún
+consumidor. Aquí la cifra estaba caducada, y la lista con ella: se escribió
+«21» y «los seis sin test» cuando cuatro de esos seis ya no lo estaban
+(`pipeline-scripting-kotlin24`, `pipeline-event-harness`,
+`pipeline-step-sdk/api` y `pipeline-step-sdk/junit` tienen hoy su observador).
+La lección es la de siempre: un número escrito a mano envejece, y se vuelve a
+medir contra el árbol. El denominador que cuenta el gate es el proyecto Gradle,
 que es la unidad que Gradle ejecuta; el nombre del directorio no lo es.
 
 **Limpiar «los `build/`» es más peligroso de lo que parece, y por eso el
@@ -1397,48 +1400,78 @@ por fichero, y su coste real se ha medido: no es el borrado mecánico, es
 decidir si la regla está escrita en las tres líneas siguientes. Eso no se paraleliza
 con un script.
 
-**k) La identidad declarada de un plugin: la premisa de este bloque era falsa.**
+**k) La identidad declarada de un plugin: la premisa de este bloque era falsa, y
+la corrección posterior también.**
 Un agente afirmó «los bytes nunca se miden en producción» y, corrigiendo eso, una
-redacción anterior de este bloque concludes que «nada compara los bytes medidos
+redacción anterior de este bloque concluyó que «nada compara los bytes medidos
 contra el `release.digest` declarado por el manifiesto». **Ambas son falsas**, y lo
-comprobé abriendo el call site antes de aceptarlas:
+comprobé abriendo el call site antes de aceptarlas. Y al medir el bloque entero
+en este ciclo resultó que **la redacción posterior tampoco era cierta**: la
+garantía que este bloque daba por «implementada, conectada y primera en la
+cadena» no está conectada a nada.
 
-- `PluginAdmissionGate` mide los bytes reales con
-  `PluginManifestResourceReader.measureArtifactBytes` (línea 162) **cuando hay
-  trust database**; y en ese mismo caso llama a `b32TrustRefusal` (línea 176),
-  que compara `measuredDigest` contra `declaredDigest` **antes que cualquier otra
-  cosa** y devuelve `AdmissionRefusal.RefusedDigestMismatch` (línea 354). El
-  veredicto se consume en la línea 187 mapeándolo a `TrustMetadata.Mismatch`. La
-  garantía de integridad está implementada, conectada y es el primer control de
-  la cadena.
-- Sin trust database no se mide ni se compara, y eso **no es un hueco**: no hay
-  ningún digest afirmado por el operador contra el que un plugin pueda mentir. La
-  rama sin ancla cae en el `measure` deprecado, que devuelve
-  `measuredDigest = null` por diseño.
-- El TOCTOU también está cubierto por otra vía: `PreResolvedComposition` mide con
-  `digestOfArtifactAt`, rechaza `ArtifactNotMeasurable`, deduplica por bytes
-  medidos y vuelve a medir al final rechazando `ArtifactChangedDuringAdmission`.
+Lo que hay, medido sobre el árbol:
 
-**Lo que sí queda abierto, y es más pequeño que el bloque que sustituye:**
+- **Lo que sí corre en producción** es la garantía de ARTEFACTO, en
+  `PreResolvedComposition`: cada artefacto candidato se mide con
+  `digestOfArtifactAt` antes de cargar ninguna clase suya, un artefacto que no
+  se puede leer se rechaza con `ArtifactNotMeasurable`, dos rutas con los mismos
+  bytes son un solo artefacto, y los bytes se vuelven a medir antes de componer
+  para rechazar con `ArtifactChangedDuringAdmission` lo que cambió entre
+  medias. Esa es una garantía de integridad real, y es la que el runtime
+  sostiene en cada ejecución con plugins.
+- **Lo que no corre en producción** es la garantía de IDENTIDAD DECLARADA.
+  `PluginAdmissionGate.admitThenLoad` —la puerta donde vive la comparación
+  `measuredVsDeclaredRefusal`— no la llama nadie: `git grep admitThenLoad`
+  devuelve su propia declaración y una mención en un KDoc, ni un call site de
+  producción. Y `LocalFileOperatorTrustDatabase` no se construye nunca, así que
+  el fichero de confianza del operador no se lee nunca.
+- **Y la comparación de esa puerta no podría conectarse tal cual**, porque
+  compara dos magnitudes distintas. Eso se midió sobre un plugin real
+  (`examples/example-uppercase-plugin`, artefacto construido):
+  - el `releaseDigest` declarado es `sha256:3983ca6a…`;
+  - el SHA-256 del fichero `.jar` es `sha256:dd23e2c9…`;
+  - el digest declarado se reproduce EXACTO con la receta del build (SHA-256
+    sobre `nombre + bytes` de cada clase y recurso del plugin, excluyendo los
+    dos documentos que llevan el digest, ordenados por ruta), y **ninguna** de
+    las diez combinaciones de ordenación y nombre probadas lo reproduce a
+    partir del `.jar` ya construido.
+
+  O sea: el digest declarado habla del CONTENIDO del plugin y el digest del
+  artefacto habla del FICHERO que lo contiene. No son la misma magnitud, y
+  compararlas reportaría a todos los plugins como mentirosos.
+
+**Lo que queda abierto, y es más pequeño que el bloque que sustituye:**
 
 - `PreLoadPluginAdmission.kt:98` llama al `measure` deprecado y recibe
   `measuredDigest = null`: pide una medición y tira el resultado. Es el residuo
-  real, no la ausencia de la comparación.
+  real, no la ausencia de la comparación. **Cerrado en este ciclo**: la ruta de
+  producción ya no pide una medición que no va a usar, y construye a mano la
+  identidad que puede sostener —el origen y lo que el manifiesto declara— con un
+  comentario que dice por qué no lleva digest medido.
 - `ArtifactIdentityVerdict` (Verified / Mismatch / Unverified) tiene **cero
   lectores de producción**. Es una segunda forma de expresar una garantía que ya
   se expresa con un `if` en línea. No es un fallo de seguridad: es exactamente el
   «second authority» que AGENTS.md §1 prohíbe. Retirarlo tocaría
   `pipeline-domain.api`, así que espera al mismo break versionado que (h) e (i).
-- **Ningún test cubre `RefusedDigestMismatch`**: `git grep` sobre `*/src/test/*`
-  no devuelve ni una línea. Una comprobación de integridad de artefactos que sí
-  funciona carece de regresión permanente. Este es el único punto de este bloque
-  que es un defecto material y **no** está bloqueado por ABI: es un test que
-  falta, no una firma que quitar.
+- El digest que el operador ancla en su fichero de confianza es hoy el digest
+  DECLARADO por el manifiesto. Eso verifica que el artefacto dice lo que el
+  operador aprueba, pero no que sus bytes sean los que el operador aprobó: un
+  `.jar` sustituido que conserve el mismo manifiesto pasaría el filtro. Anclar
+  los bytes exigiría que el operador anclara el digest del artefacto —otra
+  magnitud, otra política de fichero, y una decisión de producto—, no un
+  arreglo de código.
 
-**Por qué importa la corrección:**Taken al pie de la letra, este bloque pedía
-añadir un caso de discrepancia a `PluginManifestRejection`. Eso habría creado una
-segunda autoridad sobre un control que ya funciona — el error caro — mientras
-dejaba sin cubrir el control que sí importa.
+**Por qué importa la corrección:** este bloque pedía añadir un caso de
+discrepancia a `PluginManifestRejection`. Eso habría creado una segunda
+autoridad sobre un control que ya funciona —el error caro— mientras dejaba sin
+cubrir el control que sí importa y, de paso, habría instalado en el código una
+comparación que acusa a todos los plugins. Lo que se ha hecho en su lugar: la
+garantía que de verdad se sostiene en producción —artefacto medido, artefacto
+legible o rechazado, bytes que no cambian entre medias— ha pasado a decidirse en
+un sitio solo y a tener un observador que se enciende cuando se rompe; y la
+comparación imposible se ha medido y escrito, con su número, en vez de
+dejarse como una puerta que nadie abre.
 
 **l) Los *bookends* de run y stage se vuelven a emitir en cada reanudación durable.**
 Trazado a mano, extremo a extremo:
@@ -2540,6 +2573,119 @@ consumidor. De los 26 módulos con código, 25 tienen test unitario permanente.
 
 
 ---
+
+### 2.17 La integridad de los artefactos, medida por fin
+
+Este ciclo midió una garantía de la que todo el mundo hablaba y nadie había mirado: la
+integridad de los artefactos de plugin. El resultado son tres cosas, y las tres son
+mediciones.
+
+**El censo, con quién llama a qué.** Todo por `git grep` sobre `*.kt`, no de memoria:
+
+| pieza | qué es | quién la llama en producción |
+|---|---|---|
+| lectura del manifiesto | el documento `META-INF/pipelinek/plugin-manifest.json` | `PreLoadPluginAdmission.admitAll` |
+| medición del artefacto | SHA-256 de los bytes del fichero | `PreResolvedComposition` |
+| deduplicación por bytes | dos rutas con los mismos bytes son un artefacto | `PreResolvedComposition` |
+| re-medición antes de componer | los bytes no pueden cambiar entre medias | `PreResolvedComposition` |
+| puerta de admisión | `PluginAdmissionGate.admitThenLoad` | **nadie** |
+| base de confianza del operador | `LocalFileOperatorTrustDatabase` | **nadie: no se construye** |
+| veredicto de identidad | `ArtifactIdentityVerdict` | **nadie: cero lectores** |
+
+La fila de arriba que se repite en todas las ejecuciones con plugins es la de
+`PreResolvedComposition`. Las tres de abajo no se ejecutan nunca.
+
+**El hallazgo que decide el bloque: los dos digest no son la misma magnitud.** Medido
+sobre un plugin real (`examples/example-uppercase-plugin`, artefacto construido):
+
+- el `releaseDigest` declarado es `sha256:3983ca6a…`;
+- el SHA-256 del fichero `.jar` es `sha256:dd23e2c9…`;
+- el digest declarado se reproduce **exacto** con la receta del build: SHA-256 sobre
+  `nombre + bytes` de cada clase y recurso del plugin, excluyendo los dos documentos que
+  llevan el digest, ordenados por ruta;
+- **ninguna** de las diez combinaciones de ordenación y nombre probadas reproduce el
+  digest declarado a partir del `.jar` ya construido.
+
+El digest declarado habla del CONTENIDO del plugin; el digest del artefacto habla del
+FICHERO que lo contiene. La comparación que la puerta de admisión hacía —«el digest medido
+contra el digest declarado»— comparaba un contenedor con su contenido, y por eso habría
+acusado a todos los plugins de mentir. Eso no es un defecto hypothetical: es lo que
+habría pasado en el momento de conectarla, porque el digest declarado nunca puede
+coincidir con el del fichero.
+
+**Lo que se ha cerrado.**
+
+1. La decisión sobre los bytes vive ahora en un sitio solo,
+   `PluginArtifactIntegrity`: se mide fuera y se decide dentro, sin E/S, sin reloj y sin
+   classloader. La composición raíz no decide nada, sólo lee y pregunta.
+2. La ruta de producción ya no pide una medición que no va a usar. Antes llamaba al
+   método deprecado que devolvía `measuredDigest = null` —cuyo contrato decía
+   explícitamente que ese resultado no debe admitirse— y lo admitía. Ahora construye la
+   identidad que puede sostener, y su comentario dice por qué no lleva digest medido.
+3. La comparación imposible sale del código. Una comparación que acusa a todos los
+   plugins no es un control: es un ruido con forma de control. Y con ella sale el test
+   que la guardaba, porque un test que protege una comparación que no puede tener éxito
+   no protege nada: certifica una ficción. En su lugar, la garantía que de verdad se
+   sostiene en producción —artefacto medido, artefacto legible o rechazado, bytes que no
+   cambian entre medias— tiene un observador propio.
+4. El observador es `PluginArtifactIntegrityTest`: diez casos sobre la decisión, sin
+   ficheros ni procesos. Se comprobó rompiéndolo seis veces —un artefacto ilegible que se
+   salta en vez de rechazarse, la deduplicación que desaparece, la deduplicación que
+   distingue mayúsculas de minúsculas, un cambio que no se detecta, un artefacto que se
+   vuelve ilegible y se cuenta como «sin cambios», y una comparación sensible a
+   mayúsculas— y en cada una se encendieron exactamente las filas esperadas y ninguna más.
+5. Y hay un escenario ejecutable: `examples/negative/34-plugin-artifact-not-measurable`,
+   que apunta la ejecución a un artefacto de plugin que no está y comprueba que el
+   producto **rechaza y nombra el artefacto** en vez de seguir como si nada. Se comprobó
+   rompiéndolo: con el artefacto ilegible saltado en vez de rechazado, el escenario se
+   pone rojo. Ese es el fail-open que el escenario existe para descartar.
+
+**Lo que queda registrado, con su medida.**
+
+- La puerta de admisión y la base de confianza del operador siguen sin llamantes. No es
+  un olvido: no hay forma de activarlas, porque el producto no tiene el concepto de
+  «home del operador» ni de «tren de releases» que sus ficheros de confianza dan por
+  supuesto. Conectarlas es una decisión de producto, no un arreglo de código.
+- `AdmissionRefusal.RefusedDigestMismatch` queda en el vocabulario publicado sin
+  productor: nombra un rechazo real —el operador anclando BYTES y no una declaración—
+  y ese caso no se puede resolver sin decidir primero qué ancla el operador. `:pipeline-domain`
+  está publicado, así que el caso no se puede retirar sin ruptura de versión.
+- `ArtifactIdentityVerdict` sigue con cero lectores de producción, por el mismo motivo
+  de ABI que ya estaba registrado.
+
+- **Se mide antes de decidir, y la medición puede cambiar la decisión.** El bloque
+  abierto de este ciclo pedía «un caso de discrepancia de digest» y un test para él. Al
+  medir el bloque entero, el resultado fue que el digest declarado y el digest del
+  artefacto son magnitudes distintas, que la comparación que la puerta hacía acusaría a
+  todos los plugins, y que el caso que el bloque quería producir no tiene productor
+  posible sin decidir antes qué ancla el operador. Añadir el caso habría creado una
+  segunda autoridad sobre un control que ya funciona y una comparación que nunca puede
+  tener éxito. Se añadió, en cambio, el observador de la garantía que sí se sostiene.
+
+- **Una garantía sin consumidor no se protege; una garantía con consumidor se protege
+  entera.** La puerta de admisión y la base de confianza del operador no las llama nadie
+  en este repositorio, así que su comparación no tiene a quién servir y el test que la
+  guardaba se ha ido con ella. La garantía de artefacto la sostiene el runtime en cada
+  ejecución con plugins, así que tiene observador unitario —que decide sin E/S— y un
+  escenario ejecutable —que decide sobre el binario real y sobre lo que el operador lee—.
+
+- **Un test que protege una comparación imposible protege una ficción.** Por eso el
+  test de la comparación digest-medido contra digest-declarado sale con la comparación.
+  No es que la cobertura se reduzca: es que la cobertura que había era de un mundo que
+  no existe, y la que hay ahora es del mundo real.
+
+- **El digest del manifiesto es procedencia; los bytes del artefacto son identidad.**
+  La distinción estaba escrita en el código y no en el sitio donde importaba, y por eso
+  una puerta comparaba las dos. Ahora está en el KDoc de la identidad, en el del digest
+  declarado y en el de la puerta que los mezcla.
+
+- **El lanzador crece sólo cuando una capacidad lo necesita.** `examples/run.sh` ya
+  sabía dar credenciales a un escenario; ahora sabe también señalar un artefacto de
+  plugin, y sólo de una manera: el que no está. Una directriz más, no un vocabulario.
+
+- **Las cifras del ROADMAP se vuelven a medir contra el árbol.** «21 proyectos Gradle
+  con test» y «los seis sin test» eran de un árbol anterior; hoy son 25 y dos. Un número
+  escrito a mano envejece, y heredarlo es heredar una mentira con formato de dato.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 

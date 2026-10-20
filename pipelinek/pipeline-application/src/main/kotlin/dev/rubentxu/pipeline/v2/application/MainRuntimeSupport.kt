@@ -134,12 +134,12 @@ internal fun admitThenComposeOrExit(
                 // policy approved, and on what evidence, before the list of what the plugins
                 // contribute.
                 outcome.admitted.forEach { artifact ->
-                    val trust = artifact.trust
-                    if (trust != null) {
+                    val approval = artifact.trust
+                    if (approval != null) {
                         System.err.println(
                             "Plugin ${artifact.plugin.pluginId} admitted under the operator's trust " +
-                                "policy: bytes ${trust.digest.value}, publisher ${trust.publisher}, " +
-                                "key ${trust.keyId}",
+                                "policy: bytes ${approval.digest.value}, publisher ${approval.publisher}, " +
+                                "key ${approval.keyId}",
                         )
                     }
                 }
@@ -151,7 +151,7 @@ internal fun admitThenComposeOrExit(
 
         is CompositionOutcome.Refused -> {
             val reason = outcome.rejection.toString()
-            val detail = outcome.detail?.let { " — $it" } ?: ""
+            val detail = outcome.detail?.let { " — $it" }.orEmpty()
             System.err.println("Plugin admission refused for ${outcome.artifact}: $reason$detail")
             System.exit(2)
             error("unreachable: System.exit does not return")

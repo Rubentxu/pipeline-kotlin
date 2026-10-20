@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `96220fdad` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `8d4a49be8` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 9 | ídem |
-| Tests unitarios ejecutados | **686** (85 informes JUnit, **85** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
-| Escenarios E2E | 44 (**43 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **10578 / 65087 = 0.163** (límite 2) | `scripts/check-budgets.py --json` |
+| Tests unitarios ejecutados | **705** (87 informes JUnit, **87** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
+| Escenarios E2E | 45 (**44 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
+| `VERIFY_LOC / PRODUCT_LOC` | **10747 / 65282 = 0.165** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **91 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **98 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -34,8 +34,13 @@ calientes, y por eso **no** se compara con la de 2026-10-19 (226 s, la peor de
 tres ensayos tras `rm -rf` de las salidas de build reales, que es la condición
 que hace que la cifra mida el gate y no una restauración de caché). Un total
 correcto con el verbo equivocado ya no puede colarse: la etapa 2 separa
-`rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 79
-de los 85 informes.
+`rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 87
+de los 87 informes.
+
+La corrida que se publica es la de `8d4a49be8` (**98 s**). Otra corrida sobre el
+**mismo contenido**, con los módulos tocados compilando de cero, midió 105 s: el
+reloj de este gate sigue teniendo su ruido, y publicar una cifra única sin él
+vuelve a ser una afirmación que nadie puede reproducir.
 
 El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
 declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
@@ -569,7 +574,7 @@ publicar un binario.
 | `pipeline-step-sdk/files` | 6 | 3 | `RootDestruction.from`, los dos `when (rootDestruction)` de `CleanWsExecutor:91` y `DeleteDirExecutor:103` (**no es deuda**, ver punto 1), `antPatternToRegex` (`CleanWsExecutor:221-269`) |
 | `pipeline-release` | 18 | **10** | `ProductVersion.parseOrNull`, `DistributionIdentity.evaluateDistributionIdentity`, `CandidateHandoffValidation.evaluateCandidateHandoff`, `SourceProvenance.evaluate`, `CandidateTagProvenance.evaluate`, `BundledPluginCompatibility.apiRangeContains` / `semverCompare` |
 | `pipeline-credentials-executor` | 3 | 2 | `ProviderBackedSource.resolve` (donde `NotFound` es inalcanzable a propósito), `SpiMaterializationAdapter.materialize`, y el orden reverse-LIFO de `BoundCredentials.close` |
-| `pipeline-artefacts-local` | 3 | 1 | `AntStyleGlob`: la lista de 13 exclusiones por defecto, el contrato ida/vuelta de `fromList`/`vararg` con `,`, y el `require` de glob vacío |
+| `pipeline-artefacts-local` | 4 | 2 | `AntStyleGlob`: la lista de 13 exclusiones por defecto, el contrato ida/vuelta de `fromList`/`vararg` con `,`, el `require` de glob vacío y la regla de partir una lista de patrones sin partir dentro de `{...}` o `[...]`; `AntGlobPattern`: la traducción del dialecto Ant al del motor y la semántica de cada construcción |
 | `pipeline-output` | 15 | 7 (**6 sin cubrir**) | `OutputAdoption.invariantsBlockedBy`, `OutputDigest`, `OutputFrameIndex` (`to > from`), `PruneAuthorisation.StorageError.init` |
 
 Los tres primeros son **los que ordenan el ataque**, y no por tamaño:
@@ -904,23 +909,51 @@ sólo confundía a quien lo leyera. Los dos se han cerrado en este ciclo: el KDo
 dice la verdad, y el camino legacy dice lo que puede decir con el token del
 dominio y no con una cadena escrita a mano.
 
-**n) El glob de artefactos no restringe la extensión — MEDIDO, seguridad.**
-`AntStyleGlob` delega en `AntPathMatcher` de Spring y su KDoc anuncia soportar
-`[...]` y `{...}`. Medido contra **spring-core 6.2.19**, la versión que fija el
-proyecto: `build/**/*.{jar,war}` casa con `build/secret.pem` **y** con
-`build/app.zip`, y `{a,b}` casa con `zzz` — Spring convierte `{...}` en un
-grupo que casa con cualquier cosa, no en la alternancia de Ant/Jenkins —, y
-`app-[a-z].txt` no casa con `app-a.txt`, porque `[...]` es literal y no un rango.
-Consecuencia: `archiveArtifacts(pattern = "build/**/*.{jar,war}")` mete en el
-`.tar` **todo** lo que hay bajo `build/`, incluidos `.pem`, `.env` o
-`credentials.bin`. El test existente (`AntStyleGlobPatternTest`) fija la
-*representación* del patrón —«una coma no parte el patrón»— y nunca su
-*semántica*, que es por eso que el defecto no lo cazó nadie: un patrón que no
-encuentra lo que uno cree no se parece a un patrón que encuentra de más.
-Radio de impacto: `LocalArtifactStore.archiveArtifacts` y el step
-`archiveArtifacts`. Lo que hace falta: alternancia y rango reales (propios o de
-otra biblioteca) **con una tabla de verdad como test**, y el KDoc describiendo
-lo que la implementación hace.
+**n) El glob de artefactos no restringe la extensión — CERRADO en `8d4a49be8`.**
+Medido contra **spring-core 6.2.19**, la versión que fija el proyecto:
+`build/**/*.{jar,war}` casa con `build/secret.pem` **y** con `build/app.zip`, y
+`{a,b}` casa con `zzz` —Spring convierte `{...}` en un grupo que casa con cualquier
+cosa, no en la alternancia de Ant/Jenkins—, y `app-[a-z].txt` no casa con
+`app-a.txt`, porque `[...]` es literal y no un rango. Consecuencia:
+`archiveArtifacts(pattern = "build/**/*.{jar,war}")` metía en el `.tar` **todo** lo
+que hay bajo `build/`, incluidos `.pem`, `.env` o `credentials.bin`. El test
+existente (`AntStyleGlobPatternTest`) fijaba la *representación* del patrón —«una
+coma no parte el patrón»— y nunca su *semántica*, que es por eso que el defecto no
+lo cazó nadie: un patrón que no encuentra lo que uno cree no se parece a un patrón
+que encuentra de más.
+
+**Cómo se cierra: traduciendo, no reescribiendo.** Ant es el contrato y Spring es el
+motor, así que el patrón se traduce al dialecto que el motor entiende y el motor
+sigue haciendo el trabajo difícil (`**`, `?`, separadores, mayúsculas):
+
+    {jar,war}  ->  {__ant0:(\Qjar\E|\Qwar\E)}
+    [a-c].txt  ->  {__ant0:([a-c])}
+
+Las alternativas se citan como literales (`\Q..\E`) para que un `*` dentro de una
+alternativa sea un asterisco del nombre, y se parenthesizan para que la alternancia
+no se escape del grupo. `{name:regex}` se deja literal: es el dialecto de Spring y la
+única forma de expresar lo que Ant no puede. **Una ambigüedad queda escrita, no
+escondida**: un grupo con dos puntos se lee como regex, así que la alternancia de
+literales que contienen dos puntos (`{a:b}`) no es expresible — la alternativa
+descartada («un grupo con coma es alternancia») rompía todo regex con coma
+(`{1,3}`), que es mucho más común que un dos puntos en un nombre de fichero.
+
+El segundo defecto estaba **una capa más arriba**: los campos que llevan «una lista
+de patrones» en un `String` se partían por **cada** coma, así que
+`build/**/*.{jar,war}` quedaba en `build/**/*.{jar` y `war}`, y ninguno de los dos
+fragmentos casa con nada —el stash decía «matched no files» y salía un archivo
+vacío—. La regla vive ahora en `AntStyleGlob.splitPatternList`, junto al dialecto al
+que pertenece (una coma separa patrones sólo en el nivel de fuera), y las dos copias
+duplicadas de los adaptadores de archive y stash desaparecen.
+
+**Evidencia, medida y no supuesta.** La semántica es ahora una regla de dominio
+pura, con un seam que no toca el sistema de ficheros (`AntGlobPattern`; el recorrido
+se queda en `AntStyleGlob.match`): 13 tests de tabla de verdad y 6 de la regla del
+splitter. Dos mutaciones discriminantes: **sin traducción caen 6 tests** y **con el
+split ingenuo caen 3**, y las pruebas que no deben discriminar siguen verdes —por eso
+discriminan—. Y un escenario E2E con **aserción negativa** (el fichero que *no* debe
+acabar en el stash): con la traducción apagada falla con «shell exited with code 1» —
+el `.pem` se había stasheado—; con el split ingenuo falla con «matched no files».
 
 **o) El arnés E2E podía dar verde sin comprobar nada — CERRADO en `9c226b83f`.**
 Cuatro maneras, todas medidas: una **directiva desconocida se ignoraba** (el
@@ -974,8 +1007,9 @@ coste (298 s de 345 s medidos; 44 escenarios ≈ 6,8 s y 48 arranques de JVM),
 que `pipeline-protocol` está versionado pero **no está declarado** en Gradle,
 luego nunca se compila, y que el «686 tests» que cita §1 es un **censo** de
 informes en disco, no una medición (en esa corrida, de 85 informes sólo 9 se
-reescribieron). **De sus tres primeros candidatos, dos están ya cerrados**
-—o) y el del coste— y el tercero, el del glob, es el siguiente. El informe completo, con el plan priorizado y las propuestas de
+reescribieron). **Sus tres primeros candidatos están ya cerrados** —o) el arnés que mentía, el del
+coste de la etapa 3 y n) el del glob—, cada uno con su SHA, sus mutaciones y su
+escenario. El informe completo, con el plan priorizado y las propuestas de
 pensamiento lateral, está en el paquete de evolución del Saga, en
 `pipelinek-saga-evolution/auditoria/INFORME-AUDITORIA-2026-10-20.md`.
 Una de sus reglas se ha seguido aquí: un documento de estado **no** es evidencia,
@@ -988,17 +1022,26 @@ anterior que parecía verdad se ha vuelto a medir antes de creerla —y era fals
 - `PRODUCT-GATE` (certificador externo, RC publicada) = **`BLOCKED_EXTERNAL`**.
   No hay CI remoto en este repositorio. La ausencia de CI **nunca** se declara
   `PASS`.
+- **El glob de artefactos: cerrado en `8d4a49be8`, y el hueco que abría era real.**
+  No era una hipótesis: `build/**/*.{jar,war}` metía en el `.tar` todo lo que
+  hubiera bajo `build/`, incluidos los `.pem` y los `credentials.bin`. El arreglo
+  **tradujo** el patrón Ant al dialecto del motor en vez de reescribir el motor,
+  añadió un seam puro con 19 tests de tabla de verdad, y cerró además el defecto de
+  una capa más arriba (la lista de patrones se partía por cada coma). Evidencia:
+  dos mutaciones unitarias (6 y 3 tests rojos) y dos mutaciones de escenario E2E (el
+  `.pem` stasheado, y «matched no files»).
 - **Presupuesto de tiempo: MEDIDO, `CERRADO`, y MEJORADO.** El ensayo de este
-  ciclo dio **91 s** sobre `bc2acec7c` (árbol idéntico a `96220fdad`), con el
-  límite en 900 s, leído de la línea de veredicto de la etapa 5
-  (`PASS  sha=…  elapsed=91s  budget=900s`) y no del código de salida. El
-  margen contra el límite pasa de 2,4× a **9,9×**. El reloj **varía ±10 s**
-  entre corridas por la caché de Gradle (medidas: 81, 91, 94 y 98 s), así que
+  ciclo dio **98 s** sobre `8d4a49be8` (el árbol que cierra el glob), con el límite
+  en 900 s, leído de la línea de veredicto de la etapa 5
+  (`PASS  sha=…  elapsed=98s  budget=900s`) y no del código de salida: margen de
+  **9,2×**. El ensayo anterior dio 91 s sobre `bc2acec7c` (árbol idéntico a
+  `96220fdad`). El reloj **varía ±10 s**
+  entre corridas por la caché de Gradle (medidas: 81, 91, 94, 98 y 105 s), así que
   la cifra se publica como un valor medido **con el ruido que tiene**, y no
   como un número exacto que nadie podría reproducir. No es que el trabajo
   hiciese menos: es que **el harness costaba 86 % de la puerta** y eso se ha
-  corregido (§2.2 q). La etapa 3 baja de 289 s a **45 s** — 44 escenarios en
-  paralelo — y las etapas 1, 2 y 4 no se mueven. El resto de la historia: los
+  corregido (§2.2 q). La etapa 3 baja de 289 s a **46 s** — 45 escenarios en
+  paralelo, medido — y las etapas 1, 2 y 4 no se mueven. El resto de la historia: los
   381 s de `4e397e6e8`, que seguían siendo ciertos para ese SHA y ninguno más;
   y los 242 s, 211 s y 213 s de `18d3148a`, que ya no lo son desde hace tiempo.
   **El número de reloj de un gate depende de su harness, no sólo del producto**,
@@ -1022,6 +1065,22 @@ anterior que parecía verdad se ha vuelto a medir antes de creerla —y era fals
 - **Mutación antes que confianza.** Cada test de regresión de este ciclo se
   comprobó revirtiendo el arreglo. Un test que sobrevive a su propia mutación
   no prueba nada, y se dice antes de llamarlo garantía.
+- **Traducir el dialecto, no reescribir el motor.** Cuando dos dialectos no
+  coinciden, la pregunta no es «qué motor escribimos» sino «qué significa cada
+  construcción». El glob prometía Ant y ejecutaba Spring, así que la salida fue
+  traducir las dos construcciones en las que discrepan —la alternancia y la clase
+  de caracteres— al dialecto que el motor entiende, y dejar que el motor siga
+  haciendo `**`, `?`, los separadores y las mayúsculas. Escribir un matcher
+  propio habría sido más código, más riesgo y menos sitio donde un defecto pueda
+  esconderse, y además obligaría a volver a acertar en las reglas que el motor
+  ya cumple bien.
+- **Un patrón que encuentra de más es un fallo de seguridad; uno que no encuentra
+  es un fallo de silencio.** Los dos casos del glob se veían igual desde fuera
+  («no archivó lo que pedí») y no lo eran: la alternancia leída como comodín
+  metía en el `.tar` lo que no debía, y la clase de caracteres leída como literal
+  devolvía un archivo vacío que `allowEmptyArchive` reportaba como éxito. Sólo una
+  **aserción negativa** —el fichero que *no* debe estar— distingue los dos; el
+  código de salida no lo distingue.
 - **Los `NOT_RUN` se declaran, no se esconden.** Un escenario que no se ejecutó
   es un tercer estado, y el gate lo imprime.
 - **Dos tests de este ciclo afirmaban propiedades que el contrato no tiene, y se

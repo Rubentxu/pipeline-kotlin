@@ -3006,11 +3006,13 @@ salió 2, esperado 0», con el diagnóstico «el run ya terminó con outcome
   `SdkCapabilities`. La equivalencia está medida, así que la consolidación no es una
   opinión: el catálogo que el producto imprime se queda con los ids y con la
   semántica, y el otro fichero desaparece. Y el catálogo distingue ahora lo que el
-  build **entrega** de lo que sólo **anuncia**: `runtime.cancel.v1` está DEPRECATED
-  porque su implementación existe pero nada la compone, y un catálogo que lo
-  presentara como disponible mandaría a un consumidor hacia un camino que no
-  existe. Un test unitario pins el catálogo, que era una promesa del KDoc sin
-  observador.
+  build **entrega** de lo que sólo **anuncia**: en aquel ciclo `runtime.cancel.v1`
+  estaba DEPRECATED porque su implementación existía pero nada la componía, y un
+  catálogo que lo presentara como disponible mandaría a un consumidor hacia un
+  camino que no existe. Ese id volvió a EXPERIMENTAL en el ciclo siguiente, cuando
+  el verbo que lo compone llegó (§2.20); la regla —«lo que se anuncia y no se
+  entrega se marca DEPRECATED»— no cambió. Un test unitario pins el catálogo, que
+  era una promesa del KDoc sin observador.
 - **No** crear un arnés de pruebas. El código de verificación vive en
   `scripts/verify-all.sh` (un entrypoint) y `scripts/check-budgets.py` (un
   script stdlib). Nada más.

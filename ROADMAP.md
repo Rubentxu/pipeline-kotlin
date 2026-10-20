@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `8d4a49be8` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `f3d897a9` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 9 | ídem |
-| Tests unitarios ejecutados | **705** (87 informes JUnit, **87** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
+| Tests unitarios ejecutados | **707** (88 informes JUnit, **88** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
 | Escenarios E2E | 45 (**44 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **10747 / 65282 = 0.165** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **10810 / 65477 = 0.165** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **98 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **97 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -37,8 +37,8 @@ correcto con el verbo equivocado ya no puede colarse: la etapa 2 separa
 `rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 87
 de los 87 informes.
 
-La corrida que se publica es la de `8d4a49be8` (**98 s**). Otra corrida sobre el
-**mismo contenido**, con los módulos tocados compilando de cero, midió 105 s: el
+La corrida que se publica es la de `f3d897a9` (**97 s**). Otra corrida sobre el
+**mismo contenido**, con los módulos tocados compilando de cero, midió 98 s: el
 reloj de este gate sigue teniendo su ruido, y publicar una cifra única sin él
 vuelve a ser una afirmación que nadie puede reproducir.
 
@@ -1000,6 +1000,44 @@ puerta sigue comparable entre corridas. `PIPELINEK_E2E_JOBS=1` devuelve el
 comportamiento serie exacto, que es lo que necesita un escenario que parezca
 intermitente.
 
+**r) El motor del glob era una dependencia entera por un puñado de clases —
+CERRADO en `f3d897a9`.** `AntStyleGlob` usaba
+`org.springframework.util.AntPathMatcher`: **una** clase de `spring-core`
+(1,9 MB) y su `spring-jcl` (24 KB) —**2 jars** en la distribución, una cadena
+transitiva que había que auditar y dos avisos de seguridad que había que seguir
+persiguiendo en cada actualización— para un puñado de métodos. El proyecto ya
+no admite una dependencia externa para un par de clases (AGENTS.md §1), así que
+el motor es ahora `AntPathMatching`, dentro de `pipeline-artefacts-local`, un
+módulo que **no publica y no está en `bcvModules`**: tocar su API no rompe la
+ABI publicada.
+
+**Cómo se cierra sin mover el suelo.** El oráculo del diferencial es **lo
+publicado** —el patrón traducido al dialecto del motor, y el motor— y no el
+motor en crudo: contra el motor en crudo «discreparía» en cada alternancia y
+cada clase de caracteres, que son justo las dos construcciones donde el defecto
+estaba. **402 360** pares de patrón y ruta comparados: **402 353** coinciden y
+**7** divergen, **todas de la misma clase** —un constructo que cruza un
+separador— y en todas el motor viejo estaba roto, porque reescribía el patrón
+*antes* de dividirlo y la reescritura destrozaba el constructo en vez de
+expresarlo (`{a/b,c}` ya no casaba con su propio texto). El motor propio divide
+primero, que es lo que hace Ant. Esos 7 casos quedan **escritos como regla** en
+`AntPathMatchingRulesTest`, no como sorpresa.
+
+Y el diferencial se **repitió después** de partir el algoritmo en sus tres
+fases (delante, detrás, medio) para que detekt no lo rechazara por complejidad:
+mismos 402 360 pares, mismos 7 casos. Una descomposición que no se prueba es
+un cambio de comportamiento disfrazado de limpieza.
+
+**Rendimiento: paridad, y dos decisiones detrás.** 8 patrones × 411 rutas × 40
+rondas: el motor propio **60-64 ms** frente a **62-89 ms** del prestado
+(**0,72-0,97×**). Recompilar el patrón por coincidencia costaría **6-7×** más. Y
+el atajo que cierra la diferencia es pequeño: **rechazar antes de dividir** la
+ruta cuando el patrón empieza por texto literal, y **dividirla en una sola
+pasada**, sin una segunda lista para filtrar la primera. Sin esas dos cosas el
+motor propio era 1,5-1,8× más lento. El guard anti-ReDoS se conserva con el
+mismo límite (**1 000 000** de lecturas del segmento que se casa), y medido no
+cuesta nada.
+
 **Auditoría del 2026-10-20 (lectura de código, no de documentos).** Una revisión
 del árbol del productor midió el estado real del roadmap y de las especificaciones
 y encontró, además de n), o) y p): que la etapa 3 del gate era el **86 %** del
@@ -1033,10 +1071,10 @@ anterior que parecía verdad se ha vuelto a medir antes de creerla —y era fals
 - **Presupuesto de tiempo: MEDIDO, `CERRADO`, y MEJORADO.** El ensayo de este
   ciclo dio **98 s** sobre `8d4a49be8` (el árbol que cierra el glob), con el límite
   en 900 s, leído de la línea de veredicto de la etapa 5
-  (`PASS  sha=…  elapsed=98s  budget=900s`) y no del código de salida: margen de
-  **9,2×**. El ensayo anterior dio 91 s sobre `bc2acec7c` (árbol idéntico a
+  (`PASS  sha=…  elapsed=97s  budget=900s`) y no del código de salida: margen de
+  **9,3×**. El ensayo anterior dio 91 s sobre `bc2acec7c` (árbol idéntico a
   `96220fdad`). El reloj **varía ±10 s**
-  entre corridas por la caché de Gradle (medidas: 81, 91, 94, 98 y 105 s), así que
+  entre corridas por la caché de Gradle (medidas: 81, 91, 94, 97, 98 y 105 s), así que
   la cifra se publica como un valor medido **con el ruido que tiene**, y no
   como un número exacto que nadie podría reproducir. No es que el trabajo
   hiciese menos: es que **el harness costaba 86 % de la puerta** y eso se ha
@@ -1051,6 +1089,22 @@ anterior que parecía verdad se ha vuelto a medir antes de creerla —y era fals
   (350 s → 381 s) con 26 tests más y un escenario E2E más. Un gate verde por
   inercia es peor que un gate marcado caducado: el segundo se lee y el primero
   se acepta sin mirarlo.
+- **El motor del glob: cerrado en `f3d897a9`.** El glob llevaba `spring-core`
+  (1,9 MB) y `spring-jcl` (24 KB) —**2 jars**— por un puñado de métodos, y el
+  proyecto ya no admite eso (AGENTS.md §1). Ahora el motor es del proyecto
+  (`AntPathMatching`), sin traducción intermedia: hay **un** dialecto y es el de
+  Ant. **El suelo no se movió**: 402 360 pares comparados contra **lo
+  publicado**, 402 353 coincidencias y **7** divergencias de una sola clase —un
+  constructo que cruza un separador— en las que el motor viejo estaba roto. El
+  rendimiento quedó en **paridad** (0,72-0,97×) porque el patrón se compila una
+  vez, y el guard anti-ReDoS se conserva con el mismo límite.
+- **Lo que este ciclo NO cierra: el peso de verdad de la distribución.** Fuera
+  de `spring-core` quedan el compilador de Kotlin embebido (**58 MB**),
+  `sqlite-jdbc` (**14 MB**) y BouncyCastle (**~9 MB**): 64× más que lo que se
+  acaba de quitar. La política escrita en AGENTS.md §1 se aplicó donde era
+  evidente —un par de clases—; decidir sobre el compilador embebido es otra
+  conversación, porque no es «copiar dos clases» sino una dependencia con un
+  peso y un precio distintos. **Queda dicho, no decidido.**
 
 ---
 
@@ -1074,6 +1128,48 @@ anterior que parecía verdad se ha vuelto a medir antes de creerla —y era fals
   propio habría sido más código, más riesgo y menos sitio donde un defecto pueda
   esconderse, y además obligaría a volver a acertar en las reglas que el motor
   ya cumple bien.
+- **Una decisión sin su restricción escrita no es una decisión: es una costumbre
+  con fecha de caducidad.** La de arriba queda **derogada por la regla que la
+  sostiene**, no por un error de razonamiento: era la decisión correcta *entonces*
+  —sin una política de dependencias, reescribir un matcher era más código, más
+  riesgo y más sitio donde un defecto se esconde—, y la política nueva (*no
+  meter una dependencia externa para un par de clases*, AGENTS.md §1) cambia el
+  suelo. `AntPathMatcher` era la última clase que el proyecto tomaba prestada
+  de una librería de 1,9 MB, así que ahora el motor es nuestro y **la
+  traducción desaparece con él**: hay un dialecto y es el de Ant. Las dos
+  decisiones están escritas, y por eso esto no es una contradicción sino una
+  decisión con su restricción a la vista.
+- **Sacar una librería no es una licencia para mover el suelo.** El motor propio
+  tenía que dar **exactamente** las mismas respuestas que el que se retira, salvo
+  donde el retirado estaba roto. Eso se comprobó contra **402 360** pares de
+  patrón y ruta, y no contra «lo que parece razonable»: un test que afirma lo
+  que el motor nuevo hace es una tautología, y uno que afirma lo que el viejo
+  hacía es una foto.
+- **El oráculo de una migración es la conducta publicada, no la biblioteca.** El
+  SDK publicado *traducía* el patrón Ant al dialecto del motor y lo mandaba al
+  motor; eso es lo que había que reproducir. Comparar contra el motor en crudo
+  habría «discrepado» en cada alternancia y cada clase de caracteres —justo las
+  dos construcciones donde el defecto estaba— y el resultado habría sido inútil.
+  Las **7** divergencias que quedan son de una sola clase —un constructo que
+  cruza un separador— y en todas el motor viejo estaba roto: reescribía el
+  patrón *antes* de dividirlo, y la reescritura destrozaba el constructo en vez
+  de expresarlo. Quedan **escritas como regla**, para que la diferencia sea
+  conocida y no una sorpresa dentro de tres años.
+- **Compilar una vez no es una optimización: es el diseño.** El motor prestado
+  cacheaba sus patrones detrás de un cerrojo; el motor propio sostiene el objeto
+  compilado y no comparte estado con nadie. Medido: recompilar por coincidencia
+  cuesta **6-7×** más. Y un detalle de implementación resultó ser la mitad de
+  la diferencia: **dividir la ruta en una sola pasada**, sin una segunda lista
+  para filtrar la primera, y **rechazar antes de dividir** cuando el patrón
+  empieza por texto literal. Sin esas dos cosas el motor propio era 1,5-1,8×
+  más lento que el prestado; con ellas está en **paridad** (0,72-0,97×).
+- **El peso de verdad de la distribución no está en la dependencia que se
+  nota.** `spring-core` (1,9 MB) y `spring-jcl` (24 KB) salen de la
+  distribución: 2 jars y casi 2 MB. Los que quedan pesan **64×** más: el
+  compilador de Kotlin embebido (58 MB), `sqlite-jdbc` (14 MB) y BouncyCastle
+  (~9 MB). La política se ha aplicado donde era evidente, pero **decidir sobre
+  el compilador embebido es otra conversación**: no es «copiar dos clases», es
+  una dependencia con un peso y un precio distintos. **Queda dicho, no decidido.**
 - **Un patrón que encuentra de más es un fallo de seguridad; uno que no encuentra
   es un fallo de silencio.** Los dos casos del glob se veían igual desde fuera
   («no archivó lo que pedí») y no lo eran: la alternancia leída como comodín

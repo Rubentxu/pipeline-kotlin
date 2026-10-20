@@ -126,7 +126,7 @@ sourceSets.main {
 dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-events"))
-    // BLOCK 2 split the event plane: the contract above, the durable implementation below. The
+    // The event plane is split in two: the contract above, the durable implementation below. The
     // runtime is the only thing that should be able to name OperationJournal, ReplayCursorStore or
     // SqliteEventStore, and this is the module that does.
     implementation(project(":pipeline-events-store"))
@@ -134,7 +134,7 @@ dependencies {
     // console event carries them. The dependency points ONE WAY -:pipeline-output depends on
     // neither:pipeline-events nor:pipeline-domain, so the event plane cannot reach back into the
     // Output plane and re-acquire an authority over the bytes. See/
-    // BLOCK 2 splits the plane in two: the CONTRACT above, and the store below. Only the runtime
+    // The plane is split in two: the CONTRACT above, and the store below. Only the runtime
     // needs the store, so only the runtime names it - which is the point. The published artifact
     // carries no writer, so no external consumer can become a second one.
     implementation(project(":pipeline-output"))
@@ -209,7 +209,7 @@ dependencies {
     // The runtime classpath is unchanged: the `implementation(project(":pipeline-step-sdk:junit"))`
     // line above is the PRODUCT's `junit.results` OFFICIAL_PLUGIN, not a test dependency.
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks.test {

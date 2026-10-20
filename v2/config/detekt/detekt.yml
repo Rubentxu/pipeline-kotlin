@@ -1,4 +1,4 @@
-# WU-RP-040 R5: SAST configuration (detekt 2.0.0-alpha.6, Kotlin 2.4.10).
+# SAST configuration (detekt 2.0.0-alpha.6, Kotlin 2.4.10).
 # Policy: report-first honest inventory; the CI job gates on failOnSeverity=error
 # with rules that are pure noise disabled below — each with a stated reason.
 # No rule is disabled to hide a reviewed finding.
@@ -76,7 +76,7 @@ complexity:
 
 coroutines:
   # Durable replay treats cancellation as an execution mechanism by design
-  # (ADR-0076/PAR-D); blanket rule fires on intentional control flow.
+  # and the blanket rule fires on intentional control flow.
   SuspendFunSwallowedCancellation:
     active: false
   GlobalCoroutineUsage:

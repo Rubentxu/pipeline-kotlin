@@ -1,7 +1,6 @@
 plugins {
     base
     alias(libs.plugins.kotlin.jvm) apply false
-    alias(libs.plugins.protobuf) apply false
     alias(libs.plugins.detekt) apply false
     // Binary-compatibility-validator, declared at the root project and applied
     // per-module via subprojects {... } below. See comments in
@@ -160,14 +159,14 @@ subprojects {
 // resolves to zero coverage, so it reported a number that could not fail and could not
 // pass either.
 
-// Lane R: expose the repository root to tests. Tests that must read files from the
+// Expose the repository root to tests. Tests that must read files from the
 // repository previously hardcoded a developer-specific absolute path such as
 // /var/home/<user>/Proyectos/kotlin/pipeline-kotlin, which pinned the suite to one
 // machine and to one worktree. rootDir is the v2 build root; its parent is the repository.
 val repositoryRoot: String = rootDir.parentFile.absolutePath
 
 subprojects {
-    // Lane R: expose the repository root to tests that must read files from the repository.
+    // Expose the repository root to tests that must read files from the repository.
     tasks.withType<Test>().configureEach {
         systemProperty("pipeline.repoRoot", repositoryRoot)
     }
@@ -187,7 +186,7 @@ subprojects {
 // Opt-in to four modules with the most stable
 // public Kotlin surface. The plugin emits one.api file per module under
 // api/<module>.api (default location; explicit below for predictability) and
-// exposes the `apiCheck` task. Phase 2 below wires that task into each selected
+// exposes the `apiCheck` task. The block below wires that task into each selected
 // module's normal `check` lifecycle.
 // The four baselined public modules wire `apiCheck` into
 // their own `check` lifecycle. The aggregate root `check` already depends on
@@ -205,7 +204,7 @@ subprojects {
 // This comment used to read "pipeline-step-sdk:api: SDK contract for external plugin authors". That
 // was false, and it was the same defect this session already paid for once in the KSP: a written
 // claim that no evidence backs, pointing a future reader at a consumer program that does not exist.
-// It also called this a four-module list while the set below has carried six since BLOCK 2.
+// It also called this a four-module list while the set below has carried seven since the publication split.
 // The consequence for a break: a BCV-only module gets no maturity classification and no exception
 // receipt, because it has no consumer program that could break silently. Its internal callers are
 // inside this build, so a removed public type fails `compileKotlin` immediately and loudly. What
@@ -218,7 +217,7 @@ val bcvModules = setOf(
     "pipeline-events",
     "pipeline-step-sdk:api".removePrefix(":"), // resolved below by project.path
     "pipeline-credentials-api",
-    // BLOCK 2: the published output read contract. Added because `:pipeline-output` became a
+    // The published output read contract. Added because `:pipeline-output` became a
     // PUBLISHED artifact, and the dump is what freezes exactly which types a consumer resolves.
     // Without it, adding a public type to the output plane would change the published surface with
     // nothing failing: no diff to review, and no `apiCheck` to refuse it.
@@ -226,13 +225,13 @@ val bcvModules = setOf(
     // a published ABI; those modules are not published, and a baseline over an internal
     // implementation is maintenance with no consumer behind it.
     "pipeline-output",
-    // BLOCK 2: already PUBLISHED since Lane R (the external plugin compiles against it) and
+    // Already PUBLISHED (the external plugin compiles against it) and
     // therefore already had no ABI guard. Found while running `apiCheck` across the published set:
     // the task did not exist. Guarding three published contracts and leaving the fourth free would
     // have been the inconsistency, not the fix.
     "pipeline-scripting-api",
     // Runtime ports publication. The new `:pipeline-runtime-api` module
-    // (carved out of `:pipeline-runtime` in commit 2a97653a) carries the publish/subscribe
+    // (carved out of `:pipeline-runtime`) carries the publish/subscribe
     // ports and their ADTs. Guiding the published ABI here so `apiCheck` refuses an
     // unannounced surface change.
     "pipeline-runtime-api",
@@ -254,7 +253,7 @@ subprojects {
     }
 }
 
-// ── Lane R: external plugin reproducibility ────────────────────────────────────
+// ── external plugin reproducibility ─────────────────────────────────────────────
 // example-uppercase-plugin is an INDEPENDENT Gradle build (its own settings file),
 // not a subproject of v2: that independence is the property it certifies. It
 // compiles against SDK artifacts, so those artifacts must be produced from THIS
@@ -266,7 +265,7 @@ val sdkRepoDir = layout.buildDirectory.dir("sdk-repo")
 
 /**
  * The modules whose contract is PUBLISHED, as an explicit list.
- * BLOCK 2 is what turns this from two entries into four. An external consumer — `pipelinek-fabric`
+ * The publication split turned this from two entries into the published set. An external consumer — `pipelinek-fabric`
  * first of all — has to resolve these as ordinary Maven coordinates produced from THIS source
  * revision, with no source or composite dependency on this repository.
  * The list is here, and not spelled out one task per module, so that "what is published" is a
@@ -280,7 +279,7 @@ val sdkRepoDir = layout.buildDirectory.dir("sdk-repo")
 val publishedContractModules = listOf(
     "pipeline-domain",
     "pipeline-scripting-api",
-    // BLOCK 2: the event contract (envelope, cursor, read/paging) and the output read contract.
+    // The event contract (envelope, cursor, read/paging) and the output read contract.
     "pipeline-events",
     "pipeline-output",
     // The runtime publish/subscribe ports. The four existing entries
@@ -301,8 +300,8 @@ val publishedContractModules = listOf(
  * The SDK BOM, published alongside the five contracts and deliberately OUTSIDE
  * [publishedContractModules].
  * The two lists answer different questions. `publishedContractModules` is the set of artifacts whose
- * TYPE surface a consumer compiles against and whose bytes `apiCheck` freezes — it is read by
- * `PublishedContractBoundaryFitnessTest` and must stay exactly the five. `sdkBomModules` is the set
+ * TYPE surface a consumer compiles against and whose bytes `apiCheck` freezes — and it must stay
+ * exactly the five. `sdkBomModules` is the set
  * of published RESOLUTION documents: `:pipeline-sdk-bom` carries no classes, no ABI and no tests, so
  * adding it to the contract list would be a claim that it has a surface to guard. It does not; it
  * has five version constraints derived from `rootProject.version`.
@@ -374,7 +373,7 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
 // sdk-repo and forks a second Gradle against the working tree, which is exactly what the three
 // external builds below were kept out of `check` to avoid. It is paid here because the other
 // tasks produce artifacts nothing under `check` inspects, while this one produces the artifact
-// that decides whether BLOCK 1-I is real.
+// that decides whether the plugin contract is real.
 // FAST LANE : the subject test now lives in `:pipeline-application`'s
 // `pluginContractTest` lane, which declares the three JARs as a buildable file collection
 // over the tasks that produce them. THIS WIRING IS NOW REDUNDANT AND DELETED, and that is
@@ -468,7 +467,7 @@ val buildExampleBlockPlugin by tasks.registering(Exec::class) {
 // inputs force re-staging if the JARs change.
 val stageExternalExamples by tasks.registering {
     group = "distribution"
-    description = "PK-RELEASE-CONSOLIDATION H1.4: stage the three external example " +
+    description = "Stage the three external example " +
         "plugins (block, directive, uppercase) into pipeline-application/lib/ so " +
         "the distribution ZIP carries them as bundled plugins."
 
@@ -539,150 +538,4 @@ project(":pipeline-application").pluginManager.withPlugin("org.jetbrains.kotlin.
             .withPropertyName("externalExamplePlugins")
             .withPathSensitivity(PathSensitivity.RELATIVE)
     }
-}
-
-/**
- * BLOCK 2: the independent consumer, run as a gate step.
- * `apiCheck` and `PublishedContractBoundaryFitnessTest` both look at the published surface from
- * INSIDE this build, and all three of them can be satisfied by an artifact a real consumer still
- * cannot compile against. `examples/fabric-contract-consumer` is the outside: its own settings
- * file, no `project(...)` anywhere, resolving only the five published coordinates. It builds the
- * `RunOutcome` / `OutputRefusal` / `EventQuery` mappings Fabric will need and pins their wire
- * forms against a golden committed OUTSIDE `v2`, so a contract change fails a build that never
- * saw the change.
- * It runs `check` rather than `jar` deliberately: the point is the twelve tests and the negative
- * control that fails if an implementation module becomes resolvable, not that some classes were
- * produced.
- * NOT a dependency of `check`, and that is a decision rather than an omission. Wiring it in would
- * make every `check` publish to `sdk-repo` and fork a second Gradle against the working tree; the
- * three external plugin builds above stand outside `check` for the same reason, and this one
- * follows them. The cost is that it is only as reliable as whoever runs it, which is why the
- * BLOCK 2 receipt names this task as a required gate step rather than leaving it to habit.
-*/
-val verifyFabricContractConsumer by tasks.registering(Exec::class) {
-    group = "build"
-    description = "Compiles and tests the independent consumer against this revision's published contracts."
-    dependsOn(publishSdkForExternalPlugin)
-
-    val consumerDir = file("examples/fabric-contract-consumer")
-    inputs.dir(consumerDir.resolve("src"))
-    inputs.files(consumerDir.resolve("build.gradle.kts"), consumerDir.resolve("settings.gradle.kts"))
-    // The consumer reads the five CONTRACT modules, so those are the jars whose bytes it compiles
-    // against. Listing the store modules would be wrong: they are not published, and adding them
-    // here would let a future publication slip past the consumer's own negative control by making
-    // the outer build quietly expect it.
-    inputs.files(publishedContractModules.map { module -> project(":$module").tasks.named("jar") })
-    outputs.file(consumerDir.resolve("build/libs/fabric-contract-consumer-0.1.0.jar"))
-
-    workingDir = rootDir
-    commandLine(
-        rootDir.resolve("gradlew").absolutePath,
-        "-p", consumerDir.absolutePath,
-        "--console=plain",
-        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
-        "-PsdkVersion=" + rootProject.version.toString(),
-        "check",
-    )
-}
-
-/**
- * The end-to-end EXTERNAL EXECUTION gate: the outside, running the product.
- * `buildExamplePlugin` proves the plugin COMPILES against the published SDK, and the two
- * `verify*Consumer` tasks prove a consumer can COMPILE against it. None of them runs the installed
- * product with an externally built plugin. This task does, and it is the only place in the
- * repository that closes that loop from outside the product build:
- * ```text
- * examples/sdk-external-execution   (own settings file, no project)
- *   -> resolves the five contracts through pipeline-sdk-bom      (ENTREGA A)
- *   -> builds examples/example-uppercase-plugin against that SDK (Exec, independent build)
- *   -> runs:pipeline-application's INSTALLED binary with --plugin-jar against.pipeline.kts
- *   -> asserts: exit 0, "Pipeline finished with SUCCESS", and the plugin's own event in the run
- * ```
- * The subprocess is the PRODUCT, not a test double: same JAR the CLI installs, same `--plugin-jar`
- * argument `CliParser` accepts. A pipeline that ended successfully without the plugin executing
- * would still fail the assertion, which is why the event kind is asserted and not just the exit.
- * NOT a dependency of `check`, and the cost is stated rather than discovered later: wiring it in
- * would make every `check` publish to `sdk-repo`, run `installDist`, and fork a third Gradle (the
- * external build forks a second one for the plugin). That cost is not paid per `check` run. This is
- * a named closeout gate step, run explicitly as `:verifySdkExternalExecution`.
-*/
-val verifySdkExternalExecution by tasks.registering(Exec::class) {
-    group = "build"
-    description = "Runs the installed product against an externally built plugin, resolved through the SDK BOM."
-    // Both artifacts this task reads are produced HERE, by task dependency rather than by a nested
-    // `v2` invocation: the root build already holds this checkout's build lock, so forking `v2`
-    // from inside it would fail rather than wait.
-    dependsOn(publishSdkForExternalPlugin)
-    dependsOn(":pipeline-application:installDist")
-
-    val externalDir = file("examples/sdk-external-execution")
-    inputs.dir(externalDir.resolve("src"))
-    inputs.dir(externalDir.resolve("fixtures"))
-    inputs.files(
-        externalDir.resolve("build.gradle.kts"),
-        externalDir.resolve("settings.gradle.kts"),
-    )
-    // The installed binary is a real input: a change to the product must re-run this gate.
-    val installedBinary = project(":pipeline-application")
-        .layout
-        .buildDirectory
-        .dir("install/pipelinek/bin")
-        .map { it.file("pipelinek") }
-    inputs.file(installedBinary)
-
-    workingDir = rootDir
-    commandLine(
-        rootDir.resolve("gradlew").absolutePath,
-        "-p", externalDir.absolutePath,
-        "--console=plain",
-        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
-        "-PsdkVersion=" + rootProject.version.toString(),
-        "-PpipelinekBin=" + installedBinary.get().asFile.absolutePath,
-        "check",
-    )
-}
-
-/**
- * The SINGLE-coordinate consumer, run as a gate step.
- * `StepSpec.Error.failureKind` became `FailureKind`, a type from `:pipeline-domain`. That forces
- * `pipeline-scripting-api` to publish that dependency at `api` rather than `implementation`, and
- * that is a change to the PUBLICATION contract: `api` is what writes a compile-scope dependency
- * into the published Gradle Module Metadata, so it is the only reason a consumer can name the type
- * at all.
- * `examples/fabric-contract-consumer` cannot observe this. It declares all five coordinates, so it
- * compiles whether the publisher said `api` or `implementation` — the property under test would be
- * satisfied by that build's own dependency list. `examples/scripting-contract-consumer` declares
- * ONE coordinate and never names `pipeline-domain`, so the publisher's metadata is the only route
- * by which `FailureKind` can resolve.
- * The control is mechanical and it was measured, not assumed: reverting the publisher to
- * `implementation(...)` makes that build fail with `Cannot access class
- * dev.rubentxu.pipeline.v2.domain.FailureKind. Check your module classpath`. The declaration is
- * therefore the test; a comment asserting that the declaration exists would be worth nothing.
- * Like the consumer above, it is NOT a dependency of `check`: wiring it in would make every
- * `check` publish to `sdk-repo` and fork a second Gradle against the working tree. BLOCK E names it
- * as a required closeout step rather than leaving it to habit.
-*/
-val verifyScriptingContractConsumer by tasks.registering(Exec::class) {
-    group = "build"
-    description = "Proves FailureKind reaches a consumer declaring only pipeline-scripting-api, via publisher metadata."
-    dependsOn(publishSdkForExternalPlugin)
-
-    val consumerDir = file("examples/scripting-contract-consumer")
-    inputs.dir(consumerDir.resolve("src"))
-    inputs.files(consumerDir.resolve("build.gradle.kts"), consumerDir.resolve("settings.gradle.kts"))
-    // Only the scripting jar's bytes are read. Listing `pipeline-domain` here would defeat the
-    // experiment: the whole claim is that the consumer cannot get the type except through the
-    // publisher's own declaration of it.
-    inputs.files(project(":pipeline-scripting-api").tasks.named("jar"))
-    outputs.file(consumerDir.resolve("build/libs/scripting-contract-consumer-0.1.0.jar"))
-
-    workingDir = rootDir
-    commandLine(
-        rootDir.resolve("gradlew").absolutePath,
-        "-p", consumerDir.absolutePath,
-        "--console=plain",
-        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
-        "-PsdkVersion=" + rootProject.version.toString(),
-        "check",
-    )
 }

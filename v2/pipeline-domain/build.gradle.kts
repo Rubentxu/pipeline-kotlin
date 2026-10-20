@@ -25,7 +25,7 @@ pitest {
 }
 
 dependencies {
-    // BLOCK 2: `api`, not `implementation`. This module was already published before BLOCK 2, and
+    // `api`, not `implementation`. This module was already published, and
     // it declared the serialization API as `implementation`, which writes `runtime` scope into the
     // POM. The ABI dump settles whether that was wrong rather than taste: `api/pipeline-domain.api`
     // carries 535 references to `kotlinx/serialization`, so a consumer that names any of the ten
@@ -35,9 +35,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.kotlinx.serialization.json)
-    testImplementation("org.jetbrains.kotlin:kotlin-reflect:2.4.10")
+    testImplementation(libs.kotlin.reflect)
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks.test {
@@ -54,7 +54,7 @@ kotlin {
     }
 }
 
-// Lane R: publish this SDK module into a build-local Maven repository so the
+// Publish this SDK module into a build-local Maven repository so the
 // independent external plugin build can compile against artifacts produced from
 // THIS source revision. Replaces the committed libs/*.jar snapshots, which could
 // silently drift from the live SDK.

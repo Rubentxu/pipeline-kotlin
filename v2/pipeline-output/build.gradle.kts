@@ -24,7 +24,7 @@ dependencies {
     // byte range is not a domain concept, and depending on it would let event vocabulary leak
     // back in through a shared type.
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks.test {
@@ -32,7 +32,7 @@ tasks.test {
     // JUnit 5 tests, and reports BUILD SUCCESSFUL with an empty result set — a green gate that ran
     // nothing. This module's first build did exactly that.
     // The @Tag("performance") exclusion and the `performanceTest` task that used to sit here moved
-    // with the soak to `:pipeline-output-store` in BLOCK 2, which is where the store it measures
+    // with the soak to `:pipeline-output-store`, which is where the store it measures
     // now lives. Keeping a `performanceTest` task over a source set with no tagged test would have
     // been a task that reports success having executed nothing — the exact failure mode the
     // `useJUnitPlatform` line above exists to prevent, one layer up.
@@ -43,7 +43,7 @@ tasks.test {
     }
 }
 
-// BLOCK 2: the published output contract. An external consumer (Fabric's console reader) resolves
+// The published output contract. An external consumer (Fabric's console reader) resolves
 // OutputStreamId, OutputCursor, OutputPage, OutputReadPort, OutputReadResult and OutputRefusal as
 // ordinary Maven coordinates from THIS source revision.
 // `:pipeline-output-store` is deliberately absent and deliberately has no `maven-publish` of its

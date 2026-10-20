@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry
 import dev.rubentxu.pipeline.v2.domain.directive.ErasedDirectiveDefinition
+import dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.registry.EventRegistry
@@ -46,15 +47,14 @@ data class PreResolvedComposition internal constructor(
     val discoveredDirectivePlugins: List<String>,
     /**
      * Every [RuntimeCapabilityContributor] the plugins declared.
-     * This was the FOURTH authority, and it was resolved outside this window. Discovery ran
+     * This was a FOURTH authority, and it was resolved outside this window. Discovery ran
      * `ServiceLoader` without swapping the TCCL, as a default argument evaluated AFTER the swap
      * was undone — so a plugin whose classes live below the TCCL contributed its Step and kept
-     * its capability. `PluginCapabilityLoaderAlignmentTest` measured exactly that with a plugin
-     * the application does not depend on, and it is the same failure
-     * `ExternalCapabilityContributorDiscovery` records in its own KDoc for `http.request`.
-     * It belongs here because a capability is only meaningful alongside the Step that requires
-     * it: resolving the two under different loaders produces a registry that admits a Step and a
-     * runtime that cannot supply what the Step needs.
+     * its capability. The failure was found with a plugin the application does not depend on,
+     * and it is the same failure `ExternalCapabilityContributorDiscovery` records in its own
+     * KDoc for `http.request`. It belongs here because a capability is only meaningful
+     * alongside the Step that requires it: resolving the two under different loaders produces
+     * a registry that admits a Step and a runtime that cannot supply what the Step needs.
 */
     val capabilityContributors: List<RuntimeCapabilityContributor>,
 ) {
@@ -123,23 +123,31 @@ object PluginCompositionAdmitter {
         // the plugin, so a plugin claiming the bytes of another plugin is exactly the case where it
         // would lie, and using it here would let one plugin erase another from the composition by
         // declaring the same digest.
-        val measured = mutableListOf<Pair<Path, String>>()
-        for (candidate in candidates) {
+        // The READING happens here; the DECISION about what the readings mean lives in
+        // `PluginArtifactIntegrity`, where it can be exercised without touching a file.
+        val measurements = candidates.map { candidate ->
             val digest = PluginManifestResourceReader.digestOfArtifactAt(candidate)
-                ?: return CompositionOutcome.Refused(
-                    artifact = candidate,
-                    rejection = dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection
-                        .ArtifactNotMeasurable(
-                            artifact = candidate.toString(),
-                            detail = "the artifact could not be read, so its bytes cannot be measured; " +
-                                "an artifact whose bytes are unknown is not one that may be loaded",
-                        ),
-                )
-            // Same bytes already seen under another path: one copy is loaded, once.
-            if (measured.any { it.second == digest.toString() }) continue
-            measured += candidate to digest.toString()
+            if (digest == null) {
+                PluginArtifactIntegrity.Measurement.Unreadable(candidate)
+            } else {
+                PluginArtifactIntegrity.Measurement.Measured(candidate, digest)
+            }
         }
-        val artifacts = measured.map { it.first }
+
+        val selection = PluginArtifactIntegrity.select(measurements)
+        val admitted = when (selection) {
+            is PluginArtifactIntegrity.Selection.NotMeasurable -> return CompositionOutcome.Refused(
+                artifact = selection.artifact,
+                rejection = PluginManifestRejection.ArtifactNotMeasurable(
+                    artifact = selection.artifact.toString(),
+                    detail = "the artifact could not be read, so its bytes cannot be measured; " +
+                        "an artifact whose bytes are unknown is not one that may be loaded",
+                ),
+            )
+
+            is PluginArtifactIntegrity.Selection.Admitted -> selection.artifacts
+        }
+        val artifacts = admitted.map { it.path }
 
         if (artifacts.isEmpty()) {
             // Not a degraded case: an installation with no plugin JARs still composes, it just
@@ -171,19 +179,19 @@ object PluginCompositionAdmitter {
                 // describes bytes that are no longer there, and admitting on the strength of it would
                 // make the measurement decorative. Re-measured with the same function, refused with
                 // both digests so the drift is auditable.
-                for ((path, expected) in measured) {
-                    val now = PluginManifestResourceReader.digestOfArtifactAt(path)?.toString()
-                    if (now != expected) {
-                        return CompositionOutcome.Refused(
-                            artifact = path,
-                            rejection = dev.rubentxu.pipeline.v2.domain.step.PluginManifestRejection
-                                .ArtifactChangedDuringAdmission(
-                                    artifact = path.toString(),
-                                    measuredDigest = expected,
-                                    foundDigest = now ?: "<unreadable at composition time>",
-                                ),
-                        )
-                    }
+                val current = admitted.associate { measurement ->
+                    measurement.path to PluginManifestResourceReader.digestOfArtifactAt(measurement.path)
+                }
+                val changed = PluginArtifactIntegrity.changed(admitted, current)
+                if (changed != null) {
+                    return CompositionOutcome.Refused(
+                        artifact = changed.artifact,
+                        rejection = PluginManifestRejection.ArtifactChangedDuringAdmission(
+                            artifact = changed.artifact.toString(),
+                            measuredDigest = changed.measured.value,
+                            foundDigest = changed.found?.value ?: "<unreadable at composition time>",
+                        ),
+                    )
                 }
 
                 val loader = pluginClassLoaderFor(admission.artifacts.map { it.path.toString() })

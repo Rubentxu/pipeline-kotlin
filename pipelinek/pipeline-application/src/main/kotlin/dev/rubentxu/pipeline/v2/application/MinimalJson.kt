@@ -131,7 +131,7 @@ internal object MinimalJson {
                     '"' -> return sb.toString()
                     '\\' -> {
                         if (pos >= source.length) throw MalformedJson()
-                        when (val esc = source[pos++]) {
+                        when (source[pos++]) {
                             '"' -> sb.append('"')
                             '\\' -> sb.append('\\')
                             '/' -> sb.append('/')

@@ -16,8 +16,9 @@ import java.util.ServiceLoader
  * [dev.rubentxu.pipeline.v2.domain.step.AdmittedPlugin.admitContributions] compares what a plugin
  * DECLARED in its manifest against what its contributor ACTUALLY provides, across Steps,
  * Directives and Events. It existed and was correct — and was never called from any production
- * path. The gate that called it had eight callers, and every one of them was in `src/test`. The installed `pipelinek` reached plugins through `PluginComposition.resolve`,
- * which admitted nothing and cross-checked nothing.
+ * path. The gate that called it had eight callers, and every one of them was in `src/test`.
+ * The installed `pipelinek` reached plugins through `PluginComposition.resolve`, which
+ * admitted nothing and cross-checked nothing.
  * The consequence was measured on the installed distribution: a well-formed manifest declaring a
  * Step (`example.uppercase.ghost`) the plugin does not implement was ADMITTED and the run finished
  * SUCCESS. Pass 1 (pre-load, manifest-only) cannot catch it, because a lying manifest is a valid

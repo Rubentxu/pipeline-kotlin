@@ -26,7 +26,8 @@ Un motor CI/CD moderno y con tipado seguro construido con Kotlin DSL, ofreciendo
 - **📦 Arquitectura Modular**: Separación limpia de responsabilidades en módulos de dominio, aplicación, runtime, eventos, salida, credenciales y SDK de pasos
 - **🔌 Sistema de Plugins Extensible**: Basado en `java.util.ServiceLoader` con resolución de dependencias Maven
 - **🔑 Política de confianza opcional para plugins de terceros**: con `--plugin-trust <fichero>`, un plugin traído con `--plugin-jar` sólo se admite si es el artefacto que el operador fijó (por el SHA-256 de sus bytes) y lleva una firma Ed25519 desligada que verifica bajo la clave del publicador que el operador conserva. Sin ese flag, los plugins se admiten por su manifiesto y su rango de API, como hasta ahora
-- **🧪 Verificación con presupuesto**: `scripts/verify-all.sh` ejecuta las pruebas unitarias y los 44 escenarios E2E reales, y falla si se superan los 900 s o la razón VERIFY_LOC ≤ 2 × PRODUCT_LOC
+- **🔎 Lectura del event lane que dice POR QUÉ no puede servirse**: un run que no existe, un cursor más allá de la cola y un fallo de almacenamiento son tres negativas distintas, con tres remedios distintos, no un único «run desconocido». El contrato de follow que las lleva se publica como la capacidad `events.follow.v2`
+- **🧪 Verificación con presupuesto**: `scripts/verify-all.sh` ejecuta las pruebas unitarias y los 46 escenarios E2E reales, y falla si se superan los 900 s o la razón VERIFY_LOC ≤ 2 × PRODUCT_LOC
 - **🐳 Contenedores Primero**: Soporte nativo de Docker para ejecución de tareas basadas en agentes
 - **⚡ Alto Rendimiento**: Ejecución asíncrona con corrutinas de Kotlin
 - **🛡️ Gestión de Recursos**: Límites de CPU, memoria y tiempo de ejecución con monitoreo detallado
@@ -293,8 +294,8 @@ Ejecuta, en este orden y-parando en el primer stage que falle:
 | Capa | Estado |
 |---|---|
 | Análisis estático y compatibilidad de API | Activa: `detekt`, `apiCheck` |
-| E2E sobre la distribución real | Activa: 32 escenarios en `examples/`, cada uno ejecutado en las dos rutas del CLI (con journal privado y sin él) |
-| Tests unitarios Kotlin | Activa: `src/test` en 25 de los 27 módulos declarados |
+| E2E sobre la distribución real | Activa: 46 escenarios en `examples/`, cada uno ejecutado en las dos rutas del CLI (con journal privado y sin él) |
+| Tests unitarios Kotlin | Activa: `src/test` en 26 de los 27 módulos declarados |
 | Carriles de prueba bespoke (`pluginContractTest`, `installedContractTest`) | no existen; la puerta busca esos nombres y falla si vuelven |
 
 Ningún escenario queda hoy sin ejecutar: el que necesitaba un almacén de

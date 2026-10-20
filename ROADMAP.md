@@ -18,37 +18,36 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `808c14b76` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP y los README, así que el código medido es el de `808c14b76` | `git rev-parse HEAD` |
+| SHA | `8796dbcec` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP y los README, así que el código medido es el de `8796dbcec` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **843** (108 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | **44 (44 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios que sólo comprueban el código de salida | **0**: cada uno afirma, con una directiva del lanzador o con una comprobación dentro del propio pipeline | censo por directiva y por cuerpo, sobre los 44 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **12781 / 64760 = 0.20** (límite 2) | `scripts/check-budgets.py --json` |
+| Tests unitarios ejecutados | **857** (112 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Escenarios E2E | **46 (46 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios que sólo comprueban el código de salida | **0**: cada uno afirma, con una directiva del lanzador o con una comprobación dentro del propio pipeline | censo por directiva y por cuerpo, sobre los 46 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **13189 / 64820 = 0.203** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **600 / 567 / 592** en los tres ensayos, los tres sobre `808c14b76`, peor 600 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **598 / 581 / 563** en los tres ensayos, los tres sobre `8796dbcec`, peor 598 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
-| Deuda estática congelada | **805** entradas de baseline | `detektBaselineMain` y `detektMain` |
+| Deuda estática congelada | **805** entradas de baseline, ninguna nueva | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
-Las cifras de este ciclo son las de un árbol **reconciliado** y con el verbo de
-control puesto: 819 tests y 42 escenarios son la suma de lo que había en esta
-rama (644 y 32) y lo que `main` trajo (los tests del trabajo de Saga y sus
-seis escenarios), más lo que volvió con el trabajo ajeno y su propia
-justificación, más el test de la regla de cancelación y el escenario que la
-prueba de punta a punta. El número de escenarios sólo comprueba el código de
-salida sigue en **0**, y ahora la cuenta tiene que mirar dos sitios: la
-directiva del lanzador y el cuerpo del pipeline, porque veinte de los
-escenarios afirman desde dentro —el pipeline falla si el mundo no es el que
-dice— y ninguno mira sólo el código de salida.
+Las cifras de este ciclo suben en lo que este ciclo añadió y sólo en eso:
+**857** tests (14 más que los 843 del ciclo anterior) y **46** escenarios (2
+más). Los 14 tests nuevos son 3 de la traducción pura, 4 del follower, 2 del
+guardián del live-tail, 4 del render de la negativa y 1 de la fila nueva del
+catálogo de capacidades. Los 2 escenarios nuevos son las dos negativas del
+event lane. El ratio de LOC sube de 0.197 a **0.203**, todavía muy por debajo
+del límite 2, y el peor módulo sigue siendo el mismo de siempre
+(`pipeline-step-sdk:workflow-control`, 1.633) porque este ciclo no lo tocó.
 
-La deuda estática baja de 807 a 805 entradas: cuatro de `main` se
-convirtieron en código arreglado en lugar de excepciones anotadas, y ninguna
-entrada nueva se añadió.
+Lo que este ciclo **no** tocó, y conviene que no se confunda con un avance:
+la deuda estática congelada sigue en **805** entradas y no se añadió ni una,
+que es como manda `AGENTS.md` —la baseline se arregla arreglando el código—;
+y el número de módulos con test sigue siendo 26 de 27.
 
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
-los **105** informes JUnit, que es la condición que hace que la cifra de reloj
+los **112** informes JUnit, que es la condición que hace que la cifra de reloj
 mida el gate y no una restauración de caché. Un total correcto con el verbo
 equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
 **falla** si no reescribe ninguno.
@@ -3172,7 +3171,7 @@ antiguo, ni una suite E2E en Kotlin, ni una campaña de mutaciones masiva.
 
 | Hito | Repositorio | Garantía | Instrumento más barato que puede fallar | Evidencia de cierre |
 |---|---|---|---|---|
-| **P0.1** Negativas de lectura diferenciadas | Core | Un consumidor de eventos distingue «el run no existe», «el cursor no vale» y «el almacenamiento falló». Hoy las tres son `UnknownRun` | Test unitario puro sobre el traductor de negativas del follow handle: tres entradas, tres salidas distintas. Sin disco: un `StorageError` se fabrica como valor | Test rojo con la traducción antigua restaurada (3 filas) y verde con la nueva; **publicación versionada** del vocabulario (`EventFollowRefusal` es contrato de SDK) |
+| **P0.1** Negativas de lectura diferenciadas | Core | Un consumidor de eventos distingue «el run no existe», «el cursor no vale» y «el almacenamiento falló». Hoy las tres son `UnknownRun` | Test unitario puro sobre el traductor de negativas del follow handle: tres entradas, tres salidas distintas. Sin disco: un `StorageError` se fabrica como valor | **Hecho** (§2.25): 3 clases de test y 2 escenarios ejecutables; 4 mutaciones vistas en rojo; publicación versionada (`events.follow.v2`, `events.follow.v1` DEPRECATED) y dump de ABI regenerado |
 | **P0.2** Seal externo de streaming | Core | Un cliente externo lee la historia por cursor, se desconecta y vuelve sin saltarse ni duplicar hechos | Ejemplo ejecutable en `examples/`: un lector externo (el verbo `events` con cursor) que lee, corta y reanuda; y el caso del cursor inválido, que debe salir con su negativa propia | El ejemplo falla si el cursor se resetea al reconectar o si la negativa degrada a «run desconocido» |
 | **P0.3** Streaming incremental a Fabric | Fabric | Jenkins muestra progreso durante el run, no al final | Pruebas de `pipelinek-fabric`; en Core, sólo el contrato que consume | Fuera de este repositorio: su propio gate y su RC |
 | **P0.4** Persistencia y recuperación de Fabric | Fabric | Reiniciar el control plane no pierde, duplica ni inventa hechos | Igual que P0.3, con su cursor confirmado | Fuera de este repositorio |
@@ -3180,7 +3179,7 @@ antiguo, ni una suite E2E en Kotlin, ni una campaña de mutaciones masiva.
 | **P1.2** Certificación de SDK y plugins | Core + externos | Un plugin compilado contra el SDK publicado se carga en la distribución real y sus contribuciones declaradas coinciden con las disponibles | Un **ejecutable** que carga cada JAR de `lib/` de la distribución instalada y compara sus entradas de servicio con su manifiesto. Es lo que el producto ya sabe hacer (`PluginContributionVerifier`), aplicado a los plugins que se distribuyen | Nombre del plugin, digest del JAR y resultado de admisión por plugin, en el informe del ciclo |
 | **P1.3a** Resultado terminal del step | Core | Un consumidor del event stream puede saber si un step terminó bien, **sin deducirlo** | Test unitario puro sobre el evento terminal y su versión. Con un campo nuevo en un evento publicado, la versión es explícita: campo nuevo opcional, no un cambio de significado | El test se ve rojo con el evento antiguo restaurado |
 | **P1.3b** Atribución de stage al fallo | Core | Un consumidor puede atribuir un `StepFailed` a su stage desde el evento, sin unirlo con otro evento | Test unitario puro sobre la forma del evento de fallo | Igual que P1.3a |
-| **P1.3c** Política de confianza del plugin | Core | El plugin que el operador trae es el que aprobó, firmado por el publicador que nombra | **Hecho**: test puro del decisor + dos escenarios ejecutables (§2.21) | 4 mutaciones vistas en rojo; 44 escenarios verdes |
+| **P1.3c** Política de confianza del plugin | Core | El plugin que el operador trae es el que aprobó, firmado por el publicador que nombra | **Hecho**: test puro del decisor + dos escenarios ejecutables (§2.21) | 4 mutaciones vistas en rojo; 46 escenarios verdes |
 | **P1.4** Gate mínimo fiable | Core | La puerta local completa pasa en el SHA final, sin falsos verdes, dentro de 900 s | `scripts/verify-all.sh` con tres ensayos de reloj | Tres ensayos de reloj sobre el SHA final, con su cifra (§1) |
 | **P2.1** RC y procedencia | Core + Fabric | Instalación real, ABI, SDK, distribuciones y procedencia verificables | Instalación de la RC en una máquina limpia y ejecución de un ejemplo contra el artefacto instalado | Fuera de este repositorio en su parte de publicación; aquí, `BLOCKED_EXTERNAL` mientras no exista certificador |
 | **P2.2** Documentación pública | Core | Manual de instalación, DSL, steps, plugins, SDK y operación, con comandos comprobados contra la versión definitiva | El README corto y los ejemplos ejecutables | Al final, y no antes |
@@ -3237,7 +3236,176 @@ justamente lo que este ROADMAP lleva seis ciclos evitando. Queda anotado con su 
 costo, que es lo que hace falta para que el siguiente ciclo lo recoja sin
 volver a buscarlo.
 
+### 2.25 El event lane que contestaba «nada» a tres preguntas distintas
+
+Este ciclo cerró el hito **P0.1** de §2.23: las tres negativas de la lectura
+de eventos dejan de ser una. Lo que lo abrió fue una medición del binario ya
+publicado, no una lectura del código:
+
+| Antes | `pipelinek events <run-inexistente> --db …` |
+|---|---|
+| Código de salida | **0** |
+| Salida | **ninguna** |
+| Cursor emitido | `evt-cursor-v1:<run>:0` — un cursor de continuación para un run que nunca existió |
+
+Y lo mismo con `--after-cursor evt-cursor-v1:<run>:9999` sobre un run real:
+código 0, sin salida, y el cursor devuelto. La última línea es la que más
+molesta: un cursor de continuación **falso** es peor que ninguna respuesta,
+porque el que lo consume se cree que hay una historia por delante.
+
+**La causa, medida en dos sitios.** La lectura paginada (`readRecords`)
+responde con FILAS y su tipo no tiene por dónde rehusar: un run que no
+existe y un run que existe y aún no ha escrito nada devuelven **la misma
+página vacía**. La página vacía es una respuesta perfectamente válida para
+el segundo caso, así que el verbo no podía distinguishlo. Y el follower, que
+sí tenía jerarquía de negativas propia, la desperdiciaba: `CursorBeyondTail`
+y `StorageError` acababan los dos en `UnknownRun`.
+
+**Lo que cambia.** El vocabulario publicado (`EventFollowRefusal`, contrato de
+SDK) nombra los tres hechos:
+
+| Negativa | Dice | El remedio del consumidor |
+|---|---|---|
+| `UnknownRun(runId)` | el run no existe | dejar de buscarlo |
+| `CursorBeyondTail(runId, requestedSequence, tailSequence)` | el run **existe** y la posición no | resetear el cursor a la cola |
+| `StorageError(cause)` | el run puede estar perfectamente ahí y el almacenamiento no puede decirlo | reintentar o escalar |
+
+La traducción entre los dos vocabularios es **una función**
+(`EventFollowRefusal.of`), no una regla por adaptador: dos adaptadores que
+traducen la misma negativa por su cuenta son dos respuestas a la misma
+pregunta, y divergen el día que uno de ellos gana un caso. El follower deja
+de colapsar también sus dos `catch`: un fallo de almacenamiento en
+**cualquier** lectura es `StorageError`, no «run desconocido».
+
+**El verbo.** `pipelinek events` pregunta ahora al puerto que sí puede
+rehusar —`EventRecordReadPortStoreAdapter`, el que ya consulta `hasRun` y
+`tailSequence`— antes de leer, y sale con **código 2** y con el motivo:
+
+```
+Error: unknown run: no-such-run-<uuid>
+Error: cursor 9999 is past the tail of run <uuid> (tail 13)
+Error: event store failed: …
+```
+
+El texto vive en un solo sitio (`EventRecordRefusalRendering`), porque
+operadores y scripts lo leen: es un contrato, y una segunda ortografía sería
+una segunda respuesta.
+
+**La publicación es versionada, que es lo que pedía el hito.** El
+vocabulario crece, y un consumidor compilado contra el viejo hace `when`
+exhaustivo sobre un tipo sellado: un caso que no conoce no es un error de
+compilación, es un fallo en ejecución. Así que en el catálogo de capacidades
+`events.follow.v1` pasa a **DEPRECATED** —que en ese catálogo significa
+exactamente «anunciado y NO entregado»— y el vocabulario que esta build
+entrega se anuncia como **`events.follow.v2`**. El dump de ABI de
+`:pipeline-events` queda regenerado y el cambio es **aditivo**: dos casos
+nuevos y la función de traducción, nada desaparece.
+
+> **Lo que aquí NO se decide, y por qué.** La versión del **artefacto** no se
+> toca. Este repositorio está en `0.62.0` y el `v0.62.0` ya publicado es un
+> artefacto DISTINTO (el RESET re-funda la identidad del producto); subir el
+> número sin publicar una release sería afirmar una versión que no existe, y
+> el README señala el `v0.62.0` como la autoridad pública de hoy. El campo
+> `firstPublished` del catálogo dice por eso la **línea de versión que primero
+> lleva el id**, no un tag que aún no se ha puesto. La decisión de qué
+> release sale, y con qué tag, es del proceso de release, no de este ciclo.
+
+**El guardián que el módulo declaraba huérfano.** Al corregir el KDoc del
+contrato publicado apareció una contradicción que no se podía resolver
+leyendo: el KDoc de `EventFollowHandle` decía, en presente, que «una página
+en silencio NO termina el follow» **no tiene guardián**, y tres líneas más
+abajo citaba un falsificador (`SqliteEventFollowLiveTailTest`) que **no
+existía en el árbol**. Las dos afirmaciones no pueden ser verdad a la vez.
+
+Medido: el **código está bien** —una página en silencio no termina el follow—
+pero nada lo fijaba, así que la máquina de estados podía volver al defecto
+exacto que su propio KDoc describe y la suite ejecutable entera seguiría en
+verde. Es el mismo agujero que el ciclo anterior cerró para la confianza del
+plugin, y aquí era peor: el siguiente hito del roadmap (P0.2, el seam
+externo de streaming) se apoya justo en este follow.
+
+La decisión sobre **qué falsear** se tomó antes de escribir el doble: el
+**PUERTO**, que es la costura que el producto ya usa, y no un almacén —un
+doble de SQLite habría comprado una garantía que nadie necesita y habría
+costado un disco por test. El guardián lee la **secuencia de eventos** que
+recibe el consumidor y nunca la forma interna del handle, y exige las dos
+cosas: que una página en silencio no termine el follow, y que el follow
+**sí** termine cuando el run termina. Sin la segunda exigencia, el guardián
+se podría satisfacer con un follow que nunca termina.
+
+**Las mutaciones que se vieron en rojo.** Un verde que nunca se ha visto rojo
+no es evidencia, así que cada rama nueva se rompió a propósito:
+
+| Mutación | Filas que se encendieron | Collateral |
+|---|---|---|
+| `CursorBeyondTail` colapsado en `UnknownRun` | 1 fila en cada clase de test (2 en total) | ninguno |
+| El `catch` de la **segunda** lectura vuelve a `UnknownRun` | 1 fila — pero sólo **después** de escribir el test que faltaba | ninguno |
+| `Completed` en la primera página en silencio (el defecto auditado) | 3 filas: 2 del guardián nuevo y 1 consecuencia | ninguna fila ajena |
+| `events.follow.v1` de nuevo en PUBLICADA | 3 filas del catálogo | ninguno |
+
+La segunda fila de esa tabla es la que más enseña: la mutación **no encendió
+nada**, porque el fallo ocurre en la primera lectura y el test sólo cubría
+esa. Un test que no cubre la ruta que dice cubrir no es un guardián, es una
+decoración. El test que faltaba se escribió, se vio **rojo** con el defecto
+presente, y sólo entonces se arregló el código.
+
+**El KDoc que mentía.** Tres afirmaciones del contrato publicado eran falsas
+y se han corregido: que `CursorBeyondTail` se traducía a `UnknownRun`; que
+el `catch` del follower reportaba un run desconocido; y que el defecto de la
+página en silencio no tenía guardián mientras el handle citaba un test
+inexistente. También había un KDoc que describía un `pollIntervalMs = 0` que
+las opciones **rechazan** (`require(pollIntervalMs > 0)`).
+
+**Lo que queda abierto.** El seam externo de streaming (P0.2) sigue siendo
+otro repositorio y otro ciclo: este ciclo le deja un contrato que ya no
+confunde tres negativas y un follow con guardián, que es lo que ese cliente
+externo necesita para no perder hechos. Y la versión del artefacto, la RC y
+la publicación siguen siendo `BLOCKED_EXTERNAL`: aquí no hay certificador.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **La versión del artefacto NO se toca, y la publicación del vocabulario se
+  versiona con el identificador de capacidad.** Las dos cosas parecían la
+  misma y no lo son. El identificador (`events.follow.v2`) es lo que un
+  consumidor **negocia**: es la respuesta a «¿este build habla el vocabulario
+  que yo entiendo?», y no necesita un número de release para ser verdad. La
+  versión del artefacto, en cambio, la fija el proceso de release: este
+  repositorio está en `0.62.0` y el `v0.62.0` publicado es un artefacto
+  distinto (el RESET re-funda la identidad del producto). Subir el número sin
+  publicar una release sería afirmar una versión que no existe, y el README
+  señala el `v0.62.0` como la autoridad pública de hoy. Por eso `events.follow.v1`
+  pasa a DEPRECATED —«anunciado y NO entregado», que es lo que esa columna
+  significa en este catálogo— en vez de quedarse mintiendo como entregado.
+- **La traducción entre vocabularios es una función, no una regla por
+  adaptador.** `EventFollowRefusal.of` es el único sitio que sabe qué
+  negativa del puerto es qué negativa del follow. Un adaptador que tradujera
+  por su cuenta podría contestar «run desconocido» donde el puerto dijo
+  «fallo de almacenamiento», y el coste lo pagaría el consumidor, que no
+  puede distinguir un fallo de un run que no existe.
+- **Un fallo de almacenamiento se dice en cualquier lectura, no sólo en la
+  primera.** El `catch` del follower que se colaba en `UnknownRun` estaba
+  en la segunda lectura, y el test que lo cubría no existía: la mutación que
+  lo restauraba no encendía nada. Un `catch` que responde con un hecho que no
+  ocurrió es peor que una excepción: convierte «no lo sé» en «lo sé, y sé
+  mal». El guardián nuevo cubre las dos posiciones.
+- **El guardián del live-tail falsea el PUERTO, no el almacén.** La decisión
+  se tomó antes de escribir el doble, que es cuando una decisión así se
+  puede tomar. El puerto es la costura que el producto ya usa; un doble de
+  SQLite habría comprado una garantía que nadie necesita a cambio de un disco
+  por test. Y el guardián exige **las dos** cosas: que una página en silencio
+  no termine el follow, y que el follow sí termine cuando el run termina.
+  Sin la segunda, se podría satisfacer con un follow que nunca termina.
+- **Un KDoc que dice la verdad sobre lo que NO está cerrado.** El contrato
+  publicado afirmaba que el defecto de la página en silencio «no tiene
+  guardián» mientras el handle citaba un falsificador inexistente. Esas dos
+  afirmaciones no pueden ser verdad a la vez, y la que no era verdad no era
+  la del guardián: el guardián no existía, el defecto estaba corregido y
+  nada lo fijaba. Se escribió el guardián y el KDoc ahora dice la verdad.
+- **La negativa del verbo se escribe en un sitio y se afirma en los
+  ejemplos.** El texto que leen operadores y scripts es un contrato, y cada
+  negativa tiene su frase: un texto que dobla dos negativas en una frase
+  pierde lo único que la negativa sabía. Y los escenarios comprueban el
+  **texto**, no sólo el código de salida: un negativo que sólo verifica «algo
+  falló» no distingue un fallo del fallo que se quería ver.
 - **Anclar la confianza del operador en los bytes y en el publicador, y no en lo
   que el plugin declara.** La decisión venía del revisor («anclar la confianza en
   la identidad criptográfica de los bytes del artefacto y en la identidad

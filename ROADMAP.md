@@ -18,7 +18,7 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `15cd1441b` medido en los tres ensayos; el commit que añade estas cifras es posterior y sólo toca esta tabla y los README | `git rev-parse HEAD` |
+| SHA | `15cd1441b` medido en los tres ensayos; los commits posteriores (`18a20f85d`, `a0fa1871e`) sólo tocan este ROADMAP y los README, así que el código medido es el de `15cd1441b` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |

@@ -18,17 +18,17 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `263107231` medido, gate completo sobre este árbol | `git rev-parse HEAD` |
+| SHA | `c3a23697b` medido, gate completo sobre este árbol | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **21** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 6 | ídem |
 | Tests unitarios ejecutados | **594** (67 informes en disco, 67 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | **30 (30 pasan, 0 fallan)**, 1 rerun durable, 2 ejecuciones por escenario (con journal y sin él) | `examples/**/*.pipeline.kts` |
-| Escenarios que sólo comprueban el código de salida | **0** | censo por directiva, sobre los 30 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **7961 / 60878 = 0.131** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios E2E | **31 (31 pasan, 0 fallan)**, 1 rerun durable, 2 ejecuciones por escenario (con journal y sin él) | `examples/**/*.pipeline.kts` |
+| Escenarios que sólo comprueban el código de salida | **0** | censo por directiva, sobre los 31 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **7960 / 60878 = 0.131** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **401 / 415 / 402** en los tres ensayos de `263107231`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
-| Veredicto del gate | **`PASS`** en los tres ensayos de `263107231`, sin `NOT_RUN` | línea final de `verify-all.sh` |
+| `VERIFY_ALL_WALL_CLOCK` | **401 / 415 / 402** en los tres ensayos de `263107231`, **415** en el de `e4daef35d` y **478** en el de `c3a23697b`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| Veredicto del gate | **`PASS`** en los cinco ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **807** entradas de baseline, ninguna nueva | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
@@ -164,9 +164,9 @@ contra el texto del plan. «Medido» significa que el número salió de una
 | 1 | 0 Markdown bajo `docs/` y `pipelinek/` | **PASS** | `git ls-files ':(glob)docs/**/*.md'` = 0; `:(glob)pipelinek/**/*.md` = 0. En la raíz solo quedan `AGENTS.md`, `README*.md`, `ROADMAP.md` |
 | 2 | 0 `@Test` UAT/E2E/AAT/harness | **PASS** | 0 en `pluginContractTest`/`installedContractTest`/`integrationTest`/`functionalTest`; 0 `@Disabled` |
 | 3 | 0 clases legacy trasladadas | **PASS** | `pipelinek/test-harness`, `pipelinek/pipeline-testkit`, `pipelinek/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
-| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 30 escenarios en 8 categorías bajo `examples/`; cada uno se ejecuta en las dos rutas del CLI (con journal y sin él); 0 `src/test` dentro de `examples/*`; lanzador único `examples/run.sh` invocado por la etapa 3 del gate |
-| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 7962 / 60878 = 0.131; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
-| 6 | `verify-all` local ≤ 900 s | **PASS** | tres ensayos sobre `263107231`: 401 / 415 / 402, contra el límite de 900. Todos con 67/67 informes reescritos, 594 tests, 0 fallos, 0 errores, 0 skips |
+| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 31 escenarios en 8 categorías bajo `examples/`; cada uno se ejecuta en las dos rutas del CLI (con journal y sin él); 0 `src/test` dentro de `examples/*`; lanzador único `examples/run.sh` invocado por la etapa 3 del gate |
+| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 7960 / 60878 = 0.131; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
+| 6 | `verify-all` local ≤ 900 s | **PASS** | cinco ensayos, el peor de 478 s contra el límite de 900: 401 / 415 / 402 sobre `263107231`, 415 sobre `e4daef35d` y 478 sobre `c3a23697b`. Todos con 67/67 informes reescritos, 594 tests, 0 fallos, 0 errores, 0 skips |
 | 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS** | 27 módulos declarados compilan; el único módulo versionado que el `include` no declaraba se retiró en este ciclo, así que ya no queda ninguno |
 
 Sobre el límite 4: el mandato escribe el lanzador como `examples/run.sh`, y este
@@ -1542,10 +1542,10 @@ formato y necesita versión; si es un evento nuevo, `AFTER_LAST_RUN_STARTED` pas
 a significar «desde el último `<nuevo evento>`» y hay que migrarlo en el mismo
 cambio. Hoy no hay fecha ni responsable; hay ruta.
 
-**d) Ninguno de los 30 escenarios comprueba sólo el código de salida.** Era 13 de
-36 al abrirse este bloque; hoy es **0 de 30**.
+**d) Ninguno de los 31 escenarios comprueba sólo el código de salida.** Era 13 de
+36 al abrirse este bloque; hoy es **0 de 31**.
 
-Censo reproducible sobre los 30 `.pipeline.kts` del árbol. El lanzador conoce
+Censo reproducible sobre los 31 `.pipeline.kts` del árbol. El lanzador conoce
 cuatro aserciones: `//@ expect-exit`, `//@ expect-stderr`, `//@ expect-stdout` y
 `//@ expect-transcript`. Todo lo demás tiene que afirmarlo el propio escenario,
 y no todos lo hacen:
@@ -2288,7 +2288,9 @@ fichero que ninguna puerta leía.
 ### 2.12 El harness: menos escenarios, y los que quedan afirmando más
 
 El suite E2E pasó de **36 a 30 escenarios**, y no por gusto: cuatro no
-podían fallar y uno se ha añadido para afirmar lo que un proceso escribe.
+podían fallar y uno se ha añadido para afirmar lo que un proceso escribe. Son
+31 hoy: el último bloque convirtió el único pipeline que quedaba fuera de
+`examples/` en un escenario de verdad, y ese cuenta.
 
 | Retirado | Por qué no afirmaba nada |
 |---|---|
@@ -2416,7 +2418,7 @@ repositorios— y el paquete `dev.rubentxu.pipeline.v2.*`. Es una distinción qu
 un `sed` no hace, y por eso el cambio se aplicó con reglas que sólo mueven `v2`
 seguido de un componente que existe en el build.
 
-**El historial no se rompe.** `git mv` deja los 30 escenarios y los tres
+**El historial no se rompe.** `git mv` deja los escenarios y los tres
 plugins de ejemplo como renombrados, no como borrados y añadidos, y el censo de
 LOC sigue contando los mismos ficheros en el mismo lado —los escenarios y el
 lanzador en el numerador, los plugins de ejemplo en el denominador—, porque un
@@ -2433,6 +2435,25 @@ de plan del RESET —cuya evidencia vive en el tag anotado y en el archivo
 externo— y `.github/dependabot.yml`, que configuraba el ecosystem
 `github-actions` de workflows que ya no existen y daba por hecho un gate de CI
 que el propio repositorio dejó de tener.
+
+**Lo que quedaba dentro del árbol.** Los worktrees se retiraron del disco, pero
+sus entradas seguían en el índice: diez punteros de tipo enlace bajo
+`.worktrees/`, sin declaración que los respaldara. No eran enlaces, sino
+punteros muertos —nueve apuntaban a commits vivos y uno a un objeto que ya no
+existía—, y un clon del árbol los materializaba como diez carpetas vacías
+mientras `git submodule status` fallaba por no encontrar su mapeo. Se quitaron
+del índice, y el clon sale ahora sin una sola carpeta bajo `.worktrees/`.
+
+**El último rastro del régimen retirado.** Quedaba un pipeline versionado en
+`ci/`, pensado para que un job de CI comprobara que un fallo intencionado
+ponía el pipeline en rojo. Ese job ya no existe, el fichero no lo ejecutaba
+nada y la puerta lo contaba como verificación sin haberlo ejecutado nunca.
+La política dice que un escenario versionado vive en `examples/`, así que el
+fichero pasó a `examples/negative/` y assertion de más: ahora afirma el código
+de salida y el tipo de fallo que el producto debe nombrar, porque el fallo de
+un comando de shell —el tipo `SCRIPT`— no lo cubría ningún escenario. El
+directorio `ci/` desaparece, con él el resto de un régimen que ya no tiene
+nada que hacer aquí.
 
 
 ---
@@ -2601,12 +2622,31 @@ que el propio repositorio dejó de tener.
   no estaban en ninguna rama publicada y traían un `build.gradle.kts` cada uno
   que un barrido leía como si fuera el build del producto. Se retiraron con
   `git worktree remove` —sin pérdida: las ramas y sus commits siguen en el
-  objeto— y `.worktrees/` quedó ignorado. Con ellos se fueron `dist/` con
+  objeto— y `.worktrees/` quedó ignorado. Sus diez entradas de índice se
+  quitaron también: eran punteros de enlace sin declaración que los respaldara,
+  de modo que un clon los materializaba como carpetas vacías y `git submodule
+  status` no encontraba su mapeo. Con ellos se fueron `dist/` con
   cinco candidatos de hace diez versiones, un ZIP del paquete de plan del
   RESET y `.github/dependabot.yml`, que configuraba workflows que no existen
   y daba por hecho un gate de CI que el repositorio dejó de tener. Motivo: un
   árbol que carga con 16 GB de historia ajena y con ficheros que describen un
   mundo distinto del suyo enseña a leer lo que no está.
+
+- **Un escenario versionado fuera de `examples/` no es un escenario.** El único
+  pipeline que quedaba fuera de `examples/` era un resto del régimen de CI
+  retirado: ningún proceso lo ejecutaba y el censo lo contaba como
+  verificación. En vez de borrarlo —que era la opción fácil— se convirtió en
+  lo que le faltaba para ser un escenario de verdad: vive en `examples/`, lo
+  ejecuta la puerta y afirma el código de salida y el tipo de fallo que el
+  producto debe nombrar. Motivo: un fichero que el presupuesto cuenta como
+  prueba y que nadie ejecuta es una mentira contable; si la conducta merece
+  cobertura, se cubre, y si no la merece, se borra.
+
+- **El informe de un fallo nombra lo que falló.** El lanzador etiquetaba como
+  «durable» el fallo de cualquier escenario, durable o no, de modo que el
+  informe de una ruptura señalaba un escenario que no lo era. Motivo: un
+  diagnóstico que nombra mal la cosa rota cuesta más tiempo que el que
+  ahorra.
 
 ---
 

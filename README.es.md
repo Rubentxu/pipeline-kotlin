@@ -25,7 +25,7 @@ Un motor CI/CD moderno y con tipado seguro construido con Kotlin DSL, ofreciendo
 - **🔒 Seguridad Avanzada**: Modelo de sandbox dual usando GraalVM Isolates para ejecución de scripts y contenedores para aislamiento de tareas
 - **📦 Arquitectura Modular**: Separación limpia de responsabilidades en módulos de dominio, aplicación, runtime, eventos, salida, credenciales y SDK de pasos
 - **🔌 Sistema de Plugins Extensible**: Basado en `java.util.ServiceLoader` con resolución de dependencias Maven
-- **🧪 Verificación con presupuesto**: `scripts/verify-all.sh` ejecuta las pruebas unitarias y los 41 escenarios E2E reales, y falla si se superan los 900 s o la razón VERIFY_LOC ≤ 2 × PRODUCT_LOC
+- **🧪 Verificación con presupuesto**: `scripts/verify-all.sh` ejecuta las pruebas unitarias y los 42 escenarios E2E reales, y falla si se superan los 900 s o la razón VERIFY_LOC ≤ 2 × PRODUCT_LOC
 - **🐳 Contenedores Primero**: Soporte nativo de Docker para ejecución de tareas basadas en agentes
 - **⚡ Alto Rendimiento**: Ejecución asíncrona con corrutinas de Kotlin
 - **🛡️ Gestión de Recursos**: Límites de CPU, memoria y tiempo de ejecución con monitoreo detallado

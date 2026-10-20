@@ -345,6 +345,10 @@ internal object DomainEventJsonDecoder {
                 stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0,
                 stepName = EventJsonFields.stringField(s, "stepName") ?: "",
                 stepType = EventJsonFields.stringField(s, "stepType") ?: "",
+                // A row written before the verdict was published has no such field, and it decodes
+                // to no verdict: that build said nothing about the step's result, and this reader
+                // must not invent one.
+                outcome = EventJsonFields.optionalStringField(s, "outcome"),
             )
             "AgentResolved" -> AgentResolved(
                 eventId = eventId,

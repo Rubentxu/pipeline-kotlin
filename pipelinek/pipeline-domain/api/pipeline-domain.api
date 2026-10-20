@@ -2222,6 +2222,22 @@ public final class dev/rubentxu/pipeline/v2/domain/StepNode$Companion {
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/StepOutcome {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/StepOutcome$Companion;
+	public static final field FAILURE_TOKEN Ljava/lang/String;
+	public static final field SUCCESS_TOKEN Ljava/lang/String;
+	public static final field UNSTABLE_TOKEN Ljava/lang/String;
+	public abstract fun getWireToken ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/StepOutcome$Companion {
+	public static final field FAILURE_TOKEN Ljava/lang/String;
+	public static final field SUCCESS_TOKEN Ljava/lang/String;
+	public static final field UNSTABLE_TOKEN Ljava/lang/String;
+	public final fun getSupportedTokens ()Ljava/util/Set;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/StepOutcome$DefaultImpls {
+	public static fun getWireToken (Ldev/rubentxu/pipeline/v2/domain/StepOutcome;)Ljava/lang/String;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/StepOutcome$Failure : dev/rubentxu/pipeline/v2/domain/StepOutcome {
@@ -2231,6 +2247,7 @@ public final class dev/rubentxu/pipeline/v2/domain/StepOutcome$Failure : dev/rub
 	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/StepOutcome$Failure;Ldev/rubentxu/pipeline/v2/domain/PipelineFailure;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/StepOutcome$Failure;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getFailure ()Ldev/rubentxu/pipeline/v2/domain/PipelineFailure;
+	public fun getWireToken ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -2238,6 +2255,7 @@ public final class dev/rubentxu/pipeline/v2/domain/StepOutcome$Failure : dev/rub
 public final class dev/rubentxu/pipeline/v2/domain/StepOutcome$Success : dev/rubentxu/pipeline/v2/domain/StepOutcome {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/StepOutcome$Success;
 	public fun equals (Ljava/lang/Object;)Z
+	public fun getWireToken ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -2245,6 +2263,7 @@ public final class dev/rubentxu/pipeline/v2/domain/StepOutcome$Success : dev/rub
 public final class dev/rubentxu/pipeline/v2/domain/StepOutcome$Unstable : dev/rubentxu/pipeline/v2/domain/StepOutcome {
 	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/StepOutcome$Unstable;
 	public fun equals (Ljava/lang/Object;)Z
+	public fun getWireToken ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

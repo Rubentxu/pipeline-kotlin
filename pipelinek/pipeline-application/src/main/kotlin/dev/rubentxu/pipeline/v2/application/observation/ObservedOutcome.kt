@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
 import dev.rubentxu.pipeline.v2.events.StageSkipped
 import dev.rubentxu.pipeline.v2.events.StepFailed
+import dev.rubentxu.pipeline.v2.events.StepFinished
 
 /**
  * How a run, stage or step ended, as ONE vocabulary across three producers that spell it three ways.
@@ -105,9 +106,12 @@ sealed interface ObservedOutcome {
 /**
  * The outcome [event] reports, or `null` when it reports none.
  * `null` is a fact and not a hole, and the distinctions are load-bearing:
- * - `StepFinished` reports **no outcome token** because there is none — a step that finished IS the
- *   outcome, and the event type already says it. Treating its absence as "unknown" would put every
- *   successful step in the same bucket as a producer that wrote a spelling we cannot read;
+ * - `StepFinished` reports the verdict it carries — `success`, `unstable` or `failure` — and
+ *   reports **nothing** when it carries none. It used to report nothing at all, on the strength of
+ *   a belief that "a step that finished IS the outcome"; that belief was false, because the step
+ *   boundary emits the terminal event for a step that FAILED too. A consumer that read "finished"
+ *   as "succeeded" was reading a step's failure as its success. The verdict now travels with the
+ *   event, and this reader reads it;
  * - `StepFailed` reports [ObservedOutcome.Failure] because its type is the claim;
  * - `StageSkipped` and `StageMarkedUnstable` report the outcome their own types exist to report,
  *   and neither has a sibling `…Finished` event to carry a token instead.
@@ -118,5 +122,8 @@ fun outcomeOf(event: DomainEvent): ObservedOutcome? = when (event) {
     is StageSkipped -> ObservedOutcome.Skipped
     is StageMarkedUnstable -> ObservedOutcome.Unstable
     is StepFailed -> ObservedOutcome.Failure
+    // A step's terminal event carries its verdict. No verdict means no outcome is reported: an
+    // absent one is unknown, and it must not be read as success.
+    is StepFinished -> event.outcome?.let { ObservedOutcome.fromToken(it) ?: ObservedOutcome.Other(it) }
     else -> null
 }

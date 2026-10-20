@@ -37,19 +37,29 @@ class StepExecutionBoundary(
         body: suspend () -> CommonExecutionResult,
     ): CommonExecutionResult {
         eventSink.append(context.stepStarted())
+        // The verdict, once the boundary has one. It is the SAME `StepOutcome` the body returned and
+        // the same one the `StepFailed` event is written from, so the terminal event and the failure
+        // evidence cannot disagree about what happened.
+        var verdict: StepOutcome? = null
         try {
             return body().also { result ->
                 val outcome = result.outcome
+                verdict = outcome
                 if (outcome is StepOutcome.Failure) {
                     eventSink.append(context.stepFailed(outcome))
                 }
             }
         } catch (exception: PipelineStepException) {
             val outcome = StepOutcome.Failure(exception.failure)
+            verdict = outcome
             eventSink.append(context.stepFailed(outcome))
             return CommonExecutionResult(outcome = outcome, encodedOutput = null)
         } finally {
-            eventSink.append(context.stepFinished())
+            // The terminal event is emitted for a failed step too, so it must carry the verdict: a
+            // consumer that reads "the step finished" cannot tell a success from a failure without
+            // it. When the body blew up with something that is not a step failure, there is no
+            // verdict, and `null` says exactly that — unknown, not success.
+            eventSink.append(context.stepFinished(verdict))
         }
     }
 
@@ -76,7 +86,13 @@ class StepExecutionBoundary(
         message = outcome.failure.message,
     )
 
-    private fun StepLifecycleContext.stepFinished() = StepFinished(
+    /**
+     * The terminal event of the step, carrying the verdict when there is one.
+     *
+     * [verdict] is `null` only when the step's execution ended without a decided outcome, and the
+     * event then says nothing about the result: that is the honest reading of "unknown".
+     */
+    private fun StepLifecycleContext.stepFinished(verdict: StepOutcome?) = StepFinished(
         eventId = UUID.randomUUID().toString(),
         runId = runId,
         sequence = 0L,
@@ -85,5 +101,6 @@ class StepExecutionBoundary(
         stepIndex = stepIndex,
         stepName = stepName,
         stepType = stepType,
+        outcome = verdict?.wireToken,
     )
 }

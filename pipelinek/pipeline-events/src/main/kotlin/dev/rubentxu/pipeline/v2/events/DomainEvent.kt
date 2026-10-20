@@ -173,7 +173,37 @@ data class StepStarted(
 
 /**
  * Emitted when a step within a stage finishes.
-*/
+ *
+ * ## The verdict travels with the event that ends the step
+ *
+ * [outcome] is the step's result: `success`, `unstable` or `failure` — the words
+ * [dev.rubentxu.pipeline.v2.domain.StepOutcome.wireToken] declares. A consumer of the event lane
+ * reads the verdict from this event and stops guessing.
+ *
+ * ## Why it is not a default value
+ *
+ * There is **no default**: every producer states the verdict explicitly, or states that it has
+ * none. A default of `null` would let a producer forget the field and ship an event that claims
+ * "unknown" while meaning "I did not think about it", and that difference is invisible downstream.
+ * The compiler refusing the call is the cheaper of the two failures.
+ *
+ * ## What `null` means, and what it does not
+ *
+ * `null` means the step's execution ended **without a decided outcome** — the case where the
+ * boundary's body blew up with something that is not a step failure and the exception propagated.
+ * That is genuinely unknown, and it stays unknown: it is not read as success.
+ *
+ * It is also what a row written by an older build decodes to, because that build published no
+ * verdict. A consumer that needs to tell "this build says unknown" from "this build says nothing"
+ * negotiates the capability `events.stepoutcome.v1`.
+ *
+ * ## The event is emitted for a step that FAILED
+ *
+ * The step boundary appends this event in a `finally`, so a failed step has both a
+ * [StepFailed] — which carries the evidence: the failure kind and its message — and this one,
+ * which carries the verdict. The two are written from the same
+ * [dev.rubentxu.pipeline.v2.domain.StepOutcome], so they cannot disagree.
+ */
 data class StepFinished(
     override val eventId: String,
     override val runId: String,
@@ -183,6 +213,7 @@ data class StepFinished(
     val stepIndex: Int,
     val stepName: String,
     val stepType: String,
+    val outcome: String?,
 ) : DomainEvent {
     override val kind: String get() = "StepFinished"
 }

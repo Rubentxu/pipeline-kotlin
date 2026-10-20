@@ -17,7 +17,6 @@ import dev.rubentxu.pipeline.v2.harness.model.RelationScope
 import dev.rubentxu.pipeline.v2.harness.model.VerificationResult
 import dev.rubentxu.pipeline.v2.harness.model.ViolationRule
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Instant
 

@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `cb37779f2` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `a2ffb90db` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
-| Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
-| Módulos sin test | 9 | ídem |
-| Tests unitarios ejecutados | **717** (90 informes JUnit, **90** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:717 read:0` |
+| Módulos con test unitario permanente | **22** | etapa 2 del gate, que imprime cada módulo por nombre |
+| Módulos sin test | 5 | ídem |
+| Tests unitarios ejecutados | **743** (94 informes JUnit, **94** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:743 read:0` |
 | Escenarios E2E | 46 (**45 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **11140 / 65539 = 0.170** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **11389 / 65556 = 0.174** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **95 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **99 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -34,26 +34,26 @@ calientes, y por eso **no** se compara con la de 2026-10-19 (226 s, la peor de
 tres ensayos tras `rm -rf` de las salidas de build reales, que es la condición
 que hace que la cifra mida el gate y no una restauración de caché). Un total
 correcto con el verbo equivocado ya no puede colarse: la etapa 2 separa
-`rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 89
-de los 89 informes —se limpiaron las salidas de test antes de correr, así que
+`rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 94
+de los 94 informes —se limpiaron las salidas de test antes de correr, así que
 ninguno pudo venir de la caché—.
 
 **Y el total viaja ahora en la línea de veredicto**, que es la única que alguien
-pega en un informe: `tests=rewritten:713 read:0`. Antes esa línea decía
+pega en un informe: `tests=rewritten:743 read:0`. Antes esa línea decía
 `PASS  sha=…  elapsed=345s  budget=900s  gaps=1 not_run` y no decía **nada** de
 los tests: el dato estaba en el log de la etapa 2, y el log lo lee quien corrió la
 puerta, no quien la cita. Una cifra con el verbo equivocado ya no puede colarse
 ni por el lado del log ni por el lado de la línea (§2.2 u).
 
-La corrida que se publica es la de `cb37779f2` (**95 s**). El reloj de este gate
+La corrida que se publica es la de `a2ffb90db` (**99 s**). El reloj de este gate
 tiene ruido, y publicarlo sin decirlo vuelve a ser una afirmación que nadie
-puede reproducir: el ciclo anterior (`f3d897a9`) midió **97 s** con 88
+puede reproducir: el ciclo anterior (`cb37779f2`) midió **95 s** con 90
 informes, y otra corrida sobre ese **mismo** contenido, con los módulos tocados
-compilando de cero, midió 98 s. La diferencia entre 95 y 97 s entra de sobra en
-el ruido medido de este reloj (±10 s). Este ciclo **añadió 1 test** y **ningún
-escenario nuevo** —cambió la lectura de una ley y su prueba—, así que su coste
-es el de la puerta anterior, y **cuánto cuesta por sí solo el cambio no se midió
-aislado**, así que no se afirma.
+compilando de cero, midió 98 s. La diferencia entre 95 y 99 s entra de sobra en
+el ruido medido de este reloj (±10 s). Este ciclo **añadió 26 tests** en cuatro
+módulos y **ningún escenario E2E nuevo**, así que su coste es el de la puerta
+anterior, y **cuánto cuesta por sí solo el cambio no se midió aislado**, así que
+no se afirma.
 
 El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
 declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
@@ -99,7 +99,7 @@ contra el texto del plan. «Medido» significa que el número salió de una
 | 2 | 0 `@Test` UAT/E2E/AAT/harness | **PASS** | 0 en `pluginContractTest`/`installedContractTest`/`integrationTest`/`functionalTest`; 0 `@Disabled` |
 | 3 | 0 clases legacy trasladadas | **PASS** | `v2/test-harness`, `v2/pipeline-testkit`, `v2/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
 | 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 35 escenarios en 8 categorías bajo `v2/examples/`; 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` (186 líneas) invocado por `scripts/verify-all.sh:246` |
-| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 5256 / 61461 = 0.086; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
+| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 11389 / 65556 = 0.174; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
 | 6 | `verify-all` local ≤ 900 s | **PENDIENTE** | requiere los tres ensayos sobre el SHA de la tabla |
 | 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS con una excepción** | 27 módulos declarados compilan; `v2/pipeline-protocol/` está versionado y **no está declarado**, luego Gradle nunca lo compila |
 
@@ -128,20 +128,22 @@ No se borra en este ciclo: no figura en la lista del mandato y borrar ficheros
 versionados es del usuario. La decisión pendiente es declararlo (y arreglarlo)
 o retirarlo.
 
-### Los 18 módulos con test
+### Los 22 módulos con test
 
 `pipeline-application`, `pipeline-domain`, `pipeline-events`,
-`pipeline-events-store`, `pipeline-step-sdk/runtime`, `pipeline-step-sdk/http`,
+`pipeline-events-store`, `pipeline-runtime`, `pipeline-runtime-api`,
+`pipeline-scripting-api`, `pipeline-step-sdk/runtime`, `pipeline-step-sdk/http`,
 `pipeline-step-sdk/workflow-control`, `pipeline-step-sdk/files`,
+`pipeline-step-sdk/scm-git`, `pipeline-step-sdk/utilities`,
 `pipeline-credentials-api`, `pipeline-credentials-local`,
 `pipeline-credentials-multipart`, `pipeline-credentials-executor`,
 `pipeline-binding-factory`, `pipeline-artefacts-local`,
-`pipeline-runtime-api`, `pipeline-output`, `pipeline-output-store`,
+`pipeline-output`, `pipeline-output-store`,
 `pipeline-release`.
 
 > **Censo remedido 2026-10-19 desde el disco, y remedido otra vez el
 > 2026-10-20.** Sobre los 27 módulos que declara el `include(` de
-> `settings.gradle.kts`: **18 con `src/test/kotlin/**/*Test.kt`, 9 sin él**. La
+> `settings.gradle.kts`: **22 con `src/test/kotlin/**/*Test.kt`, 5 sin él**. La
 > lista de arriba omitía `pipeline-application`, que ya tiene
 > `ProjectWorkingDirectoryTest.kt`, y por eso se contradecía con la fila de §1.
 > Las cifras anteriores a esas —«los 12 módulos con test», «17 módulos sin
@@ -163,6 +165,13 @@ o retirarlo.
 > publicada del veredicto, el módulo tiene por fin un consumidor real —el
 > hermano, que la consume desde fuera— y un test que lo prueba con el plano
 > real de dos corridas.
+>
+> Los cuatro últimos llegaron con el bloque `cobertura-modulos-riesgo`
+> (`a2ffb90db`): `pipeline-runtime`, `pipeline-scripting-api`,
+> `pipeline-step-sdk/scm-git` y `pipeline-step-sdk/utilities`. No se eligieron
+> por paridad sino por **dónde una decisión mal tomada borra ficheros,
+> publica una credencial o miente en el journal**; los dos defectos materiales
+> del bloque salieron de ahí. Ver §2.2 x).
 
 Esa lista sale de enumerar `src/test/kotlin/**/*Test.kt` en cada módulo
 declarado, no de `check-budgets.py`. El motivo de no usar el informe de
@@ -178,24 +187,40 @@ ciclo (332 tests leídos como 307).
 
 **Ficheros y clases no son lo mismo, y por eso van en dos columnas.** Gradle
 emite un informe XML por clase JUnit, y una clase `@Nested` cuenta como clase
-propia: `pipeline-domain` tiene 6 ficheros y 15 informes. Un recuento que
-confundiera ambos leería 9 clases inexistentes aquí — es el mismo residuo que ya
+propia: `pipeline-domain` tiene 13 ficheros y 31 informes. Un recuento que
+confundiera ambos leería 18 clases inexistentes aquí — es el mismo residuo que ya
 se había confundido una vez en este ciclo, y se squashó al verificar en disco en
 vez de reportarlo.
 
+La tabla de abajo está medida sobre `a2ffb90db` con la misma corrida que da la
+fila `tests=rewritten:743 read:0` de §1: **94 informes, 743 tests, 0 saltados,
+0 fallidos**.
+
 | Módulo | Ficheros `*Test.kt` | Clases JUnit | Tests | Saltados | Fallidos |
 |---|---|---|---|---|---|
+| `pipeline-domain` | 13 | 31 | 161 | 0 | 0 |
 | `pipeline-credentials-local` | 8 | 8 | 92 | 0 | 0 |
-| `pipeline-domain` | 6 | 15 | 82 | 0 | 0 |
-| `pipeline-output` | 5 | 5 | 74 | 0 | 0 |
+| `pipeline-output` | 6 | 6 | 87 | 0 | 0 |
+| `pipeline-events-store` | 8 | 11 | 62 | 0 | 0 |
+| `pipeline-application` | 8 | 8 | 58 | 0 | 0 |
 | `pipeline-output-store` | 3 | 3 | 36 | 0 | 0 |
-| `pipeline-events-store` | 3 | 3 | 31 | 0 | 0 |
+| `pipeline-release` | 3 | 3 | 31 | 0 | 0 |
+| `pipeline-artefacts-local` | 4 | 4 | 30 | 0 | 0 |
 | `pipeline-step-sdk/http` | 2 | 2 | 26 | 0 | 0 |
 | `pipeline-step-sdk/runtime` | 2 | 2 | 25 | 0 | 0 |
 | `pipeline-runtime-api` | 1 | 1 | 21 | 0 | 0 |
+| `pipeline-credentials-executor` | 2 | 2 | 20 | 0 | 0 |
+| `pipeline-events` | 1 | 3 | 19 | 0 | 0 |
+| `pipeline-credentials-multipart` | 2 | 2 | 16 | 0 | 0 |
+| `pipeline-step-sdk/files` | 1 | 1 | 11 | 0 | 0 |
+| `pipeline-step-sdk/utilities` | 1 | 1 | 11 | 0 | 0 |
+| `pipeline-step-sdk/workflow-control` | 1 | 1 | 9 | 0 | 0 |
 | `pipeline-binding-factory` | 1 | 1 | 7 | 0 | 0 |
 | `pipeline-credentials-api` | 1 | 1 | 6 | 0 | 0 |
-| **total** | **32** | **41** | **400** | **0** | **0** |
+| `pipeline-step-sdk/scm-git` | 1 | 1 | 6 | 0 | 0 |
+| `pipeline-scripting-api` | 1 | 1 | 5 | 0 | 0 |
+| `pipeline-runtime` | 1 | 1 | 4 | 0 | 0 |
+| **total** | **71** | **94** | **743** | **0** | **0** |
 
 ### El `NOT_RUN` que no es verde
 
@@ -549,7 +574,7 @@ el arreglo; los demás siguen verdes).
 
 ### 2.2 Lo que queda abierto, por valor operativo
 
-**a) 9 módulos sin test unitario permanente.** No es un objetivo de paridad.
+**a) 5 módulos sin test unitario permanente.** No es un objetivo de paridad.
 `AGENTS.md` §2 manda por riesgo, no por cuota. El orden de ataque es:
 
 | Prioridad | Módulo | Riesgo que justifica el test | Estado |
@@ -561,12 +586,20 @@ el arreglo; los demás siguen verdes).
 | 5 | `pipeline-runtime-api` | `RuntimeRecoverDecision` es un decider puro y público: la misma clase que `RunExecutionLease`, coste de test bajo y valor alto. | **Hecho** — `RuntimeRecoverDecisionTest`. |
 | 6 | `pipeline-step-sdk/workflow-control` | El confinamiento que decide si un `dir(...)` puede salirse del workspace. Puro, y además estaba **mal**. | **Hecho** — 9 tests, 1 clase. Encontró 1 defecto material: el prefijo de texto descrito en 2.1. |
 | 7 | `pipeline-credentials-multipart` | El punto donde una credencial llega a disco. Una escritura arbitraria y una retención silenciosa, ambas en materialización. | **Hecho** — 16 tests, 2 clases. Encontró 2 defectos materiales: Zip Slip y la fuga de directorios anidados. |
+| 8 | `pipeline-step-sdk/scm-git` | El guard de argv: la única decisión que separa «un PAT puede viajar en el proceso» de «no puede». Secreto en `argv` es secreto en `/proc` y en cada log. | **Hecho** — 6 tests, 1 clase (`a2ffb90db`). Encontró 1 defecto material con **tres** huecos: el PAT usado como usuario, el esquema en mayúsculas y la contraseña en una URL no-http. |
+| 9 | `pipeline-step-sdk/utilities` | La regla de Zip Slip: el nombre de una entrada decide si se escribe FUERA del workspace. Escribir fuera del destino es borrar ficheros ajenos. | **Hecho** — 11 tests, 1 clase (`a2ffb90db`). Encontró 1 defecto material: la regla del `..` rechazaba nombres legales y su regla de contención estaba muerta. |
+| 10 | `pipeline-runtime` | El vocabulario con el que el recover **escribe en el journal**. Un terminal desconocido journalado como `SUCCEEDED` es una mentira que nada más contradice. | **Hecho** — 4 tests, 1 clase (`a2ffb90db`). Sin defecto material: la regla era correcta, pero **no tenía observador**, porque estaba enterrada en un adaptador que hay que levantar entero para preguntarle. |
+| 11 | `pipeline-scripting-api` | La identidad de la caché de compilación: dos compilaciones distintas con la misma clave ejecutan código que no es el suyo. | **Hecho** — 5 tests, 1 clase (`a2ffb90db`). Sin defecto material: la diferencia `v1`/`v2` ya estaba bien, pero no la fijaba nadie. |
 | — | `pipeline-events` | Su único candidato (`EventViewProjection`) no tiene consumidor: ver 2.2 b. Sin consumidor, un test es coste sin destinatario. | **Resuelto** — la proyección publicada del veredicto (`RunPresentationProjection`) le da un consumidor real (el hermano la consume desde fuera) y sus propios tests, con el plano real de dos corridas. El módulo ya figura entre los que tienen test. `EventViewProjection` sigue sin consumidor: ver 2.2 b. |
 
-Quedan **9** módulos sin test, que es lo que mide la etapa 2 del gate (18 con
-test sobre 27 declarados). Antes ponía 11, y el número estaba caducado desde
+Quedan **5** módulos sin test, que es lo que mide la etapa 2 del gate (22 con
+test sobre 27 declarados). Antes ponía 9, y el número estaba caducado desde
 hace un ciclo: el `pipeline-events` pasó a tener test en este, y nadie volvió
-a medir.
+a medir. De los 5 que quedan, uno es `pipeline-sdk-bom`, un `java-platform` sin
+clases: los otros cuatro son `pipeline-scripting-kotlin24` (1 083 LOC),
+`pipeline-event-harness` (661), `pipeline-step-sdk/junit` (595) y
+`pipeline-step-sdk/api` (274) — **2 613 LOC de producción sin un solo test
+unitario permanente**, frente a las 9 828 que quedaban antes de este bloque.
 
 **Esta redacción anterior los llamaba
 «adaptadores finos o módulos sin clases», y es falsa**: un censo de
@@ -1215,6 +1248,88 @@ falla con el lector viejo (`AssertionFailedError`) y pasa con el nuevo.
 Lo que **no** se toca: `compensatedSagas` sigue leyendo si el Saga compensó algo, que es **otro
 hecho** y que la proyección no expone. Un lector menos, no una lectura menos.
 
+**x) Cuatro módulos donde el riesgo paga — CERRADO en `a2ffb90db`.** El bloque
+`cobertura-modulos-riesgo` ataca los cuatro módulos con más producción sin test unitario
+permanente, por orden de valor: `pipeline-step-sdk/utilities` (3 136 LOC de código efectivo),
+`pipeline-scripting-api` (1 733), `pipeline-step-sdk/scm-git` (1 339) y `pipeline-runtime`
+(1 083). La pregunta del bloque no es «¿cuántos módulos tienen test?» sino «¿dónde una decisión
+mal tomada borra ficheros, publica una credencial o miente en el journal?».
+
+**Cayeron dos defectos materiales, y ninguno de los dos estaba donde se buscaba.**
+
+1. **El guard de argv de `scm-git` dejaba pasar un PAT.** Es el único punto que decide si una
+   invocación de git puede lanzarse, y su promesa es «una credencial nunca viaja en el argv»:
+   `argv` es legible por cualquiera en `/proc` y acaba en cada log que imprime un comando. La
+   regla reconocía **una sola forma** de credencial, `https://user:pass@host`, y de ahí salían
+   tres huecos, todos alcanzables desde un pipeline real:
+   - `https://TOKEN@host/repo`, que es exactamente como se usa un personal access token contra
+     GitHub — el token **es** el usuario y no hay contraseña. La regla exigía dos puntos, así que
+     el PAT pasaba y viajaba en el `argv`;
+   - `HTTPS://user:pass@host`: el guard ponía en minúsculas el argumento para la regla de
+     subcadenas y luego buscaba el patrón de URL sobre el texto **original**, así que el esquema
+     en mayúsculas era invisible;
+   - `ssh://user:pass@host`: una contraseña en una URL que no es http.
+
+   El arreglo lee **un** texto —el argumento en minúsculas— y reconoce la credencial por su
+   **forma**: una URL http(s) con cualquier userinfo se rechaza (el usuario basta, porque puede
+   ser el token), y cualquier otro esquema se rechaza sólo si su userinfo lleva contraseña
+   (`ssh://git@host` es un nombre, y las claves SSH nunca viajan en `argv`, así que rechazarlo
+   rechazaría un clon normal). Un guard que lo rechaza todo no protege nada, así que las formas
+   **aceptadas** quedan fijadas por el mismo test: un `@` en el path (`repo.git@v1`), un puerto
+   (`github.com:443`), la sintaxis scp (`git@github.com:org/repo.git`) y el usuario SSH.
+
+2. **La regla de Zip Slip de `utilities` rechazaba archivos legales, y su regla de verdad
+   estaba muerta.** `core-utils.unzip` escribe en el workspace nombres que elige quien
+   construyó el zip, así que la única pregunta que importa es si el nombre puede nombrar un
+   sitio **fuera** del destino. La decisión estaba partida en dos reglas, y las dos estaban mal:
+   la regla del `..` rechazaba cualquier nombre que **contenía** dos puntos —`release..tar.gz` es
+   un nombre de fichero legal— y la regla de contención, la que de verdad demuestra la garantía,
+   **no podía decidir nada**: un nombre sólo sale del destino subiendo (`..`) o siendo absoluto, y
+   las dos cosas ya estaban rechazadas antes. Era código muerto.
+
+   Ahora la decisión es **una** regla semántica —la entrada cae dentro del destino o se
+   rechaza— y vive en `resolveUnzipEntryPath`, una función pura sobre dos rutas. Se levantó
+   fuera del Step porque el Step crea ficheros y AGENTS.md §2 los prohíbe en un test unitario:
+   una guarda que sólo se puede preguntar pasando por un disco es una guarda sin cobertura. La
+   forma es la misma que ya usa `:pipeline-credentials-multipart` (`resolveZipEntryPath`), así
+   que la regla tiene **un** dueño en el repo y no dos. De paso, un nombre con un NUL —legal en
+   un zip, ilegal en una ruta— dejó de lanzar un `InvalidPathException` (un error interno que no
+   dice nada del archivo) y pasa a ser un fallo de USUARIO que nombra la entrada.
+
+**Los otros dos módulos no tenían defecto: tenían falta de observador.** En `pipeline-runtime`,
+el vocabulario con el que el recover **escribe en el journal** estaba en cuatro métodos privados
+de un adaptador que compone journal, cursor, lease y output store: para preguntarlos había que
+levantar el adaptador entero —cinco colaboradores y un disco—, así que la regla que decide qué
+dice el journal no tenía a nadie que la mirara. En `pipeline-scripting-api`, la diferencia de
+identidad entre `CacheKey.v1` (pre-imagen no inyectivo) y `CacheKey.v2` (con marco) no la fijaba
+nadie. Los dos salen de la misma pregunta: **¿qué pasa cuando una decisión es correcta y nadie
+puede comprobarla?** — el resultado es una decisión que se puede dejar de tomar bien sin que
+nada lo note.
+
+**Mutación vista en rojo, módulo por módulo.** Cada tabla se comprobó rompiendo la regla que
+protege y viendo caer exactamente las filas esperadas, sin colateral:
+
+| Módulo | Test | Casos | Mutación cruzada | Filas que caen |
+|---|---|---|---|---|
+| `pipeline-step-sdk/scm-git` | `GitArgvGuardTest` | 6 | regla de URL restaurada a la anterior | 3 (PAT como usuario, esquema en mayúsculas, contraseña no-http) |
+| `pipeline-step-sdk/utilities` | `UnzipEntryPathTest` | 11 | vuelve la heurística del `..` | 2 (el nombre que sólo *parece* una escapada, el que sube y vuelve) |
+| `pipeline-scripting-api` | `CacheKeyTest` | 5 | se quita el marco del pre-imagen | 1 (`v2` deja de separar lo que `v1` colisiona) |
+| `pipeline-runtime` | `RecoverJournalVocabularyTest` | 4 | terminal cancelado journalado como `SUCCEEDED` | 1 (el estado jamás reclama un éxito que no tuvo) |
+
+En `scm-git` el defecto se vio **antes** del arreglo: con el código de hoy caían 3 filas y las
+otras 3 seguían verdes, así que el test no era «todo rojo» sino «rojo donde tiene que ser».
+
+**Lo que NO cierra.** El guard de argv no ve el **contenido** del `argv` (un token dentro de un
+`--upload-pack` sigue siendo un `argv`). La regla de contención es **léxica**: no ve un symlink
+ya dentro del destino, y esa limitación queda escrita en el KDoc del Step, no insinuada. La E2E
+de `scm-git` necesitaría un repositorio git real, que este repositorio no tiene. El ABI publicado
+no cambia: las decisiones nuevas son `internal` y `pipeline-runtime-api` no se toca. Y **no se
+añade ni se quita ningún escenario E2E**: el bloque no crece la suite, sólo le da observadores
+a reglas que no los tenían.
+
+Puerta sobre el SHA del bloque: `PASS sha=a2ffb90db… elapsed=99s budget=900s
+tests=rewritten:743 read:0 gaps=1 not_run`.
+
 
 ### 2.3 Cierre de ciclo
 
@@ -1304,6 +1419,20 @@ hecho** y que la proyección no expone. Un lector menos, no una lectura menos.
   terminal y la misma ley, la mutación sale a rojo con el lector viejo. Puerta sobre
   `cb37779f2`: **95 s**, `tests=rewritten:717 read:0`, **717** tests en **90/90** informes
   reescritos, 46 escenarios (45 ok, 1 NOT_RUN) y LOC `11140/65539 = 0.170`.
+- **Cuatro módulos donde el riesgo paga — cerrado en `a2ffb90db`.** El bloque
+  `cobertura-modulos-riesgo` dio tabla de decisión a los cuatro módulos con más producción sin
+  test unitario permanente (§2.2 x), y de esa operación salieron **dos defectos materiales** que
+  no estaban donde se buscaba: el guard de argv de `scm-git` dejaba pasar un **PAT usado como
+  usuario** (`https://TOKEN@host`, que es como se usa contra GitHub) porque la regla exigía
+  `user:pass@`, y la regla de Zip Slip de `utilities` rechazaba **nombres de fichero legales**
+  (`release..tar.gz`) mientras su regla de contención —la que demostraba la garantía— no podía
+  decidir nada. Los otros dos módulos (`pipeline-runtime`, `pipeline-scripting-api`) no tenían
+  defecto: tenían falta de observador, porque sus decisiones estaban enterradas en código que
+  había que levantar entero para poder preguntarle. **26 tests nuevos en 4 módulos, 0 escenarios
+  E2E nuevos**: el bloque no crece la suite, le da ojos a reglas que no los tenían. Mutación vista
+  en rojo en los cuatro: 3 + 2 + 1 + 1 filas, sin colateral. Puerta sobre `a2ffb90db`: **99 s**,
+  `tests=rewritten:743 read:0`, **743** tests en **94/94** informes reescritos, 46 escenarios
+  (45 ok, 1 NOT_RUN) y LOC `11389/65556 = 0.174`.
 
 ---
 

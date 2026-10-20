@@ -18,15 +18,12 @@ dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-events"))
     // The harness does not depend on `:pipeline-events-store`, and that is the point.
-    // `RealHistoryParityTest` drove a real `JsonEventLog` to prove the harness agrees with a real
-    // history. `JsonEventLog` is an implementation, and it lives in `:pipeline-events-store`
-    // so the published event contract would carry no wire format and no JDBC. Reaching for it from
-    // here would have made the verifier depend on the thing it verifies — the exact inversion
-    // `FArch020EventHarnessIsolationTest` existed to prevent.
-    // That test did not survive: BOTH it and `RealHistoryParityTest` were deleted by the RESET,
-    // which `:pipeline-events-store/build.gradle.kts` already records. So the edge below is held by
-    // the module graph itself — `dependencies` is the only thing that can pull the store in here —
-    // and not by a fitness test. The harness stays a leaf that depends only inward on the contract.
+    // The event log is an implementation, and it lives in `:pipeline-events-store` so the
+    // published event contract would carry no wire format and no JDBC. Reaching for it from
+    // here would have made the verifier depend on the thing it verifies.
+    // The edge below is held by the module graph itself — `dependencies` is the only thing
+    // that can pull the store in here — and not by a fitness test. The harness stays a leaf
+    // that depends only inward on the contract.
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.snakeyaml)
 }

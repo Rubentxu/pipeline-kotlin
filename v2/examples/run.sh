@@ -36,8 +36,38 @@
 #                                     It is reported as not executed, which is
 #                                     neither a pass nor a failure.
 #
+# A directive the launcher does not know is a FAILURE, not a silence. A typo
+# that is ignored is the worst kind of defect here, because it does not look
+# like one: a scenario that meant `//@ durable` and wrote `//@ durabel` used to
+# run against a volatile store and PASS, having never tested what it claims.
+# The same reasoning applies to the rest of the verdict:
+#
+#   - ZERO scenarios is a failure. Without a filter there used to be no check
+#     at all, so an empty discovery printed "0 scenario(s), 0 passed, 0 failed"
+#     and exited 0 — the exact shape of a green. A tree of examples that moved
+#     left the gate green having executed NOTHING.
+#   - ZERO scenarios EXECUTED is a failure. A run in which every selected
+#     scenario was NOT_RUN has measured nothing, and "0 failed" about it would
+#     be the same false green.
+#   - `expect-exit` is the scenario's own claim, in every mode. It used to be
+#     overwritten with 0 in `durable` mode, so a scenario could not say what it
+#     expected of a second run.
+#   - `resume` needs a real DEATH. A shell reports a process killed by a signal
+#     as 128+signal (SIGKILL -> 137). A plain non-zero exit is not a death: a
+#     script that fails to COMPILE exits 1, and accepting that as a crash let
+#     a scenario that never crashed pass as one that did.
+#
 # The distribution must already exist:
 #     cd v2 && ./gradlew :pipeline-application:installDist
+#
+# One flag, for the launcher itself:
+#
+#   run.sh --self-test    check the launcher's own contract and exit
+#
+# It is the cheapest instrument that can fail for the guarantee that matters
+# most here: that a verdict means something. The gate runs it before it
+# trusts this program with a single scenario, because every scenario below is
+# judged by it.
 #
 # Why `//@` and not `#!`. An earlier revision read directives from `#!` comment
 # lines, on the assumption that the product supported them. It does not: no
@@ -76,6 +106,150 @@ set -Eeuo pipefail
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$here/../.." && pwd)"
 binary="$repo_root/v2/pipeline-application/build/install/pipelinek/bin/pipelinek"
+
+# --- The launcher's own contract ---------------------------------------------
+# These three are here, and not inline in the scenario body, because the
+# contract they express underwrites EVERY other scenario's verdict: if a
+# mistyped directive is silently ignored, a scenario can pass without having
+# tested what it claims to test. A guarantee that only lives in a mutation
+# somebody ran once is a guarantee a refactor can lose without anybody
+# noticing, so the launcher checks itself with `--self-test`.
+
+# Parse the directive lines of a scenario. Reads them on stdin, sets the
+# globals (which the caller may have declared `local`: bash scoping is
+# dynamic, so the assignment lands on the caller's binding), and returns 1
+# with the reason in `directive_error` when a directive is not one this
+# launcher knows.
+parse_directives() {
+    local declared_total="${1:-0}"
+    directive_error=""
+    expect_exit=0
+    expect_stderr=()
+    durable=0
+    durable_once=0
+    resume=0
+    needs_seeded_credentials=0
+
+    # More directives than the launcher reads is a SILENT TRUNCATION: the ones
+    # past the limit would be ignored exactly like an unknown one, so the limit
+    # is checked instead of assumed.
+    if (( declared_total > 20 )); then
+        directive_error="$declared_total directives declared; the launcher reads at most 20"
+        return 1
+    fi
+
+    local directive
+    while IFS= read -r directive; do
+        [[ -n "$directive" ]] || continue
+        case "$directive" in
+            '//@ expect-exit '*)   expect_exit="${directive#//@ expect-exit }" ;;
+            '//@ expect-stderr '*) expect_stderr+=("${directive#//@ expect-stderr }") ;;
+            '//@ durable')         durable=1 ;;
+            '//@ durable-once')    durable_once=1 ;;
+            '//@ resume')          resume=1 ;;
+            '//@ requires-seeded-credentials') needs_seeded_credentials=1 ;;
+            *) directive_error="unknown directive: $directive"; return 1 ;;
+        esac
+    done
+
+    # An exit code that is not a number cannot be compared with one, and a
+    # scenario whose expectation cannot be read has no verdict.
+    if [[ ! "$expect_exit" =~ ^[0-9]+$ ]]; then
+        directive_error="expect-exit needs a number, got: $expect_exit"
+        return 1
+    fi
+    expect_exit=$((10#$expect_exit))
+    return 0
+}
+
+# A death is a process killed by a signal: the shell reports it as
+# 128+signal (SIGKILL -> 137). A plain non-zero exit is NOT a death -- a
+# script that fails to COMPILE exits 1 -- and accepting that as a crash let a
+# scenario that never crashed pass as one that did.
+is_a_death() {
+    local code="${1:-0}"
+    (( code > 128 ))
+}
+
+self_check() {
+    local description="$1" expected="$2" actual="$3"
+    if [[ "$expected" == "$actual" ]]; then
+        printf 'ok   self-test: %s\n' "$description"
+        return 0
+    fi
+    printf 'FAIL self-test: %s (expected: %s, got: %s)\n' "$description" "$expected" "$actual" >&2
+    return 1
+}
+
+# The launcher checks its own contract. Cheap (milliseconds), permanent, and
+# in the same file as the code it protects: one authority, no second harness.
+self_test() {
+    local failures=0
+    local expect_exit expect_stderr durable durable_once resume needs_seeded_credentials
+    local directive_error
+
+    # A valid set of directives is understood, and the flags are not confused
+    # with each other.
+    directive_error=""
+    parse_directives 3 <<'EOF' || true
+//@ expect-exit 1
+//@ expect-stderr algo
+//@ durable-once
+EOF
+    self_check "expect-exit is read" "1" "$expect_exit" || failures=$((failures + 1))
+    self_check "expect-stderr is read" "1" "${#expect_stderr[@]}" || failures=$((failures + 1))
+    self_check "durable-once is read" "1" "$durable_once" || failures=$((failures + 1))
+    self_check "durable is NOT confused with durable-once" "0" "$durable" || failures=$((failures + 1))
+    self_check "a valid set has no error" "" "$directive_error" || failures=$((failures + 1))
+
+    # An unknown directive is REFUSED. This is the one that used to be a
+    # silence, and a silence here is how a scenario passes without testing
+    # anything.
+    directive_error=""
+    parse_directives 1 <<'EOF' || true
+//@ durabel
+EOF
+    self_check "an unknown directive is refused" "refused" \
+        "$([[ -n "$directive_error" ]] && printf refused || printf accepted)" || failures=$((failures + 1))
+
+    # An exit code that is not a number is refused.
+    directive_error=""
+    parse_directives 1 <<'EOF' || true
+//@ expect-exit abc
+EOF
+    self_check "a non-numeric expect-exit is refused" "refused" \
+        "$([[ -n "$directive_error" ]] && printf refused || printf accepted)" || failures=$((failures + 1))
+
+    # More directives than the launcher reads is refused, not truncated.
+    directive_error=""
+    parse_directives 21 <<'EOF' || true
+//@ durable
+EOF
+    self_check "too many directives are refused" "refused" \
+        "$([[ -n "$directive_error" ]] && printf refused || printf accepted)" || failures=$((failures + 1))
+
+    # A death is a signal, not a normal exit.
+    self_check "137 (SIGKILL) is a death" "yes" \
+        "$(is_a_death 137 && printf yes || printf no)" || failures=$((failures + 1))
+    self_check "143 (SIGTERM) is a death" "yes" \
+        "$(is_a_death 143 && printf yes || printf no)" || failures=$((failures + 1))
+    self_check "1 (a compile error) is not a death" "no" \
+        "$(is_a_death 1 && printf yes || printf no)" || failures=$((failures + 1))
+    self_check "0 is not a death" "no" \
+        "$(is_a_death 0 && printf yes || printf no)" || failures=$((failures + 1))
+
+    if (( failures > 0 )); then
+        printf 'self-test: %s check(s) failed\n' "$failures" >&2
+        return 1
+    fi
+    printf 'self-test: the launcher contract holds\n'
+    return 0
+}
+
+if [[ "${1:-}" == "--self-test" ]]; then
+    self_test
+    exit $?
+fi
 
 if [[ ! -x "$binary" ]]; then
     echo "run.sh: no distribution at $binary" >&2
@@ -127,17 +301,30 @@ run_scenario() {
     local durable_once=0
     local resume=0
     local needs_seeded_credentials=0
-    local directive
-    while IFS= read -r directive; do
-        case "$directive" in
-            '//@ expect-exit '*)   expect_exit="${directive#//@ expect-exit }" ;;
-            '//@ expect-stderr '*) expect_stderr+=("${directive#//@ expect-stderr }") ;;
-            '//@ durable')         durable=1 ;;
-            '//@ durable-once')    durable_once=1 ;;
-            '//@ resume')          resume=1 ;;
-            '//@ requires-seeded-credentials') needs_seeded_credentials=1 ;;
-        esac
-    done < <(grep -m 20 '^//@ ' "$script" || true)
+    local directive_error=""
+
+    # The contract lives in `parse_directives`, and so does the refusal: a
+    # directive the launcher does not know is a typo, and a typo that is
+    # IGNORED is the worst kind of defect here, because it does not look like
+    # one. A scenario that meant `//@ durable` and wrote `//@ durabel` would
+    # run against a volatile store and pass, having never tested what it
+    # claims to test.
+    local directive_total
+    directive_total="$(grep -c '^//@ ' "$script" || true)"
+    # Process substitution, NOT a pipe: a pipeline runs its last command in a
+    # SUBSHELL, and every assignment `parse_directives` makes would die with
+    # it -- the directives would be parsed and thrown away, and the scenario
+    # would silently run with the defaults. That is the very failure this
+    # function exists to prevent, wearing a different hat.
+    if ! parse_directives "$directive_total" < <(grep -m 21 '^//@ ' "$script" || true); then
+        printf 'FAIL %-52s %s\n' "$name" "$directive_error"
+        if [[ "$directive_error" == "unknown directive: "* ]]; then
+            printf '       known: expect-exit, expect-stderr, durable, durable-once, resume, requires-seeded-credentials\n'
+        fi
+        failed=$((failed + 1))
+        failures+=("$name: $directive_error")
+        return
+    fi
 
     if [[ "$needs_seeded_credentials" == 1 ]]; then
         # Declared up front, before any execution, so the verdict cannot depend
@@ -248,22 +435,25 @@ run_scenario() {
         cd "$caller_pwd"
 
         if [[ "$resume" == 1 ]]; then
-            # The FIRST run is the crash, and a scenario that says it will die
-            # and finishes cleanly has not exercised what it claims. That is a
-            # failure of the scenario, not a pass: a launcher that cannot tell
-            # "the crash happened" from "the crash did not happen" proves
-            # nothing about crashes.
-            if [[ "$code" == 0 ]]; then
-                printf 'FAIL %-52s the run was supposed to crash and finished cleanly\n' "$name"
+            # "Died" means died: the process was killed by a signal, which a
+            # shell reports as 128+signal (SIGKILL -> 137). A plain non-zero exit
+            # is NOT a death -- a script that fails to COMPILE exits 1 -- and
+            # accepting that as a crash would let a broken scenario pass as one
+            # that crashed on purpose.
+            if ! is_a_death "$code"; then
+                printf 'FAIL %-52s the run was supposed to die and exited with %s (a normal exit is not a death)\n' \
+                    "$name" "$code"
                 failed=$((failed + 1))
-                failures+=("$name: the run was supposed to crash and did not")
+                failures+=("$name: the run was supposed to die and exited with $code")
                 return
             fi
             code="$second"
             verdict_stderr="$root/stderr.rerun.txt"
         else
+            # The verdict is the SECOND run's exit code, and the expectation is
+            # the one the scenario DECLARED. Forcing it to 0 here discarded what
+            # the scenario said about itself, silently.
             code="$second"
-            expect_exit=0
         fi
     fi
 
@@ -351,10 +541,20 @@ while IFS= read -r script; do
 done < <(find "$here" -name '*.pipeline.kts' -type f -not -path '*/build/*' \
             -not -path '*/example-*-plugin/*' | LC_ALL=C sort)
 
-if [[ -n "$filter" && ${#selected[@]} -eq 0 ]]; then
-    printf 'run.sh: no scenario matches the pattern %s\n' "$filter" >&2
-    printf '  patterns are globs against the path relative to this directory,\n' >&2
-    printf '  e.g. '\''control-flow/*'\'' or '\''*/11-*'\''.\n' >&2
+if [[ ${#selected[@]} -eq 0 ]]; then
+    if [[ -n "$filter" ]]; then
+        printf 'run.sh: no scenario matches the pattern %s\n' "$filter" >&2
+        printf '  patterns are globs against the path relative to this directory,\n' >&2
+        printf '  e.g. '\''control-flow/*'\'' or '\''*/11-*'\''.\n' >&2
+    else
+        # Without a filter there used to be no check at all: an empty discovery
+        # printed "0 scenario(s), 0 passed, 0 failed" and exited 0, which reads
+        # exactly like a green. A tree of examples that moved, or a discovery
+        # that broke, used to leave the gate green having executed NOTHING.
+        printf 'run.sh: no scenario was found under %s\n' "$here" >&2
+        printf '  A gate that runs NOTHING is not a gate that passed. Either the\n' >&2
+        printf '  tree of examples moved or the discovery is broken; both fail.\n' >&2
+    fi
     printf '  available:\n' >&2
     find "$here" -name '*.pipeline.kts' -type f -not -path '*/build/*' \
         -not -path '*/example-*-plugin/*' | LC_ALL=C sort \
@@ -372,6 +572,15 @@ if (( not_run > 0 )); then
     printf 'not run (NOT_RUN is not a pass):\n'
     printf '  - every scenario above marked NOT_RUN needs external state this\n'
     printf '    launcher does not and must not fabricate.\n'
+fi
+# Nothing RAN is not a pass. A run in which every selected scenario was
+# NOT_RUN has measured nothing, and reporting "0 failed" about it would be the
+# same false green as running zero scenarios.
+if (( passed + failed == 0 )); then
+    printf 'run.sh: no scenario was executed (%d selected, %d not run).\n' \
+        "$scenario_index" "$not_run" >&2
+    printf '  A gate that runs NOTHING is not a gate that passed.\n' >&2
+    exit 2
 fi
 if (( failed > 0 )); then
     printf 'failures:\n'

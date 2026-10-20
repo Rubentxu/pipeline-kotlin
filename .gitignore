@@ -84,8 +84,13 @@ artifacts/*
 !artifacts/.gitkeep
 
 ### Ephemeral cycle worktrees (AGENTS.md § 3) ###
-workspace/
-.pipelinek-cycles/
+# Anchored to the repository root on purpose. An unanchored `workspace/` also
+# matched the production package `dev.rubentxu.pipeline.v2.domain.workspace`,
+# and a rule that swallows source files does it silently: the files already
+# tracked stayed tracked, and every new file added to that package vanished
+# from `git status` without a word.
+/workspace/
+/.pipelinek-cycles/
 
 ### Gradle cache (when scoped to project-local path) ###
 .gradle-cache/

@@ -252,7 +252,6 @@ pipeline-kotlin/
 ├── pipelinek/              # El producto: los módulos Gradle y el DSL
 ├── examples/               # Los escenarios ejecutables y los plugins de ejemplo
 ├── scripts/                # La puerta de verificación y los scripts de publicación
-├── ci/                     # Pipelines de doggedown (dogfood) del propio repositorio
 ├── AGENTS.md               # La política de trabajo del repositorio
 ├── ROADMAP.md              # El estado medido y la deuda abierta
 ├── README.md               # Documentación de usuario (inglés)

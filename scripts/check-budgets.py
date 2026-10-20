@@ -52,11 +52,11 @@ RULES: list[tuple[str, str, str]] = [
     # Permanent unit tests. Two module depths: pipelinek/<m> and pipelinek/<g>/<m>.
     ("verify", "unit tests", "pipelinek/*/src/test/*"),
     ("verify", "unit tests", "pipelinek/*/*/src/test/*"),
-    # Persistent E2E pipelines, wherever they currently live.
+    # Persistent E2E pipelines. A versioned scenario lives in examples/, at
+    # one of three depths depending on the category it belongs to.
     ("verify", "E2E pipeline", "examples/*.pipeline.kts"),
     ("verify", "E2E pipeline", "examples/*/*.pipeline.kts"),
     ("verify", "E2E pipeline", "examples/*/*/*.pipeline.kts"),
-    ("verify", "E2E pipeline", "ci/*.pipeline.kts"),
     # Production. Also two module depths.
     ("product", "production source", "pipelinek/*/src/main/*"),
     ("product", "production source", "pipelinek/*/*/src/main/*"),

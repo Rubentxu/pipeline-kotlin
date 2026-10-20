@@ -1,5 +1,9 @@
 # Agent local state (AGENTS.md § 3, ephemeral cycles)
 .agent/
+# Local worktrees of this repository: other checkouts of the same history.
+# They are not repository content, and a search that walks them finds
+# dependencies and files that this tree does not have.
+.worktrees/
 
 # Archives are never repository content. Release artifacts and plan packages
 # travel outside Git; the historical evidence the RESET needs lives in the
@@ -17,10 +21,10 @@ gradle
 gradlew
 gradlew.bat
 # V2 included build: keep its wrapper + catalog tracked
-!v2/gradle/
-!v2/gradle/**
-!v2/gradlew
-!v2/gradlew.bat
+!pipelinek/gradle/
+!pipelinek/gradle/**
+!pipelinek/gradlew
+!pipelinek/gradlew.bat
 .kotlin/
 .atl/
 docs/repomix.md
@@ -107,9 +111,9 @@ BACKLOG.md
 /.verification-results/
 
 # No build or evidence output under examples
-/v2/examples/**/.pipelinek/
-/v2/examples/**/build/
-/v2/examples/**/*.db
-/v2/examples/**/*.sqlite*
-/v2/examples/**/*.log
-/v2/examples/**/*.jsonl
+/examples/**/.pipelinek/
+/examples/**/build/
+/examples/**/*.db
+/examples/**/*.sqlite*
+/examples/**/*.log
+/examples/**/*.jsonl

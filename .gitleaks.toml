@@ -9,7 +9,7 @@
 # entropía o claves PEM para verificar el redactor y el ciclo de credenciales,
 # un recurso `core/src/test/resources/secretResolver/secret.key` del V1 ya
 # retirado, y un documento de evidencia bajo `docs/v2/07-uat/`. Todas elas
-# desaparecieron con la demolición del testing RESET: `v2/**/src/test` contiene
+# desaparecieron con la demolición del testing RESET: `pipelinek/**/src/test` contiene
 # hoy solo fuentes de test unitario, ningún fixture; no existe `core/`, y el árbol
 # `docs/` ya no está versionado.
 #

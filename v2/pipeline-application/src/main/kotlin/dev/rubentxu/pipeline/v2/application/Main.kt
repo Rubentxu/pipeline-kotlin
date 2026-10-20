@@ -743,27 +743,7 @@ fun main(args: Array<String>) {
             )
         }
         val exitFailure: Boolean = if (runOutcome != null) {
-            when (runOutcome) {
-                is dev.rubentxu.pipeline.v2.domain.RunOutcome.Success -> {
-                    System.err.println("Pipeline finished with SUCCESS"); false
-                }
-                is dev.rubentxu.pipeline.v2.domain.RunOutcome.Unstable -> {
-                    System.err.println("Pipeline finished with UNSTABLE"); false
-                }
-                is dev.rubentxu.pipeline.v2.domain.RunOutcome.Failure -> {
-                    // An admission failure (compile or DSL
-                    // construction) must carry its diagnostic. "FAILURE" alone
-                    // sent users hunting with zero context.
-                    runOutcome.failure.message
-                        ?.takeIf { it.isNotBlank() && it != "Kotlin compilation failed" }
-                        ?.let { System.err.println("Pipeline finished with FAILURE: $it") }
-                        ?: System.err.println("Pipeline finished with FAILURE")
-                    true
-                }
-                else -> {
-                    System.err.println("Pipeline finished with FAILURE"); true
-                }
-            }
+            reportRunOutcome(runOutcome)
         } else {
             val lastEvent = events.lastOrNull()
             val legacyOutcome = if (lastEvent is RunFinished && lastEvent.outcome == "success") "success" else "failure"
@@ -1223,24 +1203,7 @@ fun main(args: Array<String>) {
     // exit decision; the legacy event-based branch only covers compile-failure
     // paths where no definition was produced.
     val exitFailure: Boolean = if (runOutcome != null) {
-        when (runOutcome) {
-            is RunOutcome.Success -> {
-                System.err.println("Pipeline finished with SUCCESS"); false
-            }
-            is RunOutcome.Unstable -> {
-                System.err.println("Pipeline finished with UNSTABLE"); false
-            }
-            is RunOutcome.Failure -> {
-                System.err.println("Pipeline finished with FAILURE")
-                reportRunFailure(runOutcome.failure)
-                true
-            }
-            is RunOutcome.Aborted -> {
-                System.err.println("Pipeline finished with FAILURE")
-                System.err.println("  cause [ABORTED]: the run was cancelled or interrupted before a terminal outcome")
-                true
-            }
-        }
+        reportRunOutcome(runOutcome)
     } else {
         val last = lastEvent
         val legacyOutcome = if (last is RunFinished && last.outcome == "success") "success" else "failure"
@@ -1251,6 +1214,44 @@ fun main(args: Array<String>) {
         }
     }
     if (exitFailure) System.exit(1)
+}
+
+/**
+ * Turns a run outcome into what the operator reads, and into the exit decision.
+ *
+ * ## One authority, because two paths used to disagree
+ * A run reaches its outcome through one of two execution paths — with a
+ * durable journal, or with volatile stores — and the CLI answers the same
+ * question in both. They used to answer it DIFFERENTLY: the durable path
+ * printed the failure and then its cause, while the volatile path printed the
+ * cause in the same line and never named the failure's kind. The same failing
+ * pipeline therefore produced two different reports depending on whether the
+ * operator had a database, and a suite that only ran one of them could not
+ * see that there was a choice to make.
+ *
+ * Both paths call this, so the report is decided once and cannot drift. What
+ * it says is the whole of [reportRunFailure]'s contract: the outcome on one
+ * line, and the reason on the next, with the failure's kind and its origin.
+ *
+ * @return whether the run failed, which is the exit decision.
+ */
+private fun reportRunOutcome(outcome: RunOutcome): Boolean = when (outcome) {
+    is RunOutcome.Success -> {
+        System.err.println("Pipeline finished with SUCCESS"); false
+    }
+    is RunOutcome.Unstable -> {
+        System.err.println("Pipeline finished with UNSTABLE"); false
+    }
+    is RunOutcome.Failure -> {
+        System.err.println("Pipeline finished with FAILURE")
+        reportRunFailure(outcome.failure)
+        true
+    }
+    is RunOutcome.Aborted -> {
+        System.err.println("Pipeline finished with FAILURE")
+        System.err.println("  cause [ABORTED]: the run was cancelled or interrupted before a terminal outcome")
+        true
+    }
 }
 
 /**

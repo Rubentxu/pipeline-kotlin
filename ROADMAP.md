@@ -18,34 +18,43 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `2db814669` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP y los README, así que el código medido es el de `2db814669` | `git rev-parse HEAD` |
+| SHA | `0e409dd41` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP y los README, así que el código medido es el de `0e409dd41` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **861** (113 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | **47 (47 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Tests unitarios ejecutados | **871** (115 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Escenarios E2E | **48 (48 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios que sólo comprueban el código de salida | **0**: cada uno afirma, con una directiva del lanzador o con una comprobación dentro del propio pipeline | censo por directiva y por cuerpo, sobre los 47 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **13453 / 64831 = 0.208** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **13698 / 64871 = 0.211** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **614 / 582 / 584** en los tres ensayos, los tres sobre `2db814669`, peor 614 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **602 / 611 / 614** en los tres ensayos, los tres sobre `0e409dd41`, peor 614 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
-| Deuda estática congelada | **805** entradas de baseline, ninguna nueva | `detektBaselineMain` y `detektMain` |
+| Deuda estática congelada | **802** entradas de baseline: **baja 3**, porque tres importaciones sin uso se arreglaron en el código en vez de anotarse | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 Las cifras de este ciclo suben en lo que este ciclo añadió y sólo en eso:
-**861** tests (4 más que los 857 del ciclo anterior) y **47** escenarios (1
-más). Los 4 tests nuevos son las 4 filas de `EventPageDrainTest`: la pérdida
-con filtro, la posición del cursor, la historia entera sin filtro y la
-proyección tipada contra el `InMemoryEventStore` real. El escenario nuevo es
-`events/01-external-reader-resumes`, el lector externo que corta entre
-páginas. El ratio de LOC sube de 0.203 a **0.208**, todavía muy por debajo
-del límite 2, y el peor módulo sigue siendo el mismo de siempre
-(`pipeline-step-sdk:workflow-control`, 1.633) porque este ciclo no lo tocó.
+**871** tests (10 más que los 861 del ciclo anterior) y **48** escenarios (1
+más). Los 10 tests nuevos son las **5** filas de `StepTerminalVerdictTest` (el
+step que termina bien, el que falla, el inestable, el que explota sin
+veredicto y el que conserva la evidencia del fallo), las **4** del códec
+(`StepFinishedOutcomeCodecTest`: el veredicto sobrevive al log durable, el
+veredicto ausente se relee como ausente y una fila de un build anterior se
+lee sin veredicto) y **1** del registro de capacidades (la fila que impide
+que dos ids publiquen el mismo vocabulario). El escenario nuevo es
+`events/02-step-verdict`, el lector externo que pide sólo los eventos
+terminales y lee el veredicto de cada uno. El ratio de LOC sube de 0.208 a
+**0.211**, todavía muy por debajo del límite 2, y el peor módulo sigue siendo
+el mismo de siempre (`pipeline-step-sdk:workflow-control`, 1.633) porque este
+ciclo no lo tocó.
 
 Lo que este ciclo **no** tocó, y conviene que no se confunda con un avance:
-la deuda estática congelada sigue en **805** entradas y no se añadió ni una,
-que es como manda `AGENTS.md` —la baseline se arregla arreglando el código—;
-y el número de módulos con test sigue siendo 26 de 27.
+el número de módulos con test sigue siendo 26 de 27. Lo que **bajó** es la
+deuda estática congelada, de **805** a **802** entradas: no se añadió ni una,
+y tres desaparecieron porque tres importaciones sin uso se arreglaron **en el
+código** en vez de anotarse, que es como manda `AGENTS.md` —la baseline se
+arregla arreglando el código—. Y las 48 claves de la baseline que nombraban
+el código movido a `DomainEventJsonDecoder` cambiaron de sitio: la baseline
+se mudó, no creció.
 
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
 los **113** informes JUnit, que es la condición que hace que la cifra de reloj
@@ -3176,12 +3185,14 @@ antiguo, ni una suite E2E en Kotlin, ni una campaña de mutaciones masiva.
 | **P0.2** Seal externo de streaming | Core | Un cliente externo lee la historia por cursor, se desconecta y vuelve sin saltarse ni duplicar hechos | Ejemplo ejecutable en `examples/`: un lector externo (el verbo `events` con cursor) que lee, corta y reanuda; y el caso del cursor inválido, que debe salir con su negativa propia | **Hecho** (§2.26): el ejemplo `events/01-external-reader-resumes` falla si el cursor se resetea al reconectar (probado: en rojo nombrando el hecho perdido) y si la negativa degrada a «run desconocido» (ciclo anterior). 4 filas de test unitario sobre la regla de paginación; 2 mutaciones vistas en rojo |
 | **P0.3** Streaming incremental a Fabric | Fabric | Jenkins muestra progreso durante el run, no al final | Pruebas de `pipelinek-fabric`; en Core, sólo el contrato que consume | Fuera de este repositorio: su propio gate y su RC |
 | **P0.4** Persistencia y recuperación de Fabric | Fabric | Reiniciar el control plane no pierde, duplica ni inventa hechos | Igual que P0.3, con su cursor confirmado | Fuera de este repositorio |
-| **P1.1** API de Runtime | Core | El cancelador está cableado y expuesto; `inspect` y `recover` siguen sin exponerse porque serían un segundo plano y un segundo motor (§2.20) | El E2E `durable/39-cancel-dead-run` | Hecho en el ciclo anterior, y la decisión de no exponer los otros dos queda escrita y a la vista |
+| **P1.1** API de Runtime | Core | El cancelador está cableado y expuesto; `inspect` y `recover` siguen sin exponerse porque serían un segundo plano y un segundo motor (§2.20) | El E2E `durable/39-cancel-dead-run`, más la **compilación independiente** de `:pipeline-runtime` y un recorrido operativo real que lo use (lo que pide el informe del 21/10, §2.28) | Hecho en el ciclo anterior, y la decisión de no exponer los otros dos queda escrita y a la vista. El jar del módulo **sí** está en la distribución; lo que falta es el consumidor acreditado |
 | **P1.2** Certificación de SDK y plugins | Core + externos | Un plugin compilado contra el SDK publicado se carga en la distribución real y sus contribuciones declaradas coinciden con las disponibles | Un **ejecutable** que carga cada JAR de `lib/` de la distribución instalada y compara sus entradas de servicio con su manifiesto. Es lo que el producto ya sabe hacer (`PluginContributionVerifier`), aplicado a los plugins que se distribuyen | Nombre del plugin, digest del JAR y resultado de admisión por plugin, en el informe del ciclo |
-| **P1.3a** Resultado terminal del step | Core | Un consumidor del event stream puede saber si un step terminó bien, **sin deducirlo** | Test unitario puro sobre el evento terminal y su versión. Con un campo nuevo en un evento publicado, la versión es explícita: campo nuevo opcional, no un cambio de significado | El test se ve rojo con el evento antiguo restaurado |
+| **P1.3a** Resultado terminal del step | Core | Un consumidor del event stream puede saber si un step terminó bien, **sin deducirlo** | Test unitario puro sobre el evento terminal y su versión. Con un campo nuevo en un evento publicado, la versión es explícita: campo nuevo opcional, no un cambio de significado | **Hecho** (§2.27): el veredicto viaja en el evento que termina el step; 4 mutaciones vistas en rojo sobre 5 filas, y el ejemplo ejecutable en rojo nombrando los veredictos que no pudo leer |
 | **P1.3b** Atribución de stage al fallo | Core | Un consumidor puede atribuir un `StepFailed` a su stage desde el evento, sin unirlo con otro evento | Test unitario puro sobre la forma del evento de fallo | Igual que P1.3a |
 | **P1.3c** Política de confianza del plugin | Core | El plugin que el operador trae es el que aprobó, firmado por el publicador que nombra | **Hecho**: test puro del decisor + dos escenarios ejecutables (§2.21) | 4 mutaciones vistas en rojo; 46 escenarios verdes |
 | **P1.4** Gate mínimo fiable | Core | La puerta local completa pasa en el SHA final, sin falsos verdes, dentro de 900 s | `scripts/verify-all.sh` con tres ensayos de reloj | Tres ensayos de reloj sobre el SHA final, con su cifra (§1) |
+| **P1.5** La consola en orden real | Core | La vista de consola conserva el intercalado cronológico de los frames, y los bytes por canal siguen siendo la autoridad durable | Un test puro sobre la proyección ordenada por ordinal, y un escenario ejecutable que compare la vista consolidada con el orden de llegada | Nuevo, del informe del 21/10 (§2.28): la pieza existe (`OutputFrameIndex.framesOfRun`) y la vista actual concatena por stream, con su KDoc diciendo que no afirma lo que el kernel intercaló. Falta **decidir qué vista usa la proyección ordenada** |
+| **P1.6** Un consumidor de referencia del SDK | Core | Una aplicación **externa** al Core carga un plugin, sigue eventos y lee consola, compilada contra la RC **descargada** | Un proyecto Gradle aparte, que resuelva el SDK desde el artefacto publicado y no desde un proyecto Gradle vecino; y la regla de que **cada capacidad nueva** viene con su ejemplo mínimo | Nuevo, del informe del 21/10 (§2.28). No existe en esta rama: este ciclo publicó dos ids (`runtime.eventshape.v2` y `events.stepoutcome.v1`) y ninguno tiene todavía ese consumidor |
 | **P2.1** RC y procedencia | Core + Fabric | Instalación real, ABI, SDK, distribuciones y procedencia verificables | Instalación de la RC en una máquina limpia y ejecución de un ejemplo contra el artefacto instalado | Fuera de este repositorio en su parte de publicación; aquí, `BLOCKED_EXTERNAL` mientras no exista certificador |
 | **P2.2** Documentación pública | Core | Manual de instalación, DSL, steps, plugins, SDK y operación, con comandos comprobados contra la versión definitiva | El README corto y los ejemplos ejecutables | Al final, y no antes |
 
@@ -3481,7 +3492,268 @@ concreto queda escrito: extraer la detección terminal del follow a una función
 pura, decidir esa autoridad, y vigilarla con un ejemplo que tenga un tiempo
 máximo.
 
+### 2.27 El veredicto de un step, publicado en el evento que lo termina
+
+Este ciclo cerró el hito **P1.3a** de §2.23: «un consumidor del event stream
+puede saber si un step terminó bien, **sin deducirlo**». Lo abrió una
+pregunta hecha sobre el binario real, no una lectura del código: *¿qué puede
+saber un consumidor externo del resultado de un step?*
+
+**La respuesta, medida: nada.** El verbo `events`, con su proyección tipada,
+devuelve el payload crudo de cada evento. Para un step que terminó bien:
+
+```
+StepStarted   seq 6  stageIndex=0 stepIndex=0 stepName=mixed/sh-0 stepType=sh
+StepFinished  seq 7  stageIndex=0 stepIndex=0 stepName=mixed/sh-0 stepType=sh
+```
+
+y para un step que **falló**:
+
+```
+StepStarted   seq 8  stageIndex=0 stepIndex=1 stepName=mixed/sh-1 stepType=sh
+StepFailed    seq 9  stepIndex=1 stepName=mixed/sh-1 stepType=sh failureKind=SCRIPT
+                     message="shell exited with code 3"
+StepFinished  seq 10 stageIndex=0 stepIndex=1 stepName=mixed/sh-1 stepType=sh
+```
+
+Tres cosas se ven ahí, y las tres son el mismo defecto:
+
+1. **`StepFinished` no lleva ningún resultado.** Ni «success», ni «failure»,
+   ni un token que lo diga. El evento que termina el step dice que el step
+   terminó, y nada más.
+2. **`StepFinished` se emite también para el step que falló** — y no por
+   accidente: el límite de ejecución lo emite desde un `finally`, así que
+   cierra el span del step tanto si salió bien como si salió mal. El nombre
+   del evento dice «terminado» y **no dice nada del resultado**: un lector que
+   tradujera `StepFinished` a «el step terminó bien» —que es exactamente lo
+   que hacía el traductor de Fabric— estaba leyendo un fallo como un éxito.
+3. **La única forma de saber el resultado era unir dos eventos**: el terminal
+   con el `StepFailed`, y esa unión es por índice de step, que **ni siquiera
+   dice a qué stage pertenece el fallo** (§2.23, P1.3b).
+
+Y en la proyección tipada la cosa era peor, porque mentía con descaro: el campo
+`outcome` de `StepFinishedTyped` recibía `raw.stepType`, o sea **el tipo del
+step** (`sh`, `echo`), bajo un campo cuyo nombre prometía un resultado. Un
+consumidor que leyera `outcome` recibía una respuesta segura a una pregunta
+que nadie había hecho, y ninguna a la que sí.
+
+**Lo que el operador veía.** La columna `OUTCOME` de `inspect` no mostraba un
+resultado: mostraba el **tipo de evento** (`StepStarted`, `StepFinished`), que
+no es un resultado. Y la vista de consola imprimía, para el step que falló:
+
+```
+[ERROR: step 'mixed/sh-1' failed [SCRIPT]: shell exited with code 3]
+[[step: mixed] mixed/sh-1 finished]
+```
+
+«finished» después de «failed». Y la línea de consola tenía escrito su propio
+principio, que este ciclo convierte en historia: *«una proyección no puede
+renderizar un estado que su evento no lleva»* —con la nota de que
+`StepFinished` **no** llevaba `outcome` y `StageFinished` **sí**. El principio
+sigue siendo el mismo; lo que cambió es que ahora el evento **sí** lo lleva,
+así que la línea puede decirlo.
+
+**El arreglo: el veredicto viaja con el evento que termina el step.**
+
+- `StepOutcome` —que es el tipo cerrado del dominio para el resultado de un
+  step— declara ahora su **token canónico** (`success`, `unstable`,
+  `failure`) junto al tipo, que es donde `RunOutcome` ya lo tenía y donde su
+  propio KDoc decía que faltaba. Una lista de vocabulario, no dos.
+- `StepFinished` lleva `outcome`, y **no lleva valor por defecto a propósito**.
+  Un productor que se olvidara del campo tiene que decirlo en compilación; un
+  valor por defecto dejaría que se publicara «desconocido» queriendo decir «no
+  me he acordado», y esa diferencia es invisible más abajo.
+- El límite de ejecución escribe el veredicto que **ya tenía en las manos**:
+  el mismo `StepOutcome` del que sale el `StepFailed`, así que el terminal y la
+  evidencia del fallo no pueden discrepar.
+- La proyección tipada deja de meter el tipo del step en `outcome`: `outcome`
+  es el veredicto y el tipo tiene su campo.
+
+**Un veredicto ausente significa desconocido, y sigue siendo desconocido.** Hay
+un camino real en el que el step no llega a un resultado: el cuerpo del límite
+lanza algo que no es un fallo de step y la excepción se propaga. Ahí no hay
+veredicto, y el evento no dice «success» por defecto: dice que no lo sabe. Lo
+mismo pasa al releer una fila escrita por un build anterior, que no publicaba
+veredicto: se relee **sin** veredicto, no con uno inventado.
+
+**Los instrumentos, y por qué son tres.** La garantía es de lectura, así que el
+test unitario mira **lo que un lector lee** —el mismo lector que sirve la
+columna `OUTCOME` de `inspect`— y no la forma del evento: lo que ata es que el
+veredicto **se pueda leer**, no dónde vive. El códec del log durable tiene su
+propio guardian, porque un veredicto que se publica y no sobrevive al disco es
+un veredicto que el consumidor externo no puede leer. Y el **ejemplo
+ejecutable** es el que puede afirmar sobre el binario real: el lanzador pide al
+event lane **solo los eventos terminales** —nunca el evento de fallo— y lee el
+veredicto de cada uno, que es la forma exacta de la garantía.
+
+**Las mutaciones, vistas en rojo.**
+
+| Mutación | Lo que se encendió |
+|---|---|
+| El productor vuelve a escribir el **tipo** del step (el defecto viejo) | **5 de 5** filas del test unitario, incluida la del veredicto ausente: con el tipo dentro, hasta el caso «desconocido» afirmaba algo |
+| El productor dice siempre `success` | **4 de 5** filas; la del step que termina bien siguió **verde**, que es justo lo que distingue una fila de otra |
+| El lector deja de leer el campo | **4 de 5** filas; la del veredicto ausente siguió **verde**, porque no hay nada que leer |
+| El terminal vuelve a ir sin veredicto, en el binario | El **ejemplo** falló nombrando los veredictos que no pudo leer: `expected: verdict/sh-0=success verdict/sh-1=failure / delivered: verdict/sh-0= verdict/sh-1=` |
+
+**La publicación, y por qué el id cambió de versión.** El `StepFinishedTyped`
+compilado contra la forma vieja **sigue enlazando**: el campo `outcome` sigue
+siendo un `String`. Lo que cambia es lo que significa —el tipo del step pasa a
+ser el veredicto— y nada en el tipo lo dice. Por eso `runtime.eventshape.v1`
+pasa a **DEPRECATED** (anunciado y no entregado) y nace `runtime.eventshape.v2`,
+y por eso nace además `events.stepoutcome.v1`: el id que negocia un consumidor
+del event lane que quiere saber si **esta** build publica veredicto. El ABI de
+`pipeline-events` cambia de forma incompatible —el constructor de `StepFinished`
+y el de `StepFinishedTyped`— y el cambio queda **registrado** en el ledger de
+excepciones, con su SHA y con lo que se rechazó: un valor por defecto o un
+`@JvmOverloads` habrían hecho pasar `apiCheck` sin entrada ninguna, y a cambio
+habrían publicado un constructor que significa «un evento terminal sin
+veredicto», que es el silencio que este cambio existe para quitar.
+
+**Lo que este ciclo tuvo que arreglar de paso, y por qué.** El veredicto vive
+en el evento, y el evento se codifica en el log durable. Ese log —el objeto
+`JsonEventLog`— estaba **al borde del umbral de detekt**, y cuatro líneas
+nuevas lo empujaron al otro lado: un umbral que se cruza con un cambio
+pequeño no es un guardián, es una bomba de relojería. La respuesta, según la
+política del propio config de detekt, es **una extracción y no un número más
+ancho**: el `when` que decodifica un evento sale a su propio objeto,
+`DomainEventJsonDecoder`, que es el espejo del escritor (`EventJsonWriter`
+vuelve un evento JSON, este vuelve un evento desde JSON). Lo que se movió es
+código, no comportamiento: las claves de la baseline que lo nombraban cambian
+de sitio —mismos hallazgos, otra dirección— y tres entradas desaparecen porque
+las importaciones que cubrían están **arregladas en el código**, donde ya no
+hacen falta. La baseline no creció: se mudó.
+
+**Lo que queda abierto, medido y con dueño.** El `StepFailed` **sigue sin
+`stageIndex`**: un consumidor no puede atribuir un fallo a su stage desde el
+evento, sino uniendo el `StepFailed` con otro evento (§2.23, **P1.3b**). Eso
+también bloquea una ley que el propio harness describe y no implementa: la
+contradicción terminal («`StepFinished` con veredicto de éxito **y** un
+`StepFailed` para el mismo step») no se puede correlacionar sin un key de step
+que no sea ambiguo entre stages. El próximo paso de P1.3b es, por tanto, doble:
+que el evento de fallo diga su stage, y que esa ley pueda correlacionarse.
+Sigue abierto, y con dueño, el `--follow` con filtro que no termina (§2.26).
+
+### 2.28 El informe del 21 de octubre, triado contra esta rama
+
+El informe del 21 de octubre de 2026 revisó el commit `117c7ac` y el Fabric
+`435c946`. Esta sección es su **triaje contra esta rama**, no un resumen: para
+cada hallazgo, lo que está **ya cerrado aquí**, lo que es **real y pendiente**,
+y lo que **no es de este repositorio**. El informe es del 21; el árbol que
+trió se mide hoy, sobre `0e409dd41`.
+
+**Por qué varios hallazgos llegan tarde.** El informe revisó `117c7ac`, y
+`origin/main` está hoy **20 commits por delante** de esta rama. Los dos hitos
+que este informe señala como P0 y P1 en el Core —las negativas del follow y la
+semántica terminal del step— se cerraron en esta rama en los dos ciclos
+anteriores (§2.25 y §2.27). El informe no los vio porque no los tenía delante,
+no porque estén mal: su SHA es anterior a este trabajo.
+
+**El triaje, hallazgo por hallazgo.**
+
+| Hallazgo del informe | Veredicto contra esta rama | Dónde está resuelto, o qué falta |
+|---|---|---|
+| **H1** Fabric acumula los hechos y los publica al final | **Fuera de este repositorio** | Es integración de Fabric (P0.3/P0.4). La parte de Core que hace falta ya está: el follow con cursor (§2.26) y el veredicto del step (§2.27) |
+| **H2** El follow confunde `StorageError` y `CursorBeyondTail` con «run desconocido» | **Ya cerrado** (§2.25) | `EventFollowRefusal` nombra las tres negativas; `SqliteEventFollowHandle` traduce sin colapsar; capacidad `events.follow.v2`; dos escenarios E2E que lo demuestran |
+| **H3** La traducción de `StepFinished` puede fabricar un `SUCCESS` | **Ya cerrado** (§2.27) | El veredicto viaja con el evento terminal; capacidad `events.stepoutcome.v1`; `runtime.eventshape.v1` a DEPRECATED |
+| …la mitad de H3: el `StepFailed` no identifica su `stageIndex` | **Real y pendiente** | **P1.3b** (§2.23): sigue abierto, y el informe lo corrobora |
+| **H4** `pipeline-runtime` es código que merece integración, no eliminación | **Real, y una afirmación del informe que aquí no se sostiene** | El jar `pipeline-runtime-0.62.0.jar` **sí está** en `lib/` de la distribución instalada, y el módulo compila y tiene tests (la etapa 2 del gate lo ejecuta). Lo que falta es el recorrido operativo acreditado: **P1.1** |
+| **H5** El output plane: intercalado cronológico y durabilidad | **Real y pendiente** | La pieza existe (`OutputFrameIndex.framesOfRun`) y la vista de consola **concatena por stream** y lo declara en su KDoc («es una proyección, no una afirmación de lo que el kernel intercaló»). Falta **decidir qué vista usa la proyección ordenada**: nuevo **P1.5** |
+| **§4** Colisiones entre agentes en el gate | **Ya cerrado** | El gate usa `log_dir="${TMPDIR:-/tmp}/verify-all.$$"`, un directorio por corrida, y escribe el motivo: «a shared path let one run truncate the log while another was still appending to it» |
+| **§4** Métricas que incentivan tests sin valor | **No aplica a Core** | No hay mínimo artificial de líneas de test en este repositorio (el `testLineFloor` que cita el informe es de Fabric). El presupuesto de Core es LOC y reloj, y `AGENTS.md` exige mutación vista en rojo |
+| **§4** Una RC no debería promoverse con una garantía en `NOT_RUN` | **Real, y pertenece a la política de release** | El gate ya **declara** los `NOT_RUN` en vez de esconderlos; la regla de promoción se escribe en **P2.1**, que hoy está `BLOCKED_EXTERNAL` |
+| **§6.1** Un consumidor de referencia del SDK, compilado contra la RC descargada | **Real y pendiente** | **No existe** en esta rama (el ledger lo menciona, pero era del árbol pre-RESET). Nuevo **P1.6** |
+| **§6.2** Un único estado durable de observación, sin crear otro event store | **Ya es la política** | `AGENTS.md` §1: «no second event, Step, recovery or certification authority» |
+| **§6.3** Presupuesto por comportamiento, no por líneas | **Ya es la política** | `AGENTS.md` §2: «un verde que nunca se ha visto rojo no es evidencia»; §4: LOC ≤ 2 × y reloj ≤ 900 s |
+| **§6.4** Cada capacidad nueva, con un ejemplo mínimo que compile externamente | **Real y pendiente, y este ciclo lo dejó a medias** | Este ciclo publicó dos ids (`runtime.eventshape.v2`, `events.stepoutcome.v1`) y **ninguno** tiene todavía ese consumidor mínimo: **P1.6** |
+| **§7** Hay una RC `v0.75.0-rc1` publicada y `main` va por delante | **Real, y es un hecho de esta rama** | La release existe (release-gate PASS, sha256 `e24abea8…`, 20/10/2026) y `origin/main` está **20 commits** por delante. Esta rama declara `0.62.0` y **no se puede publicar tal cual**: su versión colisionaría con la publicada. Fusionarla con `main` es una decisión que no es de la rama |
+
+**Lo que este ciclo deja a medias, y por qué se dice.** La publicación del
+veredicto (P1.3a) publicó dos ids de capacidad nuevos y los dos tienen su
+verificación **dentro** del repositorio: el registro que los fija y el
+ejemplo ejecutable que los lee. Lo que **no** tiene es un consumidor que
+compile **fuera** de este repositorio contra el artefacto publicado, que es
+justo lo que el informe propone (§6.1) y lo que un id de capacidad promete a
+quien no vive aquí. Ese hueco es **P1.6**, y su instrumento está escrito:
+una aplicación mínima, externa al Core, que cargue un plugin, siga eventos y
+lea consola, compilada contra la RC **descargada** y no contra un proyecto
+Gradle vecino.
+
+**Lo que el informe no menciona y este ciclo encontró.** El campo `outcome` de
+la proyección tipada **llevaba el tipo del step** (`sh`, `echo`) bajo un
+nombre que prometía un resultado: un consumidor recibía una respuesta segura
+a una pregunta que nadie había hecho, y ninguna a la que sí. El informe lo
+detectó en el traductor de Fabric; la causa estaba un plano más abajo, en la
+proyección. Arreglarla es parte de P1.3a (§2.27).
+
+**La regla que este informe y `AGENTS.md` comparten, y que se puede leer en
+las dos columnas.** El informe pide «un test que no falla ante la mutación que
+supuestamente protege debe corregirse o retirarse». `AGENTS.md` §2 dice lo
+mismo con más crudeza: «un verde que nunca se ha visto rojo no es evidencia».
+Este ciclo lo aplicó a las cuatro filas del veredicto: **M1** (el productor
+vuelve a escribir el tipo) encendió **5 de 5**, **M2** (dice siempre
+`success`) encendió **4 de 5** y dejó verde la fila del step que termina
+bien, **M3** (el lector deja de leer el campo) encendió **4 de 5** y dejó
+verde la fila del veredicto ausente, y **M4** (el terminal vuelve a ir sin
+veredicto, en el binario) hizo fallar el ejemplo nombrando los veredictos que
+no pudo leer.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **El veredicto viaja en el evento que termina el step.** No en un evento
+  aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
+  índice de step, y ese índice ni siquiera dice a qué stage pertenece el
+  fallo. El terminal de un step es **un** hecho con dos aspectos —el
+  veredicto y, cuando falla, la evidencia—, y la evidencia ya tenía su
+  evento (`StepFailed`); lo que faltaba era el veredicto, y tenía que estar
+  donde el lector lo encuentra sin buscar.
+- **El token canónico vive junto al tipo que nombra.** `StepOutcome` declara
+  su token (`success`, `unstable`, `failure`) igual que `RunOutcome` ya lo
+  hacía, y su propio KDoc pedía ese hueco. El escritor escribe ese token y el
+  lector lo reconoce contra esas mismas constantes: una lista de vocabulario
+  escrita dos veces se separa la primera vez que alguien añade un caso.
+- **El campo no lleva valor por defecto, a propósito.** Un valor por defecto
+  dejaría que un productor se olvidara del veredicto y publicara
+  «desconocido» queriendo decir «no me he acordado», y esa diferencia es
+  invisible más abajo. Que el compilador rechace la llamada es la forma
+  más barata de que el olvido no llegue a producción.
+- **Un veredicto ausente es desconocido, y desconocido no es éxito.** Hay un
+  camino real sin veredicto —el cuerpo del límite lanza algo que no es un
+  fallo de step y la excepción se propaga— y una fila escrita por un build
+  anterior, que no publicaba veredicto. Las dos se leen **sin** veredicto.
+  Es lo que hace el review cuando pide que «los resultados desconocidos
+  sigan siendo desconocidos».
+- **Tres instrumentos, porque ven tres cosas distintas.** El test unitario
+  mira lo que un **lector** lee (el mismo que sirve la columna `OUTCOME` de
+  `inspect`), no la forma del evento: lo que ata es que el veredicto se
+  pueda leer, no dónde vive. El códec del log durable tiene su propio
+  guardian, porque un veredicto que se publica y no sobrevive al disco no lo
+  puede leer el consumidor externo. Y el **ejemplo ejecutable** es el único
+  que puede afirmar sobre el binario real: el lanzador pide solo los
+  terminales y lee el veredicto de cada uno.
+- **La proyección puede hablar cuando el evento lleva el veredicto.** La
+  constitución semántica de la línea de consola —«una proyección no puede
+  renderizar un estado que su evento no lleva»— no cambia; lo que cambió es
+  que el evento ya lo lleva. Por eso la línea y la columna de `inspect`
+  ahora dicen el veredicto, y antes no podían.
+- **El id de capacidad se re-versiona cuando cambia el *significado* de un
+  campo, aunque el tipo no cambie.** `StepFinishedTyped.outcome` sigue siendo
+  un `String`: un consumidor compilado contra la forma vieja sigue
+  enlazando y sigue leyendo — el tipo del step donde esperaba el veredicto.
+  Nada en el tipo lo dice, así que nada más que un id nuevo lo puede decir:
+  `runtime.eventshape.v1` queda anunciado y no entregado, y
+  `runtime.eventshape.v2` es el que se entrega. `events.stepoutcome.v1` es el
+  id que negocia el que consume el event lane y quiere saber si esta build
+  publica veredicto.
+- **La baseline se mudó, no creció.** Cuando el código se mueve, sus claves
+  de baseline cambian de sitio: mismos hallazgos, otra dirección. Y las
+  tres entradas que la muela dejó obsoletas se **arreglaron en el código**,
+  que es lo que la política pide: la baseline se arregla arreglando el
+  código. El número de hallazgos no cambió.
+- **Un hueco medido no se arregla de paso.** El `StepFailed` sigue sin
+  `stageIndex` (§2.23, **P1.3b**), y eso bloquea la ley de contradicción
+  terminal que el harness describe: correlacionar un `StepFailed` con su
+  terminal necesita un key de step que no sea ambiguo entre stages. Crecer
+  el cambio porque se encontró un cambio es exactamente lo que este
+  roadmap no hace.
 - **El cursor es la posición del cliente, no la del almacén.** La regla dice
   «el cursor es la posición del último hecho entregado» y, cuando la llamada
   no entregó nada, «la posición del almacén». No es un matiz: es lo que

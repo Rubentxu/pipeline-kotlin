@@ -175,7 +175,7 @@ pipelinek run --help
 
 ## Examples
 
-The [`examples/`](examples/) directory holds 47 runnable
+The [`examples/`](examples/) directory holds 48 runnable
 pipelines that exercise the real CLI, grouped by what they cover:
 
 | Category | Scenarios | What it covers |
@@ -186,7 +186,7 @@ pipelines that exercise the real CLI, grouped by what they cover:
 | `durable/` | 12 | Durable execution over the journal: platform queries, milestones, `waitUntil`, `stash`/`unstash`, the replay guarantee, closing a run whose writer was killed, and six Saga scenarios — compensation, intervention, a crash mid-effect and its reconciliation |
 | `security/` | 2 | Credential bindings, and a ZIP-slip path-traversal defence |
 | `output/` | 7 | The output plane: file reads, a utilities round trip, ZIP/unzip, mixed utilities, cross-step artifact queries, HTML publishing, and the live output of a process |
-| `events/` | 1 | The event lane read by an external client: it reads by cursor, disconnects, and resumes without skipping or repeating a fact |
+| `events/` | 2 | The event lane read by an external client: it reads by cursor, disconnects, and resumes without skipping or repeating a fact; and it reads a step's **verdict** out of the event that ends the step, without joining two events |
 | `negative/` | 9 | Deliberate failures that must fail closed: error handling, the typed error step, a command that exits non-zero, a workspace symlink escape, an unregistered directive key, a plugin artifact whose bytes cannot be read, a plugin whose bytes are not the ones the operator approved, and two reads of the event lane that must say **why** they cannot be served — an unknown run and a cursor past the tail |
 | `plugins/` | 5 | The four external example plugins, discovered from the distribution classpath: `uppercase`, `repeat`, a contributed directive, and the Saga consumer — plus a plugin admitted under the operator's trust policy |
 
@@ -243,6 +243,11 @@ and nothing else about a scenario is interpreted:
                               // by cursor in pages of n facts, disconnecting
                               // between them, and asserts that it ends up
                               // having seen every fact exactly once
+//@ step-verdict <step>=<v>... // the run is the FIXTURE and the verdict is
+                              // the reader's: the launcher reads ONLY the
+                              // events that end a step, never the failure
+                              // event, and asserts that each of them says
+                              // what the step did
 ```
 
 Every directive except `expect-exit` may appear more than once, and each

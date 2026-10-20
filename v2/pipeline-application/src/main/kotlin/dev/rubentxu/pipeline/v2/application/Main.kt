@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
+import dev.rubentxu.pipeline.v2.application.durable.SagaVerdict
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
@@ -1138,6 +1139,16 @@ fun main(args: Array<String>) {
     val workspaceTransport = WorkspaceIntent.resolveRuntimeTransport(
         config, Path.of("").toAbsolutePath().normalize(), controlDirRoot,
     )
+    // SAGA: the terminal state of the Sagas this run executed. The verdict block has to
+    // say it: a Saga that needs a human and a Saga that was fully compensated look
+    // identical on stderr otherwise, and they call for opposite responses from whoever
+    // reads the run.
+    //
+    // The EVENT, not the obligation store: the event is the published fact, and the store
+    // answers a different question (what is owed, not what was concluded). Declared HERE,
+    // outside the `try`, because the verdict is printed after it — and because a run that
+    // threw still has to say what it left behind.
+    val sagaTerminals = mutableListOf<dev.rubentxu.pipeline.v2.events.SagaTerminal>()
     // UAT-RP-024 collateral finding fix (shutdown race 1/3): the sqlite
     // single-writer thread is NON-daemon. If any exception escapes the run
     // or the stdout envelope streaming below, rawEventStore.close() is
@@ -1226,6 +1237,7 @@ fun main(args: Array<String>) {
     RunObservationOutput.writeTo(
         eventSequence.map { event ->
             lastEventRef(event)
+            if (event is dev.rubentxu.pipeline.v2.events.SagaTerminal) sagaTerminals += event
             event
         },
         writer,
@@ -1277,6 +1289,14 @@ fun main(args: Array<String>) {
             else -> { System.err.println("Pipeline finished with FAILURE"); true }
         }
     }
+    // SAGA: what happened to the Sagas of this run. It belongs in the verdict block, next
+    // to the reason the run failed, because "the Saga settled" and "a human has to resolve
+    // a pending obligation right now" are different worlds and the exit code cannot say
+    // which one this was.
+    //
+    // Only the durable path reaches here with Sagas: without `--db` there is no Saga
+    // store, so no Saga can run and there is nothing to say.
+    SagaVerdict.verdicts(sagaTerminals).forEach { System.err.println(it) }
     if (exitFailure) System.exit(1)
 }
 

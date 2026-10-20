@@ -16,7 +16,7 @@ import java.time.Duration
  * top of them.
  * ## Why pull (iterator) and not Flow
  * Same shape as the Output follow (`OutputFollower`): the published
- * contract for `v2/pipeline-events` does not depend on
+ * contract for `pipelinek/pipeline-events` does not depend on
  * `kotlinx-coroutines`, and adding that dependency is an architectural
  * change. The pull shape — an `Iterator<EventFollowEvent>` over a
  * closeable handle — keeps the published ABI free of coroutines. The
@@ -226,7 +226,7 @@ sealed interface EventFollowState {
  * are surfaced inside the page via [EventRecordSlice.refusals] and do
  * NOT terminate the follow.
  * The shape mirrors the existing `OutputRefusal` convention in
- * `v2/pipeline-output/src/main/kotlin/.../output/OutputRefusal.kt`:
+ * `pipelinek/pipeline-output/src/main/kotlin/.../output/OutputRefusal.kt`:
  * a closed sealed interface per port, no `Either`/`Result` re-use.
  * Note: there is no `LagExceeded` case. A slow consumer is not a
  * defect; the consumer observes lag via the configured reporting

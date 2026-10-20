@@ -14,32 +14,36 @@
 # Usage:
 #   PIPELINEK_RELEASE_TAG=v0.56.0-rc5 PIPELINEK_RELEASE_TRAIN=0.56.0 \
 #./scripts/release-pipelinek.sh
-# On success: the script exits 0, the ZIP and the full  asset set are
-# uploaded and the Prerelease is created on GitHub. The receipt, HANDOFF and
-# SHA256SUMS are PUBLISHED as release assets and the HANDOFF becomes the release
-# notes; they are not committed to the repository. An earlier version did
-# `git add` them under a Markdown evidence tree, which reintroduced a
-# tree this repository's policy forbids and duplicated information the
-# release page already carries.
+# On success: the script exits 0, the ZIP and the full asset set are
+# uploaded and the Prerelease is created on GitHub. The receipt, the
+# provenance manifest and SHA256SUMS are PUBLISHED as release assets and the
+# HANDOFF becomes the release notes; they are not committed to the repository.
+# An earlier version did `git add` them under a Markdown evidence tree, which
+# reintroduced a tree this repository's policy forbids and duplicated
+# information the release page already carries.
 # On any refusal: non-zero exit, no upload, no Prerelease, no commit.
-# Published asset set (AGENTS.md )
+# Published asset set (fixed)
 # ---------------------------------
 # The publisher reads the asset set from the DistributionManifest (the typed
 # value at pipelinek/pipeline-release/.../DistributionManifest.kt), which is the
-# single source of truth produced:pipeline-release:releaseGate. The five
+# single source of truth produced by :pipeline-release:releaseGate. The five
 # slots are: asset (the ZIP), sbom, sdk, bom, sha256sums. Any non-null slot
-# is staged from pipelinek/pipeline-application/build/distributions/ to the evidence
-# dir, hashed into SHA256SUMS, and uploaded. This is the  contract:
+# is staged from pipelinek/pipeline-application/build/distributions/ to the
+# evidence dir, hashed into SHA256SUMS, and uploaded. The set is fixed, so an
+# incomplete manifest cannot be published:
 #   pipelinek-<train>.zip          the candidate bytes
 #   pipelinek-<train>.sbom.json    the SBOM (if present in manifest)
 #   pipelinek-<train>.sdk.zip      the SDK contract bundle (if present)
 #   pipelinek-bom-<train>.json     the SDK BOM JSON (if present)
 #   SHA256SUMS                     the digest authority, covering all of the above
-# HANDOFF.md and git-head.txt stay in the EVIDENCE_DIR as small text
-# artefacts committed to git, but they are NOT release assets per AGENTS.md
-# (HANDOFF.md is a report; git-head.txt is a receipt). They are not
-# uploaded to the GitHub release asset store. The handoff remains available
-# to consumers as the body of the GitHub release via --notes-file.
+# Plus two provenance artefacts, staged with the payload and covered by
+# SHA256SUMS as well:
+#   manifest.json    the consumer-facing receipt (schema
+#                    `pipelinek-release-manifest-1`): the digest of the ZIP,
+#                    the commit it was built from, the version and the tag.
+#   git-head.txt     the same commit identity as a bare 40-hex line.
+# HANDOFF.md stays in the EVIDENCE_DIR only: it is a report, not an asset. It
+# reaches consumers as the body of the GitHub release via --notes-file.
 
 set -euo pipefail
 
@@ -146,7 +150,7 @@ if [ ! -f "$SBOM" ]; then
     exit 1
 fi
 
-echo "release-pipelinek: staging the §4 asset set for ${PIPELINEK_RELEASE_TAG} (build commit ${ARTIFACT_BUILD_COMMIT})"
+echo "release-pipelinek: staging the asset set for ${PIPELINEK_RELEASE_TAG} (build commit ${ARTIFACT_BUILD_COMMIT})"
 
 # Evidence directory: small text artefacts only. The ZIP itself lives as
 # the GitHub release asset, not in git.
@@ -340,7 +344,7 @@ stage_manifest_asset() {
     local fname
     fname=$(read_manifest_field "$field" "")
     if [ -z "$fname" ]; then
-        echo "release-pipelinek: manifest field '$field' is null; §8 fixes the asset set" >&2
+        echo "release-pipelinek: manifest field '$field' is null; the asset set is fixed" >&2
         echo "    exactly, so an incomplete manifest cannot be published. Refusing before the" >&2
         echo "    tag is created, so no release exists to unpick." >&2
         rm -rf "$EVIDENCE_DIR"
@@ -369,6 +373,47 @@ stage_manifest_asset "sbom.name"    "${DIST_DIR}/$(read_manifest_field 'sbom.nam
 stage_manifest_asset "sdk.name"     "${DIST_DIR}/$(read_manifest_field 'sdk.name' 'none')"
 stage_manifest_asset "bom.name"     "${DIST_DIR}/$(read_manifest_field 'bom.name' 'none')"
 stage_manifest_asset "sha256sums.name" "${DIST_DIR}/$(read_manifest_field 'sha256sums.name' 'none')"
+
+# Two provenance artefacts travel with the payload, and they are staged BEFORE
+# SHA256SUMS is built so the digest authority covers them too:
+#
+#   manifest.json    schema `pipelinek-release-manifest-1`: the digest of the
+#                    ZIP, the commit it was built from, the version and the
+#                    tag. It is deliberately NOT the internal manifest: the
+#                    internal schema changes when the pipeline changes, and a
+#                    consumer pinned to it would break on every producer-side
+#                    refactor.
+#   git-head.txt     the same commit identity as a bare 40-hex line, for
+#                    consumers that would rather grep than parse.
+#
+# Both are text, not payload, and neither costs anything to upload.
+#
+# `tag_commit` is PROSPECTIVE_TAG_COMMIT, which is a prediction at this point.
+# The tag is created further down and the script then refuses if the resolved
+# commit is not the predicted one, so the value published here is a verified
+# claim by the time any byte leaves the machine — it is never an unchecked
+# prediction.
+RELEASE_MANIFEST="${EVIDENCE_DIR}/manifest.json"
+python3 - "$RELEASE_MANIFEST" "$ASSET_FNAME" "$LOCAL_SHA" \
+                  "$PROSPECTIVE_TAG_COMMIT" "$PIPELINEK_RELEASE_TRAIN" \
+                  "$PIPELINEK_RELEASE_TAG" <<'PY'
+import json, sys
+out, asset, digest, commit, version, tag = sys.argv[1:7]
+with open(out, "w", encoding="utf-8") as fh:
+    json.dump({
+        "schema_version": "pipelinek-release-manifest-1",
+        "contents": {asset: {"sha256": digest}},
+        "tag_commit": commit,
+        "version": version,
+        "release_tag": tag,
+    }, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+PY
+STAGED_PATHS+=("$RELEASE_MANIFEST")
+echo "release-pipelinek: staged manifest.json (pipelinek-release-manifest-1) for ${PIPELINEK_RELEASE_TAG}"
+
+STAGED_PATHS+=("${EVIDENCE_DIR}/git-head.txt")
+echo "release-pipelinek: staged git-head.txt"
 
 # Build SHA256SUMS over the staged set. The digests describe the STAGED bytes,
 # which are the bytes about to be uploaded.
@@ -430,7 +475,7 @@ for staged in "${STAGED_PATHS[@]}"; do
     required=$(basename "$staged")
     if ! printf '%s\n' "$PUBLISHED" | grep -Fxq "$required"; then
         echo "release-pipelinek: published release is missing required asset '${required}'." >&2
-        echo "    AGENTS.md §8 requires it. Published:" >&2
+        echo "    the published asset set is fixed. Published:" >&2
         printf '      %s\n' "$PUBLISHED" >&2
         exit 1
     fi

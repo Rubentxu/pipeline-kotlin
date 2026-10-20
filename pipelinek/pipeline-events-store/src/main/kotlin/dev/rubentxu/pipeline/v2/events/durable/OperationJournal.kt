@@ -17,88 +17,101 @@ import kotlinx.serialization.json.Json
 
 /**
  * Interface for durable operation journaling.
- *  → Contract
- * This interface is stable for consumption
+ *
+ * ## Contract
+ *
+ * This interface is stable for consumption.
  * The concrete implementation [SqliteOperationJournalImpl] uses SQLite WAL mode.
-*/
+ *
+ */
 interface OperationJournal {
     /**
      * Appends a durable operation to the journal.
+     *
      * @param op The durable operation to journal.
      * @param deadlineMs The deadline timestamp in milliseconds (epoch),
      *                   or null if no timeout is set.
-*/
+     */
     fun append(op: DurableOperation, deadlineMs: Long? = null)
 
     /**
      * Retrieves the latest journaled operation by its [opId].
      * Returns the entry with the highest attempt number.
+     *
      * @param opId The operation identifier.
      * @return The [DurableOperation] if found, or `null` if no entry exists.
-*/
+     */
     fun get(opId: String): DurableOperation?
 
     /**
      * Retrieves a journaled operation by its [opId] and [attempt].
+     *
      * @param opId The operation identifier.
      * @param attempt The 1-based attempt number.
      * @return The [DurableOperation] if found, or `null` if no entry exists.
-*/
+     */
     fun get(opId: String, attempt: Int): DurableOperation?
 
     /**
      * Lists all journaled operations for a given [runId], ordered by [created_at] ascending.
+     *
      * @param runId The run identifier.
      * @return A [List] of [DurableOperation] in execution order.
-*/
+     */
     fun listForRun(runId: String): List<DurableOperation>
 
     /**
      * Retrieves the journaled deadline timestamp (epoch ms) for a given operation attempt.
      * Returns null if no deadline was set (timeout = null), or if no journal entry exists.
+     *
      * @param opId The operation identifier.
      * @param attempt The 1-based attempt number.
      * @return The deadline timestamp in milliseconds, or `null` if not set or not found.
-*/
+     */
     fun getDeadlineMs(opId: String, attempt: Int): Long?
 
     /**
      * Retrieves the ended_at timestamp (epoch ms) for a given operation attempt.
      * Returns null if the row does not exist or ended_at is NULL.
+     *
      * @param opId The operation identifier.
      * @param attempt The 1-based attempt number.
      * @return The ended_at timestamp in milliseconds, or `null` if not set or not found.
-*/
+     */
     fun getEndedAt(opId: String, attempt: Int): Long?
 
     /**
      * Retrieves the started_at timestamp (epoch ms) for a given operation attempt.
      * Returns null if the row does not exist or started_at is NULL.
+     *
      * @param opId The operation identifier.
      * @param attempt The 1-based attempt number.
      * @return The started_at timestamp in milliseconds, or `null` if not set or not found.
-*/
+     */
     fun getStartedAt(opId: String, attempt: Int): Long?
 
     /**
      * Begins a durable operation by writing a RUNNING row to the journal.
+     *
      * This is the first half of the two-phase journal pattern (beginOperation + append).
      * Writing RUNNING before executing the step enables fail-closed reconciliation
      * on restart: if a RUNNING row exists with no terminal status, the subprocess
      * was killed mid-execution and must not be silently trusted.
-     * Caller MUST pre-format opId
+     *
+     * ## Caller MUST pre-format opId
+     *
      * The caller is responsible for formatting the opId with any branch index using
-     * [OpId.format]. The journal MUST NOT derive or append a branch suffix.
-     * This ensures the journal is never responsible for formatting operation IDs,
-     * per C-013/C-026.
+     * [OpId.format()]. The journal MUST NOT derive or append a branch suffix.
+     * This ensures the journal is never responsible for formatting operation IDs.
+     *
      * @param opId The operation identifier. MUST be pre-formatted by the caller
-     *              using [OpId.format] if it includes a branch index.
+     *              using [OpId.format()] if it includes a branch index.
      * @param attempt The 1-based attempt number.
      * @param fingerprint The SHA-256 fingerprint of the operation input.
      * @param inputJson JSON-serialized [OperationInput].
      * @param deadlineMs The deadline timestamp in milliseconds, or null if no timeout.
      * @throws IllegalStateException if a row already exists for (opId, attempt).
-*/
+     */
     fun beginOperation(
         opId: String,
         attempt: Int,
@@ -110,21 +123,27 @@ interface OperationJournal {
 
 /**
  * SQLite WAL-backed implementation of [OperationJournal].
+ *
  * ## Concurrency
+ *
  * All write operations ([append]) are synchronized to ensure serialized
  * writes to the WAL-enabled SQLite database. This is the single-writer
  * guarantee required by SQLite WAL mode.
+ *
  * ## Serialization
+ *
  * [OperationInput] and [OperationOutput] are serialized to JSON using
  * kotlinx-serialization with canonical encoding. The `kind` discriminator
  * field is used to reconstruct the correct [DurableOperation] variant
  * on deserialization.
+ *
  * @param connectionFactory A factory function that returns an open [Connection].
  *                          The connection MUST be obtained from [SqliteConnectionFactory.open]
  *                          to ensure WAL mode is active.
  * @param json The [Json] instance to use for serialization. Defaults to
  *             canonical encoding with [Json][kotlinx.serialization.json.Json].
-*/
+ *
+ */
 class SqliteOperationJournalImpl(
     private val connectionFactory: () -> Connection,
     private val clock: Clock,
@@ -137,14 +156,17 @@ class SqliteOperationJournalImpl(
 
     /**
      * Appends a durable operation to the journal.
+     *
      * Uses UPSERT semantics: if a row already exists for (op_id, attempt),
      * the row is updated in place (RUNNING → terminal). This enables the
      * two-phase journal pattern (beginOperation + append) where a RUNNING
      * row is transitioned to SUCCEEDED/FAILED atomically.
+     *
      * The append is serialized via [synchronized] to avoid WAL contention.
+     *
      * @param op The durable operation to journal.
      * @param deadlineMs The deadline timestamp in milliseconds, or null if no timeout.
-*/
+     */
     override fun append(op: DurableOperation, deadlineMs: Long?) {
         DbLock.forPath(dbPath).withLock {
             val conn = connectionFactory()
@@ -205,12 +227,15 @@ class SqliteOperationJournalImpl(
 
     /**
      * Begins a durable operation by writing a RUNNING row.
-     * Caller-Passes-Formatted
+     *
+     * ## Caller-Passes-Formatted
+     *
      * The caller is responsible for formatting the [opId] string before calling this method.
      * The journal uses [opId] exactly as provided — no derivation, no suffix appending.
-     * This ensures the journal is never responsible for formatting operation IDs (C-013/)
+     * This ensures the journal is never responsible for formatting operation IDs.
+     *
      * @throws IllegalStateException if a row already exists for (opId, attempt).
-*/
+     */
     override fun beginOperation(
         opId: String,
         attempt: Int,
@@ -267,9 +292,10 @@ class SqliteOperationJournalImpl(
     /**
      * Retrieves the latest journaled operation by its [opId].
      * Returns the entry with the highest attempt number.
+     *
      * @param opId The operation identifier.
      * @return The [DurableOperation] if found, or `null` if no entry exists.
-*/
+     */
     override fun get(opId: String): DurableOperation? {
         val conn = connectionFactory()
         try {
@@ -295,10 +321,11 @@ class SqliteOperationJournalImpl(
 
     /**
      * Retrieves a journaled operation by its [opId] and [attempt].
+     *
      * @param opId The operation identifier.
      * @param attempt The 1-based attempt number.
      * @return The [DurableOperation] if found, or `null` if no entry exists.
-*/
+     */
     override fun get(opId: String, attempt: Int): DurableOperation? {
         val conn = connectionFactory()
         try {
@@ -323,9 +350,10 @@ class SqliteOperationJournalImpl(
 
     /**
      * Lists all journaled operations for a given [runId], ordered by [created_at] ascending.
+     *
      * @param runId The run identifier.
      * @return A [List] of [DurableOperation] in execution order.
-*/
+     */
     override fun listForRun(runId: String): List<DurableOperation> {
         val conn = connectionFactory()
         val results = mutableListOf<DurableOperation>()
@@ -355,10 +383,11 @@ class SqliteOperationJournalImpl(
 
     /**
      * Retrieves the journaled deadline timestamp (epoch ms) for a given operation attempt.
+     *
      * @param opId The operation identifier.
      * @param attempt The 1-based attempt number.
      * @return The deadline timestamp in milliseconds, or `null` if not set or not found.
-*/
+     */
     override fun getDeadlineMs(opId: String, attempt: Int): Long? {
         val conn = connectionFactory()
         try {
@@ -384,10 +413,11 @@ class SqliteOperationJournalImpl(
 
     /**
      * Retrieves the ended_at timestamp (epoch ms) for a given operation attempt.
+     *
      * @param opId The operation identifier.
      * @param attempt The 1-based attempt number.
      * @return The ended_at timestamp in milliseconds, or `null` if not set or not found.
-*/
+     */
     override fun getEndedAt(opId: String, attempt: Int): Long? {
         val conn = connectionFactory()
         try {
@@ -413,10 +443,11 @@ class SqliteOperationJournalImpl(
 
     /**
      * Retrieves the started_at timestamp (epoch ms) for a given operation attempt.
+     *
      * @param opId The operation identifier.
      * @param attempt The 1-based attempt number.
      * @return The started_at timestamp in milliseconds, or `null` if not set or not found.
-*/
+     */
     override fun getStartedAt(opId: String, attempt: Int): Long? {
         val conn = connectionFactory()
         try {

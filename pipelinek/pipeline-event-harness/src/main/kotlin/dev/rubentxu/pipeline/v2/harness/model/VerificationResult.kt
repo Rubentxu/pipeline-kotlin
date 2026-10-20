@@ -32,6 +32,24 @@ enum class ViolationRule {
     LAW_FINISHED_WITHOUT_STARTED,
     LAW_PARENT_COMPLETED_BEFORE_CHILD,
     LAW_CONTRADICTORY_TERMINAL,
+
+    /**
+     * A run reported success while a Saga was still pending.
+     *
+     * The two facts contradict each other: a Saga that needs a human is work nobody has done,
+     * and a green run tells the operator there is none.
+     */
+    LAW_SAGA_PENDING_ON_SUCCESS,
+
+    /**
+     * A run reported success while a Saga had compensated its effects.
+     *
+     * The two facts contradict each other: a compensated Saga undid what it did, and a green run
+     * tells the operator that the world is as it should be. A run that says "everything is fine"
+     * after undoing its own work is a lie about the world, and the plane is where that lie can
+     * be caught.
+     */
+    LAW_SAGA_COMPENSATED_ON_SUCCESS,
 }
 
 /** One line of a counterexample trace: position in the history + short typed summary. */

@@ -37,7 +37,7 @@ class DefaultEffectReplayPolicyTest {
 
     @Test
     fun `row 1 a first execution runs, even under NEVER and even when the effect aborts`() {
-        // THE discriminator for. `ABORTS_PIPELINE` means "this Step, WHEN EXECUTED, aborts
+        // THE discriminator for rule 1. `ABORTS_PIPELINE` means "this Step, WHEN EXECUTED, aborts
         // the pipeline"; refusing to execute it would drop the abort silently, because a Step that
         // never runs never aborts. `CoreErrorStep` is exactly this case, so hoisting this row above
         // the containment row is what keeps a first run of a pipeline with an error step working.
@@ -259,4 +259,3 @@ class DefaultEffectReplayPolicyTest {
         )
     }
 }
-

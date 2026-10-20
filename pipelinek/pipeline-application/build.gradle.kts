@@ -131,16 +131,16 @@ dependencies {
     // SqliteEventStore, and this is the module that does.
     implementation(project(":pipeline-events-store"))
     // The Output Plane. Process transcript bytes are written here and nowhere else, and no
-    // console event carries them. The dependency points ONE WAY -:pipeline-output depends on
-    // neither:pipeline-events nor:pipeline-domain, so the event plane cannot reach back into the
-    // Output plane and re-acquire an authority over the bytes. See/
+    // console event carries them. The dependency points ONE WAY - :pipeline-output depends on
+    // neither :pipeline-events nor :pipeline-domain, so the event plane cannot reach back into the
+    // Output plane and re-acquire an authority over the bytes.
     // The plane is split in two: the CONTRACT above, and the store below. Only the runtime
     // needs the store, so only the runtime names it - which is the point. The published artifact
     // carries no writer, so no external consumer can become a second one.
     implementation(project(":pipeline-output"))
     implementation(project(":pipeline-output-store"))
     implementation(project(":pipeline-event-harness"))
-    // `:test-harness` was DELETED . Its 35 sources were QA
+    // `:test-harness` was DELETED. Its 35 sources were QA
     // scaffolding (ContractCatalogue, Gate, CycleRunner) and its only consumer in the whole
     // build was the `testImplementation` line that this comment used to justify. Removing
     // the module removes the dependency with it; nothing in `src/main` referenced it.
@@ -166,8 +166,8 @@ dependencies {
     implementation(project(":pipeline-step-sdk:utilities"))
     implementation(project(":pipeline-credentials-api"))
     implementation(project(":pipeline-credentials-local"))
-    implementation(project(":pipeline-credentials-multipart")) //: wire CredentialMaterializer for file-based credential dispatch
-    implementation(project(":pipeline-credentials-executor")) // Port-driven withCredentials executor
+    implementation(project(":pipeline-credentials-multipart")) // wire CredentialMaterializer for file-based credential dispatch
+    implementation(project(":pipeline-credentials-executor")) // port-driven withCredentials executor
     implementation(project(":pipeline-artefacts-local"))
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.sqlite.jdbc)
@@ -178,16 +178,16 @@ dependencies {
     // `runtimeOnly` files puts their JARs on the runtime classpath of
     // the application, which `installDist` then stages into `lib/`
     // (and the `distZip` packages alongside the four official
-    //:pipeline-step-sdk plugins). The external JARs are produced by
-    //:buildExamplePlugin,:buildExternalDirectivePlugin, and
-    //:buildExampleBlockPlugin in the root build, all of which depend
+    // :pipeline-step-sdk plugins). The external JARs are produced by
+    // :buildExamplePlugin, :buildExternalDirectivePlugin, and
+    // :buildExampleBlockPlugin in the root build, all of which depend
     // on `publishSdkForExternalPlugin` so the JARs exist before the
     // `runtimeOnly` files puts their JARs on the runtime classpath of
     // the application, which `installDist` then stages into `lib/`
     // (and the `distZip` packages alongside the four official
-    //:pipeline-step-sdk plugins). The external JARs are produced by
-    //:buildExamplePlugin,:buildExternalDirectivePlugin, and
-    //:buildExampleBlockPlugin in the root build, all of which depend
+    // :pipeline-step-sdk plugins). The external JARs are produced by
+    // :buildExamplePlugin, :buildExternalDirectivePlugin, and
+    // :buildExampleBlockPlugin in the root build, all of which depend
     // on `publishSdkForExternalPlugin` so the JARs exist before the
     // application graph is wired.
     // The `pluginContractTest` source set that used to reach these same three JAR files is
@@ -197,6 +197,11 @@ dependencies {
     runtimeOnly(files(rootDir.resolve("../examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar")))
     runtimeOnly(files(rootDir.resolve("../examples/example-directive-plugin/build/libs/example-directive-plugin-0.1.0.jar")))
     runtimeOnly(files(rootDir.resolve("../examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar")))
+    // The external CONSUMER of the Saga contract, and the only bundled plugin
+    // that drives a real compensation loop. It is bundled for the same reason the other three
+    // are: the E2E scenarios have to reach the Saga contract the way a real plugin does —
+    // from OUTSIDE, through published capabilities, with the engine owning the state.
+    runtimeOnly(files(rootDir.resolve("../examples/example-saga-plugin/build/libs/example-saga-plugin-0.1.0.jar")))
 
     // Test wiring RESTORED because `src/test/kotlin` is no longer empty, in this
     // module or in the other 15 that have tests. The earlier removal was correct then: a JUnit
@@ -216,7 +221,7 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// TEST LANES REMOVED . Five separate registrations were deleted
+// TEST LANES REMOVED. Five separate registrations were deleted
 // from this build file, all of them reading a source set that is now empty:
 //   * `pluginContractTest`            -- its own SourceSet + `Test` task + `check` wiring.
 //   * `installedContractTest`         -- the shipped-binary certification task.

@@ -7,14 +7,17 @@ import org.junit.jupiter.api.Test
 
 /**
  * The gate that decides whether a candidate may ship.
+ *
  * `BundledPluginCompatibility` is the only check that is mechanical and
  * reproducible from the distribution ZIP alone, and it is the one that runs
  * BEFORE an operator downloads anything. It is also the only thing standing
  * between a candidate and a plugin that refuses to load at runtime -- which is
  * the failure the user would otherwise meet after the download, not at
  * admission.
+ *
  * Two deliberate fail-closed choices are pinned below, because both read as
  * bugs to a future reader and both were once tempting enough to "fix":
+ *
  * - A range the parser cannot read is NOT compatibility. Unknown range ==
  *   not containable. Otherwise a typo in one plugin's manifest silently
  *   removes that plugin from the check.
@@ -22,9 +25,10 @@ import org.junit.jupiter.api.Test
  *   `apiRange` membership decides. junit ships as `0.1.0` against a `0.51.0`
  *   host on purpose, and a check that demanded equal versions would have
  *   rejected junit on every v0.5x release.
+ *
  * Everything here is pure set-and-string work over three fields, so no
  * filesystem, no JAR and no distribution is needed to test it.
-*/
+ */
 class ApiRangeContainsTest {
 
     // --- the ordinary case: lower bound inclusive, upper bound exclusive --------------
@@ -242,7 +246,10 @@ class ApiRangeContainsTest {
         )
         for (conflict in conflicts) {
             assertEquals("0.51.0", conflict.hostVersion)
-            assertTrue(conflict.apiRange.isNotBlank(), "${conflict.pluginId} conflict carries no range")
+            assertTrue(
+                conflict.apiRange.orEmpty().isNotBlank(),
+                "${conflict.pluginId} conflict carries no range",
+            )
             assertTrue(conflict.releaseVersion.isNotBlank(), "${conflict.pluginId} conflict carries no version")
         }
     }

@@ -1,6 +1,6 @@
 //@ expect-exit 1
 //@ expect-stderr Zip Slip
-// Utilities OFFICIAL_PLUGIN live fixture (Slice 2 /.4 +.5)
+// Utilities OFFICIAL_PLUGIN live fixture.
 // End-to-end defence-in-depth proof of containment on
 // BOTH sides of the zip chain. The fixture:
 //   1) Creates a benign zip archive (via the typed zipFiles Step).
@@ -13,8 +13,9 @@
 //   4) The handler MUST reject the archive with a typed USER failure
 //      containing "Zip Slip". The pipeline as a whole fails with a
 //      typed failure.
-// Note: this fixture intentionally triggers a typed failure. The
-// CompatibilityCorpusTest recognises it as a known-good negative case.
+// Note: this fixture intentionally triggers a typed failure. The launcher
+// expects it: the run must fail, and it must fail with that specific
+// refusal.
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.zipFiles
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.unzip
 

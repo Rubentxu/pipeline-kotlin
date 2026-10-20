@@ -50,7 +50,7 @@ value class ProductVersion private constructor(val value: String) {
             ?: throw IllegalArgumentException(
                 "ProductVersion must be final SemVer MAJOR.MINOR.PATCH without a candidate " +
                     "suffix, got '$raw'. Candidate state belongs to the candidate descriptor, " +
-                    "not to the binary identity (cross-repo contract v2 §4, §11).",
+                    "not to the binary identity (the cross-repo contract).",
             )
     }
 }

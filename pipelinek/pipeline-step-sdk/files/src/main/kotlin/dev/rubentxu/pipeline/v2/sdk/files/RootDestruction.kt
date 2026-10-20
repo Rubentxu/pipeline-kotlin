@@ -7,7 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.workspace.DestructiveAuthorization
  * three states that actually exist.
  * ## Why this is a type and not a `Boolean`
  * Both workspace executors used to take `protectWorkspaceRoot: Boolean = false`.
- * That is the shape AGENTS.md/ forbids: one bit standing in for a
+ * That is the shape AGENTS.md forbids: one bit standing in for a
  * three-state reality, where the third state has no spelling. The three states:
  * ```text
  * ScratchOwned      PipelineK created this directory and owns its lifecycle
@@ -35,7 +35,7 @@ import dev.rubentxu.pipeline.v2.domain.workspace.DestructiveAuthorization
  * ## Why the DSL default is NOT changed by this
  * `StageScope.deleteDir(path = ".")` keeps its default. `deleteDir()` with no
  * argument is a Jenkins contract, and what holds it in place in this tree is
- * the tracked scenario `v2/examples/control-flow/11-workflow-control.pipeline.kts`,
+ * the tracked scenario `examples/control-flow/11-workflow-control.pipeline.kts`,
  * which calls `deleteDir()` bare: drop the default and that program stops
  * compiling, so stage 3 of `scripts/verify-all.sh` goes red. An earlier
  * architecture fitness used to pin this and was deleted by the RESET; the

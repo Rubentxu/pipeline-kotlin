@@ -15,7 +15,7 @@ import java.nio.file.Paths
  * shorter list, the step exits 0, and nothing above it can tell "fewer files matched" from
  * "the matcher is wrong".
  * The step's own guarantee is therefore not observable from the E2E layer. `findFiles` returns
- * `Unit`, so `v2/examples/steps/26-find-files.pipeline.kts` can only read the process exit
+ * `Unit`, so `examples/steps/26-find-files.pipeline.kts` can only read the process exit
  * code — and a wrong matcher and a right matcher both produce 0. The scenario cannot be
  * strengthened into an assertion about the result count without a new value out of the DSL.
  * What this file covers is the pure decision underneath: `String` in, a [java.nio.file.PathMatcher]

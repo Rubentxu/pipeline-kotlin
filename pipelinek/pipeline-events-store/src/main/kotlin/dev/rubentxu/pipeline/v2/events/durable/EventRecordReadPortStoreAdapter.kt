@@ -9,17 +9,21 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
 
 /**
  * Production adapter for [EventRecordReadPort] backed by any [EventStore].
+ *
  * ## Why this adapter exists
+ *
  * [EventRecordReadPort] is the public read-only port. The contract says
  * Fabric consumes through it, not through [EventStore] directly, because
  * [EventStore] exposes `append` and `appendAssigned` (the write side) and
  * is therefore not a safe surface for a remote consumer.
+ *
  * [EventRecordReadPortStoreAdapter] is the one and only implementation
  * that backs the port. It holds a single authority for sequence,
  * cursor, and the typed-vs-undecodable cut, by delegating to
  * [EventStore.readRecords] — which the existing KDoc pins as the page
  * authority ("The store is the sequence authority, so the store is
  * where a page is decided"). The adapter adds:
+ *
  *  - the **unknown-run vs empty-history distinction** ([EventRecordReadRefusal.UnknownRun]
  *    vs an empty [EventRecordReadResult.Page]). The adapter asks the
  *    store via the [runExists] callback before calling readRecords.
@@ -32,13 +36,14 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
  *    is the composed callback. Without this distinction, a consumer
  *    cannot tell whether `readRecords` returned zero rows because the
  *    run does not exist or because the run exists but has not yet
- * Produced any event. The operator's correction #6 in the
+ *    produced any event. The operator's correction #6 in the
  *    review made this distinction mandatory; correction
- * #3 in the follow-up made the lease authority primary
+ *    #3 in the follow-up made the lease authority primary.
+ *
  *  - the **cursor-past-tail distinction** ([EventRecordReadRefusal.CursorBeyondTail]
  *    vs an empty [EventRecordReadResult.Page]). The underlying
  *    [EventStore.readRecords] returns an empty page when the cursor
- * Is past the tail; the contract says that must be refused
+ *    is past the tail; the contract says that must be refused
  *    closed, not silently served. The adapter asks the store via the
  *    [tailSequence] callback for the durable `MAX(sequence)` of the
  *    run and refuses when `after.lastSequence > tailSequence`. A
@@ -47,6 +52,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
  *    in-memory adapter supplies the max of the in-memory list.
  *    The callback returns `null` for an empty run, in which case
  *    ANY non-null `after` is also past the tail.
+ *
  *  - the **cursor runId mismatch rejection** ([EventRecordReadRefusal.StorageError]).
  *    An `after` whose `runId` differs from the requested `runId` is a
  *    contract violation — a consumer mixed two cursors from different
@@ -56,6 +62,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
  *    a parameter of the API, not a fact about the store. Surfacing it
  *    as [EventRecordReadRefusal.StorageError] (rather than a separate
  *    closed hierarchy case) keeps the refusal ADT unchanged.
+ *
  *  - the **[EventQuery] argument refusal** ([EventRecordReadRefusal.StorageError]).
  *    A non-[EventQuery.All] query is refused closed with a
  *    `StorageError("query not supported: <kind>")` diagnostic. The
@@ -64,26 +71,30 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
  *    previous "pass-through" semantic was honest but left a query
  *    filterless, which silently returned the full page. The operator's
  *    correction says "explicit refusal is the correct answer; filter
- * Belongs to (Context/Pressure), not ". The port signature is
- *    unchanged so existing callers continue to compile; a caller that
- *    passes `EventQuery.ByKind(...)` now sees a refusal with the
- *    kind named in the diagnostic.
+ *    belongs to the Context/Pressure layer, not to the store". The port
+ *    signature is unchanged so existing callers continue to compile; a
+ *    caller that passes `EventQuery.ByKind(...)` now sees a refusal with
+ *    the kind named in the diagnostic.
+ *
  *  - the **storage-error translation**. Any exception from
  *    [EventStore.readRecords] is caught and translated to
  *    [EventRecordReadRefusal.StorageError] with a short diagnostic.
  *    The port is total; a thrown exception would defeat the closed
  *    refusal hierarchy.
+ *
  *  - the **[after] cursor** is passed through to the store, which is
  *    the page authority. The store is responsible for the
  *    "strictly greater than" cut and the [EventRecordSlice.nextCursor]
  *    continuation.
+ *
  * ## Cursors and the contract
+ *
  * The adapter does NOT introduce a fourth cursor vocabulary. The cursor
  * is [EventCursor] (the existing event-plane cursor at
  * `dev.rubentxu.pipeline.v2.events.identity.EventCursor`). A future
  * typed `RunId` would replace the `String` here without touching the
  * port.
-*/
+ */
 class EventRecordReadPortStoreAdapter(
     private val store: EventStore,
     /**
@@ -91,13 +102,14 @@ class EventRecordReadPortStoreAdapter(
      * history yet from a run that does not exist. The adapter calls
      * this BEFORE [EventStore.readRecords] so an empty page is
      * unambiguous.
+     *
      * For a production Sqlite + lease composition, the wiring is
      * `leaseStore.isKnown(runId) || store.hasRun(runId)`: the lease
      * authority is primary (a run that was deliberately declared via
      * `acquire` is known even if no event has been written yet), with
      * the `SELECT EXISTS` fallback covering cases where the lease
      * record was cleaned up but the events survived.
-*/
+     */
     private val runExists: (String) -> Boolean,
     /**
      * The store-side authority for the durable tail sequence of a
@@ -105,7 +117,7 @@ class EventRecordReadPortStoreAdapter(
      * `MAX(sequence)` over the run. The adapter calls this when
      * [after] is non-null so a cursor past the tail can be refused
      * closed instead of silently served as an empty page.
-*/
+     */
     private val tailSequence: (String) -> Long?,
 ) : EventRecordReadPort {
 
@@ -170,10 +182,9 @@ class EventRecordReadPortStoreAdapter(
             // The store is the page authority; the adapter does not
             // re-cut. The slice's records carry typed events AND
             // undecodable rows in store sequence order; the limit
-            // Bound counts ROWS, not decodable events. The
-            // design rule (the page bound counts rows) is satisfied
-            // by delegating to readRecords, whose KDoc says exactly
-            // that.
+            // bound counts ROWS, not decodable events. The design rule
+            // (the page bound counts rows) is satisfied by delegating
+            // to readRecords, whose KDoc says exactly that.
             EventRecordReadResult.Page(slice)
         } catch (e: Exception) {
             EventRecordReadResult.Refused(
@@ -188,12 +199,10 @@ class EventRecordReadPortStoreAdapter(
      * explicit decision recorded in its own build file, and `:pipeline-events-store` is not
      * downstream of it. Adding that dependency to delete four duplicated lines would invert the
      * boundary that keeps the output plane independent of the event plane.
-*/
+     */
     private fun shortCause(e: Throwable): String {
         val cls = e::class.simpleName ?: e.javaClass.name
         val msg = e.message?.take(120)?.replace('\r', ' ')?.replace('\n', ' ')
         return if (msg.isNullOrBlank()) cls else "$cls: $msg"
     }
 }
-
-

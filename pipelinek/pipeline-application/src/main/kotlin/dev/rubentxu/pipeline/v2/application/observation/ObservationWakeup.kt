@@ -87,7 +87,7 @@ fun coalesceWakeup(current: ObservationWakeup?, newer: ObservationWakeup): Obser
  * ```
  * The type answers the first two and never carries the third. `Sealed` says no further bytes will be
  * written to THAT stream; it says nothing about whether the run succeeded, and it is not read as an
- * Outcome — that duplication is exactly what ` §` forbids and what `OutputTailState` was built
+ * Outcome — that duplication is exactly what the two authorities prevent and what `OutputTailState` was built
  * to avoid. The THIRD question is asked, but it is asked of a different authority and arrives as an
  * argument to [followDecision]: "did the run end?" belongs to the run plane, and a follow decision
  * that had to infer it from stream tails would be inferring a run's fate from its silence.
@@ -137,7 +137,7 @@ sealed interface FollowDecision {
  * reasons, in order of force:
  *  1. It would collapse two distinct outcomes into one. `Finished` here means the output lane is
  *     final; the run lane reports `ReachedRunFinish` for the run's fate. Two cases exist precisely
- * Because those are two facts, and ` §` forbids reading one as the other
+ * Because those are two facts, and one must not be read as the other
  *  2. It would make `--view console --follow` unterminatable without an event plane. A console-only
  *     lane has no event store to ask, so `hasRunFinished` can only answer "I do not know" — and
  *     conflating that with "keep reading forever" hangs the consumer instead of ending it.

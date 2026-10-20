@@ -23,9 +23,9 @@ group = "dev.rubentxu.pipeline.v2"
 /**
  * The one hashing primitive the provenance seam uses lives in `buildSrc`
  * (`dev.rubentxu.pipeline.build.ProvenanceDigest`), shared with scm-git and utilities.
- * Keeping three private copies is what let be fixed by hand in three places and
- * Left the next fix able to miss two of them
-*/
+ * Keeping three private copies is what let a fix be applied by hand in three places and
+ * left the next fix able to miss two of them.
+ */
 
 kotlin {
     jvmToolchain(21)
@@ -36,7 +36,7 @@ kotlin {
 }
 
 // ----------------------------------------------------------------------------
-// HTTP OFFICIAL_PLUGIN provenance seam (/ / STEP_ECOSYSTEM_POLICY)
+// HTTP OFFICIAL_PLUGIN provenance seam (STEP_ECOSYSTEM_POLICY)
 // Mirrors the scm-git seam deliberately: the contributor refuses to register
 // without the real SHA-256 of its own artefact. A plugin that cannot prove what
 // it is must not be admitted into a run.
@@ -177,7 +177,7 @@ val httpCompatibilityResource = layout.buildDirectory
 
 val generateHttpPluginCompatibility = tasks.register("generatePluginCompatibilityMetadata") {
     group = "http"
-    description = "PK-RC-PLUGIN-001: emit the policy-derived compatibility resource for the artifact."
+    description = "Emit the policy-derived compatibility resource for the artifact."
 
     inputs.property("productVersion", rootProject.version.toString())
     outputs.file(httpCompatibilityResource)
@@ -195,7 +195,7 @@ val httpManifest = layout.buildDirectory.file("resources/main/META-INF/pipelinek
 
 val emitHttpManifest = tasks.register<JavaExec>("emitHttpManifest") {
     group = "http"
-    description = "S6/C: emit the machine-readable plugin manifest into the artifact."
+    description = "Emit the machine-readable plugin manifest into the artifact."
 
     dependsOn(computeHttpDigest, generateHttpPluginCompatibility)
     mainClass.set("dev.rubentxu.pipeline.v2.sdk.http.HttpPluginDeclarationKt")
@@ -223,7 +223,7 @@ val emitHttpManifest = tasks.register<JavaExec>("emitHttpManifest") {
         val text = captured.toString(Charsets.UTF_8)
         if (text.isBlank()) {
             throw GradleException(
-                "S6/C: manifest emission produced no output. The http plugin would ship without " +
+                "Manifest emission produced no output. The http plugin would ship without " +
                     "META-INF/pipelinek/plugin-manifest.json and admission would refuse it at runtime.",
             )
         }
@@ -241,8 +241,8 @@ tasks.named("jar") {
     dependsOn(emitHttpManifest)
 }
 
-// Unit-test wiring RESTORED .
-// It was REMOVED on under the premise that this module carries no unit tests: it is an
+// Unit-test wiring RESTORED.
+// It was REMOVED under the premise that this module carries no unit tests: it is an
 // HTTP STEP whose guarantee is that a pipeline performs a real request, verified by the executable
 // E2E layer under `examples/` rather than by a JUnit class. That premise held for the STEP
 // itself and stopped holding for the module: `StatusRange.parse` is a pure decode rule reached from

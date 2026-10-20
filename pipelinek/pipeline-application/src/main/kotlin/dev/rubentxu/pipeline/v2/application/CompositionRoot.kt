@@ -109,13 +109,21 @@ internal fun runCanonicalPipeline(
     // A parameter that documents a role it no longer has is a smaller lie than a default that
     // drops plugins, and it is removed rather than left with a stale comment.
     composition: PreResolvedComposition,
+    /**
+     * The per-run Saga seam.
+     *
+     * Null when the caller did not compose a durable Saga store, and then the compensation
+     * intent port is not exposed at all: a Step that declares it is refused at admission
+     * rather than reaching a handler that could not keep the promise it is about to make.
+     */
+    sagaBinding: dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding? = null,
 ): RunOutcome = runBlocking {
     CanonicalDurableRunCoordinator(
         // The ONE registry this run resolves plugin event kinds against, on the write
         // side and on the read-back side. Resolved in PluginComposition, before this
         // function was called, and already cross-checked against what the plugins emit.
         eventRegistry = composition.events,
-        // H2b: ONE composite, consulted by both admission and execution.
+        // ONE composite, consulted by both admission and execution.
         // The plugin side now comes from the composition, resolved under the same classloader
         // swap as the Steps these capabilities back. The credential side stays here because it is
         // State — it wraps the store THIS invocation opened, so it cannot come from
@@ -168,6 +176,8 @@ internal fun runCanonicalPipeline(
         // frozen by PluginComposition before this call.
         stepRegistry = composition.steps,
         secretPatternRegistry = secretPatternRegistry,
+        // Forwarded so the dispatch can build the invocation-bound intent port.
+        sagaBinding = sagaBinding,
         // Production wire-up. The retry aggregate is reconciled against
         // the on-disk control journal so a `run` invocation with the same --db and
         // --control-root reuses the prior aggregate terminal state and does not re-launch

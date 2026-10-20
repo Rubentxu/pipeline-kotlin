@@ -6,7 +6,7 @@
 // privatise functions that are part of the surface or split the file, which is
 // a design choice that needs an ADR, not a one-line suppression. Same family
 // of reasoning as the StageScope exemption already documented in
-// v2/config/detekt/detekt.yml under TooManyFunctions.
+// pipelinek/config/detekt/detekt.yml under TooManyFunctions.
 @file:Suppress("TooManyFunctions")
 
 package dev.rubentxu.pipeline.v2.output.store

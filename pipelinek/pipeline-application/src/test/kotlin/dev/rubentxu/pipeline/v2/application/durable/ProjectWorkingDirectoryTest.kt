@@ -115,7 +115,7 @@ class ProjectWorkingDirectoryTest {
     @Test
     fun `an absolute path outside the boundary is rejected`() {
         // This is the one that was open. Absolute paths used to skip the check entirely, so
-        // `dir("/etc/cron.d")`.pipeline.kts projected a Scope, BodyExecutionEngine ran
+        // `dir("/etc/cron.d")` in a .pipeline.kts projected a Scope, BodyExecutionEngine ran
         // Files.createDirectories on it and handed it to the child as its CWD. section 8/9
         // says an absolute path outside the root is rejected, and WorkspacePathResolver and
         // DirExecutor both implement that; this projection was the live guard and did not.

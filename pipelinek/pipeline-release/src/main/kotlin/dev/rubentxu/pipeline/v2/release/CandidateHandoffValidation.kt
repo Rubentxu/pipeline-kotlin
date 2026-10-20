@@ -105,7 +105,7 @@ fun evaluateCandidateHandoff(
             HandoffViolationCode.CANDIDATE_ID_NOT_ARTIFACT_DIGEST,
             "candidate_id ${handoff.candidateId.canonical} is not the SHA-256 of the artifact " +
                 "(${measuredZipSha256}). Candidate identity is material, never a name " +
-                "(cross-repo contract v2 §4).",
+                "(the cross-repo contract).",
         )
     }
 

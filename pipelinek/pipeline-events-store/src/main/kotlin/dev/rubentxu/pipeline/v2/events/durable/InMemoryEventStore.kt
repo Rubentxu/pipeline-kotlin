@@ -5,6 +5,10 @@ import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
+import dev.rubentxu.pipeline.v2.events.CompensationArmed
+import dev.rubentxu.pipeline.v2.events.CompensationFinished
+import dev.rubentxu.pipeline.v2.events.CompensationStarted
+import dev.rubentxu.pipeline.v2.events.SagaTerminal
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.CredentialBound
@@ -192,6 +196,12 @@ class InMemoryEventStore : EventSink {
             is TimestampsExited -> event.copy(sequence = assignedSequence)
             // durable-spine admission observation
             is StepAdmissionObserved -> event.copy(sequence = assignedSequence)
+            // the armed-obligation notification carries the assigned sequence
+            // like every other durable event.
+            is CompensationArmed -> event.copy(sequence = assignedSequence)
+            is CompensationStarted -> event.copy(sequence = assignedSequence)
+            is CompensationFinished -> event.copy(sequence = assignedSequence)
+            is SagaTerminal -> event.copy(sequence = assignedSequence)
         }
         store.computeIfAbsent(event.runId) { mutableListOf() }.let { list ->
             synchronized(list) {

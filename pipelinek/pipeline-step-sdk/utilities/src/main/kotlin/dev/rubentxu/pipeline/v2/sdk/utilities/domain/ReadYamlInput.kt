@@ -36,7 +36,7 @@ data class ReadYamlInput(
  * Sealed source for a YAML read.
  * Jenkins' `AbstractFileOrTextStep` enforces `file XOR text` at runtime;
  * this hierarchy enforces it at compile time. The codec rejects dual sources
- * That case cannot
+ * — that case cannot
  * occur through the typed API.
 */
 @Serializable

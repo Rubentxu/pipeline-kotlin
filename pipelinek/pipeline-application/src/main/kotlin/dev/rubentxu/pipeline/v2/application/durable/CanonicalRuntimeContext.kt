@@ -15,7 +15,7 @@ import java.nio.file.Path
  * which is the correct behaviour: only runs that explicitly wire the adapter expose
  * the body-reentry seam.
  * Extracted from `CanonicalNodeDispatcher.kt` to its own file as part
- * Of the// partition plan
+ * of the partition plan
  * The data class is the canonical seam between the dispatcher body and the runtime
  * adapters; isolating it shrinks `CanonicalNodeDispatcher.kt` from 100 LOC to 67 LOC
  * and gives the field bundle its own focus. The FQN
@@ -66,4 +66,43 @@ data class CanonicalRuntimeContext(
     // so the capability stays unexposed and a Step that declares it is refused at admission
     // instead of reaching a handler with a null seam.
     val pluginEventEmitter: dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter? = null,
+    // The compensation intent port, bound to THIS invocation.
+    //
+    // It is built per dispatch, not per run, because it carries the forward operation's
+    // identity: the compensation an obligation names is the compensation OF that operation.
+    // Null when the run has no durable Saga store wired (and for every pre-existing
+    // construction site), so the capability stays unexposed and a Step that declares
+    // SAGA_COMPENSATION_CAPABILITY is refused at admission instead of reaching a handler
+    // with a port that cannot keep a promise.
+    val sagaCompensation: dev.rubentxu.pipeline.v2.domain.saga.CompensationOperations? = null,
+    // The compensation PLAN port, bound to THIS run.
+    //
+    // It answers "what does the Saga owe now?" and records what the plugin observed about the
+    // effects it triggered. It is a separate port from the intent one because making a promise
+    // and moving a promise along its lifecycle are different authorities.
+    //
+    // Null when the run has no durable Saga store wired (and for every pre-existing
+    // construction site), so the capability stays unexposed and a Step that declares
+    // SAGA_PLAN_CAPABILITY is refused at admission instead of reaching a handler that cannot
+    // keep the state it is about to write.
+    val sagaPlan: dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations? = null,
+    // The compensation RUNTIME, bound to THIS invocation.
+    //
+    // It is the engine's loop: ask the durable state what is owed, dispatch the body that
+    // owes it, record what happened, ask again. The plugin hands over the plan (data) and
+    // gets back what the engine decided and in which order.
+    //
+    // Null unless the run has a durable Saga store AND this Step owns a body to compensate
+    // through, so a Step that declares SAGA_RUNTIME_CAPABILITY without both is refused at
+    // admission instead of reaching a handler that could not keep the promise.
+    val sagaRuntime: dev.rubentxu.pipeline.v2.domain.saga.SagaRuntime? = null,
+    // The slot seam. A handler whose body is already bound may run ONE
+    // named child of that body, chosen by it, and the engine dispatches it through the
+    // same canonical spine — so the slot's durable identity is the identity it would
+    // have had if the engine had dispatched it.
+    //
+    // Null for every other Step (and for every pre-existing construction site), which
+    // is what keeps the fail-closed admission honest: a handler that declares
+    // BODY_SLOT_CAPABILITY without the engine having bound it never runs.
+    val bodySlotInvoker: dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker? = null,
 )

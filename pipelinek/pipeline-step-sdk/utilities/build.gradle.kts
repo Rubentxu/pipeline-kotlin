@@ -14,7 +14,7 @@ dependencies {
     implementation(project(":pipeline-scripting-api"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
-    // Slice 2: SnakeYAML is the safe-loader for `core-utils.readYaml`
+    // SnakeYAML is the safe-loader for `core-utils.readYaml`
     // The version is pinned in libs.versions.toml; the Step uses a custom
     // SafeConstructorOnlyOptions to refuse arbitrary-class instantiation,
     // alias bombs, and oversize documents.
@@ -75,7 +75,7 @@ val utilitiesExcludedResourcePaths = setOf(
 
 val computeUtilitiesDigest = tasks.register("computeUtilitiesDigest") {
     group = "utilities"
-    description = "Compute the LFC-2E2 utilities OFFICIAL_PLUGIN provenance SHA-256."
+    description = "Compute the utilities OFFICIAL_PLUGIN provenance SHA-256."
 
     val publisher = utilitiesPublisher
     val namespace = utilitiesNamespace
@@ -85,8 +85,8 @@ val computeUtilitiesDigest = tasks.register("computeUtilitiesDigest") {
     dependsOn("compileKotlin", "processResources", "generatePluginCompatibilityMetadata")
 
     // Declared inputs, WITHOUT `skipWhenEmpty`: `inputs.dir + skipWhenEmpty` used to make Gradle
-    // Mark this on incremental builds. `inputs.files(fileTree(...))` keeps the task
-    // Runnable while still letting Gradle re-run it when the material changes
+    // mark this NO-SOURCE on incremental builds. `inputs.files(fileTree(...))` keeps the task
+    // runnable while still letting Gradle re-run it when the material changes.
     inputs.files(fileTree(utilitiesClassesDir)).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.files(fileTree(utilitiesResourcesDir) { exclude(utilitiesExcludedResourcePaths) })
         .withPathSensitivity(PathSensitivity.RELATIVE)
@@ -147,7 +147,7 @@ val utilitiesCompatibilityResource = layout.buildDirectory
 
 val generateUtilitiesPluginCompatibility = tasks.register("generatePluginCompatibilityMetadata") {
     group = "utilities"
-    description = "PK-RC-PLUGIN-001: emit the policy-derived compatibility resource for the artifact."
+    description = "Emit the policy-derived compatibility resource for the artifact."
 
     inputs.property("productVersion", rootProject.version.toString())
     outputs.file(utilitiesCompatibilityResource)
@@ -165,7 +165,7 @@ val utilitiesManifest = layout.buildDirectory.file("resources/main/META-INF/pipe
 
 val emitUtilitiesManifest = tasks.register<JavaExec>("emitUtilitiesManifest") {
     group = "utilities"
-    description = "S6/C: emit the machine-readable plugin manifest into the artifact."
+    description = "Emit the machine-readable plugin manifest into the artifact."
 
     dependsOn(computeUtilitiesDigest, generateUtilitiesPluginCompatibility)
     mainClass.set("dev.rubentxu.pipeline.v2.sdk.utilities.step.UtilitiesPluginDeclarationKt")
@@ -200,7 +200,7 @@ val emitUtilitiesManifest = tasks.register<JavaExec>("emitUtilitiesManifest") {
         val text = captured.toString(Charsets.UTF_8)
         if (text.isBlank()) {
             throw GradleException(
-                "S6/C: manifest emission produced no output. The utilities OFFICIAL_PLUGIN would ship " +
+                "Manifest emission produced no output. The utilities OFFICIAL_PLUGIN would ship " +
                     "without META-INF/pipelinek/plugin-manifest.json and admission would refuse it at runtime.",
             )
         }

@@ -4,6 +4,10 @@ import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
+import dev.rubentxu.pipeline.v2.events.CompensationArmed
+import dev.rubentxu.pipeline.v2.events.CompensationFinished
+import dev.rubentxu.pipeline.v2.events.CompensationStarted
+import dev.rubentxu.pipeline.v2.events.SagaTerminal
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.CredentialBound
@@ -244,6 +248,11 @@ object HumanConsoleRenderer {
         is WaitUntilPolled, is WaitUntilCompleted, is MilestoneReached, is TimestampsEntered,
         is TimestampsExited, is StepAdmissionObserved, is DirectiveAdmitted, is GateEvaluated,
         is PostConditionSelected,
+        // the armed-obligation promise is a control note, not an effect.
+        is CompensationArmed,
+        is CompensationStarted,
+        is CompensationFinished,
+        is SagaTerminal,
         -> ConsoleFamilyLines.controlNote(event)
 
         is StashCreated, is StashRestored, is HtmlReportPublished, is HtmlReportSkipped,

@@ -62,7 +62,7 @@ data class CandidateHandoff(
         require(productVersion == releaseTrain) {
             "product_version ($productVersion) must equal release_train ($releaseTrain): a " +
                 "candidate materialises exactly one target version, and the train IS that " +
-                "version (cross-repo contract v2 §5, §11)."
+                "version (the cross-repo contract)."
         }
     }
 
@@ -94,7 +94,7 @@ value class CandidateId private constructor(val digest: String) {
             require(HEX64.matches(trimmed)) {
                 "candidate_id must be a lowercase SHA-256 hex digest (64 chars), got '$digest'. " +
                     "A branch, tag, Git SHA or RC name is not a candidate identity " +
-                    "(cross-repo contract v2 §4)."
+                    "(the cross-repo contract)."
             }
             return CandidateId(trimmed)
         }

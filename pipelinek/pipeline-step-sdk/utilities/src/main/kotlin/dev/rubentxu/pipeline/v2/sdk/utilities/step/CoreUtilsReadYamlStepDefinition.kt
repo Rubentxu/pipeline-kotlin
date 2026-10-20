@@ -27,7 +27,7 @@ import kotlin.io.path.isRegularFile
 import kotlin.io.path.readBytes
 
 /**
- * `core-utils.readYaml` OFFICIAL_PLUGIN Step (utilities, Slice 2 /.1)
+ * `core-utils.readYaml` OFFICIAL_PLUGIN Step (utilities).
  * Reference: Jenkins `readYaml` (Pipeline Utility Steps Plugin, master).
  *   - docs:    https://www.jenkins.io/doc/pipeline/steps/pipeline-utility-steps/#readyaml-read-yaml-from-files-in-workspace-or-text
  *   - source:  ReadYamlStep.java / ReadYamlStep.Execution in

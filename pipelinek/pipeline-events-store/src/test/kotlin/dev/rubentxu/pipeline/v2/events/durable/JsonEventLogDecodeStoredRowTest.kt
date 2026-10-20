@@ -12,21 +12,25 @@ import org.junit.jupiter.api.Test
  * empty list for a row that failed to decode is indistinguishable from a row that legitimately
  * holds nothing, so every caller would be pushed into writing `firstOrNull()` and deciding. That
  * discarding is exactly what the read-side law forbids.
+ *
  * [JsonEventLog.decodeStoredRow] is therefore a closed outcome, and the ORDER of its rules is the
  * design:
+ *
  *  1. a null payload column refuses -- the row exists and the one column that could have held it
  *     held nothing, which is a refusal and not an absence;
  *  2. a null or empty `kind` COLUMN refuses, even when the payload is perfectly decodable;
  *  3. an unknown `kind` COLUMN refuses as version skew, which an operator can act on;
  *  4. otherwise the payload is decoded once and its own cause is carried through.
+ *
  * Rules 2 and 3 are the ones that look redundant and are not. The first version of this read the
  * kind out of the PAYLOAD, which makes the classification wrong exactly when it matters: a row can
  * be unreadable *because* of its payload, and then the payload is the one thing that cannot be
  * trusted to name the row. The `kind` COLUMN is written by `bindInsert` from the event and is NOT
  * NULL, so it is the authority that survives.
+ *
  * Pure and total: no store, no database, no clock. `Instant.now()` is never consulted, and one case
  * below says why that matters.
-*/
+ */
 class JsonEventLogDecodeStoredRowTest {
 
     /** One `RunStarted`, the smallest kind whose required fields are all readable. */

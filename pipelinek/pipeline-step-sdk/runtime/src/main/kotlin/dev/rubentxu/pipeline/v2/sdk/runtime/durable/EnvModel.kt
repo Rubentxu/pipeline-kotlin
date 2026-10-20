@@ -54,6 +54,15 @@ object EnvModel {
             return emptyMap()
         }
 
+        // T-02 regression, applied to the typed form as well: an empty step environment
+        // must stay empty. Falling through to the PATH seed below would materialise the
+        // CONTROLLER's PATH and hand it to the child, so a pipeline that declared no
+        // environment at all silently inherited one from the machine running it. The
+        // legacy overload already returned early for exactly this reason.
+        if (env.isEmpty()) {
+            return emptyMap()
+        }
+
         // Track whether PATH was originally masked (before any loop could add it)
         val originalPathInInput = env.containsKey("PATH")
         val originalPathHandle = env["PATH"]

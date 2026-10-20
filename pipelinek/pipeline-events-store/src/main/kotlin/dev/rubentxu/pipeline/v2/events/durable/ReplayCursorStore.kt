@@ -6,36 +6,46 @@ import java.sql.Connection
 
 /**
  * Interface for persistent replay cursor storage.
- *  → Contract
- * This interface is stable for consumption
-*/
+ *
+ * ## Contract
+ *
+ * This interface is stable for consumption.
+ *
+ */
 interface ReplayCursorStore {
     /**
      * Loads the replay cursor for a given [runId].
+     *
      * @param runId The run identifier.
      * @return The [ReplayCursor] if found, or `null` if no cursor exists for this run.
-*/
+     */
     fun load(runId: String): ReplayCursor?
 
     /**
      * Advances the replay cursor to the given [opId] and [stageIndex].
+     *
      * This operation is idempotent: if the cursor already points to the same
      * or a later position, the update is a no-op.
+     *
      * ## R-C mitigation reminder
+     *
      * This function MUST be called only AFTER [OperationJournal.append]
      * has returned successfully. Do NOT call it before the append.
+     *
      * @param runId      The run identifier.
      * @param opId       The ID of the operation that was just successfully journaled.
      * @param stageIndex The stage index at which execution should resume.
-*/
+     */
     fun advance(runId: String, opId: String, stageIndex: Int)
 
     /**
      * Advances the replay cursor past a parallel frame, using the maximum
      * stage index from all branch results as the next cursor position.
+     *
      * This is the join barrier for parallel frames. It computes
      * `max(branchResults.map { it.stageIndex })` and atomically writes
      * the new cursor position using the same idempotent CAS semantics as [advance].
+     *
      * @param runId The run identifier, used to derive cursor keys.
      * @param frame The parallel frame that just completed.
      * @param branchResults The results of each branch, containing the stage index.
@@ -43,7 +53,7 @@ interface ReplayCursorStore {
      *        overrides the computed max from branchResults. Use this when the caller
      *        knows the stage index more accurately than branchResults can provide.
      * @return The new [StageIndex] after advancing.
-*/
+     */
     fun advancePastParallelFrame(
         runId: String,
         frame: ParallelFrame,
@@ -54,11 +64,13 @@ interface ReplayCursorStore {
 
 /**
  * Result of a single branch execution, used by [ReplayCursorStore.advancePastParallelFrame].
+ *
  * This is a minimal data class defined in the events module to avoid a dependency
  * from events on the step-sdk runtime module (where [BranchResult] lives).
+ *
  * @property branchIndex The index of the branch.
  * @property stageIndex The stage index after this branch completed.
-*/
+ */
 data class BranchExecutionResult(
     val branchIndex: Int,
     val stageIndex: Int,
@@ -66,34 +78,41 @@ data class BranchExecutionResult(
 
 /**
  * A wrapper around [Int] representing a stage index in the replay cursor.
-*/
+ */
 @JvmInline
 value class StageIndex(val value: Int)
 
 /**
  * SQLite-backed implementation of [ReplayCursorStore].
+ *
  * ## Idempotency
+ *
  * [advance] is idempotent: calling it multiple times with the same arguments
  * has no additional effect. This is critical for correctness when
  * [advance] is called after [OperationJournal.append] in the same transaction
  * or across a crash-restart boundary.
+ *
  * ## R-C mitigation
+ *
  * [advance] must ONLY be called after
  * [OperationJournal.append] has returned successfully. Calling it before
  * the append succeeds could result in a cursor pointing to an operation
  * that was not actually persisted.
+ *
  * @param connectionFactory A factory function that returns an open [Connection]
  *                           obtained from [SqliteConnectionFactory.open].
-*/
+ *
+ */
 class SqliteReplayCursorStoreImpl(
     private val connectionFactory: () -> Connection,
     private val clock: Clock,
 ) : ReplayCursorStore {
     /**
      * Loads the replay cursor for a given [runId].
+     *
      * @param runId The run identifier.
      * @return The [ReplayCursor] if found, or `null` if no cursor exists for this run.
-*/
+     */
     override fun load(runId: String): ReplayCursor? {
         val conn = connectionFactory()
         try {
@@ -122,15 +141,19 @@ class SqliteReplayCursorStoreImpl(
 
     /**
      * Advances the replay cursor to the given [opId] and [stageIndex].
+     *
      * This operation is idempotent: if the cursor already points to the same
      * or a later position, the update is a no-op.
+     *
      * ## R-C mitigation reminder
+     *
      * This function MUST be called only AFTER [OperationJournal.append]
      * has returned successfully. Do NOT call it before the append.
+     *
      * @param runId      The run identifier.
      * @param opId       The ID of the operation that was just successfully journaled.
      * @param stageIndex The stage index at which execution should resume.
-*/
+     */
     override fun advance(runId: String, opId: String, stageIndex: Int) {
         require(stageIndex >= 0) { "stageIndex must be >= 0, got $stageIndex" }
 
@@ -160,18 +183,22 @@ class SqliteReplayCursorStoreImpl(
 
     /**
      * Advances the replay cursor past a parallel frame.
+     *
      * Computes `max(branchResults.map { it.stageIndex })` and atomically
      * writes the new cursor position using the same idempotent CAS semantics
      * as [advance].
+     *
      * ## Concurrency note
-     * Full concurrency stress testing for this join barrier is deferred to
+     *
+     * Full concurrency stress testing for this join barrier is deferred.
      * The current implementation relies on SQLite's transaction isolation and the
      * idempotent ON CONFLICT clause for safety, but production concurrency
      * should be validated with UatDurable010 before promotion.
+     *
      * @param frame The parallel frame that just completed.
      * @param branchResults The results of each branch.
      * @return The new [StageIndex] after advancing.
-*/
+     */
     override fun advancePastParallelFrame(
         runId: String,
         frame: ParallelFrame,
@@ -185,7 +212,7 @@ class SqliteReplayCursorStoreImpl(
 
         val conn = connectionFactory()
         try {
-            // Derive cursor keys from runIdDecision
+            // Derive cursor keys from runId:
             // run_id for the join barrier is "$runId:parallel"
             // last_op_id is "$runId:parallel-completed"
             val parallelCursorKey = "$runId:parallel"

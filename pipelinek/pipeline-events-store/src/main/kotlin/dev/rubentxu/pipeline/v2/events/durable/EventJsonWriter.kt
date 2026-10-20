@@ -5,6 +5,10 @@ import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
+import dev.rubentxu.pipeline.v2.events.CompensationArmed
+import dev.rubentxu.pipeline.v2.events.CompensationFinished
+import dev.rubentxu.pipeline.v2.events.CompensationStarted
+import dev.rubentxu.pipeline.v2.events.SagaTerminal
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.CredentialBound
@@ -803,6 +807,67 @@ internal object EventJsonWriter {
                 sb.append(EventJsonWriter.jsonString(event.law))
                 sb.append(",\"executorCalls\":")
                 sb.append(event.executorCalls)
+            }
+            // the armed-obligation notification. The fields are the ones a
+            // reader of the event plane needs to correlate the promise with the durable
+            // row: which saga, which action, under which plan, and where the compensation
+            // will run.
+            is CompensationArmed -> {
+                sb.append(",\"sagaId\":")
+                sb.append(EventJsonWriter.jsonString(event.sagaId))
+                sb.append(",\"actionId\":")
+                sb.append(EventJsonWriter.jsonString(event.actionId))
+                sb.append(",\"compensationId\":")
+                sb.append(EventJsonWriter.jsonString(event.compensationId))
+                sb.append(",\"planFingerprint\":")
+                sb.append(EventJsonWriter.jsonString(event.planFingerprint))
+                sb.append(",\"intentVersion\":")
+                sb.append(event.intentVersion)
+                sb.append(",\"resourceRef\":")
+                sb.append(EventJsonWriter.jsonString(event.resourceRef))
+                sb.append(",\"compensationOpId\":")
+                sb.append(EventJsonWriter.jsonString(event.compensationOpId))
+                sb.append(",\"leaseEpoch\":")
+                sb.append(event.leaseEpoch)
+            }
+            // the three facts of the compensation loop. The SLOT travels with
+            // them because it is the join between "this Saga owes this" and "these journal
+            // rows are the body that undid it".
+            is CompensationStarted -> {
+                sb.append(",\"sagaId\":")
+                sb.append(EventJsonWriter.jsonString(event.sagaId))
+                sb.append(",\"actionId\":")
+                sb.append(EventJsonWriter.jsonString(event.actionId))
+                sb.append(",\"compensationId\":")
+                sb.append(EventJsonWriter.jsonString(event.compensationId))
+                sb.append(",\"resourceRef\":")
+                sb.append(EventJsonWriter.jsonString(event.resourceRef))
+                sb.append(",\"slot\":")
+                sb.append(EventJsonWriter.jsonString(event.slot))
+            }
+            is CompensationFinished -> {
+                sb.append(",\"sagaId\":")
+                sb.append(EventJsonWriter.jsonString(event.sagaId))
+                sb.append(",\"actionId\":")
+                sb.append(EventJsonWriter.jsonString(event.actionId))
+                sb.append(",\"compensationId\":")
+                sb.append(EventJsonWriter.jsonString(event.compensationId))
+                sb.append(",\"slot\":")
+                sb.append(EventJsonWriter.jsonString(event.slot))
+                sb.append(",\"outcome\":")
+                sb.append(EventJsonWriter.jsonString(event.outcome))
+                sb.append(",\"detail\":")
+                sb.append(EventJsonWriter.optionalJsonString(event.detail))
+            }
+            is SagaTerminal -> {
+                sb.append(",\"sagaId\":")
+                sb.append(EventJsonWriter.jsonString(event.sagaId))
+                sb.append(",\"state\":")
+                sb.append(EventJsonWriter.jsonString(event.state))
+                sb.append(",\"reason\":")
+                sb.append(EventJsonWriter.optionalJsonString(event.reason))
+                sb.append(",\"compensatedActions\":")
+                sb.append(EventJsonWriter.jsonStringList(event.compensatedActions))
             }
         }
         sb.append("}")

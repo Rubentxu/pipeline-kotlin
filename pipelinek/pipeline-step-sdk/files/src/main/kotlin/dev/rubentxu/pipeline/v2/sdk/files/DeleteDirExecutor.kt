@@ -9,7 +9,7 @@ import java.nio.file.Path
  * Result of a deleteDir operation.
  * @property path Resolved absolute path that was deleted
  * @property deletedCount Number of files/directories deleted (0 if already deleted)
- * @property sha256 SHA-256 hex.deleted marker content
+ * @property sha256 SHA-256 hex of the .deleted marker content
 */
 data class DeleteDirResult(
     val path: Path,
@@ -28,11 +28,11 @@ data class DeleteDirResult(
  * - Enforces workspace-root guard: resolved path MUST start with workspace root
  * - Throws [IllegalArgumentException] if path escapes workspace
  * - Throws [IllegalArgumentException] if the target IS the workspace root while
- * [rootDestruction] does not permit it. With `--workspace <dir>` the
+ *   [rootDestruction] does not permit it. With `--workspace <dir>` the
  *   workspace root is the user's own project, and the default `deleteDir()` (path ".")
  *   resolves to exactly that root, so the Step's own default would erase the
  *   checkout. The default per-stage workspace is disposable scratch space, so
- * Wiping it stays allowed and/ keep their contract
+ *   wiping it stays allowed.
  * ## Idempotency
  * - Re-execution with same marker sha = no-op (deletedCount=0)
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
@@ -133,7 +133,7 @@ class DeleteDirExecutor(
         val deletedCount = countItems(realTarget)
 
         // Delete all contents recursively (but NOT the root targetPath itself)
-        // This preserves the workspace root and allows.deleted marker to be written inside it
+        // This preserves the workspace root and allows the .deleted marker to be written inside it
         // Same reason: the walk is anchored to the real path, so a link named
         // `escape` is removed as a link and never followed into its target.
         val walked = realTarget
@@ -190,7 +190,7 @@ class DeleteDirExecutor(
 
     companion object {
         /**
-         * SHA-256 hex of [bytes], routed through the shared utility
+         * SHA-256 hex of [bytes], routed through the shared utility.
          * Byte-identical to the local implementation this replaces: same algorithm, same
          * lowercase hex, same input. The value is emitted in the Step's observability event,
          * so an external observer comparing digests keeps matching.

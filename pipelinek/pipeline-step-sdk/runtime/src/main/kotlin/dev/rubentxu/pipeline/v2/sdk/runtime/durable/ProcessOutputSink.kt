@@ -222,7 +222,7 @@ data class ProcessOutputSinks(
 
 /**
  * The most sanitized bytes the pump moves per write into the composed sink.
- * ## What it bounds now, after measured it
+ * ## What it bounds now, after measuring it
  * It bounds the store's per-chunk bookkeeping. Every write here is one `reserve -> write -> commit`
  * cycle AND one frame in `SegmentFrameIndex`, and `SegmentFrameIndex.appendLine` opens a
  * `FileChannel` and calls `force(false)` for each one — so this window is literally the number of
@@ -240,7 +240,7 @@ data class ProcessOutputSinks(
  *  65536             128              128     16.0    112.3
  * ```
  * 1024 was chosen when this WAS a liveness bound — at 8 KiB a step emitting 100 B/s withheld its
- * First visible byte for over a minute. removed that role when the pump started asking for
+ * first visible byte for over a minute. That removed that role when the pump started asking for
  * what is ready, and the number stayed at the value its old justification had picked. The latency
  * floor is now the redactor's lookahead, at most `MIN_SECRET_WINDOW` bytes, and that one is
  * redaction correctness rather than tuning: a byte inside the lookahead could still begin a secret,

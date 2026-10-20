@@ -88,8 +88,8 @@ val computeScmGitDigest = tasks.register("computeScmGitDigest") {
     dependsOn("compileKotlin", "processResources")
 
     // Declared inputs, WITHOUT `skipWhenEmpty`: `inputs.dir + skipWhenEmpty` used to make Gradle
-    // Mark this on incremental builds. `inputs.files(fileTree(...))` keeps the task
-    // Runnable while still letting Gradle re-run it when the material changes
+    // mark this NO-SOURCE on incremental builds. `inputs.files(fileTree(...))` keeps the task
+    // runnable while still letting Gradle re-run it when the material changes.
     inputs.files(fileTree(scmGitClassesDir)).withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.files(fileTree(scmGitResourcesDir) { exclude(scmGitExcludedResourcePaths) })
         .withPathSensitivity(PathSensitivity.RELATIVE)
@@ -193,7 +193,7 @@ val scmGitCompatibilityResource = layout.buildDirectory
 
 val generateScmGitPluginCompatibility = tasks.register("generatePluginCompatibilityMetadata") {
     group = "scm-git"
-    description = "PK-RC-PLUGIN-001: emit the policy-derived compatibility resource for the artifact."
+    description = "Emit the policy-derived compatibility resource for the artifact."
 
     inputs.property("productVersion", rootProject.version.toString())
     outputs.file(scmGitCompatibilityResource)
@@ -211,7 +211,7 @@ val scmGitManifest = layout.buildDirectory.file("resources/main/META-INF/pipelin
 
 val emitScmGitManifest = tasks.register<JavaExec>("emitScmGitManifest") {
     group = "scm-git"
-    description = "S6/C: emit the machine-readable plugin manifest into the artifact."
+    description = "Emit the machine-readable plugin manifest into the artifact."
 
     dependsOn(computeScmGitDigest, generateScmGitPluginCompatibility)
     mainClass.set("dev.rubentxu.pipeline.v2.sdk.scm.git.step.ScmGitPluginDeclarationKt")
@@ -239,7 +239,7 @@ val emitScmGitManifest = tasks.register<JavaExec>("emitScmGitManifest") {
         val text = captured.toString(Charsets.UTF_8)
         if (text.isBlank()) {
             throw GradleException(
-                "S6/C: manifest emission produced no output. The scm-git plugin would ship without " +
+                "Manifest emission produced no output. The scm-git plugin would ship without " +
                     "META-INF/pipelinek/plugin-manifest.json and admission would refuse it at runtime.",
             )
         }
@@ -257,7 +257,7 @@ tasks.named("jar") {
     dependsOn(emitScmGitManifest)
 }
 
-// Unit-test wiring RESTORED , and the reason it went is still worth keeping.
+// Unit-test wiring RESTORED, and the reason it went is still worth keeping.
 // It was REMOVED by the testing reset, on the grounds that this module is a git
 // STEP whose guarantee is that a pipeline mutates a real repository, so its verification belongs
 // to the executable E2E layer -- `.pipeline.kts` pipelines under `examples/`, driven by

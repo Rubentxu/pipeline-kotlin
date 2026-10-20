@@ -28,10 +28,10 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
 /**
- * `core-utils.unzip` OFFICIAL_PLUGIN Step (utilities, Slice 2 /.5)
+ * `core-utils.unzip` OFFICIAL_PLUGIN Step (utilities).
  * Jenkins reference: pipeline-utility-steps-plugin::UnZipStep
  * (MIT, CloudBees).
- * Security (CVE-2023-32981 /):
+ * Security (CVE-2023-32981):
  *  - For every entry, the resolved target path MUST be a descendant of
  *    the destination root (normalised). Otherwise the whole archive is
  *    rejected with a USER failure.
@@ -231,7 +231,7 @@ class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
 
     /**
      * Resolve the target path for [entryName] under [destRoot] and
-     * Verify containment. This is the / Zip Slip
+     * verify containment. This is the CVE-2023-32981 / Zip Slip
      * mitigation: any entry whose normalised target escapes the
      * destination root is rejected.
 */
@@ -297,7 +297,7 @@ class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
         // segments).
         // Future hardening: parse the extra field manually to detect
         // mode 0xA1ED (Unix symlink) and reject it. Out of scope for
-        // this slice; tracked under Slice 2 debt.
+        // this slice; tracked as outstanding debt.
         @Suppress("UNUSED_PARAMETER") val ignored = entry
     }
 

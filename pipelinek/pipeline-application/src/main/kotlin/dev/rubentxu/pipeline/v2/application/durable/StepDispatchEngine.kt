@@ -19,6 +19,7 @@ import dev.rubentxu.pipeline.v2.domain.ContextOverlay
 import dev.rubentxu.pipeline.v2.domain.ContextTransition
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
+import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StageBody
@@ -40,6 +41,10 @@ import dev.rubentxu.pipeline.v2.domain.durable.ParallelDecision
 import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciler
 import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciliationInput
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
+import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
+import dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker
+import dev.rubentxu.pipeline.v2.domain.step.BodySlots
+import dev.rubentxu.pipeline.v2.domain.step.SlotResolution
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity
 import dev.rubentxu.pipeline.v2.domain.step.BodyContinuation
@@ -118,6 +123,14 @@ internal class StepDispatchEngine(
     // Handed to PREPARE so admission and execution observe the same set.
     private val capabilityContributor: dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor =
         dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor { emptyMap() },
+    // The per-run Saga seam. The PORT itself is built per dispatch, because it
+    // carries the forward operation's identity; this binding only carries the run-level facts
+    // (the durable store and the lease epoch that fences writes).
+    //
+    // Null when the run has no durable Saga store: the capability then stays unexposed and a
+    // Step that declares it is refused at admission rather than reaching a handler that could
+    // not keep the promise it is about to make.
+    private val sagaBinding: SagaCompensationBinding? = null,
 ) {
 
     /**
@@ -161,6 +174,24 @@ internal class StepDispatchEngine(
     }
 
     /**
+     * A slot the handler asked for and the engine cannot honour.
+     *
+     * A CONTAINED failure, not an exception: the handler's own outcome is where
+     * that violation belongs, and an exception would tear the run down instead
+     * of reporting it. ENGINE, because the contract was the engine's to keep —
+     * the handler named a slot the body does not have.
+     */
+    private fun slotFailure(message: String): BodyOutcome =
+        BodyOutcome.Completed(
+            StepOutcome.Failure(
+                PipelineFailure(
+                    kind = FailureKind.ENGINE,
+                    message = message,
+                ),
+            ),
+        )
+
+    /**
      * CDE.3-e4.3: the runtime context is built here so registry prepare can derive the available
      * capabilities from the capability bridge, never the raw context handed to a handler.
      * It is built only on the execution path: reuse, divergence and recovery never reach it,
@@ -174,6 +205,7 @@ internal class StepDispatchEngine(
         stepIndex: Int,
         stageShOptions: ShOptions,
         bodyContinuation: dev.rubentxu.pipeline.v2.domain.step.BodyContinuation?,
+        bodySlotInvoker: BodySlotInvoker?,
     ): CanonicalRuntimeContext = CanonicalRuntimeContext(
         opId = opId,
         runId = runId.value,
@@ -193,9 +225,72 @@ internal class StepDispatchEngine(
         // fail-closed admission is real: a handler that declares the capability
         // without the engine having bound it never runs.
         bodyContinuation = bodyContinuation,
+        // The slot seam, bound ONLY for a HANDLER_CONTINUATION Step
+        // whose body is already bound. Null everywhere else, so the fail-closed
+        // admission is real.
+        bodySlotInvoker = bodySlotInvoker,
         secretPatternRegistry = secretPatternRegistry,
         workspaceBase = workspaceBase,
         pluginEventEmitter = pluginEventEmitter(eventRegistry, eventSink, clock),
+        // The intent port for THIS invocation. Built here, where the forward
+        // operation's identity is known, so the compensation an obligation names is the
+        // compensation OF that operation and not of some other step in the same run.
+        sagaCompensation = sagaBinding?.let { binding ->
+            SagaCompensationOperations(
+                runId = runId.value,
+                forwardOpId = opId.format(),
+                leaseEpoch = binding.leaseEpoch,
+                store = binding.store,
+                eventSink = eventSink,
+                clock = clock,
+            )
+        },
+        // The plan port for THIS run. It carries no operation identity — what a
+        // Saga owes is a property of the Saga, not of the step that happens to ask — so it is
+        // bound to the run and its lease epoch, and it reads the same durable rows the intent
+        // port writes.
+        sagaPlan = sagaBinding?.let { binding ->
+            SagaPlanOperationsAdapter(
+                runId = runId.value,
+                leaseEpoch = binding.leaseEpoch,
+                store = binding.store,
+                clock = clock,
+            )
+        },
+        // The compensation RUNTIME for THIS invocation. It needs the Saga store
+        // (the loop decides on durable state) and the slot seam (the compensation bodies are
+        // children of this Step's own body). Both, or neither: a runtime without a body to
+        // compensate through could only stop, and a runtime without durable state could only
+        // guess.
+        sagaRuntime = if (sagaBinding != null && bodySlotInvoker != null) {
+            SagaCompensationInterpreter(
+                runId = runId.value,
+                planOperations = SagaPlanOperationsAdapter(
+                    runId = runId.value,
+                    leaseEpoch = sagaBinding.leaseEpoch,
+                    store = sagaBinding.store,
+                    clock = clock,
+                ),
+                // The other closing of a Saga — the one that KEEPS the
+                // effects. It reads the same durable rows and writes them with the same lease
+                // epoch, because it is the same authority about the same promises.
+                completion = SagaCompletionAdapter(
+                    runId = runId.value,
+                    leaseEpoch = sagaBinding.leaseEpoch,
+                    store = sagaBinding.store,
+                    clock = clock,
+                ),
+                slotInvoker = bodySlotInvoker,
+                // The events are the observable trace of the loop: a compensation that STARTED,
+                // one that FINISHED and the Saga's TERMINAL state. They are announced by the
+                // engine, never by the plugin, and always after the durable write that makes
+                // them true.
+                eventSink = eventSink,
+                clock = clock,
+            )
+        } else {
+            null
+        },
     )
 
     /**
@@ -326,19 +421,29 @@ internal class StepDispatchEngine(
                     val attemptSegment = bodyContext.attempt?.let { segment ->
                         listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(segment.index, segment.key))
                     } ?: emptyList()
-                    val contextForCall = applyPatchToContext(executionContext, bodyContext.patch)
-                    dev.rubentxu.pipeline.v2.domain.step.BodyOutcome.Completed(
-                        dispatchBody(
-                            block = step,
-                            runId = runId,
-                            stageName = stageName,
-                            stageIndex = stageIndex,
-                            stepIndex = stepIndex,
-                            stageShOptions = stageShOptions,
-                            parentBodyPath = bodyPath + attemptSegment,
-                            executionContext = contextForCall,
-                        ),
-                    )
+                    // The patch is projected onto BOTH surfaces — the context AND the options
+                    // the body is launched with — so a body that runs under a patched
+                    // environment really runs under it.
+                    when (val projection = projectInvocationPatch(executionContext, stageShOptions, bodyContext.patch)) {
+                        is InvocationPatchProjection.Refused -> BodyOutcome.Completed(
+                            StepOutcome.Failure(
+                                PipelineFailure(FailureKind.ENGINE, projection.reason),
+                            ),
+                        )
+
+                        is InvocationPatchProjection.Applied -> BodyOutcome.Completed(
+                            dispatchBody(
+                                block = step,
+                                runId = runId,
+                                stageName = stageName,
+                                stageIndex = stageIndex,
+                                stepIndex = stepIndex,
+                                stageShOptions = projection.shOptions,
+                                parentBodyPath = bodyPath + attemptSegment,
+                                executionContext = projection.context,
+                            ),
+                        )
+                    }
                 }
             } else {
                 if (step is BlockStepNode) {
@@ -356,6 +461,81 @@ internal class StepDispatchEngine(
                     // built explicitly with a null encoded output rather than narrowed from one.
                     return Dispatched(CommonExecutionResult(outcome = body), executionContext)
                 }
+                null
+            }
+
+        // The slot seam.
+        //
+        // The continuation runs the WHOLE body, which is right for a loop and wrong
+        // for a plan with alternatives: a Saga has to choose between the FORWARD
+        // body and the COMPENSATE body. This port gives the handler that choice and
+        // nothing else — the engine still resolves the slot, still dispatches it and
+        // still owns its identity.
+        //
+        // The dispatched child travels the SAME canonical spine as any other body
+        // child, and it carries the path the canonical body loop WOULD have given
+        // it (body path + attempt + BlockSegment(index, key)). So the slot's journal
+        // rows are the rows that child would have had, and a body dispatched by the
+        // engine and a body dispatched by the handler are the same operation.
+        val bodySlotInvoker: BodySlotInvoker? =
+            if (step is BlockStepNode && declaredBodyOwnerOf(step) ==
+                dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner.HANDLER_CONTINUATION
+            ) {
+                BodySlotInvoker { slot, slotContext ->
+                    when (
+                        val resolution = BodySlots.resolve(
+                            step.body.map { it.pluginStepId },
+                            slot,
+                        )
+                    ) {
+                        is SlotResolution.Missing -> slotFailure(
+                            "no body slot '${slot.value}' in the body of '${step.pluginStepId.value}'",
+                        )
+
+                        is SlotResolution.Ambiguous -> slotFailure(
+                            "body slot '${slot.value}' is ambiguous in the body of " +
+                                "'${step.pluginStepId.value}': ${resolution.matches} children share that key",
+                        )
+
+                        is SlotResolution.Found -> {
+                            val childIndex = resolution.childIndex
+                            val child = step.body[childIndex]
+                            val attemptSegment = slotContext.attempt?.let { segment ->
+                                listOf(BlockSegment(segment.index, segment.key))
+                            }.orEmpty()
+                            val childBodyPath = bodyPath + attemptSegment +
+                                BlockSegment(childIndex, child.pluginStepId)
+                            // The patch is projected onto BOTH surfaces: the context AND the
+                            // options the child is launched with. A body that has to recognise
+                            // its own operation key can only do it if the key reaches the
+                            // process, and a process is launched with the options.
+                            when (
+                                val projection = projectInvocationPatch(
+                                    executionContext,
+                                    stageShOptions,
+                                    slotContext.patch,
+                                )
+                            ) {
+                                is InvocationPatchProjection.Refused -> slotFailure(projection.reason)
+
+                                is InvocationPatchProjection.Applied -> {
+                                    val outcome = dispatch(
+                                        child,
+                                        runId,
+                                        stageName,
+                                        stageIndex,
+                                        stepIndex,
+                                        projection.shOptions,
+                                        childBodyPath,
+                                        projection.context,
+                                    ).result.outcome
+                                    BodyOutcome.Completed(outcome)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
                 null
             }
 
@@ -469,6 +649,7 @@ internal class StepDispatchEngine(
             stepIndex = stepIndex,
             stageShOptions = stageShOptions,
             bodyContinuation = bodyContinuation,
+            bodySlotInvoker = bodySlotInvoker,
         )
 
         // CDE.2-c/d + CDE.3-b3/e4.3: strategy preparation runs ONLY on actual execution and NEVER
@@ -597,7 +778,7 @@ internal class StepDispatchEngine(
         val policy = when (val resolution = bodyPolicyResolver.resolve(block.pluginStepId)) {
             is BodyPolicyResolution.Rejected -> return StepOutcome.Failure(
                 PipelineFailure(
-                    dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                    FailureKind.ENGINE,
                     "body execution policy rejected for '${block.pluginStepId.value}': ${resolution.reason}",
                 ),
             )
@@ -638,7 +819,7 @@ internal class StepDispatchEngine(
             )
             is BodyExecutionProjection.Unimplemented -> return StepOutcome.Failure(
                 PipelineFailure(
-                    dev.rubentxu.pipeline.v2.domain.FailureKind.ENGINE,
+                    FailureKind.ENGINE,
                     "body execution shape '${projection.shape}' is declared by " +
                         "'${block.pluginStepId.value}' but not implemented by this engine",
                 ),

@@ -12,7 +12,7 @@ package dev.rubentxu.pipeline.v2.output
  * ```
  * A frame deliberately carries **no payload**. It is metadata about bytes that live exactly once in
  * a stream, and a frame that also held those bytes would be the second copy that
- * [dev.rubentxu.pipeline.v2.output.OutputRefusal] and ` §` exist to prevent
+ * a second copy of the bytes, which is what [dev.rubentxu.pipeline.v2.output.OutputRefusal] exists to prevent
  * ## What [ordinal] does and does not mean
  * It means **the order in which PipelineK observed and published these chunks.** That is a real
  * order and it is the only order this repository can speak about, because:

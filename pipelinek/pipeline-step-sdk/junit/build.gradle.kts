@@ -58,7 +58,7 @@ val junitResourcesDir = layout.buildDirectory.dir("resources/main")
 // 2. A LEAKED TEMPORARY FILE. The shell pipeline wrote `${out}.digest` inside the
 //    resources directory and deleted it afterwards. A build interrupted between the
 //    write and the delete — or simply ordered differently — left that scratch file
-//    Inside `META-INF/`, where `processResources` packaged it into the jar. Measured
+//    inside `META-INF/`, where `processResources` packaged it into the jar. Measured
 //    `http-0.48.0.jar` shipped `META-INF/http-release.properties.digest` in one checkout
 //    and not the other. A plain in-process digest has no scratch file to leak.
 //    The two exclusions are the documents this task feeds: the properties file the
@@ -162,7 +162,7 @@ val junitCompatibilityResource = layout.buildDirectory
 
 val generateJUnitPluginCompatibility = tasks.register("generatePluginCompatibilityMetadata") {
     group = "junit"
-    description = "PK-RC-PLUGIN-001: emit the policy-derived compatibility resource for the artifact."
+    description = "Emit the policy-derived compatibility resource for the artifact."
 
     inputs.property("productVersion", rootProject.version.toString())
     outputs.file(junitCompatibilityResource)
@@ -180,7 +180,7 @@ val junitManifest = layout.buildDirectory.file("resources/main/META-INF/pipeline
 
 val emitJunitManifest = tasks.register<JavaExec>("emitJunitManifest") {
     group = "junit"
-    description = "S6/C: emit the machine-readable plugin manifest into the artifact."
+    description = "Emit the machine-readable plugin manifest into the artifact."
 
     dependsOn(computeJunitDigest, generateJUnitPluginCompatibility)
     mainClass.set("dev.rubentxu.pipeline.v2.sdk.junit.step.JUnitPluginDeclarationKt")
@@ -208,7 +208,7 @@ val emitJunitManifest = tasks.register<JavaExec>("emitJunitManifest") {
         val text = captured.toString(Charsets.UTF_8)
         if (text.isBlank()) {
             throw GradleException(
-                "S6/C: manifest emission produced no output. The junit plugin would ship without " +
+                "Manifest emission produced no output. The junit plugin would ship without " +
                     "META-INF/pipelinek/plugin-manifest.json and admission would refuse it at runtime.",
             )
         }

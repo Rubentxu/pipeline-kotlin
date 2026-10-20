@@ -15,14 +15,14 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
  * store, or a new cursor vocabulary: the existing ports are the source of
  * truth, and the follow contract is additive on top of them.
  * ## Why pull (iterator) and not Flow
- * The published contract for `v2/pipeline-output` does not depend on
+ * The published contract for `pipelinek/pipeline-output` does not depend on
  * `kotlinx-coroutines`, and adding that dependency is an architectural
  * change. The pull shape — an `Iterator<OutputFollowEvent>` over a
  * closeable handle — keeps the published ABI free of coroutines, lets a
  * Java consumer drive the follow without a Kotlin runtime, and matches
  * the existing `OutputReadPort.read` / `OutputFrameIndex.framesOfRun`
  * request/response shape. The application layer
- * (`v2/pipeline-application/.../observation/follow/`) can adapt the
+ * (`pipelinek/pipeline-application/.../observation/follow/`) can adapt the
  * iterator to a `Flow<OutputFollowEvent>` for Kotlin consumers; the
  * adaptation is an internal concern, not a contract surface.
  * ## Why polling is the baseline
@@ -53,7 +53,7 @@ interface OutputFollower {
      * Backpressure is bound by [OutputFollowOptions.pageMaxBytes] per
      * page and [OutputFollowOptions.maxRecords] per poll cycle, mirroring
      * the existing `LiveOutputDrain` and `ObservationOutputFollower` in
-     * `v2/pipeline-application/.../observation/`.
+     * `pipelinek/pipeline-application/.../observation/`.
      * The handle is single-observer: a second consumer that wants to
      * observe the same run independently calls [open] again. Two
      * iterators over the same handle would be a definition of cursor

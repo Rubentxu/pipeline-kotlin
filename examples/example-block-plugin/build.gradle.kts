@@ -22,7 +22,7 @@ val sdkRepo: String = providers.gradleProperty("sdkRepo").getOrElse("../../pipel
 // No default version, on purpose. `0.1.0-SNAPSHOT` was here for a long time and it cannot resolve
 // anything: the build then failed in a dependency-resolution message naming a version nobody asked
 // for, hundreds of lines below the line that matters. The build already omitted `-PsdkVersion`
-// once, on, and paid exactly that. Failing here names the real cause.
+// once and paid exactly that. Failing here names the real cause.
 val sdkVersion: String = requireNotNull(providers.gradleProperty("sdkVersion").orNull) {
     """
     -PsdkVersion is required: this plugin resolves the published SDK contracts and has no default
@@ -58,7 +58,7 @@ require(sdkCore.first >= 0 && sdkCore.second >= 0 && sdkCore.third >= 0) {
 // equal to sdkVersion would make this plugin refuse the host that loads it.
 val nextMinor: String = "${sdkCore.first}.${sdkCore.second + 1}.0"
 
-// The floor is the plugin's own property.: with no measured evidence that
+// The floor is the plugin's own property: with no measured evidence that
 // this plugin works against an older SDK, the conservative floor IS the resolved SDK version.
 // The previous value, 0.47.0, was inherited from the official plugins' certified floor and was
 // never measured for this fixture.
@@ -122,13 +122,14 @@ val blockNamespace = providers
 
 /**
  * The SDK, on the runtime classpath of the BUILD-TIME emitter only.
+ *
  * Every dependency above is `compileOnly`, and that is the plugin's whole point: it ships classes
  * only, and the host supplies the contracts at runtime. So `sourceSets.main.runtimeClasspath` is
  * EMPTY of them and the emitter would die with `NoClassDefFoundError: PluginManifestCodec`. This
  * configuration does not leak into the JAR, because widening the plugin's own runtime scope to
  * make a build task work would put PipelineK's contracts inside an artifact whose defining
  * property is that it carries only its own classes.
-*/
+ */
 val sdkForManifestEmission by configurations.creating {
     extendsFrom(configurations.compileOnly.get())
 }
@@ -212,7 +213,7 @@ val computeBlockRelease = tasks.register("computeBlockRelease") {
                 appendLine("pipeline.example.block.release.digest=sha256:$hex")
                 // The compatibility range is DERIVED, not typed.
                 // The ceiling is the NEXT MINOR of the resolved SDK, not the resolved version itself:
-                // PipelineKApiRange.accepts is `runtime < untilExclusive`, so a ceiling equal to
+                // PipelineKApiRange.accepts() is `runtime < untilExclusive`, so a ceiling equal to
                 // sdkVersion would make the plugin refuse the very host that loads it.
                 appendLine("pipeline.example.block.compatibility.min=$blockApiRangeMin")
                 appendLine("pipeline.example.block.compatibility.untilExclusive=$nextMinor")
@@ -228,7 +229,7 @@ val blockManifest =
 
 val emitBlockManifest = tasks.register<JavaExec>("emitBlockManifest") {
     group = "block"
-    description = "S6/I: emit the machine-readable plugin manifest into the artifact."
+    description = "Emit the machine-readable plugin manifest into the artifact."
 
     dependsOn(computeBlockRelease)
     mainClass.set("example.block.RepeatPluginDeclarationKt")
@@ -257,7 +258,7 @@ val emitBlockManifest = tasks.register<JavaExec>("emitBlockManifest") {
         val text = captured.toString(Charsets.UTF_8)
         if (text.isBlank()) {
             throw GradleException(
-                "S6/I: manifest emission produced no output. The plugin would ship without " +
+                "Manifest emission produced no output. The plugin would ship without " +
                     "META-INF/pipelinek/plugin-manifest.json and admission would refuse it at runtime.",
             )
         }

@@ -76,7 +76,7 @@ object ConsoleReadService {
  * 3 split an operation's output into two channel-addressed streams, and this method is where
  * a consumer is meant to see them as one console again. The concatenation happens HERE, on the read
  * side, and is never persisted — a merged run on disk would be the second byte authority that
- * ` §` exists to prevent
+ * a second byte authority is not allowed
  * The continuation cursor names **the channel the page stopped on**, because that is the only thing
  * an [OutputCursor] can honestly name: it addresses a byte position inside ONE stream, and the type
  * refuses a cursor that claims otherwise. So a reader resuming from the returned cursor continues

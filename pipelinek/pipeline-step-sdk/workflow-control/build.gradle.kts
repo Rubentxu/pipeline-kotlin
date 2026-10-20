@@ -20,8 +20,8 @@ dependencies {
     implementation(project(":pipeline-scripting-api"))
 }
 
-// Unit-test wiring RESTORED .
-// The RESET removed it on with this reasoning: "This module carries no unit tests:
+// Unit-test wiring RESTORED.
+// The RESET removed it with this reasoning: "This module carries no unit tests:
 // it is a workflow-control STEP whose subject is multi-step pipeline execution. Its
 // verification is the executable E2E layer."
 // That reasoning was correct about `execute()` and wrong about the module. `resolveTargetPath`

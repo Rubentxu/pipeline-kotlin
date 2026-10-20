@@ -182,7 +182,7 @@ repositories {
 // train in this repository's history has been a MINOR, and the one train that
 // was a behavioural fix (0.66.0 -> 0.67.0) was MINOR too. The published ABI
 // does NOT change either way — the five published artifacts are identical.
-version = "0.74.0"
+version = "0.75.0"
 
 // The product version is the IDENTITY the binary reports and the candidate is tagged
 // with. It is also the one declaration in this file that a long comment can swallow:

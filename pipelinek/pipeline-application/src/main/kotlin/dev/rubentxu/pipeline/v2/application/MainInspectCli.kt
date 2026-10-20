@@ -351,6 +351,11 @@ object MainInspectCli {
                 else -> event.outcome
             }
             is StepFailed -> "failure"
+            // A step's terminal event carries the step's verdict, so this row can say it. It used to
+            // fall through to the event's kind, which made the column answer "StepFinished" to a
+            // question about the outcome — the kind, not the result. A row written before the
+            // verdict was published carries none, and falls back to the kind it always showed.
+            is StepFinished -> event.outcome ?: event.kind
             else -> event.kind
         }
         val message: String? = (event as? StepFailed)?.message

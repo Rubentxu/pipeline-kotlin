@@ -1780,7 +1780,7 @@ public final class dev/rubentxu/pipeline/v2/events/StepFailed : dev/rubentxu/pip
 }
 
 public final class dev/rubentxu/pipeline/v2/events/StepFinished : dev/rubentxu/pipeline/v2/events/DomainEvent {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
@@ -1789,12 +1789,14 @@ public final class dev/rubentxu/pipeline/v2/events/StepFinished : dev/rubentxu/p
 	public final fun component6 ()I
 	public final fun component7 ()Ljava/lang/String;
 	public final fun component8 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/StepFinished;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/StepFinished;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/StepFinished;
+	public final fun component9 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/StepFinished;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/StepFinished;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/StepFinished;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getEventId ()Ljava/lang/String;
 	public fun getKind ()Ljava/lang/String;
 	public fun getOccurredAt ()Ljava/time/Instant;
+	public final fun getOutcome ()Ljava/lang/String;
 	public fun getRunId ()Ljava/lang/String;
 	public fun getSequence ()J
 	public final fun getStageIndex ()I
@@ -3116,20 +3118,22 @@ public final class dev/rubentxu/pipeline/v2/events/shape/StageStartedTyped : dev
 }
 
 public final class dev/rubentxu/pipeline/v2/events/shape/StepFinishedTyped : dev/rubentxu/pipeline/v2/events/shape/TypedEvent {
-	public fun <init> (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()J
 	public final fun component3 ()I
 	public final fun component4 ()Ljava/lang/String;
 	public final fun component5 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/shape/StepFinishedTyped;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/shape/StepFinishedTyped;Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/shape/StepFinishedTyped;
+	public final fun component6 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/shape/StepFinishedTyped;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/shape/StepFinishedTyped;Ljava/lang/String;JILjava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/shape/StepFinishedTyped;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getOccurredAtMs ()J
 	public final fun getOutcome ()Ljava/lang/String;
 	public fun getRunId ()Ljava/lang/String;
 	public final fun getStageOrdinal ()I
 	public final fun getStepKey ()Ljava/lang/String;
+	public final fun getStepType ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

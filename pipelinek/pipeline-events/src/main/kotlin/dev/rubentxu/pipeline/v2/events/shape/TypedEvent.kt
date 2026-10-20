@@ -82,17 +82,31 @@ data class StepStartedTyped(
     }
 }
 
-/** Typed shape of a `StepFinished` event. */
+/**
+ * Typed shape of a `StepFinished` event.
+ *
+ * ## The verdict, and where the step's type went
+ *
+ * [outcome] is the step's result — `success`, `unstable` or `failure` — and `null` when the step
+ * reached no decided outcome. It used to carry the step's **type** (`sh`, `echo`, …), under a
+ * field whose name said something else entirely: a consumer reading `outcome` got a confident
+ * answer to a question nobody asked, and no answer to the question it did ask. The type now has
+ * its own field, [stepType], and [outcome] means what it says.
+ *
+ * This is why the capability that carries this shape was re-versioned: a consumer compiled
+ * against the old shape read a different thing out of the same field.
+ */
 data class StepFinishedTyped(
     override val runId: String,
     override val occurredAtMs: Long,
     val stageOrdinal: Int,
     val stepKey: String,
-    val outcome: String,
+    val stepType: String,
+    val outcome: String?,
 ) : TypedEvent {
     init {
         require(stageOrdinal >= 0) { "stageOrdinal must be >= 0, got $stageOrdinal" }
         require(stepKey.isNotBlank()) { "stepKey must be non-blank" }
-        require(outcome.isNotBlank()) { "outcome must be non-blank" }
+        require(stepType.isNotBlank()) { "stepType must be non-blank" }
     }
 }

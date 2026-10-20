@@ -112,7 +112,10 @@ class EventShapeReadPortStoreAdapter(
             occurredAtMs = raw.occurredAt.toEpochMilli(),
             stageOrdinal = raw.stageIndex,
             stepKey = "step-${raw.stepIndex}",
-            outcome = raw.stepType,
+            stepType = raw.stepType,
+            // The verdict, read off the event: the terminal event of a step carries the step's
+            // result, and it is absent only when the step reached no decided outcome.
+            outcome = raw.outcome,
         )
         else -> null
     }

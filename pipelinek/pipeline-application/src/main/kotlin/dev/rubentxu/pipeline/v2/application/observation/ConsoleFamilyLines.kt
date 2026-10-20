@@ -213,18 +213,24 @@ internal object ConsoleFamilyLines {
             "[step: ${scope.stage(event.stageIndex)}] ${event.stepName}",
         )
 
-        // "finished", never "ok". `StepExecutionBoundary` emits this from a `finally`, so it
-        // closes the step's span on success, failure and exception alike, and the event carries
-        // no outcome field to justify any verdict — `StepFailed` is the event that carries the
-        // failure. Rendering it "ok" printed, for one failing step and in this order:
+        // "finished", and now the verdict too. `StepExecutionBoundary` emits this from a `finally`,
+        // so it closes the step's span on success, failure and exception alike — which is why the
+        // word "finished" alone said nothing about the result, and why rendering it "ok" printed,
+        // for one failing step and in this order:
         //     ERROR: step 's1/sh-0' failed [SCRIPT]: shell exited with code 7
         //     [PipelineK] [step: s1] s1/sh-0 ok
         // Measured in an earlier build against distribution 0.62.0. SEMANTIC CONSTITUTION: a
-        // projection must not render a status its event does not carry. `StageFinished` above
-        // DOES carry `outcome`, which is why its line shows it and this one must not.
+        // projection must not render a status its event does not carry. `StepFinished` now DOES
+        // carry `outcome` — the step's verdict, published with the event that ends the step — so
+        // this line may name it, and must, or the operator reads "finished" right after "failed"
+        // and has to guess. When the event carries no verdict (a step whose execution ended
+        // without a decided outcome), the line says "finished" and nothing more.
         is StepFinished -> Line(
             Family.STRUCTURE,
-            "[step: ${scope.stage(event.stageIndex)}] ${event.stepName} finished",
+            buildString {
+                append("[step: ${scope.stage(event.stageIndex)}] ${event.stepName} finished")
+                event.outcome?.let { append(" -> ").append(it) }
+            },
         )
 
         is ParallelBranchStarted ->

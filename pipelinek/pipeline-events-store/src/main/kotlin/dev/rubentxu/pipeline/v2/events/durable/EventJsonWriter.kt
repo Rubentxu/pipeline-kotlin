@@ -272,6 +272,10 @@ internal object EventJsonWriter {
                 sb.append(EventJsonWriter.jsonString(event.stepName))
                 sb.append(",\"stepType\":")
                 sb.append(EventJsonWriter.jsonString(event.stepType))
+                // The verdict travels with the event. An absent verdict is written as the wire
+                // convention for absence, so a reader can tell "no verdict" from "an empty verdict".
+                sb.append(",\"outcome\":")
+                sb.append(EventJsonWriter.optionalJsonString(event.outcome))
             }
             is AgentResolved -> {
                 sb.append(",\"agentLabel\":")

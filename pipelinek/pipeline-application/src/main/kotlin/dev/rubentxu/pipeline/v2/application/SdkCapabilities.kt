@@ -24,9 +24,10 @@ package dev.rubentxu.pipeline.v2.application
  *
  * ## The table, and where it came from
  *
- * The twelve ids and their publication state. The first two were published
+ * The fourteen ids and their publication state. The first two were published
  * together; the three runtime verbs came with the next release; the output
- * trio with the one after; the runtime trio with the following two.
+ * trio with the one after; the runtime trio with the following two; and the
+ * step's verdict, with the event shape that carries it, with this build.
  *
  * | Capability ID                 | Status     | First published |
  * |-------------------------------|------------|-----------------|
@@ -41,7 +42,9 @@ package dev.rubentxu.pipeline.v2.application
  * | `output.refusal.retention.v1` | EXPERIMENTAL | `v0.51.0-rc1` |
  * | `runtime.structure.v1`        | EXPERIMENTAL | `v0.53.0-rc1` |
  * | `runtime.operation.v1`        | EXPERIMENTAL | `v0.53.0-rc1` |
- * | `runtime.eventshape.v1`       | EXPERIMENTAL | `v0.54.0-rc1` |
+ * | `runtime.eventshape.v1`       | DEPRECATED | `v0.54.0-rc1`   |
+ * | `runtime.eventshape.v2`       | PUBLICADA  | `v0.62.0`       |
+ * | `events.stepoutcome.v1`       | PUBLICADA  | `v0.62.0`       |
  *
  * The table used to live in a second file, inside the module that implements
  * the runtime ports, and that file claimed to be the canonical one. It was a
@@ -67,6 +70,22 @@ package dev.rubentxu.pipeline.v2.application
  * line: for the ids that shipped before the RESET it is the released version
  * they shipped in, and for an id that first ships here it is the version this
  * build declares. The release that carries it is named by its own tag.
+ *
+ * ## Why the event shape changed its version
+ * The typed shape's `outcome` field carried the step's **type**, under a name
+ * that promised a result. The same field now carries the step's **verdict**,
+ * and the type has a field of its own. A consumer compiled against the old
+ * shape reads a different thing out of the same field — and nothing in the
+ * field's type says so. So the old id cannot keep claiming to be delivered:
+ * `runtime.eventshape.v1` is announced and NOT delivered, which is exactly what
+ * DEPRECATED means here, and `runtime.eventshape.v2` is the id a consumer of
+ * that shape negotiates.
+ *
+ * The step's verdict in the raw event lane has its own id, `events.stepoutcome.v1`,
+ * because a consumer that reads the event lane has to be able to ask whether
+ * this build publishes a verdict at all: a terminal event with no verdict is
+ * what an older build wrote, and a consumer that cannot tell that apart from
+ * "unknown" is guessing.
  *
  * ## Negotiation
  *
@@ -142,9 +161,30 @@ object SdkCapabilities {
             firstPublished = "v0.53.0-rc1",
         ),
         CapabilityEntry(
+            // Announced, and NOT delivered by this build. The typed shape's `outcome` field used to
+            // carry the step's TYPE, under a name that promised a result: a consumer compiled
+            // against it read a different thing out of the same field, and no way to tell the two
+            // apart. `runtime.eventshape.v2` is the id this build delivers.
             id = "runtime.eventshape.v1",
-            status = CapabilityStatus.EXPERIMENTAL,
+            status = CapabilityStatus.DEPRECATED,
             firstPublished = "v0.54.0-rc1",
+        ),
+        CapabilityEntry(
+            // The typed shape with the step's verdict in `outcome` and the step's type in its own
+            // field. A consumer that wants a step's result reads it; a consumer that wants the kind
+            // of step reads that too.
+            id = "runtime.eventshape.v2",
+            status = CapabilityStatus.PUBLICADA,
+            firstPublished = "v0.62.0",
+        ),
+        CapabilityEntry(
+            // The step's verdict, published in the event that ends the step. Before this id existed
+            // there was no way for a consumer to know whether a step succeeded: the terminal event
+            // carried no result, and the only way to learn one was to join it with the failure event
+            // — by a step index that does not say which stage the failure belongs to.
+            id = "events.stepoutcome.v1",
+            status = CapabilityStatus.PUBLICADA,
+            firstPublished = "v0.62.0",
         ),
     )
 

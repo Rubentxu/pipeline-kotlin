@@ -166,7 +166,7 @@ pipelinek run --help
 
 ## Examples
 
-The [`v2/examples/`](v2/examples/) directory holds 30 runnable
+The [`examples/`](examples/) directory holds 30 runnable
 pipelines that exercise the real CLI, grouped by what they cover:
 
 | Category | Scenarios | What it covers |
@@ -189,15 +189,15 @@ difference between them is a defect.
 The scenarios live in this repository, not in the released ZIP: the ZIP ships
 the distribution alone. From an installed distribution you run your own
 `.pipeline.kts`; from a clone, build the local distribution once and let
-[`v2/examples/run.sh`](v2/examples/run.sh) run the whole set. The
+[`examples/run.sh`](examples/run.sh) run the whole set. The
 launcher discovers every scenario, gives each one a private control root, a
 private working directory and a generated passphrase, runs it on both execution
 paths, and judges each execution on its exit code and on the text the scenario
 asked for:
 
 ```bash
-cd v2 && ./gradlew :pipeline-application:installDist
-cd .. && v2/examples/run.sh
+cd pipelinek && ./gradlew :pipeline-application:installDist
+cd .. && examples/run.sh
 ```
 
 A scenario may carry these directives as `//@` comments near its top,
@@ -217,8 +217,8 @@ and nothing else about a scenario is interpreted:
 
 Every directive except `expect-exit` may appear more than once, and each
 occurrence must be satisfied. The launcher also takes one optional argument, a
-glob over the scenario paths relative to `v2/examples/`, so
-`v2/examples/run.sh 'control-flow/*'` runs one slice of the set. A glob that
+glob over the scenario paths relative to `examples/`, so
+`examples/run.sh 'control-flow/*'` runs one slice of the set. A glob that
 matches nothing is an error rather than a run of zero scenarios.
 
 That is the entire vocabulary. The launcher is not a framework: it has
@@ -263,7 +263,7 @@ PipelineK `0.62.0` ships with:
 ## Documentation
 
 There is no separate user-documentation tree in this repository. The
-versioned Markdown under `docs/` and `v2/` was removed by the 2026-10-18
+versioned Markdown under `docs/` and under the build root was removed by the
 documentation RESET, and this section previously listed nine files under
 `docs/user/` that no longer existed — a promise the repository could not
 keep. Rather than restate them as links that 404, the authority is now the
@@ -298,7 +298,7 @@ channel consumes the same bytes; nothing is rebuilt per installer.
 | **GitHub Releases ZIP** | **Available** | Canonical artifact. ZIP + SHA-256 + CycloneDX SBOM + release manifest. |
 | **Multi-version installer** (`scripts/install-pipelinek.sh`) | **Available** | Bash installer in this repo: `install <v>` / `use <v>` / `list` / `uninstall <v>` / `doctor`. URL allowlist fail-closed; SHA-256-verified; no `sudo`. See [§1.1](#11-install-with-the-script-multi-version-manager). |
 | **Direct download** | **Available** | Same ZIP from the release page; no extra hop. |
-| **SDKMAN** (`pipelinek` candidate) | **Pending** | Vendor onboarding in progress; the publish script (`scripts/release/sdkman-publish.sh`) is ready but blocked on `SDKMAN_CONSUMER_KEY` / `SDKMAN_CONSUMER_TOKEN`. It resolves digests from the release `SHA256SUMS` manifest via `scripts/release/resolve-release-digest.sh` (the old `<asset>.sha256` sidecar is not published and 404s). Its former contract tests were deleted by the 2026-10-18 testing RESET and no replacement covers digest resolution, so that behaviour is currently unverified by automated tests and rests on the manual release-page check before a publish. The SDKMAN artifact authority is decided in the publish script and in `CandidateTagProvenance` (`:pipeline-release`). |
+| **SDKMAN** (`pipelinek` candidate) | **Pending** | Vendor onboarding in progress; the publish script (`scripts/release/sdkman-publish.sh`) is ready but blocked on `SDKMAN_CONSUMER_KEY` / `SDKMAN_CONSUMER_TOKEN`. It resolves digests from the release `SHA256SUMS` manifest via `scripts/release/resolve-release-digest.sh` (the old `<asset>.sha256` sidecar is not published and 404s). Its former contract tests were deleted by the testing RESET and no replacement covers digest resolution, so that behaviour is currently unverified by automated tests and rests on the manual release-page check before a publish. The SDKMAN artifact authority is decided in the publish script and in `CandidateTagProvenance` (`:pipeline-release`). |
 | **Homebrew** (`rubentxu/tap/pipeline`) | **Future** | Project tap not started. Formulas will reuse the same ZIP. |
 | **mise** (Aqua backend / GitHub release backend) | **Future (harness)** | Lives in the external `pipelinek-release-harness` repo: an Aqua registry entry (preferred) or a GitHub release backend stub. Not a plugin in this repo. |
 | **asdf** (`asdf-pipeline` plugin) | **Future (harness)** | Lives in the external `pipelinek-release-harness` repo: an `asdf-pipeline` plugin with `bin/install`, `bin/download`, `bin/list-bin`, sourced from the canonical ZIP. Not a plugin in this repo. |
@@ -314,7 +314,7 @@ the release scripts under `scripts/release/` and, for provenance, in
 The `v0.62.0` ZIP is the public artifact authority today. SDKMAN becomes
 the recommended channel only once its digest resolution has been exercised
 end to end against a clean runner. It has not been: the install contract
-tests that used to cover it were deleted by the 2026-10-18 testing RESET and
+tests that used to cover it were deleted by the testing RESET and
 AGENTS.md section 2 forbids the subprocess-based replacements that would have
 taken their place, so that coverage gap is open by decision rather than by
 oversight. Until it is closed, the canonical path remains the ZIP download.

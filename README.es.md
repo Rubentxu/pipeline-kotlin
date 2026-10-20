@@ -57,20 +57,20 @@ native-image --version
 ```bash
 git clone https://github.com/rubentxu/pipeline-kotlin.git
 cd pipeline-kotlin
-cd v2 && ./gradlew build
+cd pipelinek && ./gradlew build
 ```
 
-El build vive en `v2/`, con su propio `settings.gradle.kts`.
+El build vive en `pipelinek/`, con su propio `settings.gradle.kts`.
 
 ### Compilar el CLI
 
 Para construir la distribución local:
 
 ```bash
-cd v2 && ./gradlew :pipeline-application:installDist
+cd pipelinek && ./gradlew :pipeline-application:installDist
 ```
 
-Esto deja el lanzador en `v2/pipeline-application/build/install/pipelinek/bin/pipelinek`,
+Esto deja el lanzador en `pipelinek/pipeline-application/build/install/pipelinek/bin/pipelinek`,
 listo para ejecutarse sin instalar nada.
 
 ## Inicio Rápido
@@ -90,9 +90,9 @@ unzip pipelinek-<VERSION>.zip
 Si clonaste el repositorio, la misma distribución se construye en local:
 
 ```bash
-cd v2 && ./gradlew :pipeline-application:installDist
+cd pipelinek && ./gradlew :pipeline-application:installDist
 cd ..
-./v2/pipeline-application/build/install/pipelinek/bin/pipelinek version
+./pipelinek/pipeline-application/build/install/pipelinek/bin/pipelinek version
 ```
 
 ### Ejecutar un pipeline
@@ -108,8 +108,8 @@ Para partir el arranque y el estado sin tocar nada del entorno:
 pipelinek run --isolated --control-root /tmp/mi-corrida mi-pipeline.pipeline.kts
 ```
 
-Los escenarios completos y ejecutables están en `v2/examples/`, y
-`v2/examples/run.sh` los recorre todos; su catálogo está en la sección
+Los escenarios completos y ejecutables están en `examples/`, y
+`examples/run.sh` los recorre todos; su catálogo está en la sección
 Examples del [README en inglés](README.md#examples).
 
 ## Uso
@@ -249,7 +249,8 @@ interface DslEngine<TResult : Any> {
 
 ```
 pipeline-kotlin/
-├── v2/                     # El producto: módulos Gradle, DSL y ejemplos ejecutables
+├── pipelinek/              # El producto: los módulos Gradle y el DSL
+├── examples/               # Los escenarios ejecutables y los plugins de ejemplo
 ├── scripts/                # La puerta de verificación y los scripts de publicación
 ├── ci/                     # Pipelines de doggedown (dogfood) del propio repositorio
 ├── AGENTS.md               # La política de trabajo del repositorio
@@ -265,9 +266,10 @@ Esta sección afirmaba antes «100% de cobertura con 265 pruebas
 exitosas» y daba comandos contra `gradle test`, `jacocoTestReport` y
 `:core:test`. Ninguna de las tres cosas era cierta: no existe el módulo
 `core`, la herramienta de cobertura es Kover y no Jacoco, y la suite
-heredada se borró entera el 2026-10-18 (RESET de testing). El número no
-se sustituye por otro porque no hay ninguno que anunciar todavía: la
-verificación permanente vive hoy en `scripts/verify-all.sh`.
+heredada se borró entera con el RESET de testing. Hoy la verificación
+permanente vive en `scripts/verify-all.sh`, y su veredicto es el único
+número que cuenta: la puerta dice cuántos tests ejecutó, cuántos
+escenarios corrieron y cuánto tardó.
 
 ### La puerta de verificación
 
@@ -282,7 +284,7 @@ Ejecuta, en este orden y-parando en el primer stage que falle:
 1. `detekt`, `apiCheck` y la distribución local (`installDist`).
 2. Los tests unitarios de cada módulo que tenga `src/test`, leyendo el
    resultado del XML de JUnit y no el código de salida de Gradle.
-3. Los escenarios E2E de `v2/examples/`, vía `v2/examples/run.sh`.
+3. Los escenarios E2E de `examples/`, vía `examples/run.sh`.
 4. El techo de LOC (`scripts/check-budgets.py`).
 5. El techo de reloj, 900 s por AGENTS.md.
 
@@ -291,9 +293,9 @@ Ejecuta, en este orden y-parando en el primer stage que falle:
 | Capa | Estado |
 |---|---|
 | Análisis estático y compatibilidad de API | Activa: `detekt`, `apiCheck` |
-| E2E sobre la distribución real | Activa: 30 escenarios en `v2/examples/`, cada uno ejecutado en las dos rutas del CLI (con journal privado y sin él) |
-| Tests unitarios Kotlin | carril `src/test` reservado y cableado; se rellena por fases |
-| Carriles de prueba bespoke (`pluginContractTest`, `installedContractTest`) | eliminados el 2026-10-18 |
+| E2E sobre la distribución real | Activa: 30 escenarios en `examples/`, cada uno ejecutado en las dos rutas del CLI (con journal privado y sin él) |
+| Tests unitarios Kotlin | Activa: `src/test` en 21 de los 27 módulos declarados |
+| Carriles de prueba bespoke (`pluginContractTest`, `installedContractTest`) | no existen; la puerta busca esos nombres y falla si vuelven |
 
 Ningún escenario queda hoy sin ejecutar: el que necesitaba un almacén de
 credenciales sembrado por TTY ahora se siembra con el verbo del propio producto

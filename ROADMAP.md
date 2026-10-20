@@ -18,22 +18,35 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `c059b0fba` medido en los tres ensayos; el commit que añade estas cifras es posterior y sólo toca esta tabla y los README | `git rev-parse HEAD` |
+| SHA | `ac56e21fd` medido en los tres ensayos; el commit que añade estas cifras es posterior y sólo toca esta tabla y los README | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **25** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 2 (`:pipeline-sdk-bom`, que no tiene código; `:pipeline-runtime`, que tiene código y ningún consumidor) | ídem |
-| Tests unitarios ejecutados | **644** (72 informes en disco, 72 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | **32 (32 pasan, 0 fallan)**, 1 rerun durable, 2 ejecuciones por escenario (con journal y sin él) | `examples/**/*.pipeline.kts` |
-| Escenarios que sólo comprueban el código de salida | **0** | censo por directiva, sobre los 32 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **8505 / 60929 = 0.14** (límite 2) | `scripts/check-budgets.py --json` |
+| Tests unitarios ejecutados | **813** (104 informes en disco, 104 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Escenarios E2E | **41 (41 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios que sólo comprueban el código de salida | **0**: cada uno afirma, con una directiva del lanzador o con una comprobación dentro del propio pipeline | censo por directiva y por cuerpo, sobre los 41 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **12026 / 64300 = 0.19** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **448 / 449 / 450** en los tres ensayos de `c059b0fba`, **401 / 415 / 402** en los tres de `263107231`, **415** en el de `e4daef35d`, **478** en el de `c3a23697b` y **423** en el de `9f2a2004f`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
-| Veredicto del gate | **`PASS`** en los nueve ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
-| Deuda estática congelada | **807** entradas de baseline, ninguna nueva | `detektBaselineMain` y `detektMain` |
+| `VERIFY_ALL_WALL_CLOCK` | **574** en el primer ensayo de `ac56e21fd`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| Veredicto del gate | **`PASS`**, sin `NOT_RUN` | línea final de `verify-all.sh` |
+| Deuda estática congelada | **805** entradas de baseline | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
+Las cifras de este ciclo son las de un árbol **reconciliado**: 813 tests y 41
+escenarios son la suma de lo que había en esta rama (644 y 32) y lo que `main`
+trajo (los tests del trabajo de Saga y sus seis escenarios), más lo que volvió
+con el trabajo ajeno y su propia justificación. El número de escenarios sólo
+comprueba el código de salida sigue en **0**, y ahora la cuenta tiene que
+mirar dos sitios: la directiva del lanzador y el cuerpo del pipeline, porque
+veinte de los escenarios afirman desde dentro —el pipeline falla si el mundo no
+es el que dice— y ninguno mira sólo el código de salida.
+
+La deuda estática baja de 807 a 805 entradas: cuatro de `main` se
+convirtieron en código arreglado en lugar de excepciones anotadas, y ninguna
+entrada nueva se añadió.
+
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
-los **72** informes JUnit, que es la condición que hace que la cifra de reloj
+los **104** informes JUnit, que es la condición que hace que la cifra de reloj
 mida el gate y no una restauración de caché. Un total correcto con el verbo
 equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
 **falla** si no reescribe ninguno.
@@ -195,26 +208,24 @@ formato de cable, porque el módulo no publicaba nada y no tenía contrato
 declarado. Retirar un módulo que el `include` raíz no declaraba no puede
 cambiar lo que un consumidor resuelve.
 
-### Los 21 módulos con test
+### Los 25 módulos con test
 
 `pipeline-application`, `pipeline-domain`, `pipeline-events`,
-`pipeline-events-store`, `pipeline-scripting-api`,
+`pipeline-events-store`, `pipeline-scripting-api`, `pipeline-scripting-kotlin24`,
 `pipeline-step-sdk/runtime`, `pipeline-step-sdk/http`,
 `pipeline-step-sdk/workflow-control`, `pipeline-step-sdk/files`,
 `pipeline-step-sdk/scm-git`, `pipeline-step-sdk/utilities`,
+`pipeline-step-sdk/api`, `pipeline-step-sdk/junit`,
 `pipeline-credentials-api`,
 `pipeline-credentials-local`, `pipeline-credentials-multipart`,
 `pipeline-credentials-executor`, `pipeline-binding-factory`,
-`pipeline-artefacts-local`, `pipeline-runtime-api`, `pipeline-output`,
-`pipeline-output-store`, `pipeline-release`.
+`pipeline-artefacts-local`, `pipeline-event-harness`, `pipeline-runtime-api`,
+`pipeline-output`, `pipeline-output-store`, `pipeline-release`.
 
 > **Censo remedido desde el disco.** Sobre los 27 módulos que declara
-> el `include(` de `settings.gradle.kts`: **21 con `src/test/kotlin/**/*Test.kt`,
-> 6 sin él**. Los seis sin test son `pipeline-sdk-bom`, `pipeline-scripting-kotlin24`,
-> `pipeline-event-harness`, `pipeline-runtime`, `pipeline-step-sdk/api` y
-> `pipeline-step-sdk/junit`: los dos primeros no tienen clases que probar y los
-> otros cuatro son adaptadores o puntos de entrada cuyo comportamiento se
-> comprueba desde fuera, en los ejemplos ejecutables.
+> el `include(` de `settings.gradle.kts`: **25 con `src/test/kotlin/**/*Test.kt`,
+> 2 sin él**. Los dos sin test son `pipeline-sdk-bom`, que no tiene clases que
+> probar, y `pipeline-runtime`, que tiene código y ningún consumidor.
 >
 > Este censo ha sido corregido **dos veces**, y las dos por la misma razón: una
 > lista escrita a mano es un segundo censo, y un segundo censo es donde aparecen
@@ -271,17 +282,32 @@ vez de reportarlo.
 
 | Módulo | Ficheros `*Test.kt` | Clases JUnit | Tests | Saltados | Fallidos |
 |---|---|---|---|---|---|
-| `pipeline-credentials-local` | 8 | 8 | 92 | 0 | 0 |
-| `pipeline-domain` | 6 | 15 | 82 | 0 | 0 |
-| `pipeline-output` | 5 | 5 | 74 | 0 | 0 |
+| `pipeline-domain` | 16 | 34 | 185 | 0 | 0 |
+| `pipeline-credentials-local` | 9 | 9 | 99 | 0 | 0 |
+| `pipeline-output` | 6 | 6 | 87 | 0 | 0 |
+| `pipeline-application` | 11 | 11 | 76 | 0 | 0 |
+| `pipeline-events-store` | 7 | 10 | 59 | 0 | 0 |
+| `pipeline-release` | 4 | 4 | 39 | 0 | 0 |
+| `pipeline-events` | 3 | 5 | 37 | 0 | 0 |
 | `pipeline-output-store` | 3 | 3 | 36 | 0 | 0 |
-| `pipeline-events-store` | 3 | 3 | 31 | 0 | 0 |
 | `pipeline-step-sdk/http` | 2 | 2 | 26 | 0 | 0 |
 | `pipeline-step-sdk/runtime` | 2 | 2 | 25 | 0 | 0 |
 | `pipeline-runtime-api` | 1 | 1 | 21 | 0 | 0 |
+| `pipeline-credentials-executor` | 2 | 2 | 20 | 0 | 0 |
+| `pipeline-credentials-multipart` | 2 | 2 | 16 | 0 | 0 |
+| `pipeline-step-sdk/files` | 1 | 1 | 11 | 0 | 0 |
+| `pipeline-artefacts-local` | 1 | 1 | 9 | 0 | 0 |
+| `pipeline-scripting-kotlin24` | 1 | 1 | 9 | 0 | 0 |
+| `pipeline-step-sdk/workflow-control` | 1 | 1 | 9 | 0 | 0 |
+| `pipeline-credentials-api` | 2 | 2 | 8 | 0 | 0 |
+| `pipeline-step-sdk/utilities` | 1 | 1 | 8 | 0 | 0 |
 | `pipeline-binding-factory` | 1 | 1 | 7 | 0 | 0 |
-| `pipeline-credentials-api` | 1 | 1 | 6 | 0 | 0 |
-| **total** | **32** | **41** | **400** | **0** | **0** |
+| `pipeline-event-harness` | 1 | 1 | 7 | 0 | 0 |
+| `pipeline-step-sdk/api` | 1 | 1 | 7 | 0 | 0 |
+| `pipeline-step-sdk/junit` | 1 | 1 | 6 | 0 | 0 |
+| `pipeline-step-sdk/scm-git` | 1 | 1 | 4 | 0 | 0 |
+| `pipeline-scripting-api` | 1 | 1 | 2 | 0 | 0 |
+| **total** | **86** | **104** | **813** | **0** | **0** |
 
 ### El `NOT_RUN` que no es verde
 
@@ -2795,6 +2821,27 @@ código sea prescindible, y aquí los tres adaptadores implementan un contrato
 decisión es integrarlos, no retirarlos; y la puerta tiene que compilar el módulo
 mientras tanto.
 
+**Dos huecos que sólo aparecen cuando las dos mitades están juntas.** Reconciliar no
+es pegar dos árboles: es poner los dos a hablar, y lo que no se habla se rompe.
+
+1. **El plugin de Saga no llegaba a la distribución.** `main` lo declaraba como
+   dependencia de runtime de la aplicación, pero la tarea que construye los plugins
+   de ejemplo externos y la que los mete en `lib/` conocían tres plugins y no el
+   cuarto. El plugin nunca se construyó, así que los seis escenarios de Saga
+   compilaron su propio script contra un plugin inexistente y fallaron con un error
+   de compilación de Kotlin que no tenía nada que ver con el Saga. La tarea, el
+   «staging» y el orden de `installDist` ya conocen el cuarto plugin, y ahora viaja
+   en la distribución como los otros tres.
+2. **Un escenario que habla del journal no puede correr sin journal.** La vía
+   «volátil» —la misma tubería sin journal, que es como corre una ejecución local—
+   existe para detectar una divergencia entre las dos ejecuciones, y sólo tiene
+   sentido para un escenario cuyas afirmaciones se cumplen en las dos. El marcador
+   que escribe un escenario durable vive en el directorio que las dos ejecuciones
+   comparten, así que la segunda ejecución encontraba el efecto de la primera y lo
+   leía como una repetición. Ahora un escenario que declara una directiva durable
+   corre sólo sobre el journal, y la cuenta de «dos ejecuciones por escenario» de §1
+   se aplica a los que no hablan del journal.
+
 **La comparación que pedía el encargo, medida en los cuatro sitios.** Los tres verbos
 —cancelar, inspeccionar, recuperar— existen en el ecosistema más de una vez, y cada
 copia tiene **contrato y autoridad propios**:
@@ -2834,6 +2881,18 @@ journal sea la única y los verbos existan.
   deja de poder escribir en remoto hasta que el árbol integrado esté verificado:
   fusionar y publicar desde una rama divergente es exactamente lo que esta
   reconciliación viene a evitar.
+- **Un solo registro de capacidades, y que diga la verdad sobre lo que entrega.**
+  `:pipeline-runtime` traía un segundo catálogo con los mismos once ids, los mismos
+  estados y las mismas fechas de primera publicación, con un KDoc que se declaraba
+  canónico, y con una sola referencia en todo el árbol: la que lo señalaba desde
+  `SdkCapabilities`. La equivalencia está medida, así que la consolidación no es una
+  opinión: el catálogo que el producto imprime se queda con los ids y con la
+  semántica, y el otro fichero desaparece. Y el catálogo distingue ahora lo que el
+  build **entrega** de lo que sólo **anuncia**: `runtime.cancel.v1` está DEPRECATED
+  porque su implementación existe pero nada la compone, y un catálogo que lo
+  presentara como disponible mandaría a un consumidor hacia un camino que no
+  existe. Un test unitario pins el catálogo, que era una promesa del KDoc sin
+  observador.
 - **No** crear un arnés de pruebas. El código de verificación vive en
   `scripts/verify-all.sh` (un entrypoint) y `scripts/check-budgets.py` (un
   script stdlib). Nada más.

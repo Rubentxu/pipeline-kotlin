@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `4dee0b229` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `88a6dc07d` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 9 | ídem |
-| Tests unitarios ejecutados | **713** (89 informes JUnit, **89** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:713 read:0` |
+| Tests unitarios ejecutados | **716** (90 informes JUnit, **90** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:716 read:0` |
 | Escenarios E2E | 46 (**45 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **10979 / 65474 = 0.168** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **11127 / 65551 = 0.170** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **99 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **100 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -45,15 +45,16 @@ los tests: el dato estaba en el log de la etapa 2, y el log lo lee quien corrió
 puerta, no quien la cita. Una cifra con el verbo equivocado ya no puede colarse
 ni por el lado del log ni por el lado de la línea (§2.2 u).
 
-La corrida que se publica es la de `4dee0b229` (**99 s**). El reloj de este gate
+La corrida que se publica es la de `88a6dc07d` (**100 s**). El reloj de este gate
 tiene ruido, y publicarlo sin decirlo vuelve a ser una afirmación que nadie
 puede reproducir: el ciclo anterior (`f3d897a9`) midió **97 s** con 88
 informes, y otra corrida sobre ese **mismo** contenido, con los módulos tocados
-compilando de cero, midió 98 s. La diferencia entre 97 y 99 s entra de sobra en
-el ruido medido de este reloj (±10 s). Este ciclo **no añadió ni un test ni un
-escenario** —tocó un script de verificación y la política escrita que lo
-governa—, así que su coste es el de la puerta anterior y **cuánto cuesta por sí
-solo el cambio no se midió aislado**, así que no se afirma.
+compilando de cero, midió 98 s. La diferencia entre 97 y 100 s entra de sobra en
+el ruido medido de este reloj (±10 s). Este ciclo **añadió 3 tests** y **ningún
+escenario nuevo** —el escenario 38 es el mismo de siempre, ahora corrido en los
+dos mundos del almacenamiento—, así que su coste es el de la puerta anterior más
+una corrida extra de ese escenario, y **cuánto cuesta por sí sola esa segunda
+corrida no se midió aislado**, así que no se afirma.
 
 El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
 declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
@@ -1159,6 +1160,40 @@ La política queda escrita en `AGENTS.md` §5, junto a la del marcador `SUBSET`:
 diferencia entre esta corrida y la puerta tiene que ir **dentro** de la línea, no al
 lado. Es el mismo argumento que ya cerró dos veces el mismo patrón en este repo.
 
+**v) La capability de Saga no depende de `--db` — CERRADO en `88a6dc07d`.** Sin `--db`, la
+rama en memoria **no enlazaba ningún almacén de Saga**: las capabilities (`saga.compensation`,
+`saga.plan`, `saga.lifecycle`) no se exponían, y el MISMO script que con `--db` se ejecutaba
+era **rechazado en la admisión** sin él
+(`missing required capabilities for step 'example.saga.chain': saga.compensation, saga.plan,
+saga.lifecycle`). Eso contradice LF-0208 —«la elección del almacenamiento no debe elegir un
+algoritmo de ejecución distinto»— y convertía un flag en un comportamiento.
+
+**El arreglo tiene dos mitades, y la segunda es la que faltaba.** La primera: la rama en memoria
+enlaza ahora el almacén **volátil** de obligaciones (`InMemorySagaObligationStore`), con las
+MISMAS reglas que el durable —fencing por epoch, idempotencia del armado y movimiento masivo—.
+Lo que cambia es la **durabilidad** de la promesa, no el algoritmo: nada sobrevive al proceso,
+igual que el journal y el event log de esa rama. La segunda: el **veredicto** del Saga también
+se imprime ahí. Antes, la línea `saga [checkout]: SETTLED` sólo la decía la rama durable, con
+un comentario que afirmaba «sin `--db` no hay Saga» — un hecho que con este cambio ya no era
+cierto. Un Saga que se liquida sin decir nada no es un Saga que el operador pueda ver.
+
+**La prueba es del arnés, no un test más.** La nueva directiva `//@ storage-agnostic` hace que
+el lanzador ejecute el escenario **dos veces** —con `--db` y sin él, cada uno con su directorio
+de trabajo y su almacén— y exige que **ambas** corridas cumplan las mismas expectativas (el
+código de salida y cada línea de stderr declarada). El escenario 38 (el Saga que **termina
+bien**) pasó a declararse así: no es un test nuevo, es el mismo test probado en los dos
+mundos. Y el arnés se autocomprueba: `run.sh --self-test` verifica que la directiva se lee y
+que no se confunde con `resume`.
+
+**Mutación vista en rojo**: con el enlace del Saga retirado, la corrida en memoria del escenario
+38 falla con el diagnóstico de arriba; con el enlace, las dos corridas pasan. El mismo script, el
+mismo launcher y la misma directiva: lo único que cambia es el enlace.
+
+Además, **tres reglas puras del puerto** quedan fijadas por test unitario: armar la misma clave
+dos veces conserva la **primera** promesa, un escritor con epoch atrasado **no escribe nada**, y
+cerrar un Saga mueve **todas** sus obligaciones a la vez. No es un doble del test durable: la
+garantía de *sobrevivir al proceso* sigue siendo del almacén SQLite, con su fichero real.
+
 
 ### 2.3 Cierre de ciclo
 
@@ -1233,6 +1268,14 @@ lado. Es el mismo argumento que ya cerró dos veces el mismo patrón en este rep
   da **99 s**, `tests=rewritten:713 read:0`, **713** tests en **89/89** informes
   reescritos por la corrida, 46 escenarios (45 ok, 1 NOT_RUN) y LOC
   `10979/65474 = 0.168`.
+- **La capability de Saga no depende de `--db` — cerrado en `88a6dc07d`.** El mismo script se
+  comporta igual con y sin store durable, y el veredicto del Saga se dice en los dos mundos
+  (§2.2 v). El defecto era un rechazo en la admisión, medido: `missing required capabilities for
+  step 'example.saga.chain': saga.compensation, saga.plan, saga.lifecycle`. La prueba es del
+  arnés: la directiva `//@ storage-agnostic` corre el escenario 38 **dos veces** —con `--db` y
+  sin él— y exige que **ambas** cumplan las mismas expectativas. Puerta sobre `88a6dc07d`:
+  **100 s**, `tests=rewritten:716 read:0`, **716** tests en **90/90** informes reescritos, 46
+  escenarios (45 ok, 1 NOT_RUN) y LOC `11127/65551 = 0.170`.
 
 ---
 
@@ -1471,6 +1514,17 @@ lado. Es el mismo argumento que ya cerró dos veces el mismo patrón en este rep
   que el número: un campo ausente se lee como un cero, y «no medido» no es «cero».
   Es el mismo criterio que ya cerró el marcador `SUBSET` y el hueco `gaps=`, y la
   razón por la que los tres viajan en la misma línea y no en tres sitios distintos.
+- **Un flag no puede cambiar lo que un script hace.** La rama en memoria del CLI
+  no enlazaba ningún almacén de Saga, así que el mismo script se ejecutaba con
+  `--db` y se rechazaba sin él: el almacenamiento elegía el algoritmo, que es
+  exactamente lo que LF-0208 prohíbe. El arreglo no es «que el Saga funcione en
+  memoria» —eso fue una decisión— sino que **la capability exista en los dos
+  mundos con las mismas reglas**, fencing e idempotencia incluidos, y que la
+  promesa sea durable en uno y volátil en el otro. La distinción que importa no
+  es «durable o no», es «el mismo algoritmo con dos stores». Y como un rechazo
+  que no dice POR QUÉ no es una decisión sino un accidente de cableado, el
+  veredicto del Saga se dice también en memoria: una promesa que se liquida en
+  silencio no es una promesa que el operador pueda ver.
 
 ---
 

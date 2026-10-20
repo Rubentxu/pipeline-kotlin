@@ -19,8 +19,9 @@ import org.junit.jupiter.api.Test
  *  - no id is announced twice, because two entries with one id would leave the reader choosing;
  *  - every id and every version is well-formed, because a malformed id is one no consumer can
  *    match against;
- *  - every announced id is one the build delivers, so an id announced before it is delivered has to
- *    be a deliberate act here rather than a silent lie in the table.
+ *  - every announced id is one the build delivers, OR one it deliberately announces as not
+ *    delivered; an id announced before it is delivered has to be a deliberate act here rather than
+ *    a silent lie in the table.
  *
  * What it cannot say is whether the product really delivers what it announces. That question has
  * an answer in the executable examples, and it is the reason the catalogue states, per state,
@@ -31,7 +32,8 @@ class SdkCapabilitiesRegistryTest {
     /** The catalogue as a consumer reads it: id, state, first publication. */
     private val expected = listOf(
         Triple("output.follow.v1", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.49.0-rc1"),
-        Triple("events.follow.v1", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.49.0-rc1"),
+        Triple("events.follow.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.49.0-rc1"),
+        Triple("events.follow.v2", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
         Triple("runtime.inspect.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.50.0-rc1"),
         Triple("runtime.cancel.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.50.0-rc1"),
         Triple("runtime.recover.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.50.0-rc1"),
@@ -80,16 +82,38 @@ class SdkCapabilitiesRegistryTest {
     }
 
     @Test
-    @DisplayName("every announced id is delivered, so none is announced as not delivered")
+    @DisplayName("an id this build does not deliver is announced as deprecated, and only those")
     fun `an undelivered id is announced as deprecated`() {
         val deprecated = SdkCapabilities.ALL.filter { it.status == SdkCapabilities.CapabilityStatus.DEPRECATED }
             .map { it.id }
 
         assertEquals(
-            emptyList<String>(),
+            listOf("events.follow.v1"),
             deprecated,
-            "an id the build does not deliver was announced as delivered, or an " +
-                "announced-but-not-delivered id was added without deciding it here",
+            "the ids this build announces but does NOT deliver are exactly the ones a consumer " +
+                "must not build on; anything else here is either an id the build stopped " +
+                "delivering without saying so, or an announced-but-not-delivered id added " +
+                "without deciding it here",
+        )
+    }
+
+    @Test
+    @DisplayName("the follow vocabulary is delivered under the id this build announces")
+    fun `the follow vocabulary is delivered under the announced id`() {
+        val announced = SdkCapabilities.ALL.map { it.id }
+
+        assertTrue(
+            announced.contains("events.follow.v2"),
+            "the build delivers the grown follow refusal vocabulary, so it must announce the id " +
+                "that names it",
+        )
+        assertTrue(
+            SdkCapabilities.ALL.none {
+                it.id.startsWith("events.follow.") && it.status == SdkCapabilities.CapabilityStatus.PUBLICADA &&
+                    it.id != "events.follow.v2"
+            },
+            "only the id this build delivers may claim to be delivered; two ids for one " +
+                "vocabulary leave the consumer choosing between them",
         )
     }
 }

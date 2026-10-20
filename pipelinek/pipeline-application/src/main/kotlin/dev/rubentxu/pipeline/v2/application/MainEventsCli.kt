@@ -231,6 +231,15 @@ object MainEventsCli {
             return 2
         }
         val store = (dbAdmission as EventStoreAdmission.Admitted).store
+        // The store's own answer about the run and the cursor, asked through the port that can
+        // refuse. The paged read below cannot refuse: it answers with rows, and an empty page
+        // looks the same for a run that does not exist and for a run with nothing in it. Asking
+        // first is what lets this verb tell "there is nothing to show" from "you asked for
+        // something that is not there".
+        admitEventRead(store, p.runId, cursor)?.let { refusal ->
+            System.err.println(refusal.render())
+            return 2
+        }
         try {
             val reader = EventHistoryReader(store)
             val run = ResourceRefs.run(p.runId)

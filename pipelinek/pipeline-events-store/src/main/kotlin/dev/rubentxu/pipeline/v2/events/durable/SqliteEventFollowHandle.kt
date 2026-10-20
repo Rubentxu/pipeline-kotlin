@@ -73,23 +73,26 @@ import java.util.concurrent.locks.ReentrantLock
  * `close`, the next [FollowIterator.hasNext] returns `false` and no
  * half-page is delivered.
  * ## Refusal translation
- * The follow has only THREE [EventFollowRefusal] cases by design
- * ([EventFollowRefusal.UnknownRun], [EventFollowRefusal.RetentionLost],
- * [EventFollowRefusal.Cancelled]). The read port exposes a
- * richer set:
+ * The follow names the same three facts the read port names, and it
+ * translates them WITHOUT losing one:
  *  - [EventRecordReadRefusal.UnknownRun] →
- *    [EventFollowRefusal.UnknownRun] (same identity, the run has
+ *    [EventFollowRefusal.UnknownRun] (same identity: the run has
  *    never been written to);
  *  - [EventRecordReadRefusal.CursorBeyondTail] →
- *    [EventFollowRefusal.UnknownRun] (the cursor points past known
- *    history; from the follow's perspective, the run has nothing
- *    to give for the requested cursor);
+ *    [EventFollowRefusal.CursorBeyondTail] (the run EXISTS and the
+ *    position does not; a consumer may reset the cursor to the tail);
  *  - [EventRecordReadRefusal.StorageError] →
- *    [EventFollowRefusal.UnknownRun] (defensive; there is no
- *    `StorageError` case in the closed event-follow refusal
- *    hierarchy, and a transient storage fault at the follow
- *    boundary is surfaced as a refusal that the consumer can
- *    decide to retry by reopening the handle).
+ *    [EventFollowRefusal.StorageError] (the store failed; the run
+ *    may be perfectly there and the storage unable to say so).
+ *
+ * The translation is [EventFollowRefusal.of]'s, so this adapter and
+ * every other one answer the same question the same way. An earlier
+ * version folded all three into [EventFollowRefusal.UnknownRun], which
+ * made the follow LESS precise than the port underneath it: a consumer
+ * told "the run does not exist" when the truth was "the store failed"
+ * would look for a run that was never there, and one told "the run
+ * does not exist" when the truth was "your cursor is past the tail"
+ * would throw away a run it was watching.
 */
 internal class SqliteEventFollowHandle(
     private val port: EventRecordReadPort,
@@ -293,9 +296,8 @@ internal class SqliteEventFollowHandle(
             // either StateChanged (when the page was served) or
             // Refused (when the read port refused). A cursor past
             // the tail surfaces here as CursorBeyondTail from the
-            // Adapter, which the follow translates to
-            // EventFollowRefusal.UnknownRun (the closed event-follow
-            // refusal hierarchy has no CursorBeyondTail case).
+            // Adapter, and the follow translates it WITHOUT losing
+            // that fact.
             val firstResult: EventRecordReadResult = try {
                 port.readRecords(
                     runId = runId,
@@ -304,7 +306,7 @@ internal class SqliteEventFollowHandle(
                     limit = options.maxRecords,
                 )
             } catch (e: Exception) {
-                return queueRefusal(EventFollowRefusal.UnknownRun(runId))
+                return queueRefusal(EventFollowRefusal.StorageError(e.shortDiagnostic()))
             }
             when (firstResult) {
                 is EventRecordReadResult.Page -> {
@@ -341,7 +343,7 @@ internal class SqliteEventFollowHandle(
                 limit = options.maxRecords,
             )
         } catch (e: Exception) {
-            return queueRefusal(EventFollowRefusal.UnknownRun(runId))
+            return queueRefusal(EventFollowRefusal.StorageError(e.shortDiagnostic()))
         }
 
         // 3. Translate the port result.
@@ -472,25 +474,25 @@ internal class SqliteEventFollowHandle(
 
     /**
      * Map a read-port refusal to the closed event-follow refusal
-     * hierarchy. See the class KDoc's "Refusal translation" section
-     * for the per-case rationale.
+     * hierarchy. The mapping is [EventFollowRefusal.of]'s, so this
+     * adapter and every other one answer the same question the same
+     * way; a per-adapter translation is a second authority for one
+     * decision.
+     *
+     * It used to fold the three refusals into `UnknownRun`, which
+     * made the follow LESS precise than the port underneath it: a
+     * consumer could not tell a failed store from a missing run.
 */
     private fun translateRefusal(refusal: EventRecordReadRefusal): EventFollowRefusal =
-        when (refusal) {
-            is EventRecordReadRefusal.UnknownRun ->
-                EventFollowRefusal.UnknownRun(refusal.runId)
-            is EventRecordReadRefusal.CursorBeyondTail ->
-                EventFollowRefusal.UnknownRun(refusal.runId)
-            is EventRecordReadRefusal.StorageError ->
-                EventFollowRefusal.UnknownRun(runId)
-        }
+        EventFollowRefusal.of(refusal)
 
     /**
      * Sleep on the consumer's thread for
      * [EventFollowOptions.pollIntervalMs]. The design pins
      * `pollIntervalMs = FOLLOW_IDLE_MILLIS = 25L` as the baseline;
-     * a test that wants a faster turnaround passes `pollIntervalMs
-     * = 0` (which the options allow because the predicate is `>= 0`).
+     * a test that wants a faster turnaround passes the smallest value
+     * the options accept, `pollIntervalMs = 1` (the predicate is
+     * `> 0`, so `0` is rejected).
 */
     /**
      * Sleep on the consumer's thread for [pollIntervalMs], interruptible
@@ -542,4 +544,16 @@ internal class SqliteEventFollowHandle(
         pending.add(EventFollowEvent.Refused(reason))
         return true
     }
+}
+
+/**
+ * A short description of a failure, safe to hand to a consumer.
+ *
+ * The class and the message, truncated: this text ends up in the refusal a consumer reads, and
+ * a refusal is not the place for an unbounded diagnostic.
+*/
+private fun Throwable.shortDiagnostic(): String {
+    val cls = javaClass.simpleName ?: javaClass.name
+    val msg = message?.take(120)?.replace('\n', ' ')
+    return if (msg.isNullOrBlank()) cls else "$cls: $msg"
 }

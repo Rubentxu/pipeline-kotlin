@@ -91,27 +91,36 @@ interface EventFollower {
  * Conflated snapshot with live follow and was the finding from the
  * Audit. The natural tail is now a state the follow re-polls
  * past while the handle is open.
- * THAT DEFECT HAS NO GUARDIAN. This comment used to name the two
+ * THAT DEFECT NOW HAS A GUARDIAN. This comment used to name the two
  * falsifiers that pinned it — an in-process live-tail test and a
- * cross-JVM one — and both were deleted in `2aa071aab`. Nothing else in
- * the repository replaces them: a follow emits `Completed` on a quiet
- * page, and no E2E scenario observes the event stream, because
- * `examples/run.sh` reads the process exit code and at most a stderr
- * substring. So the state machine below can regress to the exact defect
- * its own KDoc describes and the whole executable suite stays green.
- * This is the most consequential thing recorded in this module, and it is
- * not closed. Writing the guard needs a live tail that stays open across a
- * quiet page, which means a store or a follower double — a decision about
- * what to fake, taken before the fake is written, not a test to add later.
+ * cross-JVM one — and both were deleted in `2aa071aab`. For a while
+ * nothing else in the repository replaced them, so the state machine
+ * below could regress to the exact defect its own KDoc describes while
+ * the whole executable suite stayed green: no E2E scenario observes the
+ * event stream, because `examples/run.sh` reads the process exit code
+ * and at most a stderr substring.
+ * The guardian is `SqliteEventFollowLiveTailTest` in
+ * `:pipeline-events-store`. It drives the follow over a port that
+ * serves only quiet pages and requires the follow to keep polling and
+ * to never emit `Completed`; it also requires the follow to emit
+ * `Completed` when the run finishes, so the guard cannot be satisfied
+ * by a follow that simply never terminates. The double is the read
+ * PORT, because that is the seam the follow is built on, and the
+ * assertions read the follow's event sequence rather than its
+ * internals.
  * ## Refusal and cursor past tail
- * Opening a follow with a cursor past the durable tail of the run
- * surfaces as a single [EventFollowEvent.Refused] carrying
- * [EventFollowRefusal.UnknownRun] (the closed event-follow refusal
- * Hierarchy has no `CursorBeyondTail` case; the adapter translates
- * that condition to the same refusal the open boundary emits for an
- * unknown run, because both mean "the cursor points past known
- * history"). After a `Refused`, the iterator returns no further events
- * and the consumer MUST close the handle.
+ * The follow names the fact that stopped it, and the three facts are
+ * different answers:
+ *  - the run does not exist → [EventFollowRefusal.UnknownRun];
+ *  - the cursor is past the durable tail of the run →
+ *    [EventFollowRefusal.CursorBeyondTail] (the run EXISTS and the
+ *    position does not; the consumer may reset the cursor to the tail
+ *    and continue);
+ *  - the store failed while reading → [EventFollowRefusal.StorageError]
+ *    (the run may be perfectly there and the storage unable to say so).
+ * All three surface as a single [EventFollowEvent.Refused]. After a
+ * `Refused`, the iterator returns no further events and the consumer
+ * MUST close the handle.
  * A single undecodable row in a page is surfaced inside the page via
  * [dev.rubentxu.pipeline.v2.events.EventRecordSlice.refusals]; the
  * follow itself does not refuse on a single bad row.
@@ -231,11 +240,71 @@ sealed interface EventFollowState {
  * Note: there is no `LagExceeded` case. A slow consumer is not a
  * defect; the consumer observes lag via the configured reporting
  * interval and decides whether to abort.
+ *
+ * ## Why the vocabulary can express what the read port expresses
+ * The follow sits on top of the read port, and the read port already distinguishes three
+ * facts: the run does not exist, the cursor is past the tail, and the store failed. This
+ * vocabulary used to have one case for all three, so a consumer of the published follow
+ * contract could not tell a failed store from a missing run. Two facts that need different
+ * answers cannot share a case: the answer to "the store failed" is to retry or escalate, and
+ * the answer to "the run does not exist" is to stop looking.
+ *
+ * [of] is the ONE translation between the two vocabularies, so an adapter cannot answer this
+ * question differently from another adapter.
+ *
+ * ## The capability id that names this vocabulary
+ * This vocabulary is published under the capability id `events.follow.v2`
+ * (`dev.rubentxu.pipeline.v2.application.SdkCapabilities`). The previous id, `events.follow.v1`,
+ * named the three-case vocabulary and is announced as NOT delivered: a consumer compiled
+ * against it matches this sealed type exhaustively, and a case it does not know is a crash at
+ * runtime rather than a compile error.
 */
 sealed interface EventFollowRefusal {
     data class UnknownRun(val runId: String) : EventFollowRefusal
     data class RetentionLost(val runId: String, val lastSeenSequence: Long) : EventFollowRefusal
     data object Cancelled : EventFollowRefusal
+
+    /**
+     * The cursor is past the tail of the run. The run EXISTS; the position does not.
+     * A consumer may reset the cursor to the tail and continue.
+    */
+    data class CursorBeyondTail(
+        val runId: String,
+        val requestedSequence: Long,
+        val tailSequence: Long,
+    ) : EventFollowRefusal
+
+    /**
+     * The store failed while reading. The [cause] is a short diagnostic.
+     * This is NOT "the run does not exist": the run may be perfectly there and the storage
+     * unable to say so.
+    */
+    data class StorageError(val cause: String) : EventFollowRefusal
+
+    companion object {
+        /**
+         * Translate a read-port refusal into the follow's vocabulary, WITHOUT losing the fact.
+         *
+         * Every case of the read port's refusal has its own case here. A translation that
+         * folded them together would make the follow LESS precise than the port underneath it,
+         * and the consumer would be the one paying for it.
+        */
+        fun of(refusal: dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal): EventFollowRefusal =
+            when (refusal) {
+                is dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.UnknownRun ->
+                    UnknownRun(refusal.runId)
+
+                is dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.CursorBeyondTail ->
+                    CursorBeyondTail(
+                        runId = refusal.runId,
+                        requestedSequence = refusal.requestedSequence,
+                        tailSequence = refusal.tailSequence,
+                    )
+
+                is dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.StorageError ->
+                    StorageError(refusal.cause)
+            }
+    }
 }
 
 /**

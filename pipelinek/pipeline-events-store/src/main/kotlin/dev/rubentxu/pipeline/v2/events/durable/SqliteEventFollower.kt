@@ -59,9 +59,10 @@ class SqliteEventFollower(
      * @param runId the run to follow. If the runId is unknown to the
      *   store at the time of `open`, the handle emits
      *   `Refused(UnknownRun(runId))` and terminates with the next
-     *   `hasNext` returning `false`. A cursor past the tail also
-     *   surfaces as `Refused(UnknownRun(runId))` because the cursor
-     *   points past known history.
+     *   `hasNext` returning `false`. A cursor past the tail surfaces
+     *   as `Refused(CursorBeyondTail(...))`: the run exists and the
+     *   position does not, which is a different answer from a missing
+     *   run and a different action for the consumer.
      * @param options the polling knobs (`pollIntervalMs`, `maxRecords`,
      *   `after`, `until`, `lagReportInterval`).
 */

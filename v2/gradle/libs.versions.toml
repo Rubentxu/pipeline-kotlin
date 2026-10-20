@@ -13,7 +13,7 @@ cyclonedx = "1.8.2"
 # 1.86: clears GHSA-wg6q-6289-32hp (bcpkix CompositeVerifier, fixed 1.84) and the three
 # bcprov advisories osv-scanner flagged against 1.80.2; 1.86 is the hardening release.
 bouncycastle = "1.86"
-snakeyaml = "2.3"
+snakeyaml = "2.7"
 # C5 / D-011 (audit 2026-09-26, R7): binary-compatibility-validator captures the
 # JVM ABI of public Kotlin types. Phased rollout: opt-in modules first (Phase 1,
 # 2026-09-26) — pipeline-domain / pipeline-events / pipeline-step-sdk:api /

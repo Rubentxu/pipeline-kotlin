@@ -89,6 +89,12 @@ fun main(args: Array<String>) {
             println("[release]   candidate_id: ${outcome.candidateId}")
             println("[release]   identity: ${outcome.identityVerdict.trim()}")
             println("[release]   provenance: ${outcome.provenanceVerdict.trim()}")
+            // The plugin verdict was computed, and a refusal would have stopped
+            // this build — but a PASS said nothing about WHICH plugins were
+            // checked. The release log is the only place where the operator
+            // can see what the gate looked at, and a check whose result is
+            // thrown away when it passes is a check nobody can audit.
+            println("[release]   plugins: ${outcome.pluginCompatibilityVerdict.trim()}")
             println("[release]   manifest: ${outcome.manifestPath}")
             println("[release]   handoff:  ${outcome.handoffPath}")
             println(

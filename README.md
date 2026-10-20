@@ -175,7 +175,7 @@ pipelinek run --help
 
 ## Examples
 
-The [`examples/`](examples/) directory holds 42 runnable
+The [`examples/`](examples/) directory holds 44 runnable
 pipelines that exercise the real CLI, grouped by what they cover:
 
 | Category | Scenarios | What it covers |
@@ -186,8 +186,8 @@ pipelines that exercise the real CLI, grouped by what they cover:
 | `durable/` | 12 | Durable execution over the journal: platform queries, milestones, `waitUntil`, `stash`/`unstash`, the replay guarantee, closing a run whose writer was killed, and six Saga scenarios — compensation, intervention, a crash mid-effect and its reconciliation |
 | `security/` | 2 | Credential bindings, and a ZIP-slip path-traversal defence |
 | `output/` | 7 | The output plane: file reads, a utilities round trip, ZIP/unzip, mixed utilities, cross-step artifact queries, HTML publishing, and the live output of a process |
-| `negative/` | 6 | Deliberate failures that must fail closed: error handling, the typed error step, a command that exits non-zero, a workspace symlink escape, an unregistered directive key, a plugin artifact whose bytes cannot be read |
-| `plugins/` | 4 | The four external example plugins, discovered from the distribution classpath: `uppercase`, `repeat`, a contributed directive, and the Saga consumer |
+| `negative/` | 7 | Deliberate failures that must fail closed: error handling, the typed error step, a command that exits non-zero, a workspace symlink escape, an unregistered directive key, a plugin artifact whose bytes cannot be read, and a plugin whose bytes are not the ones the operator approved |
+| `plugins/` | 5 | The four external example plugins, discovered from the distribution classpath: `uppercase`, `repeat`, a contributed directive, and the Saga consumer — plus a plugin admitted under the operator's trust policy |
 
 Each scenario runs **twice** — once with a private journal database, which is
 how a CI runs a pipeline, and once without one, which is the default for a
@@ -261,6 +261,12 @@ PipelineK `0.62.0` ships with:
 - Kotlin `script {}` blocks with real Kotlin control flow.
 - Typed plugin and capability contracts (`StepContract`,
   `requiredCapabilities`, registry-based discovery).
+- An optional operator trust policy for third-party plugins: with
+  `--plugin-trust <file>`, a plugin brought with `--plugin-jar` is admitted
+  only if it is the artifact the operator pinned (by the SHA-256 of its
+  bytes) and it carries a detached Ed25519 signature that verifies under the
+  publisher key the operator keeps. Without the flag, plugins are admitted on
+  their manifest and API range, as before.
 - Local credentials, with secret redaction at the durable shell seam.
 - Local `artifacts`, `stash`, `unstash`, `archiveArtifacts`,
   `publishHTML`, `writeFile`, `pwd`, `isUnix`, `load`, `milestone`,

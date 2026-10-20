@@ -37,6 +37,15 @@
 #                                     the second run's, and the world must not
 #                                     change across it: an effect whose answer
 #                                     nobody has must not be dispatched twice.
+#   //@ cancel                        the first run is expected to DIE, and then
+#                                     the run is closed with `pipelinek runs
+#                                     cancel`. The verdict is the cancel's: the
+#                                     run that died could not say anything about
+#                                     its own outcome. The launcher checks that
+#                                     the first cancel closed the run, that the
+#                                     second one was a no-op rather than a
+#                                     refusal, and that the run's history ends
+#                                     with a terminal bookend.
 #   //@ credentials <id> <kind>       seed <id> into this scenario's own store
 #                                     before the run, so a pipeline that binds a
 #                                     credential has one to resolve. Repeatable.
@@ -196,6 +205,7 @@ run_scenario() {
     local durable=0
     local durable_once=0
     local resume=0
+    local cancel=0
     local -a expect_stdout=()
     local -a expect_stderr=()
     local -a expect_transcript=()
@@ -211,6 +221,7 @@ run_scenario() {
             '//@ durable')         durable=1 ;;
             '//@ durable-once')    durable_once=1 ;;
             '//@ resume')          resume=1 ;;
+            '//@ cancel')          cancel=1 ;;
             '//@ credentials '*)   seeds+=("${directive#//@ credentials }") ;;
             '//@ plugin-jar '*)    plugin_jar="${directive#//@ plugin-jar }" ;;
         esac
@@ -315,7 +326,7 @@ run_scenario() {
     # the working directory is compared between the two runs, and a PID file
     # would differ between them (two processes, two PIDs) and look like "the
     # effect repeated".
-    if [[ "$resume" == 1 ]]; then
+    if [[ "$resume" == 1 || "$cancel" == 1 ]]; then
         export PIPELINEK_E2E_PID_FILE="$root/runner.pid"
     fi
 
@@ -327,7 +338,7 @@ run_scenario() {
     # durable scenario writes lives in this directory, so the second execution
     # would find the first one's effect and read it as a repeat.
     local run_volatile=1
-    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 ]]; then
+    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$cancel" == 1 ]]; then
         run_volatile=0
     fi
 
@@ -412,8 +423,101 @@ run_scenario() {
         verdict_stderr="$root/stderr.rerun.txt"
     fi
 
+    if [[ "$cancel" == 1 ]]; then
+        # The FIRST run is the crash, for the same reason a resumed scenario's
+        # first run is: a scenario that says it will die and finishes cleanly has
+        # not exercised what it claims.
+        if [[ "$code" == 0 ]]; then
+            printf 'FAIL %-52s the run was supposed to crash and finished cleanly\n' "$name"
+            failed=$((failed + 1))
+            failures+=("$name: the run was supposed to crash and did not")
+            return
+        fi
+
+        # The id of the run that died. The launcher reads it from the run's own
+        # record of its last run, because the id is a UUID the launcher cannot
+        # know in advance and the operator would have to copy it by hand.
+        local run_id=""
+        local record
+        for record in "$root"/control/last-run/*; do
+            [[ -f "$record" ]] || continue
+            run_id="$(head -1 "$record")"
+            break
+        done
+        if [[ -z "$run_id" ]]; then
+            printf 'FAIL %-52s the crashed run left no run id, so it cannot be closed\n' "$name"
+            failed=$((failed + 1))
+            failures+=("$name: the crashed run left no run id")
+            return
+        fi
+
+        # The first cancel closes the run.
+        local cancel_code=0
+        "$binary" runs cancel "$run_id" --db "$root/events.db" --control-root "$root/control" \
+            --reason "the writer was killed" \
+            >"$root/stdout.cancel.txt" 2>"$root/stderr.cancel.txt" || cancel_code=$?
+        if [[ "$cancel_code" != 0 ]]; then
+            printf 'FAIL %-52s the cancel of the dead run exited %s, expected 0\n' \
+                "$name" "$cancel_code"
+            show_printed "$root/stderr.cancel.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the cancel of the dead run exited $cancel_code")
+            return
+        fi
+        if ! grep -aqF -- "cancelled run $run_id" "$root/stdout.cancel.txt"; then
+            printf 'FAIL %-52s the cancel did not report the run as closed\n' "$name"
+            show_printed "$root/stdout.cancel.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the cancel did not report the run as closed")
+            return
+        fi
+
+        # The second cancel is a no-op: it closes nothing twice and it refuses
+        # nothing. A refusal here would mean the contract is broken, because
+        # the run IS closed.
+        local again=0
+        "$binary" runs cancel "$run_id" --db "$root/events.db" --control-root "$root/control" \
+            >"$root/stdout.cancel2.txt" 2>"$root/stderr.cancel2.txt" || again=$?
+        if [[ "$again" != 0 ]]; then
+            printf 'FAIL %-52s the second cancel exited %s, expected 0 (it is a no-op)\n' \
+                "$name" "$again"
+            show_printed "$root/stderr.cancel2.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the second cancel exited $again")
+            return
+        fi
+        if ! grep -aqF -- "was already cancelled" "$root/stdout.cancel2.txt"; then
+            printf 'FAIL %-52s the second cancel did not report the run as already closed\n' "$name"
+            show_printed "$root/stdout.cancel2.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the second cancel did not report the run as already closed")
+            return
+        fi
+
+        # The run's history ends with a terminal bookend. Without it the run
+        # would carry a cancellation receipt and no terminal fact, and a reader
+        # would have two answers about whether the run is over.
+        "$binary" events "$run_id" --db "$root/events.db" \
+            >"$root/events.after-cancel.txt" 2>&1 || true
+        if ! grep -aqF -- '"kind":"RunFinished"' "$root/events.after-cancel.txt"; then
+            printf 'FAIL %-52s the closed run has no terminal bookend\n' "$name"
+            head -20 "$root/events.after-cancel.txt" | sed 's/^/       | /'
+            failed=$((failed + 1))
+            failures+=("$name: the closed run has no terminal bookend")
+            return
+        fi
+
+        # The verdict is the cancel's: the run that died could not say anything
+        # about its own outcome.
+        verdict_stdout="$root/stdout.cancel.txt"
+        verdict_stderr="$root/stderr.cancel.txt"
+        code=0
+    fi
+
     local label="$name"
-    if [[ "$durable" == 1 ]]; then
+    if [[ "$cancel" == 1 ]]; then
+        label="$name (cancel)"
+    elif [[ "$durable" == 1 ]]; then
         label="$name (durable x2)"
     elif [[ "$durable_once" == 1 ]]; then
         label="$name (durable x1)"

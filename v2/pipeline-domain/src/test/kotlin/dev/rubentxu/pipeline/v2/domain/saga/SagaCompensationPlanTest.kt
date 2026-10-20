@@ -422,11 +422,65 @@ class SagaCompensationPlanTest {
         @Test
         fun `writing the state an obligation already holds is allowed`() {
             // A retry after a crash writes the same fact twice, and refusing that would make
-            // the write path fragile for no reason.
+            // the write path fragile for no reason. The states that mean "a call is on its way
+            // out" are the exception, and they have their own cases below.
             assertTrue(
                 CompensationLifecycle.allows(
                     CompensationObligationStatus.EFFECT_CONFIRMED,
                     CompensationObligationStatus.EFFECT_CONFIRMED,
+                ),
+            )
+            assertTrue(
+                CompensationLifecycle.allows(
+                    CompensationObligationStatus.COMPENSATED,
+                    CompensationObligationStatus.COMPENSATED,
+                ),
+            )
+        }
+
+        @Test
+        fun `an effect that is on its way out is not authorised a second time`() {
+            // EFFECT_PENDING is the write-ahead of the forward effect: the call LEFT the
+            // process and its answer has not arrived. Re-writing it after a crash is not a
+            // retry, it is a second authorisation — and the resumed process would dispatch
+            // the SAME call again. The effect would happen twice, and the row would look
+            // exactly like the row of a first attempt.
+            assertFalse(
+                CompensationLifecycle.allows(
+                    CompensationObligationStatus.EFFECT_PENDING,
+                    CompensationObligationStatus.EFFECT_PENDING,
+                ),
+            )
+        }
+
+        @Test
+        fun `a compensation that is on its way out is not run a second time`() {
+            // The same for the compensation. "The compensation left and its answer was lost"
+            // is not "the compensation did not happen", and a second authorisation would undo
+            // the resource twice.
+            assertFalse(
+                CompensationLifecycle.allows(
+                    CompensationObligationStatus.COMPENSATION_PENDING,
+                    CompensationObligationStatus.COMPENSATION_PENDING,
+                ),
+            )
+        }
+
+        @Test
+        fun `a call that is on its way out may still be answered`() {
+            // Refusing the re-write must not freeze the obligation: the answer that finally
+            // arrives is a legitimate successor, and the resumed process is the one that
+            // brings it.
+            assertTrue(
+                CompensationLifecycle.allows(
+                    CompensationObligationStatus.EFFECT_PENDING,
+                    CompensationObligationStatus.EFFECT_CONFIRMED,
+                ),
+            )
+            assertTrue(
+                CompensationLifecycle.allows(
+                    CompensationObligationStatus.COMPENSATION_PENDING,
+                    CompensationObligationStatus.COMPENSATED,
                 ),
             )
         }

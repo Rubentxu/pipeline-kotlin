@@ -95,10 +95,49 @@ object CompensationLifecycle {
     /**
      * Whether an obligation may move from [from] to [to].
      *
-     * Writing the state an obligation already holds is allowed, so a retry is never a lie.
+     * Writing the state an obligation already holds is allowed, so a retry is never a lie — with
+     * ONE exception, and the exception is the whole point of this table.
+     *
+     * ## The two states that are "on their way out"
+     *
+     * [CompensationObligationStatus.EFFECT_PENDING] and
+     * [CompensationObligationStatus.COMPENSATION_PENDING] do not say "nothing happened yet".
+     * They say "a call LEFT the process and its answer has not arrived". The call may already
+     * have taken effect, and nobody knows which.
+     *
+     * Re-writing one of those states is therefore NOT a retry: it is a SECOND AUTHORISATION for
+     * the same call. A process that comes back after a crash reads the row, writes the same
+     * "on its way out" again — and then dispatches the call a second time, because that is what
+     * the write-ahead authorises. The effect happens twice, and the second one is invisible:
+     * the row looks exactly like the row of a first attempt.
+     *
+     * Refusing the re-write is what makes the crash recoverable: the resumed process finds a
+     * call that was already authorised, cannot authorise it again, and stops — which is the
+     * honest answer when nobody can say whether the first attempt landed. The row that says
+     * "on its way out" is a fence, and a fence that can be re-opened is not a fence.
+     *
+     * The other states may be re-written, because re-writing them states the SAME fact again
+     * (the effect was confirmed, the compensation was applied) and changes nothing about what
+     * the world may be asked to do.
      */
     fun allows(from: CompensationObligationStatus, to: CompensationObligationStatus): Boolean =
-        to == from || to in successors(from)
+        to in successors(from) || (to == from && reWritable(from))
+
+    /**
+     * Whether writing the state an obligation already holds is a retry rather than a new
+     * authorisation.
+     */
+    private fun reWritable(state: CompensationObligationStatus): Boolean = state !in ON_THE_WAY_OUT
+
+    /**
+     * The states that mean "a call left the process and its answer has not arrived".
+     *
+     * They are the only states a second process must not be allowed to re-authorise.
+     */
+    private val ON_THE_WAY_OUT = setOf(
+        CompensationObligationStatus.EFFECT_PENDING,
+        CompensationObligationStatus.COMPENSATION_PENDING,
+    )
 
     /**
      * The state the forward effect's evidence puts the obligation in.

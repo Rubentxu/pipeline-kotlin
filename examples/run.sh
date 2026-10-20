@@ -360,13 +360,13 @@ run_scenario() {
     local check_detail=""
     if ! check_execution "$label" "$stdout" "$stderr" "$code" "$root/control"; then
         failed=$((failed + 1))
-        failures+=("$name (durable): $check_detail")
+        failures+=("$label: $check_detail")
         return
     fi
     if ! check_execution "$label (volatile)" "$vstdout" "$vstderr" "$vcode" \
         "$root/control-volatile"; then
         failed=$((failed + 1))
-        failures+=("$name (volatile): $check_detail")
+        failures+=("$label (volatile): $check_detail")
         return
     fi
 

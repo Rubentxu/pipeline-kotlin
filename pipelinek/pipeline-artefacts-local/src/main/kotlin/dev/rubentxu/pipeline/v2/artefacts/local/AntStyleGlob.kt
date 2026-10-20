@@ -6,26 +6,29 @@ import java.nio.file.Path
 /**
  * Ant-style glob pattern matcher.
  *
- * Matches workspace-relative paths against Ant-style patterns. The dialect is ANT, and the
- * engine underneath is Spring's [org.springframework.util.AntPathMatcher]; [AntGlobPattern] is
- * where the two are reconciled, and it is the only place that knows about the difference.
+ * Matches workspace-relative paths against Ant-style patterns. The dialect is ANT and it is
+ * implemented here, in [AntPathMatching]: the constructs Ant and the engine this project used
+ * to borrow disagreed on, and the project no longer borrows an engine.
  *
  * The Ant constructs this class honours, and what each one means here:
  *
  * - `**` — any number of path segments, including none.
  * - `?` — exactly one character.
  * - `[...]` — a character class: `[a-c]` matches `a`, `b` or `c`; `[!abc]` matches anything
- *   else. Ant semantics, not Spring's: Spring reads the brackets as literal text.
- * - `{...}` — alternation: `{jar,war}` matches `jar` or `war`, and nothing else. Ant semantics,
- *   not Spring's: Spring reads a colon-free group as a wildcard and matched EVERYTHING, which
- *   turned a pattern that names two extensions into "every file under the directory".
- * - `{name:regex}` — Spring's own dialect, kept verbatim as the escape hatch for what Ant
- *   cannot express. This is the one construct that is NOT Ant.
+ *   else. Ant semantics: the engine this project used to borrow read the brackets as literal
+ *   text, so a character range matched nothing at all.
+ * - `{...}` — alternation: `{jar,war}` matches `jar` or `war`, and nothing else. Ant semantics.
+ *   The engine this project used to borrow read a colon-free group as a wildcard and matched
+ *   EVERYTHING, which turned a pattern that names two extensions into "every file under the
+ *   directory".
+ * - `{name:regex}` — the escape hatch for what Ant cannot express, kept verbatim. This is the
+ *   one construct that is NOT Ant.
  *
  * Supports multi-pattern expansion, user excludes, and Jenkins-compatible 13-entry default
  * excludes.
  *
- * Design: D7 — wraps Spring `AntPathMatcher` (already on classpath via spring-core).
+ * Design: D7 — the dialect is implemented in this project, in [AntPathMatching]; this class
+ * holds the patterns and walks the tree.
  * Invariant: INV-L6-ANT-001 (default excludes verbatim), INV-L6-ANT-002 (traversal safety).
  */
 // `patternList` is internal, not public: it is the decision `match()` acts on, and a unit test

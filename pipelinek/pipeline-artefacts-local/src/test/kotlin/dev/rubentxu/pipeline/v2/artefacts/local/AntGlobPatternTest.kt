@@ -9,7 +9,8 @@ import org.junit.jupiter.api.Test
  *
  * `AntStyleGlob` promised Ant and ran Spring's dialect, and the two disagree on the two
  * constructs an Ant user writes most. Both disagreements were measured on Spring 6.2.19, the
- * version this project pins, before anything was written:
+ * version this project pinned, before anything was written — and the matcher is now this
+ * project's own, so the dialect below is the one the code implements:
  *
  * - `build/**/*.{jar,war}` matched `build/secret.pem`. Spring reads a colon-free `{...}` as a
  *   wildcard, so "a jar OR a war" was "every file under the directory". An operator who wrote

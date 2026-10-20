@@ -110,6 +110,27 @@ class SagaPendingOnSuccessLawTest {
         assertTrue(violations.none { it.rule == ViolationRule.LAW_SAGA_PENDING_ON_SUCCESS })
     }
 
+    @Test
+    fun `a green run whose Saga says SETTLED with a reason is a violation`() {
+        // The terminal CONTRADICTS ITSELF: it announces SETTLED and carries a reason for not
+        // settling. The published projection reads that as "a human has to decide"
+        // (TERMINAL_UNREADABLE) — a Saga that cannot be read is never read as settled — and
+        // the law has to read it the same way, because a second reader is a second rule and two
+        // rules about the same fact drift apart. This one looked at the WORD and missed the
+        // reason, so a broken Saga passed as a finished one.
+        val violations = ProtocolGrammar.check(
+            historyOf(
+                runFinished("success"),
+                sagaTerminal(state = SagaTerminalState.SETTLED.name, reason = "UNKNOWN_EFFECT"),
+            ),
+        )
+
+        assertEquals(
+            listOf(ViolationRule.LAW_SAGA_PENDING_ON_SUCCESS),
+            violations.map { it.rule },
+        )
+    }
+
     /**
      * A well-formed plane, plus the events the test is about.
      *

@@ -1,8 +1,7 @@
 package dev.rubentxu.pipeline.v2.harness.verify
 
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
-import dev.rubentxu.pipeline.v2.domain.saga.SagaTerminalState
-import dev.rubentxu.pipeline.v2.events.CompensationArmed
+import dev.rubentxu.pipeline.v2.domain.saga.SagaOutcome
 import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
 import dev.rubentxu.pipeline.v2.events.ParallelBranchStarted
 import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
@@ -15,6 +14,7 @@ import dev.rubentxu.pipeline.v2.events.StageStarted
 import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.events.StepFinished
 import dev.rubentxu.pipeline.v2.events.StepStarted
+import dev.rubentxu.pipeline.v2.events.identity.RunPresentationProjection
 import dev.rubentxu.pipeline.v2.harness.model.EventViolation
 import dev.rubentxu.pipeline.v2.harness.model.TraceEntry
 import dev.rubentxu.pipeline.v2.harness.model.VerificationResult
@@ -237,26 +237,22 @@ object ProtocolGrammar {
     /**
      * The Sagas the plane leaves open, by id.
      *
-     * A Saga that settled is not open. A Saga whose last terminal says it did not settle is.
-     * A Saga that armed an obligation and never announced a terminal is.
+     * READ BY THE PUBLISHED PROJECTION, not read again here. The projection is the one reader
+     * that says what a terminal MEANS; a second reader is a second rule, and two rules about the
+     * same fact drift apart. They already had: this one asked "does the terminal say SETTLED?",
+     * and the projection asks "does this terminal settle the Saga?" — which is not the same
+     * question when the terminal says SETTLED **and carries a reason for not settling**. On
+     * that terminal the law could not see the contradiction: it read the word and missed the
+     * reason, so a broken Saga passed as a finished one.
+     *
+     * A Saga that settled is not open. A Saga whose terminal does not settle it is. A Saga that
+     * armed an obligation and never announced a terminal is.
      */
     private fun pendingSagas(history: List<TypedEvent>): List<String> {
-        val terminalBySaga = LinkedHashMap<String, SagaTerminal>()
-        val armed = LinkedHashSet<String>()
-        history.forEach { typed ->
-            when (val event = typed.event) {
-                is SagaTerminal -> terminalBySaga[event.sagaId] = event
-                is CompensationArmed -> armed += event.sagaId
-                else -> Unit
-            }
-        }
-        val sagaIds = LinkedHashSet<String>().apply {
-            addAll(terminalBySaga.keys)
-            addAll(armed)
-        }
-        return sagaIds.filter { sagaId ->
-            val terminal = terminalBySaga[sagaId]
-            terminal == null || terminal.state != SagaTerminalState.SETTLED.name
+        val runId = history.firstOrNull()?.event?.runId ?: return emptyList()
+        val presentation = RunPresentationProjection.read(runId, history.map { it.event })
+        return presentation.sagas.mapNotNull { outcome ->
+            (outcome as? SagaOutcome.NeedsIntervention)?.sagaId
         }
     }
 

@@ -27,7 +27,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepHandler
  *         -> the handler receives the value and nothing else
  * ```
  * Every arrow crosses a public seam. No arrow requires the host to learn the name `example.*`,
- * which is what BLOCK 1-J measures separately.
+ * which is what the no-core-change proof measures separately.
 */
 object UppercaseCasedStepDefinition : StepDefinition<UppercaseInput, UppercaseOutput> {
 

@@ -1,6 +1,6 @@
 {
   "_comment": [
-    "P3-E E5 — the ledger of DELIBERATE breaking changes to published contracts.",
+    "The ledger of DELIBERATE breaking changes to published contracts.",
     "",
     "A maturity classification answers whether a change is allowed. This file answers whether",
     "a change that has ALREADY happened was allowed, and records the evidence for it. Without",
@@ -8,12 +8,12 @@
     "sanctioned is to read the git history and guess.",
     "",
     "Every entry needs: the module, the SHA, what changed, and why the declared maturity",
-    "permits it. P3EPublishedContractMaturityFitnessTest fails the build when an entry is",
-    "incomplete or names a module that is not published.",
+    "permits it. No task in the build enforces this file, so an entry that is incomplete, or that",
+    "names a module that is not published, is not caught automatically.",
     "",
     "An entry is NOT permission to break anything silently. It is the receipt for a decision",
-    "that was taken deliberately. The test cannot judge whether the decision was wise; it can",
-    "only guarantee that it was made, written down, and attached to a SHA."
+    "that was taken deliberately. A reader cannot judge whether the decision was wise; the entry",
+    "can only show that it was made, written down, and attached to a SHA."
   ],
   "entries": [
     {
@@ -259,7 +259,7 @@
         "",
         "Two defects were found while reviewing this change before committing it, and both are corrected in the SAME SHA, which is worth recording because both were laws that could not fail. First, the capability cross-check was tautological: every migrated plugin declared declaredCapabilities by READING contract.requiredCapabilities, and the validator compares declared == required, so the equality was guaranteed by construction and no mutation could ever turn it red. The per-Step capabilities are now declared as literals. Second, validateDirectives and validateEvents returned early when the supplied set was empty, so a manifest declaring a Directive or an Event that no contributor provides passed silently — precisely the negative mutant that must be refused. Both were caught by reading, not by a failing test, which is why they are named here rather than left as an unremarkable part of the diff.",
         "",
-        "This entry does NOT claim the work is finished, and the ledger is the wrong place to pretend otherwise. There is no machine-readable manifest inside the artifact yet: schemaVersion and apiRange exist in the domain, but no codec reads them from a JAR. PluginAdmission does not exist as a central authority: the validator is still called from inside each plugin, which is the inverted responsibility that BLOCK 1-D exists to fix. The manifest is a better declaration than it was; it is not yet an admission gate."
+        "This entry does NOT claim the work is finished, and the ledger is the wrong place to pretend otherwise. There is no machine-readable manifest inside the artifact yet: schemaVersion and apiRange exist in the domain, but no codec reads them from a JAR. PluginAdmission does not exist as a central authority: the validator is still called from inside each plugin, which is the inverted responsibility that the admission gate exists to fix. The manifest is a better declaration than it was; it is not yet an admission gate."
       ],
       "removal_boundary": "n/a — getStepManifests() and the StepManifest class are REMOVED by THIS entry and are not coming back; PluginStepContribution is the contract from 0.48 onward, reachable under the old name only as a Kotlin typealias",
       "supersedes": null

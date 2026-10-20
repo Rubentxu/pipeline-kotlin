@@ -31,8 +31,8 @@ import dev.rubentxu.pipeline.v2.events.registry.PLUGIN_EVENT_EMISSION_CAPABILITY
  * ## One declaration, two readers
  * The manifest is emitted into the artifact at BUILD time and read back at RUN time. Both readers
  * must read THIS object. A JSON document typed by hand in `build.gradle.kts` would be a second
- * authority able to describe a Step this code does not have — the same defect as the KSP in
- * BLOCK 1-H, in a different file.
+ * authority able to describe a Step this code does not have — the same defect the KSP had, in
+ * a different file.
 */
 object UppercasePluginDeclaration {
 

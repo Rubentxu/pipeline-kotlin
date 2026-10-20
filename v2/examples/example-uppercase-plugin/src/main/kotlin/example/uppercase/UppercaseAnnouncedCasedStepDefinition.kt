@@ -12,7 +12,7 @@ import dev.rubentxu.pipeline.v2.events.registry.PLUGIN_EVENT_EMISSION_CAPABILITY
 import dev.rubentxu.pipeline.v2.events.registry.PluginEventEmission
 
 /**
- * BLOCK 1-J — the artefacto del no-core-change proof.
+ * The artifact of the no-core-change proof.
  * This Step exists to be ADDED, and the interesting thing about it is not what it does. It was
  * added to an external plugin with **zero changes to core production code**, and the diff over
  * `v2/<module>/src/main` was empty. That is the whole claim of the External Library Constitution,

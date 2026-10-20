@@ -4,13 +4,14 @@
 # Este archivo es detectado automáticamente por gitleaks/gitleaks-action
 # y por la CLI gitleaks 8.x.
 #
-# La lista [allowlist] está VACÍA a propósito. Until el 2026-10-18 contenía
-# diez rutas: ocho fixtures bajo `src/test/` que imprimían canarios de alta
+# La lista [allowlist] está VACÍA a propósito. Hasta el RESET de testing
+# contenía diez rutas: ocho fixtures bajo `src/test/` que imprimían canarios de alta
 # entropía o claves PEM para verificar el redactor y el ciclo de credenciales,
 # un recurso `core/src/test/resources/secretResolver/secret.key` del V1 ya
 # retirado, y un documento de evidencia bajo `docs/v2/07-uat/`. Todas elas
-# desaparecieron con la demolición del testing RESET: `v2/**/src/test` no tiene
-# ningún fichero, no existe `core/`, y el árbol `docs/` ya no está versionado.
+# desaparecieron con la demolición del testing RESET: `v2/**/src/test` contiene
+# hoy solo fuentes de test unitario, ningún fixture; no existe `core/`, y el árbol
+# `docs/` ya no está versionado.
 #
 # Se conservan vacías y no se borra el fichero por dos razones. La primera es
 # que una supresión que nombra un fichero inexistente es inerte pero engaña:

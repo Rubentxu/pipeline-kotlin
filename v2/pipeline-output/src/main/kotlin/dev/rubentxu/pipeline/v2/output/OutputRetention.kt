@@ -19,7 +19,7 @@ package dev.rubentxu.pipeline.v2.output
  * `SegmentOutputStore` can delete bytes. It cannot decide that they are deletable: it never learns
  * whether a run is still running, and inventing that knowledge would make the store the authority
  * on run lifecycle, which is a second authority on a fact the runtime already owns.
- * The store is not named as a link because it is not in this module. Since BLOCK 2 it lives in
+ * The store is not named as a link because it is not in this module. Since the plane was split it lives in
  * `:pipeline-output-store`, which is not published; this file is the whole vocabulary a consumer
  * sees, and a resolvable link would mean the store was part of that surface.
  * So a deletion names its reason in its type. [OutputPruneIntent] has no case for a run that is

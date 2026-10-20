@@ -98,8 +98,8 @@ object PipelineEventEnvelopeSerializer : KSerializer<PipelineEventEnvelope> {
             occurredAt = value.occurredAt.toString(),
             sequence = value.sequence,
             subject = value.subject,
-            // BLOCK 2: these two were declared on the wire and never written. The consumer build
-            // in `examples/fabric-contract-consumer` found it by round-tripping an envelope through
+            // These two were declared on the wire and never written. The consumer build
+            // in an independent consumer build found it by round-tripping an envelope through
             // this serializer and getting `causation = null, correlation = null` back, while this
             // file's own KDoc advertised both in the wire form. A field that is accepted, declared
             // and documented, and then silently dropped on encode, is the "dead semantic parameter"
@@ -163,7 +163,7 @@ object ResourceRefSerializer : KSerializer<ResourceRef> {
 
 /**
  * Closed serializer for [EventRef]: `{source:{kind, segments}, id}`.
- * Added with BLOCK 2, when the envelope's `causation` and `correlation` were found to be declared on
+ * Added with the event plane split, when the envelope's `causation` and `correlation` were found to be declared on
  * the wire and dropped on encode. The shape is the one [PipelineEventEnvelope] already uses for its
  * own `eventRef`, so a consumer reading an envelope sees one ref encoding rather than two.
 */

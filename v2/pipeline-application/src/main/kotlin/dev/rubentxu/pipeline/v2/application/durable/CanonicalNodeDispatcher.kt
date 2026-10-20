@@ -56,7 +56,7 @@ class CanonicalNodeDispatcher {
     @Suppress("RedundantSuspendModifier")
     suspend fun dispatch(command: CanonicalCoreStepCommand, context: CanonicalRuntimeContext): Nothing {
         throw UnsupportedOperationException(
-            "CanonicalNodeDispatcher.dispatch is retired at WU-LPR-301 / G5 (2026-09-18): " +
+            "CanonicalNodeDispatcher.dispatch is retired: " +
                 "every legacy canonical core Step subtype is LEGACY_REMOVED and the registry is the " +
                 "sole execution authority. Got command pluginId='${command.pluginId}'."
         )

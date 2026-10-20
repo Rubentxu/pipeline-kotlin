@@ -101,7 +101,7 @@ internal fun runCanonicalPipeline(
     // It used to default to `CoreStepRegistryFactory.registry()` while the event and directive
     // registries were composed here in the body. A caller who omitted the argument therefore got
     // A silent step registry — external contributions dropped with no error — which is
-    // a fail-open path through the admission guarantee BLOCK 1-D/1-E exists to provide. Removing
+    // a fail-open path through the admission guarantee that exists to provide. Removing
     // the default makes "you did not compose" a compile error instead of a running pipeline that
     // quietly ignores every plugin in the installation.
     // `pluginClassLoader` is gone from this signature for the same reason. Its KDoc claimed it

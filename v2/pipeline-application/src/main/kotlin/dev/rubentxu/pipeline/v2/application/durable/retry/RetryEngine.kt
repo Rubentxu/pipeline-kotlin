@@ -24,8 +24,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Application-internal authority for the retry aggregate (Phase 2
- * ;).
+ * Application-internal authority for the retry aggregate.
  * ## What this owns
  * `RetryEngine` owns the **loop**: reconcile -> should-invoke -> build attempt
  * context -> `BodyInvoker.invoke(...)` -> fold outcome -> persist transition.

@@ -394,7 +394,7 @@ internal object EventJsonWriter {
                 // Captured in a local before the null test. Kotlin will not smart-cast a property
                 // declared in ANOTHER module, because from here it could be a `var` or carry a
                 // custom getter; while this file and these event classes shared a module it could,
-                // and BLOCK 2's split is what exposed the assumption. A local `val` states the
+                // and the split of the event plane is what exposed the assumption. A local `val` states the
                 // single-read intent, which is what the null test already meant.
                 val credentialsRef = event.credentialsRef
                 if (credentialsRef != null) {

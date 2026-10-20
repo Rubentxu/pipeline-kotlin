@@ -182,7 +182,10 @@ class ArchiveArtifactsOperationsAdapter(
         val matched: List<Path> = try {
             AntStyleGlob(input.artifacts).match(
                 root = workspace,
-                excludes = splitExcludes(input.excludes),
+                // The list-in-a-String convention is read by the glob, which knows that a comma
+                // inside `{...}` belongs to the pattern and is not a separator. This adapter used
+                // to carry its own copy of that split, and it shredded Ant alternation.
+                excludes = AntStyleGlob.splitPatternList(input.excludes),
                 defaultExcludes = true,
             )
         } catch (e: Exception) {
@@ -258,9 +261,6 @@ class ArchiveArtifactsOperationsAdapter(
             occurredAt = java.time.Instant.now(),
             reason = reason,
         )
-
-    private fun splitExcludes(excludes: String): List<String> =
-        excludes.split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
     private fun sha256Of(file: Path): String {
         // Shared utility (B0): the same streaming loop with the same 8192-byte buffer, so the

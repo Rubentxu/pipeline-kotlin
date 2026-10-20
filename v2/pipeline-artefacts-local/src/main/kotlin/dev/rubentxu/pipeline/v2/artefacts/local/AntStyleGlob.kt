@@ -1,14 +1,29 @@
 package dev.rubentxu.pipeline.v2.artefacts.local
 
-import org.springframework.util.AntPathMatcher
 import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Ant-style glob pattern matcher using Spring's [AntPathMatcher].
+ * Ant-style glob pattern matcher.
  *
- * Matches workspace-relative paths against Ant-style patterns (`, `**`, `?`, `[...]`, `{...}`).
- * Supports multi-pattern expansion, user excludes, and Jenkins-compatible 13-entry default excludes.
+ * Matches workspace-relative paths against Ant-style patterns. The dialect is ANT, and the
+ * engine underneath is Spring's [org.springframework.util.AntPathMatcher]; [AntGlobPattern] is
+ * where the two are reconciled, and it is the only place that knows about the difference.
+ *
+ * The Ant constructs this class honours, and what each one means here:
+ *
+ * - `**` — any number of path segments, including none.
+ * - `?` — exactly one character.
+ * - `[...]` — a character class: `[a-c]` matches `a`, `b` or `c`; `[!abc]` matches anything
+ *   else. Ant semantics, not Spring's: Spring reads the brackets as literal text.
+ * - `{...}` — alternation: `{jar,war}` matches `jar` or `war`, and nothing else. Ant semantics,
+ *   not Spring's: Spring reads a colon-free group as a wildcard and matched EVERYTHING, which
+ *   turned a pattern that names two extensions into "every file under the directory".
+ * - `{name:regex}` — Spring's own dialect, kept verbatim as the escape hatch for what Ant
+ *   cannot express. This is the one construct that is NOT Ant.
+ *
+ * Supports multi-pattern expansion, user excludes, and Jenkins-compatible 13-entry default
+ * excludes.
  *
  * Design: D7 — wraps Spring `AntPathMatcher` (already on classpath via spring-core).
  * Invariant: INV-L6-ANT-001 (default excludes verbatim), INV-L6-ANT-002 (traversal safety).
@@ -72,9 +87,62 @@ class AntStyleGlob private constructor(internal val patternList: List<String>) {
             require(patterns.isNotEmpty()) { "At least one pattern must be provided" }
             return AntStyleGlob(patterns.toList())
         }
-    }
 
-    private val matcher = AntPathMatcher()
+        /**
+         * Splits a comma-separated list of Ant patterns WITHOUT splitting inside a group.
+         *
+         * The convention "a list of patterns in one String, separated by commas" collides with
+         * Ant's own use of the comma: `build/**/*.{jar,war}` is ONE pattern whose alternation
+         * holds a comma. Splitting on every comma shredded it into `build/**/*.{jar` and `war}`,
+         * and both fragments match nothing -- the caller then reported "matched no files", or, with
+         * `allowEmptyArchive`, archived an empty tar and reported success.
+         *
+         * So a comma is a separator only at the top level: not inside `{...}`, not inside `[...]`.
+         * The rule lives here, next to the dialect it belongs to, so every caller of a
+         * list-in-a-String field reads it the same way instead of carrying its own copy.
+         *
+         * @param list the comma-separated list
+         * @return the patterns, trimmed, with the empty ones dropped
+         */
+        fun splitPatternList(list: String): List<String> {
+            val patterns = mutableListOf<String>()
+            val current = StringBuilder()
+            var braces = 0
+            var brackets = 0
+            for (c in list) {
+                when {
+                    c == '{' -> {
+                        braces++
+                        current.append(c)
+                    }
+
+                    c == '}' -> {
+                        if (braces > 0) braces--
+                        current.append(c)
+                    }
+
+                    c == '[' -> {
+                        brackets++
+                        current.append(c)
+                    }
+
+                    c == ']' -> {
+                        if (brackets > 0) brackets--
+                        current.append(c)
+                    }
+
+                    c == ',' && braces == 0 && brackets == 0 -> {
+                        patterns += current.toString()
+                        current.setLength(0)
+                    }
+
+                    else -> current.append(c)
+                }
+            }
+            patterns += current.toString()
+            return patterns.map { it.trim() }.filter { it.isNotEmpty() }
+        }
+    }
 
     /**
      * Matches files under [root] against this glob's patterns.
@@ -95,31 +163,22 @@ class AntStyleGlob private constructor(internal val patternList: List<String>) {
             stream.filter { Files.isRegularFile(it) }.toList()
         }
 
-        val excludeMatchers = effectiveExcludes.map { ExcludeMatcher(it) }
-        val includeMatchers = patternList.map { PatternMatcher(it) }
+        // Each pattern is compiled ONCE, into the dialect the engine speaks, and then asked
+        // about every file. Compiling per file would re-parse the same pattern for every path
+        // under the root.
+        val excludePatterns = effectiveExcludes.map { AntGlobPattern(it) }
+        val includePatterns = patternList.map { AntGlobPattern(it) }
 
         val matched = allFiles
             .filter { file ->
                 val rel = root.relativize(file)
                 val relStr = rel.toString()
-                val matchesInclude = includeMatchers.any { it.matches(relStr) }
-                val matchesExclude = excludeMatchers.any { it.matches(relStr) }
+                val matchesInclude = includePatterns.any { it.matches(relStr) }
+                val matchesExclude = excludePatterns.any { it.matches(relStr) }
                 matchesInclude && !matchesExclude
             }
             .toSet()
 
         return matched.sortedBy { it.toString() }
-    }
-
-    private inner class PatternMatcher(private val pattern: String) {
-        fun matches(path: String): Boolean {
-            return matcher.match(pattern, path)
-        }
-    }
-
-    private inner class ExcludeMatcher(private val pattern: String) {
-        fun matches(path: String): Boolean {
-            return matcher.match(pattern, path)
-        }
     }
 }

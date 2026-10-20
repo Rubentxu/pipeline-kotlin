@@ -235,22 +235,33 @@ run_scenario() {
     done
 
     local stdout="$root/stdout.txt" stderr="$root/stderr.txt" code=0
+    local vstdout="$root/stdout.volatile.txt" vstderr="$root/stderr.volatile.txt" vcode=0
 
     # `cd` in this shell, not a subshell: a subshell would discard the exit
     # code the verdict is built from, and every scenario would read as ok.
+    #
+    # TWO executions, and both are held to the same expectations:
+    #   - with a private journal database, which is how a CI runs a pipeline;
+    #   - without one, which is the default for a local run.
+    # A divergence between the two execution paths is a defect, and only
+    # running both can find one. It happened: the two paths reported a
+    # failing pipeline differently, and a suite that ran only one of them
+    # could not see that there was a choice to make.
     local caller_pwd="$PWD"
     cd "$root/cwd"
-    "$binary" run --isolated --control-root "$root/control" "$script" \
+    "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" "$script" \
         >"$stdout" 2>"$stderr" || code=$?
+    "$binary" run --isolated --control-root "$root/control-volatile" "$script" \
+        >"$vstdout" 2>"$vstderr" || vcode=$?
     cd "$caller_pwd"
 
     if [[ "$durable" == 1 ]]; then
-        # Second run over the same control root. The pipeline's own check
-        # decides whether the effect repeated; this only makes the second run
-        # happen, and records its exit code separately.
+        # Second run over the same control root and the same journal. The
+        # pipeline's own check decides whether the effect repeated; this only
+        # makes the second run happen, and records its exit code separately.
         local second=0
         cd "$root/cwd"
-        "$binary" run --isolated --control-root "$root/control" "$script" \
+        "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" "$script" \
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
         code="$second"
@@ -263,28 +274,43 @@ run_scenario() {
         label="$name (durable x2)"
     fi
 
-    if [[ "$code" == "$expect_exit" ]]; then
+    # Checks ONE execution against every expectation the scenario declares.
+    # Declared inside the scenario so it reads the scenario's own expectations
+    # without inventing a second place to keep them.
+    #
+    # $1 label, $2 stdout file, $3 stderr file, $4 exit code, $5 control root.
+    # Returns non-zero when an expectation did not hold, and leaves the reason
+    # in $check_detail for the caller to report.
+    check_execution() {
+        local ex_label="$1" ex_stdout="$2" ex_stderr="$3" ex_code="$4" ex_control="$5"
+        local wanted
+
+        if [[ "$ex_code" != "$expect_exit" ]]; then
+            printf 'FAIL %-52s exit %s, expected %s\n' "$ex_label" "$ex_code" "$expect_exit"
+            show_printed "$ex_stdout"
+            show_printed "$ex_stderr"
+            check_detail="exit $ex_code, expected $expect_exit"
+            return 1
+        fi
+
         # -a porque la salida puede traer bytes NUL, y sin el fallo se reporta
         # como "fichero binario" sin la coincidencia, indistinguible de su ausencia.
-        local wanted
         for wanted in ${expect_stdout[@]+"${expect_stdout[@]}"}; do
-            if ! grep -aqF -- "$wanted" "$stdout"; then
+            if ! grep -aqF -- "$wanted" "$ex_stdout"; then
                 printf 'FAIL %-52s exit %s as expected, but stdout lacked: %s\n' \
-                    "$label" "$code" "$wanted"
-                show_printed "$stdout"
-                failed=$((failed + 1))
-                failures+=("$name: stdout lacked: $wanted")
-                return
+                    "$ex_label" "$ex_code" "$wanted"
+                show_printed "$ex_stdout"
+                check_detail="stdout lacked: $wanted"
+                return 1
             fi
         done
         for wanted in ${expect_stderr[@]+"${expect_stderr[@]}"}; do
-            if ! grep -aqF -- "$wanted" "$stderr"; then
+            if ! grep -aqF -- "$wanted" "$ex_stderr"; then
                 printf 'FAIL %-52s exit %s as expected, but stderr lacked: %s\n' \
-                    "$label" "$code" "$wanted"
-                show_printed "$stderr"
-                failed=$((failed + 1))
-                failures+=("$name: stderr lacked: $wanted")
-                return
+                    "$ex_label" "$ex_code" "$wanted"
+                show_printed "$ex_stderr"
+                check_detail="stderr lacked: $wanted"
+                return 1
             fi
         done
 
@@ -295,49 +321,57 @@ run_scenario() {
         # invented would be refused, and a refusal here would be a launcher
         # bug wearing a scenario's clothes.
         if (( ${#expect_transcript[@]} > 0 )); then
-            local transcript="$root/transcript.txt"
+            local transcript="$root/transcript.$(basename "$ex_control").txt"
             local run_id
-            run_id="$(grep -ao '"runId":"[^"]*"' "$stderr" | head -1 | cut -d'"' -f4)"
+            run_id="$(grep -ao '"runId":"[^"]*"' "$ex_stderr" | head -1 | cut -d'"' -f4)"
             if [[ -z "$run_id" ]]; then
                 printf 'FAIL %-52s the run published no run id, so its transcript cannot be read\n' \
-                    "$label"
-                failed=$((failed + 1))
-                failures+=("$name: no run id in the launch receipt")
-                return
+                    "$ex_label"
+                check_detail="no run id in the launch receipt"
+                return 1
             fi
             : >"$transcript"
             local stream_dir op_id
-            for stream_dir in "$root/control/output-plane/streams"/*_stdout; do
+            for stream_dir in "$ex_control/output-plane/streams"/*_stdout; do
                 [[ -d "$stream_dir" ]] || continue
                 op_id="$(basename "$stream_dir")"
                 # The directory is <runId>_<opId>_stdout.
                 op_id="${op_id#${run_id}_}"
                 op_id="${op_id%_stdout}"
-                "$binary" console --control-dir "$root/control" "$run_id" "$op_id" \
+                "$binary" console --control-dir "$ex_control" "$run_id" "$op_id" \
                     >>"$transcript" 2>/dev/null || true
             done
 
             for wanted in ${expect_transcript[@]+"${expect_transcript[@]}"}; do
                 if ! grep -aqF -- "$wanted" "$transcript"; then
                     printf 'FAIL %-52s the committed transcript lacked: %s\n' \
-                        "$label" "$wanted"
+                        "$ex_label" "$wanted"
                     head -40 "$transcript" | sed 's/^/       | /'
-                    failed=$((failed + 1))
-                    failures+=("$name: transcript lacked: $wanted")
-                    return
+                    check_detail="transcript lacked: $wanted"
+                    return 1
                 fi
             done
         fi
+        return 0
+    }
 
-        printf 'ok   %-52s exit %s\n' "$label" "$code"
-        passed=$((passed + 1))
+    # Both executions, and both against the same expectations. A scenario is
+    # ok when BOTH paths met them.
+    local check_detail=""
+    if ! check_execution "$label" "$stdout" "$stderr" "$code" "$root/control"; then
+        failed=$((failed + 1))
+        failures+=("$name (durable): $check_detail")
+        return
+    fi
+    if ! check_execution "$label (volatile)" "$vstdout" "$vstderr" "$vcode" \
+        "$root/control-volatile"; then
+        failed=$((failed + 1))
+        failures+=("$name (volatile): $check_detail")
         return
     fi
 
-    printf 'FAIL %-52s exit %s, expected %s\n' "$label" "$code" "$expect_exit"
-    sed 's/^/       | /' "$stderr" | head -20
-    failed=$((failed + 1))
-    failures+=("$name: exit $code, expected $expect_exit")
+    printf 'ok   %-52s exit %s\n' "$label" "$code"
+    passed=$((passed + 1))
 }
 
 # Optional glob filter, relative to this directory: `run.sh 'control-flow/*'`.

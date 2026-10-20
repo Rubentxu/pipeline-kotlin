@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `7dc66bc0e` | `git rev-parse HEAD` |
+| SHA | `4b269fa59` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
-| Módulos con test unitario permanente | **17** | etapa 2 del gate, que imprime cada módulo por nombre |
-| Módulos sin test | 10 | ídem |
-| Tests unitarios ejecutados | **625** (72 informes JUnit, 38 reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
+| Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
+| Módulos sin test | 9 | ídem |
+| Tests unitarios ejecutados | **660** (79 informes JUnit, 73 reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
 | Escenarios E2E | 43 (**42 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **9087 / 64652 = 0.141** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **9708 / 64827 = 0.150** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **345 s**, una corrida, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **350 s**, una corrida, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -34,8 +34,8 @@ calientes, y por eso **no** se compara con la de 2026-10-19 (226 s, la peor de
 tres ensayos tras `rm -rf` de las salidas de build reales, que es la condición
 que hace que la cifra mida el gate y no una restauración de caché). Un total
 correcto con el verbo equivocado ya no puede colarse: la etapa 2 separa
-`rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 38
-de los 72 informes.
+`rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 73
+de los 79 informes.
 
 El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
 declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
@@ -110,10 +110,10 @@ No se borra en este ciclo: no figura en la lista del mandato y borrar ficheros
 versionados es del usuario. La decisión pendiente es declararlo (y arreglarlo)
 o retirarlo.
 
-### Los 17 módulos con test
+### Los 18 módulos con test
 
-`pipeline-application`, `pipeline-domain`, `pipeline-events-store`,
-`pipeline-step-sdk/runtime`, `pipeline-step-sdk/http`,
+`pipeline-application`, `pipeline-domain`, `pipeline-events`,
+`pipeline-events-store`, `pipeline-step-sdk/runtime`, `pipeline-step-sdk/http`,
 `pipeline-step-sdk/workflow-control`, `pipeline-step-sdk/files`,
 `pipeline-credentials-api`, `pipeline-credentials-local`,
 `pipeline-credentials-multipart`, `pipeline-credentials-executor`,
@@ -121,11 +121,12 @@ o retirarlo.
 `pipeline-runtime-api`, `pipeline-output`, `pipeline-output-store`,
 `pipeline-release`.
 
-> **Censo remedido 2026-10-19 desde el disco.** Sobre los 27 módulos que declara
-> el `include(` de `settings.gradle.kts`: **17 con `src/test/kotlin/**/*Test.kt`,
-> 10 sin él**. La lista de arriba omitía `pipeline-application`, que ya tiene
+> **Censo remedido 2026-10-19 desde el disco, y remedido otra vez el
+> 2026-10-20.** Sobre los 27 módulos que declara el `include(` de
+> `settings.gradle.kts`: **18 con `src/test/kotlin/**/*Test.kt`, 9 sin él**. La
+> lista de arriba omitía `pipeline-application`, que ya tiene
 > `ProjectWorkingDirectoryTest.kt`, y por eso se contradecía con la fila de §1.
-> Las cifras anteriores a esta —«los 12 módulos con test», «17 módulos sin
+> Las cifras anteriores a esas —«los 12 módulos con test», «17 módulos sin
 > test», «quedan 15», y el «16 con test / 11 sin él» de una remedición
 > intermedia— estaban todas caducadas: el censo se tomó antes de que este ciclo
 > añadiera `OutputAdoptionTest`, `ApiRangeContainsTest`,
@@ -137,6 +138,13 @@ o retirarlo.
 > conserva los números de aquella ejecución: **los tests y su recuento los
 > sustituye la medición de `scripts/verify-all.sh`**, que sigue siendo la fila
 > `pendiente` de §1. Hasta esa medición, el recuento por módulo es histórico.
+>
+> El 18º módulo es `pipeline-events`, y no por paridad sino porque dejó de estar
+> **bloqueado por decisión de producto**: su único candidato a test era
+> `EventViewProjection`, que no tiene consumidor (2.2 b). Con la proyección
+> publicada del veredicto, el módulo tiene por fin un consumidor real —el
+> hermano, que la consume desde fuera— y un test que lo prueba con el plano
+> real de dos corridas.
 
 Esa lista sale de enumerar `src/test/kotlin/**/*Test.kt` en cada módulo
 declarado, no de `check-budgets.py`. El motivo de no usar el informe de
@@ -449,10 +457,66 @@ el arreglo; los demás siguen verdes).
   (7 de la proyección, 3 del intérprete): al quitar la proyección del entorno
   mueren 2 de los 7 y nada más, y al quitar la reconciliación mueren 3 de los 12
   del intérprete y nada más.
+- **El veredicto de una corrida no era legible desde fuera sin re-derivarlo.**
+  El motor sabía cómo había terminado la corrida mientras corría, y el plano de
+  eventos llevaba la palabra (`success`, `unstable`, `failure`, `aborted`) y el
+  detalle del fallo (el `StepFailed` con su `failureKind` y su mensaje). Pero la
+  OTRA mitad del veredicto —qué había dejado cada Saga y si queda trabajo para
+  una persona— sólo vivía en el KDoc de un evento y en el stderr del CLI. Un
+  consumidor externo que quisiera answering «falló» y «queda trabajo humano»
+  tenía que **correlacionar dos eventos por su cuenta** y decidir por su cuenta
+  qué significa la ausencia de cada uno: un trabajo sin destinatario que cada
+  consumidor tenía que volver a hacer, y cada consumidor podía hacerlo peor.
+  El arreglo publica la lectura una sola vez, en el módulo que publica el plano
+  (`RunPresentationProjection`), con la ontología del veredicto en el dominio
+  (`SagaOutcome`, `RunPresentation`, `mergeCompensationOutcome`).
+  **Falla cerrado en las tres direcciones**, porque un éxito que nadie puede leer
+  no es un éxito: sin cierre del run → `Aborted`; con una palabra de outcome que
+  este build no conoce → `Failure` sintética de motor; con un terminal de Saga
+  ilegible → `NeedsIntervention(TERMINAL_UNREADABLE)`. Y hay una cuarta, que es
+  la **ausencia** de un anuncio: un Saga que armó una obligación y nunca dijo
+  cómo terminó sigue abierto, y el plano no puede leerse como «no debe nada».
+  La regla que protege es la de SPEC-001 («outcome conservation»): un Saga
+  liquidado **no** vuelve verde un run fallido. Medido: 28 tests nuevos, de los
+  cuales 2 leen el **plano real capturado** de dos corridas —los bytes que
+  escribió el motor, decodificados por el códec de producción— y dicen lo mismo
+  que dice el veredicto del propio producto. Mutaciones comprobadas: leer el
+  primer fallo en vez del más externo mata el test del plano real y el unitario
+  y ningún otro; tratar un Saga armado sin terminal como liquidado mata
+  exactamente un test; tratar una palabra desconocida como éxito mata
+  exactamente un test.
+- **El outcome se escribía con un `when` a mano y se leía con otra lista.**
+  `RunLifecycleEngine.closeRun` traducía el outcome a su palabra con un `when`
+  escrito en el motor, y el que lo leía —el CLI— llevaba su propio mapa. Dos
+  listas de un vocabulario son dos autoridades, y divergen la primera vez que
+  alguien añade un caso: el escritor seguía creyendo que describía lo que
+  había escrito y el lector ya no entendía la mitad de las corridas. Lo mismo
+  con el estado terminal del Saga, que vivía en dos constantes privadas del
+  intérprete: un vocabulario **que ningún lector podía citar**. Ahora las
+  palabras viven en el dominio, junto al tipo que nombran (`RunOutcome.wireToken`
+  y sus constantes, `InterventionReason.parse`, `SagaTerminalState`), y los dos
+  lados las citan. Los bytes no cambian: los mismos cuatro tokens y los mismos
+  dos estados. Sin cambio de comportamiento, medido: el veredicto de las
+  corridas del Saga es idéntico antes y después.
+- **No existía la ley «un run verde no puede dejar un Saga pendiente».**
+  Un Saga que necesita una persona es trabajo que nadie ha hecho, y un run que
+  dice `success` mientras ese Saga está abierto le dice al operador que todo
+  está bien mientras puede haber un recurso aplicado y sin devolver. Los dos
+  hechos se contradicen, y una contradicción en el historial es lo que el arnés
+  existe para cazar — pero el arnés no la miraba. La ley vive ahora en
+  `ProtocolGrammar`, con su caso en `ViolationRule`: considera pendiente un Saga
+  cuyo **último** terminal no liquidó y también uno que armó una obligación y
+  nunca anunció terminal, porque la ausencia es la evidencia. El último
+  terminal manda, porque una corrida reanudada reutiliza su `runId` y un Saga
+  puede anunciarse más de una vez. Su test vive en `:pipeline-application` y no
+  en `:pipeline-event-harness`, y el motivo está escrito en el propio test: el
+  arnés no lleva tests unitarios por decisión (su prueba es el verbo `pipeline
+  events verify`), y ese módulo es el que publica el verbo. Medido: al hacer
+  que la ley no dispare mueren los dos tests que la esperan y ningún otro.
 
 ### 2.2 Lo que queda abierto, por valor operativo
 
-**a) 11 módulos sin test unitario permanente.** No es un objetivo de paridad.
+**a) 9 módulos sin test unitario permanente.** No es un objetivo de paridad.
 `AGENTS.md` §2 manda por riesgo, no por cuota. El orden de ataque es:
 
 | Prioridad | Módulo | Riesgo que justifica el test | Estado |
@@ -464,9 +528,14 @@ el arreglo; los demás siguen verdes).
 | 5 | `pipeline-runtime-api` | `RuntimeRecoverDecision` es un decider puro y público: la misma clase que `RunExecutionLease`, coste de test bajo y valor alto. | **Hecho** — `RuntimeRecoverDecisionTest`. |
 | 6 | `pipeline-step-sdk/workflow-control` | El confinamiento que decide si un `dir(...)` puede salirse del workspace. Puro, y además estaba **mal**. | **Hecho** — 9 tests, 1 clase. Encontró 1 defecto material: el prefijo de texto descrito en 2.1. |
 | 7 | `pipeline-credentials-multipart` | El punto donde una credencial llega a disco. Una escritura arbitraria y una retención silenciosa, ambas en materialización. | **Hecho** — 16 tests, 2 clases. Encontró 2 defectos materiales: Zip Slip y la fuga de directorios anidados. |
-| — | `pipeline-events` | Su único candidato (`EventViewProjection`) no tiene consumidor: ver 2.2 b. Sin consumidor, un test es coste sin destinatario. | Bloqueado por decisión de producto |
+| — | `pipeline-events` | Su único candidato (`EventViewProjection`) no tiene consumidor: ver 2.2 b. Sin consumidor, un test es coste sin destinatario. | **Resuelto** — la proyección publicada del veredicto (`RunPresentationProjection`) le da un consumidor real (el hermano la consume desde fuera) y sus propios tests, con el plano real de dos corridas. El módulo ya figura entre los que tienen test. `EventViewProjection` sigue sin consumidor: ver 2.2 b. |
 
-Quedan **11** módulos sin test. **Esta redacción anterior los llamaba
+Quedan **9** módulos sin test, que es lo que mide la etapa 2 del gate (18 con
+test sobre 27 declarados). Antes ponía 11, y el número estaba caducado desde
+hace un ciclo: el `pipeline-events` pasó a tener test en este, y nadie volvió
+a medir.
+
+**Esta redacción anterior los llamaba
 «adaptadores finos o módulos sin clases», y es falsa**: un censo de
 `src/main/kotlin` encontró lógica pura real en varios de ellos
 (`pipeline-artefacts-local`, `pipeline-step-sdk/files`, `pipeline-release`,
@@ -796,26 +865,70 @@ operador— es de diseño de producto y no se resuelve aquí. El mensaje deberí
 decir la **regla** («un perfil de sandbox multi-tenant no puede ser `os`»), no el
 documento donde la regla está escrita.
 
+**k) El contrato del Saga no sabe expresar un Saga que termina bien — MEDIDO, y
+es el bloqueo real de PG-1.** El motor tiene un solo verbo para el cierre de un
+Saga: `SagaRuntime.compensate(plan)`. No hay un verbo para **confirmar** un Saga
+que terminó bien, y la ausencia no es un hueco de API: es un hueco de
+semántica. Una obligación cuyo forward quedó `CONFIRMED` está «debida» para
+siempre, así que un Saga cuyas acciones **todas** tuvo éxito es un Saga que debe
+compensarse. Y el plugin de ejemplo llama a `compensate` siempre, también en
+éxito, porque es la única llamada que existe.
+  Medido, con una cadena de dos acciones que las dos tuvieron éxito: el mundo
+  quedó `reserve`, `charge`, `refund`, `release` — el Saga **se compensó a sí
+  mismo** — y el run dijo `SUCCESS` con el Saga en `SETTLED`. O sea: un run
+  verde que deshizo lo que acababa de hacer, y un plano que no dice nada
+  sospechoso.
+  El arreglo NO es «no compenses en éxito»: sin un verbo de confirmación, las
+  obligaciones se quedan debidas en el almacén durable, y una corrida reanudada
+  las compensaría después. Hace falta un commit de verdad —un estado nuevo de
+  obligación y una forma de descargarla sin compensar— y el plugin de ejemplo
+  usándolo según el resultado de la cadena.
+  **No se arregla en este ciclo**, y el motivo es de tamaño: es un verbo nuevo
+  en un puerto publicado, un estado nuevo en un enum publicado, la semántica del
+  intérprete, el plugin, un escenario nuevo (hoy el camino feliz de un Saga no
+  tiene ninguno) y la ley de plano que hoy no se puede escribir —«un run verde
+  no puede haber compensado»— porque el producto la viola. Se abre como bloque
+  propio.
+
+**l) Las leyes del plano no las ejecuta ninguna puerta.** `ProtocolGrammar` es
+la lista de leyes que el arnés comprueba, y el `build.gradle.kts` del módulo
+afirma que su prueba es la capa E2E: «Its verification is the executable E2E
+layer». **Medido: no es verdad.** El verbo que las ejecuta es `pipeline events
+verify`, que exige un contrato YAML, no hay ningún contrato en el repositorio y
+`v2/examples/run.sh` no lo invoca. Es decir: las leyes del plano —incluida la
+nueva, la del Saga pendiente sobre un run verde— **no las corre nadie**, y su
+proof declarado es una afirmación sin nada detrás.
+  La ley nueva de este ciclo tiene su propio test (en `:pipeline-application`),
+  pero el resto del archivo sigue sin prueba. Arreglarlo es trabajo de una
+  pieza: o el E2E invoca el verbo por escenario, o las leyes se ejecutan desde
+  la etapa 2 del gate sobre los planos que el E2E acaba de producir.
+
+**m) Dos colaterales del camino del veredicto, sin tocar en este ciclo.** El
+KDoc de `CancelReason` afirma que «la razón se lleva en el payload del
+`RunFinished` terminal», y es falso: viaja en la fila del journal. Y el brazo
+`legacyOutcome == "unstable"` de `Main.kt` es código muerto: `legacyOutcome`
+sólo puede valer `success` o `failure`. Ninguno de los dos miente al usuario, y
+ambos son de riesgo bajo; se anotan para que no se pierdan.
+
 
 ### 2.3 Cierre de ciclo
 
 - `PRODUCT-GATE` (certificador externo, RC publicada) = **`BLOCKED_EXTERNAL`**.
   No hay CI remoto en este repositorio. La ausencia de CI **nunca** se declara
   `PASS`.
-- **Presupuesto de tiempo: MEDICIÓN CADUCADA, pendiente de repetir.** El
-  ensayo anterior dio **242 s, 211 s, 213 s** sobre `18d3148a` — el peor, 242 s
-  frente al límite de 900 s, leído del XML de JUnit (`executed=400 failed=0
-  skipped=0`) y no del código de salida. Esos números **siguen siendo ciertos
-  para ese SHA y ninguno más**: desde entonces `HEAD` ha avanzado cinco commits,
-  dos de los cuales añaden 16 tests nuevos y compilan dos módulos que antes no
-  compilaban para test. Repetir el ensayo es lo que devuelve esta línea a
-  `CERRADO`; hasta entonces **no** se declara conformidad. Se conserva el
-  desglose del ensayo antiguo porque explica el margen, no porque autorice el
-  actual: `detektTest` mide 3 s sobre 26 subproyectos, y el alza de +9 s
-  (233 → 242) correspondió a 54 tests, 13 ficheros de test y `detektTest` en la
-  etapa 1 — es decir, el gate crece mucho más despacio que el trabajo. Un gate
-  verde por inercia es peor que un gate marcado caducado: el segundo se lee y el
-  primero se acepta sin mirarlo.
+- **Presupuesto de tiempo: MEDIDO, `CERRADO`.** El ensayo de este ciclo dio
+  **350 s** sobre `4b269fa59`, con el límite en 900 s, leído de la línea de
+  veredicto de la etapa 5 (`PASS  sha=…  elapsed=350s  budget=900s`) y no del
+  código de salida. Cierra la línea que estaba caducada desde `18d3148a` (242 s,
+  211 s, 213 s), cuyos números **seguían siendo ciertos para ese SHA y ninguno
+  más**: desde entonces el árbol avanzó once commits y dos de los cambios de
+  este ciclo añaden 35 tests nuevos, compilan dos módulos que antes no
+  compilaban para test —`pipeline-events` y `pipeline-application`— y capturan
+  dos planos reales como recursos. El margen sigue siendo de 2,5×.
+  Y el alza no es proporcional al trabajo: la etapa 2 mide 19 s sobre 79
+  informes JUnit, y el total apenas se movió respecto del ciclo anterior
+  (345 s → 350 s) con 35 tests más. Un gate verde por inercia es peor que un
+  gate marcado caducado: el segundo se lee y el primero se acepta sin mirarlo.
 
 ---
 
@@ -876,6 +989,51 @@ documento donde la regla está escrita.
   debiendo su compensación. La suposición contraria se comprobó y se descartó:
   reportarlo como ausente hacía que el Saga **no compensara** un efecto aplicado,
   y el escenario 37 seguía verde —es decir, el test no la detectaba.
+- **El veredicto se publica como una PROYECCIÓN del plano, no como un campo
+  nuevo en un evento.** El esquema de los eventos está congelado, y añadir un
+  campo a `RunFinished` o un evento nuevo que compita por la autoridad del
+  resultado sería exactamente eso. En cambio, publicar la LECTURA —una función
+  que recibe el plano y devuelve el veredicto tipado— no toca el esquema, no
+  añade una segunda autoridad y deja el veredicto en la forma que un consumidor
+  puede usar sin correlacionar nada.
+- **La lectura falla cerrado en las tres direcciones, y en una cuarta: la
+  AUSENCIA de un anuncio.** Sin cierre del run → `Aborted`; con una palabra
+  desconocida → `Failure` sintética; con un terminal de Saga ilegible →
+  `NeedsIntervention`; y con un Saga que armó una obligación y nunca anunció
+  terminal → `NeedsIntervention` también, porque la ausencia es la evidencia.
+  La alternativa —leer la ausencia como «nada que hacer»— es la que convierte un
+  recurso applied en un recurso perdido, y es la lectura que la invariante «no
+  success from absence» de SPEC-001 prohíbe.
+- **El fallo que se lee es el MÁS EXTERNO, y se midió para decidirlo.** Un paso
+  de plugin que falla anuncia dos fallos —el del cuerpo que ejecutó y el suyo—,
+  y el del run es el suyo: el otro pertenece a un paso anidado dentro del cuerpo
+  del plugin. Leer el primero de la lista da el fallo equivocado, y el aviso
+  del motor (`cause [PLUGIN]: the action ship failed: shell exited with code 1`)
+  no coincide con el del lector. La anidación se lee del propio direccionamiento
+  del plano: un paso anidado se llama como su contenedor.
+- **`isFinished` no es «tuvo éxito».** Un run que falló y cuyo fallo se compensó
+  **está terminado**: no queda nada que hacer, aunque el resultado sea `failure`.
+  Son dos preguntas distintas —«¿cómo acabó?» es el outcome, «¿queda algo por
+  hacer?» es esto—, y confundirlas haría que un run compensado pareciera
+  inacabado y que un run verde con un Saga abierto pareciera cerrado.
+- **Las palabras del outcome y del estado del Saga viven en el DOMINIO.** El
+  motor escribía el outcome con un `when` a mano y lo leía otro sitio con otra
+  lista; el estado del Saga vivía en dos constantes privadas que ningún lector
+  podía citar. Cada lista de un vocabulario es una autoridad, y divergen la
+  primera vez que alguien añade un caso.
+- **La ley del plano se prueba desde el módulo que publica el verbo que la
+  ejecuta, y no desde el arnés.** `:pipeline-event-harness` no lleva tests
+  unitarios por decisión declarada, y el módulo que publica el verbo
+  `pipeline events verify` es `:pipeline-application`. El test monta un plano con
+  su `RunStarted`, porque un plano roto de dos maneras a la vez no puede decir
+  cuál de las dos leyes probó.
+- **El «commit» que falta no se arregla de paso, aunque esté medido.** El
+  defecto es real y grave (2.2 k), pero su arreglo es un verbo nuevo en un
+  puerto publicado más un estado nuevo en un enum publicado, la semántica del
+  intérprete, el plugin y un escenario nuevo. Meterlo dentro de un bloque que ya
+  cambiaba la ontología del veredicto habría producido un tren con dos cambios
+  sin relación, que es la forma que hace que una reversión duela. Se abre como
+  bloque propio, con la medición adjunta.
 
 ---
 

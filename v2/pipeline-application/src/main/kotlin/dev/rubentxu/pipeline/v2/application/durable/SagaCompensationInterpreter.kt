@@ -19,6 +19,7 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaPlan
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations
 import dev.rubentxu.pipeline.v2.domain.saga.SagaRecordOutcome
 import dev.rubentxu.pipeline.v2.domain.saga.SagaRuntime
+import dev.rubentxu.pipeline.v2.domain.saga.SagaTerminalState
 import dev.rubentxu.pipeline.v2.domain.saga.UncertaintyReason
 import dev.rubentxu.pipeline.v2.domain.step.AttemptSegment
 import dev.rubentxu.pipeline.v2.domain.step.BodyInvocationContext
@@ -371,7 +372,11 @@ class SagaCompensationInterpreter(
                 sequence = 0L,
                 occurredAt = clock.now(),
                 sagaId = plan.sagaId.value,
-                state = if (intervention == null) SETTLED else NEEDS_INTERVENTION,
+                state = if (intervention == null) {
+                    SagaTerminalState.SETTLED.name
+                } else {
+                    SagaTerminalState.NEEDS_INTERVENTION.name
+                },
                 reason = intervention?.reason?.name,
                 compensatedActions = compensated.map { it.value },
             ),
@@ -459,9 +464,6 @@ class SagaCompensationInterpreter(
     }
 
     private companion object {
-        const val SETTLED = "SETTLED"
-        const val NEEDS_INTERVENTION = "NEEDS_INTERVENTION"
-
         /** The three names the domain's closed vocabulary projects to. */
         fun outcomeName(observation: CompensationObservation): String = when (observation) {
             is CompensationObservation.Confirmed -> "CONFIRMED"

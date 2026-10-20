@@ -166,12 +166,7 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
                 runId = runId.value,
                 sequence = 0L,
                 occurredAt = Instant.now(),
-                outcome = when (val o = outcome) {
-                    is RunOutcome.Success -> "success"
-                    is RunOutcome.Unstable -> "unstable"
-                    is RunOutcome.Failure -> "failure"
-                    is RunOutcome.Aborted -> "aborted"
-                },
+                outcome = outcome.wireToken,
                 diagnostics = emptyList(),
             ),
         )

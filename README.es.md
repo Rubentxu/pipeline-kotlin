@@ -25,7 +25,7 @@ Un motor CI/CD moderno y con tipado seguro construido con Kotlin DSL, ofreciendo
 - **🔒 Seguridad Avanzada**: Modelo de sandbox dual usando GraalVM Isolates para ejecución de scripts y contenedores para aislamiento de tareas
 - **📦 Arquitectura Modular**: Separación limpia de responsabilidades en módulos de dominio, aplicación, runtime, eventos, salida, credenciales y SDK de pasos
 - **🔌 Sistema de Plugins Extensible**: Basado en `java.util.ServiceLoader` con resolución de dependencias Maven
-- **🧪 Verificación con presupuesto**: `scripts/verify-all.sh` ejecuta las pruebas unitarias y los 36 escenarios E2E reales, y falla si se superan los 900 s o la razón VERIFY_LOC ≤ 2 × PRODUCT_LOC
+- **🧪 Verificación con presupuesto**: `scripts/verify-all.sh` ejecuta las pruebas unitarias y los 29 escenarios E2E reales, y falla si se superan los 900 s o la razón VERIFY_LOC ≤ 2 × PRODUCT_LOC
 - **🐳 Contenedores Primero**: Soporte nativo de Docker para ejecución de tareas basadas en agentes
 - **⚡ Alto Rendimiento**: Ejecución asíncrona con corrutinas de Kotlin
 - **🛡️ Gestión de Recursos**: Límites de CPU, memoria y tiempo de ejecución con monitoreo detallado
@@ -57,18 +57,21 @@ native-image --version
 ```bash
 git clone https://github.com/rubentxu/pipeline-kotlin.git
 cd pipeline-kotlin
-gradle build
+cd v2 && ./gradlew build
 ```
+
+El build vive en `v2/`, con su propio `settings.gradle.kts`.
 
 ### Compilar el CLI
 
-Para compilar la aplicación CLI:
+Para construir la distribución local:
 
 ```bash
-gradle clean :pipeline-cli:shadowJar
+cd v2 && ./gradlew :pipeline-application:installDist
 ```
 
-Esto crea un JAR completo con todas las dependencias en `pipeline-cli/build/libs/pipeline-cli-0.1.0-all.jar`.
+Esto deja el lanzador en `v2/pipeline-application/build/install/pipelinek/bin/pipelinek`,
+listo para ejecutarse sin instalar nada.
 
 ## Inicio Rápido
 
@@ -246,14 +249,14 @@ interface DslEngine<TResult : Any> {
 
 ```
 pipeline-kotlin/
-├── core/                    # Motor principal, DSL y componentes de seguridad
-├── pipeline-cli/           # Interfaz de línea de comandos
-├── pipeline-backend/       # API REST y servicios web
-├── pipeline-config/        # Gestión de configuración
-├── lib-examples/           # Ejemplos de bibliotecas y plugins
-├── gradle/                 # Configuración de compilación
-├── libs.versions.toml      # Versiones centralizadas de dependencias
-└── docs/                   # Documentación
+├── v2/                     # El producto: módulos Gradle, DSL y ejemplos ejecutables
+├── scripts/                # La puerta de verificación y los scripts de publicación
+├── ci/                     # Pipelines de doggedown (dogfood) del propio repositorio
+├── AGENTS.md               # La política de trabajo del repositorio
+├── ROADMAP.md              # El estado medido y la deuda abierta
+├── README.md               # Documentación de usuario (inglés)
+├── README.es.md            # Documentación de usuario (español)
+└── README-INSTALL.md       # Instalación en detalle
 ```
 
 ## Pruebas
@@ -288,17 +291,17 @@ Ejecuta, en este orden y-parando en el primer stage que falle:
 | Capa | Estado |
 |---|---|
 | Análisis estático y compatibilidad de API | Activa: `detekt`, `apiCheck` |
-| E2E sobre la distribución real | Activa: 36 escenarios en `v2/examples/` |
+| E2E sobre la distribución real | Activa: 29 escenarios en `v2/examples/` |
 | Tests unitarios Kotlin | carril `src/test` reservado y cableado; se rellena por fases |
 | Carriles de prueba bespoke (`pluginContractTest`, `installedContractTest`) | eliminados el 2026-10-18 |
 
-Un escenario E2E marcado `NOT_RUN` —hoy `security/14-credentials-bindings`,
-que necesita un almacén de credenciales sembrado por TTY— no es un verde:
-es el tercer estado honesto, y `scripts/verify-all.sh` lo cuenta aparte. Si
-hubo alguno, la línea de veredicto dice `INCOMPLETE … gaps=N not_run` en lugar
-de `PASS`. Cualquier filtro (`--module`, `--test`, `--scenario`, `--no-budget`)
-marca la corrida como `PASS (subset)`: **sólo `scripts/verify-all.sh` sin
-filtros es evidencia del techo de 900 s**.
+Ningún escenario queda hoy sin ejecutar: el que necesitaba un almacén de
+credenciales sembrado por TTY ahora se siembra con el verbo del propio producto
+y se ejecuta. Si alguno quedara sin ejecutar, la línea de veredicto diría
+`INCOMPLETE … gaps=N not_run` en lugar de `PASS`. Cualquier filtro
+(`--module`, `--test`, `--scenario`, `--no-budget`) marca la corrida como
+`PASS (subset)`: **sólo `scripts/verify-all.sh` sin filtros es evidencia del
+techo de 900 s**.
 
 ## Contribuyendo
 

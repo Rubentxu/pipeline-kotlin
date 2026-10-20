@@ -2388,6 +2388,16 @@ la regla y la línea.
   es observable, la ejecución sí. Motivo: un límite real aplicado a la
   afirmación equivocada se convierte en una cobertura que nadie tiene.
 
+- **La documentación de usuario se audita contra el árbol, no contra la memoria.**
+  Los dos README mandaban a ejecutar ficheros que ya no existían: el primer
+  pipeline del lector y uno de los escenarios. El segundo se retiraba del
+  árbol y el primero nunca estuvo en él. Eso no es una desatención editorial:
+  es la línea de órdenes que el lector copia y pega. La auditoría comprueba
+  que cada ruta citada existe, que cada cifra publicada coincide con el
+  árbol y que no queda ningún identificador de plan; se ejecutó en rojo antes
+  de corregir y en verde después. Motivo: un README que miente cuesta más que
+  un README que no existe, porque el lector no tiene forma de saber que miente.
+
 ---
 
 ## 4. Referencias

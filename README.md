@@ -23,10 +23,21 @@ unzip "pipelinek-${VERSION}.zip"
 ./pipelinek-${VERSION}/bin/pipelinek doctor           # jdk / os / workdir / writable
 ```
 
-Then run your first pipeline:
+Then run your first pipeline. Write this file next to your terminal:
+
+```kotlin
+// hello.pipeline.kts
+pipeline {
+    stages {
+        stage("hello") {
+            echo("PIPELINE-OK")
+        }
+    }
+}
+```
 
 ```bash
-./pipelinek-${VERSION}/bin/pipelinek run examples/01-hello.pipeline.kts
+./pipelinek-${VERSION}/bin/pipelinek run hello.pipeline.kts
 ```
 
 ## What is PipelineK
@@ -155,33 +166,27 @@ pipelinek run --help
 
 ## Examples
 
-The [`v2/examples/`](v2/examples/) directory holds 35 runnable
-pipelines that exercise the real CLI of the published `v0.62.0`
-distribution, grouped by what they cover:
+The [`v2/examples/`](v2/examples/) directory holds 29 runnable
+pipelines that exercise the real CLI, grouped by what they cover:
 
 | Category | Scenarios | What it covers |
 |---|---|---|
-| `smoke/` | 5 | The shortest path through the DSL: one stage, several stages, environment, `sh` then `echo`, and a checkout → build → archive round trip |
-| `steps/` | 7 | One scenario per step: `sh`, `withEnv`, the workspace helpers, `sleep`, `writeFile`, `cleanWs`, `findFiles` |
-| `control-flow/` | 3 | Kotlin control flow inside `script {}`, `repeat` loops, workflow control |
-| `durable/` | 5 | Durable execution over the journal: `isUnix`, `pwd` to a temp path, milestones, `waitUntil`, `stash`/`unstash` |
+| `smoke/` | 3 | The shortest path through the DSL: the environment, `sh` then `echo`, and a checkout → build → archive round trip |
+| `steps/` | 5 | One scenario per step: `withEnv`, the workspace helpers, `writeFile`, `cleanWs`, `findFiles` |
+| `control-flow/` | 2 | Kotlin control flow inside a compiled script, and workflow control |
+| `durable/` | 4 | Durable execution over the journal: platform queries, milestones, `waitUntil`, `stash`/`unstash` |
 | `security/` | 2 | Credential bindings, and a ZIP-slip path-traversal defence |
-| `output/` | 7 | The output plane: file reads, utilities and YAML round trips, ZIP/unzip, cross-step artifact queries, HTML publishing |
-| `negative/` | 3 | Deliberate failures that must fail closed, including an unregistered directive key |
+| `output/` | 6 | The output plane: file reads, a utilities round trip, ZIP/unzip, mixed utilities, cross-step artifact queries, HTML publishing |
+| `negative/` | 4 | Deliberate failures that must fail closed: error handling, a failing step, a workspace symlink escape, an unregistered directive key |
 | `plugins/` | 3 | The three external example plugins, discovered from the distribution classpath: `uppercase`, `repeat`, and a contributed directive |
 
-If you installed via SDKMAN or unzipped the GitHub artifact, you can run
-any one directly:
-
-```bash
-pipelinek run --workspace /tmp/pk-example v2/examples/smoke/01-basic.pipeline.kts
-```
-
-If you cloned the repository, build the local distribution once and let
+The scenarios live in this repository, not in the released ZIP: the ZIP ships
+the distribution alone. From an installed distribution you run your own
+`.pipeline.kts`; from a clone, build the local distribution once and let
 [`v2/examples/run.sh`](v2/examples/run.sh) run the whole set. The
-launcher takes no arguments — it discovers every scenario, gives each
-one a private control root and a generated passphrase, and judges each
-on its exit code plus at most one substring of its stderr:
+launcher discovers every scenario, gives each one a private control root, a
+private working directory and a generated passphrase, and judges each on its
+exit code and on the text the scenario asked for:
 
 ```bash
 cd v2 && ./gradlew :pipeline-application:installDist
@@ -193,12 +198,21 @@ and nothing else about a scenario is interpreted:
 
 ```kotlin
 //@ expect-exit 1              // the default is 0
+//@ expect-stdout <substring>  // the run must PRODUCE this, not merely exit 0
 //@ expect-stderr <substring>  // the refusal must be this specific, not
                               // merely a nonzero exit
+//@ expect-transcript <text>   // the bytes the run COMMITTED must contain it
 //@ durable                    // run twice over one control root; the
                               // pipeline itself asserts the effect did
                               // not repeat, this only makes it happen
+//@ credentials <id> <kind>    // seed a credential into this scenario's store
 ```
+
+Every directive except `expect-exit` may appear more than once, and each
+occurrence must be satisfied. The launcher also takes one optional argument, a
+glob over the scenario paths relative to `v2/examples/`, so
+`v2/examples/run.sh 'control-flow/*'` runs one slice of the set. A glob that
+matches nothing is an error rather than a run of zero scenarios.
 
 That is the entire vocabulary. The launcher is not a framework: it has
 no registry, no fixtures and no assertions of its own.
@@ -277,8 +291,8 @@ channel consumes the same bytes; nothing is rebuilt per installer.
 | **GitHub Releases ZIP** | **Available** | Canonical artifact. ZIP + SHA-256 + CycloneDX SBOM + release manifest. |
 | **Multi-version installer** (`scripts/install-pipelinek.sh`) | **Available** | Bash installer in this repo: `install <v>` / `use <v>` / `list` / `uninstall <v>` / `doctor`. URL allowlist fail-closed; SHA-256-verified; no `sudo`. See [§1.1](#11-install-with-the-script-multi-version-manager). |
 | **Direct download** | **Available** | Same ZIP from the release page; no extra hop. |
-| **SDKMAN** (`pipelinek` candidate) | **Pending** | Vendor onboarding in progress; the publish script (`scripts/release/sdkman-publish.sh`) is ready but blocked on `SDKMAN_CONSUMER_KEY` / `SDKMAN_CONSUMER_TOKEN`. It resolves digests from the release `SHA256SUMS` manifest via `scripts/release/resolve-release-digest.sh` (the old `<asset>.sha256` sidecar is not published and 404s). Its former contract tests were deleted by the 2026-10-18 testing RESET and no replacement covers digest resolution, so that behaviour is currently unverified by automated tests and rests on the manual release-page check before a publish. Tracked as WU-LPR-080; the SDKMAN artifact authority is decided in the publish script and in `CandidateTagProvenance` (`:pipeline-release`). |
-| **Homebrew** (`rubentxu/tap/pipeline`) | **Future** | Project tap not started. Formulas will reuse the same ZIP. Listed as LFC9-004 in the historical distribution backlog. |
+| **SDKMAN** (`pipelinek` candidate) | **Pending** | Vendor onboarding in progress; the publish script (`scripts/release/sdkman-publish.sh`) is ready but blocked on `SDKMAN_CONSUMER_KEY` / `SDKMAN_CONSUMER_TOKEN`. It resolves digests from the release `SHA256SUMS` manifest via `scripts/release/resolve-release-digest.sh` (the old `<asset>.sha256` sidecar is not published and 404s). Its former contract tests were deleted by the 2026-10-18 testing RESET and no replacement covers digest resolution, so that behaviour is currently unverified by automated tests and rests on the manual release-page check before a publish. The SDKMAN artifact authority is decided in the publish script and in `CandidateTagProvenance` (`:pipeline-release`). |
+| **Homebrew** (`rubentxu/tap/pipeline`) | **Future** | Project tap not started. Formulas will reuse the same ZIP. |
 | **mise** (Aqua backend / GitHub release backend) | **Future (harness)** | Lives in the external `pipelinek-release-harness` repo: an Aqua registry entry (preferred) or a GitHub release backend stub. Not a plugin in this repo. |
 | **asdf** (`asdf-pipeline` plugin) | **Future (harness)** | Lives in the external `pipelinek-release-harness` repo: an `asdf-pipeline` plugin with `bin/install`, `bin/download`, `bin/list-bin`, sourced from the canonical ZIP. Not a plugin in this repo. |
 | **Scoop** (Windows-native manifest) | **Future** | Gated on Windows demand; would reuse the ZIP and `bin/pipelinek.bat`. Not started. |
@@ -306,9 +320,12 @@ Every claim in the README above has been verified against the official
 - **ZIP SHA-256**: `385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8`
 - **Binary SHA-256**: `92d0f67d16f7ee12888724cfe9da56f19cc2facd51ebee319770a43f40eedeee`
 - **Certified commit**: `951b3cb5695ecc46c877776e330266e4bd44aa9e`
-- **Examples 01–10**: each row of the Examples table above was executed
-  against this binary on JDK 24.0.2 (Temurin) on Linux x86_64 with the
-  reported exit code and outcome.
+- **Examples**: the scenarios in the table above were executed against that
+  binary on JDK 24.0.2 (Temurin) on Linux x86_64 with the reported exit code
+  and outcome. The set has since been reorganised — some scenarios were merged
+  and some retired — so the counts this README publishes are the ones the
+  tree holds today, and the gate runs them against the distribution built from
+  this tree rather than against a published release.
 - **`pipelinek doctor`**: jdk 24.0.2 (Eclipse Adoptium), os Linux,
   workdir writable.
 

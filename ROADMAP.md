@@ -18,14 +18,14 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `15cd1441b` medido en los tres ensayos; los commits posteriores (`18a20f85d`, `a0fa1871e`) sólo tocan este ROADMAP y los README, así que el código medido es el de `15cd1441b` | `git rev-parse HEAD` |
+| SHA | `b80e32bb5` (producto, tests y ejemplos) es el código medido; el commit posterior de documentación sólo toca este ROADMAP y los README | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
 | Tests unitarios ejecutados | **819** (105 informes en disco, 105 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | **42 (42 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios que sólo comprueban el código de salida | **0**: cada uno afirma, con una directiva del lanzador o con una comprobación dentro del propio pipeline | censo por directiva y por cuerpo, sobre los 42 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **12227 / 64630 = 0.19** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios E2E | **44 (44 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios que sólo comprueban el código de salida | **0**: cada uno afirma, con una directiva del lanzador o con una comprobación dentro del propio pipeline | censo por directiva y por cuerpo, sobre los 44 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **12781 / 64760 = 0.20** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
 | `VERIFY_ALL_WALL_CLOCK` | **581 / 553 / 564** en los tres ensayos, los tres sobre `15cd1441b`, peor 581 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
@@ -2981,7 +2981,301 @@ salió 2, esperado 0», con el diagnóstico «el run ya terminó con outcome
 'succeeded'»). El observador del catálogo se vio rojo al volver a poner
 `runtime.cancel.v1` en `DEPRECATED`: 2 de 5 filas, las dos esperadas.
 
+### 2.21 El plugin que el operador no había aprobado: la confianza, por fin en el camino
+
+El encargo de este ciclo era uno: «empezamos y evaluamos si funciona bien el
+plugin», con la afirmación de fondo de que todo plugin debe hablar con el SDK
+como seam. Lo medido, parte por parte:
+
+- **El seam es correcto.** Cada plugin de ejemplo es un build Gradle
+  **independiente** que depende sólo de artefactos SDK publicados
+  (`compileOnly` sobre `pipeline-domain`, `pipeline-scripting-api`,
+  `pipeline-events`), resueltos de un repositorio Maven local que el build
+  exige nombrar (`-PsdkRepo`, `-PsdkVersion`, sin valor por defecto). El JAR
+  lleva sólo sus clases; el manifiesto se **emite en build**, no se escribe a
+  mano; el `apiRange` se **deriva** del SDK resuelto, y el digest del payload
+  se mide SHA-256 sobre clases y recursos excluyendo el fichero de procedencia
+  y el manifiesto. Eso es un punto fijo reproducible, y es la frontera correcta:
+  un plugin publicado contra el SDK no depende del código fuente del core.
+- **La admisión está en el camino de producto.** `PreResolvedComposition` mide
+  los bytes antes y después (para detectar un intercambio entre la medición y la
+  carga), pasa 1 (`PreLoadPluginAdmission`: el manifiesto se lee **del
+  artefacto**, sin classloader, y su ausencia es un rechazo) y pasa 2
+  (`PluginContributionVerifier`: el cross-check entre lo declarado y lo
+  implementado).
+- **La confianza NO estaba en el camino de producto.** Y esto era el hueco
+  real, por más que el seam y la admisión estuvieran bien.
+
+**Lo que estaba desconectado, medido.** `PluginAdmissionGate.admitThenLoad`
+tenía **cero llamadores** (su propio KDoc lo admitía: «Nothing in this
+repository calls [admitThenLoad]… kept because the design is sound, not
+because it is wired»). `LocalFileOperatorTrustDatabase` no tenía consumidores.
+`AdmissionControlJournal` sólo lo usaba esa puerta sin cablear. Y
+`AdmissionRefusal.RefusedDigestMismatch` —un caso publicado— no tenía
+**productor**: nadie podía provocarlo.
+
+**Y la política que esa puerta aplicaba era la equivocada.** Comparaba el
+digest que el **propio plugin declara** sobre su payload
+(`manifest.release.digest`) con el digest fijado por el operador. Son dos
+magnitudes distintas —el payload y el fichero que lo lleva— que nunca
+coinciden, así que la regla respondía «digest mismatch» para todos los plugins
+del mundo. El propio código lo decía por escrito: «two different magnitudes
+that never agree».
+
+**La política que se decide ahora.** La confianza del operador se ancla en dos
+hechos que sí se pueden comprobar, y el runtime los comprueba:
+
+1. **Los bytes.** La fila del operador fija el digest del **fichero** del
+   artefacto —la misma magnitud que mide el runtime—, no el digest que el
+   plugin declara sobre su payload. Una declaración se puede copiar dentro de
+   otro artefacto; los bytes no. Un JAR cambiado se rechaza nombrando **los dos
+   digests**, para que el operador sepa qué fichero poner en cuarentena.
+2. **El publicador.** El manifiesto declara el publicador; la fila del
+   operador lo aprueba; y una **firma Ed25519 desligada** sobre los bytes
+   medidos tiene que verificar bajo la clave que la fila nombra. La clave vive
+   en el keyring del operador (`<fichero-de-confianza>/keys/<id>.pub`), no junto
+   al plugin: una fila que pudiera llevar su propia clave aprobaría lo que
+   quisiese, mientras que una fila que sólo puede **nombrar** una clave que el
+   operador ya tiene no puede.
+
+La firma va **desligada** (`<artefacto>.sig`) y no dentro del artefacto por
+una razón que no es de gusto: una firma dentro del fichero cambia el fichero,
+así que el digest tendría que cubrir bytes que no pueden existir todavía. La
+firma desligada rompe el círculo —el publicador firma el digest del artefacto
+tal como se reparte, y la firma viaja al lado—.
+
+**El refusal que ya existía y que por fin tiene productor.**
+`RefusedDigestMismatch` pasó a ser la respuesta del runtime cuando los bytes no
+son los que el operador aprobó. Y dejó de ser un caso sin explicación: cada
+fallo posible tiene un `kind` propio (`NoOperatorRow`, `DigestMismatch`,
+`PublisherMismatch`, `PublisherNotSigned`, `SignatureMissing`,
+`SignatureKeyMismatch`, `PublisherKeyMissing`, `SignatureInvalid`) porque cada
+uno tiene un remedio distinto, y un rechazo que hay que leer como prosa es un
+rechazo que no se puede clasificar.
+
+**La política es opt-in, y por qué.** Se activa nombrando el fichero
+(`--plugin-trust <file>`). Sin ese nombre, el runtime admite plugins como
+siempre lo ha hecho (manifiesto y `apiRange`). Una política que no se puede
+apagar no es una política, y hacerla obligatoria sería una ruptura de
+comportamiento que este ciclo no está autorizado a hacer. Y la política cubre
+**los artefactos que el operador trae** (`--plugin-jar`), no los plugins que
+vienen dentro de la distribución instalada: la integridad de los plugins
+embutidos es asunto de la distribución que el operador instaló —sus checksums,
+su firma de release—, no de una fila que el operador tendría que escribir para
+cada plugin embutido antes de poder usar ningún plugin de terceros. Una
+política que hiciera impracticable el conjunto embutido sería una política que
+nadie activaría.
+
+**El cambio de semántica que hay que saber.** El fichero de confianza del
+operador cambia de significado: el campo `digest` pasa a ser el digest de los
+bytes del artefacto. Es un formato que el operador escribe a mano, así que es
+un cambio visible para él, y por eso está aquí y no escondido en un KDoc: las
+filas escritas con la semántica vieja declaran un digest que nunca habría
+coincidido con el del fichero.
+
+**El producto dice lo que decidió.** Una política que opera en silencio no es
+una política: el runtime imprime, por cada plugin que la política aprobó, los
+bytes, el publicador y la clave con que se aprobó. Sin esa línea, un operador no
+puede distinguir «la política aprobó este plugin» de «la política nunca se
+consultó», y las dos se ven igual desde fuera.
+
+**El diario durable, por fin con consumidor.** `AdmissionControlJournal` escribe
+la fila de decisión **antes** de que la decisión vuelva, así que un rechazo
+deja evidencia que el operador puede leer sin volver a ejecutar nada. El
+veredicto que guarda distingue `Verified` (aprobado por la política) de
+`Unverified` (admitido sin que el operador hubiera dicho nada) y de `Mismatch`
+(los bytes no son los aprobados). Antes de este ciclo, ese diario no escribía
+nada porque su único escritor era una puerta que nadie llamaba.
+
+**La segunda autoridad, retirada.** `PluginAdmissionGate` era una segunda
+autoridad de admisión: leía su propio manifiesto, medía sus propios bytes,
+hacía su propio cross-check y tenía su propia política de confianza (la
+equivocada). El producto no la usaba. Se retiró en lugar de cablearse, porque
+cablearla habría producido dos autoridades de admisión —dos respuestas a «¿este
+plugin entra?» según por dónde pasara la llamada— y la que el producto no usaba
+era la más estricta. Sus referencias en el KDoc de ocho ficheros se corrigieron
+para que nombren la autoridad que existe (AGENTS.md §6).
+
+**De paso, un lector de JSON.** El módulo tenía tres cursores a mano para tres
+documentos (el fichero de confianza, la fila durable y, ahora, la firma) y ya
+se contradiían: uno no leía números, otro no leía secuencias de escape. Un
+documento que este runtime lee no puede significar cosas distintas según quién
+lo leyó.
+
+**Lo que queda fuera, y por qué.** La firma verifica la **identidad del
+publicador sobre los bytes**, y no dice nada de si el publicador es quien dice
+ser: el vínculo entre «el publicador» y «la clave» lo establece el keyring del
+operador, que es un asunto fuera de banda. Tampoco hay distribución de claves
+—el runtime no emite ni registra claves—, ni rotación, ni revocación. Y el
+digest fijado es el del **fichero**: un plugin reconstruido produce bytes
+distintos y por tanto una fila nueva. Eso es lo que se pidió (anclar la
+confianza en la identidad criptográfica de los bytes), y tiene un coste que
+conviene decir: re-empaquetar un plugin es una operación de mantenimiento.
+
+**La evidencia, en rojo y en verde.** Cuatro mutaciones, aplicadas y leídas de
+vuelta:
+
+| Mutación | Qué se enciende |
+|---|---|
+| El desajuste de digest deja de rechazar | 1 de 11 filas del test puro, la esperada |
+| La verificación de firma se salta | 2 de 11, las dos de firma |
+| Se restaura la política vieja (comparar la fila con el digest que declara el propio plugin) | el escenario **positivo** falla con `RefusedDigestMismatch` y los dos digests delante: el defecto original, reproducido |
+| La política deja de cubrir nada | el positivo pierde la evidencia de la política; el negativo degrada a `DuplicateIdentity` |
+
+La cuarta es la que más importa: un escenario que sólo afirmara «algún
+rechazo» habría pasado en los dos casos, porque el rechazo por identidad
+duplicada también es un rechazo. El escenario afirma **qué** rechazo, y por eso
+distingue una política que no hace su trabajo de una política que no se
+consultó.
+
+### 2.22 Una revisión externa del 20/10/2026: qué es de este repositorio y qué no
+
+Una revisión publicada el 20/10/2026 sobre PipelineK `b6613c42` y Fabric
+`8f304064` propone un orden de trabajo: primero cerrar el plano de eventos y
+salida, después la integración con Fabric, luego el SDK y sus plugins, y al
+final seguridad, certificación y documentación. Su diagnóstico es bueno y su
+reordenación es la correcta para este producto, pero **sus números no son
+medidos en este árbol**: la revisión se hizo sobre `b6613c42` (Core `0.75.0`),
+y esta rama es `refactor/reset-testing-and-docs` sobre el Core `0.62.0`, 209
+commits por delante de `origin/main`. Copiar sus cifras a este ROADMAP sería
+afirmar como medido lo que se leyó en otro sitio.
+
+Así que cada afirmación **de este repositorio** se ha vuelto a medir aquí, y el
+veredicto queda escrito con el fichero y la línea donde se comprobó:
+
+| Afirmación de la revisión | Veredicto medido en este árbol | Dónde |
+|---|---|---|
+| Un fallo de almacenamiento y un cursor inválido se convierten en «run desconocido» | **CONFIRMADO** | `SqliteEventFollowHandle.kt:480-484`: `UnknownRun`, `CursorBeyondTail` y `StorageError` salen los tres como `EventFollowRefusal.UnknownRun`. El KDoc admite el motivo: la jerarquía cerrada de negativas no tiene caso para ellos |
+| La consola no garantiza intercalado cronológico en todas sus vistas | **MITIGADO AQUÍ, y con una distinción que la revisión no hace** | `ObservationOutputReader` **ya** está posicionado por **ordinal de frame** y devuelve los registros en orden de observación (`records` ascienden por ordinal). La concatenación en orden fijo es **otro** lector, el de un verbo, y su KDoc dice que es una proyección declarada, no una afirmación de intercalado |
+| `StepFinished` no lleva resultado, así que un consumidor puede afirmar que un step terminó bien sin evidencia | **CONFIRMADO** | `DomainEvent.StepFinished` no tiene campo de resultado: `stepType` es el **tipo** del step (`"sh"`, el id del plugin), y `StepFinishedTyped.outcome` lo copia con otro nombre. `StepFailed` sí lleva `failureKind`, pero **no** lleva `stageIndex`. En cambio `StageFinished` **sí** lleva `outcome` |
+| `appendAssigned` confirma una secuencia asignada, no un commit en disco | **CONFIRMADO, y ya hay barrera** | El store escribe por un hilo escritor que hace COMMIT en lotes; `flush` es la barrera («bloquea hasta que cada evento encolado está commiteado») y la unidad durable es el COMMIT de SQLite |
+| La confianza criptográfica del publicador no está acreditada por el manifiesto | **ENTREGADO en este ciclo** | §2.21: la fila del operador fija los bytes y una firma Ed25519 desligada acredita al publicador |
+| Integrar los adaptadores de inspección, cancelación y recuperación | **PARCIAL, y con una diferencia declarada** | El cancelador está cableado y expuesto (§2.20). `inspect` y `recover` **no** se exponen a propósito: el producto ya tiene un plano de lectura (`inspect` sobre el event lane) y un motor de recuperación (`--resume` sobre el journal y el cursor de replay). Exponer los puertos sería un segundo plano y un segundo motor, que `AGENTS.md` prohíbe |
+| Publicación incremental hacia `ProjectionSource`, persistencia y recuperación de Fabric | **NO ES DE ESTE REPOSITORIO** | Es `pipelinek-fabric`, con sus propios contratos y sus releases |
+| Deriva de `pipelinek-policy` (SDK `0.47.0`, `apiRange [0.47.0, 0.49.0)`), spikes de Saga, reconciliación de Studio | **NO ES DE ESTE REPOSITORIO** | Repositorios externos; los hechos que aporta la revisión quedan como criterios de aceptación allí, no como logros certificados aquí |
+| Publicar `pipeline-events-store` para que Fabric abra las tablas | **PROPUESTA RECHAZADA, y por qué** | Rompería el aislamiento que el producto ya construyó. El acceso externo sigue siendo por contrato: lectura versionada, cursor, y negativas tipadas |
+
+La revisión acierta en lo esencial y su orden es el que se adopta. Lo que no
+se hace aquí es copiar su diagnóstico sin medirlo: una revisión escrita contra
+otro SHA dice lo que vio allí, y este ROADMAP dice lo que se comprobó aquí.
+
+### 2.23 Las especificaciones de los hitos priorizados
+
+Cada hito dice **qué garantía** sostiene, **qué capacidad** ve el consumidor,
+**qué instrumento** es el más barato que puede fallar, y **qué evidencia**
+lo cierra. La regla es la del skill de verificación: primero la garantía, luego
+la capacidad, luego el instrumento; un test es un instrumento, nunca la
+garantía. Y la regla del RESET sigue vigente: sólo tests unitarios puros en
+`src/test/kotlin` del módulo real, y escenarios ejecutables en `examples/` para
+lo que no es unit-testable. Ningún hito de esta lista reintroduce el harness
+antiguo, ni una suite E2E en Kotlin, ni una campaña de mutaciones masiva.
+
+| Hito | Repositorio | Garantía | Instrumento más barato que puede fallar | Evidencia de cierre |
+|---|---|---|---|---|
+| **P0.1** Negativas de lectura diferenciadas | Core | Un consumidor de eventos distingue «el run no existe», «el cursor no vale» y «el almacenamiento falló». Hoy las tres son `UnknownRun` | Test unitario puro sobre el traductor de negativas del follow handle: tres entradas, tres salidas distintas. Sin disco: un `StorageError` se fabrica como valor | Test rojo con la traducción antigua restaurada (3 filas) y verde con la nueva; **publicación versionada** del vocabulario (`EventFollowRefusal` es contrato de SDK) |
+| **P0.2** Seal externo de streaming | Core | Un cliente externo lee la historia por cursor, se desconecta y vuelve sin saltarse ni duplicar hechos | Ejemplo ejecutable en `examples/`: un lector externo (el verbo `events` con cursor) que lee, corta y reanuda; y el caso del cursor inválido, que debe salir con su negativa propia | El ejemplo falla si el cursor se resetea al reconectar o si la negativa degrada a «run desconocido» |
+| **P0.3** Streaming incremental a Fabric | Fabric | Jenkins muestra progreso durante el run, no al final | Pruebas de `pipelinek-fabric`; en Core, sólo el contrato que consume | Fuera de este repositorio: su propio gate y su RC |
+| **P0.4** Persistencia y recuperación de Fabric | Fabric | Reiniciar el control plane no pierde, duplica ni inventa hechos | Igual que P0.3, con su cursor confirmado | Fuera de este repositorio |
+| **P1.1** API de Runtime | Core | El cancelador está cableado y expuesto; `inspect` y `recover` siguen sin exponerse porque serían un segundo plano y un segundo motor (§2.20) | El E2E `durable/39-cancel-dead-run` | Hecho en el ciclo anterior, y la decisión de no exponer los otros dos queda escrita y a la vista |
+| **P1.2** Certificación de SDK y plugins | Core + externos | Un plugin compilado contra el SDK publicado se carga en la distribución real y sus contribuciones declaradas coinciden con las disponibles | Un **ejecutable** que carga cada JAR de `lib/` de la distribución instalada y compara sus entradas de servicio con su manifiesto. Es lo que el producto ya sabe hacer (`PluginContributionVerifier`), aplicado a los plugins que se distribuyen | Nombre del plugin, digest del JAR y resultado de admisión por plugin, en el informe del ciclo |
+| **P1.3a** Resultado terminal del step | Core | Un consumidor del event stream puede saber si un step terminó bien, **sin deducirlo** | Test unitario puro sobre el evento terminal y su versión. Con un campo nuevo en un evento publicado, la versión es explícita: campo nuevo opcional, no un cambio de significado | El test se ve rojo con el evento antiguo restaurado |
+| **P1.3b** Atribución de stage al fallo | Core | Un consumidor puede atribuir un `StepFailed` a su stage desde el evento, sin unirlo con otro evento | Test unitario puro sobre la forma del evento de fallo | Igual que P1.3a |
+| **P1.3c** Política de confianza del plugin | Core | El plugin que el operador trae es el que aprobó, firmado por el publicador que nombra | **Hecho**: test puro del decisor + dos escenarios ejecutables (§2.21) | 4 mutaciones vistas en rojo; 44 escenarios verdes |
+| **P1.4** Gate mínimo fiable | Core | La puerta local completa pasa en el SHA final, sin falsos verdes, dentro de 900 s | `scripts/verify-all.sh` con tres ensayos de reloj | Tres ensayos de reloj sobre el SHA final, con su cifra (§1) |
+| **P2.1** RC y procedencia | Core + Fabric | Instalación real, ABI, SDK, distribuciones y procedencia verificables | Instalación de la RC en una máquina limpia y ejecución de un ejemplo contra el artefacto instalado | Fuera de este repositorio en su parte de publicación; aquí, `BLOCKED_EXTERNAL` mientras no exista certificador |
+| **P2.2** Documentación pública | Core | Manual de instalación, DSL, steps, plugins, SDK y operación, con comandos comprobados contra la versión definitiva | El README corto y los ejemplos ejecutables | Al final, y no antes |
+
+**Las tres propuestas adicionales de la revisión, con veredicto.**
+
+1. **Un único adaptador semántico de eventos en Fabric.** Se acepta el
+   diagnóstico (dos traducciones que no cubren las mismas variantes son dos
+   respuestas) y se rechaza el arreglo dentro de este repositorio: el
+   adaptador es de Fabric, y su drift se cierra con sus releases. En Core, lo
+   equivalente es que exista **una** forma de leer el event lane —que es lo que
+   ya hay: `EventRecordReadPort` y el verbo `events`—, y que las negativas
+   sean tipadas y distintas (P0.1).
+2. **Matriz de compatibilidad ejecutable.** Se acepta, y la parte que es de
+   este repositorio se puede hacer sin dependencias nuevas: certificar los
+   plugins **que se distribuyen** contra la distribución instalada (P1.2). La
+   certificación de `Policy`, `Saga` y `Fabric` necesita un repositorio por
+   consumidor, y sus releases: aquí sólo puede quedar el contrato que permita
+   certificarlos.
+3. **Una API de observación suficiente, no otro bus.** De acuerdo, y ya es la
+   forma del producto: journal, `EventFollower`, output plane y cursores. No se
+   añade Kafka ni otro event store ni un broker. La pieza que falta no es un
+   bus: es que las negativas sean tipadas (P0.1) y que el resultado terminal del
+   step esté publicado (P1.3a).
+
+**Lo que este repositorio puede y no puede certificar.** No puede certificar
+que Fabric no pierda hechos, porque Fabric no está aquí: su comportamiento es
+un hecho externo hasta que su RC lo demuestra. No puede publicar una RC
+estable sin certificador externo, y su estado es `BLOCKED_EXTERNAL`, no verde.
+Y las garantías de durabilidad que este producto ofrece son las que su
+documento dice —el output plane, por ejemplo, no garantiza persistencia ante
+pérdida de alimentación—: prometer más que lo escrito sería el modo de fallo
+que este ROADMAP lleva seis ciclos evitando.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **Anclar la confianza del operador en los bytes y en el publicador, y no en lo
+  que el plugin declara.** La decisión venía del revisor («anclar la confianza en
+  la identidad criptográfica de los bytes del artefacto y en la identidad
+  verificable de su publicador»), y el hueco que la justifies estaba medido: la
+  política existente comparaba el digest **declarado** por el plugin con el
+  digest fijado por el operador, dos magnitudes que nunca coinciden. La regla
+  que se aplica compara magnitudes iguales: el digest del **fichero** que el
+  operador fijó con el digest del **fichero** que el runtime midió. Y el
+  publicador deja de ser una cadena en el manifiesto del plugin: la fila del
+  operador lo aprueba y una firma Ed25519 sobre los bytes lo respalda bajo una
+  clave que el operador conserva.
+- **La política se activa, no se impone.** Se activa nombrando el fichero
+  (`--plugin-trust`). Sin nombrarlo, el runtime se comporta como antes. Una
+  política obligatoria sería una ruptura de comportamiento que este ciclo no
+  está autorizado a hacer, y una política que no se puede apagar no es una
+  política: es un cambio de producto disfrazado de opción.
+- **La política cubre lo que el operador trae, no lo que viene embutido.** Los
+  plugins de la distribución instalada son asunto de la distribución —sus
+  checksums, su firma de release—, no de una fila por plugin que el operador
+  tendría que escribir antes de poder usar ningún plugin de terceros. Cubrir los
+  embebidos haría la política impracticable y, por tanto, inútil.
+- **La firma viaja desligada del artefacto.** Una firma dentro del JAR cambia el
+  JAR, así que el digest tendría que cubrir bytes que no pueden existir todavía.
+  Con la firma al lado (`<artefacto>.sig`), el publicador firma el digest del
+  artefacto tal como se reparte y el runtime verifica sobre los bytes que
+  midió.
+- **La clave del publicador la guarda el operador, no el plugin.** La fila nombra
+  un **id** de clave, y el keyring del operador resuelve ese id. Una fila que
+  pudiera llevar su propia clave aprobaría lo que quisiese; una fila que sólo
+  puede nombrar una clave que el operador ya tiene, no.
+- **Retirar `PluginAdmissionGate` en lugar de cablearlo.** Era una segunda
+  autoridad de admisión con el producto detrás, y su política de confianza era
+  la equivocada. Cablearla habría producido dos respuestas a «¿este plugin
+  entra?» según por dónde pasara la llamada; conservarla sin llamadores habría
+  dejado un segundo lugar donde se decide la admisión, que es la forma de
+  autoridad duplicada que `AGENTS.md` prohíbe. Se retira, y sus referencias en el
+  KDoc de ocho ficheros se corrigen para que nombren la autoridad que existe.
+- **El producto dice qué decidió la política.** Una política que opera en
+  silencio es indistinguible de una política que nunca se consultó, y esa
+  indistinguibilidad es exactamente el fallo que este ciclo vino a cerrar. Por
+  eso el runtime imprime los bytes, el publicador y la clave de cada plugin que
+  la política aprobó.
+- **Un solo lector de JSON.** El módulo tenía tres cursores a mano para tres
+  documentos y ya se contradiían entre sí. Un documento que el runtime lee no
+  puede significar cosas distintas según quién lo leyó.
+- **Adoptar el orden de la revisión externa, con sus cifras re-medidas aquí.**
+  La revisión del 20/10/2026 propone cerrar primero el plano de eventos y
+  salida, después la integración con Fabric, luego el SDK y sus plugins, y al
+  final seguridad, certificación y documentación. Se adopta ese orden y se
+  rechazan sus cifras sin medir: la revisión se hizo sobre otro SHA y otra
+  versión, así que cada afirmación **de este repositorio** se comprobó aquí y
+  su veredicto quedó escrito con fichero y línea (§2.22). Copiar un diagnóstico
+  sin medirlo es cómo un ROADMAP empieza a mentir.
+- **No exponer `inspect` ni `recover` aunque la revisión pida integrarlos.** La
+  revisión quiere «cablear los adaptadores existentes de inspección, cancelación
+  y recuperación». El cancelador está cableado. Los otros dos no se exponen
+  porque el producto ya tiene un plano de lectura (`inspect` sobre el event
+  lane) y un motor de recuperación (`--resume` sobre el journal y el cursor de
+  replay): exponerlos sería un segundo plano y un segundo motor. La decisión
+  queda escrita y a la vista para quien revise.
 - **Reconciliar con `main` antes de seguir construyendo.** La rama estaba a 196
   commits de su lado y a 29 del suyo, con el trabajo de Saga y el tren de releases
   enteros fuera. Integrar sobre una base divergente es la forma de perder trabajo

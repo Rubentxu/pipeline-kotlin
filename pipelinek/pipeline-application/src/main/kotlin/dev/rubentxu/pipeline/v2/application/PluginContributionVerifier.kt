@@ -16,8 +16,7 @@ import java.util.ServiceLoader
  * [dev.rubentxu.pipeline.v2.domain.step.AdmittedPlugin.admitContributions] compares what a plugin
  * DECLARED in its manifest against what its contributor ACTUALLY provides, across Steps,
  * Directives and Events. It existed and was correct — and was never called from any production
- * path. `PluginAdmissionGate.admitThenLoad` calls it, and every one of that gate's eight callers
- * was in `src/test`. The installed `pipelinek` reached plugins through `PluginComposition.resolve`,
+ * path. The gate that called it had eight callers, and every one of them was in `src/test`. The installed `pipelinek` reached plugins through `PluginComposition.resolve`,
  * which admitted nothing and cross-checked nothing.
  * The consequence was measured on the installed distribution: a well-formed manifest declaring a
  * Step (`example.uppercase.ghost`) the plugin does not implement was ADMITTED and the run finished
@@ -35,7 +34,7 @@ import java.util.ServiceLoader
  * undeclared — and, worse, the reverse direction (implemented-but-undeclared) would refuse a
  * perfectly honest plugin for a neighbour's Steps. A plugin's cross-check is about ITS OWN
  * contributions, so providers are attributed to the artifact whose code source they came from,
- * the same scoping `PluginAdmissionGate` applies. All THREE families are scoped by that one rule:
+ * the same scoping the admission gate applies. All THREE families are scoped by that one rule:
  * a Step is not "this plugin's" in some looser sense a Directive is not.
  * ## Fail-closed, symmetrically
  * The check is exact in BOTH directions — a declared Step with no definition AND a definition with

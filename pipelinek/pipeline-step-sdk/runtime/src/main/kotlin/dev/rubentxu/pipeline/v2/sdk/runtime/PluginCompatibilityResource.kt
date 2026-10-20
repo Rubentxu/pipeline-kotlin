@@ -10,7 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.step.SemVer
  * `PipelineKApiRange(...)` constant in the declaration object. When the product
  * version was bumped from 0.53.x to 0.54.x, the constant was not updated, and
  * the v0.56.0-rc3 candidate shipped a manifest with `apiRange=[0.47.0, 0.53.0)`
- * while the host product was 0.56.0 — `PluginAdmissionGate` would refuse every
+ * while the host product was 0.56.0 — the runtime's admission pass would refuse every
  * official plugin on its own distribution.
  * The fix is: a pure policy in `buildSrc` (`PluginCompatibilityPolicy`) reads
  * `rootProject.version` and emits `META-INF/pipelinek/plugin-compatibility.json`

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.durable.AdmissionControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.SagaVerdict
@@ -643,7 +644,11 @@ fun main(args: Array<String>) {
         // Admission happens FIRST and inside the same function, so the in-memory and
         // durable branches cannot admit differently. The "one resolution for the whole run" now
         // also covers the decision about WHICH artifacts are allowed to resolve at all.
-        val composition = admitThenComposeOrExit(config.pluginJars)
+        val composition = admitThenComposeOrExit(
+            config.pluginJars,
+            pluginTrustSource(config.pluginTrust),
+            AdmissionControlJournal(controlDirRoot),
+        )
         val composedStepRegistry = composition.steps
         val nonCanonicalSteps = compiledPipeline
             ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()
@@ -1100,7 +1105,11 @@ fun main(args: Array<String>) {
     // Same single entry point as the in-memory branch above. Writing the admission
     // wiring out a second time here would let the two branches disagree about which plugins were
     // Admitted, which is precisely the defect the composition already removed
-    val composition = admitThenComposeOrExit(config.pluginJars)
+    val composition = admitThenComposeOrExit(
+        config.pluginJars,
+        pluginTrustSource(config.pluginTrust),
+        AdmissionControlJournal(controlDirRoot),
+    )
     val composedStepRegistry = composition.steps
     // / +: the workspace origin is decided
     // ONCE, here at the boundary, and both facts cross into the runtime — the

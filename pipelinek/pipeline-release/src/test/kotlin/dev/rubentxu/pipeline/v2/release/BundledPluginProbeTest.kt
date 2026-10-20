@@ -24,7 +24,7 @@ import java.util.zip.ZipOutputStream
  * (`PluginAdmission.admit`), and the producer is supposed to catch the same
  * fact at candidate admission, where the operator can still fix the build. The
  * v0.56.0-rc3 incident is the precedent: a hand-typed `apiRange` shipped in a
- * manifest that excluded the host, and `PluginAdmissionGate` would have
+ * manifest that excluded the host, and the runtime's admission pass would have
  * refused every official plugin on its own distribution.
  *
  * A plugin whose manifest does not declare a range is the same failure wearing

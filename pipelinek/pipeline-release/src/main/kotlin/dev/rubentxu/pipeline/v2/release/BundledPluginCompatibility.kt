@@ -15,7 +15,7 @@ import java.util.zip.ZipInputStream
  * the host, that names the range of host versions it can run against. A
  * candidate that ships with a plugin whose range excludes the host is the
  * same defect as a candidate that ships with a missing plugin manifest, and
- * `PluginAdmissionGate` would refuse the plugin at runtime — a failure
+ * the runtime's admission pass would refuse the plugin at runtime — a failure
  * the user would see AFTER download, not at candidate admission.
  *
  * This check moves that refusal to the producer side, where the build can
@@ -54,7 +54,7 @@ object BundledPluginCompatibility {
 
     /**
      * The manifest path inside a plugin JAR. Mirrors
-     * `PluginAdmissionGate.MANIFEST_RESOURCE` and is the only path the
+     * the manifest resource the runtime reads, and is the only path the
      * check looks at; a plugin with no manifest would have been refused
      * by admission at runtime, and is therefore also refused here.
      */
@@ -206,7 +206,7 @@ object BundledPluginCompatibility {
      * never as compatibility.
      *
      * The lower bound is inclusive and the upper bound is exclusive. The
-     * producer side cannot rely on `PluginAdmissionGate` (host-side) to
+     * producer side cannot rely on the host-side admission pass to
      * enforce this — a candidate that ships a malformed range would let
      * the host say "unknown" and admit silently. The check fails closed
      * on any literal it cannot parse.

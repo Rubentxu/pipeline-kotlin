@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.MinimalJson
 import dev.rubentxu.pipeline.v2.domain.step.AdmissionRejection
 import dev.rubentxu.pipeline.v2.domain.step.ArtifactOrigin
 import dev.rubentxu.pipeline.v2.domain.step.Digest
@@ -25,21 +26,22 @@ import java.time.Instant
  * admission control row uses the same shape under
  * `<controlDirRoot>/admission-control/<sha256-identity>.row.json`.
  * ## Persist-before-decision-returns
- * The gate's contract: the row is on disk before the gate's refusal is returned. A
+ * The admission pass's contract: the row is on disk before the decision is returned. A
  * refused plugin that left the row in memory only would defeat the whole point, because
  * the row is the audit trail.
  * ## Single-writer
- * No other component writes to this file. The gate is the only writer; the read path is
+ * No other component writes to this file. The admission pass is the only writer; the read path is
  * for the operator and for tests. A future planner that reads admission history gets the
  * same single-writer property the retry path already has.
+ * ## Why the directory appears only when a row is written
+ * The directory is created when the first row is recorded, not when the journal is built. An
+ * installation that composes no plugins must not leave an empty `admission-control/` behind in
+ * every control root it touches: a directory that means nothing is noise an operator has to learn
+ * to ignore.
 */
 class AdmissionControlJournal(controlDirRoot: Path) {
 
-    private val admissionControlDir: Path = controlDirRoot.resolve("admission-control")
-
-    init {
-        Files.createDirectories(admissionControlDir)
-    }
+    private val controlRoot: Path = controlDirRoot
 
     /**
      * Persist a row.
@@ -49,8 +51,9 @@ class AdmissionControlJournal(controlDirRoot: Path) {
      *   pre-conditions assertions; production callers do not normally need it).
 */
     fun record(row: AdmissionControlRow): Path {
+        val dir = admissionControlDir()
         val file = rowFile(row.pluginId)
-        val tmp = Files.createTempFile(admissionControlDir, "row-", ".json")
+        val tmp = Files.createTempFile(dir, "row-", ".json")
         Files.writeString(tmp, encode(row), Charsets.UTF_8)
         try {
             Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
@@ -72,8 +75,11 @@ class AdmissionControlJournal(controlDirRoot: Path) {
         return decode(pluginId, text)
     }
 
+    private fun admissionControlDir(): Path =
+        controlRoot.resolve("admission-control").also { Files.createDirectories(it) }
+
     private fun rowFile(pluginId: String): Path =
-        admissionControlDir.resolve("${fileKey(pluginId)}.row.json")
+        admissionControlDir().resolve("${fileKey(pluginId)}.row.json")
 
     private fun fileKey(pluginId: String): String = Sha256.ofText(pluginId)
 }
@@ -179,8 +185,8 @@ private fun encode(row: AdmissionControlRow): String {
 }
 
 private fun decode(pluginId: String, text: String): AdmissionControlRow {
-    // Same hand-rolled cursor shape as PluginManifestCodec; small enough to inline here.
-    val obj = TinyJsonObject(text).readObject()
+    // The same reader every other document in this module uses: one grammar, one answer.
+    val obj = MinimalJson.parseObject(text)
         ?: error("admission control row at pluginId=$pluginId is not a JSON object")
     val declaredRaw = obj.string("declaredDigest")
         ?: error("admission control row missing declaredDigest")
@@ -233,99 +239,6 @@ private fun escape(s: String): String = s
     .replace("\n", "\\n")
     .replace("\r", "\\r")
     .replace("\t", "\\t")
-
-/**
- * Tiny JSON object reader. Same approach as the one in
- * [dev.rubentxu.pipeline.v2.application.OperatorTrustDatabase]: a small cursor that
- * only knows objects, strings and null/long literals. The on-disk format is contractual
- * and a richer parser would invite a second authority.
-*/
-private class TinyJsonObject(private val source: String) {
-    private var pos = 0
-
-    fun readObject(): Map<String, Any?>? {
-        skipWs()
-        if (!consume('{')) return null
-        val out = LinkedHashMap<String, Any?>()
-        skipWs()
-        if (consume('}')) return out
-        while (true) {
-            skipWs()
-            val key = readString() ?: return null
-            skipWs()
-            if (!consume(':')) return null
-            skipWs()
-            val value = readValue()
-            out[key] = value
-            skipWs()
-            if (consume(',')) continue
-            if (consume('}')) return out
-            return null
-        }
-    }
-
-    private fun readValue(): Any? {
-        skipWs()
-        return when (peek()) {
-            '"' -> readString()
-            'n' -> if (consumeLiteral("null")) null else error("invalid null at $pos")
-            't' -> if (consumeLiteral("true")) true else error("invalid true at $pos")
-            'f' -> if (consumeLiteral("false")) false else error("invalid false at $pos")
-            else -> {
-                // number — read digits + dot
-                val start = pos
-                while (pos < source.length && (source[pos].isDigit() || source[pos] == '-' || source[pos] == '.')) pos++
-                if (pos == start) error("invalid value at $pos")
-                source.substring(start, pos).toLongOrNull()
-            }
-        }
-    }
-
-    private fun readString(): String? {
-        if (!consume('"')) return null
-        val sb = StringBuilder()
-        while (pos < source.length) {
-            when (val c = source[pos++]) {
-                '"' -> return sb.toString()
-                '\\' -> {
-                    if (pos >= source.length) return null
-                    when (val esc = source[pos++]) {
-                        '"' -> sb.append('"')
-                        '\\' -> sb.append('\\')
-                        '/' -> sb.append('/')
-                        'n' -> sb.append('\n')
-                        'r' -> sb.append('\r')
-                        't' -> sb.append('\t')
-                        else -> return null
-                    }
-                }
-                else -> sb.append(c)
-            }
-        }
-        return null
-    }
-
-    private fun consumeLiteral(literal: String): Boolean {
-        if (pos + literal.length > source.length) return false
-        if (source.substring(pos, pos + literal.length) != literal) return false
-        pos += literal.length
-        return true
-    }
-
-    private fun peek(): Char? = if (pos < source.length) source[pos] else null
-
-    private fun consume(c: Char): Boolean {
-        if (pos < source.length && source[pos] == c) {
-            pos++
-            return true
-        }
-        return false
-    }
-
-    private fun skipWs() {
-        while (pos < source.length && source[pos].isWhitespace()) pos++
-    }
-}
 
 private fun Map<String, Any?>.string(key: String): String? {
     val v = this[key] ?: return null

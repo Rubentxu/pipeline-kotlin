@@ -70,6 +70,15 @@ data class CliFlags(
     /** External plugin JARs: one list feeds compilation and runtime discovery. */
     val pluginJars: List<String> = emptyList(),
     /**
+     * The operator's plugin trust file, when they asked for a trust policy.
+     *
+     * Naming this file turns the trust policy ON: every artifact the operator brings with
+     * `--plugin-jar` has to be the one this file pins, signed by the publisher this file names.
+     * Leaving it unset keeps the previous behaviour — plugins are admitted on their manifest and
+     * their API range — because a policy an operator cannot decline is not a policy.
+     */
+    val pluginTrust: String? = null,
+    /**
      * External invoker correlation token. When
      * supplied, the runtime binds it to the [RunId] in durable state
      * and emits it on the [dev.rubentxu.pipeline.v2.events.RunCorrelated]
@@ -430,6 +439,11 @@ private class ParseState(
     var allowNetwork: Boolean = false,
     val pluginJars: MutableList<String> = mutableListOf(),
     /**
+     * The operator's plugin trust file, set by `--plugin-trust <file>`. Naming it turns the
+     * trust policy on for this run.
+     */
+    var pluginTrust: String? = null,
+    /**
      * External invoker correlation token, set by
      * `--correlation-id <uuid>`. The raw string lives here; conversion
      * to a typed [CorrelationId] happens after parsing succeeds so
@@ -609,6 +623,7 @@ object CliParser {
                 sandboxProfile = state.sandboxProfile,
                 allowNetwork = state.allowNetwork,
                 pluginJars = state.pluginJars.toList(),
+                pluginTrust = state.pluginTrust,
                 correlationId = state.correlationId,
                 view = state.view,
                 format = state.format,
@@ -1569,6 +1584,10 @@ private enum class ValuedOption(val token: String) {
     CONTROL_ROOT("--control-root"),
     WORKSPACE("--workspace"),
     PLUGIN_JAR("--plugin-jar"),
+    // The operator's plugin trust file. Naming it turns the trust policy on: every artifact
+    // brought with `--plugin-jar` has to be the one this file pins, signed by the publisher it
+    // names.
+    PLUGIN_TRUST("--plugin-trust"),
     SANDBOX_PROFILE("--sandbox-profile"),
     VIEW("--view"),
     FORMAT("--format"),
@@ -1658,6 +1677,7 @@ private object ValuedOptions {
         ValuedOption.CONTROL_ROOT -> { state.controlRoot = value; ApplyOutcome.Applied(index + 2) }
         ValuedOption.WORKSPACE -> { state.workspace = value; ApplyOutcome.Applied(index + 2) }
         ValuedOption.PLUGIN_JAR -> { state.pluginJars += value; ApplyOutcome.Applied(index + 2) }
+        ValuedOption.PLUGIN_TRUST -> { state.pluginTrust = value; ApplyOutcome.Applied(index + 2) }
         // Blank values are rejected here at
         // the boundary; downstream the CliFlags.correlationId field
         // converts the string to a typed [CorrelationId] with the

@@ -13,7 +13,7 @@ import org.junit.jupiter.api.assertThrows
  *
  * The shape this protects against is real, not hypothetical: `HttpPluginDeclaration`
  * used to carry a hand-typed upper bound, a release shipped `apiRange=[0.47.0, 0.53.0)`
- * on a 0.56.0 host, and `PluginAdmissionGate` then refused every official plugin on
+ * on a 0.56.0 host, and the runtime's admission pass then refused every official plugin on
  * the distribution that shipped them. The bound is now derived from
  * `rootProject.version`; what remains the domain's job is the interval rule itself.
  */

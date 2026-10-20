@@ -3215,6 +3215,28 @@ documento dice —el output plane, por ejemplo, no garantiza persistencia ante
 pérdida de alimentación—: prometer más que lo escrito sería el modo de fallo
 que este ROADMAP lleva seis ciclos evitando.
 
+### 2.24 Un recurso que se fuga, y por fin con dueño
+
+El ciclo anterior dejó anotada una observación sin atribución: en `/tmp`
+aparecían directorios `pipelinek-inmem-run*` que nadie sabía quién creaba. Esta
+vez el productor está localizado: es la rama **en memoria** del verbo `run`
+(`Main.kt`, el `controlDirRoot` que se crea con `Files.createTempDirectory`
+cuando no hay `--control-root`), y ese directorio **no se borra nunca**. Cada
+run sin journal deja un directorio con su estado de control en el disco
+temporal del sistema.
+
+Es un defecto pequeño y con dueño: no corrompe nada, pero acumula directorios
+en una máquina que corre muchas ejecuciones, y un directorio de control que
+nadie pidió es ruido que un operador tiene que aprender a ignorar (el mismo
+razonamiento que ya Justifica que el diario durable cree su directorio sólo
+cuando escribe una fila).
+
+El arreglo no se ha hecho aquí porque no pertenece al hito de este ciclo, y
+mezclarlo sería crecer el cambio porque se encontró un cambio, que es
+justamente lo que este ROADMAP lleva seis ciclos evitando. Queda anotado con su productor, su síntoma y su
+costo, que es lo que hace falta para que el siguiente ciclo lo recoja sin
+volver a buscarlo.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Anclar la confianza del operador en los bytes y en el publicador, y no en lo
   que el plugin declara.** La decisión venía del revisor («anclar la confianza en

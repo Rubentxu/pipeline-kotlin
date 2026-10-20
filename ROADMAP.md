@@ -18,14 +18,14 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `c3a23697b` medido, gate completo sobre este árbol | `git rev-parse HEAD` |
+| SHA | `f0968b144` medido, gate completo sobre este árbol | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
-| Módulos con test unitario permanente | **21** | etapa 2 del gate, que imprime cada módulo por nombre |
-| Módulos sin test | 6 | ídem |
-| Tests unitarios ejecutados | **594** (67 informes en disco, 67 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Módulos con test unitario permanente | **25** | etapa 2 del gate, que imprime cada módulo por nombre |
+| Módulos sin test | 1 (`:pipeline-runtime`, que no tiene consumidor) | ídem |
+| Tests unitarios ejecutados | **639** (71 informes en disco, 71 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Escenarios E2E | **31 (31 pasan, 0 fallan)**, 1 rerun durable, 2 ejecuciones por escenario (con journal y sin él) | `examples/**/*.pipeline.kts` |
 | Escenarios que sólo comprueban el código de salida | **0** | censo por directiva, sobre los 31 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **7960 / 60878 = 0.131** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **8410 / 60909 = 0.138** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
 | `VERIFY_ALL_WALL_CLOCK` | **401 / 415 / 402** en los tres ensayos de `263107231`, **415** en el de `e4daef35d`, **478** en el de `c3a23697b` y **423** en el de `9f2a2004f`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los seis ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
@@ -165,7 +165,7 @@ contra el texto del plan. «Medido» significa que el número salió de una
 | 2 | 0 `@Test` UAT/E2E/AAT/harness | **PASS** | 0 en `pluginContractTest`/`installedContractTest`/`integrationTest`/`functionalTest`; 0 `@Disabled` |
 | 3 | 0 clases legacy trasladadas | **PASS** | `pipelinek/test-harness`, `pipelinek/pipeline-testkit`, `pipelinek/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
 | 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 31 escenarios en 8 categorías bajo `examples/`; cada uno se ejecuta en las dos rutas del CLI (con journal y sin él); 0 `src/test` dentro de `examples/*`; lanzador único `examples/run.sh` invocado por la etapa 3 del gate |
-| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 7960 / 60878 = 0.131; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
+| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 8410 / 60909 = 0.138; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
 | 6 | `verify-all` local ≤ 900 s | **PASS** | seis ensayos, el peor de 478 s contra el límite de 900: 401 / 415 / 402 sobre `263107231`, 415 sobre `e4daef35d`, 478 sobre `c3a23697b` y 423 sobre `9f2a2004f`. Todos con 67/67 informes reescritos, 594 tests, 0 fallos, 0 errores, 0 skips |
 | 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS** | 27 módulos declarados compilan; el único módulo versionado que el `include` no declaraba se retiró en este ciclo, así que ya no queda ninguno |
 
@@ -2455,6 +2455,89 @@ un comando de shell —el tipo `SCRIPT`— no lo cubría ningún escenario. El
 directorio `ci/` desaparece, con él el resto de un régimen que ya no tiene
 nada que hacer aquí.
 
+### 2.16 Las garantías que nadie miraba
+
+La tabla de §2.2 dejó la columna de riesgo en blanco a propósito: rellenarla de
+intuición es el mecanismo que produjo la lista vieja. Este bloque la responde
+con medición, y al medirlo encontró garantías que el producto promete y nadie
+podía comprobar.
+
+**El censo de los cinco, con su instrumento.** Para cada módulo con código y
+sin test: si está declarado, cuántos ficheros de build lo nombran, cuántos
+ficheros fuera de él importan su paquete, y si se publica. La comparación por
+símbolo hace falta donde el paquete raíz no identifica al módulo, y aquí importa:
+`:pipeline-step-sdk:api` comparte el paquete `dev.rubentxu.pipeline.v2.sdk` con
+sus hermanos, y tres de sus cuatro tipos tienen consumidores mientras el cuarto
+no tiene ninguno.
+
+| módulo | ¿quién lo usa? | ¿se publica? | veredicto |
+|---|---|---|---|
+| `:pipeline-scripting-api` | 15 ficheros de build, 19 importadores | sí | vivo |
+| `:pipeline-scripting-kotlin24` | 1 fichero de build, 13 importadores | no | vivo |
+| `:pipeline-step-sdk:junit` | un registro de `ServiceLoader` y el paso que lo consume | no | vivo |
+| `:pipeline-event-harness` | el verbo `pipeline events verify` | no | vivo |
+| `:pipeline-step-sdk:api` | 3 de sus 4 tipos tienen consumidores | no | vivo || `:pipeline-runtime` | **cero** | no | latente |
+
+**Dos cosas que el censo corrige.** La primera: la tabla de §2.2
+nombraba `:pipeline-scripting-api` entre los módulos sin test, y tiene uno. La
+segunda: el veredicto de `:pipeline-runtime` no es «módulo sin tests» sino
+«módulo sin consumidor». Sus tres adaptadores implementan los puertos que
+`:pipeline-runtime-api` publica, y nada en el árbol los invoca. Su propio
+`build.gradle.kts` decía que su verificación era la capa ejecutable, y eso era
+falso de una manera que esconde: ningún escenario llega a ese módulo, porque no
+hay quien lo use. El fichero ahora dice la verdad.
+
+**Una autoridad duplicada que no se puede borrar sin romper nada.** El paquete
+`dev.rubentxu.pipeline.v2.domain.step.junit` del dominio contiene una familia
+completa de tipos de análisis de informes JUnit —nueve tipos, ocho ficheros— y
+**ninguno tiene un consumidor**. El parser que sí se usa vive en
+`:pipeline-step-sdk:junit`. Los dos analizan el mismo XML. Retirar la familia
+del dominio sería lo correcto, y `:pipeline-domain` está publicado con su
+superficie congelada, así que retirarla es una ruptura de versión que este
+árbol no autoriza. Se registra con su medida, y no se le escribe un test: una
+garantía sin destinatario es coste.
+
+**Cinco garantías que ya tienen observador.** Cada una con su consumidor, su
+capacidad observable y el instrumento más barato que puede fallar:
+
+| garantía | quién la apoya | instrumento |
+|---|---|---|
+| una ruta que sale del workspace se rechaza | ocho pasos y adaptadores | `WorkspacePathResolverTest` |
+| una credencial enlazada llega al shell y no al compilador | quien escribe el pipeline | `ScriptTextEscaperTest` |
+| un contrato honoured vuelve limpio y uno roto vuelve con su regla | quien ejecuta `pipeline events verify` | `EventHarnessVerifyTest` |
+| un informe JUnit no puede sacar al parser del proceso | quien entrega el informe | `JUnitReportParserTest` |
+| un campo obligatorio que falta rompe el paso, y uno opcional se lee como ausente | los códecs de los pasos | `JsonAccessorsTest` |
+
+Ninguno de los cinco tenía observador: no había test unitario, y la capa
+ejecutable tampoco los alcanzaba. Cada uno se comprobó rompiéndolo —el
+confinamiento sin su comprobación, el escapador que escapa de más, el
+verificador que no contrasta, el parser que acepta el `DOCTYPE`, el accesor
+obligatorio que devuelve null— y en cada caso se encendieron exactamente las
+filas esperadas y ninguna más.
+
+**Dos defectos que aparecieron al mirar.** El primero: la ley universal «un
+paso no puede terminar sin haber empezado» estaba cableada y **muerta**. El
+accesor de payloads no contempla el evento de fin de paso, así que su clave
+compuesta era siempre nula y la ley no podía dispararse jamás. Se lo vio
+mutando la ley en el test: el test siguió verde, que es la señal de que el
+guardián no miraba nada. El arreglo es una línea por campo y una por resumen,
+y ahora un paso huérfano se reporta.
+
+El segundo: la regla de ignorado `workspace/` no estaba anclada a la raíz, así
+que también se tragaba el paquete de producción `dev.rubentxu.pipeline.v2.domain.workspace`.
+Los ficheros que ya estaban versionados seguían versionados —un fichero
+ignorado sólo desaparece si es nuevo—, de modo que la regla no había roto nada
+todavía: lo que hacía era que **cualquier fichero nuevo de ese paquete
+desapareciera de `git status` sin decir nada**. Anclada a la raíz, el
+directorio efímero del ciclo sigue ignorado y el paquete de producción vuelve
+a ser visible. Un barrido sobre los 456 directorios de fuente del árbol
+confirma que no queda ninguna otra regla tragándose código.
+
+**Dónde acaba la tabla.** De los seis módulos con código y sin test que
+abrían este bloque, cuatro tienen hoy un observador, uno se decide en el
+apartado siguiente y **queda uno**: `:pipeline-runtime`, el que no tiene
+consumidor. De los 26 módulos con código, 25 tienen test unitario permanente.
+
 
 ---
 
@@ -2647,6 +2730,32 @@ nada que hacer aquí.
   informe de una ruptura señalaba un escenario que no lo era. Motivo: un
   diagnóstico que nombra mal la cosa rota cuesta más tiempo que el que
   ahorra.
+
+- **Una garantía sin destinatario no se protege, ni siquiera gratis.** La
+  familia de tipos de análisis de informes JUnit que vive en el dominio
+  publicado no la usa nadie, y el parser que sí se usa vive en otro módulo.
+  Escribir un test para la familia huérfana habría sido pagar por una
+  garantía sin consumidor, que es exactamente el error que este documento ya
+  cometió dos veces. Retirarla, en cambio, es una ruptura de la superficie
+  publicada: se registra con su medida y se decide en una versión, no se
+  disimula. Motivo: la deuda que no se nombra se vuelve a inventar.
+
+- **Una regla de ignorado se ancla a donde vale.** La regla que ignoraba el
+  directorio efímero del ciclo se tragaba además el paquete de producción
+  `dev.rubentxu.pipeline.v2.domain.workspace`, y lo hacía en silencio: un
+  fichero ya versionado no se desversiona por una regla de ignorado, sólo
+  uno nuevo. El fallo no era de versiones, era de que el árbol no decía la
+  verdad sobre su propio contenido. Motivo: una regla que decide por nombre
+  y no por sitio tiene que decidirse por sitio.
+
+- **Un test que no puede fallar no se conserva.** Uno de los casos escritos
+  para el escapador afirmaba que una referencia dentro de un literal de carácter
+  queda intacta, y no podía fallar nunca: un literal de un carácter no cabe
+  dentro una referencia, así que la aserción era tautológica. Se reescribió
+  para afirmar lo que de verdad distingue al escáner —que el literal no se
+  traga lo que viene después— y esa versión sí se puso roja al romper el
+  cierre del literal. Motivo: una suite que parece cubrir algo y no puede
+  fallar es un documento que ocupa el sitio de un test.
 
 ---
 

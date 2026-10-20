@@ -112,6 +112,29 @@ sealed interface SagaUpdatePersistence {
 }
 
 /**
+ * What an [SagaObligationStore.moveAll] call actually did.
+ *
+ * As with the arm and the single update, the store reports the STORAGE outcome and leaves the
+ * judgement to the domain: whether the move is legal is decided by
+ * [dev.rubentxu.pipeline.v2.domain.saga.CompensationLifecycle], not by a JDBC adapter.
+ */
+sealed interface SagaBulkMove {
+
+    /**
+     * The statement ran.
+     *
+     * @param moved how many rows changed.
+     * @param remaining how many rows of the Saga are STILL in the state the move started from.
+     * A caller that needs every row moved reads this number, not the intention behind the
+     * call: it is what the database says, not what the caller hoped.
+     */
+    data class Applied(val moved: Int, val remaining: Int) : SagaBulkMove
+
+    /** Nothing was written: a newer epoch already owns the run. */
+    data class Fenced(val currentEpoch: Long) : SagaBulkMove
+}
+
+/**
  * The durable store of Saga compensation obligations.
  *
  * ## Same authority, no second coordination
@@ -142,6 +165,31 @@ interface SagaObligationStore {
      * unpromised.
      */
     fun updateOutcome(update: SagaObligationUpdate): SagaUpdatePersistence
+
+    /**
+     * Moves EVERY obligation of [sagaId] that is in [from] to [to], in ONE statement.
+     *
+     * ## Why the bulk move exists
+     *
+     * Closing a Saga well moves ALL of its obligations at once: the effects are kept, so every
+     * promise to undo them is void. Moving them one by one would leave the Saga half-closed if
+     * the process died in between — some obligations kept and some still owed — and a resumed
+     * run would then compensate the ones that were left, undoing part of a Saga that had
+     * succeeded.
+     *
+     * One statement is one transaction, so the Saga is either closed or it is not.
+     *
+     * The call is FENCED like the others, and it does not decide whether the move is legal: the
+     * caller asks for a transition the domain allows.
+     */
+    fun moveAll(
+        runId: String,
+        sagaId: SagaId,
+        from: CompensationObligationStatus,
+        to: CompensationObligationStatus,
+        updatedAtMs: Long,
+        leaseEpoch: Long,
+    ): SagaBulkMove
 
     /** The row stored under [runId]/[key], or `null` when there is none. */
     fun find(

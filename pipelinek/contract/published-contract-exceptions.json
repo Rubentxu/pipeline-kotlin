@@ -445,6 +445,126 @@
         "state a reader waits out, not a durable fault, and a durable refusal would have been a lie."
       ],
       "removal_boundary": "the four removed cases are not coming back under these names. If the output plane ever gains a payload it parses, or a retention that releases part of a range rather than all of it, the fact it would name is a new case with a new name and a new id. The read-side twin of a retention gap is RetentionGap, which stays"
+    },
+    {
+      "module": "pipeline-domain",
+      "sha": "e9392ce4908a6de5a68fd16bc0a76d855ae2ad82",
+      "surface": "dev.rubentxu.pipeline.v2.domain.StepNode.slot and StepNode.address; OpaqueStepNode and BlockStepNode constructors, copy and componentN",
+      "change": "added `val slot: PluginStepId?` to the published StepNode interface, plus `val address: PluginStepId` (slot ?: pluginStepId); the two node classes gain a trailing `slot` parameter with a default, so their synthetic <init> overloads gain an int marker, their copy/copy$default descriptors change, and component4/component5 appear",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "This is a genuine binary break, and the measurement says so: StepNode gains an abstract getSlot() and an abstract getAddress(), so an implementor compiled against the previous ABI receives an AbstractMethodError the moment the engine reads the address of a node it did not implement itself. The two node classes change their synthetic constructors and their copy descriptors for the same reason.",
+        "",
+        "What it buys is stated as the defect it removes. The engine resolved the body slot of a row by the child's KIND: BodySlots.resolve(step.body.map { it.pluginStepId }, slot). Two children of the same kind in the same body were therefore Ambiguous, and the slot failed closed. The consequence was not cosmetic: the saga demo needed SIX core kinds (core.dir, core.withEnv, core.timeout, core.retry, core.sh, core.timestamps) for a chain of two or three actions, because every action needs a forward body and a compensate body and every body needed a kind nobody else used. That is a workaround in the fixture, and a workaround in the fixture is not a pattern an external consumer can copy: the same plugin with its own actions would have to invent 2N kinds. The seam did not admit the case that makes it useful.",
+        "",
+        "The rule that replaces it is ONE rule, and it is total: the address of a child is the name the plugin declared for it, or its kind when nobody declared one. The historical behaviour survives untouched, because a body that names nothing is still addressed by kind, and the durable digest only includes the name WHEN THERE IS ONE (BodyStructureDigest appends it under a \\u001F marker), so every journal row written by the published candidate stays valid.",
+        "",
+        "The alternative considered and rejected was a new SlotName TYPE instead of reusing PluginStepId. It is purer on paper and it was rejected for a measured reason: it breaks five signatures (BodySlotInvoker, BodySlots.resolve, SlotResolution, SagaActionPlan and the IR), which forces the external consumer in the other repository to change at the same time and therefore forces a COORDINATED SDK RELEASE. The chosen option reuses PluginStepId because the slot name lives in the SAME namespace as the kind, so the external consumer does not change at all.",
+        "",
+        "Proven from the outside, not asserted: the new scenario 39-saga-two-same-kind runs a chain whose bodies are ALL of one kind (core.withEnv) and asserts the ADDRESSES that ran (example.saga.reserve.forward / charge.forward / charge.compensate / reserve.compensate), and the compensation of the first action checks the LIFO order from inside the body. Reverting the engine to address by kind makes that scenario FAIL; restoring it makes it pass. A green that was never seen red is not evidence, and this one was seen red.",
+        "",
+        "The wire did NOT change shape. CompensationStarted.slot keeps its String form and changes its VALUE (from core.withEnv to the declared name), which S8 permits: the value is what says which action was compensated, and the kind never said that. The frozen event schema is untouched."
+      ],
+      "removal_boundary": "n/a — no member removed; this is an added member on a published interface and a parameter added with a default on two published data classes. The blast radius is the implementors of StepNode outside this repository, of which there are none: pipelinek-saga consumes the SDK through the DSL and never implements the IR node interface.",
+      "supersedes": null
+    },
+    {
+      "module": "pipeline-domain",
+      "sha": "c47d557a3",
+      "surface": "SagaRecordRejection",
+      "change": "added a case `ForeignOwner(String owner, String writer)` to the sealed interface SagaRecordRejection; the interface itself is unchanged and the new class is additive in the ABI dump",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "A SOURCE break, not a binary one: the ABI dump only grows, so apiCheck passes, but a consumer that writes an EXHAUSTIVE `when` over SagaRecordRejection stops compiling until it says what a foreign owner means.",
+        "",
+        "The alternative considered and rejected: refuse a foreign owner with one of the cases that already existed. `UnknownObligation` would be a lie (the promise is there), `IllegalTransition` would be a lie (the transition is legal), and `LeaseSuperseded` would be a lie (the lease is fine). A refusal that names the wrong reason is worse than no refusal, because the reader acts on it.",
+        "",
+        "What it buys: the refusal says WHICH plugin holds the promise and WHICH plugin tried to write to it. A promise belongs to the plugin that armed it, and the plan fingerprint cannot express that, because the slots are local names: two plugins can declare the same action, the same resource and the same slots and get the same digest while their bodies differ.",
+        "",
+        "The cost is bounded and measured: the example plugin in this repository prints the refusal by class name rather than enumerating the cases, so it keeps compiling; a consumer with an exhaustive `when` has to add one branch, and the compiler says exactly where.",
+        "",
+        "Nothing about the DURABLE WIRE changed: the promise rows written before this SHA are read by the same statement and decode to the same values, and the new column is nullable, so a row written by an older build keeps working."
+      ],
+      "removal_boundary": "n/a — no member removed; this is an added case on a sealed interface",
+      "supersedes": null
+    },
+    {
+      "module": "pipeline-domain",
+      "sha": "5d410ecaf",
+      "surface": "CompensationDeclaration",
+      "change": "added the property `compensateSlot: PluginStepId?` (default `null`) to the data class CompensationDeclaration; the class keeps its name and every property it had",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "A SOURCE break for destructuring and a BINARY break for compiled consumers: Kotlin emits the full constructor plus a synthetic one taking a DefaultConstructorMarker, never the old seven-argument form, so an artifact compiled against the previous SHA that constructs or copies a CompensationDeclaration receives a NoSuchMethodError. Rebuilding fixes it, and a `when` that destructures the declaration has to say what the new property means.",
+        "",
+        "Why the promise has to name its body at all: the plan fingerprint says WHICH effect is promised, not WHICH body will undo it, and the slots are LOCAL names — two plugins can declare the same action, the same resource and the same slot names and get the same digest while their bodies differ. Without the name, a compensation can be dispatched through a body nobody promised, and the plan cannot tell the difference because the plan never saw the body.",
+        "",
+        "Why `null` and not a required value: a promise about an action that has nothing to undo has no body to name, and the simple example in this repository is exactly that case. `null` says 'this promise names no body' out loud, and the engine treats it as a promise it cannot CHECK — the same rule the provenance follows: a promise that cannot prove anything cannot block anything.",
+        "",
+        "The alternative considered and rejected: putting the DIGEST in the declaration. A plugin cannot be asked to state the shape of a body it did not write — that is the engine's measurement — and a plugin that stated it wrongly would make the promise check itself, which is no check at all. The plugin NAMES the body and the engine MEASURES it, the same division the provenance follows.",
+        "",
+        "Nothing about the DURABLE WIRE changed: the new column is nullable, and a promise written by an older build keeps working and simply names no body."
+      ],
+      "removal_boundary": "the property may be deprecated once every durable promise in flight names a body; until then a promise that names none cannot be checked",
+      "supersedes": null
+    },
+    {
+      "module": "pipeline-domain",
+      "sha": "5d410ecaf",
+      "surface": "ArmRejection",
+      "change": "added a case `UnknownCompensationBody(PluginStepId slot)` to the sealed interface ArmRejection; the interface itself is unchanged and the new class is additive in the ABI dump",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "A SOURCE break, not a binary one: the ABI dump only grows, so apiCheck passes, but a consumer that writes an EXHAUSTIVE `when` over ArmRejection stops compiling until it says what a promise about a body that does not exist means.",
+        "",
+        "Why the refusal exists, and why it happens at ARM time: a promise that names a body nobody has cannot be kept, and refusing it BEFORE the forward effect runs is what keeps a resource from being left behind a promise that could never undo it. The refusal names the slot, because the slot is what the plugin has to fix.",
+        "",
+        "The alternative considered and rejected: accept the promise and leave it unchecked. Then a typo in the slot name is discovered at COMPENSATION time, when the effect has already happened and cannot be taken back — and, worse, the promise would name no body, so nothing would have been checked. The refusal is the fail-closed choice.",
+        "",
+        "The alternative considered and rejected: refuse with one of the cases that already existed. `NotAuthorized` would be a lie (the caller is allowed to write), `UnsupportedIntentVersion` would be a lie (the version is fine) and `LeaseSuperseded` would be a lie (the lease is fine). A refusal that names the wrong reason is worse than no refusal, because the reader acts on it.",
+        "",
+        "The cost is bounded and measured: the example plugin in this repository prints the refusal by class name rather than enumerating the cases, so it keeps compiling; a consumer with an exhaustive `when` has to add one branch, and the compiler says exactly where."
+      ],
+      "removal_boundary": "n/a — no member removed; this is an added case on a sealed interface",
+      "supersedes": null
+    },
+    {
+      "module": "pipeline-domain",
+      "sha": "5d410ecaf",
+      "surface": "InterventionReason",
+      "change": "added the constant `COMPENSATION_BODY_DIVERGED` to the enum InterventionReason; every existing constant is unchanged and the enum's own members are untouched",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "A SOURCE break, not a binary one: the enum only grows, so apiCheck passes, but a consumer that writes an EXHAUSTIVE `when` over InterventionReason stops compiling until it says what a diverged body means.",
+        "",
+        "Why it is a fact of its own and not PLAN_DIVERGENCE: the plan is the same — the same action, the same compensation, the same slot — and the BODY behind it changed. Folding it into PLAN_DIVERGENCE would send the reader looking for a plan that is not wrong.",
+        "",
+        "Why it is not COMPENSATION_NOT_DISPATCHED either: there the durable state refused the write-ahead and nothing ran; here the durable state was happy and the body was the wrong one. The reader has to tell those apart, because in one case the resource was never touched and in the other it is still standing.",
+        "",
+        "The word travels DURABLY: the terminal state is announced on the event plane and the reader parses the token back with InterventionReason.parse, so the reason a human finds in the history is the reason the loop stopped with. A vocabulary that cannot travel is not a vocabulary."
+      ],
+      "removal_boundary": "n/a — no member removed; this is an added constant on an enum",
+      "supersedes": null
+    },
+    {
+      "module": "pipeline-domain",
+      "sha": "5d410ecaf",
+      "surface": "CompensationDirective.NeedsIntervention",
+      "change": "added the property `divergence: SagaBodyVerdict.Diverged?` (default `null`) to the data class CompensationDirective.NeedsIntervention; the class keeps its name and every property it had",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "A SOURCE break for destructuring and a BINARY break for compiled consumers: the old two-argument constructor disappears from the ABI dump, so an artifact compiled against the previous SHA that constructs or copies a NeedsIntervention receives a NoSuchMethodError. Rebuilding fixes it.",
+        "",
+        "Why the facts travel with the refusal: the reason says the gist — the body diverged — and the divergence says WHICH body was promised and WHICH one was going to run. A reason that only says 'they differ' sends the reader hunting for two bodies without telling them which two, and the digests are the only things that can tell them apart.",
+        "",
+        "Why a TYPED property and not a sentence: the same two digests have to be COMPARED and not only read, and a reader that has to dig them out of a string has to trust the string. The sentence is available too — SagaBodyVerdict.Diverged.describe() — for whoever has to print it.",
+        "",
+        "The alternative considered and rejected: leaving the detail out and keeping only the enum token. It is the cheaper break, and it is the wrong one: the done-when of this work is that a refusal SAYS which body was promised and which one was going to run, and a token that says 'diverged' says neither.",
+        "",
+        "Nothing about the DURABLE WIRE changed: the divergence is a property of the ANSWER, not of the promise, and the promise's row keeps exactly the columns it had."
+      ],
+      "removal_boundary": "the property may be deprecated once every refusal that needs it carries the facts some other way; until then a diverged body has to be able to say which two bodies diverged",
+      "supersedes": null
     }
   ]
 }

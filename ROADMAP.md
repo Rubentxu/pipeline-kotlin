@@ -18,40 +18,43 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `0b52cff4f` medido, gate completo sobre este árbol | `git rev-parse HEAD` |
-| Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` |
-| Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
-| Módulos sin test | 9 | ídem |
+| SHA | `263107231` medido, gate completo sobre este árbol | `git rev-parse HEAD` |
+| Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
+| Módulos con test unitario permanente | **21** | etapa 2 del gate, que imprime cada módulo por nombre |
+| Módulos sin test | 6 | ídem |
 | Tests unitarios ejecutados | **594** (67 informes en disco, 67 reescritos por la corrida, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | **30 (30 pasan, 0 fallan)**, 1 rerun durable, 2 ejecuciones por escenario (con journal y sin él) | `v2/examples/**/*.pipeline.kts` |
+| Escenarios E2E | **30 (30 pasan, 0 fallan)**, 1 rerun durable, 2 ejecuciones por escenario (con journal y sin él) | `examples/**/*.pipeline.kts` |
 | Escenarios que sólo comprueban el código de salida | **0** | censo por directiva, sobre los 30 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **7962 / 61451 = 0.130** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **7961 / 60878 = 0.131** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **445 / 406 / 404** en los tres ensayos de `0b52cff4f`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
-| Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
+| `VERIFY_ALL_WALL_CLOCK` | **401 / 415 / 402** en los tres ensayos de `263107231`, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| Veredicto del gate | **`PASS`** en los tres ensayos de `263107231`, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **807** entradas de baseline, ninguna nueva | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
-los **66** informes JUnit, que es la condición que hace que la cifra de reloj
+los **67** informes JUnit, que es la condición que hace que la cifra de reloj
 mida el gate y no una restauración de caché. Un total correcto con el verbo
 equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
 **falla** si no reescribe ninguno.
 
-**Los 18 informes son 18 proyectos Gradle, no 18 directorios de fuentes.** Un
-censo por `src/test/kotlin` devuelve 14, y la diferencia son los cinco
-subproyectos de `pipeline-step-sdk` (`files`, `http`, `runtime`, `scm-git`,
-`workflow-control`) más el directorio padre, que no produce XML propio. El
-denominador que cuenta el gate es el proyecto Gradle, que es la unidad que
-Gradle ejecuta; el nombre del directorio no lo es.
+**El gate cuenta 21 proyectos Gradle con test, y un censo independiente por
+fichero cuenta los mismos 21.** La etapa 2 imprime un módulo por nombre, y un
+censo que enumera `src/test/kotlin/**/*Test.kt` sobre los 27 módulos declarados
+devuelve la misma lista. Los seis sin test son `pipeline-sdk-bom` y
+`pipeline-scripting-kotlin24`, que no tienen clases que probar, más
+`pipeline-event-harness`, `pipeline-runtime`, `pipeline-step-sdk/api` y
+`pipeline-step-sdk/junit`, cuyo comportamiento se comprueba desde fuera, en los
+ejemplos ejecutables. El denominador que cuenta el gate es el proyecto Gradle,
+que es la unidad que Gradle ejecuta; el nombre del directorio no lo es.
 
 **Limpiar «los `build/`» es más peligroso de lo que parece, y por eso el
 criterio importa.** Una primera tanda de ensayos limpió con
-`find v2 -type d -name build` y midió **48 de 54** informes reescritos: ese
+`find pipelinek -type d -name build` y midió **48 de 54** informes reescritos: ese
 `build/` de un solo nivel deja fuera once directorios de módulos anidados, como
-`v2/pipeline-step-sdk/*/build`, y el árbol queda medio tibio. Al corregirlo a
+`pipelinek/pipeline-step-sdk/*/build`, y el árbol queda medio tibio. Al corregirlo a
 `find` sin `-maxdepth` se descubrió el peor fallo posible: ese mismo criterio
-**borra `v2/buildSrc/src/main/java/dev/rubentxu/pipeline/build`, que es un
+**borra `pipelinek/buildSrc/src/main/java/dev/rubentxu/pipeline/build`, que es un
 paquete Java, no una salida de construcción**, y con él las dos fuentes de las
 que dependen los scripts de los módulos de plugin. El gate falla entonces
 compilando un *script*, con `Unresolved reference: rubentxu`, que se lee como un
@@ -130,9 +133,9 @@ propia latencia y **no** va dentro de este número.
 
 Una cifra de reloj heredada de otro commit es exactamente el tipo de verde que
 esta tabla existe para no declarar: por eso cada fila lleva el SHA al que se
-midió. Los tres ensayos de este bloque se ejecutaron sobre `0b52cff4f`, y los commits
+midió. Los tres ensayos de este bloque se ejecutaron sobre `263107231`, y los commits
 que actualizan este documento y los README no tocan código de producto ni de
-verificación: `check-budgets.py` devuelve los mismos **7962 / 61451** antes y
+verificación: `check-budgets.py` devuelve los mismos **7961 / 60878** antes y
 después y ninguna tarea del gate lee `ROADMAP.md`, así que la traslación está
 medida y no supuesta. En cuanto entre un commit que toque código de producto o
 de verificación, esta tabla vuelve a estar caducada y hay que repetir los tres
@@ -158,77 +161,77 @@ contra el texto del plan. «Medido» significa que el número salió de una
 
 | # | Límite | Veredicto | Evidencia |
 |---|---|---|---|
-| 1 | 0 Markdown bajo `docs/` y `v2/` | **PASS** | `git ls-files ':(glob)docs/**/*.md'` = 0; `:(glob)v2/**/*.md` = 0. En la raíz solo quedan `AGENTS.md`, `README*.md`, `ROADMAP.md` |
+| 1 | 0 Markdown bajo `docs/` y `pipelinek/` | **PASS** | `git ls-files ':(glob)docs/**/*.md'` = 0; `:(glob)pipelinek/**/*.md` = 0. En la raíz solo quedan `AGENTS.md`, `README*.md`, `ROADMAP.md` |
 | 2 | 0 `@Test` UAT/E2E/AAT/harness | **PASS** | 0 en `pluginContractTest`/`installedContractTest`/`integrationTest`/`functionalTest`; 0 `@Disabled` |
-| 3 | 0 clases legacy trasladadas | **PASS** | `v2/test-harness`, `v2/pipeline-testkit`, `v2/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
-| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 30 escenarios en 8 categorías bajo `v2/examples/`; cada uno se ejecuta en las dos rutas del CLI (con journal y sin él); 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` invocado por la etapa 3 del gate |
-| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 7962 / 61451 = 0.130; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
-| 6 | `verify-all` local ≤ 900 s | **PASS** | tres ensayos sobre `0b52cff4f`: 445 / 406 / 404, contra el límite de 900. Todos con 67/67 informes reescritos, 594 tests, 0 fallos, 0 errores, 0 skips |
-| 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS con una excepción** | 27 módulos declarados compilan; `v2/pipeline-protocol/` está versionado y **no está declarado**, luego Gradle nunca lo compila |
+| 3 | 0 clases legacy trasladadas | **PASS** | `pipelinek/test-harness`, `pipelinek/pipeline-testkit`, `pipelinek/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
+| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 30 escenarios en 8 categorías bajo `examples/`; cada uno se ejecuta en las dos rutas del CLI (con journal y sin él); 0 `src/test` dentro de `examples/*`; lanzador único `examples/run.sh` invocado por la etapa 3 del gate |
+| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 7962 / 60878 = 0.131; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
+| 6 | `verify-all` local ≤ 900 s | **PASS** | tres ensayos sobre `263107231`: 401 / 415 / 402, contra el límite de 900. Todos con 67/67 informes reescritos, 594 tests, 0 fallos, 0 errores, 0 skips |
+| 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS** | 27 módulos declarados compilan; el único módulo versionado que el `include` no declaraba se retiró en este ciclo, así que ya no queda ninguno |
 
-Sobre el límite 4: el mandato escribe el lanzador como `examples/run.sh`, y en
-este checkout está en `v2/examples/run.sh`. Es la misma ruta relativa al módulo
-raíz de Gradle, versionada, y es la que la etapa 3 invoca. Se registra aquí
-porque la diferencia entre «no existe» y «está en otro sitio» es la diferencia
-entre borrar un fichero y nada.
+Sobre el límite 4: el mandato escribe el lanzador como `examples/run.sh`, y este
+checkout lo tiene exactamente ahí. La diferencia que este documento registraba
+—«no existe» o «está en otro sitio»— desapareció en este ciclo: los ejemplos
+viven en la raíz del repositorio, como los describe el mandato, y la etapa 3 los
+invoca desde ahí. Se conserva la nota porque una diferencia que se cerró puede
+volver a abrirse, y volver a medirla cuesta menos que redescubrirla.
 
-### `v2/pipeline-protocol/` — módulo vestigial
+### `pipelinek/pipeline-protocol/` — retirado en este ciclo
 
-Versionado, con su `build.gradle.kts`, y sin declarar en
-`v2/settings.gradle.kts`. Cuatro hechos independientes, todos medidos:
+El módulo quedó **borrado**, con su cableado de build: el plugin
+`com.google.protobuf` de la raíz y las cinco entradas del catálogo de versiones
+que solo él usaba. La decisión está medida, no supuesta, y el razonamiento
+completo vive en §2.4b.
 
-- **`ProtocolCore.kt` no compilaría aunque se declarase.** Referencia
-  `dev.rubentxu.pipeline.v2.protocol.Version`, que solo produce `protoc`. El
-  Kotlin que `protoc` generaría **no está versionado** —`ProtocolCore.kt` sí lo
-  está— y no existe `v2/pipeline-protocol/build/`, o sea que `protoc` nunca se
-  ejecutó y el tipo del que depende nunca existió.
-- **Cero consumidores** de `ProtocolModules`, `ProtocolGovernance` y
-  `ProtocolVersion` fuera del propio módulo, y cero referencias a `v2.protocol`.
-- **Diez ficheros versionados**: un `.kt` (44 líneas) y ocho `.proto` (513
-  líneas). Son 557 líneas que el gate nunca compila ni cuenta.
-- **No publica y no está en el gate de ABI**: su `build.gradle.kts` declara
-  `group` pero no aplica `maven-publish`, y el módulo no tiene dump `.api`. Por
-  eso retirarlo no rompe ni un artefacto publicado ni el gate de compatibilidad.
-- **La cuarentena que lo mantenía fuera del árbol ya no existe.** El test
-  `` `V2 settings excludes pipeline-protocol` `` vivía en
-  `pipeline-architecture-tests/Lfc0V1QuarantineFitnessTest.kt`, y RESET borró ese
-  módulo. Nada en el árbol vigente comprueba hoy que `settings.gradle.kts` siga
-  sin declararlo.
-- **Sus únicas referencias restantes están fuera del árbol.** Un barrido desde la
-  raíz las encuentra todas bajo `.worktrees/pr134-review/`, **dentro** del
-  directorio de trabajo pero fuera del árbol versionado: `.worktrees/` contiene
-  diez worktrees registrados de este mismo repositorio (`git worktree list`), y
-  git los excluye de `status` porque cada uno tiene una rama ya comprobada, pero
-  eso **no** los excluye de un `grep`. Quien mida consumidores desde la raíz sin
-  excluir ese directorio concluirá que el módulo tiene dependientes que ya no
-  existen: a este documento le pasó al medirlo.
+Lo que se borró: diez ficheros versionados —un `.kt` y ocho `.proto`— que el
+build nunca compiló y que nadie consumía. Lo que se conservó: el historial,
+donde el diseño sigue vivo y auditable.
 
-No se borra en este ciclo: no figura en la lista del mandato y borrar ficheros
-versionados es del usuario. La decisión pendiente es declararlo (y arreglarlo)
-o retirarlo; los cinco puntos anteriores son la evidencia para decidir, y la
-última es la razón por la que no se le pone un test —una comprobación de que
-`settings.gradle.kts` no contiene una cadena es *source-text fitness*, que
-`§2` prohíbe, y `§2` prohíbe también resucitar `:pipeline-architecture-tests`.
+Lo que no se rompió: ni un artefacto publicado, ni un dump de ABI, ni un
+formato de cable, porque el módulo no publicaba nada y no tenía contrato
+declarado. Retirar un módulo que el `include` raíz no declaraba no puede
+cambiar lo que un consumidor resuelve.
 
-### Los 18 módulos con test
+### Los 21 módulos con test
 
-`pipeline-application`, `pipeline-domain`, `pipeline-events-store`,
+`pipeline-application`, `pipeline-domain`, `pipeline-events`,
+`pipeline-events-store`, `pipeline-scripting-api`,
 `pipeline-step-sdk/runtime`, `pipeline-step-sdk/http`,
 `pipeline-step-sdk/workflow-control`, `pipeline-step-sdk/files`,
-`pipeline-step-sdk/scm-git`, `pipeline-credentials-api`,
+`pipeline-step-sdk/scm-git`, `pipeline-step-sdk/utilities`,
+`pipeline-credentials-api`,
 `pipeline-credentials-local`, `pipeline-credentials-multipart`,
 `pipeline-credentials-executor`, `pipeline-binding-factory`,
 `pipeline-artefacts-local`, `pipeline-runtime-api`, `pipeline-output`,
 `pipeline-output-store`, `pipeline-release`.
 
-> **Censo remedido 2026-10-19 desde el disco.** Sobre los 27 módulos que declara
-> el `include(` de `settings.gradle.kts`: **18 con `src/test/kotlin/**/*Test.kt`,
-> 9 sin él**. La lista de arriba omitía `pipeline-application`, que ya tiene
-> `ProjectWorkingDirectoryTest.kt`, y por eso se contradecía con la fila de §1.
-> Una segunda omisión, `pipeline-step-sdk/scm-git`, salió al reconciliar los 18
-> informes XML del gate contra un censo por directorio de fuentes: el gate cuenta
-> proyectos Gradle y el censo contaba carpetas, y un proyecto compuesto con
-> subproyectos tiene más carpetas que proyectos.
+> **Censo remedido desde el disco.** Sobre los 27 módulos que declara
+> el `include(` de `settings.gradle.kts`: **21 con `src/test/kotlin/**/*Test.kt`,
+> 6 sin él**. Los seis sin test son `pipeline-sdk-bom`, `pipeline-scripting-kotlin24`,
+> `pipeline-event-harness`, `pipeline-runtime`, `pipeline-step-sdk/api` y
+> `pipeline-step-sdk/junit`: los dos primeros no tienen clases que probar y los
+> otros cuatro son adaptadores o puntos de entrada cuyo comportamiento se
+> comprueba desde fuera, en los ejemplos ejecutables.
+>
+> Este censo ha sido corregido **dos veces**, y las dos por la misma razón: una
+> lista escrita a mano es un segundo censo, y un segundo censo es donde aparecen
+> las contradicciones. La primera omisión fue `pipeline-application`, que ya
+> tenía `ProjectWorkingDirectoryTest.kt` y se contradecía con la fila de §1; la
+> segunda, `pipeline-step-sdk/scm-git`, salió al reconciliar los informes XML del
+> gate contra un censo por directorio de fuentes —el gate cuenta proyectos
+> Gradle y el censo contaba carpetas, y un proyecto compuesto con subproyectos
+> tiene más carpetas que proyectos. La tercera omisión, la de este ciclo, era de
+> otra clase: **tres módulos que sí tienen test no estaban en la lista** —
+> `pipeline-events` (`EventCursorTest`, `EventRegistryTest`),
+> `pipeline-scripting-api` (`CacheKeyV2FramingTest`) y
+> `pipeline-step-sdk/utilities` (`FindFilesGlobMatcherTest`)—, y la lista se
+> había quedado en 18 mientras el árbol ya tenía 21. Un censo que enumera
+> ficheros versionados, y no carpetas, es el único que no puede quedarse viejo
+> por una omisión de dedo.
+>
+> Las cifras que aparecen en §2 son el estado **en el momento en que se
+> midieron**; esta tabla y §1 son la autoridad del estado actual. Un bloque que
+> dice «15 sin él» no contradice este censo: describe un árbol anterior.
 > Las cifras anteriores a esta —«los 12 módulos con test», «17 módulos sin
 > test», «quedan 15», y el «16 con test / 11 sin él» de una remedición
 > intermedia— estaban todas caducadas: el censo se tomó antes de que este ciclo
@@ -279,7 +282,7 @@ vez de reportarlo.
 
 ### El `NOT_RUN` que no es verde
 
-`v2/examples/security/14-credentials-bindings.pipeline.kts` está marcado
+`examples/security/14-credentials-bindings.pipeline.kts` está marcado
 `//@ requires-seeded-credentials`. El único escritor del almacén es
 `pipelinek credentials add`, que llama `System.console()?.readPassword() ?: error("no TTY available")`.
 No existe vía no interactiva. El launcher no debe sintetizar un almacén
@@ -470,7 +473,7 @@ el arreglo; los demás siguen verdes).
   que el autor apuntó a otro sitio: es la dirección del error que convierte un
   permiso en una puerta abierta. Medido antes de arreglar (`URI` devuelve 0,
   99999 y 65536, y `-1` solo cuando no hay puerto); 11 tests escritos antes del
-  arreglo y confirmados rojos por él. Un censo del patrón en todo `v2` no
+  arreglo y confirmados rojos por él. Un censo del patrón en todo `pipelinek` no
   encontró otra copia.
 - **`detektTest` estaba declarado en todos los módulos y no se ejecutaba en
   ninguno.** `check` corre `detekt`, que sí tiene source set, y no
@@ -683,12 +686,12 @@ ataque, y aquí está el que se pudo verificar entero.
 
 **Dos fallos del instrumento, porque sin ellos el resultado se lee al revés:**
 
-- Un `git grep` con **pathspec de comodín** (`'v2/*/src/main/kotlin'`) devuelve
+- Un `git grep` con **pathspec de comodín** (`'pipelinek/*/src/main/kotlin'`) devuelve
   **NADA**, no cero. Leído como «cero consumidores» produce exactamente la
   conclusión que uno quiere oír. Hubo que repetirlo sin pathspec.
 - El paquete raíz `dev.rubentxu.pipeline.v2.runtime` **no identifica el módulo**:
   `:pipeline-runtime-api` —que sí está publicado, en las tres listas de
-  `v2/build.gradle.kts:349,413,436` y en el BOM— comparte ese mismo raíz. Sólo un
+  `pipelinek/build.gradle.kts:349,413,436` y en el BOM— comparte ese mismo raíz. Sólo un
   censo **por símbolo** separa uno de otro.
 
 **Resultado para `:pipeline-runtime`: 4 ficheros, 1.598 LOC, 0 tests y 0
@@ -791,7 +794,7 @@ ls-files`, 6.447 identificadores declarados (`class`, `object`, `interface`,
 y busca un nombre entre acentos graves que termine en `Test` o `Uat`; si ese
 nombre no está en el conjunto de declaraciones, la cita no tiene sujeto.
 
-**Resultado: 71 nombres, 91 citas, todas bajo `v2/`.** Los más repetidos:
+**Resultado: 71 nombres, 91 citas, todas bajo el directorio del build.** Los más repetidos:
 
 | Nombre citado | Citas | Dónde |
 |---|---:|---|
@@ -942,9 +945,9 @@ Los tres primeros son **los que ordenan el ataque**, y no por tamaño:
    > `FArchL7JenkinsVerbatimSignatureReflectionTest`, borrado por el RESET
    > (`find` fuera de `.worktrees/` no lo devuelve). La garantía, en cambio,
    > **sí** se sostiene hoy y en otro sitio:
-   > `v2/pipeline-scripting-api/.../StageScope.kt:72` declara
+   > `pipelinek/pipeline-scripting-api/.../StageScope.kt:72` declara
    > `fun deleteDir(path: String = ".")` y
-   > `v2/examples/control-flow/11-workflow-control.pipeline.kts:7` llama
+   > `examples/control-flow/11-workflow-control.pipeline.kts:7` llama
    > `deleteDir()` a secas — quite el valor por defecto y ese programa deja de
    > compilar, y la etapa 3 de `scripts/verify-all.sh` se pone roja. La cita
    > se repuntó al testigo real y se dijo por qué se movió de custodio.
@@ -1084,7 +1087,7 @@ requiere confirmación explícita antes de hacerlo.
 **e) 26 líneas en 18 ficheros que citan `design.md §`.** Routes a documentos
 borrados por el RESET. Son referencias rotas en KDoc y comentarios, no enlaces
 que alguien pueda seguir. Medido con `git grep -c` y pathspec **recursivo**: la
-primera medición de este bloque usó `v2/*/src/main` y devolvió 0, porque
+primera medición de este bloque usó `pipelinek/*/src/main` y devolvió 0, porque
 `pipeline-step-sdk/runtime` es un módulo anidado. Del total, 25 líneas caen en
 **17 ficheros de código** y una en este ROADMAP.md. Reparto por módulo, en
 líneas: `pipeline-domain` 12, `pipeline-events-store` 11,
@@ -1097,7 +1100,7 @@ cada número necesita el suyo al lado.
 
 **Cerrado en este ciclo — y la limpieza dejó un residuo peor que el original.**
 El commit `5a8124b29` quitó las 25 líneas de código; hoy
-`git grep -n 'design\.md' -- v2` devuelve **cero**. Pero al borrar el *nombre*
+`git grep -n 'design\.md' -- pipelinek` devuelve **cero**. Pero al borrar el *nombre*
 del documento se dejaron **32 líneas en 20 ficheros** con el puntero sin
 antecedente: `design §2.1`, `design §8.3`, `M6 design §C`. Un enlace con nombre
 roto se detecta al pulsarlo; un puntero que ya no nombra nada, no. Junto a él, la
@@ -1326,7 +1329,7 @@ dentro del comentario»— y eso es falso para una de ellas:
    El ejemplo que antes ilustraba esta clase,
    `WAIT_UNTIL_CONTROL_ROW("ADR-0075 (waitUntil control journal, …)")`, **ya no
    existe**: era el valor del campo `authority`, reescrito en `28667109`.
-2. **6 apariciones de `Pre-ADR-0075`** en 4 ficheros de `v2` —más una en este
+2. **6 apariciones de `Pre-ADR-0075`** en 4 ficheros del build —más una en este
    ROADMAP, que es esta misma frase—, con el prefijo `Pre-`. No es navegación:
    es un **marcador de frontera de formato** —«filas persistidas antes de este
    formato». Sin el token la frase queda en «filas Pre-», que no significa nada.
@@ -1677,7 +1680,7 @@ justificó, porque explica por qué se eligieron estas dos garantías y no otras
 24 ficheros de producción (4315 LOC), **cero** tests: el directorio
 `src/test/kotlin` no existía. Era el módulo de producto más grande sin cobertura,
 y su caso tiene la misma forma que cerró `findFiles`: **la capa E2E no puede
-observarlo**. `v2/examples/run.sh` lee el exit code y, como mucho, una subcadena
+observarlo**. `examples/run.sh` lee el exit code y, como mucho, una subcadena
 de `stderr`; captura `stdout` a fichero y **nunca lo abre**. Una garantía rota
 en este módulo no cambia ninguno de los dos hechos que el lanzador mira.
 
@@ -1713,7 +1716,7 @@ Decidido por garantía, discriminancia y coste:
 
 Dos tareas de deuda que **no** son cobertura y salen del mismo vistazo:
 
-- `v2/pipeline-events/build.gradle.kts` declara `tasks.test { inputs.dir(…
+- `pipelinek/pipeline-events/build.gradle.kts` declara `tasks.test { inputs.dir(…
   pipeline-events-store/src/main/kotlin) }` justificándolo con un
   `EventSchemaNoMapStringStringTest` que `2aa071aab` borró. Es una entrada de
   build cache sin consumidor: paga coste de hashing en cada corrida para nada.
@@ -1759,8 +1762,8 @@ nombrar dos guardianes ausentes.
 contestó la pregunta, y la respuesta no es «es código muerto».
 
 **No es borrable.** `EventViewProjection`, `ViewMode` y `OutputFormat` están
-**los tres** en `v2/pipeline-events/api/pipeline-events.api`, el dump que
-`binary-compatibility-validator` genera (declarado en `v2/build.gradle.kts:355`)
+**los tres** en `pipelinek/pipeline-events/api/pipeline-events.api`, el dump que
+`binary-compatibility-validator` genera (declarado en `pipelinek/build.gradle.kts:355`)
 y sobre el que corre `apiCheck`. Quitar API pública es un **break versionado
 autorizado**, no una limpieza — AGENTS.md §1 lo prohíbe sin autorización. El DEFER
 no era indecisión: era la categoría de decisión equivocada. Sigue sin tocarse, y
@@ -1783,50 +1786,83 @@ Verificado: diff solo de comentarios (0 líneas de código), `apiCheck` y ambos
 `compileKotlin` verdes, dump ABI sin cambios. Coherente con que
 `effective_loc()` excludes comentarios: `PRODUCT_LOC` no se movió.
 
-### 2.4b `v2/pipeline-protocol/` — el build no lo ve, y el defecto es la desincronización
+### 2.4b `pipelinek/pipeline-protocol/` — retirado: se midió la alternativa antes de decidir
 
-**Aviso de lectura: este bloque ya no es una novedad.** La tabla de la sección 1
-(«Estado medido», fila 7) afirmaba desde antes que el módulo está versionado y no
-declarado, y Gradle nunca lo compila. Lo que sigue **corrige** el bloque que este
-roadmap escribió después como si lo hubiera descubierto, y **retira** el defecto
-que le atribuía al instrumento del gate.
+**Aviso de lectura: la afirmación central de la versión anterior de este bloque
+era falsa, y el razonamiento que la sostenía era una inferencia, no una
+medición.** Decía que `ProtocolCore.kt` «no compilaría aunque se declarase»,
+porque referencia `dev.rubentxu.pipeline.v2.protocol.Version`, un tipo que solo
+produce `protoc`, y porque no existía `pipelinek/pipeline-protocol/build/`: si `protoc`
+nunca corrió, el tipo nunca existió. Pero la ausencia del directorio de build
+demuestra solo que **nadie declaró el módulo**, no que el módulo no compile.
 
-**Lo que sigue siendo cierto.** `v2/settings.gradle.kts` **no lo incluye** (sus
-28 `include` no contienen `pipeline-protocol`) y no existe
-`v2/pipeline-protocol/build/`, que Gradle habría creado al compilarlo. Verificado
-por cuatro instrumentos independientes, porque el primero mintió: `grep -c` sobre
-el `include` imprime el número *y* devuelve 0, así que una cadena `&&`/`||`
-encadenada sobre él lee «ausente» justo después de imprimir «1».
+**Medido, en este ciclo.** Se añadió `:pipeline-protocol` al `include` y se
+compiló: `BUILD SUCCESSFUL in 36s`, con 120 ficheros Java y 60 Kotlin
+generados. El builtin `kotlin` lite funciona porque `protobuf-kotlin-lite` está
+en el catálogo, así que la inferencia anterior era falsa en su segunda mitad
+también: el tipo se genera en cuarenta segundos. La declaración se revirtió
+después de medirla; el árbol que se entrega no lo declara.
 
-**Lo que se retira: el defecto no era de `check-budgets.py`.** Este bloque afirmó
-que sus globs de disco cuentan 511 líneas que el build nunca compila, y propuso
-«derivar el denominador de los módulos que `settings.gradle.kts` declara». **Medido
-y falso: ese filtro habría restado producto real.** Cinco directorios tienen
-`src/main` sin figurar en el `include` raíz, y cuatro de ellos **son builds**:
+**La decisión, entonces, no era «compila o no compila».** Era si el módulo
+merece la vida. Los hechos que sí se sostienen, todos medidos:
+
+- **Cero consumidores** de `ProtocolModules`, `ProtocolGovernance` y
+  `ProtocolVersion` en todo el árbol versionado, y cero referencias a
+  `v2.protocol`.
+- **No publica y no está en el gate de ABI**: su `build.gradle.kts` declara
+  `group` pero no aplica `maven-publish`, y el módulo no tiene dump `.api`.
+- **Describe una capacidad que el producto no tiene.** Los ocho `.proto`
+  modelizan un protocolo de worker distribuido: `worker_hello`,
+  `negotiated_session`, `leases` con *fencing token*, `heartbeat`, acuse de
+  recibo y backpressure. El producto es un CLI local: su «lease» es un bloqueo
+  local de fichero (`FileLockCoordinator`), no un lease distribuido, y no hay
+  `heartbeat`, negociación ni agente remoto en ninguna parte del árbol. El
+  roadmap no contiene ningún bloque de ejecución remota, distribuida o por
+  clúster.
+- **Costaría tiempo en cada build** para generar 180 ficheros que nadie llama.
+
+**Decisión: se retira.** Declararlo lo convertiría en un módulo compilado sin
+consumidores; mantenerlo versionado era un `build.gradle.kts` de 42 líneas
+escrito para un módulo que el `include` raíz no declara, es decir, un fichero
+de build que miente. Retirarlo no rompe ni un artefacto publicado, ni un dump de
+ABI, ni un formato de cable, porque no había ninguno. El diseño no se pierde:
+queda en el historial, que es donde puede consultarse el día que el producto
+hable con workers remotos.
+
+**Lo que se llevó la decisión.** Diez ficheros borrados (511 líneas efectivas),
+el plugin `com.google.protobuf` de la raíz, y las cinco entradas del catálogo
+que solo ese módulo usaba. Con ellas, el árbol se queda sin un solo módulo
+versionado fuera del `include`: los directorios con `src/main` y fichero de
+build que el `include` raíz no declara son `pipelinek/buildSrc` y los tres plugins de
+ejemplo, y los cuatro son builds reales.
+
+**Lo que se retira: el defecto tampoco era de `check-budgets.py`.** La versión
+anterior de este bloque propuso «derivar el denominador de los módulos que
+`settings.gradle.kts` declara». **Medido y falso: ese filtro habría restado
+producto real.** Los cuatro builds de la tabla siguiente suman **2.242** líneas
+de producto que el filtro habría hecho desaparecer del denominador, dejando el
+gate **más verde por la razón equivocada**, que es el peor modo de fallar un
+instrumento de presupuesto.
 
 | directorio | líneas | qué es |
 |---|---:|---|
-| `v2/buildSrc` | 302 | convention plugins que compilan el producto entero |
-| `v2/examples/example-block-plugin` | 598 | build independiente, JAR en la distribución (`runtimeOnly`) |
-| `v2/examples/example-uppercase-plugin` | 932 | ídem |
-| `v2/examples/example-directive-plugin` | 410 | ídem |
-| `v2/pipeline-protocol` | 511 | el único sin `include` **y** sin consumidor |
-
-Los cuatro primeros suman **2.242** líneas de producto real. Un denominador
-derivado del `include` habría hecho el gate **más verde por la razón
-equivocada**, que es el peor modo de fallar un instrumento de presupuesto.
-
-**El defecto real, y sí es de este módulo:** un `build.gradle.kts` de 42 líneas
-escrito para un módulo que el `include` raíz no declara. El fichero de build y la
-declaración están desincronizados; uno de los dos miente. Eso es lo que hay que
-decidir, y la decisión sigue siendo de ciclo de vida: **borrar** (10 ficheros,
-511 líneas, ratio 0.117 → **0.118** medido) **o incluirlo** (y entonces compila,
-y sus 8 `.proto` entran en build). Ninguna de las dos es un autónomo.
+| `pipelinek/buildSrc` | 302 | convention plugins que compilan el producto entero |
+| `examples/example-block-plugin` | 598 | build independiente, JAR en la distribución (`runtimeOnly`) |
+| `examples/example-uppercase-plugin` | 932 | ídem |
+| `examples/example-directive-plugin` | 410 | ídem |
 
 **Instrumento del gate: sin cambio, y con motivo.** Los globs cuentan directorios
 con fichero de build, que es exactamente la condición para que un directorio sea
-construible. `pipeline-protocol` lo tiene; que su `include` falte es la
+construible. `pipeline-protocol` lo tenía; que su `include` faltara era la
 inconsistencia de ese módulo, no la del gate.
+
+**Por qué no lleva test, y qué se acepta a cambio.** Una comprobación de que
+`settings.gradle.kts` no contiene una cadena es *source-text fitness*, que §2
+prohíbe, y el build tampoco puede fallar por un directorio que no declara,
+porque no lo ve. Lo que se acepta a cambio es explícito: un módulo así cuenta
+como producto en el techo de LOC sin estar compilado, y por eso el ciclo lo
+detectó **leyendo**, no por un instrumento. Un instrumento que lo detectara
+tendría que ser un guard de estructura del build, y el árbol no tiene ninguno.
 
 ### 2.5 Las promesas colgantes que quedan — medido, no estimado
 
@@ -1837,7 +1873,7 @@ El patrón anterior no era de `pipeline-events`. Se extendía.
 ```
 tracked=$(git ls-files '*src/test/*' | sed 's|.*/||; s|\.kt$||' | sort -u)
 grep -rhoE '\b[A-Z][A-Za-z0-9]*(Test|Tests|FitnessTest|FalsifierTest|LawsTest)\b' \
-     --include='*.kt' v2/*/src/main | sort -u   # menos los que $tracked contiene
+     --include='*.kt' pipelinek/*/src/main | sort -u   # menos los que $tracked contiene
 ```
 
 **Cifras, con su denominador:**
@@ -1883,7 +1919,7 @@ KDoc se reescribe cuando se toca el fichero, no en una campaña.**
 > midió y de por qué, no como el estado actual.
 
 El veredicto del gate local es **INCOMPLETE**, no `PASS`, y la diferencia es un
-único escenario: `v2/examples/security/14-credentials-bindings.pipeline.kts`.
+único escenario: `examples/security/14-credentials-bindings.pipeline.kts`.
 Desde §2.3 venía justificado por «necesita un almacén de credenciales sembrado
 sobre una TTY». Ese motivo era una hipótesis. **Ahora está medido.**
 
@@ -1906,7 +1942,7 @@ Por tanto: **hoy no existe ruta de siembra no interactiva**, y no es una decisi�
 del escenario, es una limitación estructural del escritor. El escenario acertó.
 
 **Verificado de nuevo en este ciclo, con la ubicación exacta.** Los cuatro
-lectores de contraseña de `v2/pipeline-credentials-local/.../CredentialPrompts.kt`
+lectores de contraseña de `pipelinek/pipeline-credentials-local/.../CredentialPrompts.kt`
 —líneas 29, 50, 79 y 120— son todos `System.console()?.readPassword() ?: error(
 "no TTY available")`, y los lectores de línea son `readLine() ?: error(...)`.
 No hay bandera, ni rama alternativa, ni lectura de tubería: `credentials add
@@ -2076,7 +2112,7 @@ usa la grafía que compila y **no** afirma una causa que no se ha establecido.
 #### 2.9 ABI publicado con consumidores de producción y ningún test — cerrado
 
 El mismo patrón que §2.7, buscando por censo en vez de por recuerdo: símbolos en los siete
-volcados `.api` de `v2/*/api/`, con sitios de llamada en `src/main/` y ninguna referencia en
+volcados `.api` de `pipelinek/*/api/`, con sitios de llamada en `src/main/` y ninguna referencia en
 `src/test/`.
 
 **El instrumento es el resultado, no el número.** Un escaneo permisivo por nombre da **34**
@@ -2349,6 +2385,56 @@ antes de leer— falla el test que fija esa invariante y **sólo** ese, porque l
 mutación no toca ni el orden de emisión ni el trato de la refusal.
 
 
+### 2.15 El árbol se mudó de sitio: `examples/` a la raíz y `v2/` a `pipelinek/`
+
+Dos cambios de estructura, con la misma razón detrás: **el nombre de un
+directorio debería decir qué contiene**.
+
+**`examples/` sube a la raíz del repositorio.** `AGENTS.md` §3 describe los
+escenarios ejecutables como `examples/`, con el lanzador `examples/run.sh` al
+lado, y el checkout los tenía bajo el directorio del build. La nota de §1 que
+registraba esa diferencia —«no existe» o «está en otro sitio»— era el aviso de
+que la estructura real y la descrita no coincidían. Ahora coinciden: el lanzador
+es `examples/run.sh`, los escenarios son
+`examples/<categoría>/<guion>.pipeline.kts`, y los tres plugins de ejemplo son
+builds independientes en `examples/example-*-plugin/`, fuera del build raíz, que
+es exactamente lo que su independencia significa.
+
+**El directorio del build pasa de `v2/` a `pipelinek/`.** Un directorio
+llamado `v2` dentro de un repositorio cuyo producto va por `0.62.0` no dice
+nada: `v2` puede ser «la versión 2 del producto» o «el módulo del producto»,
+y hay que ir a mirar la tabla de versiones para saberlo. `pipelinek/` sí lo dice.
+Los paquetes no cambian —siguen siendo `dev.rubentxu.pipeline.v2.*`— porque el
+paquete es la API pública y su nombre no es un asunto de directorios.
+
+**Lo que hubo que re-apuntar, y lo que no.** Todo lo que nombraba la ruta: el
+lanzador, la puerta de verificación, el censo de LOC, el build raíz, los tres
+plugins de ejemplo y los documentos. Lo que **no** cambia son las dos cosas que
+se parecen a una ruta y no lo son: el token `v2` que nombra un **formato** —la
+versión del formato de credenciales, la `CacheKey.v2`, el contrato entre
+repositorios— y el paquete `dev.rubentxu.pipeline.v2.*`. Es una distinción que
+un `sed` no hace, y por eso el cambio se aplicó con reglas que sólo mueven `v2`
+seguido de un componente que existe en el build.
+
+**El historial no se rompe.** `git mv` deja los 30 escenarios y los tres
+plugins de ejemplo como renombrados, no como borrados y añadidos, y el censo de
+LOC sigue contando los mismos ficheros en el mismo lado —los escenarios y el
+lanzador en el numerador, los plugins de ejemplo en el denominador—, porque un
+cambio de sitio no puede usarse para mover pruebas de un lado al otro.
+
+**Lo que la limpieza de este ciclo añadió.** Diez worktrees locales de este
+mismo repositorio ocupaban 16 GB dentro del directorio de trabajo y no estaban
+en ninguna rama publicada; todos estaban limpios, así que se retiraron con
+`git worktree remove` —las ramas y sus commits siguen en el objeto— y
+`.worktrees/` quedó ignorado, para que un barrido no vuelva a encontrar
+dependientes que este árbol no tiene. También se retiraron `dist/` con cinco
+candidatos viejos (0.43 a 0.52, contra un producto en 0.62), un ZIP del paquete
+de plan del RESET —cuya evidencia vive en el tag anotado y en el archivo
+externo— y `.github/dependabot.yml`, que configuraba el ecosystem
+`github-actions` de workflows que ya no existen y daba por hecho un gate de CI
+que el propio repositorio dejó de tener.
+
+
 ---
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
@@ -2444,6 +2530,84 @@ mutación no toca ni el orden de emisión ni el trato de la refusal.
   (`cause [USER]`) y su origen. Motivo: un informe que obliga a adivinar por
   qué falló algo no es un informe.
 
+- **El módulo que el build no veía se retira, y la alternativa se midió antes de
+  decidir.** `pipelinek/pipeline-protocol/` llevaba tiempo versionado sin declarar, y
+  el bloque que lo describía afirmaba que no compilaría si se declarase. La
+  afirmación era falsa: declarado, compila en 36 s. Medir la alternativa
+  cambió la pregunta —de «¿compila?» a «¿merece la vida?»— y la respuesta fue
+  que no: cero consumidores, ningún artefacto publicado, ningún dump de ABI, y
+  un protocolo de worker distribuido que el producto no tiene. Motivo: una
+  decisión de ciclo de vida sostenida sobre una inferencia se sostiene sobre
+  la inferencia; la misma decisión sostenida sobre una medición se sostiene
+  sobre el árbol, y además deja el árbol en un estado donde la próxima persona
+  no tiene que volver a decidirla.
+
+- **Un gate que apunta a un proyecto inexistente no es un gate.** El build
+  raíz declaraba tres tareas —un consumidor de contrato, una ejecución
+  externa y un consumidor de scripting— sobre `examples/fabric-contract-consumer`,
+  `examples/sdk-external-execution` y `examples/scripting-contract-consumer`.
+  Esos proyectos se borraron cuando los ejemplos cambiaron de sitio, y el
+  `file("examples/…")` del build apuntaba entonces a `examples/…` **dentro** del
+  directorio del build, una ruta que **nunca existió en ningún commit**. Las tres
+  tareas no podían ejecutarse, y no enteraron a nadie porque no estaban en
+  `check`. Se borraron con sus comentarios, que además describían como vigente
+  una capacidad que no está en el árbol. Motivo: una tarea que no se puede
+  ejecutar es una afirmación sobre el producto, y una afirmación que no se puede
+  comprobar es ruido con apariencia de garantía.
+
+- **Una versión de dependencia tiene una sola autoridad.** Veintiún módulos
+  repetían la coordenada del launcher de JUnit como literal en su fichero de
+  build, mientras el catálogo de versiones declaraba la misma dependencia con
+  su versión, sin que nadie usara el acceso del catálogo. Una versión repetida
+  en veintiún sitios deriva sin que nada falle: el catálogo sube y los
+  módulos se quedan atrás. Ahora los veintiún usan `libs.junit.platform.launcher`,
+  los dos que fijaban `kotlin-reflect` a mano usan `libs.kotlin.reflect`, y las
+  tres entradas del catálogo que no tenía consumidor (`kover`, que se fue con
+  su plugin, `kotlin-scripting-common`, y las de protobuf con su módulo)
+  desaparecieron. Motivo: una versión duplicada es una segunda autoridad sobre
+  un hecho, y la segunda autoridad es la que nadie actualiza.
+
+- **Una etiqueta de plan no es una explicación.** Los comentarios de los
+  scripts de build seguían marcados con identificadores de bloque, de carril y
+  de fase, y tres de ellos afirmaban cosas que el árbol ya no cumple: que el
+  validador de ABI **no** estaba conectado a `check` —sí lo está—, que el
+  conjunto de módulos con ABI congelado eran seis —son siete—, y que dos
+  registries de contrato eran consumidos por un test que RESET borró. Todo eso
+  reescrito a prosa que explica la funcionalidad, y las tres afirmaciones
+  falsas corregidas contra el código. Motivo: un comentario que nombra una
+  tarea caducada no informa a nadie; uno que explica por qué el árbol es como
+  es, sí. Y un comentario que afirma lo contrario de lo que el código hace es
+  peor que no escribirlo.
+
+- **El nombre de un directorio debe decir qué contiene.** El build raíz se
+  llamaba `v2` en un repositorio cuyo producto va por `0.62.0`, y los
+  ejemplos ejecutables vivían dentro de ese directorio cuando `AGENTS.md` los
+  describe en la raíz. Los dos nombres se han cambiado: el build es
+  `pipelinek/` y los ejemplos son `examples/`. Motivo: un nombre de directorio
+  es la primera documentación que lee quien abre el árbol, y «v2» no dice si
+  habla de una versión del producto o del módulo que lo construye. El nombre
+  de los paquetes no se toca, porque el paquete es la API publicada y su
+  nombre no es un asunto de directorios.
+
+- **Mudarse de sitio no puede ser una forma de mover pruebas de un lado al
+  otro.** El censo de LOC cuenta los escenarios y el lanzador en el numerador
+  y los plugins de ejemplo en el denominador; después del cambio cuentan los
+  mismos ficheros, en el mismo lado, con la misma regla. Motivo: un
+  presupuesto que se puede hacer verde moviendo ficheros es un presupuesto que
+  mide dónde está el código, no cuánto trabajo de verificación cuesta.
+
+- **El estado local no es contenido del repositorio.** Diez worktrees de este
+  mismo repositorio vivían dentro del directorio de trabajo, ocupaban 16 GB,
+  no estaban en ninguna rama publicada y traían un `build.gradle.kts` cada uno
+  que un barrido leía como si fuera el build del producto. Se retiraron con
+  `git worktree remove` —sin pérdida: las ramas y sus commits siguen en el
+  objeto— y `.worktrees/` quedó ignorado. Con ellos se fueron `dist/` con
+  cinco candidatos de hace diez versiones, un ZIP del paquete de plan del
+  RESET y `.github/dependabot.yml`, que configuraba workflows que no existen
+  y daba por hecho un gate de CI que el repositorio dejó de tener. Motivo: un
+  árbol que carga con 16 GB de historia ajena y con ficheros que describen un
+  mundo distinto del suyo enseña a leer lo que no está.
+
 ---
 
 ## 4. Referencias
@@ -2451,6 +2615,6 @@ mutación no toca ni el orden de emisión ni el trato de la refusal.
 - `AGENTS.md` — política vigente; manda sobre cualquier documento histórico.
 - `scripts/verify-all.sh` — la única puerta local.
 - `scripts/check-budgets.py` — el único script de presupuestos.
-- `v2/examples/run.sh` — el único lanzador E2E.
+- `examples/run.sh` — el único lanzador E2E.
 - Historia anterior: tag `pre-testing-reset-20261018`. No se resucita en el árbol
   activo.

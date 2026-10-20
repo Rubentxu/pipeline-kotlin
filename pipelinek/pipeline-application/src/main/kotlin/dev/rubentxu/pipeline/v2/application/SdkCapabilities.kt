@@ -33,7 +33,7 @@ package dev.rubentxu.pipeline.v2.application
  * | `output.follow.v1`            | PUBLICADA  | `v0.49.0-rc1`   |
  * | `events.follow.v1`            | PUBLICADA  | `v0.49.0-rc1`   |
  * | `runtime.inspect.v1`          | EXPERIMENTAL | `v0.50.0-rc1` |
- * | `runtime.cancel.v1`           | DEPRECATED | `v0.50.0-rc1`   |
+ * | `runtime.cancel.v1`           | EXPERIMENTAL | `v0.50.0-rc1` |
  * | `runtime.recover.v1`          | EXPERIMENTAL | `v0.50.0-rc1` |
  * | `output.read.digested.v1`     | EXPERIMENTAL | `v0.51.0-rc1` |
  * | `output.pin.v1`               | EXPERIMENTAL | `v0.51.0-rc1` |
@@ -74,14 +74,12 @@ object SdkCapabilities {
             firstPublished = "v0.50.0-rc1",
         ),
         CapabilityEntry(
-            // Announced with the other two runtime verbs and still not
-            // delivered: the runtime ships the implementation of the
-            // published control port, but nothing composes it, so no command
-            // and no plugin can cancel a run through it yet. It says DEPRECATED
-            // rather than EXPERIMENTAL because a consumer that reads it as
-            // available will look for a path that does not exist.
+            // Delivered, and delivered through a published seam: `pipelinek runs
+            // cancel` composes the published control port, so a consumer can
+            // close a run that no live process is working on. It says
+            // EXPERIMENTAL because the shape of the port may still change.
             id = "runtime.cancel.v1",
-            status = CapabilityStatus.DEPRECATED,
+            status = CapabilityStatus.EXPERIMENTAL,
             firstPublished = "v0.50.0-rc1",
         ),
         CapabilityEntry(

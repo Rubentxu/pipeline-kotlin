@@ -32,9 +32,13 @@ sealed interface CancelRefusal {
     ) : CancelRefusal
 
     /**
-     * The run is in a state where cancel does not apply. Example: a run whose
-     * lease was released but whose journal row is non-terminal — a tombstone
-     * rather than a run.
+     * The run is in a state where cancel does not apply, and that state is
+     * neither a live owner nor a terminal run. `details` says which.
+     *
+     * A run whose lease was released while its journal row stayed non-terminal
+     * is NOT one of them: a writer that released its lease without finishing is
+     * exactly the writer that died, and closing that run is what a cancel is
+     * for.
 */
     data class IncompatibleRunState(val details: String) : CancelRefusal
 

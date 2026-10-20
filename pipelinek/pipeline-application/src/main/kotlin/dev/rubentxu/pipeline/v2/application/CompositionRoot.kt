@@ -17,6 +17,15 @@ import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
+import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.events.durable.EventRecordReadPortStoreAdapter
+import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
+import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
+import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
+import dev.rubentxu.pipeline.v2.events.durable.SqliteOperationJournalImpl
+import dev.rubentxu.pipeline.v2.runtime.control.RuntimeControlPort
+import dev.rubentxu.pipeline.v2.runtime.control.RuntimeControlPortStoreAdapter
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
@@ -27,6 +36,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 
 /**
  * Canonical durable composition root extracted from [Main].
@@ -239,4 +249,63 @@ internal fun runCanonicalPipeline(
             )
         },
     ).run(pipeline, runId)
+}
+
+/**
+ * The control plane's composition: the published [RuntimeControlPort] over the
+ * stores a run's facts live in.
+ *
+ * The decisions this function makes, and where they are declared:
+ *
+ *  - the **lease** lives under the control root, in the same place the run's
+ *    own writer looks for it, so the cancel and the writer contend for the
+ *    same lock;
+ *  - the **journal** is the same SQLite database the run wrote, reached
+ *    through the same connection factory, so the cancel and the run share one
+ *    durable state and not two;
+ *  - the **event lane** is the store the run wrote, wrapped in the redacting
+ *    sink the run used, so the cancel's terminal bookend travels the same
+ *    path as the writer's;
+ *  - the **output plane** is the writing side of the control root, because a
+ *    cancel seals streams and a reader may not reconcile them.
+ *
+ * The redaction registry is empty on purpose: the control verb does not open
+ * the credentials store, so it has no credential pattern to register, and the
+ * only free text it writes is the operator's own reason. The verb's usage
+ * says so, because a reason is recorded verbatim in the run's history.
+ */
+internal fun composeRuntimeControlPort(
+    eventStore: SqliteEventStore,
+    controlRoot: Path,
+    clock: Clock,
+): RuntimeControlPort {
+    val journal = SqliteOperationJournalImpl(
+        connectionFactory = eventStore.underlyingConnectionFactory(),
+        clock = clock,
+        json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
+        dbPath = eventStore.databasePath(),
+    )
+    val lease = FileBackedRunExecutionLeaseStore(controlRoot.resolve("leases"))
+    val output = OutputPlaneProvider.storeForWriting(controlRoot)
+    val events = RedactingEventSink(eventStore, SecretPatternRegistry())
+    val eventReader = EventRecordReadPortStoreAdapter(
+        store = eventStore,
+        runExists = { runId -> lease.isKnown(runId) || eventStore.hasRun(runId) },
+        tailSequence = { runId -> eventStore.tailSequence(runId) },
+    )
+    val owner = RunOwnerId.of(
+        "cli-cancel-" + ProcessHandle.current().pid() + "-" +
+            java.util.UUID.randomUUID().toString().take(8),
+    )
+    return RuntimeControlPortStoreAdapter(
+        journal = journal,
+        lease = lease,
+        events = events,
+        eventReader = eventReader,
+        frames = output.frameIndex(),
+        outputRecovery = output,
+        sealStream = { stream -> output.seal(stream) },
+        clock = clock,
+        ownerId = requireNotNull(owner) { "the cancel owner id is always well formed" },
+    )
 }

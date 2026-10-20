@@ -122,3 +122,11 @@ BACKLOG.md
 /examples/**/*.sqlite*
 /examples/**/*.log
 /examples/**/*.jsonl
+
+### Mission declaration (local configuration) ###
+# The goal chain's declaration and its working directory are local configuration
+# of this checkout, not repository content: a tool that leaves unversioned files
+# in someone else's repository earns their mistrust. The ROADMAP stays the
+# authority for the work itself; this only says where the chain starts.
+.goal-compass/
+goal-compass.json

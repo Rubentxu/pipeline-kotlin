@@ -904,6 +904,67 @@ sólo confundía a quien lo leyera. Los dos se han cerrado en este ciclo: el KDo
 dice la verdad, y el camino legacy dice lo que puede decir con el token del
 dominio y no con una cadena escrita a mano.
 
+**n) El glob de artefactos no restringe la extensión — MEDIDO, seguridad.**
+`AntStyleGlob` delega en `AntPathMatcher` de Spring y su KDoc anuncia soportar
+`[...]` y `{...}`. Medido contra **spring-core 6.2.19**, la versión que fija el
+proyecto: `build/**/*.{jar,war}` casa con `build/secret.pem` **y** con
+`build/app.zip`, y `{a,b}` casa con `zzz` — Spring convierte `{...}` en un
+grupo que casa con cualquier cosa, no en la alternancia de Ant/Jenkins —, y
+`app-[a-z].txt` no casa con `app-a.txt`, porque `[...]` es literal y no un rango.
+Consecuencia: `archiveArtifacts(pattern = "build/**/*.{jar,war}")` mete en el
+`.tar` **todo** lo que hay bajo `build/`, incluidos `.pem`, `.env` o
+`credentials.bin`. El test existente (`AntStyleGlobPatternTest`) fija la
+*representación* del patrón —«una coma no parte el patrón»— y nunca su
+*semántica*, que es por eso que el defecto no lo cazó nadie: un patrón que no
+encuentra lo que uno cree no se parece a un patrón que encuentra de más.
+Radio de impacto: `LocalArtifactStore.archiveArtifacts` y el step
+`archiveArtifacts`. Lo que hace falta: alternancia y rango reales (propios o de
+otra biblioteca) **con una tabla de verdad como test**, y el KDoc describiendo
+lo que la implementación hace.
+
+**o) El arnés E2E podía dar verde sin comprobar nada — CERRADO en `9c226b83f`.**
+Cuatro maneras, todas medidas: una **directiva desconocida se ignoraba** (el
+`case` no tenía rama por defecto, así que un escenario que quiso ser durable y
+escribió `//@ durabel` pasaba en verde corriendo contra un almacén volátil);
+**cero escenarios era un verde** (sin filtro no había comprobación alguna: un
+descubrimiento vacío imprimía `0 scenario(s), 0 passed, 0 failed` y salía con
+`0`); **`expect-exit` se descartaba** en modo `durable` (se forzaba a `0`); y
+**`resume` daba por bueno** cualquier salida distinta de cero como «el proceso
+murió», de modo que un error de compilación (1) era indistinguible de un
+`SIGKILL` (137). Cerrado: la directiva desconocida es un fallo que nombra las
+directivas válidas, cero escenarios ejecutados es un fallo, `expect-exit` se
+respeta en todos los modos, y `resume` exige una muerte real (128+señal). El
+contrato del lanzador queda protegido por `run.sh --self-test`, que el propio
+lanzador ejecuta y que la puerta invoca **antes** de fiarse de él: una
+garantía que sólo vive en una mutación que alguien corrió una vez es una
+garantía que un refactor puede perder sin que nadie lo note.
+
+**p) 34 de los 44 escenarios E2E sólo comprueban el código de salida.** Diez
+escenarios declaran `expect-stderr` o llevan un bloque `post { }`; los otros 34
+sólo miran el código de salida, y algunos **prometen más de lo que comprueban**:
+`output/23-readfile` escribe y lee un fichero y descarta el resultado de
+`fileExists`, así que pasaría en verde aunque el fichero no existiera; `steps/04-sh`
+comprueba que el proceso arrancó, no que el shell hiciera nada. Para un
+*smoke* comprob poco es lo pactado —pero un escenario cuyo nombre nombra una
+capacidad (`readFile`, `zip-unzip`, `artifact-query-bridge`) es una promesa, y
+una promesa que no se cumple es deriva entre el nombre y la aserción. Es también
+la vía por la que el coste del gate se paga sin valor: 34 escenarios que no
+comprueban nada cuestan lo mismo que 34 que comprueban.
+
+**Auditoría del 2026-10-20 (lectura de código, no de documentos).** Una revisión
+del árbol del productor midió el estado real del roadmap y de las especificaciones
+y encontró, además de n), o) y p): que la etapa 3 del gate es el **86 %** del
+coste (298 s de 345 s medidos; 44 escenarios ≈ 6,8 s y 48 arranques de JVM), que
+`pipeline-protocol` está versionado pero **no está declarado** en Gradle, luego
+nunca se compila, y que el «686 tests» que cita §1 es un **censo** de informes
+en disco, no una medición (en esa corrida, de 85 informes sólo 9 se
+reescribieron). El informe completo, con el plan priorizado y las propuestas de
+pensamiento lateral, está en el paquete de evolución del Saga, en
+`pipelinek-saga-evolution/auditoria/INFORME-AUDITORIA-2026-10-20.md`.
+Una de sus reglas se ha seguido aquí: un documento de estado **no** es evidencia,
+así que cada cifra de esta auditoría se ha medido ejecutando, y una corrección
+anterior que parecía verdad se ha vuelto a medir antes de creerla —y era falsa.
+
 
 ### 2.3 Cierre de ciclo
 

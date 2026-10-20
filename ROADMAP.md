@@ -495,9 +495,82 @@ Los tres primeros son **los que ordenan el ataque**, y no por tamaño:
    > **Nada abierto.** Ni `fromUserOwned` (eliminado, cero llamadores) ni la
    > duplicación de los `when`, que no es deuda: ver el razonamiento de arriba.
 2. **`pipeline-release` — qué se publica.** `BundledPluginCompatibility` decide
-   «este candidato se publica o se rechaza» y tiene un defecto vivo ya registrado:
-   un `apiRange` obsoleta en plugins de ejemplo empaquetados es la causa anotada
-   del arreglo de ejecución de R4/WU-R4.0.0. Cero tests.
+   «este candidato se publica o se rechaza».
+
+   > **Cerrado 2026-10-20 (defecto real encontrado y corregido).** Este punto
+   > decía dos cosas, y las dos había que comprobarlas antes de darlas por
+   > buenas:
+   >
+   > **«un `apiRange` obsoleta en plugins de ejemplo empaquetados» — CADUCADO.**
+   > Medido sobre el tren 0.70.0: los ocho manifiestos que se empaquetan
+   > declaran rangos que **admiten** la versión del host — `http`, `junit`,
+   > `scm-git` y `utilities` a `[0.47.0, 0.71.0)`, y `lock`, `repeat`, `saga`
+   > y `uppercase` a `[0.70.0, 0.71.0)`. El rango se **deriva** de
+   > `rootProject.version` desde la política de `buildSrc`
+   > (`PluginCompatibilityResource` documenta el incidente de `v0.56.0-rc3`, que
+   > fue exactamente un rango escrito a mano), así que la deriva no está viva.
+   > La alerta era deuda caducada, y esta es la diferencia entre «deuda» y
+   > «una frase vieja en un documento».
+   >
+   > **«Cero tests» — FALSO.** El módulo tiene dos clases de test
+   > (`ApiRangeContainsTest`, `CandidateHandoffDigestAttributionTest`) y la
+   > census de arriba ya lo listaba con diez ficheros de lógica pura. La frase
+   > era del antes del RESET.
+   >
+   > **Lo que sí estaba vivo, y era peor que lo que el punto decía:** la sonda
+   > **descartaba** el plugin cuyo manifiesto no declaraba un rango legible.
+   > `parseManifestJson` devolvía `null` si faltaba cualquiera de los tres
+   > campos, y `probeZip` no registraba la entrada: el plugin **desaparecía de
+   > la comprobación**, la puerta respondía «compatible» sobre un plugin que
+   > no había mirado, y el candidato se publicaba. El refusal ocurría después,
+   > en el host, que es exactamente el fallo que la puerta existe para evitar:
+   > `PluginAdmission.admit` rechaza el plugin, y
+   > `PluginCompatibilityResource.load` se niega a leer su manifiesto.
+   >
+   > El KDoc de la propia sonda prometía lo contrario («Missing values stay
+   > null so a candidate with a partially-emitted manifest is recorded as
+   > incomplete, not silently coerced into compatibility»): la promesa estaba
+   > escrita y el código no la cumplía.
+   >
+   > El arreglo separa las dos preguntas que el código confundía: **la
+   > presencia** del recurso `META-INF/pipelinek/plugin-manifest.json` decide si
+   > los bytes son un plugin, y **el contenido** decide qué declara. Un
+   > manifiesto que nombra un plugin pero no declara rango se registra con
+   > `apiRange = null`, y `apiRangeContains(null, host)` ya era falso — o sea,
+   > el veredicto fail-closed ya existía en `evaluate`; lo que faltaba era
+   > que la sonda dejara de quitarle el plugin de la lista. El diagnóstico
+   > distingue «no declara rango» de «declara un rango ilegible», porque son
+   > arreglos distintos.
+   >
+   > **La sonda ahora es una decisión pura.** Se extrajo
+   > `pluginEntryOf(jarBytes, jarName)`: bytes dentro, entrada fuera. La regla
+   > de este módulo es que su carril de test **no** toca disco, ni un JAR en
+   > disco, ni la distribución — el carril JUnit que sí lo hacía ejecutaba
+   > cero clases mientras nombraba un ZIP real en su salida, que es la mentira
+   > más cara que se puede contar en un build. Una decisión que sólo se alcanza
+   > a través de un artefacto de 93 MB no la decide nadie, y la que decide si
+   > un candidato puede salir es el peor sitio para eso.
+   >
+   > **Evidencia:** `BundledPluginProbeTest` (7 casos) sobre bytes de JAR en
+   > memoria, con el test **ROJO antes del arreglo** (4 casos en rojo, con el
+   > mensaje «the plugin vanished from the gate») y **VERDE** después. Dos
+   > mutaciones comprobadas: (a) la sonda vuelve a descartar el plugin que no
+   > puede leer → 4 casos en rojo; (b) un rango ausente deja de ser una
+   > restricción (`apiRangeContains(null, …) = true`) → 5 casos en rojo. El
+   > contrapeso está en el mismo fichero: un JAR **sin** manifiesto sigue sin
+   > ser un plugin, porque `lib/` va lleno de bibliotecas y si «no hay
+   > manifiesto» se leyera como «un plugin que no dice nada», nada saldría
+   > nunca.
+   >
+   > **Lo que queda de este punto, y es pequeño:** la sonda en modo «un solo
+   > JAR» decide por el **nombre** del fichero (`pipeline-step-sdk` en el
+   > nombre) si lo que recibe es un JAR o una distribución. El KDoc anuncia
+   > ese modo para «un plugin bajo prueba», y no funciona para ninguno de los
+   > plugins de ejemplo del repo, que no se llaman así: `probeZip` los trata
+   > como una distribución, no encuentra ningún JAR anidado y devuelve vacío.
+   > El coste de arreglarlo es bajo, pero el beneficiario —un certificador
+   > externo que no está en este repositorio— no se puede verificar desde
+   > aquí, así que queda anotado en vez de cambiarlo a ciegas.
 3. **`pipeline-output` — `OutputAdoption.invariantsBlockedBy`.** Es el decider que
    autoriza decir «el Output Plane es crash-consistente», y su propio KDoc
    registra **dos defectos materiales ya corregidos exactamente en esas dos

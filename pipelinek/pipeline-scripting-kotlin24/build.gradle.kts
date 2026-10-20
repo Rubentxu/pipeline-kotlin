@@ -27,18 +27,25 @@ dependencies {
     implementation(project(":pipeline-domain"))
 }
 
-// Unit-test wiring REMOVED .
-// This module carries no unit tests: it is a COMPILER front end whose subject is a
-// `.pipeline.kts` file being compiled and run. Its verification is the executable E2E layer --
-// `.pipeline.kts` pipelines under `examples/`, driven by `examples/run.sh` --
-// and not a JUnit class.
-// The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
-// Left in place they were a SILENT green: a `Test` task whose source set is empty reports
-// success while executing zero classes. Gradle 8.14 exposes no `failOnNoDiscoveredTests`
-// property -- the setting does not exist in this version, so nothing inside the build can
-// turn that green into a failure, and a build file asserting otherwise is describing a flag
-// it cannot compile.
-// What turns it into a failure lives outside Gradle: `scripts/verify-all.sh` enumerates the
-// modules it asks from the filesystem and fails when a module that has a test source produces
-// no JUnit XML. The wiring that could have produced the misleading green is gone from the
-// modules that have no tests, so no module reaches that check in silence.
+// The module is a compiler front end, so the end-to-end layer is its main
+// observer: every scenario in `examples/` compiles a `.pipeline.kts` through
+// it. That observer, however, only reaches the compiler — not the protection
+// it applies to the text it compiles. A credential referenced as `$NAME` is
+// rewritten before the compiler ever sees it, and no scenario writes one that
+// way: the ones that need a value write it already escaped. So the guarantee
+// that a bound credential reaches the shell instead of the compiler had no
+// observer at all, which is what `ScriptTextEscaperTest` is for.
+//
+// These lines exist because a test source does, and `scripts/verify-all.sh`
+// fails the build when a module with a test source produces no JUnit XML.
+// Gradle 8.14 exposes no `failOnNoDiscoveredTests` property — the setting does
+// not exist in this version — so the guarantee that makes this wiring safe
+// lives in that script, not here.
+dependencies {
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+tasks.test {
+    useJUnitPlatform()
+}

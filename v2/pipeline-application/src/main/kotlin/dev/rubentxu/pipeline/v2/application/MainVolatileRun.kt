@@ -1,0 +1,502 @@
+package dev.rubentxu.pipeline.v2.application
+
+import dev.rubentxu.pipeline.v2.application.durable.SagaVerdict
+import dev.rubentxu.pipeline.v2.application.durable.analyzeCanonicalDurableExecution
+import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
+import dev.rubentxu.pipeline.v2.application.observation.ConsolePrintingEventSink
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
+import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.domain.CorrelationId
+import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.RunOutcome
+import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.events.RunFinished
+import dev.rubentxu.pipeline.v2.events.SagaTerminal
+import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
+import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemorySagaObligationStore
+import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
+import java.nio.file.Files
+import java.nio.file.Path
+import dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader
+import dev.rubentxu.pipeline.v2.application.observation.LiveOutputDrain
+import dev.rubentxu.pipeline.v2.application.observation.LiveOutputPresentation
+
+/**
+ * The volatile world: a run without `--db`.
+ *
+ * ## Why this is a world and not a mode
+ *
+ * LF-0208 (Single Runtime Spine): the storage choice must not select a
+ * different execution algorithm. This branch runs the SAME canonical
+ * coordinator as the durable one, with volatile stores; nothing survives the
+ * process. The two worlds differ in the STORES, not in the algorithm, and
+ * that is why the differences live in the wiring below and not in the run.
+ *
+ * ## What is decided here and not in [main]
+ *
+ * The run id, the correlation id, the owner, the control root and the stores
+ * are decided at the CLI boundary, once, and handed to the runtime as facts.
+ * A runtime that re-derives them is a runtime that can disagree with the
+ * record it is writing.
+ */
+internal fun runVolatilePipeline(
+    config: CliFlags,
+    secretPatternRegistry: SecretPatternRegistry,
+    compiledQuery: CompiledObservationQuery,
+    scriptPath: Path,
+    outputProtocol: OutputProtocol,
+) {
+    // LF-0208 (Single Runtime Spine): storage choice must not select a
+    // different execution algorithm. Without --db the run uses the
+    // canonical durable coordinator with volatile (in-memory) stores;
+    // nothing survives the process.
+    // Durable run selection flags are rejected without persistent state.
+    if (config.durableRunPolicy != DurableRunPolicy.ReusePriorRun) {
+        System.err.println("Error: --resume and --rerun require --db (no durable state exists without a journal database)")
+        System.exit(2)
+        return
+    }
+    val eventStore = composeVolatileEventStore(config, secretPatternRegistry, compiledQuery)
+    val scriptContent = scriptPath.toFile().readText()
+    val definitionId = dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator.definitionId(
+        scriptPath.toString(),
+        scriptContent,
+    )
+    val controlDirRoot = resolveVolatileControlRoot(config)
+    val identity = establishVolatileIdentity(
+        config = config,
+        eventStore = eventStore,
+        controlDirRoot = controlDirRoot,
+        definitionId = definitionId,
+    )
+    val runId: String = identity.runId
+    val compilation = compileScriptForRun(
+        eventStore = eventStore,
+        runId = runId,
+        scriptPath = scriptPath,
+        pluginJars = config.pluginJars,
+    )
+
+    val clock: dev.rubentxu.pipeline.v2.domain.durable.Clock = SystemClock()
+    val journal: dev.rubentxu.pipeline.v2.events.durable.OperationJournal =
+        InMemoryOperationJournal(clock)
+    val cursorStore: dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore =
+        InMemoryReplayCursorStore(clock)
+
+    val compiledPipeline = compilation.pipelineSpec?.let { spec ->
+        compileOrRefuse(
+            spec = spec,
+            sourcePath = scriptPath.toString(),
+            sourceContent = scriptContent,
+        )
+    }
+
+    // LB-02 / EP-6: compose registry BEFORE the gate so contributed keys are eligible.
+    // S6-COMPOSITION: admission happens FIRST and inside the same function, so the in-memory and
+    // durable branches cannot admit differently. S6/G's "one resolution for the whole run" now
+    // also covers the decision about WHICH artifacts are allowed to resolve at all.
+    val composition = admitThenComposeOrExit(config.pluginJars)
+    val composedStepRegistry = composition.steps
+    val nonCanonicalSteps = compiledPipeline
+        ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()
+    // WU-LPR-103: the default `pipeline run <script>` (in-memory) branch composes
+    // the SAME credential injection stack as the durable branch, through the SAME
+    // function. The default path is the temp in-memory control dir's sibling;
+    // PIPELINE_CREDENTIALS_STORE env overrides, exactly like the durable path.
+    //
+    // The PROVIDER this seam also opens is deliberately NOT handed to the run
+    // (H5-B, below): a run with no store has nowhere to look, and a run that
+    // does have one does not need the provider on the in-memory path.
+    val credentialSeam = composeCredentialSeam(secretPatternRegistry, clock)
+    // RP034-H / ADR-0101 clause 3.1 + RP034-Id: the workspace origin is decided
+    // ONCE, here at the boundary. Both facts cross into the runtime — the shared
+    // directory and its owner — because a runtime that receives only the root
+    // re-derives ownership and lets `deleteDir` erase a user's project under the
+    // local-first default. `--isolated` keeps the historical PipelineK scratch;
+    // `--workspace <path>` stays authoritative.
+    val workspaceTransport = WorkspaceIntent.resolveRuntimeTransport(
+        config, Path.of("").toAbsolutePath().normalize(), controlDirRoot,
+    )
+    // OBS-E4: the process output of a step lives in the Output Plane, not on the event spine,
+    // so the event sink above never saw it. This observer follows the plane while the run is in
+    // flight, which is what makes a build's progress visible while the build runs. It is
+    // started BEFORE the pipeline (there is nothing to observe until a step produces bytes) and
+    // closed after it returns, so the last committed bytes are flushed.
+    val outputObserver = startLiveOutputObserver(runId, controlDirRoot, config.format)
+
+    val runOutcome: RunOutcome? = try {
+        val pipeline = compiledPipeline
+        if (compilation.failure != null) {
+            // Compilation must be checked FIRST. If the script failed to compile there is no
+            // compiled pipeline to run; jumping to the canonical run would NPE on `!!`. This
+            // regression was introduced when the per-step canonical gate was added (v0.33.1 P2
+            // corpus-closure) but the compile-failure branch was left inside `else -> compileOutcome`
+            // which only fires when nonCanonicalSteps is non-empty OR pipelineSpec is non-null.
+            compilation.failure
+        } else if (pipeline == null) {
+            // TRAIN-DSL-HONESTY: compile "succeeded" but produced no PipelineSpec. Before this
+            // branch this reached the canonical run with a `!!` and died as an NPE
+            // with exit 0. A script that cannot produce its IR is an admission failure.
+            RunOutcome.Failure(
+                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
+                    kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
+                    message = "the script compiled but did not produce a PipelineSpec; " +
+                        "its body failed during construction and no pipeline can run",
+                ),
+            )
+        } else if (nonCanonicalSteps.isEmpty()) {
+            runCanonical(
+                CanonicalRunRequest(
+                    pipeline = pipeline,
+                    runId = RunId(runId),
+                    state = CanonicalRunState(
+                        journal = journal,
+                        cursorStore = cursorStore,
+                        eventSink = eventStore,
+                        // P6: the Saga seam does NOT depend on `--db`. This branch binds the
+                        // VOLATILE store, so the capabilities are the same ones the durable
+                        // branch exposes and the SAME script behaves the same in both worlds.
+                        // What changes is the DURABILITY of the promise, not the algorithm:
+                        // nothing survives the process here, exactly like the journal and the
+                        // event log of this branch.
+                        //
+                        // Before this binding, this branch bound NO saga store at all, so the
+                        // Saga capabilities were never exposed and a script that declares them
+                        // was refused at admission — the same script behaving differently with
+                        // and without `--db`, which is the contradiction LF-0208 forbids.
+                        //
+                        // The epoch is 0 because a volatile run has no lease: there is no
+                        // takeover to fence against, and one writer owns the run for as long as
+                        // the process lives.
+                        sagaBinding = dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding(
+                            store = InMemorySagaObligationStore(),
+                            leaseEpoch = 0,
+                        ),
+                    ),
+                    policy = CanonicalRunPolicy(
+                        clock = clock,
+                        effectReplayPolicy = DefaultEffectReplayPolicy(),
+                        controlDirRoot = controlDirRoot,
+                        sandboxProfile = config.sandboxProfile,
+                        // RP034-H / ADR-0101 clause 3.1: the CLI default is local-first. The
+                        // workspace origin is decided once, here at the boundary, and BOTH
+                        // facts cross into the runtime: the shared directory and its owner.
+                        // `--isolated` preserves the historical PipelineK-managed scratch;
+                        // `--workspace <path>` stays authoritative.
+                        workspace = workspaceTransport,
+                        // H5-B: NO credentialProvider on this path, deliberately. It composes
+                        // with an in-memory journal and receives no store, so the seam takes
+                        // its default: a source that refuses every lookup with
+                        // `NotConfigured`. That is the honest answer for a run that has
+                        // nowhere to look, and it is the same answer the durable path gives
+                        // when the operator configured no store. Passing a provider here
+                        // would mean opening a secret store for a path that has no use for
+                        // one.
+                        credentialProvider = null,
+                        withCredentialsExecutor = credentialSeam.executor,
+                        // H8-D1: this path composes its own coordinator and had the same
+                        // omission as the durable one. `--allow-network` is a per-RUN
+                        // permission; a run whose flag is ignored is a run where the
+                        // operator believes they opened the network and did not.
+                        allowNetwork = config.allowNetwork,
+                        secretPatternRegistry = secretPatternRegistry,
+                    ),
+                    // S6/G: the frozen composition, not a step registry plus a classloader.
+                    // There is no path here that can reach a registry without a directive registry
+                    // having been resolved under the same loader.
+                    composition = composition,
+                ),
+            )
+        } else {
+            // Fail-closed: non-canonical pipelines are not supported by the canonical bridge.
+            // Same gate and message as the durable path (STEP SEMANTICS: fail-closed on every run path).
+            System.err.println(NON_CANONICAL_CANONICAL_BRIDGE_ERROR)
+            for (step in nonCanonicalSteps) {
+                System.err.println("  - Step '${step.stepId}' (${step.pluginStepId}): ${step.reason}")
+            }
+            System.exit(2)
+            null // unreachable
+        }
+    } finally {
+        // The observer stops here, not before: everything the pipeline committed is already in
+        // the plane, and stopping first would drop the final frames of the last step. `finally`
+        // rather than a plain call so a throwing pipeline still releases the thread.
+        outputObserver.close()
+    }
+
+    val events = eventStore.eventsFor(runId).toList()
+    // ADR-0088: human text was already streamed live by ConsolePrintingEventSink.
+    // Only the machine formats still need a document at the end.
+    if (config.format != ObservationFormat.TEXT) {
+        writeEventDocument(
+            events = events,
+            view = config.view,
+            format = config.format,
+            query = compiledQuery,
+            protocol = outputProtocol,
+        )
+    }
+    val exitFailure = volatileRunFailed(runOutcome, events)
+    // P6: the Saga verdict travels in BOTH worlds. A Saga can now run without
+    // `--db` —the volatile store is bound exactly like the durable one—, so the
+    // run has to SAY what happened to it, exactly as the durable path says. A
+    // Saga that settled without saying so is a Saga the operator cannot see,
+    // and "the run was green" is not a substitute for "the Saga was settled".
+    SagaVerdict.verdicts(events.filterIsInstance<SagaTerminal>()).forEach { System.err.println(it) }
+    if (exitFailure) System.exit(1)
+}
+
+/**
+ * The identity a volatile run publishes: which run it is, which correlation it
+ * answers to, and who owns it.
+ *
+ * The owner here is SYNTHETIC — a CLI pid plus a uuid — because a volatile run
+ * has no lease: there is no takeover to fence against, and one writer owns the
+ * run for as long as the process lives.
+ */
+private data class VolatileRunIdentity(
+    val runId: String,
+    val correlationId: CorrelationId,
+    val ownerId: RunOwnerId,
+)
+
+private fun establishVolatileIdentity(
+    config: CliFlags,
+    eventStore: dev.rubentxu.pipeline.v2.events.EventSink,
+    controlDirRoot: Path,
+    definitionId: dev.rubentxu.pipeline.v2.domain.DefinitionId,
+): VolatileRunIdentity {
+    val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
+    val fresh = UuidRunIdGenerator().next()
+    // PK-1 / ADR-PK1-IDENTITY: build the correlationId once here at
+    // the CLI boundary so both the durable last-run record and the
+    // in-memory RunCorrelated event share the same token.
+    val correlationId: CorrelationId = config.correlationId?.let { CorrelationId(it) }
+        ?: UuidCorrelationIdGenerator().next()
+    runIdDirectory.record(definitionId, fresh, correlationId)
+    val runId: String = fresh.value
+    // PK-1 / ADR-PK1-IDENTITY: emit the RunCorrelated event on the
+    // event sink so a consumer can join durable state to the
+    // external correlationId. We emit after the rest of the run is wired
+    // (so the event is observed in the same order as it would be in the
+    // durable branch: lease -> RunCorrelated -> RunStarted).
+    // We also emit the LaunchReceipt on stdout for the consumer.
+    // For the in-memory branch the owner is a synthetic CLI pid +
+    // uuid; for the durable branch the lease-acquired owner is
+    // used (see below).
+    val syntheticOwner: RunOwnerId = requireNotNull(
+        RunOwnerId.of(
+            "cli-inmem-" + ProcessHandle.current().pid() + "-" +
+                java.util.UUID.randomUUID().toString().take(8),
+        ),
+    )
+    // PK-1 / ADR-PK1-IDENTITY: emit the RunCorrelated event and
+    // the LaunchReceipt. The receipt is durable machine-readable
+    // metadata, not a human message; in TEXT view it goes to
+    // stderr so the human console is not polluted. In JSON/JSONL
+    // view it is the first stdout line so a machine consumer can
+    // join the receipt to the event stream by line index.
+    emitCorrelationAndReceipt(
+        eventStore = eventStore,
+        runId = RunId(runId),
+        correlationId = correlationId,
+        ownerId = syntheticOwner,
+        startedAtMs = System.currentTimeMillis(),
+        controlDir = controlDirRoot,
+        format = config.format,
+    )
+    return VolatileRunIdentity(runId = runId, correlationId = correlationId, ownerId = syntheticOwner)
+}
+
+/**
+ * The event store of a volatile run: in memory, and mirrored live in TEXT.
+ *
+ * ADR-0088: in TEXT the run is mirrored live as events are appended, so
+ * the end-of-run dump is suppressed in the caller. Machine formats keep stdout
+ * untouched and are written once, at the end, exactly as before.
+ */
+/**
+ * OBS-E4: the run-time output observer, started before the pipeline and stopped after it.
+ *
+ * ## What this is for
+ *
+ * `ConsolePrintingEventSink` mirrors the EVENT spine as events are appended. Process output is not
+ * on that spine — it lives in the Output Plane — so before this the bytes a step printed were
+ * durable and unobservable until someone ran `pipeline console` against the control directory, which
+ * is not a public verb. A build's progress was therefore invisible while the build ran.
+ *
+ * ## Why a thread, and why the run never waits for it
+ *
+ * The observer polls, so it cannot run on the thread that is executing the pipeline. That makes the
+ * backpressure law the reason for its existence as much as the convenience: the run does not wait on
+ * it, so a wedged terminal, a closed pipe or a slow reader can delay only its own output. The
+ * consumer-backpressure law says no observation consumer may reach the execution path, and a
+ * terminal that can block the run is exactly that.
+ *
+ * ## Why the owner stops it, not the plane
+ *
+ * `ShExecution` seals a step's streams from INSIDE `invoke`, while the run continues, so there is a
+ * window in which every stream the run has is sealed and the run is not over. An observer that
+ * treated "all sealed" as "done" would end inside that window and drop the output of every later
+ * step. `runFinished` is therefore the terminator, and the tail states only classify how it ended.
+ *
+ * ## `json` is the one format that does not stream
+ *
+ * A JSON array is a document, and a document cannot be streamed. So for `--format json` this starts
+ * NO thread and collects nothing; the end-of-run document already renders every event, and adding
+ * output to it is the job of a later block rather than of a half-measure here.
+ */
+
+private fun startLiveOutputObserver(
+    runId: String,
+    controlDirRoot: java.nio.file.Path,
+    format: ObservationFormat,
+): AutoCloseable {
+    if (format == ObservationFormat.JSON) {
+        return AutoCloseable { }
+    }
+
+    val presentation = LiveOutputPresentation(format, System.out, System.err)
+    val store = dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider.storeForReading(controlDirRoot)
+    val reader = FrameIndexedObservationOutputReader(store.frameIndex(), store, store)
+    val drain = LiveOutputDrain(reader, frameLimit = 64, pollIntervalMs = 10)
+    val runFinished = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    val thread = Thread(
+        {
+            when (val result = drain.drain(runId, { runFinished.get() }) { record ->
+                presentation.emit(record)
+            }) {
+                is dev.rubentxu.pipeline.v2.application.observation.LiveOutputDrainResult.Refused ->
+                    presentation.reportRefusal(result.reason)
+
+                else -> Unit
+            }
+        },
+        "pipelinek-output-observer",
+    ).apply {
+        // A daemon, so an observer that is somehow never stopped cannot keep the JVM alive past the
+        // run that owns it. The run does not depend on this thread existing.
+        isDaemon = true
+    }
+    thread.start()
+
+    return AutoCloseable {
+        runFinished.set(true)
+        // Bounded, because a run that has ended must not be held hostage by a reader that is wedged.
+        // The bytes stay committed either way: this is an observer, not the authority.
+        thread.join(OBSERVER_JOIN_TIMEOUT_MS)
+    }
+}
+
+/**
+ * How long a finished run waits for its observer to notice and flush.
+ *
+ * Bounded because the run has already produced its result and holding the terminal for an unbounded
+ * wait would turn a slow reader into a hung command. What is lost by stopping early is nothing the
+ * run owns: the bytes are committed and `observe` can read them afterwards.
+ */
+
+private const val OBSERVER_JOIN_TIMEOUT_MS = 5_000L
+
+private fun composeVolatileEventStore(
+    config: CliFlags,
+    secretPatternRegistry: SecretPatternRegistry,
+    compiledQuery: CompiledObservationQuery,
+): EventSink {
+    val rawEventStore = InMemoryEventStore()
+    val redactedStore = RedactingEventSink(rawEventStore, secretPatternRegistry)
+    return if (config.format == ObservationFormat.TEXT) {
+        // The query rides along because this is the only place a TEXT run is printed: the
+        // end-of-run dump is suppressed below, so a filter honoured only there would be
+        // honoured by nothing. It suppresses presentation only; the store still receives
+        // every event.
+        ConsolePrintingEventSink(redactedStore, config.view, compiledQuery) { line ->
+            System.out.println(line)
+        }
+    } else {
+        redactedStore
+    }
+}
+
+/**
+ * Where a volatile run writes its control state.
+ *
+ * `--control-root` is honoured HERE TOO, and it used not to be. The flag is parsed and
+ * validated in the durable branch (ML-R1) and was silently ignored in this one, which
+ * hard-coded a fresh temp directory per run. That made the flag mean two different
+ * things depending on whether `--db` was present, and it made the Output Plane
+ * unreachable from the CLI on the DEFAULT path: `pipeline console --control-dir X`
+ * could not be pointed at a run that had not been given a database.
+ *
+ * That is not a cosmetic inconsistency. M1 moved process output into the plane
+ * (ADR-M1 D2/D3), so "where the plane is written" IS the product question, and a flag
+ * that answers it only on one of two execution paths is a flag that cannot be relied on
+ * to observe the default one. The default is unchanged: with no `--control-root`, this
+ * still creates a private temp directory.
+ */
+private fun resolveVolatileControlRoot(config: CliFlags): Path =
+    if (config.controlRoot != null) {
+        try {
+            validateControlRoot(config.controlRoot)
+        } catch (e: IllegalArgumentException) {
+            System.err.println("Error: ${e.message}")
+            System.exit(2)
+            throw e // unreachable
+        }
+    } else {
+        Files.createTempDirectory("pipelinek-inmem-run")
+    }
+
+/**
+ * The exit decision of a volatile run.
+ *
+ * ## Why the volatile world renders a failure its own way
+ *
+ * The durable world prints the typed failure report after the verdict line; this one
+ * prints the message on the verdict line itself, and the E2E scenario
+ * `negative/15-error` pins that exact text. The two renderings are not the same fact
+ * read twice: the FACT is the typed [RunOutcome], and both worlds read it. What differs
+ * is how a failure is rendered for a human, and that rendering is part of what the
+ * scenarios observe.
+ */
+private fun volatileRunFailed(runOutcome: RunOutcome?, events: List<dev.rubentxu.pipeline.v2.events.DomainEvent>): Boolean =
+    if (runOutcome != null) {
+        when (runOutcome) {
+            is RunOutcome.Success -> {
+                System.err.println("Pipeline finished with SUCCESS"); false
+            }
+            is RunOutcome.Unstable -> {
+                System.err.println("Pipeline finished with UNSTABLE"); false
+            }
+            is RunOutcome.Failure -> {
+                // TRAIN-DSL-HONESTY: an admission failure (compile or DSL
+                // construction) must carry its diagnostic. "FAILURE" alone
+                // sent users hunting with zero context.
+                runOutcome.failure.message
+                    .takeIf { it.isNotBlank() && it != "Kotlin compilation failed" }
+                    ?.let { System.err.println("Pipeline finished with FAILURE: $it") }
+                    ?: System.err.println("Pipeline finished with FAILURE")
+                true
+            }
+            else -> {
+                System.err.println("Pipeline finished with FAILURE"); true
+            }
+        }
+    } else {
+        // The LEGACY path: no typed outcome was produced, so there are only two stories —
+        // "it finished successfully" and "it did not". The "unstable" arm that used to live
+        // here was UNREACHABLE: the word it compared against could only be those two, so the
+        // arm could never run and only misled whoever read it.
+        val lastEvent = events.lastOrNull()
+        val succeeded = lastEvent is RunFinished && lastEvent.outcome == RunOutcome.SUCCESS_TOKEN
+        if (succeeded) {
+            System.err.println("Pipeline finished with SUCCESS"); false
+        } else {
+            System.err.println("Pipeline finished with FAILURE"); true
+        }
+    }

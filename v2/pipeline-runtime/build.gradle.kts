@@ -53,6 +53,9 @@ dependencies {
     implementation(project(":pipeline-events-store"))
     implementation(project(":pipeline-output-store"))
     implementation(libs.kotlin.stdlib)
+    // Test-only: the vocabulary the recover adapter writes into the journal (pure rules).
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
 
 }
 
@@ -83,21 +86,27 @@ publishing {
     }
 }
 
-// Unit-test wiring REMOVED (2026-10-18, testing RESET).
+// Unit-test wiring (re-added 2026-10-20, block `cobertura-modulos-riesgo`).
 //
-// This module carries no unit tests: it is the RUNTIME that executes steps; a JUnit class
-// driving it is a harness, and the plan bans harness code. Its verification is the executable
-// E2E layer -- `.pipeline.kts` pipelines under `v2/examples/`, driven by
-// `v2/examples/run.sh` -- and not a JUnit class.
+// The wiring was removed on 2026-10-18 because this module carried no test source, and a
+// `Test` task whose source set is empty reports success while executing zero classes: a
+// SILENT green. That reason is now gone: the module HAS a test source, and the silent green
+// it warned about is impossible while `src/test/kotlin` holds a class.
 //
-// The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
-// Left in place they were a SILENT green: a `Test` task whose source set is empty reports
-// success while executing zero classes. Gradle 8.14 exposes no `failOnNoDiscoveredTests`
-// property -- the setting does not exist in this version, so nothing inside the build can
-// turn that green into a failure, and a build file asserting otherwise is describing a flag
-// it cannot compile.
+// What the test buys, and what it does not: `RecoverJournalVocabularyTest` pins the words the
+// recover adapter writes into the journal — pure rules over a status and a terminal. It does
+// NOT drive the runtime: a JUnit class that executed steps would be a harness, and the plan
+// bans harness code. Running the runtime is the executable E2E layer's job, under
+// `v2/examples/`, driven by `v2/examples/run.sh`.
 //
-// What turns it into a failure lives outside Gradle: `scripts/verify-all.sh` enumerates the
-// modules it asks from the filesystem and fails when a module that has a test source produces
-// no JUnit XML. The wiring that could have produced the misleading green is gone from the
-// modules that have no tests, so no module reaches that check in silence.
+// The fail-closed check for a module that has tests but produces no JUnit XML lives outside
+// Gradle, in `scripts/verify-all.sh`, which enumerates the modules it asks from the
+// filesystem.
+
+tasks.test {
+    useJUnitPlatform()
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+}

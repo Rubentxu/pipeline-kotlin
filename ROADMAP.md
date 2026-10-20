@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `88a6dc07d` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `cb37779f2` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 9 | ídem |
-| Tests unitarios ejecutados | **716** (90 informes JUnit, **90** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:716 read:0` |
+| Tests unitarios ejecutados | **717** (90 informes JUnit, **90** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:717 read:0` |
 | Escenarios E2E | 46 (**45 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **11127 / 65551 = 0.170** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **11140 / 65539 = 0.170** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **100 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **95 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -45,16 +45,15 @@ los tests: el dato estaba en el log de la etapa 2, y el log lo lee quien corrió
 puerta, no quien la cita. Una cifra con el verbo equivocado ya no puede colarse
 ni por el lado del log ni por el lado de la línea (§2.2 u).
 
-La corrida que se publica es la de `88a6dc07d` (**100 s**). El reloj de este gate
+La corrida que se publica es la de `cb37779f2` (**95 s**). El reloj de este gate
 tiene ruido, y publicarlo sin decirlo vuelve a ser una afirmación que nadie
 puede reproducir: el ciclo anterior (`f3d897a9`) midió **97 s** con 88
 informes, y otra corrida sobre ese **mismo** contenido, con los módulos tocados
-compilando de cero, midió 98 s. La diferencia entre 97 y 100 s entra de sobra en
-el ruido medido de este reloj (±10 s). Este ciclo **añadió 3 tests** y **ningún
-escenario nuevo** —el escenario 38 es el mismo de siempre, ahora corrido en los
-dos mundos del almacenamiento—, así que su coste es el de la puerta anterior más
-una corrida extra de ese escenario, y **cuánto cuesta por sí sola esa segunda
-corrida no se midió aislado**, así que no se afirma.
+compilando de cero, midió 98 s. La diferencia entre 95 y 97 s entra de sobra en
+el ruido medido de este reloj (±10 s). Este ciclo **añadió 1 test** y **ningún
+escenario nuevo** —cambió la lectura de una ley y su prueba—, así que su coste
+es el de la puerta anterior, y **cuánto cuesta por sí solo el cambio no se midió
+aislado**, así que no se afirma.
 
 El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
 declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
@@ -1194,6 +1193,28 @@ dos veces conserva la **primera** promesa, un escritor con epoch atrasado **no e
 cerrar un Saga mueve **todas** sus obligaciones a la vez. No es un doble del test durable: la
 garantía de *sobrevivir al proceso* sigue siendo del almacén SQLite, con su fichero real.
 
+**w) Un solo lector del terminal del Saga — CERRADO en `cb37779f2`.** El arnés tenía su **propia**
+lectura del `SagaTerminal` para la ley `LAW_SAGA_PENDING_ON_SUCCESS`: preguntaba «el terminal dice
+`SETTLED`?». La proyección publicada pregunta **otra** cosa: «¿este terminal liquida el Saga?». No
+es la misma pregunta cuando el terminal dice `SETTLED` **y lleva un motivo de no liquidarlo**: la
+proyección lo lee como `NeedsIntervention` —un humano tiene que decidir— y el arnés lo leía como
+liquidado.
+
+**La consecuencia medida es un terminal contradictorio invisible.** Un `SagaTerminal` que dice
+`SETTLED` y a la vez lleva un motivo es un Saga roto; el arnés lo leía como un Saga terminado, así
+que un run verde con ese Saga no se denunciaba. Dos reglas sobre el mismo hecho que han
+derivado: la ley de plano no podía ver la contradicción.
+
+**El segundo lector desaparece.** `pendingSagas` pide a `RunPresentationProjection` la lista de
+Sagas y toma las que son `NeedsIntervention`. La ley y la proyección coinciden **por
+construcción**, porque son la misma lectura y no dos reglas que puedan separarse.
+
+**Mutación vista en rojo**: el test nuevo —un terminal `SETTLED` con motivo en un run verde—
+falla con el lector viejo (`AssertionFailedError`) y pasa con el nuevo.
+
+Lo que **no** se toca: `compensatedSagas` sigue leyendo si el Saga compensó algo, que es **otro
+hecho** y que la proyección no expone. Un lector menos, no una lectura menos.
+
 
 ### 2.3 Cierre de ciclo
 
@@ -1276,6 +1297,13 @@ garantía de *sobrevivir al proceso* sigue siendo del almacén SQLite, con su fi
   sin él— y exige que **ambas** cumplan las mismas expectativas. Puerta sobre `88a6dc07d`:
   **100 s**, `tests=rewritten:716 read:0`, **716** tests en **90/90** informes reescritos, 46
   escenarios (45 ok, 1 NOT_RUN) y LOC `11127/65551 = 0.170`.
+- **Un solo lector del terminal del Saga — cerrado en `cb37779f2`.** El arnés consume la
+  proyección publicada en vez de re-implementar su lectura (§2.2 w). El defecto era un terminal
+  **contradictorio** invisible para la ley: `SETTLED` con motivo, que la proyección lee como
+  «un humano tiene que decidir» y el arnés como «liquidado». Con el mismo test, el mismo
+  terminal y la misma ley, la mutación sale a rojo con el lector viejo. Puerta sobre
+  `cb37779f2`: **95 s**, `tests=rewritten:717 read:0`, **717** tests en **90/90** informes
+  reescritos, 46 escenarios (45 ok, 1 NOT_RUN) y LOC `11140/65539 = 0.170`.
 
 ---
 
@@ -1525,6 +1553,13 @@ garantía de *sobrevivir al proceso* sigue siendo del almacén SQLite, con su fi
   que no dice POR QUÉ no es una decisión sino un accidente de cableado, el
   veredicto del Saga se dice también en memoria: una promesa que se liquida en
   silencio no es una promesa que el operador pueda ver.
+- **Un hecho, un lector.** Cuando dos módulos leen el mismo hecho y cada uno tiene su regla, las
+  reglas derivan y el plano acaba contradiciéndose sin que nadie lo note: aquí la proyección
+  decía «un Saga `SETTLED` con motivo necesita un humano» y el arnés decía «liquidado». La
+  segunda regla no era una segunda opinión, era un **error de lectura** que volvía invisible un
+  terminal roto. El que sabe qué significa un dato es el que lo publica, y los demás lo
+  consumen; el que consume tiene que poder **usar** esa lectura, no reimplementarla. Un lector
+  menos es un hecho menos que puede tener dos verdades.
 
 ---
 

@@ -104,6 +104,21 @@ data class EventPage(
      * — that is what `readAfter(run, null, limit)` does — so a null continuation could not tell the
      * end of a run apart from its start, and a consumer would have to treat the two identically
      * and guess. [hasMore] is the field that says whether more is coming.
+     *
+     * **Whose position this is depends on who built the page**, and the two are not the same:
+     *  - a page that comes from the STORE ([EventHistoryReader.readAfter]) carries the store's
+     *    position: the sequence of the last row the store read. Every row in the page was
+     *    considered, so nothing is lost by resuming from there.
+     *  - a page that comes from a FILTERED read (the drain in
+     *    `dev.rubentxu.pipeline.v2.application.EventPageDrain`) carries the CLIENT's position: the
+     *    sequence of the last fact the consumer was handed. The store's position would be wrong
+     *    there, because the page is bounded by rows while the limit counts matching facts, and the
+     *    read can stop in the middle of a page — leaving matching facts that were read and not
+     *    handed out. A cursor that pointed past them would lose them, silently. This was measured
+     *    on this tree: a fact disappeared from the stream with exit code 0 and no gap marker.
+     *
+     * So: the store's page answers "where did the store read up to", and the client's page answers
+     * "where does the consumer's stream stand". A consumer of a page must know which one it holds.
 */
     val nextCursor: EventCursor?,
     val hasMore: Boolean,

@@ -6,7 +6,8 @@
 #   1. the development distribution, built ONCE with installDist;
 #   2. static analysis (detekt) and the public-API compatibility check;
 #   3. the permanent unit tests of every module that has any;
-#   4. the tracked E2E scenarios in v2/examples/, run by examples/run.sh;
+#   4. the tracked E2E scenarios in v2/examples/, run by examples/run.sh --
+#      and only after the launcher's own contract has been checked;
 #   5. the LOC budget gate (scripts/check-budgets.py);
 #   6. the wall-clock gate.
 #
@@ -71,7 +72,7 @@ stage_given=0
 module_given=0
 scenario_given=0
 
-usage() { sed -n '2,57p' "$0"; }
+usage() { sed -n '2,58p' "$0"; }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -530,6 +531,15 @@ gaps_suffix() {
 if want_stage 3; then
 log "stage 3/5  E2E scenarios in v2/examples/"
 stage_started_at=$(date +%s)
+# The launcher's own contract, checked before it is trusted with a verdict.
+# Every scenario below is judged by this program, so the program is the thing
+# that has to be right: a launcher that ignores a mistyped directive, or that
+# reports a green having executed nothing, turns every scenario's verdict into
+# a claim without evidence. The check costs milliseconds and lives in the
+# launcher itself, so there is no second harness to keep in step.
+./v2/examples/run.sh --self-test > "${TMPDIR:-/tmp}/verify-all-stage3-selftest.log" 2>&1 \
+    || { cat "${TMPDIR:-/tmp}/verify-all-stage3-selftest.log" >&2; fail "stage 3 (the E2E launcher's own contract does not hold)"; }
+echo "    launcher contract: ok"
 if [[ -n "$scenario_filter" ]]; then
     ./v2/examples/run.sh "$scenario_filter" > "${TMPDIR:-/tmp}/verify-all-stage3.log" 2>&1 \
         || { tail -40 "${TMPDIR:-/tmp}/verify-all-stage3.log" >&2; fail "stage 3 (see ${TMPDIR:-/tmp}/verify-all-stage3.log)"; }

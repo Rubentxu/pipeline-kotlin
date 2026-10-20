@@ -50,14 +50,20 @@ dependencies {
 
     // Test-only.
     //
-    // This used to carry `testImplementation(project(":pipeline-event-harness"))`, justified by
-    // `RealHistoryParityTest` and `FArch020EventHarnessIsolationTest`. Both were deleted by the
-    // RESET, so the dependency had no consumer and the comment named two classes that no longer
-    // exist — the same stale-authority shape as the `failOnNoDiscoveredTests` claim this module's
-    // siblings carried.
+    // `:pipeline-event-harness` is here for ONE consumer: `RealSagaPlaneLawTest`, which runs the
+    // plane laws over the CAPTURED planes of real runs. The laws live in the harness (it backs
+    // the `pipeline events verify` verb) and the captured bytes live here (the decoder does),
+    // so this is the only module where the two halves meet — and the only place a decoder that
+    // quietly loses a fact could hide: a decoder that read every `compensatedActions` as empty
+    // would leave a law that can never fire.
+    //
+    // It used to carry this edge for `RealHistoryParityTest` and
+    // `FArch020EventHarnessIsolationTest`, both deleted by the RESET; it came back when the
+    // captured plane had a law to answer for.
     //
     // `:pipeline-event-harness` itself is NOT dead: `:pipeline-application` depends on it because
     // it backs the `pipeline events verify` product command. This edge was the only other one.
+    testImplementation(project(":pipeline-event-harness"))
     testImplementation(libs.kotlin.reflect)
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")

@@ -31,6 +31,11 @@ import kotlin.concurrent.withLock
  * run behind a promise that is already durable, so the answer to `arm` is the answer to "may I
  * proceed?".
  *
+ * The same boundary closes a Saga: [moveAll] moves every obligation of a Saga in ONE
+ * statement, so a Saga that is kept is kept for good and one that is undone is undone for
+ * good. There is no middle state in which a resumed run finds half a Saga and compensates the
+ * half that was left.
+ *
  * ## The fencing
  *
  * A writer that lost the run to a takeover must not be able to arm obligations afterwards. The
@@ -181,6 +186,55 @@ class SqliteSagaObligationStore(
         }
     }
 
+    override fun moveAll(
+        runId: String,
+        sagaId: SagaId,
+        from: CompensationObligationStatus,
+        to: CompensationObligationStatus,
+        updatedAtMs: Long,
+        leaseEpoch: Long,
+    ): SagaBulkMove {
+        require(runId.isNotBlank()) { "runId must not be blank" }
+        require(leaseEpoch >= 0) { "leaseEpoch must not be negative, got $leaseEpoch" }
+
+        return DbLock.forPath(dbPath).withLock {
+            val connection = connectionFactory()
+            try {
+                val moved = connection.prepareStatement(MOVE_ALL_OBLIGATIONS).use { statement ->
+                    statement.setString(1, to.name)
+                    statement.setLong(2, updatedAtMs)
+                    statement.setString(3, runId)
+                    statement.setString(4, sagaId.value)
+                    statement.setString(5, from.name)
+                    // The guard's two parameters: the run whose high-water mark is read, and the
+                    // epoch of this writer.
+                    statement.setString(6, runId)
+                    statement.setLong(7, leaseEpoch)
+                    statement.executeUpdate()
+                }
+
+                // What the database says NOW, not what the caller intended: the rows that are
+                // still in the state the move started from. A caller that needs them all moved
+                // reads this number.
+                val remaining = countInStatus(connection, runId, sagaId, from)
+
+                if (moved == 0 && remaining > 0) {
+                    // Nothing was written and the rows are still there: the guard refused this
+                    // writer. The epoch says whether that is what happened, rather than a race
+                    // with somebody else.
+                    val current = currentEpochOf(connection, runId)
+                    if (current > leaseEpoch) {
+                        return@withLock SagaBulkMove.Fenced(current)
+                    }
+                }
+
+                SagaBulkMove.Applied(moved = moved, remaining = remaining)
+            } finally {
+                connection.close()
+            }
+        }
+    }
+
     override fun find(runId: String, key: CompensationKey): SagaObligationRow? {
         val connection = connectionFactory()
         try {
@@ -258,6 +312,28 @@ class SqliteSagaObligationStore(
             statement.setString(4, compensationId.value)
             statement.executeQuery().use { rs ->
                 return if (rs.next()) readRow(rs) else null
+            }
+        }
+    }
+
+    /**
+     * How many obligations of [sagaId] are in [status] right now.
+     *
+     * Read in the same connection as the write it describes, so the number is the state the
+     * database holds after that write and not a second, later, guess.
+     */
+    private fun countInStatus(
+        connection: Connection,
+        runId: String,
+        sagaId: SagaId,
+        status: CompensationObligationStatus,
+    ): Int {
+        connection.prepareStatement(COUNT_STATUS_OBLIGATIONS).use { statement ->
+            statement.setString(1, runId)
+            statement.setString(2, sagaId.value)
+            statement.setString(3, status.name)
+            statement.executeQuery().use { rs ->
+                return if (rs.next()) rs.getInt(1) else 0
             }
         }
     }
@@ -376,6 +452,33 @@ class SqliteSagaObligationStore(
             SELECT * FROM saga_obligation
             WHERE run_id = ?
             ORDER BY created_at_ms, saga_id, action_id, compensation_id
+        """
+
+        /**
+         * The bulk move.
+         *
+         * ONE statement, so ONE transaction: every obligation of the Saga that is in the old
+         * state moves, or none does. A Saga that is closed is closed for good — a process that
+         * died in the middle of closing it leaves no half-closed Saga behind for a resumed run
+         * to undo.
+         *
+         * The trailing WHERE is the fencing guard, in the same statement as the write, so a
+         * writer that lost the run cannot win a race between a check and an update. The row's
+         * OWN lease epoch is not touched: it belongs to the promise, not to the state, and the
+         * receipt is not touched either: it belongs to the effect, which is still there.
+         */
+        const val MOVE_ALL_OBLIGATIONS = """
+            UPDATE saga_obligation
+            SET status = ?, updated_at_ms = ?
+            WHERE run_id = ? AND saga_id = ? AND status = ?
+              AND (
+                SELECT COALESCE(MAX(lease_epoch), -1) FROM saga_obligation WHERE run_id = ?
+              ) <= ?
+        """
+
+        const val COUNT_STATUS_OBLIGATIONS = """
+            SELECT COUNT(*) FROM saga_obligation
+            WHERE run_id = ? AND saga_id = ? AND status = ?
         """
 
         const val SELECT_RUN_EPOCH = """

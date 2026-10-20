@@ -111,6 +111,23 @@ enum class CompensationObligationStatus {
     EFFECT_CONFIRMED,
 
     /**
+     * The forward effect happened AND the Saga COMPLETED: the effect is KEPT and the promise
+     * is void.
+     *
+     * ## Why this state exists
+     *
+     * A confirmed forward effect owes a compensation — that is what [EFFECT_CONFIRMED] means —
+     * and the only way out of that debt used to be undoing the effect. A Saga that ended well
+     * could therefore not say so: its obligations stayed owed for ever, a resumed run
+     * compensated a Saga that had succeeded, and a run that reported success could show a
+     * compensated Saga in its own history.
+     *
+     * This is the state that says the opposite of [COMPENSATED]: the effect was NOT undone, it
+     * was kept. Nothing is owed, and nothing may be undone.
+     */
+    EFFECT_KEPT,
+
+    /**
      * The forward was observed to have had NO effect.
      *
      * The obligation closes as not required: there is nothing to compensate.

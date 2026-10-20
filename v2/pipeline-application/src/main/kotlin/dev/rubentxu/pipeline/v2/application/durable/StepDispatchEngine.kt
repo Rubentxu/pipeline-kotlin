@@ -281,6 +281,15 @@ internal class StepDispatchEngine(
                     store = sagaBinding.store,
                     clock = clock,
                 ),
+                // SAGA / PK-2 (3b-5): the other closing of a Saga — the one that KEEPS the
+                // effects. It reads the same durable rows and writes them with the same lease
+                // epoch, because it is the same authority about the same promises.
+                completion = SagaCompletionAdapter(
+                    runId = runId.value,
+                    leaseEpoch = sagaBinding.leaseEpoch,
+                    store = sagaBinding.store,
+                    clock = clock,
+                ),
                 slotInvoker = bodySlotInvoker,
                 // The events are the observable trace of the loop: a compensation that STARTED,
                 // one that FINISHED and the Saga's TERMINAL state. They are announced by the

@@ -51,6 +51,9 @@ object ProtocolGrammar {
 
         // A run that leaves a Saga pending cannot report success.
         sagaPendingOnSuccess(history, violations)
+
+        // A run that undid its own work cannot report success.
+        sagaCompensatedOnSuccess(history, violations)
         return violations
     }
 
@@ -178,6 +181,58 @@ object ProtocolGrammar {
             unexpected = "pending saga(s): ${pending.joinToString()}",
         )
     }
+
+    /**
+     * A run that reports success while a Saga COMPENSATED is a broken plane.
+     *
+     * ## Why this is a law and not a comment
+     *
+     * A compensated Saga undid what it did: the resource was released, the payment refunded. A
+     * run that says "success" after that tells the operator that the world is as it should be,
+     * and the world is not — the work was undone and the reason for the undo is in the plane.
+     *
+     * ## Why the product can only satisfy it NOW
+     *
+     * Until a Saga could be CLOSED WELL there was only one way to end one — compensate — so a
+     * chain that succeeded used to undo itself and the run still said "success". The law was
+     * therefore FALSE of the product, and a law the product breaks is a comment. With the
+     * closing verb, a chain that succeeded keeps its effects and a chain that failed undoes
+     * them, so a green run and a compensation cannot both be true.
+     *
+     * ## Why EVERY terminal counts, and not only the last one
+     *
+     * The newest terminal says where a Saga STANDS NOW, and the pending law reads it that way.
+     * But a compensation is not a state: it is something that HAPPENED. A resumed run reuses
+     * the run id, so a plane may carry a Saga that compensated in the first attempt and settled
+     * empty in the second — and the compensation did happen, whatever the newest terminal says.
+     * So the law looks at every terminal of the run.
+     */
+    private fun sagaCompensatedOnSuccess(history: List<TypedEvent>, out: MutableList<EventViolation>) {
+        val finished = history.lastOrNull { it.kind == "RunFinished" } ?: return
+        val outcome = (finished.event as? RunFinished)?.outcome ?: return
+        if (outcome != RunOutcome.SUCCESS_TOKEN) return
+        val compensated = compensatedSagas(history)
+        if (compensated.isEmpty()) return
+        out += EventViolation(
+            rule = ViolationRule.LAW_SAGA_COMPENSATED_ON_SUCCESS,
+            message = "law: the run reported success while saga(s) " +
+                "${compensated.joinToString()} had compensated their effects",
+            relevantTrace = boundedWindow(history, finished.sequence),
+            unexpected = "compensated saga(s): ${compensated.joinToString()}",
+        )
+    }
+
+    /**
+     * The Sagas that compensated something, by id.
+     *
+     * A Saga that compensated nothing is not here. A Saga that compensated in ANY attempt is,
+     * because a compensation that happened cannot be un-happened by a later terminal.
+     */
+    private fun compensatedSagas(history: List<TypedEvent>): List<String> =
+        history.mapNotNull { typed ->
+            val terminal = typed.event as? SagaTerminal ?: return@mapNotNull null
+            if (terminal.compensatedActions.isEmpty()) null else terminal.sagaId
+        }.distinct()
 
     /**
      * The Sagas the plane leaves open, by id.

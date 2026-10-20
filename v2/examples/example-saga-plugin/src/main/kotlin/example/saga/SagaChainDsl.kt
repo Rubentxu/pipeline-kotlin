@@ -66,9 +66,16 @@ data class SagaChainScript(
  *
  * ## What the fixture does NOT pretend
  *
- * The third action FAILS — that is the trigger of the whole demonstration — and its body is a
- * command that fails. Whether that failure means "nothing happened" or "nobody can say" is NOT
- * decided here: it is the provider's contract, and the script says which one it is.
+ * The fixture does not decide whether the chain WORKS: that is the SCRIPT's business, and the
+ * scripts disagree on purpose. The failure scenarios write a command that fails, and the
+ * success scenario writes one that works — because a Saga that ended well is a different path
+ * through the engine, and a fixture that could only fail could not show it.
+ *
+ * What the fixture DOES decide is the chain's SHAPE, and that is where the seam's rules live:
+ * two or three actions, each with a forward body and a compensation body of its own kind.
+ *
+ * Whether a failing action leaves "nothing happened" or "nobody can say" is NOT decided here
+ * either: it is the provider's contract, and the script says which one it is.
  */
 fun StageScope.sagaChain(
     sagaId: String,
@@ -76,7 +83,8 @@ fun StageScope.sagaChain(
     providerContract: SagaProviderContract = SagaProviderContract.FailureLeavesNoEffect,
 ) {
     require(actions.size in 2..3) {
-        "the demo chain has two or three actions, and the last one is the one that fails"
+        "the demo chain has two or three actions, each with a forward body and a " +
+            "compensation body of its own kind"
     }
     require(actions.all { it.forwardCommand.isNotBlank() }) {
         "every action needs a forward command"

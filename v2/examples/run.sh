@@ -9,7 +9,10 @@
 #
 #   //@ expect-exit 1                 default is 0
 #   //@ expect-stderr <substring>     the refusal must be this specific, not
-#                                     merely a nonzero exit
+#                                     merely a nonzero exit. REPEATABLE: every
+#                                     declared substring must be present, and
+#                                     declaring it twice is not "the last one
+#                                     wins" — see the note below.
 #   //@ durable-once                  run ONCE against a real durable store
 #   //@ durable                       run twice against one control root and
 #                                     require the second run not to repeat the
@@ -41,6 +44,21 @@
 # scenarios already carry prose comments such as
 # "// durable execution over the journal", so a bare `//` prefix would let a
 # sentence in a comment silently switch a directive on.
+#
+# Why `expect-stderr` is REPEATABLE, and every one of them must hold. It used to
+# be "the last one wins": a scenario that declared two of them silently lost the
+# first, and the second one was the only thing the verdict ever looked at. That is
+# a directive that changes nothing, which is the exact defect the Semantic
+# Constitution §2 forbids. Worse, it made a whole class of scenario unable to say
+# what it meant: a run that is EXPECTED to fail carries two independent truths on
+# stderr — why the run failed, and what the engine concluded — and a scenario
+# that can only assert one of them has to choose which fact goes unchecked.
+#
+# With every one required, a scenario asserts both, and a scenario whose OWN check
+# fails is still caught: the failing check replaces the run's cause on stderr, so
+# the cause substring disappears and the verdict notices. A scenario that expects
+# the run to fail therefore does not need a second exit code to tell "the domain
+# failed" from "my check failed" — the cause says which.
 
 set -Eeuo pipefail
 
@@ -93,7 +111,7 @@ run_scenario() {
     slug="$(printf '%s' "$name" | tr '/.' '--')"
 
     local expect_exit=0
-    local expect_stderr=""
+    local expect_stderr=()
     local durable=0
     local durable_once=0
     local needs_seeded_credentials=0
@@ -101,7 +119,7 @@ run_scenario() {
     while IFS= read -r directive; do
         case "$directive" in
             '//@ expect-exit '*)   expect_exit="${directive#//@ expect-exit }" ;;
-            '//@ expect-stderr '*) expect_stderr="${directive#//@ expect-stderr }" ;;
+            '//@ expect-stderr '*) expect_stderr+=("${directive#//@ expect-stderr }") ;;
             '//@ durable')         durable=1 ;;
             '//@ durable-once')    durable_once=1 ;;
             '//@ requires-seeded-credentials') needs_seeded_credentials=1 ;;
@@ -212,9 +230,17 @@ run_scenario() {
     fi
 
     if [[ "$code" == "$expect_exit" ]]; then
-        if [[ -n "$expect_stderr" ]] && ! grep -qF -- "$expect_stderr" "$stderr"; then
+        # Every declared stderr expectation must hold, not only the last one.
+        local missing="" wanted
+        for wanted in ${expect_stderr[@]+"${expect_stderr[@]}"}; do
+            if ! grep -qF -- "$wanted" "$stderr"; then
+                missing="$wanted"
+                break
+            fi
+        done
+        if [[ -n "$missing" ]]; then
             printf 'FAIL %-52s exit %s as expected, but stderr lacked: %s\n' \
-                "$label" "$code" "$expect_stderr"
+                "$label" "$code" "$missing"
             failed=$((failed + 1))
             failures+=("$name: exit matched but expected stderr substring absent")
             return

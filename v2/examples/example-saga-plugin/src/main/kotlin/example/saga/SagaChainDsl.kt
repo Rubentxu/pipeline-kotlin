@@ -47,8 +47,16 @@ data class SagaChainScript(
  * the chain is using.
  *
  * That is why the demo uses six distinct core kinds: `core.dir`, `core.withEnv`, `core.timeout`,
- * `core.retry`, `core.sh` and `core.echo`. It is a property of the seam, not of the Saga: a real
- * plugin with a real body per action would give each action its own kind.
+ * `core.retry`, `core.sh` and `core.timestamps`. It is a property of the seam, not of the Saga: a
+ * real plugin with a real body per action would give each action its own kind.
+ *
+ * ## Why every one of those six kinds RUNS A COMMAND
+ *
+ * Because a body nobody can observe is a body the demo cannot prove anything about. The six
+ * kinds are all command-running wrappers, so every forward and every compensation leaves a
+ * trace in the world — and the scenario's assertion is that trace. A kind that only printed
+ * (`core.echo`) would have made the third action's compensation unprovable: the demo would
+ * have CLAIMED that it never ran while being unable to tell whether it had.
  *
  * ## What the fixture does NOT pretend
  *
@@ -59,13 +67,17 @@ data class SagaChainScript(
 fun StageScope.sagaChain(
     sagaId: String,
     actions: List<SagaChainScript>,
-    providerContract: String = SagaChainStepDefinition.PROVIDER_FAILURE_LEAVES_NO_EFFECT,
+    providerContract: SagaProviderContract = SagaProviderContract.FailureLeavesNoEffect,
 ) {
     require(actions.size == 3) {
         "the demo chain has three actions, and the third one is the one that fails"
     }
     require(actions.all { it.forwardCommand.isNotBlank() }) {
         "every action needs a forward command"
+    }
+    require(actions.all { it.compensateCommand.isNotBlank() }) {
+        "every action needs a compensation command: a compensation the scenario cannot see " +
+            "is a compensation the scenario cannot prove was not run"
     }
 
     val slots = listOf(
@@ -91,7 +103,7 @@ fun StageScope.sagaChain(
                         compensateSlot = slot.compensate.value,
                     )
                 },
-                providerContract = providerContract,
+                providerContract = providerContract.wireName,
             ),
         ),
     ) {
@@ -107,7 +119,7 @@ fun StageScope.sagaChain(
 
         // 3. The third action's two bodies. The forward one FAILS, and that is the trigger.
         sh(actions[2].forwardCommand)
-        echo("compensated ${actions[2].actionId}")
+        timestamps { sh(actions[2].compensateCommand) }
     }
 }
 
@@ -123,4 +135,4 @@ private val COMPENSATE_FIRST = dev.rubentxu.pipeline.v2.domain.PluginStepId("cor
 private val FORWARD_SECOND = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.timeout")
 private val COMPENSATE_SECOND = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.retry")
 private val FORWARD_THIRD = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.sh")
-private val COMPENSATE_THIRD = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.echo")
+private val COMPENSATE_THIRD = dev.rubentxu.pipeline.v2.domain.PluginStepId("core.timestamps")

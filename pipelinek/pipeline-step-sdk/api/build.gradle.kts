@@ -21,18 +21,27 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 }
 
-// Unit-test wiring REMOVED .
-// This module carries no unit tests: it is the SDK's public API surface, whose guarantee is
-// `apiCheck` (binary compatibility), the pyramid's leg 3. Its verification is the executable
-// E2E layer -- `.pipeline.kts` pipelines under `examples/`, driven by
-// `examples/run.sh` -- and not a JUnit class.
-// The JUnit dependency, the launcher and the `useJUnitPlatform()` block were removed together.
-// Left in place they were a SILENT green: a `Test` task whose source set is empty reports
-// success while executing zero classes. Gradle 8.14 exposes no `failOnNoDiscoveredTests`
-// property -- the setting does not exist in this version, so nothing inside the build can
-// turn that green into a failure, and a build file asserting otherwise is describing a flag
-// it cannot compile.
-// What turns it into a failure lives outside Gradle: `scripts/verify-all.sh` enumerates the
-// modules it asks from the filesystem and fails when a module that has a test source produces
-// no JUnit XML. The wiring that could have produced the misleading green is gone from the
-// modules that have no tests, so no module reaches that check in silence.
+// The module is the SDK's public API surface, whose compatibility guarantee
+// is `apiCheck`. That is the leg that watches the SHAPE of the surface, and it
+// says nothing about what the accessors do: the difference between a field a
+// step declared and a field it did not is a decision, dozens of codecs rely on
+// it, and a required accessor that returned null instead of failing would hand
+// a step a payload with a hole in it.
+//
+// The executable layer reaches the plugins that use these accessors, so the
+// claim that it verified this module was not as wrong as it looked — but it
+// never checked the difference itself. `JsonAccessorsTest` does.
+//
+// These lines exist because a test source does, and `scripts/verify-all.sh`
+// fails the build when a module with a test source produces no JUnit XML.
+// Gradle 8.14 exposes no `failOnNoDiscoveredTests` property — the setting does
+// not exist in this version — so the guarantee that makes this wiring safe
+// lives in that script, not here.
+dependencies {
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+tasks.test {
+    useJUnitPlatform()
+}

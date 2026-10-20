@@ -1103,6 +1103,16 @@ fun main(args: Array<String>) {
     val workspaceTransport = WorkspaceIntent.resolveRuntimeTransport(
         config, Path.of("").toAbsolutePath().normalize(), controlDirRoot,
     )
+    // The observer follows the Output Plane while the run is in flight, and
+    // THIS is the path a CI takes: a durable journal is how a real pipeline
+    // runs. A console that only appeared on the volatile path would hide the
+    // output of exactly the runs that matter most, so both execution paths
+    // get one observer and both close it when the run returns.
+    // It is started BEFORE the pipeline runs (there is nothing to observe
+    // until a step produces bytes) and closed after it returns, so the last
+    // committed bytes are flushed.
+    val outputObserver = startLiveOutputObserver(runId, controlDirRoot, config.format)
+
     // Collateral finding fix (shutdown race 1/3): the sqlite
     // single-writer thread is NON-daemon. If any exception escapes the run
     // or the stdout envelope streaming below, rawEventStore.close is
@@ -1196,6 +1206,10 @@ fun main(args: Array<String>) {
     rawEventStore.close()
     Pair(outcome, lastEventCaptured)
     } finally {
+        // The observer goes first: it reads durable bytes from the Output Plane
+        // and its last poll is what delivers the final chunk of a run that ended
+        // between two polls.
+        runCatching { outputObserver.close() }
         // Release ownership on every exit path, including the
         // exception paths, so a crashed run is immediately recoverable by the
         // next owner instead of waiting for the OS to reap the lock.

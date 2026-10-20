@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `f3d897a9` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `e9392ce4` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 9 | ídem |
-| Tests unitarios ejecutados | **707** (88 informes JUnit, **88** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
-| Escenarios E2E | 45 (**44 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **10810 / 65477 = 0.165** (límite 2) | `scripts/check-budgets.py --json` |
+| Tests unitarios ejecutados | **713** (89 informes JUnit, **89** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
+| Escenarios E2E | 46 (**45 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
+| `VERIFY_LOC / PRODUCT_LOC` | **10928 / 65474 = 0.167** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **97 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **101 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -34,13 +34,18 @@ calientes, y por eso **no** se compara con la de 2026-10-19 (226 s, la peor de
 tres ensayos tras `rm -rf` de las salidas de build reales, que es la condición
 que hace que la cifra mida el gate y no una restauración de caché). Un total
 correcto con el verbo equivocado ya no puede colarse: la etapa 2 separa
-`rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 87
-de los 87 informes.
+`rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 89
+de los 89 informes —se limpiaron las salidas de test antes de correr, así que
+ninguno pudo venir de la caché—.
 
-La corrida que se publica es la de `f3d897a9` (**97 s**). Otra corrida sobre el
-**mismo contenido**, con los módulos tocados compilando de cero, midió 98 s: el
-reloj de este gate sigue teniendo su ruido, y publicar una cifra única sin él
-vuelve a ser una afirmación que nadie puede reproducir.
+La corrida que se publica es la de `e9392ce4` (**101 s**). El reloj de este gate
+tiene ruido, y publicarlo sin decirlo vuelve a ser una afirmación que nadie
+puede reproducir: el ciclo anterior (`f3d897a9`) midió **97 s** con 88
+informes, y otra corrida sobre ese **mismo** contenido, con los módulos tocados
+compilando de cero, midió 98 s. La diferencia entre 97 y 101 s entra de sobra en
+el ruido medido de este reloj (±10 s): este ciclo añadió **6 tests** y **1
+escenario**, y **cuánto cuesta el escenario nuevo por sí solo no se midió
+aislado**, así que no se afirma.
 
 El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
 declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
@@ -1076,6 +1081,52 @@ Una de sus reglas se ha seguido aquí: un documento de estado **no** es evidenci
 así que cada cifra de esta auditoría se ha medido ejecutando, y una corrección
 anterior que parecía verdad se ha vuelto a medir antes de creerla —y era falsa.
 
+**t) El cuerpo de un plugin se direccionaba por su *kind*, no por su identidad —
+CERRADO en `e9392ce4`.** El motor resolvía «qué cuerpo corresponde a esta fila»
+por la clave de plugin step del hijo (`BodySlots.resolve(step.body.map { it.pluginStepId }, slot)`).
+Dos hijos del **mismo** kind en el mismo cuerpo son ambiguos, y el slot falla
+cerrado. La consecuencia no era cosmética: la demo del 3b necesitaba **seis kinds
+del core** (`core.dir`, `core.withEnv`, `core.timeout`, `core.retry`, `core.sh`,
+`core.timestamps`) para una cadena de dos o tres acciones, porque cada acción
+necesita un cuerpo *forward* y otro *compensate*, y cada cuerpo necesitaba un
+kind que nadie más usara. Eso es un apaño del fixture, y **un apaño del fixture
+no es un patrón que un consumidor externo pueda copiar**: el mismo plugin con
+acciones propias tendría que inventar 2N kinds.
+
+**La regla que lo cierra es una, y es total**: la dirección de un hijo es el
+**nombre que declaró el plugin**, o su *kind* cuando no declaró ninguno. El
+comportamiento histórico sobrevive intacto —un cuerpo que no nombra nada se sigue
+direccionando por kind— y el digest del cuerpo (`BodyStructureDigest`) incorpora
+el nombre **sólo cuando existe**, con un marcador `\u001F`, así que **las filas de
+journal ya publicadas siguen valiendo**.
+
+**El IR lleva el nombre** (`StepNode.slot`, `null` si no hay, y `StepNode.address`
+= `slot ?: pluginStepId`), y el motor resuelve contra las direcciones. La DSL
+crece de forma **aditiva**: `StepSpec.Slot` y `StageScope.slot(name) { … }`, con
+un solo hijo por slot y rechazo al compilar si el bloque declara más de uno.
+
+**La ruptura es real, y por eso lleva recibo.** El campo nuevo vive en la interfaz
+**publicada** `StepNode`: un implementor externo recibe `AbstractMethodError`. Queda
+anotada en `published-contract-exceptions.json` —que es el mecanismo del repo para
+esto— y `pipeline-domain` está clasificado **EXPERIMENTAL**, que es lo que permite
+romper bajo una decisión registrada. Se evaluó la alternativa —un tipo nuevo
+`SlotName`— y **se rechazó por una razón medida**: rompe cinco firmas y obliga a
+una release coordinada del SDK con el consumidor externo; reutilizar `PluginStepId`
+deja al consumidor **sin cambios**.
+
+**Probado desde fuera, no afirmado.** El escenario `39-saga-two-same-kind` corre
+una cadena cuyos cuerpos son **todos** del mismo kind (`core.withEnv`) y afirma las
+**direcciones** que corrieron (`example.saga.reserve.forward` / `charge.forward` /
+`charge.compensate` / `reserve.compensate`); la compensación de la primera comprueba
+desde dentro el orden LIFO. **Mutación vista en rojo**: volver el motor a
+direccionar por *kind* hace **fallar** ese escenario; restaurado, pasa. Un verde
+que nunca se vio rojo no es evidencia, y este se vio rojo.
+
+El evento `CompensationStarted.slot` **no se mueve**: conserva la forma (`String`)
+y cambia de valor. La ley S8 permite cambiar el valor de un campo de texto y no
+la forma, y el valor nuevo es el que sirve: el *kind* no decía qué acción se
+compensó y el nombre sí.
+
 
 ### 2.3 Cierre de ciclo
 
@@ -1131,6 +1182,16 @@ anterior que parecía verdad se ha vuelto a medir antes de creerla —y era fals
   persistencia y criptografía. Lo que **no** se ha hecho es cerrar los ojos
   delante: su peso está medido y publicado, y eso es lo que permite revisitarla
   cuando toque.
+- **El slot del cuerpo: cerrado en `e9392ce4`.** La dirección de un cuerpo de
+  plugin pasó de ser su *kind* a ser **el nombre que declara el plugin**, con el
+  *kind* como valor por defecto cuando no hay nombre (§2.2 t). El motivo medido:
+  el direccionamiento por *kind* obligaba a la demo a inventar **seis kinds del
+  core** para una cadena de dos o tres acciones, y un apaño del fixture no es
+  un patrón copiable. **La ruptura binaria del IR se anota en el ledger**
+  (`published-contract-exceptions.json`, entrada `pipeline-domain`), porque
+  `pipeline-domain` es EXPERIMENTAL y el ledger es el mecanismo del repo para
+  romper con un recibo. Y el escenario nuevo `39-saga-two-same-kind` se **vio
+  rojo** con el motor direccionando por *kind*.
 
 ---
 
@@ -1341,6 +1402,26 @@ anterior que parecía verdad se ha vuelto a medir antes de creerla —y era fals
   capacidades se separó de la definición y la puerta de admisión la cazó; la
   puerta funcionó, pero sólo por casualidad. Un manifiesto que describe Steps que
   el código no tiene es una segunda autoridad capaz de mentir.
+- **Un cuerpo se direcciona por el NOMBRE que declara el plugin, y el *kind* es sólo
+  el valor por defecto.** Se podrían haber escrito tres reglas —«por *kind*», «por
+  nombre» y «por *kind* y nombre»— y se eligió la que deja intacto lo publicado:
+  cuando el plugin no declara nombre, el cuerpo se sigue direccionando por su
+  *kind*, byte a byte. El motivo para no quedarse sólo con el *kind* es medido, no
+  estético: obliga a inventar un kind por cada cuerpo, y la demo del 3b necesitaba
+  seis kinds del core para una cadena de dos o tres acciones. Un apaño del fixture
+  no lo copia un consumidor externo.
+- **El nombre del slot vive en el MISMO espacio de nombres que el *kind*, y por eso
+  se reutiliza `PluginStepId`.** La alternativa —un tipo nuevo `SlotName`— es más
+  pura en el papel y se rechazó por una razón medida: rompe cinco firmas y obliga
+  a una release coordinada del SDK con el consumidor externo. El tipo nuevo se
+  paga en el mundo; el mismo espacio de nombres se paga en una palabra.
+- **La ruptura se anota, no se disimula.** El campo nuevo del IR está en una
+  interfaz publicada, así que es una ruptura binaria real: un implementor externo
+  recibe `AbstractMethodError`. `pipeline-domain` es EXPERIMENTAL, y EXPERIMENTAL
+  significa «se puede romper, con un recibo», no «se puede romper sin dejar
+  constancia». El recibo va en `published-contract-exceptions.json`, y su SHA es
+  **el commit ya fusionado** que introdujo el cambio: un recibo que nombre un SHA
+  que no existe en `main` no es un recibo.
 
 ---
 

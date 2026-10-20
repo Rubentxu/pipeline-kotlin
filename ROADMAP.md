@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `4e397e6e8` | `git rev-parse HEAD` |
+| SHA | `96220fdad` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **18** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 9 | ídem |
-| Tests unitarios ejecutados | **686** (85 informes JUnit, 79 reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
+| Tests unitarios ejecutados | **686** (85 informes JUnit, **85** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate |
 | Escenarios E2E | 44 (**43 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **10287 / 65087 = 0.158** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **10578 / 65087 = 0.163** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **381 s**, una corrida, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **91 s**, una corrida, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -951,14 +951,31 @@ una promesa que no se cumple es deriva entre el nombre y la aserción. Es tambi�
 la vía por la que el coste del gate se paga sin valor: 34 escenarios que no
 comprueban nada cuestan lo mismo que 34 que comprueban.
 
+**q) La etapa 3 se ejecutaba en serie: 289 s de los 338 s del gate — CERRADO en
+`96220fdad`.** Cuarenta y cuatro escenarios a ~6,8 s y 48 arranques de JVM: el
+86 % del coste de la puerta era comprobar lo mismo. **El aislamiento ya
+estaba**, y no por casualidad: cada escenario recibía su propia raíz, su
+propio directorio de trabajo, su propio almacén de credenciales, su propia base
+datos durable, su propio `control-root` y su propio fichero de PID. Un
+escenario con un `/tmp` fijo competiría con todas las demás corridas de la
+máquina, y por eso el lanzador le da un directorio privado. Sólo faltaba dejar
+de serializarlo. **Medido: 44 s frente a 289 s**, y la puerta entera de 338 s a
+**91 s** (margen contra el límite de 900 s: de 2,6× a 9,9×). El informe **no
+cambia de forma**: cada veredicto se escribe en su propio fichero y el padre
+los imprime en orden de escenario, no de finalización, de modo que el log de la
+puerta sigue comparable entre corridas. `PIPELINEK_E2E_JOBS=1` devuelve el
+comportamiento serie exacto, que es lo que necesita un escenario que parezca
+intermitente.
+
 **Auditoría del 2026-10-20 (lectura de código, no de documentos).** Una revisión
 del árbol del productor midió el estado real del roadmap y de las especificaciones
-y encontró, además de n), o) y p): que la etapa 3 del gate es el **86 %** del
-coste (298 s de 345 s medidos; 44 escenarios ≈ 6,8 s y 48 arranques de JVM), que
-`pipeline-protocol` está versionado pero **no está declarado** en Gradle, luego
-nunca se compila, y que el «686 tests» que cita §1 es un **censo** de informes
-en disco, no una medición (en esa corrida, de 85 informes sólo 9 se
-reescribieron). El informe completo, con el plan priorizado y las propuestas de
+y encontró, además de n), o) y p): que la etapa 3 del gate era el **86 %** del
+coste (298 s de 345 s medidos; 44 escenarios ≈ 6,8 s y 48 arranques de JVM),
+que `pipeline-protocol` está versionado pero **no está declarado** en Gradle,
+luego nunca se compila, y que el «686 tests» que cita §1 es un **censo** de
+informes en disco, no una medición (en esa corrida, de 85 informes sólo 9 se
+reescribieron). **De sus tres primeros candidatos, dos están ya cerrados**
+—o) y el del coste— y el tercero, el del glob, es el siguiente. El informe completo, con el plan priorizado y las propuestas de
 pensamiento lateral, está en el paquete de evolución del Saga, en
 `pipelinek-saga-evolution/auditoria/INFORME-AUDITORIA-2026-10-20.md`.
 Una de sus reglas se ha seguido aquí: un documento de estado **no** es evidencia,
@@ -971,15 +988,18 @@ anterior que parecía verdad se ha vuelto a medir antes de creerla —y era fals
 - `PRODUCT-GATE` (certificador externo, RC publicada) = **`BLOCKED_EXTERNAL`**.
   No hay CI remoto en este repositorio. La ausencia de CI **nunca** se declara
   `PASS`.
-- **Presupuesto de tiempo: MEDIDO, `CERRADO`.** El ensayo de este ciclo dio
-  **381 s** sobre `4e397e6e8`, con el límite en 900 s, leído de la línea de
-  veredicto de la etapa 5 (`PASS  sha=…  elapsed=381s  budget=900s`) y no del
-  código de salida. Cierra la línea que estaba caducada desde `18d3148a` (242 s,
-  211 s, 213 s), cuyos números **seguían siendo ciertos para ese SHA y ninguno
-  más**: desde entonces el árbol avanzó once commits y dos de los cambios de
-  este ciclo añaden 35 tests nuevos, compilan dos módulos que antes no
-  compilaban para test —`pipeline-events` y `pipeline-application`— y capturan
-  dos planos reales como recursos. El margen sigue siendo de 2,5×.
+- **Presupuesto de tiempo: MEDIDO, `CERRADO`, y MEJORADO.** El ensayo de este
+  ciclo dio **91 s** sobre `bc2acec7c` (árbol idéntico a `96220fdad`), con el
+  límite en 900 s, leído de la línea de veredicto de la etapa 5
+  (`PASS  sha=…  elapsed=91s  budget=900s`) y no del código de salida. El
+  margen contra el límite pasa de 2,4× a **9,9×**. No es que el trabajo
+  hiciese menos: es que **el harness costaba 86 % de la puerta** y eso se ha
+  corregido (§2.2 q). La etapa 3 baja de 289 s a **45 s** — 44 escenarios en
+  paralelo — y las etapas 1, 2 y 4 no se mueven. El resto de la historia: los
+  381 s de `4e397e6e8`, que seguían siendo ciertos para ese SHA y ninguno más;
+  y los 242 s, 211 s y 213 s de `18d3148a`, que ya no lo son desde hace tiempo.
+  **El número de reloj de un gate depende de su harness, no sólo del producto**,
+  y por eso el presupuesto se vuelve a medir en cada ciclo en vez de heredarse.
   Y el alza no es proporcional al trabajo: la etapa 2 mide 21 s sobre 85
   informes JUnit, y el total apenas se movió respecto del ciclo anterior
   (350 s → 381 s) con 26 tests más y un escenario E2E más. Un gate verde por

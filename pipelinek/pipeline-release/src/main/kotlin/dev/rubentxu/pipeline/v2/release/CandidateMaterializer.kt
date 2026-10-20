@@ -102,8 +102,8 @@ object CandidateMaterializer {
                         "covered declares ${covered.size} asset(s) to digest, which is the whole " +
                             "point of SHA256SUMS, but no path was given to write it. Refusing to " +
                             "materialize a candidate whose manifest could only record " +
-                            "`sha256sums = null` next to assets it never digested; "the release policy " +
-                            "DISTRIBUTION-FIRST RELEASE POLICY fixes the asset set exactly, and a " +
+                            "`sha256sums = null` next to assets it never digested; the " +
+                            "release policy fixes the asset set exactly, and a " +
                             "digest that was never computed is a defect to fix, not a member to " +
                             "ship around. Either pass the path to write, or declare an empty " +
                             "`covered` if no assets are being certified.",

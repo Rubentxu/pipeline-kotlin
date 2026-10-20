@@ -1879,7 +1879,7 @@ private enum class DurableShellTimeoutCompletion {
  * @return The execution result.
 */
 @Deprecated(
-    message = "Compatibility projection for PipelineRun's legacy String status flow. Migrate to DurableShellExecutor.executeTerminal with ShOptions and consume the typed terminal result; this projection is on its way out.",
+    message = "Legacy String status flow. Use DurableShellExecutor.executeTerminal and consume the typed terminal result.",
     replaceWith = ReplaceWith(
         "DurableShellExecutor().executeTerminal(controlDir, scriptContent, opId, ShOptions(timeoutMs = timeoutMs, env = env, sandbox = sandbox, workspaceRoot = workspaceRoot ?: controlDir))",
     ),

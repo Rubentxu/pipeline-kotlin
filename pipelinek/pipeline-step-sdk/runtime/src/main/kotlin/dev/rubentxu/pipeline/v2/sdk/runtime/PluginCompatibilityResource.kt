@@ -40,7 +40,7 @@ object PluginCompatibilityResource {
 */
     fun load(classLoader: ClassLoader = PluginCompatibilityResource::class.java.classLoader): PipelineKApiRange {
         val resource = classLoader.getResource(RESOURCE_PATH)
-            ?: throw IllegalStateException(
+            ?: error(
                 "$RESOURCE_PATH is absent on the classpath. The plugin was built without the " +
                     "Plugin compatibility resource. Run a clean build via Gradle so the " +
                     "policy can emit the resource from rootProject.version. A plugin that does not " +
@@ -48,12 +48,12 @@ object PluginCompatibilityResource {
             )
         val text = resource.openStream().use { it.readBytes().toString(Charsets.UTF_8) }
         val rawRange = parseApiRangeField(text)
-            ?: throw IllegalStateException(
+            ?: error(
                 "$RESOURCE_PATH does not contain a parseable \"apiRange\" field. The plugin was built " +
                     "from a malformed policy; rebuild via Gradle so the policy re-emits the resource.",
             )
         return parseRangeLiteral(rawRange)
-            ?: throw IllegalStateException(
+            ?: error(
                 "$RESOURCE_PATH declares apiRange='$rawRange', which is not a '[X.Y.Z, A.B.C)' literal. " +
                     "The policy must produce a well-formed range; check buildSrc.",
             )

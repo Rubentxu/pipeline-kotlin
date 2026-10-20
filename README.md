@@ -175,7 +175,7 @@ pipelinek run --help
 
 ## Examples
 
-The [`examples/`](examples/) directory holds 44 runnable
+The [`examples/`](examples/) directory holds 46 runnable
 pipelines that exercise the real CLI, grouped by what they cover:
 
 | Category | Scenarios | What it covers |
@@ -186,7 +186,7 @@ pipelines that exercise the real CLI, grouped by what they cover:
 | `durable/` | 12 | Durable execution over the journal: platform queries, milestones, `waitUntil`, `stash`/`unstash`, the replay guarantee, closing a run whose writer was killed, and six Saga scenarios — compensation, intervention, a crash mid-effect and its reconciliation |
 | `security/` | 2 | Credential bindings, and a ZIP-slip path-traversal defence |
 | `output/` | 7 | The output plane: file reads, a utilities round trip, ZIP/unzip, mixed utilities, cross-step artifact queries, HTML publishing, and the live output of a process |
-| `negative/` | 7 | Deliberate failures that must fail closed: error handling, the typed error step, a command that exits non-zero, a workspace symlink escape, an unregistered directive key, a plugin artifact whose bytes cannot be read, and a plugin whose bytes are not the ones the operator approved |
+| `negative/` | 9 | Deliberate failures that must fail closed: error handling, the typed error step, a command that exits non-zero, a workspace symlink escape, an unregistered directive key, a plugin artifact whose bytes cannot be read, a plugin whose bytes are not the ones the operator approved, and two reads of the event lane that must say **why** they cannot be served — an unknown run and a cursor past the tail |
 | `plugins/` | 5 | The four external example plugins, discovered from the distribution classpath: `uppercase`, `repeat`, a contributed directive, and the Saga consumer — plus a plugin admitted under the operator's trust policy |
 
 Each scenario runs **twice** — once with a private journal database, which is
@@ -226,7 +226,17 @@ and nothing else about a scenario is interpreted:
 //@ durable                    // run twice over one control root; the
                               // pipeline itself asserts the effect did
                               // not repeat, this only makes it happen
+//@ durable-once               // run only on the journalled path: the
+                              // scenario is about the journal, and without
+                              // one there is nothing to resume
+//@ resume                     // the scenario drives a resume itself
+//@ cancel                     // the scenario drives a cancellation itself
 //@ credentials <id> <kind>    // seed a credential into this scenario's store
+//@ plugin-jar <name>          // run against an external example plugin
+//@ plugin-trust <policy>      // run under the operator's plugin trust policy
+//@ events-refusal <fixture>   // the run is the FIXTURE and the verdict is
+                              // the read's refusal: `unknown-run` or
+                              // `cursor-beyond-tail`
 ```
 
 Every directive except `expect-exit` may appear more than once, and each
@@ -256,6 +266,11 @@ PipelineK `0.62.0` ships with:
 - Typed event stream: `CompilationStarted`, `RunStarted`,
   `StageStarted`, `StepStarted`, `StepFinished`, `StepFailed`,
   `RunFinished`, `EchoOutputCaptured`.
+- A read of the event lane that says **why** it cannot be served: an unknown
+  run, a cursor past the tail and a storage failure are three different
+  refusals with three different remedies, not one "unknown run". The follow
+  contract that carries them is published as the capability
+  `events.follow.v2`.
 - Jenkins-familiar `pipeline { stages { stage { ... } } }` shape.
 - Block steps: `parallel`, `retry`, `timeout`, `catchError`.
 - Kotlin `script {}` blocks with real Kotlin control flow.

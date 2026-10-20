@@ -73,18 +73,22 @@ public final class dev/rubentxu/pipeline/v2/domain/BlockSegment$Companion {
 
 public final class dev/rubentxu/pipeline/v2/domain/BlockStepNode : dev/rubentxu/pipeline/v2/domain/StepNode {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/BlockStepNode$Companion;
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Ljava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Ljava/util/List;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Ljava/util/List;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1-ixK4c8Y ()Ljava/lang/String;
 	public final fun component2-GfyuE-w ()Ljava/lang/String;
 	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;
 	public final fun component4 ()Ljava/util/List;
-	public final fun copy-U8DtyPc (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/domain/BlockStepNode;
-	public static synthetic fun copy-U8DtyPc$default (Ldev/rubentxu/pipeline/v2/domain/BlockStepNode;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/BlockStepNode;
+	public final fun component5-kPj7Ucg ()Ljava/lang/String;
+	public final fun copy-Q0xogoQ (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Ljava/util/List;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/BlockStepNode;
+	public static synthetic fun copy-Q0xogoQ$default (Ldev/rubentxu/pipeline/v2/domain/BlockStepNode;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Ljava/util/List;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/BlockStepNode;
 	public fun equals (Ljava/lang/Object;)Z
+	public fun getAddress-GfyuE-w ()Ljava/lang/String;
 	public final fun getBody ()Ljava/util/List;
 	public fun getId-ixK4c8Y ()Ljava/lang/String;
 	public fun getPayload ()Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;
 	public fun getPluginStepId-GfyuE-w ()Ljava/lang/String;
+	public fun getSlot-kPj7Ucg ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -1181,16 +1185,20 @@ public final class dev/rubentxu/pipeline/v2/domain/NetworkStepException : dev/ru
 
 public final class dev/rubentxu/pipeline/v2/domain/OpaqueStepNode : dev/rubentxu/pipeline/v2/domain/StepNode {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/OpaqueStepNode$Companion;
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1-ixK4c8Y ()Ljava/lang/String;
 	public final fun component2-GfyuE-w ()Ljava/lang/String;
 	public final fun component3 ()Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;
-	public final fun copy-FemHWHM (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;)Ldev/rubentxu/pipeline/v2/domain/OpaqueStepNode;
-	public static synthetic fun copy-FemHWHM$default (Ldev/rubentxu/pipeline/v2/domain/OpaqueStepNode;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/OpaqueStepNode;
+	public final fun component4-kPj7Ucg ()Ljava/lang/String;
+	public final fun copy-4zBU4n8 (Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/OpaqueStepNode;
+	public static synthetic fun copy-4zBU4n8$default (Ldev/rubentxu/pipeline/v2/domain/OpaqueStepNode;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/OpaqueStepNode;
 	public fun equals (Ljava/lang/Object;)Z
+	public fun getAddress-GfyuE-w ()Ljava/lang/String;
 	public fun getId-ixK4c8Y ()Ljava/lang/String;
 	public fun getPayload ()Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;
 	public fun getPluginStepId-GfyuE-w ()Ljava/lang/String;
+	public fun getSlot-kPj7Ucg ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -2212,13 +2220,19 @@ public final class dev/rubentxu/pipeline/v2/domain/StepId$Companion {
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/StepNode {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/StepNode$Companion;
+	public abstract fun getAddress-GfyuE-w ()Ljava/lang/String;
 	public abstract fun getId-ixK4c8Y ()Ljava/lang/String;
 	public abstract fun getPayload ()Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;
 	public abstract fun getPluginStepId-GfyuE-w ()Ljava/lang/String;
+	public abstract fun getSlot-kPj7Ucg ()Ljava/lang/String;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/StepNode$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/StepNode$DefaultImpls {
+	public static fun getAddress-GfyuE-w (Ldev/rubentxu/pipeline/v2/domain/StepNode;)Ljava/lang/String;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/StepOutcome {

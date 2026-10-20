@@ -302,8 +302,37 @@ data class ScriptedStageRef(
 @Serializable
 sealed interface StepNode {
     val id: StepId
+
+    /**
+     * The kind of this step: WHAT runs.
+     *
+     * This is the key the engine dispatches by, and it is unique per kind, not per node.
+     */
     val pluginStepId: PluginStepId
+
     val payload: VersionedStepPayload
+
+    /**
+     * The name this step is ADDRESSED by inside the body that owns it: HOW it is called.
+     *
+     * It is `null` when nobody named it, and then the step is addressed by its [pluginStepId] —
+     * the behaviour that predates named bodies. It is not `null` when the plugin that wrote the
+     * body gave the step a name of its own, and then THAT is the address, and two steps of the
+     * same [pluginStepId] can live in the same body without colliding.
+     *
+     * The difference matters because the two answer different questions: [pluginStepId] says what
+     * to run, [slot] says which of the plugin's own bodies this is. A plugin that chains actions
+     * of the same kind needs [slot]; a plugin that does not keeps working untouched.
+     */
+    val slot: PluginStepId?
+
+    /**
+     * The address this step is called by inside the body that owns it.
+     *
+     * It is the name the plugin gave it, or its kind when nobody named it — one rule, and the
+     * behaviour that predates named bodies survives it untouched.
+     */
+    val address: PluginStepId get() = slot ?: pluginStepId
 }
 
 @Serializable
@@ -311,6 +340,7 @@ data class OpaqueStepNode(
     override val id: StepId,
     override val pluginStepId: PluginStepId,
     override val payload: VersionedStepPayload,
+    override val slot: PluginStepId? = null,
 ) : StepNode
 
 @Serializable
@@ -319,6 +349,7 @@ data class BlockStepNode(
     override val pluginStepId: PluginStepId,
     override val payload: VersionedStepPayload,
     val body: List<StepNode>,
+    override val slot: PluginStepId? = null,
 ) : StepNode
 
 @Serializable

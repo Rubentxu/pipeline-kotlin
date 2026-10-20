@@ -167,7 +167,22 @@ repositories {
 // The published ABI does NOT change — the five published artifacts are
 // identical — but the shipped product is not, and the version that carries a
 // content cannot be the one that already went out without it.
-version = "0.70.0"
+// 2026-10-20: the 0.70.0 train closes at v0.70.0-rc1. The 0.71.0 train opens
+// here (ProductVersion 0.71.0) so the next candidate can be tagged v0.71.0-rc1
+// and satisfy PRODUCT IDENTITY LAW across all five surfaces.
+//
+// This train carries a change in the RELEASE PROTOCOL, not in the shipped
+// runtime: the publication gate no longer loses a plugin whose manifest does
+// not declare a range. The gate is part of the product's contract — AGENTS.md
+// §1 counts identity, digests and reproducible release assets among the
+// non-negotiable product constraints — and the 0.70.0 train shipped with the
+// blind spot, so the train that carries the fixed gate cannot be 0.70.0.
+//
+// It is MINOR and not PATCH because the history derives it that way: every
+// train in this repository's history has been a MINOR, and the one train that
+// was a behavioural fix (0.66.0 -> 0.67.0) was MINOR too. The published ABI
+// does NOT change either way — the five published artifacts are identical.
+version = "0.71.0"
 
 // The product version is the IDENTITY the binary reports and the candidate is tagged
 // with. It is also the one declaration in this file that a long comment can swallow:

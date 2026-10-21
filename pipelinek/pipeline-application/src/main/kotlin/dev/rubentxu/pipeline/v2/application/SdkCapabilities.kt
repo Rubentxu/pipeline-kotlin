@@ -41,8 +41,8 @@ package dev.rubentxu.pipeline.v2.application
  * | `output.read.digested.v1`     | EXPERIMENTAL | `v0.51.0-rc1` |
  * | `output.pin.v1`               | EXPERIMENTAL | `v0.51.0-rc1` |
  * | `output.refusal.retention.v1` | EXPERIMENTAL | `v0.51.0-rc1` |
- * | `runtime.structure.v1`        | EXPERIMENTAL | `v0.53.0-rc1` |
- * | `runtime.operation.v1`        | EXPERIMENTAL | `v0.53.0-rc1` |
+ * | `runtime.structure.v1`        | DEPRECATED | `v0.53.0-rc1`   |
+ * | `runtime.operation.v1`        | DEPRECATED | `v0.53.0-rc1`   |
  * | `runtime.eventshape.v1`       | DEPRECATED | `v0.54.0-rc1`   |
  * | `runtime.eventshape.v2`       | PUBLICADA  | `v0.62.0`       |
  * | `events.stepoutcome.v1`       | PUBLICADA  | `v0.62.0`       |
@@ -102,6 +102,25 @@ package dev.rubentxu.pipeline.v2.application
  * that vocabulary. It is not a new verdict and not a second model of results: the failure already
  * carried the evidence, and what it could not say was **where** it happened.
  *
+ * ## Why the structure and operation ids are announced and not delivered
+ *
+ * The introspection port publishes three ways of asking about a run: `inspect`
+ * (what state is this run in), `runStructure` (enumerate its stages, steps and
+ * operations, paginated) and `inspectOperation` (one operation, one attempt).
+ *
+ * The build delivers the first one — `pipelinek inspect --state` composes it —
+ * and it delivers the other two by NOT delivering them. The adapter has the
+ * methods; nothing in the tree calls them: no command, no script, no example.
+ * A consumer that finds `runtime.structure.v1` in this catalogue and compiles
+ * against it has nothing to call, and the failure would arrive at runtime
+ * instead of at the catalogue.
+ *
+ * So the two ids say the truth: announced, and NOT delivered. That is what
+ * DEPRECATED means here — it does not mean "will be removed", it means "do
+ * not build on this, this build does not serve it". The same rule moved
+ * `runtime.cancel.v1` there and back when the cancel verb arrived, and it is
+ * the reason `events.follow.v1` and `runtime.eventshape.v1` sit there too.
+ *
  * ## Negotiation
  *
  * A consumer negotiates by the presence of these ids in the artifact's
@@ -132,6 +151,10 @@ object SdkCapabilities {
             firstPublished = "v0.62.0",
         ),
         CapabilityEntry(
+            // Delivered, and delivered through a published seam: `pipelinek inspect
+            // --state` composes the published introspection port, so a consumer can
+            // ask a run what state it is in without knowing the stores behind it.
+            // It says EXPERIMENTAL because the shape of the port may still change.
             id = "runtime.inspect.v1",
             status = CapabilityStatus.EXPERIMENTAL,
             firstPublished = "v0.50.0-rc1",
@@ -146,6 +169,10 @@ object SdkCapabilities {
             firstPublished = "v0.50.0-rc1",
         ),
         CapabilityEntry(
+            // Delivered, and delivered through a published seam: `pipelinek runs
+            // recover` composes the published recover port, so a consumer can
+            // close a run whose writer died without repeating its effects. It
+            // says EXPERIMENTAL because the shape of the port may still change.
             id = "runtime.recover.v1",
             status = CapabilityStatus.EXPERIMENTAL,
             firstPublished = "v0.50.0-rc1",
@@ -166,13 +193,22 @@ object SdkCapabilities {
             firstPublished = "v0.51.0-rc1",
         ),
         CapabilityEntry(
+            // Announced, and NOT delivered by this build. The implementation
+            // exists — the introspection adapter has a `runStructure` — and
+            // NOTHING composes it: no command, no script, no example reaches
+            // it. An id that a consumer can find but not use is a promise the
+            // build cannot keep, so it says so. `runtime.inspect.v1` is the id
+            // this build delivers.
             id = "runtime.structure.v1",
-            status = CapabilityStatus.EXPERIMENTAL,
+            status = CapabilityStatus.DEPRECATED,
             firstPublished = "v0.53.0-rc1",
         ),
         CapabilityEntry(
+            // Announced, and NOT delivered by this build, for the same reason as
+            // `runtime.structure.v1`: the adapter has an `inspectOperation`, and
+            // nothing composes it.
             id = "runtime.operation.v1",
-            status = CapabilityStatus.EXPERIMENTAL,
+            status = CapabilityStatus.DEPRECATED,
             firstPublished = "v0.53.0-rc1",
         ),
         CapabilityEntry(

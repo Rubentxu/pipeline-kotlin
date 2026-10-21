@@ -105,6 +105,11 @@ object EventPayloadAccessor {
         is dev.rubentxu.pipeline.v2.events.StageFinished -> e.stageIndex
         is dev.rubentxu.pipeline.v2.events.StepStarted -> e.stageIndex
         is dev.rubentxu.pipeline.v2.events.StepFinished -> e.stageIndex
+        // The failure names the stage it belongs to, so it can be grouped with the rest of the
+        // step's events instead of being grouped nowhere. A failure that names no stage — a row
+        // written before the stage was published — has no step key: it belongs to no stage, and
+        // the harness does not place it in the first one.
+        is dev.rubentxu.pipeline.v2.events.StepFailed -> e.stageIndex
         is dev.rubentxu.pipeline.v2.events.ParallelBranchStarted -> e.parentStageIndex
         is dev.rubentxu.pipeline.v2.events.ParallelBranchFinished -> e.parentStageIndex
         is dev.rubentxu.pipeline.v2.events.RetryAttemptStarted -> e.stageIndex
@@ -116,6 +121,7 @@ object EventPayloadAccessor {
     private fun payloadStepIndex(e: DomainEvent): Int? = when (e) {
         is dev.rubentxu.pipeline.v2.events.StepStarted -> e.stepIndex
         is dev.rubentxu.pipeline.v2.events.StepFinished -> e.stepIndex
+        is dev.rubentxu.pipeline.v2.events.StepFailed -> e.stepIndex
         is dev.rubentxu.pipeline.v2.events.RetryAttemptStarted -> e.stepIndex
         is dev.rubentxu.pipeline.v2.events.RetryAttemptFinished -> e.stepIndex
         is dev.rubentxu.pipeline.v2.events.TimeoutScheduled -> e.stepIndex

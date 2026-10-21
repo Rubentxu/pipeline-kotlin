@@ -79,6 +79,10 @@ class StepExecutionBoundary(
         runId = runId,
         sequence = 0L,
         occurredAt = Instant.now(),
+        // The stage the failure belongs to. The boundary knows it, and a consumer that has to
+        // attribute the failure to a stage must not have to join this event with another one to
+        // find out: a step index means a different step in each stage.
+        stageIndex = stageIndex,
         stepIndex = stepIndex,
         stepName = stepName,
         stepType = stepType,

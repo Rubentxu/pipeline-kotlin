@@ -184,8 +184,17 @@ object EnvelopeProjector {
         is StageFinished -> ResourceRefs.stage(event.runId, event.stageIndex)
         is ParallelBranchStarted -> ResourceRefs.stage(event.runId, event.parentStageIndex)
         is ParallelBranchFinished -> ResourceRefs.stage(event.runId, event.parentStageIndex)
-        // RUN subject: stepIndex exists but no stage identity (frozen law)
-        is StepFailed -> runRef
+        // STEP subject: the failure names the stage it belongs to, so it is about that step.
+        // A failure that names no stage — a row written before the stage was published, or a
+        // producer that cannot know it — keeps the run as its subject: the run is the honest
+        // subject when the step's identity is not fully known, and guessing stage 0 would
+        // attach the failure to a stage nobody said it belonged to.
+        is StepFailed ->
+            if (event.stageIndex != null) {
+                ResourceRefs.step(event.runId, event.stageIndex, event.stepIndex)
+            } else {
+                runRef
+            }
         is EchoOutputCaptured -> runRef
         is CredentialUsed -> runRef
         // RUN subject: a plugin event's only stable identity is the run itself; the kind

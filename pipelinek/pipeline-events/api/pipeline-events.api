@@ -1752,18 +1752,19 @@ public final class dev/rubentxu/pipeline/v2/events/StepAdmissionObserved : dev/r
 }
 
 public final class dev/rubentxu/pipeline/v2/events/StepFailed : dev/rubentxu/pipeline/v2/events/DomainEvent {
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/Integer;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
+	public final fun component10 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()J
 	public final fun component4 ()Ljava/time/Instant;
-	public final fun component5 ()I
-	public final fun component6 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/Integer;
+	public final fun component6 ()I
 	public final fun component7 ()Ljava/lang/String;
-	public final fun component8 ()Ldev/rubentxu/pipeline/v2/domain/FailureKind;
-	public final fun component9 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/StepFailed;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/StepFailed;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/StepFailed;
+	public final fun component8 ()Ljava/lang/String;
+	public final fun component9 ()Ldev/rubentxu/pipeline/v2/domain/FailureKind;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/Integer;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/StepFailed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/events/StepFailed;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;Ljava/lang/Integer;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/StepFailed;
 	public fun equals (Ljava/lang/Object;)Z
 	public fun getEventId ()Ljava/lang/String;
 	public final fun getFailureKind ()Ldev/rubentxu/pipeline/v2/domain/FailureKind;
@@ -1772,6 +1773,7 @@ public final class dev/rubentxu/pipeline/v2/events/StepFailed : dev/rubentxu/pip
 	public fun getOccurredAt ()Ljava/time/Instant;
 	public fun getRunId ()Ljava/lang/String;
 	public fun getSequence ()J
+	public final fun getStageIndex ()Ljava/lang/Integer;
 	public final fun getStepIndex ()I
 	public final fun getStepName ()Ljava/lang/String;
 	public final fun getStepType ()Ljava/lang/String;

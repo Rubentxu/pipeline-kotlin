@@ -200,7 +200,7 @@ object ShExecution {
         shOptions = shOptions,
         controlDirRoot = controlDirRoot,
         eventSink = eventSink,
-    ).toLegacyStatus(eventSink, runId, stepIndex)
+    ).toLegacyStatus(eventSink, runId, stageIndex, stepIndex)
 
     /**
      * Invokes the durable shell substrate and returns its closed semantic result.
@@ -733,6 +733,7 @@ object ShExecution {
     private fun ShellInvocationResult.toLegacyStatus(
         eventSink: EventSink,
         runId: String,
+        stageIndex: Int,
         stepIndex: Int,
     ): String = when (this) {
         ShellInvocationResult.UnitValue,
@@ -747,6 +748,10 @@ object ShExecution {
                     runId = runId,
                     sequence = 0L,
                     occurredAt = Instant.now(),
+                    // The stage the failed shell belongs to. The shell knows it, so the failure
+                    // says it: a consumer that attributes the failure to a stage must not have to
+                    // join this event with another one to find out.
+                    stageIndex = stageIndex,
                     stepIndex = stepIndex,
                     stepName = "sh",
                     stepType = "sh",

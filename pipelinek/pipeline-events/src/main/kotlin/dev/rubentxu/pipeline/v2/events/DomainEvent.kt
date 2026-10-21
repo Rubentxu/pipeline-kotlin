@@ -368,12 +368,30 @@ data class TimeoutScheduled(
 
 /**
  * Emitted when a step fails (e.g., error step type).
-*/
+ *
+ * ## The stage this failure belongs to
+ *
+ * [stageIndex] names the stage the failed step belongs to, so a consumer can attribute the
+ * failure to its stage **from this event alone**. Before this field existed the failure said
+ * which step failed but not which stage that step was in, and the only way to learn it was to
+ * join the failure with another event — a join by a step index that is ambiguous between
+ * stages, because the same index means a different step in each of them.
+ *
+ * It is `Int?` and it has **no default**: every producer states the stage it knows, or states
+ * that it does not know it. `null` means exactly "this event does not name the stage", never
+ * "the stage is 0" — a failure in the first stage and a failure whose stage nobody recorded
+ * are two different facts, and only one of them is a stage.
+ *
+ * `null` is also what a row written by an older build decodes to, because that build published
+ * no stage. A consumer that has to tell "this build says unknown" from "this build says
+ * nothing" negotiates the capability `events.failurestage.v1`.
+ */
 data class StepFailed(
     override val eventId: String,
     override val runId: String,
     override val sequence: Long,
     override val occurredAt: Instant,
+    val stageIndex: Int?,
     val stepIndex: Int,
     val stepName: String,
     val stepType: String,

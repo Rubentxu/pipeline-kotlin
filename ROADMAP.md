@@ -18,16 +18,16 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `bec40f87` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `bec40f87` | `git rev-parse HEAD` |
+| SHA | `58511c491` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `58511c491` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
 | Tests unitarios ejecutados | **905** (122 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | **52 (52 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios E2E | **52 (52 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios que sólo comprueban el código de salida | **0**, con **una excepción declarada**: `plugins/lock-directive` afirma su sujeto *por medio* del código de salida —su directiva no emite nada, y si el plugin no se descubriera la etapa se negaría—, así que ahí el código de salida es la aserción y no un testigo vacío | censo por directiva y por cuerpo, sobre los **52** escenarios; el número anterior («0», sin excepción y sobre 47) no nombraba el caso que lo contiene |
-| `VERIFY_LOC / PRODUCT_LOC` | **15006 / 65309 = 0.230** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **15209 / 65309 = 0.233** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **653 / 608 / 598** en los tres ensayos, los tres sobre `bec40f87`, peor 653 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **671 / 655 / 625** en los tres ensayos, los tres sobre `58511c491`, peor 671 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **802** entradas de baseline: **sin cambio**, porque la ley que este ciclo añadió salió a su propio objeto en vez de empujar a `ProtocolGrammar` por encima del límite de detekt | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -46,9 +46,16 @@ abortado, la recuperación no reejecuta, la lease se toma y se devuelve, y una
 lease viva ajena se niega con su propia negativa). Los 3 escenarios nuevos son
 `events/05-run-state` (el que pregunta a un run qué estado tiene), 
 `durable/40-recover-refuses-a-half-finished-run` (el que cierra un run cuyo
-escritor murió sin fabricar un éxito) y `events/04-follow-filtered` (§2.30). El
-ratio de LOC sube de 0.218 a **0.230**, todavía muy por debajo del límite 2, y
-el peor módulo sigue siendo el mismo de siempre
+escritor murió sin fabricar un éxito) y `events/04-follow-filtered` (§2.30).
+
+El bloque del reloj (§2.32) **no añadió ni un test permanente ni un escenario
+permanente**, y ese es el punto: lo que protege la garantía es el auto-control
+del arranque, que ya corre en cada invocación del lanzador. Los dos UAT que lo
+probaron (una escena colgada y una escena que falla de verdad) se retiraron al
+cerrar el ciclo, con su evidencia escrita aquí.
+
+El ratio de LOC sube de 0.230 a **0.233**, todavía muy por debajo del límite 2,
+y el peor módulo sigue siendo el mismo de siempre
 (`pipeline-step-sdk:workflow-control`, 1.633) porque este ciclo no lo tocó.
 
 Lo que este ciclo **no** tocó, y conviene que no se confunda con un avance:
@@ -73,14 +80,20 @@ en ninguna de las dos. En el registro de capacidades, **M3** (volver
 ejecutable, **M4** (componer la introspección contra un sustrato que no conoce
 el run) dejó el escenario `events/05-run-state` en rojo, y **M5** (restaurar la
 regla vieja del recover) hizo que `durable/40` dijera «recovered run … as
-succeeded» sobre un run a medio hacer. Todas se leyeron de vuelta y se
-deshicieron.
+succeeded» sobre un run a medio hacer. En el reloj del lanzador (§2.32), **M6**
+(el reloj deja de disparar) colgó el lanzador sin veredicto ninguno, y **M7**
+(el reloj dispara pero nadie lo nombra) dejó la escena como `failed` en vez de
+BLOCKED. Todas se leyeron de vuelta y se deshacieron.
 
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
 los **122** informes JUnit, que es la condición que hace que la cifra de reloj
 mida el gate y no una restauración de caché. Un total correcto con el verbo
 equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
-**falla** si no reescribe ninguno.
+**falla** si no reescribe ninguno. Los tres ensayos de este bloque se corrieron
+con la máquina cargada por procesos **ajenos a este repositorio** (`rustc` a
+pleno rendimiento): los tres siguieron dentro del presupuesto, y esa carga
+externa es la razón de que sus relojes sean más altos que los del ciclo
+anterior —no el reloj del lanzador, que no añade tiempo sino que lo acota—.
 
 **El gate cuenta 26 proyectos Gradle con test, y un censo independiente por
 fichero cuenta los mismos 26.** La etapa 2 imprime un módulo por nombre, y un
@@ -3977,15 +3990,108 @@ misma línea que su firma. Las dos venían de commits **de este mismo ciclo**,
 publicados sin pasar por la puerta: el árbol no estaba roto, pero tampoco
 había sido medido. Se corrigieron y se volvió a medir desde cero.
 
-**La medición de este ciclo, sobre `bec40f87`.** La puerta completa corrió
-**tres veces** sin filtros, desde salidas de build limpias: **653 / 608 / 598
-s**, peor 653 s contra el límite de 900 s. Las tres corridas reescribieron los
-**122** informes JUnit —905 tests, 0 fallos, 0 errores, 0 skips—, pasaron los
-**52** escenarios E2E (0 fallos, 7 credenciales sembradas, 2 reejecuciones
-durables) y midieron `VERIFY_LOC = 15006` contra `PRODUCT_LOC = 65309`, ratio
-**0.230** con un límite de 2. La deuda estática congelada sigue en **802**
-entradas: ni una más. El certificador externo sigue en **`BLOCKED_EXTERNAL`**,
-porque no existe ni en este repositorio ni en remoto.
+**La medición al cerrar esta parte del ciclo, sobre `bec40f87`.** La puerta
+completa corrió **tres veces** sin filtros, desde salidas de build limpias:
+**653 / 608 / 598 s**, peor 653 s contra el límite de 900 s. Las tres corridas
+reescribieron los **122** informes JUnit —905 tests, 0 fallos, 0 errores, 0
+skips—, pasaron los **52** escenarios E2E (0 fallos, 7 credenciales sembradas,
+2 reejecuciones durables) y midieron `VERIFY_LOC = 15006` contra
+`PRODUCT_LOC = 65309`, ratio **0.230** con un límite de 2. La deuda estática
+congelada sigue en **802** entradas: ni una más. El certificador externo sigue
+en **`BLOCKED_EXTERNAL`**, porque no existe ni en este repositorio ni en
+remoto. La medición final del ciclo, con el reloj del lanzador ya en su sitio,
+está en §2.32.
+
+### 2.32 El reloj del lanzador: una prueba bloqueada ya no paraliza la entrega
+
+El bloque B1.4 pedía acotar los E2E, y la medición que lo justificaba ya
+estaba hecha: **la etapa E2E se llevaba 591 s de los 900 s del presupuesto de
+la puerta**, y el único `timeout` del lanzador era el de la directiva de
+follow. Un escenario colgado se comía la puerta entera sin decir cuál era el
+culpable —el `timeout 900` de fuera mataba el proceso, y el operador se
+enteraba de que se acabó el tiempo, no de qué se quedó colgado.
+
+**Dos relojes, y los dos del lanzador.** El **reloj de escena** son 120 s por
+defecto, y una escena puede pedir otro con `//@ timeout <segundos>`. El
+default sale de una medición, no de una suposición: la escena más lenta tarda
+**21 s** y la mediana **11 s**, así que 120 s es unas seis veces el peor caso
+observado —no dispara en una corrida sana y dispara mucho antes del techo de
+la puerta—. El **reloj de etapa** lo que le queda a la puerta: la puerta le
+pasa su presupuesto restante (`PIPELINEK_E2E_BUDGET_SECONDS`), así que los dos
+presupuestos no pueden discrepar, el lanzador se para antes del techo y
+**nombra las escenas que no le dio tiempo a ejecutar**.
+
+**Una escena sin reloj se para, y con ella se para el árbol.** `timeout` mete
+el comando en su propio grupo de procesos y señaliza al grupo, de modo que una
+pipeline que dejó una shell colgada no deja la corrida colgada. El veredicto
+de esa escena es **BLOCKED** —la garantía **NO** se comprobó— y la corrida no
+es verde. Un fallo real sigue siendo un fallo: el reloj no convierte un
+defecto del producto en un hueco sin comprobar.
+
+**La decisión estructural: la ruta del producto es una función, no una
+variable.** Una variable sería una puerta por la que una edición posterior
+podría llamar al producto y **escapar del reloj**, y una escena colgada que
+escapa del reloj es justo el fallo que este mecanismo existe para evitar. Las
+dos únicas vías hacia el producto —`binary` y `binary_within`— aplican reloj, y
+`binary_within` (la del follow, que tiene su propio presupuesto) sólo puede
+acortar lo que queda, nunca alargarlo.
+
+**El instrumento se comprueba al arrancar.** El reloj tiene que **disparar** y
+tiene que **llevarse el árbol**, y eso se comprueba una vez, contra un
+comando que no puede terminar a tiempo y que deja un nieto detrás: tres
+segundos y la diferencia entre «el lanzador tiene un reloj» y «el reloj del
+lanzador funciona y mata lo que arrancó». Si el instrumento no funciona, el
+lanzador **se niega a arrancar** en vez de fingir que tiene un reloj.
+
+**Los UAT efímeros, y lo que cada uno demuestra.** Dos, todos
+retirados al cerrar el ciclo:
+
+1. Una escena colgada (`sh("sleep 300")`) con `//@ timeout 5`: el producto se
+   paró a los 5 s, el árbol murió con él, la escena quedó **BLOCKED por su
+   nombre**, el recuento reconcilió (`0 passed, 0 failed, 1 blocked`) y la
+   salida fue 1.
+2. Una escena que falla de verdad: `0 passed, 1 failed, 0 blocked`. El reloj
+   no tapa un fallo real.
+
+**Las mutaciones, vistas en rojo sobre el código final.** **M1** (el reloj deja
+de disparar: el presupuesto se vuelve 3600 s) → el lanzador se **colgó** y no
+produjo veredicto ninguno; el reloj externo lo mató y no hubo nombre ni
+resumen. Es exactamente el fallo que este cambio existe para que no ocurra, y
+por eso la prueba que lo detecta importa. **M2** (el reloj para el producto
+pero nadie lo nombra: el marcador desaparece) → la escena pasó a `failed`
+(`1 failed, 0 blocked`) en vez de BLOCKED. La corrida siguió en rojo, que es
+lo importante, pero el diagnóstico perdió la causa.
+
+**La decisión de regresión, y su porqué.** El UAT que cuelga se **RETIRA**: era
+exploratorio, y su evidencia queda registrada arriba. Lo que se **PROMUEVE** es
+más barato y protege lo que de verdad importa: el auto-control del arranque,
+que es permanente, cuesta tres segundos y falla ruidosamente si el reloj no
+dispara o no se lleva el árbol. Las garantías de fondo —«una escena colgada no
+paraliza la entrega» y «una escena bloqueada no puede contar como pasada»— no
+dependen de ese UAT: la primera la sostienen el auto-control y la estructura
+(ninguna invocación del producto escapa al reloj), y la segunda la sostienen
+tres guardas independientes y la reconciliación de los cuatro contadores, que
+hace que cualquier descuadre salga como **no reconciliado** y no como verde.
+
+Queda **DEFERIDO**, con dueño, un ejemplo permanente que se cuelgue a
+propósito. No se promueve aquí porque costaría un concepto nuevo en el
+lanzador (una escena que *espera* el paro) y diez segundos en cada corrida,
+para proteger un **diagnóstico**, no una garantía: si ese camino se rompiera,
+la corrida seguiría en rojo y la escena seguiría nombrada. Su sitio natural es
+la lente de economía del arnés (**B4.3**), que es donde se decide si un
+escenario permanente se gana su coste.
+
+**La medición de este bloque, sobre `58511c491`.** La puerta completa corrió
+**tres veces** sin filtros, desde salidas de build limpias: **671 / 655 / 625
+s**, peor 671 s contra el límite de 900 s. Las tres reescribieron los **122**
+informes JUnit —905 tests, 0 fallos, 0 errores, 0 skips— y pasaron los **52**
+escenarios E2E con **0 bloqueados**, que es el número nuevo que publica el
+lanzador. El ratio de LOC sube de 0.230 a **0.233**: los 203 renglones que
+añade este bloque son del lanzador y de la puerta, que cuentan como verificación,
+no producto. La deuda estática congelada sigue en **802** entradas y el
+certificador externo en **`BLOCKED_EXTERNAL`**. Los tres ensayos corrieron con
+la máquina cargada por procesos ajenos a este repositorio, y los tres
+siguieron dentro del presupuesto.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
@@ -4611,6 +4717,41 @@ porque no existe ni en este repositorio ni en remoto.
   que tocó— y el resto queda escrito y con dueño: son afirmaciones sobre
   garantías que nadie puede comprobar, y una garantía que se afirma en un
   comentario sin ninguna prueba detrás no es una garantía, es una intención.
+
+- **El reloj del lanzador es un reloj, no un presupuesto, y son dos.** El de
+  escena dice cuánto puede tardar una escena; el de etapa dice cuánto le
+  queda a la corrida entera. El segundo lo calcula **la puerta**, que sabe
+  cuánto presupuesto le queda, y se lo pasa: dos presupuestos que no puedan
+  discrepar son mejor que dos presupuestos que se comparan. El primero sale de
+  una medición —la escena más lenta tarda 21 s— y no de un número redondo.
+
+- **La ruta del producto es una función, no una variable.** Una variable sería
+  una puerta: una edición posterior podría llamar al producto por ahí y
+  **escapar del reloj**, y una escena colgada que escapa del reloj es el fallo
+  que todo este mecanismo existe para evitar. Que el camino sea una función
+  convierte «toda invocación tiene reloj» en una propiedad del código y no en
+  una convención que un buen sastre puede romper sin querer.
+
+- **Una escena que se para no es un fallo del producto: es un hueco.** El
+  veredicto es **BLOCKED** —la garantía no se comprobó— y la corrida no es
+  verde. Confundir un paro del reloj con un defecto del producto sería
+  mentirle al operador dos veces: sobre el producto y sobre lo que la corrida
+  sabe. Y al revés tampoco vale: un fallo real sigue siendo un fallo, y el
+  reloj no tapa un defecto.
+
+- **El instrumento se comprueba, no se supone.** Un reloj que no dispara es
+  peor que no tener reloj, porque finge lo contrario. Así que el lanzador
+  comprueba al arrancar que su reloj dispara **y** que se lleva el árbol de
+  procesos, y se niega a arrancar si no. Tres segundos compran la diferencia
+  entre «el lanzador tiene un reloj» y «el reloj funciona».
+
+- **Un UAT que se retira deja su evidencia escrita y su decisión dicha.** Los
+  dos UAT de este bloque se retiraron: eran exploratorios y su resultado queda
+  en el ROADMAP con las mutaciones que lo sostienen. Lo que se promovió fue lo
+  más barato que protege lo que de verdad importa —el auto-control del
+  instrumento—, y lo que quedó **DEFERIDO** —un ejemplo que se cuelga a
+  propósito— lleva dueño y motivo: costaría vocabulario nuevo en el lanzador
+  para proteger un diagnóstico, no una garantía.
 
 ## 4. Referencias
 

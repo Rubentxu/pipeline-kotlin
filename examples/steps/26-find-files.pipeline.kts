@@ -1,31 +1,27 @@
-// The subject is the SIDE-EFFECT contract of `core-utils.findFiles`, declared
-// `Effect.READ_ONLY` in `CoreUtilsFindFilesStepDefinition`. The DSL does not
-// expose the typed `FindFilesOutput`, so the guarantee the harness can observe
-// is not "what files did the step enumerate" but "what files survived the
-// step". A finder that enumerated nothing would have passed the previous
-// assertion, because the assertion queried the same tree the step was supposed
-// to scan; a finder that touched anything -- created a sidecar, deleted a
-// file, rewrote a byte -- would fail THIS one, because the snapshot after has
-// a hash the snapshot before did not.
+// The subject is the SIDE-EFFECT contract of `core-utils.findFiles`. The step is
+// declared `Effect.READ_ONLY` and returns a typed value the DSL does not
+// expose, so the guarantee the harness can observe is "what files survived the
+// step", not "what files did the step enumerate". A finder that enumerated
+// nothing passes the latter; a finder that touched anything -- created a
+// sidecar, deleted a file, rewrote a byte -- fails this one, because the
+// snapshot taken afterwards has a hash the snapshot taken before did not.
 //
 // Two assertions back the same read-only contract from two angles:
 //
 //   * The sha256sum of every file's bytes, sorted by path, proves no file
 //     was added, removed or modified by the step.
 //
-//   * The plain file count (4, matching what the first sh("") wrote)
-//     proves the directory layout did not shrink beneath a step that
-//     silently emptied a path it had been told to scan.
+//   * The plain file count proves the directory layout did not shrink beneath
+//     a step that silently emptied a path it had been told to scan.
 //
 // Both must hold across every glob shape the scenario exercises, including
 // the zero-match case (`*.nope`) which is the loosest match a finder can
 // face: a step that decided "nothing matched, I will tidy up" would slip
 // past a glob selector and not past a tree-integrity hash.
 //
-// The pre-existing enumeration units remain the only thing that asserts
-// "this glob enumerates the right files": the typed `FindFilesOutput` is
-// observed in `:pipeline-step-sdk:utilities` (FindFilesGlobMatcherTest)
-// where the seam supports it.
+// The strong guarantee -- "this glob enumerates exactly the files it should" --
+// remains covered where the typed output IS observable: the unit test that
+// pins `FindFilesOutput` directly.
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.findFiles
 
 pipeline {
@@ -52,8 +48,9 @@ pipeline {
 
             // 3) Three glob shapes against the same tree. The first two
             //    have results; the third matches nothing, on purpose,
-            //    because the audit at §2.36 named it as the discriminating
-            //    case for this row.
+            //    because it is the loosest case a finder can face: a step
+            //    that decided "no result, I will tidy up" would slip past
+            //    a glob selector and not past a snapshot.
             findFiles(base = "build/utils/scan", glob = "*.txt")
             findFiles(base = "build/utils/scan", glob = "**/*.txt")
             findFiles(base = "build/utils/scan", glob = "**/*.nope")

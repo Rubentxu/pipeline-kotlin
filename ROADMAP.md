@@ -452,6 +452,53 @@ encabezada como siguiente paso, y con el resto del inventario (cincuenta
 escenarios sin auditar todavía) cubierto en próximas iteraciones del mismo
 ciclo. El arnés no se modifica en este commit.
 
+### 2.37 La fila 6 cerrada por la opción 2: el escenario mide integridad del árbol, no enumeración
+
+El ciclo siguiente aplicó la opción 2 propuesta en §2.36 sobre
+`examples/steps/26-find-files.pipeline.kts` (`6e3a64ab5`). La nueva garantía es la
+que el arnés sí puede observar: la integridad del árbol bajo cada llamada a
+`findFiles`, alineada con la declaración `effects = listOf(Effect.READ_ONLY)` del
+step.
+
+**Lo que el nuevo escenario afirma, y dónde está la garantía fuerte.** Tres llamadas
+a `findFiles` barren tres formas del mismo árbol — hijos directos (`*.txt`), recursivo
+(`**/*.txt`), y sin matches (`**/*.nope`, la única que una implementación que decidiera
+«nada que hacer, voy a limpiar» tocaría). Entre las llamadas se hace un snapshot del
+árbol (`find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum`); el snapshot
+de después debe ser idéntico, byte a byte, al de antes. Una segunda aserción, el
+recuento de entradas (`-eq 4`), cubre el ángulo que el sha256sum no cubre: un step que
+reescribiera un fichero existente con sus mismos bytes pasaría el sha256sum y dejaría
+el recuento igual, así que el recuento está como red independiente.
+
+**Lo que el escenario ya NO afirma.** La enumeración correcta por glob se ha desplazado
+de la capa E2E al módulo que puede observar el resultado tipado: `FindFilesGlobMatcherTest`
+en `:pipeline-step-sdk:utilities`, sobre `PathMatcher` en memoria (sin disco, sin step,
+sin subprocess, sin reloj). Tres escenarios quedaron repartidos: dos en E2E (este, sobre
+la integridad del árbol) y uno en unit (sobre la forma de la enumeración). El comentario
+de cabecera del escenario dice dónde está cada uno.
+
+**Discriminación medida, no supuesta.** La regla "`AGENTS.md` §2 / `delivery-first-testing`" exige
+romper la garantía y confirmar que el escenario enciende rojo. Dos mutaciones, en direcciones
+distintas:
+
+| Mutación | Eje | Aplicación | Resultado |
+|---|---|---|---|
+| A: predicado invertido (`wc -l -eq 4` → `wc -l -eq 99`) | el escenario como instrumento | edición del escenario | RED con `exit 1, expected 0`, mensaje `the run printed no text of its own` |
+| B: defecto real en el step (`Files.delete(base.resolve("a.txt"))` cuando `entries.isEmpty() && includeMatcher != null`) | el step como objeto del contrato `Effect.READ_ONLY` | edición de `CoreUtilsFindFilesStepDefinition.kt`, `installDist` incremental (7 s), corrida | RED con `Pipeline finished with FAILURE`, `cause [SCRIPT]: shell exited with code 1` |
+
+Ninguna mutación afecta al escenario que no la rompe. La mutación B simula el caso que el
+nombre «opción 2» nombra: una implementación que pasa por el lazo abierto del zero-match y
+borra por decisión propia. La mutación A demuestra que la segunda aserción (recuento) está
+enganchada, no es código muerto. Sin la A, el `diff snapshot.before snapshot.after` sería el
+único instrumento y un recuento drift pasaría desapercibido; sin la B, la garantía `READ_ONLY`
+no tendría observador en E2E.
+
+**Lo que queda por auditar.** Los **cincuenta** escenarios restantes del inventario §2.36 siguen
+sin mutar; este ciclo sólo cierra la fila 6. La mecánica del lote 2 es la misma (`edit → run.sh '<filtro>' →
+checkout`), elegida por variedad de categoría (control-flow, durable, plugins, security, output) y de tipo de
+aserción (in-pipeline `sh`, `//@ expect-stdout`, `//@ expect-transcript`, `//@ expect-exit`,
+`//@ expect-stderr`, `//@ run-state`, `//@ events-*`, `//@ step-verdict`).
+
 ---
 
 ## 2. Deuda técnica abierta

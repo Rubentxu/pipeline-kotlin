@@ -14,15 +14,15 @@ import java.nio.file.Files
 /**
  * The CLI's verb set, and the only place it is written down.
  *
- * Measured 2026-10-18: three defects came from this list living in prose. A rejected
+ * Measured in the field: three defects came from this list living in prose. A rejected
  * argument printed `Usage: pipeline <validate|run>` — 2 of 11 verbs, under a name the
  * binary does not have. The hint on the same rejection said "run 'pipeline --help'",
  * and `--help` was itself rejected: a promise with nothing behind it. The list inside
  * [CliExitMapping] meanwhile named 10 verbs and omitted `inspect`.
  *
- * Enumerating verbs in a *message* is the census defect ([see AGENTS.md]): a hand-kept
- * list drifts from the dispatch and nobody notices until an operator is misled. A verb
- * list in prose is worse than no list, because it is read as authoritative.
+ * Enumerating verbs in a *message* is the census defect: a hand-kept list
+ * drifts from the dispatch and nobody notices until an operator is misled. A
+ * verb list in prose is worse than no list, because it is read as authoritative.
  *
  * So: one constant, rendered by [printUsage], referenced by the hints. The dispatch
  * chain in [MainVerbs.handleReadOnlyVerb] still spells each verb as its own comparison
@@ -50,7 +50,7 @@ internal val CLI_VERBS: List<Pair<String, String>> = listOf(
  *
  * ## Why this is a constant and not prose
  *
- * Measured 2026-10-18 before this existed: six `PIPELINE*` literals in product
+ * Measured before this existed: six `PIPELINE*` literals in product
  * code, **zero** of them reachable from `--help`. `PIPELINE_STORE_PASSPHRASE`
  * appeared only in two error hints, so it was discoverable exactly when
  * something had already gone wrong; `PIPELINE_CREDENTIALS_STORE` appeared only
@@ -105,7 +105,7 @@ internal val CLI_ENVIRONMENT_INTERNAL: List<Pair<String, String>> = listOf(
  * concrete [OutputProtocol] or fail closed with
  * [CliExit.InvalidArgument] (exit 2).
  *
- * Rules (ADR-PK1-OUTPUT-FRAMING):
+ * Negotiation rules:
  * - Empty list → [OutputProtocol.DEFAULT] (Published). No change
  *   in behaviour for callers that did not opt in.
  * - The token list is the CLIENT'S PREFERENCE ORDER. The first id
@@ -246,10 +246,10 @@ fun main(args: Array<String>) {
     // so all downstream consumers receive already-sanitized events.
     val secretPatternRegistry = SecretPatternRegistry()
 
-    // CR-RD-008 / CR-RD-021 / ARC-CANARY-001 canaries, registered ONLY when a round-gate asks for
-    // them. They used to be unconditional, and they were not free.
+    // Round-gate canaries, registered ONLY when a round-gate asks for them. They used to be
+    // unconditional, and they were not free.
     //
-    // `SecretPatternRegistry.maxLiteralByteLength()` is the redactor's LOOKAHEAD, and the lookahead
+    // `SecretPatternRegistry.maxLiteralByteLength()` is the redactor's lookahead, and the lookahead
     // is the floor below which no live output is observable at all: a byte inside it could still
     // turn out to begin a secret, so the redactor must hold it until more input rules it out.
     // `generateEncodedVariants` includes a hex form, so the 28-character canary below claims a
@@ -263,13 +263,13 @@ fun main(args: Array<String>) {
     // store, which are added independently. And the round-gate that needs them now says so
     // explicitly, so the proof is opt-in and visible instead of ambient.
     if (System.getProperty(REDACTION_CANARY_PROPERTY) == "true") {
-        // CR-RD-008 canary: synthetic secret for round-gate verification.
+        // Synthetic secret for round-gate verification.
         secretPatternRegistry.addSecret(SecretHandle.plain("GHS6_CANARY_7f3a9c2e1b4d5e6f"))
 
-        // CR-RD-021 ssh canary: synthetic secret for SSH channel round-gate verification.
+        // Synthetic secret for SSH channel round-gate verification.
         secretPatternRegistry.addSecret(SecretHandle.plain("__ssh_canary__"))
 
-        // ARC-CANARY-001 / CR-RD-022 artefact canary: synthetic secret for artefact step round-gate.
+        // Synthetic secret for artefact step round-gate verification.
         secretPatternRegistry.addSecret(SecretHandle.plain("__artefact_canary__"))
     }
 
@@ -318,10 +318,10 @@ fun main(args: Array<String>) {
         // Reporting SUCCESS for it was the same DEFAULT_SUCCESS the run path
         // turned into an NPE.
         //
-        // A compilation produces a LIST of diagnostics. Measured 2026-10-18 on
-        // the built distribution, the previous shape collapsed it to one
-        // message with `lastOrNull`: a script with nine errors printed exactly
-        // one of them — the LAST one, which is the least likely to be the one
+        // A compilation produces a LIST of diagnostics. Measured on the built
+        // distribution, the previous shape collapsed it to one message with
+        // `lastOrNull`: a script with nine errors printed exactly one of them —
+        // the LAST one, which is the least likely to be the one
         // the author wrote first — while the cardinality stayed visible. This
         // verdict only has to answer "may it run, and if not, how many
         // reasons"; the renderer above already printed each one with its

@@ -51,9 +51,6 @@ data class IndexedStep(
  * The flattener is generic: it handles ANY [StepSpec] that carries a `steps: List<StepSpec>`
  * field, not just [StepSpec.WithEnv].
  *
- * Design: D1, D2 (ADR-0052 §D1/D2)
- * R-1 mitigation: extracted before new step kinds land, locks shape for ml-r10..r13
- *
  * ## Extensibility
  *
  * When a new block-type [StepSpec] is added (e.g., [StepSpec.Dir], [StepSpec.TimeoutBlock],
@@ -105,7 +102,7 @@ object BlockStepFlattener {
 
         // Recurse into nested steps for any block-type step
         when (step) {
-            // Registry step is a leaf: no nested body to flatten (LB-02 / EP-F2).
+            // Registry step is a leaf: no nested body to flatten.
             is StepSpec.RegistryStepSpec -> {}
             // registry Block form owns a body — flatten children like any block.
             is StepSpec.RegistryBlockSpec -> {
@@ -126,7 +123,7 @@ object BlockStepFlattener {
             is StepSpec.WithCredentialsBlock -> {
                 flattenChildren(step.steps, depth, blockPath, result)
             }
-            // --- ML-R9 block-type steps (T-04..T-10) ---
+            // --- block-type steps ---
             is StepSpec.Dir -> {
                 flattenChildren(step.steps, depth, blockPath, result)
             }
@@ -136,7 +133,7 @@ object BlockStepFlattener {
             is StepSpec.WarnError -> {
                 flattenChildren(step.steps, depth, blockPath, result)
             }
-            // ML-R9 T-08 output-decorators
+            // output-decorator blocks
             is StepSpec.Timestamps -> {
                 flattenChildren(step.steps, depth, blockPath, result)
             }
@@ -146,11 +143,11 @@ object BlockStepFlattener {
             is StepSpec.NodeNoOp -> {
                 flattenChildren(step.steps, depth, blockPath, result)
             }
-            // ML-R9 T-09 milestone
+            // milestone
             is StepSpec.Milestone -> {
                 // Milestone has no nested steps
             }
-            // ML-R9 T-10 timeout/retry blocks
+            // timeout/retry blocks
             is StepSpec.TimeoutBlock -> {
                 flattenChildren(step.steps, depth, blockPath, result)
             }

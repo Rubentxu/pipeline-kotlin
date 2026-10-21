@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `a2ffb90db` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `03bdc2a3a` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **22** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 5 | ídem |
 | Tests unitarios ejecutados | **743** (94 informes JUnit, **94** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:743 read:0` |
 | Escenarios E2E | 46 (**45 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **11389 / 65556 = 0.174** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **11389 / 65771 = 0.173** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **99 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **97 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -54,6 +54,21 @@ el ruido medido de este reloj (±10 s). Este ciclo **añadió 26 tests** en cuat
 módulos y **ningún escenario E2E nuevo**, así que su coste es el de la puerta
 anterior, y **cuánto cuesta por sí solo el cambio no se midió aislado**, así que
 no se afirma.
+
+**Lo que este bloque movió, y lo que no.** El bloque `main-partido` (PR #183
+→ `03bdc2a3a`) no toca el censo de módulos con test, ni añade tests, ni añade
+escenarios: los **743** tests y los **46** escenarios E2E son los mismos. Lo que
+mueve son dos cifras de la tabla: `PRODUCT_LOC` sube de 65 556 a **65 771**
+(+216 líneas efectivas, casi todas KDoc que explica por qué cada costura es una
+costura) y el reloj de la puerta va de 99 s a **107 s**. El ratio global baja un
+hábito: 0,173. El ratio máximo por módulo no se mueve: sigue siendo
+`workflow-control` con 1,633.
+
+El `PRODUCT_LOC` sube porque el bloque **no es neutro en líneas**, y decirlo es
+parte del resultado: paga 216 líneas de producción efectivas a cambio de un
+punto de llamada único, 28 entradas de baseline menos y un `main` que se puede
+leer. Un bloque de refactor que sale gratis no es un refactor: es un bloque que
+no explica lo que hace.
 
 El escenario `NOT_RUN` es `security/14-credentials-bindings.pipeline.kts`, que
 declara `requires-seeded-credentials`: el lanzador lo marca `NOT_RUN` en vez de
@@ -1329,6 +1344,151 @@ a reglas que no los tenían.
 
 Puerta sobre el SHA del bloque: `PASS sha=a2ffb90db… elapsed=99s budget=900s
 tests=rewritten:743 read:0 gaps=1 not_run`.
+
+
+**y) El `main` era un fichero de 1 652 líneas — CERRADO en `03bdc2a3a`.** El bloque
+`main-partido` parte `v2/pipeline-application/.../Main.kt` en un fichero por
+mundo, y de paso quita **tres lectores duplicados** de los mismos hechos. La
+pregunta del bloque no es «¿cuántas líneas tiene el fichero?» sino «¿cuántos
+sitios puede leer un mismo hecho?».
+
+**Lo que había, medido.** `Main.kt` eran 1 652 líneas, con un `fun main` de 1 463
+(788 efectivas) y **27 entradas de baseline de detekt** encima: dos supresiones
+(`LongMethod`, `CyclomaticComplexMethod`) y 25 de distinto tipo. El baseline es
+donde un olor deja de verse, así que el bloque se mide por las entradas que
+elimina, no por los ficheros que crea. Este elimina **28** (las 27 de `Main.kt` y
+la de `runCanonicalPipeline`), y las 390 entradas del módulo pasan a 362.
+
+**Los tres lectores duplicados, y por qué cada uno importa:**
+
+1. **La ruta canónica tenía DOS puntos de llamada.** `runCanonicalPipeline`
+   llevaba 18 parámetros y la llamaban los dos mundos —el volátil y el durable—
+   con 18 argumentos cada uno. Dos puntos de llamada son dos que pueden divergir,
+   y la divergencia posible era grave: `--db` podía acabar ejecutando un camino
+   distinto del que se ejecuta sin `--db`. Ahora hay **un** punto de llamada
+   (`runCanonical`) y los dos mundos construyen la misma petición
+   (`CanonicalRunRequest`), agrupada por costura: `state` (dónde vive el estado:
+   journal, cursor store, event sink, costura Saga) y `policy` (lo que se le dio
+   al run: reloj, política de replay, sandbox, workspace, costura de
+   credenciales, permiso de red, registro de redacción).
+
+   Lo que esto compra es más estrecho que «los dos mundos son iguales», y por
+   eso se dice así: **la diferencia entre los dos mundos está ahora en un sitio
+   revisable**, en vez de repartida entre dieciocho argumentos de dos puntos de
+   llamada. Antes, cualquiera de los dieciocho podía diferir entre los mundos y
+   nada decía cuál.
+
+   Y hay una diferencia que **no** es del grupo `state`: el proveedor de
+   credenciales (el mundo volátil no lo lleva, por H5-B) y el `controlDirRoot`
+   (necesariamente distinto). Se dice en el KDoc donde se decide, no se
+   esconde: un KDoc que afirma una simetría que no existe es peor que no
+   tener KDoc.
+
+2. **La costura de credenciales estaba DUPLICADA.** La composición del almacén
+   (dónde está, qué passphrase, cómo se materializa) estaba escrita dos veces,
+   una por mundo, y las dos copias **usaban relojes distintos**: la volátil
+   abría el almacén con un `SystemClock()` nuevo y la durable con el reloj del
+   run. Dos copias de una decisión son dos ocasiones para discrepar, y la
+   discrepancia era invisible porque ninguna de las dos se comparaba con la otra.
+   Ahora hay una sola función, `composeCredentialSeam`, y las dos locomotoras
+   llaman a la misma.
+
+3. **La compilación del script la leían dos lectores.** El mundo durable
+   re-lanzaba la excepción del autor (S0-C1 / TRAIN-DSL-HONESTY) y el volátil se
+   la tragaba y respondía «no hay pipeline». El mismo hecho, dos lecturas, y
+   una de ellas **más indulgente**: un error de construcción se disfrazaba de
+   «el script no produjo un PipelineSpec». Ahora lo lee **uno**.
+
+   Y aquí está la medición que hace el bloque honesto: **esa rama está
+   muerta**. El host de scripts ya convierte un fallo del cuerpo del script en
+   un fallo de compilación (`ScriptCompilationResult.Failure` con el mensaje
+   del autor), así que `get$$result` —que es donde el cuerpo se evalúa— sólo se
+   llama cuando el cuerpo **ya ha funcionado**. Restaurar el lector viejo
+   («trágate todo») **no pone ni una fila en rojo**: 46 escenarios, 45 pasan,
+   0 fallan. Es una medición negativa y se publica por eso: unificar los
+   lectores **no altera ningún comportamiento alcanzable**. Lo que cambia es que
+   ya no existe un segundo lector más indulgente que un día pueda volver a
+   activarse.
+
+**Cómo se comprobó que el bloque no cambia lo que el operador ve.** Se
+capturaron **25 superficies deterministas** de la CLI —`--help`, `version`,
+`version --json`, `capabilities`, `sdk-info`, `doctor`, verbo inválido,
+`--output-protocol` inválido, script inexistente, `validate` con un script
+bueno y con uno malo— sobre `7e6238b85` y sobre este bloque, y se compararon
+**byte a byte**: **idénticas**. La salida de un `run` en los dos mundos se
+comparó en su forma normalizada (runId, correlationId, ownerId, timestamps y
+rutas son variables por definición) y también coincide.
+
+**Mutaciones vistas en rojo.** El bloque no añade tests, así que su instrumento
+es la suite E2E. Se rompió el código a propósito para comprobar que la suite
+**ve** lo que este bloque tocó:
+
+| Mutación | Filas que caen | Colateral |
+|---|---|---|
+| `runCanonical` ignora el `journal` de la petición y usa uno en memoria | **1**: `durable/32-durable-replay.pipeline.kts (durable x2)` → exit 1 | ninguno (44 pasan, 1 falla, 1 NOT_RUN) |
+| El mundo volátil deja de enlazar la costura Saga | **1**: `durable/38-saga-success.pipeline.kts (both storages)` → **la parte en memoria**, con `missing required capabilities for step 'example.saga.chain': saga.compensation, saga.plan, saga.lifecycle` | ninguno; **la parte durable siguió en verde**, que es la prueba de que la mutación era del mundo volátil |
+| Se restaura el lector viejo de la compilación | **0** | — |
+
+La segunda es la que importa: es el escenario `storage-agnostic`, que corre el
+**mismo script en los dos mundos** y exige las mismas expectativas en los dos.
+Por eso la fila dice «la parte en memoria». Antes de este bloque ese escenario
+existía (P6, §2.2 v) y ya era el instrumento de la ley; lo que este bloque hace
+es **alejar la causa** de la ley: la divergencia ya no puede entrar por la
+puerta de atrás, porque la puerta de atrás ya no hay dos.
+
+**Lo que NO cierra.** El bloque **no** unifica los dos **renderizados** del
+veredicto: el mundo volátil imprime `Pipeline finished with FAILURE: <mensaje>`
+y el durable imprime `Pipeline finished con FAILURE` más el informe de causa.
+Son dos renderizados de un mismo hecho tipado, no dos lecturas del hecho, y
+los bytes del mundo volátil están fijados por el escenario
+`negative/15-error.pipeline.kts`: cambiarlos sería romper un contrato, no una
+decisión. La rama de la compilación que se unificó sigue siendo **código
+muerto**: unificar un lector muerto no lo revive ni lo esconde, pero tampoco
+justifica decir que el bloque arregló un defecto de comportamiento, porque **no
+lo-arregló**.
+
+**Los dos mundos NO son idénticos, y el bloque lo ha escrito down en vez de
+taparlo.** Hay una asimetría que viene de antes y que este bloque deja
+**visible**: la forma *scripted* (el frontend que ejecuta un cuerpo generado)
+sólo se resuelve en el mundo durable. Un `.pipeline.kts` que mapee a esa forma
+corre un runner distinto según el mundo. Y dos hechos de la petición difieren
+a propósito: el proveedor de credenciales (H5-B) y el `controlDirRoot`.
+
+**Una revisión independiente, y lo que encontró.** El diff pasó por un
+verificador aparte, con preguntas sobre lo que la puerta no puede ver. Su
+veredicto: **ningún cambio de comportamiento alcanzable** —el inventario de
+`System.exit` y de mensajes es idéntico multiconjunto a multiset, los órdenes
+compile → `compileOrRefuse` → admisión y lease → `emitCorrelationAndReceipt` →
+compile se conservan, y el `System.exit` no canónico sigue dentro del `try`
+(su `finally` no corre, igual que antes)— pero **cinco afirmaciones del KDoc
+que este bloque escribía eran falsas**, y se han corregido: la simetría total
+entre mundos, la «segunda llamada» que no existía como tal, y dos KDoc que
+usaban la misma regla (H5-B) para decir cosas opuestas del mismo código. Un
+KDoc que afirma algo falso es un defecto: informa mal a quien lo lea, y quien
+lo lea para decidir ya no puede.
+
+**Lo que este bloque NO cubre, y lo dice.** Las unidades nuevas
+(`CanonicalRunRequest`, `composeCredentialSeam`, `compileScriptForRun`, los dos
+ficheros de mundo) **no tienen ni un test unitario**, y no pueden tenerlo sin
+violar `AGENTS.md` §2: son código de CLI, y un test unitario no puede hacer
+filesystem ni subproceso. El instrumento de este bloque es la suite E2E, y las
+mutaciones de arriba son la prueba de que esa suite **ve** lo que el bloque
+tocó. Un bloque cuyo instrumento es la suite E2E y no un test unitario es un
+bloque con menos oráculo que otro, y conviene decirlo en vez de dejar que la
+puerta verde lo tape.
+
+El ABI publicado no cambia: todo lo nuevo es `internal` y
+`pipeline-application` no es un módulo publicado. Y **no se añade ni se quita
+ningún escenario E2E**: el bloque no crece la suite.
+
+Puerta sobre el SHA del bloque: `PASS sha=03bdc2a3a… elapsed=97s budget=900s
+tests=rewritten:743 read:0 gaps=1 not_run`.
+
+La puerta se corrió sobre el tip de la rama (`9c7af06ee`), cuyo árbol es
+**byte-idéntico** al del commit fusionado (`git rev-parse` da el mismo tree
+`c231bafd5` para los dos), así que la cifra es del contenido que está en
+`main` y no de un árbol vecino. El censo de LOC sí se remedió **sobre el SHA
+fusionado**, con `check-budgets.py` y `git ls-files`.
 
 
 ### 2.3 Cierre de ciclo

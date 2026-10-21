@@ -6046,6 +6046,7 @@ public final class dev/rubentxu/pipeline/v2/domain/saga/SagaPlan {
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/saga/SagaPlanFingerprint {
+	public static final field CANONICAL_FORM_VERSION Ljava/lang/String;
 	public static final field Companion Ldev/rubentxu/pipeline/v2/domain/saga/SagaPlanFingerprint$Companion;
 	public static final synthetic fun box-impl (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaPlanFingerprint;
 	public static fun constructor-impl (Ljava/lang/String;)Ljava/lang/String;
@@ -6061,6 +6062,8 @@ public final class dev/rubentxu/pipeline/v2/domain/saga/SagaPlanFingerprint {
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/saga/SagaPlanFingerprint$Companion {
+	public final fun canonicalFormOf-XvziviQ (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/SagaActionPlan;)Ljava/lang/String;
+	public final fun compute-3SGfHuo (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/SagaActionPlan;)Ljava/lang/String;
 	public final fun ofOrNull-bIFW15w (Ljava/lang/String;)Ljava/lang/String;
 }
 

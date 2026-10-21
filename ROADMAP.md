@@ -18,46 +18,70 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `0e409dd41` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP y los README, así que el código medido es el de `0e409dd41` | `git rev-parse HEAD` |
+| SHA | `cfb590cc4` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP y los README, así que el código medido es el de `cfb590cc4` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **871** (115 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | **48 (48 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Tests unitarios ejecutados | **889** (119 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Escenarios E2E | **49 (49 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios que sólo comprueban el código de salida | **0**: cada uno afirma, con una directiva del lanzador o con una comprobación dentro del propio pipeline | censo por directiva y por cuerpo, sobre los 47 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **13698 / 64871 = 0.211** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **14139 / 64950 = 0.218** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **602 / 611 / 614** en los tres ensayos, los tres sobre `0e409dd41`, peor 614 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **608 / 605 / 623** en los tres ensayos, los tres sobre `cfb590cc4`, peor 623 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
-| Deuda estática congelada | **802** entradas de baseline: **baja 3**, porque tres importaciones sin uso se arreglaron en el código en vez de anotarse | `detektBaselineMain` y `detektMain` |
+| Deuda estática congelada | **802** entradas de baseline: **sin cambio**, porque la ley que este ciclo añadió salió a su propio objeto en vez de empujar a `ProtocolGrammar` por encima del límite de detekt | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 Las cifras de este ciclo suben en lo que este ciclo añadió y sólo en eso:
-**871** tests (10 más que los 861 del ciclo anterior) y **48** escenarios (1
-más). Los 10 tests nuevos son las **5** filas de `StepTerminalVerdictTest` (el
-step que termina bien, el que falla, el inestable, el que explota sin
-veredicto y el que conserva la evidencia del fallo), las **4** del códec
-(`StepFinishedOutcomeCodecTest`: el veredicto sobrevive al log durable, el
-veredicto ausente se relee como ausente y una fila de un build anterior se
-lee sin veredicto) y **1** del registro de capacidades (la fila que impide
-que dos ids publiquen el mismo vocabulario). El escenario nuevo es
-`events/02-step-verdict`, el lector externo que pide sólo los eventos
-terminales y lee el veredicto de cada uno. El ratio de LOC sube de 0.208 a
-**0.211**, todavía muy por debajo del límite 2, y el peor módulo sigue siendo
-el mismo de siempre (`pipeline-step-sdk:workflow-control`, 1.633) porque este
-ciclo no lo tocó.
+**889** tests (18 más que los 871 del ciclo anterior) y **49** escenarios (1
+más). Los 18 tests nuevos son las **3** filas de `StepFailureAttributionTest`
+en `:pipeline-events` (el sujeto del fallo, el sujeto cuando el fallo no dice
+stage, y el fallo compartiendo sujeto con el terminal de su step), las **3** de
+`StepFailureAttributionTest` en `:pipeline-application` (el productor canónico
+que declara el stage, el que lo declara por excepción, y el que lo declara
+igual que su terminal), las **3** del códec (`StepFailedStageCodecTest`: el
+stage sobrevive al log durable, un stage ausente se relee como ausente y una
+fila de un build anterior se lee sin stage), las **7** de
+`TerminalContradictionLawTest` (la contradicción, el reintento, el
+`catchError`, el fallo simple, el step anidado, dos stages con el mismo nombre
+de step, y el fallo que no dice su stage), **1** fila más en la proyección del
+run (que lee el veredicto igual con stage y sin stage) y **1** fila más en el
+registro de capacidades (la que impide que dos ids publiquen el mismo
+vocabulario). El escenario nuevo es `events/03-failure-stage`, el lector
+externo que pide sólo los eventos de fallo y lee el stage de cada uno. El
+ratio de LOC sube de 0.211 a **0.218**, todavía muy por debajo del límite 2, y
+el peor módulo sigue siendo el mismo de siempre
+(`pipeline-step-sdk:workflow-control`, 1.633) porque este ciclo no lo tocó.
 
 Lo que este ciclo **no** tocó, y conviene que no se confunda con un avance:
-el número de módulos con test sigue siendo 26 de 27. Lo que **bajó** es la
-deuda estática congelada, de **805** a **802** entradas: no se añadió ni una,
-y tres desaparecieron porque tres importaciones sin uso se arreglaron **en el
-código** en vez de anotarse, que es como manda `AGENTS.md` —la baseline se
-arregla arreglando el código—. Y las 48 claves de la baseline que nombraban
-el código movido a `DomainEventJsonDecoder` cambiaron de sitio: la baseline
-se mudó, no creció.
+el número de módulos con test sigue siendo 26 de 27. La deuda estática
+congelada **no se movió**: sigue en **802** entradas, ni una más ni una menos.
+La razón es la respuesta que da el propio config de detekt cuando una clase
+acumula lógica —**extraer, no anotar**—: la ley de contradicción terminal que
+este ciclo añadió se llevaba `ProtocolGrammar` por encima del límite de
+funciones, así que salió a su propio objeto, `StepTerminalContradiction`. Un
+cambio que crece y no crece la baseline a la vez no es un cambio: es una
+negociación con el guardián.
+
+**Las mutaciones de este ciclo, vistas en rojo.** Un verde que nunca se ha
+visto rojo no es evidencia, así que cada instrumento se rompió a propósito, se
+leyó de vuelta y se deshizo: **M1** (el productor canónico deja de decir el
+stage) encendió **3 de 3** filas del productor y el ejemplo ejecutable, con el
+mensaje «delivered: second/sh-0=-1»; **M2** (el escritor se come el stage)
+encendió **1 de 3** filas del códec —la del viaje, y dejó verdes la del stage
+ausente y la de la fila de un build anterior— y el ejemplo, con «delivered:
+second/sh-0=»; **M3** (la ley nunca dispara) encendió **1 de 7** filas de la
+ley; **M4** (la ley pierde la ventana del intento) encendió **1 de 7**, la del
+reintento; **M5** (la ley pierde el nombre de la identidad) encendió **1 de
+7**, la del step anidado; **M6** (el stage ausente se lee como stage 0)
+encendió **1 de 7**, la del stage ausente; y **M7** (el sujeto del fallo se
+queda en el run) encendió **2 de 3** filas del sujeto. Una mutación **no**
+encendió nada y queda escrita por eso: quitar el stage de la identidad de la
+ley no cambia ningún veredicto, porque en un plano secuencial la ventana del
+intento ya separa los steps de dos stages (§2.29).
 
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
-los **113** informes JUnit, que es la condición que hace que la cifra de reloj
+los **119** informes JUnit, que es la condición que hace que la cifra de reloj
 mida el gate y no una restauración de caché. Un total correcto con el verbo
 equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
 **falla** si no reescribe ninguno.
@@ -3188,11 +3212,12 @@ antiguo, ni una suite E2E en Kotlin, ni una campaña de mutaciones masiva.
 | **P1.1** API de Runtime | Core | El cancelador está cableado y expuesto; `inspect` y `recover` siguen sin exponerse porque serían un segundo plano y un segundo motor (§2.20) | El E2E `durable/39-cancel-dead-run`, más la **compilación independiente** de `:pipeline-runtime` y un recorrido operativo real que lo use (lo que pide el informe del 21/10, §2.28) | Hecho en el ciclo anterior, y la decisión de no exponer los otros dos queda escrita y a la vista. El jar del módulo **sí** está en la distribución; lo que falta es el consumidor acreditado |
 | **P1.2** Certificación de SDK y plugins | Core + externos | Un plugin compilado contra el SDK publicado se carga en la distribución real y sus contribuciones declaradas coinciden con las disponibles | Un **ejecutable** que carga cada JAR de `lib/` de la distribución instalada y compara sus entradas de servicio con su manifiesto. Es lo que el producto ya sabe hacer (`PluginContributionVerifier`), aplicado a los plugins que se distribuyen | Nombre del plugin, digest del JAR y resultado de admisión por plugin, en el informe del ciclo |
 | **P1.3a** Resultado terminal del step | Core | Un consumidor del event stream puede saber si un step terminó bien, **sin deducirlo** | Test unitario puro sobre el evento terminal y su versión. Con un campo nuevo en un evento publicado, la versión es explícita: campo nuevo opcional, no un cambio de significado | **Hecho** (§2.27): el veredicto viaja en el evento que termina el step; 4 mutaciones vistas en rojo sobre 5 filas, y el ejemplo ejecutable en rojo nombrando los veredictos que no pudo leer |
-| **P1.3b** Atribución de stage al fallo | Core | Un consumidor puede atribuir un `StepFailed` a su stage desde el evento, sin unirlo con otro evento | Test unitario puro sobre la forma del evento de fallo | Igual que P1.3a |
+| **P1.3b** Atribución de stage al fallo | Core | Un consumidor puede atribuir un `StepFailed` a su stage desde el evento, sin unirlo con otro evento | Test unitario puro sobre la forma del evento de fallo | **Hecho** (§2.29): el fallo declara su stage, y la ley de contradicción terminal que el harness describía y no implementaba ya se correlaciona; 7 mutaciones vistas en rojo, y el ejemplo ejecutable en rojo nombrando el stage que no pudo leer |
 | **P1.3c** Política de confianza del plugin | Core | El plugin que el operador trae es el que aprobó, firmado por el publicador que nombra | **Hecho**: test puro del decisor + dos escenarios ejecutables (§2.21) | 4 mutaciones vistas en rojo; 46 escenarios verdes |
 | **P1.4** Gate mínimo fiable | Core | La puerta local completa pasa en el SHA final, sin falsos verdes, dentro de 900 s | `scripts/verify-all.sh` con tres ensayos de reloj | Tres ensayos de reloj sobre el SHA final, con su cifra (§1) |
 | **P1.5** La consola en orden real | Core | La vista de consola conserva el intercalado cronológico de los frames, y los bytes por canal siguen siendo la autoridad durable | Un test puro sobre la proyección ordenada por ordinal, y un escenario ejecutable que compare la vista consolidada con el orden de llegada | Nuevo, del informe del 21/10 (§2.28): la pieza existe (`OutputFrameIndex.framesOfRun`) y la vista actual concatena por stream, con su KDoc diciendo que no afirma lo que el kernel intercaló. Falta **decidir qué vista usa la proyección ordenada** |
 | **P1.6** Un consumidor de referencia del SDK | Core | Una aplicación **externa** al Core carga un plugin, sigue eventos y lee consola, compilada contra la RC **descargada** | Un proyecto Gradle aparte, que resuelva el SDK desde el artefacto publicado y no desde un proyecto Gradle vecino; y la regla de que **cada capacidad nueva** viene con su ejemplo mínimo | Nuevo, del informe del 21/10 (§2.28). No existe en esta rama: este ciclo publicó dos ids (`runtime.eventshape.v2` y `events.stepoutcome.v1`) y ninguno tiene todavía ese consumidor |
+| **P1.7** El verbo `events verify` con observador | Core | El producto del harness —`pipeline events verify`— tiene un observador ejecutable, y no sólo su tabla de tests | Un escenario que ejecute el verbo sobre el plano de un run real y afirme el veredicto; y, para la ley que acusa contradicciones, un plano que la haga disparar de verdad | Nuevo, de este ciclo (§2.29): **ningún** escenario ejecuta el verbo. Fabricar a mano un plano que la ley acuse no sería un plano, y un run real no produce uno: la ley se demuestra por su tabla, no por un escenario |
 | **P2.1** RC y procedencia | Core + Fabric | Instalación real, ABI, SDK, distribuciones y procedencia verificables | Instalación de la RC en una máquina limpia y ejecución de un ejemplo contra el artefacto instalado | Fuera de este repositorio en su parte de publicación; aquí, `BLOCKED_EXTERNAL` mientras no exista certificador |
 | **P2.2** Documentación pública | Core | Manual de instalación, DSL, steps, plugins, SDK y operación, con comandos comprobados contra la versión definitiva | El README corto y los ejemplos ejecutables | Al final, y no antes |
 
@@ -3655,7 +3680,7 @@ no porque estén mal: su SHA es anterior a este trabajo.
 | **H1** Fabric acumula los hechos y los publica al final | **Fuera de este repositorio** | Es integración de Fabric (P0.3/P0.4). La parte de Core que hace falta ya está: el follow con cursor (§2.26) y el veredicto del step (§2.27) |
 | **H2** El follow confunde `StorageError` y `CursorBeyondTail` con «run desconocido» | **Ya cerrado** (§2.25) | `EventFollowRefusal` nombra las tres negativas; `SqliteEventFollowHandle` traduce sin colapsar; capacidad `events.follow.v2`; dos escenarios E2E que lo demuestran |
 | **H3** La traducción de `StepFinished` puede fabricar un `SUCCESS` | **Ya cerrado** (§2.27) | El veredicto viaja con el evento terminal; capacidad `events.stepoutcome.v1`; `runtime.eventshape.v1` a DEPRECATED |
-| …la mitad de H3: el `StepFailed` no identifica su `stageIndex` | **Real y pendiente** | **P1.3b** (§2.23): sigue abierto, y el informe lo corrobora |
+| …la mitad de H3: el `StepFailed` no identifica su `stageIndex` | **Ya cerrado** (§2.29) | El fallo declara su stage; capacidad `events.failurestage.v1`; y con él, la ley de contradicción terminal del harness, que el propio código describía y no implementaba |
 | **H4** `pipeline-runtime` es código que merece integración, no eliminación | **Real, y una afirmación del informe que aquí no se sostiene** | El jar `pipeline-runtime-0.62.0.jar` **sí está** en `lib/` de la distribución instalada, y el módulo compila y tiene tests (la etapa 2 del gate lo ejecuta). Lo que falta es el recorrido operativo acreditado: **P1.1** |
 | **H5** El output plane: intercalado cronológico y durabilidad | **Real y pendiente** | La pieza existe (`OutputFrameIndex.framesOfRun`) y la vista de consola **concatena por stream** y lo declara en su KDoc («es una proyección, no una afirmación de lo que el kernel intercaló»). Falta **decidir qué vista usa la proyección ordenada**: nuevo **P1.5** |
 | **§4** Colisiones entre agentes en el gate | **Ya cerrado** | El gate usa `log_dir="${TMPDIR:-/tmp}/verify-all.$$"`, un directorio por corrida, y escribe el motivo: «a shared path let one run truncate the log while another was still appending to it» |
@@ -3696,6 +3721,78 @@ bien, **M3** (el lector deja de leer el campo) encendió **4 de 5** y dejó
 verde la fila del veredicto ausente, y **M4** (el terminal vuelve a ir sin
 veredicto, en el binario) hizo fallar el ejemplo nombrando los veredictos que
 no pudo leer.
+
+### 2.29 El fallo de un step, y el stage que le faltaba
+
+Este ciclo cerró el hito **P1.3b** de §2.23: «un consumidor puede atribuir un
+`StepFailed` a su stage desde el evento, sin unirlo con otro evento». El
+ciclo anterior (§2.27) publicó **qué** pasó con un step; este dice **dónde**
+pasó.
+
+**El hueco, medido con el binario y no supuesto.** El `StepFailed` declaraba el
+step y no el stage. Medido sobre un run real, el evento de fallo era
+`{"stepIndex":0,"stepName":"second/sh-0","stepType":"sh","failureKind":"SCRIPT","message":"shell exited with code 7"}`
+— ni un stage. Y el índice de step es el índice **dentro** de un stage: el mismo
+índice significa un step distinto en cada stage del run, así que la única forma
+de saber el stage era unir el fallo con otro evento, y esa unión no era unívoca
+entre stages. El sobre, además, lo situaba en el run (`subject.kind = RUN`),
+por una razón que el propio código escribía: «stepIndex exists but no stage
+identity». Sin identidad de stage, el step no era un sujeto posible.
+
+**Lo que hace, y por qué así.** `StepFailed` gana `stageIndex: Int?` **sin
+valor por defecto**. Sin valor por defecto porque el olvido de un productor se
+paga en compilación y no en producción; anulable porque hay dos ausencias
+distintas y una de ellas es un hecho: un fallo en el primer stage y un fallo
+cuyo stage nadie registró no son el mismo hecho, y `null` no es `0`. `null` es
+también lo que decodifica una fila de un build anterior, que no publicaba
+stage; un consumidor que tiene que distinguir «esta build dice desconocido» de
+«esta build no dice nada» negocia el id `events.failurestage.v1`.
+
+Los tres productores canónicos lo declaran: el límite de ejecución del step —el
+dueño del ciclo de vida—, el rechazo de la lectura de credenciales —que ocurre
+antes de que el cuerpo empiece y es la única observación por step que su
+resultado tiene— y el fallo del propio shell. El helper `error` del SDK **no**
+lo declara, y eso no es un olvido: su `StepContext` no lleva el stage, y un
+stage inventado sería peor que un stage ausente.
+
+El sobre sigue al evento: un fallo que dice su stage es sobre ese step, y un
+fallo que no lo dice se queda con el run como sujeto. La ley congelada tenía
+su razón, y la razón ya no existe.
+
+**La segunda mitad del hito: la ley que se podía describir y no correlacionar.**
+El harness describía una ley de contradicción terminal —«`StepFinished` con
+veredicto de éxito **y** un `StepFailed` para el mismo step»— y no la
+implementaba, porque no había forma de saber de qué step era el fallo. Con el
+stage declarado, la ley se implementa, y su forma no es la que se escribe: es
+la que el **plano real del producto** admite. Medido con el binario sobre un
+run con reintento, con `catchError` y con fallo simple:
+
+- la identidad de un step es **(stage, índice, nombre)**: el stage porque el
+  índice significa otra cosa en cada stage; el nombre porque un step anidado
+  comparte el índice del step que lo contiene, y solo el nombre los distingue;
+- un **intento** va de un `StepStarted` al siguiente `StepStarted` del mismo
+  step: un reintento vuelve a ejecutar el step y lo dice empezando de nuevo, así
+  que el fallo del primer intento y el éxito del segundo son hechos de dos
+  intentos;
+- el **veredicto se lee del terminal**, porque el fallo no lo dice.
+
+La ley naïf —«mismo step, fallo y éxito»— habría sido **falsa** en el caso del
+reintento. El caso que lo demuestra no es un plano inventado: es un run real
+medido con el binario.
+
+**Lo que este ciclo tuvo que arreglar de paso, y por qué.** La ley se llevaba
+`ProtocolGrammar` por encima del límite de funciones de detekt, y la respuesta
+del propio config —y de `AGENTS.md`— es **extraer, no anotar**: la ley sale a su
+propio objeto, `StepTerminalContradiction`. La baseline de detekt no creció:
+sigue en **802** entradas.
+
+**Un hueco que este ciclo encontró y NO arregló, y que por eso lleva dueño.**
+El verbo `pipeline events verify` —que es el producto del harness— **no lo
+ejecuta ningún escenario**: no hay forma de que un run produzca un plano que la
+ley tenga que acusar, y fabricar ese plano a mano no sería un plano, sería una
+mentira. La ley de contradicción terminal se demuestra entonces por su tabla
+—con sus planos medidos y sus mutaciones vistas en rojo—, no por un escenario.
+El hueco queda escrito como **P1.7**.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
@@ -3748,12 +3845,6 @@ no pudo leer.
   tres entradas que la muela dejó obsoletas se **arreglaron en el código**,
   que es lo que la política pide: la baseline se arregla arreglando el
   código. El número de hallazgos no cambió.
-- **Un hueco medido no se arregla de paso.** El `StepFailed` sigue sin
-  `stageIndex` (§2.23, **P1.3b**), y eso bloquea la ley de contradicción
-  terminal que el harness describe: correlacionar un `StepFailed` con su
-  terminal necesita un key de step que no sea ambiguo entre stages. Crecer
-  el cambio porque se encontró un cambio es exactamente lo que este
-  roadmap no hace.
 - **El cursor es la posición del cliente, no la del almacén.** La regla dice
   «el cursor es la posición del último hecho entregado» y, cuando la llamada
   no entregó nada, «la posición del almacén». No es un matiz: es lo que
@@ -4187,6 +4278,63 @@ no pudo leer.
   que falló, y no lo es.
 
 ---
+
+- **Un hueco medido no se arregla de paso — y el que se arregla, se cierra por
+  escrito.** El `StepFailed` seguía sin `stageIndex` (§2.23, **P1.3b**), y eso
+  bloqueaba la ley de contradicción terminal del harness: correlacionar un
+  `StepFailed` con su terminal necesitaba un key de step que no fuera ambiguo
+  entre stages. Ese hueco está cerrado (§2.29). El que sigue abierto lleva
+  dueño: el verbo `events verify` no lo ejecuta ningún escenario
+  (**P1.7**).
+- **El stage del fallo viaja en el evento de fallo, y no en un evento aparte.**
+  La forma es la misma que en P1.3a: el dato va **en el evento que lo
+  necesita**, y no en una unión de dos eventos que un consumidor tiene que
+  emparejar por un índice. Un `StepFailed` que no dice su stage obliga a
+  unirlo con otro evento, y esa unión es ambigua entre stages porque el
+  índice de step significa un step distinto en cada stage del run.
+- **El stage ausente no es el stage 0.** El campo es `Int?` y **no lleva
+  valor por defecto**: cada productor dice el stage que sabe, o dice que no lo
+  sabe. Hay dos ausencias distintas y una de ellas es un hecho —un fallo en
+  el primer stage y un fallo cuyo stage nadie registró— y `0` las
+  confundiría. Un valor por defecto de 0 no habría roto el compilador: habría
+  inventado un stage en producción, que es justo lo que este cambio quita.
+- **Un productor que no sabe el stage lo dice; no lo inventa.** El helper
+  `error` del SDK publica el fallo **sin** stage, porque su `StepContext` no
+  lleva el stage. Preferimos un evento que no dice dónde a un evento que dice
+  dónde, pero no donde es.
+- **El sujeto del sobre sigue al evento.** Un fallo que dice su stage es
+  sobre ese step, y uno que no lo dice se queda con el run: el run es el
+  sujeto honesto cuando la identidad del step no se conoce entera. La ley
+  congelada del proyector —«sin identidad de stage, el step no es un sujeto
+  posible»— tenía su razón, y la razón ya no existe.
+- **La identidad de un step es (stage, índice, nombre), y un intento va de un
+  `StepStarted` al siguiente `StepStarted` del mismo step.** Las tres partes
+  están porque cada una quita una confusión concreta: el stage, porque el
+  índice significa otra cosa en cada stage; el nombre, porque un step anidado
+  comparte el índice del step que lo contiene; y el intento, porque un
+  reintento vuelve a ejecutar el step y lo dice empezando de nuevo.
+- **La ley se formula sobre el plano medido, no sobre el plano imaginado.**
+  La ley naïf —«mismo step, un fallo y un éxito»— habría sido **falsa** en el
+  caso del reintento, y ese caso no es un plano inventado: es un run real
+  medido con el binario. Escribir la ley que parece evidente y descubrir
+  después que el producto la refuta es la forma más cara de escribir una ley.
+- **Un id de capacidad nuevo: `events.failurestage.v1`.** Un consumidor que
+  lee el event lane tiene que poder preguntar si **esta** build publica el
+  stage de un fallo, porque un fallo sin stage es lo que escribió un build
+  anterior. No es un veredicto nuevo ni un segundo modelo de resultados: el
+  fallo ya llevaba la evidencia, lo que no sabía era **dónde** pasó.
+- **Extracción, y no baseline.** La ley se llevaba `ProtocolGrammar` por
+  encima del límite de funciones de detekt, y la respuesta del propio config
+  es extraer, no anotar: la ley sale a su propio objeto,
+  `StepTerminalContradiction`. La baseline sigue en **802** entradas: no
+  creció ni una.
+- **Una mutación que no enciende nada se escribe como tal.** Quitar el stage
+  de la identidad de la ley no cambió **ningún** veredicto, porque en un
+  plano secuencial la ventana del intento ya separa los steps de dos stages.
+  Eso no se escondió: la stage está en la identidad para que no dependa del
+  orden, y lo que sí queda fijado es que un fallo **sin** stage no tiene
+  identidad —no es el stage 0—, que es la fila que la mutación «lee el
+  stage ausente como 0» enciende.
 
 ## 4. Referencias
 

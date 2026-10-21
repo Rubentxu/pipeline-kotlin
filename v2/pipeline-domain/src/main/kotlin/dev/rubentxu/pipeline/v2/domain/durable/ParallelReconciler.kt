@@ -1,18 +1,19 @@
 package dev.rubentxu.pipeline.v2.domain.durable
 
 /**
- * PAR-D parallel reconciler — pure, plan-only, effect-free (ADR-0075
- * thinker/writer pattern reused). Reads observed durable facts, returns a
- * [ParallelDecision]. The coordinator is the single writer.
+ * Parallel reconciler — pure, plan-only, effect-free (thinker/writer pattern
+ * reused). Reads observed durable facts, returns a [ParallelDecision]. The
+ * coordinator is the single writer.
  *
- * Laws (PAR-D0 §2 matrix + confirmed decisions):
+ * Laws (the parallel-divergence matrix and confirmed decisions):
  * - a terminal child is NEVER re-executed;
  * - reuse/close paths schedule zero executions;
  * - structural divergence rejects before any effect;
- * - a FAILED child row possibly hiding a pre-P1 Unstable (no lossless carrier for THAT row)
- *   is NOT Failure: it is [ParallelDecision.RejectAmbiguousOutcome]. Since P1 an UNSTABLE
- *   row IS a lossless carrier, so `reconstructBranch` and the W5 stale-aggregate fold close
- *   unstable deterministically from it — the ambiguity survives only for FAILED rows;
+ * - a FAILED child row possibly hiding a pre-improvement Unstable (no lossless carrier for
+ *   THAT row) is NOT Failure: it is [ParallelDecision.RejectAmbiguousOutcome]. The
+ *   current UNSTABLE row IS a lossless carrier, so `reconstructBranch` and the
+ *   stale-aggregate fold close unstable deterministically from it — the ambiguity
+ *   survives only for FAILED rows;
  * - decision makes the executed AND not-executed branch sets explicit.
  */
 object ParallelReconciler {

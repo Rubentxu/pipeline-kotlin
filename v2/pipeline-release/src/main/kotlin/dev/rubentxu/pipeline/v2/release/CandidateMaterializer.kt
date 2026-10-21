@@ -83,7 +83,7 @@ object CandidateMaterializer {
                     "Refusing to write a manifest that would assert an unverified root.",
             )
 
-        // §8 — SHA256SUMS is where the proof that `covered` was digested is kept,
+        // SHA256SUMS is where the proof that `covered` was digested is kept,
         // so the two are decided together and BEFORE the manifest is built.
         //
         // A non-empty `covered` is a claim that those assets MUST be digested.

@@ -22,7 +22,7 @@ import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import java.nio.file.Path
 
 /**
- * JUnit OFFICIAL_PLUGIN contributor (F5.2 / LFC-2E2).
+ * JUnit OFFICIAL_PLUGIN contributor.
  *
  * Same shape as [ScmGitStepDefinitionContributor]:
  *

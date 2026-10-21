@@ -49,12 +49,14 @@ interface StepCapabilityAccess {
 }
 
 /**
- * Narrow execution identity handed to a [StepHandler] for one invocation (B1.2a).
+ * Narrow execution identity handed to a [StepHandler] for one invocation.
  *
- * Deliberately carries only execution identity plus explicit capability access. It is NOT a
- * [dev.rubentxu.pipeline.v2.domain.StepExecutionContext]-style catch-all and MUST NOT grow into an
- * omnipotent `PipelineContext`: a handler declares its minimal capabilities in its contract and
- * receives only those through [capabilities].
+ * Deliberately carries only execution identity plus explicit capability
+ * access. It is NOT a
+ * [dev.rubentxu.pipeline.v2.domain.StepExecutionContext]-style catch-all
+ * and MUST NOT grow into an omnipotent `PipelineContext`: a handler
+ * declares its minimal capabilities in its contract and receives only
+ * those through [capabilities].
  */
 data class StepHandlerContext(
     val runId: RunId,
@@ -95,11 +97,11 @@ data class StepContract<I : Any, O : Any>(
  * failure; it returns a typed result instead. Throwable exceptions signal an adapter/engine bug and
  * are treated as fail-closed upstream.
  *
- * The execute signature is `suspend` (LB-02 / G3-A4.2) so that handlers can reach suspend
- * capability seams (e.g. `ShellOperations.invoke` which delegates to the suspend
- * `ShExecution.invokeShell` substrate). The boundary (`CommonExecutionBoundary.coexecute`)
- * is suspend and runs the handler directly; pure-function handlers simply ignore the suspend
- * modifier.
+ * The execute signature is `suspend` so that handlers can reach suspend
+ * capability seams (e.g. `ShellOperations.invoke` which delegates to the
+ * suspend `ShExecution.invokeShell` substrate). The boundary
+ * (`CommonExecutionBoundary.coexecute`) is suspend and runs the handler
+ * directly; pure-function handlers simply ignore the suspend modifier.
  */
 fun interface StepHandler<I : Any, O : Any> {
     suspend fun execute(input: I, context: StepHandlerContext): O
@@ -138,12 +140,13 @@ sealed interface StepInvocationOutcome<out O : Any> {
  * registry handed to the runtime cannot grow afterwards, so a reader never observes a
  * registry changing shape underneath it. Two additive registration shapes are supported on
  * the builder:
- * - [StepRegistryBuilder.add] of a bare [StepDefinition] — the legacy path used by the CORE
- *   Steps and by `example.uppercase`; provider metadata is unknown to the registry, and
- *   [providerOf] returns null for that key (C10 backwards-compat).
- * - [StepRegistryBuilder.add] of a [StepRegistration] — the additive path used by the new
- *   plugin shape (LFC-2E2-prep / ADR-0092); the registry stores the provider metadata and
- *   exposes it via [providerOf] (C3, O(1)).
+ * - [StepRegistryBuilder.add] of a bare [StepDefinition] — the legacy path
+ *   used by the CORE Steps and by `example.uppercase`; provider metadata is
+ *   unknown to the registry, and [providerOf] returns null for that key
+ *   (C10 backwards-compat).
+ * - [StepRegistryBuilder.add] of a [StepRegistration] — the additive path
+ *   used by the new plugin shape; the registry stores the provider metadata
+ *   and exposes it via [providerOf] (C3, O(1)).
  *
  * Both share the same underlying map. A duplicate key is rejected on either path, naming the
  * StepKey in the diagnostic. No plugin can shadow a CORE Step via either path.
@@ -176,18 +179,20 @@ interface StepRegistry {
 }
 
 /**
- * S6/F — the MUTABLE side of Step composition, and the only place it exists.
+ * The MUTABLE side of Step composition, and the only place it exists.
  *
  * ## Why this is a separate type
  *
- * A registry that exposes `register` is a mutable object with a promise attached, and the
- * promise is only as good as the discipline of every holder. The runtime holds a [StepRegistry],
- * which has no mutation method at all: after composition there is no way to change it, because
- * there is no way to ask.
+ * A registry that exposes `register` is a mutable object with a promise
+ * attached, and the promise is only as good as the discipline of every
+ * holder. The runtime holds a [StepRegistry], which has no mutation method
+ * at all: after composition there is no way to change it, because there
+ * is no way to ask.
  *
- * This mirrors [dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry.Builder], which is
- * the proven pattern in this repository — not a new idea, applied to the second registry that
- * had been left mutable.
+ * This mirrors
+ * [dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry.Builder],
+ * which is the proven pattern in this repository — not a new idea,
+ * applied to the second registry that had been left mutable.
  *
  * ## `build()` copies
  *
@@ -312,28 +317,31 @@ class RegistryStepInvoker(private val registry: StepRegistry) : StepInvoker {
 }
 
 /**
- * S6/F — folds contributors into a [StepRegistryBuilder], fail-closed on a duplicate StepKey.
+ * Folds contributors into a [StepRegistryBuilder], fail-closed on a
+ * duplicate StepKey.
  *
- * Deterministic ordering is the caller's responsibility (iteration order of [contributors]). On a
- * duplicate the diagnostic names BOTH the StepKey and the contributor id, never first-wins or
- * last-wins — a composition that resolved collisions by classpath order would make the resulting
+ * Deterministic ordering is the caller's responsibility (iteration order
+ * of [contributors]). On a duplicate the diagnostic names BOTH the StepKey
+ * and the contributor id, never first-wins or last-wins — a composition
+ * that resolved collisions by classpath order would make the resulting
  * registry a function of how the JARs happened to be laid out.
  *
- * It is an extension on the BUILDER rather than on [StepRegistry], because the registry no longer
- * has a mutation path to extend. That is the whole point of the split: a reader of this file can
- * see that composing Steps and reading them are different capabilities.
+ * It is an extension on the BUILDER rather than on [StepRegistry], because
+ * the registry no longer has a mutation path to extend. That is the whole
+ * point of the split: a reader of this file can see that composing Steps
+ * and reading them are different capabilities.
  */
 fun StepRegistryBuilder.registerContributors(contributors: Iterable<StepDefinitionContributor>) {
     for (contributor in contributors) {
-        // Always use the additive registrations() path (LFC-2E2 / F5.1 /
-        // ADR-0092). The default implementation in StepDefinitionContributor
-        // wraps every definitions() entry into a StepRegistration with
-        // legacy-shape provider metadata, so legacy contributors continue
-        // to work without explicit provider metadata (C10 backwards-compat).
-        // New contributors (OFFICIAL_PLUGIN and beyond) override
-        // registrations() to return real StepRegistration instances built
-        // from a PluginManifest, so envelopes emitted during real execution
-        // carry the audit projection.
+        // Always use the additive registrations() path. The default
+        // implementation in StepDefinitionContributor wraps every
+        // definitions() entry into a StepRegistration with legacy-shape
+        // provider metadata, so legacy contributors continue to work
+        // without explicit provider metadata (C10 backwards-compat).
+        // New contributors (official-plugin class and beyond) override
+        // registrations() to return real StepRegistration instances
+        // built from a PluginManifest, so envelopes emitted during real
+        // execution carry the audit projection.
         for (registration in contributor.registrations()) {
             val key = registration.stepKey
             try {

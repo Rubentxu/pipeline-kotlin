@@ -13,7 +13,7 @@ import java.nio.file.Path
 /**
  * The single path-resolution entry point for OFFICIAL_PLUGIN Steps.
  *
- * **RP034-E / ADR-0100.** A workspace-aware Step resolves a user path by
+ * A workspace-aware Step resolves a user path by
  * declaring an anchor and reading the current [ExecutionLocation]. It never
  * rebuilds its own base out of a capability value, and it never consults
  * process-global state.

@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 
 /**
- * Generic atomic execution result for the closed execution seam (LB-02 / G3-A3).
+ * Generic atomic execution result for the closed execution seam.
  *
  * This is the single shape returned by [CommonExecutionBoundary.execute]; it carries BOTH
  * responsibilities produced by an effective step execution in one value, so the durable

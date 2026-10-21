@@ -9,12 +9,12 @@ import dev.rubentxu.pipeline.v2.domain.credentials.Credential
 /**
  * Local file materialization adapter — wraps [CredentialMaterializer] to implement [CredentialMaterialization] SPI.
  *
- * Design (design §3.2, E-7; backlog L-126 "extracted from CredentialMaterializer"):
+ * Design:
  * - Implements [CredentialMaterialization] SPI port
  * - Wraps [CredentialMaterializer] and delegates [materialize] to its corresponding method
  * - [close] delegates to [CredentialMaterializer.close]
  *
- * This adapter is a thin wrapper — [CredentialMaterializer] signature is UNCHANGED (E-7 invariant).
+ * This adapter is a thin wrapper — the [CredentialMaterializer] signature is preserved.
  * The adapter delegates, does not modify.
  *
  * @param materializer The underlying materializer to delegate to

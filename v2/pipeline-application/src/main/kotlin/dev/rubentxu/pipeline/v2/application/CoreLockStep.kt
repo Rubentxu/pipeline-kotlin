@@ -43,7 +43,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * `core.lock` — hold a named resource while the enclosed body runs (RP6-A / WU-091).
+ * `core.lock` — hold a named resource while the enclosed body runs (the POSIX-file-lock contract / WU-091).
  *
  * ## Why HANDLER_CONTINUATION and not a body policy
  *
@@ -171,7 +171,7 @@ object CoreLockStep {
         // The output is memoized, but the ACQUISITION is not: the handler re-runs on
         // resume and re-acquires before any fresh effect. Memoizing the acquisition
         // token would replay "I hold this" for a hold this process does not have.
-        // See SPEC_WU091_LOCK.md section 4.
+        // See the named-resource contract document.md section 4.
         replayPolicy = ReplayPolicy.MEMOIZED,
         body = StepBody.Declared(
             invocation = BodyInvocationPolicy.ONCE,
@@ -197,7 +197,7 @@ object CoreLockStep {
         // which is precisely the exclusion the lock exists to provide.
         val owner = LockOwner(lane)
 
-        // RP6-A §6: the REQUEST is observable even when the declaration is
+        // the lock-observability rule: the REQUEST is observable even when the declaration is
         // contradictory — the event carries what the pipeline author declared,
         // not what the step went on to do.
         sink.append(
@@ -281,7 +281,7 @@ object CoreLockStep {
     }
 
     /**
-     * RP6-A §6: a denial is observable with the reason the author needs — the
+     * the lock-observability rule: a denial is observable with the reason the author needs — the
      * `skipIfLocked` contract as [LockSkipped], the lost wait as
      * [LockAcquireFailed]. The coordinator-defect denial (held under a waiting
      * intent) intentionally emits nothing here: it is an engine failure, and
@@ -369,7 +369,7 @@ object CoreLockStep {
             )
         }
     } finally {
-        // RP6-A §6: release is observable on EVERY terminal — completed, failed
+        // the lock-observability rule: release is observable on EVERY terminal — completed, failed
         // and cancelled body alike — because the `finally` owns the release and
         // the event follows it.
         coordinator.release(LockHold(owner, admission.resource))
@@ -452,7 +452,7 @@ object CoreLockStep {
                 // One declaration, five halves: the port that decides WHETHER to run
                 // the body, the bound continuation that runs it, the durable lane
                 // that decides WHO owns the resulting hold, the event sink that
-                // makes the lifecycle observable (SPEC_WU091_LOCK.md §6), and the
+                // makes the lifecycle observable (the named-resource contract document.md §6), and the
                 // scope budget that BOUNDS the wait. Admission is fail-closed before
                 // the handler runs when any is absent, and resolveBodyExecutionPolicy
                 // rejects the owner/capability mismatch.

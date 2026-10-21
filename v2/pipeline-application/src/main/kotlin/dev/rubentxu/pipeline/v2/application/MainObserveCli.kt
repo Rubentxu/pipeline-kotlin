@@ -168,7 +168,7 @@ object MainObserveCli {
         // `String`, so a replay held the run's whole history twice while it rendered it.
         //
         // `run`'s live path already writes through [RunObservationOutput.writeTo]; this is the replay
-        // path doing the same thing, which is what makes `ObsE5ObserveReplayTest`'s OBSERVE-1 claim —
+        // path doing the same thing, which is what makes `ObsE5ObserveReplayTest`'s the replay observation that survives a restarted pump claim —
         // "the event lane renders through the SAME encoder `run` uses" — true rather than merely
         // consistent-looking. It was checked by content, and content cannot tell two encoders apart.
         //
@@ -273,7 +273,7 @@ object MainObserveCli {
      *
      * ## What it polls, stated plainly
      *
-     * There is no `EventsCommitted` emitter yet (OBS-D bis), so this asks the durable authority for
+     * There is no `EventsCommitted` emitter yet (the durable authority unavailability tracker bis), so this asks the durable authority for
      * its position rather than being told. That is a NAMED gap, not a hidden one: it costs a cheap
      * indexed read per idle round instead of a push, and the alternative would have been to ship a
      * follow whose latency source was undocumented.
@@ -398,7 +398,7 @@ object MainObserveCli {
                 }
 
                 FollowDecision.Finished -> return when (runPlane) {
-                    // R4 / WU-RC4 — P1 termination semantics. `Finished` is ONE verdict from the
+                    // the P1 termination audit — P1 termination semantics. `Finished` is ONE verdict from the
                     // output lane, but the caller must report WHICH authority made the
                     // observation complete. Collapsing them is what made `ReachedRunFinish`
                     // unreachable dead code: every terminal exit claimed `ReachedSealedOutput`,
@@ -440,7 +440,7 @@ private class InterruptFollow(private val interrupted: () -> Boolean) : FollowCo
     override fun idle() = Thread.sleep(FOLLOW_IDLE_MILLIS)
 }
 
-/** Idle wait between reads that found nothing. A consumer policy, tuned in OBS-F with measurements. */
+/** Idle wait between reads that found nothing. A consumer policy, tuned in the consumer-tuned poll-interval work with measurements. */
 private const val FOLLOW_IDLE_MILLIS = 25L
 
 /**
@@ -476,7 +476,7 @@ interface ObserveLanes : AutoCloseable {
     /**
      * Whether the durable EVENT authority says this run reached a terminal state.
      *
-     * Added for **UAT-R1-01** (OBS-R1 mandate §1.5), because the output lane provably cannot
+     * Added for **the operator-facing transcripts mandate** (the first observe slice mandate §1.5), because the output lane provably cannot
      * substitute for it. A run that finished writing nothing owns no stream and no frame, so
      * [outputTailsOf] answers an empty list for it — and so it answers the same empty list for a run
      * that has not started. A follower that read termination off that list would hang on

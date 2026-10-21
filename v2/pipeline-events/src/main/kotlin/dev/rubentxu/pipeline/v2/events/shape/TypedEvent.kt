@@ -1,18 +1,15 @@
 package dev.rubentxu.pipeline.v2.events.shape
 
 /**
- * M7 — closed ADT of typed events returned by [EventShapeReadPort].
+ * Closed ADT of typed events returned by [EventShapeReadPort].
  *
- * The five cases are the typed events the M6 audit names as the source
- * of truth for stage / step boundaries. A sixth case would be a
- * breaking change requiring consumer recompile. The contract test
- * `EventShapeReadPortAdapterTest` pinna the 5-case set (the M7 audit's
- * B.3 hardening item).
+ * The five cases are the typed events the lifecycle audit names as the source
+ * of truth for stage and step boundaries. A sixth case would be a
+ * breaking change requiring consumer recompile. The contract test pins the
+ * 5-case set.
  *
  * The `runId` and `occurredAtMs` fields are common to all cases; the
  * type-specific fields are unique to each case.
- *
- * @see M7_FINAL_HARDENING_DESIGN.md §A.2.
  */
 sealed interface TypedEvent {
 

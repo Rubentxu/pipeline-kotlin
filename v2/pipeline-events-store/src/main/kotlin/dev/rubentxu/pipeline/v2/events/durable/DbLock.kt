@@ -9,7 +9,7 @@ import kotlin.concurrent.withLock
  *
  * Required because `synchronized(this)` is per-instance — two different
  * [SqliteOperationJournalImpl] instances writing to the same database file
- * would not serialize correctly (F13 HIGH finding from M3-R3 debt-report).
+ * would not serialize correctly.
  *
  * Lock granularity: one lock per absolute DB path.
  *

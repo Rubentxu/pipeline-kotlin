@@ -23,8 +23,8 @@ group = "dev.rubentxu.pipeline.v2"
 /**
  * The one hashing primitive the provenance seam uses lives in `buildSrc`
  * (`dev.rubentxu.pipeline.build.ProvenanceDigest`), shared with scm-git and utilities.
- * Keeping three private copies is what let AUD-01 be fixed by hand in three places and
- * left the next fix able to miss two of them (B0.2).
+ * Keeping three private copies is what let a hashing defect be fixed by hand in three
+ * places and left the next fix able to miss two of them.
  */
 
 kotlin {
@@ -36,9 +36,9 @@ kotlin {
 }
 
 // ----------------------------------------------------------------------------
-// HTTP OFFICIAL_PLUGIN provenance seam (LFC-2E3 / WU-093 / STEP_ECOSYSTEM_POLICY).
+// HTTP OFFICIAL_PLUGIN provenance seam.
 //
-// Mirrors the scm-git seam deliberately: the contributor refuses to register
+// The contract: the contributor refuses to register
 // without the real SHA-256 of its own artefact. A plugin that cannot prove what
 // it is must not be admitted into a run.
 //
@@ -56,7 +56,7 @@ val httpReleaseProps = layout.buildDirectory.file("resources/main/META-INF/http-
 val httpClassesDir = layout.buildDirectory.dir("classes/kotlin/main")
 val httpResourcesDir = layout.buildDirectory.dir("resources/main")
 
-// Exclusions by EXACT relative path, never by name suffix (B0.2). The previous filter dropped
+// Exclusions by EXACT relative path, never by name suffix. The previous filter dropped
 // any file ending with `plugin-manifest.json`, which would also drop an unrelated
 // `unrelated-plugin-manifest.json` from the identity. The three entries are the only documents
 // the plugin generates into its own artifact, and hashing them is a fixed-point loop because
@@ -245,16 +245,15 @@ tasks.named("jar") {
     dependsOn(emitHttpManifest)
 }
 
-// Unit-test wiring RESTORED (2026-10-19).
+// Unit-test wiring.
 //
-// It was REMOVED on 2026-10-18 under the premise that this module carries no unit tests: it is an
-// HTTP STEP whose guarantee is that a pipeline performs a real request, verified by the executable
-// E2E layer under `v2/examples/` rather than by a JUnit class. That premise held for the STEP
-// itself and stopped holding for the module: `StatusRange.parse` is a pure decode rule reached from
-// a JSON payload at request time, with no socket and no clock, and it now has a test.
+// The Step itself needs no unit test: it is an HTTP STEP whose guarantee is that a pipeline performs
+// a real request, verified by the executable E2E layer under `v2/examples/` rather than by a JUnit
+// class. The module did: `StatusRange.parse` is a pure decode rule reached from a JSON payload at
+// request time, with no socket and no clock, and it has a test.
 //
-// The reason the wiring was pulled out is still true and is why the removal was the right call THEN:
-// a `Test` task whose source set is empty reports success while executing zero classes -- a silent
+// The rule that governs this wiring is that a `Test` task whose source set is empty reports
+// success while executing zero classes -- a silent
 // green. Gradle 8.14 exposes no `failOnNoDiscoveredTests` property, so nothing inside this build can
 // turn that green into a failure, and a build file asserting otherwise would be describing a flag it
 // cannot compile. What catches it lives outside Gradle: `scripts/verify-all.sh` enumerates the

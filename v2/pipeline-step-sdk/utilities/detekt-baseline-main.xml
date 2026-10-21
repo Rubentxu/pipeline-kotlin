@@ -4,9 +4,6 @@
   <CurrentIssues>
     <ID>ImplicitDefaultLocale:CoreUtilsSha256StepDefinition.kt:CoreUtilsSha256StepDefinition$"%02x".format(it)</ID>
     <ID>ImplicitDefaultLocale:CoreUtilsZipStepDefinition.kt:CoreUtilsZipStepDefinition$"%02x".format(it)</ID>
-    <ID>MaxLineLength:CoreUtilsReadYamlStepDefinition.kt:CoreUtilsReadYamlStepDefinition$*</ID>
-    <ID>MaxLineLength:CoreUtilsWriteYamlStepDefinition.kt:CoreUtilsWriteYamlStepDefinition$*</ID>
-    <ID>MaxLineLength:ReadYamlOutput.kt:YamlDocument$*</ID>
     <ID>MaxLineLength:SnakeYamlAdapter.kt:SnakeYamlAdapter$message = "core-utils.readYaml: safe constructor returned a non-string map key (${k!!::class}); this should not happen with SafeConstructor + tag allow-list"</ID>
     <ID>MaxLineLength:SnakeYamlAdapter.kt:SnakeYamlAdapter$message = "core-utils.readYaml: safe constructor returned an unsupported value type (${value!!::class.qualifiedName}); this should not happen with SafeConstructor + tag allow-list"</ID>
     <ID>NoNameShadowing:CoreUtilsUnzipStepDefinition.kt:CoreUtilsUnzipStepDefinition$input</ID>

@@ -3,12 +3,13 @@ package dev.rubentxu.pipeline.v2.domain
 /**
  * Port that orchestrates one complete pipeline invocation.
  *
- * This is the LF-0203 contract — the "Single RunCoordinator" that M2 is
- * named after. The coordinator owns the execution loop: it resolves the
- * step order from the [PipelineDefinition] (via [StepOrderResolver]),
- * dispatches each step through the [StepDispatcher] port (LF-0204), and
- * folds the observed [StepOutcome]s into the canonical [RunOutcome] via
- * [RunOutcomeReducer] (LF-0104) — the single authority for run outcomes.
+ * This is the port contract for the "Single RunCoordinator" that the
+ * runtime is named after. The coordinator owns the execution loop: it
+ * resolves the step order from the [PipelineDefinition] (via
+ * [StepOrderResolver]), dispatches each step through the
+ * [StepDispatcher] port, and folds the observed [StepOutcome]s into the
+ * canonical [RunOutcome] via [RunOutcomeReducer] — the single authority
+ * for run outcomes.
  *
  * ## Contract
  *
@@ -17,12 +18,12 @@ package dev.rubentxu.pipeline.v2.domain
  *   Throwing is reserved for invalid requests (unknown resume cursor,
  *   malformed definition) and coordinator bugs.
  * - [RunOutcome.Aborted] is never fabricated here. Cancellation is an
- *   orchestrator-level concern of the production adapter (LF-0205); the
- *   contract documents that a coordinator implementation MAY return
+ *   orchestrator-level concern of the production adapter; the contract
+ *   documents that a coordinator implementation MAY return
  *   [RunOutcome.Aborted] when the run is externally interrupted.
  * - Implementations must be deterministic for the same request when the
- *   injected [StepDispatcher] is deterministic (characterisation
- *   property behind M2-005).
+ *   injected [StepDispatcher] is deterministic (the characterisation
+ *   property the port requires).
  *
  * ## Resume
  *
@@ -36,7 +37,7 @@ package dev.rubentxu.pipeline.v2.domain
  *
  * - [InMemoryRunCoordinator] (domain) — deterministic, in-process.
  * - The production durable coordinator (journal, replay, reconciliation)
- *   lands in LF-0205 as application work.
+ *   lands as application work.
  *
  * @see RunRequest
  * @see InMemoryRunCoordinator
@@ -51,7 +52,7 @@ interface RunCoordinator {
  *
  * @property definition the compiled pipeline to execute. Never empty-named.
  * @property runId identity of this invocation; two runs of the same
- *                 definition must carry different run ids (M1-001).
+ *                 definition must carry different run ids.
  * @property resumeAfter optional step id: execute strictly the steps after
  *                       this one in the resolved order. `null` runs the
  *                       whole pipeline from the start. Structural resume
@@ -60,7 +61,7 @@ interface RunCoordinator {
  * @property resumeFromCursor optional resume flag: when `true`, the
  *                            coordinator loads whatever persisted cursor
  *                            state it owns for [runId] and continues from
- *                            it (journal-backed resume, LF-0206). `false`
+ *                            it (journal-backed resume). `false`
  *                            (default) starts a fresh run. The two resume
  *                            mechanisms are orthogonal: store-backed
  *                            resume for the durable coordinator, step-id

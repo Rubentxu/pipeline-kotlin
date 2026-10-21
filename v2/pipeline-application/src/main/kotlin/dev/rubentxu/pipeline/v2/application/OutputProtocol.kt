@@ -6,8 +6,7 @@ package dev.rubentxu.pipeline.v2.application
  *
  * The default [Published] preserves the R0.3 channel split: the
  * [LaunchReceipt] (`pipelinek.launch/1`) is line 1 of stdout, and the
- * event array is line 2 of stdout. This is the contract
- * [ADR-PK1-IDENTITY] declared and that the R0.3 brief locked in.
+ * event array is line 2 of stdout.
  *
  * The opt-in [SeparatedV2] moves the event array to stderr line 1 so
  * stdout carries only the receipt. The receipt's schema and channel
@@ -20,19 +19,16 @@ package dev.rubentxu.pipeline.v2.application
  * silent migration, no surprise reroute.
  *
  * **Wire ids follow the `pipelinek.output/N` versioned family.** [Published] is
- * `pipelinek.output/1`; [SeparatedV2] is `pipelinek.output/2`. This
- * matches the `pipelinek.launch/1` schema family declared by
- * ADR-PK1-IDENTITY and the bump rule of ADR-PK1-OUTPUT-FRAMING
- * ("alineado con el patrón `pipelinek.<family>/N`. Bump sobre el canal, no
- * sobre el recibo").
+ * `pipelinek.output/1`; [SeparatedV2] is `pipelinek.output/2`. The bump rule is
+ * "bump on the channel of the event array, never on the receipt" so the receipt
+ * schema family stays stable across protocol bumps.
  *
  * **Negotiation is fail-closed.** [negotiate] returns `null` when
  * no id in the supplied preference list intersects with
  * [SUPPORTED_IDS]. The caller (the CLI entrypoint) emits a typed
  * `CliExit.InvalidArgument` envelope and exits with code 2. The
  * server NEVER falls back to [Published] on an unknown request —
- * that would be silent degradation, the very defect
- * ADR-PK1-OUTPUT-FRAMING was written to prevent.
+ * that would be silent degradation.
  */
 enum class OutputProtocol(val id: String) {
     /** `pipelinek.output/1` — R0.3 channel split (receipt + events on stdout). */
@@ -57,7 +53,7 @@ enum class OutputProtocol(val id: String) {
         fun fromId(id: String): OutputProtocol? = values().firstOrNull { it.id == id }
 
         /**
-         * Intersection-based negotiation per ADR-PK1-OUTPUT-FRAMING.
+         * Intersection-based negotiation.
          *
          * The client passes a list of protocol ids it accepts, in
          * priority order (leftmost is most preferred). The server

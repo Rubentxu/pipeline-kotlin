@@ -6,9 +6,9 @@ package dev.rubentxu.pipeline.v2.domain
  *
  * This is the **single** authority that produces a [RunOutcome]. No other
  * site in the codebase is allowed to fabricate a `RunOutcome` literal; any
- * such fabrication is a migration gap and a violation of
- * `CANONICAL_CONTRACTS_SPEC.md §Outcomes` ("`RunOutcome` se obtiene
- * mediante un único reducer").
+ * such fabrication is a migration gap and a violation of the
+ * canonical-contracts Outcomes rule ("`RunOutcome` se obtiene mediante un
+ * único reducer").
  *
  * Reduction rules, in priority order:
  *

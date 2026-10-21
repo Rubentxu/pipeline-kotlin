@@ -28,7 +28,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * SCM/Git OFFICIAL_PLUGIN contributor (LFC-2E2 / F5.1 / ADR-0092).
+ * SCM/Git OFFICIAL_PLUGIN contributor.
  *
  * Carries real [StepProviderMetadata] built from a typed [PluginManifest],
  * so events emitted during real execution of `scm-git.checkout` carry the

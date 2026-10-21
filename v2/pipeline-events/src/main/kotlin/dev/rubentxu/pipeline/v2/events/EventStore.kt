@@ -26,7 +26,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventCursor
  *
  * It never claims completeness in the other direction either: a page at the end of a run is not
  * evidence that the run finished, exactly as [EventPage] does not read the absence of a
- * `RunFinished` as "complete" (EVT-2 law).
+ * `RunFinished` as "complete".
  */
 data class EventSlice(
     val events: List<DomainEvent>,
@@ -64,7 +64,7 @@ interface EventStore {
     /**
      * Returns all events for the given run, in sequence order.
      *
-     * ## This CANNOT report a row it could not read (P3-E E4c)
+     * ## This CANNOT report a row it could not read
      *
      * `Sequence<DomainEvent>` has no case for "a durable record existed and did not decode". A
      * store whose rows can fail to decode — SQLite, where the payload is text and the `kind` may
@@ -94,7 +94,7 @@ interface EventStore {
      * that this class already knows. A rule that lives only in a KDoc is a rule every consumer
      * writes again, and writes again slightly wrong.
      *
-     * ## It REFUSES rather than shorten (P3-E E4c)
+     * ## It REFUSES rather than shorten
      *
      * The default is [readRecords] projected through [EventRecordSlice.requireFullyDecoded], which
      * throws [UndecodableEventRecordException] on a refusal. It used to be a cut over [eventsFor]
@@ -119,7 +119,6 @@ interface EventStore {
 
     /**
      * The HONEST paged read: one page of durable rows, each decoded or explicitly refused.
-     * P3-E E4c — Durable Read Truth.
      *
      * [readSlice] answers a narrower question — "give me the events that decoded" — and to answer
      * it honestly its page bound has to count ROWS. A store that decoded first and then counted

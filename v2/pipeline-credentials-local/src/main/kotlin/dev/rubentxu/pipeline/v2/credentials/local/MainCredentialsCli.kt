@@ -56,8 +56,8 @@ object MainCredentialsCli {
 
     /**
      * The CLI's store path, delegated to [CredentialsStorePath] rather than
-     * recomputed. Internal visibility exists for the contract regression test
-     * (R2, WU-RP-042): CLI and runtime MUST resolve the same store.
+     * recomputed. Internal visibility exists for the contract regression test:
+     * CLI and runtime MUST resolve the same store.
      */
     internal fun resolveStoreFile(): Path = CredentialsStorePath.fromEnvironment(System.getenv())
 

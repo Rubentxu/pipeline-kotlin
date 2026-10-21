@@ -6,7 +6,7 @@ import java.util.jar.JarInputStream
 import java.util.zip.ZipInputStream
 
 /**
- * P0.3b — the effectful half of the identity gate: read a real distribution ZIP
+ * The effectful half of the identity gate: read a real distribution ZIP
  * and produce [DistributionIdentityFacts] for the pure decision.
  *
  * The split is deliberate and follows AGENTS.md ("separate decision from

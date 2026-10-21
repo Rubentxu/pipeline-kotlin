@@ -36,14 +36,14 @@ import dev.rubentxu.pipeline.v2.domain.durable.ParallelDecision.Start
  *    dispatcher) are the runner's concern. The plan names the branches; the
  *    runner chooses HOW to launch them.
  *
- * ## Migration note (post WU-LPR-023)
+ * ## Migration note
  *
  * The plan port defined here is the seam the canonical coordinator will
  * consume once it migrates its inline `runParallelStage` loop behind an
- * engine (this is part of WU-LPR-024, InvocationEngine seam). Until then,
- * the canonical `CanonicalDurableRunCoordinator.runParallelStage` continues
- * to inline the branch dispatch and join, and this port is a pure contract
- * test target.
+ * engine. Until then, the canonical
+ * `CanonicalDurableRunCoordinator.runParallelStage` continues to inline
+ * the branch dispatch and join, and this port is a pure contract test
+ * target.
  */
 fun interface BranchInvoker {
     /**
@@ -88,7 +88,7 @@ sealed interface BranchPlan {
     /**
      * Launch the listed branches from scratch. The runner is responsible for
      * persisting the aggregate RUNNING row BEFORE any branch dispatch
-     * (single-writer law, ADR-0075 §11).
+     * (single-writer law).
      */
     data class LaunchAll(val branches: List<NamedBranch>) : BranchPlan
 

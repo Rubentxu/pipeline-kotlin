@@ -1,14 +1,14 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 /**
- * declared trust profile of a local runner (roadmap RP-4 criterion:
- * "diferenciar ejecución confiable de multi-tenant").
+ * declared trust profile of a local runner: it distinguishes trusted
+ * single-tenant execution from multi-tenant execution.
  *
  * Closed ADT. Each case carries ONLY the sandbox guarantees that profile can
  * actually make; a profile whose guarantees depend on a BEST_EFFORT capability
  * is UNREPRESENTABLE: [MultiTenantConstrained] cannot be constructed until the
- * OS-level sandbox (ADR-0016 M5/M9) exists, and its constructor fails closed
- * citing the ADR, exactly like [SandboxProfile.OS].
+ * OS-level sandbox exists, and its constructor fails closed with a
+ * machine-checkable citation, exactly like [SandboxProfile.OS].
  *
  * ## What each profile guarantees today (L3)
  *
@@ -24,7 +24,6 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  * in L3; therefore this profile is not constructible and no run may claim it.
  *
  * @see SandboxProfile
- * @see <a href="ADR-0016">ADR-0016 — Scope Firewall (M5/M9)</a>
  */
 sealed interface RunnerTrustProfile {
 
@@ -41,13 +40,14 @@ sealed interface RunnerTrustProfile {
     }
 
     /**
-     * Multi-tenant constrained execution. NOT constructible in L3: filesystem
-     * jail, CPU/memory limits and egress blocking require ADR-0016 M5/M9.
-     * Any attempt fails closed with a machine-checkable ADR citation.
+     * Multi-tenant constrained execution. NOT constructible: filesystem
+     * jail, CPU/memory limits and egress blocking are not implemented.
+     * Any attempt fails closed with a machine-checkable citation.
      */
     companion object {
         /**
-         * @throws SandboxProfileUnsupportedException always, until ADR-0016 M5/M9 lands.
+         * @throws SandboxProfileUnsupportedException always, until the OS-level
+         *   sandbox exists.
          */
         fun multiTenantConstrained(): Nothing = throw SandboxProfileUnsupportedException(
             "RunnerTrustProfile.multiTenantConstrained requires ADR-0016 M5/M9 " +

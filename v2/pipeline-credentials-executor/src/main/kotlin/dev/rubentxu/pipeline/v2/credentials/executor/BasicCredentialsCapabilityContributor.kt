@@ -16,7 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 /**
  * how the runtime presents a credential store to a plugin as a NARROW seam.
  *
- * This is the adapter the H5-A commit had to leave open. It sits here, in the module
+ * This adapter sits here, in the module
  * that already owns [CredentialProvider], for the same reason the port sits in
  * `pipeline-credentials-api`: the plugin must not depend on the runtime and the
  * runtime must not import the plugin. The composition root instantiates it; nothing

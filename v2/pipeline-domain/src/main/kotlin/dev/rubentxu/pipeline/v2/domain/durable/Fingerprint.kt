@@ -32,10 +32,8 @@ import kotlinx.serialization.json.JsonObject
  * SHA-256 over bounded input (≤ 64 KiB enforced by [OperationInput.validate]) is
  * cryptographically collision-resistant for this use case.
  *
- * Provenance note: this comment used to cite `design.md §E4-02` and §R-B. Those
- * documents are not in the repository, so the citations were removed rather than
- * left pointing at nothing. ~27 sibling citations of the same shape survive
- * elsewhere in the Kotlin sources and need the same decision.
+ * Provenance note: citations to design documents outside the repository were
+ * removed rather than left pointing at nothing.
  *
  * @param hex 64-character lowercase hex string.
  */
@@ -127,13 +125,14 @@ value class Fingerprint(val hex: String) {
             )
 
             val canonicalJson = JSON.encodeToString(FingerprintPayload.serializer(), payload)
-            // Routed through [dev.rubentxu.pipeline.v2.domain.digest.Sha256] (B0). This is the
-            // single most durable digest in the repository: it is the operation identity that
-            // replay, divergence and resume are decided against, and every shipped candidate
-            // has written rows keyed by the previous expression's exact value. The bytes hashed
-            // are unchanged — the previous code also used UTF-8 explicitly — so no existing
-            // fingerprint moves. What changes is that the hex form now comes from one place
-            // instead of a third local re-spelling of "%02x".
+            // Routed through [dev.rubentxu.pipeline.v2.domain.digest.Sha256]. This is the
+            // single most durable digest in the repository: it is the operation
+            // identity that replay, divergence and resume are decided against,
+            // and every shipped candidate has written rows keyed by the previous
+            // expression's exact value. The bytes hashed are unchanged — the
+            // previous code also used UTF-8 explicitly — so no existing
+            // fingerprint moves. What changes is that the hex form now comes
+            // from one place instead of a third local re-spelling of "%02x".
             return Fingerprint(dev.rubentxu.pipeline.v2.domain.digest.Sha256.ofText(canonicalJson))
         }
     }

@@ -6,25 +6,23 @@ import kotlinx.serialization.json.JsonObject
 /**
  * Read-side projection of an event history query.
  *
- * ## CORRECTION (M1-P3). This KDoc was false and said so at length.
+ * ## CORRECTION. This KDoc was false and said so at length.
  *
- * It claimed that [MainEventsCli][dev.rubentxu.pipeline.v2.application.MainEventsCli]
- * "accepts `--view <mode>` and `--format <fmt>` and delegates the projection" here. It accepts
- * neither flag: its parser is `--db / --runId / --kind / --subject / --limit / --after-cursor` and
- * nothing else. **This projection has no production caller at all** — only its own test reaches
- * it. That was found by RCE's promotion of the OUT-B item and confirmed here against the current
- * HEAD.
+ * It claimed the CLI "accepts `--view <mode>` and `--format <fmt>` and delegates the projection" here.
+ * The parser does not accept either flag: it parses `--db / --runId / --kind / --subject /
+ * --limit / --after-cursor` and nothing else. **This projection has no production caller at all**
+ * — only its own test reaches it.
  *
  * The claim was not harmless documentation drift. It described an integration that a reader would
  * reasonably go looking for, and the way to find it was `--view console`.
  *
  * ## Why the `console` mode is deprecated rather than merely documented
  *
- * It filters envelopes by `EchoOutputCaptured`. Since M1-P2 that event no longer carries **process**
+ * It filters envelopes by `EchoOutputCaptured`. The event no longer carries **process**
  * output — it carries the semantic `core.echo` event only. So a "console" view that selects on it
  * can only ever return a subset of console, which is the dangerous kind of wrong: it looks like it
  * works, and it silently drops whatever a process printed. Filtering events to reconstruct a
- * console is also exactly the event-sequence-for-output-cursor conflation that `ADR-M1 D3` forbids.
+ * console is the same conflation of event sequence and output cursor that the cursor design forbids.
  *
  * The real console reader is [dev.rubentxu.pipeline.v2.application.ConsoleReadService], which
  * addresses the Output Plane by committed byte offset.
@@ -39,7 +37,7 @@ import kotlinx.serialization.json.JsonObject
  *    / ParallelBranchFinished / etc. The agent-friendly default.
  *  - `full` — alias for `events` (every envelope). Reserved for explicit
  *    parity with the `--view full` CLI surface.
- *  - `console` — DEPRECATED. Selects `EchoOutputCaptured` envelopes, which since M1-P2 carry the
+ *  - `console` — DEPRECATED. Selects `EchoOutputCaptured` envelopes, which carry the
  *    semantic `core.echo` event and NOT process output. It cannot show a process console. Use
  *    [dev.rubentxu.pipeline.v2.application.ConsoleReadService].
  *  - `quiet` — only `RunFinished` envelopes (the aggregate outcome).
@@ -100,7 +98,7 @@ object EventViewProjection {
         // Text format: "<sequence> <kind>" — agent-friendly, no payload
         // rendering (the payload types are sealed DomainEvent variants whose
         // text rendering would require per-kind handling; reserve per-kind
-        // text rendering for a follow-up WU).
+        // text rendering for a follow-up).
         return "${envelope.sequence} ${envelope.kind}"
     }
 

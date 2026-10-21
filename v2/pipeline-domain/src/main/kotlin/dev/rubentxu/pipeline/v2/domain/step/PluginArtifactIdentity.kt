@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.domain.step
 
 /**
- * S6/C — why a manifest was refused.
+ * Why a manifest was refused.
  *
  * A closed ADT on purpose. "Rejected" with a String reason is how a fail-closed boundary
  * degrades into a log line nobody can switch on, and the whole value of refusing a plugin
@@ -91,30 +91,32 @@ sealed interface PluginManifestDecodeResult {
 }
 
 /**
- * S6/C — identity of an artifact AS THE RUNTIME MEASURED IT.
+ * Identity of an artifact AS THE RUNTIME MEASURED IT.
  *
  * ## Why this type exists at all
  *
- * A manifest carries its own `digest` field, and ADR-EVO-003 refuses "self-declared digest
- * as proof": a plugin that can write its own digest can write any digest. So the runtime
- * keeps the measured bytes apart from the declared value, and it is the RUNTIME's digest
- * that is authoritative for identity — the declared one is provenance.
+ * A manifest carries its own `digest` field, and the runtime refuses
+ * "self-declared digest as proof": a plugin that can write its own digest
+ * can write any digest. So the runtime keeps the measured bytes apart
+ * from the declared value, and it is the RUNTIME's digest that is
+ * authoritative for identity — the declared one is provenance.
  *
- * ## What S6 does and does not do with it
+ * ## What admission does and does not do with it
  *
- * [PluginAdmission] requires this type as an input, which means a caller CANNOT admit a
- * plugin by handing over a manifest alone. That is the structural half of the guarantee and
- * it is what S6 delivers.
+ * [PluginAdmission] requires this type as an input, which means a caller
+ * CANNOT admit a plugin by handing over a manifest alone. That is the
+ * structural half of the guarantee.
  *
- * The other half — actually hashing the JAR bytes and comparing them to the declared
- * digest — is a capability that does not exist yet in this runtime, because S6 has no notion
- * of where an artifact came from. That comparison is recorded as the opening condition of
- * EVO-M3b, where the generic artifact model lands. This type is the seam it will occupy:
- * it exists so the eventual verifier plugs in without changing admission's signature.
+ * The other half — actually hashing the JAR bytes and comparing them to
+ * the declared digest — is a capability that does not exist yet in this
+ * runtime, because admission here has no notion of where an artifact
+ * came from. That comparison is the opening condition of the next
+ * artifact-model pass. This type is the seam it will occupy: it exists so
+ * the eventual verifier plugs in without changing admission's signature.
  *
- * Declaring that limit here, in the type, is what keeps the seam honest. A type called
- * "artifact identity" that silently meant "the digest the plugin said about itself" is the
- * defect this naming prevents.
+ * Declaring that limit here, in the type, is what keeps the seam honest.
+ * A type called "artifact identity" that silently meant "the digest the
+ * plugin said about itself" is the defect this naming prevents.
  */
 data class MeasuredArtifactIdentity(
     val declaredDigest: Digest,
@@ -157,9 +159,10 @@ sealed interface ArtifactIdentityVerdict {
     /**
      * No measurement was possible. Not a pass.
      *
-     * S6 is in this state by construction: it has no artifact-resolution capability yet.
-     * It is named rather than defaulted so that "we could not check" is visible at every
-     * call site instead of being absorbed into a green result.
+     * Admission is in this state by construction: it has no artifact-resolution
+     * capability yet. It is named rather than defaulted so that "we could not
+     * check" is visible at every call site instead of being absorbed into a
+     * green result.
      */
     data class Unverified(val origin: ArtifactOrigin) : ArtifactIdentityVerdict
 }
@@ -183,55 +186,61 @@ sealed interface ArtifactOrigin {
     /**
      * An artifact the pipeline already had compiled and cached.
      *
-     * Included because ADR-EVO-003 requires admission to apply to compiled-artifact hits
-     * too: a plugin that reaches the runtime by being reused rather than discovered must not
-     * be the one path that skips admission.
+     * Included because admission must apply to compiled-artifact hits too:
+     * a plugin that reaches the runtime by being reused rather than
+     * discovered must not be the one path that skips admission.
      */
     data class ReusedCompiledArtifact(val cacheKey: String) : ArtifactOrigin
 
     /**
      * The runtime has not yet resolved where the artifact came from.
      *
-     * B3.2 placeholder used by the manifest codec: the codec parses the document but does
-     * not measure the artifact, so it cannot know the real origin. The gate replaces this
-     * with the actual [LocalClasspathEntry] / [ResolvedCoordinate] / [ReusedCompiledArtifact]
-     * after measurement, and a refusal recorded against an [Unknown] origin is the smell of
-     * a decision made before measurement completed.
+     * Placeholder used by the manifest codec: the codec parses the document
+     * but does not measure the artifact, so it cannot know the real origin.
+     * The gate replaces this with the actual [LocalClasspathEntry] /
+     * [ResolvedCoordinate] / [ReusedCompiledArtifact] after measurement, and
+     * a refusal recorded against an [Unknown] origin is the smell of a
+     * decision made before measurement completed.
      */
     data object Unknown : ArtifactOrigin
 }
 
 /**
- * B3.2 — first-level admission refusals that arise AFTER the manifest has decoded cleanly.
+ * First-level admission refusals that arise AFTER the manifest has decoded
+ * cleanly.
  *
  * ## The two lifecycles
  *
- * [PluginManifestRejection] and [AdmissionRefusal] are kept disjoint by design. Codec
- * failures (malformed document, unsupported schema, unknown codec) come from reading bytes
- * the runtime did not author and belong to the decode-time boundary. [AdmissionRefusal]
- * covers failures that depend on the runtime's own state — measured bytes, the operator
- * trust database, the admission log of who has already been admitted. The two are a
- * partition of the refusal surface, and a caller that needs to distinguish "this plugin
- * was malformed" from "this plugin was forged" switches on the parent
- * [AdmissionRejection] case, not on a String reason.
+ * [PluginManifestRejection] and [AdmissionRefusal] are kept disjoint by
+ * design. Codec failures (malformed document, unsupported schema, unknown
+ * codec) come from reading bytes the runtime did not author and belong to
+ * the decode-time boundary. [AdmissionRefusal] covers failures that depend
+ * on the runtime's own state — measured bytes, the operator trust
+ * database, the admission log of who has already been admitted. The two
+ * are a partition of the refusal surface, and a caller that needs to
+ * distinguish "this plugin was malformed" from "this plugin was forged"
+ * switches on the parent [AdmissionRejection] case, not on a String reason.
  *
  * ## Why first-level, not derived
  *
- * Each case below carries a different payload: a `RefusedDigestMismatch` carries two
- * digests; a `RefusedUntrustedIdentity` carries a [TrustMetadata.UnverifiedReason];
- * `RefusedAlreadyAdmittedDifferentArtifact` carries the incumbent's origin. Collapsing
- * them into `Refused(reason: String)` or into a single `RefusedTrustFailure(...)` would
- * make the refusal a function of the caller's prose, and the same defect the existing
- * `PluginManifestRejection` KDoc refuses ("a closed ADT on purpose... a String reason is
- * how a fail-closed boundary degrades into a log line nobody can switch on") would re-open
- * here.
+ * Each case below carries a different payload: a `RefusedDigestMismatch`
+ * carries two digests; a `RefusedUntrustedIdentity` carries a
+ * [TrustMetadata.UnverifiedReason];
+ * `RefusedAlreadyAdmittedDifferentArtifact` carries the incumbent's
+ * origin. Collapsing them into `Refused(reason: String)` or into a single
+ * `RefusedTrustFailure(...)` would make the refusal a function of the
+ * caller's prose, and the same defect the existing `PluginManifestRejection`
+ * KDoc refuses ("a closed ADT on purpose... a String reason is how a
+ * fail-closed boundary degrades into a log line nobody can switch on")
+ * would re-open here.
  *
  * ## Order of cases
  *
- * Listed in the order the gate would discover them: no manifest first (the gate cannot
- * even measure an artifact it has no document for), then a digest mismatch, then a
- * trust-database gap, then a version conflict, then a duplicate identity whose
- * second-arrival bytes disagree with the first-arrival bytes.
+ * Listed in the order the gate would discover them: no manifest first
+ * (the gate cannot even measure an artifact it has no document for), then
+ * a digest mismatch, then a trust-database gap, then a version conflict,
+ * then a duplicate identity whose second-arrival bytes disagree with the
+ * first-arrival bytes.
  */
 sealed interface AdmissionRefusal : AdmissionRejection {
 

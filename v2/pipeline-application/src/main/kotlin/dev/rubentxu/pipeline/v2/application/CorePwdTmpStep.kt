@@ -21,7 +21,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Typed input payload of `core.pwd.tmp` (S2-A6 / G3T).
+ * Typed input payload of `core.pwd.tmp` (the pwdTmp seam).
  *
  * The Step has no input parameters — the per-operation identity comes from the
  * canonical [dev.rubentxu.pipeline.v2.application.durable.OpId.format] which the
@@ -33,7 +33,7 @@ import kotlinx.serialization.json.jsonPrimitive
 data object PwdTmpInput
 
 /**
- * Typed output payload of `core.pwd.tmp` — APPROVED_ARCHITECTURAL_DELTA (S2-A6 / G3T, decision D2).
+ * Typed output payload of `core.pwd.tmp` — APPROVED_ARCHITECTURAL_DELTA (the pwdTmp seam, decision D2).
  *
  * Same typed output as `core.pwd`: `PwdOutput(path: String)` with `outcome = Success`.
  * The output path is the absolute path of the deterministic temp workspace
@@ -43,7 +43,7 @@ data object PwdTmpInput
 typealias PwdTmpOutput = PwdOutput
 
 /**
- * Registry candidate for `core.pwd.tmp` (S2-A6 / G3T, corrected post-review).
+ * Registry candidate for `core.pwd.tmp` (the pwdTmp seam, corrected post-review).
  *
  * This Step is **pure policy**: it declares what the engine must do (capability
  * admission + typed contract + canonical output envelope) and delegates ALL
@@ -76,7 +76,7 @@ typealias PwdTmpOutput = PwdOutput
  *
  * ## Why a single capability, not three
  *
- * AGENTS.md STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (symmetric with
+ * the step-implementation guide the step-implementation guide rule 9 (symmetric with
  * `core.sh → ShellOperations`). Three capabilities on a single effectful Step
  * leak the runtime concerns into the contract: the handler would re-derive
  * `sha256` from `OpId`, manually call `Files.createDirectories`, and manually
@@ -89,14 +89,14 @@ typealias PwdTmpOutput = PwdOutput
  * Step's contract** — the handler does not need the durable OpId to do its
  * work; the bridge adapter does, and only there.
  *
- * ## Determinism laws (D5–D12, S2-A6 / G3T)
+ * ## Determinism laws (D5–D12, the pwdTmp seam)
  *
  * Lives in the adapter. Proven by the family-level fitness matrix (24 rows):
  * same OpId ⇒ same path; distinct stepIndex / branchIndex / bodyPath ⇒ distinct
  * paths; path under workspaceRoot; 64 lowercase hex suffix; idempotent; one
  * `PwdResolved` per fresh execution.
  *
- * ## Capability-routed handler discipline (LB-02 / G3-A4.2)
+ * ## Capability-routed handler discipline (the capability-routed handler discipline)
  *
  * - declared capability = used capability = `{TEMPORARY_WORKSPACE_OPERATIONS}`
  * - no `CanonicalRuntimeContext` reach
@@ -109,7 +109,7 @@ typealias PwdTmpOutput = PwdOutput
  *   contains `"core.pwd"` and the legacy dispatcher remains the production
  *   authority until a separate G4 flip).
  * - the public DSL (`PipelineDsl.pwd(tmp=true)`) is NOT rewired yet — that
- *   lower-binding is S2-A6 / G3R (LFC-2R runtime-return consumer). For this
+ *   lower-binding is the runtime-return consumer work (LFC-2R runtime-return consumer). For this
  *   slice the Step is reachable only through the generic registry path.
  *
  * ## Replay law

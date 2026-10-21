@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk
 
 /**
- * Typed carrier for capability injection. Per ADR-0003, steps declare
+ * Typed carrier for capability injection. Steps declare
  * capability dependencies via Kotlin 2.4 context parameters; the runtime
  * orchestrator builds a StepContext and binds it at call-site.
  */

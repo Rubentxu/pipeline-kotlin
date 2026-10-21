@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 /**
  * The registered name of the bundled `when` gate.
  *
- * It lives OUTSIDE `.../domain/directive` on purpose. That package is the S1
+ * It lives OUTSIDE `.../domain/directive` on purpose. That package is the
  * directive KERNEL, and its fitness rule (`the kernel declares no hardcoded
  * directive names`) rejects any namespaced literal inside it: the kernel owns
  * the KEY TYPE and the structural policy ADT, while a concrete name is a
@@ -20,7 +20,7 @@ import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 val WHEN_DIRECTIVE_KEY: DirectiveKey = DirectiveKey("core.when")
 
 /**
- * S3.1 — the registered name of the bundled `agent` execution-target request.
+ * The registered name of the bundled `agent` execution-target request.
  *
  * Published from the same place, and for the same reason, as
  * [WHEN_DIRECTIVE_KEY]: the DSL module depends only on `pipeline-domain`, so
@@ -32,11 +32,11 @@ val WHEN_DIRECTIVE_KEY: DirectiveKey = DirectiveKey("core.when")
  * this paragraph used to say the key was "NOT yet registered" by a
  * [dev.rubentxu.pipeline.v2.domain.directive.DirectiveDefinition], that "the
  * definition, the resolver and the interpreter do not [exist]", and that "the
- * DSL still throws". All three were false from S3.1 onward and had been read as
+ * DSL still throws". All three had been false for some time and had been read as
  * true by anyone consulting the source: `AgentDirectiveDefinition`,
  * `LocalExecutionTargetResolver`, the `DirectiveExecutionPolicy.Resource`
  * interpretation in `BeforeStageDirectiveEngine` and `StageScope.agent(...)`
- * have all existed since then. The KDoc survived because nothing checks prose
+ * have all existed. The KDoc survived because nothing checks prose
  * against code, and a stale capability claim is the same defect class as a stale
  * capability: it tells a reader to expect behaviour that is not there.
  *
@@ -48,7 +48,7 @@ val WHEN_DIRECTIVE_KEY: DirectiveKey = DirectiveKey("core.when")
  *
  * A stage declaring `core.agent` is NOT denied fail-closed by the registry any
  * more. It is decoded, composed, and resolved; `Remote` is the case that is
- * refused, and it is refused at resolution with a diagnostic naming RP-8 rather
- * than by failing to resolve the key.
+ * refused, and it is refused at resolution with a diagnostic naming the
+ * remote-allocator gap rather than by failing to resolve the key.
  */
 val AGENT_DIRECTIVE_KEY: DirectiveKey = DirectiveKey("core.agent")

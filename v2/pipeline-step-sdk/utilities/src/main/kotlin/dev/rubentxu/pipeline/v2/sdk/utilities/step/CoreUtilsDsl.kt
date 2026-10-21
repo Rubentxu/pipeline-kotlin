@@ -21,7 +21,7 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.ZipSources
 import kotlinx.serialization.json.JsonElement
 
 /**
- * Ergonomic Kotlin DSL façade for the LFC-2E2 utilities OFFICIAL_PLUGIN.
+ * Ergonomic Kotlin DSL façade for the utilities OFFICIAL_PLUGIN.
  *
  * Mirrors the scm-git pattern: narrow extension functions that build the
  * typed value, encode it via the plugin's own codec, and lower to the

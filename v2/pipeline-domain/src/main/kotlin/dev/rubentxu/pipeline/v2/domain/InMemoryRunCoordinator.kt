@@ -9,10 +9,10 @@ package dev.rubentxu.pipeline.v2.domain
  *
  * This adapter exists to (a) exercise the full M2 contract chain in
  * tests and characterisation without I/O, and (b) define the reference
- * execution semantics the production durable coordinator (LF-0205+) must
- * reproduce: same order, same dispatch sequence, same reduced outcome —
- * that is the M2 exit criterion ("InMemory/SQLite producen outcomes y
- * orden semántico equivalente").
+ * execution semantics the production durable coordinator must reproduce:
+ * same order, same dispatch sequence, same reduced outcome — that is the
+ * invariant the in-memory and durable paths share ("InMemory/SQLite
+ * producen outcomes y orden semántico equivalente").
  *
  * ## Semantics
  *
@@ -21,8 +21,8 @@ package dev.rubentxu.pipeline.v2.domain
  *   `PARALLEL` edges.
  * - Concurrent waves: with a [ConcurrentStepDispatcher] injected, wave
  *   steps dispatch concurrently through the same [StepDispatcher]
- *   instance (M2-004). Without one, waves flatten to sequential dispatch
- *   in declaration order (the pre-LF-0207 behaviour, kept as fallback).
+ *   instance. Without one, waves flatten to sequential dispatch
+ *   in declaration order (the pre-parallel behaviour, kept as fallback).
  * - Resume: with [RunRequest.resumeAfter] set, steps up to and including
  *   the cursor are skipped **without dispatching**; a wave partially
  *   before the cursor keeps only its remaining steps (as a wave if two

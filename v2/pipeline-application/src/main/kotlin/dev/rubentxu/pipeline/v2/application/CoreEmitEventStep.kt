@@ -33,7 +33,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Typed input payload of `core.emit.event` (S2-A4 / G1).
+ * Typed input payload of `core.emit.event` (the emitEvent capability seam).
  *
  * Deliberately OPEN with respect to `kind`: the legacy wire decoder is total (any dsl-v1
  * payload with a `kind` string decodes), and the whitelist is SEMANTIC policy of the Step,
@@ -48,7 +48,7 @@ data class CoreEmitEventInput(
 )
 
 /**
- * Typed output ADT for `core.emit.event` (S2-A4 / G1).
+ * Typed output ADT for `core.emit.event` (the emitEvent capability seam).
  *
  * The handler NEVER uses exceptions as normal semantics: every legitimate rejection
  * (unknown kind, missing `message`, missing/invalid FileWritten fields) surfaces as
@@ -72,7 +72,7 @@ sealed interface CoreEmitEventOutput : TypedStepOutput {
 }
 
 /**
- * Registry candidate for `core.emit.event` (S2-A4 / G1 registry seam proof).
+ * Registry candidate for `core.emit.event` (the emitEvent capability seam registry seam proof).
  *
  * G1 registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy decoder,
  * the metadata row, or the legacy dispatcher: `StructuralFamilyResolver`'s
@@ -87,7 +87,7 @@ sealed interface CoreEmitEventOutput : TypedStepOutput {
  * `FailureKind.SCHEMA` and ZERO events. Legacy behaviour remains byte-compatible until
  * the flip.
  *
- * Whitelist authority is preserved verbatim (ADR-0054 §D6): all four kinds KEEP their
+ * Whitelist authority is preserved verbatim (the event whitelist rule): all four kinds KEEP their
  * place in the supported contract; classification as internal marker / runtime-used /
  * dead callsite is a separate dimension, not a burn-down concern.
  *
@@ -99,7 +99,7 @@ sealed interface CoreEmitEventOutput : TypedStepOutput {
 object CoreEmitEventStep {
     val KEY: PluginStepId = PluginStepId("core.emit.event")
 
-    /** ADR-0054 §D6 whitelist, byte-equivalent to the legacy authority. */
+    /** the event whitelist rule whitelist, byte-equivalent to the legacy authority. */
     private val ALLOWED_KINDS = setOf(
         "CatchErrorEntered",
         "CatchErrorTriggered",
@@ -186,7 +186,7 @@ object CoreEmitEventStep {
             val sink: dev.rubentxu.pipeline.v2.events.EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
             when (input.kind) {
                 // Scope-only markers: the coordinator handles scope push/pop and publishes
-                // the real CatchErrorTriggered event at the fold-walk (EM-5/EM-6 D5).
+                // the real CatchErrorTriggered event at the fold-walk (the catch-error contract D5).
                 "CatchErrorEntered" -> CoreEmitEventOutput.EmitEventSuccess
                 "CatchErrorTriggered" -> CoreEmitEventOutput.EmitEventSuccess
                 "StageMarkedUnstable" -> {

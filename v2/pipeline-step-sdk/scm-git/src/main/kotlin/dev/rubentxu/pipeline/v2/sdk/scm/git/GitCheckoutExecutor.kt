@@ -49,7 +49,7 @@ import java.util.concurrent.TimeUnit
  * @param credentialsApplier GitCredentialsApplier for temp file auth
  * @param clock Clock for event timestamps
  * @param secretStore SecretStore for credential resolution (may be null in test paths)
- * @param secretPatternRegistry SecretPatternRegistry for scrubbing GitCheckoutFailed.reason (INV-L6-CR-013)
+ * @param secretPatternRegistry SecretPatternRegistry for scrubbing GitCheckoutFailed.reason
  */
 open class GitCheckoutExecutor(
     private val poll: GitPollExecutor,
@@ -134,7 +134,7 @@ open class GitCheckoutExecutor(
         val gitCreds: GitCredentials? = try {
             resolveGitCredentials(req, spec)
         } catch (e: IllegalStateException) {
-            // WU-RP-053R / B2 (fail-closed credentialsRef): the resolver
+            // Fail-closed on an unresolvable credentialsRef: the resolver
             // raises IllegalStateException when a declared credentialsRef
             // cannot be resolved against any reachable SecretStore. We
             // surface that as Result.failure so the step contract (typed
@@ -374,7 +374,7 @@ open class GitCheckoutExecutor(
         // Production path: resolve from SecretStore using credentialsId
         // kind is DECLARED, never inferred from byte content.
         // typed Credential hierarchy is the kind system.
-        // WU-RP-053R / B2 (fail-closed credentialsRef): if the user declared a
+        // Fail-closed on an unresolvable credentialsRef: if the user declared a
         // credentialsId in the script, the executor MUST NOT silently proceed
         // with anonymous git when no SecretStore is reachable. A declared
         // credential that cannot be resolved is a USER-visible misconfiguration
@@ -400,7 +400,7 @@ open class GitCheckoutExecutor(
         if (credentialsId == null) return null
         return try {
             val credential = effectiveStore!!.get(credentialsId)
-            // Pattern-match on DECLARED kind (INV-L6-CR-001)
+            // Pattern-match on DECLARED kind.
             when (credential) {
                 is dev.rubentxu.pipeline.v2.domain.credentials.SecretText -> {
                     // String channel: API token via credential helper
@@ -498,8 +498,8 @@ open class GitCheckoutExecutor(
      * ## Why git's own stdout does not come through here
      *
      * This used to have a sibling, `emitEcho`, which pushed `git`'s stdout and stderr into
-     * `EchoOutputCaptured`. That was a second authority over process bytes, and ADR-M1 D2 gives
-     * those bytes to the Output Plane — which this module does not reach. So `scm.git` was
+     * `EchoOutputCaptured`. That was a second authority over process bytes, and those bytes
+     * belong to the Output Plane — which this module does not reach. So `scm.git` was
      * keeping the transcript alive in the event log as a side effect of having an `EventSink`.
      *
      * Removing it loses nothing a caller could act on:

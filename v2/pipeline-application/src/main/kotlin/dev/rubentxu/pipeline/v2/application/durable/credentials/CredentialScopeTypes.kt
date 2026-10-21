@@ -30,7 +30,7 @@ import java.nio.file.Path
  */
 
 /**
- * EM-7 §Typed scope acquisition outcome.
+ * Typed scope acquisition outcome.
  *
  * Sealed ADT covering the three possible acquisition outcomes:
  *  - [Acquired]: bindings resolved and env available; body may dispatch
@@ -65,7 +65,7 @@ sealed interface CredentialScopeOutcome {
 }
 
 /**
- * EM-7 §Typed scope failure.
+ * Typed scope failure.
  *
  * Covers all failure modes for credential scope acquisition.
  */
@@ -87,7 +87,7 @@ sealed interface CredentialScopeFailure {
 }
 
 /**
- * EM-7 §Typed scope cleanup.
+ * Typed scope cleanup.
  *
  * Covers all cleanup outcomes:
  *  - [Cleaned]: all resources wiped successfully
@@ -110,7 +110,7 @@ sealed interface CredentialScopeCleanup {
 }
 
 /**
- * EM-7 §Acquired credential scope.
+ * Acquired credential scope.
  *
  * The result of a successful [CredentialScopePort.acquire]. Carries the
  * typed env overlay and the cleanup handle. Cleanup is idempotent and

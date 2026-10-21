@@ -21,8 +21,8 @@ import java.nio.file.Path
  * ```
  *
  * Nothing is inferred from a project marker, a build file, or the directory the
- * `.pipeline.kts` happens to live in. ADR-0102 rejects the VCS heuristic
- * precisely because it made the answer unpredictable; ADR-0101 keeps the CLI
+ * `.pipeline.kts` happens to live in. the workspace ownership rule rejects the VCS heuristic
+ * precisely because it made the answer unpredictable; the workspace origin rule keeps the CLI
  * deterministic by saying what it was asked to do.
  */
 internal object WorkspaceIntent {
@@ -31,7 +31,7 @@ internal object WorkspaceIntent {
      * Normalise parsed flags into the closed [WorkspaceRequest] hierarchy.
      *
      * Separated from the interpretations below because the request is the
-     * *decision* and the lease or transport is its *interpretation*; AGENTS.md
+     * *decision* and the lease or transport is its *interpretation*; the step-implementation guide
      * requires those two steps stay separable.
      */
     fun requestFor(flags: CliFlags): WorkspaceRequest =
@@ -48,7 +48,7 @@ internal object WorkspaceIntent {
      * and it is the parent under which per-stage workspaces are allocated, not a
      * resolved stage directory. The attached cases never read it, so a
      * control-plane path can never become a user workspace by accident
-     * (INV-WS-004).
+     * (the same-workspace invariant).
      */
     fun resolveWorkspaceLease(
         flags: CliFlags,
@@ -74,7 +74,7 @@ internal object WorkspaceIntent {
      * returned only [base] and dropped ownership, and the runtime re-derived
      * `Managed` from it — so the destructive guard for a user-owned root never
      * fired in production even though the CLI had already decided `Attached`
-     * (RP034-Id). Re-deciding from the flags in a second function would only
+     * (the typed-owner decision). Re-deciding from the flags in a second function would only
      * recreate that split; the lease is the single interpretation point.
      *
      * The asymmetry in [base] is deliberate and is the crux of the isolated

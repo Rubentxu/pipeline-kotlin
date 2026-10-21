@@ -5,8 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.dsl.StageScope
 
 /**
- * Ergonomic Kotlin DSL extension for the `junit.results` Step
- * (F5.2 / LFC-2E2).
+ * Ergonomic Kotlin DSL extension for the `junit.results` Step.
  *
  * Same shape as the SCM/Git façade:
  *  - constructs the typed [JUnitResultsInput] from positional/named

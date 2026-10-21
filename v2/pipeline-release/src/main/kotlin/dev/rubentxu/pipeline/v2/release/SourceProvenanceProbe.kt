@@ -15,7 +15,7 @@ import java.util.UUID
 /**
  * The effectful half of [SourceProvenance]: reads the facts the pure decider
  * needs. Git execution goes through the canonical [DurableTaskRuntime]
- * (LF-0309: ProcessDurableTaskRuntime is the single authorised process home);
+ * (ProcessDurableTaskRuntime is the single authorised process home);
  * this module constructs processes as little as the runtime lets it — which
  * is to say, never directly.
  *

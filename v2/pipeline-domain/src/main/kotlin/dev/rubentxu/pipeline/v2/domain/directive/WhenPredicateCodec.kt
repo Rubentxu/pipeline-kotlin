@@ -3,13 +3,13 @@ package dev.rubentxu.pipeline.v2.domain.directive
 /**
  * the `when` predicate wire format.
  *
- * This file is the PURE half of S2-A: a sealed predicate ADT, its total
- * encoder, and its total decoder. The bundled directive's NAME and its
- * [DirectiveDefinition] live in `pipeline-application` beside the other
- * `core.*` definitions, because the S1 kernel fitness rule rejects namespaced
- * literals here — a concrete name is a composition fact, not part of the seam.
- * What stays here is exactly what the kernel is allowed to own: the structural
- * vocabulary a gate is written in.
+ * This file is the PURE half of the predicate plumbing: a sealed predicate
+ * ADT, its total encoder, and its total decoder. The bundled directive's
+ * NAME and its [DirectiveDefinition] live in `pipeline-application` beside
+ * the other `core.*` definitions, because the kernel fitness rule rejects
+ * namespaced literals here — a concrete name is a composition fact, not
+ * part of the seam. What stays here is exactly what the kernel is allowed
+ * to own: the structural vocabulary a gate is written in.
  *
  * The decoder is deliberately strict. A gate that is silently discarded is a
  * fail-OPEN defect, so every unparseable input is a typed
@@ -24,9 +24,9 @@ package dev.rubentxu.pipeline.v2.domain.directive
  * compound predicate to a readable multi-line block and re-parsed it with a
  * regex, which silently failed on a nested combinator: the DSL encoded
  * `all { ... any { ... } ... }`, the decoder returned `Malformed`, and the gate
- * was discarded. A test caught it (S2A-DSL-005), but a format that can
- * silently lose a predicate is not acceptable for a gate, where a discarded
- * predicate means fail-OPEN.
+ * was discarded. A test caught it, but a format that can silently lose a
+ * predicate is not acceptable for a gate, where a discarded predicate
+ * means fail-OPEN.
  *
  * So the encoding is prefix notation with LENGTH-PREFIXED strings:
  *

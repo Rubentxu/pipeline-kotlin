@@ -5,14 +5,14 @@ package dev.rubentxu.pipeline.v2.domain.step
  *
  * ## Why a contributor, and why it takes no context
  *
- * A finished `Map<StepCapability, Any>` has to travel somewhere, and every place
- * it travels is a decision about ownership. Parking it on `ShOptions` was tried
- * and reverted in WU-093 H2b: `ShOptions` carries FACTS and POLICIES for one
+ * A finished `Map<StepCapability, Any>` has to travel somewhere, and every
+ * place it travels is a decision about ownership. Parking it on `ShOptions`
+ * was tried and reverted: `ShOptions` carries FACTS and POLICIES for one
  * execution — workspace root, working directory, timeout, sandbox, network
- * egress — and a map of live ports and clients is a SERVICE REGISTRY. It was
- * parked there to spare the coordinator a parameter, which bought a line count
- * and cost the architecture. `CoordinatorGrowthGuardrailTest` exists to stop
- * that class of trade, not to be satisfied by it.
+ * egress — and a map of live ports and clients is a SERVICE REGISTRY. It
+ * was parked there to spare the coordinator a parameter, which bought a
+ * line count and cost the architecture. The coordinator-growth guardrail
+ * test exists to stop that class of trade, not to be satisfied by it.
  *
  * It lives in `pipeline-domain`, beside [StepCapability] and
  * [StepCapabilityAccess], because it is a CONTRACT. A plugin contributes a

@@ -27,7 +27,7 @@ import java.security.SecureRandom
 /**
  * Local credential store using envelope encryption.
  *
- * ## Design (ADR-0049 D2 — rung ii)
+ * ## Design
  *
  * - KEK derives from passphrase via Argon2id (OWASP floor: m≥19456 KiB, t≥2, p≥1)
  * - DEK is random 256-bit, wrapped by KEK (envelope tier ii)
@@ -347,7 +347,7 @@ class LocalSecretStore(
     }
 
     /**
-     * Stores a typed credential (ML-R6) in v2 format.
+     * Stores a typed credential in v2 format.
      * On first add() to a v1 file: migrates existing v1 entries to v2.
      */
     override fun add(id: CredentialsId, credential: Credential) {
@@ -409,7 +409,7 @@ class LocalSecretStore(
     }
 
     /**
-     * Retrieves a typed credential (ML-R6).
+     * Retrieves a typed credential.
      * Handles both v1 (back-compat) and v2 formats.
      */
     override fun get(id: CredentialsId): Credential {
@@ -456,7 +456,7 @@ class LocalSecretStore(
 
     /**
      * Retrieves a credential as SecretHandle (v1 compatibility).
-     * Full implementation - same as ML-R4 behavior.
+     * Full implementation - returns the same shape as the pre-typed-credential era.
      */
     override fun getAsSecretHandle(id: CredentialsId): SecretHandle {
         if (!Files.exists(file)) {
@@ -951,7 +951,7 @@ class LocalSecretStore(
 
     /**
      * Rotates a credential with new bytes, preserving the DEK (v1 compatibility).
-     * Full implementation - same as ML-R4 behavior.
+     * Full implementation - returns the same shape as the pre-typed-credential era.
      */
     override fun rotateBytes(id: CredentialsId, newBytes: ByteArray) {
         if (newBytes.isEmpty()) throw CredentialsStoreEmptySecretException()

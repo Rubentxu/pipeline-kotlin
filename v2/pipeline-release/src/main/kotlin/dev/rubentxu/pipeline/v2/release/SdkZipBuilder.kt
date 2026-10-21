@@ -11,12 +11,12 @@ import java.util.zip.ZipOutputStream
 /**
  * Build the SDK distribution and the SDK BOM JSON manifest for a candidate.
  *
- * §8 of the project policy demands 5 exact release assets, including
+ * The project policy demands 5 exact release assets, including
  * `pipelinek-<v>.sdk.zip` (compiled public contracts) and
  * `pipelinek-bom-<v>.json` (a JSON view of the Maven BOM). The local
- * Maven repository at `<v2>/build/sdk-repo/` is the single source of
- * truth for what was published; this builder selects the entries for
- * the current product version and packages them.
+ * Maven repository is the single source of truth for what was published;
+ * this builder selects the entries for the current product version and
+ * packages them.
  *
  * The SDK ZIP contains every JAR and POM whose folder ends with
  * `/<version>/`. The BOM JSON lists the managed coordinates as

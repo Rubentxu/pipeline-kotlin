@@ -40,8 +40,8 @@ import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
  * itself, which is the same convention the existing `utilities-release.properties` digest
  * uses. The alternative — a digest over the JAR including the manifest that carries it — has
  * no fixed point and cannot be computed at all. This is stated rather than left implicit
- * because "what the digest covers" is a contract question, and ADR-EVO-003 makes it a
- * contested one.
+ * because "what the digest covers" is a contract question that callers depend on
+ * and should be able to state for themselves.
  */
 object UtilitiesPluginDeclaration {
 

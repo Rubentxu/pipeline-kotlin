@@ -4,24 +4,24 @@ package dev.rubentxu.pipeline.v2.domain
  * Pure-data description of a pipeline: its identity, metadata, steps, and
  * the edges between them.
  *
- * ## M1 baseline
+ * ## Baseline
  *
- * Before LF-0202 the type carried only metadata (id, name, version) — it
- * was the *shape of the entity*, not the runtime contract. The
+ * The earlier baseline carried only metadata (id, name, version) — it was
+ * the *shape of the entity*, not the runtime contract. The
  * [PipelineCompiler] worked implicitly inside `walkPipelineSpecDurable`
  * and never produced a `PipelineDefinition` of any useful substance.
  *
- * ## M2 widened contract
+ * ## Widened contract
  *
- * LF-0202 widens the type so that:
- * - [id] is the typed [DefinitionId] (LF-0101 contract), not a raw `String`
- *   — closing the loop between the canonical ID contract and the entity it
+ * The type now widens so that:
+ * - [id] is the typed [DefinitionId], not a raw `String` —
+ *   closing the loop between the canonical ID contract and the entity it
  *   identifies.
  * - [steps] carries every [StepDescriptor] the pipeline executes. The list
  *   is the authoritative source of truth: `walkPipelineSpecDurable` must
  *   consult it, not re-derive step metadata from raw strings.
- * - [edges] carries the ordering graph (LF-0202 follow-on to LF-0204).
- * - [stages] is reserved for the LF-0207 `canonical parallel` slice; the
+ * - [edges] carries the ordering graph.
+ * - [stages] is reserved for the `canonical parallel` slice; the
  *   field is present but `PipelineCompiler` MUST emit an empty list until
  *   that slice lands.
  *
@@ -30,7 +30,7 @@ package dev.rubentxu.pipeline.v2.domain
  * The two legacy `PipelineDefinition(id = "hello", ...)` fixtures in
  * `:pipeline-testkit` keep compiling because the new fields default to
  * empty lists and the new typed [DefinitionId] accepts the legacy literal
- * via [DefinitionId.invoke]. A dedicated migration slice is LF-0205.
+ * via [DefinitionId.invoke]. A dedicated migration slice is in flight.
  *
  * @see PipelineCompiler
  * @see StepDescriptor
@@ -65,7 +65,7 @@ data class PipelineDefinition(
 }
 
 /**
- * Reserved for the LF-0207 `canonical parallel` slice. The M2 compiler
+ * Reserved for the `canonical parallel` slice. The M2 compiler
  * emits an empty list of stages; the runtime walks [PipelineDefinition.edges]
  * directly.
  */

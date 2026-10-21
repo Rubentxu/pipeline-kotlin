@@ -13,7 +13,7 @@ import java.nio.file.Path
  * reducing the parameter explosion in [executeDurableStepImpl] from 8 positional
  * arguments to 6 positional + 1 ShOptions (per design D8).
  *
- * ## Typed Env Channel (ML-R4)
+ * ## Typed Env Channel
  *
  * [env] is typed as `Map<String, SecretHandle>` to provide a typed channel
  * for secret values. Secrets never become `String` until the single coercion
@@ -28,10 +28,7 @@ import java.nio.file.Path
  * @property captureStdout If true, capture stdout to output.txt via tee wrapper.
  * @property timeoutMs Timeout in milliseconds, or null for no timeout.
  * @property env Environment variables to inject via pb.environment().putAll.
- *   Typed as Map<String, SecretHandle> for ML-R4 secret redaction.
- *
- * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
- * @see <a href="ADR-0047">ADR-0047 — FAILED_TIMEOUT Terminal State</a>
+ *   Typed as Map<String, SecretHandle> for secret redaction.
  */
 data class ShOptions(
     val workspaceRoot: Path,
@@ -41,7 +38,7 @@ data class ShOptions(
     val sandbox: SandboxConfig = SandboxConfig.NONE,
     val workingDirectory: Path? = null,
     /**
-     * Who owns [workspaceRoot] (RP034-I / ADR-0102).
+     * Who owns [workspaceRoot].
      *
      * Transport only: the runtime reads it to build a typed `WorkspaceLease`,
      * and nothing infers ownership from the filesystem. `null` keeps the
@@ -56,7 +53,7 @@ data class ShOptions(
      */
     val workspaceOwnership: WorkspaceOwnership? = null,
     /**
-     * Who this execution is allowed to reach on the network (LFC-2E3 / WU-093).
+     * Who this execution is allowed to reach on the network.
      *
      * [DenyAll] by default in the data class itself, so a constructor that forgets
      * to mention it is fail-closed by construction rather than by a condition
@@ -82,11 +79,8 @@ data class ShOptions(
     val networkEgress: NetworkEgressGate = DenyAll,
     /**
      * Pump the transcript through an external ingest agent
-     * (`ObsPc2IngestAgent`) instead of in-JVM pumps. ADR-OBS-003 §5
-     * recommends "one agent per run, spawned and supervised by
-     * PipelineK". R2.3 wires the flag; R2.3 part 2 (the §4
-     * inversion of the spike test) flips the assertion in
-     * `ObsPc2ProducerSurvivalSpikeTest` from `0/50` to `50/50`.
+     * (`ObsPc2IngestAgent`) instead of in-JVM pumps. One agent per run is
+     * spawned and supervised by PipelineK.
      *
      * ## What the flag does at the call site
      *

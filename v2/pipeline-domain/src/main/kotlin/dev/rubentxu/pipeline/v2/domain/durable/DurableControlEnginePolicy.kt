@@ -34,14 +34,12 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.Sched
  *    new decision case forces the engine policy to be revisited (compile-time
  *    exhaustiveness check).
  *
- * ## Migration note (post WU-LPR-022)
+ * ## Migration note
  *
  * The policy defined here is the seam the canonical coordinator will consume
- * once it migrates its inline retry loop behind an engine (this is part of
- * WU-LPR-024, InvocationEngine seam, which extracts the metadata/fingerprint/
- * journal/replay/capability boundary). Until then, the canonical
- * `CanonicalDurableRunCoordinator.dispatchBody` continues to inline the
- * retry loop, and this policy is a pure contract test target.
+ * once it migrates its inline retry loop behind an engine. Until then, the
+ * canonical `CanonicalDurableRunCoordinator.dispatchBody` continues to
+ * inline the retry loop, and this policy is a pure contract test target.
  */
 fun interface DurableControlEnginePolicy {
     /**
@@ -92,10 +90,10 @@ sealed interface EngineDirective {
     data class CloseTerminal(val success: Boolean, val attempt: Int) : EngineDirective
 
     /**
-     * Aggregate completed UNSTABLE at [attempt] (P2 of the Runtime Observation Contract
-     * Closure). Its own case, NOT `CloseTerminal(success = false)`: an unstable completion is
-     * neither success nor failure, and forcing it through the boolean would re-collapse the
-     * exact distinction P1 introduced `OperationStatus.UNSTABLE` to carry.
+     * Aggregate completed UNSTABLE at [attempt]. Its own case, NOT
+     * `CloseTerminal(success = false)`: an unstable completion is neither
+     * success nor failure, and forcing it through the boolean would re-collapse
+     * the exact distinction `OperationStatus.UNSTABLE` was introduced to carry.
      */
     data class CloseUnstableTerminal(val attempt: Int) : EngineDirective
 

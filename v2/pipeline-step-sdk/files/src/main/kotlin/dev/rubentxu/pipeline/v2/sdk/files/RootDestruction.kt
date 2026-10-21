@@ -9,7 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.workspace.DestructiveAuthorization
  * ## Why this is a type and not a `Boolean`
  *
  * Both workspace executors used to take `protectWorkspaceRoot: Boolean = false`.
- * That is the shape AGENTS.md §5/§8 forbids: one bit standing in for a
+ * That is the shape this codebase forbids: one bit standing in for a
  * three-state reality, where the third state has no spelling. The three states:
  *
  * ```text

@@ -49,10 +49,10 @@ data class ReadYamlOutput(
  *
  * Why a closed ADT? Two reasons.
  *
- *  1. The Jenkins reference ([ReadYamlStep.Execution.doRun] —
- *     `https://github.com/jenkinsci/pipeline-utility-steps-plugin/blob/master/src/main/java/org/jenkinsci/plugins/pipeline/utility/steps/conf/ReadYamlStep.java`)
- *     protects against arbitrary class instantiation by routing through
- *     `SafeConstructor`. PipelineK encodes the same invariant as a type.
+ *  1. SnakeYAML's safe constructor already protects against arbitrary class
+ *     instantiation by refusing to build anything but plain collections and
+ *     scalars. This ADT encodes that same invariant as a type, so it survives
+ *     the durable boundary rather than resting on a library's cooperation.
  *  2. PipelineK's durable boundary serialises outputs through a codec.
  *     A `Map<String, Any?>` would roundtrip through `LinkedHashMap` and
  *     collapse numbers into a single Kotlin `Number` type that is no longer

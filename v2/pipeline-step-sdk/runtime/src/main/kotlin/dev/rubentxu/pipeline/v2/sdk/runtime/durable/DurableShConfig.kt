@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 /**
- * Configuration for durable shell execution (ML-R1 / ADR-0046).
+ * Configuration for durable shell execution.
  *
  * Loaded from system properties with sensible defaults. All intervals in seconds.
  *
@@ -25,16 +25,13 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  * | `result.txt` | Exit code written atomically: `echo $? > tmp && mv tmp result.txt` |
  * | `result.txt.tmp` | Temp file for atomic result.txt write |
  * | `output.txt` | Captured stdout when returnStdout=true (tee-gated wrapper) |
- * | `timeout.flag` | Written by watchdog before SIGKILL (TMO-S-005) |
+ * | `timeout.flag` | Written by watchdog before SIGKILL |
  * | `.cookie` | Cookie file created by wrapper; existence means process is alive |
  *
  * ## Linux-Only
  *
  * Durable shell relies on Linux-specific primitives (nohup, setsid, /proc).
  * On non-Linux platforms, [LinuxRequiredException] is thrown.
- *
- * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
- * @see <a href="ADR-0047">ADR-0047 — FAILED_TIMEOUT Terminal State</a>
  */
 data class DurableShConfig(
     /** Heartbeat interval: how often the wrapper touches jenkins-log.txt (seconds). */
@@ -59,7 +56,7 @@ data class DurableShConfig(
     val captureRetainPolicy: CaptureRetainPolicy = CAPTURE_RETAIN_POLICY_DEFAULT,
 
     /**
-     * Pump the transcript through an external ingest agent (ADR-OBS-003)
+     * Pump the transcript through an external ingest agent
      * instead of in-JVM pumps.
      *
      * ## What this flag changes
@@ -73,18 +70,18 @@ data class DurableShConfig(
      *
      * When `false` (the default), the existing in-JVM pump behaviour is
      * preserved: `Redirect.PIPE` + daemon pump threads inside the
-     * runtime. This is OBS-2 Level A only; the child is killed by
+     * runtime. This is the weaker containment level only; the child is killed by
      * `SIGPIPE` if the runtime JVM dies mid-step.
      *
-     * ## §2.3 compatibility cost
+     * ## Compatibility cost
      *
      * The wrapper gains `trap '' PIPE` when this flag is `true`. The
      * `SIG_IGN` disposition is inherited across `exec`, so the user's
      * script — and everything it spawns — runs with `SIGPIPE` ignored.
      * A script that pipes internally (`yes | head -n1`) currently kills
      * its producer with `SIGPIPE`; with the trap, the producer receives
-     * `EPIPE` and may exit non-zero instead. ADR-OBS-003 §2.3 ratifies
-     * this trade and accepts it.
+     * `EPIPE` and may exit non-zero instead. This trade is deliberate and
+     * accepted.
      *
      * ## Default
      *
@@ -211,7 +208,7 @@ data class DurableShConfig(
  * - `setsid` for process group leadership
  * - `nohup` for detachment
  *
- * Local execution is Linux-only for ML-R1; Windows/containers come in M5.
+ * Local execution is Linux-only; Windows and containers are not supported here yet.
  */
 class LinuxRequiredException(
     message: String = "Durable shell requires Linux. Non-Linux platforms are not supported in ML-R1."

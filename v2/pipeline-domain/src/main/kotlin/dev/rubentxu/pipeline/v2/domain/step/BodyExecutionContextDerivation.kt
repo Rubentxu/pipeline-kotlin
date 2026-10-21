@@ -6,30 +6,36 @@ import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import kotlinx.serialization.Serializable
 
 /**
- * Closed ADT of non-context-dimension body decorations propagated through [BodyInvoker]
- * (B11 / W1d-W2; concretizes ADR-0081 D4).
+ * Closed ADT of non-context-dimension body decorations propagated through
+ * [BodyInvoker].
  *
  * Why this exists alongside [BodyContextProjection]:
  *
- * - [BodyContextProjection] names the **declaration**: the static shape of a block Step's
- *   body. `core.timestamps` declares [BodyContextProjection.Timestamps] because that is
- *   the *kind* of projection its body has.
- * - [BodyDecorator] names the **runtime fact**: whether the body being invoked
- *   through [BodyInvoker] is currently INSIDE an active scope whose declaration is a
- *   non-context projection. `timestamps` has no [dev.rubentxu.pipeline.v2.domain.ContextKind]
- *   and therefore pushes NO frame on [ExecutionContext]; the runtime must still carry the
- *   decorator state forward so children know they are inside the decorated scope.
+ * - [BodyContextProjection] names the **declaration**: the static shape of
+ *   a block Step's body. `core.timestamps` declares
+ *   [BodyContextProjection.Timestamps] because that is the *kind* of
+ *   projection its body has.
+ * - [BodyDecorator] names the **runtime fact**: whether the body being
+ *   invoked through [BodyInvoker] is currently INSIDE an active scope whose
+ *   declaration is a non-context projection. `timestamps` has no
+ *   [dev.rubentxu.pipeline.v2.domain.ContextKind] and therefore pushes NO
+ *   frame on [ExecutionContext]; the runtime must still carry the
+ *   decorator state forward so children know they are inside the decorated
+ *   scope.
  *
- * The split is deliberate: inventing a fictitious [dev.rubentxu.pipeline.v2.domain.ContextKind]
- * for timestamps would make the domain carry a kind it doesn't actually have (W1c
- * already established that the closed ContextKind family does NOT contain one for
- * timestamps; see [BodyContextProjection.Timestamps.requiredContextKind]). A decorator
- * preserves the architectural property that context dimensions and projection shapes
- * are distinct, both closed, neither bleeding into the other.
+ * The split is deliberate: inventing a fictitious
+ * [dev.rubentxu.pipeline.v2.domain.ContextKind] for timestamps would make
+ * the domain carry a kind it doesn't actually have (the closed
+ * `ContextKind` family does NOT contain one for timestamps; see
+ * [BodyContextProjection.Timestamps.requiredContextKind]). A decorator
+ * preserves the architectural property that context dimensions and
+ * projection shapes are distinct, both closed, neither bleeding into the
+ * other.
  *
- * [BodyDecorator.None] is the default for every body invocation that is not inside a
- * decorator scope, including sequential, retrying and credential-leased bodies; the
- * default keeps the typical call site unchanged.
+ * [BodyDecorator.None] is the default for every body invocation that is
+ * not inside a decorator scope, including sequential, retrying and
+ * credential-leased bodies; the default keeps the typical call site
+ * unchanged.
  */
 @Serializable
 sealed interface BodyDecorator {
@@ -48,17 +54,19 @@ sealed interface BodyDecorator {
 }
 
 /**
- * Closed ADT of runtime payloads that can be projected through a [BodyContextProjection]
- * (B11 / W1d-W2).
+ * Closed ADT of runtime payloads that can be projected through a
+ * [BodyContextProjection].
  *
- * Each variant carries ONLY the payload meaningful for its projection; a projection
- * with no payload shares [None]. Variants are matched against projections in
- * [deriveChildExecutionContext] and NEVER silently merged — passing a [DirectoryValue]
- * to an [BodyContextProjection.Environment] is a typed rejection, not a fallback.
+ * Each variant carries ONLY the payload meaningful for its projection; a
+ * projection with no payload shares [None]. Variants are matched against
+ * projections in [deriveChildExecutionContext] and NEVER silently merged —
+ * passing a [DirectoryValue] to an [BodyContextProjection.Environment] is a
+ * typed rejection, not a fallback.
  *
- * Pairs with [BodyDecorator]: the projection carries the SHAPE, the value carries the
- * PAYLOAD, the decorator carries the RUNTIME FACT. Together they exhaust the
- * information the pure context derivation needs from a caller.
+ * Pairs with [BodyDecorator]: the projection carries the SHAPE, the value
+ * carries the PAYLOAD, the decorator carries the RUNTIME FACT. Together
+ * they exhaust the information the pure context derivation needs from a
+ * caller.
  */
 @Serializable
 sealed interface BodyRuntimeValue {
@@ -99,14 +107,15 @@ sealed interface BodyContextRejection {
 }
 
 /**
- * Typed result of [deriveChildExecutionContext] (B11 / W1d-W2; concretizes ADR-0081 D4).
+ * Typed result of [deriveChildExecutionContext].
  *
- * - [Derived] carries the new immutable [ExecutionContext]; the parent is untouched
- *   (CTX-P law).
+ * - [Derived] carries the new immutable [ExecutionContext]; the parent is
+ *   untouched (context-purity law).
  * - [Rejected] carries the typed reason; never a stringly-typed message.
  *
- * Two cases; not a transition. A transition implies a state machine, this is a
- * single-step derivation result: parent + projection + payload -> next-context-or-reject.
+ * Two cases; not a transition. A transition implies a state machine, this
+ * is a single-step derivation result: parent + projection + payload ->
+ * next-context-or-reject.
  */
 sealed interface BodyContextDerivation {
     data class Derived(val context: ExecutionContext) : BodyContextDerivation
@@ -114,26 +123,30 @@ sealed interface BodyContextDerivation {
 }
 
 /**
- * Pure derivation of a child [ExecutionContext] from a parent and a declared projection.
+ * Pure derivation of a child [ExecutionContext] from a parent and a declared
+ * projection.
  *
- * The PURE FORM of the body-machine context step (B11 / W1d-W2; concretizes ADR-0081 D4
- * and CTX-P's "the seam is honest about what it does not do").
+ * The PURE FORM of the body-machine context step — the seam is honest about
+ * what it does not do.
  *
  * ## Law
  *
- * - **Total over the closed projection family.** Every [BodyContextProjection] case
- *   has exactly one branch; there is no `else`. Adding a projection case forces this
- *   function to be visited at compile time and motivates the test row that asserts
- *   exhaustivity.
- * - **Pure.** No I/O, no events, no clocks, no registry reads, no global state, no
- *   mutation of any input. The result depends only on (parent, projection, runtime).
+ * - **Total over the closed projection family.** Every [BodyContextProjection]
+ *   case has exactly one branch; there is no `else`. Adding a projection
+ *   case forces this function to be visited at compile time and motivates
+ *   the test row that asserts exhaustivity.
+ * - **Pure.** No I/O, no events, no clocks, no registry reads, no global
+ *   state, no mutation of any input. The result depends only on (parent,
+ *   projection, runtime).
  * - **StepKey-blind.** The function does not name or read any
- *   [dev.rubentxu.pipeline.v2.domain.PluginStepId]. Two block Steps that declare the
- *   SAME projection with the SAME payload obtain the SAME derived context — that is
- *   the test row that turns "no concrete-Step switch" from a slogan into an invariant.
- * - **Parent-preserving.** [ExecutionContext] is immutable; derivation never mutates
- *   `parent.overlays` in place. The parent and the derived context can coexist
- *   independently; siblings derived from the same parent are equal but distinct values.
+ *   [dev.rubentxu.pipeline.v2.domain.PluginStepId]. Two block Steps that
+ *   declare the SAME projection with the SAME payload obtain the SAME
+ *   derived context — that is the test row that turns "no concrete-Step
+ *   switch" from a slogan into an invariant.
+ * - **Parent-preserving.** [ExecutionContext] is immutable; derivation never
+ *   mutates `parent.overlays` in place. The parent and the derived context
+ *   can coexist independently; siblings derived from the same parent are
+ *   equal but distinct values.
  *
  * ## Branch table
  *

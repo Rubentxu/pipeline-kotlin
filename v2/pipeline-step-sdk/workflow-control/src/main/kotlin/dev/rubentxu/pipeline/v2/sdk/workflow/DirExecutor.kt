@@ -37,8 +37,6 @@ data class DirResult(
  * - Does NOT emit events - caller handles event emission
  * - Does NOT execute nested steps - caller handles iteration
  *
- * Design: D8 (ADR-0052 §D8)
- *
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`
  */
 class DirExecutor(

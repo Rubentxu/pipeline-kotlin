@@ -11,7 +11,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Typed input for the `scm-git.checkout` Step (LFC-2E2 / F5.1).
+ * Typed input for the `scm-git.checkout` Step.
  *
  * Kept deliberately narrow: the Step contract only carries the
  * configuration the runtime needs to invoke [GitCheckoutExecutor]. The
@@ -53,7 +53,7 @@ fun GitCheckoutInput.toDomainCredentialsId(): dev.rubentxu.pipeline.v2.domain.Cr
     credentialsRef?.let { dev.rubentxu.pipeline.v2.domain.CredentialsId(it) }
 
 /**
- * Public StepKey for the SCM/Git checkout family (LFC-2E2 / F5.1).
+ * Public StepKey for the SCM/Git checkout family.
  */
 object ScmGitCheckoutKey {
     val VALUE: PluginStepId = PluginStepId("scm-git.checkout")

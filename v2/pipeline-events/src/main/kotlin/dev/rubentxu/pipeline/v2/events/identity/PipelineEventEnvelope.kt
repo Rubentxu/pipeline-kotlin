@@ -17,13 +17,13 @@ import java.time.Instant
 
 /**
  * Observable-projection envelope wrapping a [DomainEvent] with typed cross-system
- * identity (EVT-1).
+ * identity.
  *
  * Laws:
  * - identity projection only: adding envelopes MUST NOT change journal schema,
  *   fingerprints, replay, outcomes, or the event's own semantics;
  * - `sequence` appears as PROJECTION of the store-assigned value; the store
- *   remains the sequence authority (EVT-0 §2);
+ *   remains the sequence authority;
  * - explicit version ([VERSION]); decoding an unknown major version fails typed;
  * - no `Map<String, Any>`: identity is closed, typed data.
  */

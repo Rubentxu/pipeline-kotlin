@@ -3,8 +3,8 @@ package dev.rubentxu.pipeline.v2.application.durable
 /**
  * Pure value-object describing the durable-protocol admission laws observed at the spine.
  *
- * Slice S2.5.7 / B1.2c3 — LB-01 spine consolidation. WU-1 introduces the primitive
- * shape so that later WUs can wire the spine without touching this file.
+ * Spine consolidation. Introduces the primitive
+ * shape so that later work units can wire the spine without touching this file.
  *
  * Invariants:
  *  - Pure, no I/O. No `runBlocking`, no clock, no random, no event sink, no logger.
@@ -18,7 +18,7 @@ object StepAdmissionLaws {
     /**
      * The 6 named reconciliation outcomes currently distinguished at the spine,
      * plus `Other` for any value not yet named here. The spine's `when` will
-     * exhaustively match this enum in WU-3..5.
+     * exhaustively match this enum in the later work units.
      */
     enum class ReconciliationResolution {
         Fresh,

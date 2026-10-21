@@ -5,14 +5,15 @@ import java.nio.file.Path
 /**
  * Who owns a workspace directory, and therefore who may destroy it.
  *
- * This is a **typed state**, never an inference. A previous implementation
+ * This is a typed state, never an inference. A previous implementation
  * derived ownership by looking for a `.git`/`.hg`/`.svn` marker
- * (the VCS-marker heuristic, `ProjectCheckoutDetector`, deleted in RP034-I), which made a bare non-VCS project tree readable as
- * disposable scratch and left the safety of the user's checkout dependent on the
- * type of version control they happened to use.
+ * (the VCS-marker heuristic, the project-checkout detector that has since
+ * been deleted), which made a bare non-VCS project tree readable as
+ * disposable scratch and left the safety of the user's checkout dependent
+ * on the type of version control they happened to use.
  *
- * ADR-0102 replaces the heuristic: ownership is decided when the lease is
- * created and is carried explicitly from then on.
+ * The replacement ADR closes that loophole: ownership is decided when the
+ * lease is created and is carried explicitly from then on.
  */
 enum class WorkspaceOwnership {
     /** A directory the user owns. Destructive root operations fail closed. */

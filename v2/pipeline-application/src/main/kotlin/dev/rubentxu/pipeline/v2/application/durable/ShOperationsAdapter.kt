@@ -8,7 +8,7 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 
 /**
  * The certified engine entry-point (`ShExecution.invokeShell`) used by
- * `core.sh` handlers (LB-02 / G3 REGISTRY_PRIMARY).
+ * `core.sh` handlers.
  *
  * Implements [ShellOperations] by adapting the typed seam to the durable
  * runtime substrate. The adapter is the ONLY thing in this file that holds
@@ -35,9 +35,9 @@ import dev.rubentxu.pipeline.v2.events.EventSink
  * `-bp2-b0:branch-...` form for parallel-branch steps). Deriving a fresh
  * `OpId(runId, 0, stepIndex)` per call would collapse two concurrent parallel
  * branches onto the SAME control dir (`{controlRoot}/{opId}`), interleaving
- * their `script.sh`/`result.txt` writes — the corruption observed in
- * B13/E-EM-11 WL-P2/P3. The control dir is derived from `opId.format()` in
- * [ShExecution.invokeShell], so the opId IS the durable process identity.
+ * their `script.sh`/`result.txt` writes. The control dir is derived from
+ * `opId.format()` in [ShExecution.invokeShell], so the opId IS the durable
+ * process identity.
  */
 class ShOperationsAdapter(
     private val runIdString: String,
@@ -45,7 +45,7 @@ class ShOperationsAdapter(
     private val shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions,
     private val controlDirRoot: java.nio.file.Path?,
     private val eventSink: EventSink,
-    // WU-LPR-011 secret-redaction slice: registry threaded from the runtime
+    // Secret-redaction slice: registry threaded from the runtime
     // context. Null = no transcript redaction (legacy/test composition).
     private val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
 ) : ShellOperations {

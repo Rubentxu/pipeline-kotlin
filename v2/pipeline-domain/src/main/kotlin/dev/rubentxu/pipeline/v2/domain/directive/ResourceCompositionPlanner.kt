@@ -11,8 +11,8 @@ package dev.rubentxu.pipeline.v2.domain.directive
  * existed the engine resolved them SEQUENTIALLY, emitting two `ExecutionTargetResolved`
  * events for one stage and letting declaration order decide which requirement was
  * honoured. On the local profile that looked harmless, because both resolve to the same
- * host. In RP-8, when a target is a real lease, it is acquire-acquire on one resource
- * with no defined composition.
+ * host. In a remote-allocator extension, when a target is a real lease, it is
+ * acquire-acquire on one resource with no defined composition.
  *
  * The tempting fix is to test the key against a hardcoded name, which the
  * kernel fitness rejects by design: a namespaced directive literal must not
@@ -21,7 +21,7 @@ package dev.rubentxu.pipeline.v2.domain.directive
  * fix verbatim.
  *
  * and it is wrong in the way this repository has already been wrong twice: a central
- * switch on a concrete name (STEP CONSTITUTION §7), correct today and silently wrong the
+ * switch on a concrete name, correct today and silently wrong the
  * moment a vendor contributes a second resource directive. The law below reads the
  * [DirectiveExecutionPolicy.Resource] the definition DECLARED, so it holds for a key
  * that does not exist yet — which is why the "different keys are legitimate" half is

@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.sdk.utilities.domain
 import kotlinx.serialization.Serializable
 
 /**
- * `core-utils.findFiles` typed Output (LFC-2E2 utilities, Slice 2 / S2.3).
+ * `core-utils.findFiles` typed Output.
  *
  * Mirrors the Jenkins `FileWrapper` shape: every match produces a
  * [FileEntry] with name, workspace-relative path, directory flag,

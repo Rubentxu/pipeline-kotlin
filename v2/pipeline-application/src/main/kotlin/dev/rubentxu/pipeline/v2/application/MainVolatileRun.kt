@@ -30,7 +30,7 @@ import dev.rubentxu.pipeline.v2.application.observation.LiveOutputPresentation
  *
  * ## Why this is a world and not a mode
  *
- * LF-0208 (Single Runtime Spine): the storage choice must not select a
+ * the single-runtime-spine storage rule (single runtime spine): the storage choice must not select a
  * different execution algorithm. This branch runs the SAME canonical
  * coordinator as the durable one, with volatile stores; nothing survives the
  * process. The differences live in the wiring below and not in the run.
@@ -39,7 +39,7 @@ import dev.rubentxu.pipeline.v2.application.observation.LiveOutputPresentation
  *
  * The law is about the ALGORITHM, and the algorithm is shared: both worlds
  * reach [runCanonical] and both bind the same coordinator. Two facts of the
- * request differ on purpose — the credential provider (H5-B: a run with nowhere
+ * request differ on purpose — the credential provider (the pipeline-managed workspace owner: a run with nowhere
  * to look answers `NotConfigured`) and the control root (necessarily, because
  * the two worlds keep their control state in different places).
  *
@@ -63,7 +63,7 @@ internal fun runVolatilePipeline(
     scriptPath: Path,
     outputProtocol: OutputProtocol,
 ) {
-    // LF-0208 (Single Runtime Spine): storage choice must not select a
+    // the single-runtime-spine storage rule (single runtime spine): storage choice must not select a
     // different execution algorithm. Without --db the run uses the
     // canonical durable coordinator with volatile (in-memory) stores;
     // nothing survives the process.
@@ -122,10 +122,10 @@ internal fun runVolatilePipeline(
     // PIPELINE_CREDENTIALS_STORE env overrides, exactly like the durable path.
     //
     // The PROVIDER this seam also opens is deliberately NOT handed to the run
-    // (H5-B, below): a run with no store has nowhere to look, and a run that
+    // (the pipeline-managed workspace owner, below): a run with no store has nowhere to look, and a run that
     // does have one does not need the provider on the in-memory path.
     val credentialSeam = composeCredentialSeam(secretPatternRegistry, clock)
-    // RP034-H / ADR-0101 clause 3.1 + RP034-Id: the workspace origin is decided
+    // the workspace decision rule / the workspace origin rule clause 3.1 + the typed-owner decision: the workspace origin is decided
     // ONCE, here at the boundary. Both facts cross into the runtime — the shared
     // directory and its owner — because a runtime that receives only the root
     // re-derives ownership and lets `deleteDir` erase a user's project under the
@@ -180,7 +180,7 @@ internal fun runVolatilePipeline(
                         // Before this binding, this branch bound NO saga store at all, so the
                         // Saga capabilities were never exposed and a script that declares them
                         // was refused at admission — the same script behaving differently with
-                        // and without `--db`, which is the contradiction LF-0208 forbids.
+                        // and without `--db`, which is the contradiction the single-runtime-spine storage rule forbids.
                         //
                         // The epoch is 0 because a volatile run has no lease: there is no
                         // takeover to fence against, and one writer owns the run for as long as
@@ -195,7 +195,7 @@ internal fun runVolatilePipeline(
                         effectReplayPolicy = DefaultEffectReplayPolicy(),
                         controlDirRoot = controlDirRoot,
                         sandboxProfile = config.sandboxProfile,
-                        // RP034-H / ADR-0101 clause 3.1: the CLI default is local-first. The
+                        // the workspace decision rule / the workspace origin rule clause 3.1: the CLI default is local-first. The
                         // workspace origin is decided once, here at the boundary, and BOTH
                         // facts cross into the runtime: the shared directory and its owner.
                         // `--isolated` preserves the historical PipelineK-managed scratch;
@@ -440,14 +440,14 @@ private fun composeVolatileEventStore(
  * Where a volatile run writes its control state.
  *
  * `--control-root` is honoured HERE TOO, and it used not to be. The flag is parsed and
- * validated in the durable branch (ML-R1) and was silently ignored in this one, which
+ * validated in the durable branch and was silently ignored in this one, which
  * hard-coded a fresh temp directory per run. That made the flag mean two different
  * things depending on whether `--db` was present, and it made the Output Plane
  * unreachable from the CLI on the DEFAULT path: `pipeline console --control-dir X`
  * could not be pointed at a run that had not been given a database.
  *
  * That is not a cosmetic inconsistency. M1 moved process output into the plane
- * (ADR-M1 D2/D3), so "where the plane is written" IS the product question, and a flag
+ * (the addressed-output rule D2/D3), so "where the plane is written" IS the product question, and a flag
  * that answers it only on one of two execution paths is a flag that cannot be relied on
  * to observe the default one. The default is unchanged: with no `--control-root`, this
  * still creates a private temp directory.

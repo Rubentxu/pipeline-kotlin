@@ -28,8 +28,8 @@ package dev.rubentxu.pipeline.v2.domain
  *
  * This adapter is intentionally trivial. It does NOT parse the source; it
  * only resolves an id. Real parsing (Kotlin Script DSL, Groovy Script DSL,
- * plain text) lands with `SimplePipelineCompiler` in LF-0201 and with the
- * full DSL migration in LF-0205.
+ * plain text) lands with a future textual compiler and the full DSL
+ * migration.
  */
 class MapPipelineCompiler(
     definitions: Map<String, PipelineDefinition>,

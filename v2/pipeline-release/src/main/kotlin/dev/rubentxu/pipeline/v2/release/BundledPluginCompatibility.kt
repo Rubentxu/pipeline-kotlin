@@ -8,7 +8,7 @@ import java.util.jar.JarInputStream
 import java.util.zip.ZipInputStream
 
 /**
- * PK-R1 R1-C — fail-closed bundled plugin compatibility gate.
+ * Fail-closed bundled plugin compatibility gate.
  *
  * The product version is the HOST for every bundled plugin. The contract that
  * the host admits a plugin is the plugin's `apiRange`; it is the plugin, not
@@ -20,8 +20,8 @@ import java.util.zip.ZipInputStream
  *
  * This check moves that refusal to the producer side, where the build can
  * fail closed with a diagnostic that names the offending plugin and its
- * observed range. It is the one R1-C check that is mechanical, observable
- * from the distribution ZIP alone, and reproducible.
+ * observed range. It is the one bundled-plugin check that is mechanical,
+ * observable from the distribution ZIP alone, and reproducible.
  *
  * ## What this check is NOT
  *
@@ -45,7 +45,7 @@ object BundledPluginCompatibility {
      * `scm-git-0.51.0.jar`, `junit-0.1.0.jar`); the `pipeline-step-sdk/`
      * directory layout from earlier revisions has been replaced. The
      * probe is therefore "every JAR under lib/ that carries a
-     * `META-INF/pipelinek/plugin-manifest.json`" — a content check, not
+     * `META-INF/pipelinek/plugin-manifest.json` — a content check, not
      * a name check. The name is kept as a secondary filter so a future
      * layout that names JARs `pipeline-step-sdk-*` keeps working.
      */

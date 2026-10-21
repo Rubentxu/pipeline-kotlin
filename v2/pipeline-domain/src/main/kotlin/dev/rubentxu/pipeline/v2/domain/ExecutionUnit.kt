@@ -12,7 +12,7 @@ package dev.rubentxu.pipeline.v2.domain
  *   them (same topological wave). Every step in the wave is dispatched
  *   through the **same** [StepDispatcher] instance as single steps —
  *   concurrency lives in the dispatch mechanism, never in a second
- *   execution path (M2-004: "parallel usa dispatcher principal").
+ *   execution path.
  *
  * The steps of a [Concurrent] unit are kept in declaration order; the
  * outcome list produced by a concurrent wave MUST preserve that order so

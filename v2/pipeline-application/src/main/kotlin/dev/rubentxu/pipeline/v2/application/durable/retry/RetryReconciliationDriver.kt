@@ -15,7 +15,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciler
  * Driver that ties together the durable control journal and the pure
  * [RetryReconciler] into a single decision point.
  *
- * ADR-0075 §4, §6, §7 — the driver is the THINKER, not the WRITER. It:
+ * The driver is the THINKER, not the WRITER. It:
  *  1. Reads the durable state for the given retry logical invocation;
  *  2. Builds a [RetryReconciliationInput];
  *  3. Calls the pure [RetryReconciler] and returns the
@@ -24,8 +24,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciler
  * The driver MUST NOT mutate the journal directly. The caller (the
  * dispatch loop in
  * [dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator])
- * is the single writer (ADR-0075 §11) — it persists the plan BEFORE
- * launching any child effect, and only the driver plans.
+ * is the single writer — it persists the plan BEFORE launching any child effect,
+ * and only the driver plans.
  *
  * ## Plan-only contract
  * [plan] is a pure function from the durable state to a decision. The
@@ -43,7 +43,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciler
  * ## Fingerprint anchoring
  * [fingerprint] is the retry contract fingerprint computed at the dispatch
  * site (parent bodyPath + maxAttempts + body digest). Stored and read
- * attempts are compared against this value by the Reconciler (ADR-0075 §9).
+ * attempts are compared against this value by the Reconciler.
  */
 class RetryReconciliationDriver(
     private val journal: FileBasedRetryControlJournal,

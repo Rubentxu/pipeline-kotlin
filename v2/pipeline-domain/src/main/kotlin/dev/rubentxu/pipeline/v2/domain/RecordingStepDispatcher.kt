@@ -14,8 +14,7 @@ package dev.rubentxu.pipeline.v2.domain
  * ## Thread safety
  *
  * Call logging is synchronized, so ONE instance can safely sit behind a
- * [ConcurrentStepDispatcher] receiving parallel wave dispatches — exactly
- * the M2-004 scenario ("parallel usa dispatcher principal"). Recorded
+ * [ConcurrentStepDispatcher] receiving parallel wave dispatches. Recorded
  * order is dispatch-call order across threads (the wave submits in
  * declaration order; interleaving between concurrent calls is possible
  * by design and is part of what the tests characterise).

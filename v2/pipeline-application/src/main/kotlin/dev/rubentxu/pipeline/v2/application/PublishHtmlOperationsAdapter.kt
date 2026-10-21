@@ -18,7 +18,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Production adapter for [PublishHtmlOperations] (WU-LPR-090 / Tier B #2).
+ * Production adapter for [PublishHtmlOperations].
  *
  * Storage layout: `<controlDirRoot>/reports/<runId>/<sanitizedName>/`. The
  * reports directory is a SIBLING of `stashes/` and `artefacts/`, so
@@ -36,24 +36,23 @@ import java.util.UUID
  * [PUBLISH_HTML_OPERATIONS_CAPABILITY] typed seam — it never touches `Files`,
  * `MessageDigest`, or `EventSink` directly.
  *
- * Reference: jenkinsci/htmlpublisher-plugin master @ 6a536b8d
- *   `HtmlPublisher.archiveReports()` + `HTMLReportTarget.getArchive()`.
- *   Pipeline-K deviation: no symlink alternative (rejected by WU-LPR-090/proposal
- *   §OQ1 for cross-platform portability); no `keepAll` run-overlap (rejected for
- *   v1 determinism; spec.md §R4 keeps `keepAll` as a typed input but the
- *   adapter treats it as a hint for future replay-aware archival).
+ * Behaviour parallels the upstream jenkinsci/htmlpublisher-plugin
+ * `HtmlPublisher.archiveReports()` and `HTMLReportTarget.getArchive()`. Deviations from
+ * the upstream plugin: no symlink alternative (rejected for cross-platform portability);
+ * no `keepAll` run-overlap (rejected for v1 determinism — `keepAll` is preserved as a
+ * typed input for future replay-aware archival).
  */
 class PublishHtmlOperationsAdapter(
     private val runIdString: String,
     private val stageIdentity: StageIdentity,
     private val controlDirRoot: Path,
     private val eventSink: EventSink,
-    /** WU-LPR-062 parity: optional project-workspace override (--workspace). */
+    /** Optional project-workspace override (`--workspace`). */
     private val workspaceBase: Path? = null,
     /**
-     * the shared execution location. `null` keeps the previous
-     * reconstruction for direct construction; the bridge always supplies it and
-     * retiring the fallback is RP034-I.
+     * The shared execution location. `null` keeps the previous
+     * reconstruction for direct construction; the bridge always supplies it, so
+     * the fallback is being phased out.
      */
     private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation? = null,
 ) : PublishHtmlOperations {
@@ -61,7 +60,7 @@ class PublishHtmlOperationsAdapter(
     /**
      * The directory `reportDir` is resolved against.
      *
-     * the report directory is a user path, so it anchors on
+     * The report directory is a user path, so it anchors on
      * CURRENT_DIRECTORY and a `dir(...)` scope moves it. With no scope this is
      * the stage workspace — what the private resolver returned — so behaviour
      * at the root is unchanged. The published archive is a separate durable
@@ -77,9 +76,9 @@ class PublishHtmlOperationsAdapter(
     }
 
     override fun publish(input: PublishHtmlInput): PublishHtmlResult {
-        // S0 Semantic Honesty Gate: keepAll has NO v1 interpreter (the adapter
-        // always overwrites the run archive; spec.md §R4 kept the flag as a
-        // "hint" nobody consumed). A declared-but-dropped policy is a silent
+        // Semantic Honesty Gate: keepAll has no v1 interpreter (the adapter
+        // always overwrites the run archive; the contract kept the flag as a
+        // hint nobody consumed). A declared-but-dropped policy is a silent
         // lie, so a request that sets it is rejected instead of honoured-and-ignored.
         if (input.keepAll) {
             val reason = "publishHTML keepAll=true is not supported by the v1 runtime " +
@@ -99,14 +98,14 @@ class PublishHtmlOperationsAdapter(
             return PublishHtmlFailed(FailureKind.SCRIPT, reason)
         }
 
-        // WU-RP-011 r2 — paths confinement. Resolves the reportDir's real
-        // (canonical, symlink-following) path and rejects if it escapes the
-        // workspace. `normalize()` alone does NOT follow symlinks, so a
-        // symlinked reportDir pointing outside the workspace would slip past
-        // the lexical check above. `toRealPath()` is the only operation that
-        // resolves the entire symlink chain. We deliberately fail-closed at
-        // this point — any IO failure to resolve becomes a typed SCRIPT-level
-        // rejection (the script author passed a non-resolvable reportDir).
+        // Path confinement: resolves the reportDir's real (canonical,
+        // symlink-following) path and rejects if it escapes the workspace.
+        // `normalize()` alone does NOT follow symlinks, so a symlinked reportDir
+        // pointing outside the workspace would slip past the lexical check above.
+        // `toRealPath()` is the only operation that resolves the entire symlink
+        // chain. We deliberately fail-closed at this point — any IO failure to
+        // resolve becomes a typed SCRIPT-level rejection (the script author
+        // passed a non-resolvable reportDir).
         val reportDirReal: Path = try {
             reportDir.toRealPath()
         } catch (e: IOException) {
@@ -140,7 +139,7 @@ class PublishHtmlOperationsAdapter(
             return PublishHtmlFailed(FailureKind.SCRIPT, reason)
         }
 
-        // R1/R2: missing directory.
+        // Missing directory.
         if (!Files.exists(reportDir)) {
             if (input.allowMissing) {
                 val skip = PublishHtmlSkipped(PublishHtmlSkipReason.DIRECTORY_MISSING)
@@ -288,10 +287,10 @@ class PublishHtmlOperationsAdapter(
     }
 
     /**
-     * Generates the index.html wrapper (R8). Sorted by relPath for determinism
+     * Generates the index.html wrapper. Sorted by relPath Sorted by relPath for determinism
      * (replay-stable fingerprint).
      *
-     * Per WU-RP-011: `e.relPath` is the canonical source of HTML context. On
+     * Per the HTML-escape contract: `e.relPath` is the canonical source of HTML context. On
      * any filesystem that allows non-slash, non-NUL bytes in filenames (ext4,
      * NTFS, APFS, …) a hostile report author can craft a filename that, when
      * interpolated unescaped, breaks out of the href attribute or injects an
@@ -300,7 +299,7 @@ class PublishHtmlOperationsAdapter(
      * output encoding" — the href attribute and the element body have distinct
      * dangerous sets.
      *
-     * Visible to the test package so WU-RP-011 regression tests can drive the
+     * Visible to the test package so the HTML-escape contract regression tests can drive the
      * function directly with synthetic `HtmlReportEntry` payloads, without
      * having to materialise malicious filenames on the real filesystem (some
      * names that are valid HTML-injection payloads contain characters that

@@ -56,8 +56,8 @@ fun interface ExecutionOutputSink {
  * read them directly. The single source of truth for "did this task succeed"
  * is [decideTaskTerminal] + [isSuccessFromDecision] in `TaskTerminalDecision.kt`,
  * which keeps the sealed ADT (`TaskTerminalDecision.Exited`/`TimedOut`/`Cancelled`)
- * as the only classification shape. `TaskTerminalDecisionFitnessTest` enforces
- * that no `.kt` source under `pipeline-application/src/main` reads
+ * as the only classification shape. The terminal-decision fitness test
+ * enforces that no `.kt` source under `pipeline-application/src/main` reads
  * `.timedOut` / `.cancelled` outside the decider.
  */
 data class TaskExecutionResult(
@@ -76,14 +76,14 @@ data class TaskExecutionResult(
 }
 
 /**
- * Request to execute one durable task (LF-0302 port contract).
+ * Request to execute one durable task (the port contract).
  *
  * @property task the task to run.
- * @property runId identity of the pipeline invocation (M1-001 chain).
+ * @property runId identity of the pipeline invocation.
  * @property opId durable journal key for the operation; the runtime
  *                 records its durable result under this id (atomic
  *                 result.txt-style write is an adapter concern).
- * @property attempt zero-based retry attempt (M1 chain continuity).
+ * @property attempt zero-based retry attempt.
  * @property timeoutMs wall-clock budget for the process; the watchdog
  *                     kills the whole process tree when it fires. `null`
  *                     means no deadline.
@@ -109,12 +109,12 @@ data class TaskExecutionRequest(
 }
 
 /**
- * Port for durable process execution (LF-0302).
+ * Port for durable process execution.
  *
  * The single authorised home for process creation in the V2 runtime
- * (M3 gate: production may contain `ProcessBuilder` only inside this
- * port's adapter). Every sh / git / tar execution must migrate onto this
- * seam (LF-0305..LF-0307) so that the spec invariants hold in ONE place:
+ * (production may contain `ProcessBuilder` only inside this port's
+ * adapter). Every sh / git / tar execution must migrate onto this seam
+ * so that the spec invariants hold in ONE place:
  * concurrent stdout/stderr drains, O(chunk) memory, timeout/cancel while
  * the process lives, process-tree termination, atomic durable result,
  * and reconcile-after-restart.

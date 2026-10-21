@@ -20,7 +20,7 @@ import java.time.Instant
 
 /**
  * Typed seam that a registry-routed Step handler calls to perform stage-workspace
- * file operations (S2-A3 / G1).
+ * file operations (the workspace capability seam).
  *
  * This interface is the *only* contract a Step handler holds for workspace file
  * writes. The handler MUST NOT carry filesystem logic itself; it adapts to this
@@ -31,7 +31,7 @@ import java.time.Instant
  *
  * ## Why a typed seam and not `FileWriteExecutor` directly?
  *
- * AGENTS.md §STEP IMPLEMENTATION — OPERATIVE GUIDE (handler must adapt to existing
+ * the step-implementation guide §the step-implementation guide (handler must adapt to existing
  * certified infrastructure). Mirrors [ShellOperations] for `core.sh`: the substrate
  * stays the single authority for `FileWritten` emission; the handler neither writes
  * files nor emits events.
@@ -57,7 +57,7 @@ interface WorkspaceOperations {
      * returning the typed [FileReadResult] (exists=false for out-of-workspace,
      * reserved-.v2, or missing targets — the substrate owns the path guard).
      * The adapter is the single `FileRead` event emitter; content NEVER enters
-     * the event channel (INV-L6-EVT-001).
+     * the event channel (the deterministic event shape).
      */
     fun readFile(file: String, encoding: String): FileReadResult
 
@@ -82,7 +82,7 @@ class WorkspaceOperationsAdapter(
     /** optional project-workspace override (--workspace).*/
     private val workspaceBase: Path? = null,
     /**
-     * RP034-D (ADR-0100): the shared execution location for this step.
+     * the shared-execution-location contract (the shared execution location): the shared execution location for this step.
      *
      * When present, file Steps resolve against the same current directory the
      * shell vertical observes, so a `dir` scope applies uniformly instead of
@@ -126,8 +126,8 @@ class WorkspaceOperationsAdapter(
             0,
             StepSpec.WriteFile(file = file, text = text, encoding = encoding),
         )
-        // Single-emitter: the adapter is the ONLY FileWritten emitter (WU-LPR-071
-        // fix, CR-U9 family): the executor substrate carries the write evidence but
+        // Single-emitter: the adapter is the ONLY FileWritten emitter (the single-emitter fix
+        // fix, the single-emitter contract family): the executor substrate carries the write evidence but
         // event emission was left to a dispatcher that does not exist on the registry
         // path, silently dropping the FileWritten contract.
         eventSink.append(
@@ -153,7 +153,7 @@ class WorkspaceOperationsAdapter(
             workspaceResolver = { _, _ -> base },
         ).execute(stageName, stageIndex, 0, StepSpec.ReadFile(file = file, encoding = encoding))
         // Single-emitter: the adapter is the ONLY FileRead emitter. Payload is
-        // restricted to path + sha256 + size — never content (INV-L6-EVT-001).
+        // restricted to path + sha256 + size — never content (the deterministic event shape).
         eventSink.append(
             FileRead(
                 eventId = UUID.randomUUID().toString(),

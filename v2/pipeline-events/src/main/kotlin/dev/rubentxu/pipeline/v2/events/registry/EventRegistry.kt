@@ -1,9 +1,8 @@
 package dev.rubentxu.pipeline.v2.events.registry
 
 /**
- * The open registry where contributors declare their event kinds (P3 slice 1, Semantic
- * Constitution §8.4: payloads are typed, versioned, and registered through an open
- * `EventRegistry`).
+ * The open registry where contributors declare their event kinds: payloads are typed,
+ * versioned, and registered through an open `EventRegistry`.
  *
  * Laws, each pinned by [EventRegistryTest]:
  *

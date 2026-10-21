@@ -7,8 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
  * Materializes the canonical retry identities used for durable journal
  * persistence and reconciliation.
  *
- * ADR-0075 §2 — the retry logical invocation has TWO levels of identity
- * at the [OpId] level:
+ * The retry logical invocation has TWO levels of identity at the [OpId] level:
  *  - **Control identity**: stable across attempts; one canonical opId per
  *    retry logical invocation. Used to persist per-attempt control rows
  *    (the durable record of the retry aggregate's state at attempt N).

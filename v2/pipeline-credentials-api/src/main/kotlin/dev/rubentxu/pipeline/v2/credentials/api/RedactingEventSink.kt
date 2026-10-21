@@ -15,7 +15,7 @@ import dev.rubentxu.pipeline.v2.events.StepFailed
  *
  * ## Redaction Layers
  *
- * Two layers of redaction are applied (per design §Data Flow):
+ * Two layers of redaction are applied:
  * 1. **Literal + encoding pattern scan**: [SecretPatternRegistry] provides
  *    multi-form patterns (literal, base64, hex, URL-encoded) that scrub
  *    secret values from free-text fields.
@@ -32,7 +32,7 @@ import dev.rubentxu.pipeline.v2.events.StepFailed
  * - [StepFailed.message]
  * - [CompilationFinished.diagnostics][*].message
  * - [RunFinished.diagnostics][*].message
- * - [GitCheckoutFailed.reason] — INV-L6-CR-013 (scrubbed to prevent credential leakage)
+ * - [GitCheckoutFailed.reason] — scrubbed to prevent credential leakage
  *
  * ## Performance
  *

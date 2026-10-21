@@ -3,14 +3,12 @@ package dev.rubentxu.pipeline.v2.release
 import kotlinx.serialization.Serializable
 
 /**
- * P0.1 — a product version is a final SemVer triple. It must NOT carry a
- * candidate suffix: under the release-evolution contract
- * (`docs/pipelinek-release-evolution/shared/01-cross-repo-contract.md` §4, §11)
- * candidate state lives *outside* the binary identity. `0.44.0-rc1` is
- * therefore not a valid [ProductVersion]; the candidate is
+ * A product version is a final SemVer triple. It must NOT carry a
+ * candidate suffix: candidate state lives *outside* the binary identity.
+ * `0.44.0-rc1` is therefore not a valid [ProductVersion]; the candidate is
  * `(ProductVersion=0.44.0, CandidateId=sha256:…)`.
  *
- * The v0.43.0 incident is the reason this type exists. That artifact was
+ * The motivating incident is the reason this type exists. That artifact was
  * internally consistent at `0.43.0-rc1` and was later presented under a GA
  * identity; a gate that only compared the build's own surfaces would have been
  * green on exactly the bytes that caused the incident. Rejecting a

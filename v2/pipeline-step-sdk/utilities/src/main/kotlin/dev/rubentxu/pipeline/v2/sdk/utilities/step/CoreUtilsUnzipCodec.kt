@@ -30,7 +30,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * `core-utils.unzip` codecs (LFC-2E2 utilities, Slice 2 / S2.5).
+ * `core-utils.unzip` codecs.
  *
  * Envelope shape (durable eligible):
  *   input  : { "path": <string>,

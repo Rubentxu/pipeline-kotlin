@@ -12,7 +12,7 @@ import java.util.UUID
 
 /**
  * The single canonical implementation of [TemporaryWorkspaceOperations] — the typed
- * port consumed by `CorePwdTmpStep.handler` (S2-A6 / G3T, correct post-review).
+ * port consumed by `CorePwdTmpStep.handler`.
  *
  * ## Why an adapter rather than inlining the IO into the handler
  *
@@ -35,7 +35,7 @@ import java.util.UUID
  * It does NOT see filesystem, event sink, runId, opId, or workspaceRoot. Same
  * isolation principle as `core.sh → ShellOperations → ShOperationsAdapter`.
  *
- * ## Determinism (D5–D12, S2-A6 / G3T)
+ * ## Determinism
  *
  * The same OpId produces the same path; a different OpId produces a different path.
  * The path identity is `sha256(opId.format())` — never `System.currentTimeMillis()`,
@@ -63,7 +63,7 @@ class TemporaryWorkspaceOperationsAdapter(
 ) : TemporaryWorkspaceOperations {
 
     override fun resolveOrCreate(): TempWorkspaceResult {
-        // D5–D12 determinism: sha256(canonical OpId.format string) is the ONLY
+        // Determinism: sha256(canonical OpId.format string) is the ONLY
         // source of path identity. No timestamp, no random suffix. The token
         // is 64 lowercase hex chars by construction.
         val token = sha256Hex(opId.format())
@@ -92,7 +92,7 @@ class TemporaryWorkspaceOperationsAdapter(
          * production code path is allowed to construct the token outside
          * this adapter.
          *
-         * Routed through [Sha256] (B0). Byte-identical on any UTF-8 toolchain; the
+         * Routed through [Sha256]. Byte-identical on any UTF-8 toolchain; the
          * charset is now stated rather than taken from the platform default.
          */
         internal fun sha256Hex(input: String): String = Sha256.ofText(input)

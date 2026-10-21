@@ -1,9 +1,9 @@
 package dev.rubentxu.pipeline.v2.release
 
 /**
- * P0.4 / P-UAT-04 — a candidate handoff must be internally consistent with
- * the distribution manifest it names, and its `candidate_id` must be the real
- * digest of the artifact.
+ * A candidate handoff must be internally consistent with the distribution
+ * manifest it names, and its `candidate_id` must be the real digest of the
+ * artifact.
  *
  * This is the last producer-side gate before the harness sees the bytes. The
  * v0.43.0 incident is the reason it is a *closed* result type rather than a

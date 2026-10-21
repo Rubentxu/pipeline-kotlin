@@ -254,7 +254,7 @@ data class ProcessOutputSinks(
 /**
  * The most sanitized bytes the pump moves per write into the composed sink.
  *
- * ## What it bounds now, after OBS-F measured it
+ * ## What it bounds now, and why it was measured
  *
  * It bounds the store's per-chunk bookkeeping. Every write here is one `reserve -> write -> commit`
  * cycle AND one frame in `SegmentFrameIndex`, and `SegmentFrameIndex.appendLine` opens a
@@ -278,7 +278,7 @@ data class ProcessOutputSinks(
  * ```
  *
  * 1024 was chosen when this WAS a liveness bound — at 8 KiB a step emitting 100 B/s withheld its
- * first visible byte for over a minute. OBS-B removed that role when the pump started asking for
+ * first visible byte for over a minute. That role went away when the pump started asking for
  * what is ready, and the number stayed at the value its old justification had picked. The latency
  * floor is now the redactor's lookahead, at most `MIN_SECRET_WINDOW` bytes, and that one is
  * redaction correctness rather than tuning: a byte inside the lookahead could still begin a secret,

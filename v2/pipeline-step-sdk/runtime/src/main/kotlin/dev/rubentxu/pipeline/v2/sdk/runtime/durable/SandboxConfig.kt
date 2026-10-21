@@ -6,7 +6,7 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  * Encapsulates the active [SandboxProfile] plus the allowExtra and pathKeep
  * sets populated from sysprop / controller-JVM env var resolution.
  *
- * Use [SandboxConfig.NONE] for no sandboxing (full ML-R2 back-compat).
+ * Use [SandboxConfig.NONE] for no sandboxing (full back-compat).
  * Use [SandboxConfig.LOCAL] for local sandbox (cwd = workspace, env deny-list, PATH normalise).
  *
  * @property profile The active sandbox profile.
@@ -20,7 +20,6 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  *
  * @see SandboxProfile
  * @see SandboxConfigResolver
- * @see <a href="ADR-0048">ADR-0048 — Sandbox Profile Local</a>
  */
 data class SandboxConfig(
     val profile: SandboxProfile,

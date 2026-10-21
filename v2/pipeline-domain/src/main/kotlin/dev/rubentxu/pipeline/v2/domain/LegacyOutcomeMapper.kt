@@ -2,15 +2,13 @@ package dev.rubentxu.pipeline.v2.domain
 
 /**
  * Stable mapping from the legacy run-outcome strings to the canonical
- * typed [RunOutcome] (LF-0104).
+ * typed [RunOutcome].
  *
  * The durable walker currently returns raw strings (`"success"` /
  * `"unstable"` / `"failure"`) at its boundary. While that walker exists,
  * every crossing from the legacy boundary into typed territory MUST go
- * through this mapper — this is the mechanical definition of the M2-005
- * acceptance criterion ("failure mapping estable"): exactly one place
- * where legacy strings become typed outcomes, deterministic, and
- * fail-closed on unknown tokens.
+ * through this mapper — exactly one place where legacy strings become
+ * typed outcomes, deterministic, and fail-closed on unknown tokens.
  *
  * ## Mapping table
  *

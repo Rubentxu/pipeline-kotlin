@@ -17,11 +17,11 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /**
- * [LockCoordinator] backed by POSIX file locks (RP6-A / WU-091).
+ * [LockCoordinator] backed by POSIX file locks (the POSIX-file-lock contract / WU-091).
  *
  * ## Why a file and not a durable queue
  *
- * Measured, not assumed: PipelineK has no controller and no worker (that is RP-8),
+ * Measured, not assumed: PipelineK has no controller and no worker (that is the controller-and-worker split),
  * and `parallel` is coroutines inside ONE run. The contention that actually exists
  * today is therefore (a) branches of `parallel` in the same process and (b) two runs
  * in two processes on the same host. A file lock covers both, and nothing else.
@@ -32,8 +32,8 @@ import kotlinx.coroutines.withContext
  * chosen over a database queue, not convenience.
  *
  * What it deliberately does NOT do: order waiters. `priority` and
- * `inversePrecedence` need a queue, and a queue between hosts is an RP-8
- * requirement. Building one now would be building RP-8 by convenience.
+ * `inversePrecedence` need a queue, and a queue between hosts is an the controller-and-worker split
+ * requirement. Building one now would be building the controller-and-worker split by convenience.
  *
  * ## Re-entrancy: keyed by DURABLE owner, not by process
  *

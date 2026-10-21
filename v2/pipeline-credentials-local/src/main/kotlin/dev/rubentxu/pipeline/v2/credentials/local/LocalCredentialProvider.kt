@@ -8,12 +8,12 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 /**
  * Local credential provider adapter — wraps [LocalSecretStore] to implement [CredentialProvider] SPI.
  *
- * Design (design §3.1, E-25; backlog L-126 "wrapping LocalSecretStore"):
+ * Design:
  * - Implements [CredentialProvider] SPI port
  * - Wraps [LocalSecretStore] and delegates [resolve] to [SecretStore.getAsSecretHandle]
  * - [close] delegates to [SecretStore.close] — LocalSecretStore manages its own lifecycle
  *
- * This is the H0 adapter for credential resolution. The executor depends ONLY on the
+ * This is the current adapter for credential resolution. The executor depends ONLY on the
  * [CredentialProvider] SPI port, NOT on this concrete implementation.
  *
  * @param store The underlying secret store to delegate to

@@ -6,7 +6,7 @@ import kotlinx.serialization.json.JsonPrimitive
 /**
  * Agent-efficient event inspection.
  *
- * The [EventViewProjection] (WU-LPR-050) emits the full envelope; agents
+ * The [EventViewProjection] emits the full envelope; agents
  * that need a narrower view (a single field, a context window, the tail of
  * a long run) consume [EventInspection]. The inspection is a pure
  * transformation over the projected lines: no query language, no

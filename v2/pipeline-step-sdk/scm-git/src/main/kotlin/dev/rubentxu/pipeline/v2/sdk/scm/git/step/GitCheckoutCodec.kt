@@ -11,7 +11,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * JSON codec for [GitCheckoutInput] (LFC-2E2 / F5.1).
+ * JSON codec for [GitCheckoutInput].
  *
  * Uses kotlinx.serialization runtime JSON (no plugin) following the
  * canonical pattern in `pipeline-application/durable/credentials`.
@@ -19,8 +19,8 @@ import kotlinx.serialization.json.put
  * even when the caller leaves them at their default value (a codec that
  * drops optional fields on encode fails the canonical-envelope contract).
  *
- * C3 / D-011 (audit 2026-09-26, H14): migrated to `PipelineJson` /
- * `JsonAccessors`. Wire format unchanged.
+ * Decoding goes through `PipelineJson` / `JsonAccessors`. The wire format
+ * is unchanged.
  */
 object GitCheckoutInputCodec : StepCodec<GitCheckoutInput> {
 
@@ -68,8 +68,8 @@ object GitCheckoutInputCodec : StepCodec<GitCheckoutInput> {
 /**
  * JSON codec for [GitCheckoutOutput]. Symmetric to the input codec so a
  * handler-side failure that returns the typed value, then runs through
- * the boundary, lands at the same JSON shape on the wire. Migrated to
- * `PipelineJson` (C3 / D-011).
+ * the boundary, lands at the same JSON shape on the wire. Built on
+ * `PipelineJson`.
  */
 object GitCheckoutOutputCodec : StepCodec<GitCheckoutOutput> {
     override fun encode(value: GitCheckoutOutput): EncodedStepValue = PipelineJson.encode(

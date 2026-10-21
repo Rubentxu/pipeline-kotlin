@@ -3,9 +3,9 @@ package dev.rubentxu.pipeline.v2.domain.durable
 /**
  * Pure input to [RetryReconciler.reconcile].
  *
- * ADR-0075 §4 — the reconciler is a pure function whose only inputs are
- * pure value snapshots read from durable storage. It owns ZERO effects:
- * no journal writes, no clock, no child dispatch.
+ * The reconciler is a pure function whose only inputs are pure value
+ * snapshots read from durable storage. It owns ZERO effects: no journal
+ * writes, no clock, no child dispatch.
  *
  * ## Composition
  * The journal adapter assembles this input by reading the canonical
@@ -14,9 +14,9 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * divergence, and grouping child rows by their attempt ordinal.
  *
  * [preControlChildren] is the bucket of child durable facts that were
- * written before ADR-0075 introduced the retry control row. The
- * reconciler applies the legacy compat policy (ADR-0075 §8) against
- * this bucket when no control row exists.
+ * written before the retry control row was introduced. The reconciler
+ * applies the legacy compat policy against this bucket when no control
+ * row exists.
  */
 data class RetryReconciliationInput(
     /**
@@ -53,7 +53,7 @@ data class RetryReconciliationInput(
     val childrenByAttempt: Map<Int, List<RetryChildRowSnapshot>>,
 
     /**
-     * Pre-ADR-0075 child rows that have no associated control row.
+     * Pre-control-row child rows that have no associated control row.
      * Used only by the legacy compat branch.
      */
     val preControlChildren: List<RetryChildRowSnapshot>,

@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.domain
 
 /**
- * Typed outcome of a structural context transition (CTX-P2).
+ * Typed outcome of a structural context transition.
  *
  * The coordinator's old mutable stack had two transitions: push on
  * CatchErrorEntered and pop on CatchErrorTriggered(emitted=true), with a
@@ -26,22 +26,22 @@ enum class ContextInvariantViolation {
 /**
  * Immutable execution-context value owned by NOBODY and derived by EVERYONE.
  *
- * Replaces the coordinator's mutable `contextStack: ContextStack` (PAR-D/CTX-P0
- * inventory): context is threaded as an explicit parameter and derived purely,
- * so callers keep their own parent value and no finally-restore idiom can lose
- * updates across coroutines.
+ * Replaces the coordinator's mutable `contextStack: ContextStack`: context is
+ * threaded as an explicit parameter and derived purely, so callers keep their
+ * own parent value and no finally-restore idiom can lose updates across
+ * coroutines.
  *
- * Two distinct scope propagation models share this value (CTX-P0 §D):
+ * Two distinct scope propagation models share this value:
  *  A. Linearized structural scope (catchError Enter/body/Exit markers in IR):
  *     sequential state machine Context_n + Node_n -> Context_n+1, via
  *     [pushed] and [exitCatchError].
  *  B. Lexical recursive scope (dir/withEnv/withCredentials bodies): child =
  *     parent.pushed(overlay); the caller keeps parent; no restore exists.
  *
- * Ownership boundary (CTX-P contract): this value MUST NOT contain an
+ * Ownership boundary: this value MUST NOT contain an
  * OperationJournal, EventSink, StepRegistry, CoroutineScope, process executor,
  * or any coordinator/service-locator reference. ShOptions (functional env/cwd)
- * intentionally remains a separate per-call value (CTX-P0 §1.3).
+ * intentionally remains a separate per-call value.
  *
  * No coroutine/thread identity is ever part of this value.
  */
@@ -72,12 +72,12 @@ data class ExecutionContext(
     }
 
     /**
-     * EM-5/6 catch-error fold-walk input: the maximal trailing chain of
+     * Catch-error fold-walk input: the maximal trailing chain of
      * [ContextOverlay.CatchErrorOverlay] frames, INNERMOST-FIRST (the baseline
      * coordinator walk started at the top frame and moved outward on FAILURE).
      * The caller folds buildResult FAILURE (continue outward to the next
      * element) / SUCCESS (suppress) / else (unstable) exactly as before.
-     * No precedence change is permitted in CTX-P.
+     * No precedence change is permitted here.
      */
     fun trailingCatchErrorChain(): List<ContextOverlay.CatchErrorOverlay> {
         val result = ArrayList<ContextOverlay.CatchErrorOverlay>()

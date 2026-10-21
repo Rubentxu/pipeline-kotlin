@@ -3,9 +3,7 @@ package dev.rubentxu.pipeline.v2.sdk.utilities.domain
 import kotlinx.serialization.Serializable
 
 /**
- * `core-utils.unzip` typed Input (LFC-2E2 utilities, Slice 2 / S2.5).
- *
- * Jenkins reference: pipeline-utility-steps-plugin::UnZipStep.
+ * `core-utils.unzip` typed Input.
  *
  * Mode is closed: a caller picks exactly one of the three
  * [UnzipMode] cases. Mixing `read` and `test` is unrepresentable at

@@ -28,12 +28,12 @@ data class StepExecutionContext(
 /**
  * Port for executing a single pipeline step.
  *
- * This is the LF-0204 contract. Every step execution in the V2 runtime —
- * serial, parallel, resumed, or retried — MUST flow through exactly one
- * [StepDispatcher] instance. This is the seam that makes M2-004
- * ("parallel usa dispatcher principal") enforceable: once parallel
- * execution lands (LF-0207), it dispatches through this port like every
- * other execution path.
+ * This is the dispatcher port contract. Every step execution in the V2
+ * runtime — serial, parallel, resumed, or retried — MUST flow through
+ * exactly one [StepDispatcher] instance. This is the seam that makes the
+ * "parallel uses the principal dispatcher" rule enforceable: once parallel
+ * execution lands, it dispatches through this port like every other
+ * execution path.
  *
  * ## Contract
  *
@@ -53,7 +53,7 @@ data class StepExecutionContext(
  * - [RecordingStepDispatcher] (domain) — test-friendly: records the
  *   dispatched step ids in order and returns configurable outcomes.
  * - The production durable dispatcher (shell/echo/... execution with
- *   journal + reconciliation) lands in LF-0205 as application work.
+ *   journal + reconciliation) lands as application work.
  *
  * @see StepOutcome
  * @see StepExecutionContext

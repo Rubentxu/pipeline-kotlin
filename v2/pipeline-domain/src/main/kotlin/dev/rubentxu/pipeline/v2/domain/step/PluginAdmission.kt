@@ -27,51 +27,53 @@ import dev.rubentxu.pipeline.v2.domain.step.PluginManifestDecodeResult.Rejected
 sealed interface AdmissionRejection
 
 /**
- * S6/D — THE single authority that decides whether a plugin may join the runtime.
+ * THE single authority that decides whether a plugin may join the runtime.
  *
  * ## The responsibility this inverts
  *
- * Before this type, `PluginManifestValidator` was called from INSIDE each plugin: the
- * contributor built its own manifest, validated it, and returned registrations. That is a
- * plugin that validates itself, and a plugin can always forget to. Nothing in the runtime
- * could tell the difference between "admitted" and "this plugin happened to cooperate".
+ * Before this type, `PluginManifestValidator` was called from INSIDE each
+ * plugin: the contributor built its own manifest, validated it, and returned
+ * registrations. That is a plugin that validates itself, and a plugin can
+ * always forget to. Nothing in the runtime could tell the difference
+ * between "admitted" and "this plugin happened to cooperate".
  *
- * Here the direction is reversed. The plugin declares a DOCUMENT. [admit] decides. The
- * contributor's code is not consulted until it has already been admitted, which is the
- * ordering that ADR-EVO-003 requires: read the manifest, validate it, admit it, and only
- * then load code.
+ * Here the direction is reversed. The plugin declares a DOCUMENT. [admit]
+ * decides. The contributor's code is not consulted until it has already
+ * been admitted, which is the ordering the runtime requires: read the
+ * manifest, validate it, admit it, and only then load code.
  *
  * ## What [admit] does NOT do
  *
- * It never touches a `ServiceLoader`, a classpath, or a contributor. It is a pure decision
- * over three already-collected inputs, which is what makes it testable without constructing
- * a plugin, a classloader or a runtime — and what makes the ordering in the composition root
- * a property of the type rather than a comment promising somebody read it.
+ * It never touches a `ServiceLoader`, a classpath, or a contributor. It
+ * is a pure decision over three already-collected inputs, which is what
+ * makes it testable without constructing a plugin, a classloader or a
+ * runtime — and what makes the ordering in the composition root a
+ * property of the type rather than a comment promising somebody read it.
  *
  * ## Duplicate handling
  *
- * Neither first-wins nor last-wins: a second plugin claiming an already-admitted identity is
- * [PluginManifestRejection.DuplicateIdentity], naming both. Silently preferring either one
- * would make the resulting registry a function of classpath order, which is the property
- * this whole block exists to remove.
+ * Neither first-wins nor last-wins: a second plugin claiming an
+ * already-admitted identity is
+ * [PluginManifestRejection.DuplicateIdentity], naming both. Silently
+ * preferring either one would make the resulting registry a function of
+ * classpath order, which is the property this whole block exists to
+ * remove.
  */
 object PluginAdmission {
 
     /**
      * Admit one plugin.
      *
-     * @param decoded the result of reading the artifact's manifest document. Passing the
-     *   decode RESULT rather than a manifest is what makes a malformed document
-     *   unrepresentable at this boundary: there is no overload that accepts a manifest
-     *   some earlier step invented.
-     * @param identity the identity the runtime measured, kept separate from the digest the
-     *   manifest claims about itself.
-     * @param runtimeVersion the PipelineK version running, for the API range comparison.
-     * @param alreadyAdmitted identities admitted so far in this composition. Step 1 (B3.2
-     *   ADT only) keeps the original `Set<String>` signature; the B3.2 case
-     *   [AdmissionRefusal.RefusedAlreadyAdmittedDifferentArtifact] is wired up in Step 3,
-     *   when the gate tracks per-identity origins and can distinguish "same plugin, same
-     *   artifact" from "same plugin, different artifact" at the boundary.
+     * @param decoded the result of reading the artifact's manifest document.
+     *   Passing the decode RESULT rather than a manifest is what makes a
+     *   malformed document unrepresentable at this boundary: there is no
+     *   overload that accepts a manifest some earlier step invented.
+     * @param identity the identity the runtime measured, kept separate
+     *   from the digest the manifest claims about itself.
+     * @param runtimeVersion the PipelineK version running, for the API
+     *   range comparison.
+     * @param alreadyAdmitted identities admitted so far in this
+     *   composition.
      */
     fun admit(
         decoded: PluginManifestDecodeResult,
@@ -126,7 +128,8 @@ sealed interface PluginAdmissionResult {
 }
 
 /**
- * S6/E — a plugin that was admitted, with what it declared and what it actually provides.
+ * A plugin that was admitted, with what it declared and what it actually
+ * provides.
  *
  * This is the shape a hot path resolves from. It deliberately holds the manifest AND the
  * runtime contributions together, so answering "who owns this StepKey" and "what does this

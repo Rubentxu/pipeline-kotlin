@@ -18,8 +18,8 @@ import kotlinx.serialization.json.longOrNull
  * implementations that build a JSON payload via the kotlinx.serialization runtime
  * API (no plugin, manual `buildJsonObject`).
  *
- * C3 / D-011 (audit 2026-09-26, H14): 44 production codec sites in
- * `pipeline-step-sdk` repeat the same three operations:
+ * Dozens of codec sites in `pipeline-step-sdk` repeat the same three
+ * operations:
  *
  * ```kotlin
  * val obj = buildJsonObject { put("k", v) }
@@ -58,7 +58,7 @@ object PipelineJson {
      * The single `Json` instance used by every migrated codec. Keeping it
      * centralised ensures all `encode`/`decode` operations share identical
      * behaviour. `encodeDefaults = true` matches the convention used by every
-     * Pattern A codec surveyed (see D-011 / H14 in `.agent/TECH_DEBT_BACKLOG.md`).
+     * Pattern A codec in the codebase.
      */
     val json: Json = Json { encodeDefaults = true }
 

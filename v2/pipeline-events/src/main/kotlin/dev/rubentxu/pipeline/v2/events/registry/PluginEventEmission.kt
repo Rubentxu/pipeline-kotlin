@@ -3,8 +3,7 @@ package dev.rubentxu.pipeline.v2.events.registry
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
 /**
- * Typed seam for a Step that contributes an event of its OWN through the open registry
- * (P3-C / S6.4).
+ * Typed seam for a Step that contributes an event of its OWN through the open registry.
  *
  * ## Why this lives in the PUBLISHED contract, not in application
  *

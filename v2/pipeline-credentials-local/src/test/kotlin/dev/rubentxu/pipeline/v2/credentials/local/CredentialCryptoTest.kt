@@ -211,8 +211,8 @@ class CredentialCryptoTest {
     fun `encodeV2Entry and readEntries produce the same id, kind and plaintext when prefixed by the v1 header`() {
         // readEntries is the FILE reader: it skips a 74-byte v1 header (4 magic + 2 version
         // + 4 m + 4 t + 4 p + 16 salt + 40 wrappedDek) and then walks v2 entries. A unit
-        // test cannot produce a real file (AGENTS.md §2 forbids filesystem persistence in
-        // unit tests), so the test writes the header bytes by hand and concatenates an
+        // test cannot produce a real file (the unit-test rule forbids filesystem
+        // persistence), so the test writes the header bytes by hand and concatenates an
         // encoded v2 entry, exercising the same byte stream the store would read.
         val id = CredentialsId.from("aws-prod")
         val plaintext = "very secret payload".toByteArray()

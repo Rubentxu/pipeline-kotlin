@@ -3,10 +3,9 @@ package dev.rubentxu.pipeline.v2.domain.durable
 /**
  * Snapshot of a single waitUntil-poll control row.
  *
- * ADR-RETROSPECTIVE §RETROSPECTIVE-D — this mirrors [RetryControlRowSnapshot] but
- * carries backoff state: each control row records the backoff interval at the
- * time it was persisted so that a second binary invocation can resume from the
- * correct backoff value.
+ * Mirrors [RetryControlRowSnapshot] but carries backoff state: each control
+ * row records the backoff interval at the time it was persisted so that a
+ * second binary invocation can resume from the correct backoff value.
  *
  * ## Persistence-before-effects contract
  * The reconciler produces a plan; the writer persists the plan BEFORE any

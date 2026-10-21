@@ -33,11 +33,12 @@ data class DeleteDirResult(
  * - Enforces workspace-root guard: resolved path MUST start with workspace root
  * - Throws [IllegalArgumentException] if path escapes workspace
  * - Throws [IllegalArgumentException] if the target IS the workspace root while
- *   [rootDestruction] does not permit it (C8). With `--workspace <dir>` the
+ *   [rootDestruction] does not permit it. With `--workspace <dir>` the
  *   workspace root is the user's own project, and the default `deleteDir()` (path ".")
  *   resolves to exactly that root, so the Step's own default would erase the
  *   checkout. The default per-stage workspace is disposable scratch space, so
- *   wiping it stays allowed and WCL-S-001/S-002 keep their contract.
+ *   wiping it stays allowed and the workspace-lifecycle Steps keep their
+ *   contract.
  *
  * ## Idempotency
  *
@@ -203,7 +204,7 @@ class DeleteDirExecutor(
 
     companion object {
         /**
-         * SHA-256 hex of [bytes], routed through the shared utility (B0).
+         * SHA-256 hex of [bytes], routed through the shared utility.
          *
          * Byte-identical to the local implementation this replaces: same algorithm, same
          * lowercase hex, same input. The value is emitted in the Step's observability event,

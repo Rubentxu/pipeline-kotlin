@@ -7,21 +7,21 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
  * Sealed specification describing HOW a [Credential] is bound to environment
  * variables for a `withCredentials` step.
  *
- * This is the LF-0401 typed binding model. It replaces the flat DSL
+ * This is the typed binding model. It replaces the flat DSL
  * `StepSpec.CredentialsBinding` (which is a single data class with 7 nullable
  * fields) and the four-way duplicate in `:pipeline-binding-factory` /
  * `:pipeline-credentials-api` / `:pipeline-credentials-executor`.
  *
- * ## Why a sealed hierarchy (INV-L6-CR-001)
+ * ## Why a sealed hierarchy
  *
  * The kind is a static type, not a runtime tag. Each subtype carries only the
  * fields that ARE valid for that binding — so a `StringBinding` cannot mention
  * a `usernameVariable`, and the JVM / Kotlin compiler enforces it.
  *
- * The sealed shape mirrors the Jenkins Credentials Binding Plugin (see
- * `JENKINS_FAMILIARITY_CATALOG.md` §1.6 lines 109-115). Field order on each
- * constructor is Jenkins-verbatim; the ergonomic factory methods in the
- * companion object preserve credentialsId-first ordering for call sites.
+ * The sealed shape mirrors the Jenkins Credentials Binding Plugin. Field
+ * order on each constructor is Jenkins-verbatim; the ergonomic factory
+ * methods in the companion object preserve credentialsId-first ordering for
+ * call sites.
  *
  * ## Module placement
  *
@@ -136,7 +136,7 @@ data class UsernameColonPasswordBindingSpec(
 }
 
 /**
- * AUD-07 single authority: the ONLY mapping from a credential binding kind to
+ * Single authority: the ONLY mapping from a credential binding kind to
  * its audit [BoundPurpose].
  *
  * Total over the sealed family — the compiler enforces that every binding kind

@@ -19,22 +19,23 @@ import java.nio.file.Path
  *     a credential lease (which has its own acquisition preamble), or whether
  *     the shape is unimplemented.
  *
- * Before WU-LPR-021, the equivalent of step 2 was inlined in
- * `CanonicalDurableRunCoordinator.dispatchBody` as a sequence of `when` arms
- * over the projection, mixed with event emission and `Files.createDirectories`
- * side effects. The interpretation logic itself was pure (mapping projection
- * to scope + `ShOptions` patch + context overlay), but it was not separable
- * from the effectful surrounding code.
+ * Before this was extracted, the equivalent of step 2 was inlined in
+ * `CanonicalDurableRunCoordinator.dispatchBody` as a sequence of `when`
+ * arms over the projection, mixed with event emission and
+ * `Files.createDirectories` side effects. The interpretation logic itself
+ * was pure (mapping projection to scope + `ShOptions` patch + context
+ * overlay), but it was not separable from the effectful surrounding code.
  *
  * ## What this is NOT
  *
- *  - NOT an effectful executor. [BodyInterpreter] does not emit events, does
- *    not touch the filesystem, does not call any capability. The effectful
- *    layer (event emission, directory creation, credential acquisition)
- *    belongs to the coordinator and consumes [InterpretedBody] afterwards.
- *  - NOT a replacement for the projection step. The projection remains the
- *    authoritative decision; the interpreter only re-shapes it for the
- *    runner.
+ *  - NOT an effectful executor. [BodyInterpreter] does not emit events,
+ *    does not touch the filesystem, does not call any capability. The
+ *    effectful layer (event emission, directory creation, credential
+ *    acquisition) belongs to the coordinator and consumes [InterpretedBody]
+ *    afterwards.
+ *  - NOT a replacement for the projection step. The projection remains
+ *    the authoritative decision; the interpreter only re-shapes it for
+ *    the runner.
  *  - NOT a Step-name branch. [BodyInterpreter] never reads a `StepKey`, a
  *    plugin id, or any concrete step class. The closed ADT over the
  *    projection guarantees that.
@@ -46,17 +47,17 @@ import java.nio.file.Path
  * resolved by a pure function over the open [StepRegistry], rejected
  * fail-closed when the declaration is unknown.
  *
- * ## Migration note (post WU-LPR-021)
+ * ## Migration note
  *
- * The current [BodyInterpreter] is a **seam candidate** with its own
- * parallel typed vocabulary ([BlockShellScopeDescriptor],
- * [BodyExecutionProjectionDescriptor]). The canonical coordinator still uses
- * its private `BlockShellScope` / `BodyExecutionProjection` types. Publishing
- * those types out of the coordinator (so the seam can directly consume them)
- * is a separate WU (WU-LPR-024, InvocationEngine seam). Until then, the two
- * type families coexist by construction: the seam is total and pure, and a
- * future adapter can map canonical-projection → descriptor before invoking
- * the interpreter.
+ * The current [BodyInterpreter] is a SEAM candidate with its own parallel
+ * typed vocabulary ([BlockShellScopeDescriptor],
+ * [BodyExecutionProjectionDescriptor]). The canonical coordinator still
+ * uses its private `BlockShellScope` / `BodyExecutionProjection` types.
+ * Publishing those types out of the coordinator (so the seam can directly
+ * consume them) is the InvocationEngine follow-up. Until then, the two
+ * type families coexist by construction: the seam is total and pure, and
+ * a future adapter can map canonical-projection → descriptor before
+ * invoking the interpreter.
  */
 fun interface BodyInterpreter {
     /**

@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.credentials.CredentialLinkedSecretResolve
 import dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef
 
 /**
- * WU-RP-050 (ADR-0098) — Production adapter of [CredentialLinkedSecretResolver]
+ * Production adapter of [CredentialLinkedSecretResolver]
  * for any caller that already holds a [SecretStore]. Centralises the
  * `store.getAsSecretHandle(ref.id)` operation so the rest of the codebase
  * does NOT call [SecretStore.getAsSecretHandle] directly outside of the

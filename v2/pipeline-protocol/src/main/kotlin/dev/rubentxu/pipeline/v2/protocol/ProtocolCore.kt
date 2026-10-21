@@ -37,7 +37,7 @@ object ProtocolGovernance {
 }
 
 /**
- * Domain trio removed in M4-R2: WorkerIdentity, SessionContext, ProtocolEvent.
+ * Domain trio removed: WorkerIdentity, SessionContext, ProtocolEvent.
  * Zero consumers confirmed via `grep -rnE 'WorkerIdentity|SessionContext|ProtocolEvent' v2/`.
  * These speculative declarations were never wired into the protocol runtime.
  * Kept: ProtocolModules, ProtocolVersion, ProtocolGovernance.

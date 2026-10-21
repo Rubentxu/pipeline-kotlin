@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.StepNode
 
 /**
- * Deterministic structural identity of a block Step's body (WU-RP-035).
+ * Deterministic structural identity of a block Step's body.
  *
  * ## Why a body-bearing Step needs this
  *
@@ -85,7 +85,7 @@ internal object BodyStructureDigest {
                 append('\u001E')
             }
         }
-        // Shared utility (B0). Same bytes, same lowercase hex, so parent block identities
+        // Same bytes, same lowercase hex, so parent block identities
         // already written to a journal keep matching.
         return Sha256.ofText(canonical)
     }

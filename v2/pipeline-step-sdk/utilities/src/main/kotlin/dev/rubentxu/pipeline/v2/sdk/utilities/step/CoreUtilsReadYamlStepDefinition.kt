@@ -27,14 +27,10 @@ import kotlin.io.path.isRegularFile
 import kotlin.io.path.readBytes
 
 /**
- * `core-utils.readYaml` OFFICIAL_PLUGIN Step (LFC-2E2 utilities, Slice 2 / S2.1).
+ * `core-utils.readYaml` OFFICIAL_PLUGIN Step.
  *
- * Reference: Jenkins `readYaml` (Pipeline Utility Steps Plugin, master).
- *   - docs:    https://www.jenkins.io/doc/pipeline/steps/pipeline-utility-steps/#readyaml-read-yaml-from-files-in-workspace-or-text
- *   - source:  ReadYamlStep.java / ReadYamlStep.Execution in
- *              `https://github.com/jenkinsci/pipeline-utility-steps-plugin/blob/master/src/main/java/org/jenkinsci/plugins/pipeline/utility/steps/conf/ReadYamlStep.java`
- *
- * Adaptation:
+ * Guarantees:
+ *  - file XOR text is encoded by the sealed [ReadYamlSource] hierarchy.
  *  - file XOR text is encoded by the sealed [ReadYamlSource] hierarchy.
  *  - SnakeYAML 2.3 + [SafeConstructorOnlyOptions] + explicit tag allow-list.
  *  - Output is a typed [YamlDocument] ADT, not `Map<String, Any?>`. The

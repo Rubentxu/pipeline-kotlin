@@ -27,8 +27,8 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// The `performanceTest` lane and its Kover exclusion were REMOVED (2026-10-18,
-// testing RESET). The lane read `sourceSets["test"]`, and Gradle 8.14 has no
+// The `performanceTest` lane and its Kover exclusion were removed.
+// The lane read `sourceSets["test"]`, and Gradle 8.14 has no
 // `failOnNoDiscoveredTests` property, so an empty source set reports success
 // regardless -- the lane would have been a green performance gate that measured
 // nothing. The Kover `disabledForTestTasks` entry existed only to stop that lane

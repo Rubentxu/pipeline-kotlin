@@ -20,15 +20,15 @@ import java.nio.file.Path
  * normalises to `<workspace>/link/passwd`, which trivially `startsWith` the
  * workspace, while every effect — `Files.readAllBytes`, `Files.write`,
  * `Files.createDirectories`, `Files.exists` — lands on `/etc/passwd`. Measured
- * 2026-10-19 against this module's own code path, before the fix:
+ * against this module's own code path, before the fix:
  *
  * ```text
  * lexical startsWith(workspace) = true
  * content read                 = bytes from outside the workspace
  * ```
  *
- * AGENTS.md section 1 makes "no workspace operation may escape the authorized
- * root" a non-negotiable, so a check that passes an escaping path is not a
+ * "No workspace operation may escape the authorized root" is a
+ * non-negotiable here, so a check that passes an escaping path is not a
  * preference between two valid readings.
  *
  * ## The rule this enforces

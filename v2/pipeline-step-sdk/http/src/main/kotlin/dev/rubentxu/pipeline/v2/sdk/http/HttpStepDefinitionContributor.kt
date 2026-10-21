@@ -25,7 +25,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 
 /**
- * HTTP OFFICIAL_PLUGIN contributor (LFC-2E3 / WU-093; ADR-0092 pattern).
+ * HTTP OFFICIAL_PLUGIN contributor.
  *
  * Discovered through `ServiceLoader`, exactly like `scm-git`, `junit` and
  * `utilities`. A `.pipeline.kts` that writes `httpRequest(...)` works because
@@ -37,7 +37,7 @@ import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
  * `META-INF/http-release.properties` inside the artefact, overridable by the
  * `pipeline.http.release.digest` system property so tests can pin metadata
  * without rebuilding. If neither source yields a digest, registration fails
- * closed with a diagnostic that names the missing property: F5.1 commits to
+ * closed with a diagnostic that names the missing property: the contract is
  * "no fabricated SHA", and an unprovenanced plugin must not enter a run.
  */
 class HttpStepDefinitionContributor : StepDefinitionContributor {

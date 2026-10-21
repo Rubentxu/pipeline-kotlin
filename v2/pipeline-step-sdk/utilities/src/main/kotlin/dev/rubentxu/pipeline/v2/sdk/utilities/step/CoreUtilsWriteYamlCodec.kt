@@ -23,7 +23,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * JSON codec for [WriteYamlInput] (LFC-2E2 utilities OFFICIAL_PLUGIN).
+ * JSON codec for [WriteYamlInput].
  *
  * Encodes the sealed [WriteYamlDestination] and [WriteYamlPayload]
  * hierarchies as discriminated unions. Decode validates the mutual-exclusion

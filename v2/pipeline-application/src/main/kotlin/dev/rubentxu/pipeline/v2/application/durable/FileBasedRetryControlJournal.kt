@@ -25,7 +25,7 @@ import java.nio.file.StandardCopyOption
 /**
  * Single-writer durable store for retry control rows.
  *
- * ADR-0075 §4 + §6 + §11 — the retry control row is the durable source of
+ * The retry control row is the durable source of
  * truth for the retry aggregate's state at attempt N. Each retry logical
  * invocation has exactly one control file under [controlDirRoot]:
  *
@@ -50,9 +50,9 @@ import java.nio.file.StandardCopyOption
  * [readState] returns the persisted control rows for the given retry,
  * supplemented (when a [ChildRowReader] is bound) by per-attempt child rows
  * read from the canonical [dev.rubentxu.pipeline.v2.events.durable.OperationJournal].
- * Pre-ADR-0075 legacy children — those without an associated control row —
- * are routed through [readState]'s [RetryControlState.preControlChildren]
- * bucket so the Reconciler can apply the legacy compat policy.
+ * Legacy children without an associated control row are routed through
+ * [readState]'s [RetryControlState.preControlChildren] bucket so the Reconciler
+ * can apply the legacy compat policy.
  *
  * ## Fingerprint propagation
  * The retry contract fingerprint is stored at the file root and copied
@@ -75,7 +75,7 @@ class FileBasedRetryControlJournal(
 
     private fun fileKey(controlOpId: String): String {
         // SHA-256 hex of the controlOpId — safe file-name character set, fixed length.
-        // Shared utility (B0). Same bytes, same lowercase hex: existing retry control rows keep
+        // Same bytes, same lowercase hex: existing retry control rows keep
         // their opId, which is the durable identity the reconciler plans against.
         return Sha256.ofText(controlOpId)
     }
@@ -99,7 +99,7 @@ class FileBasedRetryControlJournal(
      * second call with a different fingerprint is a contract divergence
      * and throws [RetryControlJournalDivergenceException].
      *
-     * ADR-0075 §6 — the dispatch loop MUST call this BEFORE launching any
+     * The dispatch loop MUST call this BEFORE launching any
      * child effect for the attempt.
      */
     fun beginAttempt(
@@ -177,7 +177,7 @@ class FileBasedRetryControlJournal(
      *  - [RetryControlState.controlRows] from the persisted control file;
      *  - [RetryControlState.childrenByAttempt] from [ChildRowReader] when bound;
      *  - [RetryControlState.preControlChildren] from [ChildRowReader.preControlRowsForControl]
-     *    when the bound reader exposes pre-ADR-0075 children.
+     *    when the bound reader exposes pre-record children.
      */
     fun readState(
         controlOpId: String,
@@ -332,8 +332,7 @@ internal data class ControlFile(
 
 /**
  * Thrown when a write would produce a control row whose fingerprint
- * conflicts with the persisted one. ADR-0075 §9 — fail-closed on contract
- * divergence.
+ * conflicts with the persisted one. Fail-closed on contract divergence.
  */
 class RetryControlJournalDivergenceException(message: String) : IllegalStateException(message)
 

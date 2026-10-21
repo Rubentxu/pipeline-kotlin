@@ -16,7 +16,7 @@ import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFileAttributes
 
 /**
- * The production ingest agent of `ADR-OBS-003`.
+ * The production ingest agent.
  *
  * A separate JVM that owns the read ends of a step's output, redacts in
  * memory, and commits sanitized bytes to the Output Plane. It knows
@@ -43,12 +43,11 @@ import java.nio.file.attribute.PosixFileAttributes
  *
  * 2. **Class name and KDoc.** The class is the same (the
  *    `Object ObsPc2IngestAgent` is the load-bearing identifier the
- *    prototype and the runtime launcher agree on), but this KDoc
- *    cross-references the ADR sections the prototype's KDoc
- *    documents: §2.1, §2.2, §2.4, §4, §5.
+ *    prototype and the runtime launcher agree on), and this KDoc
+ *    cross-references the sections the prototype's KDoc documents.
  *
  * 3. **The launch contract.** This `main(args)` is what the
- *    runtime launches via `ProcessBuilder` + `setsid` (R2.3). The
+ *    runtime launches via `ProcessBuilder` + `setsid`. The
  *    argv order is fixed by [argv] so the launcher and the agent
  *    cannot drift. The prototype's `argv` is the same shape; the
  *    production agent re-uses it verbatim.
@@ -85,10 +84,10 @@ import java.nio.file.attribute.PosixFileAttributes
  * EOF**, because it is itself a writer. It therefore cannot tell
  * that a child exited by watching the pipe. Completion is a
  * separate fact — the step's terminal, or a seal — and conflating
- * "no data right now" with "finished" is precisely the bug
- * `ADR-0085` forbids. A production agent needs an explicit seal;
- * R2.3 supplies it (the runtime sends SIGTERM at run terminal; the
- * agent drains its FIFO buffer, closes the sinks, and exits).
+ * "no data right now" with "finished" is precisely the bug the
+ * ingestion design forbids. A production agent needs an explicit seal;
+ * the launch wiring supplies it (the runtime sends SIGTERM at run terminal;
+ * the agent drains its FIFO buffer, closes the sinks, and exits).
  *
  * ## Security invariant: the FIFO type
  *
@@ -106,16 +105,14 @@ import java.nio.file.attribute.PosixFileAttributes
  *
  * ## See also
  *
- * - `ADR-OBS-003-child-output-descriptor-ownership.md` §2.1, §2.2,
- *   §2.4 (this is the §5-recommended shape: one agent per run,
- *   supervised by PipelineK)
- * - `ADR-OBS-003-child-output-descriptor-ownership.md` §4
- *   (verification: after_lines_written 0/50 → 50/50,
+ * - the child-output descriptor ownership document (this is the recommended
+ *   shape: one agent per run, supervised by PipelineK)
+ * - the verification list for the ingest design
+ *   (after_lines_written 0/50 → 50/50,
  *   bytes_after_release > bytes_after_kill, DONE post-mortem,
  *   raw_secret_on_disk == 0)
- * - `ObsPc2IngestAgentPrototypeUatTest` (R1.1's prototype fixture)
- * - `ObsPc2ProducerSurvivalSpikeTest` (the §4 inversion proof)
- * - `roadmap-R2.md` (R2 plan in `odd/tasks/`)
+ * - `ObsPc2IngestAgentPrototypeUatTest` (the prototype's fixture)
+ * - `ObsPc2ProducerSurvivalSpikeTest` (the inversion proof)
  */
 object ObsPc2IngestAgent {
 
@@ -316,7 +313,7 @@ object ObsPc2IngestAgent {
      * looked at an empty file, declared itself drained, and the
      * Output Plane stayed empty. That reads like "the drainer does
      * not work" and is actually "the rendezvous is the plaintext
-     * spool ADR-OBS-003 excludes" — the one option this whole design
+     * spool the ingestion design excludes" — the one option this whole design
      * exists to avoid, silently reintroduced by a three-line
      * convenience call.
      *

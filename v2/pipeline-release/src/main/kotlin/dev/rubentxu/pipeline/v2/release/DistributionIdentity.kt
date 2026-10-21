@@ -1,19 +1,18 @@
 package dev.rubentxu.pipeline.v2.release
 
 /**
- * P0.1 / P0.3 — exact product identity, as a pure decision.
+ * Exact product identity, as a pure decision.
  *
- * The release-evolution contract (`docs/pipelinek-release-evolution/shared/
- * 01-cross-repo-contract.md` §11) is a single equality:
+ * The release-evolution contract requires a single equality:
  *
  * ```text
  * ProductVersion == AssetVersion == ArchiveRootVersion
  *                 == ImplementationVersion == RuntimeVersion == ManifestVersion
  * ```
  *
- * A mismatch is a build defect that blocks candidate handoff. The v0.43.0
- * incident is exactly this failure: the asset was advertised with a GA identity
- * while the bytes carried `rc1` inside.
+ * A mismatch is a build defect that blocks candidate handoff. The motivating
+ * incident is exactly this failure: the asset was advertised with a GA
+ * identity while the bytes carried `rc1` inside.
  *
  * This is deliberately a **pure** function. It takes facts and returns a
  * decision. It does not open a ZIP, shell out, or read a JAR manifest, so it

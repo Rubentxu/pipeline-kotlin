@@ -15,7 +15,7 @@ import java.nio.file.attribute.PosixFilePermissions
  *
  * These permissions protect the credentials at rest from other users on the same system.
  *
- * The permission sets come from [CredentialFilePermissions] (D-001) so
+ * The permission sets come from [CredentialFilePermissions] so
  * any drift between adapters is caught at compile time, not by
  * adversarial filesystem testing.
  */

@@ -8,29 +8,19 @@ import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
 
 /**
- * M7 — production [EventShapeReadPort] adapter.
+ * Production [EventShapeReadPort] adapter.
  *
  * ## What this adapter is and is not
  *
  * The adapter is a thin composition: it does not introduce a new event
- * store, a new journal, or a new lease. The composition rule (M7 design
- * §A) is: read the typed events the journal recorded for a run (via the
- * [readTypedEvents] callback) and project them to the closed [TypedEvent]
- * ADT. The callback is supplied by the application layer; in tests it
- * points at the in-memory event store's internal list; in production it
- * points at a future internal API that reads from the durable event log.
+ * store, a new journal, or a new lease. The composition rule is: read the typed
+ * events the journal recorded for a run (via the [readTypedEvents] callback) and
+ * project them to the closed [TypedEvent] ADT. The callback is supplied by the
+ * application layer; in tests it points at the in-memory event store's internal
+ * list; in production it points at the durable event log.
  *
  * The adapter does NOT itself re-implement the event log scan; it
  * composes the existing event store. It is read-only by construction.
- *
- * ## Read-only by construction
- *
- * `eventShapesForRun` MUST NOT mutate durable state. The composition
- * rule limits it to reads and a projection pass. The contract test
- * `EventShapeReadPortAdapterTest` pinna this with a 100-concurrent-
- * caller test (mirroring the M2 `IntrospectionDoesNotMutateStateTest`).
- *
- * @see M7_FINAL_HARDENING_DESIGN.md §A.
  */
 class EventShapeReadPortStoreAdapter(
     private val readTypedEvents: (runId: String) -> List<Any>,
@@ -76,7 +66,7 @@ class EventShapeReadPortStoreAdapter(
 
     /**
      * Project a raw event to a typed [TypedEvent]. Returns null when
-     * the raw event is not one of the five M7-typed cases (so the M7
+     * the raw event is not one of the five lifecycle cases (so the typed
      * shape is restricted to the audit's source-of-truth set).
      */
     private fun projectTyped(raw: Any, runId: String): TypedEvent? = when (raw) {

@@ -29,7 +29,7 @@ import kotlinx.serialization.json.put
  * preserved via explicit `put` for every field so the roundtrip is
  * lossless.
  *
- * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * Decoding goes through `PipelineJson` / `JsonAccessors`. Wire
  * format unchanged.
  */
 object JUnitResultsInputCodec : StepCodec<JUnitResultsInput> {
@@ -74,7 +74,7 @@ object JUnitResultsInputCodec : StepCodec<JUnitResultsInput> {
  * a handler-side failure that returns the typed value lands at the same
  * JSON shape on the wire.
  *
- * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * Decoding goes through `PipelineJson` / `JsonAccessors`. Wire
  * format unchanged.
  */
 object JUnitReportSummaryCodec : StepCodec<JUnitReportSummary> {
@@ -107,7 +107,7 @@ object JUnitReportSummaryCodec : StepCodec<JUnitReportSummary> {
 }
 
 /**
- * JSON codec for [JUnitResultsOutput] (F5.2 / WU-LPR-FK).
+ * JSON codec for [JUnitResultsOutput].
  *
  * Mirrors `CoreShellOutput`'s shape in `CoreShellStep.kt`: the durable
  * payload is the carrier, not just the summary, so that the
@@ -127,7 +127,7 @@ object JUnitReportSummaryCodec : StepCodec<JUnitReportSummary> {
  * shipped for replay-decode of any historical journal entries; new
  * production writes always use [JUnitResultsOutputCodec].
  *
- * D-012 (C3 follow-on): migrated to `PipelineJson` / `JsonAccessors`. Wire
+ * Decoding goes through `PipelineJson` / `JsonAccessors`. Wire
  * format unchanged.
  */
 object JUnitResultsOutputCodec : StepCodec<JUnitResultsOutput> {

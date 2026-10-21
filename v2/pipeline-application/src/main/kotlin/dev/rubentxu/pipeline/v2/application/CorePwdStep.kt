@@ -31,7 +31,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Typed input payload of `core.pwd` (S2-A6 / G1).
+ * Typed input payload of `core.pwd` (the pwd workspace capability).
  *
  * The legacy wire payload for `core.pwd(false)` is `{"kind":"pwd"}` (compiler
  * `encodePayload` else-branch); the `tmp` field defaults to `false`. The
@@ -54,7 +54,7 @@ data class PwdInput(
 }
 
 /**
- * TYPED_RUNTIME_OUTPUT — APPROVED_ARCHITECTURAL_DELTA (S2-A6 / G2, decision D2).
+ * TYPED_RUNTIME_OUTPUT — APPROVED_ARCHITECTURAL_DELTA (the pwd policy decision, decision D2).
  *
  * Legacy durable path produces NO typed output (`StepOutcome.Success` only; the
  * path is observable solely through the `PwdResolved` event). The candidate
@@ -77,7 +77,7 @@ data class PwdOutput(
 }
 
 /**
- * Registry candidate for `core.pwd` (S2-A6 / G1 registry seam proof).
+ * Registry candidate for `core.pwd` (the pwd workspace capability registry seam proof).
  *
  * G1 registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy
  * decoder, the metadata row, or the legacy dispatcher:
@@ -182,7 +182,7 @@ object CorePwdStep {
      * The legacy seam handed this handler a single `Path` built as
      * `workingDirectory ?: workspaceRoot`, so a `dir` scope could not be
      * distinguished from the run root: both `path` and `workspaceRoot` were
-     * filled with the same collapsed value. ADR-0100 requires `pwd()` to return
+     * filled with the same collapsed value. the shared execution location requires `pwd()` to return
      * `cwd`, and the two authorities to stay observably distinct, so this now
      * reads the typed execution location and reports each authority from its own
      * field.

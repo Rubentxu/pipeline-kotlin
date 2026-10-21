@@ -14,23 +14,23 @@ import java.util.UUID
 /**
  * Lifecycle scope for credential bindings within a pipeline step.
  *
- * ## Design (ADR-0049 D2 — rung ii)
+ * ## Design
  *
  * [CredentialScope] is the SOLE entry point for [SecretHandle] injection into
  * [ProcessBuilder.environment()]. The engine JVM's [System.getenv] never sees
- * secret bytes (INV-CR-CR7 + /proc/environ same-UID defense).
+ * secret bytes (the /proc/environ same-UID defense).
  *
  * ## Responsibilities
  *
  * 1. **Binding resolution**: `env(binding)` resolves a [CredentialsBinding] to a map of
  *    environment variable names to [SecretHandle]. Variable names are persisted WITHOUT
- *    case coercion (INV-L6-CR-007).
- * 2. **Wipe on exit**: `close()` fills all active handles with zeros (INV-CR-CR7).
+ *    case coercion.
+ * 2. **Wipe on exit**: `close()` fills all active handles with zeros.
  *    Called in `finally` — always executes even on step failure.
  * 3. **Redaction pattern scoping**: `close()` also drops active redaction patterns
- *    from the bound [RedactingEventSink] (CR-RD-011).
+ *    from the bound [RedactingEventSink].
  * 4. **Audit events**: emits [CredentialBound], [CredentialUsed], [CredentialUnbound]
- *    events through the bound [EventSink] (INV-L6-CR-008).
+ *    events through the bound [EventSink].
  *
  * ## Failures
  *
@@ -69,12 +69,12 @@ class CredentialScope(
      * The handle is cached — subsequent calls return the same [SecretHandle].
      * Handles are wiped on [close()].
      *
-     * ## Variable Name Persistence (INV-L6-CR-007)
+     * ## Variable Name Persistence
      *
      * Variable names are persisted WITHOUT case coercion. The variable name specified
      * in the binding is used exactly as-is for the environment variable name.
      *
-     * ## Audit Events (INV-L6-CR-008)
+     * ## Audit Events
      *
      * Emits [CredentialBound] event when a credential is first resolved.
      *
@@ -86,7 +86,7 @@ class CredentialScope(
         val handle = activeHandles.getOrPut(binding.credentialsId) {
             val handle = store.getAsSecretHandle(binding.credentialsId)
 
-            // Emit CredentialBound event (INV-L6-CR-008)
+            // Emit CredentialBound event on first resolution.
             if (!boundCredentials.contains(binding.credentialsId)) {
                 boundCredentials.add(binding.credentialsId)
                 emitCredentialBound(binding.credentialsId, binding.boundPurpose)
@@ -121,7 +121,7 @@ class CredentialScope(
      * Called in `finally` — always executes even on step failure.
      * Failures propagate via `addSuppressed`; first rethrown.
      *
-     * Emits [CredentialUnbound] events for all bound credentials (INV-L6-CR-008).
+     * Emits [CredentialUnbound] events for all bound credentials.
      */
     override fun close() {
         var firstException: Throwable? = null
@@ -193,8 +193,8 @@ class CredentialScope(
  *
  * ## Design Note
  *
- * File/ssh/certificate bindings are deferred to ML-R4.1 (DEC-Q1 cut).
- * Only string and usernamePassword are implemented in L4.
+ * File/ssh/certificate bindings are deferred; only `string` and `usernamePassword`
+ * bindings are implemented.
  *
  * @see CredentialScope for the lifecycle manager
  */
@@ -211,7 +211,7 @@ data class CredentialsBinding(
     }
 
     /**
-     * Maps this binding kind to a [BoundPurpose] for audit events (INV-L6-CR-008).
+     * Maps this binding kind to a [BoundPurpose] for audit events.
      */
     val boundPurpose: BoundPurpose
         get() = when (kind) {
@@ -222,7 +222,7 @@ data class CredentialsBinding(
     /**
      * Converts this binding to a map of environment variable names to [SecretHandle].
      *
-     * ## Variable Name Persistence (INV-L6-CR-007)
+     * ## Variable Name Persistence
      *
      * Variable names are persisted WITHOUT case coercion. The variable name specified
      * in the binding is used exactly as-is.

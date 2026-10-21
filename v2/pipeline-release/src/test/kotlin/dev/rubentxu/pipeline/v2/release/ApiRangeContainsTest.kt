@@ -8,11 +8,12 @@ import org.junit.jupiter.api.Test
 /**
  * The gate that decides whether a candidate may ship.
  *
- * `BundledPluginCompatibility` is the only R1-C check that is mechanical and
- * reproducible from the distribution ZIP alone, and it is the one that runs
- * BEFORE an operator downloads anything. It is also the only thing standing
- * between a candidate and a plugin that refuses to load at runtime -- which is
- * the failure the user would otherwise meet after the download, not at
+ * `BundledPluginCompatibility` is the only bundled-plugin check that is
+ * mechanical and reproducible from the distribution ZIP alone, and it is
+ * the one that runs BEFORE an operator downloads anything. It is also the
+ * only thing standing between a candidate and a plugin that refuses to load
+ * at runtime — which is the failure the user would otherwise meet after the
+ * download, not at
  * admission.
  *
  * Two deliberate fail-closed choices are pinned below, because both read as

@@ -10,7 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
  * - GLOBAL: usable across all pipelines and jobs
  * - SYSTEM: usable only within the same Jenkins master (agent nodes)
  *
- * ML-R6 uses GLOBAL exclusively. SYSTEM is reserved for future cycles.
+ * The current spec uses GLOBAL exclusively. SYSTEM is reserved for future cycles.
  */
 enum class CredentialScope {
     GLOBAL,
@@ -28,7 +28,7 @@ enum class CredentialScope {
  * The [toString] output contains ONLY safe fields (id, scope, safe identifiers).
  * Secret bytes (passwords, private keys, file contents) are NEVER present in toString.
  *
- * This sealed hierarchy IS the kind system (INV-L6-CR-001).
+ * This sealed hierarchy IS the kind system.
  * Kind is the static type, never inferred from byte content.
  *
  * @see dev.rubentxu.pipeline.v2.credentials.api.SecretStore for the store interface

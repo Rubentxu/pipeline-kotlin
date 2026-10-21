@@ -61,13 +61,13 @@ fun main(args: Array<String>) {
         covered = covered,
         candidateSequence = args.getOrNull(5)?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 1,
         outDir = outDir,
-        // P0.5 — the law is enforced from observed version control state, not
+        // The law is enforced from observed version control state, not
         // from the commit string the caller passed. Passing the caller's own
         // claim back in would make the gate check itself.
         provenanceFacts = SourceProvenanceProbe.probe(
-            // P0.5 — the repository whose version control state defines this
+            // The repository whose version control state defines this
             // candidate's provenance. When the caller omits arg 7, the process
-            // cwd (Paths.get("") — no global System property read, LFC0-006)
+            // cwd (Paths.get("") — no global System property read)
             // is the explicit fallback.
             Paths.get(args.getOrNull(9) ?: Paths.get("").toAbsolutePath().toString()),
         ),

@@ -15,7 +15,7 @@ dependencies {
     implementation(project(":pipeline-credentials-api"))
 }
 
-// Unit-test wiring REMOVED (2026-10-18, testing RESET).
+// Unit-test wiring removed.
 //
 // This module carries no unit tests: it is a credential WIRE codec driven through the
 // pipeline's own binding execution. Its verification is the executable E2E layer --

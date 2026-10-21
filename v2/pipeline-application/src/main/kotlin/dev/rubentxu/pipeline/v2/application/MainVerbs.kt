@@ -156,7 +156,7 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
         return true
     }
 
-    // Events subcommand (EVT-2): structured local history inspection
+    // Events subcommand (the events-verb slice): structured local history inspection
     if (args.firstOrNull() == "events") {
         if (args.getOrNull(1) == "verify") {
             val exitCode = MainEventsVerifyCli.main(args.drop(2).toTypedArray())
@@ -168,12 +168,12 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
         return true
     }
 
-    // Console subcommand (M1-P3): read process output from the Output Plane by OutputCursor.
+    // Console subcommand (the current release): read process output from the Output Plane by OutputCursor.
     //
     // Deliberately a SEPARATE verb from `events`. The two planes are different orders and a
     // different authority: `events` continues on a store-assigned sequence, `console` continues on
     // a committed byte offset and never reads an event. Folding console into `events` — as a view,
-    // or as a flag — is the conflation ADR-M1 D3 exists to prevent, and it is exactly what the
+    // or as a flag — is the conflation the byte-offset rule exists to prevent, and it is exactly what the
     // deprecated EventViewProjection.CONSOLE was.
     if (args.firstOrNull() == "console") {
         val exitCode = MainConsoleCli.main(args.drop(1).toTypedArray())
@@ -181,7 +181,7 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
         return true
     }
 
-    // Observe subcommand (OBS-E5): one public verb over both durable authorities.
+    // Observe subcommand (the unified-verb observe work): one public verb over both durable authorities.
     //
     // NOT a third universe alongside `events` and `console` — it reads the same two planes and
     // composes them read-side. What it refuses is the thing neither of the other two can promise:
@@ -200,11 +200,11 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
         return true
     }
 
-    // Inspect subcommand (R4 / WU-R4.1, ADR-0088): bounded diagnostic surface.
+    // Inspect subcommand (the inspect subcommand work, ADR-0088): bounded diagnostic surface.
     //
     // The verb is the same workflow for `inspect` that `observe`, `events`, and `console`
     // are for their lanes: a typed parser + a typed query + a typed projection. The dispatcher
-    // adds it without disturbing the existing CLI surface (R4 / WU-R4.5 is the cross-CLI
+    // adds it without disturbing the existing CLI surface (the cross-CLI collaboration work is the cross-CLI
     // canary that catches any regression here).
     if (args.firstOrNull() == "inspect") {
         val exitCode = MainInspectCli.main(args.drop(1).toTypedArray())

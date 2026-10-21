@@ -319,13 +319,22 @@ subprojects {
             // issue. Debt burn-down tracked in the slice receipt.
             //
             // The filename is the plugin's own `detekt-baseline-main.xml`, the file
-            // `./gradlew detektBaselineMain` writes. It used to be
-            // `detekt-baseline.xml`, which no task produced: running the snapshot
-            // task created a second file that the gate never read, so refreshing the
-            // debt snapshot appeared to work and changed nothing. Naming the file
-            // the task writes is what makes the refresh one reproducible command.
+            // the analysis reads. `./gradlew detektBaselineMain` used to derive its
+            // own path from its task name and write a SECOND file — one more suffix
+            // deep — that the analysis never read. Refreshing the debt snapshot then
+            // appeared to work and changed nothing, which is the exact trap the two
+            // comments above warn about.
+            //
+            // Pinning the snapshot task to the file the analysis reads is what makes
+            // the refresh one reproducible command with one artefact. Measured: with
+            // the task writing elsewhere, cleaning a declaration's documentation made
+            // five already-suppressed findings reappear as new, and no refresh of the
+            // file the analysis reads could silence them.
             val moduleBaseline = layout.projectDirectory.file("detekt-baseline-main.xml")
             if (moduleBaseline.asFile.exists()) {
+                baseline.set(moduleBaseline)
+            }
+            tasks.withType<dev.detekt.gradle.DetektCreateBaselineTask>().configureEach {
                 baseline.set(moduleBaseline)
             }
         }

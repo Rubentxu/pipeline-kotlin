@@ -4,9 +4,9 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 
 /**
- * Typed output carrier for `junit.results` (F5.2 / WU-LPR-FK).
+ * Typed output carrier for `junit.results`.
  *
- * Mirrors the LB-02 / G3-A4.3 pattern that [dev.rubentxu.pipeline.v2.application.CoreShellOutput]
+ * Mirrors the pattern that [dev.rubentxu.pipeline.v2.application.CoreShellOutput]
  * established for `core.sh`: the carrier pairs the user-visible
  * [JUnitReportSummary] with the canonical [StepOutcome] so the
  * [dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary]
@@ -16,7 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
  * Without this carrier, every handler-thrown `PluginStepException` would
  * be funnelled through the boundary's generic `catch (e: Exception)`
  * and re-classified as `FailureKind.ENGINE`, losing the original USER
- * declaration (see the WU-LPR-FK characterisation).
+ * declaration.
  *
  * `JUnitResultsOutput` is ALWAYS emitted — on success and on typed
  * failure alike — so that downstream consumers and the durable journal

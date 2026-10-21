@@ -12,16 +12,14 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
  * This preserves V1 semantics where Maven/Gradle wrappers would work
  * with the expected PATH ordering.
  *
- * ## ML-R4 Typed Env Channel
+ * ## Typed Env Channel
  *
  * The [apply] function is overloaded to handle both:
  * - Legacy `Map<String, String>` (back-compat via [ShOptions.from])
- * - Typed `Map<String, SecretHandle>` for ML-R4 secret redaction
+ * - Typed `Map<String, SecretHandle>` for secret redaction
  *
  * When using the typed form, masked entries (PATH manipulation) bypass PATH prepend
  * and are propagated as-is to the output; non-masked entries are transformed.
- *
- * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
  */
 object EnvModel {
 

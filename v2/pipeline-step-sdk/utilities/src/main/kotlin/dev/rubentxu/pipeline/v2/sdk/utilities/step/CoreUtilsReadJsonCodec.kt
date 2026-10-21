@@ -12,7 +12,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * JSON codec for [ReadJsonInput] (LFC-2E2 utilities OFFICIAL_PLUGIN).
+ * JSON codec for [ReadJsonInput].
  *
  * Uses kotlinx.serialization runtime JSON (no plugin) following the canonical
  * pattern in `pipeline-step-sdk/scm-git` and `pipeline-step-sdk/junit`.

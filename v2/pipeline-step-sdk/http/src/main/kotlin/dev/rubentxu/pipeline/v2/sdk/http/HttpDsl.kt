@@ -6,8 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.dsl.StageScope
 
 /**
- * `httpRequest(url, …)` — one request to a remote service
- * (Jenkins `httpRequest`; LFC-2E3 / WU-093).
+ * `httpRequest(url, …)` — one request to a remote service.
  *
  * ## The façade is the whole delivery argument
  *
@@ -20,7 +19,7 @@ import dev.rubentxu.pipeline.v2.dsl.StageScope
  * `DslCompiledPipelineCompiler` has no branch for `httpRequest`, no case in any
  * `when`, and no knowledge that the string exists. That is not an accident of
  * this implementation; it is the property that distinguishes an open Step
- * registry from a closed core, and it is what the LFC-2E3 fitness asserts.
+ * registry from a closed core, and it is what this module's tests assert.
  *
  * Compare with `core.sh` and `core.echo`, which ARE core and therefore DO have
  * a compiler branch. The difference is the classification, and the shape of the

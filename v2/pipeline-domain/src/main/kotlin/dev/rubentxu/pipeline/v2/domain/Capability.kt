@@ -6,10 +6,9 @@ package dev.rubentxu.pipeline.v2.domain
  * `INTERFACE_CONTRACT.md` and in `WorkerHello` / manifest negotiation;
  * equality, hashing, and rendering all derive from it.
  *
- * Introduced for CRIC-M1/M2 capability registration (see
- * `docs/pipelinek-coordinated-evolution/m2-design/M2_INSPECT_RECOVER_CANCEL_DESIGN.md`
- * §1, §2.2). Prior to this type the M1 strings (`output.follow.v1`,
- * `events.follow.v1`) lived only in Javadoc + test fixtures; the value
+ * Introduced for capability registration across coordinated evolution cycles.
+ * Prior to this type the M1 strings (`output.follow.v1`,
+ * `events.follow.v1`) lived only in Javadoc and test fixtures; the value
  * class is the single authority for what a capability ID is allowed to be
  * (non-blank).
  *

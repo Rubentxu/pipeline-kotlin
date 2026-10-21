@@ -3,14 +3,13 @@ package dev.rubentxu.pipeline.v2.sdk.http
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
 /**
- * The ONE network seam of the `http.request` OFFICIAL_PLUGIN (LFC-2E3 / WU-093).
+ * The ONE network seam of the `http.request` OFFICIAL_PLUGIN.
  *
  * `JdkHttpTransport` is the only class in this module that opens a socket, and it
  * lives HERE, inside the plugin, not in `pipeline-application`. HTTP is a protocol
- * and vendor concern (STEP_ECOSYSTEM_POLICY: `pipeline-plugin-http`; matrix row:
- * `httpRequest | OFFICIAL_PLUGIN candidate`), so the concrete transport belongs to
- * the plugin that owns the protocol. Application composes it; it does not know
- * what HTTP is.
+ * and vendor concern: it belongs to `pipeline-plugin-http`, an OFFICIAL_PLUGIN
+ * candidate, so the concrete transport belongs to the plugin that owns the
+ * protocol. Application composes it; it does not know what HTTP is.
  *
  * What application DOES own is the egress PERMISSION — whether this run may reach the
  * network, and to where — and that is not HTTP knowledge, it is a per-execution

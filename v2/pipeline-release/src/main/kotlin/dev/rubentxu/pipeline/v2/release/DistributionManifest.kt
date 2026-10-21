@@ -4,11 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
- * P0.2 — the immutable distribution manifest, as a typed value.
- *
- * Authority: `docs/pipelinek-release-evolution/pipeline-kotlin/01-responsibilities-and-spec.md`
- * §5 (must be generated from the build and describe the real bytes) and
- * `shared/01-cross-repo-contract.md` §10 (downstream MUST NOT rewrite it).
+ * The immutable distribution manifest, as a typed value.
  *
  * The manifest is a *description of bytes that already exist*. Every field is
  * either derived from the artifact itself or from the build that produced it.
@@ -16,8 +12,7 @@ import kotlinx.serialization.Serializable
  * that differs from the artifact: the version is [ProductVersion], which is the
  * identity the build compiled into the bytes.
  *
- * TRAIN P3 — identity separation. The fields this document may carry are
- * exactly:
+ * Identity separation. The fields this document may carry are exactly:
  *
  * ```text
  * ProductVersion   the version the product will report   [in artifact]
@@ -37,14 +32,14 @@ import kotlinx.serialization.Serializable
  * The candidate's identity is `CandidateId = SHA256(ZIP)`, never a `-rcN`
  * suffix carried inside the product version. A candidate built at
  * ProductVersion `0.44.0` is already a FINAL-version candidate and does not
- * need — and must not be given — a stable `v0.44.0` tag to exist.
+ * need a stable tag to exist.
  *
  * Immutability is structural, not conventional. This type has no mutator, and
  * the writer ([DistributionManifestCodec]) serialises to a deterministic
  * key order so the same bytes always produce the same file. Promotion metadata
- * lives in the candidate handoff descriptor, which is a *different* document
- * (P0.4) — so a promoter cannot "update" this file without changing
- * `candidate_id`, which is the ZIP digest it is supposed to describe.
+ * lives in the candidate handoff descriptor, which is a *different* document,
+ * so a promoter cannot "update" this file without changing `candidate_id`,
+ * which is the ZIP digest it is supposed to describe.
  */
 @Serializable
 data class DistributionManifest(
@@ -100,12 +95,12 @@ data class DistributionAsset(
 data class DistributionSource(
     @SerialName("git_commit") val gitCommit: String,
     /**
-     * TRAIN P3 — provenance of the BUILD, never a promotion result.
+     * Provenance of the BUILD, never a promotion result.
      *
-     * Semantics are fixed here because the v0.43.0 incident proved the
-     * ambiguity is dangerous. This field means `buildRef` / `candidateRef`:
-     * "what ref, if any, was checked out when these bytes were produced". It is
-     * supplied by the `candidate.tag` Gradle property, which defaults to empty.
+     * Semantics are fixed here because the ambiguity is dangerous. This field
+     * means `buildRef` / `candidateRef`: "what ref, if any, was checked out
+     * when these bytes were produced". It is supplied by the `candidate.tag`
+     * Gradle property, which defaults to empty.
      *
      * It is NOT the stable tag, and it MUST NOT be read as one. `stableTag` is
      * the RESULT of a promotion that has not happened yet — a promotion cannot
@@ -117,16 +112,14 @@ data class DistributionSource(
      * B. rewrite the manifest     -> the ZIP digest stops being the one certified
      * ```
      *
-     * Both are the v0.43.0 family. `stableTag`, `publishedAt` and
-     * `certificationResult` belong exclusively to `promotion-receipt.json`,
-     * which is written after the external verdict and names the exact
-     * `candidateId` it promotes.
+     * `stableTag`, `publishedAt` and `certificationResult` belong exclusively
+     * to `promotion-receipt.json`, which is written after the external verdict
+     * and names the exact `candidateId` it promotes.
      *
      * The wire name is kept as `git_tag` rather than renamed to
      * `candidate_ref`: the manifest is a published document and its key names
-     * are already consumed by the harness. The SEMANTICS are what P3 fixed,
-     * and they are now unambiguous. A future schema v3 may rename the key; it
-     * MUST NOT be redefined in place.
+     * are already consumed by the harness. The semantics are now unambiguous.
+     * A future schema v3 may rename the key; it MUST NOT be redefined in place.
      */
     @SerialName("git_tag") val candidateRef: String?,
     /** Build tool and version that produced the bytes. */

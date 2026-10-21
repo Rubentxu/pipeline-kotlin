@@ -37,22 +37,22 @@ import java.time.Clock
  * classes directly — it asks for a narrow typed capability that
  * v2/pipeline-application/runtime wires with the concrete [EventSink]
  * + [Clock] + secret resolver at composition time. This is the
- * LB-02 / G3-A4.2 discipline: declared capability == used capability.
+ * Capability discipline: declared capability == used capability.
  */
 val SCM_GIT_OPERATIONS_CAPABILITY: StepCapability = StepCapability("scm-git.operations")
 
 /**
- * `scm-git.checkout` OFFICIAL_PLUGIN Step (LFC-2E2 / F5.1 / WU-LPR-WC-SCM).
+ * `scm-git.checkout` OFFICIAL_PLUGIN Step.
  *
- * Capability discipline (F5.1 + WC-SCM): the contract declares
+ * Capability discipline: the contract declares
  * [WORKSPACE_IDENTITY_CAPABILITY] and the handler reads the canonical
- * workspace root from the typed capability seam. The constructor
- * RP034-I removed the `workspaceRootResolver` developer-escape hatch
- * entirely. A location that is not a directory is now a typed
+ * workspace root from the typed capability seam. The
+ * `workspaceRootResolver` developer-escape hatch is gone entirely.
+ * A location that is not a directory is now a typed
  * INFRASTRUCTURE failure; neither `pipeline.workspace.root` nor `user.dir`
  * is consulted anywhere in this Step.
  *
- * The `relativeTargetDir` semantics documented for F5.1 are preserved:
+ * The `relativeTargetDir` semantics are preserved:
  * if the path is absolute it is honoured verbatim (legacy callers that
  * supplied an absolute path keep that behaviour); if it is relative
  * (the default) it is resolved against the typed workspace root.
@@ -93,7 +93,7 @@ class GitCheckoutStepDefinition(
         // capability admission is fail-closed before the handler runs.
         // The handler reads the canonical workspace root from
         // ctx.capabilities.get<WorkspaceIdentity>(WORKSPACE_IDENTITY_CAPABILITY)
-        // and never falls back to ambient process state (RP034-I).
+        // and never falls back to ambient process state.
         requiredCapabilities = setOf<StepCapability>(EXECUTION_LOCATION_CAPABILITY),
     )
 
@@ -137,18 +137,18 @@ class GitCheckoutStepDefinition(
         // runs and throws if any are missing, so reaching this `get(...)`
         // is guaranteed to succeed when the handler was admitted.
         val location: ExecutionSite = ctx.capabilities.get(EXECUTION_LOCATION_CAPABILITY)
-        // RP034-E / 04-step-path-anchor-matrix.md: `checkout` anchors on
+        // `checkout` anchors on
         // CURRENT_DIRECTORY, so a `dir(...)` scope moves where the repository
         // lands. This is the value the legacy capability already supplied
         // (`workingDirectory ?: workspaceRoot`); what changes is that the Step
         // now *states* the anchor instead of receiving the cwd under the name
         // "workspace root".
         val capabilityWorkspaceRoot: Path = location.cwd
-        // Preserve the documented F5.1 semantics: workspaceRoot is the
+        // The documented semantics are preserved: workspaceRoot is the
         // canonical pipeline workspace, and `relativeTargetDir` resolves
         // against it (or is honoured verbatim if absolute). Production
         // reads workspaceRoot from the typed capability seam; the
-        // (see the RP034-I guard below)
+        // (see the guard above)
         // capability points at a directory that no longer exists on disk
         // (rare; covers direct unit-test construction outside the
         // canonical bridge).
@@ -156,7 +156,7 @@ class GitCheckoutStepDefinition(
         // `System.getProperty("pipeline.workspace.root") ?: user.dir` meant a
         // run whose typed location had gone missing would silently operate on
         // whatever directory the JVM happened to start in — ambient state as a
-        // workspace authority, which ADR-0100 forbids outright. A location that
+        // workspace authority, which is forbidden outright. A location that
         // is not a directory is now a typed failure instead.
         if (!Files.isDirectory(capabilityWorkspaceRoot)) {
             throw PluginStepException(

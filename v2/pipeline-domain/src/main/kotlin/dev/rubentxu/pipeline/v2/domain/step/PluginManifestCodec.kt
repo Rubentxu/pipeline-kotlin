@@ -6,36 +6,42 @@ import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 
 /**
- * S6/C — the machine-readable manifest format, and the ONLY place its spelling is decided.
+ * The machine-readable manifest format, and the ONLY place its spelling is
+ * decided.
  *
  * ## Why a codec at all
  *
- * Before this type a plugin declared itself by CONSTRUCTING a [PluginManifest] in memory
- * from `System.getProperty` values, and the runtime read that declaration off the plugin's
- * own objects after its classes had already loaded. That order is the defect ADR-EVO-003
- * names: the runtime cannot refuse a plugin it has already run. A manifest that lives only
- * as Kotlin constructors is not a declaration, it is a report.
+ * Before this type a plugin declared itself by CONSTRUCTING a
+ * [PluginManifest] in memory from `System.getProperty` values, and the
+ * runtime read that declaration off the plugin's own objects after its
+ * classes had already loaded. That order is the defect the manifest
+ * layer was created to remove: the runtime cannot refuse a plugin it has
+ * already run. A manifest that lives only as Kotlin constructors is not
+ * a declaration, it is a report.
  *
- * So the manifest becomes a DOCUMENT with a canonical path, a schema version, and a codec
- * that is total: malformed input yields a typed refusal, never an exception a caller could
- * mistake for a bug in the reader.
+ * So the manifest becomes a DOCUMENT with a canonical path, a schema
+ * version, and a codec that is total: malformed input yields a typed
+ * refusal, never an exception a caller could mistake for a bug in the
+ * reader.
  *
  * ## Determinism
  *
- * [encode] emits keys in a fixed order and sorts every collection, so the same
- * [PluginManifest] produces the same bytes every time. That matters because the artifact
- * carries this document and anything non-deterministic here becomes a spurious digest
- * change: a manifest that re-serializes differently on every build teaches every reader that
- * digest equality means nothing.
+ * [encode] emits keys in a fixed order and sorts every collection, so the
+ * same [PluginManifest] produces the same bytes every time. That matters
+ * because the artifact carries this document and anything non-deterministic
+ * here becomes a spurious digest change: a manifest that re-serializes
+ * differently on every build teaches every reader that digest equality
+ * means nothing.
  *
  * ## The digest is NOT proof
  *
- * The `releaseDigest` field travels inside the document it describes, which makes it a
- * self-declared value, and ADR-EVO-003 explicitly refuses "self-declared digest as proof".
- * This codec therefore carries it but never VERIFIES it — [MeasuredArtifactIdentity] is what
- * separates what the runtime measured from what the plugin claimed. Recording the limit in
- * the codec's own KDoc is deliberate: a codec that looked authoritative would invite exactly
- * the trust this field has not earned.
+ * The `releaseDigest` field travels inside the document it describes,
+ * which makes it a self-declared value, and the manifest layer explicitly
+ * refuses "self-declared digest as proof". This codec therefore carries
+ * it but never VERIFIES it — [MeasuredArtifactIdentity] is what separates
+ * what the runtime measured from what the plugin claimed. Recording the
+ * limit in the codec's own KDoc is deliberate: a codec that looked
+ * authoritative would invite exactly the trust this field has not earned.
  */
 object PluginManifestCodec {
 
@@ -71,11 +77,12 @@ object PluginManifestCodec {
         sb.append("  \"publisher\": \"").append(escape(manifest.publisher)).append("\",\n")
         sb.append("  \"delivery\": \"").append(escape(manifest.delivery.name)).append("\",\n")
         sb.append("  \"trust\": \"").append(escape(trustToken(manifest.trust))).append("\",\n")
-        // B3.2 — optional operatorTrustReference URI. Emitted only when the manifest
-        // carries one. Pre-B3.2 documents (no field) stay byte-compatible because the
-        // field is absent from the encoded form, not present-and-null. The trust line
-        // above already terminates with a trailing comma, so this field does NOT add
-        // its own leading comma. A trailing comma IS added so families follows cleanly.
+        // Optional operatorTrustReference URI. Emitted only when the manifest
+        // carries one. Documents without this field stay byte-compatible because
+        // the field is absent from the encoded form, not present-and-null. The
+        // trust line above already terminates with a trailing comma, so this
+        // field does NOT add its own leading comma. A trailing comma IS added so
+        // families follows cleanly.
         if (manifest.operatorTrustReference != null) {
             sb.append("\n  \"operatorTrustReference\": \"")
                 .append(escape(manifest.operatorTrustReference))
@@ -201,7 +208,7 @@ object PluginManifestCodec {
         val c = contract as Contract
         val k = contributions as Contributions
 
-        // B3.2 — optional operatorTrustReference URI. Absent = null (no operator
+        // Optional operatorTrustReference URI. Absent = null (no operator
         // trust reference). Present + parses as a URI = the URI string. Present +
         // malformed = refused as MalformedDocument, NOT silently dropped.
         val operatorTrustRefRaw = root.str("operatorTrustReference")
@@ -368,11 +375,12 @@ object PluginManifestCodec {
         val capabilities = capabilitiesRaw.map { StepCapability(it) }.toSet()
 
         // PluginContributions is constructed HERE rather than left to the top-level
-        // PluginManifest, and it still has to be guarded: its constructor refuses a duplicate
-        // StepKey, and a document carrying one must come back as a typed rejection rather than
-        // as an IllegalArgumentException thrown across the decode boundary. Moving the
-        // construction out of the top-level runCatching without re-establishing the guard is
-        // exactly how that regression happened once.
+        // PluginManifest, and it still has to be guarded: its constructor refuses
+        // a duplicate StepKey, and a document carrying one must come back as a
+        // typed rejection rather than as an IllegalArgumentException thrown
+        // across the decode boundary. Moving the construction out of the
+        // top-level runCatching without re-establishing the guard is exactly how
+        // that regression happened.
         return runCatching {
             Contributions(
                 families = families,
@@ -390,10 +398,11 @@ object PluginManifestCodec {
 
     private fun trustToken(trust: TrustMetadata): String = when (trust) {
         // The document grammar still only knows the `unverified` token. Encoding a
-        // [TrustMetadata.Verified] or [TrustMetadata.Mismatch] here is a B3.2 plumbing
-        // defect — those states belong to the runtime's identity verdict, not to the
-        // manifest document. We refuse them rather than emitting a placeholder token that
-        // would round-trip into a different case on decode.
+        // [TrustMetadata.Verified] or [TrustMetadata.Mismatch] here is a
+        // plumbing defect — those states belong to the runtime's identity
+        // verdict, not to the manifest document. We refuse them rather than
+        // emitting a placeholder token that would round-trip into a different
+        // case on decode.
         is TrustMetadata.Unverified -> TRUST_UNVERIFIED
         is TrustMetadata.Verified ->
             error("PluginManifestCodec.encode does not support TrustMetadata.Verified; " +

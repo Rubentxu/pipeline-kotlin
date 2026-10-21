@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.harness.model
 import kotlinx.serialization.Serializable
 
 /**
- * EVT-3 fundamental law: [PipelineOutcome] (what the run reported) is distinct from
+ * Fundamental law: [PipelineOutcome] (what the run reported) is distinct from
  * [AcceptanceOutcome] (what the observer concluded about the observable protocol).
  * A run may finish SUCCESS and still fail acceptance. The harness never mutates
  * PipelineOutcome and never persists AcceptanceOutcome as a DomainEvent.
@@ -62,7 +62,7 @@ data class EventSelector(
 )
 
 /**
- * Closed constraint ADT. Deliberately minimal (P4-EX 07-10 + universal laws).
+ * Closed constraint ADT. Deliberately minimal.
  * `After` is intentionally absent: it is the inverse of [Before]; authority is not duplicated.
  */
 sealed interface EventConstraint {

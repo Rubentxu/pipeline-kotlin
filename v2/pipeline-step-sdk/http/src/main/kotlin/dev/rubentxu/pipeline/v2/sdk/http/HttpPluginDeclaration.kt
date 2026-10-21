@@ -53,11 +53,10 @@ object HttpPluginDeclaration {
      * and emits the range. Editing this class to widen the range manually would
      * re-introduce the drift.
      *
-     * Nothing pins that property automatically any more. `BuiltPluginManifestArtifactTest`
-     * and `PluginCompatibilityResourceTest` both existed and both were removed by the
-     * 2026-10-18 testing RESET, because they were QA scaffolding rather than product
-     * behaviour. The guarantee now rests on the single derivation above plus the
-     * round trip a real `pipelinek run` performs against the shipped plugin JAR, so
+     * Nothing pins that property automatically. The tests that used to cover it were
+     * QA scaffolding rather than product behaviour, so they are gone. The guarantee
+     * now rests on the single derivation above plus the round trip a real
+     * `pipelinek run` performs against the shipped plugin JAR, so
      * treat a version bump that moves `rootProject.version` as needing that manual
      * read rather than assuming a gate caught it.
      */

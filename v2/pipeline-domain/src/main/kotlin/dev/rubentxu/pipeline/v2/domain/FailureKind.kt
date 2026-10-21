@@ -30,7 +30,7 @@ enum class FailureKind {
     companion object {
 
         /**
-         * P3-E E6b — the single boundary where a declared token becomes typed.
+         * The single boundary where a declared token becomes typed.
          *
          * The map is derived from [entries] rather than written out again: a second list of
          * the same vocabulary is a second authority, and the two drift the first time someone

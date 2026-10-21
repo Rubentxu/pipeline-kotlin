@@ -20,12 +20,12 @@ import java.util.UUID
 /**
  * Port-driven executor for withCredentials block execution.
  *
- * Design (design §8, research §4, erratum-1, ADR-0051 §D8):
+ * Design:
  * - Takes SPI ports: [CredentialProvider], [Clock], and a [CredentialProjector].
  * - Does NOT take concrete implementations (LocalSecretStore, CredentialMaterializer).
  * - Returns [BoundCredentials] with env map and idempotent close.
  *
- * ## LF-0404 changes
+ * ## Recent changes
  *
  *  - The executor now consumes the typed [CredentialBindingSpec] sealed shape
  *    from `:pipeline-domain` (instead of the flat DSL `CredentialsBinding`).
@@ -39,7 +39,7 @@ import java.util.UUID
  * ## Responsibilities
  * - Resolves credentials via [CredentialProvider]
  * - Delegates per-kind projection to [CredentialProjector]
- * - Emits [CredentialBound] events BEFORE projection (INV-L10-CR-001 ordering)
+ * - Emits [CredentialBound] events BEFORE projection
  * - [BoundCredentials.close] is the SOLE owner of [CredentialUnbound] emission
  * - Reverse-LIFO cleanup with [addSuppressed] chaining
  *
@@ -49,7 +49,7 @@ import java.util.UUID
  * - No step execution
  *
  * @param provider The credential resolution port
- * @param projector The credential binding→env projection port (LF-0403)
+ * @param projector The credential binding→env projection port
  * @param clock The clock port for event timestamps
  */
 class WithCredentialsExecutor(
@@ -61,9 +61,8 @@ class WithCredentialsExecutor(
 
     /**
      * Convenience constructor: wires a [DefaultCredentialProjector] from the
-     * existing [CredentialMaterialization] SPI port AND the LF-0403
-     * [dev.rubentxu.pipeline.v2.domain.credentials.CredentialLinkedSecretResolver]
-     * port (ADR-0097).
+     * existing [CredentialMaterialization] SPI port AND the linked-secret
+     * resolver port.
      *
      * Existing call sites (composition root in `Main.kt`) construct
      * `WithCredentialsExecutor(provider, materialization, clock)`. We keep
@@ -88,8 +87,8 @@ class WithCredentialsExecutor(
     /**
      * Binds credentials to environment variables and returns a [BoundCredentials].
      *
-     * Design (research §4 positive scope):
-     * - Emits [CredentialBound] for each binding BEFORE projection (INV-L10-CR-001 ordering)
+     * Design:
+     * - Emits [CredentialBound] for each binding BEFORE projection
      * - Returns [BoundCredentials] containing env map and idempotent close
      * - [BoundCredentials.close] is SOLE owner of [CredentialUnbound] emission
      *
@@ -147,7 +146,7 @@ class WithCredentialsExecutor(
                 // local 7-arm copy was removed so there is exactly one mapping.
                 val purpose = spec.boundPurpose
 
-                // Emit CredentialBound BEFORE projection (ADR-0051 D8 ordering)
+                // Emit CredentialBound BEFORE projection (the teardown ordering)
                 val boundEvent = CredentialBound(
                     eventId = UUID.randomUUID().toString(),
                     runId = runId,
@@ -249,7 +248,7 @@ class WithCredentialsExecutor(
     /**
      * Emits one [CredentialUnbound] per binding and REPORTS the outcome instead of throwing it.
      *
-     * This is the SOLE owner of [CredentialUnbound] emission (erratum-1, design E-19).
+     * This is the SOLE owner of [CredentialUnbound] emission.
      *
      * ## Why it returns rather than throws
      *
@@ -279,7 +278,6 @@ class WithCredentialsExecutor(
         // teardown was the same authority bypass as the bind path, and it also
         // made the first CredentialUnbound of every teardown collide with
         // sequence 1 of the run. The store assigns the durable sequence.
-        // See bl-bl-01M3RK3NZV000387H65JWN9XM0.
 
         // Emit CredentialUnbound for each binding (exactly once per binding)
         for (credentialsId in credentialIds) {
@@ -307,7 +305,7 @@ class WithCredentialsExecutor(
 
 /**
  * Thin adapter that promotes the SPI [CredentialMaterialization] (which works
- * in `(credential, kind)` pairs) to the LF-0403 domain [CredentialMaterializationDomain]
+ * in `(credential, kind)` pairs) to the domain [CredentialMaterializationDomain]
  * (which dispatches on credential subtype only).
  *
  * The adapter derives the [dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind]
@@ -356,7 +354,7 @@ private class SpiMaterializationAdapter(
  * Result of [WithCredentialsExecutor.bind] — contains env vars, acquired credential IDs,
  * and idempotent close handler.
  *
- * Design (research §4 positive scope, EM-7 §Scoped acquisition):
+ * Design:
  * - [env]: Map of environment variable names to secret handles
  * - [credentials]: the credential IDs that were acquired
  * - [retainedProjections]: retained [ProjectionResult] objects whose [ProjectionResult.close]
@@ -399,7 +397,7 @@ class BoundCredentials(
     /**
      * Closes all bound credentials and emits [CredentialUnbound] events.
      *
-     * Ordering (per ADR-0051 D8):
+     * Ordering:
      * 1. Close retained [ProjectionResult]s (secure file wipe, reverse-LIFO)
      * 2. Emit [CredentialUnbound] for each binding
      * 3. Close [SecretHandle]s
@@ -450,7 +448,7 @@ class BoundCredentials(
             try {
                 handle.close()
             } catch (_: Exception) {
-                // SecretHandle wipe failure is non-fatal (WS-S-024 invariant)
+                // SecretHandle wipe failure is non-fatal: a failed zero-fill must not mask the original teardown exception
             }
         }
     }

@@ -8,7 +8,7 @@ import java.io.File
 import java.util.jar.JarFile
 
 /**
- * Composition authority for what JARs the script compiler sees (SH-classpath WU).
+ * Composition authority for what JARs the script compiler sees.
  *
  * The Single Runtime Spine invariants:
  *
@@ -29,7 +29,7 @@ import java.util.jar.JarFile
  *  - One resolver feeds BOTH sides. There are no per-site `when`-branches and
  *    no `when(stepKey)`-style switches in [dev.rubentxu.pipeline.v2.application.Main].
  *
- * Design (HS / SH-classpath WU):
+ * Design choices:
  *
  *  - Inputs are pure (an iterable of classpath entries); outputs are sealed.
  *  - The classpath is taken from `java.class.path` (set by the launcher script),
@@ -194,7 +194,7 @@ object BundledPluginClasspathPlan {
      * admission chain rests on.
      *
      * Deliberately described without naming any example plugin: this is a production source, and
-     * `FArchS1DirectiveKernelFitnessTest` fails a production file that mentions one by name. A
+     * the kernel-fitness check fails a production file that mentions one by name. A
      * comment had to be rewritten to satisfy it, which is the law working rather than a rule to
      * work around — the defect class is general and does not need an instance to be legible.
      */
@@ -260,22 +260,15 @@ object BundledPluginClasspathPlan {
         val conflicts = mutableListOf<ConflictingArtifacts>()
         for ((key, group) in byKey) {
             if (group.size < 2) continue
-            // Two JARs sharing the SAME identity (baseName + version) on the
-            // classpath is the canonical conflict: paths diverge because of
-            // build/output layout choices, not intent. Having even one extra
-            // copy of a plugin causes the JVM to load two independent
-            // registries, the Kotlin compiler to resolve plugin symbols to
-            // two physically different classes, and `ServiceLoader` to
-            // discover the same contributor twice — a guaranteed
-            // duplicate-registration rejection at best, silent inconsistency
-            // at worst. Reject immediately, regardless of whether the
-            // canonical paths happen to collide after JVM-level resolution.
-            // Any two JARs sharing the same identity (baseName + version) is
-            // a conflict: paths diverge because of build/output layout
-            // choices, not intent. The post-de-dup invariant is "one path
-            // per plugin identity". Anything else would let the JVM load
-            // two independent registries and the Kotlin compiler resolve
-            // plugin symbols to two physically different classes.
+            // Any two JARs sharing the same identity (baseName + version) is a conflict:
+            // paths diverge because of build/output layout choices, not intent. Having even
+            // one extra copy of a plugin causes the JVM to load two independent registries, the
+            // Kotlin compiler to resolve plugin symbols to two physically different classes, and
+            // `ServiceLoader` to discover the same contributor twice — a guaranteed
+            // duplicate-registration rejection at best, silent inconsistency at worst. The
+            // post-de-dup invariant is "one path per plugin identity"; reject immediately,
+            // regardless of whether the canonical paths happen to collide after JVM-level
+            // resolution.
             conflicts += ConflictingArtifacts(
                 baseName = key.first,
                 first = group.first(),

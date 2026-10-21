@@ -32,8 +32,7 @@ import java.util.UUID
 import kotlin.math.min
 
 /**
- * Application-internal authority for the waitUntil aggregate (WU-LPR-302
- * Phase 3, 2026-09-18).
+ * Application-internal authority for the waitUntil aggregate.
  *
  * ## What this owns
  *
@@ -42,7 +41,7 @@ import kotlin.math.min
  * persist transition -> sleep / advance. It does NOT iterate body children;
  * it does NOT call the canonical `invokeBodyChildren` directly. The body-child
  * traversal lives in the canonical coordinator's shared loop; the engine
- * reaches that loop through the `BodyInvoker` port (B11 / W2).
+ * reaches that loop through the `BodyInvoker` port.
  *
  * ## What it does NOT own
  *
@@ -68,7 +67,7 @@ import kotlin.math.min
  *
  * The engine invokes the body through `bodyInvoker.invoke(bodyRef,
  * BodyInvocationContext(attempt = AttemptSegment(N, wait-until-poll)))`.
- * The runner registered by the canonical coordinator (Phase 1b) projects
+ * The runner registered by the canonical coordinator projects
  * `attempt` onto the per-attempt deterministic `bodyPath` segment, so
  * each poll owns a distinct journal OpId. The engine is `StepKey`-blind:
  * it does not branch on concrete `PluginStepId`.
@@ -216,10 +215,10 @@ class WaitUntilEngine(
 
                     when (predicateOutcome) {
                         is WaitUntilPredicateOutcome.Satisfied -> {
-                            // P3-E E4b.4 — the terminal is decided ONCE, as a
+                            // The terminal is decided ONCE, as a
                             // `WaitUntilCompletion`, and the durable status, the
                             // typed result and the wire token are all projections
-                            // of it. This site used to write all three by hand.
+                            // of it.
                             val completion = WaitUntilCompletion.Satisfied
                             journal.updateStatus(
                                 controlOpId = controlOpId,
@@ -262,7 +261,7 @@ class WaitUntilEngine(
                             // Aborted (or the durable journal shows a
                             // terminal state), not ResumeAttempt.
                             //
-                            // P3-E E4b.4 — same terminal as the reconciler's
+                            // The terminal here is the same as the reconciler's
                             // `Aborted`, and here it DOES persist, because the
                             // fresh path owns a row that is still RUNNING. The
                             // terminal does not decide that; the branch does.
@@ -282,9 +281,9 @@ class WaitUntilEngine(
                 }
 
                 is WaitUntilReconciliationDecision.AdvanceAfterPredicateSatisfied -> {
-                    // P3-E E4b.4 — the same `Satisfied` terminal the fresh loop
-                    // reaches at line ~216. One case, two arrival paths, which is
-                    // the point: fresh and restart are not two vocabularies.
+                    // The same `Satisfied` terminal the fresh loop
+                    // reaches at the prior branch. One case, two arrival paths,
+                    // which is the point: fresh and restart are not two vocabularies.
                     val completion = WaitUntilCompletion.Satisfied
                     journal.updateStatus(
                         controlOpId = controlOpId,
@@ -324,7 +323,7 @@ class WaitUntilEngine(
 
                 is WaitUntilReconciliationDecision.Aborted -> {
                     // READ-ONLY. The reconciler returns `Aborted` precisely
-                    // BECAUSE it read a durable row whose status already is ABORTED, so
+                    // because it read a durable row whose status already is ABORTED, so
                     // there is no transition left to persist. Writing it back could only
                     // ever be a no-op, and it was: `updateStatus` requires an existing
                     // control row for the attempt it is given and throws otherwise, so the
@@ -332,7 +331,7 @@ class WaitUntilEngine(
                     // existed nowhere — the branch never emitted its event and never
                     // returned its typed failure, and the abort escaped as an untyped crash.
                     //
-                    // P3-E E4b.4 — the terminal is still the same `Aborted` the fresh
+                    // The terminal is still the same `Aborted` the fresh
                     // cancellation produces. What differs is the persistence, and that
                     // stays here: this branch has nothing to write.
                     val completion = WaitUntilCompletion.Aborted(

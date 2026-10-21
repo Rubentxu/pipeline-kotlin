@@ -333,7 +333,7 @@ class RetryControlJournalDivergenceException(message: String) : IllegalStateExce
  * in the canonical [dev.rubentxu.pipeline.v2.events.durable.OperationJournal]
  * by opId pattern (or, in the absence of a richer query API, by runId
  * scan + filter).
- * The contract returns the merged (legacy + post-ADR) child view so
+ * The contract returns the merged (legacy + current-format) child view so
  * [FileBasedRetryControlJournal] can route them into the right
  * [RetryControlState] bucket.
 */

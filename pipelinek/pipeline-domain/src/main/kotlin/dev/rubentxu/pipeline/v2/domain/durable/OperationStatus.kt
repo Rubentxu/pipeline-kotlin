@@ -10,7 +10,7 @@ package dev.rubentxu.pipeline.v2.domain.durable
  *
  * A transition to the state the operation is already in is accepted for every state, terminal or
  * not: re-asserting a status is idempotent, not a move. Finality means "cannot reach a *different*
- * state", which is what `OperationStatusTest` pins.
+ * state": a terminal state accepts only itself.
  *
  * ## LOST State
  *

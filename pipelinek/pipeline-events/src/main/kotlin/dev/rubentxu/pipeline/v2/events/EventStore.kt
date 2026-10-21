@@ -93,8 +93,8 @@ interface EventStore {
      * override [readRecords] with an equivalent query: same run, same cursor and same limit must
      * produce the same sequences, the same continuation and the same `hasMore`, whichever
      * implementation answered. Overriding is an optimisation, never a change of meaning.
-     * That equivalence is what a deleted `EventSliceParityLawsTest` used to pin, and nothing pins
-     * it now. What still holds it is that this method is not a second implementation written longhand
+     * Nothing pins that equivalence today. What still holds it is that this method is not a
+     * second implementation written longhand
      * — it IS the default projection, one line, so a subclass that overrides [readRecords] replaces
      * the only place the meaning lives rather than racing a copy of it. The residual risk is a
      * subclass that overrides [readRecords] and returns something wrong; that is a per-subclass
@@ -125,8 +125,8 @@ interface EventStore {
      * [readSlice]'s rule. A store whose rows can fail to decode — SQLite, where the payload is
      * text and the kind can come from a newer runtime — MUST override this to report the refusal.
      * Not overriding it is then a lie about the store's own storage. Nothing detects that lie
-     * today: the `DurableReadTruthFitnessTest` that used to make it visible was deleted in
-     * `2aa071aab`, and no E2E scenario reads an event record. So this paragraph is the whole
+     * today: the fitness test that used to make it visible is gone, and no E2E scenario reads
+     * an event record. So this paragraph is the whole
      * enforcement of a rule whose violation is silent.
      * @param after resume strictly after this cursor's sequence; `null` starts at the beginning.
      * @param limit bounds ROWS, not decodable events.

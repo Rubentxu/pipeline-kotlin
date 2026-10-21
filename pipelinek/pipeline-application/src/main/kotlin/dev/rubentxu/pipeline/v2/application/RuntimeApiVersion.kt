@@ -24,7 +24,7 @@ import dev.rubentxu.pipeline.v2.domain.step.SemVer
  * compatibility, and must refuse rather than guess. Only the SOURCE changes. The value now comes
  * from a resource generated from `project.version`, which exists in a jar AND in a classes
  * directory. The jar manifest attribute is still populated for `pipeline-release` and for external
- * inspection, and `RuntimeApiVersionDriftTest` fails if the two ever diverge — a second source that
+ * inspection, and nothing checks that the two never diverge — a second source that
  * can disagree is worse than either source alone.
  * ## Fail-closed, and why a fallback would be worse
  * A missing or unparseable version is a packaging defect. Reporting a version, or admitting plugins

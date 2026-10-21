@@ -275,7 +275,7 @@ data class ScriptedMappedCall(
  * I2a is the COMPILER half. The runtime half — `ScriptedScope.scoped` extending
  * `dynamicScopePath`, and its ordinal counter being keyed by
  * (call site, scope path) — already existed and is already covered by
- * `ScriptedScopeTest`. So after I2a a scripted call inside a loop carries:
+ * a scope test that no longer exists. So after I2a a scripted call inside a loop carries:
  * ```text
  * dynamicScopePath = ["loop:<sourceId>:<line>:<column>"]
  * invocationOrdinal = 0, 1, 2 …      // counted WITHIN that scope

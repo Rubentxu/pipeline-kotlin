@@ -1512,10 +1512,9 @@ object CliParser {
      * option from swallowing a flag. The arity of every option is now carried by the
      * [FlagOptions] / [ValuedOptions] tables above, and those tables are the whole record of the
      * fix.
-     * **Nothing observes that split.** `CliParserArityTest`, which used to be the row-per-row
-     * record, was removed by the test RESET in `2aa071aab`. This KDoc still named it in the
-     * present tense, so for one revision this tree asserted a guard it did not have. A regression
-     * in the tables would not be caught by anything today.
+     * **Nothing observes that split.** The row-per-row record of the arity was removed with
+     * the rest of the test suite, so a regression in the tables would not be caught by anything
+     * today.
      * Shared with [parseObservation] on purpose: one table of what each option means, whatever verb
      * is being parsed.
 */

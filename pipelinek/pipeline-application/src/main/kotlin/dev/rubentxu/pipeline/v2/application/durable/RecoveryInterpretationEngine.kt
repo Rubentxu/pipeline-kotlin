@@ -22,7 +22,7 @@ import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
  * block inside `CanonicalDurableRunCoordinator.dispatch`, which meant the coordinator both
  * decided what a resumed run may do and performed the journal write, the cursor advance and
  * the lifecycle events that followed from it. Splitting them is what lets the decision stay
- * pure and testable in isolation (see `InvocationRecoveryCharacterizationTest`) while the effects
+ * pure and testable in isolation while the effects
  * live behind this narrow port.
  * ## Why the result is an ADT and not a nullable outcome
  * `Execute` is not a recovery case: it is the absence of one. Returning `StepOutcome?` and

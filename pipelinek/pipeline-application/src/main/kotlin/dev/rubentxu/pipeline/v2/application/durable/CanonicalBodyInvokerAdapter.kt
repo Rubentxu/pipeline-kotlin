@@ -30,8 +30,7 @@ import kotlinx.coroutines.runBlocking
  * The mapping from [BodyRef] to body-children is populated by the **same**
  * [CanonicalDurableRunCoordinator.dispatchBody] function that dispatches the legacy
  * executable body Steps. This adapter never iterates body children itself,
- * so the durable coordinator's body-child loop count remains exactly one
- * (enforced by `Lfc2ConcreteBodyRoutingDebtFitnessTest.BodyChildLoopScanner`).
+ * so the durable coordinator's body-child loop count remains exactly one.
  * ## Lifetime
  * The adapter is per-run. A fresh adapter starts with an empty `openBodies`. The
  * canonical coordinator creates one in its default constructor and closes every body it

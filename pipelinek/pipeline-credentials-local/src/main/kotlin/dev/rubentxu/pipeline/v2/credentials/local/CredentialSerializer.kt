@@ -53,7 +53,7 @@ fun writeAbsentMarker(out: ByteArrayOutputStream) {
 /**
  * Writes one length-prefixed part: a name, then a payload, each prefixed by
  * its length.
- * Layout, pinned by `CredentialPartLayoutTest`:
+ * Layout:
  * ```
  * 1 byte   name length
  * n bytes  name, UTF-8

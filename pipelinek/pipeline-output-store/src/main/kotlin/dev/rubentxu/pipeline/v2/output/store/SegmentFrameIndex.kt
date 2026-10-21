@@ -268,7 +268,7 @@ class SegmentFrameIndex(
      * Allocating an ordinal is a read-modify-write of "read the highest ordinal in the log, add one,
      * append that line". Inside one JVM [lock] makes that atomic. Between processes it was atomic
      * over nothing, and the collision was measured rather than assumed:
-     * `SegmentFrameIndexCrossProcessOrdinalTest` released six writers together from a filesystem
+     * A measurement released six writers together from a filesystem
      * barrier and got 4 distinct ordinals out of 6 writes, three runs in a row.
      * A duplicate ordinal is byte loss, not untidiness: a reader paging with a limit stops after the
      * first of two frames sharing one, and the other is committed output no console can show again.

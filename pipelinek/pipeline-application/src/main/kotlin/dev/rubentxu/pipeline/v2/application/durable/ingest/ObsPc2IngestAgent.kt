@@ -16,36 +16,17 @@ import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFileAttributes
 
 /**
- * The production ingest agent of ``
+ * The production ingest agent.
+ *
  * A separate JVM that owns the read ends of a step's output, redacts in
  * memory, and commits sanitized bytes to the Output Plane. It knows
  * nothing about Steps, events, journals, results or outcomes — it
  * drains two descriptors and appends. That is the whole of it, and it
  * is what keeps it from being a second runtime.
- * ## What this is and what the prototype is not
- * This file is the **production** version. It was promoted from a
- * prototype (`dev.rubentxu.pipeline.v2.application.durable.ObsPc2IngestAgent`,
- * in `src/test/`) that proved the shape. Neither the prototype nor the two adversarial tests
- * named beside it (`ObsPc2IngestAgentPrototypeUatTest`,
- * `ObsPc2ProducerSurvivalSpikeTest`) exist in this tree any more: the test RESET removed all
- * three in `2aa071aab`. The divergence from the prototype below is therefore stated but
- * unwitnessed.
- * The production version differs from the prototype in three ways:
- * 1. **Package.** This file lives in `application.durable.ingest`,
- *    a production package. The prototype lives in the test
- *    `application.durable` package; cross-package access from test
- *    to main is the convention Kotlin/JVM uses for the in-tree
- *    reference fixture.
- * 2. **Class name and KDoc.** The class is the same (the
- *    `Object ObsPc2IngestAgent` is the load-bearing identifier the
- *    prototype and the runtime launcher agree on), but this KDoc
- *    cross-references the ADR sections the prototype's KDoc
- *    documents:,,,,.
- * 3. **The launch contract.** This `main(args)` is what the
- * Runtime launches via `ProcessBuilder` + `setsid`. The
- *    argv order is fixed by [argv] so the launcher and the agent
- *    cannot drift. The prototype's `argv` is the same shape; the
- *    production agent re-uses it verbatim.
+ * ## The launch contract
+ * This `main(args)` is what the Runtime launches via `ProcessBuilder` +
+ * `setsid`. The argv order is fixed by [argv] so the launcher and the
+ * agent cannot drift. One agent per run, supervised by PipelineK.
  * ## Why FIFOs and not inherited pipe descriptors
  * Passing a pipe's read end to another process needs `SCM_RIGHTS`,
  * which the JVM does not expose. A FIFO in the control directory is
@@ -58,9 +39,9 @@ import java.nio.file.attribute.PosixFileAttributes
  * plaintext-spool option was excluded: a regular file written by the
  * child would hold raw bytes, and this does not.
  * That sentence is a property to *check*, not a property the word
- * "fifo" confers. `java.nio.file` cannot create a FIFO, and the
- * first version of the prototype called `Files.createFile` —
- * producing a regular file that silently became the excluded spool.
+ * "fifo" confers. `java.nio.file` cannot create a FIFO, and
+ * `Files.createFile` — which an earlier version used — produced a
+ * regular file that silently became the excluded spool.
  * See [openRendezvous].
  * ## Why it opens the FIFO O_RDONLY
  * A read-only open on a named pipe **blocks until a writer appears**. That
@@ -70,22 +51,12 @@ import java.nio.file.attribute.PosixFileAttributes
  * that moment the child is the only writer. When the child exits, the last
  * writer closes and the agent's read returns **EOF** — which is exactly the
  * signal the redactor needs to flush its lookahead window and exit.
- * **The previous version of this section argued for O_RDWR and was wrong
- * three times over**, which is why it is worth writing down what went
- * against it rather than deleting it:
- * 1. It stated that a read-only open "succeeds immediately and reports EOF
- *    until a writer appears". That is the opposite of what POSIX does. An
- *    O_RDONLY open blocks, and the whole design depends on it blocking.
- * 2. It presented O_RDWR's real drawback — "the agent cannot see EOF, because
- *    it is itself a writer" — as an acceptable cost to be mitigated by an
- *    explicit seal. In practice it was not a cost, it was the defect: holding
- *    a write reference meant the pipe never reached a zero-writers state when
- *    the child exited, so the redactor blocked forever on the lookahead window
- *    waiting for an EOF that could not arrive.
- * 3. It cited `` as the authority for treating completion as a
- *    separate fact. With O_RDONLY the completion signal is the pipe's own.
- * So O_RDWR was the prototype's design and this is the correction; see
- * [openRendezvous] for the code and the ordering it depends on.
+ * An O_RDWR open would break that: holding a write reference means the
+ * pipe never reaches a zero-writers state when the child exits, so the
+ * redactor would block forever on the lookahead window waiting for an EOF
+ * that could not arrive. With O_RDONLY the completion signal is the
+ * pipe's own. See [openRendezvous] for the code and the ordering it
+ * depends on.
  * ## Security invariant: the FIFO type
  * The type is the security invariant here, so it is checked rather
  * than assumed. [openRendezvous] refuses anything that is not a
@@ -98,21 +69,18 @@ import java.nio.file.attribute.PosixFileAttributes
  * `canary=GHS_DBG_SECRET`, the reader saw EOF the instant it looked
  * at an empty file, declared itself drained, and the Output Plane
  * stayed empty.
- * ## Shape and verification
- * One agent per run, supervised by PipelineK.
- * Verification invariants: `after_lines_written` 0/50 → 50/50,
- * `bytes_after_release` > `bytes_after_kill`, DONE post-mortem,
- * `raw_secret_on_disk == 0`.
- * ## See also
- * - the prototype fixture and the inversion spike, both removed by the test
- *   RESET in `2aa071aab` and neither replaced
+ * ## Coverage
+ * Nothing in this tree drives the agent end to end, so the guarantees
+ * above are stated by construction — the FIFO type is checked, the
+ * redaction happens in memory before the commit — rather than witnessed
+ * by an executable scenario.
 */
 object ObsPc2IngestAgent {
 
     /**
      * Entry point for the launched JVM. The argv order is fixed by
-     * [argv] so the launcher ('s wiring in
-     * `DurableShellLaunching.launch`) and this agent cannot drift.
+     * [argv] so the launcher's wiring in
+     * `DurableShellLaunching.launch` and this agent cannot drift.
      * @param args `controlDirRoot`, `runId`, `opIdString`, `fifoDir`,
      *   `readyMarker`, `secret`
 */
@@ -350,14 +318,10 @@ object ObsPc2IngestAgent {
     }.getOrDefault(false)
 
     /**
-     * Convenience so the launcher ('s
-     * `DurableShellLaunching.launch`) and this agent cannot drift on
-     * argument order.
-     * Identical to the prototype's `argv`; the production launcher
-     * uses the same shape. The three fixtures that used to drive the agent through it
-     * (`ObsPc2JvmOwnerDeathProducer`, `ObsPc2IngestAgentPrototypeUatTest`,
-     * `ObsPc2ProducerSurvivalSpikeTest`) were all removed by the test RESET in `2aa071aab`,
-     * so the `argv` shape above is stated, not checked.
+     * The argument order both sides agree on, so the launcher's
+     * `DurableShellLaunching.launch` and this agent cannot drift on it.
+     * Nothing in this tree drives the agent through it, so the shape below
+     * is stated, not checked.
 */
     fun argv(
         controlDirRoot: Path,

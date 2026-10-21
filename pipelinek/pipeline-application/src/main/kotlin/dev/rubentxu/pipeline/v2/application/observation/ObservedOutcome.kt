@@ -38,7 +38,7 @@ import dev.rubentxu.pipeline.v2.events.StepFinished
  * direction.
  * ## What this type is NOT
  * It is not a second authority on how a run ended, and nothing may reconstruct one from a token to
- * decide something. `FArchE4b4WaitUntilTerminalAuthorityTest` is about `waitUntil`'s terminals and
+ * decide something. The law about `waitUntil`'s terminals
  * does not scan these tokens; the reason its reasoning applies here anyway is the shape, not the
  * file: a reader that turned this enum back into a wire token to branch on would be doing exactly
  * what that law forbids.

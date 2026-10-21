@@ -37,9 +37,8 @@ import dev.rubentxu.pipeline.v2.domain.workspace.DestructiveAuthorization
  * argument is a Jenkins contract, and what holds it in place in this tree is
  * the tracked scenario `examples/control-flow/11-workflow-control.pipeline.kts`,
  * which calls `deleteDir()` bare: drop the default and that program stops
- * compiling, so stage 3 of `scripts/verify-all.sh` goes red. An earlier
- * architecture fitness used to pin this and was deleted by the RESET; the
- * guarantee moved to a different custodian, so the citation moved with it.
+ * compiling, so stage 3 of `scripts/verify-all.sh` goes red. The guarantee is
+ * held by that scenario rather than by a unit test.
  * Removing the default would break source compatibility for every existing
  * pipeline for no safety gain: [UserOwned] already refuses the root before any
  * effect. The defect was never the default's existence, it was that the

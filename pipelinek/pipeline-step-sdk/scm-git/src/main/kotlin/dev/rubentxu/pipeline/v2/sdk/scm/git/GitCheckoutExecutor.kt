@@ -550,7 +550,6 @@ data class GitCheckoutRequest(
     // UNIQUE(run_id, sequence). All 11 sites now pass `0L`, which
     // `appendAssigned` treats as "assign me the durable sequence". The ordinal
     // still belongs in the step-scoped payload, not the run-scoped sequence.
-    // See bl-bl-01M3RK3NZV000387H65JWN9XM0.
     val stepIndex: Int,
     val previousRemoteSha: String?,
 )

@@ -14,7 +14,7 @@ package dev.rubentxu.pipeline.v2.events.durable
  * flush/close. That protects the invariant. It does NOT make the loser a
  * well-behaved participant — it makes it a corpse.
  * The consequences that matter, and that a constraint cannot fix:
- *  1. **The failure is a raw driver error.** `Rp020CrossInstanceSequenceAuthorityTest`
+ *  1. **The failure is a raw driver error.** The measurement
  *     records it verbatim: *"the invariant is protected, the error is not yet
  *     a typed rejection"*. An operator sees a UNIQUE violation from SQLite,
  *     not "another process owns this run".

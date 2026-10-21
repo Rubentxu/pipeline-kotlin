@@ -422,7 +422,7 @@ sealed interface ConsoleReadRequest {
         override val format: MainConsoleCli.ConsoleFormat,
         /**
          * The same content filter a single [FramesFiltered] read carries.
-         * This field is the audit's ****. `CliParser.consoleValidate` dispatched `--follow`
+         * This field is the fix for that defect. `CliParser.consoleValidate` dispatched `--follow`
          * BEFORE the filter branch, so `console --frames --follow --stage build` admitted a
          * filterless [FollowFrames] and dropped the filter without a word: the operator asked to
          * see one stage and was shown the whole run, with a successful exit code.
@@ -794,8 +794,7 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
  * should delete. [MainConsoleCli.execute] interprets the admitted request.
  * Why this object holds 21 functions, more than detekt's 12
  * The object is the canonical CLI surface for `pipeline console`. The tests that certified it
- * (`ConsoleRc3FilteredFollowTest`, `ConsoleRc4FollowTerminationTest`, `ConsoleRc2FrameIntegrityTest`,
- * `ConsoleFollowTest`, `ConsoleFrameFiltersTest`, `ConsoleReadServiceTest`) all reached the verbs
+ * all reached the verbs
  * through `MainConsoleCli.X`, and the testing reset removed all six. Nothing reaches
  * these verbs from a test today, so the 21-vs-12 count below is argued, not enforced. Splitting the
  * object into per-verb objects (Read/Follow/Emit) would

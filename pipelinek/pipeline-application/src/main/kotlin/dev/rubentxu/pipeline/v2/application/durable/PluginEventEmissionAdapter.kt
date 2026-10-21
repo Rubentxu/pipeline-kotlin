@@ -33,8 +33,8 @@ internal class PluginEventEmissionAdapter(
  * Binds the open event registry to one run's sink and to THAT run's clock (/.4)
  * It lives beside the adapter rather than in the coordinator because it is not a coordinator
  * responsibility: composing the emission seam belongs to the dispatch machinery that owns the sink
- * and the clock, and a `CoordinatorGrowthGuardrailTest` used precisely to stop unrelated seams
- * accumulating in that file. The test RESET removed it in `2aa071aab`; the placement stands on the
+ * and the clock, and a growth guardrail used precisely to stop unrelated seams
+ * accumulating in that file. It was removed with the rest of the test suite; the placement stands on the
  * reasoning above, and nothing measures it.
  * The clock adapter is the whole reason this is a function and not a `Clock.systemUTC()`. The run's
  * clock is a port ([dev.rubentxu.pipeline.v2.domain.durable.Clock]) so a replay can be given a

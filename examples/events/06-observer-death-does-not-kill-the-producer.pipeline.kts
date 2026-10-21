@@ -10,8 +10,8 @@
 // only looks at it. So an observer that dies — a consumer that crashes, is reaped, or is
 // killed for any reason at all — must not take the producer with it.
 //
-// The published symptom of the opposite is a run that ends ABORTED instead of finishing with
-// its `RunFinished` bookend: the producer's own terminal fact never arrives. An observer that
+// The symptom of the opposite is a run that ends ABORTED instead of finishing with its
+// `RunFinished` bookend: the producer's own terminal fact never arrives. An observer that
 // can end the run is not an observer; it is a participant in the run's life.
 //
 // WHAT THE SCRIPT DOES

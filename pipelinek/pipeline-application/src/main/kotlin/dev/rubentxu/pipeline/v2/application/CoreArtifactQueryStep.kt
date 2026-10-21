@@ -41,7 +41,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * NOT write anything. [Effect.READS_WORKSPACE] is the closest
  * variant (the index is a derived projection of the workspace's
  * artifacts retention directory). Recorded as the canonical
- * classification; will not change without an ADR.
+ * classification; it changes only with the published contract.
  * ## Replay policy
 
  * [ReplayPolicy.MEMOIZED] — the index is a derived projection; a

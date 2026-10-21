@@ -73,9 +73,9 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * so until something executed.
      * Typed, that is a compile error against the vocabulary itself, which is the only place it
      * can be caught without running anything. This closes the last `String` in this module that
-     * A authored semantic decision passed through
+     * an authored semantic decision passed through
      * Two things this deliberately does NOT change:
-     * The wire. ``/the IR encoder projects `failureKind.name`, and every `FailureKind`
+     * The wire. The IR encoder projects `failureKind.name`, and every `FailureKind`
      *    case's `name` is its historical token, so `dsl-v1` payloads are byte-identical.
      *  - The authoring ceremony. `error("msg")` — the overwhelming majority — still needs no
      *    import, no vocabulary and no ceremony, because the default carries it. Only the
@@ -415,9 +415,8 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * adding a case to this sealed hierarchy is binary-compatible but is
      * SOURCE-ADDITIVE for consumers holding an exhaustive `when(step)` without
      * an `else` branch. In this repository the only concrete-case consumer is
-     * the DSL compiler itself, whose dispatch is guarded by
-     * `Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest` and the lock
-     * wire-authority fitness.
+     * the DSL compiler itself, whose dispatch is exhaustive over the body kinds and
+     * encodes through the single wire authority.
 */
     data class Lock(
         val resource: String,

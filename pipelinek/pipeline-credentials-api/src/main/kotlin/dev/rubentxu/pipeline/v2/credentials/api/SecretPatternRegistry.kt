@@ -12,7 +12,7 @@ import java.util.regex.Pattern
  * Literal: the raw secret bytes as
  * - base64 std: Base64 standard encoder (with padding)
  * - base64 url-safe: Base64 URL-safe encoder (no padding)
- * - base64 trimmed padding/last-char: GitHub Actions runner#291 pattern
+ * - base64 trimmed padding/last-char: the secret printed without its base64 padding
  * - hex upper: uppercase hex (2 chars per byte)
  * - hex lower: lowercase hex (2 chars per byte)
  * - URL-encoded: percent-encoded special chars
@@ -123,7 +123,7 @@ class SecretPatternRegistry {
      * 1. Literal
      * 2. base64 std (with padding)
      * 3. base64 url-safe (no padding)
-     * 4. base64 trimmed padding variants (GitHub runner#291)
+     * 4. base64 trimmed padding variants (padding stripped, as a log line often prints it)
      * 5. hex upper
      * 6. hex lower
      * 7. URL-encoded (only if secret contains chars needing encoding)
@@ -144,7 +144,7 @@ class SecretPatternRegistry {
         // 3. base64 url-safe (no padding)
         variants.add(Base64.getUrlEncoder().withoutPadding().encodeToString(rawBytes))
 
-        // 4. base64 trimmed padding variants (GitHub runner#291)
+        // 4. base64 trimmed padding variants (padding stripped, as a log line often prints it)
         if (b64Std.endsWith("==")) {
             variants.add(b64Std.removeSuffix("=="))   // -2 chars
             variants.add(b64Std.dropLast(2))           // same as above, explicit

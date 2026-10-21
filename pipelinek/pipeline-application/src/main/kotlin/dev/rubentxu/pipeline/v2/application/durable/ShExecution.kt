@@ -90,7 +90,7 @@ object ShExecution {
      * Stream a process transcript into the Output Plane, redacting on the way in.
      * RESTORED VERBATIM FROM `origin/main` during the reconciliation. It is NOT new code:
      * `ShExecution.kt` auto-merged, and the automatic merge silently dropped this function while
-     * `main`'s own `B1aOutputPlaneProviderLifecycleCharacterizationTest` still calls it. A clean
+     * `main`'s own tests still called it. A clean
      * textual merge is not a safe merge, and the compile is what caught it.
      * **This is not on the production path on this branch.** `main` reaches this function from
      * `invokeShell`; this branch reaches the Output Plane through the composed sink instead —
@@ -348,7 +348,7 @@ object ShExecution {
             // 3 added the per-channel split on top of that: there is no merged stream at all
             // so a merged console is a read-side projection over two streams and the frame index
             // that orders them — never a third copy on disk.
-            // What did NOT change, and is checked above and by OutputSingleAuthorityFitnessTest:
+            // What did NOT change, and is checked above:
             // redaction happens before persistence, the bytes land in one authority, and no
             // console event is emitted for them.
             // The terminal is the only place that knows the operation is over, so it is the

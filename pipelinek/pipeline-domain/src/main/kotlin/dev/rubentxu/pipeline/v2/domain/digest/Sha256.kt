@@ -111,8 +111,8 @@ object Sha256 {
      * ## Why uppercase is refused rather than accepted
      * [ofBytes] emits `0-9a-f` only, so uppercase was not written by this object. Accepting it
      * would give one digest two spellings that compare unequal, which is the same defect
-     * Exists to remove. `dev.rubentxu.pipeline.v2.domain.step.SemVer` accepts ``
-     * deliberately — that is a version string, not a digest, and it simply does not call this.
+     * this class exists to remove. `dev.rubentxu.pipeline.v2.domain.step.SemVer` accepts
+     * uppercase deliberately — that is a version string, not a digest, and it simply does not call this.
 */
     fun isSha256Hex(value: String): Boolean =
         value.length == 64 && value.all { it in '0'..'9' || it in 'a'..'f' }

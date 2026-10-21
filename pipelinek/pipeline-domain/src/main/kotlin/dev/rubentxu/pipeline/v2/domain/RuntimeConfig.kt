@@ -83,9 +83,8 @@ interface RuntimeConfig {
      * method so DSL `pwd()` / `isUnix()` synchronous return values do not
      * couple the `:pipeline-scripting-api` adapter to global JVM state.
      *
-     * The fitness test `Lfc0GlobalStateFitnessTest` enforces that no
-     * production site other than `SystemRuntimeConfig` reads the JVM
-     * user-dir property directly.
+     * No production site other than `SystemRuntimeConfig` should read the JVM
+     * user-dir property directly; nothing enforces that today.
      */
     fun userDir(): String
 }

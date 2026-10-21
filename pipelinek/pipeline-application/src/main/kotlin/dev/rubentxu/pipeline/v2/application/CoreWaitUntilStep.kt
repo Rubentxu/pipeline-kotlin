@@ -108,7 +108,7 @@ data class WaitUntilOutput(
  * The handler was given a deliberately
  * absurd clock (1970-01-01) and no `WaitUntilPolled` carried that stamp — the
  * polling events come from `WaitUntilEngine`, and the body's own effect does happen
- * (asserted by `CoreWaitUntilBodyVsHandlerTest`). So the stub below is DEAD CODE on
+ * (and nothing asserts it today). So the stub below is DEAD CODE on
  * the production path. It is kept, not deleted, because the StepDefinition requires a
  * handler and because deleting it would be a wider change than this slice allows;
  * the KDoc previously claimed this stub is reached through the legacy dispatcher,

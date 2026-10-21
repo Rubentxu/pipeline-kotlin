@@ -10,7 +10,7 @@ package dev.rubentxu.pipeline.v2.events.durable
  * write-capable connection for as long as it lives. An observer that only wanted to READ was
  * writing to the producer's file.
  *
- * That is the coupling issue #145 names. An observer is supposed to be a VIEW over a journal
+ * That is the coupling a reader must not have. An observer is a VIEW over a journal
  * the producer owns: killing the view must not signal the owner, and the view must not change
  * what the owner is writing. A view that writes is not a view.
  *

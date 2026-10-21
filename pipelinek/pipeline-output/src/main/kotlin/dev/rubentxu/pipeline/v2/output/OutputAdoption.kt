@@ -3,10 +3,10 @@ package dev.rubentxu.pipeline.v2.output
 /**
  * The adoption contract for, and the checkable form of [ ]
  * the adoption strategy requires reserve/commit or a recoverable intent protocol, because a crash
- * between the byte append and the index commit loses the global order for those bytes. RCE
- * `` compared four candidates and decided **ADOPT D, segment reservation with recovery**
- * failing none of six invariants across four protocols x eight crash scenarios.
- * So the design exists and the decision is taken. What that ADR did not write is the sentence that
+ * between the byte append and the index commit loses the global order for those bytes. The four candidates
+ * were compared and **ADOPT D, segment reservation with recovery** was chosen, failing
+ * none of six invariants across four protocols x eight crash scenarios.
+ * So the design exists and the decision is taken. What that decision did not write is the sentence that
  * Connects it to a product: **what the adopter has to do for " is implemented" to be a claim
  * rather than a hope.** This file is that sentence, and it now lives in `src/main` rather than in a
  * test harness — the earlier placement is the reason the gap survived as long as it did.
@@ -138,7 +138,7 @@ enum class OutputAdoptionObligation(
 
 /**
  * Properties this adoption explicitly does **not** establish.
- * An ADR's "what this does not establish" section erodes first: nothing is deleted when a claim is
+ * A "what this does not establish" section erodes first: nothing is deleted when a claim is
  * inherited, it just stops being written down, and the next reader finds a proven-looking result
  * with no mention of the limits that shaped it.
 */

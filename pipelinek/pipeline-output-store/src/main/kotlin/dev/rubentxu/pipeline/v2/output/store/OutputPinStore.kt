@@ -27,7 +27,7 @@ import java.util.concurrent.locks.ReentrantLock
  * [SegmentOutputStore] uses.
  * ## Compactness
  * The on-disk shape omits any framing. Adding fields later is a format
- * Change and will be noted in the `` adapter rule
+ * change and will be noted in the adapter rule
 */
 internal class OutputPinStore(
     private val root: Path,

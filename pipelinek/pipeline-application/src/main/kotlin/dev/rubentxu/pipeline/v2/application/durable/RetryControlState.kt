@@ -15,7 +15,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryControlRowSnapshot
  * The Reconciler's legacy compat branch classifies those
  * rows as either safe-to-reconstruct (single-attempt success) or
  * ambiguous (multi-attempt, single-attempt failure). Mixing them with
- * post-ADR rows would silently hide the divergence detector behind a
+ * current-format rows would silently hide the divergence detector behind a
  * collapse to the legacy compat policy.
 */
 data class RetryControlState(

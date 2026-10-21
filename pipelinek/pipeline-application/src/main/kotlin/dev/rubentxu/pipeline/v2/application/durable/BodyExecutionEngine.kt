@@ -36,7 +36,7 @@ import java.util.UUID
  * dispatch path every other caller uses — composition, not a second engine.
  * This first slice moves the child-iteration loop verbatim; the scope
  * projections and the scope-specific engines follow in later slices.
- * Bit-equivalence contract: pinned by `BodyExecutionCharacterizationTest`
+ * Bit-equivalence contract:
  * (dir/retry/withEnv rows and segments) — the engine must satisfy it
  * UNCHANGED.
 */

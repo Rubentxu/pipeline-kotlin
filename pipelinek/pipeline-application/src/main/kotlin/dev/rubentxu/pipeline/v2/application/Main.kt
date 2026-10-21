@@ -201,7 +201,7 @@ fun main(args: Array<String>) {
         // The source moved from the jar manifest to a generated RESOURCE, because
         // 34 harnesses run the CLI from a classes directory where Package.getImplementationVersion
         // is null. The manifest attribute is still populated for pipeline-release and external
-        // inspection, and RuntimeApiVersionDriftTest fails if the two ever diverge.
+        // inspection, and nothing checks that the two ever diverge.
         val manifestVersion = RuntimeApiVersion.readImplementationVersion()
         if (manifestVersion.isNullOrBlank()) {
             System.err.println(
@@ -366,7 +366,7 @@ fun main(args: Array<String>) {
     // BEFORE the run starts. An unknown id is a fail-closed
     // CliExit.InvalidArgument (exit 2); the server never falls back
     // to Published on an unknown request, because that would be the
-    // silent-degradation defect the ADR was written to prevent.
+    // silent-degradation defect this negotiation exists to prevent.
     val outputProtocol: OutputProtocol = negotiateOutputProtocolOrExit(config.outputProtocolTokens)
 
     val command = config.command
@@ -584,8 +584,8 @@ fun main(args: Array<String>) {
         val dslClasspath = computeScriptClasspath(config.pluginJars)
         val definition0 = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
         // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
-        // return values reflect the host environment. Lfc0GlobalStateFitnessTest
-        // requires:pipeline-scripting-api to read no global state; this scope is
+        // return values reflect the host environment. The scripting API is meant to read no
+        // global state; this scope is
         // the single bridge. Cleared in a finally block.
         dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.set(SystemRuntimeConfig())
         val result = try {
@@ -1509,7 +1509,7 @@ private fun emitCorrelationAndReceipt(
  *   process exits with [CliExit.InvalidArgument] (code 2) and an
  *   envelope listing every supported id. The server NEVER falls
  *   back to Published on an unknown request — silent degradation
- *   is the exact defect the ADR was written to prevent.
+ *   is the exact defect this negotiation exists to prevent.
  * Resolution lives in [OutputProtocol.negotiate]; this wrapper
  * only translates "no intersection" into the typed CLI envelope.
 */
@@ -1586,7 +1586,7 @@ private fun writeEventDocument(
  * Nothing else is converted: a `NullPointerException` or a `ClassCastException` inside the compiler is
  * a defect, and it still surfaces as a defect with its stack trace intact. The refusal prints the
  * message verbatim, because the message is the part the author needs.
- * Exit code is 1, matching every other definition-level failure (`CliCompileErrorExitsOneTest`); 2 is
+ * Exit code is 1, matching every other definition-level failure; 2 is
  * reserved for admission refusals, which are a different decision about a different thing.
 */
 private fun compileOrRefuse(

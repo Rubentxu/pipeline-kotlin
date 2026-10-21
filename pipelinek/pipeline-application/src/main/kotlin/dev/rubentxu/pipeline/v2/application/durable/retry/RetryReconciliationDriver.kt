@@ -26,7 +26,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciler
  * launching any child effect, and only the driver plans.
  * ## Plan-only contract
  * [plan] is a pure function from the durable state to a decision. The
- * test [RetryReconciliationDriverTest] verifies that the planner does NOT
+ * planner does NOT
  * mutate the journal between reads. The caller (dispatch loop) is the
  * component that calls `beginAttempt` and `updateStatus` based on the
  * returned decision.

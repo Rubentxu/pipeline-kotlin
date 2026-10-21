@@ -72,10 +72,9 @@ data class DurableShConfig(
      * `EPIPE` and may exit non-zero instead. ratifies
      * this trade and accepts it.
      * ## Default
-     * `false`. Switching this on is the wiring step, and that step has
-     * not been taken. The spike that examined the trade, `ObsPc2ProducerSurvivalSpikeTest`, was
-     * removed by the test RESET in `2aa071aab`, so the claim it used to support is now unwitnessed
-     * in this tree: nothing observes what the flag does or whether the default is right.
+     * `false`. Switching this on is the wiring step, and that step has not
+     * been taken, so the default is a conservative choice rather than a
+     * measured one: nothing in this tree observes what the flag does.
 */
     val pumpedViaAgent: Boolean = PUMPED_VIA_AGENT_DEFAULT,
 

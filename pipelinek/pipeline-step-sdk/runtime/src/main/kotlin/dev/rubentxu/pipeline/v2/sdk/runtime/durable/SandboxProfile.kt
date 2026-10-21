@@ -61,12 +61,10 @@ enum class SandboxProfile {
 /**
  * Exception thrown when an unsupported sandbox profile is requested.
  * Used when:
- * CLI is passed `--sandbox-profile os` (rejects os)
- * [SandboxProfile.OS] factory is called directly (not available in)
- * The message contains machine-checkable substrings:
- * Scope firewall ADR
- * `` — milestone 5
- * `` — milestone 9
+ * - the CLI is passed `--sandbox-profile os` (which it rejects)
+ * - the [SandboxProfile.OS] factory is called directly (not available yet)
+ * The message names the offending value and the set of accepted profiles, so a
+ * caller can tell a refused profile from an unknown one without parsing prose.
  * @param message The error message.
 */
 class SandboxProfileUnsupportedException(message: String) : RuntimeException(message)

@@ -27,8 +27,8 @@ import java.util.UUID
  * engine only records and closes the lifecycle.
  * **This extraction is currently UNVERIFIED, and the previous version of this
  * paragraph claimed the opposite.** It said the behavior "is pinned by
- * `CoordinatorRunLifecycleCharacterizationTest`, which it must satisfy
- * UNCHANGED". That class does not exist: the name occurs on exactly one line in
+ * a characterisation test, which it must satisfy
+ * UNCHANGED". That test does not exist: its name occurs on exactly one line in
  * the repository, the one that cited it. The testing reset deleted it, along with
  * the rest of the inherited corpus, and the project policy forbids restoring
  * that corpus. A sweep of the test sources finds nothing that names this engine,

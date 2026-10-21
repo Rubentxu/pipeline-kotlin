@@ -7,8 +7,7 @@ package dev.rubentxu.pipeline.v2.sdk.http
  * author and the runtime with no duplication and no second declaration.
  * It deliberately does NOT live in `pipeline-domain`. Before the OFFICIAL_PLUGIN
  * pivot it did, justified by a `StepSpec.HttpRequest` in `pipeline-scripting-api`
- * that needed the vocabulary and could not reach the application layer
- * (`FArchRP030HexagonalDependencyDirectionTest` forbids that direction). The pivot
+ * that needed the vocabulary and could not reach the application layer. The pivot
  * deleted `StepSpec.HttpRequest` along with the compiler branch, so that
  * justification described an architecture that no longer exists. Keeping the type
  * in `pipeline-domain` afterwards would have been the actual defect: it would name

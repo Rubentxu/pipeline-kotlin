@@ -15,8 +15,8 @@ import java.nio.ByteOrder
  * the filesystem, so the same bytes always produce the same result. The store
  * owns the surrounding concerns: encryption, the linked-ref chain, and the
  * cycle guard.
- * The layout is an on-disk contract. `CredentialPartLayoutTest` pins the bytes
- * of a single part, and the fixtures under `src/test/resources/compat` were
+ * The layout is an on-disk contract: the bytes of a single part are fixed, and
+ * the fixtures under `src/test/resources/compat` were
  * written by an earlier implementation of the store, so a change here has to
  * keep reading what is already on disk.
 */

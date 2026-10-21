@@ -53,7 +53,7 @@ import kotlinx.serialization.json.put
  * body and reaches it only through the bound [BodyContinuation]; the engine remains
  * the only executor, on the same durable spine, with the same journal and events.
  * The viability of that shape — and the proof that the engine does not substitute
- * its own body semantics — is `LockFeasibilityProofTest`.
+ * its own body semantics — is asserted by no test today.
  * ## Effects
  * [Effect.READ_ONLY]: `core.lock` does not touch the workspace. It coordinates, and
  * waiting is a suspension, not a mutation. Declaring more than it does would violate
@@ -328,8 +328,7 @@ object CoreLockStep {
      * [BodyOutcome] is exactly `Completed | Cancelled` and never throws, so the
      * release contract is return-based. The `finally` is defence in depth against
      * an ENGINE defect (a throw across the continuation), and is explicitly NOT a
-     * property this file claims to be tested — see
-     * `LockFeasibilityProofTest`'s header.
+     * property this file claims to be tested — a claim no test backs today.
 */
     private suspend fun runBody(
         owner: LockOwner,

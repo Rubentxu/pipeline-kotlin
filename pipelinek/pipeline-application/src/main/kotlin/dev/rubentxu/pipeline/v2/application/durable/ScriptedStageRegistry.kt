@@ -31,7 +31,7 @@ import dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint
  * so an object filed under a key that is not its own is unrepresentable. A runtime re-check of
  * that would be a guard that cannot fail, which is a claim the code does not make and which
  * `SegmentOutputStore` used to carry in the shape of an `if (false)`. The property is held by the
- * construction and pinned by `ScriptedStageEdgeTest`, not by a second comparison.
+ * construction, not by a second comparison.
 */
 sealed interface ScriptedStageResolution {
 

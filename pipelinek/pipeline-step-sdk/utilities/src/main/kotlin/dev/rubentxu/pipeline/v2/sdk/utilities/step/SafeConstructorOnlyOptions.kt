@@ -8,7 +8,7 @@ import org.yaml.snakeyaml.LoaderOptions
  * classes via `!!class.name` tags, alias expansion has no cap, and nested
  * documents blow the JVM stack. The Step NEVER uses defaults; it ALWAYS uses
  * this builder.
- * Limits (calibrated against empirical probe `YamlSafetyCharacterisationTest`):
+ * Limits (each one chosen against a measured probe, not a default):
  *  - `tagInspector = Inspector()` — refuse every non-standard tag, including
  *    `!!python/name:os.system`, `!!javax.script.ScriptEngineManager`, etc.
  *    Only the YAML 1.1 standard tags are accepted.

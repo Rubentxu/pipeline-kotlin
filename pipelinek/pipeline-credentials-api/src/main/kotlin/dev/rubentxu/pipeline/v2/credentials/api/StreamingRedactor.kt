@@ -325,8 +325,7 @@ class StreamingRedactor(
      * ~100 KB/s, which stalls any pipeline whose child writes >~100 MiB to the
      * console transcript (observed: 200 MiB run busy-spinning at 100% CPU for
      * 36+ minutes without completing).
-     * This rewrite keeps the EXACT same observable contract (see class docs and
-     * StreamingRedactorTest, 23 tests):
+     * This rewrite keeps the EXACT same observable contract (see the class docs):
      * - never returns 0 from read(b, off, len>0);
      * - a byte is only emitted once maxLiteral lookahead rules out every seam literal;
      * - at EOF remaining pending bytes are emitted as-is;

@@ -242,8 +242,7 @@ class SqliteEventStore(
             // independently. Without a uniqueness constraint BOTH inserts
             // succeed and the events table accumulates duplicate sequences,
             // breaking the per-run monotonic invariant that replay and every
-            // External observer depend on (bl-bl-01M3QD197Q000387ET2D4MFKR0
-            // observed rows=300 distinct=150).
+            // External observer depend on (observed rows=300 distinct=150).
             // UNIQUE(run_id, sequence) makes the DATABASE the authority: a
             // writer that would duplicate a sequence is rejected by SQLite
             // itself (fail-closed, no silent corruption) instead of

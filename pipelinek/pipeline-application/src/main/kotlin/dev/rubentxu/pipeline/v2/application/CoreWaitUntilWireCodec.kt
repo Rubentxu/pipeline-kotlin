@@ -17,19 +17,19 @@ import kotlinx.serialization.json.put
 
 /**
  * THE single wire authority for the `core.waitUntil` **block** payload
- * (`bl-bl-01M3YGH3FE000387X13PG607G0`).
+ * format that the compiler writes and the Step reads.
  * Before this object existed, `DslCompiledPipelineCompiler.blockPayload`
  * hand-wrote this format in JSON while the Step's own codec wrote the
  * registry one — the same shape of divergence `core.sh` suffered
  * (`kind=sh|shell`, `command|script`, `returnStdout|returnMode`), where every
  * alias is a compatibility shim added after the fact.
- * [Lfc2WaitUntilWireAuthorityFitnessTest] freezes the law, the third Step after
+ * `core.waitUntil` is the third Step to get that shape, after
  * `core.lock` and `core.input`.
  * ## The bytes are unchanged, and that is the contract
  * [encode] reproduces the compiler's previous output character for character,
  * including the `kind` discriminator and the key order. Two measured reasons:
- * 1. `Lfc2WaitUntilDslCanonicalProjectionTest` asserts, across the productive
- *    authority, that the compiled block payload carries `kind="waitUntilBlock"`.
+ * 1. The compiled block payload carries `kind="waitUntilBlock"` across the productive
+ *    authority: the compiler and the Step must not disagree about it.
  * 2. The compiled payload is the one string hashed into the operation identity
  *    (`StepDispatchEngine` puts `payload.encoded` into `OperationInput.params`,
  *    which `OperationInput` documents as fingerprint input), and the replay

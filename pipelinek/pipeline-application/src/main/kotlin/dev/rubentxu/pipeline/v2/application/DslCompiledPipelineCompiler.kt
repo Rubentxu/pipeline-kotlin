@@ -375,7 +375,7 @@ object DslCompiledPipelineCompiler {
         // The compiler does NOT hand-write the core.lock wire JSON.
         // CoreLockWireCodec is THE single authority for that format; this is the
         // divergence core.sh suffered (kind=sh|shell, command|script) refused in
-        // advance. Guarded by Lfc2LockWireAuthorityFitnessTest.
+        // advance.
         is StepSpec.Lock -> CoreLockWireCodec.encode(step.toCoreLockInput()).value
         // Same single-authority law as core.lock. The compiler knows
         // the StepSpec.Input -> CoreInputInput transformation (a DOMAIN decision)

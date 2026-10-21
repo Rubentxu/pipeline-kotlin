@@ -271,8 +271,8 @@ object ScriptedSourceLowering {
      * Moves. What it removes is the dependency on that default being rather than an
      * assumption about it.
      * UNPINNED, and this KDoc used to say otherwise: it named
-     * `Sha256MigrationCharsetInvariantTest` as the assertion that held this. That test existed and
-     * the test RESET removed it in `2aa071aab`. `git ls-files` returns nothing for it now, which
+     * a characterisation test as the assertion that held this. That test existed and
+     * the test RESET removed it. Nothing names it in the tree now, which
      * is exactly how a deleted test and a never-written one look alike -- the absence in the tree
      * is not evidence about the history. The property is real and still holds by the toolchain, but nothing here checks it,
      * so a future edit could reintroduce a platform-default charset and the digests would move
@@ -296,7 +296,7 @@ object ScriptedSourceLowering {
     // before the change be reused by a runtime that no longer shares its identity law.
     // The type this constant belongs to is deliberately not named here. It used to be, with a
     // stated reason: naming it would register a phantom consumer in
-    // `SharedModelCompositionFitnessTest`, whose `consumersOf` was a raw text search. That test
+    // a text search over the sources. That test
     // no longer exists either, so the reason is gone — but the conclusion it reached still holds
     // for a better reason. This is a private constant of this file; a type reference written
     // beside it invites exactly the kind of consumer that a later text search would read as real.

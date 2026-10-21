@@ -266,7 +266,7 @@ internal data class ScriptedScopeIdentity(
      * artifacts of the same source position produced different fingerprints and the second run
      * failed closed with REPLAY_COMPATIBILITY. Unifying the spine dropped it, which meant a
      * scripted registry step would replay happily across two different artifacts.
-     * `ScriptedScopeTest` caught the regression, and the property is restored here
+     * A test caught the regression, and the property is restored here
      * rather than the test being relaxed: unifying spines must not lose a
      * guarantee the retired spine had.
 */

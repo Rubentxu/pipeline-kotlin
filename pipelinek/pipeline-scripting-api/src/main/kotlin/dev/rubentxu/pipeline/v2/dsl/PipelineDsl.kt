@@ -61,8 +61,7 @@ internal fun currentRuntimeConfig(): dev.rubentxu.pipeline.v2.domain.RuntimeConf
 
 /**
  * Variant of [pipeline] that accepts an explicit [RuntimeConfig] so the DSL
- * stays decoupled from global JVM state (see
- * `Lfc0GlobalStateFitnessTest`).
+ * stays decoupled from global JVM state.
  * Production callers (the `pipeline-application` CLI) should pass the
  * `SystemRuntimeConfig` adapter. Tests can pass a deterministic
  * `MapRuntimeConfig`.
@@ -193,10 +192,8 @@ class OptionsScope {
      * `options { … }` — where this scope is the receiver — `timeout = 5` was a
      * second way in that no diagnostic guarded. That was not hypothetical: two timeout
      * UATs failed to compile when the first fix made the property private, which is the
-     * failure recorded two paragraphs down. It used to cite `UatLocal004TimeoutTest` as the
-     * fixture that wrote `timeout = 2L`; that test is not in this tree either
-     * (`git ls-files` returns nothing for it), so the fact is kept and the false citation
-     * is not.
+     * failure recorded two paragraphs down. The fixture that wrote `timeout = 2L` is not in
+     * this tree, so the fact is kept and the citation is not.
      * Making the property private was the first fix and it was the WRONG one. It
      * removes the bypass, and it also breaks every existing `.pipeline.kts` that
      * assigns the property, which is a source break in a published DSL surface

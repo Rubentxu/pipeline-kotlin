@@ -54,7 +54,7 @@ fun interface CompiledLineSelector {
  * Typed compile outcome — a bad pattern is a value, not an exception at the CLI.
  * ## Why it is NOT called `CompileResult`
  * `dev.rubentxu.pipeline.v2.domain.CompileResult` is a canonical compiler symbol, and
- * `FArchM2CanonicalPipelineCompilerTest` resolves symbols by name across modules: a second
+ * The architecture gate resolves symbols by name across modules: a second
  * `CompileResult` in `pipeline-application` maps the same name to two files and fails the
  * architecture gate. That is not a cosmetic allowlist complaint — two same-named types with
  * different meanings, one in the domain and one at the presentation edge, is exactly the shape

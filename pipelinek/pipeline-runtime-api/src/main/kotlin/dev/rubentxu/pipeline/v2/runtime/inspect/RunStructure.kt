@@ -183,8 +183,7 @@ sealed interface StepState {
  * and `::stderr` as disjoint suffixes, so it cannot produce a duplicate — but
  * that is a property of one caller being correct, not of the type. Its sibling
  * in `dev.rubentxu.pipeline.v2.output` had the same hole with the same cause,
- * and closing only that one would have left the shape broken twice. See
- * `OperationOutputStreamsDistinctStreamsTest`.
+ * and closing only that one would have left the shape broken twice.
 */
 data class OperationOutputStreams(
     val stdoutStream: OutputStreamId?,

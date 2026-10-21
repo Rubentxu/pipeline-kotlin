@@ -121,15 +121,14 @@ sealed interface FollowDecision {
  *    nothing observed is not evidence of completion.
  *  * empty tails, run finished     → [FollowDecision.Finished]. This is `sh("true")`, and it is
  * A silent step terminates and its follower knows the end.
- * ## Which UAT row this is
- * "`sh("true")`, sin stdout/stderr, termina y su follower conoce el fin" — from the
- * Mandate. The published repo matrices (`..107`, `..207`) do not
- * contain this row; the mandate does, and the mandate is the requirement. An earlier revision of this
- * file claimed the row did not exist anywhere and removed the reference. That was wrong, and wrong in
- * the expensive direction: it read as if the behaviour were optional, when the mandate makes it
- * mandatory. The `docs/` tree was searched and came back empty; the rows were in the mandate, not in
- * the tree.
- * What this file discharges is the DECISION half of. The run half — an installed pipeline
+ * ## The row this discharges
+ * A step with no output at all (`sh("true")`) terminates, and its follower knows
+ * the end. That behaviour is mandatory, not optional: the published repository
+ * matrices do not cover this row, and an earlier revision of this file claimed
+ * the row did not exist anywhere and removed the reference. That was wrong, and
+ * wrong in the expensive direction: it read as if the behaviour were optional
+ * when it is not.
+ * What this file discharges is the DECISION half of it. The run half — an installed pipeline
  * whose silent step terminates a real follower — is not discharged here and is tracked as such.
  * ## Why it is NOT a conjunct on the sealed case
  * When at least one stream is known, sealing already answers the question this function asks, and

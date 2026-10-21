@@ -76,10 +76,9 @@ public sealed interface EventStorePurpose {
 /**
  * The lane a store opened for this purpose works in.
  *
- * This is the whole answer to "may the caller change the file", and it is the answer the
- * incident #145 needs: a READER of a run's journal is a view over a file the PRODUCER owns, so
- * it opens the file read-only and the database engine refuses every write it could attempt.
- * A WRITER is the producer's lane and owns the file.
+ * This is the whole answer to "may the caller change the file": a READER of a run's journal is
+ * a view over a file the PRODUCER owns, so it opens the file read-only and the database engine
+ * refuses every write it could attempt. A WRITER is the producer's lane and owns the file.
  *
  * Pure, and therefore decidable without a disk.
  */

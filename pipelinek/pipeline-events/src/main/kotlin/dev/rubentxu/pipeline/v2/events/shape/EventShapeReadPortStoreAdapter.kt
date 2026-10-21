@@ -23,8 +23,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
  * `eventShapesForRun` MUST NOT mutate durable state. The composition
  * rule limits it to reads and a projection pass.
  * There is no test guarding this today, and the sentence that used to say
- * otherwise ("the contract test `EventShapeReadPortAdapterTest` pins this")
- * was deleted along with that test in `2aa071aab`, leaving the claim behind.
+ * otherwise was deleted along with that test, leaving the claim behind.
  * That is acceptable while [EventShapeReadPort] stays EXPERIMENTAL and
  * nothing outside this module consumes it; it stops being acceptable the day
  * a production caller appears, and the first thing that should be written then

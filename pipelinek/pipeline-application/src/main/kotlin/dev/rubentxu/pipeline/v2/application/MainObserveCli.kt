@@ -158,7 +158,7 @@ object MainObserveCli {
         // behind a different door, and the difference is memory: it takes a `List` and hands back a
         // `String`, so a replay held the run's whole history twice while it rendered it.
         // `run`'s live path already writes through [RunObservationOutput.writeTo]; this is the replay
-        // path doing the same thing, which is what makes `ObsE5ObserveReplayTest`'s claim —
+        // path doing the same thing, which is what makes the claim —
         // "the event lane renders through the SAME encoder `run` uses" — true rather than merely
         // consistent-looking. It was checked by content, and content cannot tell two encoders apart.
         // What this does NOT buy, stated rather than implied: the event sequence is still consumed to
@@ -453,7 +453,7 @@ interface ObserveLanes : AutoCloseable {
 
     /**
      * Whether the durable EVENT authority says this run reached a terminal state.
-     * Added for **** (mandate), because the output lane provably cannot
+     * Added for the terminality mandate, because the output lane provably cannot
      * substitute for it. A run that finished writing nothing owns no stream and no frame, so
      * [outputTailsOf] answers an empty list for it — and so it answers the same empty list for a run
      * that has not started. A follower that read termination off that list would hang on

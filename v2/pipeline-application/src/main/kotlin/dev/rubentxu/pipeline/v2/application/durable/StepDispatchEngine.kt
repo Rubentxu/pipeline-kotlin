@@ -207,6 +207,8 @@ internal class StepDispatchEngine(
      * It is built only on the execution path: reuse, divergence and recovery never reach it,
      * which is what keeps a replayed Step from acquiring a capability it did not use.
      */
+    @Suppress("LongParameterList") // Every argument is named and read once; the alternative
+    // would be a holder that exists only to satisfy a counting rule.
     private fun runtimeContext(
         opId: OpId,
         runId: RunId,
@@ -216,6 +218,7 @@ internal class StepDispatchEngine(
         stageShOptions: ShOptions,
         bodyContinuation: dev.rubentxu.pipeline.v2.domain.step.BodyContinuation?,
         bodySlotInvoker: BodySlotInvoker?,
+        ownerPluginId: String?,
     ): CanonicalRuntimeContext = CanonicalRuntimeContext(
         opId = opId,
         runId = runId.value,
@@ -253,6 +256,7 @@ internal class StepDispatchEngine(
                 store = binding.store,
                 eventSink = eventSink,
                 clock = clock,
+                ownerPluginId = ownerPluginId,
             )
         },
         // SAGA / PK-2: the plan port for THIS run. It carries no operation identity — what a
@@ -265,6 +269,7 @@ internal class StepDispatchEngine(
                 leaseEpoch = binding.leaseEpoch,
                 store = binding.store,
                 clock = clock,
+                ownerPluginId = ownerPluginId,
             )
         },
         // SAGA / PK-2: the compensation RUNTIME for THIS invocation. It needs the Saga store
@@ -280,6 +285,7 @@ internal class StepDispatchEngine(
                     leaseEpoch = sagaBinding.leaseEpoch,
                     store = sagaBinding.store,
                     clock = clock,
+                    ownerPluginId = ownerPluginId,
                 ),
                 // SAGA / PK-2 (3b-5): the other closing of a Saga — the one that KEEPS the
                 // effects. It reads the same durable rows and writes them with the same lease
@@ -670,6 +676,7 @@ internal class StepDispatchEngine(
             stageShOptions = stageShOptions,
             bodyContinuation = bodyContinuation,
             bodySlotInvoker = bodySlotInvoker,
+            ownerPluginId = pluginIdOf(step),
         )
 
         // CDE.2-c/d + CDE.3-b3/e4.3: strategy preparation runs ONLY on actual execution and NEVER
@@ -763,6 +770,21 @@ internal class StepDispatchEngine(
     ): InvocationReconciliation =
         invocationResolver.reconcileInvocation(metadata, journaled, currentOperation, operationId)
 
+
+    /**
+     * The plugin that owns the Step being dispatched.
+     *
+     * It is read from the Step's own declaration, the same way the body owner is read: the
+     * registry says who declared the Step, not a switch on its name. The engine is the only
+     * party that can say it, which is what makes a promise's owner trustworthy: a plugin cannot
+     * claim a promise it did not make.
+     */
+    private fun pluginIdOf(step: StepNode): String? =
+        stepRegistry
+            ?.definition(step.pluginStepId)
+            ?.contract
+            ?.descriptor
+            ?.pluginId
 
     /**
      * The body owner DECLARED by the Step's own descriptor, or `null` when the key is unknown

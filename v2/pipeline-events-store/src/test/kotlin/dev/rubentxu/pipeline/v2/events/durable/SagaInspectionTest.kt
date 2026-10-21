@@ -68,7 +68,7 @@ class SagaInspectionTest {
     fun `the read-side shows what the run promised and what it still owes`() {
         val state = durableStateOfCapturedRun()
 
-        val view = SagaInspectionProjection.read(RUN_ID, state.rows, state.events)
+        val view = SagaInspectionProjection.read(RUN_ID, state.rows, state.events).view
 
         // What the run announced about itself, read with the projection that publishes the
         // reading of a plane. The saga stopped, and the reason it stopped is named.
@@ -128,7 +128,7 @@ class SagaInspectionTest {
         val state = durableStateOfCapturedRun()
         val announced = state.announcedPlanFingerprints()
 
-        val view = SagaInspectionProjection.read(RUN_ID, state.rows, state.events)
+        val view = SagaInspectionProjection.read(RUN_ID, state.rows, state.events).view
 
         assertEquals(
             announced,
@@ -204,6 +204,37 @@ class SagaInspectionTest {
      * The durable state of the captured run: its history written through the store the
      * engine writes, and its promises written through the store the engine writes.
      */
+    @Test
+    fun `the read-side says which plugin armed each promise`() {
+        val store = store()
+        store.arm(
+            SagaObligationRow(
+                runId = RUN_ID,
+                sagaId = SagaId.of("checkout"),
+                actionId = SagaActionId.of("reserve-stock"),
+                compensationId = CompensationId.of("release-stock"),
+                intentVersion = SagaIntentContract.CURRENT_VERSION,
+                planFingerprint = SagaPlanFingerprint("a".repeat(64)),
+                resourceRef = ResourceRef.of("stock/reservation-42"),
+                kind = CompensationKind.RESTORE,
+                status = CompensationObligationStatus.ARMED,
+                forwardOpId = "run-1|stage-0|step-3",
+                compensationOpId = "saga-v1|compensate|release-stock|run-1|stage-0|step-3",
+                leaseEpoch = 1L,
+                createdAtMs = 1_000L,
+                updatedAtMs = 1_000L,
+                receiptRef = null,
+                ownerPluginId = "example.saga",
+            ),
+        )
+
+        val report = SagaInspectionProjection.read(RUN_ID, store.listForRun(RUN_ID), emptyList())
+
+        val origin = report.originOf("checkout", "reserve-stock", "release-stock")
+        assertEquals("example.saga", origin?.pluginId)
+        assertEquals(SagaIntentContract.CURRENT_VERSION, origin?.intentVersion)
+    }
+
     private fun durableStateOfCapturedRun(): CapturedState {
         val events = JsonEventLog.decode(plane(PLANE))
         SqliteEventStore(dbPath()).use { store ->
@@ -231,6 +262,7 @@ class SagaInspectionTest {
                     createdAtMs = 1_000L + index,
                     updatedAtMs = 1_000L + index,
                     receiptRef = null,
+                    ownerPluginId = null,
                 ),
             )
         }

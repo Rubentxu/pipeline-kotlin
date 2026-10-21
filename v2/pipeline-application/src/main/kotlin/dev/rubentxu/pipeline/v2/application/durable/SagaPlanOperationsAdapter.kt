@@ -48,6 +48,7 @@ class SagaPlanOperationsAdapter(
     private val leaseEpoch: Long,
     private val store: SagaObligationStore,
     private val clock: Clock,
+    private val ownerPluginId: String? = null,
 ) : SagaPlanOperations {
 
     override fun next(sagaId: SagaId, policy: CompensationPolicy) =
@@ -112,6 +113,7 @@ class SagaPlanOperationsAdapter(
             receiptRef = receiptRef,
             updatedAtMs = clock.now().toEpochMilli(),
             leaseEpoch = leaseEpoch,
+            ownerPluginId = ownerPluginId,
         )
 
         return when (val persistence = store.updateOutcome(update)) {
@@ -122,6 +124,13 @@ class SagaPlanOperationsAdapter(
 
             is SagaUpdatePersistence.NotFound ->
                 SagaRecordOutcome.Refused(SagaRecordRejection.UnknownObligation)
+
+            is SagaUpdatePersistence.ForeignOwner -> SagaRecordOutcome.Refused(
+                SagaRecordRejection.ForeignOwner(
+                    owner = persistence.row.ownerPluginId.orEmpty(),
+                    writer = ownerPluginId.orEmpty(),
+                ),
+            )
 
             is SagaUpdatePersistence.Fenced -> SagaRecordOutcome.Refused(
                 SagaRecordRejection.LeaseSuperseded(

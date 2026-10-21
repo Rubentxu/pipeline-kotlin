@@ -1,5 +1,10 @@
 package dev.rubentxu.pipeline.v2.runtime.recover
 
+import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.PipelineFailure
+import dev.rubentxu.pipeline.v2.domain.RunOutcome
+import dev.rubentxu.pipeline.v2.domain.RunOutcomeReducer
+import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
@@ -58,8 +63,8 @@ fun interface RuntimeRecoverPortIntrospect {
  * terminal row by writing it through the existing `OperationJournal.append`
  * (which is the journal's own observation, not a side-effecting re-run) and
  * reconciles the output store via the existing `OutputRecoveryPort.recover` +
- * `OutputFrameIndex.recoverUnframedBytes` pair. `RecoverNoRerunTest` ( of
- * the design) pins the invariant.
+ * `OutputFrameIndex.recoverUnframedBytes` pair. The unit test
+ * `RuntimeRecoverPortStoreAdapterTest` pins the invariant.
 */
 class RuntimeRecoverPortStoreAdapter(
     private val journal: OperationJournal,
@@ -170,25 +175,11 @@ class RuntimeRecoverPortStoreAdapter(
         // its first step succeeded, and the decider would close the run as
         // successful while another step was still running.
         //
-        // The run's own answer is the outcome of the work it last finished —
-        // and only when ALL of its work finished. While an operation is still
-        // running, the run has no terminal outcome, and the proof says so
-        // instead of inventing one.
-        val allOperationsTerminal = journalOps.isNotEmpty() && journalOps.all { it.status.isTerminal }
-        val lastTerminalOp: DurableOperation? = if (allOperationsTerminal) {
-            journalOps
-                .map { op -> op to endedAtOf(op) }
-                .maxByOrNull { (_, endedAt) -> endedAt }
-                ?.first
-        } else {
-            null
-        }
-        val terminalRow: RuntimeRecoverDecision.TerminalRow? = lastTerminalOp?.let { op ->
-            RuntimeRecoverDecision.TerminalRow(
-                outcome = op.status.name.lowercase(),
-                terminalAtMs = endedAtOf(op),
-            )
-        }
+        // The run's own answer is the verdict the DOMAIN computes over ALL of
+        // the run's work, and only once all of that work finished. While an
+        // operation is still running, the run has no terminal outcome, and the
+        // proof says so instead of inventing one.
+        val terminalRow: RuntimeRecoverDecision.TerminalRow? = runTerminalRowOf(journalOps)
         val cursor = try {
             cursors.load(runId)
         } catch (_: Exception) {
@@ -406,6 +397,116 @@ class RuntimeRecoverPortStoreAdapter(
             lease.release(owner)
         }
     }
+
+    /**
+     * The run's own terminal row: the outcome the JOURNAL observes for the
+     * WHOLE run, or `null` when the run has no terminal outcome yet.
+     *
+     * `null` is the answer in two cases, and both are facts about the run:
+     *  - the run has no journaled operation at all;
+     *  - the run still has work in flight. A terminal OPERATION row is not a
+     *    terminal RUN, and the run's outcome does not exist until all of its
+     *    work finished.
+     *
+     * When the run does have an outcome, it is the one the DOMAIN computes.
+     * [RunOutcomeReducer] is the single authority that folds a run's step
+     * verdicts into a run verdict, and it says that success requires EVERY
+     * step to have succeeded. So a run whose first operation failed is a
+     * FAILED run even when a later operation succeeded — otherwise the recover
+     * would close a failed run as a successful one, which is the one thing a
+     * durable replay may never do.
+     *
+     * The vocabulary is the one the PUBLISHED DECIDER reads — "succeeded",
+     * "failed", "unstable", "aborted" — and not the event lane's "success" /
+     * "failure". The decider is the contract this row is handed to, and a word
+     * it does not know becomes an untyped `Other`.
+     */
+    private fun runTerminalRowOf(ops: List<DurableOperation>): RuntimeRecoverDecision.TerminalRow? {
+        if (ops.isEmpty()) return null
+        if (ops.any { !it.status.isTerminal }) return null
+
+        // The orchestrator's explicit abort is READ, not derived: the reducer
+        // never derives an abort, and the journal is where that explicit abort
+        // is recorded.
+        val aborted = ops.filter { it.status == OperationStatus.ABORTED }
+
+        // The reducer is the single authority for the rest of the verdict. It
+        // says that the FIRST failure wins, that an unstable step wins over a
+        // success, and that success requires every step to have succeeded. An
+        // aborted operation contributes no step verdict — the reducer only
+        // asks whether a step failed or ended unstable — so it is not part of
+        // the reduction.
+        //
+        // The abort outranks an unstable step (a cancelled run never reached a
+        // normal terminal state) and it never outranks a failure (the failure
+        // is what ended the run, and it came first).
+        val verdict = RunOutcomeReducer.reduce(
+            ops.filterNot { it.status == OperationStatus.ABORTED }.map { stepOutcomeOf(it) },
+        )
+        val outcome = when (verdict) {
+            is RunOutcome.Failure -> "failed"
+            RunOutcome.Success -> if (aborted.isEmpty()) "succeeded" else "aborted"
+            RunOutcome.Unstable -> if (aborted.isEmpty()) "unstable" else "aborted"
+            RunOutcome.Aborted -> "aborted"
+        }
+        // The moment the run's verdict became final: the operation that carries
+        // it, and for a successful run the operation that ended last.
+        val decisive = when (outcome) {
+            "failed" -> ops.first { it.status.isFailureOfTheRun() }
+            "aborted" -> aborted.first()
+            "unstable" -> ops.first { it.status == OperationStatus.UNSTABLE }
+            else -> ops.maxBy { endedAtOf(it) }
+        }
+        return RuntimeRecoverDecision.TerminalRow(
+            outcome = outcome,
+            terminalAtMs = endedAtOf(decisive),
+        )
+    }
+
+    /**
+     * The step verdict a journaled operation carries.
+     *
+     * The projection is one-way on purpose: the runtime writes a
+     * [StepOutcome] and the journal stores it as an [OperationStatus], so the
+     * status is the durable form and this reads it back. The journal does not
+     * carry the failure's kind — only its status — so the kind is the honest
+     * "unknown" and the message names the operation that failed.
+     */
+    private fun stepOutcomeOf(op: DurableOperation): StepOutcome = when (op.status) {
+        OperationStatus.SUCCEEDED -> StepOutcome.Success
+        OperationStatus.UNSTABLE -> StepOutcome.Unstable
+        OperationStatus.FAILED -> StepOutcome.Failure(
+            PipelineFailure(FailureKind.UNKNOWN, "operation ${op.id} ended as FAILED"),
+        )
+        OperationStatus.FAILED_TIMEOUT -> StepOutcome.Failure(
+            PipelineFailure(FailureKind.TIMEOUT, "operation ${op.id} was killed by its deadline"),
+        )
+        OperationStatus.DIVERGENT -> StepOutcome.Failure(
+            PipelineFailure(
+                FailureKind.REPLAY_COMPATIBILITY,
+                "operation ${op.id} diverged from its journaled fingerprint",
+            ),
+        )
+        OperationStatus.LOST -> StepOutcome.Failure(
+            PipelineFailure(FailureKind.UNKNOWN, "operation ${op.id} was lost: its outcome is unknown"),
+        )
+        // Unreachable in the reduction: an aborted operation is not part of
+        // it, and a run with work in flight has no terminal outcome at all
+        // (the caller returns null before reaching here).
+        OperationStatus.ABORTED, OperationStatus.PENDING, OperationStatus.RUNNING -> StepOutcome.Success
+    }
+
+    /**
+     * The statuses that are a FAILURE of the run's work.
+     *
+     * LOST belongs here, and it is the important one: a lost operation's
+     * outcome is UNKNOWN, and unknown never means success.
+     */
+    private fun OperationStatus.isFailureOfTheRun(): Boolean =
+        this == OperationStatus.FAILED ||
+            this == OperationStatus.FAILED_TIMEOUT ||
+            this == OperationStatus.DIVERGENT ||
+            this == OperationStatus.LOST
 
     /**
      * When an operation reached its terminal state, in epoch millis.

@@ -37,11 +37,24 @@ package dev.rubentxu.pipeline.v2.runtime.recover
  *    in that order.
  * DOES NOT:
  *  - Re-execute external side effects. The recovered terminal is the journal's
- *    own observation; no step's `execute` is called.
- *  - Take a lease. Recover is idempotent and re-entrant; it consults the
- *    existing lease record but does not acquire it.
+ *    own observation of the RUN; no step's `execute` is called.
  *  - Introduce a new scheduler. The recover path is pull-by-call.
  *  - Modify output bytes already persisted.
+ *
+ * ## The lease, and why the recover takes it
+ *
+ * The recover used to CONSULT the lease record and decide with it. The record
+ * is a statement about the PAST: a writer that was killed leaves its record
+ * behind, and the record still says its owner is alive. So a recover of a run
+ * whose writer died concluded the run was busy and refused — which is the one
+ * run a recover exists for.
+ *
+ * The recover therefore TAKES the run's lease — the lock, not the record — and
+ * gives it back when it finishes. Taking it is what makes "nobody is
+ * publishing this run" a fact instead of a guess, and giving it back is what
+ * leaves the run closable for whoever comes next. The lease is the SAME lease
+ * the run's writer held; there is no second lease and no second authority over
+ * who owns a run.
 */
 interface RuntimeRecoverPort {
 

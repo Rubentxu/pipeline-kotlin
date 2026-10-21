@@ -52,17 +52,27 @@ dependencies {
     implementation(project(":pipeline-output-store"))
     implementation(libs.kotlin.stdlib)
 
-    // Unit-test wiring RESTORED, because `src/test/kotlin` is no longer empty.
+    // Unit-test wiring, because `src/test/kotlin` is not empty.
     //
-    // The module carries ONE unit test, and it is there for ONE subject: the
-    // cancellation rule. `RunCancellationDecision` is a pure function over four
-    // observed facts — who owns the run, whether the run is known, whether it
-    // already finished, whether a cancel was already recorded — and it decides
-    // whether a cancel may proceed. That rule used to live buried inside a
-    // store-backed adapter, where nothing could reach it: the adapter's own
-    // "is this run terminal?" check turned out to read the wrong fact (the first
-    // TERMINAL OPERATION row, which a half-finished run has as soon as its
-    // first step succeeds), and no test could have said so.
+    // The module carries THREE unit tests, and each one is there for ONE
+    // subject:
+    //
+    //  - `RunCancellationDecisionTest` — the cancellation rule. It is a pure
+    //    function over four observed facts (who owns the run, whether the run
+    //    is known, whether it already finished, whether a cancel was already
+    //    recorded), and it decides whether a cancel may proceed. That rule
+    //    used to live buried inside a store-backed adapter, where nothing
+    //    could reach it: the adapter's own "is this run terminal?" check
+    //    turned out to read the wrong fact (the first TERMINAL OPERATION row,
+    //    which a half-finished run has as soon as its first step succeeds),
+    //    and no test could have said so.
+    //  - `RuntimeIntrospectionPortStoreAdapterTest` — what the introspection
+    //    plane may say about a RUN. The run's terminal fact is the event
+    //    lane's `RunFinished` bookend, not a journal row about one operation.
+    //  - `RuntimeRecoverPortStoreAdapterTest` — what the recover plane may
+    //    close, and how. The run's verdict is the verdict of ALL of its work,
+    //    computed by the domain's single reducer, and it is `null` while the
+    //    run still has work in flight.
     //
     // The store-backed half of this module is NOT unit-tested, and does not
     // pretend to be: an adapter that reads a lease, writes a journal and
@@ -108,9 +118,9 @@ publishing {
     }
 }
 
-// Unit-test wiring RESTORED, because `src/test/kotlin` is no longer empty.
-// The subject of that test, and why the store-backed half of this module is
-// left to the executable E2E, is stated with the dependencies it belongs to.
+// Unit-test wiring, because `src/test/kotlin` is not empty.
+// The subjects of those tests, and why the store-backed half of this module is
+// left to the executable E2E, are stated with the dependencies it belongs to.
 tasks.test {
     useJUnitPlatform()
 }

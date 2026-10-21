@@ -437,6 +437,10 @@ internal object DomainEventJsonDecoder {
                     runId = runId,
                     sequence = sequence,
                     occurredAt = occurredAt,
+                    // The stage the failure belongs to. A row written before the field existed
+                    // has no stage at all, and it decodes to "this event does not name the
+                    // stage" — never to stage 0, which is a stage like any other.
+                    stageIndex = EventJsonFields.intField(s, "stageIndex")?.takeIf { it != -1 },
                     stepIndex = EventJsonFields.intField(s, "stepIndex") ?: 0,
                     stepName = EventJsonFields.stringField(s, "stepName") ?: "",
                     stepType = EventJsonFields.stringField(s, "stepType") ?: "",

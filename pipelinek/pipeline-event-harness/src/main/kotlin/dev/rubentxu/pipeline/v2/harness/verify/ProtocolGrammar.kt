@@ -47,7 +47,8 @@ object ProtocolGrammar {
 
         // Contradictory terminal outcomes for the same step attempt:
         // StepFinished(outcome=success/completed) and StepFailed for the same step key.
-        contradictoryStepTerminal(history, violations)
+        contradictoryRetryTerminal(history, violations)
+        violations += StepTerminalContradiction.check(history)
 
         // A run that leaves a Saga pending cannot report success.
         sagaPendingOnSuccess(history, violations)
@@ -122,7 +123,7 @@ object ProtocolGrammar {
         }
     }
 
-    private fun contradictoryStepTerminal(history: List<TypedEvent>, out: MutableList<EventViolation>) {
+    private fun contradictoryRetryTerminal(history: List<TypedEvent>, out: MutableList<EventViolation>) {
         // RetryAttemptFinished duplicated for same attempt key with different outcome
         val retryFins = history.filter { it.kind == "RetryAttemptFinished" }
         for (i in retryFins.indices) {
@@ -268,7 +269,7 @@ object ProtocolGrammar {
     )
 
     /** Bounded context: the violating event +- CONTEXT neighbours, capped. */
-    private fun boundedWindow(history: List<TypedEvent>, sequence: Long): List<TraceEntry> {
+    internal fun boundedWindow(history: List<TypedEvent>, sequence: Long): List<TraceEntry> {
         val idx = history.indexOfFirst { it.sequence == sequence }
         if (idx < 0) return listOf(TraceEntry(sequence, "?", ""))
         val from = maxOf(0, idx - 2)

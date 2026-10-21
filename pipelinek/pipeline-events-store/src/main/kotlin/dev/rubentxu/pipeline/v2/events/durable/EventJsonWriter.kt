@@ -358,6 +358,11 @@ internal object EventJsonWriter {
                 sb.append(event.stepIndex ?: -1)
             }
             is StepFailed -> {
+                // The stage the failure belongs to. An event that does not name its stage is
+                // written with the module's convention for an absent int, so a reader can tell
+                // "no stage" from "stage 0" — a failure in the first stage is not the same fact.
+                sb.append(",\"stageIndex\":")
+                sb.append(event.stageIndex ?: -1)
                 sb.append(",\"stepIndex\":")
                 sb.append(event.stepIndex)
                 sb.append(",\"stepName\":")

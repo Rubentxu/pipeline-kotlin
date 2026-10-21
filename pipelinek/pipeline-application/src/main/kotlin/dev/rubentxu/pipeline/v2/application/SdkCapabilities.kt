@@ -24,10 +24,11 @@ package dev.rubentxu.pipeline.v2.application
  *
  * ## The table, and where it came from
  *
- * The fourteen ids and their publication state. The first two were published
+ * The fifteen ids and their publication state. The first two were published
  * together; the three runtime verbs came with the next release; the output
- * trio with the one after; the runtime trio with the following two; and the
- * step's verdict, with the event shape that carries it, with this build.
+ * trio with the one after; the runtime trio with the following two; the
+ * step's verdict, with the event shape that carries it, and the failure's
+ * stage, with this build.
  *
  * | Capability ID                 | Status     | First published |
  * |-------------------------------|------------|-----------------|
@@ -45,6 +46,7 @@ package dev.rubentxu.pipeline.v2.application
  * | `runtime.eventshape.v1`       | DEPRECATED | `v0.54.0-rc1`   |
  * | `runtime.eventshape.v2`       | PUBLICADA  | `v0.62.0`       |
  * | `events.stepoutcome.v1`       | PUBLICADA  | `v0.62.0`       |
+ * | `events.failurestage.v1`      | PUBLICADA  | `v0.62.0`       |
  *
  * The table used to live in a second file, inside the module that implements
  * the runtime ports, and that file claimed to be the canonical one. It was a
@@ -87,6 +89,19 @@ package dev.rubentxu.pipeline.v2.application
  * what an older build wrote, and a consumer that cannot tell that apart from
  * "unknown" is guessing.
  *
+ * ## Why the failure's stage has its own id
+ *
+ * The failure event carries the stage the failure belongs to, and a consumer of the event lane
+ * has to be able to ask whether this build publishes it: a failure that names no stage is what
+ * an older build wrote, and a consumer that cannot tell that apart from a failure whose producer
+ * did not know the stage is guessing. Worse than guessing: a failure that says no stage and a
+ * failure in the **first** stage are different facts, and a consumer that reads the absent stage
+ * as stage 0 invents a stage nobody said the failure belonged to.
+ *
+ * So the stage travels in the failure event, and `events.failurestage.v1` is the id that names
+ * that vocabulary. It is not a new verdict and not a second model of results: the failure already
+ * carried the evidence, and what it could not say was **where** it happened.
+ *
  * ## Negotiation
  *
  * A consumer negotiates by the presence of these ids in the artifact's
@@ -94,7 +109,7 @@ package dev.rubentxu.pipeline.v2.application
  * or to refuse — never to assume.
  */
 object SdkCapabilities {
-    /** All 12 capabilities this build knows. */
+    /** All 15 capabilities this build knows. */
     val ALL: List<CapabilityEntry> = listOf(
         CapabilityEntry(
             id = "output.follow.v1",
@@ -183,6 +198,17 @@ object SdkCapabilities {
             // carried no result, and the only way to learn one was to join it with the failure event
             // — by a step index that does not say which stage the failure belongs to.
             id = "events.stepoutcome.v1",
+            status = CapabilityStatus.PUBLICADA,
+            firstPublished = "v0.62.0",
+        ),
+        CapabilityEntry(
+            // The stage a failure belongs to, published in the failure event itself. Before this id
+            // existed there was no way for a consumer to know which stage a failure came from: the
+            // failure named the step and not the stage, and the step index means a different step in
+            // each stage, so the only way to learn the stage was to join the failure with another
+            // event. A failure that names no stage is not a failure in the first stage, and a
+            // consumer that cannot tell those apart is guessing.
+            id = "events.failurestage.v1",
             status = CapabilityStatus.PUBLICADA,
             firstPublished = "v0.62.0",
         ),

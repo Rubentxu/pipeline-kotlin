@@ -20,6 +20,18 @@ application {
     // WU-LPR-070: product name for the installed distribution (bin/pipelinek).
     applicationName = "pipelinek"
     mainClass.set("dev.rubentxu.pipeline.v2.application.MainKt")
+
+    // The database driver loads a native library, and the JVMs that restrict the dynamic
+    // loading of native code print a warning for it — four lines on stderr, in front of
+    // everything the command has to say. A command whose stderr is polluted cannot be read
+    // by a person who is looking for a refusal, and cannot be parsed by a program that
+    // captures it.
+    //
+    // The permission is granted here rather than left to the person running the command,
+    // because the alternative is not a warning forever: a JVM that blocks the loading
+    // outright leaves the product without a database. The flag is accepted, and does
+    // nothing, on the JVMs where the restriction does not exist.
+    applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }
 
 // PK-0-57-RC1: Gradle 8.14.5 strict validation flags the application

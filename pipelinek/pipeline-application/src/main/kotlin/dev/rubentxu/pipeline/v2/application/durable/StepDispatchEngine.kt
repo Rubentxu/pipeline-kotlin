@@ -196,13 +196,15 @@ internal class StepDispatchEngine(
      * capabilities from the capability bridge, never the raw context handed to a handler.
      * It is built only on the execution path: reuse, divergence and recovery never reach it,
      * which is what keeps a replayed Step from acquiring a capability it did not use.
-<<<<<<< HEAD:pipelinek/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/StepDispatchEngine.kt
 */
-=======
-     */
     @Suppress("LongParameterList") // Every argument is named and read once; the alternative
     // would be a holder that exists only to satisfy a counting rule.
->>>>>>> c47d557a3 (feat(saga): una promesa pertenece al plugin que la armo):v2/pipeline-application/src/main/kotlin/dev/rubentxu/pipeline/v2/application/durable/StepDispatchEngine.kt
+*/
+    @Suppress("LongParameterList") // Every argument is named and read once; the alternative
+    // would be a holder that exists only to satisfy a counting rule.
+*/
+    @Suppress("LongParameterList") // Every argument is named and read once; the alternative
+    // would be a holder that exists only to satisfy a counting rule.
     private fun runtimeContext(
         opId: OpId,
         runId: RunId,

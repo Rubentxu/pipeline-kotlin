@@ -1,3 +1,4 @@
+//@ expect-stdout building...
 pipeline {
     stages {
         stage("build") {

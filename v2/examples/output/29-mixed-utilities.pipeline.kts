@@ -1,7 +1,6 @@
-// LFC-2E2 utilities OFFICIAL_PLUGIN live fixture (Slice 2 / S2.5 corpus).
-//
-// End-to-end exercise of all five utilities Steps in one pipeline:
-//   writeYaml, readYaml, findFiles, zip, unzip.
+//@ expect-stdout alpha
+// End-to-end exercise of the utilities Steps as one chain: writeJsonRaw,
+// readJson, writeYaml, readYaml, findFiles, zipDir, unzip and sha256.
 //
 // The whole chain lives in ONE stage, and that is a correction rather than a
 // simplification. Every hand-off in this scenario goes through the workspace
@@ -10,26 +9,21 @@
 // archive is expanded by `unzip`. Per the `WorkspaceResolver`, each stage
 // resolves to its own directory, `<controlRoot>/workspace/<stage>-<index>/`,
 // so a producer in one stage and its consumer in another were reading two
-// different trees. Sibling fixtures already state this rule in their own
-// comments: smoke/10 keeps `archiveArtifacts` in the SAME stage as its build,
-// and output/30 spells it out — "seed and archive must live in the SAME stage".
-//
-// Stages are shared only when the run is launched with an explicit
-// `--workspace`, which run.sh deliberately does not pass. The stage boundary
-// was never the subject here; the utilities round trip was.
+// different trees. The stage boundary was never the subject here; the
+// utilities round trip was.
+import dev.rubentxu.pipeline.v2.sdk.utilities.step.writeJsonRaw
+import dev.rubentxu.pipeline.v2.sdk.utilities.step.readJson
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.writeYaml
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.readYaml
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.findFiles
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.zipDir
 import dev.rubentxu.pipeline.v2.sdk.utilities.step.unzip
+import dev.rubentxu.pipeline.v2.sdk.utilities.step.sha256
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.YamlDocument
 
 pipeline {
     stages {
         stage("mixed-utilities") {
-            // 0) Clean previous artifacts so the fixture is rerunnable
-            //    without an `overwrite=true` flag.
-            sh("rm -rf build/utils/mix")
             // 1) Create the source tree.
             sh("""
                 mkdir -p build/utils/mix/src
@@ -53,16 +47,23 @@ pipeline {
             //    YAML structure through the durable journal.
             readYaml("build/utils/mix/manifest.yaml")
 
-            // 4) Enumerate the source tree.
+            // 4) Write and read back a JSON document, so both structured
+            //    formats travel the same round trip.
+            writeJsonRaw("build/utils/mix/data.json", """{"name":"alice","age":30}""")
+            readJson("build/utils/mix/data.json")
+
+            // 5) Enumerate the source tree.
             findFiles(base = "build/utils/mix/src", glob = "*.txt")
 
-            // 5) Archive the source tree.
+            // 6) Archive the source tree and hash what went into it.
             zipDir(
                 path = "build/utils/mix/mix.zip",
                 directory = "build/utils/mix/src",
             )
+            sha256("build/utils/mix/src/a.txt")
+            sha256("build/utils/mix/src/b.txt")
 
-            // 6) Extract the archive to a sibling directory and verify
+            // 7) Extract the archive to a sibling directory and verify
             //    the file contents survived the round trip.
             unzip(
                 path = "build/utils/mix/mix.zip",

@@ -1,3 +1,4 @@
+//@ expect-stdout woke
 pipeline {
     stages {
         stage("sleep-step") {

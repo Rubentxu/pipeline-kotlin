@@ -115,7 +115,7 @@ contra el texto del plan. «Medido» significa que el número salió de una
 | 1 | 0 Markdown bajo `docs/` y `v2/` | **PASS** | `git ls-files ':(glob)docs/**/*.md'` = 0; `:(glob)v2/**/*.md` = 0. En la raíz solo quedan `AGENTS.md`, `README*.md`, `ROADMAP.md` |
 | 2 | 0 `@Test` UAT/E2E/AAT/harness | **PASS** | 0 en `pluginContractTest`/`installedContractTest`/`integrationTest`/`functionalTest`; 0 `@Disabled` |
 | 3 | 0 clases legacy trasladadas | **PASS** | `v2/test-harness`, `v2/pipeline-testkit`, `v2/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
-| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 35 escenarios en 8 categorías bajo `v2/examples/`; 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` (186 líneas) invocado por `scripts/verify-all.sh:246` |
+| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 36 escenarios en 8 categorías bajo `v2/examples/`; 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` (1277 líneas) invocado por `scripts/verify-all.sh:606` |
 | 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 11389 / 65556 = 0.174; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
 | 6 | `verify-all` local ≤ 900 s | **PENDIENTE** | requiere los tres ensayos sobre el SHA de la tabla |
 | 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS con una excepción** | 27 módulos declarados compilan; `v2/pipeline-protocol/` está versionado y **no está declarado**, luego Gradle nunca lo compila |
@@ -1046,6 +1046,82 @@ capacidad (`readFile`, `zip-unzip`, `artifact-query-bridge`) es una promesa, y
 una promesa que no se cumple es deriva entre el nombre y la aserción. Es también
 la vía por la que el coste del gate se paga sin valor: 34 escenarios que no
 comprueban nada cuestan lo mismo que 34 que comprueban.
+
+**p) — CERRADO.** El arnés ya no mira sólo el código de salida: mira **lo que
+el run produjo**. El lanzador tiene un verbo nuevo, `//@ expect-stdout`, y la
+comprobación se hace contra **la proyección que el producto publica**
+(`observe --view console`), no contra la consola del proceso: en un run
+durable el motor no lleva la salida de los pasos a la consola, así que una
+expectativa comprobada contra la consola habría visto un vacío por el motivo
+equivocado. La consola se mira también, porque `echo` escribe ahí y no en la
+proyección; las dos voces del run se leen, y la regla es la misma en un run
+durable y en uno en memoria.
+
+El veredicto **dice qué comprobó**: cada línea del informe nombra la
+observación en la que se apoyó (`stdout`, `stderr`, `exit(1)`), y el resumen
+—que llega hasta la línea de veredicto de la puerta— cuenta cuántos
+escenarios declararon una observación y cuántos sólo se ejecutaron.
+
+Y al poder observarlo, el arnés ha encontrado dos promesas que no se
+cumplían. `durable/32-durable-replay` prometía `effects=1` y el motor nunca
+escribía eso en la consola de un run durable. `output/27-zip-unzip` prometía
+«the contents must match by SHA-256» y sólo comprobaba `test -f`: los tres
+hash que calculaba no se comparaban con nada. Deriva entre el nombre y la
+aserción, visible ahora porque hay alguien que mira.
+
+El coste se paga con menos escenarios: **diez retirados**, cada uno con su
+equivalente nombrado en `v2/examples/README.md`. `durable/19-isunix` y
+`durable/20-pwd-tmp` (los helpers del workspace, fundidos en
+`steps/13-workspace-helpers`), `smoke/01-basic`, `smoke/02-environment` y
+`smoke/09-sh-then-echo`, `output/24-utilities-roundtrip`,
+`output/25-yaml-roundtrip` y `output/27-zip-unzip` (las utilities, que ahora
+son una sola cadena en `output/29-mixed-utilities`), `plugins/uppercase` —cuyo
+plugin es capability-free por diseño y cuyo escenario sólo podía comprobar
+que el proceso no se caía— y `steps/17-writeFile`, cubierto por
+`output/23-readfile`.
+
+De **46 escenarios a 36**, y la medida que de verdad importa: los 30 que no
+declaraban ninguna observación son **0**. Los 35 que se ejecutan declaran hoy
+qué garantizan, y el arnés lo comprueba.
+
+#### El vocabulario del arnés y la equivalencia de lo retirado
+
+El lanzador (`v2/examples/run.sh`) es el único, y su vocabulario sigue siendo
+corto a propósito: no es un framework y no puede convertirse en uno.
+
+| Directiva | Lo que dice |
+|---|---|
+| `//@ expect-exit N` | el run termina con este código de salida (por defecto `0`) |
+| `//@ expect-stdout TEXTO` | el run **produjo** este texto |
+| `//@ expect-stderr TEXTO` | el run **rechazó** con este texto |
+| `//@ durable` | dos runs sobre el mismo almacén y el mismo control root; el efecto no se repite |
+| `//@ durable-once` | un run contra un almacén durable de verdad |
+| `//@ resume` | el primer run muere donde el escenario decide; el segundo lo reanuda |
+| `//@ storage-agnostic` | las mismas expectativas se cumplen con y sin almacén durable |
+| `//@ requires-seeded-credentials` | el escenario necesita estado externo que este lanzador no fabrica: se reporta NOT_RUN, que no es un verde ni un rojo |
+
+Un escenario se retiró **sólo** cuando otro cubre la misma garantía con la
+misma evidencia. Nada se retiró por ser lento, ni por ser incómodo.
+
+| Retirado | Lo cubre ahora | La garantía que sobrevive |
+|---|---|---|
+| `durable/19-isunix` | `steps/13-workspace-helpers` | `isUnix()` responde por la plataforma |
+| `durable/20-pwd-tmp` | `steps/13-workspace-helpers` | `pwd(tmp = true)` y el `pwd()` heredado responden ambos |
+| `smoke/01-basic` | `smoke/03-stages` | una etapa ejecuta los pasos que declara, en orden |
+| `smoke/02-environment` | `steps/08-withEnv-pipeline` | `withEnv` pone las variables en el entorno de los pasos |
+| `smoke/09-sh-then-echo` | `steps/04-sh` | `sh` ejecuta un comando sin bloque de script y sin repetir su salida |
+| `output/24-utilities-roundtrip` | `output/29-mixed-utilities` | JSON escrito, leído de vuelta y hasheado |
+| `output/25-yaml-roundtrip` | `output/29-mixed-utilities` | YAML escrito y leído de vuelta |
+| `output/27-zip-unzip` | `output/29-mixed-utilities` | un directorio archivado, hasheado y expandido de nuevo |
+| `plugins/uppercase` | `plugins/body-slots`, `plugins/repeat-block`, `plugins/lock-directive` | el motor compone un plugin externo y ejecuta su paso |
+| `steps/17-writeFile` | `output/23-readfile` | un fichero escrito se lee de vuelta con su contenido |
+
+`plugins/uppercase` merece la nota: ese plugin es capability-free por diseño,
+así que su paso no produce salida ni efecto que un escenario pueda observar.
+El escenario sólo podía mirar que el proceso no se caía, y eso no es una
+comprobación. La garantía que sostenía —que el motor compone un plugin
+externo y ejecuta su paso— la mantienen los tres escenarios que usan plugins
+externos que sí producen trabajo observable.
 
 **q) La etapa 3 se ejecutaba en serie: 289 s de los 338 s del gate — CERRADO en
 `96220fdad`.** Cuarenta y cuatro escenarios a ~6,8 s y 48 arranques de JVM: el

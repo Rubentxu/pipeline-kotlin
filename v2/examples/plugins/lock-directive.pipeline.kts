@@ -1,3 +1,4 @@
+//@ expect-stdout acquired
 // An EXTERNAL directive plugin, discovered through ServiceLoader and admitted
 // before the stage runs.
 //

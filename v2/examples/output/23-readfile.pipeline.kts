@@ -1,3 +1,4 @@
+//@ expect-stdout ROUNDTRIP-OK
 // WU-LPR-104: core.readFile live fixture. Writes a file with the certified
 // writeFile substrate, reads it back through core.readFile (FileRead event,
 // content never enters the event channel), then checks existence via

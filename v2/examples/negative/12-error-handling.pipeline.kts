@@ -1,3 +1,4 @@
+//@ expect-stdout milestone reached
 pipeline {
     stages {
         stage("error-and-milestone") {

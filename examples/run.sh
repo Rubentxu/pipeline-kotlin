@@ -1043,6 +1043,24 @@ run_scenario_body() {
                     --after-cursor "evt-cursor-v1:$run_id:999999999" \
                     >"$root/stdout.events-refusal.txt" 2>"$root/stderr.events-refusal.txt" || refusal_code=$?
                 ;;
+            no-event-history)
+                # A file that is not an event store at all: an EMPTY file. SQLite treats a
+                # zero-length file as an empty database, so the reader can open it — and what
+                # it finds inside is a database with no history in it.
+                : >"$root/empty.db"
+                binary events "$run_id" --db "$root/empty.db" \
+                    >"$root/stdout.events-refusal.txt" 2>"$root/stderr.events-refusal.txt" || refusal_code=$?
+                # And the reader must not have CREATED a database in it. A reader that opens
+                # the file with a writer's permissions turns a zero-length file into a
+                # database with the event schema in it; a reader that cannot write leaves
+                # the file exactly as it found it.
+                if [[ -s "$root/empty.db" ]]; then
+                    printf 'FAIL %-52s the reader wrote to a database it was only asked to read\n' "$name"
+                    failed=$((failed + 1))
+                    failures+=("$name: the reader wrote to the file it was asked to read")
+                    return
+                fi
+                ;;
             *)
                 printf 'FAIL %-52s unknown events-refusal fixture: %s\n' "$name" "$events_refusal"
                 failed=$((failed + 1))

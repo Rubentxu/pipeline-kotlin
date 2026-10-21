@@ -18,70 +18,66 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `cfb590cc4` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP y los README, así que el código medido es el de `cfb590cc4` | `git rev-parse HEAD` |
+| SHA | `bec40f87` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `bec40f87` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **889** (119 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | **49 (49 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios que sólo comprueban el código de salida | **0**: cada uno afirma, con una directiva del lanzador o con una comprobación dentro del propio pipeline | censo por directiva y por cuerpo, sobre los 47 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **14139 / 64950 = 0.218** (límite 2) | `scripts/check-budgets.py --json` |
+| Tests unitarios ejecutados | **905** (122 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Escenarios E2E | **52 (52 pasan, 0 fallan)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios que sólo comprueban el código de salida | **0**, con **una excepción declarada**: `plugins/lock-directive` afirma su sujeto *por medio* del código de salida —su directiva no emite nada, y si el plugin no se descubriera la etapa se negaría—, así que ahí el código de salida es la aserción y no un testigo vacío | censo por directiva y por cuerpo, sobre los **52** escenarios; el número anterior («0», sin excepción y sobre 47) no nombraba el caso que lo contiene |
+| `VERIFY_LOC / PRODUCT_LOC` | **15006 / 65309 = 0.230** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **608 / 605 / 623** en los tres ensayos, los tres sobre `cfb590cc4`, peor 623 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **653 / 608 / 598** en los tres ensayos, los tres sobre `bec40f87`, peor 653 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **802** entradas de baseline: **sin cambio**, porque la ley que este ciclo añadió salió a su propio objeto en vez de empujar a `ProtocolGrammar` por encima del límite de detekt | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 Las cifras de este ciclo suben en lo que este ciclo añadió y sólo en eso:
-**889** tests (18 más que los 871 del ciclo anterior) y **49** escenarios (1
-más). Los 18 tests nuevos son las **3** filas de `StepFailureAttributionTest`
-en `:pipeline-events` (el sujeto del fallo, el sujeto cuando el fallo no dice
-stage, y el fallo compartiendo sujeto con el terminal de su step), las **3** de
-`StepFailureAttributionTest` en `:pipeline-application` (el productor canónico
-que declara el stage, el que lo declara por excepción, y el que lo declara
-igual que su terminal), las **3** del códec (`StepFailedStageCodecTest`: el
-stage sobrevive al log durable, un stage ausente se relee como ausente y una
-fila de un build anterior se lee sin stage), las **7** de
-`TerminalContradictionLawTest` (la contradicción, el reintento, el
-`catchError`, el fallo simple, el step anidado, dos stages con el mismo nombre
-de step, y el fallo que no dice su stage), **1** fila más en la proyección del
-run (que lee el veredicto igual con stage y sin stage) y **1** fila más en el
-registro de capacidades (la que impide que dos ids publiquen el mismo
-vocabulario). El escenario nuevo es `events/03-failure-stage`, el lector
-externo que pide sólo los eventos de fallo y lee el stage de cada uno. El
-ratio de LOC sube de 0.211 a **0.218**, todavía muy por debajo del límite 2, y
+**905** tests (16 más que los 889 del ciclo anterior) y **52** escenarios (3
+más). Los 16 tests nuevos son las **4** filas del drain que declara que el run
+terminó aunque el filtro lo excluya (`events/05`, §2.30), las **5** del
+adaptador de introspección (el bookend termina el run con su outcome, un
+bookend abortado se reporta como abortado, una fila terminal de operación no
+termina el run, un bookend de fallo se reporta como fallo, y la lectura no
+muta nada) y las **7** del adaptador de recuperación (un run con una operación
+en vuelo no se cierra, un run con toda su labor terminada se cierra, un run con
+una operación fallida no se cierra como exitoso, un run abortado se cierra como
+abortado, la recuperación no reejecuta, la lease se toma y se devuelve, y una
+lease viva ajena se niega con su propia negativa). Los 3 escenarios nuevos son
+`events/05-run-state` (el que pregunta a un run qué estado tiene), 
+`durable/40-recover-refuses-a-half-finished-run` (el que cierra un run cuyo
+escritor murió sin fabricar un éxito) y `events/04-follow-filtered` (§2.30). El
+ratio de LOC sube de 0.218 a **0.230**, todavía muy por debajo del límite 2, y
 el peor módulo sigue siendo el mismo de siempre
 (`pipeline-step-sdk:workflow-control`, 1.633) porque este ciclo no lo tocó.
 
 Lo que este ciclo **no** tocó, y conviene que no se confunda con un avance:
 el número de módulos con test sigue siendo 26 de 27. La deuda estática
-congelada **no se movió**: sigue en **802** entradas, ni una más ni una menos.
-La razón es la respuesta que da el propio config de detekt cuando una clase
-acumula lógica —**extraer, no anotar**—: la ley de contradicción terminal que
-este ciclo añadió se llevaba `ProtocolGrammar` por encima del límite de
-funciones, así que salió a su propio objeto, `StepTerminalContradiction`. Un
-cambio que crece y no crece la baseline a la vez no es un cambio: es una
-negociación con el guardián.
+congelada **no se movió**: sigue en **802** entradas, ni una más ni una menos,
+y el motivo es el de siempre: la ley que este ciclo añadió salió a su propio
+objeto en vez de empujar a `ProtocolGrammar` por encima del límite de
+funciones. Un cambio que crece y no crece la baseline a la vez no es un cambio:
+es una negociación con el guardián.
 
 **Las mutaciones de este ciclo, vistas en rojo.** Un verde que nunca se ha
 visto rojo no es evidencia, así que cada instrumento se rompió a propósito, se
-leyó de vuelta y se deshizo: **M1** (el productor canónico deja de decir el
-stage) encendió **3 de 3** filas del productor y el ejemplo ejecutable, con el
-mensaje «delivered: second/sh-0=-1»; **M2** (el escritor se come el stage)
-encendió **1 de 3** filas del códec —la del viaje, y dejó verdes la del stage
-ausente y la de la fila de un build anterior— y el ejemplo, con «delivered:
-second/sh-0=»; **M3** (la ley nunca dispara) encendió **1 de 7** filas de la
-ley; **M4** (la ley pierde la ventana del intento) encendió **1 de 7**, la del
-reintento; **M5** (la ley pierde el nombre de la identidad) encendió **1 de
-7**, la del step anidado; **M6** (el stage ausente se lee como stage 0)
-encendió **1 de 7**, la del stage ausente; y **M7** (el sujeto del fallo se
-queda en el run) encendió **2 de 3** filas del sujeto. Una mutación **no**
-encendió nada y queda escrita por eso: quitar el stage de la identidad de la
-ley no cambia ningún veredicto, porque en un plano secuencial la ventana del
-intento ya separa los steps de dos stages (§2.29).
+leyó de vuelta y se deshizo. En el adaptador de introspección, **M0** (el
+terminal del run vuelve a ser la primera fila terminal de operación) encendió
+**4 de 5** filas y dejó verde la quinta, la que dice que la lectura no muta
+nada. En el adaptador de recuperación, **M1** (quitar el guard de «toda la
+labor terminada») encendió **1 de 7** filas —la del run a medio hacer— y
+**M2** (sustituir el veredicto del dominio por «la última operación terminada»)
+encendió **2 de 7** —la del éxito fabricado y la del abortado—, sin colaterales
+en ninguna de las dos. En el registro de capacidades, **M3** (volver
+`runtime.structure.v1` a EXPERIMENTAL) encendió **2 de 8** filas. En el
+ejecutable, **M4** (componer la introspección contra un sustrato que no conoce
+el run) dejó el escenario `events/05-run-state` en rojo, y **M5** (restaurar la
+regla vieja del recover) hizo que `durable/40` dijera «recovered run … as
+succeeded» sobre un run a medio hacer. Todas se leyeron de vuelta y se
+deshicieron.
 
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
-los **119** informes JUnit, que es la condición que hace que la cifra de reloj
+los **122** informes JUnit, que es la condición que hace que la cifra de reloj
 mida el gate y no una restauración de caché. Un total correcto con el verbo
 equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
 **falla** si no reescribe ninguno.
@@ -3875,6 +3871,122 @@ es el mismo defecto —el observe sí termina— pero son dos verbos que
 responden «¿dónde sigo?» con dos reglas distintas, y eso está medido y
 escrito, no arreglado de paso.
 
+### 2.31 El módulo que se iba a retirar: `:pipeline-runtime` se queda, cableado y medido
+
+Este ciclo cerró una pregunta que llevaba semanas abierta: **qué pasa con
+`:pipeline-runtime`**. El módulo tenía puertos publicados sin consumidor, y la
+tentación —la de `AGENTS.md` included, la de no dejar adaptadores sobre
+adaptadores— era retirarlo. Se midió antes de decidir, y la medición cambió la
+decisión.
+
+**Medido: el módulo es el que sostiene `runs cancel`.** Retirarlo no sería
+retirar código muerto: `RuntimeControlPortStoreAdapter` vive en
+`:pipeline-runtime`, y con él el verbo `runs cancel` que este mismo repositorio
+entregó en §2.20 y que el ejemplo `durable/39-cancel-dead-run` demuestra desde
+fuera. Un módulo que se retira para no dejar puertos sin consumidor se queda
+sin el consumidor que ya tenía. La pregunta que quedaba abierta no era «¿sobra
+código?» sino «¿sobran puertos sin consumidor?», y esa sí tiene respuesta
+distinta para cada puerto.
+
+**La salida, puerto por puerto.** Cada puerto publicado de `:pipeline-runtime`
+se midió contra una pregunta única: **¿algo lo compone?**
+
+| Puerto | Método | Consumidor | Salida |
+|---|---|---|---|
+| `RuntimeControlPort` | `cancel` | `pipelinek runs cancel` (§2.20) | ya estaba entregado |
+| `RuntimeIntrospectionPort` | `inspect` | `pipelinek inspect <runId> --state` (este ciclo) | **cableado** |
+| `RuntimeIntrospectionPort` | `runStructure`, `inspectOperation` | **ninguno**: medido sobre el árbol entero | **anunciado y no entregado** |
+| `RuntimeRecoverPort` | `recover` | `pipelinek runs recover <runId>` (este ciclo) | **cableado** |
+
+**El verbo de introspección.** `pipelinek inspect <runId> --state` responde qué
+estado tiene un run, y es el verbo que compone el puerto publicado de
+introspección. No es un segundo plano de lectura: es el verbo `inspect` de
+siempre, que ahora además puede decir el estado. Lo que sí era un defecto, y
+era grave, es **qué** decía: el terminal de un run lo tomaba de la primera fila
+terminal de una **operación**, y una fila del journal es el estado de una
+operación, no del run. Un run a medias tiene ya una fila terminal en cuanto su
+primer paso termina: el mismo error que hacía que el cancelador rechazara el run
+que quería cerrar (§2.20), repetido en el otro verbo. Ahora el terminal de un
+run es el **bookend `RunFinished` del event lane**, y la fila terminal de una
+operación no termina un run. El escenario `events/05-run-state` lo demuestra
+desde fuera: pide el estado de un run y lee `running` o `terminal outcome=…`.
+
+**El verbo de recuperación.** `pipelinek runs recover <runId>` cierra un run
+cuyo escritor murió, sin repetir sus efectos. Cerrarlo exigía dos correcciones
+que no eran de estilo sino de hecho:
+
+- **La lease se toma, no se consulta.** El adaptador leía el *registro* de la
+  lease para decidir si el run estaba ocupado. El registro dice el **pasado**:
+  un escritor al que mataron deja su registro detrás, y el registro sigue
+  diciendo que su dueño está vivo. Así que el recover de un run cuyo escritor
+  murió concluía que el run estaba ocupado y se negaba —justo el run para el
+  que existe—. Ahora toma la **lease**, que es el lock, y el lock es la
+  autoridad sobre quién publica el run **ahora**. Se devuelve al terminar. La
+  prosa publicada del contrato decía «DOES NOT: Take a lease» y ya no era
+  verdad: se corrige, porque un contrato publicado que miente es peor que un
+  contrato publicado que estorba.
+- **El veredicto del run lo decide el dominio.** La fila terminal que el
+  adaptador entrega al decisor publicado es el veredicto del **RUN**, y la
+  regla que la calculaba —la última operación terminada— podía cerrar como
+  **exitoso** un run que había tenido una operación fallida. Eso es un éxito
+  fabricado, y una repetición durable no puede permitirse. Ahora el veredicto
+  lo decide `RunOutcomeReducer`, la única autoridad que pliega los veredictos de
+  los steps en el veredicto del run, y que dice que el éxito exige que **todas**
+  las operaciones hayan tenido éxito. El adaptador no tiene regla propia sobre
+  lo que es un run: lee sus operaciones y entrega el veredicto del dominio. Un
+  *abort* se **lee** —lo fijó el orquestador— en vez de derivarse.
+
+**El catálogo dice la verdad sobre lo que el build entrega.** `runtime.structure.v1`
+y `runtime.operation.v1` anunciaban una capacidad que el build no entregaba:
+el adaptador tiene los métodos y **nada los compone**. Medido sobre el árbol
+entero, no hay ni un llamador a `runStructure` ni a `inspectOperation` fuera de
+la declaración del puerto y del propio adaptador. Un id que un consumidor
+encuentra y no puede usar es una promesa que el build no puede cumplir, y el
+fallo llega en tiempo de ejecución en vez de en el catálogo. Los dos ids pasan a
+DEPRECATED, que aquí significa «anunciado y NO entregado», no «será eliminado»:
+es la misma regla que movió `runtime.cancel.v1` allí y de vuelta cuando el
+verbo llegó (§2.20).
+
+**Los instrumentos, y por qué son tres.** El puro es la prueba del adaptador de
+recuperación, que es donde el caso difícil es construible: un run con una
+operación fallida y otra que terminó después no se puede montar desde un
+ejemplo ejecutable —un escenario mata al escritor, y al escritor muerto no le
+queda una operación *exitosa* posterior— y sí desde una prueba unitaria, con
+el journal y el cursor en memoria reales y la lease como puerto. El ejecutable
+es `durable/40-recover-refuses-a-half-finished-run`, que demuestra el cableado
+y la negativa segura. El catálogo tiene su propio guardián en
+`SdkCapabilitiesRegistryTest`. **Cada instrumento ve algo que los otros no
+ven**: la prueba unitaria puede afirmar el veredicto exacto de un run con dos
+operaciones; el ejecutable puede afirmar que el verbo existe y que el estado
+del run no cambió.
+
+**Las mutaciones, vistas en rojo sobre el código final.** **M1** (quitar el
+guard de «toda la labor terminada» del veredicto del run) encendió **1 de 7**
+filas —la del run a medio hacer— y ninguna más. **M2** (sustituir el veredicto
+del dominio por «la última operación terminada») encendió **2 de 7** —la del
+éxito fabricado y la del abortado— y ninguna más. **M3** (volver
+`runtime.structure.v1` a EXPERIMENTAL) encendió **2 de 8** filas del registro
+de capacidades y ninguna más. Las tres se leyeron de vuelta y se deshicieron.
+
+**La puerta atrapó lo que los commits anteriores no habían dejado pasar.** La
+primera ejecución de la puerta de este ciclo cayó en su etapa 1 por **dos**
+violaciones de estilo: un import sin uso en `RecoverAdapters.kt` —que quedó
+huérfano cuando la lease pasó a ser un puerto— y una línea de **204
+caracteres** en `MainInspectCli.kt`, donde el `when` del refusal abría en la
+misma línea que su firma. Las dos venían de commits **de este mismo ciclo**,
+publicados sin pasar por la puerta: el árbol no estaba roto, pero tampoco
+había sido medido. Se corrigieron y se volvió a medir desde cero.
+
+**La medición de este ciclo, sobre `bec40f87`.** La puerta completa corrió
+**tres veces** sin filtros, desde salidas de build limpias: **653 / 608 / 598
+s**, peor 653 s contra el límite de 900 s. Las tres corridas reescribieron los
+**122** informes JUnit —905 tests, 0 fallos, 0 errores, 0 skips—, pasaron los
+**52** escenarios E2E (0 fallos, 7 credenciales sembradas, 2 reejecuciones
+durables) y midieron `VERIFY_LOC = 15006` contra `PRODUCT_LOC = 65309`, ratio
+**0.230** con un límite de 2. La deuda estática congelada sigue en **802**
+entradas: ni una más. El certificador externo sigue en **`BLOCKED_EXTERNAL`**,
+porque no existe ni en este repositorio ni en remoto.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
@@ -4443,6 +4555,62 @@ escrito, no arreglado de paso.
   usa el cursor del almacén y `events --follow` el del cliente. No es el
   mismo defecto, pero son dos verbos con dos reglas de «¿dónde sigo?». Queda
   medido y con dueño; no se tocó.
+
+- **El módulo se queda, y la pregunta que lo decidía era otra.** `:pipeline-runtime`
+  no se retira. Retirarlo no sería retirar código muerto: es lo que sostiene
+  `runs cancel` (§2.20) y el ejemplo `durable/39-cancel-dead-run`. La
+  pregunta abierta no era «¿sobra código?» sino «¿sobran puertos sin
+  consumidor?», y esa tiene una respuesta distinta para cada puerto: dos se
+  cablearon a un verbo que ya existía, y dos se declaran **no entregados**
+  porque nada los compone. Un módulo que se retira para no dejar puertos
+  sueltos se queda sin el consumidor que ya tenía.
+
+- **La lease se toma; el registro se consulta.** El registro de una lease dice
+  el **pasado**: un escritor al que mataron lo deja detrás, y sigue diciendo que
+  su dueño está vivo. Un recover que consulta el registro concluye que un run
+  muerto es un run ocupado —y se niega a cerrar exactamente el run para el que
+  existe—. El lock es la autoridad sobre quién publica el run **ahora**, así
+  que se toma y se devuelve. Consultar el registro se queda como lo que es: un
+  hecho sobre el pasado.
+
+- **El veredicto de un run lo decide el dominio, y el adaptador no tiene regla
+  propia sobre lo que es un run.** `RunOutcomeReducer` es la autoridad única
+  que pliega los veredictos de los steps en el veredicto del run, y dice que el
+  éxito exige que **todas** las operaciones hayan tenido éxito. La regla que
+  tenía el adaptador —la última operación terminada— podía cerrar como
+  exitoso un run que había tenido una operación fallida, y eso es un éxito
+  fabricado: lo único que una repetición durable no puede permitirse. Un
+  *abort* se **lee** —lo fijó el orquestador— en vez de derivarse, porque el
+  reducer no deriva aborts.
+
+- **Anunciado y no entregado es una categoría, no un insulto.** `runtime.structure.v1`
+  y `runtime.operation.v1` pasan a DEPRECATED porque el adaptador tiene los
+  métodos y **nada los compone** —medido, no supuesto—. DEPRECATED aquí
+  significa «anunciado y NO entregado», no «será eliminado». Un id que un
+  consumidor encuentra y no puede usar es una promesa que el build no puede
+  cumplir, y el fallo llega en tiempo de ejecución en vez de en el catálogo.
+
+- **Un contrato publicado que miente es peor que uno que estorba.** El
+  `RuntimeRecoverPort` decía «DOES NOT: Take a lease» y ya era falso: el
+  adaptador toma la lease. La prosa se corrige y se anota aquí para revisión,
+  porque cambiar la prosa de un contrato publicado es una decisión de la
+  autoridad del contrato, no una limpieza de estilo. El **ABI** no cambia: la
+  prosa no está en el volcado de la API.
+
+- **La puerta es la que dice si el árbol está verde, y por eso atrapa lo que
+  los commits no dejaron pasar.** La primera ejecución de este ciclo cayó en
+  la etapa 1 por dos violaciones de estilo que venían de commits **de este
+  mismo ciclo**. El árbol no estaba roto, pero tampoco había sido medido. Un
+  commit que no ha pasado por la puerta es una afirmación, no una medición.
+
+- **Las referencias a pruebas que ya no existen son deuda medida, y se
+  cuentan.** El RESET borró las suites y el harness, y el KDoc se quedó nombrando
+  las pruebas que se llevó con ellos: **75** nombres de clases de prueba que no
+  están declaradas en el árbol, en **97** referencias repartidas en **93**
+  ficheros. Este ciclo corrigió **3** de esas referencias —las de los ficheros
+  que tocó— y el resto queda escrito y con dueño: son afirmaciones sobre
+  garantías que nadie puede comprobar, y una garantía que se afirma en un
+  comentario sin ninguna prueba detrás no es una garantía, es una intención.
 
 ## 4. Referencias
 

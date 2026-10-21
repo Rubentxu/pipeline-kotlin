@@ -124,8 +124,10 @@ interface EventFollower {
  * ## Cancellation
  * [close] is the only cancellation path. After `close`, the iterator
  * returns `false` from [Iterator.hasNext] promptly (the close path
- * wakes any in-flight poll). There is no `Refused(Cancelled)` event;
- * cancellation is a local lifecycle operation, not a follow outcome.
+ * wakes any in-flight poll). Cancellation is a local lifecycle operation,
+ * not a follow outcome, so the refusal vocabulary has no case for it: a
+ * consumer that saw one would have to handle a fact the product never
+ * reports.
 */
 interface EventFollowHandle : AutoCloseable {
 
@@ -207,10 +209,10 @@ sealed interface EventFollowUntil {
  * The state of an event follow at a given poll.
  * Terminal detection follows the existing `MainObserveCli.followEvents`
  * rule: a `DomainEvent.kind == "RunFinished"` observation transitions
- * the follow from [Live] to [RunFinished]. There is no separate "lost
- * retention" terminal; that is signalled inside
- * [EventFollowState.Unobservable.refusal] as
- * [EventFollowRefusal.RetentionLost].
+ * the follow from [Live] to [RunFinished]. There is no "lost retention"
+ * terminal because the event plane has no retention: the store keeps every
+ * row it writes, so a cursor can only be behind the tail, never ahead of a
+ * beginning that no longer exists.
 */
 sealed interface EventFollowState {
     data class Live(val lastSequence: Long) : EventFollowState
@@ -250,17 +252,20 @@ sealed interface EventFollowState {
  * question differently from another adapter.
  *
  * ## The capability id that names this vocabulary
- * This vocabulary is published under the capability id `events.follow.v2`
- * (`dev.rubentxu.pipeline.v2.application.SdkCapabilities`). The previous id, `events.follow.v1`,
- * named the three-case vocabulary and is announced as NOT delivered: a consumer compiled
- * against it matches this sealed type exhaustively, and a case it does not know is a crash at
+ * This vocabulary is published under the capability id `events.follow.v3`
+ * (`dev.rubentxu.pipeline.v2.application.SdkCapabilities`). The previous ids, `events.follow.v1`
+ * and `events.follow.v2`, are announced as NOT delivered: a consumer compiled
+ * against them matches that sealed type exhaustively, and a case it does not know is a crash at
  * runtime rather than a compile error.
+ *
+ * `events.follow.v2` named a vocabulary with a case for a run whose retention had lost its
+ * beginning. Nothing in this product can produce that fact: the event store keeps every row it
+ * writes, so a cursor is only ever behind the tail. A published case that no product can reach
+ * is a promise a consumer cannot rely on, and it costs the consumer a branch it will never see
+ * taken.
 */
 sealed interface EventFollowRefusal {
     data class UnknownRun(val runId: String) : EventFollowRefusal
-    data class RetentionLost(val runId: String, val lastSeenSequence: Long) : EventFollowRefusal
-    data object Cancelled : EventFollowRefusal
-
     /**
      * The cursor is past the tail of the run. The run EXISTS; the position does not.
      * A consumer may reset the cursor to the tail and continue.

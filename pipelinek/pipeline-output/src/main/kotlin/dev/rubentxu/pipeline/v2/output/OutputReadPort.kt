@@ -45,10 +45,9 @@ interface OutputReadPort {
      *  - `readRangeDigested(s, a, b).page.bytes` equals the bytes
      *    returned by `readRange(s, a, b)` for the same range (no
      *    redactions, no re-encodings, no padding).
-     *  - A read that crosses a pruned range, or that lands in a
-     *    corrupted region, refuses closed with the sealed cases from
-     *    `OutputRefusal` — `RetentionGap`, `Corrupt`, `Unavailable`,
-     *    `RangeLostRetention`. A read NEVER returns a Page with an empty digest.
+     *  - A read that crosses a pruned range refuses closed with the sealed
+     *    cases from `OutputRefusal` — `RetentionGap` among them. A read
+     *    NEVER returns a Page with an empty digest.
      * The default implementation composes [readRange] + [OutputDigest.sha256Of];
      * concrete adapters in `:pipeline-output-store` override this for a single
      * pass that does not double the I/O.

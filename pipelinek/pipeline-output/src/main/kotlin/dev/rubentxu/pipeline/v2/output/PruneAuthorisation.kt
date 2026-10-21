@@ -45,7 +45,7 @@ sealed interface PruneRefusal {
     /** The run is not known to this instance. */
     data class UnknownStream(val stream: OutputStreamId) : PruneRefusal
 
-    /** The substrate cannot be reached right now; mirrors `OutputRefusal.Unavailable`. */
+    /** The substrate cannot be reached right now. */
     data object SubstrateUnavailable : PruneRefusal
 
     /**

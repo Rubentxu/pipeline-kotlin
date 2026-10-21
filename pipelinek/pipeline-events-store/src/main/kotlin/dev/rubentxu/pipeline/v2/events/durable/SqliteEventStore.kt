@@ -170,10 +170,46 @@ class SqliteEventStore(
         }
     }
 
+    /**
+     * Whether this store holds an event history at all.
+     *
+     * A WRITABLE store always does: it creates the table. A READ-ONLY store cannot create it,
+     * so it asks the file instead —and the answer is a property of the store, computed once,
+     * never assigned later.
+     *
+     * It is a `val` with its own initialiser, and that shape is the point. As a `var` filled
+     * in by the constructor and initialised to `true`, Kotlin's initialisation order made the
+     * initialiser run AFTER the constructor body and reset the probe's answer: a database
+     * with no `events` table was admitted and died later with a raw `no such table` instead of
+     * the refusal it was owed. A `val` computed in one place cannot be overwritten by a later
+     * initialiser, so the trap is gone rather than merely avoided.
+     */
+    public val holdsEventHistory: Boolean = probeEventHistory()
+
     init {
         when (mode) {
             EventStoreMode.Writable -> prepareForWriting()
             EventStoreMode.ReadOnly -> prepareForReading()
+        }
+    }
+
+    /**
+     * Asks the file whether it holds an event history, without writing anything to it.
+     *
+     * A WRITABLE store does not need to ask: it creates the table. A READ-ONLY store asks
+     * `sqlite_master`, which is a read.
+     */
+    private fun probeEventHistory(): Boolean {
+        if (mode.mayWrite()) return true
+        val conn = freshConnection()
+        return try {
+            conn.createStatement().use { stmt ->
+                stmt.executeQuery(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'events'"
+                ).use { rs -> rs.next() }
+            }
+        } finally {
+            conn.close()
         }
     }
 
@@ -259,28 +295,10 @@ class SqliteEventStore(
      * on the first read; [holdsEventHistory] is what the admission reads.
      */
     private fun prepareForReading() {
-        val conn = freshConnection()
-        try {
-            holdsEventHistory = conn.createStatement().use { stmt ->
-                stmt.executeQuery(
-                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'events'"
-                ).use { rs -> rs.next() }
-            }
-        } finally {
-            conn.close()
-        }
+        // Nothing to prepare: the reader's lane writes nothing and owns nothing. The only
+        // thing it has to know — whether the file holds a history at all — is the probe
+        // above, which is a property of the store and not a step of preparation.
     }
-
-    /**
-     * Whether this store holds an event history at all.
-     *
-     * A WRITABLE store always does: it created the table. A READ-ONLY store cannot create it,
-     * so it answers the question rather than failing with "no such table: events" on the first
-     * read. The admission refuses a read-only store with no history, so the read paths below
-     * only ever run against a database that has the table.
-     */
-    public var holdsEventHistory: Boolean = true
-        private set
 
     /**
      * Seeds [sequenceCounters] with the durable per-run MAX(sequence) from
@@ -723,6 +741,9 @@ class SqliteEventStore(
         // so this ordering is the one the database can serve from the index
         // instead of sorting a temporary b-tree over every matching row.
         sequence {
+            // A file with no `events` table has no history to stream. The reader knows it
+            // already, so it says so here instead of letting SQLite's "no such table" escape.
+            if (!holdsEventHistory) return@sequence
             val conn = freshConnection()
             try {
                 conn.prepareStatement(
@@ -813,12 +834,18 @@ class SqliteEventStore(
      * persistent writer connection (a write under load would otherwise
      * see the connection busy).
 */
-    fun hasRun(runId: String): Boolean = freshConnection().use { conn ->
-        conn.prepareStatement(
-            "SELECT 1 FROM events WHERE run_id = ? LIMIT 1"
-        ).use { ps ->
-            ps.setString(1, runId)
-            ps.executeQuery().use { rs -> rs.next() }
+    fun hasRun(runId: String): Boolean {
+        // A file with no `events` table holds no run. Saying so here keeps the refusal in
+        // the vocabulary of the product instead of letting SQLite's "no such table" escape
+        // as a raw stack trace from a verb that only wanted to read.
+        if (!holdsEventHistory) return false
+        return freshConnection().use { conn ->
+            conn.prepareStatement(
+                "SELECT 1 FROM events WHERE run_id = ? LIMIT 1"
+            ).use { ps ->
+                ps.setString(1, runId)
+                ps.executeQuery().use { rs -> rs.next() }
+            }
         }
     }
 
@@ -835,17 +862,21 @@ class SqliteEventStore(
      * [freshConnection] (same rationale as [hasRun]: avoid sharing
      * state with the persistent writer connection).
 */
-    fun tailSequence(runId: String): Long? = freshConnection().use { conn ->
-        conn.prepareStatement(
-            "SELECT MAX(sequence) FROM events WHERE run_id = ?"
-        ).use { ps ->
-            ps.setString(1, runId)
-            ps.executeQuery().use { rs ->
-                if (rs.next()) {
-                    val v = rs.getLong(1)
-                    if (rs.wasNull()) null else v
-                } else {
-                    null
+    fun tailSequence(runId: String): Long? {
+        // A file with no `events` table has no tail either.
+        if (!holdsEventHistory) return null
+        return freshConnection().use { conn ->
+            conn.prepareStatement(
+                "SELECT MAX(sequence) FROM events WHERE run_id = ?"
+            ).use { ps ->
+                ps.setString(1, runId)
+                ps.executeQuery().use { rs ->
+                    if (rs.next()) {
+                        val v = rs.getLong(1)
+                        if (rs.wasNull()) null else v
+                    } else {
+                        null
+                    }
                 }
             }
         }
@@ -860,6 +891,15 @@ class SqliteEventStore(
         val afterSequence = after?.lastSequence ?: 0L
         val page = ArrayList<dev.rubentxu.pipeline.v2.events.EventRecordRead>(minOf(limit, 64))
         var hasMore = false
+        if (!holdsEventHistory) {
+            // A file with no `events` table has no page to read. The cursor does not move:
+            // there was nothing past it to begin with.
+            return dev.rubentxu.pipeline.v2.events.EventRecordSlice(
+                records = page,
+                nextCursor = dev.rubentxu.pipeline.v2.events.identity.EventCursor(runId, afterSequence),
+                hasMore = false,
+            )
+        }
         freshConnection().use { conn ->
             conn.prepareStatement(
                 "SELECT event_id, sequence, kind, payload FROM events WHERE run_id = ? AND sequence > ? " +

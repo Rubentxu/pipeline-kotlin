@@ -2,10 +2,12 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionError
+import dev.rubentxu.pipeline.v2.domain.saga.SagaActionView
 import dev.rubentxu.pipeline.v2.domain.saga.SagaNextAction
 import dev.rubentxu.pipeline.v2.domain.saga.SagaOutcome
-import dev.rubentxu.pipeline.v2.domain.saga.SagaRunView
+import dev.rubentxu.pipeline.v2.domain.saga.SagaPromiseOrigin
 import dev.rubentxu.pipeline.v2.events.durable.SagaInspectionProjection
+import dev.rubentxu.pipeline.v2.events.durable.SagaInspectionReport
 import dev.rubentxu.pipeline.v2.events.durable.SagaInspectionRead
 import dev.rubentxu.pipeline.v2.events.durable.SagaInspectionRefusal
 import dev.rubentxu.pipeline.v2.events.durable.SqliteSagaObligationReader
@@ -95,11 +97,11 @@ object MainSagaInspectCli {
             return 0
         }
 
-        val view = SagaInspectionProjection.read(runId, state.rows, state.events)
+        val report = SagaInspectionProjection.read(runId, state.rows, state.events)
         if (options.format == OutputFormat.JSON) {
-            println(renderJson(view))
+            println(renderJson(report))
         } else {
-            print(renderText(view))
+            print(renderText(report))
         }
         return 0
     }
@@ -152,7 +154,8 @@ object MainSagaInspectCli {
      * resource, where is the promise now, what does the world owe next, and does a person
      * have to decide.
      */
-    private fun renderText(view: SagaRunView): String {
+    private fun renderText(report: SagaInspectionReport): String {
+        val view = report.view
         val builder = StringBuilder()
         builder.append("saga inspect: run ").append(view.runId)
         builder.append(" — ").append(view.actions.size).append(" obligation")
@@ -192,17 +195,29 @@ object MainSagaInspectCli {
         builder.append(renderRow(headers, widths))
         rows.forEach { builder.append(renderRow(it, widths)) }
 
-        // The fingerprint of the plan each promise was armed under. It is what tells an
-        // operator whether the promise they are looking at belongs to the plan they think is
-        // running, and it is shown whole because a digest that is cut short cannot be compared
-        // with anything.
+        // The plan each promise was armed under, and the plugin that armed it. The digest is
+        // what tells an operator whether the promise belongs to the plan they think is running,
+        // and the owner says who has to answer for it. The digest is shown whole because one
+        // that is cut short cannot be compared with anything.
         view.actions.forEach { action ->
+            val origin = report.originOf(action.sagaId, action.actionId, action.compensationId)
             builder.append("plan ").append(action.planFingerprint.hex)
             builder.append(" — ").append(action.sagaId).append('/').append(action.actionId)
+            builder.append(" — owner ").append(origin?.pluginId ?: "(not recorded)")
+            builder.append(", intent v").append(origin?.intentVersion ?: 0)
             builder.append('\n')
         }
         return builder.toString()
     }
+
+    /**
+     * The provenance of the promise an action stands for.
+     */
+    private fun originOf(
+        report: SagaInspectionReport,
+        action: SagaActionView,
+    ): SagaPromiseOrigin? =
+        report.originOf(action.sagaId, action.actionId, action.compensationId)
 
     private fun renderRow(cells: List<String>, widths: List<Int>): String {
         val rendered = cells.mapIndexed { column, cell ->
@@ -251,7 +266,8 @@ object MainSagaInspectCli {
      * The values are the domain's own names, so a consumer does not need a translation table
      * to know what a state means.
      */
-    private fun renderJson(view: SagaRunView): String {
+    private fun renderJson(report: SagaInspectionReport): String {
+        val view = report.view
         val actions = view.actions.joinToString(",") { action ->
             val error = when (action.error) {
                 null -> "null"
@@ -273,7 +289,9 @@ object MainSagaInspectCli {
                 "\"phase\":\"${action.phase.name}\"," +
                 "\"next\":\"${nextName(action.next)}\"," +
                 "\"error\":$error," +
-                "\"needsOperator\":${action.needsOperator}" +
+                "\"needsOperator\":${action.needsOperator}," +
+                "\"ownerPluginId\":${originOf(report, action)?.pluginId?.let { "\"$it\"" } ?: "null"}," +
+                "\"intentVersion\":${originOf(report, action)?.intentVersion ?: 0}" +
                 "}"
         }
         val sagas = view.sagas.joinToString(",") { saga ->

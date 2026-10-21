@@ -105,6 +105,7 @@ class InMemorySagaObligationStoreTest {
         createdAtMs = createdAtMs,
         updatedAtMs = createdAtMs,
         receiptRef = null,
+        ownerPluginId = null,
     )
 
     private companion object {

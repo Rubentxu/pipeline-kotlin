@@ -97,10 +97,17 @@ class SqliteSagaObligationStore(
                     } else {
                         statement.setString(17, row.receiptRef.value)
                     }
+                    // The plugin that armed this promise. It is what makes the promise
+                    // recognisable as belonging to someone.
+                    if (row.ownerPluginId == null) {
+                        statement.setNull(18, java.sql.Types.VARCHAR)
+                    } else {
+                        statement.setString(18, row.ownerPluginId)
+                    }
                     // The guard's two parameters: the run whose high-water mark is read, and the
                     // epoch of this writer.
-                    statement.setString(18, row.runId)
-                    statement.setLong(19, row.leaseEpoch)
+                    statement.setString(19, row.runId)
+                    statement.setLong(20, row.leaseEpoch)
                     statement.executeUpdate()
                 }
 
@@ -143,6 +150,14 @@ class SqliteSagaObligationStore(
                     // epoch of this writer.
                     statement.setString(8, update.runId)
                     statement.setLong(9, update.leaseEpoch)
+                    // The ownership guard: this writer only writes to the promises it owns.
+                    if (update.ownerPluginId == null) {
+                        statement.setNull(10, java.sql.Types.VARCHAR)
+                        statement.setNull(11, java.sql.Types.VARCHAR)
+                    } else {
+                        statement.setString(10, update.ownerPluginId)
+                        statement.setString(11, update.ownerPluginId)
+                    }
                     statement.executeUpdate()
                 }
 
@@ -173,6 +188,10 @@ class SqliteSagaObligationStore(
                 )
                 if (stored == null) {
                     SagaUpdatePersistence.NotFound
+                } else if (isForeignOwner(stored, update.ownerPluginId)) {
+                    // The promise belongs to another plugin: the refusal names it, so the
+                    // reason is actionable instead of merely discouraging.
+                    SagaUpdatePersistence.ForeignOwner(stored)
                 } else {
                     SagaUpdatePersistence.Fenced(currentEpochOf(connection, update.runId))
                 }
@@ -189,6 +208,7 @@ class SqliteSagaObligationStore(
         to: CompensationObligationStatus,
         updatedAtMs: Long,
         leaseEpoch: Long,
+        ownerPluginId: String?,
     ): SagaBulkMove {
         require(runId.isNotBlank()) { "runId must not be blank" }
         require(leaseEpoch >= 0) { "leaseEpoch must not be negative, got $leaseEpoch" }
@@ -196,6 +216,14 @@ class SqliteSagaObligationStore(
         return DbLock.forPath(dbPath).withLock {
             val connection = connectionFactory()
             try {
+                // The bulk move is all or nothing, so the ownership of every row it would touch
+                // is known BEFORE the statement runs: one promise that belongs to another plugin
+                // stops the whole move instead of leaving the Saga half-closed.
+                val foreign = firstForeignOwner(connection, runId, sagaId, from, ownerPluginId)
+                if (foreign != null) {
+                    return@withLock SagaBulkMove.ForeignOwner(foreign)
+                }
+
                 val moved = connection.prepareStatement(MOVE_ALL_OBLIGATIONS).use { statement ->
                     statement.setString(1, to.name)
                     statement.setLong(2, updatedAtMs)
@@ -206,6 +234,14 @@ class SqliteSagaObligationStore(
                     // epoch of this writer.
                     statement.setString(6, runId)
                     statement.setLong(7, leaseEpoch)
+                    // The ownership guard: this writer only moves the promises it owns.
+                    if (ownerPluginId == null) {
+                        statement.setNull(8, java.sql.Types.VARCHAR)
+                        statement.setNull(9, java.sql.Types.VARCHAR)
+                    } else {
+                        statement.setString(8, ownerPluginId)
+                        statement.setString(9, ownerPluginId)
+                    }
                     statement.executeUpdate()
                 }
 
@@ -273,9 +309,27 @@ class SqliteSagaObligationStore(
                     statement.execute(CREATE_OBLIGATION_TABLE)
                     statement.execute(CREATE_OBLIGATION_RUN_INDEX)
                 }
+                addOwnerColumnIfMissing(connection)
             } finally {
                 connection.close()
             }
+        }
+    }
+
+    /**
+     * Adds the column that says which plugin armed each promise, when it is not there yet.
+     *
+     * A database written by an older build has the table without that column, and the rows it
+     * holds were armed by nobody in particular: they keep working, and they simply cannot prove
+     * a conflict against anyone. The column is nullable and the statement only ever adds it, so
+     * a run that is already in flight is not disturbed.
+     */
+    private fun addOwnerColumnIfMissing(connection: Connection) {
+        val hasColumn = connection.metaData.getColumns(null, null, "saga_obligation", "owner_plugin_id")
+            .use { rs -> rs.next() }
+        if (hasColumn) return
+        connection.createStatement().use { statement ->
+            statement.execute(ADD_OWNER_COLUMN)
         }
     }
 
@@ -308,6 +362,37 @@ class SqliteSagaObligationStore(
             statement.setString(4, compensationId.value)
             statement.executeQuery().use { rs ->
                 return if (rs.next()) SagaObligationRowCodec.read(rs) else null
+            }
+        }
+    }
+
+    /**
+     * The first obligation of the Saga that belongs to another plugin, or `null` when there is
+     * none.
+     *
+     * A writer that does not name a plugin is not claiming ownership, so it never meets a
+     * foreign one; and a promise whose owner was never recorded belongs to nobody in
+     * particular, so it never blocks anything either.
+     */
+    private fun firstForeignOwner(
+        connection: Connection,
+        runId: String,
+        sagaId: SagaId,
+        status: CompensationObligationStatus,
+        ownerPluginId: String?,
+    ): SagaObligationRow? {
+        if (ownerPluginId == null) return null
+        connection.prepareStatement(SELECT_SAGA_OBLIGATIONS).use { statement ->
+            statement.setString(1, runId)
+            statement.setString(2, sagaId.value)
+            statement.setString(3, status.name)
+            statement.executeQuery().use { rs ->
+                while (rs.next()) {
+                    val row = SagaObligationRowCodec.read(rs)
+                    val owner = row.ownerPluginId ?: continue
+                    if (owner != ownerPluginId) return row
+                }
+                return null
             }
         }
     }
@@ -353,8 +438,20 @@ class SqliteSagaObligationStore(
                 created_at_ms INTEGER NOT NULL,
                 updated_at_ms INTEGER NOT NULL,
                 receipt_ref TEXT,
+                owner_plugin_id TEXT,
                 PRIMARY KEY (run_id, saga_id, action_id, compensation_id)
             )
+        """
+
+        /**
+         * The column that says which plugin armed each promise.
+         *
+         * It is added to a table that already exists, never to a fresh one: the create statement
+         * already declares it, and this one is only for the databases that were written before
+         * the provenance was kept.
+         */
+        const val ADD_OWNER_COLUMN = """
+            ALTER TABLE saga_obligation ADD COLUMN owner_plugin_id TEXT
         """
 
         const val CREATE_OBLIGATION_RUN_INDEX = """
@@ -379,14 +476,15 @@ class SqliteSagaObligationStore(
             INSERT INTO saga_obligation (
                 run_id, saga_id, action_id, compensation_id, intent_version, plan_fingerprint,
                 resource_ref, compensation_kind, status, forward_op_id, compensation_op_id,
-                lease_epoch, created_at_ms, updated_at_ms, receipt_ref
+                lease_epoch, created_at_ms, updated_at_ms, receipt_ref, owner_plugin_id
             )
             SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 MAX(?, COALESCE((
                     SELECT MAX(created_at_ms) FROM saga_obligation
                     WHERE run_id = ? AND saga_id = ?
                 ), 0) + 1),
-                ?, ?
+                ?, ?,
+                ?
             WHERE (
                 SELECT COALESCE(MAX(lease_epoch), -1) FROM saga_obligation WHERE run_id = ?
             ) <= ?
@@ -404,6 +502,10 @@ class SqliteSagaObligationStore(
          * The trailing WHERE is the fencing guard, in the same statement as the write, so a
          * writer that lost the run cannot win a race between a check and an update. The row's
          * OWN lease epoch is not touched: it belongs to the promise, not to the state.
+         *
+         * The ownership guard sits next to it: a writer that names a plugin only writes to the
+         * promises that plugin owns. A promise whose owner was never recorded is written by
+         * anyone, because nothing can be proven against it.
          */
         const val UPDATE_OBLIGATION = """
             UPDATE saga_obligation
@@ -412,6 +514,7 @@ class SqliteSagaObligationStore(
               AND (
                 SELECT COALESCE(MAX(lease_epoch), -1) FROM saga_obligation WHERE run_id = ?
               ) <= ?
+              AND (? IS NULL OR owner_plugin_id IS NULL OR owner_plugin_id = ?)
         """
 
         const val SELECT_RUN_OBLIGATIONS = """
@@ -440,6 +543,19 @@ class SqliteSagaObligationStore(
               AND (
                 SELECT COALESCE(MAX(lease_epoch), -1) FROM saga_obligation WHERE run_id = ?
               ) <= ?
+              AND (? IS NULL OR owner_plugin_id IS NULL OR owner_plugin_id = ?)
+        """
+
+        /**
+         * The obligations of a Saga that would be moved by the bulk move.
+         *
+         * The bulk move is all or nothing, so the ownership of every row it would touch has to
+         * be known BEFORE the statement runs. A row that belongs to another plugin stops the
+         * whole move instead of being left behind in the old state.
+         */
+        const val SELECT_SAGA_OBLIGATIONS = """
+            SELECT * FROM saga_obligation
+            WHERE run_id = ? AND saga_id = ? AND status = ?
         """
 
         const val COUNT_STATUS_OBLIGATIONS = """

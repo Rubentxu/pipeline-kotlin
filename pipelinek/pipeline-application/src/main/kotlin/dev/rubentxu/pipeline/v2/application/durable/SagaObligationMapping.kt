@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationObligation
+import dev.rubentxu.pipeline.v2.domain.saga.SagaPromiseOrigin
 import dev.rubentxu.pipeline.v2.events.durable.SagaObligationRow
 
 /**
@@ -36,12 +37,25 @@ internal fun SagaObligationRow.toObligation(): CompensationObligation = Compensa
 )
 
 /**
+ * The provenance of this row: who armed the promise, and under which version of the intent
+ * contract.
+ */
+internal fun SagaObligationRow.toOrigin(): SagaPromiseOrigin = SagaPromiseOrigin(
+    pluginId = ownerPluginId,
+    intentVersion = intentVersion,
+)
+
+/**
  * The row that holds [this] obligation under [runId].
  *
  * The receipt is left empty on purpose: the row is what a promise is made of, and a promise
  * has no receipt until an effect happens.
+ *
+ * [ownerPluginId] is the plugin that made the promise. It is stamped by the engine, which is
+ * the only party that knows which plugin is running: a plugin cannot claim a promise it did not
+ * make.
  */
-internal fun CompensationObligation.toRow(runId: String): SagaObligationRow = SagaObligationRow(
+internal fun CompensationObligation.toRow(runId: String, ownerPluginId: String?): SagaObligationRow = SagaObligationRow(
     runId = runId,
     sagaId = sagaId,
     actionId = actionId,
@@ -57,4 +71,5 @@ internal fun CompensationObligation.toRow(runId: String): SagaObligationRow = Sa
     createdAtMs = createdAtMs,
     updatedAtMs = updatedAtMs,
     receiptRef = null,
+    ownerPluginId = ownerPluginId,
 )

@@ -116,8 +116,8 @@ contra el texto del plan. «Medido» significa que el número salió de una
 | 2 | 0 `@Test` UAT/E2E/AAT/harness | **PASS** | 0 en `pluginContractTest`/`installedContractTest`/`integrationTest`/`functionalTest`; 0 `@Disabled` |
 | 3 | 0 clases legacy trasladadas | **PASS** | `v2/test-harness`, `v2/pipeline-testkit`, `v2/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
 | 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 36 escenarios en 8 categorías bajo `v2/examples/`; 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` (1277 líneas) invocado por `scripts/verify-all.sh:606` |
-| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 11389 / 65556 = 0.174; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
-| 6 | `verify-all` local ≤ 900 s | **PENDIENTE** | requiere los tres ensayos sobre el SHA de la tabla |
+| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 13156 / 66685 = 0.197; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
+| 6 | `verify-all` local ≤ 900 s | **PENDIENTE** | requiere los tres ensayos sobre el SHA de la tabla; en este ciclo la puerta midió 367 s, de los que 306 s son la etapa 1 con la compilación en frío, y la etapa 3 bajó de 60 s a 43 s |
 | 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS con una excepción** | 27 módulos declarados compilan; `v2/pipeline-protocol/` está versionado y **no está declarado**, luego Gradle nunca lo compila |
 
 Sobre el límite 4: el mandato escribe el lanzador como `examples/run.sh`, y en
@@ -1122,6 +1122,24 @@ El escenario sólo podía mirar que el proceso no se caía, y eso no es una
 comprobación. La garantía que sostenía —que el motor compone un plugin
 externo y ejecuta su paso— la mantienen los tres escenarios que usan plugins
 externos que sí producen trabajo observable.
+
+#### Lo que queda sobre la mesa, ordenado por lo que se recupera
+
+La economía del arnés no se acaba en retirar escenarios: la etapa 3 cuesta
+**43 s de reloj** y **doce minutos de CPU**, y casi todo ese coste es el mismo
+punto repetido. Estas son las oportunidades que quedan, ordenadas por el
+tiempo que devuelven.
+
+| # | Oportunidad | Tiempo que recupera | Coste de la migración | Riesgo de escape | Cómo se mide después |
+|---|---|---|---|---|---|
+| 1 | **Compilar una vez.** Cada invocación del CLI compila el script (~5 s de CPU); la etapa 3 hace unas cuarenta invocaciones | ~3 min de CPU y ~10 s de reloj | Un verbo público nuevo en el producto (`pipeline compile`) que deje un artefacto reutilizable, con su contrato y su KDoc | **Bajo**: añade una capacidad, no cambia ningún comportamiento | El tiempo de la etapa 3 y el `user` del proceso |
+| 2 | **Re-ejecutar sin recompilar.** Los escenarios `durable` y `resume` compilan el mismo script dos o tres veces | ~40 s de CPU | Depende de (1): sin un artefacto reutilizable no hay nada que re-ejecutar | **Medio**: toca la semántica de la reanudación, que es donde el producto no se equivoca | El tiempo por escenario del informe del arnés, que ya se imprime |
+| 3 | **El techo de ocho trabajadores.** En una máquina de 64 núcleos, 36 escenarios tardan 43 s con ocho en paralelo | ~15 s de reloj | Una línea | **Medio**: el tope existe para no hacer thrash en una máquina con pocos núcleos, y por eso no se toca sin medir en la máquina destino | `PIPELINEK_E2E_JOBS` y el tiempo de la etapa |
+
+La medición que ya viaja con cada puerta es
+`scenarios=observed:<n> executed:<n>` en la línea de veredicto: es el
+indicador que dice si el coste se está pagando por comprobaciones o sólo por
+procesos. No se crea ningún sistema de seguimiento nuevo para esto.
 
 **q) La etapa 3 se ejecutaba en serie: 289 s de los 338 s del gate — CERRADO en
 `96220fdad`.** Cuarenta y cuatro escenarios a ~6,8 s y 48 arranques de JVM: el

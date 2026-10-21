@@ -18,26 +18,26 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `5d410ecaf` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `5a8e43a35` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **22** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 5 | ídem |
 | Tests unitarios ejecutados | **812** (104 informes JUnit, **104** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:812 read:0` |
-| Escenarios E2E | 46 (**45 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **13007 / 66685 = 0.195** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios E2E | 36 (**35 pasan, 0 fallan, 1 `NOT_RUN`**; los 35 que corren declaran una observación) | `v2/examples/**/*.pipeline.kts` |
+| `VERIFY_LOC / PRODUCT_LOC` | **13172 / 66685 = 0.198** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **98 s** (corridas de este bloque: 98 s sobre el árbol comiteado, con el cache de Gradle caliente; 107 s y 151 s en las dos corridas anteriores sobre el mismo árbol), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
-| Coste por escenario E2E | mediana **6,7 s**, p95 **14,9 s**, máximo **15,5 s** | el lanzador publica ahora el tiempo de cada escenario en su línea |
+| `VERIFY_ALL_WALL_CLOCK` | **88 s** (tres ensayos consecutivos sobre el mismo SHA: **88 s, 74 s y 72 s**, los tres con `tests=rewritten:812 read:0`), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| Coste por escenario E2E | mediana **7,0 s**, p95 **14,5 s**, máximo **15,6 s** | el lanzador publica ahora el tiempo de cada escenario en su línea |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
-La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
-calientes, y por eso **no** se compara con la de 2026-10-19 (226 s, la peor de
-tres ensayos tras `rm -rf` de las salidas de build reales, que es la condición
-que hace que la cifra mida el gate y no una restauración de caché). Un total
-correcto con el verbo equivocado ya no puede colarse: la etapa 2 separa
-`rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 95
-de los 95 informes —se limpiaron las salidas de test antes de correr, así que
-ninguno pudo venir de la caché—.
+La cifra de reloj de este ciclo son **tres** ensayos consecutivos sobre el mismo
+SHA, y los tres cuentan: 88 s, 74 s y 72 s. Los tres corrieron con las salidas de
+test limpiadas, así que los tres reescribieron los 104 informes y ninguno pudo
+leer un resultado de la caché — la etapa 2 separa `rewritten` de `read` y **falla**
+si no reescribe ninguno, que es lo que convierte un acierto de caché en un rojo
+en vez de en una cifra. No se comparan con la de 2026-10-19 (226 s, tras `rm -rf`
+de las salidas de build reales, condición que hace que la cifra mida el gate y no
+una restauración de caché).
 
 **Y el total viaja ahora en la línea de veredicto**, que es la única que alguien
 pega en un informe: `tests=rewritten:812 read:0`. Antes esa línea decía
@@ -46,16 +46,16 @@ los tests: el dato estaba en el log de la etapa 2, y el log lo lee quien corrió
 puerta, no quien la cita. Una cifra con el verbo equivocado ya no puede colarse
 ni por el lado del log ni por el lado de la línea (§2.2 u).
 
-La corrida que se publica es la de este bloque: **98 s** sobre el árbol
-comiteado, con el caché de Gradle caliente. El reloj de este gate tiene ruido,
-y publicarlo sin decirlo vuelve a ser una afirmación que nadie puede
-reproducir: el bloque anterior (`2c3b87083`) publicó **110 s**, y sobre el
-mismo árbol de este bloque se midieron **107 s** y **151 s**. Se publica la del
-**SHA que queda publicado**, que es la que corresponde al árbol que se publica,
-y se dicen las otras para que nadie la lea como la típica. Este bloque **añade
-20 tests** —los **812**— y **no añade ningún escenario E2E**: los **46** son los
-mismos, porque la capacidad nueva se prueba contra una base durable real y con
-pruebas deterministas, no con otro escenario lento.
+La corrida que se publica es la más lenta de las tres, **88 s**, porque una cifra
+de reloj que sólo nombra su mejor caso es una cifra elegida. El reloj de este gate
+tiene ruido, y publicarlo sin decirlo vuelve a ser una afirmación que nadie puede
+reproducir: el bloque anterior (`2c3b87083`) publicó **110 s**, y la primera
+corrida en frío de este ciclo dio **367 s**, de los que 306 s son la etapa 1. Se
+publica la del **SHA que queda publicado**, que es la que corresponde al árbol que
+se publica, y se dicen las otras para que nadie la lea como la típica. Este bloque
+**retira diez escenarios** —de 46 a 36— y **no toca los tests**: los **812** son
+los mismos, porque lo que se corrigió no era la cobertura sino lo que los
+escenarios afirmaban.
 
 **Lo que este bloque movió, y lo que no.** El bloque `main-partido` (PR #183
 → `03bdc2a3a`) no toca el censo de módulos con test, ni añade tests, ni añade
@@ -115,9 +115,9 @@ contra el texto del plan. «Medido» significa que el número salió de una
 | 1 | 0 Markdown bajo `docs/` y `v2/` | **PASS** | `git ls-files ':(glob)docs/**/*.md'` = 0; `:(glob)v2/**/*.md` = 0. En la raíz solo quedan `AGENTS.md`, `README*.md`, `ROADMAP.md` |
 | 2 | 0 `@Test` UAT/E2E/AAT/harness | **PASS** | 0 en `pluginContractTest`/`installedContractTest`/`integrationTest`/`functionalTest`; 0 `@Disabled` |
 | 3 | 0 clases legacy trasladadas | **PASS** | `v2/test-harness`, `v2/pipeline-testkit`, `v2/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
-| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 36 escenarios en 8 categorías bajo `v2/examples/`; 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` (1277 líneas) invocado por `scripts/verify-all.sh:606` |
-| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 13156 / 66685 = 0.197; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
-| 6 | `verify-all` local ≤ 900 s | **PENDIENTE** | requiere los tres ensayos sobre el SHA de la tabla; en este ciclo la puerta midió 367 s, de los que 306 s son la etapa 1 con la compilación en frío, y la etapa 3 bajó de 60 s a 43 s |
+| 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 36 escenarios en 8 categorías bajo `v2/examples/`; 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` (1277 líneas) invocado por `scripts/verify-all.sh:623` |
+| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 13172 / 66685 = 0.198; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
+| 6 | `verify-all` local ≤ 900 s | **PASS** | tres ensayos consecutivos sobre `5a8e43a35`: **88 s, 74 s y 72 s**, los tres con `tests=rewritten:812 read:0` — los tests se ejecutaron de verdad en cada uno, ninguno leyó un resultado de caché. Margen del más lento, **10,2×**. La primera corrida en frío del mismo árbol dio 367 s, de los que 306 s son la etapa 1 |
 | 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS con una excepción** | 27 módulos declarados compilan; `v2/pipeline-protocol/` está versionado y **no está declarado**, luego Gradle nunca lo compila |
 
 Sobre el límite 4: el mandato escribe el lanzador como `examples/run.sh`, y en
@@ -1047,8 +1047,8 @@ una promesa que no se cumple es deriva entre el nombre y la aserción. Es tambi�
 la vía por la que el coste del gate se paga sin valor: 34 escenarios que no
 comprueban nada cuestan lo mismo que 34 que comprueban.
 
-**p) — CERRADO.** El arnés ya no mira sólo el código de salida: mira **lo que
-el run produjo**. El lanzador tiene un verbo nuevo, `//@ expect-stdout`, y la
+**p) El arnés miraba sólo el código de salida — CERRADO en `0bf732fe6`.** El
+lanzador tenía un verbo nuevo, `//@ expect-stdout`, y la
 comprobación se hace contra **la proyección que el producto publica**
 (`observe --view console`), no contra la consola del proceso: en un run
 durable el motor no lleva la salida de los pasos a la consola, así que una
@@ -1060,7 +1060,9 @@ durable y en uno en memoria.
 El veredicto **dice qué comprobó**: cada línea del informe nombra la
 observación en la que se apoyó (`stdout`, `stderr`, `exit(1)`), y el resumen
 —que llega hasta la línea de veredicto de la puerta— cuenta cuántos
-escenarios declararon una observación y cuántos sólo se ejecutaron.
+escenarios declararon una observación y cuántos sólo se ejecutaron. Ese último
+tramo no lo cumplió este bloque a la primera: el recuento se quedaba en el log
+de la etapa. Lo que faltaba y por qué está en **be)**.
 
 Y al poder observarlo, el arnés ha encontrado dos promesas que no se
 cumplían. `durable/32-durable-replay` prometía `effects=1` y el motor nunca
@@ -1126,7 +1128,8 @@ externos que sí producen trabajo observable.
 #### Lo que queda sobre la mesa, ordenado por lo que se recupera
 
 La economía del arnés no se acaba en retirar escenarios: la etapa 3 cuesta
-**43 s de reloj** y **doce minutos de CPU**, y casi todo ese coste es el mismo
+**41 s de reloj** y **doce minutos de CPU** (`user` 745 s, medido sobre
+`5a8e43a35`), y casi todo ese coste es el mismo
 punto repetido. Estas son las oportunidades que quedan, ordenadas por el
 tiempo que devuelven.
 
@@ -2036,6 +2039,59 @@ tests=rewritten:792 read:0 gaps=1 not_run`.
 
 Puerta sobre el SHA del bloque: `PASS sha=5d410ecaf… elapsed=98s budget=900s tests=rewritten:812 read:0 gaps=1 not_run`.
 
+**be) El recuento de escenarios observados no llegaba a la línea de veredicto — CERRADO en `5a8e43a35`.**
+
+**El problema, en una frase**: la puerta contaba cuántos escenarios declararon una
+observación, lo escribía en el log de su etapa, y la línea de veredicto —la única
+que alguien pega en un informe— no lo llevaba.
+
+**No era un campo que faltara: era un campo que se había mudado de sitio.** La
+línea de veredicto salía así:
+
+```
+PASS  sha=…  elapsed=72s  budget=900s  tests=rewritten:812 read:0  gaps=1 not_run
+PASS  sha=  scenarios=observed:35 executed:35  elapsed=s  budget=s
+```
+
+Dos líneas, la segunda con el recuento dentro y con todo lo demás vacío. El
+formato llevaba **cinco** conversiones y la llamada pasaba **seis** argumentos, así
+que el shell leía el sobrante como una segunda pasada sobre el mismo formato y lo
+imprimía como una línea propia. La puerta decía `PASS`, salía con cero, y todo lo
+que un lector podía comprobar sobre la línea era que la línea era verde.
+
+**Por qué eso muerde y no es cosmético.** El bloque anterior añadió el recuento
+justo para que la evidencia no viviera en el log. La mitad de la mejora —«los 35
+de 35 declararon una observación»— se quedaba en un sitio que nadie cita. Un
+informe podía afirmar honestamente que la puerta pasó y callar que el arnés
+comprobó algo, y no había forma de notarlo mirando la línea: el `gaps=1 not_run`
+de al lado ya enseñaba que los huecos viajan ahí, y ese hueco no viajo.
+
+**Lo que lo escondió es la parte incómoda**: nada falló. La puerta estaba verde,
+el código de salida era cero, y los tests que se ejecutaron eran los que tocaban.
+Un programa que verifica sus propios datos y aun así los pierde en el último
+formateo sólo se delata leyendo su salida, que es exactamente lo que este
+repositorio lleva varios ciclos haciendo con el resto del arnés.
+
+**El arreglo no es contar mejor: es que ya no se pueda perder.** La evidencia se
+compone en **un** argumento antes de imprimirse, y cada veredicto la consume con
+**una** conversión. Un campo ya no puede separarse de su línea por un recuento que
+no cuadra, y de paso desaparece la triplicación de un formato largo que estaba
+copiado en tres sitios —que es donde el error vivía—. Cada campo sigue
+diciendo `NOT_RUN` cuando su etapa no corrió, así que el silencio tampoco es una
+opción.
+
+**Medido, sobre el SHA del bloque**: tres ensayos consecutivos, **88 s, 74 s y
+72 s**, y en los tres **una** sola línea de veredicto, cada una con
+`scenarios=observed:35 executed:35` dentro:
+
+```
+PASS  sha=5a8e43a35…  elapsed=88s  budget=900s  tests=rewritten:812 read:0  gaps=1 not_run  scenarios=observed:35 executed:35
+```
+
+El límite 6 de la tabla de arriba se cierra con estos tres ensayos, que es lo que
+exigía: los tres con los tests **reescritos** (`rewritten:812 read:0`), o sea los
+tres midiendo el gate y ninguno citando una caché.
+
 ### 2.3 Cierre de ciclo
 
 - `PRODUCT-GATE` (certificador externo, RC publicada) = **`BLOCKED_EXTERNAL`**.
@@ -2049,12 +2105,13 @@ Puerta sobre el SHA del bloque: `PASS sha=5d410ecaf… elapsed=98s budget=900s t
   una capa más arriba (la lista de patrones se partía por cada coma). Evidencia:
   dos mutaciones unitarias (6 y 3 tests rojos) y dos mutaciones de escenario E2E (el
   `.pem` stasheado, y «matched no files»).
-- **Presupuesto de tiempo: MEDIDO, `CERRADO`, y MEJORADO.** El ensayo de este
-  ciclo dio **98 s** sobre `8d4a49be8` (el árbol que cierra el glob), con el límite
-  en 900 s, leído de la línea de veredicto de la etapa 5
-  (`PASS  sha=…  elapsed=97s  budget=900s`) y no del código de salida: margen de
-  **9,3×**. El ensayo anterior dio 91 s sobre `bc2acec7c` (árbol idéntico a
-  `96220fdad`). El reloj **varía ±10 s**
+- **Presupuesto de tiempo: MEDIDO, `CERRADO`, y MEJORADO.** El ciclo del glob
+  dio **98 s** sobre `8d4a49be8`, con el límite en 900 s, leído de la línea de
+  veredicto de la etapa 5 (`PASS  sha=…  elapsed=97s  budget=900s`) y no del
+  código de salida: margen de **9,3×**. El ciclo de este ROADMAP midió **88 s,
+  74 s y 72 s** sobre `5a8e43a35`, con margen de **10,2×** en el peor de los
+  tres, y esa es la cifra que §1 publica. El ensayo anterior al del glob dio 91 s
+  sobre `bc2acec7c` (árbol idéntico a `96220fdad`). El reloj **varía ±10 s**
   entre corridas por la caché de Gradle (medidas: 81, 91, 94, 97, 98 y 105 s), así que
   la cifra se publica como un valor medido **con el ruido que tiene**, y no
   como un número exacto que nadie podría reproducir. No es que el trabajo

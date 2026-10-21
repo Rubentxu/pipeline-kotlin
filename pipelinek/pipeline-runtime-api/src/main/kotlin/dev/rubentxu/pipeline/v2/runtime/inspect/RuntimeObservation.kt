@@ -51,8 +51,8 @@ sealed interface RuntimeObservation {
      * / event plane is empty.
      * The correction (see design revision note 1) made this the same
      * distinction on the introspection port: "unknown run" vs "empty-but-known".
-     * The contract test `IntrospectionUnknownVsEmptyTest` ( of the design)
-     * pins the distinction.
+     * The distinction is part of the design, and the test that pinned it
+     * is gone.
 */
     data class LiveButEmpty(
         val attempt: AttemptId,

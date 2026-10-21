@@ -12,7 +12,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * process therefore escapes that enforcement: `timeout(2) { lock("db") { ... } }`
  * left the lock waiting INDEFINITELY, acquired the resource the instant the holder
  * released it, and ran its body long after the deadline had expired. Measured, not
- * Inferred — see `UatLockBlockDurableTest.`
+ * Inferred from a durable lock that outlived its deadline.
  * This capability is the typed seam that lets a *suspending* Step honour the same
  * budget `core.sh` honours through [SHELL_OPERATIONS_CAPABILITY]: the value is
  * already threaded, the Step simply had no legal way to read it (reaching

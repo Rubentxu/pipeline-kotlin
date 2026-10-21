@@ -26,7 +26,7 @@ import java.nio.file.StandardOpenOption
  * alone and this is the extraction.
  * The seam chosen is the one where the two jobs stop touching: **reads**. Everything moved here is
  * pure with respect to the store — it reads files and returns a value, never reserving, committing,
- * Rotating or truncating — so the ownership discipline that `` and the `` mutations
+ * Rotating or truncating — so the ownership discipline that the store and the seal mutations
  * were written against stays in one place, unweakened and still covered by the same laws.
  * ## What moved, and what deliberately did not
  * Moved: enumerating and parsing sealed segments, reading a chunk positionally, and assembling a page

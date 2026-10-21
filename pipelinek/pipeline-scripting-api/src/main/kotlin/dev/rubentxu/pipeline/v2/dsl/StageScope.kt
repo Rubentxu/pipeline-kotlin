@@ -725,8 +725,7 @@ class StageScope(
      * This is a PURE builder. It encodes a declared requirement and appends a
      * directive; it performs no effect, reads no clock and manufactures no
      * runtime value, which is what Semantic Constitution law 3 requires of a
-     * builder and what `FArchS3PureBuilderPurityTest` now enforces
-     * structurally.
+     * builder. It enforces that structurally: it appends a directive and returns.
      * A [label] becomes `LocalLabels`; a [remoteUri] becomes `Remote`, which is
      * CARRIED AND DECODED but refused at resolution, because this runtime has no
      * Remote allocator until. That refusal is the honest outcome: the stage

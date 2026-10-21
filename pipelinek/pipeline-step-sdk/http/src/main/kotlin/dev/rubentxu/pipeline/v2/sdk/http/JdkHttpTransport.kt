@@ -14,11 +14,10 @@ import kotlinx.coroutines.future.await
 
 /**
  * The ONLY class in this repository that opens a socket.
- * `java.net.http` is not a preference here. `FArch002ApplicationDependsInwardTest`
- * allows `pipeline-application` exactly three third-party artifacts (kotlin-stdlib,
- * kotlin-stdlib-jdk8, kotlinx-coroutines-core) and uses Ktor as its own violation
- * fixture, so OkHttp, Ktor and Apache HttpClient are all out. The JDK 21 toolchain's
- * client is the only door left, and the fitness keeps it that way.
+ * `java.net.http` is not a preference here. `pipeline-application` may depend on
+ * exactly three third-party artifacts (kotlin-stdlib, kotlin-stdlib-jdk8,
+ * kotlinx-coroutines-core), so OkHttp, Ktor and Apache HttpClient are all out. The
+ * JDK 21 toolchain's client is the only door left.
  * Everything policy-shaped lives OUTSIDE this class: which statuses are acceptable,
  * whether a credential may be used, whether the network is allowed at all. Here there
  * is only transport.

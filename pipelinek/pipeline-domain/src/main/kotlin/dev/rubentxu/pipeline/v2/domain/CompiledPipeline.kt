@@ -54,9 +54,8 @@ data class EnvironmentSpec(val values: Map<String, String>) {
  * from one that is. It compiled, serialized, and did nothing — the silent drop
  * the Semantic Constitution names as a defect class.
  * @see StageOption for the carrier that replaced it.
- * NOTHING ENFORCES THAT IT STAYS UNUSED. This comment used to say a
- * `FArchS3TypedOptionCarrierFitnessTest` pinned "no production source
- * constructs this type"; that file is gone. The guard it described was a
+ * NOTHING ENFORCES THAT IT STAYS UNUSED. This comment used to say a fitness test
+ * pinned "no production source constructs this type"; that file is gone. The guard it described was a
  * SOURCE-TEXT FITNESS -- it grepped the tree -- which AGENTS.md bans
  * inside unit tests, so it could not simply be rewritten. What holds the line
  * today is only the deprecation itself: a construction site would have to name

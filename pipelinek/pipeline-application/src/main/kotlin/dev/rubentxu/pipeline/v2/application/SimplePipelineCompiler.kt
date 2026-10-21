@@ -27,7 +27,7 @@ import dev.rubentxu.pipeline.v2.domain.StepDescriptor
  * [dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator].
  * ## Why this exists
  * The characterise-parity gate needs an application-side adapter to
- * satisfy the canonical-authority pin in `FArchM2CanonicalPipelineCompilerTest`.
+ * satisfy the canonical-authority pin the architecture gate checks.
  * This is the trivial placeholder that ships in. The real
  * DSL parser (Kotlin Script / Groovy Script) lands in along with
  * the [RunCoordinator] migration; the test-friendly [MapPipelineCompiler]

@@ -69,8 +69,8 @@ package dev.rubentxu.pipeline.v2.application
  * and its frozen ABI is in `pipeline-events/api/pipeline-events.api`.
  *
  * `firstPublished` names the product version that FIRST CARRIES the id in this
- * line: for the ids that shipped before the RESET it is the released version
- * they shipped in, and for an id that first ships here it is the version this
+ * line: for an id that already shipped it is the released version it shipped
+ * in, and for an id that first ships here it is the version this
  * build declares. The release that carries it is named by its own tag.
  *
  * ## Why the event shape changed its version

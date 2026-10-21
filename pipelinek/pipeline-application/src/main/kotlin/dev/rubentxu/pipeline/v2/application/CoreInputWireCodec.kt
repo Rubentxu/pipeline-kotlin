@@ -19,9 +19,8 @@ import kotlinx.serialization.json.put
  * by hand. That is the whole point: `core.sh` carries a dialect split
  * (`kind=sh|shell`, `command|script`, `returnStdout|returnMode`) that exists only
  * because two places once encoded the same Step, and every alias is a
- * compatibility shim added after the divergence. `Lfc2LockWireAuthorityFitnessTest`
- * froze the same law for `core.lock`; `Lfc2InputWireAuthorityFitnessTest` freezes
- * it for `core.input`.
+ * compatibility shim added after the divergence. `core.lock` and `core.input` carry the
+ * same single-authority shape: one object owns the wire format, and nothing else writes it.
  * `null` fields are omitted rather than written as JSON null, matching
  * `CoreLockWireCodec` and keeping the payload byte-identical between the compiler
  * and the codec for a default-valued input.

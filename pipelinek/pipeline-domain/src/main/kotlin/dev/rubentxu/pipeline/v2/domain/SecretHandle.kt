@@ -27,8 +27,8 @@ import java.nio.charset.StandardCharsets
  * and [dev.rubentxu.pipeline.v2.application.durable.ShExecution.executeNonDurable].
  * ## Wipe Contract
  * When [close] is called, the internal byte array is filled with zeros.
- * This is verified by [SecretHandleContractTest] which asserts that after
- * close, `bytes.contentEquals(ByteArray(size))` returns true.
+ * The wiped array is observable: after [close],
+ * `bytes.contentEquals(ByteArray(size))` returns true.
  * ## JVM 21 MemorySegment Upgrade Path
  * When the codebase upgrades to JVM 21, consider using JEP 454
  * (Foreign Function & Memory API) to use scoped MemorySegment handles

@@ -57,8 +57,8 @@ class LiveOutputPresentation(
     /**
      * Writes one record.
      * The flush is per record and is not an optimisation. Without it the bytes sit in a buffer and a
-     * consumer watching a build sees nothing until the buffer fills — which is the defect
-     * `ObsAOutputStreamingCharacterisationTest` characterised as "a late document".
+     * consumer watching a build sees nothing until the buffer fills — which is what a consumer
+     * experiences as "a late document".
 */
     fun emit(record: ObservationRecord.Output) {
         val text = render(record) ?: return

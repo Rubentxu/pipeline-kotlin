@@ -109,7 +109,7 @@ data class FailedOperationIdentity(
     /**
      * The `StepId` the journal recorded, such as `build/sh-0`.
      * **Not** the operation id, and not interchangeable with it: the two are what
-     * `ObservationOperationIdShapeTest` exists to keep apart. This one names the step in the
+     * are kept apart. This one names the step in the
      * pipeline; [operationId] names the durable operation whose streams hold its bytes.
 */
     val stepId: String,

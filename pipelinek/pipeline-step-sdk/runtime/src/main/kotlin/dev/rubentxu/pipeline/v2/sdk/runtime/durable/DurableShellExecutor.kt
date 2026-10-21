@@ -700,7 +700,7 @@ class DurableShellExecutor : DurableShellLaunching {
         } else if (pumpedThroughJvm) {
             // Two independent pipes. Fusing them here would make the channel distinction
             // unrecoverable at the kernel boundary, which is precisely what made `--channel stderr`
-            // unanswerable in ObsCChannelAndTailCharacterisationTest.
+            // unanswerable for a fused stream.
             pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
             pb.redirectError(ProcessBuilder.Redirect.PIPE)
         } else {
@@ -1126,7 +1126,7 @@ class DurableShellExecutor : DurableShellLaunching {
         // The child's stdout/stderr are redirected to FIFOs owned by the ingest agent; if the
         // agent dies, the next write returns `EPIPE` rather than killing the user's process.
         // The `SIG_IGN` disposition is inherited across `exec`, so the user's script — and
-        // everything it spawns — runs with `SIGPIPE` ignored. ADR ratifies this trade; see
+        // everything it spawns — runs with `SIGPIPE` ignored. The trade is accepted; see
         // the config KDoc on `pumpedViaAgent`.
         val outerRedirect = when {
             transcriptPipedThroughJvm && captureStdout -> "> '$outputFileEscaped'"
@@ -1171,9 +1171,8 @@ class DurableShellExecutor : DurableShellLaunching {
             // control-plane bookkeeping, not the user's output, so it must never
             // write into the data channel that becomes `capturedStdout` and the
             // console transcript. An unredirected `rm` leaks whenever the host's
-            // rm is verbose, wrapped, or shimmed — which is exactly how
-            // DurableShellTerminalAdapterTest failed here with the deletion notice
-            // appended to `canonical-output`. Silence is the correct contract for
+            // rm is verbose, wrapped, or shimmed — that is how a deletion notice
+            // ended up appended to `canonical-output` in the past. Silence is the correct contract for
             // control-plane housekeeping regardless of what `rm` resolves to.
             append("rm -f \"\$COOKIE_FILE\" >/dev/null 2>&1; ")
             append("kill \$HB_PID 2>/dev/null; ")
@@ -1820,9 +1819,9 @@ class DurableShellExecutor : DurableShellLaunching {
             }
             // Cleanup based on final state. A watchdog timeout is a failure, not a
             // success: the surviving wrapper can publish exit code 0 after its child
-            // Was SIGKILLed (r9, CI 35656479415/35657576105), so cleanup
-            // MUST NOT read that code as success and delete the control dir (which
-            // Would erase the authoritative timeout.flag,)
+            // was SIGKILLed, so cleanup MUST NOT read that code as success and
+            // delete the control dir (which would erase the authoritative
+            // timeout.flag).
             cleanup(
                 controlDir,
                 if (timeoutTriggered.get()) -1 else exitCode,

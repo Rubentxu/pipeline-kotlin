@@ -3,8 +3,8 @@ package dev.rubentxu.pipeline.v2.domain.step
 /**
  * Minimal SemVer value object for plugin release identity (PLUGIN_IDENTITY_MODEL).
  * Deliberately frozen shape: only `major`, `minor`, `patch`. Pre-release and
- * build metadata are NOT supported in this cycle; introducing them is an ADR
- * that brings its own version-comparison semantics. The canonical textual
+ * build metadata are NOT supported; introducing them is a published-contract
+ * change that brings its own version-comparison semantics. The canonical textual
  * representation is `MAJOR.MINOR.PATCH`.
 */
 data class SemVer(val major: Int, val minor: Int, val patch: Int) {

@@ -70,11 +70,11 @@ data class ShOptions(
     val networkEgress: NetworkEgressGate = DenyAll,
     /**
      * Pump the transcript through an external ingest agent
-     * (`ObsPc2IngestAgent`) instead of in-JVM pumps
-     * recommends "one agent per run, spawned and supervised by
-     * PipelineK". wires the flag; was to flip the `0/50` survival assertion
-     * in `ObsPc2ProducerSurvivalSpikeTest`. That spike was removed by the test RESET in
-     * `2aa071aab`, so the inversion it was to perform has no instrument left to run on.
+     * (`ObsPc2IngestAgent`) instead of in-JVM pumps. The agent follows the
+     * "one agent per run, spawned and supervised by PipelineK" shape, and this
+     * flag is the wire that turns it on.
+     * Nothing in this tree drives the agent mode end to end, so the default
+     * below is a conservative choice rather than a measured one.
      * ## What the flag does at the call site
      * When `true`, `ShExecution.invokeShell` constructs a
      * [DurableShConfig] with `pumpedViaAgent = true` and passes it
@@ -106,7 +106,7 @@ data class ShOptions(
     // That was reverted: it turned this type — a carrier of FACTS and POLICIES
     // for one execution — into a runtime service locator, and it bought only a
     // line count. Plugin seams travel through RuntimeCapabilityContributor
-    // instead. See Lfc2HttpOfficiallyPluginBoundaryFitnessTest.
+    // instead.
 ) {
     companion object {
         /**

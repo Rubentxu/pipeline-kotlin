@@ -11,7 +11,7 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
  * interprets it at the effect boundary. Keeping them apart is what lets the policy
  * be exercised without a coordinator, a capability context or a transport, and it
  * is also what stopped a security property from looking covered when nothing
- * enforced it — see `HttpCredentialApplicationTest`.
+ * enforced it.
  * The seam itself — [dev.rubentxu.pipeline.v2.credentials.api.BasicCredentialSource]
  * — belongs to `pipeline-credentials-api`, not here, because the runtime has to
  * SUPPLY it and must not import this plugin's vocabulary to do so.

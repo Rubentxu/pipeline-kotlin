@@ -67,10 +67,10 @@ internal class BeforeStageDirectiveEngine(
      * deliberate. The rule is that new responsibilities belong in named engines; a resolver default
      * is the engine's own dependency, and the coordinator that merely forwarded one was buying
      * nothing but a line.
-     * **Nothing enforces the rule.** `CoordinatorGrowthGuardrailTest` used to ratchet the
-     * coordinator's constructor against a 562-line ceiling and was removed by the test RESET in
-     * `2aa071aab`. The ceiling in that number is a historical fact, not a live threshold.
-     * `WULpr402RuntimeHonestDslFitnessTest` forbids host-environment reads
+     * **Nothing enforces the rule.** A growth guardrail used to ratchet the
+     * coordinator's constructor against a 562-line ceiling, and was removed with the rest of
+     * the test suite. The ceiling in that number is a historical fact, not a live threshold.
+     * Host-environment reads belong
      * outside the canonical capability bridges, and the previous default read
      * `os.name` inline to build a `PlatformIdentity`. Letting the resolver
      * reach the platform through the `RuntimeConfig` port fixes that at the

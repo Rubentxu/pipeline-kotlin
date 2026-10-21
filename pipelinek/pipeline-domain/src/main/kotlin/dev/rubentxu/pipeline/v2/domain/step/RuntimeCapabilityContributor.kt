@@ -9,8 +9,8 @@ package dev.rubentxu.pipeline.v2.domain.step
  * execution — workspace root, working directory, timeout, sandbox, network
  * egress — and a map of live ports and clients is a SERVICE REGISTRY. It was
  * parked there to spare the coordinator a parameter, which bought a line count
- * and cost the architecture. A `CoordinatorGrowthGuardrailTest` used to stop
- * that class of trade, not to be satisfied by it; the test RESET removed it in `2aa071aab`, so
+ * and cost the architecture. A growth guardrail used to stop that class of trade, not to be
+ * satisfied by it; it was removed with the rest of the test suite, so
  * today the rule holds only because this KDoc states it. Nothing enforces it.
  * It lives in `pipeline-domain`, beside [StepCapability] and
  * [StepCapabilityAccess], because it is a CONTRACT. A plugin contributes a

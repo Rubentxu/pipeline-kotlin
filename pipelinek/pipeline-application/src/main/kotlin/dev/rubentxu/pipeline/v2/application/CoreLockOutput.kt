@@ -10,9 +10,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
  * verdict arrives as a returned [dev.rubentxu.pipeline.v2.domain.step.BodyOutcome]
  * rather than propagating on its own. Without this carrier the boundary would see
  * a successful handler and report `lock` as `Success` over a body that failed.
- * The property is pinned by
- * `LockFeasibilityProofTest.a body that reports failure still releases and fails
- * the step`, which goes red if the carrier stops implementing the interface.
+ * The property is that a body reporting failure still releases the lock and fails
+ * the step, and nothing checks it today.
  * Same mechanism, same reason, as [CoreShellOutput] for `core.sh`.
  * @param resource the resource this invocation acted on.
  * @param bodyRan whether the body was invoked. `false` on a declined

@@ -7,7 +7,7 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  * actually make; a profile whose guarantees depend on a BEST_EFFORT capability
  * is UNREPRESENTABLE: [MultiTenantConstrained] cannot be constructed until the
  * OS-level sandbox exists, and its constructor fails closed
- * citing the ADR, exactly like [SandboxProfile.OS].
+ * with the same message as [SandboxProfile.OS].
  * ## What each profile guarantees today
  * [TrustedSingleTenant] — the runner host and the pipeline author are the same
  * party. Guaranteed: process containment (process-tree kill, cookie-scan

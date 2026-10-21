@@ -41,8 +41,8 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  *    a declared string length near Int.MAX_VALUE
  *        -> the bounds check subtracts rather than adds, so it cannot wrap
  *    ```
- *    The claim is falsifiable rather than aspirational: `S3R1AgentCodecTotalityTest`
- *    holds a hostile-payload sweep plus a counter-test, and the engine guard in
+ *    The claim is falsifiable rather than aspirational: a hostile-payload sweep plus a
+ *    counter-test held it, and the engine guard in
  *    `BeforeStageDirectiveEngine` is a second, independent line of defence for
  *    the day a future case reintroduces a throwable.
  * Human readability was traded away deliberately, for the same reason

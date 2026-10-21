@@ -14,7 +14,7 @@ import dev.rubentxu.pipeline.v2.events.EventRecordRead
  * Semantics: `runId` + `lastSequence`, where sequence is the STORE-assigned
  * monotonic per-run value (frozen law: the store/boundary owns sequence
  * assignment). Continuation selects events with sequence > lastSequence, ordered
- * by sequence. NEVER timestamp-based (INC-021d). Deliberately a distinct type
+ * by sequence. NEVER timestamp-based. Deliberately a distinct type
  * from the OperationJournal ReplayCursor: event-tail cursors and durable
  * replay cursors are different authorities and MUST NOT be unified.
 */

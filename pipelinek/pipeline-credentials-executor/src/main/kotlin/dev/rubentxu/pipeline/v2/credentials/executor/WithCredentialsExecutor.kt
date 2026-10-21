@@ -127,7 +127,6 @@ class WithCredentialsExecutor(
         // authority entirely, so CredentialBound always claimed sequence 1 of a
         // run and collided with the run's first real event. That corruption was
         // silent until UNIQUE(run_id, sequence) made it fail closed.
-        // See bl-bl-01M3RK3NZV000387H65JWN9XM0.
         try {
             for (spec in specs) {
                 val credentialsId = spec.credentialsId
@@ -258,7 +257,6 @@ class WithCredentialsExecutor(
         // teardown was the same authority bypass as the bind path, and it also
         // made the first CredentialUnbound of every teardown collide with
         // sequence 1 of the run. The store assigns the durable sequence.
-        // See bl-bl-01M3RK3NZV000387H65JWN9XM0.
 
         // Emit CredentialUnbound for each binding (exactly once per binding)
         for (credentialsId in credentialIds) {

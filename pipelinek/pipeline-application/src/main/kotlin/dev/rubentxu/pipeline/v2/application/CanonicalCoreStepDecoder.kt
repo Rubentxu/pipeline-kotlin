@@ -131,7 +131,7 @@ sealed interface CanonicalCoreStepCommand {
             // therefore could never match, so `10-smoke-e2e.pipeline.kts` failed end-to-end with
             // `ArtifactArchiveFailed: No files matched glob pattern 'build/libs/*.jar'`. The
             // Registry path uses the certified AntStyleGlob engine (frozen delta), which turns
-            // CompatibilityCorpusTest.fixture10SmokeE2E green (runFixtureFail -> runFixturePass).
+            // the smoke fixture green (runFixtureFail -> runFixturePass).
             // Physical removal of legacy forms (LEGACY_REMOVED).
             // CanonicalCoreStepCommand.ArchiveArtifacts subtype, the ARCHIVE_ARTIFACTS_PLUGIN_ID
             // constant + decoder branch, the CanonicalCoreStepMetadata["core.archiveArtifacts"]
@@ -140,7 +140,7 @@ sealed interface CanonicalCoreStepCommand {
             // removed in this slice. Production routing is exclusively
             // CoreArchiveArtifactsStep.definition via the registry. The behaviour-level proof
             // that the legacy glob authority is gone (not merely textually absent) is the
-            // counter-preserved A/B: CompatibilityCorpusTest.fixture10SmokeE2E archives
+            // counter-preserved A/B: the smoke fixture archives
             // build/libs/smoke.jar with a real sha256 where the legacy authority failed with
             // `No files matched glob pattern 'build/libs/*.jar'`. Counter converges
             // 2/3/3 -> 2/2/2.

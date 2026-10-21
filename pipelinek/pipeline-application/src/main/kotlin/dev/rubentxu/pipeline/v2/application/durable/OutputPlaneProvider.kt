@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
  * this provider is the honest shape for the current shell wrapper.
  * `console.log` is therefore a **staging buffer, not an authority**: it is written by the wrapper,
  * read once, ingested, and deleted. Nothing may read it afterwards, and
- * [OutputSingleAuthorityFitnessTest] enforces exactly that. The moment the wrapper grows a pipe
+ * this provider is the only reader. The moment the wrapper grows a pipe
  * protocol, this provider disappears and the child writes the store directly.
  * ## Lifecycle
  * A store must be recovered before it acts ([]), and recovery is not free, so one

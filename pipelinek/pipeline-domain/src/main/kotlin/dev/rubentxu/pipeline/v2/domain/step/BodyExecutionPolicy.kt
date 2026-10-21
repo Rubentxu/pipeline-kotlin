@@ -14,7 +14,7 @@ import kotlinx.serialization.Serializable
  * project a scope around it, retry it, fan it out) BEFORE typed input decode, and
  * it must do so WITHOUT branching on a concrete StepKey. Today that decision is
  * taken by name (`when (pluginStepId.value) { "core.dir" -> ... }`), which is the
- * `` concreteness debt pinned by `Lfc2ConcreteBodyRoutingDebtFitnessTest`
+ * concreteness debt this policy exists to remove.
  * The policy is the typed replacement: it is DECLARED on the
  * [StepDescriptor] of the Step family (criterion 2), RESOLVED by a pure function
  * over the open [StepRegistry] (criterion 3), and REJECTED fail-closed when the
@@ -491,7 +491,7 @@ fun resolveBodyExecutionPolicy(
     val owner = definition.contract.descriptor.body.declared?.execution?.owner
     val declaresContinuation = BODY_CONTINUATION_CAPABILITY in definition.contract.requiredCapabilities
     // Exhaustive over the CLOSED owner family: an `else` here would silently absorb the next
-    // case, which is exactly the debt Lfc2BodyExecutionPolicyFitnessTest pins. `null` is its
+    // case, which is exactly the debt this `when` exists to close. `null` is its
     // own branch and means "this Step declares no body at all", so there is no owner to be
     // coherent with; the descriptor-only resolution above already reported it as
     // NotABodyStep before this check is reached.

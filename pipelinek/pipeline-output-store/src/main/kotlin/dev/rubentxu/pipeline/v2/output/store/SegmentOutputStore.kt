@@ -4,7 +4,7 @@
 // OutputTailPort, OutputRetentionPort, OutputFrameIndex) requires. The number
 // is intrinsic to the published contract — extracting helpers would either
 // privatise functions that are part of the surface or split the file, which is
-// a design choice that needs an ADR, not a one-line suppression. Same family
+// a design choice that needs a recorded decision, not a one-line suppression. Same family
 // of reasoning as the StageScope exemption already documented in
 // pipelinek/config/detekt/detekt.yml under TooManyFunctions.
 @file:Suppress("TooManyFunctions")
@@ -37,12 +37,12 @@ import kotlin.concurrent.withLock
 
 /**
  * A file-backed Output Plane implementing strategy **D** (segment reservation with recovery), the
- * Protocol decided by RCE `` on measured contention and commit-window grounds
+ * protocol chosen on measured contention and commit-window grounds
  * ## Layout
  * ```text
  * <root>/streams/<streamKey>/
  *     cur.seg      payload of the segment currently being written
- * Cur.cmt the stream's committed offset <- the authority
+ *     cur.cmt     the stream's committed offset <- the authority
  *     cur.res      the outstanding reservation "<base>|<limit>"   (absent = none)
  *     segments/    sealed segments, named "<base>-<length>.seg"
  * ```
@@ -62,17 +62,17 @@ import kotlin.concurrent.withLock
  *   one atomic unit — but is single-writer by construction.
  * - **C** (per-operation file + global index) stranded bytes at the window and was the slowest.
  * ## The three obligations, and where each one lives
- * **** — [Reserve]'s initialiser writes `cur.res` and returns only afterwards. The
+ * **Reserve** — [Reserve]'s initialiser writes `cur.res` and returns only afterwards. The
  *   acknowledgement *is* the reservation, not the append.
- * **** — the committed offset lives in `cur.cmt`, never in the size of a byte file
- * **** — [recover] is a distinct entry point. Until it completes, every read is refused with
+ * **Commit** — the committed offset lives in `cur.cmt`, never in the size of a byte file
+ * **Recover** — [recover] is a distinct entry point. Until it completes, every read is refused with
  *   [OutputRefusal.RecoveryNotCompleted] rather than served from an unreconciled state.
  * ## Density is why D is dense and A is not
  * Recovery keeps each stream's committed prefix and then **releases** an outstanding reservation, so
  * a range that was claimed and not used leaves no permanent hole. Without the release, a writer that
  * reserved 64 KiB and used 200 bytes would strand 63 KiB, and a cursor into that range would be
  * permanently stuck — unable to tell "those bytes are gone" from "those bytes have not arrived yet".
- * ## The refusal, kept in the class rather than only in the ADR
+ * ## The refusal, kept in the class rather than only in prose elsewhere
  * Writes are issued and are **not** `fsync`ed. Bytes already issued to a file descriptor survive
  * process death in the page cache, which is the fault model this store was measured under. It
  * therefore proves *"a process that dies loses nothing it acknowledged"* and does **not** prove
@@ -82,10 +82,10 @@ class SegmentOutputStore(
     private val root: Path,
     /**
      * Whether this store may reconcile durable state at all
-     * A reader answers "no". That is the whole separation the ADR makes: a read-only verb opens the
+     * A reader answers "no". That is the whole separation: a read-only verb opens the
      * plane without ever running a reconciliation, so it cannot remove or truncate a reservation even
      * if every stream were unowned.
-     * Reads therefore do NOT require [recovered]. The invariantprotects — a reader
+     * Reads therefore do NOT require [recovered]. The invariant protects — a reader
      * never observes a byte the store has not committed — is enforced by the committed-offset
      * authority in [committedLocked], and only ever was helped along by recovery. Recovery is what
      * makes debris disappear; it is not what makes a read honest.

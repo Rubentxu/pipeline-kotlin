@@ -182,7 +182,7 @@ object BundledPluginClasspathPlan {
      * an artifact is admitted if it claims to contribute anything, which is the rule the whole
      * admission chain rests on.
      * Deliberately described without naming any example plugin: this is a production source, and
-     * `FArchS1DirectiveKernelFitnessTest` fails a production file that mentions one by name. A
+     * architecture gate fails a production file that mentions one by name. A
      * comment had to be rewritten to satisfy it, which is the law working rather than a rule to
      * work around — the defect class is general and does not need an instance to be legible.
 */

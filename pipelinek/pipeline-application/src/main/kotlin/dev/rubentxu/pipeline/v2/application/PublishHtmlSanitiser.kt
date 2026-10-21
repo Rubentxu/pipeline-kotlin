@@ -37,7 +37,7 @@ package dev.rubentxu.pipeline.v2.application
  * Sanitisation is a total function (same input → same output). Two
  *   different inputs MAY collide (e.g. "a:b" and "a_b0041" both → "a_b0041b") and the
  *   caller must handle this via `name` validation upstream, not here.
- * Pure function. No IO, no clock, no globals. Tested via PublishHtmlSanitiserTest.
+ * Pure function. No IO, no clock, no globals.
 */
 object PublishHtmlSanitiser {
 

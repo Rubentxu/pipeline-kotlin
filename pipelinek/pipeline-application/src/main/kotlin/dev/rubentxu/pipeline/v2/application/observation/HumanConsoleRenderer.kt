@@ -94,7 +94,7 @@ import dev.rubentxu.pipeline.v2.events.WsCleaned
  *    in an `else` that throws rather than returning a placeholder, because the
  *    only way to reach one is a disagreement between the routing table and a
  *    handler — and a console that renders a plausible wrong line for an unrouted
- *    event is worse than a console that stops. `RendererRoutePartitionTest`
+ *    event is worse than a console that stops. The exhaustive routing table
  *    proves the disagreement cannot survive.
  * 4. **Views select families; they do not delete records.** A family absent
  *    from a view is a declared projection — the event is still in the store and
@@ -218,7 +218,7 @@ object HumanConsoleRenderer {
      * is what turns a new event into a compile error rather than a line nobody wrote, and
      * constructing nothing is what keeps the list of what exists separate from the list of what each
      * case looks like.
-     * @see RendererRoutePartitionTest for the check that routing and rendering agree.
+     * The check that routing and rendering agree is the exhaustiveness of this `when`.
 */
     @Suppress("DEPRECATION") // AgentResolved has no producer but is part of the sealed hierarchy.
     internal fun line(event: DomainEvent, scope: Scope): Line = when (event) {

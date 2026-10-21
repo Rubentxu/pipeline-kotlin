@@ -212,7 +212,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // file Steps resolve against the same current directory the shell vertical
         // observes inside a `dir` scope. Previously it rebuilt its own
         // WorkspaceResolver per operation and could never see the scope, which is
-        // the divergence recorded by ShellFilesystemCwdDivergenceTest.
+        // the divergence the scope shape exists to remove.
         builder[WORKSPACE_OPERATIONS_CAPABILITY] = workspaceOperationsFor(context)
         // Narrow stage identity (name + index) for handlers needing the current
         // stage as a default (core.emit.event StageMarkedUnstable fallback). Derived from the

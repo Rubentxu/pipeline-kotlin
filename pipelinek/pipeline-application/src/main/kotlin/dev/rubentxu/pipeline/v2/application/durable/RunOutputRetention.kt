@@ -70,7 +70,7 @@ sealed interface RunOutputDisposition {
  * ## Why the reporting lives here and not in the coordinator
  * The verdict has to be REPORTED, and the reporting is interpretation: "a release that did not fully
  * happen" is a sentence about retention, not about orchestration. Putting it in the coordinator grew
- * that file past its own `CoordinatorGrowthGuardrailTest` ceiling, and the guard was right to object
+ * that file past its own growth ceiling, and the guard was right to object
  * — the coordinator would have been interpreting a collaborator's verdict. So this owns the sentence,
  * through a defaulted sink so a caller can route it (tests assert on the disposition, not on stderr)
  * while the default is the operator's terminal, which is where a post-run diagnostic belongs.

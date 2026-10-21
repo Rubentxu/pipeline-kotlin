@@ -24,12 +24,10 @@ class HttpCodecException(message: String) : IllegalArgumentException(message)
  * what happens when a producer and a codec drift: its payload ended up with
  * `kind=sh|shell`, `command|script` and `returnStdout|returnMode`, and every alias
  * became a compatibility shim added after the divergence instead of a bug fixed
- * before it. `Lfc2HttpOfficiallyPluginBoundaryFitnessTest` refuses to manufacture
- * that debt for httpRequest.
- * The schema below is kept honest against [encode] by
- * `HttpRequestStepContractTest`, which fails when the two disagree — a declared
- * schema that no longer describes the bytes is how a consumer ends up rejecting
- * valid payloads.
+ * before it.
+ * The schema below describes what [encode] writes. A declared schema that no
+ * longer describes the bytes is how a consumer ends up rejecting valid payloads,
+ * so a change to the wire format has to change this block in the same commit.
 */
 object HttpRequestCodec : StepCodec<HttpRequestInput> {
 

@@ -98,8 +98,8 @@ import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
  * throws. They are only ever reached through [HumanConsoleRenderer.line], which is exhaustive over
  * the sealed hierarchy, so the fallback is unreachable unless the routing table and a handler
  * disagree — and that disagreement must stop the console rather than produce a plausible wrong line.
- * `RendererRoutePartitionTest` checks the two lists against the hierarchy so the disagreement
- * cannot survive.
+ * The exhaustive `when` in [HumanConsoleRenderer.line] is what checks the two lists against
+ * the hierarchy, so the disagreement cannot survive.
 */
 internal object ConsoleFamilyLines {
 

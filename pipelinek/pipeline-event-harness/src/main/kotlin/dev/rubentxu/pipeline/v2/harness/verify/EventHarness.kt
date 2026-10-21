@@ -32,21 +32,16 @@ object EventHarness {
 
     /**
      * Adapter-side construction. Order = (store insertion order, sequence).
-     * Under BASELINE DEBT **** a durable resume re-appends the skeleton
-     * events for a run id it REUSES, so one run carries more than one
-     * [RunStarted]. Insertion order keeps the last execution segment a contiguous
-     * suffix, so [Scope.AFTER_LAST_RUN_STARTED] stays deterministic WITHOUT
-     * timestamps (INC-021d law honored).
-     * Two things this comment used to get wrong, kept here because the
-     * correction is the non-obvious part: it said the re-appended events carry
-     * "restarting sequences", and a second KDoc called it "duplicate-sequence
-     * debt". Both are false, and the store is why. The lifecycle engine emits
-     * each re-appended event with `sequence = 0L`, but
+     * A durable resume re-appends the skeleton events for a run id it REUSES,
+     * so one run carries more than one [RunStarted]. Insertion order keeps the
+     * last execution segment a contiguous suffix, so
+     * [Scope.AFTER_LAST_RUN_STARTED] stays deterministic WITHOUT timestamps.
+     * What is duplicated is the EVENT, not the sequence: the lifecycle engine
+     * emits each re-appended event with `sequence = 0L`, but
      * `SqliteEventStore.appendAssigned` reads `0L` as a REQUEST to be assigned a
      * sequence rather than as a value -- it returns `counter.incrementAndGet()`.
-     * So the second `RunStarted` takes the NEXT sequence, never collides with
-     * `UNIQUE(run_id, sequence)`, and is not a duplicate sequence at all. What is
-     * duplicated is the EVENT.
+     * So the second `RunStarted` takes the NEXT sequence and never collides with
+     * `UNIQUE(run_id, sequence)`.
 */
     fun typedHistory(sink: EventSink, runId: String, fromSequence: Long = 0L): List<TypedEvent> =
         sink.eventsFor(runId)

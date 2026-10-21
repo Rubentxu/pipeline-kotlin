@@ -18,35 +18,29 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `58511c491` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `58511c491` | `git rev-parse HEAD` |
+| SHA | `09cd325a8` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `09cd325a8` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **905** (122 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **911** (123 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Escenarios E2E | **52 (52 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios que sólo comprueban el código de salida | **0**, con **una excepción declarada**: `plugins/lock-directive` afirma su sujeto *por medio* del código de salida —su directiva no emite nada, y si el plugin no se descubriera la etapa se negaría—, así que ahí el código de salida es la aserción y no un testigo vacío | censo por directiva y por cuerpo, sobre los **52** escenarios; el número anterior («0», sin excepción y sobre 47) no nombraba el caso que lo contiene |
-| `VERIFY_LOC / PRODUCT_LOC` | **15209 / 65309 = 0.233** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **15499 / 65325 = 0.237** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **671 / 655 / 625** en los tres ensayos, los tres sobre `58511c491`, peor 671 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **645 / 626 / 631** en los tres ensayos, los tres sobre `09cd325a8`, peor 645 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **802** entradas de baseline: **sin cambio**, porque la ley que este ciclo añadió salió a su propio objeto en vez de empujar a `ProtocolGrammar` por encima del límite de detekt | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 Las cifras de este ciclo suben en lo que este ciclo añadió y sólo en eso:
-**905** tests (16 más que los 889 del ciclo anterior) y **52** escenarios (3
-más). Los 16 tests nuevos son las **4** filas del drain que declara que el run
-terminó aunque el filtro lo excluya (`events/05`, §2.30), las **5** del
-adaptador de introspección (el bookend termina el run con su outcome, un
-bookend abortado se reporta como abortado, una fila terminal de operación no
-termina el run, un bookend de fallo se reporta como fallo, y la lectura no
-muta nada) y las **7** del adaptador de recuperación (un run con una operación
-en vuelo no se cierra, un run con toda su labor terminada se cierra, un run con
-una operación fallida no se cierra como exitoso, un run abortado se cierra como
-abortado, la recuperación no reejecuta, la lease se toma y se devuelve, y una
-lease viva ajena se niega con su propia negativa). Los 3 escenarios nuevos son
-`events/05-run-state` (el que pregunta a un run qué estado tiene), 
-`durable/40-recover-refuses-a-half-finished-run` (el que cierra un run cuyo
-escritor murió sin fabricar un éxito) y `events/04-follow-filtered` (§2.30).
+**911** tests (6 más que los 905 del ciclo anterior) y **52** escenarios (los
+mismos). Los 6 tests nuevos son las **5** filas del adaptador de cancelación
+(§2.33) —que no tenía ni una prueba— y la **1** del adaptador de recuperación
+(un run cancelado no se reanuda). El bloque de la cancelación a medias **no
+añadió ningún escenario permanente**: su UAT efímero, que sí se ejecutó con el
+binario real y se encendió contra el binario previo, se retiró al cerrar el
+ciclo con su evidencia escrita aquí, y lo que se promovió son las seis filas
+unitarias, que son más baratas y discriminan cada cláusula.
 
 El bloque del reloj (§2.32) **no añadió ni un test permanente ni un escenario
 permanente**, y ese es el punto: lo que protege la garantía es el auto-control
@@ -54,8 +48,8 @@ del arranque, que ya corre en cada invocación del lanzador. Los dos UAT que lo
 probaron (una escena colgada y una escena que falla de verdad) se retiraron al
 cerrar el ciclo, con su evidencia escrita aquí.
 
-El ratio de LOC sube de 0.230 a **0.233**, todavía muy por debajo del límite 2,
-y el peor módulo sigue siendo el mismo de siempre
+El ratio de LOC sube de 0.230 a **0.237** en los dos últimos ciclos, todavía
+muy por debajo del límite 2, y el peor módulo sigue siendo el mismo de siempre
 (`pipeline-step-sdk:workflow-control`, 1.633) porque este ciclo no lo tocó.
 
 Lo que este ciclo **no** tocó, y conviene que no se confunda con un avance:
@@ -83,16 +77,19 @@ regla vieja del recover) hizo que `durable/40` dijera «recovered run … as
 succeeded» sobre un run a medio hacer. En el reloj del lanzador (§2.32), **M6**
 (el reloj deja de disparar) colgó el lanzador sin veredicto ninguno, y **M7**
 (el reloj dispara pero nadie lo nombra) dejó la escena como `failed` en vez de
-BLOCKED. Todas se leyeron de vuelta y se deshacieron.
+BLOCKED. En la cancelación (§2.33), **M8** (volver a escribir el hecho terminal
+antes del sellado) encendió **2 de 5** filas del adaptador de cancelación, y
+**M9** (que el recover deje de reconocer el recibo de cancelación) encendió
+**1 de 6** del módulo. Todas se leyeron de vuelta y se deshacieron.
 
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
-los **122** informes JUnit, que es la condición que hace que la cifra de reloj
+los **123** informes JUnit, que es la condición que hace que la cifra de reloj
 mida el gate y no una restauración de caché. Un total correcto con el verbo
 equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
 **falla** si no reescribe ninguno. Los tres ensayos de este bloque se corrieron
-con la máquina cargada por procesos **ajenos a este repositorio** (`rustc` a
-pleno rendimiento): los tres siguieron dentro del presupuesto, y esa carga
-externa es la razón de que sus relojes sean más altos que los del ciclo
+con la máquina cargada por procesos **ajenos a este repositorio** (hay otro
+workspace trabajando en ella): los tres siguieron dentro del presupuesto, y esa
+carga externa es la razón de que sus relojes sean más altos que los del ciclo
 anterior —no el reloj del lanzador, que no añade tiempo sino que lo acota—.
 
 **El gate cuenta 26 proyectos Gradle con test, y un censo independiente por
@@ -4093,6 +4090,119 @@ certificador externo en **`BLOCKED_EXTERNAL`**. Los tres ensayos corrieron con
 la máquina cargada por procesos ajenos a este repositorio, y los tres
 siguieron dentro del presupuesto.
 
+### 2.33 La cancelación a medias: un fallo de sellado ya no deja el run cerrado
+
+El bloque B1.2 pedía reconciliar una cancelación parcialmente confirmada. La
+medición lo dejó claro, y era un hueco real: el adaptador de cancel escribía el
+**recibo**, luego el **hecho terminal** del run, y sólo después **sellaba** los
+streams de salida. Con ese orden, un fallo del Output Plane dejaba el run en un
+estado que **nadie podía terminar**:
+
+- el run ya estaba **ABORTED** —su bookend estaba escrito—, y
+- sus streams de salida **no estaban sellados**, así que sus bytes no terminaban
+  nunca.
+
+El cancel siguiente lo encontraba con `cancelRecorded = true` y respondía
+`AlreadyCancelled`: no sellaba nada. Y `runs recover` tampoco sellaba —en
+`RecoverAdapters` no había una sola llamada a `seal`—, de modo que **nadie** iba
+a sellar esos bytes jamás. Un lector que siguiera la salida de un run abortado
+se quedaba esperando para siempre.
+
+Peor que el hueco: el cancel que fallaba **decía una cosa falsa**. Devolvía
+`Refused(StorageError)` —«no se pudo cancelar»— sobre un run que ya estaba
+cerrado y abortado. El operador recibía dos respuestas contradictorias sobre el
+mismo run: «falló» y «ya estaba cancelado».
+
+**El orden de las escrituras era el defecto, y el contrato ya decía cuál es el
+correcto.** `CancelOutcome.Cancelled` significa «este call cerró el run, la
+cancelación quedó registrada y los streams de salida quedaron sellados». Eso sólo
+es verdad si el **hecho terminal va último**. Así que el orden ahora es: recibo,
+sellado, bookend.
+
+Con ese orden, un fallo de sellado deja el run **sin cerrar** y con el recibo de
+la intención ya escrito —justo el estado que el decider ya describía como «un
+cancel que registró su intención y murió antes de escribir el hecho terminal es
+un run que un cancel posterior termina»—. El cancel siguiente sella lo que
+falte (el sellado es idempotente), escribe el bookend **una** vez y responde
+`Cancelled`. Ningún efecto se repite: el recibo se actualiza en su fila, porque
+está indexado por el run, y el sellado de un stream ya sellado es un no-op. Y la
+primera negativa ahora es **cierta**: nada terminal había pasado.
+
+**El recover también habla el idioma del journal.** Un run cancelado es terminal
+aunque tuviera un paso en vuelo cuando lo cancelaron —el cancel es su hecho
+terminal—, y el journal lo dice con un vocablo que ya existía publicado
+(`TerminalObservation.Cancelled`, y una rama del decider que estaba **muerta**,
+porque nadie producía nunca «cancelled»). Con eso, el recover de un run
+cancelado responde «ya está cerrado, no hay nada que recuperar» en vez de
+**ofrecer un re-attach**: reanudar un run que alguien canceló a propósito puede
+repetir el efecto del paso interrumpido, que es justo lo que el cancel quería
+evitar. El nombre del recibo vive ahora en un sitio solo (`CancelReceipt`), que
+lo escriben y lo leen sin que las dos copias se separen.
+
+**El adaptador de cancel no tenía ninguna prueba.** Es la pieza que decide si
+una ejecución se puede cerrar, y estaba sin observador: su regla de decisión
+pura sí tenía test, el adaptador no. Para poder observarlo sin disco, el
+adaptador ahora depende del **puerto** de lease y no de su implementación en
+ficheros —igual que hace el recover—, y el sellado entra como **función
+inyectada**, que es donde cabe el fallo que hace falta provocar. Nace
+`RuntimeControlPortStoreAdapterTest` con **cinco filas**: el camino feliz, el
+fallo de sellado, la reconciliación, la invariante de N llamadas con un solo
+estado terminal, y que la lease se devuelve también cuando el cancel falla. En
+el recover se añade una sexta: un run cancelado no se reanuda.
+
+**Las mutaciones, vistas en rojo sobre el código final.** **M1** (volver a
+escribir el hecho terminal antes del sellado) encendió **2 de las 5** filas del
+adaptador —«un fallo de sellado no deja el run cerrado» y «el cancel siguiente
+termina el trabajo»—, y ninguna más. **M2** (que el recover deje de reconocer
+el recibo de cancelación) encendió **1 de las 6** del módulo —«un run cancelado
+no se reanuda»—, y ninguna más. Ambas se leyeron de vuelta y se deshacieron.
+
+**El UAT efímero, con el binario real, y lo que se retira.** Fue un script
+efímero fuera del repo, sobre la distribución recién construida: mata al
+escritor de un run, inyecta un fallo de sellado real —un enlace simbólico
+colgante en el marcador, que hace que la escritura falle con un
+`NoSuchFileException` de verdad, sin depender de los permisos ni de ser root—,
+y después lo cancela tres veces. Con el binario corregido: el primer cancel **se
+niega** (salida 2) y el run **no** queda cerrado, el recover **no ofrece**
+reanudarlo, el segundo cancel **termina el trabajo** («cancelled run … (1 output
+stream(s) sealed)»), el run tiene **un** hecho terminal, el stream queda
+**sellado**, y el tercer cancel es un no-op. **El mismo UAT contra el binario
+previo se encendió en 2 de sus comprobaciones** —«el run quedó cerrado aunque el
+sellado falló» y «ningún stream quedó sellado»—: el defecto es real y el
+instrumento lo ve.
+
+Se **RETIRA**: su inyección necesita una ruta interna del store y una secuencia
+de tres cancels que el lanzador no expresa, y hacerlo expresable sería crecer el
+arnés para proteger una garantía que ya protege el sitio más barato. Lo que se
+**PROMUEVE** son las seis filas unitarias, que son deterministas, no tocan disco
+y discriminan cada cláusula. El ejemplo permanente `durable/39-cancel-dead-run`
+sigue cubriendo el camino feliz por CLI —el primer cancel cierra el run y el
+segundo es un no-op—.
+
+**La deuda que queda de este bloque, dicha.** La introspección no tiene
+vocabulario para «cancelado a medias»: un run sin hecho terminal se lee como
+«running», que es cierto —el run no está cerrado— pero no dice que hubo un
+cancel. Y un cancel que falla no deja más rastro que su recibo en el journal.
+Ninguna de las dos cosas es una mentira, y ninguna necesita un contrato nuevo
+para arreglarse; lo que harían falta es más vocabulario **publicado**, y eso
+sería una ruptura versionada que este bloque no pide. Queda anotado, no
+resuelto.
+
+**La medición de este bloque, sobre `09cd325a8`.** La puerta completa corrió
+**tres veces** sin filtros, desde salidas de build limpias: **645 / 626 / 631 s**,
+peor 645 s contra el límite de 900 s. Las tres reescribieron los **123** informes
+JUnit —**911** tests, 0 fallos, 0 errores, 0 skips— y pasaron los **52**
+escenarios E2E con **0 bloqueados**, 2 reruns durables y 7 credenciales
+sembradas. El ratio de LOC sube de 0.233 a **0.237** (**15499 / 65325**), y el
+peor módulo sigue siendo `pipeline-step-sdk:workflow-control` (**1.633**), que
+este bloque no tocó. La deuda estática congelada sigue en **802** entradas y el
+certificador externo en **`BLOCKED_EXTERNAL`**. No hay `NOT_RUN` ni `BLOCKED` en
+la puerta: el UAT efímero de este bloque se ejecutó y pasó (y se encendió contra
+el binario previo), y lo único que sigue impedido es el certificador, que no
+existe ni aquí ni en remoto. Los tres ensayos corrieron con la máquina cargada
+por procesos **ajenos a este repositorio** —hay otro workspace trabajando en
+ella— y los tres siguieron dentro del presupuesto.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
@@ -4752,6 +4862,36 @@ siguieron dentro del presupuesto.
   instrumento—, y lo que quedó **DEFERIDO** —un ejemplo que se cuelga a
   propósito— lleva dueño y motivo: costaría vocabulario nuevo en el lanzador
   para proteger un diagnóstico, no una garantía.
+
+- **El hecho terminal se escribe al final.** El orden de las escrituras de un
+  cancel no es una preferencia de estilo: `CancelOutcome.Cancelled` promete que
+  el run quedó cerrado **y** sellado, y eso sólo es cierto si el bookend va
+  después del sellado. Con el orden viejo, un fallo del Output Plane dejaba un
+  run abortado cuyos bytes no terminaban nunca, y nadie —ni un cancel ni un
+  recover— podía terminarlo. El orden nuevo deja, en ese fallo, un run **sin
+  cerrar** con la intención ya registrada: un estado que otro cancel termina
+  sin repetir ningún efecto, y hace que la primera negativa sea cierta en vez de
+  contradecir al run que se negaba a cerrar.
+
+- **Un run cancelado es terminal aunque tuviera un paso en vuelo.** El cancel es
+  su hecho terminal, y el journal lo dice con el vocablo que ya estaba publicado
+  (`cancelled`) y que nadie producía nunca. Sin eso, un run cancelado se parecía
+  a uno caído: su journal no tenía fila terminal, el recover le ofrecía un
+  re-attach, y reanudar un run que alguien canceló a propósito puede repetir el
+  efecto del paso interrumpido —justo lo que el cancel quería evitar.
+
+- **Un adaptador depende del puerto, no de su implementación.** El adaptador de
+  cancel dependía de la lease en fichero, y por eso no tenía ni una sola
+  prueba: cualquier observador suyo necesitaba un disco. Depender del puerto —
+  como ya hacía el recover— permite observarlo con autoridades en memoria y con
+  el sellado como **función inyectada**, que es donde cabe el fallo que hay que
+  provocar para ver la garantía en rojo.
+
+- **El nombre del recibo vive en un sitio solo.** El id reservado del recibo de
+  cancelación lo escribe el cancel y lo lee el recover: si cada uno lo nombrara
+  por su cuenta, se separarían el primer día que alguien cambiara el prefijo.
+  `CancelReceipt` es ese sitio, y la rama «cancelled» del decider —que estaba
+  muerta, porque nadie producía ese vocablo— vuelve a tener a quién servir.
 
 ## 4. Referencias
 

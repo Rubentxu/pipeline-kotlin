@@ -45,6 +45,7 @@ class SdkCapabilitiesRegistryTest {
         Triple("runtime.eventshape.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.54.0-rc1"),
         Triple("runtime.eventshape.v2", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
         Triple("events.stepoutcome.v1", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
+        Triple("events.failurestage.v1", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
     )
 
     @Test
@@ -121,6 +122,26 @@ class SdkCapabilitiesRegistryTest {
             announced.contains("runtime.eventshape.v2"),
             "the typed shape carries the same verdict, so the id that names it has to be announced " +
                 "too — otherwise a consumer of the shape has nothing to negotiate",
+        )
+    }
+
+    @Test
+    @DisplayName("the failure's stage is delivered under the id this build announces")
+    fun `the failure's stage is delivered under the announced id`() {
+        val announced = SdkCapabilities.ALL.map { it.id }
+
+        assertTrue(
+            announced.contains("events.failurestage.v1"),
+            "the build publishes the stage a failure belongs to in the failure event itself, so it " +
+                "must announce the id that names it",
+        )
+        assertTrue(
+            SdkCapabilities.ALL.none {
+                it.id.startsWith("events.failurestage.") && it.status == SdkCapabilities.CapabilityStatus.PUBLICADA &&
+                    it.id != "events.failurestage.v1"
+            },
+            "only the id this build delivers may claim to be delivered; two ids for one " +
+                "vocabulary leave the consumer choosing between them",
         )
     }
 

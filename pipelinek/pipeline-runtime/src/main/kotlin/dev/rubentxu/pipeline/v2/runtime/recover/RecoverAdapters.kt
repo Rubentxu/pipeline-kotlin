@@ -16,7 +16,6 @@ import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
-import dev.rubentxu.pipeline.v2.events.durable.RunExecutionLease
 import dev.rubentxu.pipeline.v2.events.durable.RunLeasePort
 import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.output.OutputFrameIndex

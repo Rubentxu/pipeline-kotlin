@@ -175,7 +175,7 @@ pipelinek run --help
 
 ## Examples
 
-The [`examples/`](examples/) directory holds 49 runnable
+The [`examples/`](examples/) directory holds 50 runnable
 pipelines that exercise the real CLI, grouped by what they cover:
 
 | Category | Scenarios | What it covers |
@@ -186,7 +186,7 @@ pipelines that exercise the real CLI, grouped by what they cover:
 | `durable/` | 12 | Durable execution over the journal: platform queries, milestones, `waitUntil`, `stash`/`unstash`, the replay guarantee, closing a run whose writer was killed, and six Saga scenarios — compensation, intervention, a crash mid-effect and its reconciliation |
 | `security/` | 2 | Credential bindings, and a ZIP-slip path-traversal defence |
 | `output/` | 7 | The output plane: file reads, a utilities round trip, ZIP/unzip, mixed utilities, cross-step artifact queries, HTML publishing, and the live output of a process |
-| `events/` | 3 | The event lane read by an external client: it reads by cursor, disconnects, and resumes without skipping or repeating a fact; it reads a step's **verdict** out of the event that ends the step; and it reads the **stage** a failure belongs to out of the failure event itself — never joining two events |
+| `events/` | 4 | The event lane read by an external client: it reads by cursor, disconnects, and resumes without skipping or repeating a fact; it reads a step's **verdict** out of the event that ends the step; it reads the **stage** a failure belongs to out of the failure event itself — never joining two events; and it **follows** a finished run with a filter and is released when the run ends, because the filter says what the client is handed, not whether the run is over |
 | `negative/` | 9 | Deliberate failures that must fail closed: error handling, the typed error step, a command that exits non-zero, a workspace symlink escape, an unregistered directive key, a plugin artifact whose bytes cannot be read, a plugin whose bytes are not the ones the operator approved, and two reads of the event lane that must say **why** they cannot be served — an unknown run and a cursor past the tail |
 | `plugins/` | 5 | The four external example plugins, discovered from the distribution classpath: `uppercase`, `repeat`, a contributed directive, and the Saga consumer — plus a plugin admitted under the operator's trust policy |
 
@@ -254,6 +254,14 @@ and nothing else about a scenario is interpreted:
                               // says which stage the failure belongs to. A
                               // failure that names no stage is not a failure
                               // in the first stage
+//@ events-follow <kind> <s>  // the run is the FIXTURE and the verdict is the
+                              // follower's: the launcher follows it WITH a
+                              // filter and under a wall clock, and asserts
+                              // that the follow ENDS (a filter decides what the
+                              // client is handed, not whether the run is over),
+                              // that it does not deliver a fact the filter
+                              // excludes, and that it does deliver the filtered
+                              // one
 ```
 
 Every directive except `expect-exit` may appear more than once, and each

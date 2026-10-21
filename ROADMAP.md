@@ -3206,7 +3206,7 @@ antiguo, ni una suite E2E en Kotlin, ni una campaña de mutaciones masiva.
 | Hito | Repositorio | Garantía | Instrumento más barato que puede fallar | Evidencia de cierre |
 |---|---|---|---|---|
 | **P0.1** Negativas de lectura diferenciadas | Core | Un consumidor de eventos distingue «el run no existe», «el cursor no vale» y «el almacenamiento falló». Hoy las tres son `UnknownRun` | Test unitario puro sobre el traductor de negativas del follow handle: tres entradas, tres salidas distintas. Sin disco: un `StorageError` se fabrica como valor | **Hecho** (§2.25): 3 clases de test y 2 escenarios ejecutables; 4 mutaciones vistas en rojo; publicación versionada (`events.follow.v2`, `events.follow.v1` DEPRECATED) y dump de ABI regenerado |
-| **P0.2** Seal externo de streaming | Core | Un cliente externo lee la historia por cursor, se desconecta y vuelve sin saltarse ni duplicar hechos | Ejemplo ejecutable en `examples/`: un lector externo (el verbo `events` con cursor) que lee, corta y reanuda; y el caso del cursor inválido, que debe salir con su negativa propia | **Hecho** (§2.26): el ejemplo `events/01-external-reader-resumes` falla si el cursor se resetea al reconectar (probado: en rojo nombrando el hecho perdido) y si la negativa degrada a «run desconocido» (ciclo anterior). 4 filas de test unitario sobre la regla de paginación; 2 mutaciones vistas en rojo |
+| **P0.2** Seal externo de streaming | Core | Un cliente externo lee la historia por cursor, se desconecta y vuelve sin saltarse ni duplicar hechos | Ejemplo ejecutable en `examples/`: un lector externo (el verbo `events` con cursor) que lee, corta y reanuda; y el caso del cursor inválido, que debe salir con su negativa propia | **Hecho** (§2.26): el ejemplo `events/01-external-reader-resumes` falla si el cursor se resetea al reconectar (probado: en rojo nombrando el hecho perdido) y si la negativa degrada a «run desconocido» (ciclo anterior). 4 filas de test unitario sobre la regla de paginación; 2 mutaciones vistas en rojo. El `--follow` **con filtro** del mismo verbo, que no terminaba nunca sobre un run ya acabado, ahora termina (§2.30): 4 filas de test unitario y un escenario con reloj; 3 mutaciones vistas en rojo |
 | **P0.3** Streaming incremental a Fabric | Fabric | Jenkins muestra progreso durante el run, no al final | Pruebas de `pipelinek-fabric`; en Core, sólo el contrato que consume | Fuera de este repositorio: su propio gate y su RC |
 | **P0.4** Persistencia y recuperación de Fabric | Fabric | Reiniciar el control plane no pierde, duplica ni inventa hechos | Igual que P0.3, con su cursor confirmado | Fuera de este repositorio |
 | **P1.1** API de Runtime | Core | El cancelador está cableado y expuesto; `inspect` y `recover` siguen sin exponerse porque serían un segundo plano y un segundo motor (§2.20) | El E2E `durable/39-cancel-dead-run`, más la **compilación independiente** de `:pipeline-runtime` y un recorrido operativo real que lo use (lo que pide el informe del 21/10, §2.28) | Hecho en el ciclo anterior, y la decisión de no exponer los otros dos queda escrita y a la vista. El jar del módulo **sí** está en la distribución; lo que falta es el consumidor acreditado |
@@ -3794,6 +3794,87 @@ mentira. La ley de contradicción terminal se demuestra entonces por su tabla
 —con sus planos medidos y sus mutaciones vistas en rojo—, no por un escenario.
 El hueco queda escrito como **P1.7**.
 
+### 2.30 El follow con filtro que no terminaba
+
+Este ciclo cerró un defecto que llevaba **P0.2** debajo: el verbo `events
+--follow` con un filtro no terminaba nunca.
+
+**El hueco, medido con el binario y no supuesto.** Sobre un run que ya había
+terminado:
+
+```text
+$ pipelinek events <runId> --db <db> --follow
+0                                   (sale enseguida)
+
+$ pipelinek events <runId> --db <db> --follow --kind StepFinished
+124                                 (se agotó el tiempo: no terminó nunca)
+```
+
+El follow sin filtro salía con 0; **con** filtro no terminaba. No era un
+problema de velocidad ni de historia: era un proceso que no acababa.
+
+**La causa: una autoridad duplicada y mal situada.** El follow buscaba el
+hecho terminal (`RunFinished`) entre los hechos que acababa de **entregar**, y
+un filtro que lo excluye no lo deja ver nunca. La salida alternativa —«el
+almacén dijo que no hay más filas»— era **inalcanzable**: el cursor del
+almacén nunca es nulo (`readRecords` siempre devuelve un `EventCursor`), así
+que el follow sondeaba para siempre sobre un run que había acabado hace
+minutos. La versión publicada del follow dice lo correcto —una observación
+`RunFinished` saca al follow de su estado vivo—; el verbo lo aplicaba a las
+filas equivocadas.
+
+**La regla, y por qué es la que es.** El filtro decide **qué recibe el
+cliente**; no decide **si el run se acabó**. El hecho terminal del run es el
+`RunFinished` **en el almacén**, y eso es un hecho del run, no de la
+corriente filtrada.
+
+**Cómo quedó.** `RunTerminal` es la autoridad, en un solo sitio: el kind
+terminal y la pregunta. `EventPageDrain` declara ahora `runEnded` en sus dos
+outcomes, acumulado sobre las **filas leídas** —no sobre las entregadas— y el
+verbo decide con ese dato. El verbo además **dejó de llevar su propia
+comprobación** de los hechos entregados: esa era la autoridad duplicada, y
+quitarla es parte del arreglo, no una limpieza.
+
+El verbo `observe` ya tenía esta regla —leía el lane **sin filtrar** y
+filtraba al entregar—, así que el defecto era del verbo `events`, no del
+producto.
+
+**No se tocó ningún contrato publicado.** `:pipeline-application` no es un
+módulo publicado: no hay break de ABI, ni entrada en el ledger, ni versión
+nueva que negociar.
+
+**Lo que este ciclo tuvo que arreglar de paso, y por qué.** `runFollow` quedó
+sobre el límite de complejidad de detekt (26, con el máximo en 25) y la
+respuesta del propio config —y de `AGENTS.md`— es **extraer, no anotar**: la
+espera de sondeo sale a `awaitNextPoll`, que no tiene opinión sobre el run ni
+autoridad sobre el hecho terminal. La baseline **no creció**: sigue en **802**
+entradas.
+
+**Los instrumentos, y por qué son dos.** El puro es el drain, con un doble en
+memoria del puerto de lectura: cuatro filas que dicen qué filas se miraron
+para decidir. El ejecutable es el escenario `events/04-follow-filtered`, donde
+el lanzador hace de cliente externo y sigue el run **con filtro** bajo un
+**reloj**: un exit code no distingue «no terminó» de «terminó con otro
+código», y sólo un reloj cazar una espera que no acaba.
+
+**Las mutaciones, vistas en rojo sobre el código final.** **M1** (el drain lee
+el hecho terminal de los hechos entregados en vez de de las filas leídas)
+encendió **1 de 4** filas —la que dice que el run terminó aunque el filtro lo
+excluya— y el ejemplo ejecutable. **M2** (el verbo ignora el informe del
+drain) dejó el unitario **en verde** y encendió el ejemplo: el drain era
+correcto, el que no lo consultaba era el verbo. **M3** (el drain tipado no
+reporta el hecho) encendió **1 de 4** filas, la del drain tipado, y dejó
+verdes las tres del de sobres. Las tres se leyeron de vuelta y se deshacieron.
+M2 es la que prueba que los dos instrumentos **ven cosas distintas**, y por
+eso hacen falta los dos.
+
+**Un hueco hermano que este ciclo encontró y NO arregló, y que por eso lleva
+dueño.** El verbo `observe --follow` usa el cursor **del almacén**, que es
+otra semántica: la del verbo `events` es el cursor **del cliente** (§2.26). No
+es el mismo defecto —el observe sí termina— pero son dos verbos que
+responden «¿dónde sigo?» con dos reglas distintas, y eso está medido y
+escrito, no arreglado de paso.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
@@ -4335,6 +4416,33 @@ El hueco queda escrito como **P1.7**.
   orden, y lo que sí queda fijado es que un fallo **sin** stage no tiene
   identidad —no es el stage 0—, que es la fila que la mutación «lee el
   stage ausente como 0» enciende.
+- **El filtro decide qué se entrega, no si el run terminó.** Un filtro es una
+  decisión del cliente sobre qué hechos quiere ver; el final del run es un
+  hecho del run. Confundir las dos cosas produce el peor de los dos mundos:
+  el cliente recibe exactamente lo que pidió y no puede saber cuándo dejar de
+  esperar.
+- **La autoridad terminal es el almacén, y la consulta el único que lee las
+  filas.** El drain es el único componente que ve lo que el almacén devolvió,
+  así que es el único que puede decir si el run se acabó **independientemente
+  del filtro**. Por eso `runEnded` viaja en el outcome del drain y no en una
+  bandera que el verbo calcule por su cuenta.
+- **La comprobación duplicada se quita, no se conserva.** El verbo llevaba su
+  propia mirada al `RunFinished` entre los hechos entregados. Con el drain
+  reportando el hecho, esa línea era una segunda autoridad: dos reglas para
+  la misma pregunta, y la que sobraba era la que estaba mal.
+- **Un instrumento puro y un instrumento con reloj, porque ven cosas
+  distintas.** El unitario mira **qué filas se miraron** para decidir, y no
+  puede ver un proceso que no termina. El ejecutable, con su reloj, es el
+  único que puede afirmar «terminó». La mutación M2 lo dejó demostrado: el
+  unitario siguió en verde mientras el ejemplo caía.
+- **La complejidad se arregla extrayendo.** `runFollow` pasó de estar sobre
+  el límite de complejidad de detekt a estar bajo él, porque la espera de
+  sondeo salió a su propia función. La baseline sigue en **802** entradas: ni
+  una más.
+- **Un hueco hermano se escribe, no se arregla de paso.** `observe --follow`
+  usa el cursor del almacén y `events --follow` el del cliente. No es el
+  mismo defecto, pero son dos verbos con dos reglas de «¿dónde sigo?». Queda
+  medido y con dueño; no se tocó.
 
 ## 4. Referencias
 

@@ -239,9 +239,10 @@ class Kotlin24ScriptingHost(
             // fail-closed DSL guard such as `whenCondition`) surfaces here as a
             // ResultValue.Error while `rwd` still reports Success. Mapping that
             // to Success with a spec-less instance was the DEFAULT_SUCCESS that
-            // produced an NPE at Main.kt runCanonicalPipeline(compiledPipeline!!)
-            // with exit 0, and made `validate` report VALIDATION SUCCESSFUL for
-            // a script that cannot build its IR.
+            // produced an NPE at the canonical run (`runCanonical`, then
+            // `runCanonicalPipeline(compiledPipeline!!)`) with exit 0, and made
+            // `validate` report VALIDATION SUCCESSFUL for a script that cannot
+            // build its IR.
             val evalError = evalResult.returnValue as? kotlin.script.experimental.api.ResultValue.Error
             if (evalError != null) {
                 ScriptCompilationResult.Failure(

@@ -7,12 +7,12 @@ import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
-import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
 import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.events.durable.RunExecutionLease
+import dev.rubentxu.pipeline.v2.events.durable.RunLeasePort
 import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.output.OutputFrameIndex
 import dev.rubentxu.pipeline.v2.output.OutputPin
@@ -64,7 +64,7 @@ fun interface RuntimeRecoverPortIntrospect {
 class RuntimeRecoverPortStoreAdapter(
     private val journal: OperationJournal,
     private val cursors: ReplayCursorStore,
-    private val lease: FileBackedRunExecutionLeaseStore,
+    private val lease: RunLeasePort,
     private val outputRecovery: OutputRecoveryPort,
     private val frames: OutputFrameIndex,
     private val introspect: RuntimeRecoverPortIntrospect,
@@ -94,32 +94,48 @@ class RuntimeRecoverPortStoreAdapter(
     // four-stage contract.
     @Suppress("LongMethod", "CyclomaticComplexMethod")
     override fun recover(runId: String, options: RecoverOptions): RecoverOutcome {
-        val syntheticObserver: RunOwnerId = RunOwnerId.of(syntheticObserverId)
+        val owner: RunOwnerId = RunOwnerId.of(syntheticObserverId)
             ?: error("invalid syntheticObserverId $syntheticObserverId")
-        // 1. Lease boundary (audit B.8, G.3 by analogy). Consult the pure
-        //    decider with a synthetic request; refuse only on
-        //    LeaseAcquisition.AlreadyOwned (a live other-owner present).
-        //    Reentered / Acquired / TakenOver / Unverifiable are tolerated
-        //    because recover does NOT actually acquire — it observes.
-        val observed = try {
-            lease.observe(runId)
+
+        // 1. TAKE the run's lease. The lock behind it is the only authority on
+        //    "is a live process publishing this run".
+        //
+        //    It used to CONSULT the lease record and decide with the pure
+        //    decider, and that was the same defect section 2.20 of the ROADMAP
+        //    fixed in the cancel adapter: a record left behind by a killed
+        //    writer still says its owner is alive, so recovering a DEAD run
+        //    concluded the run was busy and refused. The whole point of
+        //    recovering a run is that nobody is working on it.
+        //
+        //    The lease is held for the whole call and given back at the end,
+        //    so a recover that refused and a recover that committed both leave
+        //    the run closable.
+        val acquisition = try {
+            lease.acquire(LeaseRequest(runId = runId, ownerId = owner))
         } catch (e: Exception) {
             return RecoverOutcome.FailClosed(
                 RecoverRefusal.StorageError(e.shortDiagnostic()),
             )
         }
-        val syntheticRequest = LeaseRequest(runId = runId, ownerId = syntheticObserver)
-        when (val decision = RunExecutionLease.acquire(observed, syntheticRequest)) {
+        when (acquisition) {
             is LeaseAcquisition.AlreadyOwned -> {
                 return RecoverOutcome.FailClosed(
                     RecoverRefusal.LeaseHeldByAnother(
-                        "run $runId is held by ${decision.heldBy.value}",
+                        "run $runId is held by ${acquisition.heldBy.value}",
                     ),
                 )
             }
-            else -> { /* Reentered / Acquired / TakenOver / Unverifiable — proceed. */ }
+
+            is LeaseAcquisition.Unverifiable -> {
+                return RecoverOutcome.FailClosed(
+                    RecoverRefusal.StorageError(acquisition.reason),
+                )
+            }
+
+            else -> { /* Acquired / Reentered / TakenOver — the run is ours now. */ }
         }
 
+        try {
         // 2. Introspect (existing).
         val observationResult = try {
             introspect.inspect(runId)
@@ -145,16 +161,32 @@ class RuntimeRecoverPortStoreAdapter(
                 RecoverRefusal.StorageError(e.shortDiagnostic()),
             )
         }
-        val terminalOp = journalOps.firstOrNull { it.status.isTerminal }
-        val terminalRow: RuntimeRecoverDecision.TerminalRow? = terminalOp?.let { op ->
-            val terminalAtMs: Long = try {
-                journal.getEndedAt(op.id, op.attempt) ?: 0L
-            } catch (_: Exception) {
-                0L
-            }
+        // THE RUN'S TERMINAL OUTCOME, not an operation's.
+        //
+        // It used to be the FIRST operation row whose status is terminal, and
+        // that is a fact about an OPERATION. The published decider asks for
+        // "the journal's terminal row" and takes it as the run's outcome, so a
+        // first-terminal-row answer lets a HALF-FINISHED run look finished:
+        // its first step succeeded, and the decider would close the run as
+        // successful while another step was still running.
+        //
+        // The run's own answer is the outcome of the work it last finished —
+        // and only when ALL of its work finished. While an operation is still
+        // running, the run has no terminal outcome, and the proof says so
+        // instead of inventing one.
+        val allOperationsTerminal = journalOps.isNotEmpty() && journalOps.all { it.status.isTerminal }
+        val lastTerminalOp: DurableOperation? = if (allOperationsTerminal) {
+            journalOps
+                .map { op -> op to endedAtOf(op) }
+                .maxByOrNull { (_, endedAt) -> endedAt }
+                ?.first
+        } else {
+            null
+        }
+        val terminalRow: RuntimeRecoverDecision.TerminalRow? = lastTerminalOp?.let { op ->
             RuntimeRecoverDecision.TerminalRow(
                 outcome = op.status.name.lowercase(),
-                terminalAtMs = terminalAtMs,
+                terminalAtMs = endedAtOf(op),
             )
         }
         val cursor = try {
@@ -370,7 +402,22 @@ class RuntimeRecoverPortStoreAdapter(
                     report = report,
                 )
             }
+        }        } finally {
+            lease.release(owner)
         }
+    }
+
+    /**
+     * When an operation reached its terminal state, in epoch millis.
+     *
+     * A journal that cannot say is a journal that says zero: the run's
+     * terminal outcome is not worth failing a recover over, and the decider
+     * does not depend on the timestamp to choose.
+     */
+    private fun endedAtOf(op: DurableOperation): Long = try {
+        journal.getEndedAt(op.id, op.attempt) ?: 0L
+    } catch (_: Exception) {
+        0L
     }
 
     private fun outcomeOf(status: OperationStatus): RuntimeRecoverDecision.OperationOutcome =

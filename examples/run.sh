@@ -311,6 +311,7 @@ run_scenario() {
     local failure_stage=""
     local events_follow=""
     local run_state=""
+    local recover=0
     local directive
     while IFS= read -r directive; do
         case "$directive" in
@@ -322,6 +323,7 @@ run_scenario() {
             '//@ durable-once')    durable_once=1 ;;
             '//@ resume')          resume=1 ;;
             '//@ cancel')          cancel=1 ;;
+            '//@ recover')         recover=1 ;;
             '//@ credentials '*)   seeds+=("${directive#//@ credentials }") ;;
             '//@ plugin-jar '*)    plugin_jar="${directive#//@ plugin-jar }" ;;
             '//@ plugin-trust '*)  plugin_trust="${directive#//@ plugin-trust }" ;;
@@ -475,7 +477,7 @@ run_scenario() {
     # the working directory is compared between the two runs, and a PID file
     # would differ between them (two processes, two PIDs) and look like "the
     # effect repeated".
-    if [[ "$resume" == 1 || "$cancel" == 1 ]]; then
+    if [[ "$resume" == 1 || "$cancel" == 1 || "$recover" == 1 ]]; then
         export PIPELINEK_E2E_PID_FILE="$root/runner.pid"
     fi
 
@@ -487,7 +489,7 @@ run_scenario() {
     # durable scenario writes lives in this directory, so the second execution
     # would find the first one's effect and read it as a repeat.
     local run_volatile=1
-    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$cancel" == 1 || "$events_refusal" != "" || "$events_resume" != "" || "$step_verdict" != "" || "$run_state" != "" ]]; then
+    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$cancel" == 1 || "$events_refusal" != "" || "$events_resume" != "" || "$step_verdict" != "" || "$run_state" != "" || "$recover" == 1 ]]; then
         run_volatile=0
     fi
 
@@ -570,6 +572,84 @@ run_scenario() {
         # say anything about the outcome of the run.
         verdict_stdout="$root/stdout.rerun.txt"
         verdict_stderr="$root/stderr.rerun.txt"
+    fi
+
+    if [[ "$recover" == 1 ]]; then
+        # The FIRST run is the crash, for the same reason a cancelled scenario's
+        # first run is: a scenario that says it will die and finishes cleanly
+        # has not exercised what it claims.
+        if [[ "$code" == 0 ]]; then
+            printf 'FAIL %-52s the run was supposed to crash and finished cleanly\n' "$name"
+            failed=$((failed + 1))
+            failures+=("$name: the run was supposed to crash and did not")
+            return
+        fi
+
+        local recover_run_id=""
+        local recover_record
+        for recover_record in "$root"/control/last-run/*; do
+            [[ -f "$recover_record" ]] || continue
+            recover_run_id="$(head -1 "$recover_record")"
+            break
+        done
+        if [[ -z "$recover_run_id" ]]; then
+            printf 'FAIL %-52s the crashed run left no run id, so it cannot be recovered\n' "$name"
+            failed=$((failed + 1))
+            failures+=("$name: the crashed run left no run id")
+            return
+        fi
+
+        # The recover of a run that did NOT finish its work must not close it.
+        # The run's first step finished, so its journal HAS a terminal
+        # operation row; only the RUN's own terminal fact may end a run, and
+        # this run never got one.
+        local recover_code=0
+        "$binary" runs recover "$recover_run_id" --db "$root/events.db" \
+            --control-root "$root/control" \
+            >"$root/stdout.recover.txt" 2>"$root/stderr.recover.txt" || recover_code=$?
+        if [[ "$recover_code" != 0 ]]; then
+            printf 'FAIL %-52s the recover of the half-finished run exited %s, expected 0\n' \
+                "$name" "$recover_code"
+            show_printed "$root/stderr.recover.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the recover of the half-finished run exited $recover_code")
+            return
+        fi
+        if ! grep -aqF -- "nothing was recovered" "$root/stdout.recover.txt"; then
+            printf 'FAIL %-52s the recover closed a run that had not finished its work\n' "$name"
+            show_printed "$root/stdout.recover.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the recover closed a run that had not finished its work")
+            return
+        fi
+
+        # And the run's own state says so too: it is still running, because
+        # the recover did not close it.
+        local recover_state_code=0
+        "$binary" inspect "$recover_run_id" --db "$root/events.db" \
+            --control-root "$root/control" --state \
+            >"$root/stdout.recover-state.txt" 2>"$root/stderr.recover-state.txt" || recover_state_code=$?
+        if [[ "$recover_state_code" != 0 ]]; then
+            printf 'FAIL %-52s reading the run state exited %s, expected 0\n' \
+                "$name" "$recover_state_code"
+            show_printed "$root/stderr.recover-state.txt"
+            failed=$((failed + 1))
+            failures+=("$name: reading the run state exited $recover_state_code")
+            return
+        fi
+        if ! grep -aqF -- "run-state running" "$root/stdout.recover-state.txt"; then
+            printf 'FAIL %-52s the run was not running after the recover refused it\n' "$name"
+            show_printed "$root/stdout.recover-state.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the run was not running after the recover refused it")
+            return
+        fi
+
+        # The verdict is the recover's: the run that died could not say
+        # anything about its own outcome.
+        verdict_stdout="$root/stdout.recover.txt"
+        verdict_stderr="$root/stderr.recover.txt"
+        code=0
     fi
 
     if [[ "$run_state" != "" ]]; then
@@ -1122,7 +1202,9 @@ run_scenario() {
     fi
 
     local label="$name"
-    if [[ "$run_state" != "" ]]; then
+    if [[ "$recover" == 1 ]]; then
+        label="$name (recover)"
+    elif [[ "$run_state" != "" ]]; then
         label="$name (run-state)"
     elif [[ "$cancel" == 1 ]]; then
         label="$name (cancel)"

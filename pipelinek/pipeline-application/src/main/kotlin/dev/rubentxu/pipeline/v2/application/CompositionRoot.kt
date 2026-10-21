@@ -29,6 +29,8 @@ import dev.rubentxu.pipeline.v2.runtime.control.RuntimeControlPort
 import dev.rubentxu.pipeline.v2.runtime.control.RuntimeControlPortStoreAdapter
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPort
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPortStoreAdapter
+import dev.rubentxu.pipeline.v2.runtime.recover.RuntimeRecoverPort
+import dev.rubentxu.pipeline.v2.runtime.recover.RuntimeRecoverPortStoreAdapter
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
@@ -361,5 +363,70 @@ internal fun composeRuntimeIntrospectionPort(
         journal = journal,
         cursors = cursors,
         lease = lease,
+    )
+}
+
+/**
+ * The recovery plane: the published [RuntimeRecoverPort] composed over the
+ * same stores the rest of the product writes.
+ *
+ * ## Why the introspector and the recover share ONE identity
+ * The recover TAKES the run's lease before it looks at the run, because the
+ * lock is the only authority on "is a live process publishing this run". The
+ * introspection it then asks would consult the lease record and find the
+ * recover's OWN lease — and refuse, because the plane refuses when the
+ * record names a live owner.
+ *
+ * So both are composed with the same owner id: the introspection sees "the
+ * lease is mine", which is a re-entry, and describes the run instead of
+ * refusing to.
+ *
+ * ## Why the output plane is opened for WRITING
+ * A recover reconciles the output store: it truncates the uncommitted tail a
+ * dead writer left behind. A reader must never do that — a reader truncating
+ * a live writer's bytes is the defect the output plane's recovery split
+ * exists to prevent — and this is not a reader: it holds the run's lease.
+ */
+internal fun composeRuntimeRecoverPort(
+    eventStore: SqliteEventStore,
+    controlRoot: Path,
+    clock: Clock,
+): RuntimeRecoverPort {
+    val journal = SqliteOperationJournalImpl(
+        connectionFactory = eventStore.underlyingConnectionFactory(),
+        clock = clock,
+        json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
+        dbPath = eventStore.databasePath(),
+    )
+    val cursors = SqliteReplayCursorStoreImpl(eventStore.underlyingConnectionFactory(), clock)
+    val lease = FileBackedRunExecutionLeaseStore(controlRoot.resolve("leases"))
+    val output = OutputPlaneProvider.storeForWriting(controlRoot)
+    val eventReader = EventRecordReadPortStoreAdapter(
+        store = eventStore,
+        runExists = { runId -> lease.isKnown(runId) || eventStore.hasRun(runId) },
+        tailSequence = { runId -> eventStore.tailSequence(runId) },
+    )
+    // One identity for both planes: the recover holds the lease, and the
+    // introspection it asks has to recognise that holder as itself.
+    val owner = "cli-recover-" + ProcessHandle.current().pid() + "-" +
+        java.util.UUID.randomUUID().toString().take(8)
+    val introspect = RuntimeIntrospectionPortStoreAdapter(
+        eventReads = eventReader,
+        tails = output,
+        frames = output.frameIndex(),
+        journal = journal,
+        cursors = cursors,
+        lease = lease,
+        syntheticObserverId = owner,
+    )
+    return RuntimeRecoverPortStoreAdapter(
+        journal = journal,
+        cursors = cursors,
+        lease = lease,
+        outputRecovery = output,
+        frames = output.frameIndex(),
+        introspect = { runId -> introspect.inspect(runId) },
+        clock = clock,
+        syntheticObserverId = owner,
     )
 }

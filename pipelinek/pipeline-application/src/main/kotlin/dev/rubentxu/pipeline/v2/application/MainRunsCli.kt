@@ -6,6 +6,10 @@ import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
 import dev.rubentxu.pipeline.v2.runtime.control.CancelOutcome
 import dev.rubentxu.pipeline.v2.runtime.control.CancelReason
 import dev.rubentxu.pipeline.v2.runtime.control.CancelRefusal
+import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
+import dev.rubentxu.pipeline.v2.runtime.recover.RecoverOptions
+import dev.rubentxu.pipeline.v2.runtime.recover.RecoverOutcome
+import dev.rubentxu.pipeline.v2.runtime.recover.RecoverRefusal
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -46,25 +50,34 @@ import java.nio.file.Paths
  */
 internal object MainRunsCli {
 
-    private const val USAGE = """Usage: pipelinek runs cancel <runId> [options]
+    private const val USAGE = """Usage: pipelinek runs <cancel|recover> <runId> [options]
 
 Closes a run that no live process is working on, and refuses to close one that is.
+
+  cancel   closes the run as aborted and records why.
+  recover  reconciles a run whose work finished but whose terminal was never
+           recorded, WITHOUT re-running any effect.
 
 Options:
   --db <path>           The durable event store of the run (required).
   --control-root <path> The control directory of the run. Defaults to the same
                         place the `run` verb puts it: <db's directory>/durable-shell.
-  --reason <text>       Why the run is being closed. Recorded verbatim in the
-                        run's history, so do not paste secrets into it.
+  --reason <text>       Why the run is being closed (cancel only). Recorded
+                        verbatim in the run's history, so do not paste secrets into it.
+  --dry-run             recover only: compute the decision without writing.
 
-Exit codes: 0 closed (or already closed), 2 refused.""" 
+Exit codes: 0 closed (or already closed), 2 refused."""
 
     fun main(args: Array<String>): Int {
         val verb = args.firstOrNull()
-        if (verb != "cancel") {
-            System.err.println("runs: the only verb is 'cancel'.")
+        if (verb != "cancel" && verb != "recover") {
+            System.err.println("runs: the verbs are 'cancel' and 'recover'.")
             System.err.println(USAGE)
             return 2
+        }
+
+        if (verb == "recover") {
+            return runRecover(args.drop(1).toTypedArray())
         }
 
         val rest = args.drop(1)
@@ -148,6 +161,101 @@ Exit codes: 0 closed (or already closed), 2 refused."""
         }
     }
 
+    /**
+     * `runs recover` — reconcile a run whose work finished but whose terminal
+     * was never recorded, WITHOUT re-running any effect.
+     *
+     * ## What it does, in order
+     *  1. takes the run's lease, which proves that no live process is
+     *     publishing it (the lock is the authority, not the lease record);
+     *  2. asks the published introspection port what the run looks like;
+     *  3. hands the facts to the published recovery decider;
+     *  4. records the run's terminal in the journal, advances the replay
+     *     cursor and reconciles the output store — and re-runs NOTHING.
+     *
+     * ## What it refuses to do
+     * It does not close a run that has not finished its work. A run whose
+     * last operation is still running is not a run that finished, and
+     * recovering it would publish a result nobody observed. That run is the
+     * `runs cancel` case.
+     */
+    private fun runRecover(rest: Array<String>): Int {
+        val runId = rest.firstOrNull()?.takeIf { !it.startsWith("--") }
+        if (runId == null) {
+            System.err.println("runs recover: a run id is required.")
+            System.err.println(USAGE)
+            return 2
+        }
+        val optionArgs = rest.drop(if (rest.first() == runId) 1 else 0)
+
+        val options = when (val parsed = parseOptions(optionArgs.toTypedArray())) {
+            is OptionParse.Parsed -> parsed.value
+            is OptionParse.Rejected -> {
+                System.err.println("runs recover: ${parsed.error}")
+                System.err.println(USAGE)
+                return 2
+            }
+        }
+
+        if (options.dbPath == null) {
+            System.err.println("runs recover: --db <path> is required to read the run's durable state")
+            System.err.println(USAGE)
+            return 2
+        }
+
+        val controlRoot: Path = options.controlRoot
+            ?: Paths.get(options.dbPath).toAbsolutePath().parent.resolve("durable-shell")
+
+        // A recover WRITES: the journal's terminal row, the replay cursor and
+        // the output store's reconciliation. The event store itself is only
+        // read, but it shares the database with the journal, so the admission
+        // is the write one.
+        val admission = admitEventStore(options.dbPath, EventStorePurpose.Write)
+        if (admission is EventStoreAdmission.Refused) {
+            System.err.println(admission.refusal.render())
+            return 2
+        }
+        val store = (admission as EventStoreAdmission.Admitted).store
+
+        val outcome = try {
+            store.use { eventStore ->
+                composeRuntimeRecoverPort(
+                    eventStore = eventStore,
+                    controlRoot = controlRoot,
+                    clock = SystemClock(),
+                ).recover(runId, RecoverOptions(dryRun = options.dryRun))
+            }
+        } catch (failure: Exception) {
+            System.err.println("runs recover: ${failure.shortDiagnostic()}")
+            return 2
+        }
+
+        return when (outcome) {
+            is RecoverOutcome.RecoveredTerminal -> {
+                println("recovered run $runId as ${outcome.terminal.render()} at ${outcome.terminalAtMs}")
+                0
+            }
+
+            is RecoverOutcome.AlreadyRecovered -> {
+                println("run $runId was already recovered at ${outcome.terminalAtMs}")
+                0
+            }
+
+            is RecoverOutcome.ReattachPending -> {
+                println(
+                    "run $runId is still in flight (deadline ${outcome.deadlineMs}); " +
+                        "nothing was recovered",
+                )
+                0
+            }
+
+            is RecoverOutcome.FailClosed -> {
+                System.err.println("runs recover: ${outcome.reason.render(runId)}")
+                2
+            }
+        }
+    }
+
     /** The operator's text for a refusal. The closed reasons live in the port. */
     private fun CancelRefusal.render(runId: String): String = when (this) {
         is CancelRefusal.UnknownRun ->
@@ -170,6 +278,34 @@ Exit codes: 0 closed (or already closed), 2 refused."""
             "the run's storage failed: $cause"
     }
 
+    /** The recovered terminal, in the operator's words. */
+    private fun TerminalObservation.render(): String = when (this) {
+        is TerminalObservation.Succeeded -> "succeeded"
+        is TerminalObservation.Failed -> "failed"
+        is TerminalObservation.Unstable -> "unstable"
+        is TerminalObservation.Aborted -> "aborted"
+        is TerminalObservation.Cancelled -> "cancelled"
+        is TerminalObservation.Other -> rawOutcome
+    }
+
+    /** The refusal, in the operator's words. */
+    private fun RecoverRefusal.render(runId: String): String = when (this) {
+        is RecoverRefusal.UnknownRun -> "this instance does not know run '$runId'."
+        RecoverRefusal.NotRecoverable -> "run $runId is in a state a recover does not apply to."
+        is RecoverRefusal.SubstrateUnavailable ->
+            "the run's substrate could not be observed: ${cause}"
+
+        is RecoverRefusal.JournalIncompatible ->
+            "the run's journal is at schema version $version, which this build cannot read."
+
+        is RecoverRefusal.LeaseHeldByAnother ->
+            "run $runId is being published by another process: $details"
+
+        is RecoverRefusal.StorageError -> "the run's storage failed: $cause"
+        is RecoverRefusal.PinnedBytesOutsideRecoveredRegion ->
+            "run $runId has pinned bytes outside the recovered region (stream ${stream}, range $range)."
+    }
+
     private fun Throwable.shortDiagnostic(): String {
         val cls = this::class.simpleName ?: this.javaClass.name
         val msg = message?.take(160)?.replace('\n', ' ')
@@ -181,6 +317,8 @@ Exit codes: 0 closed (or already closed), 2 refused."""
         val dbPath: String?,
         val controlRoot: Path?,
         val reason: String?,
+        /** recover only: compute the decision without writing. */
+        val dryRun: Boolean = false,
     )
 
     private sealed interface OptionParse {
@@ -192,6 +330,7 @@ Exit codes: 0 closed (or already closed), 2 refused."""
         var dbPath: String? = null
         var controlRoot: Path? = null
         var reason: String? = null
+        var dryRun = false
         var index = 0
         while (index < args.size) {
             when (val arg = args[index]) {
@@ -211,10 +350,12 @@ Exit codes: 0 closed (or already closed), 2 refused."""
                         ?: return OptionParse.Rejected("--reason requires a value")
                 }
 
+                "--dry-run" -> dryRun = true
+
                 else -> return OptionParse.Rejected("unknown option '$arg'")
             }
             index++
         }
-        return OptionParse.Parsed(Options(dbPath, controlRoot, reason))
+        return OptionParse.Parsed(Options(dbPath, controlRoot, reason, dryRun))
     }
 }

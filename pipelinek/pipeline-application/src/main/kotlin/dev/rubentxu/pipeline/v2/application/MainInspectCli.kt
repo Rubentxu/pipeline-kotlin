@@ -588,7 +588,8 @@ object MainInspectCli {
     }
 
     /** The refusal, in the operator's words. */
-    private fun renderIntrospectionRefusal(refusal: IntrospectionRefusal, runId: String): String = when (refusal) {        is IntrospectionRefusal.UnknownRun -> "this instance does not know run '$runId'."
+    private fun renderIntrospectionRefusal(refusal: IntrospectionRefusal, runId: String): String = when (refusal) {
+        is IntrospectionRefusal.UnknownRun -> "this instance does not know run '$runId'."
         IntrospectionRefusal.NoControlRoot -> "there is no control root to read the run's state from."
         IntrospectionRefusal.NoEventStore -> "the event plane is not configured for this instance."
         IntrospectionRefusal.NoOutputPlane -> "the output plane is not configured for this instance."

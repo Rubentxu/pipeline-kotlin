@@ -74,7 +74,7 @@ class FileBasedRetryControlJournal(
         retryControlDir.resolve("${fileKey(controlOpId)}.attempts.json")
 
     private fun fileKey(controlOpId: String): String {
-        // SHA-256 hex of the controlOpId — safe file-name character set, fixed length.
+        // 256 hex of the controlOpId — safe file-name character set, fixed length.
         // Same bytes, same lowercase hex: existing retry control rows keep
         // their opId, which is the durable identity the reconciler plans against.
         return Sha256.ofText(controlOpId)

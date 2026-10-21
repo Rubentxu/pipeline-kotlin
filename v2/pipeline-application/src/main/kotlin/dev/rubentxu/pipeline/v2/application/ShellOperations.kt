@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 
 /**
  * Typed seam that a registry-routed Step handler calls to invoke a shell
- * process (LB-02 / G3).
+ * process.
  *
  * This interface is the *only* contract a Step handler holds for shell
  * execution. The handler MUST NOT carry any process-launching logic itself.

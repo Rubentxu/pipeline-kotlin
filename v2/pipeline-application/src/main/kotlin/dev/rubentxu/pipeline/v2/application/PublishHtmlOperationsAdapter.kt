@@ -116,7 +116,7 @@ class PublishHtmlOperationsAdapter(
         val workspaceRootReal: Path = try {
             workspaceRoot.toRealPath()
         } catch (e: IOException) {
-            // INFRASTRUCTURE: the workspace itself cannot be resolved — this
+            // the workspace itself cannot be resolved — this
             // is a system-level failure, not a script-author error.
             val reason = "workspace root cannot be resolved to a real path: ${e.message}"
             eventSink.append(htmlReportFailedEvent(input, reason, FailureKind.INFRASTRUCTURE))
@@ -162,7 +162,7 @@ class PublishHtmlOperationsAdapter(
             return PublishHtmlFailed(FailureKind.SCRIPT, reason)
         }
 
-        // R3: glob matching.
+        // glob matching.
         val matched: List<Path> = try {
             AntStyleGlob(input.reportFiles).match(
                 root = reportDir,
@@ -197,7 +197,7 @@ class PublishHtmlOperationsAdapter(
             return PublishHtmlFailed(FailureKind.SCRIPT, reason)
         }
 
-        // R5/R6: copy into the run-scoped reports archive. Reject symlinks (R7).
+        // copy into the run-scoped reports archive. Reject symlinks (R7).
         val sanitized = PublishHtmlSanitiser.sanitize(input.name, input.escapeUnderscores)
         val reportRoot = reportsRoot(runIdString, sanitized)
         return try {
@@ -212,7 +212,7 @@ class PublishHtmlOperationsAdapter(
             val entries = mutableListOf<HtmlReportEntry>()
             for (file in matched) {
                 if (Files.isSymbolicLink(file)) {
-                    // R7: refuse to follow symlinks (security: avoid escaping reportDir).
+                    // refuse to follow symlinks (security: avoid escaping reportDir).
                     val reason = "reportDir contains symlink at '$file'; refusing for safety"
                     eventSink.append(htmlReportFailedEvent(input, reason, FailureKind.SCRIPT))
                     return PublishHtmlFailed(FailureKind.SCRIPT, reason)
@@ -230,7 +230,7 @@ class PublishHtmlOperationsAdapter(
                 )
             }
 
-            // R8: index.html with one <a> per published file (sorted by relPath).
+            // index.html with one <a> per published file (sorted by relPath).
             val indexHtml = buildIndexHtml(entries)
             val indexPath = reportRoot.resolve("index.html")
             Files.writeString(indexPath, indexHtml)

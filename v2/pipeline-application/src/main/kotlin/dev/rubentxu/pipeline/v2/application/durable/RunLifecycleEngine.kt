@@ -113,12 +113,12 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
         // identical EM-5/6 walk over the pure trailing chain (outermost-first fold order).
         val chain = executionContext.trailingCatchErrorChain()
         for (overlay in chain) {
-            // P3-E E4 parsed once at the decision, over the closed vocabulary, never with a
+            // E E4 parsed once at the decision, over the closed vocabulary, never with a
             // default: the previous `else -> ContinueUnstable` read UNSTABLE for every token
             // that was not FAILURE or SUCCESS, so a typo in the pipeline's own error handling
             // suppressed the failure it was installed to catch.
             //
-            // P3-E D3 removed the parse. `overlay.buildResult` IS the vocabulary now, so the
+            // E D3 removed the parse. `overlay.buildResult` IS the vocabulary now, so the
             // `null` arm this used to need — an unrecognised token, aborted with SCHEMA — is
             // no longer reachable, and that is the point: the illegal state became
             // unrepresentable rather than handled. Refusal did not disappear, it moved to

@@ -15,7 +15,7 @@ import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
  * The durable protocol decides whether to call it (fresh/re-run executes; replay reuse, decode
  * rejection, divergence and running-shell recovery return before it is reached).
  *
- * ## LB-02 / G3-A3: atomic outcome + encodedOutput
+ * ## LB-02: atomic outcome + encodedOutput
  *
  * The seam returns a [CommonExecutionResult] — `outcome + encodedOutput` in one value — to
  * eliminate temporal connascence. Legacy paths encode `encodedOutput = null`; registry-routed

@@ -65,7 +65,7 @@ object PluginManifestResourceReader {
             val codeSource = contributorClass.protectionDomain?.codeSource?.location
             if (codeSource != null) {
                 // Compare the ARTIFACT, not the resource. A resource inside a JAR resolves
-                // to `jar:file:/path/plugin.jar!/META-INF/...` while the code source is
+                // to `jar:file:/path/plugin.jar!/...` while the code source is
                 // `file:/path/plugin.jar`, so comparing the two URLs directly compares a
                 // container to its contents and rejects every legitimate plugin. This bug
                 // was found by the harness, which loaded a real artifact for the first
@@ -243,9 +243,9 @@ fun measure(
     /**
      * The artifact that CONTAINS a resource URL.
      *
-     * A JAR resource resolves as `jar:file:/dir/plugin.jar!/META-INF/pipelinek/x.json`, and
+     * A JAR resource resolves as `jar:file:/dir/plugin.jar!/pipelinek/x.json`, and
      * the artifact is everything before the `!/`. A directory classpath entry resolves as
-     * `file:/dir/META-INF/pipelinek/x.json`, and the artifact is everything before the
+     * `file:/dir/pipelinek/x.json`, and the artifact is everything before the
      * resource path. Handling both is what lets the same check work for a shaded JAR and for
      * an exploded build directory.
      */

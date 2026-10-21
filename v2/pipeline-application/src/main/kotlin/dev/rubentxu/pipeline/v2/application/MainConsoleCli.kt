@@ -1254,7 +1254,7 @@ object MainConsoleCli {
         val dbPath = request.dbPath
             ?: return ConsoleOperationSelection.resolve(request.runId, active.stages, active.steps, active.kinds, null)
 
-        // D3 — the shared admission, not a second opinion about the same path. `ControlDirNotFound`
+        // the shared admission, not a second opinion about the same path. `ControlDirNotFound`
         // above already refused the OTHER durable lane with a name; this verb was letting the event
         // lane's equivalent escape as a raw java.sql.SQLException.
         val admission = admitEventStore(dbPath, EventStorePurpose.Read)
@@ -1303,7 +1303,7 @@ object MainConsoleCli {
             tails = store,
         )
 
-        // JVM-shutdown hook so a SIGINT/SIGTERM does not leave a poll thread behind. The hook
+        // shutdown hook so a SIGINT/SIGTERM does not leave a poll thread behind. The hook
         // flips a flag; the loop checks it between rounds.
         val shutdown = AtomicBoolean(false)
         val hook = Thread { shutdown.set(true) }

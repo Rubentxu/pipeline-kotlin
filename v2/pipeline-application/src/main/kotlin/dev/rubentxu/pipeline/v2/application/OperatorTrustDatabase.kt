@@ -12,7 +12,7 @@ import java.nio.file.Path
  * Before B3.2, the only trust information available to the gate was the `releaseDigest`
  * field in the manifest document — a self-declared value carried by the very bytes the
  * runtime was supposed to verify. That was the seam B3.2 closes: the runtime now consults
- * an OUT-OF-BAND source of truth (the operator's local trust database) for the digest the
+ * an out-of-band source of truth (the operator's local trust database) for the digest the
  * plugin's author cannot have written themselves.
  *
  * The split is what the design's `PluginManifestResourceReader.measure` failure mode was

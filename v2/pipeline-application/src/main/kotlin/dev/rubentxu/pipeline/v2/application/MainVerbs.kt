@@ -88,7 +88,7 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
         return true
     }
 
-    // H1.4 — the same authority, reported as a machine-readable object.
+    // the same authority, reported as a machine-readable object.
     //
     // `version` prints a line a human reads and a version that identifies a release LINE. Neither
     // answers "which commit is this binary", and a harness must be able to ask. Emitting the
@@ -200,7 +200,7 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
         return true
     }
 
-    // Inspect subcommand (the inspect subcommand work, ADR-0088): bounded diagnostic surface.
+    // Inspect subcommand: bounded diagnostic surface.
     //
     // The verb is the same workflow for `inspect` that `observe`, `events`, and `console`
     // are for their lanes: a typed parser + a typed query + a typed projection. The dispatcher

@@ -111,7 +111,7 @@ class ScriptedTypedResult<O : Any> private constructor(
 }
 
 /**
- * Durable identity of one scripted registry-step call site (LFC-2R / R1).
+ * Durable identity of one scripted registry-step call site .
  *
  * Reuses EXACTLY the scripted identity model proven for `sh` (runId, entry point,
  * call site, dynamic scope path, per-scope invocation ordinal) — plus the generic
@@ -376,7 +376,7 @@ internal class ScriptedRegistryInvoker(
             runId = call.runId,
             attempt = ATTEMPT,
         )
-        // 2. RESOLVE THE DECLARED METADATA — ADR-0103 RPL-2/RPL-3, before anything hashes against it.
+        // 2. RESOLVE THE DECLARED METADATA — ADR-0103 RPL-2, before anything hashes against it.
         //
         // Pre-decode metadata (effects, replay policy, recovery policy) is the Step's own
         // descriptor, resolved by the SAME composite the canonical coordinator uses. This is
@@ -450,7 +450,7 @@ internal class ScriptedRegistryInvoker(
             //
             // It used to be `notReplayable(...)` unconditionally, with the class KDoc claiming the
             // value could not be reconstructed. That was true of the SPINE then and false of the
-            // FACTS: an observed exit code is not a fabricated value, and `sh(returnStatus = true)`
+            // an observed exit code is not a fabricated value, and `sh(returnStatus = true)`
             // with exit 42 was being failed rather than returned as `42`.
             //
             // The shape below is deliberately the same as [execute]'s, so a recovered value and a
@@ -489,7 +489,7 @@ internal class ScriptedRegistryInvoker(
                 }
             }
 
-            // ADR-0103 R1-E. The observer could not inspect the substrate, so there is nothing to
+            // 0103 R1-E. The observer could not inspect the substrate, so there is nothing to
             // interpret and nothing to materialise: no recovery terminal was produced, and
             // inventing one would be the fabricate-a-runtime-value defect in a new place. The
             // failure surfaces through the same typed seam every other fail-closed case uses, and

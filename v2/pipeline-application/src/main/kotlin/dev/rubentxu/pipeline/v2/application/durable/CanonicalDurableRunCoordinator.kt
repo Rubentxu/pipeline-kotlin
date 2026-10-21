@@ -198,7 +198,7 @@ class CanonicalDurableRunCoordinator(
     private val scriptedStageExecution: ScriptedStageExecution? = null,
 
     /**
-     * SAGA / PK-1: the per-run Saga seam.
+     * the per-run Saga seam.
      *
      * When bound, every dispatch of this run can offer the compensation intent port, and the
      * obligations it writes land in the run's own database. When null (every pre-existing
@@ -331,7 +331,7 @@ class CanonicalDurableRunCoordinator(
         bodyExecutionEngine = bodyExecutionEngine,
         bodyPolicyResolver = bodyPolicyResolver,
         runLifecycle = runLifecycle,
-        // P3-C / S6.4: the dispatch engine composes the emitter from this registry, sink and clock.
+        // C / S6.4: the dispatch engine composes the emitter from this registry, sink and clock.
         eventRegistry = eventRegistry,
         cursorStore = cursorStore,
         stepRegistry = stepRegistry,

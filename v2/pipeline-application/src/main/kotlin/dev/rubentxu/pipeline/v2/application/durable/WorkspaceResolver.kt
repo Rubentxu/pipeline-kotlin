@@ -72,7 +72,7 @@ class WorkspaceResolver(
      * @return The artefacts directory: `<controlDirRoot>/artefacts/<runId>/<stageName>/`
      */
     fun resolveArchiveDir(runId: String, stageName: String): Path {
-        // PATH-01 fix: validate runId as a path-safe segment (same character set as RunIdDirectory)
+        // 01 fix: validate runId as a path-safe segment (same character set as RunIdDirectory)
         // AND verify the resolved path stays under `<controlDirRoot>/artefacts/` after lexical
         // normalisation. Defends against traversal (`../`) and symlink-resolved-name against symlinks
         // for the segment itself; symlink defence for the resolved artefacts dir is the caller's

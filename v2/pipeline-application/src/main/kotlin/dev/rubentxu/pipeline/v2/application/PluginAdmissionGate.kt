@@ -278,7 +278,7 @@ object PluginAdmissionGate {
                 }
             }
 
-            // S6/E — the cross-check. It runs HERE, after the contributor's code has run,
+            // the cross-check. It runs HERE, after the contributor's code has run,
             // because comparing a declaration against contributions is only possible once
             // the contributions exist. Splitting it from phase 3 is the point: the first gate
             // is pre-load and cheap, the second is post-load and complete, and collapsing
@@ -308,7 +308,7 @@ object PluginAdmissionGate {
             )
         }
 
-        // B3.2 — admitted plugins also write a row. The decision the runtime made is
+        // admitted plugins also write a row. The decision the runtime made is
         // itself a durable fact: a future run with the same `--control-root` can see what
         // was admitted and why, without re-running the gate.
         if (trustDatabase != null && controlJournal != null) {

@@ -32,7 +32,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * TRAIN H4 / PR-020 — the parallel aggregate, out of the step-execution spine.
+ * TRAIN H4 — the parallel aggregate, out of the step-execution spine.
  *
  * A parallel stage is not a Step. It is a composite whose durable identity is an AGGREGATE row
  * reconciled against every branch child's row, and whose outcome is a fold over typed branch
@@ -66,7 +66,7 @@ internal class ParallelStageEngine(
         val branches = (stage.body as? StageBody.Parallel)?.branches
             ?: throw EngineInvariantViolation("runParallelStage called for non-parallel stage '${stage.name}'")
 
-        // INC-007 (+1 helper, canonical coordinator dispatchBody sibling).
+        // 007 (+1 helper, canonical coordinator dispatchBody sibling).
         //
         // Dispatches parallel branch bodies with fresh per-child journal rows so
         // every branch child gets independent durable rows and a durable rerun
@@ -425,7 +425,7 @@ internal class ParallelStageEngine(
         stageShOptions: ShOptions,
         executionContext: ExecutionContext,
     ): StepOutcome {
-        // CTX-P2 branch derivation: immutable value; today branchContext == parentContext.
+        // P2 branch derivation: immutable value; today branchContext == parentContext.
         val branchContext = executionContext
         // parallel branches get ISOLATED cwds. The workspace is
         // derived purely from (controlDirRoot, stageIndex, branchIndex) and carried in
@@ -465,7 +465,7 @@ internal class ParallelStageEngine(
                 bodyPath,
                 branchContext,
             )
-            // R14: a parallel branch only needs to KNOW the outcome, so it projects it here. The
+            // a parallel branch only needs to KNOW the outcome, so it projects it here. The
             // carrier is not destroyed to make that possible — `Dispatched` still holds the encoded
             // value, and the branch aggregate is free to read it if it ever needs to.
             val stepOutcome = dispatchedBranch.result.outcome

@@ -85,7 +85,7 @@ object MainObserveCli {
             }
         }
 
-        // D3 — the admission is decided ONCE, here, and the lane receives its outcome. `forRequest`
+        // the admission is decided ONCE, here, and the lane receives its outcome. `forRequest`
         // used to build the store itself and therefore re-asked the question in a place that had
         // no way to answer it: a `--db` pointing at a missing directory escaped as a raw
         // java.sql.SQLException. The ADT is consumed HERE, and what crosses into the composition is

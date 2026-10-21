@@ -39,7 +39,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * running the stage somewhere the author named while the runtime never
  * contacted it — the exact silent semantic drop this train exists to remove.
  *
- * The diagnostic names RP-8 rather than saying "unsupported", because the
+ * The diagnostic names the unmatched requirement rather than saying "unsupported", because the
  * author needs to know whether to restructure their pipeline or wait. The
  * distinction between "nothing here satisfies this" and "this runtime cannot
  * satisfy it at all" is preserved in the wording of [TargetLeaseResult.Refused]

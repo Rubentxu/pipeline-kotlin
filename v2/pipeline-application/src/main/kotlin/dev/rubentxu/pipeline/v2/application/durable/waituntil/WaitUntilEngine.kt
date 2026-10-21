@@ -322,7 +322,7 @@ class WaitUntilEngine(
                 }
 
                 is WaitUntilReconciliationDecision.Aborted -> {
-                    // READ-ONLY. The reconciler returns `Aborted` precisely
+                    // ONLY. The reconciler returns `Aborted` precisely
                     // because it read a durable row whose status already is ABORTED, so
                     // there is no transition left to persist. Writing it back could only
                     // ever be a no-op, and it was: `updateStatus` requires an existing

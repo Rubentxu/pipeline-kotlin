@@ -256,7 +256,7 @@ object HumanConsoleRenderer {
         is WaitUntilPolled, is WaitUntilCompleted, is MilestoneReached, is TimestampsEntered,
         is TimestampsExited, is StepAdmissionObserved, is DirectiveAdmitted, is GateEvaluated,
         is PostConditionSelected,
-        // SAGA / PK-1: the armed-obligation promise is a control note, not an effect.
+        // the armed-obligation promise is a control note, not an effect.
         is CompensationArmed,
         is CompensationStarted,
         is CompensationFinished,

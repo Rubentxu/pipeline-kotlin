@@ -616,7 +616,7 @@ object DslCompiledPipelineCompiler {
                 }
                 is StepSpec.Shell, is StepSpec.Echo, is StepSpec.WriteFile -> plainRun += step
                 is StepSpec.Error -> {
-                    // G1: project a structured `error` to a typed core.error abort node so the
+                    // project a structured `error` to a typed core.error abort node so the
                     // coordinator dispatches a Failure and the enclosing catchError overlay decides
                     // whether to suppress (default UNSTABLE) or propagate. Never a silent shell comment.
                     flushPlainRun()
@@ -854,7 +854,7 @@ object DslCompiledPipelineCompiler {
                 // {"kind":"cleanWs","declarativeValue":"StepSpec.CleanWs(deleteDirs=…, patterns=…)"}
                 // which made the typed decode fall back to defaults (empty
                 // patterns), erasing the user's glob selectors.
-                // C2: The cleanWs regression test incidentally passed because `patterns=[]` is
+                // The cleanWs regression test incidentally passed because `patterns=[]` is
                 // its own valid default; the defect was not discriminated but
                 // was structurally identical to the deleteDir / pwd family.
                 // Locking the canonical envelope here closes the structural
@@ -929,7 +929,7 @@ object DslCompiledPipelineCompiler {
     // with a runtime interpreter, projected via projectShellOptions). retry/skip were
     // removed from the DSL surface; unrepresentable instead of accepted-and-dropped.
     //
-    // S3.3: the typed value now goes straight into the [StageOption] ADT. It used
+    // the typed value now goes straight into the [StageOption] ADT. It used
     // to be flattened to `OptionSpec("timeout", it.toString())` and recovered by
     // the interpreter with a name filter plus `toLongOrNull`, which made the
     // carrier survive only as text. A non-positive value is rejected by the

@@ -17,7 +17,7 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 
 /**
- * TRAIN H3 / PR-019 — the INTERPRETATION half of durable recovery.
+ * TRAIN H3 — the INTERPRETATION half of durable recovery.
  *
  * [DurableInvocationResolver] decides. This interprets. The two were previously one `when`
  * block inside `CanonicalDurableRunCoordinator.dispatch`, which meant the coordinator both
@@ -179,7 +179,7 @@ internal class RecoveryInterpretationEngine(
             ),
         )
 
-        // ADR-0103 R1-E: a required recovery whose substrate could not be inspected.
+        // A required recovery whose substrate could not be inspected.
         //
         // Deliberately effect-free, and that is the whole design. A failure that appended a terminal
         // row — SUCCEEDED, FAILED or LOST alike — would not be fail-closed, it would be
@@ -204,7 +204,7 @@ internal class RecoveryInterpretationEngine(
         )
 
         is InvocationReconciliation.RecoverRunning -> {
-            // ADR-S4-R1 §2.4 + §2.7. The resolution arrives carrying OBSERVED FACTS. Turning
+            // The slice §2.4 + §2.7 specifies the resolution arrives carrying observed facts. Turning
             // them into a Step's value is neither this class's job nor the resolver's: it is the
             // Step's own projection, reached through the generic materialiser. This engine persists
             // what comes back and emits the lifecycle — it re-classifies nothing.
@@ -298,7 +298,7 @@ internal class RecoveryInterpretationEngine(
                 // `ShellInvocationResult.Failed` whose `toStepOutcome()` is a plain Failure, and
                 // letting THAT choose the status collapsed LOST into FAILED — which destroys the
                 // storage vocabulary that says "the outcome could not be determined", and with it the
-                // distinction D-1 and §2.3 are built on. So the terminal owns the status for the
+                // The terminal owns the status for the
                 // cases where the terminal IS the fact, and the outcome owns it only where the
                 // contract supplied the fact.
                 status = if (terminal is DurableTaskTerminal.Exited) {

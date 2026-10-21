@@ -218,7 +218,7 @@ object MainEventsCli {
      * the envelope projection.
      */
     private fun runWithArgs(p: EventsCliArgs): Int {
-        // D3 — this verb had its own copy of the admission rule, written out here and once more in
+        // this verb had its own copy of the admission rule, written out here and once more in
         // MainEventsVerifyCli. Three reactions to one condition had accumulated across the verbs;
         // the decision now lives in `admitEventStore` and only the exit code stays here.
         val dbAdmission = admitEventStore(p.db, EventStorePurpose.Read)
@@ -375,7 +375,7 @@ object MainEventsCli {
         val reader = EventHistoryReader(store)
         var currentCursor = cursor
         var runFinished = false
-        // JVM-shutdown hook so a SIGINT/SIGTERM does not leave a poll thread behind. The hook
+        // shutdown hook so a SIGINT/SIGTERM does not leave a poll thread behind. The hook
         // flips a flag; the loop checks the flag between rounds.
         val shutdown = java.util.concurrent.atomic.AtomicBoolean(false)
         Runtime.getRuntime().addShutdownHook(Thread {

@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 /**
- * Typed seam for milestone state operations (S2-A9 / spike).
+ * Typed seam for milestone state operations.
  *
  * This interface is the *only* contract a Step handler holds for milestone
  * ordinal tracking within a pipeline run. The handler MUST NOT carry mutable

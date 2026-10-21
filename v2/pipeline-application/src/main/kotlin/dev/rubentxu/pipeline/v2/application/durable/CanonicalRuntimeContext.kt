@@ -71,7 +71,7 @@ data class CanonicalRuntimeContext(
     // so the capability stays unexposed and a Step that declares it is refused at admission
     // instead of reaching a handler with a null seam.
     val pluginEventEmitter: dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter? = null,
-    // SAGA: the compensation intent port, bound to THIS invocation.
+    // the compensation intent port, bound to THIS invocation.
     //
     // It is built per dispatch, not per run, because it carries the forward operation's
     // identity: the compensation an obligation names is the compensation OF that operation.
@@ -80,7 +80,7 @@ data class CanonicalRuntimeContext(
     // SAGA_COMPENSATION_CAPABILITY is refused at admission instead of reaching a handler
     // with a port that cannot keep a promise.
     val sagaCompensation: dev.rubentxu.pipeline.v2.domain.saga.CompensationOperations? = null,
-    // SAGA: the compensation PLAN port, bound to THIS run.
+    // the compensation PLAN port, bound to THIS run.
     //
     // It answers "what does the Saga owe now?" and records what the plugin observed about the
     // effects it triggered. It is a separate port from the intent one because making a promise
@@ -91,7 +91,7 @@ data class CanonicalRuntimeContext(
     // SAGA_PLAN_CAPABILITY is refused at admission instead of reaching a handler that cannot
     // keep the state it is about to write.
     val sagaPlan: dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations? = null,
-    // SAGA: the compensation RUNTIME, bound to THIS invocation.
+    // the compensation RUNTIME, bound to THIS invocation.
     //
     // It is the engine's loop: ask the durable state what is owed, dispatch the body that
     // owes it, record what happened, ask again. The plugin hands over the plan (data) and
@@ -101,7 +101,7 @@ data class CanonicalRuntimeContext(
     // through, so a Step that declares SAGA_RUNTIME_CAPABILITY without both is refused at
     // admission instead of reaching a handler that could not keep the promise.
     val sagaRuntime: dev.rubentxu.pipeline.v2.domain.saga.SagaRuntime? = null,
-    // SAGA: the slot seam. A handler whose body is already bound may run ONE
+    // the slot seam. A handler whose body is already bound may run ONE
     // named child of that body, chosen by it, and the engine dispatches it through the
     // same canonical spine — so the slot's durable identity is the identity it would
     // have had if the engine had dispatched it.

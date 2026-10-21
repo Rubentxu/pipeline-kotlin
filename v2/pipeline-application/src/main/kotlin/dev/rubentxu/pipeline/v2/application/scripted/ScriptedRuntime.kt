@@ -247,7 +247,7 @@ class ScriptedScope internal constructor(
         outcomes.record(outcome)
     }
 
-    /** Source identity for the registry invoker (LFC-2R / R2). */
+    /** Source identity for the registry invoker . */
     internal val identity: ScriptedScopeIdentity =
         ScriptedScopeIdentity(runId, entryPointId, dynamicScopePath, definitionDigest)
 

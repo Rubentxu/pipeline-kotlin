@@ -16,7 +16,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * TRAIN H4 / PR-020 — what a stage DOES, out of the run loop.
+ * TRAIN H4 — what a stage DOES, out of the run loop.
  *
  * The coordinator owns the run: its bookends, the stage loop, and what the run does
  * next. This engine owns a single stage once the run has decided to start it: its
@@ -173,7 +173,7 @@ internal class StageExecutionEngine(
                 steps[stepIndex], runId, stage.name, stageIndex, stepIndex, stageShOptions, emptyList(), context,
             )
             context = dispatched.context
-            // R14: the stage fold needs the OUTCOME, so it projects it explicitly and leaves the
+            // the stage fold needs the OUTCOME, so it projects it explicitly and leaves the
             // carrier alone. See StepDispatchEngine.Dispatched for why no `outcome` shortcut exists.
             when (val continuation = runLifecycle.decideStageContinuation(
                 dispatched.result.outcome, stage.name, runId.value, context,

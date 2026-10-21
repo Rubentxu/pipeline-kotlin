@@ -110,7 +110,7 @@ class DeleteDirOperationsAdapter(
             // refused whether or not it carries .git, .hg or .svn, and PipelineK
             // scratch keeps its wipe contract regardless of its contents.
             //
-            // C8: the decision is now a value, not a bit. The adapter maps the
+            // the decision is now a value, not a bit. The adapter maps the
             // lease verdict onto the shared RootDestruction intent so the
             // executor cannot be handed a half-resolved question.
             rootDestruction = RootDestruction.from(

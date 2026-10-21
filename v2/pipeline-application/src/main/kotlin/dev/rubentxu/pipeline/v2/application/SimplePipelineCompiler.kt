@@ -43,7 +43,7 @@ import dev.rubentxu.pipeline.v2.domain.StepDescriptor
  * The compiler intentionally does NOT fail on `PARALLEL` or `CONDITIONAL`
  * edges — those are forward declarations accepted by the M2 surface, with
  * runtime semantics flattened to sequential by [RunCoordinator] until
- * LF-0207 / LF-0307 land. See [Edge] KDoc for the migration cadence.
+ * LF-0207 land. See [Edge] KDoc for the migration cadence.
  */
 class SimplePipelineCompiler : PipelineCompiler {
 

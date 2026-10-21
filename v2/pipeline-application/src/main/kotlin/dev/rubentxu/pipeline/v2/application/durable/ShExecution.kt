@@ -59,7 +59,7 @@ import java.util.UUID
  * User script content NEVER appears in any argv. The wrapper script is constructed
  * with single-quoted path variables only (no script content in argv).
  *
- * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
+ * @see <a href="ADR-0046">Durable sh pattern</a>
  * @see <a href="ADR-0047">ADR-0047 — FAILED_TIMEOUT Terminal State</a>
  */
 /**
@@ -192,7 +192,7 @@ object ShExecution {
      * DEPRECATED (EM_DEAD_CODE_AUDIT A1): projects the typed result through a
      * lossy legacy [String] status. Callers must classify from
      * [invokeShell]'s closed semantic result instead; removal is scheduled
-     * for EM-10 once no compatibility caller remains.
+     * for the milestone seam once no compatibility caller remains.
      */
     @Deprecated(
         message = "Legacy String status projection; use invokeShell() and classify the typed result",
@@ -240,8 +240,8 @@ object ShExecution {
         // we fall back to direct bash -c which works without filesystem privileges)
         if (controlDirRoot == null) {
             // Non-durable fallback: script written to temp file; argv = [bash, <path>]
-            // P2: env injected via pb.environment().putAll (WS-S-005)
-            // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
+            // env injected via pb.environment().putAll
+            // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply()
             return executeNonDurableInvocation(
                 command = command,
                 env = EnvModel.apply(shOptions.env),
@@ -264,7 +264,7 @@ object ShExecution {
         val controlDir = controlDirRoot.resolve(opId.format())
 
         return try {
-            // Apply EnvModel transformations (JAVA_HOME/M2_HOME prepend to PATH) (WS-S-006/WS-S-007)
+            // Apply EnvModel transformations (JAVA_HOME/M2_HOME prepend to PATH)
             val envOptions = effectiveOptions.copy(
                 env = EnvModel.apply(effectiveOptions.env),
                 captureStdout = command.returnMode == ShellReturnMode.STDOUT,
@@ -309,11 +309,11 @@ object ShExecution {
             } ?: emptyMap()
 
             // Execute with tee-gated wrapper if captureStdout is enabled
-            // P2: env injected via pb.environment().putAll (not argv) in DurableShellExecutor.launch()
-            // Timeout threaded via timeoutMs parameter (TMO-S-013: 0 = no timeout)
-            // workspaceRoot threaded via effectiveOptions.workspaceRoot (DEC-1 cwd flip)
+            // env injected via pb.environment().putAll (not argv) in DurableShellExecutor.launch()
+            // Timeout threaded via timeoutMs parameter (0 = no timeout)
+            // workspaceRoot threaded via effectiveOptions.workspaceRoot
             //
-            // R2.3 / ADR-OBS-003: when the caller opts into the agent path
+            // When the caller opts into the agent path
             // (`pumpedViaAgent = true` in ShOptions), build a DurableShConfig
             // that flips the same flag and carries the secret the agent uses
             // for in-memory redaction. The default config
@@ -334,7 +334,7 @@ object ShExecution {
                 opId = opId.format(),
                 shOptions = envOptions,
                 config = durableConfig,
-                // WU-LPR-011R2 (Gate-1 at-rest closure): the durable authority receives ONLY
+                // The durable authority receives ONLY
                 // already-redacted bytes. The wrap factory is built per launch; each
                 // StreamingRedactor instance carries independent boundary state.
                 transcriptRedactor = secretPatternRegistry?.let { registry ->
@@ -356,7 +356,7 @@ object ShExecution {
             //     as a console event.
             // there is nothing left to ingest here, and that is the point.
             //
-            // M1-P2 established that the transcript enters the Output Plane exactly once and that
+            // The transcript enters the Output Plane exactly once and that
             // no console event carries it. Before this it entered by a whole-file read AFTER the
             // step returned, which meant the store was authoritative but never live: a reader
             // tailing the stream saw nothing until the step ended, however long it ran.
@@ -368,7 +368,7 @@ object ShExecution {
             //     block happens to leave behind. It is the Output Plane's retention policy, which
             //     is where the other durable authorities already keep it.
             //
-            // OBS-C2.3 added the per-channel split on top of that: there is no merged stream at all,
+            // The per-channel split means there is no merged stream at all,
             // so a merged console is a read-side projection over two streams and the frame index
             // that orders them — never a third copy on disk.
             //
@@ -381,7 +381,7 @@ object ShExecution {
             // the same operation id and appends to these very streams. Sealing on pump close would
             // seal a stream that is legitimately about to grow again.
             //
-            // Both channels are sealed because OBS-C2.3 gave the operation one stream per channel,
+            // Both channels are sealed because the operation owns one stream per channel,
             // and a consumer that merged them must be able to see both reach their end.
             //
             // per-channel seal. A stdout-only script (e.g. `sh("echo hi")`)
@@ -411,8 +411,8 @@ object ShExecution {
             terminalResult
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
             // Non-durable fallback for non-Linux platforms
-            // P2: script via temp file; env via pb.environment().putAll (WS-S-005)
-            // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply() (WS-S-006/WS-S-007)
+            // script via temp file; env via pb.environment().putAll
+            // JAVA_HOME/M2_HOME prepend applied via EnvModel.apply()
             return executeNonDurableInvocation(
                 command = command,
                 env = EnvModel.apply(shOptions.env),
@@ -472,7 +472,7 @@ object ShExecution {
      * Seals the operation's per-channel output tails and decides which
      * outcomes are surfaced.
      *
-     * M1-F.3:
+     * Outcomes:
      *  - [SealOutcome.Sealed] / [SealOutcome.AlreadySealed] — silent.
      *  - [SealOutcome.NeverOpened] — silent. A stdout-only script never
      *    opened stderr, and a stderr-only script never opened stdout; that
@@ -624,8 +624,8 @@ object ShExecution {
         timeoutMs: Long?,
         secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
     ): ShellInvocationResult {
-        // AUD-02 (c): the caller's budget must reach the runtime. `0` means "no
-        // timeout" on BOTH routes (TMO-S-013, DurableShellExecutor: `timeoutMs > 0`
+        // The caller's budget must reach the runtime. `0` means "no"
+        // timeout" on BOTH routes (DurableShellExecutor: `timeoutMs > 0`
         // arms the watchdog); a negative budget is not a mode this route can
         // honour, so it is refused explicitly instead of being silently dropped.
         val effectiveTimeoutMs = when {
@@ -645,7 +645,7 @@ object ShExecution {
         // them. The legacy code coerced eagerly at pb.environment().putAll —
         // the runtime collapses that responsibility into one place.
         //
-        // AUD-02 (c/d): when the caller owns the root, it is theirs and is left
+        // When the caller owns the root, it is theirs and is left
         // alone; when this route had to create its own scratch directory under
         // java.io.tmpdir, this route owns its full lifecycle and deletes it on
         // success, failure, timeout AND cancellation (deterministic cleanup; the
@@ -703,10 +703,10 @@ object ShExecution {
                 )
             }
 
-            // The NON-DURABLE fallback, and the one place where a console event is still correct.
+            // The non-durable fallback, and the one place where a console event is still correct.
             //
             // This path runs when there is no controlDirRoot at all — no filesystem privileges, or a
-            // non-Linux host — so there is no Output Plane to write into. ADR-M1 D2 forbids a SECOND
+            // non-Linux host — so there is no Output Plane to write into. The M1-decision forbids a SECOND
             // authority over the same bytes; it does not require one to exist where none can. Here the
             // event is the only rendering, so it is not a second anything.
             //

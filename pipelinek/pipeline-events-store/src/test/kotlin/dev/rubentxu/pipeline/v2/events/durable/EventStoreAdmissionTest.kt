@@ -99,6 +99,11 @@ class EventStoreAdmissionTest {
             refusalFor(PathObservation.NoFile, path, EventStorePurpose.Read),
             refusalFor(PathObservation.NoDirectory, path, EventStorePurpose.Read),
             refusalFor(PathObservation.NoDirectory, path, EventStorePurpose.Write),
+            // The pure rule cannot see INSIDE the file, so it cannot produce this one: a
+            // database that opens but holds no events at all is decided by the store itself
+            // when it opens read-only. It belongs to the same closed set and owes the
+            // operator the same thing.
+            EventStoreRefusal.NoEventHistory(path),
         )
 
         val named = refusals.map { refusal ->
@@ -106,10 +111,11 @@ class EventStoreAdmissionTest {
                 is EventStoreRefusal.Absent -> refusal.path
                 is EventStoreRefusal.NoDirectory -> refusal.path
                 is EventStoreRefusal.NotReadable -> refusal.path
+                is EventStoreRefusal.NoEventHistory -> refusal.path
             }
         }
 
-        assertEquals(3, named.size)
-        assertEquals(List(3) { path }, named, "a refusal that loses the path is not actionable")
+        assertEquals(4, named.size)
+        assertEquals(List(4) { path }, named, "a refusal that loses the path is not actionable")
     }
 }

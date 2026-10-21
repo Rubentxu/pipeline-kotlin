@@ -105,8 +105,17 @@ import java.util.concurrent.atomic.AtomicLong
  * This store also creates the [operation_journal][dev.rubentxu.pipeline.v2.events.durable.OperationJournalSchema]
  * and [replay_cursor][dev.rubentxu.pipeline.v2.events.durable.OperationJournalSchema] tables
  * via [SqliteConnectionFactory] with WAL mode enabled.
+ *  The two lanes
+ * A store is opened in one of two [EventStoreMode]s. The WRITER's lane creates the schema,
+ * appends facts and owns the file. The READER's lane opens the same file through a connection
+ * the database engine refuses to write through, creates no schema, migrates nothing, backfills
+ * nothing and starts no writer thread — so an observer of a live run cannot change that run's
+ * journal, and cannot hold a write lock on it either.
 */
-class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
+class SqliteEventStore(
+    private val file: String,
+    private val mode: EventStoreMode = EventStoreMode.Writable,
+) : EventSink, AutoCloseable {
 
     private val sequenceCounters = ConcurrentHashMap<String, AtomicLong>()
 
@@ -137,16 +146,20 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     private val appendQueue = java.util.concurrent.ArrayBlockingQueue<PendingWrite>(10_000)
-    private lateinit var writerThread: Thread
+    private var writerThread: Thread? = null
     @Volatile private var writerError: Throwable? = null
 
     // Prepared once on the persistent writer connection; created in init
-    // AFTER schema creation (the table must exist first).
-    private val writerConnection: Connection = freshConnection()
-    private lateinit var insertStatement: java.sql.PreparedStatement
+    // AFTER schema creation (the table must exist first). A READ-ONLY store has
+    // neither a writer connection nor an insert statement: it writes nothing, so
+    // it holds no write capability over the producer's file.
+    private val writerConnection: Connection? = if (mode.mayWrite()) freshConnection() else null
+    private var insertStatement: java.sql.PreparedStatement? = null
 
-    private fun freshConnection(): Connection =
-        SqliteConnectionFactory.open(file)
+    private fun freshConnection(): Connection = when (mode) {
+        EventStoreMode.Writable -> SqliteConnectionFactory.open(file)
+        EventStoreMode.ReadOnly -> SqliteConnectionFactory.openReadOnly(file)
+    }
 
     private fun withConnection(block: (Connection) -> Unit) {
         val conn = freshConnection()
@@ -158,6 +171,17 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     init {
+        when (mode) {
+            EventStoreMode.Writable -> prepareForWriting()
+            EventStoreMode.ReadOnly -> prepareForReading()
+        }
+    }
+
+    /**
+     * The producer's lane. The schema is created, the journal is migrated and backfilled, and a
+     * single writer thread starts to commit the facts this store is given.
+     */
+    private fun prepareForWriting() {
         val conn = freshConnection()
         try {
             conn.createStatement().use { stmt ->
@@ -212,13 +236,51 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         seedSequenceCounters()
         // Prepare the insert on the persistent connection and
         // start the single writer.
-        insertStatement = writerConnection.prepareStatement(
+        val connection = requireNotNull(writerConnection) {
+            "a writable store holds a writer connection"
+        }
+        insertStatement = connection.prepareStatement(
             "INSERT INTO events (event_id, run_id, sequence, kind, occurred_at, payload) VALUES (?, ?, ?, ?, ?, ?)"
         )
-        writerThread = Thread({ writerLoop() }, "sqlite-event-writer")
-        writerThread.isDaemon = false
-        writerThread.start()
+        val thread = Thread({ writerLoop() }, "sqlite-event-writer")
+        thread.isDaemon = false
+        thread.start()
+        writerThread = thread
     }
+
+    /**
+     * The reader's lane. No schema is created, nothing is migrated, nothing is backfilled, and
+     * no writer thread starts: the store only reads what the producer committed. The database
+     * itself refuses every write on this connection, so the reader cannot alter the producer's
+     * journal even by accident.
+     *
+     * A database with no `events` table holds no history at all, and a reader cannot create the
+     * table to find out. It answers the question instead of failing with "no such table: events"
+     * on the first read; [holdsEventHistory] is what the admission reads.
+     */
+    private fun prepareForReading() {
+        val conn = freshConnection()
+        try {
+            holdsEventHistory = conn.createStatement().use { stmt ->
+                stmt.executeQuery(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'events'"
+                ).use { rs -> rs.next() }
+            }
+        } finally {
+            conn.close()
+        }
+    }
+
+    /**
+     * Whether this store holds an event history at all.
+     *
+     * A WRITABLE store always does: it created the table. A READ-ONLY store cannot create it,
+     * so it answers the question rather than failing with "no such table: events" on the first
+     * read. The admission refuses a read-only store with no history, so the read paths below
+     * only ever run against a database that has the table.
+     */
+    public var holdsEventHistory: Boolean = true
+        private set
 
     /**
      * Seeds [sequenceCounters] with the durable per-run MAX(sequence) from
@@ -357,6 +419,12 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      * never consulted for write metadata.
 */
     override fun appendAssigned(event: DomainEvent): DomainEvent {
+        // A reader that appends would be a writer wearing a reader's clothes: it would
+        // write to the producer's journal from a connection the producer does not own.
+        // The refusal is loud and immediate, not a silent no-op.
+        check(mode.mayWrite()) {
+            "this event store is read-only and cannot append facts to $file"
+        }
         writerError?.let { throw IllegalStateException("event writer failed earlier", it) }
         // Assign per-runId sequence eagerly (monotonic per run
         // counters seeded from durable truth at construction).
@@ -509,6 +577,12 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      * appends fail fast.
 */
     private fun writerLoop() {
+        val connection = requireNotNull(writerConnection) {
+            "the writer loop only runs on a writable store"
+        }
+        val insert = requireNotNull(insertStatement) {
+            "the writer loop only runs on a writable store"
+        }
         val batch = ArrayList<PendingWrite>(256)
         while (true) {
             try {
@@ -519,23 +593,23 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 batch.add(first)
                 appendQueue.drainTo(batch, 511)
                 if (writerDelayMillis > 0) Thread.sleep(writerDelayMillis)
-                writerConnection.autoCommit = false
+                connection.autoCommit = false
                 try {
                     for (pending in batch) {
                         when (pending) {
                             is PendingWrite.Event -> {
-                                bindInsert(insertStatement, pending.event)
-                                insertStatement.executeUpdate()
+                                bindInsert(insert, pending.event)
+                                insert.executeUpdate()
                             }
                             is PendingWrite.FlushBarrier, PendingWrite.Stop -> {} // handled post-commit
                         }
                     }
-                    writerConnection.commit()
+                    connection.commit()
                     for (pending in batch) {
                         if (pending is PendingWrite.FlushBarrier) pending.done.countDown()
                     }
                 } catch (e: Throwable) {
-                    writerConnection.rollback()
+                    connection.rollback()
                     writerError = e
                     for (pending in batch) {
                         if (pending is PendingWrite.FlushBarrier) pending.done.countDown()
@@ -579,6 +653,13 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      * single writer).
 */
     fun flush() {
+        if (!mode.mayWrite()) {
+            // A read-only store never queues a write, so there is nothing to commit and
+            // nothing to wait for. Enqueuing a barrier here would strand it: no writer would
+            // ever release it, and the caller would burn the whole 60 s bound for a store
+            // that never had anything to flush.
+            return
+        }
         writerError?.let { throw IllegalStateException("event writer failed", it) }
         val barrier = java.util.concurrent.CountDownLatch(1)
         try {
@@ -867,14 +948,16 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         try {
             flush()
         } finally {
-            try {
-                appendQueue.put(PendingWrite.Stop)
-                writerThread.join(10_000)
-            } catch (_: InterruptedException) {
-                Thread.currentThread().interrupt()
+            if (mode.mayWrite()) {
+                try {
+                    appendQueue.put(PendingWrite.Stop)
+                    writerThread?.join(10_000)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
             }
-            runCatching { insertStatement.close() }
-            runCatching { writerConnection.close() }
+            runCatching { insertStatement?.close() }
+            runCatching { writerConnection?.close() }
         }
     }
 

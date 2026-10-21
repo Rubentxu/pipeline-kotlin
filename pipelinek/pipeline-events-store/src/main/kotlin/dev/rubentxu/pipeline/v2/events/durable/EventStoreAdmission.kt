@@ -52,6 +52,15 @@ public sealed interface EventStoreRefusal {
 
     /** The path is present and SQLite still will not open it. [detail] is SQLite's own words. */
     public data class NotReadable(public val path: String, public val detail: String) : EventStoreRefusal
+
+    /**
+     * The file is a database, but it holds no event history at all: it has no `events` table.
+     *
+     * A reader cannot create that table — it has no business writing to a file it was only
+     * asked to look at — so it says the file holds no history instead of answering "this run
+     * has no events", which would point an operator at the run instead of at the file.
+     */
+    public data class NoEventHistory(public val path: String) : EventStoreRefusal
 }
 
 /** What the caller intends to do with the store. Decides which absences are legitimate. */
@@ -62,6 +71,21 @@ public sealed interface EventStorePurpose {
 
     /** Start writing a run: the file may be absent, but the directory holding it may not. */
     public data object Write : EventStorePurpose
+}
+
+/**
+ * The lane a store opened for this purpose works in.
+ *
+ * This is the whole answer to "may the caller change the file", and it is the answer the
+ * incident #145 needs: a READER of a run's journal is a view over a file the PRODUCER owns, so
+ * it opens the file read-only and the database engine refuses every write it could attempt.
+ * A WRITER is the producer's lane and owns the file.
+ *
+ * Pure, and therefore decidable without a disk.
+ */
+public fun EventStorePurpose.storeMode(): EventStoreMode = when (this) {
+    EventStorePurpose.Read -> EventStoreMode.ReadOnly
+    EventStorePurpose.Write -> EventStoreMode.Writable
 }
 
 /** The outcome of asking for a store: the real store, or the reason there is none. */
@@ -123,11 +147,20 @@ public fun observePath(path: String): PathObservation {
  * Opens the store at [path], or refuses it with a reason.
  * The only sanctioned way to build a [SqliteEventStore] for a verb. Anything that constructs one
  * directly answers the admission question a second time, and the two answers will disagree.
+ *
+ * The purpose decides the lane the store works in ([EventStorePurpose.storeMode]): a reader
+ * opens the file read-only, so it cannot change the producer's journal, and a writer owns it.
 */
 public fun admitEventStore(path: String, purpose: EventStorePurpose): EventStoreAdmission {
     refusalFor(observePath(path), path, purpose)?.let { return EventStoreAdmission.Refused(it) }
     return try {
-        EventStoreAdmission.Admitted(SqliteEventStore(path))
+        val store = SqliteEventStore(path, purpose.storeMode())
+        if (!store.holdsEventHistory) {
+            store.close()
+            EventStoreAdmission.Refused(EventStoreRefusal.NoEventHistory(path))
+        } else {
+            EventStoreAdmission.Admitted(store)
+        }
     } catch (e: java.sql.SQLException) {
         EventStoreAdmission.Refused(
             EventStoreRefusal.NotReadable(path, e.message ?: e.javaClass.simpleName),

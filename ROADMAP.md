@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `ad61e9b2c` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `ba5decd9c` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **22** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 5 | ídem |
-| Tests unitarios ejecutados | **774** (95 informes JUnit, **95** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:774 read:0` |
+| Tests unitarios ejecutados | **792** (96 informes JUnit, **96** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:792 read:0` |
 | Escenarios E2E | 46 (**45 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **12139 / 66328 = 0.183** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **12515 / 66532 = 0.188** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **95 s** (corridas de este bloque: 95 s sobre el SHA publicado, 97 s y 80 s sobre el mismo árbol antes de fusionar), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **110 s** (corridas de este bloque: 110 s sobre el árbol comiteado, con el cache de Gradle caliente), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Coste por escenario E2E | mediana **6,7 s**, p95 **14,9 s**, máximo **15,5 s** | el lanzador publica ahora el tiempo de cada escenario en su línea |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
@@ -40,25 +40,23 @@ de los 95 informes —se limpiaron las salidas de test antes de correr, así que
 ninguno pudo venir de la caché—.
 
 **Y el total viaja ahora en la línea de veredicto**, que es la única que alguien
-pega en un informe: `tests=rewritten:774 read:0`. Antes esa línea decía
+pega en un informe: `tests=rewritten:792 read:0`. Antes esa línea decía
 `PASS  sha=…  elapsed=345s  budget=900s  gaps=1 not_run` y no decía **nada** de
 los tests: el dato estaba en el log de la etapa 2, y el log lo lee quien corrió la
 puerta, no quien la cita. Una cifra con el verbo equivocado ya no puede colarse
 ni por el lado del log ni por el lado de la línea (§2.2 u).
 
-La corrida que se publica es la de `ad61e9b2c` (**95 s**). El reloj de este gate
-tiene ruido, y publicarlo sin decirlo vuelve a ser una afirmación que nadie
-puede reproducir: el ciclo anterior (`4b0a63415`) publicó **88 s**, el de
-`main-partido` (`03bdc2a3a`) midió **107 s**, y otra corrida sobre ese **mismo**
-contenido, con los módulos tocados compilando de cero, midió 98 s. Y el ruido de
-este bloque es el habitual: sobre este mismo árbol, tres corridas dieron
-**80 s**, **97 s** y **95 s** —las dos últimas, la segunda antes de la fusión y la
-última sobre el SHA que quedó publicado—, y una anterior, con el lanzador aún
-sin el arreglo del escenario storage-agnostic, dio **98 s**. Se publica la del **SHA final**, que es
-la que corresponde al árbol que se publica, y se dicen las otras para que nadie
-la lea como la típica. Este bloque **añade 22 tests** —los **774**— y **no añade
-ningún escenario E2E**: los **46** son los mismos, porque la capacidad nueva se
-prueba con pruebas deterministas y con un UAT que no se queda.
+La corrida que se publica es la de este bloque: **110 s** sobre el árbol
+comiteado, con el caché de Gradle caliente. El reloj de este gate tiene ruido,
+y publicarlo sin decirlo vuelve a ser una afirmación que nadie puede
+reproducir: el bloque anterior (`ad61e9b2c`) publicó **95 s**, el de
+`main-partido` (`03bdc2a3a`) midió **107 s**, y sobre el mismo árbol de este
+bloque, con los módulos tocados compilando de cero, se midió 98 s. Se publica
+la del **SHA que queda publicado**, que es la que corresponde al árbol que se
+publica, y se dicen las otras para que nadie la lea como la típica. Este bloque
+**añade 18 tests** —los **792**— y **no añade ningún escenario E2E**: los **46**
+son los mismos, porque la capacidad nueva se prueba contra una base durable
+real y con pruebas deterministas, no con otro escenario lento.
 
 **Lo que este bloque movió, y lo que no.** El bloque `main-partido` (PR #183
 → `03bdc2a3a`) no toca el censo de módulos con test, ni añade tests, ni añade
@@ -1841,6 +1839,75 @@ por módulo sigue siendo **1.633** (`pipeline-step-sdk:workflow-control`).
 
 Puerta sobre el SHA del bloque: `PASS sha=ad61e9b2c… elapsed=95s budget=900s
 tests=rewritten:774 read:0 gaps=1 not_run`.
+
+
+**bc) Una promesa no decía de quién era, y otro plugin podía escribir en ella — CERRADO en `11b55ce19`.**
+
+**El problema, en una frase**: el `plan_fingerprint` dice **qué** se prometió, pero
+**no dice quién** lo prometió, y como los slots son nombres **locales** del plugin,
+dos plugins pueden declarar la misma acción, el mismo recurso y los mismos slots
+—y sus fingerprints salen **idénticos**, aunque sus cuerpos no lo sean.
+
+**Por qué eso muerde.** El plugin B arma la misma clave que ya armó el plugin A. El
+store no pisa la fila —eso ya lo hacía—, responde que ya está, y B se queda
+creyendo que **su** promesa está guardada. La fila dice una cosa (el plan de A) y
+el efecto que se ejecutó detrás fue el de B. Cuando toca compensar, el cuerpo que
+corre es el del slot, que es el del plugin que está en ejecución: la compensación
+de uno deshace el efecto del otro con el cuerpo del otro.
+
+**Lo que hay ahora**: la promesa durable recuerda **de qué plugin** viene, y **sólo
+ese plugin** escribe en ella. El motor estampa el dueño —lo resuelve del registro,
+igual que resuelve el *body owner*—, así que el plugin no puede reclamarse una
+promesa que no hizo.
+
+```
+plan a3f1… — checkout/reserve-stock — owner example.saga, intent v1
+```
+
+**La regla vive en el dominio, y es total.** `SagaPromiseOwnership` decide en un
+solo sitio quién puede escribir en una promesa, y su vocabulario es **cerrado**: un
+valor nuevo no compila hasta que alguien dice qué significa. Los dos casos son
+`Allowed` y `ForeignOwner`, y el refusal **nombra** al dueño y al que quiso
+escribir, porque «no permitido» sin nombre manda al que lee a buscar al sitio
+equivocado.
+
+**Las tres escrituras lo respetan.** El `arm` (que no pisa nada y cuyo refusal lo
+nombra), el `updateOutcome` y el `moveAll`. El cierre de un saga es **todo o
+nada**: una promesa ajena detiene el cierre entero en vez de dejar el saga a
+medias, porque un saga a medias compensa después lo que su propio cierre dejó
+pendiente.
+
+**Lo viejo sigue funcionando.** La columna del dueño es **nullable** y se añade
+con una migración **aditiva**: una base escrita antes de esto se abre, se le
+añade la columna y sus promesas —que no tienen dueño— **no pueden probar un
+conflicto**, así que no bloquean a nadie. Un plano sin dueño no es un plano de
+otro: es un plano de nadie.
+
+**Mutaciones vistas en rojo**, tres, cada una en la prueba que tiene que verlo:
+
+| mutación | qué se rompe |
+|---|---|
+| la regla permite al dueño ajeno | la prueba de dominio que exige el refusal con los dos nombres |
+| la escritura no comprueba el dueño | la prueba del store que exige que la promesa ajena no se mueva |
+| el brazo no estampa el dueño | las cuatro pruebas que dependen de saber de quién es la promesa |
+
+**Lo que este bloque NO cierra**: el **cuerpo** de la compensación sigue sin estar
+atado al cuerpo que se prometió. La regla de aquí dice quién puede escribir en la
+promesa; quién compensa con qué cuerpo es el siguiente bloque, y exige atar el
+digest de la estructura del cuerpo a la promesa. Y el `plan_fingerprint` **no**
+cambia: meter el plugin en la forma canónica haría que toda promesa en vuelo
+pareciese una divergencia, que es romper el estado durable, no el código.
+
+**El contrato publicado crece de forma aditiva**: el `.api` del dominio **crece**
+(54 líneas nuevas, ninguna quitada: tres tipos nuevos). El caso nuevo en un
+`sealed interface` es una ruptura de **fuente** para el que tenga un `when`
+exhaustivo, y queda **registrada** en el ledger de rupturas deliberadas con su
+motivo y su alcance. `VERIFY_LOC` 12 139 → **12 515** (+376), `PRODUCT_LOC`
+66 328 → **66 532** (+204), ratio global **0.188**; el ratio máximo por módulo
+sigue siendo **1.633** (`pipeline-step-sdk:workflow-control`).
+
+Puerta sobre el SHA del bloque: `PASS sha=11b55ce19… elapsed=110s budget=900s
+tests=rewritten:792 read:0 gaps=1 not_run`.
 
 
 ### 2.3 Cierre de ciclo

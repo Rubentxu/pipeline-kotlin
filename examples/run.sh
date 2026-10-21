@@ -658,6 +658,13 @@ run_scenario_body() {
     # This directory is removed with the scenario, so nothing leaks.
     export PIPELINEK_E2E_HOME="$root/cwd"
 
+    # The scenario's private ROOT, one level above its working directory. A scenario that
+    # needs to reach the run's own database, its control root, or a file of its own that
+    # must NOT live in the working directory (the working directory is what the launcher
+    # compares between runs) needs to be told where those are: the launcher is the only
+    # one that knows. It is one path, not a language: the scenario derives what it needs.
+    export PIPELINEK_E2E_ROOT="$root"
+
     # A scenario that kills its own process needs to know WHICH process to kill,
     # and the launcher is the only one that can say where to put that answer.
     # The file lives beside the store, NOT in the scenario's working directory:

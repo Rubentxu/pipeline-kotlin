@@ -85,6 +85,28 @@
 # re-run serially, and the report is identical either way -- the verdicts are
 # written per scenario and printed in scenario order, not in completion order.
 #
+#   PIPELINEK_E2E_SCENARIO_TIMEOUT=120  the ceiling for ONE pipeline run of a
+#                                       scenario, in seconds. A scenario that
+#                                       hangs is KILLED and reports a red
+#                                       verdict of its own, with its name and
+#                                       its reason, and the other scenarios
+#                                       keep running.
+#
+# This knob exists because of the worst way a gate can fail. The launcher
+# prints its report at the END, so a scenario that hung left the stage log
+# EMPTY and the verdict line never arrived: nobody could say what happened,
+# and the run had to be killed from outside. Measured on this tree: a run of
+# the gate hung for more than 1400 s in stage 3 with an empty stage log, and
+# only an EXTERNAL `timeout` ended it; the next run, over the SAME tree,
+# finished in 78 s. The defect was in the harness, not in the product.
+#
+# The ceiling is per RUN, not per scenario: a scenario may run the pipeline up
+# to three times (durable, resume, storage-agnostic), and each of those runs
+# is where a hang can happen. The default leaves the current scenarios alone
+# -- it is above the slowest one by a wide margin -- and 0 disables the
+# ceiling explicitly, which is the escape hatch for diagnosing a slow
+# scenario.
+#
 # Why `//@` and not `#!`. An earlier revision read directives from `#!` comment
 # lines, on the assumption that the product supported them. It does not: no
 # source under any `src/main` reads `#!`. The convention only ever worked by
@@ -189,6 +211,114 @@ is_a_death() {
     (( code > 128 ))
 }
 
+# --- The ceiling --------------------------------------------------------------
+#
+# The exit code GNU timeout uses when it stopped the command itself. The
+# product never returns it: the CLI exits 0 or 1 and nothing else, so 124
+# means exactly one thing -- the ceiling was reached.
+TIMEOUT_EXIT=124
+
+# How long a killed run is given to die politely before it is shot. A run that
+# ignores SIGTERM must not hold the stage hostage.
+TIMEOUT_KILL_GRACE=10
+
+# Now, in milliseconds. The ceiling is compared in milliseconds because a run
+# that is stopped AT the ceiling has to be distinguishable from a run that
+# finished just under it, and at second granularity those are the same number.
+# %3N is a GNU extension; without it the comparison falls back to seconds,
+# which is still correct -- only the resolution of the comparison is lost.
+now_ms() {
+    local now
+    now="$(date +%s%3N 2>/dev/null || true)"
+    if [[ "$now" =~ ^[0-9]+$ ]]; then
+        printf '%s' "$now"
+    else
+        printf '%s' "$(( $(date +%s) * 1000 ))"
+    fi
+}
+
+# Run one command under a ceiling expressed in milliseconds. 0 means no
+# ceiling at all.
+run_under_ceiling() {
+    local ceiling_ms="$1"; shift
+    if (( ceiling_ms <= 0 )); then
+        "$@"
+        return $?
+    fi
+    # GNU timeout does NOT know milliseconds: it takes s, m, h or d. The
+    # ceiling is kept in milliseconds because a run stopped AT the ceiling
+    # has to be distinguishable from one that finished just under it, so the
+    # conversion to seconds carries the decimals instead of rounding them off.
+    local seconds
+    seconds="$(printf '%d.%03d' "$(( ceiling_ms / 1000 ))" "$(( ceiling_ms % 1000 ))")"
+    timeout --kill-after="${TIMEOUT_KILL_GRACE}s" "${seconds}s" "$@"
+}
+
+# Whether a run was stopped BY THE CEILING. The exit code alone cannot say:
+# GNU timeout returns 124 when the command dies on SIGTERM, but when the
+# command IGNORES SIGTERM and --kill-after has to shoot it, the exit code is
+# 137 -- the very same 137 a scenario's own SIGKILL produces, and the
+# launcher already gives that one a meaning. The elapsed time tells the two
+# apart: only a run that REACHED the ceiling was stopped by it.
+timed_out() {
+    local code="$1" elapsed_ms="$2" ceiling_ms="$3"
+    if (( ceiling_ms <= 0 )); then
+        return 1
+    fi
+    if [[ "$code" == "$TIMEOUT_EXIT" ]]; then
+        return 0
+    fi
+    if (( elapsed_ms >= ceiling_ms )); then
+        return 0
+    fi
+    return 1
+}
+
+# How long the last measured run took, in milliseconds.
+last_run_ms=0
+
+# Run one pipeline invocation under the ceiling, and MEASURE it. The elapsed
+# time is what tells "the ceiling stopped this run" apart from "this run died
+# on its own", so it is measured here, where the run happens.
+run_measured() {
+    local ceiling_ms="$1"; shift
+    local started ended code=0
+    started="$(now_ms)"
+    run_under_ceiling "$ceiling_ms" "$@" || code=$?
+    ended="$(now_ms)"
+    last_run_ms=$(( ended - started ))
+    return "$code"
+}
+
+# The ceiling for one pipeline run, in seconds. Read by a function and not
+# inline, so the launcher can check its own reading of it: a knob that
+# silently reads a wrong value is a ceiling that never fires.
+timeout_knob_error=""
+scenario_timeout_s=0
+parse_timeout_knob() {
+    timeout_knob_error=""
+    local raw="${1:-}"
+    if [[ ! "$raw" =~ ^[0-9]+$ ]]; then
+        timeout_knob_error="PIPELINEK_E2E_SCENARIO_TIMEOUT needs a number of seconds, got: $raw"
+        return 1
+    fi
+    scenario_timeout_s=$(( 10#$raw ))
+    return 0
+}
+
+# A scenario that hit the ceiling is a FAILURE with a reason, not a silence.
+# The reason names the scenario and the ceiling, because "the run stopped" is
+# only actionable if you know WHICH run stopped and after how long.
+timeout_failure() {
+    local label="$1" name="$2" ceiling_ms="$3" stderr_file="$4"
+    printf 'FAIL %-52s timed out after %ss: the run was killed, not finished\n' \
+        "$label" "$(( ceiling_ms / 1000 ))"
+    if [[ -s "$stderr_file" ]]; then
+        sed 's/^/       | /' "$stderr_file" | head -20
+    fi
+    verdict_fail "$name: timed out after $(( ceiling_ms / 1000 ))s"
+}
+
 self_check() {
     local description="$1" expected="$2" actual="$3"
     if [[ "$expected" == "$actual" ]]; then
@@ -258,6 +388,49 @@ EOF
         "$(is_a_death 1 && printf yes || printf no)" || failures=$((failures + 1))
     self_check "0 is not a death" "no" \
         "$(is_a_death 0 && printf yes || printf no)" || failures=$((failures + 1))
+
+    # The ceiling knob is read, and a knob that is not a number is refused.
+    # A knob that silently reads a wrong value is a ceiling that never fires,
+    # which is the defect this whole mechanism exists to remove.
+    scenario_timeout_s=0
+    parse_timeout_knob 120 || true
+    self_check "the scenario timeout is read" "120" "$scenario_timeout_s" || failures=$((failures + 1))
+    parse_timeout_knob abc || true
+    self_check "a non-numeric scenario timeout is refused" "refused" \
+        "$([[ -n "$timeout_knob_error" ]] && printf refused || printf accepted)" || failures=$((failures + 1))
+
+    # A run that REACHES the ceiling is a timeout, and it is recognised as
+    # one. The exit code alone cannot say it: a command that ignores SIGTERM
+    # and has to be shot ends in 137, the same code a scenario's own SIGKILL
+    # produces, and the launcher already gives that one a meaning. This check
+    # exercises exactly that pair -- the ceiling fires, and the launcher calls
+    # it a timeout rather than a death.
+    local started ended elapsed_ms code=0
+    started="$(now_ms)"
+    run_under_ceiling 200 sleep 5 || code=$?
+    ended="$(now_ms)"
+    elapsed_ms=$(( ended - started ))
+    self_check "a run that hits the ceiling is a timeout" "yes" \
+        "$(timed_out "$code" "$elapsed_ms" 200 && printf yes || printf no)" || failures=$((failures + 1))
+
+    # And a run that finishes INSIDE the ceiling is not a timeout, even when
+    # it fails: a scenario that fails for its own reason must not be reported
+    # as hung, or the launcher would replace one honest failure with another
+    # honest failure that says less.
+    code=0
+    started="$(now_ms)"
+    run_under_ceiling 5000 bash -c 'exit 1' || code=$?
+    ended="$(now_ms)"
+    elapsed_ms=$(( ended - started ))
+    self_check "a run that fails inside the ceiling is not a timeout" "no" \
+        "$(timed_out "$code" "$elapsed_ms" 5000 && printf yes || printf no)" || failures=$((failures + 1))
+
+    # A ceiling of 0 means no ceiling, and a run under it is not a timeout
+    # however long it took. This is the escape hatch for diagnosing a slow
+    # scenario, so it has to mean what it says: not even the exit code 124
+    # becomes a timeout when there is no ceiling to reach.
+    self_check "with no ceiling, no run is a timeout" "no" \
+        "$(timed_out 124 999999 0 && printf yes || printf no)" || failures=$((failures + 1))
 
     if (( failures > 0 )); then
         printf 'self-test: %s check(s) failed\n' "$failures" >&2
@@ -390,6 +563,20 @@ run_scenario() {
         return
     fi
 
+    # The label of this scenario, computed BEFORE anything runs: a scenario
+    # that hits the ceiling has to name itself, and the name of a scenario
+    # that ran twice is not the name of a scenario that ran once.
+    local label="$name"
+    if [[ "$durable" == 1 ]]; then
+        label="$name (durable x2)"
+    elif [[ "$durable_once" == 1 ]]; then
+        label="$name (durable x1)"
+    elif [[ "$resume" == 1 ]]; then
+        label="$name (resume x2)"
+    elif [[ "$storage_agnostic" == 1 ]]; then
+        label="$name (both storages)"
+    fi
+
     if [[ "$needs_seeded_credentials" == 1 ]]; then
         # Declared up front, before any execution, so the verdict cannot depend
         # on a run whose outcome was never observed. NOT_RUN is not a pass:
@@ -469,9 +656,21 @@ run_scenario() {
     # code the verdict is built from, and every scenario would read as ok.
     local caller_pwd="$PWD"
     cd "$root/cwd"
-    "$binary" run --isolated --control-root "$root/control" "${db_args[@]}" "$script" \
+    run_measured "$scenario_ceiling_ms" "$binary" run --isolated --control-root "$root/control" "${db_args[@]}" "$script" \
         >"$stdout" 2>"$stderr" || code=$?
     cd "$caller_pwd"
+
+    # A run that reached the ceiling is a scenario of its own, in red, with
+    # its reason. Without this check the launcher would say "exit 124,
+    # expected 0" -- true, but it says nothing about WHY, and the reader
+    # would have to guess between a scenario that failed and a scenario that
+    # hung. Worse, a scenario that hung would be reported as a plain
+    # failure, and the ONE thing the operator needs -- that it hung -- would
+    # be missing.
+    if timed_out "$code" "$last_run_ms" "$scenario_ceiling_ms"; then
+        timeout_failure "$label" "$name" "$scenario_ceiling_ms" "$stderr"
+        return
+    fi
 
     # P6: the same script has to behave the same WITH and WITHOUT a durable
     # store. The run above was the DURABLE one; this is the VOLATILE one, with
@@ -485,10 +684,17 @@ run_scenario() {
         mkdir -p "$root/cwd-memory"
         export PIPELINEK_E2E_HOME="$root/cwd-memory"
         cd "$root/cwd-memory"
-        "$binary" run --isolated --control-root "$root/control-memory" "$script" \
+        run_measured "$scenario_ceiling_ms" "$binary" run --isolated --control-root "$root/control-memory" "$script" \
             >"$root/stdout.memory.txt" 2>"$root/stderr.memory.txt" || memory_code=$?
         cd "$caller_pwd"
         export PIPELINEK_E2E_HOME="$root/cwd"
+
+        # The volatile run has its own ceiling: it is a different run of the
+        # pipeline, and it can hang on its own.
+        if timed_out "$memory_code" "$last_run_ms" "$scenario_ceiling_ms"; then
+            timeout_failure "$label" "$name" "$scenario_ceiling_ms" "$root/stderr.memory.txt"
+            return
+        fi
     fi
 
     # Which stderr carries the verdict. In `durable` it is the FIRST run's (the
@@ -512,9 +718,17 @@ run_scenario() {
         # verdict: the first run is the state the second one resumes.
         local second=0
         cd "$root/cwd"
-        "$binary" run --isolated --control-root "$root/control" "${db_args[@]}" "$script" \
+        run_measured "$scenario_ceiling_ms" "$binary" run --isolated --control-root "$root/control" "${db_args[@]}" "$script" \
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
+
+        # The second run has its own ceiling too. This one matters as much as
+        # the first: a resumed run that hangs is exactly the failure the
+        # resume scenarios exist to catch, and it would hang the same way.
+        if timed_out "$second" "$last_run_ms" "$scenario_ceiling_ms"; then
+            timeout_failure "$label" "$name" "$scenario_ceiling_ms" "$root/stderr.rerun.txt"
+            return
+        fi
 
         if [[ "$resume" == 1 ]]; then
             # "Died" means died: the process was killed by a signal, which a
@@ -536,17 +750,6 @@ run_scenario() {
             # the scenario said about itself, silently.
             code="$second"
         fi
-    fi
-
-    local label="$name"
-    if [[ "$durable" == 1 ]]; then
-        label="$name (durable x2)"
-    elif [[ "$durable_once" == 1 ]]; then
-        label="$name (durable x1)"
-    elif [[ "$resume" == 1 ]]; then
-        label="$name (resume x2)"
-    elif [[ "$storage_agnostic" == 1 ]]; then
-        label="$name (both storages)"
     fi
 
     # P6: a scenario that declares itself storage-agnostic has to meet its
@@ -678,6 +881,28 @@ if [[ "$jobs_limit" -eq 0 ]]; then
     cores="$(nproc 2>/dev/null || echo 4)"
     (( cores > 8 )) && cores=8
     jobs_limit="$cores"
+fi
+
+# The ceiling for ONE pipeline run of a scenario. A scenario that hangs is
+# killed here and reports a red verdict of its own, with its name and its
+# reason, and the other scenarios keep running.
+scenario_ceiling_ms=0
+if ! parse_timeout_knob "${PIPELINEK_E2E_SCENARIO_TIMEOUT:-120}"; then
+    printf 'run.sh: %s\n' "$timeout_knob_error" >&2
+    exit 2
+fi
+scenario_ceiling_ms=$(( scenario_timeout_s * 1000 ))
+
+# The ceiling needs `timeout`, and it is the same tool AGENTS.md section 5
+# already wraps the whole gate with. Its absence is NOT a reason to run
+# without a ceiling: the launcher would then hang exactly as it used to,
+# and the absence of the mechanism would look exactly like the absence of a
+# hang -- the one thing this knob exists to make visible.
+if (( scenario_ceiling_ms > 0 )) && ! command -v timeout >/dev/null 2>&1; then
+    printf 'run.sh: the scenario ceiling needs the `timeout` command, and it is not installed.\n' >&2
+    printf '  Without it a hung scenario hangs the stage again, silently.\n' >&2
+    printf '  Install coreutils, or set PIPELINEK_E2E_SCENARIO_TIMEOUT=0 to run without a ceiling.\n' >&2
+    exit 2
 fi
 
 # Each scenario writes its verdict into its own file, and the parent prints

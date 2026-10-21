@@ -309,6 +309,7 @@ run_scenario() {
     local events_resume=""
     local step_verdict=""
     local failure_stage=""
+    local events_follow=""
     local directive
     while IFS= read -r directive; do
         case "$directive" in
@@ -327,6 +328,7 @@ run_scenario() {
             '//@ events-resume '*)  events_resume="${directive#//@ events-resume }" ;;
             '//@ step-verdict '*)   step_verdict="${directive#//@ step-verdict }" ;;
             '//@ failure-stage '*)  failure_stage="${directive#//@ failure-stage }" ;;
+            '//@ events-follow '*)  events_follow="${directive#//@ events-follow }" ;;
         esac
     done < <(grep -m 20 '^//@ ' "$script" || true)
 
@@ -908,6 +910,86 @@ run_scenario() {
         fi
     fi
 
+    if [[ -n "$events_follow" ]]; then
+        # The scenario writes a history that has already ended, and the launcher acts as an
+        # EXTERNAL client that follows it WITH A FILTER.
+        #
+        # What is asserted is that the follow ENDS: the run is over, and a client that waits for
+        # more of it has to be released. The filter decides what the client is handed; it does
+        # not decide whether the run is over. The run's terminal fact is the `RunFinished` event,
+        # and the follow has to see it in the STORE, not among the facts the filter let through.
+        #
+        # The bound is a wall clock and not a step count, because the failure this scenario
+        # exists to catch is a wait that never returns, and only a clock can catch that.
+        if [[ "$code" != 0 ]]; then
+            printf 'FAIL %-52s the scenario run exited %s, expected 0 (it is the fixture the follower reads)\n' \
+                "$name" "$code"
+            show_printed "$root/stderr.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the scenario run exited $code")
+            return
+        fi
+
+        local follow_run_id=""
+        local record
+        for record in "$root"/control/last-run/*; do
+            [[ -f "$record" ]] || continue
+            follow_run_id="$(head -1 "$record")"
+            break
+        done
+        if [[ -z "$follow_run_id" ]]; then
+            printf 'FAIL %-52s the run left no run id, so there is no history to follow\n' "$name"
+            failed=$((failed + 1))
+            failures+=("$name: the run left no run id")
+            return
+        fi
+
+        local follow_kind="${events_follow%% *}"
+        local follow_budget="${events_follow##* }"
+        if [[ "$follow_kind" == "$follow_budget" ]]; then
+            printf 'FAIL %-52s events-follow needs <kind> <seconds>, got: %s\n' "$name" "$events_follow"
+            failed=$((failed + 1))
+            failures+=("$name: events-follow needs <kind> <seconds>")
+            return
+        fi
+
+        local follow_code=0
+        timeout "$follow_budget" "$binary" events "$follow_run_id" --db "$root/events.db" \
+            --follow --kind "$follow_kind" \
+            >"$root/stdout.events-follow.txt" 2>"$root/stderr.events-follow.txt" || follow_code=$?
+
+        if [[ "$follow_code" == 124 ]]; then
+            # 124 is what `timeout` reports when it had to stop the wait. The run had already
+            # ended, so the follow had everything it needed to stop and did not.
+            printf 'FAIL %-52s the follow with a filter never ended on a run that had finished\n' "$name"
+            failed=$((failed + 1))
+            failures+=("$name: the follow with a filter never ended")
+            return
+        fi
+        if [[ "$follow_code" != 0 ]]; then
+            printf 'FAIL %-52s the follow with a filter exited %s\n' "$name" "$follow_code"
+            show_printed "$root/stderr.events-follow.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the follow with a filter exited $follow_code")
+            return
+        fi
+
+        # The terminal fact is what ENDS the follow; the filter still decides what is delivered.
+        if grep -q '"kind":"RunFinished"' "$root/stdout.events-follow.txt"; then
+            printf 'FAIL %-52s the follow delivered a fact the filter excluded\n' "$name"
+            failed=$((failed + 1))
+            failures+=("$name: the follow delivered a fact the filter excluded")
+            return
+        fi
+        if ! grep -q "\"kind\":\"$follow_kind\"" "$root/stdout.events-follow.txt"; then
+            printf 'FAIL %-52s the follow delivered no %s fact, so it ended without following anything\n' \
+                "$name" "$follow_kind"
+            failed=$((failed + 1))
+            failures+=("$name: the follow delivered no $follow_kind fact")
+            return
+        fi
+    fi
+
     if [[ -n "$failure_stage" ]]; then
         # The scenario declares which stage each failure belongs to, and the launcher
         # is an EXTERNAL consumer of the event lane: it asks for the failure events
@@ -987,6 +1069,8 @@ run_scenario() {
         label="$name (step-verdict)"
     elif [[ "$failure_stage" != "" ]]; then
         label="$name (failure-stage)"
+    elif [[ "$events_follow" != "" ]]; then
+        label="$name (events-follow)"
     elif [[ "$durable" == 1 ]]; then
         label="$name (durable x2)"
     elif [[ "$durable_once" == 1 ]]; then

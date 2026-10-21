@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 
 /**
- * Closed structural execution family of an invocation (CDE.3-e3, reopened per the structural rule:
+ * Closed structural execution family of an invocation (, reopened per the structural rule:
  * "closed world for execution structure, open world for Step semantics").
  * The durable spine may discriminate ONLY these two closed structural families. A family is NOT an
  * open catalog of concrete Steps: [LegacyCore] is the finite, closed legacy canonical-command world;
@@ -22,7 +22,7 @@ sealed interface StructuralStepFamily {
 }
 
 /**
- * Classifies an invocation's [StructuralStepFamily] (CDE.3-e3/e4.3).
+ * Classifies an invocation's [StructuralStepFamily].
  * Deterministic and fail-closed:
  *  - a key in the closed legacy authority ([CanonicalCoreStepCommand.LEGACY_PLUGIN_IDS]) is
  *    [LegacyCore], EVEN if a definition with the same key is also registered (core semantics must

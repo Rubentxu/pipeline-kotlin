@@ -4,12 +4,12 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 
 /**
- * Single source of truth for the durable metadata of each canonical core plugin (CDE.2-b1).
+ * Single source of truth for the durable metadata of each canonical core plugin.
  * The metadata value is constant per pluginId. [CanonicalCoreStepCommand.defaultMetadata] delegates
- * here (so no duplicate literal is scattered across the 14 sealed subtypes), and CDE.2-b2+ lets the
+ * here (so no duplicate literal is scattered across the 14 sealed subtypes), and lets the
  * durable resolution read this same authority by StepKey before any typed decode.
  * This table is the compatibility authority of the legacy core world only. It is NOT the future
- * global registry authority: CDE.3/CDE.5 introduces the registry/definition metadata (a
+ * global registry authority: that authority is the registry/definition metadata (a
  * `StepMetadataResolver` consumed by durable resolution over a composite of migrated definitions and
  * this legacy core table). Keeping it behind its own object leaves that seam open without coupling the
  * durable protocol to a specific core Step name.

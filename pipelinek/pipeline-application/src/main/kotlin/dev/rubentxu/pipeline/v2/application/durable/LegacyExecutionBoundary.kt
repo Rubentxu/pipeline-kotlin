@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepDecoder
 import dev.rubentxu.pipeline.v2.domain.StepNode
 
 /**
- * Legacy compatibility preparation to the closed core typed world (CDE.2-d / CDE.3-b3).
+ * Legacy compatibility preparation to the closed core typed world.
  * Owns the concrete legacy typed decode ([CanonicalCoreStepDecoder]) and wraps its decoded
  * [PreparedLegacyExecution]. [prepare] is the legacy STRATEGY's preparation/admission phase: it runs
  * typed decode and returns a closed [ExecutionPreparation], but NEVER produces Step side effects

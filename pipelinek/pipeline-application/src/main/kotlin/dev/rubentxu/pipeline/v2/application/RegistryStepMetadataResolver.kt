@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 
 /**
- * CDE.3-d5b /: [StepMetadataResolver] composite over an open [StepRegistry] plus the
+ * [StepMetadataResolver] composite over an open [StepRegistry] plus the
  * legacy core catalog.
  * The durable protocol resolves pre-decode metadata by structural step key only (never a concrete Step
  * name). This composite keeps that true across both worlds:

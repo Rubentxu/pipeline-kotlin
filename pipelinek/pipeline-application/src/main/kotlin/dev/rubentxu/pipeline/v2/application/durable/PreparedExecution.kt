@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 /**
  * Runtime-ephemeral marker of an invocation that has fully passed preparation / admission / decode
- * and is ready to produce effects through the single [CommonExecutionBoundary] (CDE.3-b2).
+ * and is ready to produce effects through the single [CommonExecutionBoundary].
  * Contract:
  *  - Never persisted, never serialized, never part of fingerprint or replay identity.
  *  - Opaque to the durable coordinator: it carries no Step semantics the coordinator can interpret
@@ -18,7 +18,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 sealed interface PreparedExecution
 
 /**
- * Result of an invocation's strategy preparation / admission / decode (CDE.3-b3). Distinct phases,
+ * Result of an invocation's strategy preparation / admission / decode. Distinct phases
  * never conflated:
  *  - [Rejected] is admission failure BEFORE any effect; the common executor must NOT run.
  *  - [Ready] carries an opaque [PreparedExecution] that HAS passed preparation/admission/decode and

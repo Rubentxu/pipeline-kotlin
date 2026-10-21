@@ -7,9 +7,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 
 /**
- * Registry strategy payload, opaque to the durable coordinator (CDE.3-c).
+ * Registry strategy payload, opaque to the durable coordinator.
  * Runtime-ephemeral: carries the admitted [StepDefinition] and its already-decoded input so the
- * registry EXECUTE path (CDE.3-d/e) can run the typed handler without re-decoding. Never persisted,
+ * registry EXECUTE path can run the typed handler without re-decoding. Never persisted
  * never fingerprinted, never replayed. Constructing it runs NO Step side effects.
 */
 data class PreparedRegistryExecution(
@@ -20,7 +20,7 @@ data class PreparedRegistryExecution(
 ) : PreparedExecution
 
 /**
- * Registry strategy preparation / admission (CDE.3-c). Mirrors the legacy split in CDE.3-b3:
+ * Registry strategy preparation / admission. Mirrors the legacy split in:
  * [prepare] runs registry resolution, capability admission and typed decode, returning a closed
  * [ExecutionPreparation], and NEVER calls the handler. Producing a [Ready] means the invocation is
  * decoded and admitted and ready for the single [CommonExecutionBoundary]; [Rejected] is admission

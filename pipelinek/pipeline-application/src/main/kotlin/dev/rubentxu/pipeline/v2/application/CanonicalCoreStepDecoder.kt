@@ -15,7 +15,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * Metadata bundle for a canonical step — carries the durable execution contract.
  * @property effects The side-effect classification of the step.
  * @property replayPolicy The replay strategy for the step.
- * @property recoveryPolicy Declared recovery behaviour of the operation (CDE.2-b4); the durable
+ * @property recoveryPolicy Declared recovery behaviour of the operation; the durable
  *   protocol reads this typed property and never a concrete Step name.
 */
 data class StepMetadata(
@@ -30,7 +30,7 @@ sealed interface CanonicalCoreStepCommand {
 
     /**
      * Durable metadata for this command, resolved from [pluginId] by the single legacy authority
-     * [CanonicalCoreStepMetadata] (CDE.2-b1). Constant per plugin, so it needs no decoded field.
+     * [CanonicalCoreStepMetadata]. Constant per plugin, so it needs no decoded field.
 */
     val defaultMetadata: StepMetadata
         get() = CanonicalCoreStepMetadata.metadata(pluginId)

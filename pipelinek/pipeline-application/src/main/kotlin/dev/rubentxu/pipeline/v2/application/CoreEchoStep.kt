@@ -40,7 +40,7 @@ object CoreEchoStep {
      * Echo's durable input codec emits the SAME canonical dsl-v1 envelope the compiler
      * produces for `core.echo` (`{"kind":"echo","text":...}`, byte-identical via the same kotlinx JSON
      * serializer). This makes the registry definition durable-spine eligible (a well-formed JSON-object
-     * payload, per the CDE.3-e1/e2 boundary) AND keeps fingerprint/journal identity continuous across
+     * payload, per the boundary) AND keeps fingerprint/journal identity continuous across
      * the eventual echo migration (legacy-routed today and registry-routed after the flip share the
      * exact durable payload string). Round-trip `encode(I) -> payload.encoded -> decode` is lossless.
 */

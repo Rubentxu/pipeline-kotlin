@@ -63,7 +63,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
 
 /**
- * CDE.3-d1: explicit, small capability bridge from a [CanonicalRuntimeContext] to a
+ * explicit, small capability bridge from a [CanonicalRuntimeContext] to a
  * [StepCapabilityAccess].
  * It exposes ONLY the capabilities the canonical runtime actually declares and provides today
  * ([EVENT_SINK_CAPABILITY] backed by the runtime's [CanonicalRuntimeContext.eventSink], and — since

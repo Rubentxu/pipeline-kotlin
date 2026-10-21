@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `5a8e43a35` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `4b7b908bb` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **22** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 5 | ídem |
 | Tests unitarios ejecutados | **812** (104 informes JUnit, **104** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:812 read:0` |
 | Escenarios E2E | 36 (**35 pasan, 0 fallan, 1 `NOT_RUN`**; los 35 que corren declaran una observación) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **13172 / 66685 = 0.198** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **13172 / 66688 = 0.198** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **88 s** (tres ensayos consecutivos sobre el mismo SHA: **88 s, 74 s y 72 s**, los tres con `tests=rewritten:812 read:0`), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **89 s** (sobre el árbol de este bloque; los tres ensayos del bloque anterior dieron 88 s, 74 s y 72 s, todos con `tests=rewritten:812 read:0`), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Coste por escenario E2E | mediana **7,0 s**, p95 **14,5 s**, máximo **15,6 s** | el lanzador publica ahora el tiempo de cada escenario en su línea |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
@@ -116,7 +116,7 @@ contra el texto del plan. «Medido» significa que el número salió de una
 | 2 | 0 `@Test` UAT/E2E/AAT/harness | **PASS** | 0 en `pluginContractTest`/`installedContractTest`/`integrationTest`/`functionalTest`; 0 `@Disabled` |
 | 3 | 0 clases legacy trasladadas | **PASS** | `v2/test-harness`, `v2/pipeline-testkit`, `v2/pipeline-architecture-tests` y `scripts/validation-gate.py` ausentes |
 | 4 | E2E solo como `.pipeline.kts`, un lanzador | **PASS** | 36 escenarios en 8 categorías bajo `v2/examples/`; 0 `src/test` dentro de `examples/*`; lanzador único `v2/examples/run.sh` (1277 líneas) invocado por `scripts/verify-all.sh:623` |
-| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 13172 / 66685 = 0.198; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
+| 5 | `VERIFY_LOC <= 2 * PRODUCT_LOC`, global y por módulo | **PASS** | 13172 / 66688 = 0.198; ningún módulo declara `breach`; el más alto es `workflow-control` con 1.633 |
 | 6 | `verify-all` local ≤ 900 s | **PASS** | tres ensayos consecutivos sobre `5a8e43a35`: **88 s, 74 s y 72 s**, los tres con `tests=rewritten:812 read:0` — los tests se ejecutaron de verdad en cada uno, ninguno leyó un resultado de caché. Margen del más lento, **10,2×**. La primera corrida en frío del mismo árbol dio 367 s, de los que 306 s son la etapa 1 |
 | 7 | Compilar todos los módulos y ejecutar el gate sobre el SHA | **PASS con una excepción** | 27 módulos declarados compilan; `v2/pipeline-protocol/` está versionado y **no está declarado**, luego Gradle nunca lo compila |
 
@@ -2091,6 +2091,78 @@ PASS  sha=5a8e43a35…  elapsed=88s  budget=900s  tests=rewritten:812 read:0  ga
 El límite 6 de la tabla de arriba se cierra con estos tres ensayos, que es lo que
 exigía: los tres con los tests **reescritos** (`rewritten:812 read:0`), o sea los
 tres midiendo el gate y ninguno citando una caché.
+
+**bf) Los comentariosaban de quién era el encargo, no de qué hace el código — CERRADO en `4b7b908bb`.**
+
+**El problema, en una frase**: quinientos cincuenta y ocho ficheros empezaban su
+comentario con la etiqueta del encargo —`WU-LPR-301:`, `S2-A6 / G5 —`— o
+conservaban una línea entera que apuntaba a un documento interno que no viaja con
+el repositorio. A quien lee el código dentro de un año, esa etiqueta no le dice
+nada y el documento no lo puede abrir.
+
+**Dos pasadas, y sólo una podía ser automática.** La primera quita la etiqueta
+del principio de la frase cuando detrás queda una oración, y borra la línea que
+sólo es procedencia: 205 ficheros, **630 líneas**, todas de comentario. La
+segunda —los identificadores metidos *dentro* de frases que sí explican algo— se
+hizo por módulos con criterio, porque **dos reescrituras automáticas se probaron
+y se descartaron**: la primera colapsaba las tablas de columnas de los
+`build.gradle.kts` y partía un paréntesis anidado en dos; la segunda hacía lo
+mismo. Las dos se detectaron en seco, antes de tocar el disco. De ahí la regla
+que queda: **lo mecánico se automatiza; la prosa, no.**
+
+**Lo que eso desigualdadó, y no era hipotético**: una entrada de la línea base
+de detekt se identifica por una firma que **lleva pegada la documentación de la
+declaración**. Al cambiar los comentarios cambia la firma, el hallazgo deja de
+coincidir con su entrada y aparece como nuevo — sin que exista nada nuevo. Con la
+primera pasada aplicada, la puerta se puso en rojo con **cinco** hallazgos que ya
+estaban suprimidos.
+
+**Y debajo de eso había un defecto peor, que este bloque pasó por encima**: la
+tarea de instantánea escribía **un segundo fichero**, un sufijo más profundo,
+que la puerta nunca leía. Medido, no supuesto: tras ejecutar
+`detektBaselineMain`, el md5 y la fecha del fichero que el análisis lee seguían
+intactos. El comentario del propio build, dos líneas más arriba, afirma lo
+contrario —y describe esa misma trampa como el fallo que ya se corrigió una vez
+por culpa de un nombre. Volvimos a caer en ella.
+
+**El arreglo es que la tarea escriba donde se lee.** Fijada la ruta de la
+instantánea al mismo fichero que consume el análisis, regenerar deja de ser un
+acto de fe: el md5 del fichero cambia, y la puerta se pone verde. Un fichero, un
+comando, un artefacto.
+
+**Que la regeneración no se tragara deuda, medido de la manera que puede
+contestar**: con la línea base **antigua** delante del árbol actual, detekt
+reporta **exactamente esos cinco**, y ninguno más. Los tres entradas que
+desaparecen de la línea base nueva no son hallazgos escondidos: el código que
+nombraban **ya no existe** en el repositorio (`val o = outcome`, por ejemplo), y
+por eso se limpian. Sin tragar nada: la línea base pasa de 362 a 359 porque
+deja de fingir que hay tres problemas que ya no están.
+
+**Lo que se conserva a propósito**: los identificadores de vulnerabilidad
+publicada (`CVE-2023-32981` y los que haya) no son arqueología, son **el motivo**
+por el que existe el código que los menciona. Borrarlos sería borrar la razón.
+
+**Y lo que casi se cuela por el lado bueno**: 306 ficheros revisados, y la prueba
+de que el diff es sólo de comentario no es un `grep` — es quitar los comentarios
+de la versión anterior y de la actual de cada fichero y comparar lo que queda.
+Un `grep` deja pasar un comentario de cola eliminado y no ve un `is StepSpec.Dir,`
+convertido en `is StepSpec.Dir,texto`; esa comparación no. Esa prueba es la que
+detectó el daño.
+
+**Lo que queda, y es la parte que no está hecha**: la misma cuenta, sobre el
+árbol de este bloque, da **1 109 líneas** todavía con procedencia — un 40 % de las
+2 789 que había. No es un resto de este barrido: son los identificadores que
+viven *dentro* de una frase que explica algo, donde quitarlos obliga a
+reescribir la frase y eso ya no es un trabajo mecánico sino de lectura. Queda
+declarado aquí como deuda abierta, con su cifra, para que no se lea como un
+trabajo terminado.
+
+Censo sin movimiento: `VERIFY_LOC` cuenta líneas efectivas sin comentarios, así
+que **13 172 / 66 688 = 0,198**: los comentarios no son líneas efectivas, y el
+censo sólo se mueve por el arreglo del build que este mismo bloque lleva.
+
+Puerta sobre el SHA del bloque: `PASS sha=4b7b908bb… elapsed=89s budget=900s
+tests=rewritten:812 read:0 gaps=1 not_run scenarios=observed:35 executed:35`.
 
 ### 2.3 Cierre de ciclo
 

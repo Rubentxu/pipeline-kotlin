@@ -540,23 +540,25 @@ contrato mínimo y nominativo:
   nombra `cur.cmt` y muestra el cuerpo sanitizado.
 
 El enum `OutputNotEstablished` gana el caso que el KDoc del propio fichero referencia desde
-hace tiempo sin existir:
+hace tiempo sin existir... **y se quita después de añadirlo.** El ciclo intentó cerrar la cita
+muerta con `OutputNotEstablished.CORRUPT_COMMIT_RECORD`, pero `kotlinx-binary-compatibility-validator`
+lo cazó en la primera ejecución del gate: añadir un valor a un enum público cambia la ABI del
+módulo `:pipeline-output`, y AGENTS.md §1 prohíbe autorizarme a mí mismo ese cambio. La guarda
+queda como una cita resuelta hacia `[parseCommittedOffset]`, no hacia un caso del enum:
 
 ```kotlin
-CORRUPT_COMMIT_RECORD(
-    "silent recovery from a corrupt cur.cmt",
-    "an authority above the file-system parser for what a corrupt `cur.cmt` means — losing " +
-        "bytes vs acknowledging corruption — and the discipline to refuse to invent one. " +
-        "The store today picks 'loud failure' as the only failure mode it authorises, " +
-        "and the audit trail of the lost bytes is what an external repair tool would have " +
-        "to supply, not what this store invents in place",
-)
+// antes — referencia muerta a un enum que la clase nombra y el módulo no expone
+* damaged and is NOT repaired automatically** — see [OutputNotEstablished.CORRUPT_COMMIT_RECORD].
+// después — la decisión vive dentro del parser; el módulo no necesita nuevo caso en el enum
+* damaged and is NOT repaired automatically** — see [parseCommittedOffset] in `:pipeline-output-store`.
 ```
 
-El `committedLocked` ahora propaga esa excepción al `tryWithStreamOwnership` que ya tenía
-escrito en KDoc ("silently skipping would be a hole rather than a safety. It propagates, and the
-recovery that called it fails loudly"). El camino de recovery, los lectores y los tails ya no
-reciben un `0L` fabricado; reciben la excepción, y el operador la ve.
+El `committedLocked` propaga la excepción al `tryWithStreamOwnership` que ya tenía escrito en
+KDoc ("silently skipping would be a hole rather than a safety. It propagates, and the recovery
+that called it fails loudly"). El camino de recovery, los lectores y los tails ya no reciben un
+`0L` fabricado; reciben la excepción, y el operador la ve. La autoridad para decidir qué hace
+el siguiente paso con esa `IOException` queda donde el repositorio dice que queda: en un
+ticket de operación, no en un valor de enum publicado.
 
 #### Discriminación medida, no supuesta
 

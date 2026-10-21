@@ -211,5 +211,23 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
         System.exit(exitCode)
         return true
     }
+
+    // The saga read-side: what a run still owes, read from the durable promises.
+    //
+    // It is a VERB of its own rather than an option of `inspect` because it reads a
+    // different authority: `inspect` reads what a run DID, and this one reads what a run
+    // PROMISED and has not yet discharged.
+    if (args.firstOrNull() == "saga") {
+        val rest = args.drop(1)
+        if (rest.firstOrNull() == "inspect") {
+            val exitCode = MainSagaInspectCli.main(rest.drop(1).toTypedArray())
+            System.exit(exitCode)
+            return true
+        }
+        System.err.println("pipeline: unknown saga subcommand.")
+        System.err.println(MainSagaInspectCli.USAGE)
+        System.exit(2)
+        return true
+    }
     return false
 }

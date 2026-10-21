@@ -58,6 +58,12 @@
 #                                     JAR that is not there: the artifact whose bytes
 #                                     cannot be read, and therefore cannot be
 #                                     verified before anything is loaded from it.
+#   //@ timeout <seconds>            the clock this scenario gets. The default is
+#                                    an order of magnitude above what any scenario
+#                                    takes today, so the clock only fires on a
+#                                    scenario that is stuck -- and then that
+#                                    scenario is STOPPED and named, instead of the
+#                                    whole run being paralyzed by it.
 # The distribution must already exist:
 #     cd pipelinek &&./gradlew:pipeline-application:installDist
 # Why `//@` and not `#!`. An earlier revision read directives from `#!` comment
@@ -80,10 +86,18 @@ set -Eeuo pipefail
 
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$here/.." && pwd)"
-binary="$repo_root/pipelinek/pipeline-application/build/install/pipelinek/bin/pipelinek"
 
-if [[ ! -x "$binary" ]]; then
-    echo "run.sh: no distribution at $binary" >&2
+# The product's path, as a function and NOT as a variable. A variable would be
+# a door: a later edit could invoke the product through it and escape the
+# clock, and a hung scenario that escapes the clock is the one failure this
+# whole mechanism exists to prevent. As a function, the only ways to reach
+# the product are the two below, and BOTH of them apply a clock.
+product_path() {
+    printf '%s' "$repo_root/pipelinek/pipeline-application/build/install/pipelinek/bin/pipelinek"
+}
+
+if [[ ! -x "$(product_path)" ]]; then
+    echo "run.sh: no distribution at $(product_path)" >&2
     echo "  build it first: cd pipelinek && ./gradlew :pipeline-application:installDist" >&2
     exit 2
 fi
@@ -94,11 +108,117 @@ trap cleanup EXIT
 
 passed=0
 failed=0
+blocked=0
 seeded=0
 durable_runs=0
 failures=()
 
 scenario_index=0
+
+# --- The clocks ---------------------------------------------------------------
+#
+# Two clocks, and both of them are the launcher's to keep. A hung test must
+# name itself instead of paralyzing the delivery, and that takes two limits:
+# one that says how long a SCENARIO may take, and one that says how long the
+# whole STAGE may take.
+#
+# The scenario clock defaults to 120 s. Measured over the whole suite, the
+# slowest scenario takes 21 s and the median 11 s, so the default is roughly
+# six times the worst case observed: it never fires on a healthy run, and it
+# fires long before the gate's own ceiling. A scenario that needs longer says
+# so with `//@ timeout <seconds>`.
+#
+# The stage clock defaults to 780 s, and the gate tells the launcher how much
+# of ITS budget is left (PIPELINEK_E2E_BUDGET_SECONDS) so the two clocks can
+# never disagree: the launcher stops first, and it says which scenarios it did
+# not get to, instead of the gate dying without a name.
+SCENARIO_TIMEOUT_SECONDS="${PIPELINEK_E2E_SCENARIO_TIMEOUT_SECONDS:-120}"
+STAGE_TIMEOUT_SECONDS="${PIPELINEK_E2E_BUDGET_SECONDS:-780}"
+stage_deadline=$(( $(date +%s) + STAGE_TIMEOUT_SECONDS ))
+
+# The scenario's own clock, set by run_scenario before its body runs: the
+# deadline in epoch seconds, the budget it was given, and the file that
+# records that the clock fired.
+scenario_deadline=0
+scenario_budget="$SCENARIO_TIMEOUT_SECONDS"
+clock_marker=""
+
+# The clock has to WORK, not merely exist: a launcher whose clock never fires
+# lets a hung scenario hang the run, which is the very thing the clock is
+# for. So the instrument is checked once, at startup, against a command that
+# cannot finish on time. It costs one second and it is the difference
+# between "the launcher has a clock" and "the launcher's clock works".
+clock_works() {
+    local marker="$cycle_root/clock-selfcheck.pid"
+    local rc=0
+    timeout --kill-after=1s 2s bash -c "sleep 30 & echo \$! >'$marker'; sleep 30" \
+        >/dev/null 2>&1 || rc=$?
+    (( rc == 124 )) || return 1
+    [[ -s "$marker" ]] || return 1
+    local grandchild
+    grandchild="$(cat "$marker")"
+    # The signal goes to the group; give it a moment to land before calling
+    # the tree alive.
+    sleep 1
+    if kill -0 "$grandchild" 2>/dev/null; then
+        kill -KILL "$grandchild" 2>/dev/null || true
+        return 1
+    fi
+    return 0
+}
+
+if ! clock_works; then
+    echo "run.sh: the timeout instrument does not work on this machine" >&2
+    echo "  a launcher whose clock cannot fire, or cannot take the tree with it," >&2
+    echo "  would let a hung scenario hang the run." >&2
+    exit 2
+fi
+
+# The product, under the scenario's clock.
+#
+# The exit code 124 is GNU timeout's "I had to stop it", and it is the ONE
+# code the launcher reads as a clock event rather than as a product verdict.
+# `timeout` puts the command in its own process group and signals the GROUP,
+# so a pipeline that leaves a shell behind does not leave the run hanging:
+# the tree goes down with the clock.
+binary() {
+    local left
+    left=$(( scenario_deadline - $(date +%s) ))
+    if (( left <= 0 )); then
+        touch "$clock_marker"
+        return 124
+    fi
+    timeout --kill-after=5s "$left" "$(product_path)" "$@"
+    local rc=$?
+    if (( rc == 124 )); then
+        touch "$clock_marker"
+    fi
+    return "$rc"
+}
+
+# The product, under an EXPLICIT budget, for the one case that has one: the
+# follow, whose scenario says how long it is allowed to wait. The scenario's
+# own clock still binds -- the explicit budget can only shorten what is left,
+# never lengthen it -- and when it is the scenario's clock that stops the
+# command, the clock marker says so, because a follow that ran out of the
+# SCENARIO's time is a different fact from a follow that ran out of its own.
+binary_within() {
+    local budget="$1"; shift
+    local left
+    left=$(( scenario_deadline - $(date +%s) ))
+    if (( left <= 0 )); then
+        touch "$clock_marker"
+        return 124
+    fi
+    local capped="$budget"
+    if (( capped > left )); then capped="$left"; fi
+    timeout --kill-after=5s "$capped" "$(product_path)" "$@"
+    local rc=$?
+    if (( rc == 124 && capped == left )); then
+        touch "$clock_marker"
+    fi
+    return "$rc"
+}
 
 # Fixtures a seeded credential can be built from. Built once per invocation and
 # shared: they are synthetic values nobody asserts on, so rebuilding them per
@@ -284,12 +404,79 @@ workspace_snapshot() {
     ) 2>/dev/null || true
 }
 
-# One scenario, fully isolated. Nothing is read from the developer's HOME and
-# nothing is written outside $cycle_root.
+# One scenario, under its clock.
+#
+# The body does the work and reaches a verdict of its own; this wrapper owns
+# the clock and owns the LAST word. A scenario whose clock fired did NOT check
+# its guarantee -- the stop is not a product verdict -- so it is declared
+# BLOCKED, its verdict is withdrawn, and the run is not green.
+#
+# The wrapper is also where the scenario is counted, so the count and the
+# clock cannot disagree: a scenario is counted exactly once, and it is counted
+# as exactly one of passed, failed or blocked.
 run_scenario() {
     local script="$1"
-    local relative="${script#"$here"/}"
+    local name="${script#"$here"/}"
+
     scenario_index=$((scenario_index + 1))
+
+    # The budget this scenario asked for, or the default.
+    local budget="$SCENARIO_TIMEOUT_SECONDS"
+    local directive
+    while IFS= read -r directive; do
+        case "$directive" in
+            '//@ timeout '*) budget="${directive#//@ timeout }" ;;
+        esac
+    done < <(grep -m 20 '^//@ ' "$script" || true)
+    if [[ ! "$budget" =~ ^[0-9]+$ ]] || (( budget <= 0 )); then
+        printf 'FAIL %-52s the timeout must be a positive number of seconds, got: %s\n' \
+            "$name" "$budget"
+        failed=$((failed + 1))
+        failures+=("$name: the timeout directive is not a positive number of seconds")
+        return
+    fi
+
+    local slug
+    slug="$(printf '%s' "$name" | tr '/.' '--')"
+    local root="$cycle_root/$slug"
+    mkdir -p "$root"
+
+    scenario_budget="$budget"
+    scenario_deadline=$(( $(date +%s) + budget ))
+    clock_marker="$root/clock-exceeded"
+    rm -f "$clock_marker"
+
+    local before_passed="$passed" before_failed="$failed" before_failures="${#failures[@]}"
+
+    run_scenario_body "$script"
+
+    if [[ -f "$clock_marker" ]]; then
+        # The clock fired. The body's verdict was a consequence of the stop, so
+        # it is withdrawn: the guarantee was not checked, and a guarantee that
+        # was not checked is a declared gap, not a pass and not a product
+        # failure.
+        if (( passed > before_passed )); then passed=$((passed - 1)); fi
+        if (( failed > before_failed )); then failed=$((failed - 1)); fi
+        blocked=$((blocked + 1))
+        printf 'BLOCKED %-52s the clock of %ss expired: the guarantee was NOT checked\n' \
+            "$name" "$scenario_budget"
+        # The body's own entry says what the stop looked like from inside
+        # ("exit 124, expected 0"); the clock says what it WAS. The clock wins,
+        # because it is the cause, and one scenario must appear once in this
+        # list.
+        if (( ${#failures[@]} > before_failures )); then
+            failures[${#failures[@]}-1]="$name: the clock of ${scenario_budget}s expired; the guarantee was NOT checked"
+        else
+            failures+=("$name: the clock of ${scenario_budget}s expired; the guarantee was NOT checked")
+        fi
+    fi
+}
+
+# One scenario, fully isolated. Nothing is read from the developer's HOME and
+# nothing is written outside $cycle_root.
+run_scenario_body() {
+    local script="$1"
+    local relative="${script#"$here"/}"
     local name="$relative"
     local slug
     slug="$(printf '%s' "$name" | tr '/.' '--')"
@@ -446,7 +633,7 @@ run_scenario() {
                 ;;
         esac
         if ! seed_value "$seed_kind" >"$root/fixture.bin" \
-            || ! "$binary" credentials add --kind "$seed_kind" --from-stdin \
+            || ! binary credentials add --kind "$seed_kind" --from-stdin \
                    "$seed_id" <"$root/fixture.bin" >"$seed_out" 2>&1; then
             printf 'FAIL %-52s could not seed credential %s (%s)\n' \
                 "$name" "$seed_id" "$seed_kind"
@@ -505,14 +692,14 @@ run_scenario() {
     # could not see that there was a choice to make.
     local caller_pwd="$PWD"
     cd "$root/cwd"
-    "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" \
+    binary run --isolated --db "$root/events.db" --control-root "$root/control" \
         ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
         >"$stdout" 2>"$stderr" || code=$?
     cd "$caller_pwd"
 
     if [[ "$run_volatile" == 1 ]]; then
         cd "$root/cwd"
-        "$binary" run --isolated --control-root "$root/control-volatile" \
+        binary run --isolated --control-root "$root/control-volatile" \
             ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
             >"$vstdout" 2>"$vstderr" || vcode=$?
         cd "$caller_pwd"
@@ -527,7 +714,7 @@ run_scenario() {
         # broken.
         local second=0
         cd "$root/cwd"
-        "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" \
+        binary run --isolated --db "$root/events.db" --control-root "$root/control" \
             ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
@@ -563,7 +750,7 @@ run_scenario() {
 
         local second=0
         cd "$root/cwd"
-        "$binary" run --isolated --db "$root/events.db" --control-root "$root/control" \
+        binary run --isolated --db "$root/events.db" --control-root "$root/control" \
             ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
@@ -604,7 +791,7 @@ run_scenario() {
         # operation row; only the RUN's own terminal fact may end a run, and
         # this run never got one.
         local recover_code=0
-        "$binary" runs recover "$recover_run_id" --db "$root/events.db" \
+        binary runs recover "$recover_run_id" --db "$root/events.db" \
             --control-root "$root/control" \
             >"$root/stdout.recover.txt" 2>"$root/stderr.recover.txt" || recover_code=$?
         if [[ "$recover_code" != 0 ]]; then
@@ -626,7 +813,7 @@ run_scenario() {
         # And the run's own state says so too: it is still running, because
         # the recover did not close it.
         local recover_state_code=0
-        "$binary" inspect "$recover_run_id" --db "$root/events.db" \
+        binary inspect "$recover_run_id" --db "$root/events.db" \
             --control-root "$root/control" --state \
             >"$root/stdout.recover-state.txt" 2>"$root/stderr.recover-state.txt" || recover_state_code=$?
         if [[ "$recover_state_code" != 0 ]]; then
@@ -674,7 +861,7 @@ run_scenario() {
         # port, and the answer is the run's own terminal fact: the event lane's
         # `RunFinished` bookend.
         local state_code=0
-        "$binary" inspect "$state_run_id" --db "$root/events.db" --control-root "$root/control" --state \
+        binary inspect "$state_run_id" --db "$root/events.db" --control-root "$root/control" --state \
             >"$root/stdout.state.txt" 2>"$root/stderr.state.txt" || state_code=$?
         if [[ "$state_code" != 0 ]]; then
             printf 'FAIL %-52s reading the run state exited %s, expected 0\n' "$name" "$state_code"
@@ -694,7 +881,7 @@ run_scenario() {
         # A run nobody knows is not a run that finished. It is a refusal, it
         # says so, and it does not invent a state to answer with.
         local unknown_code=0
-        "$binary" inspect "no-such-run-$state_run_id" --db "$root/events.db" --control-root "$root/control" --state \
+        binary inspect "no-such-run-$state_run_id" --db "$root/events.db" --control-root "$root/control" --state \
             >"$root/stdout.state-unknown.txt" 2>"$root/stderr.state-unknown.txt" || unknown_code=$?
         if [[ "$unknown_code" != 2 ]]; then
             printf 'FAIL %-52s reading the state of an unknown run exited %s, expected 2\n' \
@@ -743,7 +930,7 @@ run_scenario() {
 
         # The first cancel closes the run.
         local cancel_code=0
-        "$binary" runs cancel "$run_id" --db "$root/events.db" --control-root "$root/control" \
+        binary runs cancel "$run_id" --db "$root/events.db" --control-root "$root/control" \
             --reason "the writer was killed" \
             >"$root/stdout.cancel.txt" 2>"$root/stderr.cancel.txt" || cancel_code=$?
         if [[ "$cancel_code" != 0 ]]; then
@@ -766,7 +953,7 @@ run_scenario() {
         # nothing. A refusal here would mean the contract is broken, because
         # the run IS closed.
         local again=0
-        "$binary" runs cancel "$run_id" --db "$root/events.db" --control-root "$root/control" \
+        binary runs cancel "$run_id" --db "$root/events.db" --control-root "$root/control" \
             >"$root/stdout.cancel2.txt" 2>"$root/stderr.cancel2.txt" || again=$?
         if [[ "$again" != 0 ]]; then
             printf 'FAIL %-52s the second cancel exited %s, expected 0 (it is a no-op)\n' \
@@ -787,7 +974,7 @@ run_scenario() {
         # The run's history ends with a terminal bookend. Without it the run
         # would carry a cancellation receipt and no terminal fact, and a reader
         # would have two answers about whether the run is over.
-        "$binary" events "$run_id" --db "$root/events.db" \
+        binary events "$run_id" --db "$root/events.db" \
             >"$root/events.after-cancel.txt" 2>&1 || true
         if ! grep -aqF -- '"kind":"RunFinished"' "$root/events.after-cancel.txt"; then
             printf 'FAIL %-52s the closed run has no terminal bookend\n' "$name"
@@ -841,11 +1028,11 @@ run_scenario() {
         local refusal_code=0
         case "$events_refusal" in
             unknown-run)
-                "$binary" events "no-such-run-$run_id" --db "$root/events.db" \
+                binary events "no-such-run-$run_id" --db "$root/events.db" \
                     >"$root/stdout.events-refusal.txt" 2>"$root/stderr.events-refusal.txt" || refusal_code=$?
                 ;;
             cursor-beyond-tail)
-                "$binary" events "$run_id" --db "$root/events.db" \
+                binary events "$run_id" --db "$root/events.db" \
                     --after-cursor "evt-cursor-v1:$run_id:999999999" \
                     >"$root/stdout.events-refusal.txt" 2>"$root/stderr.events-refusal.txt" || refusal_code=$?
                 ;;
@@ -906,7 +1093,7 @@ run_scenario() {
 
         # The truth: the whole history of that kind, read in one go.
         local expected read_code=0
-        expected="$("$binary" events "$run_id" --db "$root/events.db" --limit 1000 \
+        expected="$(binary events "$run_id" --db "$root/events.db" --limit 1000 \
             --kind "$resume_kind" --fields SEQ 2>/dev/null | tail -n +2 | tr '\n' ' ')" || read_code=$?
         if [[ "$read_code" != 0 ]]; then
             printf 'FAIL %-52s the full read exited %s\n' "$name" "$read_code"
@@ -931,10 +1118,10 @@ run_scenario() {
             rounds=$((rounds + 1))
             read_code=0
             if [[ -z "$cursor" ]]; then
-                page="$("$binary" events "$run_id" --db "$root/events.db" --limit "$resume_limit" \
+                page="$(binary events "$run_id" --db "$root/events.db" --limit "$resume_limit" \
                     --kind "$resume_kind" --fields SEQ 2>"$root/stderr.events-resume.txt")" || read_code=$?
             else
-                page="$("$binary" events "$run_id" --db "$root/events.db" --limit "$resume_limit" \
+                page="$(binary events "$run_id" --db "$root/events.db" --limit "$resume_limit" \
                     --kind "$resume_kind" --fields SEQ --after-cursor "$cursor" \
                     2>"$root/stderr.events-resume.txt")" || read_code=$?
             fi
@@ -1014,7 +1201,7 @@ run_scenario() {
 
         local sv_code=0
         local sv_terminals
-        sv_terminals="$("$binary" events "$sv_run_id" --db "$root/events.db" \
+        sv_terminals="$(binary events "$sv_run_id" --db "$root/events.db" \
             --kind StepFinished --typed 2>"$root/stderr.step-verdict.txt")" || sv_code=$?
         if [[ "$sv_code" != 0 ]]; then
             printf 'FAIL %-52s reading the step terminals exited %s\n' "$name" "$sv_code"
@@ -1097,7 +1284,7 @@ run_scenario() {
         fi
 
         local follow_code=0
-        timeout "$follow_budget" "$binary" events "$follow_run_id" --db "$root/events.db" \
+        binary_within "$follow_budget" events "$follow_run_id" --db "$root/events.db" \
             --follow --kind "$follow_kind" \
             >"$root/stdout.events-follow.txt" 2>"$root/stderr.events-follow.txt" || follow_code=$?
 
@@ -1162,7 +1349,7 @@ run_scenario() {
 
         local fs_code=0
         local fs_failures
-        fs_failures="$("$binary" events "$fs_run_id" --db "$root/events.db" \
+        fs_failures="$(binary events "$fs_run_id" --db "$root/events.db" \
             --kind StepFailed --typed 2>"$root/stderr.failure-stage.txt")" || fs_code=$?
         if [[ "$fs_code" != 0 ]]; then
             printf 'FAIL %-52s reading the failure events exited %s\n' "$name" "$fs_code"
@@ -1290,7 +1477,7 @@ run_scenario() {
                 # The directory is <runId>_<opId>_stdout.
                 op_id="${op_id#${run_id}_}"
                 op_id="${op_id%_stdout}"
-                "$binary" console --control-dir "$ex_control" "$run_id" "$op_id" \
+                binary console --control-dir "$ex_control" "$run_id" "$op_id" \
                     >>"$transcript" 2>/dev/null || true
             done
 
@@ -1351,6 +1538,12 @@ run_scenario() {
         fi
     fi
 
+    # The clock has the last word even here: a scenario that ran out of it
+    # did not check its guarantee, so the body does not get to say "ok".
+    if [[ -f "$clock_marker" ]]; then
+        return
+    fi
+
     printf 'ok   %-52s exit %s\n' "$label" "$code"
     passed=$((passed + 1))
 }
@@ -1390,25 +1583,40 @@ if (( ${#selected[@]} == 0 )); then
     exit 2
 fi
 
-for script in ${selected[@]+"${selected[@]}"}; do
-    run_scenario "$script"
+# The stage clock. When it runs out, the launcher stops and NAMES the
+# scenarios it did not get to. A stage that stops without a name is a stage
+# that dies silently, and the gate's own ceiling would kill the whole run
+# without saying which scenario was stuck.
+scenario_count=${#selected[@]}
+for (( i = 0; i < scenario_count; i++ )); do
+    if (( $(date +%s) >= stage_deadline )); then
+        printf 'run.sh: the stage clock of %ss expired before the run finished\n' \
+            "$STAGE_TIMEOUT_SECONDS" >&2
+        printf '  The scenarios that did not run are a declared gap, not a pass:\n' >&2
+        for (( j = i; j < scenario_count; j++ )); do
+            printf '    - %s\n' "${selected[$j]#"$here"/}" >&2
+        done
+        exit 1
+    fi
+    run_scenario "${selected[$i]}"
 done
 
-# The three counters must reconcile before the summary is published: every
-# scenario the launcher selected either reached a verdict or failed, and one
-# that reached neither was skipped. A skip is a gap, not a pass, so it is
-# declared here rather than left for whoever reads the counts to notice. The
-# gate derives the same gap from the same three numbers, and the two cannot
-# disagree because neither invents a fourth.
-if (( passed + failed != scenario_index )); then
-    printf 'run.sh: %d scenario(s) selected, %d passed, %d failed -- %d skipped.\n' \
-        "$scenario_index" "$passed" "$failed" "$(( scenario_index - passed - failed ))" >&2
+# The four counters must reconcile before the summary is published: every
+# scenario the launcher selected reached exactly one verdict -- passed, failed
+# or blocked -- and one that reached none was skipped. A skip is a gap, not a
+# pass, so it is declared here rather than left for whoever reads the counts
+# to notice. The gate derives the same gap from the same numbers, and the two
+# cannot disagree because neither invents a fifth.
+if (( passed + failed + blocked != scenario_index )); then
+    printf 'run.sh: %d scenario(s) selected, %d passed, %d failed, %d blocked -- %d skipped.\n' \
+        "$scenario_index" "$passed" "$failed" "$blocked" \
+        "$(( scenario_index - passed - failed - blocked ))" >&2
     printf '  A skipped scenario is a declared gap, not a pass.\n' >&2
     exit 1
 fi
 
-printf '\n%d scenario(s), %d passed, %d failed, %d credential(s) seeded, %d durable rerun(s)\n' \
-    "$scenario_index" "$passed" "$failed" "$seeded" "$durable_runs"
+printf '\n%d scenario(s), %d passed, %d failed, %d blocked, %d credential(s) seeded, %d durable rerun(s)\n' \
+    "$scenario_index" "$passed" "$failed" "$blocked" "$seeded" "$durable_runs"
 
 # A capability with no scenario exercising it is not covered, it is merely
 # unobserved -- and unobserved is indistinguishable from absent from the outside.
@@ -1424,7 +1632,7 @@ if [[ -z "$filter" ]] && (( durable_runs == 0 )); then
     printf '  A green here would be the absence of the subject, not a passing check.\n' >&2
     exit 1
 fi
-if (( failed > 0 )); then
+if (( failed > 0 || blocked > 0 )); then
     printf 'failures:\n'
     printf '  - %s\n' "${failures[@]}"
     exit 1

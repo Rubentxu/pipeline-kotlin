@@ -463,15 +463,20 @@ class GitCredentialsApplier(
                         "must not appear in process arguments (credentials must use GIT_CONFIG_GLOBAL env). " +
                         "Found in ${describeForDiagnostics(arg, index)}"
                 }
-                if (HTTP_USERINFO_PATTERN.containsMatchIn(lower) ||
-                    PASSWORD_USERINFO_PATTERN.containsMatchIn(lower)
+                // An http(s) URL carrying ANY userinfo is a credential, even
+                // without a password: the username may be a personal access
+                // token. And any scheme whose userinfo carries a PASSWORD is
+                // one too — `ssh://git@host` is the ordinary SSH clone and
+                // carries no secret, so a username alone is not enough
+                // outside http(s).
+                require(
+                    !(HTTP_USERINFO_PATTERN.containsMatchIn(lower) ||
+                        PASSWORD_USERINFO_PATTERN.containsMatchIn(lower)),
                 ) {
-                    throw IllegalArgumentException(
-                        "Forbidden: URL with embedded credentials detected. " +
+                    "Forbidden: URL with embedded credentials detected. " +
                         "Credentials must not appear in process arguments (argv) — " +
                         "use GIT_ASKPASS or credential helper instead. " +
                         "Found in ${describeForDiagnostics(arg, index)}"
-                    )
                 }
             }
         }

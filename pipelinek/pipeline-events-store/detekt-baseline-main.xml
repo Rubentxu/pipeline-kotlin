@@ -80,5 +80,55 @@
     <ID>UseOrEmpty:DomainEventJsonDecoder.kt:DomainEventJsonDecoder$EventJsonFields.stringListField(s, "selectedConditions") ?: emptyList()</ID>
     <ID>UseOrEmpty:DomainEventJsonDecoder.kt:DomainEventJsonDecoder$EventJsonFields.stringListField(s, "skippedConditions") ?: emptyList()</ID>
     <ID>VarCouldBeVal:SqliteEventFollowHandle.kt:SqliteEventFollowHandle$/** One-shot flag for the [EventFollowEvent.Completed] end of the natural-tail / until-condition path. */ private var completedEmitted = false</ID>
+    <ID>CyclomaticComplexMethod:JsonEventLog.kt:JsonEventLog$private fun decodeEvent: EventDecodeOutcome</ID>
+    <ID>LongMethod:JsonEventLog.kt:JsonEventLog$private fun decodeEvent: EventDecodeOutcome</ID>
+    <ID>UnreachableCode:JsonEventLog.kt:JsonEventLog$EventJsonFields.boolField(s, "conditionResult") ?: false</ID>
+    <ID>UnreachableCode:JsonEventLog.kt:JsonEventLog$EventJsonFields.boolField(s, "exists") ?: false</ID>
+    <ID>UnreachableCode:JsonEventLog.kt:JsonEventLog$EventJsonFields.boolField(s, "isUnix") ?: false</ID>
+    <ID>UnreachableCode:JsonEventLog.kt:JsonEventLog$EventJsonFields.boolField(s, "skipIfLocked") ?: false</ID>
+    <ID>UnusedImport:JsonEventLog.kt:import dev.rubentxu.pipeline.v2.scripting.CacheKey</ID>
+    <ID>UnusedImport:JsonEventLog.kt:import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity</ID>
+    <ID>UnusedImport:JsonEventLog.kt:import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "accepted") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "agentLabel") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "branch") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "branchName") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "changelogPath") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "content") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "credentialsId") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "directiveKey") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "emittedBy") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "law") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "message") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "name") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "newSha") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "operation") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "osName") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "path") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "payload") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "phase") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "policy") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "previousPath") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "reason") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "reportDir") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "reportName") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "requirement") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "resource") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "restoredTo") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "sha") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "sha256") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "stageName") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "stageOrStep") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "stageOutcome") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "stepKey") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "stepName") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "stepType") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "targetId") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "targetPath") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "url") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "workspaceRoot") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringListField(s, "directiveKeys") ?: emptyList()</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringListField(s, "selectedConditions") ?: emptyList()</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringListField(s, "skippedConditions") ?: emptyList()</ID>
   </CurrentIssues>
 </SmellBaseline>

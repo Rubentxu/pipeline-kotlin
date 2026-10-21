@@ -21,5 +21,22 @@
     <ID>UnusedVariable:LocalSecretStore.kt:LocalSecretStore$val partCount = buf.get().toInt()</ID>
     <ID>UseOrEmpty:CredentialSerializer.kt:CredentialSerializer$credential.alias ?: ""</ID>
     <ID>UseOrEmpty:CredentialSerializer.kt:CredentialSerializer$credential.originalName ?: ""</ID>
+    <ID>UnusedImport:CredentialPrompts.kt:import dev.rubentxu.pipeline.v2.domain.credentials.Credential</ID>
+    <ID>UnusedImport:MainCredentialsCli.kt:import dev.rubentxu.pipeline.v2.domain.credentials.Certificate</ID>
+    <ID>UnusedImport:MainCredentialsCli.kt:import dev.rubentxu.pipeline.v2.domain.credentials.Credential</ID>
+    <ID>UnusedImport:MainCredentialsCli.kt:import dev.rubentxu.pipeline.v2.domain.credentials.CredentialScope</ID>
+    <ID>UnusedImport:MainCredentialsCli.kt:import dev.rubentxu.pipeline.v2.domain.credentials.SecretFile</ID>
+    <ID>UnusedImport:MainCredentialsCli.kt:import dev.rubentxu.pipeline.v2.domain.credentials.SecretText</ID>
+    <ID>UnusedImport:MainCredentialsCli.kt:import dev.rubentxu.pipeline.v2.domain.credentials.SshPrivateKey</ID>
+    <ID>UnusedImport:MainCredentialsCli.kt:import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword</ID>
+    <ID>UnusedImport:MainCredentialsCli.kt:import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword</ID>
+    <ID>UnusedImport:MainCredentialsCli.kt:import dev.rubentxu.pipeline.v2.domain.credentials.Zip</ID>
+    <ID>UnusedImport:MainCredentialsCli.kt:import java.io.Console</ID>
+    <ID>UnusedImport:MainCredentialsCli.kt:import java.nio.file.Files</ID>
+    <ID>UnusedImport:MainCredentialsCli.kt:import java.nio.file.Paths</ID>
+    <ID>UnusedImport:MainCredentialsCli.kt:import java.util.zip.ZipInputStream</ID>
+    <ID>UnusedVariable:CredentialPrompts.kt:CredentialPrompts$val passphraseChars = System.console()?.readPassword() ?: CharArray(0)</ID>
+    <ID>UnusedVariable:CredentialPrompts.kt:CredentialPrompts$val passwordChars = System.console()?.readPassword() ?: CharArray(0)</ID>
+    <ID>UseOrEmpty:CredentialPrompts.kt:CredentialPrompts$readLine() ?: ""</ID>
   </CurrentIssues>
 </SmellBaseline>

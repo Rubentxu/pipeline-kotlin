@@ -162,6 +162,27 @@ object DslCompiledPipelineCompiler {
         }
 
     /**
+     * Lowers a named slot. The step the slot NAMES is the step that runs, and the
+     * name is the ADDRESS the plugin will use to reach it later.
+     *
+     * The name is independent of the kind: two steps of the same kind can live in one
+     * body as long as the plugin named them apart.
+     */
+    private fun slotNode(step: StepSpec.Slot, parentToken: String, occurrence: Int): List<StepNode> {
+        if (step.step is StepSpec.Slot) {
+            error("A slot cannot name another slot: '${step.slotName}'")
+        }
+        val named = stepNode(step.step, parentToken, occurrence)
+        if (named.size != 1) {
+            error(
+                "A slot names exactly one step: '${step.slotName}' lowered to " +
+                    "${named.size} steps",
+            )
+        }
+        return listOf(named.single().withSlot(PluginStepId(step.slotName)))
+    }
+
+    /**
      * Converts one StepSpec into one or more canonical StepNode IR nodes.
      * Body-aware steps → BlockStepNode; terminal steps → OpaqueStepNode.
 */
@@ -198,22 +219,7 @@ object DslCompiledPipelineCompiler {
                     body = stepNodes(step.body, "$parentToken/${stableToken(step.name)}-body-$occurrence"),
                 ),
             )
-            is StepSpec.Slot -> {
-                // A named step. The name is the ADDRESS the plugin will use, and it is
-                // independent of the kind: two steps of the same kind can live in one body
-                // as long as the plugin named them apart.
-                if (step.step is StepSpec.Slot) {
-                    error("A slot cannot name another slot: '${step.slotName}'")
-                }
-                val named = stepNode(step.step, parentToken, occurrence)
-                if (named.size != 1) {
-                    error(
-                        "A slot names exactly one step: '${step.slotName}' lowered to " +
-                            "${named.size} steps",
-                    )
-                }
-                listOf(named.single().withSlot(PluginStepId(step.slotName)))
-            }
+            is StepSpec.Slot -> slotNode(step, parentToken, occurrence)
             is StepSpec.WriteFile -> listOf(
                 OpaqueStepNode(
                     id = StepId("$parentToken/${stableToken(step.name)}-$occurrence"),

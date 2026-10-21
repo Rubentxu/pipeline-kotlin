@@ -8,6 +8,7 @@
     <ID>UnusedImport:EventHarness.kt:import dev.rubentxu.pipeline.v2.harness.model.RelationScope</ID>
     <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.events.ParallelBranchStarted</ID>
     <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted</ID>
+    <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.events.RunFinished</ID>
     <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.events.RunStarted</ID>
     <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.events.StageStarted</ID>
     <ID>UnusedImport:ProtocolGrammar.kt:import dev.rubentxu.pipeline.v2.events.StepFailed</ID>

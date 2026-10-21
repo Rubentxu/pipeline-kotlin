@@ -345,6 +345,30 @@
       ],
       "removal_boundary": "n/a - the eight-argument StepFinished <init>, copy and copy$default, and the five-argument StepFinishedTyped <init>, copy and copy$default, are removed by THIS entry and are not coming back; the nine- and six-argument forms are the contract from this build onward. runtime.eventshape.v1 stays announced and not delivered: its `outcome` meant something else, and a consumer that negotiated it has to move to runtime.eventshape.v2",
       "supersedes": null
+    },
+    {
+      "module": "pipeline-events",
+      "sha": "7ff0b1d39c98ed77ea0681671f2ec91b6effca5f",
+      "surface": "StepFailed.stageIndex, and the subject of the envelope that carries it",
+      "change": "TWO changes in one commit, listed separately because they are two different facts a consumer has to act on. (1) StepFailed: added property `stageIndex: Int?`; the nine-argument <init>(String, String, long, Instant, int, String, String, FailureKind, String), copy and copy$default all DISAPPEAR from the dump, and component5/getStageIndex plus the ten-argument forms are added. (2) the envelope's subject for a failure that names its stage changes from the RUN resource to the STEP resource: the descriptor of `subject` does not change at all, and what it points at does. A consumer that groups the plane by subject sees the failure move from the run to the step it belongs to",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "BINARY, in part (1). An artifact compiled against 0.47.0 that constructs a StepFailed receives a NoSuchMethodError. A consumer that REBUILDS against this build needs a source edit, and that is the point of the design: the field has NO default value, so every construction site has to say what it means, and a construction site that cannot say it has to say that it cannot.",
+        "",
+        "The alternative considered and rejected: give `stageIndex` a default of null, or add @JvmOverloads. Kotlin emits the full constructor plus a synthetic one taking a DefaultConstructorMarker and never the old nine-argument descriptor, so a default buys SOURCE compatibility and NO binary compatibility - and @JvmOverloads would keep the old form in the ABI. That old form would mean 'a failure that belongs to no stage', a supported way to build a failure event that never says where it happened: exactly the silence this change exists to remove, republished as a convenient overload. The StepFinished.outcome entry refused the same shortcut for the same reason.",
+        "",
+        "A default of 0 was refused for a second reason, and it is the one that matters: 0 is a stage. A failure in the FIRST stage and a failure whose stage nobody recorded are two different facts, and a default of 0 turns the second into the first. A consumer would then attribute failures to a stage that nobody said they belonged to, which is the same fabrication the field was added to remove - one level down.",
+        "",
+        "Part (2) is not a break of the JVM signature at all, and that is precisely why it travels with the entry. The subject of an envelope says what the event is ABOUT, and a failure that names its stage is about that step. A consumer that compiled against the old behaviour keeps linking and keeps reading - a failure under the run instead of under the step - and nothing in the type says so.",
+        "",
+        "What this buys, stated as the defect it removes: the failure event used to name the step and not the stage. The step index is the index INSIDE a stage, so the same index means a different step in each stage of the run, and the only way to learn the stage was to join the failure with another event by a key that was not unambiguous between stages. A consumer that attributed the failure to a stage had to read a second event to learn something the failure could have said itself. The reviewer of this product called it: 'No se debe resolver esta carencia suponiendo a que Stage pertenecio el fallo'.",
+        "",
+        "The wire did NOT change shape: the payload is a JSON TEXT column, so the new field needs no migration, and a row written before this SHA decodes to NO stage - which is the honest reading, because that build published none. A consumer that needs to tell 'this build says unknown' from 'this build says nothing' negotiates events.failurestage.v1.",
+        "",
+        "What is NOT recorded here: the capability id `events.failurestage.v1` and the law of the harness that this stage made correlatable. The id is a new name in a catalogue, not a change to a published surface, and the law lives in the harness, whose contract is the event plane and not the event class. Recording them would be a lie about what shipped, in a ledger whose whole purpose is to be the opposite."
+      ],
+      "removal_boundary": "n/a - the nine-argument StepFailed <init>, copy and copy$default are removed by THIS entry and are not coming back; the ten-argument form is the contract from this build onward",
+      "supersedes": null
     }
   ]
 }

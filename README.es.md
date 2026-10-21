@@ -297,7 +297,7 @@ Ejecuta, en este orden y-parando en el primer stage que falle:
 | Capa | Estado |
 |---|---|
 | Análisis estático y compatibilidad de API | Activa: `detekt`, `apiCheck` |
-| E2E sobre la distribución real | Activa: 48 escenarios en `examples/`, cada uno ejecutado en las dos rutas del CLI (con journal privado y sin él) |
+| E2E sobre la distribución real | Activa: 49 escenarios en `examples/`, cada uno ejecutado en las dos rutas del CLI (con journal privado y sin él) |
 | Tests unitarios Kotlin | Activa: `src/test` en 26 de los 27 módulos declarados |
 | Carriles de prueba bespoke (`pluginContractTest`, `installedContractTest`) | no existen; la puerta busca esos nombres y falla si vuelven |
 

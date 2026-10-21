@@ -30,7 +30,7 @@ import java.nio.file.Path
  * no credentials, and nothing said why: the documented "store file does not exist"
  * branch returns `null` silently by design.
  *
- * That is the Semantic Constitution §2 "silent no-op" in a credentials path, and
+ * That is the silent-no-op defect in a credentials path, and
  * the two KDoc blocks that described the two rules each cited the other as the
  * authority, so neither was falsifiable by reading.
  *

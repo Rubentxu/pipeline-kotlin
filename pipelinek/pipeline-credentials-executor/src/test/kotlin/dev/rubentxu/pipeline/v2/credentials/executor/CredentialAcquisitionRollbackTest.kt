@@ -205,7 +205,7 @@ class CredentialAcquisitionRollbackTest {
         }
 }
 
-/** A fixed instant. AGENTS.md section 2 forbids a real clock in a unit test; a constant is the fix. */
+/** A fixed instant. The unit-test rule forbids a real clock; a constant is the fix. */
 private object FixedClock : Clock {
     override fun now(): Instant = Instant.parse("2026-01-01T00:00:00Z")
 }

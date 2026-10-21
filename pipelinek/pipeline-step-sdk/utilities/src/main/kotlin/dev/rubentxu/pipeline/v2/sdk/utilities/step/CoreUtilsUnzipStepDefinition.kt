@@ -28,10 +28,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 
 /**
- * `core-utils.unzip` OFFICIAL_PLUGIN Step (LFC-2E2 utilities, Slice 2 / S2.5).
- *
- * Jenkins reference: pipeline-utility-steps-plugin::UnZipStep
- * (MIT, CloudBees).
+ * `core-utils.unzip` OFFICIAL_PLUGIN Step.
  *
  * Security (CVE-2023-32981):
  *  - For every entry, in every mode, the resolved target path MUST be a

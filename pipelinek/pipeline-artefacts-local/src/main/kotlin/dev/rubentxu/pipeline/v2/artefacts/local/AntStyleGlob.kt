@@ -27,9 +27,9 @@ import java.nio.file.Path
  * Supports multi-pattern expansion, user excludes, and Jenkins-compatible 13-entry default
  * excludes.
  *
- * Design: D7 — the dialect is implemented in this project, in [AntPathMatching]; this class
+ * The dialect is implemented in this project, in [AntPathMatching]; this class
  * holds the patterns and walks the tree.
- * Invariant: INV-L6-ANT-001 (default excludes verbatim), INV-L6-ANT-002 (traversal safety).
+ * The default excludes are passed through verbatim and a directory-traversal-safe matcher is used.
  */
 // `patternList` is internal, not public: it is the decision `match()` acts on, and a unit test
 // cannot call `match()` at all because it walks a real directory. Exposing the list is what makes

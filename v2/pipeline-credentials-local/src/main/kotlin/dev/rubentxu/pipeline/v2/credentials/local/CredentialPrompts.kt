@@ -32,9 +32,7 @@ fun readSecretText(): SecretText {
         // the store entry key is the CLI-supplied id passed to
         // SecretStore.add(id, credential); the embedded credential.id is not
         // the entry key and MUST NOT be constructed blank (CredentialsId has a
-        // non-blank invariant). The placeholder CredentialsId("") threw on
-        // every `credentials add` invocation (regression found by the
-        // installed-distribution UAT). Use a typed non-blank placeholder that
+        // non-blank invariant). Use a typed non-blank placeholder that
         // add() never persists as the entry key.
         id = CredentialsId("<pending-store-id>"),
         scope = CredentialScope.GLOBAL,

@@ -20,26 +20,24 @@ import kotlinx.coroutines.runBlocking
 /**
  * The ONE place a pipeline is run.
  *
- * C1-C (2026-09-26) extracted the durable runtime assembly from the CLI
- * entrypoint. This is the second half of that job: the function took
- * EIGHTEEN parameters and had TWO call sites -- the in-memory world and the
- * durable one -- which is exactly the shape in which two call sites drift.
- *
- * It now takes ONE [CanonicalRunRequest], and both worlds build the same
- * request. The difference between "runs in memory" and "runs in SQL" is the
- * [CanonicalRunState] group: the journal, the cursor store, the event sink
- * and the Saga seam. The rest of the request -- the clock, the replay policy,
- * the sandbox, the workspace, the credential seam -- is the SAME set of facts
- * for both, filled in with the values each world decided. Two of them differ
- * on purpose (the credential provider, by H5-B, and the control root, by
- * construction); [CanonicalRunRequest] says which.
+ * This function took EIGHTEEN parameters and had two call sites — the
+ * in-memory world and the durable one — which is exactly the shape in
+ * which two call sites drift. It now takes ONE [CanonicalRunRequest], and
+ * both worlds build the same request. The difference between "runs in
+ * memory" and "runs in SQL" is the [CanonicalRunState] group: the journal,
+ * the cursor store, the event sink and the Saga seam. The rest of the
+ * request — the clock, the replay policy, the sandbox, the workspace, the
+ * credential seam — is the SAME set of facts for both, filled in with the
+ * values each world decided. Two of them differ on purpose (the credential
+ * provider and the control root, by construction); [CanonicalRunRequest]
+ * says which.
  *
  * Two parameters are GONE, and their absence is the point:
  *
  * - `capabilityContributors` defaulted to `null`, which meant "whatever the
  *   composition resolved". The composition is now the only source of plugin
- *   capabilities (S6/G), and no caller ever passed anything else, so the knob
- *   was a way to inject a FOURTH authority. It is removed, not deprecated.
+ *   capabilities, and no caller ever passed anything else, so the knob was a
+ *   way to inject a FOURTH authority. It is removed, not deprecated.
  * - `workspaceBase` and `workspaceOwnership` were two parameters that had to
  *   be kept in step; they are now one [RuntimeWorkspaceTransport], the value
  *   the CLI already computes.
@@ -52,15 +50,15 @@ internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlockin
     val state = request.state
     val policy = request.policy
     CanonicalDurableRunCoordinator(
-        // the ONE registry this run resolves plugin event kinds against, on the write
-        // side and on the read-back side. S6/G: resolved in PluginComposition, before this
+        // The ONE registry this run resolves plugin event kinds against, on the write
+        // side and on the read-back side. Resolved in PluginComposition, before this
         // function was called, and already cross-checked against what the plugins emit.
         eventRegistry = request.composition.events,
-        // H2b: ONE composite, consulted by both admission and execution.
+        // ONE composite, consulted by both admission and execution.
         //
-        // S6/G: the plugin side now comes from the composition, resolved under the same classloader
-        // swap as the Steps these capabilities back. The credential side stays here because it is
-        // PER-RUN state — it wraps the store THIS invocation opened, so it cannot come from
+        // The plugin side comes from the composition, resolved under the same classloader
+        // swap as the steps these capabilities back. The credential side stays here because it is
+        // per-run state — it wraps the store THIS invocation opened, so it cannot come from
         // classpath discovery. The two never collide: a plugin deliberately contributes only its
         // own transport.
         capabilityContributor = CompositeCapabilityContributor(
@@ -82,7 +80,7 @@ internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlockin
         controlDirRoot = policy.controlDirRoot,
         workspaceBase = policy.workspace.base,
         shOptions = ShOptions(
-            // with --workspace <dir>, the project's own directory IS the
+            // With --workspace <dir>, the project's own directory IS the
             // workspace — stages share it (Jenkins-familiar semantics). Adding
             // .resolve("workspace") would point to a subdirectory of the project root
             // (typically nonexistent), and every `sh` step would fail with
@@ -94,43 +92,39 @@ internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlockin
             timeoutMs = null,
             env = emptyMap(),
             sandbox = SandboxConfigResolver.resolve(policy.sandboxProfile),
-            // carry the ownership the CLI decided (ADR-0101) into the
-            // runtime transport, so the ADR-0102 destructive guard reads the real
-            // owner of this root instead of re-deriving `Managed`.
+            // Carry the ownership the CLI decided into the runtime transport, so the
+            // destructive guard reads the real owner of this root instead of
+            // re-deriving `Managed`.
             workspaceOwnership = policy.workspace.ownership,
-            // egress is DENIED unless the operator asked for it
-            // with --allow-network. The bridge turns this gate into the generic
-            // NETWORK_EGRESS_CAPABILITY, and a Step that needs the network declares
-            // it — so the default run cannot reach one.
-            //
-            // H6: the two ends are gates, not verdicts. `--allow-network` is
-            // [AllowAll] and the default is [DenyAll], which are the SAME interface
-            // as a future per-destination allowlist — so adding one later is a new
-            // value here and not a new code path through the runtime, the Step, or
-            // the admission check.
+            // Egress is DENIED unless the operator asked for it with --allow-network.
+            // The bridge turns this gate into the generic NETWORK_EGRESS_CAPABILITY,
+            // and a step that needs the network declares it — so the default run
+            // cannot reach one. The two ends are gates, not verdicts: `--allow-network`
+            // is [AllowAll] and the default is [DenyAll], which are the SAME interface as a
+            // future per-destination allowlist — so adding one later is a new value here
+            // and not a new code path through the runtime, the step, or the admission check.
             networkEgress = if (policy.allowNetwork) AllowAll else DenyAll,
         ),
-        // B1.2c3-S2.3 + LB-02/EP-6: core Steps first, then external plugin contributions,
-        // frozen by PluginComposition before this call.
+        // Core steps first, then external plugin contributions, frozen by PluginComposition
+        // before this call.
         stepRegistry = request.composition.steps,
         secretPatternRegistry = policy.secretPatternRegistry,
-        // SAGA / PK-1: forwarded so the dispatch can build the invocation-bound intent port.
+        // Forwarded so the dispatch can build the invocation-bound intent port.
         sagaBinding = state.sagaBinding,
-        // RETRY-D (ADR-0075): production wire-up. The retry aggregate is reconciled against
-        // the on-disk control journal so a `run` invocation with the same --db and
-        // --control-root reuses the prior aggregate terminal state and does not re-launch
-        // child bodies that already succeeded/failed terminally.
+        // Production wire-up. The retry aggregate is reconciled against the on-disk
+        // control journal so a `run` invocation with the same --db and --control-root
+        // reuses the prior aggregate terminal state and does not re-launch child bodies
+        // that already succeeded or failed terminally.
         retryControlJournal = FileBasedRetryControlJournal(policy.controlDirRoot),
-        // WU-G5R.5 (ADR-0075 analog): durable waitUntil control journal. Matches the
-        // retryControlJournal pattern — persisted before child effects, read on plan(),
-        // authoritative over the aggregate state on replay.
+        // Durable waitUntil control journal. Matches the retryControlJournal pattern —
+        // persisted before child effects, read on plan(), authoritative over the
+        // aggregate state on replay.
         waitUntilControlJournal = FileBasedWaitUntilControlJournal(policy.controlDirRoot),
-        // E1.2 / T1: per-run artifact index for the core.archiveArtifacts
-        // -> core.artifact.query bridge. Constructed fresh per run; the same
-        // instance is shared between the producer (archive with name=...) and
-        // the consumer (artifactQuery) within the run.
+        // Per-run artifact index for the core.archiveArtifacts -> core.artifact.query
+        // bridge. Constructed fresh per run; the same instance is shared between the
+        // producer (archive with name=...) and the consumer (artifactQuery) within the run.
         artifactIndex = dev.rubentxu.pipeline.v2.application.durable.ArtifactIndexAdapter.build(),
-        // S4 retention: the run's terminal state is the ONLY thing that can authorise discarding
+        // The run's terminal state is the ONLY thing that can authorise discarding
         // its output, and the runtime is the authority that knows it. Declared here — ONCE, where
         // every other composition decision is declared — so the policy is a value a reviewer can
         // read rather than a branch somebody can find at the call site.
@@ -147,15 +141,15 @@ internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlockin
             retention = { OutputPlaneProvider.storeFor(policy.controlDirRoot) },
             policy = RetainUntil.ExplicitReleaseOnly,
         ),
-        // S6/G: resolved in PluginComposition, under the same classloader swap that produced
+        // Resolved in PluginComposition, under the same classloader swap that produced
         // the step registry and the event registry, and frozen before this call.
         //
-        // S2-A / S3.1 are preserved there rather than lost: `core.when` and `core.agent` are
-        // CORE definitions that enter through the SAME open registry as any vendor directive,
-        // which is what keeps "open by key" honest. If either had needed its own registration
-        // path, the seam would not be open.
+        // `core.when` and `core.agent` are CORE definitions that enter through the
+        // SAME open registry as any vendor directive, which is what keeps "open by key"
+        // honest. If either had needed its own registration path, the seam would
+        // not be open.
         directiveRegistry = request.composition.directives,
-        // gates read the environment the STAGE actually declares, plus
+        // Gates read the environment the STAGE actually declares, plus
         // the process environment for names the stage names explicitly.
         //
         // The stage's own `environment { env(...) }` block is the source of

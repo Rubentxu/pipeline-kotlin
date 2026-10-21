@@ -67,7 +67,8 @@ internal fun runDurablePipeline(
     scriptPath: Path,
 ) {
     // Durable mode: SqliteEventStore + PipelineOrchestrator for replay/divergence gating.
-    // Both stores are wrapped with RedactingEventSink at construction time (design §Data Flow).
+    // Both stores are wrapped with RedactingEventSink at construction time (the only place where
+    // event payloads are redacted on write).
     val store = admitDurableEventStore(dbPath, secretPatternRegistry)
     val rawEventStore = store.rawEventStore
     val eventStore = store.eventStore
@@ -89,8 +90,7 @@ internal fun runDurablePipeline(
     // bridge has been removed: no production code reads
     // `pipeline.workspace.root` any more (the historical writers were
     // F5.1 SCM/Git and F5.2 JUnit; F5.2 JUnit migrated to the typed
-    // capability here; F5.1 SCM/Git migration is filed as a sibling
-    // follow-up, OUT OF SCOPE for this WU).
+    // capability here; F5.1 SCM/Git migration is a sibling follow-up.
     val identity = establishDurableIdentity(
         config = config,
         eventStore = eventStore,
@@ -118,7 +118,7 @@ internal fun runDurablePipeline(
         Json { ignoreUnknownKeys = true; encodeDefaults = true },
         store.dbPathStr,
     )
-    // SAGA / PK-1: the durable Saga obligations live in the SAME database as the journal and
+    // SAGA / durable run: the durable Saga obligations live in the SAME database as the journal and
     // the event log, through the same connection factory. One authority for the run's durable
     // state, not a second store with its own lifecycle.
     val sagaObligationStore = SqliteSagaObligationStore(
@@ -129,9 +129,9 @@ internal fun runDurablePipeline(
     val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
     val credentials = composeCredentialSeam(secretPatternRegistry, clock)
 
-    // LF-0205 (closed LEG-1.1): the legacy PipelineOrchestrator was constructed here but
+    // The legacy PipelineOrchestrator was constructed here but
     // never invoked. The CLI reaches the durable runtime ONLY through the canonical
-    // RunCoordinator (fail-closed exit 2 otherwise). LEG-1 burn-down deleted the class.
+    // RunCoordinator (fail-closed exit 2 otherwise). The legacy orchestrator class has been deleted.
     // compose the registry BEFORE the canonical-eligibility gate —
     // eligibility is registry-derived, so external plugin contributions must be
     // visible to the gate or a contributed key would be wrongly rejected as
@@ -141,7 +141,7 @@ internal fun runDurablePipeline(
     // admitted, which is precisely the defect S6/G removed once already.
     val composition = admitThenComposeOrExit(config.pluginJars)
     val composedStepRegistry = composition.steps
-    // RP034-H / ADR-0101 clause 3.1 + RP034-Id: the workspace origin is decided
+    // the workspace decision rule + the typed owner decision: the workspace origin is decided
     // ONCE, here at the boundary, and both facts cross into the runtime — the
     // shared directory and its owner. `--isolated` keeps the historical
     // PipelineK scratch; `--workspace <path>` stays authoritative.
@@ -158,7 +158,7 @@ internal fun runDurablePipeline(
     // outside the `try`, because the verdict is printed after it — and because a run that
     // threw still has to say what it left behind.
     val sagaTerminals = mutableListOf<SagaTerminal>()
-    // UAT-RP-024 collateral finding fix (shutdown race 1/3): the sqlite
+    // UAT collateral finding fix (shutdown race): the sqlite
     // single-writer thread is NON-daemon. If any exception escapes the run
     // or the stdout envelope streaming below, rawEventStore.close() is
     // skipped, the writer keeps blocking on queue.take(), and
@@ -170,7 +170,7 @@ internal fun runDurablePipeline(
             // the scripted FRONTEND form runs against the SAME durable
             // authority (journal, registry, event sink, control root) composed for the
             // canonical path. This is a frontend selection, never a second runner: the
-            // invocation authority is the registry seam proven in R1/R2 (R4A model B).
+            // invocation authority is the registry seam established through the durable prove-out.
             scripted.entryPoint != null -> runScriptedFrontend(
                 entryPoint = scripted.entryPoint,
                 runId = runId,
@@ -192,7 +192,7 @@ internal fun runDurablePipeline(
                                 journal = journal,
                                 cursorStore = cursorStore,
                                 eventSink = eventStore,
-                                // SAGA / PK-1: the run's Saga seam — the durable store plus the lease epoch that
+                                // SAGA / durable run: the run's Saga seam — the durable store plus the lease epoch that
                                 // fences a writer that lost this run to a takeover.
                                 sagaBinding = dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding(
                                     store = sagaObligationStore,
@@ -204,7 +204,7 @@ internal fun runDurablePipeline(
                                 effectReplayPolicy = effectPolicy,
                                 controlDirRoot = controlDirRoot,
                                 sandboxProfile = config.sandboxProfile,
-                                // RP034-H / ADR-0101 clause 3.1: the CLI default is local-first. The
+                                // the workspace decision rule: the CLI default is local-first. The
                                 // workspace origin is decided once, here at the boundary, and BOTH
                                 // facts cross into the runtime: the shared directory and its owner.
                                 // `--isolated` preserves the historical PipelineK-managed scratch;
@@ -235,7 +235,7 @@ internal fun runDurablePipeline(
             else -> compilation.failure
         }
 
-        // WU-LPR-089 + WU-LPR-011 regression fix: the WU-LPR-042 single-writer thread
+        // durable pipeline work + durable subscriber regression fix regression fix: the single-writer thread single-writer thread
         // is non-daemon and processes events asynchronously. We must FLUSH the pending
         // writes BEFORE reading the events back from SQL, otherwise async events emitted
         // just before run-finished (e.g. StashCreated/StashRestored from a final stage)
@@ -325,7 +325,7 @@ private fun compileDurableScript(
 /**
  * Stream a durable run's events to stdout and report the last one.
  *
- * WU-RP-044 (M5 RSS debt): the JSON envelope goes out one event at a time
+ * durable JSON envelope (M5 RSS debt): the JSON envelope goes out one event at a time
  * (identical byte output to JsonEventLog.encode) and only the last event is
  * tracked for the legacy outcome branch — never the full list, never a single
  * monolithic JSON String (1 GiB transcripts made this multi-GB).
@@ -362,7 +362,7 @@ private fun streamDurableEvents(
  * answers to, and who owns it.
  *
  * The lease is taken BEFORE the correlation is emitted, because the owner in
- * the receipt has to be the owner that holds the run — S2-R0 in one place
+ * the receipt has to be the owner that holds the run — runId positional owner in one place
  * instead of three statements at a call site that a reader has to reconstruct.
  */
 private data class DurableRunIdentity(
@@ -495,7 +495,7 @@ private fun acquireDurableLease(controlDirRoot: Path, runId: String): DurableLea
         java.util.UUID.randomUUID().toString().take(8))
     val leaseStore = FileBackedRunExecutionLeaseStore(controlDirRoot.resolve("leases"))
     val lease = leaseStore.acquire(LeaseRequest(runId, requireNotNull(runOwner)))
-    // SAGA / PK-1: the fencing token of the lease THIS process holds. It is the epoch the
+    // SAGA / durable run: the fencing token of the lease THIS process holds. It is the epoch the
     // durable Saga store uses to refuse a write from a writer that lost the run to a
     // takeover, so it has to travel from the acquisition to the store.
     val leaseEpoch: Long = when (lease) {
@@ -532,7 +532,7 @@ private fun acquireDurableLease(controlDirRoot: Path, runId: String): DurableLea
  * frontend FORM selection. The compiler-backed mapping decides
  * whether this source contains runtime-effectful scripted calls; the CLI only
  * picks the closed artifact FORM, never an execution authority and never a
- * concrete Step (R4A law: the CLI may choose the frontend, never the backend).
+ * concrete Step (the CLI may choose the frontend, never the backend).
  */
 private data class ScriptedFrontend(
     val artifact: dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.EntryPointArtifact?,
@@ -556,11 +556,10 @@ private fun resolveScriptedFrontend(
             val mappedCalls = if (mapping is dev.rubentxu.pipeline.v2.scripting.ScriptedSourceMapping.Mapped) {
                 mapping.calls.filter { it.kind.isRuntimeReturning() }
             } else emptyList()
-            // R4B scope: the R3 lowering emits a generator-level entry point
-            // body only. A `pipeline { stages { stage { ... } } }` structure
-            // keeps the eager PipelineSpec frontend this slice (no DSL-body
-            // migration, per the R4B GO). Frontend FORM selection, never an
-            // execution-authority switch.
+            // The R3 lowering emits a generator-level entry-point body only. A
+            // `pipeline { stages { stage { ... } } }` structure keeps the eager
+            // PipelineSpec frontend as-is (no DSL-body migration). Frontend FORM
+            // selection, never an execution-authority switch.
             val isGeneratorLevelSource = mappedCalls.isNotEmpty() &&
                 !Regex("""\bpipeline\s*\{""").containsMatchIn(scriptContent)
             if (isGeneratorLevelSource) {

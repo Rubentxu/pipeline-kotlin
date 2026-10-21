@@ -24,6 +24,7 @@ import dev.rubentxu.pipeline.v2.output.OutputPinPort
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import dev.rubentxu.pipeline.v2.output.store.OutputRecoveryPort
 import dev.rubentxu.pipeline.v2.domain.AttemptId
+import dev.rubentxu.pipeline.v2.runtime.control.CancelReceipt
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
@@ -178,7 +179,7 @@ class RuntimeRecoverPortStoreAdapter(
         // the run's work, and only once all of that work finished. While an
         // operation is still running, the run has no terminal outcome, and the
         // proof says so instead of inventing one.
-        val terminalRow: RuntimeRecoverDecision.TerminalRow? = runTerminalRowOf(journalOps)
+        val terminalRow: RuntimeRecoverDecision.TerminalRow? = runTerminalRowOf(runId, journalOps)
         val cursor = try {
             cursors.load(runId)
         } catch (_: Exception) {
@@ -407,6 +408,15 @@ class RuntimeRecoverPortStoreAdapter(
      *    terminal RUN, and the run's outcome does not exist until all of its
      *    work finished.
      *
+     * A CANCELLED run is the third case, and it is terminal even when a step
+     * was in flight when the cancel happened. The cancel is the run's terminal
+     * fact — it says the run was closed on purpose — and the step it
+     * interrupted may or may not have committed its effect, which is exactly
+     * why such a run is neither re-attached nor re-run. Without this, a
+     * cancelled run looked like a crashed one: its journal had no terminal
+     * row, so the recover offered a re-attach, and resuming it could repeat an
+     * effect the interrupted step already had.
+     *
      * When the run does have an outcome, it is the one the DOMAIN computes.
      * [RunOutcomeReducer] is the single authority that folds a run's step
      * verdicts into a run verdict, and it says that success requires EVERY
@@ -420,7 +430,18 @@ class RuntimeRecoverPortStoreAdapter(
      * "failure". The decider is the contract this row is handed to, and a word
      * it does not know becomes an untyped `Other`.
      */
-    private fun runTerminalRowOf(ops: List<DurableOperation>): RuntimeRecoverDecision.TerminalRow? {
+    private fun runTerminalRowOf(
+        runId: String,
+        ops: List<DurableOperation>,
+    ): RuntimeRecoverDecision.TerminalRow? {
+        val cancelReceipt = ops.firstOrNull { CancelReceipt.isReceiptOf(it.id, runId) }
+        if (cancelReceipt != null) {
+            return RuntimeRecoverDecision.TerminalRow(
+                outcome = "cancelled",
+                terminalAtMs = endedAtOf(cancelReceipt),
+            )
+        }
+
         if (ops.isEmpty()) return null
         if (ops.any { !it.status.isTerminal }) return null
 

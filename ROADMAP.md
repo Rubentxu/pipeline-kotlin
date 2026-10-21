@@ -18,7 +18,7 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `173c665da` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `ad61e9b2c` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **22** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 5 | ídem |
@@ -26,8 +26,8 @@ una medición.
 | Escenarios E2E | 46 (**45 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
 | `VERIFY_LOC / PRODUCT_LOC` | **12139 / 66328 = 0.183** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **97 s** (corridas de este bloque: 97 s, y 80 s y 98 s sobre el mismo contenido), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
-| Coste por escenario E2E | mediana **6,9 s**, p95 **14,8 s**, máximo **15,2 s** | el lanzador publica ahora el tiempo de cada escenario en su línea |
+| `VERIFY_ALL_WALL_CLOCK` | **95 s** (corridas de este bloque: 95 s sobre el SHA publicado, 97 s y 80 s sobre el mismo árbol antes de fusionar), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| Coste por escenario E2E | mediana **6,7 s**, p95 **14,9 s**, máximo **15,5 s** | el lanzador publica ahora el tiempo de cada escenario en su línea |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -46,14 +46,15 @@ los tests: el dato estaba en el log de la etapa 2, y el log lo lee quien corrió
 puerta, no quien la cita. Una cifra con el verbo equivocado ya no puede colarse
 ni por el lado del log ni por el lado de la línea (§2.2 u).
 
-La corrida que se publica es la de `173c665da` (**97 s**). El reloj de este gate
+La corrida que se publica es la de `ad61e9b2c` (**95 s**). El reloj de este gate
 tiene ruido, y publicarlo sin decirlo vuelve a ser una afirmación que nadie
 puede reproducir: el ciclo anterior (`4b0a63415`) publicó **88 s**, el de
 `main-partido` (`03bdc2a3a`) midió **107 s**, y otra corrida sobre ese **mismo**
 contenido, con los módulos tocados compilando de cero, midió 98 s. Y el ruido de
-este bloque es el habitual: sobre este mismo contenido, dos corridas dieron
-**80 s** y **97 s**, y una anterior —con el lanzador aún sin el arreglo del
-escenario storage-agnostic— dio **98 s**. Se publica la del **SHA final**, que es
+este bloque es el habitual: sobre este mismo árbol, tres corridas dieron
+**80 s**, **97 s** y **95 s** —las dos últimas, la segunda antes de la fusión y la
+última sobre el SHA que quedó publicado—, y una anterior, con el lanzador aún
+sin el arreglo del escenario storage-agnostic, dio **98 s**. Se publica la del **SHA final**, que es
 la que corresponde al árbol que se publica, y se dicen las otras para que nadie
 la lea como la típica. Este bloque **añade 22 tests** —los **774**— y **no añade
 ningún escenario E2E**: los **46** son los mismos, porque la capacidad nueva se
@@ -1743,7 +1744,7 @@ Puerta sobre el SHA del bloque: `PASS sha=4b0a63415… elapsed=88s budget=900s
 tests=rewritten:752 read:0 gaps=1 not_run`.
 
 
-**bb) El operador no tenía forma de saber qué debía un run — CERRADO en `173c665da`.**
+**bb) El operador no tenía forma de saber qué debía un run — CERRADO en `ad61e9b2c`.**
 
 **El problema, en una frase**: cuando un Saga no acababa bien, la única forma de
 saber qué quedaba era abrir la base a mano —o peor, leer el log— y no había forma
@@ -1821,8 +1822,8 @@ las pruebas unitarias comprueban con el store real y el plano real.
 **Y el arnés mejoró, que era la otra mitad del encargo.** El lanzador ya medía
 cada corrida del pipeline y **no enseñaba el resultado**: el coste de un escenario
 sólo se podía sacar midiendo aparte. Ahora cada línea del informe lleva su tiempo,
-y con él se puede ver qué parte de la puerta es la cara —mediana **6,9 s**, p95
-**14,8 s**, máximo **15,2 s**—. Medirlo destapó un defecto del propio informe: el
+y con él se puede ver qué parte de la puerta es la cara —mediana **6,7 s**, p95
+**14,9 s**, máximo **15,5 s**—. Medirlo destapó un defecto del propio informe: el
 escenario que se declara storage-agnostic pasaba **sin imprimir su línea**, así que
 el informe tenía una línea menos que escenarios que pasaron y nadie podía decir
 cuál faltaba. Ahora imprime su línea, y el lanzador **comprueba** que todo
@@ -1838,7 +1839,7 @@ son aditivos. `VERIFY_LOC` 11 702 → **12 139** (+437: las pruebas y el lanzado
 `PRODUCT_LOC` 65 786 → **66 328** (+542), ratio global **0.183**; el ratio máximo
 por módulo sigue siendo **1.633** (`pipeline-step-sdk:workflow-control`).
 
-Puerta sobre el SHA del bloque: `PASS sha=173c665da… elapsed=97s budget=900s
+Puerta sobre el SHA del bloque: `PASS sha=ad61e9b2c… elapsed=95s budget=900s
 tests=rewritten:774 read:0 gaps=1 not_run`.
 
 

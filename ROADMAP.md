@@ -23,6 +23,7 @@ una medición.
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
 | Tests unitarios ejecutados | **919** (125 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0** (eran **6** de 18: dos en el follow de eventos y cuatro en el plano de salida) | censo por construcción sobre el árbol commiteado, en `§2.35` |
 | Escenarios E2E | **54 (54 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios que sólo comprueban el código de salida | **0**, con **una excepción declarada**: `plugins/lock-directive` afirma su sujeto *por medio* del código de salida —su directiva no emite nada, y si el plugin no se descubriera la etapa se negaría—, así que ahí el código de salida es la aserción y no un testigo vacío | censo por directiva y por cuerpo, sobre los **54** escenarios; el número anterior («0», sin excepción y sobre 47) no nombraba el caso que lo contiene |
 | `VERIFY_LOC / PRODUCT_LOC` | **15655 / 65419 = 0.239** (límite 2) | `scripts/check-budgets.py --json` |
@@ -4471,6 +4472,75 @@ antes de poder matarla. Es tiempo **comprado**: se paga por una garantía que
 antes no tenía instrumento. Sigue dentro del presupuesto con **161 s** de
 holgura en el peor ensayo.
 
+### 2.35 Los rechazos publicados: seis casos que el producto nunca emitía
+
+> **Estado: saldado en este ciclo.** El censo de los dos vocabularios de
+> rechazos publicados —el del follow de eventos y el del plano de salida— dice
+> que de sus **18** casos, **6** no los construye ningún código: ni en
+> producción, ni en los tests, ni el artefacto sellado `0.62.0`. Este ciclo los
+> retiró. El censo da hoy **0**.
+
+**Instrumento** (reproducible, sobre el árbol commiteado): un productor es el
+código que **devuelve** el caso; un `when` que lo nombra para revisarlo no lo
+construye, y un comentario que lo cita tampoco. El instrumento cuenta las
+construcciones calificadas (`OutputRefusal.Corrupt(`) y las sin calificar
+dentro del propio vocabulario, que es como la traducción construye sus casos.
+
+**Cifras, con su denominador:**
+
+| | antes | ahora |
+|---|---|---|
+| casos en los dos vocabularios publicados | **18** | **12** |
+| de ellos, los que ningún código construye | **6** | **0** |
+| en el plano de salida | 13 casos, 4 sin productor | 9 casos, 0 sin productor |
+| en el follow de eventos | 5 casos, 2 sin productor | 3 casos, 0 sin productor |
+
+**Los seis, y por qué cada uno era un hecho que su plano no puede producir:**
+
+| Caso | Lo que decía | Por qué nadie podía producirlo |
+|---|---|---|
+| `OutputRefusal.Corrupt` | «una fila existe pero su carga útil no la respalda» | El plano de salida guarda bytes opacos: nada los parsea. El plano que sí parsea payloads es el de eventos, y ya responde con `EventRecordRead.Undecodable`. |
+| `OutputRefusal.RangeLostRetention` | el gemelo del lado lectura de `RetentionGap` | Los mismos tres campos y el mismo significado: dos casos públicos para un hecho. |
+| `OutputRefusal.Unavailable` | «el sustrato no se puede alcanzar ahora» | La copia del lado lectura de un hecho que el lado de la poda sí produce. |
+| `OutputRefusal.FollowCancelled` | «el consumidor cerró el follow» | Cerrar un handle es una operación del ciclo de vida del consumidor, no un rechazo de una lectura. |
+| `EventFollowRefusal.RetentionLost` | «la retención perdió el principio del run» | El store de eventos no borra ninguna fila: un cursor sólo puede estar detrás de la cola. |
+| `EventFollowRefusal.Cancelled` | «el follow se canceló» | La KDoc del propio handle dice que la cancelación es una operación local, no un resultado del follow. |
+
+**Lo que se hizo.** Los seis casos se retiraron, y con ellos las KDoc que los
+prometían —incluida la del `EventFollowState`, que decía que la pérdida de
+retención «se señalaba» con `RetentionLost`—. Los ids se versionaron con el
+procedimiento que el propio repo ya usa para esto: el id viejo pasa a
+**DEPRECATED** (anunciado y NO entregado) y se publica el nuevo.
+`events.follow.v3` y `output.follow.v2` son los que este build entrega.
+
+**Lo que NO se rompió.** Quitar un caso de un tipo sellado es una ruptura de
+**fuente** para quien recompila —su `when` exhaustivo deja de compilar— y
+**no** de binario: desaparece el constructor, pero el caso nunca se
+instanció, así que la respuesta del runtime es byte a byte la misma. El libro
+`contract/published-contract-exceptions.json` registra las dos rupturas con su
+sha, su motivo y su frontera.
+
+**La alternativa que se midió y se rechazó: darle un productor a `Corrupt`.**
+Habría exigido hacer del plano de salida un plano que parsea payloads. La
+evidencia dice que no: el log de frames de ese plano lo **repara el escritor**
+—trunca hasta el último frame entero y vuelve a enmendar los bytes
+comprometidos—, así que un log dañado es un estado **transitorio** que el
+lector espera, no una avería durable, y un rechazo durable habría sido una
+mentira. De ese mismo examen salió el orden de escritura, que es
+`bytes → commit → frame` a propósito, para que un rango comprometido sin frame
+sea *recuperable* y no *perdido*.
+
+**La mutación vista en rojo.** El instrumento no se dio por bueno sin
+demostrarse: se añadió un caso que nadie construye (`OutputRefusal.NeverReported`)
+y el censo se encendió señalando exactamente ese caso y ningún otro. Después
+se revirtió.
+
+**Una séptima promesa que nadie cumplía, y que no era de código.** El fichero
+`contract/published-contract-maturity.json` afirmaba que sus cuatro reglas
+«las aplica el fitness test». Ese test no existe desde el reset del testing y
+nada lo sustituyó: las reglas son la lista de comprobación del revisor, y ahora
+el fichero lo dice en vez de prometer una puerta que no está.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
@@ -5211,6 +5281,32 @@ holgura en el peor ensayo.
   es la garantía que la hacía posible —un lector que no puede escribir en el
   journal del productor—, protegida por un test puro y por un ejemplo que usa
   el binario real.
+
+- **Un caso de un vocabulario publicado tiene que ser un hecho que el producto
+  puede producir, o no está.** Un `sealed interface` de rechazos es un
+  contrato que el consumidor recorre con un `when`: cada caso es una rama que
+  ese consumidor escribe y mantiene durante toda la vida del contrato. Un caso
+  que nadie produce es una rama que nadie puede probar y un hecho que el
+  contrato anuncia sin poder cumplirlo. Seis de los dieciocho casos publicados
+  estaban así, y cinco de ellos eran un hecho **importado de otro plano**: la
+  corrupción de una fila (que es del plano de eventos), la doble versión de la
+  pérdida de retención, el sustrato inalcanzable (que es del lado de la poda)
+  y la cancelación (que no es un rechazo). Se retiraron, y los ids se
+  versionaron con el procedimiento que el repo ya tenía para esto.
+
+- **Antes de darle un productor a un caso imposible, hay que medir si el
+  producto puede tener ese hecho.** La respuesta para `Corrupt` fue que no: el
+  plano de salida no parsea payloads, y el daño de su log de frames lo repara
+  el escritor, así que es transitorio y el lector lo espera. Un rechazo
+  «durable» para un estado transitorio habría sido una mentira con forma de
+  contrato.
+
+- **Un fichero que dice quién aplica sus reglas tiene que ser cierto.** El
+  fichero de madurez afirmaba que un test aplicaba sus cuatro reglas; ese test
+  no existía desde el reset del testing. La corrección no fue escribir el test
+  —un meta-test sobre el contrato es justo lo que la política prohíbe— sino
+  quitarle al fichero la afirmación falsa y dejar la regla como lo que es: la
+  lista de comprobación de quien revisa.
 
 - **Un KDoc que nombra un guard que no existe es una afirmación falsa.** Un
   comentario que dice «esto lo fija `XTest`» promete un instrumento. Si `XTest`

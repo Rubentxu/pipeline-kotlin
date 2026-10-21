@@ -308,6 +308,7 @@ run_scenario() {
     local events_refusal=""
     local events_resume=""
     local step_verdict=""
+    local failure_stage=""
     local directive
     while IFS= read -r directive; do
         case "$directive" in
@@ -325,6 +326,7 @@ run_scenario() {
             '//@ events-refusal '*) events_refusal="${directive#//@ events-refusal }" ;;
             '//@ events-resume '*)  events_resume="${directive#//@ events-resume }" ;;
             '//@ step-verdict '*)   step_verdict="${directive#//@ step-verdict }" ;;
+            '//@ failure-stage '*)  failure_stage="${directive#//@ failure-stage }" ;;
         esac
     done < <(grep -m 20 '^//@ ' "$script" || true)
 
@@ -906,6 +908,74 @@ run_scenario() {
         fi
     fi
 
+    if [[ -n "$failure_stage" ]]; then
+        # The scenario declares which stage each failure belongs to, and the launcher
+        # is an EXTERNAL consumer of the event lane: it asks for the failure events
+        # ONLY — never the step's terminal event, never the stage's own events — and
+        # reads the stage each one names.
+        #
+        # The failure event used to name the step and not the stage, and the step
+        # index is the index INSIDE a stage, so the same index means a different step
+        # in each stage of the run: the only way to learn the stage was to join the
+        # failure with another event. A failure that names no stage is not a failure
+        # in the first stage, and a consumer that reads the absent stage as stage 0
+        # invents a stage. That is the defect this scenario exists to catch, and it
+        # is invisible to a reader that only looks at runs that succeeded.
+        local fs_run_id=""
+        local record
+        for record in "$root"/control/last-run/*; do
+            [[ -f "$record" ]] || continue
+            fs_run_id="$(head -1 "$record")"
+            break
+        done
+        if [[ -z "$fs_run_id" ]]; then
+            printf 'FAIL %-52s the run left no run id, so there is no history to read\n' "$name"
+            failed=$((failed + 1))
+            failures+=("$name: the run left no run id")
+            return
+        fi
+
+        local fs_code=0
+        local fs_failures
+        fs_failures="$("$binary" events "$fs_run_id" --db "$root/events.db" \
+            --kind StepFailed --typed 2>"$root/stderr.failure-stage.txt")" || fs_code=$?
+        if [[ "$fs_code" != 0 ]]; then
+            printf 'FAIL %-52s reading the failure events exited %s\n' "$name" "$fs_code"
+            show_printed "$root/stderr.failure-stage.txt"
+            failed=$((failed + 1))
+            failures+=("$name: reading the failure events exited $fs_code")
+            return
+        fi
+
+        # Each failure event, read as "<step>=<stage>". A failure event that carries
+        # no stage reads as "<step>=-1", the wire's own encoding of an absent stage,
+        # and that half is the whole difference the scenario is about.
+        local fs_delivered="" fs_line fs_step fs_stage
+        while IFS= read -r fs_line; do
+            [[ -z "$fs_line" ]] && continue
+            fs_step="$(printf '%s' "$fs_line" \
+                | sed -n 's/.*"stepName"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+            fs_stage="$(printf '%s' "$fs_line" \
+                | sed -n 's/.*"stageIndex"[[:space:]]*:[[:space:]]*\(-\?[0-9]*\).*/\1/p')"
+            fs_delivered="$fs_delivered $fs_step=$fs_stage"
+        done <<< "$fs_failures"
+        fs_delivered="$(printf '%s' "$fs_delivered" | tr -s ' ' | sed 's/^ //;s/ $//')"
+
+        # Which stage belongs to which failure is the point; the order is not.
+        local fs_expected fs_delivered_sorted fs_expected_sorted
+        fs_expected="$(printf '%s' "$failure_stage" | tr -s ' ' | sed 's/^ //;s/ $//')"
+        fs_delivered_sorted="$(printf '%s\n' $fs_delivered | sort | tr '\n' ' ')"
+        fs_expected_sorted="$(printf '%s\n' $fs_expected | sort | tr '\n' ' ')"
+        if [[ "$fs_delivered_sorted" != "$fs_expected_sorted" ]]; then
+            printf 'FAIL %-52s the external reader could not attribute the failure to its stage\n' "$name"
+            printf '       | expected:  %s\n' "$fs_expected_sorted"
+            printf '       | delivered: %s\n' "$fs_delivered_sorted"
+            failed=$((failed + 1))
+            failures+=("$name: the external reader could not attribute the failure to its stage")
+            return
+        fi
+    fi
+
     local label="$name"
     if [[ "$cancel" == 1 ]]; then
         label="$name (cancel)"
@@ -915,6 +985,8 @@ run_scenario() {
         label="$name (events-resume)"
     elif [[ "$step_verdict" != "" ]]; then
         label="$name (step-verdict)"
+    elif [[ "$failure_stage" != "" ]]; then
+        label="$name (failure-stage)"
     elif [[ "$durable" == 1 ]]; then
         label="$name (durable x2)"
     elif [[ "$durable_once" == 1 ]]; then

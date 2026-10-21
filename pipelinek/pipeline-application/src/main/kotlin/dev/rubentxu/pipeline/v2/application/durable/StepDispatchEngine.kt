@@ -63,10 +63,12 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * TRAIN / — the step-execution spine, out of the run loop
+ * TRAIN H4 / PR-020 — the step-execution spine, out of the run loop.
+ *
  * What used to be one class carrying two unrelated jobs is split along the line the
  * coordinator could never draw itself: the run's control flow stays in the coordinator,
  * and "take this Step and make it happen" moves here.
+ *
  * The unit of cohesion is the RECURSION. [dispatch] falls through to [dispatchBody] for a
  * body-bearing Step; [dispatchBody] hands the body back to [BodyExecutionEngine] with
  * [dispatchChild] as the single re-entry reference; [invokeBodyChildren] dispatches every
@@ -74,14 +76,16 @@ import java.util.UUID
  * [dispatch] again. Splitting any one of these from the others would leave a stub that
  * forwards to a collaborator, which is exactly the indirection the previous shape lacked
  * and this refactor exists to remove. So the whole closed cycle moves as one unit.
+ *
  * Nothing here decides. The durable identity, the structural verdict, the recovery
  * resolution, the body policy and the replay decision are all made by pure components
  * elsewhere; this class observes those decisions, performs the effects they name, and
  * reports typed results. [RecoveryInterpretationEngine] is the boundary where a recovery
  * resolution becomes either a settled outcome or a progression to execution.
+ *
  * The coordinator keeps only what it alone can do: the run's bookends, the stage loop and
  * the stage-level finalizers.
-*/
+ */
 internal class StepDispatchEngine(
     private val journal: OperationJournal,
     private val eventSink: EventSink,
@@ -95,35 +99,37 @@ internal class StepDispatchEngine(
     private val bodyExecutionEngine: BodyExecutionEngine,
     private val bodyPolicyResolver: BodyPolicyResolver,
     private val runLifecycle: RunLifecycleEngine,
-    // The open plugin event registry for THIS run. The engine composes the emitter
+    // P3-C / S6.4: the open plugin event registry for THIS run. The engine composes the emitter
     // itself from this registry plus the sink and clock it already holds, so one run has one
     // registry shared by every invocation — two registries would let two Steps disagree about what
     // a kind means, and the read-back would resolve against a different one than the write.
+    //
     // Empty rather than null by construction: an empty registry refuses every kind, so "a plugin
     // declared nothing" and "nothing is registered" are the same typed refusal, and a Step that
     // reaches for the emission seam is refused at admission instead of reaching a dead handler.
     private val eventRegistry: dev.rubentxu.pipeline.v2.events.registry.EventRegistry =
         dev.rubentxu.pipeline.v2.events.registry.EventRegistry.create(),
     /**
-     * The replay cursor is traversal state, so it lives here and nowhere
+     * ADR-0103 D7 — the replay cursor is traversal state, so it lives here and nowhere
      * else. `ReplayCursor(runId, lastOpId, stageIndex, savedAt)` models where the canonical
      * RUN resumes; the values needed to write it (`runId`, `operationId`, `stageIndex`) are
      * all facts of this traversal and none of them are facts of an operation. The executor
      * and the recovery engine both lost their copy so that ownership is not split.
+     *
      * This class is the CURRENT single authority, not a permanent name: the law is that
      * the cursor belongs to the canonical structural/run traversal, so this dependency
      * moves with the traversal if the traversal is ever refactored.
-*/
+     */
     private val cursorStore: dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore,
     private val stepRegistry: StepRegistry?,
     private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter,
     private val controlDirRoot: Path?,
     private val workspaceBase: Path?,
     private val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
-    // Handed to PREPARE so admission and execution observe the same set.
+    // WU-093 H2b: handed to PREPARE so admission and execution observe the same set.
     private val capabilityContributor: dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor =
         dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor { emptyMap() },
-    // The per-run Saga seam. The PORT itself is built per dispatch, because it
+    // SAGA / PK-1: the per-run Saga seam. The PORT itself is built per dispatch, because it
     // carries the forward operation's identity; this binding only carries the run-level facts
     // (the durable store and the lease epoch that fences writes).
     //
@@ -134,25 +140,28 @@ internal class StepDispatchEngine(
 ) {
 
     /**
-     * A dispatched Step's ATOMIC RESULT together with the context it left behind.
+     * S4-F1-C3 / R14 — a dispatched Step's ATOMIC RESULT together with the context it left behind.
+     *
      * This composes the carrier rather than replicating its fields. It used to hold a bare
      * `StepOutcome`, which meant the `encodedOutput` a recovered invocation had just recovered was
-     * Discarded here — the narrowing, at the last boundary before the consumer. Holding
+     * discarded here — the R14 narrowing, at the last boundary before the consumer. Holding
      * `CommonExecutionResult` keeps both channels available to every consumer, and the ones that
      * only need the outcome now say so explicitly with `.result.outcome`.
+     *
      * A convenience `outcome` accessor is deliberately NOT added: while the projections are being
      * made visible, every consumer naming the field it reads is the evidence that no projection is
      * happening by accident.
-*/
+     */
     data class Dispatched(val result: CommonExecutionResult, val context: ExecutionContext)
 
     /**
      * Everything a dispatch needs BEFORE any effect, decided as one value.
+     *
      * Closed because "structurally rejected" and "ready to execute" are opposite outcomes, and
      * because the rejection still has to carry the durable identity the journal row needs: a
      * rejection that lost its [operationId] could not be journaled fail-closed, it would simply
      * vanish. A nullable seam would have let exactly that happen silently.
-*/
+     */
     private sealed interface DispatchPreparation {
         /** Terminal SCHEMA rejection. The identity is carried so the caller can journal it. */
         data class Rejected(
@@ -174,7 +183,7 @@ internal class StepDispatchEngine(
     }
 
     /**
-     * A slot the handler asked for and the engine cannot honour.
+     * SAGA / PK-2: a slot the handler asked for and the engine cannot honour.
      *
      * A CONTAINED failure, not an exception: the handler's own outcome is where
      * that violation belongs, and an exception would tear the run down instead
@@ -194,15 +203,10 @@ internal class StepDispatchEngine(
     /**
      * CDE.3-e4.3: the runtime context is built here so registry prepare can derive the available
      * capabilities from the capability bridge, never the raw context handed to a handler.
+     *
      * It is built only on the execution path: reuse, divergence and recovery never reach it,
      * which is what keeps a replayed Step from acquiring a capability it did not use.
-*/
-    @Suppress("LongParameterList") // Every argument is named and read once; the alternative
-    // would be a holder that exists only to satisfy a counting rule.
-*/
-    @Suppress("LongParameterList") // Every argument is named and read once; the alternative
-    // would be a holder that exists only to satisfy a counting rule.
-*/
+     */
     @Suppress("LongParameterList") // Every argument is named and read once; the alternative
     // would be a holder that exists only to satisfy a counting rule.
     private fun runtimeContext(
@@ -214,6 +218,7 @@ internal class StepDispatchEngine(
         stageShOptions: ShOptions,
         bodyContinuation: dev.rubentxu.pipeline.v2.domain.step.BodyContinuation?,
         bodySlotInvoker: BodySlotInvoker?,
+        bodies: SagaBodyResolver?,
         ownerPluginId: String?,
     ): CanonicalRuntimeContext = CanonicalRuntimeContext(
         opId = opId,
@@ -224,24 +229,24 @@ internal class StepDispatchEngine(
         shOptions = stageShOptions,
         controlDirRoot = controlDirRoot,
         eventSink = eventSink,
-        // Surface the per-run body-reentry adapter under
+        // B11 / W2: surface the per-run body-reentry adapter under
         // BODY_INVOKER_CAPABILITY for any block-step handler that declares it.
         // Fail-closed admission (null bodyInvoker → no capability) is preserved
         // for legacy callers because the field defaults to null on the context.
         bodyInvoker = bodyInvokerAdapter,
-        // Bound ONLY for a HANDLER_CONTINUATION Step, and already
+        // WU-RP-035: bound ONLY for a HANDLER_CONTINUATION Step, and already
         // carrying that Step's own body identity. Null everywhere else, so the
         // fail-closed admission is real: a handler that declares the capability
         // without the engine having bound it never runs.
         bodyContinuation = bodyContinuation,
-        // The slot seam, bound ONLY for a HANDLER_CONTINUATION Step
+        // SAGA / PK-2: the slot seam, bound ONLY for a HANDLER_CONTINUATION Step
         // whose body is already bound. Null everywhere else, so the fail-closed
         // admission is real.
         bodySlotInvoker = bodySlotInvoker,
         secretPatternRegistry = secretPatternRegistry,
         workspaceBase = workspaceBase,
         pluginEventEmitter = pluginEventEmitter(eventRegistry, eventSink, clock),
-        // The intent port for THIS invocation. Built here, where the forward
+        // SAGA / PK-1: the intent port for THIS invocation. Built here, where the forward
         // operation's identity is known, so the compensation an obligation names is the
         // compensation OF that operation and not of some other step in the same run.
         sagaCompensation = sagaBinding?.let { binding ->
@@ -253,9 +258,12 @@ internal class StepDispatchEngine(
                 eventSink = eventSink,
                 clock = clock,
                 ownerPluginId = ownerPluginId,
+                // The bodies this Step owns. The engine measures the body a promise names, so
+                // the promise can be checked against the body that will run.
+                bodies = bodies,
             )
         },
-        // The plan port for THIS run. It carries no operation identity — what a
+        // SAGA / PK-2: the plan port for THIS run. It carries no operation identity — what a
         // Saga owes is a property of the Saga, not of the step that happens to ask — so it is
         // bound to the run and its lease epoch, and it reads the same durable rows the intent
         // port writes.
@@ -268,7 +276,7 @@ internal class StepDispatchEngine(
                 ownerPluginId = ownerPluginId,
             )
         },
-        // The compensation RUNTIME for THIS invocation. It needs the Saga store
+        // SAGA / PK-2: the compensation RUNTIME for THIS invocation. It needs the Saga store
         // (the loop decides on durable state) and the slot seam (the compensation bodies are
         // children of this Step's own body). Both, or neither: a runtime without a body to
         // compensate through could only stop, and a runtime without durable state could only
@@ -283,7 +291,7 @@ internal class StepDispatchEngine(
                     clock = clock,
                     ownerPluginId = ownerPluginId,
                 ),
-                // The other closing of a Saga — the one that KEEPS the
+                // SAGA / PK-2 (3b-5): the other closing of a Saga — the one that KEEPS the
                 // effects. It reads the same durable rows and writes them with the same lease
                 // epoch, because it is the same authority about the same promises.
                 completion = SagaCompletionAdapter(
@@ -299,6 +307,14 @@ internal class StepDispatchEngine(
                 // them true.
                 eventSink = eventSink,
                 clock = clock,
+                // The bodies this Step owns: the compensation bodies are children of this
+                // Step's own body, so this is where the body that is about to run is found.
+                bodies = bodies,
+                // The body each promise is paid with, read from the durable row. The row is
+                // where the promise lives, and the promise is what says which body it names.
+                promisedBodies = SagaPromisedBodyReader { key ->
+                    sagaBinding.store.find(runId.value, key)?.bodyDigest
+                },
             )
         } else {
             null
@@ -309,12 +325,13 @@ internal class StepDispatchEngine(
      * The PURE pre-execution prologue of a dispatch: durable identity, structural verdict,
      * control-overlay projection, metadata and fingerprint. No journal, no events, no clock and
      * no executor, so the whole thing is decidable — and therefore testable — without a run.
+     *
      * Order is contract. The durable identity is derived FIRST because every rejection path
      * needs it to journal the rejection. The structural gate precedes typed decode because a
      * structurally-invalid node must be rejected before any typed semantics are read
-     * (CDE.2-c0,/). Metadata is resolved by structural step key BEFORE the fingerprint, so
+     * (CDE.2-c0, C3/C5). Metadata is resolved by structural step key BEFORE the fingerprint, so
      * reconciliation never depends on a decoded command (CDE.2-b2).
-*/
+     */
     private fun prepareDispatch(
         step: StepNode,
         runId: RunId,
@@ -327,7 +344,7 @@ internal class StepDispatchEngine(
     ): DispatchPreparation {
         val opId = OpId(runId.value, stageIndex, stepIndex, bodyPath = bodyPath)
         val operationId = opId.format()
-        // The body of a HANDLER_CONTINUATION Step is part of the parent's durable
+        // WU-RP-035: the body of a HANDLER_CONTINUATION Step is part of the parent's durable
         // identity. Without it, the same parent payload with a different body would reuse a
         // memoized result, the handler would never run, and the changed child would not even
         // reach divergence. Engine-driven blocks are deliberately EXCLUDED so every journal
@@ -339,7 +356,7 @@ internal class StepDispatchEngine(
         }
         val input = OperationInput(
             stepId = step.pluginStepId.value,
-            // A non-NONE sandbox profile enters the operation fingerprint,
+            // SB-S-010 / D4: a non-NONE sandbox profile enters the operation fingerprint,
             // so a resume with a CHANGED confinement profile diverges fail-closed instead
             // of silently re-attaching under different semantics. NONE stays absent from
             // params so default-run journals keep their historical fingerprints.
@@ -359,7 +376,7 @@ internal class StepDispatchEngine(
                 return DispatchPreparation.Rejected(operationId, input, structural.reason)
             is StructuralPreparation.Ready -> structural
         }
-        // Pure context derivation, no ambient mutation ( preserved: pushed pre-reconcile).
+        // CTX-P2: pure context derivation, no ambient mutation (C6 preserved: pushed pre-reconcile).
         val projectedOverlay = StructuralOverlayProjection.project(
             structuralReady.invocation.stepKey,
             structuralReady.envelope,
@@ -405,18 +422,21 @@ internal class StepDispatchEngine(
         bodyPath: List<BlockSegment> = emptyList(),
         executionContext: ExecutionContext = ExecutionContext.EMPTY,
     ): Dispatched {
-        // A body-bearing Step is routed by its DECLARED owner, never by its key.
+        // WU-RP-035: a body-bearing Step is routed by its DECLARED owner, never by its key.
+        //
         //   CANONICAL_ENGINE     the engine decides when to run the body. Unchanged since
-        //                         The decoder is bypassed and dispatchBody runs the
+        //                         EM-4: the decoder is bypassed and dispatchBody runs the
         //                         children directly.
         //   HANDLER_CONTINUATION the registered handler runs on the durable spine below
         //                         and reaches the body only through the bound continuation.
         //   LEGACY_LINEAR        refused by the policy resolver inside dispatchBody.
+        //
         // Only the first keeps the historical short-circuit. The second deliberately FALLS
         // THROUGH into the registry path, so typed decode, capability admission,
         // StepStarted/StepFinished, typed output, FailureKind, journal, replay and the
         // single execution boundary all come from the existing machinery. There is
         // deliberately no second block-handler execution boundary.
+        //
         // An unknown key (owner unresolved) keeps the historical path on purpose: the
         // rejection then comes from the policy resolver inside dispatchBody, exactly as
         // before, rather than from a new check here.
@@ -426,10 +446,10 @@ internal class StepDispatchEngine(
             ) {
                 BodyContinuation { bodyContext ->
                     // Same derivation the engine-side adapter performs for a core body
-                    // A per-attempt segment is appended
+                    // (CanonicalBodyInvokerAdapter.open): a per-attempt segment is appended
                     // to the body path so a retried body gets its own durable identity, and
                     // the scope patch is applied by pure derivation without mutating the
-                    // caller's context.
+                    // caller's context (CTX-P).
                     val attemptSegment = bodyContext.attempt?.let { segment ->
                         listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(segment.index, segment.key))
                     } ?: emptyList()
@@ -469,14 +489,14 @@ internal class StepDispatchEngine(
                         bodyPath,
                         executionContext,
                     )
-                    // A body-only dispatch has no typed value of its own, so the carrier is
+                    // R14: a body-only dispatch has no typed value of its own, so the carrier is
                     // built explicitly with a null encoded output rather than narrowed from one.
                     return Dispatched(CommonExecutionResult(outcome = body), executionContext)
                 }
                 null
             }
 
-        // The slot seam.
+        // SAGA / PK-2: the slot seam.
         //
         // The continuation runs the WHOLE body, which is right for a loop and wrong
         // for a plan with alternatives: a Saga has to choose between the FORWARD
@@ -489,10 +509,15 @@ internal class StepDispatchEngine(
         // it (body path + attempt + BlockSegment(index, key)). So the slot's journal
         // rows are the rows that child would have had, and a body dispatched by the
         // engine and a body dispatched by the handler are the same operation.
+        // The bodies this Step owns, or `null` when it owns none.
+        //
+        // A body-bearing Step is a HANDLER_CONTINUATION block, and that is the same condition
+        // that binds the slot seam: the compensation bodies ARE this Step's own body
+        // children. One question, one answer, and both seams read it.
+        val ownedBodies: List<StepNode>? = ownedBodyOf(step)
+
         val bodySlotInvoker: BodySlotInvoker? =
-            if (step is BlockStepNode && declaredBodyOwnerOf(step) ==
-                dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner.HANDLER_CONTINUATION
-            ) {
+            if (ownedBodies != null) {
                 BodySlotInvoker { slot, slotContext ->
                     when (
                         val resolution = BodySlots.resolve(
@@ -500,7 +525,7 @@ internal class StepDispatchEngine(
                             // kind when nobody named it. So a body that names its children can
                             // hold two of the same kind, and a body that names none behaves
                             // exactly as it did before names existed.
-                            step.body.map { it.address },
+                            ownedBodies.map { it.address },
                             slot,
                         )
                     ) {
@@ -515,7 +540,7 @@ internal class StepDispatchEngine(
 
                         is SlotResolution.Found -> {
                             val childIndex = resolution.childIndex
-                            val child = step.body[childIndex]
+                            val child = ownedBodies[childIndex]
                             val attemptSegment = slotContext.attempt?.let { segment ->
                                 listOf(BlockSegment(segment.index, segment.key))
                             }.orEmpty()
@@ -555,10 +580,18 @@ internal class StepDispatchEngine(
                 null
             }
 
-        // BlockStepNode bypasses decoder and goes directly to dispatchBody
-        // Handles only the body-execution substrate for dir/withEnv/withCredentials/
+        // The bodies this Step owns, so the engine can measure the body a promise names and
+        // compare it with the body that is about to run.
+        //
+        // It exists exactly when the slot seam exists: the compensation bodies ARE this Step's
+        // own body children, so a Step without a body has nothing to promise and nothing to
+        // measure.
+        val bodies: SagaBodyResolver? = ownedBodies?.let { SagaBodyResolver(it) }
+
+        // BlockStepNode bypasses decoder and goes directly to dispatchBody (EM-4).
+        // EM-4 handles only the body-execution substrate for dir/withEnv/withCredentials/
         // timeout/retry. catchError and warnError remain on the legacy linear path
-        // (rewriteWorkflowControl) until/ semantics are implemented
+        // (rewriteWorkflowControl) until EM-5/EM-6 semantics are implemented.
 
         // CDE.2-c0: the whole pre-execution prologue is ONE pure decision — durable identity,
         // structural verdict, control overlay, metadata and fingerprint. It is decided here and
@@ -575,7 +608,7 @@ internal class StepDispatchEngine(
             executionContext = executionContext,
         )
         val ready = when (preparation) {
-            // The effective executor is never invoked.
+            // Terminal SCHEMA rejection (C3/C5): the effective executor is never invoked.
             is DispatchPreparation.Rejected -> return Dispatched(
                 CommonExecutionResult(
                     outcome = rejectSchema(preparation.operationId, preparation.input, preparation.reason),
@@ -601,11 +634,12 @@ internal class StepDispatchEngine(
             status = OperationStatus.PENDING,
             attempt = 1,
         )
-        // TRAIN /: the four recovery resolutions are interpreted by
+        // TRAIN H3 / PR-019: the four recovery resolutions are interpreted by
         // RecoveryInterpretationEngine; only Execute — which IS the invocation — stays here.
         // The arms were moved verbatim, including which ones emit lifecycle events and
         // write the journal.
-        // The resolution is NAMED rather than inlined into the call. Naming it
+        //
+        // ADR-0103 D7: the resolution is NAMED rather than inlined into the call. Naming it
         // is what lets the cursor decision below see both halves of the fact — the
         // resolution (RecoverRunning or not) and the interpreted outcome (success or not) —
         // without any arm of the interpretation engine having to carry a traversal flag.
@@ -622,7 +656,7 @@ internal class StepDispatchEngine(
                 // A miss is not fatal here — the interpretation then fails closed with a stated
                 // reason, which is the correct answer for a Step that cannot be found.
                 definition = stepRegistry?.definition(step.pluginStepId),
-                // The durable input is an IDENTITY envelope — `params["payload"]` carries
+                // S4-F1-C2: the durable input is an IDENTITY envelope — `params["payload"]` carries
                 // the Step's own encoding, next to the sandbox profile and the body digest that also
                 // belong in the fingerprint. Materialisation needs the payload, not the envelope,
                 // and the node still holds the exact bytes the compiler produced.
@@ -631,11 +665,12 @@ internal class StepDispatchEngine(
         )
         when (interpretation) {
             is RecoveryInterpretationEngine.RecoveryInterpretation.Settled -> {
-                // A recovered success advances the run cursor, and only a recovered
+                // D7: a recovered success advances the run cursor, and only a recovered
                 // success does. The predicate is `is Success`, NOT `advancesCanonicalCursor()`:
-                // Recovery has always been stricter than execution about Unstable, and
+                // recovery has always been stricter than execution about Unstable, and D7
                 // relocated the cursor without being licensed to change what advances.
-                // The projection is now WRITTEN OUT rather than pre-applied by
+                //
+                // S4-F1-C3 / R14: the projection is now WRITTEN OUT rather than pre-applied by
                 // the engine. The interpretation hands back the whole `CommonExecutionResult`, and
                 // this consumer asks for the one field it actually needs. That visibility is the
                 // point — a consumer that needs `encodedOutput` downstream must be able to see that
@@ -666,6 +701,7 @@ internal class StepDispatchEngine(
             stageShOptions = stageShOptions,
             bodyContinuation = bodyContinuation,
             bodySlotInvoker = bodySlotInvoker,
+            bodies = bodies,
             ownerPluginId = pluginIdOf(step),
         )
 
@@ -674,7 +710,7 @@ internal class StepDispatchEngine(
         // Registry), never by concrete step name. Reuse/divergence/recover never prepare. A
         // Rejected admission (typed field / unsupported command / missing capability) is a
         // terminal SCHEMA rejection (journal FAILED, common executor never runs).
-        // Extracted to DurableTypedInputPreparation.
+        // WU-RP-031 E3: extracted to DurableTypedInputPreparation.
         val prepared = when (val typed = typedInputPreparation.prepare(step, runtime)) {
             is DurableTypedInputPreparation.TypedPreparation.Rejected -> return Dispatched(
                 CommonExecutionResult(
@@ -690,11 +726,12 @@ internal class StepDispatchEngine(
             is DurableTypedInputPreparation.TypedPreparation.Ready -> typed.prepared
         }
 
-        // Effective execution + durable folding extracted to DurableStepExecutor.
-        // The carrier survives the boundary: `encodedOutput` is persisted by
+        // WU-RP-031 E4: effective execution + durable folding extracted to DurableStepExecutor.
+        // The carrier survives the boundary (ADR-0103 D5): `encodedOutput` is persisted by
         // the executor AND returned, so no consumer has to re-derive the typed value.
-        // The cursor advance lives HERE, after the terminal journal append the executor
-        // Has already returned from. That ordering is the ReplayCursorStore mitigation
+        //
+        // D7: the cursor advance lives HERE, after the terminal journal append the executor
+        // has already returned from. That ordering is the ReplayCursorStore R-C mitigation
         // and it is structural, not incidental: the append is inside executeAndJournal, the
         // advance is after it returns.
         val execution = stepExecutor.executeAndJournal(
@@ -709,7 +746,7 @@ internal class StepDispatchEngine(
         if (execution.outcome.advancesCanonicalCursor()) {
             cursorStore.advance(runId.value, operationId, stageIndex)
         }
-        // `executeAndJournal` already returns the atomic carrier, so this is a COMPOSITION.
+        // R14: `executeAndJournal` already returns the atomic carrier, so this is a COMPOSITION.
         // It used to be `Dispatched(execution.outcome, ...)`, which is the narrowing this whole
         // slice exists to remove: a recovered or a fresh encoded value died at this line.
         return Dispatched(execution, contextAfterOverlay)
@@ -718,13 +755,14 @@ internal class StepDispatchEngine(
     /**
      * Applies the pre-reconcile control overlay projected from the structural envelope (CDE.2-c0),
      * establishing or closing a CatchError context frame. This runs BEFORE durable resolution, so a
-     * Reused CatchErrorEntered still establishes its scope without re-executing (: executor stays 0)
+     * reused CatchErrorEntered still establishes its scope without re-executing (C6: executor stays 0).
      * Only the structural overlay descriptor is consumed; no typed command is built here.
-     * Pure derivation of the successor ExecutionContext from the structural overlay.
+     *
+     * CTX-P2: pure derivation of the successor ExecutionContext from the structural overlay.
      * The old CatchErrorTriggered pop/underflow check disappears: the frame was pushed by the
      * matching CatchErrorEntered derivation, and the caller simply keeps its own parent value.
      * There is no shared authority to underflow.
-*/
+     */
     private fun deriveOverlay(parent: ExecutionContext, overlay: StructuralOverlay): ExecutionContext = when (overlay) {
         StructuralOverlay.None -> parent
         is StructuralOverlay.CatchErrorEntered -> parent.pushed(
@@ -745,8 +783,8 @@ internal class StepDispatchEngine(
 
     /**
      * Records a FAILED journal row and returns the terminal `SCHEMA` [StepOutcome]; the effective
-     * Executor is never invoked. Fingerprint uses [ReplayPolicy.RERUN] as on the rejection path
-*/
+     * executor is never invoked (C3/C5). Fingerprint uses [ReplayPolicy.RERUN] as on the rejection path.
+     */
     private fun rejectSchema(operationId: String, input: OperationInput, message: String): StepOutcome =
         invocationResolver.rejectSchema(operationId, input, message)
 
@@ -776,13 +814,14 @@ internal class StepDispatchEngine(
 
     /**
      * The body owner DECLARED by the Step's own descriptor, or `null` when the key is unknown
-     * to the registry.
+     * to the registry (WU-RP-035).
+     *
      * A pure read of the open registry, never a switch on the key: the routing decision above
      * is driven by what a Step declares about itself, which is the only way an external plugin
      * can obtain a body-bearing route without a core change. `null` means "no declaration to
      * honour", and the caller keeps the historical path so the policy resolver reports the
      * unknown key exactly as it did before.
-*/
+     */
     private fun declaredBodyOwnerOf(block: BlockStepNode): BodyExecutionOwner? =
         stepRegistry
             ?.definition(block.pluginStepId)
@@ -792,6 +831,19 @@ internal class StepDispatchEngine(
             ?.declared
             ?.execution
             ?.owner
+
+    /**
+     * The body this Step owns, or `null` when it owns none.
+     *
+     * A body-bearing Step is a `HANDLER_CONTINUATION` block: its handler runs on the durable
+     * spine and dispatches its own children. That is the same condition that binds the slot
+     * seam, so both seams read this ONE answer instead of asking the question twice.
+     */
+    private fun ownedBodyOf(step: StepNode): List<StepNode>? {
+        if (step !is BlockStepNode) return null
+        if (declaredBodyOwnerOf(step) != BodyExecutionOwner.HANDLER_CONTINUATION) return null
+        return step.body
+    }
 
     private suspend fun dispatchBody(
         block: BlockStepNode,
@@ -803,7 +855,7 @@ internal class StepDispatchEngine(
         parentBodyPath: List<BlockSegment>,
         executionContext: ExecutionContext,
     ): StepOutcome {
-        // The body family is decided by its DECLARED policy, resolved from the
+        // B10/W1c: the body family is decided by its DECLARED policy, resolved from the
         // registry BEFORE any effect. No switch on the Step identity and no per-Step case: an
         // unknown, incoherent or unsupported declaration is a typed ENGINE rejection
         // with zero children launched.
@@ -823,11 +875,11 @@ internal class StepDispatchEngine(
             // the typed decoders above report expected invalid input as a value.
             BodyExecutionProjection.InvalidInput(error.message ?: "invalid body input")
         }
-        // No parent capture, no restore — executionContext is the caller's value and stays it.
+        // CTX-P2: no parent capture, no restore — executionContext is the caller's value and stays it.
         var contextInBody = executionContext
         var outcome: StepOutcome = StepOutcome.Success
         val scope = when (projection) {
-            // The credential lease is a body
+            // EM-7/LFC-5.3 (INC-022), reworked by W1d: the credential lease is a body
             // PREAMBLE, not a path of its own. Acquisition is an effectful preamble and the
             // body then re-enters the engine through the same child loop every other block
             // Step uses. Routed BY POLICY, never by Step name, and never dispatched as an
@@ -862,7 +914,7 @@ internal class StepDispatchEngine(
             scope, block, runId, stageIndex, stepIndex, stageShOptions, contextInBody,
         )
 
-        // Bind the body-reentry seam by registering the body with the adapter.
+        // B11 / W2: bind the body-reentry seam by registering the body with the adapter.
         // The runner closure re-enters the canonical shared body loop (`invokeBodyChildren`)
         // so any future block-step handler that declares `BODY_INVOKER_CAPABILITY` can
         // execute its body through the engine exactly as the canonical loop does today.
@@ -870,7 +922,8 @@ internal class StepDispatchEngine(
         // dormant until a registry-driven handler invokes it. The single
         // shared body-child iteration site stays inside `invokeBodyChildren`; this
         // adapter NEVER iterates body children itself.
-        // The runner now also applies the
+        //
+        // WU-LPR-302 (Phase 1b, 2026-09-18): the runner now also applies the
         // [BodyInvocationContext] it receives to the canonical body execution.
         // `context.attempt?.index` projects onto the per-attempt deterministic
         // bodyPath segment (mirroring the inline retry loop's BlockSegment
@@ -883,7 +936,7 @@ internal class StepDispatchEngine(
         // the body through `BodyInvoker.invoke`. The single shared body-child
         // iteration site stays inside `invokeBodyChildren`; this adapter NEVER
         // iterates body children itself.
-        // TRAIN slice 3b: the scoped-body execution (reentry binding,
+        // TRAIN H2 slice 3b (PR-018): the scoped-body execution (reentry binding,
         // engine delegation or inline loops, and the bracketed bookends) lives in
         // BodyExecutionEngine; the coordinator composes it with the projected
         // scope decided above. The credential-lease path composes through the
@@ -904,17 +957,19 @@ internal class StepDispatchEngine(
     }
 
     /**
-     * The ONE body-child invocation loop
+     * The ONE body-child invocation loop (B10 / W1d).
+     *
      * Every body-bearing Step re-enters the engine here: a plain scope, a retry attempt and
      * a credential lease all dispatch their children through this function, keyed by the
-     * Length-prefixed bodyPath (exactly-once). Before there were THREE copies of
+     * length-prefixed bodyPath (JEP-029 exactly-once). Before W1d there were THREE copies of
      * this loop — one beside [dispatchBody], one in the retry-aware path and one in the
      * credential path — and each copy was a place where a block Step could acquire execution
      * semantics the shared engine did not know about.
+     *
      * Semantics: children run in declaration order under [childShOptions] and
      * [executionContext]; the first Failure or Unstable stops the body and is returned;
      * otherwise the body outcome is [StepOutcome.Success].
-*/
+     */
     private suspend fun invokeBodyChildren(
         block: BlockStepNode,
         runId: RunId,
@@ -953,7 +1008,7 @@ internal class StepDispatchEngine(
      * Dispatches one body child through the canonical spine and projects its outcome.
      * This is the reference the body execution engine is handed, so every block Step
      * re-enters the engine through exactly this one call site.
-*/
+     */
     private suspend fun dispatchChild(
         child: StepNode,
         runId: RunId,
@@ -975,21 +1030,24 @@ internal class StepDispatchEngine(
     ).result.outcome
 
     /**
-     * A credential lease as a body PREAMBLE.
+     * EM-7/LFC-5.3 (INC-022), reworked by W1d — a credential lease as a body PREAMBLE.
+     *
      * The acquisition is an effectful preamble that yields an environment overlay; the body
      * itself re-enters the engine through [invokeBodyChildren], the same loop every other
      * block Step uses. Release ALWAYS runs — it is the `finally` of the same attempt that
      * dispatches the body, so it also runs when a child fails — and its typed outcome is
      * folded with the body's outcome by [mergeBodyAndCleanup], a total pure function of two
      * values.
+     *
      * Fail-closed: an [CredentialScopeOutcome.Unavailable] or
      * [CredentialScopeOutcome.Invalid] acquisition returns BEFORE any child is dispatched, so
      * a lease that cannot be acquired never runs its body. The bindings were already decoded
      * by the pure projection (`decodeCredentialBindings`), so a malformed payload never
      * reaches this function.
-     * The env overlay reaches children as an immutable derived value: the caller's
+     *
+     * The env overlay reaches children as an immutable derived value (CTX-P): the caller's
      * execution context is not mutated and needs no restore.
-*/
+     */
     private suspend fun executeCredentialLeasedBody(
         bindings: List<CredentialBindingSpec>,
         block: BlockStepNode,
@@ -1001,7 +1059,7 @@ internal class StepDispatchEngine(
         parentBodyPath: List<BlockSegment>,
         executionContext: ExecutionContext,
     ): StepOutcome {
-        // An admission failure here is a REAL observable
+        // WU-LPR-103 observability fix: an admission failure here is a REAL observable
         // outcome, not a silent one. Before any StepStarted exists for the leased body,
         // the failure MUST surface as a typed StepFailed event — otherwise external
         // observers see StageStarted -> RunFinished(failure) with empty diagnostics and
@@ -1009,7 +1067,7 @@ internal class StepDispatchEngine(
         val leased: AcquiredCredentialScope = when (val acquisition = credentialScopePort.acquire(bindings, runId)) {
             is CredentialScopeOutcome.Unavailable -> {
                 emitCredentialLeaseAdmissionFailure(
-                    runId = runId, stageIndex = stageIndex, stepIndex = stepIndex,
+                    runId = runId, stepIndex = stepIndex,
                     stepName = "${block.pluginStepId.value}", stepType = "withcredentials",
                     failureKind = dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
                     message = acquisition.failure.describe(),
@@ -1023,7 +1081,7 @@ internal class StepDispatchEngine(
             }
             is CredentialScopeOutcome.Invalid -> {
                 emitCredentialLeaseAdmissionFailure(
-                    runId = runId, stageIndex = stageIndex, stepIndex = stepIndex,
+                    runId = runId, stepIndex = stepIndex,
                     stepName = "${block.pluginStepId.value}", stepType = "withcredentials",
                     failureKind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
                     message = acquisition.failure.describe(),
@@ -1069,11 +1127,12 @@ internal class StepDispatchEngine(
     }
 
     /**
-     * Folds a body outcome and the scope cleanup outcome into a single
-     * total StepOutcome. Cleanup is idempotent and never throws.
+     * EM-7/LFC-5.3 — folds a body outcome and the scope cleanup outcome into a single
+     * total StepOutcome per design §73. Cleanup is idempotent and never throws.
+     *
      * Total algebra: cleanup Failed over Success, Unstable or Failure always yields a
      * typed operational Failure (INFRASTRUCTURE). Cleaned leaves the body outcome intact.
-*/
+     */
     private fun mergeBodyAndCleanup(bodyOutcome: StepOutcome, cleanup: CredentialScopeCleanup): StepOutcome =
         when (cleanup) {
             CredentialScopeCleanup.Cleaned -> bodyOutcome
@@ -1083,13 +1142,12 @@ internal class StepDispatchEngine(
         }
 
     /**
-     * Emit a typed [StepFailed] for a credential-lease admission
+     * WU-LPR-103: emit a typed [StepFailed] for a credential-lease admission
      * failure. The lease rejection happens BEFORE any child StepStarted, so
      * this event is the only per-step observability the outcome has.
-*/
+     */
     private fun emitCredentialLeaseAdmissionFailure(
         runId: RunId,
-        stageIndex: Int,
         stepIndex: Int,
         stepName: String,
         stepType: String,
@@ -1102,10 +1160,6 @@ internal class StepDispatchEngine(
                 runId = runId.value,
                 sequence = 0L,
                 occurredAt = clock.now(),
-                // The stage this rejection belongs to. The rejection happens before the body's own
-                // step starts, so this event is the only thing that says which stage the run
-                // stopped in, and it has to say it itself.
-                stageIndex = stageIndex,
                 stepIndex = stepIndex,
                 stepName = stepName,
                 stepType = stepType,

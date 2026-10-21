@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
+import dev.rubentxu.pipeline.v2.domain.saga.CompensationBodyDigest
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationId
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationKind
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationObligationStatus
@@ -50,6 +51,14 @@ data class SagaObligationRow(
      * conflict, so it is not treated as owned by anyone.
      */
     val ownerPluginId: String?,
+    /**
+     * The shape of the body this promise is paid with.
+     *
+     * `null` when the build that wrote the row did not measure one — a promise that names no
+     * body, or a promise armed by a build that did not keep digests. Such a promise cannot
+     * prove a divergence, so it does not block anything.
+     */
+    val bodyDigest: CompensationBodyDigest? = null,
 )
 
 /**

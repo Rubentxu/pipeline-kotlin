@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.domain.saga
 
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
+
 /**
  * The version of the compensation-intent contract.
  *
@@ -209,6 +211,21 @@ data class CompensationKey(
  *
  * This is the plugin's side of the contract and it carries no runtime handle, no lambda, no
  * secret and no step node: only the data that has to survive until a later process compensates.
+ *
+ * ## The body this promise is paid with
+ *
+ * [compensateSlot] names the body that will undo the effect. It is the SLOT, not the body: the
+ * body itself is code and cannot be written down, and the engine is the only party that can
+ * measure it. So the plugin NAMES the body and the engine MEASURES it, and the measurement is
+ * what the durable row keeps.
+ *
+ * That division is the same one the provenance follows: a plugin cannot claim a promise it did
+ * not make, and it cannot state the shape of a body it did not write. The plugin says which
+ * body it means; the engine says what that body IS.
+ *
+ * `null` means "this promise names no body". A promise that names no body is a promise the
+ * engine cannot CHECK, so it is the plugin's job to name one when it means to be checked — and
+ * a promise about an action that has nothing to undo has nothing to name.
  */
 data class CompensationDeclaration(
     val sagaId: SagaId,
@@ -218,6 +235,13 @@ data class CompensationDeclaration(
     val resourceRef: ResourceRef,
     val kind: CompensationKind,
     val intentVersion: Int = SagaIntentContract.CURRENT_VERSION,
+    /**
+     * The slot of the body that undoes the effect, or `null` when the promise names no body.
+     *
+     * It is resolved by the engine against the arming Step's own body, so a name that does not
+     * exist there is a contract violation the engine reports — not a body the plugin hoped for.
+     */
+    val compensateSlot: PluginStepId? = null,
 ) {
     /** The key this declaration will be stored under. */
     val key: CompensationKey get() = CompensationKey(sagaId, actionId, compensationId)

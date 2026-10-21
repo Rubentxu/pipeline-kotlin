@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.saga.CompensationBodyDigest
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationObligation
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPromiseOrigin
 import dev.rubentxu.pipeline.v2.events.durable.SagaObligationRow
@@ -54,8 +55,15 @@ internal fun SagaObligationRow.toOrigin(): SagaPromiseOrigin = SagaPromiseOrigin
  * [ownerPluginId] is the plugin that made the promise. It is stamped by the engine, which is
  * the only party that knows which plugin is running: a plugin cannot claim a promise it did not
  * make.
+ *
+ * [bodyDigest] is the shape of the body the promise is paid with, measured by the engine for
+ * the same reason: the plugin names the body, and only the engine can say what that body IS.
  */
-internal fun CompensationObligation.toRow(runId: String, ownerPluginId: String?): SagaObligationRow = SagaObligationRow(
+internal fun CompensationObligation.toRow(
+    runId: String,
+    ownerPluginId: String?,
+    bodyDigest: CompensationBodyDigest?,
+): SagaObligationRow = SagaObligationRow(
     runId = runId,
     sagaId = sagaId,
     actionId = actionId,
@@ -72,4 +80,5 @@ internal fun CompensationObligation.toRow(runId: String, ownerPluginId: String?)
     updatedAtMs = updatedAtMs,
     receiptRef = null,
     ownerPluginId = ownerPluginId,
+    bodyDigest = bodyDigest,
 )

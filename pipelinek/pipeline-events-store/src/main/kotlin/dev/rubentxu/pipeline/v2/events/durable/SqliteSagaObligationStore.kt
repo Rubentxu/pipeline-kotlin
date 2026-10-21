@@ -104,10 +104,18 @@ class SqliteSagaObligationStore(
                     } else {
                         statement.setString(18, row.ownerPluginId)
                     }
+                    // The shape of the body the promise is paid with. It is measured by the
+                    // engine, not by the plugin: the plugin names the body, and the engine says
+                    // what that body IS.
+                    if (row.bodyDigest == null) {
+                        statement.setNull(19, java.sql.Types.VARCHAR)
+                    } else {
+                        statement.setString(19, row.bodyDigest.hex)
+                    }
                     // The guard's two parameters: the run whose high-water mark is read, and the
                     // epoch of this writer.
-                    statement.setString(19, row.runId)
-                    statement.setLong(20, row.leaseEpoch)
+                    statement.setString(20, row.runId)
+                    statement.setLong(21, row.leaseEpoch)
                     statement.executeUpdate()
                 }
 
@@ -310,6 +318,7 @@ class SqliteSagaObligationStore(
                     statement.execute(CREATE_OBLIGATION_RUN_INDEX)
                 }
                 addOwnerColumnIfMissing(connection)
+                addBodyDigestColumnIfMissing(connection)
             } finally {
                 connection.close()
             }
@@ -330,6 +339,23 @@ class SqliteSagaObligationStore(
         if (hasColumn) return
         connection.createStatement().use { statement ->
             statement.execute(ADD_OWNER_COLUMN)
+        }
+    }
+
+    /**
+     * Adds the column that says which body each promise is paid with, when it is not there yet.
+     *
+     * A database written by an older build holds promises that were armed before the engine
+     * measured bodies, so they name no body: they keep working, and they simply cannot prove a
+     * divergence against anybody. The column is nullable and the statement only ever adds it, so
+     * a run that is already in flight is not disturbed.
+     */
+    private fun addBodyDigestColumnIfMissing(connection: Connection) {
+        val hasColumn = connection.metaData.getColumns(null, null, "saga_obligation", "body_digest")
+            .use { rs -> rs.next() }
+        if (hasColumn) return
+        connection.createStatement().use { statement ->
+            statement.execute(ADD_BODY_DIGEST_COLUMN)
         }
     }
 
@@ -439,6 +465,7 @@ class SqliteSagaObligationStore(
                 updated_at_ms INTEGER NOT NULL,
                 receipt_ref TEXT,
                 owner_plugin_id TEXT,
+                body_digest TEXT,
                 PRIMARY KEY (run_id, saga_id, action_id, compensation_id)
             )
         """
@@ -452,6 +479,17 @@ class SqliteSagaObligationStore(
          */
         const val ADD_OWNER_COLUMN = """
             ALTER TABLE saga_obligation ADD COLUMN owner_plugin_id TEXT
+        """
+
+        /**
+         * The column that says which body each promise is paid with.
+         *
+         * Same story as the owner's column: it is added to a table that already exists, and the
+         * promises in those rows simply do not name a body, so they keep working and cannot
+         * prove a divergence against anybody.
+         */
+        const val ADD_BODY_DIGEST_COLUMN = """
+            ALTER TABLE saga_obligation ADD COLUMN body_digest TEXT
         """
 
         const val CREATE_OBLIGATION_RUN_INDEX = """
@@ -476,7 +514,7 @@ class SqliteSagaObligationStore(
             INSERT INTO saga_obligation (
                 run_id, saga_id, action_id, compensation_id, intent_version, plan_fingerprint,
                 resource_ref, compensation_kind, status, forward_op_id, compensation_op_id,
-                lease_epoch, created_at_ms, updated_at_ms, receipt_ref, owner_plugin_id
+                lease_epoch, created_at_ms, updated_at_ms, receipt_ref, owner_plugin_id, body_digest
             )
             SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 MAX(?, COALESCE((
@@ -484,6 +522,7 @@ class SqliteSagaObligationStore(
                     WHERE run_id = ? AND saga_id = ?
                 ), 0) + 1),
                 ?, ?,
+                ?,
                 ?
             WHERE (
                 SELECT COALESCE(MAX(lease_epoch), -1) FROM saga_obligation WHERE run_id = ?

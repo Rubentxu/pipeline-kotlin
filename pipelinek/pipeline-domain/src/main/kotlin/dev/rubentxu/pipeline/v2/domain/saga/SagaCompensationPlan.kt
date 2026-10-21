@@ -81,9 +81,15 @@ sealed interface CompensationDirective {
      *
      * The rest of the Saga's obligations stay pending and durable, and the newest unsettled one
      * is the one that needs attention — the others depend on it.
+     *
+     * @property divergence the facts of a body divergence, when the reason is one: which body
+     * the promise named and which one was going to run. It is typed rather than a sentence
+     * because a reader that has to dig the digests out of a string has to trust the string, and
+     * because the same facts have to be COMPARED, not only read.
      */
     data class NeedsIntervention(
         val obligation: CompensationObligation,
         val reason: InterventionReason,
+        val divergence: SagaBodyVerdict.Diverged? = null,
     ) : CompensationDirective
 }

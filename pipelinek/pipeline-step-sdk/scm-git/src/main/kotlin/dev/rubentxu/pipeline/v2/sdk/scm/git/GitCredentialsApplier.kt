@@ -471,6 +471,7 @@ class GitCredentialsApplier(
                         "Credentials must not appear in process arguments (argv) — " +
                         "use GIT_ASKPASS or credential helper instead. " +
                         "Found in ${describeForDiagnostics(arg, index)}"
+                    )
                 }
             }
         }

@@ -48,6 +48,24 @@ internal object SagaObligationRowCodec {
             createdAtMs = rs.getLong("created_at_ms"),
             updatedAtMs = rs.getLong("updated_at_ms"),
             receiptRef = receipt?.let { EffectReceiptRef.of(it) },
+            ownerPluginId = ownerOf(rs),
         )
     }
+
+    /**
+     * The plugin that armed the promise, when the database says so.
+     *
+     * A database written before the provenance was kept has no such column, and the read-only
+     * reader cannot add it. A promise whose owner was never recorded is not treated as owned by
+     * anyone, so an absent owner is the honest reading rather than a failure.
+     */
+    private fun ownerOf(rs: ResultSet): String? {
+        val meta = rs.metaData
+        for (index in 1..meta.getColumnCount()) {
+            if (meta.getColumnLabel(index) == OWNER_COLUMN) return rs.getString(index)
+        }
+        return null
+    }
+
+    private const val OWNER_COLUMN = "owner_plugin_id"
 }

@@ -7,7 +7,10 @@ import dev.rubentxu.pipeline.v2.domain.saga.EffectReceiptRef
 import dev.rubentxu.pipeline.v2.domain.saga.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
+import dev.rubentxu.pipeline.v2.domain.saga.SagaOwnershipVerdict
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
+import dev.rubentxu.pipeline.v2.domain.saga.SagaPromiseOrigin
+import dev.rubentxu.pipeline.v2.domain.saga.SagaPromiseOwnership
 
 /**
  * One durable row of a Saga compensation obligation.
@@ -40,6 +43,13 @@ data class SagaObligationRow(
     val createdAtMs: Long,
     val updatedAtMs: Long,
     val receiptRef: EffectReceiptRef?,
+    /**
+     * The plugin that armed this promise.
+     *
+     * `null` when the build that wrote the row did not record it: such a promise cannot prove a
+     * conflict, so it is not treated as owned by anyone.
+     */
+    val ownerPluginId: String?,
 )
 
 /**
@@ -85,6 +95,13 @@ data class SagaObligationUpdate(
     val receiptRef: EffectReceiptRef?,
     val updatedAtMs: Long,
     val leaseEpoch: Long,
+    /**
+     * The plugin that writes, when it states one.
+     *
+     * A writer that names a plugin only writes to promises that plugin owns. A writer that names
+     * nobody is not claiming ownership, so nothing is contradicted.
+     */
+    val ownerPluginId: String? = null,
 )
 
 /**
@@ -101,6 +118,13 @@ sealed interface SagaUpdatePersistence {
 
     /** No row is stored under that key, so nothing was written. */
     data object NotFound : SagaUpdatePersistence
+
+    /**
+     * Nothing was written because the promise belongs to another plugin.
+     *
+     * The row is the truth about who holds the promise, so the refusal can name it.
+     */
+    data class ForeignOwner(val row: SagaObligationRow) : SagaUpdatePersistence
 
     /**
      * Nothing was written because a newer epoch already owns the run.
@@ -130,8 +154,29 @@ sealed interface SagaBulkMove {
      */
     data class Applied(val moved: Int, val remaining: Int) : SagaBulkMove
 
+    /**
+     * Nothing was written: one of the obligations of the Saga belongs to another plugin.
+     *
+     * The bulk move is all or nothing, so one promise that is not the writer's stops the whole
+     * move: a Saga is not closed halfway.
+     */
+    data class ForeignOwner(val row: SagaObligationRow) : SagaBulkMove
+
     /** Nothing was written: a newer epoch already owns the run. */
     data class Fenced(val currentEpoch: Long) : SagaBulkMove
+}
+
+/**
+ * Whether the promise belongs to a plugin other than the one that writes.
+ *
+ * The judgement is the DOMAIN's: this is the rule about who owns a promise, and it lives in one
+ * place so that the durable store and the volatile one cannot drift apart.
+ */
+internal fun isForeignOwner(row: SagaObligationRow, writerPluginId: String?): Boolean {
+    val stored = SagaPromiseOrigin(pluginId = row.ownerPluginId, intentVersion = row.intentVersion)
+    val writer = writerPluginId?.let { SagaPromiseOrigin(pluginId = it, intentVersion = row.intentVersion) }
+    val verdict = SagaPromiseOwnership.verdict(stored, writer)
+    return verdict is SagaOwnershipVerdict.ForeignOwner
 }
 
 /**
@@ -189,6 +234,7 @@ interface SagaObligationStore {
         to: CompensationObligationStatus,
         updatedAtMs: Long,
         leaseEpoch: Long,
+        ownerPluginId: String? = null,
     ): SagaBulkMove
 
     /** The row stored under [runId]/[key], or `null` when there is none. */

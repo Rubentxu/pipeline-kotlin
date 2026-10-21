@@ -5,8 +5,9 @@ package dev.rubentxu.pipeline.v2.application.observation
  *
  * ## Why this exists
  *
- * `pipeline run` historically printed a raw JSON event array to stdout
- * ([Main.kt:436] and [Main.kt:854]). That is a machine wire format presented as
+ * `pipeline run` historically printed a raw JSON event array to stdout (the two
+ * `run` branches, which now live in `MainVolatileRun.kt` and `MainDurableRun.kt`).
+ * That is a machine wire format presented as
  * if it were a human interface. Users got a wall of JSON instead of a console.
  *
  * The fix is NOT to swap one default for another. It is to separate four
@@ -39,8 +40,6 @@ package dev.rubentxu.pipeline.v2.application.observation
  * Plane, which `pipeline console` already reads as bytes. Reading it twice from
  * two verbs would be a second source of output truth, so `run` points at the
  * dedicated verb instead.
- *
- * [Main.kt:436]: dev.rubentxu.pipeline.v2.application.Main
  */
 enum class ObservationView {
     /** Lifecycle, structure, script messages and failures. The default. */

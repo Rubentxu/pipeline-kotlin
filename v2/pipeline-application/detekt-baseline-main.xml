@@ -7,21 +7,17 @@
     <ID>AbstractClassCanBeInterface:MainEventsCli.kt:MainEventsCli.EventsInspectionParseResult$EventsInspectionParseResult</ID>
     <ID>AbstractClassCanBeInterface:MilestoneOperations.kt:MilestoneAdvanceResult$MilestoneAdvanceResult</ID>
     <ID>CyclomaticComplexMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$suspend fun run: RunOutcome</ID>
-    <ID>CyclomaticComplexMethod:Main.kt:fun main</ID>
     <ID>CyclomaticComplexMethod:PluginAdmissionGate.kt:PluginAdmissionGate$fun admitThenLoad: PluginAdmissionResult</ID>
     <ID>CyclomaticComplexMethod:SimplePipelineCompiler.kt:SimplePipelineCompiler$override fun compile: CompileResult</ID>
     <ID>DoubleMutabilityForCollection:CliParser.kt:CliParser$var kinds: MutableSet&lt;String&gt; = LinkedHashSet()</ID>
     <ID>DoubleMutabilityForCollection:CliParser.kt:CliParser$var stages: MutableSet&lt;String&gt; = LinkedHashSet()</ID>
     <ID>DoubleMutabilityForCollection:CliParser.kt:CliParser$var steps: MutableSet&lt;String&gt; = LinkedHashSet()</ID>
-    <ID>ImplicitDefaultLocale:Main.kt:" %-13s %s\n".format(verb, summary)</ID>
-    <ID>ImplicitDefaultLocale:Main.kt:" %-28s %s\n".format(name, purpose)</ID>
     <ID>ImplicitDefaultLocale:PluginManifestResourceReader.kt:PluginManifestResourceReader$"%02x".format(it)</ID>
     <ID>ImplicitDefaultLocale:PublishHtmlSanitiser.kt:PublishHtmlSanitiser$"%04x".format(ch.code)</ID>
     <ID>InjectDispatcher:FileLockCoordinator.kt:FileLockCoordinator$IO</ID>
     <ID>InjectDispatcher:ParallelStageEngine.kt:ParallelStageEngine$Default</ID>
     <ID>InstanceOfCheckForException:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$e is EngineInvariantViolation</ID>
     <ID>InstanceOfCheckForException:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$e is IllegalStateException</ID>
-    <ID>LongMethod:Main.kt:fun main</ID>
     <ID>LongMethod:PluginAdmissionGate.kt:PluginAdmissionGate$fun admitThenLoad: PluginAdmissionResult</ID>
     <ID>LongMethod:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$override fun publish: PublishHtmlResult</ID>
     <ID>LongMethod:StepDispatchEngine.kt:StepDispatchEngine$suspend fun dispatch: Dispatched</ID>
@@ -35,7 +31,6 @@
     <ID>LongParameterList:CliParser.kt:CliParser$private fun consoleDecideVerb: ConsoleCliParseResult</ID>
     <ID>LongParameterList:CliParser.kt:CliParser$private fun consoleValidate: ConsoleCliParseResult</ID>
     <ID>LongParameterList:CliParser.kt:ParseState</ID>
-    <ID>LongParameterList:CompositionRoot.kt:internal fun runCanonicalPipeline: RunOutcome</ID>
     <ID>LongParameterList:MainScriptedSupport.kt:internal fun runScriptedFrontend: RunOutcome?</ID>
     <ID>LongParameterList:RetryEngine.kt:RetryEngine</ID>
     <ID>LongParameterList:ScriptedFrontendRunner.kt:ScriptedFrontendRunner$fun run: Outcome</ID>
@@ -46,7 +41,6 @@
     <ID>LongParameterList:StepDispatchEngine.kt:StepDispatchEngine$private suspend fun executeCredentialLeasedBody: StepOutcome</ID>
     <ID>LongParameterList:StepDispatchEngine.kt:StepDispatchEngine$private suspend fun invokeBodyChildren: StepOutcome</ID>
     <ID>LongParameterList:WaitUntilEngine.kt:WaitUntilEngine</ID>
-    <ID>MaxLineLength:Main.kt:val credentialMaterialization: dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization? = secretStore?.let { LocalFileMaterialization(CredentialMaterializer(it)) }</ID>
     <ID>MaxLineLength:MainEventsVerifyCli.kt:MainEventsVerifyCli$System.err.println("Usage: pipeline events verify --db &lt;path&gt; --run &lt;runId&gt; --contract &lt;events.yaml&gt; [--from-sequence N] [--after-last-run-started]")</ID>
     <ID>MaxLineLength:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$val reason = "reportDir '${input.reportDir}' (resolved to $reportDir) cannot be resolved to a real path; refusing to publish (possible broken symlink): ${e.message}"</ID>
     <ID>MaxLineLength:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$val reason = "reportDir '${input.reportDir}' resolves to '$reportDirReal' which escapes the workspace (real path '$workspaceRootReal'); refusing to follow symlinks"</ID>
@@ -55,24 +49,19 @@
     <ID>NewLineAtEndOfFile:EventStoreRefusalRendering.kt:dev.rubentxu.pipeline.v2.application.EventStoreRefusalRendering.kt</ID>
     <ID>ObjectLiteralToLambda:TextSelector.kt:object : CompiledTextSelector { override fun matches(text: String): Boolean = compiled.getOrThrow().containsMatchIn(text) }</ID>
     <ID>ObjectLiteralToLambda:TextSelector.kt:object : CompiledTextSelector { override fun matches(text: String): Boolean = if (selector.ignoreCase) text.contains(selector.value, ignoreCase = true) else text.contains(selector.value) }</ID>
-    <ID>RedundantHigherOrderMapUsage:Main.kt:map</ID>
     <ID>SpreadOperator:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$( "set +e", "set +o pipefail", "__rc=0", *commands.mapIndexed { idx, cmd -&gt; "($cmd) || __rc=\$?; : done $idx" }.toTypedArray(), "exit \$__rc", )</ID>
     <ID>TooManyFunctions:ConsoleFamilyLines.kt:ConsoleFamilyLines</ID>
     <ID>TooManyFunctions:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler</ID>
     <ID>TooManyFunctions:MainInspectCli.kt:MainInspectCli</ID>
     <ID>UnnecessaryNotNullOperator:CoreInputInput.kt:CoreInputOutput$denial!!</ID>
-    <ID>UnnecessaryNotNullOperator:Main.kt:compiledPipeline!!</ID>
-    <ID>UnnecessaryNotNullOperator:Main.kt:config.dbPath!!</ID>
     <ID>UnnecessaryNotNullOperator:MainConsoleCli.kt:ConsoleReadService$after!!</ID>
     <ID>UnnecessaryNotNullOperator:SimplePipelineCompiler.kt:SimplePipelineCompiler$name!!</ID>
-    <ID>UnnecessarySafeCall:Main.kt:runOutcome.failure.message ?.takeIf { it.isNotBlank() &amp;&amp; it != "Kotlin compilation failed" }</ID>
     <ID>UnnecessarySafeCall:ShExecution.kt:ShExecution$controlDirRoot?.let { root -&gt; val store = OutputPlaneProvider.storeForWriting(root) val streams = OutputPlaneProvider.streamsOf(runId, opId.format()) buildMap { ProcessOutputChannel.all.forEach { channel -&gt; val address = when (channel) { ProcessOutputChannel.STDOUT -&gt; streams.stdout ProcessOutputChannel.STDERR -&gt; streams.stderr } put( channel, RedactingOutputIngress( { store.open(address.stream) }, store.frameIndex(), address, ) as ProcessOutputSink, ) } } }</ID>
     <ID>UnreachableCode:BodyExecutionEngine.kt:BodyExecutionEngine$return outcome</ID>
     <ID>UnreachableCode:CanonicalCoreStepDecoder.kt:CanonicalCoreStepDecoder$return when (node.pluginStepId.value) { // S2-A4 / G5: EMIT_EVENT_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw // core.emit.event envelope is consumed structurally (StructuralOverlayProjection, // pre-decode) and executively by CoreEmitEventStep via the registry — never here. // S2-A9 / G5: MILESTONE_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw // core.milestone envelope is consumed structurally and executively by // CoreMilestoneStep via the registry — never here. // S2-A7 / G5 (2026-09-12): DELETE_DIR_PLUGIN_ID decoder branch removed (LEGACY_REMOVED). // S2-A10 / G5 (2026-09-13): CLEAN_WS_PLUGIN_ID decoder branch removed (LEGACY_REMOVED). // The raw core.cleanWs envelope is consumed structurally (WsCleaned event, // pre-decode) and executively by CoreCleanWsStep via the registry — never here. // WU-LPR-301 / G5 (2026-09-18): LOAD_PLUGIN_ID branch removed (LEGACY_REMOVED). // The `core.load` execution authority is DEFERRED + UNSUPPORTED in `local-core-v1`; // any `core.load` envelope falls through to the `else` rejection below. // S2-A6 / G5: PWD_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw core.pwd // envelope is consumed structurally (PwdResolved event, pre-decode) and // executively by CorePwdStep via the registry — never here. The DSL // `pwd()` / `pwd(tmp=false)` lower to StepSpec.RegistryStepSpec (S2-A6 / G3R). // S2-A5 / G5: IS_UNIX_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw // core.isUnix envelope is consumed structurally (UnixDetected event, pre-decode) // and executively by CoreIsUnixStep via the registry — never here. // WU-LPR-301 / G5 (2026-09-18): WAIT_UNTIL_PLUGIN_ID branch removed (LEGACY_REMOVED). // The `core.waitUntil` execution authority is the registry (CoreWaitUntilStep.definition). // The polling cadence is declared structurally via // `BodyExecutionPolicy.Retrying(waitUntil = ...)`; any `core.waitUntil` envelope // falls through to the `else` rejection below — as it must, since the registry // is the only execution authority. // S2-B10 / G5 (2026-09-13): ARCHIVE_ARTIFACTS_PLUGIN_ID branch removed // (LEGACY_REMOVED). A core.archiveArtifacts node now falls through to the // `else` rejection below — as it must, since the registry and not this decoder // is its execution authority. That rejection is asserted behaviourally by the // contract suite (no silent fall-through to a no-op). else -&gt; throw IllegalArgumentException( "Unsupported core plugin step '${node.pluginStepId.value}' for '${node.id.value}'" ) }</ID>
     <ID>UnreachableCode:CanonicalRuntimeCapabilityAccess.kt:CanonicalRuntimeCapabilityAccess$context.shOptions.workspaceRoot ?: Path.of("").toAbsolutePath().normalize()</ID>
     <ID>UnsafeCallOnNullableType:AdmissionControlJournal.kt:AdmissionControlRow.Companion$rejection::class.simpleName!!</ID>
     <ID>UnsafeCallOnNullableType:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$occurrences.merge(step.name, 1, Int::plus)!!</ID>
-    <ID>UnsafeCallOnNullableType:Main.kt:RunOwnerId.of( "cli-inmem-" + ProcessHandle.current().pid() + "-" + java.util.UUID.randomUUID().toString().take(8) )!!</ID>
     <ID>UnsafeCallOnNullableType:RunObservationOutput.kt:RunObservationOutput.Stream$console!!</ID>
     <ID>UnsafeCallOnNullableType:SimplePipelineCompiler.kt:SimplePipelineCompiler$configRef!!</ID>
     <ID>UnsafeCallOnNullableType:SimplePipelineCompiler.kt:SimplePipelineCompiler$name!!</ID>
@@ -231,20 +220,6 @@
     <ID>UnusedImport:FileBasedRetryControlJournal.kt:import kotlinx.serialization.json.JsonObject</ID>
     <ID>UnusedImport:FileBasedRetryControlJournal.kt:import kotlinx.serialization.json.encodeToJsonElement</ID>
     <ID>UnusedImport:LiveOutputDrain.kt:import java.io.Writer</ID>
-    <ID>UnusedImport:Main.kt:import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator</ID>
-    <ID>UnusedImport:Main.kt:import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher</ID>
-    <ID>UnusedImport:Main.kt:import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal</ID>
-    <ID>UnusedImport:Main.kt:import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal</ID>
-    <ID>UnusedImport:Main.kt:import dev.rubentxu.pipeline.v2.application.durable.NonCanonicalStep</ID>
-    <ID>UnusedImport:Main.kt:import dev.rubentxu.pipeline.v2.application.durable.credentials.WithCredentialsExecutorScopeAdapter</ID>
-    <ID>UnusedImport:Main.kt:import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead</ID>
-    <ID>UnusedImport:Main.kt:import dev.rubentxu.pipeline.v2.domain.RunIdGenerator</ID>
-    <ID>UnusedImport:Main.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
-    <ID>UnusedImport:Main.kt:import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog</ID>
-    <ID>UnusedImport:Main.kt:import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore</ID>
-    <ID>UnusedImport:Main.kt:import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfigResolver</ID>
-    <ID>UnusedImport:Main.kt:import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile</ID>
-    <ID>UnusedImport:Main.kt:import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions</ID>
     <ID>UnusedImport:MainCapabilitiesCli.kt:import kotlinx.serialization.json.put</ID>
     <ID>UnusedImport:MainObserveCli.kt:import dev.rubentxu.pipeline.v2.application.observation.ObservationJsonLines</ID>
     <ID>UnusedImport:MainSdkInfoCli.kt:import kotlinx.serialization.json.put</ID>
@@ -341,8 +316,6 @@
     <ID>UnusedVariable:AdmissionControlJournal.kt:TinyJsonObject$val esc = source[pos++]</ID>
     <ID>UnusedVariable:CanonicalCoreStepDecoder.kt:CanonicalCoreStepDecoder$val payload = Json.parseToJsonElement(node.payload.encoded).jsonObject</ID>
     <ID>UnusedVariable:CoreWaitUntilStep.kt:CoreWaitUntilStep$val startTime = System.currentTimeMillis()</ID>
-    <ID>UnusedVariable:Main.kt:val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()</ID>
-    <ID>UnusedVariable:Main.kt:val scriptContent = scriptPath.toFile().readText()</ID>
     <ID>UnusedVariable:MainEventsCli.kt:MainEventsCli$val a = args[i]</ID>
     <ID>UnusedVariable:OperatorTrustDatabase.kt:JsonObjectCursor$val esc = source[pos++]</ID>
     <ID>UnusedVariable:RunLifecycleEngine.kt:RunLifecycleEngine$val o = outcome</ID>
@@ -354,7 +327,6 @@
     <ID>UseCheckOrError:ExternalEventDefinitionDiscovery.kt:ExternalEventDefinitionDiscovery$throw IllegalStateException( "Event definition contributor '${contributor.id}' declared kind " + "'${outcome.kind}', already owned by '${outcome.registeredBy}'. " + "Aborting composition: a shadowed event kind makes every recorded " + "payload of that kind ambiguous forever.", )</ID>
     <ID>UseCheckOrError:FileBasedRetryControlJournal.kt:FileBasedRetryControlJournal$throw IllegalStateException( "updateStatus: no control row for $controlOpId@$attempt; call beginAttempt first", )</ID>
     <ID>UseCheckOrError:FileBasedWaitUntilControlJournal.kt:FileBasedWaitUntilControlJournal$throw IllegalStateException( "updateStatus: no control row for $controlOpId@$attempt; call beginAttempt first", )</ID>
-    <ID>UseCheckOrError:Main.kt:throw IllegalStateException("unreachable")</ID>
     <ID>UseCheckOrError:MainConsoleCli.kt:MainConsoleCli$throw IllegalStateException( ConsoleReadService.renderRefusal(result.reason), )</ID>
     <ID>UseCheckOrError:RuntimeApiVersion.kt:RuntimeApiVersion$throw IllegalStateException( "the generated version resource is missing or empty at $RESOURCE. Refusing to decide " + "plugin compatibility against a version that did not come from the build. Rebuild " + "via Gradle so the resource is generated from project.version.", )</ID>
     <ID>UseCheckOrError:RuntimeApiVersion.kt:RuntimeApiVersion$throw IllegalStateException( "version '$raw' read from $RESOURCE is not MAJOR.MINOR.PATCH. The SDK admits plugin " + "apiRanges against a three-component SemVer and nothing else, so a version it " + "cannot read is a version it cannot safely compare.", )</ID>

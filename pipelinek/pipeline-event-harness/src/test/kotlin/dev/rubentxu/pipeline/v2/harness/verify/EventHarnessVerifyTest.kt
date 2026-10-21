@@ -187,9 +187,15 @@ class EventHarnessVerifyTest {
     )
 
     private fun stepFailed(sequence: Long) = typed(
+        // A step that never started: the step 1 of the stage. The step 0 of that stage DID
+        // start and DID finish well, and the terminal-contradiction law — which runs on every
+        // verification — reads a failure of the same step as a contradiction. A failure of a
+        // step that never started keeps this fixture about the constraint it is testing, and
+        // about nothing else.
         StepFailed(
             "e$sequence", runId, sequence, Instant.ofEpochMilli(sequence),
-            0, "step0", "sh", FailureKind.USER, "the command failed",
+            stageIndex = 0, stepIndex = 1, stepName = "step1", stepType = "sh",
+            failureKind = FailureKind.USER, message = "the command failed",
         ),
     )
 

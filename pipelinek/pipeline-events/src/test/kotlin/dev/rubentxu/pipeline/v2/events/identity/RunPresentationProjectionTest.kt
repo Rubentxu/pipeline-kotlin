@@ -43,11 +43,13 @@ class RunPresentationProjectionTest {
         kind: FailureKind = FailureKind.SCRIPT,
         runId: String = RUN,
         stepName: String = "ship",
+        stageIndex: Int? = 0,
     ): StepFailed = StepFailed(
         eventId = "event-step-failed",
         runId = runId,
         sequence = 2L,
         occurredAt = Instant.EPOCH,
+        stageIndex = stageIndex,
         stepIndex = 1,
         stepName = stepName,
         stepType = "sh",
@@ -124,6 +126,18 @@ class RunPresentationProjectionTest {
             // The terminal carries the WORD "failure" and not the failure, so the detail has to
             // come from the plane. This is the same "first failure wins" the reducer follows.
             val presentation = read(runFinished("failure"), stepFailed(message = "exit 1"))
+
+            val failure = assertInstanceOf<RunOutcome.Failure>(presentation.outcome)
+            assertEquals(FailureKind.SCRIPT, failure.failure.kind)
+            assertEquals("exit 1", failure.failure.message)
+        }
+
+        @Test
+        fun `a failure that names no stage still reads the run's verdict`() {
+            // The stage a failure belongs to is a fact the CONSUMER of the plane needs, not a
+            // fact this projection needs. A row written before the stage was published names
+            // none, and the run's verdict must be read from it exactly the same way.
+            val presentation = read(runFinished("failure"), stepFailed(message = "exit 1", stageIndex = null))
 
             val failure = assertInstanceOf<RunOutcome.Failure>(presentation.outcome)
             assertEquals(FailureKind.SCRIPT, failure.failure.kind)

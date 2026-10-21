@@ -177,7 +177,7 @@ object CorePwdStep {
     )
 
     /**
-     * RP034-E: `pwd` reports the current directory, not the workspace root.
+     * `pwd` reports the current directory, not the workspace root.
      *
      * The legacy seam handed this handler a single `Path` built as
      * `workingDirectory ?: workspaceRoot`, so a `dir` scope could not be

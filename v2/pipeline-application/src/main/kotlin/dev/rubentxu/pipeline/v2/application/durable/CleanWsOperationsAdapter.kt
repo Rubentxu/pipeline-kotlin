@@ -53,7 +53,7 @@ class CleanWsOperationsAdapter(
     private val stepIndex: Int,
     private val controlDirRoot: java.nio.file.Path,
     private val eventSink: EventSink,
-    /** WU-LPR-062: optional project-workspace override (--workspace). */
+    /** optional project-workspace override (--workspace).*/
     private val workspaceBase: java.nio.file.Path? = null,
     /**
      * RP034-G (ADR-0102): the typed workspace lease for this step.
@@ -79,7 +79,7 @@ class CleanWsOperationsAdapter(
 
 
     override fun clean(input: CleanWsInput): CleanWsResult {
-        // RP034-I: `cleanWs` anchors on WORKSPACE_ROOT (anchor matrix) — it
+        // `cleanWs` anchors on WORKSPACE_ROOT (anchor matrix) — it
         // wipes the workspace, so a `dir(...)` scope must not move it. The base
         // is the lease root the location reports, not one re-derived from the
         // control root, for the same reason as deleteDir.

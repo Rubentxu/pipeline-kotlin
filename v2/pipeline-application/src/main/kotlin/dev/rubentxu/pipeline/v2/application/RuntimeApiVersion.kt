@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
 
 /**
- * S6-COMPOSITION — the ONE place that knows which PipelineK version is running.
+ * the ONE place that knows which PipelineK version is running.
  *
  * ## Why this had to be extracted rather than written again
  *

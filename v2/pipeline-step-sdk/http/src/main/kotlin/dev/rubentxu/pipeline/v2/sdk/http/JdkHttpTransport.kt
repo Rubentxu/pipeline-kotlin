@@ -13,7 +13,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.future.await
 
 /**
- * RP6-C / WU-093 G2 — the ONLY class in this repository that opens a socket.
+ * the ONLY class in this repository that opens a socket.
  *
  * `java.net.http` is not a preference here. `FArch002ApplicationDependsInwardTest`
  * allows `pipeline-application` exactly three third-party artifacts (kotlin-stdlib,

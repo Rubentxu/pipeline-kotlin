@@ -2,7 +2,7 @@ plugins {
     kotlin("jvm")
     kotlin("plugin.serialization")
     `maven-publish`
-    // WU-RP-040 R4: selective mutation (ReplayPolicy core). Run explicitly: :pipeline-domain:pitest
+    // selective mutation (ReplayPolicy core). Run explicitly: :pipeline-domain:pitest
     id("info.solidsoft.pitest")
 }
 

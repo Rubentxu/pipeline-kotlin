@@ -75,7 +75,7 @@ object LegacyExecutionAdapter {
  * exhaustive over the two sealed structural forms. Each family is backed by its own executor boundary
  * ([legacy] for [PreparedLegacyExecution], [registry] for [PreparedRegistryExecution]).
  *
- * LB-02 / G3-A3: the routed [CommonExecutionResult] is propagated unchanged — the seam is single.
+ * the routed [CommonExecutionResult] is propagated unchanged — the seam is single.
  */
 object SeamedExecutionRouter {
     fun route(

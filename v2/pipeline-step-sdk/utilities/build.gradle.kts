@@ -99,7 +99,7 @@ val computeUtilitiesDigest = tasks.register("computeUtilitiesDigest") {
     inputs.property("version", ver)
     inputs.property("module", "utilities")
 
-    // AUD-01: this used to be `sh -c "sha256sum <ABSOLUTE PATHS> | sha256sum"`, and `sha256sum`
+    // this used to be `sh -c "sha256sum <ABSOLUTE PATHS> | sha256sum"`, and `sha256sum`
     // PRINTS THE FILENAME IT WAS GIVEN. The shared ProvenanceDigest frames only the root name and
     // the relative path, so two checkouts of identical bytes hash identically.
     doLast {

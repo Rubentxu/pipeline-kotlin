@@ -18,7 +18,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
  */
 object CanonicalCoreStepMetadata {
     private val table: Map<String, StepMetadata> = mapOf(
-        // S2-A9 / G5: "core.milestone" row removed (LEGACY_REMOVED). Production metadata is
+        // "core.milestone" row removed (LEGACY_REMOVED). Production metadata is
         // now read exclusively from CoreMilestoneStep.descriptor via RegistryStepMetadataResolver.
         // S2-A7 / G5 (2026-09-12): "core.deleteDir" row removed (LEGACY_REMOVED).
         // Production metadata is CoreDeleteDirStep.descriptor via RegistryStepMetadataResolver.

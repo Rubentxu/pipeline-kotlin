@@ -216,7 +216,7 @@ fun main(args: Array<String>) {
         }
     }
 
-    // PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: validate --output-protocol
+    // validate --output-protocol
     // BEFORE the run starts. An unknown id is a fail-closed
     // CliExit.InvalidArgument (exit 2); the server never falls back
     // to Published on an unknown request, because that would be the
@@ -265,7 +265,7 @@ fun main(args: Array<String>) {
 
     val scriptPath = Paths.get(config.scriptPath)
 
-    // DEBT-CLI-SCRIPT-NOT-FOUND: a missing/unreadable script used to reach
+    // a missing/unreadable script used to reach
     // `scriptPath.toFile().readText()` deep in each mode and surface as a raw
     // `NoSuchFileException` stacktrace. Reject it here — at the CLI boundary, before
     // any store, journal or process is created — with a typed, actionable message.
@@ -279,7 +279,7 @@ fun main(args: Array<String>) {
     }
 
     if (command == CliCommand.VALIDATE) {
-        // M2-002: validate NEVER starts processes. It compiles the script
+        // validate NEVER starts processes. It compiles the script
         // and reports diagnostics — nothing else.
         val rawStore = InMemoryEventStore()
         val store = RedactingEventSink(rawStore, secretPatternRegistry)
@@ -303,7 +303,7 @@ fun main(args: Array<String>) {
             query = compiledQuery,
             protocol = outputProtocol,
         )
-        // TRAIN-DSL-HONESTY: a script that compiles but throws while building
+        // a script that compiles but throws while building
         // its IR reaches here with isSuccess == true and no usable spec.
         // Reporting SUCCESS for it was the same DEFAULT_SUCCESS the run path
         // turned into an NPE.
@@ -322,7 +322,7 @@ fun main(args: Array<String>) {
         val noSpec = compileResult.isSuccess &&
             compileResult.scriptInstance?.javaClass?.methods?.any { it.name == "get\$\$result" } != true
         if (!compileResult.isSuccess || evalFailures.isNotEmpty() || noSpec) {
-            // WU-LPR-011 F3: compile failure is an invocation/admission error,
+            // compile failure is an invocation/admission error,
             // not a pipeline execution failure. Exit 2 per the canonical
             // contract (0 success / 1 pipeline fail / 2 invocation+compile).
             //

@@ -98,7 +98,7 @@ class ProcessDurableTaskRuntime(
 
         val exitCode: Int = try {
             coroutineScope {
-                // WU-LPR-043: sink invocation is decoupled from the pump
+                // sink invocation is decoupled from the pump
                 // threads. Pumps enqueue chunks (suspend, bounded: co-operate
                 // with a slow sink at capacity instead of dropping — the
                 // pipeline output is lossless) but the sink call itself runs

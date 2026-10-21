@@ -196,7 +196,7 @@ open class StageScopeCore(
         relativeTargetDir: String = ".",
     ): CheckoutSpec {
         require(url.isNotBlank()) { "Missing required parameter: url" }
-        // S0-C1: the carrier is registered as MUST_CONSUME. `checkout(..)` marks
+        // the carrier is registered as MUST_CONSUME. `checkout(..)` marks
         // it consumed. Nothing else in this file names a builder, so a future
         // PURE_BUILDER inherits the gate by calling this one method.
         return registerMustConsume(

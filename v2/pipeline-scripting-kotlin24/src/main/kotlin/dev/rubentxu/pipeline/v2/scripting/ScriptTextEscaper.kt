@@ -133,7 +133,7 @@ internal object ScriptTextEscaper {
                 continue
             }
             if (inDoubleString) {
-                // WU-LPR-071: double-quoted Kotlin strings are exactly WHERE env-var
+                // double-quoted Kotlin strings are exactly WHERE env-var
                 // references must be escaped (template-expansion protection), so a
                 // position inside them is processable (return false via the tail).
                 if (i == pos) return false

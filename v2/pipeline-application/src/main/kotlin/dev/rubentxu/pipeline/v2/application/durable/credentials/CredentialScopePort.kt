@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
 
 /**
- * EM-7 / LFC-5.3 — Application seam credential scope port.
+ * Application seam credential scope port.
  *
  * A suspend function interface consumed by [dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator].
  * It is implemented by [WithCredentialsExecutorScopeAdapter] which wraps the

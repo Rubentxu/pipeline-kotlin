@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 /**
- * PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING — opt-in versioned output
+ * opt-in versioned output
  * protocol.
  *
  * The default [Published] preserves the R0.3 channel split: the

@@ -80,7 +80,7 @@ fun pipeline(
 }
 
 /**
- * WU-LPR-401 — DSL isolation markers.
+ * DSL isolation markers.
  *
  * Each marker declares a separate lexical layer of the DSL. A `@DslMarker`
  * on a receiver type tells the Kotlin compiler to reject implicit `this`
@@ -193,7 +193,7 @@ class EnvironmentScope {
 @StepDslMarker
 class OptionsScope {
     /**
-     * S3-R1-B: the declared stage-wide timeout, in seconds.
+     * the declared stage-wide timeout, in seconds.
      *
      * Public, and VALIDATING, which is a correction rather than a detail. This was
      * a bare `var` with no setter, sitting beside `fun timeout(seconds)`, so inside
@@ -235,7 +235,7 @@ class OptionsScope {
         //  - `StageOption.Timeout`'s own invariant can then be a plain
         //    precondition, because this is the only way to reach it.
         //
-        // S3-R1-B: delegates to the validating setter rather than repeating the
+        // delegates to the validating setter rather than repeating the
         // check, so the function and the property have ONE authority between them.
         timeout = seconds
     }

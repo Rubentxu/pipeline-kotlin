@@ -101,7 +101,7 @@ val computeHttpDigest = tasks.register("computeHttpDigest") {
         val resourcesDir = httpResourcesDir.get().asFile
         val out = httpReleaseProps.get().asFile
         out.parentFile.mkdirs()
-        // AUD-01: this used to be `sh -c "sha256sum <ABSOLUTE PATHS> | sha256sum"`, and
+        // this used to be `sh -c "sha256sum <ABSOLUTE PATHS> | sha256sum"`, and
         // `sha256sum` PRINTS THE FILENAME IT WAS GIVEN, so two checkouts of identical bytes
         // produced different digests. The shared ProvenanceDigest frames only the root name and
         // the relative path, so the absolute checkout path never enters the material.

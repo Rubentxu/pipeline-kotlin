@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>UnusedImport:PipelineJson.kt:import kotlinx.serialization.json.longOrNull</ID>
+  </CurrentIssues>
+</SmellBaseline>

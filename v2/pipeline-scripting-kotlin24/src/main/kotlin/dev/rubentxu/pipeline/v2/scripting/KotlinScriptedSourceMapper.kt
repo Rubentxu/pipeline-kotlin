@@ -41,7 +41,7 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
 
             file.accept(object : KtTreeVisitorVoid() {
                 /**
-                 * S4-IDENTITY I2 — record every `for` loop with a BLOCK body.
+                 * record every `for` loop with a BLOCK body.
                  *
                  * The lowering wraps these bodies in `steps.scoped(…)`, which is what
                  * turns an iteration from "the Nth time we arrived here" into a
@@ -234,7 +234,7 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
      * generated call is then `steps.sh(callSite, command, null, null)`, valid
      * Kotlin that resolves the same value at run time.
      *
-     * S4-A1: returns `null` when there is no `script` argument at all, so the
+     * returns `null` when there is no `script` argument at all, so the
      * caller can reject the call. The previous version searched only positional
      * arguments and substituted an empty string for anything else, so the
      * NAMED form silently became a shell command running nothing and reported

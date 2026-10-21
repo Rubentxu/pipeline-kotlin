@@ -201,7 +201,7 @@ object HttpResponseCodec : StepCodec<HttpResponseOutput> {
                 is HttpAttempt.Failed -> {
                     put("attempt", "failed")
                     put("failure", attempt.failure.diagnostic)
-                    // H4-Q: the DIAGNOSTIC STRING is for humans and cannot be decoded.
+                    // the DIAGNOSTIC STRING is for humans and cannot be decoded.
                     // Without the case written down, every failure came back as
                     // `Unreachable` on replay — so a TIMEOUT was durably recorded as a
                     // network fact, and a body cut short at 37 MiB was recorded as a

@@ -9,7 +9,7 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 
 /**
- * P3-E E4 — the CLOSED set of results a `catchError` scope may declare.
+ * the CLOSED set of results a `catchError` scope may declare.
  *
  * ## Why this type exists at all
  *

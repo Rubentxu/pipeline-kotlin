@@ -1,0 +1,87 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:EventJsonWriter.kt:EventJsonWriter$fun encodeEvent: String</ID>
+    <ID>CyclomaticComplexMethod:InMemoryEventStore.kt:InMemoryEventStore$override fun appendAssigned: DomainEvent</ID>
+    <ID>CyclomaticComplexMethod:JsonEventLog.kt:JsonEventLog$private fun decodeEvent: EventDecodeOutcome</ID>
+    <ID>CyclomaticComplexMethod:SqliteEventStore.kt:SqliteEventStore$override fun appendAssigned: DomainEvent</ID>
+    <ID>EmptyElseBlock:EventJsonDecoder.kt:EventJsonDecoder$if (depth &gt; 0) current.append(ch)</ID>
+    <ID>EmptyElseBlock:EventJsonFields.kt:EventJsonFields$if (depth == 0) break</ID>
+    <ID>LongMethod:EventJsonWriter.kt:EventJsonWriter$fun encodeEvent: String</ID>
+    <ID>LongMethod:JsonEventLog.kt:JsonEventLog$private fun decodeEvent: EventDecodeOutcome</ID>
+    <ID>LongParameterList:InMemoryOperationJournal.kt:InMemoryOperationJournal.Row</ID>
+    <ID>NewLineAtEndOfFile:EventStoreAdmission.kt:dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission.kt</ID>
+    <ID>UnnecessaryNotNullOperator:RunExecutionLease.kt:RunExecutionLease$current.ownerId!!</ID>
+    <ID>UnreachableCode:JsonEventLog.kt:JsonEventLog$EventJsonFields.boolField(s, "conditionResult") ?: false</ID>
+    <ID>UnreachableCode:JsonEventLog.kt:JsonEventLog$EventJsonFields.boolField(s, "exists") ?: false</ID>
+    <ID>UnreachableCode:JsonEventLog.kt:JsonEventLog$EventJsonFields.boolField(s, "isUnix") ?: false</ID>
+    <ID>UnreachableCode:JsonEventLog.kt:JsonEventLog$EventJsonFields.boolField(s, "skipIfLocked") ?: false</ID>
+    <ID>UnsafeCallOnNullableType:FileBackedRunExecutionLeaseStore.kt:FileBackedRunExecutionLeaseStore.Companion$RunOwnerId.of("unknown-owner")!!</ID>
+    <ID>UnusedImport:DbLock.kt:import kotlin.concurrent.withLock</ID>
+    <ID>UnusedImport:EventJsonDecoder.kt:import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed</ID>
+    <ID>UnusedImport:EventJsonDecoder.kt:import dev.rubentxu.pipeline.v2.events.HtmlReportPublished</ID>
+    <ID>UnusedImport:EventJsonDecoder.kt:import dev.rubentxu.pipeline.v2.events.StashCreated</ID>
+    <ID>UnusedImport:EventJsonDecoder.kt:import dev.rubentxu.pipeline.v2.events.StashRestored</ID>
+    <ID>UnusedImport:EventJsonDecoder.kt:import dev.rubentxu.pipeline.v2.scripting.CacheKey</ID>
+    <ID>UnusedImport:JsonEventLog.kt:import dev.rubentxu.pipeline.v2.scripting.CacheKey</ID>
+    <ID>UnusedImport:JsonEventLog.kt:import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity</ID>
+    <ID>UnusedImport:JsonEventLog.kt:import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic</ID>
+    <ID>UnusedImport:OperationJournal.kt:import kotlinx.serialization.decodeFromString</ID>
+    <ID>UnusedImport:OperationJournal.kt:import kotlinx.serialization.encodeToString</ID>
+    <ID>UnusedImport:SqliteEventStore.kt:import dev.rubentxu.pipeline.v2.events.UndecodableReason</ID>
+    <ID>UnusedPrivateFunction:SqliteEventStore.kt:SqliteEventStore$private fun withConnection</ID>
+    <ID>UnusedPrivateProperty:SqliteEventFollowHandle.kt:SqliteEventFollowHandle$/** One-shot flag for the [EventFollowEvent.Completed] end of the natural-tail / until-condition path. */ private var completedEmitted = false</ID>
+    <ID>UnusedVariable:EventJsonFields.kt:EventJsonFields$val next = raw[i + 1]</ID>
+    <ID>UseCheckOrError:InMemoryOperationJournal.kt:InMemoryOperationJournal$throw IllegalStateException("Operation $opId attempt $attempt already journaled")</ID>
+    <ID>UseCheckOrError:OperationJournal.kt:SqliteOperationJournalImpl$throw IllegalStateException( "Operation $opId attempt $attempt already journaled" )</ID>
+    <ID>UseIsNullOrEmpty:JsonEventLog.kt:JsonEventLog$rowKind == null || rowKind.isEmpty()</ID>
+    <ID>UseOrEmpty:EventJsonFields.kt:EventJsonFields$stringField("\"k\":$raw", "k") ?: ""</ID>
+    <ID>UseOrEmpty:EventJsonFields.kt:EventJsonFields$stringField(cacheKeyJson, "value") ?: ""</ID>
+    <ID>UseOrEmpty:EventJsonFields.kt:EventJsonFields$stringField(cacheKeyJson, "version") ?: ""</ID>
+    <ID>UseOrEmpty:FileBackedRunExecutionLeaseStore.kt:FileBackedRunExecutionLeaseStore$record.ownerId?.value ?: ""</ID>
+    <ID>UseOrEmpty:InMemoryEventStore.kt:InMemoryEventStore$store[runId]?.asSequence() ?: emptySequence()</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "accepted") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "agentLabel") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "branch") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "branchName") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "changelogPath") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "content") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "credentialsId") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "directiveKey") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "emittedBy") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "law") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "message") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "name") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "newSha") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "operation") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "osName") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "path") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "payload") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "phase") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "policy") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "previousPath") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "reason") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "reportDir") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "reportName") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "requirement") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "resource") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "restoredTo") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "sha") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "sha256") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "stageName") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "stageOrStep") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "stageOutcome") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "stepKey") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "stepName") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "stepType") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "targetId") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "targetPath") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "url") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringField(s, "workspaceRoot") ?: ""</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringListField(s, "directiveKeys") ?: emptyList()</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringListField(s, "selectedConditions") ?: emptyList()</ID>
+    <ID>UseOrEmpty:JsonEventLog.kt:JsonEventLog$EventJsonFields.stringListField(s, "skippedConditions") ?: emptyList()</ID>
+    <ID>VarCouldBeVal:SqliteEventFollowHandle.kt:SqliteEventFollowHandle$/** One-shot flag for the [EventFollowEvent.Completed] end of the natural-tail / until-condition path. */ private var completedEmitted = false</ID>
+  </CurrentIssues>
+</SmellBaseline>

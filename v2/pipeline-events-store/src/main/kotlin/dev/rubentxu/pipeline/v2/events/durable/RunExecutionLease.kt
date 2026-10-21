@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
 /**
- * S2-R0 — run ownership as a first-class domain concept.
+ * run ownership as a first-class domain concept.
  *
  * ## Why this exists when `UNIQUE(run_id, sequence)` already exists
  *

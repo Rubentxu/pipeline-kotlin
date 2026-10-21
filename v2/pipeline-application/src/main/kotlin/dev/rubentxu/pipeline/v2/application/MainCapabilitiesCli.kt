@@ -8,7 +8,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * PK-1 / ADR-PK1-IDENTITY — `pipeline capabilities` subcommand.
+ * `pipeline capabilities` subcommand.
  *
  * Emits the SDK capability registry on stdout as a single line of
  * `pipelinek.capabilities/1` JSON. The output is side-effect-free:

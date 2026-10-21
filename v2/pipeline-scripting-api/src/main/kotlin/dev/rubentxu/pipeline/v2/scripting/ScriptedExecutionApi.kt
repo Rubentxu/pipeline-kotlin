@@ -51,7 +51,7 @@ data class ScriptedSourceLocation(
      * Stable source identity emitted for a generated `sh` call, in any of its
      * three shapes.
      *
-     * S4-A1: the shape is part of the identity because two `sh` calls at the same
+     * the shape is part of the identity because two `sh` calls at the same
      * source position with different return modes have different semantics and
      * different outputs. A previously separate `shReturnStdoutCallSite` carried
      * the `:ro` suffix; the mode now carries it directly, so the identity has one
@@ -248,7 +248,7 @@ fun ScriptedCallKind.isRuntimeReturning(): Boolean = when (this) {
     is ScriptedCallKind.Pwd -> true
     is ScriptedCallKind.ReadFile -> true
     is ScriptedCallKind.FileExists -> true
-    // S4-A1: `sh` is runtime-returning in two of its three shapes. The decision
+    // `sh` is runtime-returning in two of its three shapes. The decision
     // reads the payload rather than comparing against a subtype, so adding a
     // shape later cannot silently change which form a call takes.
     is ScriptedCallKind.Shell -> returnMode != ScriptedShellReturnMode.NONE
@@ -257,7 +257,7 @@ fun ScriptedCallKind.isRuntimeReturning(): Boolean = when (this) {
 /**
  * One mapped runtime-effectful call: its kind and its EXACT source extent.
  *
- * S4-A1: [sourceLength] is the character length of the original call expression.
+ * [sourceLength] is the character length of the original call expression.
  * The lowering replaces that exact span, so it has to know how long the span
  * really is rather than guessing from the callee. Previously the length came
  * from a hardcoded canonical spelling, which is only correct for argument-less
@@ -341,7 +341,7 @@ sealed interface ScriptedSourceMapping {
     data class Mapped(
         val calls: List<ScriptedMappedCall>,
         /**
-         * S4-IDENTITY I2: the `for` loops whose bodies need a structural scope.
+         * the `for` loops whose bodies need a structural scope.
          * Empty when the source has no loop, which is the case the old offset-locked
          * rewriter was written for.
          */
@@ -492,7 +492,7 @@ interface ScriptedStepFacade {
      */
     suspend fun fileExists(callSite: ScriptedCallSiteId, file: String): Boolean
 
-    // S4-A1: `shReturnStdout` is REMOVED, not deprecated. It was a second spelling
+    // `shReturnStdout` is REMOVED, not deprecated. It was a second spelling
     // of the `sh(..., returnStdout = true)` overload, and the mapper could never
     // select it, so it was a dead semantic parameter: a published declaration that
     // nothing could reach. Its two jobs are now done by the surviving overload

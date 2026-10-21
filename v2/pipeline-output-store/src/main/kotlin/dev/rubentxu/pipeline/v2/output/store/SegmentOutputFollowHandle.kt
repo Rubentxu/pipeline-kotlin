@@ -21,7 +21,7 @@ import java.util.concurrent.locks.Condition
 import java.util.concurrent.locks.ReentrantLock
 
 /**
- * M1-B — production [OutputFollowHandle] driven by a polling loop on the
+ * production [OutputFollowHandle] driven by a polling loop on the
  * consumer's thread.
  *
  * ## What this is and what it is not

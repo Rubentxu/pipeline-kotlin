@@ -62,7 +62,7 @@ enum class PostCondition {
          * The closed mapping from a durable `StageFinished.outcome` string to
          * the stage outcome the `post` planner consumes.
          *
-         * P3-E E3 — **NO PRODUCTION CALLER REMAINS.**
+         * **NO PRODUCTION CALLER REMAINS.**
          *
          * This used to be the only place where the event vocabulary and the post
          * vocabulary met: `StageExecutionEngine.runPostBlock` took the outcome as a

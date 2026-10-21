@@ -175,7 +175,7 @@ object UppercasePluginDeclaration {
     }
 
     internal fun releaseProperties(ownClass: Class<*>): Map<String, String> {
-        // PK-RELEASE-CONSOLIDATION D1.9: the resource MUST come from THIS plugin's JAR, not from
+        // the resource MUST come from THIS plugin's JAR, not from
         // whichever JAR happens to be first on the system classpath with the same path. `getResource`
         // on the system classloader walks the URL chain in classpath order, and a sibling JAR that
         // also contains `META-INF/example-uppercase-release.properties` would silently win.
@@ -200,7 +200,7 @@ object UppercasePluginDeclaration {
     }
 
     private fun readFromJar(jarUrl: java.net.URL, resourcePath: String): Map<String, String>? {
-        // PK-RELEASE-CONSOLIDATION D1.9: open the JAR by file path, not by JarURLConnection.
+        // open the JAR by file path, not by JarURLConnection.
         // A `file:` URL that points at a `.jar` is NOT a `JarURLConnection`; casting throws
         // ClassCastException, the catch swallows it, and we fall back to the system classloader
         // — which is exactly the lookup that returns the wrong (forged) resource. Open the file

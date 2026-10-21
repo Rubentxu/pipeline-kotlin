@@ -17,7 +17,7 @@ kotlin {
 }
 
 application {
-    // WU-LPR-070: product name for the installed distribution (bin/pipelinek).
+    // product name for the installed distribution (bin/pipelinek).
     applicationName = "pipelinek"
     mainClass.set("dev.rubentxu.pipeline.v2.application.MainKt")
 
@@ -34,7 +34,7 @@ application {
     applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
 }
 
-// PK-0-57-RC1: Gradle 8.14.5 strict validation flags the application
+// Gradle 8.14.5 strict validation flags the application
 // plugin's default `distZip` task for not declaring its dependency on
 // `installDist`. The implicit dependency existed in earlier Gradle
 // versions; the strict validator now requires an explicit declaration
@@ -45,7 +45,7 @@ application {
 // or implicit dependency".
 tasks.named("distZip") { dependsOn(tasks.named("installDist")) }
 
-// WU-LPR-071: single-version provider contract — the jar manifest MUST carry
+// single-version provider contract — the jar manifest MUST carry
 // Implementation-Version populated from project.version (which is sourced from the
 // git tag at release time via v2/build.gradle.kts root). Without this, the
 // fail-closed `pipeline version` subcommand exits non-zero, which is the desired
@@ -65,7 +65,7 @@ tasks.named<Jar>("jar") {
     }
 }
 
-// S6-COMPOSITION — the version the RUNTIME reads, as a classpath RESOURCE rather than as a jar
+// the version the RUNTIME reads, as a classpath RESOURCE rather than as a jar
 // manifest attribute.
 //
 // Why this exists, and why it is not redundant with the manifest above: `Package.getImplementationVersion()`
@@ -147,7 +147,7 @@ dependencies {
     // runtime is the only thing that should be able to name OperationJournal, ReplayCursorStore or
     // SqliteEventStore, and this is the module that does.
     implementation(project(":pipeline-events-store"))
-    // M1-P2: the Output Plane. Process transcript bytes are written here and nowhere else, and no
+    // the Output Plane. Process transcript bytes are written here and nowhere else, and no
     // console event carries them. The dependency points ONE WAY - :pipeline-output depends on
     // neither :pipeline-events nor :pipeline-domain, so the event plane cannot reach back into the
     // output plane and re-acquire an authority over the bytes. See ADR-M1 D2/D3.
@@ -172,13 +172,13 @@ dependencies {
     implementation(project(":pipeline-step-sdk:runtime"))
     implementation(project(":pipeline-step-sdk:files"))
     implementation(project(":pipeline-step-sdk:scm-git"))
-    // RP6-C / LFC-2E3: the HTTP OFFICIAL_PLUGIN ships in the distribution and is
+    // the HTTP OFFICIAL_PLUGIN ships in the distribution and is
     // discovered through ServiceLoader, like scm-git and junit.
     implementation(project(":pipeline-step-sdk:http"))
     // F5.2: JUnit OFFICIAL_PLUGIN is bundled into the distribution so the
     // external discovery seam can resolve it without `--plugin-jar`.
     implementation(project(":pipeline-step-sdk:junit"))
-    // LFC-2E2: utilities OFFICIAL_PLUGIN (readJson / writeJson / sha256) is bundled
+    // utilities OFFICIAL_PLUGIN (readJson / writeJson / sha256) is bundled
     // into the distribution so the external discovery seam can resolve it without
     // `--plugin-jar`. Has build-time provenance (sha256 + version) emitted by
     // `:pipeline-step-sdk:utilities:computeUtilitiesDigest`.

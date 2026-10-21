@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.dsl
 
 /**
- * S3-R1-B — the ONE bound a stage timeout must satisfy, stated once.
+ * the ONE bound a stage timeout must satisfy, stated once.
  *
  * ## Why this object exists
  *

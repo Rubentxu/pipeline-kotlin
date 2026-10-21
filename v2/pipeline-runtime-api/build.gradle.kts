@@ -14,7 +14,7 @@ kotlin {
 }
 
 dependencies {
-    // PK-R1 / CRIC-M2 — module split precondition.
+    // module split precondition.
     //
     // This module publishes (in a future cycle) the M2 runtime ports
     // (RuntimeRecoverPort, RuntimeControlPort, RuntimeIntrospectionPort) and

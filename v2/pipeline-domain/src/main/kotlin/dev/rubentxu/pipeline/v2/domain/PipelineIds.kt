@@ -24,7 +24,7 @@ value class RunId(val value: String) {
 }
 
 /**
- * PK-1 / ADR-PK1-IDENTITY — external-supplied correlation token.
+ * external-supplied correlation token.
  *
  * A [CorrelationId] is the identity an EXTERNAL invoker (CI, Fabric, a
  * script) assigns to a single invocation. PipelineK preserves it through

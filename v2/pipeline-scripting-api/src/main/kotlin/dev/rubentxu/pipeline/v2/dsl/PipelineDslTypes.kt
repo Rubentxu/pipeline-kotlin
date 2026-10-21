@@ -20,11 +20,11 @@ data class StageSpec(
      */
     val environment: Map<String, String>? = null,
 
-    /** S1-B: directives declared on this stage (declarative carrier only). */
+    /** directives declared on this stage (declarative carrier only).*/
     val directives: List<dev.rubentxu.pipeline.v2.domain.StageDirective> = emptyList(),
 
     /**
-     * S2-B: `post` blocks declared on this stage.
+     * `post` blocks declared on this stage.
      *
      * Carried as DATA from the DSL to the compiler; the DSL never decides which
      * block runs, it only records what the author declared.
@@ -42,12 +42,12 @@ data class EnvironmentSpec(
 /**
  * Options block for stage-level configuration.
  *
- * WU-RP-032: only `timeout` is in the surface — it is the only stage option with
+ * only `timeout` is in the surface — it is the only stage option with
  * a runtime interpreter (projectShellOptions -> ShOptions.timeoutMs). Stage-level
  * `retry`/`skip` were removed (WU-RP-032): retry semantics live in the retry
  * Block Step (durable control row, ADR-0075); skip is not a durable-engine concept.
  *
- * S3-R1-B: the validity of `timeout` is enforced HERE as well as in [OptionsScope], and
+ * the validity of `timeout` is enforced HERE as well as in [OptionsScope], and
  * both consult the same [StageTimeout] authority. The [init] is not redundant defence —
  * this data class is public API, so a consumer of the typed model can construct one
  * without ever touching the DSL, and until this block existed that path admitted

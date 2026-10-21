@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 
 /**
- * LB-02 / G3-A4.3 — typed output carrier for `core.sh` handlers.
+ * typed output carrier for `core.sh` handlers.
  *
  * This is the COLOCATED pair of:
  *  - the closed [ShellInvocationResult] ADT (what actually happened at the shell);

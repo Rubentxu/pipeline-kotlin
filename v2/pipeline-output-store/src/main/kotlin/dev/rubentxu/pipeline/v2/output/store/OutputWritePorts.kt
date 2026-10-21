@@ -39,7 +39,6 @@ import java.io.InputStream
  * Everything a reader will ever see passes through here. No event, no report and no second renderer
  * re-fabricates these bytes. [ADR-M1 D2].
  *
- * @see ADR-M1 §D2, §D4
  */
 interface OutputAppendPort {
 
@@ -161,7 +160,6 @@ class OutputReservationExceeded(
  * [OutputReadPort] call is honoured, and a store that has not completed it refuses reads with
  * [OutputRefusal.RecoveryNotCompleted] rather than guessing.
  *
- * @see ADR-M1 §D4 O3
  */
 interface OutputRecoveryPort {
 
@@ -238,7 +236,7 @@ interface OutputSealPort {
 /**
  * The closed result of a single [OutputSealPort.seal] call.
  *
- * M1-F.3 — every channel's seal is a total function whose result is one
+ * every channel's seal is a total function whose result is one
  * of these cases. Exceptions were the wrong shape for the "legitimate
  * absence" path: a `sh("echo hi")` invocation only opens stdout, so
  * sealing stderr must be silent and a non-exceptional no-op. Real I/O

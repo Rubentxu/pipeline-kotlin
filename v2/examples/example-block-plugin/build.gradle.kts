@@ -34,7 +34,7 @@ val sdkVersion: String = requireNotNull(providers.gradleProperty("sdkVersion").o
 }
 
 // ----------------------------------------------------------------------------
-// PK-RELEASE-CONSOLIDATION D1 — the apiRange is derived from the resolved SDK.
+// the apiRange is derived from the resolved SDK.
 //
 // It used to be a Kotlin literal, `PipelineKApiRange(SemVer(0,47,0), SemVer(0,53,0))`, which went
 // stale the moment the host moved: 0.56.0 fell outside `[0.47.0, 0.53.0)` and admission refused
@@ -218,7 +218,7 @@ val computeBlockRelease = tasks.register("computeBlockRelease") {
                 appendLine("pipeline.example.block.namespace=${namespaceName.get()}")
                 appendLine("pipeline.example.block.release.version=$releaseVersion")
                 appendLine("pipeline.example.block.release.digest=sha256:$hex")
-                // PK-RELEASE-CONSOLIDATION D1: the compatibility range is DERIVED, not typed.
+                // the compatibility range is DERIVED, not typed.
                 //
                 // The ceiling is the NEXT MINOR of the resolved SDK, not the resolved version itself:
                 // PipelineKApiRange.accepts() is `runtime < untilExclusive`, so a ceiling equal to

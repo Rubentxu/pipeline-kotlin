@@ -533,7 +533,7 @@ class DurableShellExecutor : DurableShellLaunching {
             "dev.rubentxu.pipeline.v2.application.durable.ingest.ObsPc2IngestAgent"
 
         /**
-         * WU-B: how long a launch waits for its transcript pumps before refusing to claim a
+         * how long a launch waits for its transcript pumps before refusing to claim a
          * complete transcript.
          *
          * Bounded, because a pump stuck on a live child must not hold the step open forever. But the
@@ -575,7 +575,7 @@ class DurableShellExecutor : DurableShellLaunching {
         pbEnv["DURABLE_SH_COOKIE"] = "please-do-not-kill-me-$opId"
         pbEnv["DURABLE_SH_OPID"] = opId
 
-        // ML-R3: Sandbox profile integration (DEC-1 cwd + DEC-2 deny-list + DEC-3 PATH normalize)
+        // Sandbox profile integration (DEC-1 cwd + DEC-2 deny-list + DEC-3 PATH normalize)
         // Profile branch: LOCAL applies deny-list + PATH normalize; NONE is pass-through.
         // OS would throw at factory (CLI rejects it), so reaching here means NONE or LOCAL.
         if (sandbox.profile == SandboxProfile.LOCAL) {
@@ -587,10 +587,10 @@ class DurableShellExecutor : DurableShellLaunching {
         }
 
         // User-provided env injected here (WS-S-005: env via pb.environment() ONLY)
-        // WS-S-022: coerce SecretHandle to String at pb.environment() putAll
+        // coerce SecretHandle to String at pb.environment() putAll
         if (env.isEmpty()) return
 
-        // F-D1: Apply EnvModel transformations (PATH prepend, PATH+= handling) before materialization.
+        // Apply EnvModel transformations (PATH prepend, PATH+= handling) before materialization.
         // This ensures JAVA_HOME/bin and M2_HOME/bin are prepended to PATH, and PATH+=
         // entries are properly handled. Without this call, the PATH manipulation is skipped.
         val transformedEnv = EnvModel.apply(env)
@@ -614,8 +614,8 @@ class DurableShellExecutor : DurableShellLaunching {
             }
         }
 
-        // WS-S-023: wipe handles after putAll
-        // WS-S-024: wipe failure addsSuppressed but does NOT prevent step completion
+        // wipe handles after putAll
+        // wipe failure addsSuppressed but does NOT prevent step completion
         // NOTE (M4): wipe intentionally OMITTED. WithCredentialsExecutor shares the
         // env map across multiple inner sh invocations (outer sh → nested
         // withCredentials → restored sh). Wiping here would corrupt the bytes for
@@ -657,7 +657,7 @@ class DurableShellExecutor : DurableShellLaunching {
         // chunk-boundary-safe redacting stream (StreamingRedactor).
         // Null = explicit legacy/test composition (raw transcript, unredacted).
         transcriptRedactor: ((java.io.InputStream) -> java.io.InputStream)? = null,
-        // OBS-C2.3: one sink per channel. Null entries mean "this composition has no destination
+        // one sink per channel. Null entries mean "this composition has no destination
         // for that channel", which the launch treats as "pump it to the control-dir file" rather
         // than as a request to discard it — a missing sink must never become a dropped byte.
         channelSinks: Map<ProcessOutputChannel, ProcessOutputSink> = emptyMap(),
@@ -673,10 +673,10 @@ class DurableShellExecutor : DurableShellLaunching {
         // Create control directory structure
         Files.createDirectories(controlDir)
 
-        // OBS-B: the wrapper must not open a console.log handle whenever the bytes are piped to
+        // the wrapper must not open a console.log handle whenever the bytes are piped to
         // the JVM, whether or not they are redacted on the way. Keying this on redaction alone
         // meant a piped-but-unredacted composition had two writers of the same file.
-        // OBS-C2.3: "pumped" now means "has a per-channel destination", which is the condition
+        // "pumped" now means "has a per-channel destination", which is the condition
         // that makes one-pump-per-channel possible at all.
         val pumpedThroughJvm = transcriptRedactor != null || channelSinks.isNotEmpty()
 
@@ -734,7 +734,7 @@ class DurableShellExecutor : DurableShellLaunching {
                 pb.redirectError(ProcessBuilder.Redirect.to(logFile.toFile()))
             }
         } else if (pumpedThroughJvm) {
-            // OBS-C2.3: two independent pipes. Fusing them here would make the channel distinction
+            // two independent pipes. Fusing them here would make the channel distinction
             // unrecoverable at the kernel boundary, which is precisely what made `--channel stderr`
             // unanswerable in ObsCChannelAndTailCharacterisationTest.
             pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
@@ -804,13 +804,13 @@ class DurableShellExecutor : DurableShellLaunching {
 
             return try {
             val process = pb.start()
-            // WU-LPR-011R2: drain the redirected streams through the redactor into the composed
+            // drain the redirected streams through the redactor into the composed
             // sinks on daemon pumps. Redaction happens BEFORE persistence: at any instant the durable
             // authority contains only sanitized bytes, and a JVM crash can leave at most a partial
             // SANITIZED transcript. The typed value channel (output.txt) is unaffected: capture-mode
             // stdout remains an exact redirect (typed values are never scrubbed).
             //
-            // OBS-C2.3: ONE PUMP PER CHANNEL. Two pumps on two threads is what lets each channel be
+            // ONE PUMP PER CHANNEL. Two pumps on two threads is what lets each channel be
             // attributed before it is persisted. It also means both pipes are drained concurrently,
             // so neither child stream can block on a full pipe while the other is being read — which
             // is the deadlock that made the old "wait, then read the other channel" shape unsafe.
@@ -906,7 +906,7 @@ class DurableShellExecutor : DurableShellLaunching {
                 val window = ByteArray(TRANSCRIPT_LIVE_WINDOW_BYTES)
                 try {
                     while (true) {
-                        // TD-R4.2 — the pump's read sizing, after the operator's note.
+                        // the pump's read sizing, after the operator's note.
                         //
                         // The previous shape was
                         //   `ready = maxOf(1, minOf(window.size, redacted.available()))`
@@ -1169,7 +1169,7 @@ class DurableShellExecutor : DurableShellLaunching {
         // - Heartbeat (inner while) still touches jenkins-log.txt only
 
         // Outer redirect: tee to output.txt if captureStdout, otherwise just log
-        // OBS-B: when the child's bytes are piped to the JVM, the wrapper MUST NOT open its own
+        // when the child's bytes are piped to the JVM, the wrapper MUST NOT open its own
         // console.log handle. It inherits the PIPE, and the composed sink is the single writer of
         // only sanitized bytes. Keeping the file write here as well is what would make the same
         // bytes durable in two places. For capture mode, stdout still tee's to output.txt (the
@@ -1208,7 +1208,7 @@ class DurableShellExecutor : DurableShellLaunching {
             // Create cookie file with PID - this is the heartbeat mechanism
             append("echo \$\$ > \"\$COOKIE_FILE\"; ")
             // Heartbeat: touch log file periodically to show process is alive
-            // WU-LPR-011R2: capture the heartbeat PID. When the transcript is pumped
+            // capture the heartbeat PID. When the transcript is pumped
             // through the redaction pipe, the heartbeat subshell holds the pipe's write
             // end; if left running it delays EOF (and thus the final redactor drain)
             // by up to CHECK_INTERVAL. The wrapper kills it explicitly at exit.
@@ -1221,7 +1221,7 @@ class DurableShellExecutor : DurableShellLaunching {
             append("mv \"\$RESULT_TMP\" \"\$RESULT_FILE\"; ")
             // Remove cookie file to signal completion.
             //
-            // RP034-Id: stdout and stderr are REDIRECTED AWAY. The cookie is our
+            // stdout and stderr are REDIRECTED AWAY. The cookie is our
             // control-plane bookkeeping, not the user's output, so it must never
             // write into the data channel that becomes `capturedStdout` and the
             // console transcript. An unredirected `rm` leaks whenever the host's
@@ -1588,7 +1588,7 @@ class DurableShellExecutor : DurableShellLaunching {
     ).toLegacyShellResult(controlDir)
 
     /**
-     * WU-LPR-011R2: the transcript pump created by the most recent [launch] call
+     * the transcript pump created by the most recent [launch] call
      * (single-threaded launch discipline: one launch per executeCore). Used by
      * executeCore to drain the pump before projecting the persisted transcript.
      */
@@ -1666,11 +1666,11 @@ class DurableShellExecutor : DurableShellLaunching {
         var process: ProcessHandle? = null
         var launched = false
         val timeoutTriggered = AtomicBoolean(false)
-        // WU-LPR-011R2: reference to the transcript pumps so the terminal projection can drain them
+        // reference to the transcript pumps so the terminal projection can drain them
         // BEFORE reading any durable transcript (redaction-before-persistence means the bytes are
         // only complete once the pumps reach EOF).
         //
-        // OBS-C2.3: a LIST, because one launch pumps up to two channels. Joining only the first
+        // a LIST, because one launch pumps up to two channels. Joining only the first
         // would let the terminal be projected while stderr was still arriving — which is exactly
         // the "short, ordered, plausible transcript" failure this path exists to prevent.
         var transcriptPumps: List<Thread> = emptyList()
@@ -1780,11 +1780,11 @@ class DurableShellExecutor : DurableShellLaunching {
             // Drain the transcript pumps BEFORE projecting, so the last sanitized bytes have reached
             // the durable authority before the step is reported.
             //
-            // OBS-C2.3: every channel's pump is drained, not just one. Joining a single pump would
+            // every channel's pump is drained, not just one. Joining a single pump would
             // let stderr still be in flight when the step is reported, and a reader tailing the
             // stderr stream would see the step finish before its last bytes arrive.
             //
-            // WU-B: `drainTranscriptPumps` is not `forEach { join }`. It waits AND then asks whether
+            // `drainTranscriptPumps` is not `forEach { join }`. It waits AND then asks whether
             // the wait succeeded, because a join that times out returns exactly like one that
             // completed and the difference between them is the whole difference between a complete
             // transcript and a plausible one.
@@ -1821,7 +1821,7 @@ class DurableShellExecutor : DurableShellLaunching {
                 )
             }
 
-            // OBS-B: the terminal carries NO console transcript. The bytes belong to the Output
+            // the terminal carries NO console transcript. The bytes belong to the Output
             // Plane and are read through OutputReadPort; a terminal that carried them would be a
             // second copy of an observable authority, and in-memory at that. capturedStdout stays
             // exactly what it always claimed to be: the typed VALUE requested by returnStdout,

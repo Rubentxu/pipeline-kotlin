@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
 import java.nio.file.Path
 
 /**
- * WU-LPR-021 — Pure interpretation of an already-decided body execution
+ * Pure interpretation of an already-decided body execution
  * projection.
  *
  * ## Why this exists
@@ -232,7 +232,7 @@ sealed interface BodyExecutionProjectionDescriptor {
 }
 
 /**
- * WU-LPR-021 — Default implementation of [BodyInterpreter].
+ * Default implementation of [BodyInterpreter].
  *
  * Maps a [BodyExecutionProjectionDescriptor] to an [InterpretedBody]:
  *

@@ -10,7 +10,7 @@ import java.io.Writer
  *
  * ## The law this encodes
  *
- * ADR-0088: **view** selects what a reader sees, **format** encodes it, and
+ * **view** selects what a reader sees, **format** encodes it, and
  * neither ever changes execution semantics or persistence. This object is the
  * only place that turns the two into bytes, so a caller cannot accidentally
  * emit a different wire form for the same run.

@@ -58,7 +58,7 @@ sealed interface WaitUntilReconciliationDecision {
     /**
      * WaitUntil was explicitly aborted by the caller.
      *
-     * P3-E E4 — [attempt] is the control row the reconciler actually READ as ABORTED.
+     * [attempt] is the control row the reconciler actually READ as ABORTED.
      *
      * It is deliberately NOT defaulted. The reconciler has the value in hand — it is the
      * loop variable it is iterating over — and carrying it here is what lets the engine

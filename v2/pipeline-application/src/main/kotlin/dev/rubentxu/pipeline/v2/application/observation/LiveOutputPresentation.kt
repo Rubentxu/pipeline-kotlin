@@ -5,7 +5,7 @@ import java.io.PrintStream
 import java.io.Writer
 
 /**
- * OBS-E4: what `pipeline run` does with the bytes its own steps produced.
+ * what `pipeline run` does with the bytes its own steps produced.
  *
  * ```text
  * EventSink   -> ConsolePrintingEventSink -> human lines   (the event spine)

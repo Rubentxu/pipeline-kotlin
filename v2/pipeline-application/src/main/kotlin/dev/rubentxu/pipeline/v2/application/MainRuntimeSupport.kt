@@ -109,7 +109,7 @@ internal fun computeBundledPlugins(): List<String> {
 }
 
 /**
- * S6-COMPOSITION — the product boundary: admit every plugin artifact, then compose, or exit.
+ * the product boundary: admit every plugin artifact, then compose, or exit.
  *
  * ## Why the exit lives here and not at the call site
  *

@@ -200,7 +200,7 @@ require(Regex("""\d+\.\d+\.\d+""").matches(version.toString())) {
         "did not end up behind a `//`."
 }
 
-// WU-LPR-071: single-version provider. The root project.version is the SOLE authority
+// single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version
 // (which pipelinek reads at runtime via `version`). Subprojects inherit by default; we make
 // the policy explicit and refuse per-subproject overrides. Any future subproject MUST NOT
@@ -291,7 +291,7 @@ subprojects {
 // Static analysis is NOT removed: detekt below is the "análisis estático" leg of
 // the current verification pyramid and needs no tests to produce a verdict.
 
-// WU-RP-040 R5: SAST (detekt). Applied to every Kotlin subproject with a single
+// SAST (detekt). Applied to every Kotlin subproject with a single
 // shared config, and wired into each subproject's own `check` so the root
 // `check` inherits it.
 //
@@ -314,7 +314,7 @@ subprojects {
             // a non-existent source directory is how a source-set guard silently
             // covers nothing.
             source.setFrom(files("src/main/kotlin"))
-            // WU-RP-040 R5: initial honest debt snapshot (2026-09-23, HEAD 6f7c445f).
+            // initial honest debt snapshot (2026-09-23, HEAD 6f7c445f).
             // Baseline freezes pre-existing findings; the gate fails on ANY new
             // issue. Debt burn-down tracked in the slice receipt.
             //
@@ -373,7 +373,7 @@ subprojects {
     }
 }
 
-// WU-LPR-070: reproducible archives (BUILD ONCE / PUBLISH SAME BYTES).
+// reproducible archives (BUILD ONCE / PUBLISH SAME BYTES).
 // Nested project jars feed the pipelinek distZip; without these flags the
 // embedded jar CRCs change on every rebuild (observed 2026-09-19).
 subprojects {
@@ -643,7 +643,7 @@ val buildExampleSagaPlugin by tasks.registering(Exec::class) {
 // same way for the same reason (the root script is evaluated before the Kotlin JVM plugin
 // creates the subproject's tasks).
 
-// S1-D: the directive analogue of buildExamplePlugin. The external directive
+// the directive analogue of buildExamplePlugin. The external directive
 // plugin proves the directive kernel is open by key from outside the build.
 val buildExternalDirectivePlugin by tasks.registering(Exec::class) {
     group = "build"
@@ -908,7 +908,7 @@ val verifySdkExternalExecution by tasks.registering(Exec::class) {
 }
 
 /**
- * P3-E E6 — the SINGLE-coordinate consumer, run as a gate step.
+ * the SINGLE-coordinate consumer, run as a gate step.
  *
  * `StepSpec.Error.failureKind` became `FailureKind`, a type from `:pipeline-domain`. That forces
  * `pipeline-scripting-api` to publish that dependency at `api` rather than `implementation`, and

@@ -26,7 +26,7 @@ import java.nio.file.attribute.PosixFilePermissions
  * a different permission set (e.g. group-readable), add a new constant
  * here rather than calling [PosixFilePermissions.fromString] inline.
  *
- * D-001: replaces inline `fromString("rwx------")` / `fromString("rw-------")`
+ * replaces inline `fromString("rwx------")` / `fromString("rw-------")`
  * literals across `:pipeline-step-sdk:scm-git`,
  * `:pipeline-credentials-local`, `:pipeline-credentials-multipart`, and
  * `:pipeline-artefacts-local`. Cosmetic refactor; no behavioural change.

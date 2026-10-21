@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import java.util.UUID
 
 /**
- * PK-1 / ADR-PK1-IDENTITY — platform adapter that generates a UUIDv4
+ * platform adapter that generates a UUIDv4
  * [CorrelationId] when the external invoker does not supply one.
  *
  * The generator is deterministic-by-construction: each call yields a

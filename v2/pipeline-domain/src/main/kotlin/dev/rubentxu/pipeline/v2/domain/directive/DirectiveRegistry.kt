@@ -64,7 +64,7 @@ interface DirectiveDefinitionAny {
     val policy: DirectiveExecutionPolicy
 
     /**
-     * S2-C: decode this definition's arguments through its OWN codec, with the
+     * decode this definition's arguments through its OWN codec, with the
      * type parameter erased at the registry boundary. This is the lawful
      * erasure point for decoding, mirroring the one for policy metadata: the
      * engine never learns a concrete key or payload type, and a gate definition

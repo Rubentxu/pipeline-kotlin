@@ -1,5 +1,5 @@
 //@ expect-stdout SRC_OK
-// WU-LPR-089 — `core.stash` / `core.unstash` installed-CLI canary (Tier B #1).
+// `core.stash` / `core.unstash` installed-CLI canary (Tier B #1).
 //
 // Exercises the registry-path `core.stash` and `core.unstash` Steps through
 // the DSL surface. Stage "build" creates files in the workspace and stashes

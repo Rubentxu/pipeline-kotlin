@@ -84,7 +84,7 @@ object CoreIsUnixStep {
     val KEY: PluginStepId = PluginStepId("core.isUnix")
 
     /**
-     * S2-A5 / G2: classification now routes through the single canonical pure
+     * classification now routes through the single canonical pure
      * classifier [UnixPlatformClassifier.classifyUnix] (decision D1). The G1
      * PATH_B-verbatim body is retired; see the G2 differential-freeze receipt for the
      * APPROVED_FIX / APPROVED_CONTRACT_DELTA matrix.

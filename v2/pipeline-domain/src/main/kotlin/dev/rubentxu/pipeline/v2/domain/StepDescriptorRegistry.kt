@@ -231,7 +231,7 @@ class StepDescriptorRegistry private constructor(
                     introduces = null,
                 ),
             ),
-            // WU-LPR-301: waitUntil polls a condition body until satisfied or backoff exceeds ceiling.
+            // waitUntil polls a condition body until satisfied or backoff exceeds ceiling.
             // The polling cadence is declared structurally via the `waitUntil` sub-shape of
             // BodyExecutionPolicy.Retrying; the canonical body engine reads the sub-shape and
             // dispatches the loop without a per-StepKey branch. The WaitUntilShape defaults

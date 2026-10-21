@@ -217,7 +217,7 @@ object CoreWaitUntilStep {
             )
         }
 
-    // WU-LPR-301: waitUntil declares its execution shape structurally via the
+    // waitUntil declares its execution shape structurally via the
     // waitUntil sub-shape of BodyExecutionPolicy.Retrying. The coordinator dispatches
     // the polling loop by reading the sub-shape, with no concrete-StepKey branch.
     private val descriptor = StepDescriptor(

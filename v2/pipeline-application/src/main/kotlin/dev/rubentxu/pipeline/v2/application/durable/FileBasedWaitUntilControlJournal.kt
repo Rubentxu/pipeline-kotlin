@@ -21,7 +21,7 @@ import java.nio.file.StandardCopyOption
 /**
  * Single-writer durable store for waitUntil control rows.
  *
- * WU-G5R.5 — mirrors [FileBasedRetryControlJournal] but for the waitUntil
+ * mirrors [FileBasedRetryControlJournal] but for the waitUntil
  * predicate polling loop. File at `{controlDirRoot}/wait-until-control/{sha256(controlOpId)}.attempts.json`.
  *
  * ## Single-writer law

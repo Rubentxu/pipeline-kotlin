@@ -39,10 +39,10 @@ import java.util.concurrent.TimeUnit
  * 7. Emit lifecycle events per D7
  * 8. Classify failures per D8
  *
- * INV-L5-CR-001: idempotency <2s on SHA-equal no-op.
- * INV-L5-CR-002: no JGit imports.
- * INV-L5-CR-004: argv guard fail-closed on extraHeader/Authorization.
- * INV-CR-CR4: events route through injected EventSink.
+ * idempotency <2s on SHA-equal no-op.
+ * no JGit imports.
+ * argv guard fail-closed on extraHeader/Authorization.
+ * events route through injected EventSink.
  *
  * @param poll GitPollExecutor for ls-remote
  * @param changelog GitChangelogWriter for changelog.txt
@@ -176,7 +176,7 @@ open class GitCheckoutExecutor(
                 .map { it.copy(credentialsFilePath = credentialsFilePath, gitConfigFilePath = gitConfigFilePath) }
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startMs
-            // INV-L6-CR-013: GitCheckoutFailed.reason must be scrubbed before emission.
+            // GitCheckoutFailed.reason must be scrubbed before emission.
             // Scrub removes registered secret patterns (canaries + real credentials).
             val rawReason = e.message?.take(256) ?: "Unknown error"
             val scrubbedReason = secretPatternRegistry.scrub(rawReason)
@@ -372,8 +372,8 @@ open class GitCheckoutExecutor(
             return applierCreds
         }
         // Production path: resolve from SecretStore using credentialsId
-        // INV-L6-CR-001: kind is DECLARED, never inferred from byte content.
-        // INV-L6-CR-004: typed Credential hierarchy is the kind system.
+        // kind is DECLARED, never inferred from byte content.
+        // typed Credential hierarchy is the kind system.
         // WU-RP-053R / B2 (fail-closed credentialsRef): if the user declared a
         // credentialsId in the script, the executor MUST NOT silently proceed
         // with anonymous git when no SecretStore is reachable. A declared
@@ -436,7 +436,7 @@ open class GitCheckoutExecutor(
                 }
                 else -> {
                     // Unsupported credential kind for git checkout
-                    // INV-L6-CR-010: MismatchedSecretException verbatim wording
+                    // MismatchedSecretException verbatim wording
                     throw dev.rubentxu.pipeline.v2.domain.MismatchedSecretException(
                         credentialId = credentialsId,
                         expectedKind = "SecretText|UsernamePassword|SshPrivateKey",
@@ -524,7 +524,7 @@ open class GitCheckoutExecutor(
 
     /**
      * Scrubs a reason string using the secret pattern registry.
-     * INV-L6-CR-013: GitCheckoutFailed.reason must be scrubbed before emission.
+     * GitCheckoutFailed.reason must be scrubbed before emission.
      */
     private fun scrubReason(reason: String): String {
         return secretPatternRegistry.scrub(reason)
@@ -550,7 +550,7 @@ data class GitCheckoutRequest(
     val eventSink: EventSink,
     val clock: Clock,
     val secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore?,
-    // WU-RP-020: `stepIndex` is a STEP ORDINAL, not an event sequence. It was
+    // `stepIndex` is a STEP ORDINAL, not an event sequence. It was
     // being passed as `DomainEvent.sequence` for all 11 checkout events, which
     // bypassed the store's sequence authority: every checkout event claimed the
     // same number (the step ordinal), so repeated checkouts of a step, or a

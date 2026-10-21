@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.scripting
 
 /**
- * LFC-2R / R3 — Compiler-backed lowering of a mapped `.pipeline.kts` body into a
+ * Compiler-backed lowering of a mapped `.pipeline.kts` body into a
  * generated Kotlin source artifact implementing [CompiledScriptedEntryPoint].
  *
  * The lowering is DETERMINISTIC and driven by the compiler-verified
@@ -53,7 +53,7 @@ object ScriptedSourceLowering {
     ): LoweringResult = when (val mapping = mapper.map(ScriptedSource(sourceId, sourceText))) {
         is ScriptedSourceMapping.InvalidSyntax -> LoweringResult.InvalidSyntax(mapping.diagnostics)
         is ScriptedSourceMapping.Mapped -> when (val rewritten = rewrite(sourceText, mapping.calls, mapping.loopScopes)) {
-            // S4-SRANGE: an unlocatable call refuses the whole lowering. It used to be skipped,
+            // an unlocatable call refuses the whole lowering. It used to be skipped,
             // which reported `Generated` while the call survived as a bare `sh(...)` with no
             // receiver — the author then met `Unresolved reference 'sh'` in GENERATED code they
             // never wrote. The information needed to explain it existed and was discarded in
@@ -78,7 +78,7 @@ object ScriptedSourceLowering {
     }
 
     /**
-     * S4-IDENTITY I2 — one edit pass, every offset resolved against the ORIGINAL text.
+     * one edit pass, every offset resolved against the ORIGINAL text.
      *
      * This replaces an offset-locked rewriter that resolved each call's position
      * against the *already-rewritten* buffer. That worked only because the loop
@@ -201,7 +201,7 @@ object ScriptedSourceLowering {
             val callSite = call.location.pwdCallSite(tmp = tmp).value
             "steps.pwd(ScriptedCallSiteId(\"$callSite\"), tmp = $tmp)"
         }
-        // S4-DATA: the author's own path EXPRESSION is re-scoped into the
+        // the author's own path EXPRESSION is re-scoped into the
         // façade call, exactly as `sh` does with its script. A literal `""`
         // was written here before, which both dropped the path and left the
         // argument's text trailing after the rewritten call.

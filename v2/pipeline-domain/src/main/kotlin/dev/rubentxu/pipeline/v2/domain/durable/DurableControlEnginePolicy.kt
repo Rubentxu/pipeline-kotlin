@@ -10,7 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.Reuse
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.ScheduleAttempt
 
 /**
- * WU-LPR-022 — Pure engine directive derived from a
+ * Pure engine directive derived from a
  * [RetryReconciliationDecision].
  *
  * The [RetryReconciler] returns a decision that says WHAT the durable state
@@ -107,7 +107,7 @@ sealed interface EngineDirective {
 }
 
 /**
- * WU-LPR-022 — Reference implementation of [DurableControlEnginePolicy].
+ * Reference implementation of [DurableControlEnginePolicy].
  *
  * Translation table (decision → directive, against [maxAttempts]):
  *

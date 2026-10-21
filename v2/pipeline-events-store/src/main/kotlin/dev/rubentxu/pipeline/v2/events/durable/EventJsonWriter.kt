@@ -118,7 +118,7 @@ internal object EventJsonWriter {
         return sb.toString()
     }
 
-    // WU-LPR-089 — Stash decoders (inverse of the serializers above).
+    // Stash decoders (inverse of the serializers above).
     // The `files`/`entries` array is a compact JSON list of objects; we
     // delegate to the existing stringField/longField helpers plus
     fun serializeHtmlReportEntries(entries: List<HtmlReportEntry>): String {
@@ -135,7 +135,7 @@ internal object EventJsonWriter {
         return sb.toString()
     }
     /**
-     * P3-E E6 — the write half of the optional-field convention.
+     * the write half of the optional-field convention.
      *
      * Pairs with [EventJsonFields.optionalStringField], which maps the same encoding back to
      * `null`. Both existed as independent literals before: thirteen `?: ""` here and thirteen
@@ -185,7 +185,7 @@ internal object EventJsonWriter {
                 sb.append(",\"scriptPath\":")
                 sb.append(EventJsonWriter.jsonString(event.scriptPath))
             }
-            // PK-1 / ADR-PK1-IDENTITY: persist the correlation + owner fields
+            // persist the correlation + owner fields
             // in the JSON envelope so a consumer reading the durable event
             // log can join runs to external invoker identities.
             is RunCorrelated -> {
@@ -498,7 +498,7 @@ internal object EventJsonWriter {
                 sb.append(",\"reason\":")
                 sb.append(EventJsonWriter.jsonString(event.reason))
             }
-            // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
+            // core.stash/core.unstash durable cross-stage data movement
             is StashCreated -> {
                 sb.append(",\"stageName\":")
                 sb.append(EventJsonWriter.jsonString(event.stageName))
@@ -525,7 +525,7 @@ internal object EventJsonWriter {
                 sb.append(",\"reason\":")
                 sb.append(EventJsonWriter.jsonString(event.reason))
             }
-            // WU-LPR-090 — core.publishHTML durable HTML report publishing
+            // core.publishHTML durable HTML report publishing
             is HtmlReportPublished -> {
                 sb.append(",\"stageName\":")
                 sb.append(EventJsonWriter.jsonString(event.stageName))

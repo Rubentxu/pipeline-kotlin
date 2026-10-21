@@ -30,10 +30,10 @@ import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeC
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
-// WU-G5R.5: durable waitUntil reconciliation driver and identity factory.
+// durable waitUntil reconciliation driver and identity factory.
 import dev.rubentxu.pipeline.v2.application.durable.WaitUntilIdentityFactory
 
-// RETRY-D: control journal + reconciliation driver (ADR-0075 §11).
+// control journal + reconciliation driver (ADR-0075 §11).
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.RetryIdentityFactory
 import dev.rubentxu.pipeline.v2.application.durable.retry.RetryReconciliationDriver
@@ -146,7 +146,7 @@ data class NonCanonicalStep(
  * An empty list means the pipeline is fully canonical and eligible for canonical durable execution.
  */
 fun CompiledPipeline.analyzeCanonicalDurableExecution(effectiveRegistry: StepRegistry? = null): List<NonCanonicalStep> {
-    // LB-02 / EP-6: eligibility is registry-derived. When the caller has already
+    // eligibility is registry-derived. When the caller has already
     // composed the production registry (core + external plugin contributions),
     // its keys participate in the gate; when null, the default derivation (core
     // metadata + the production core factory) applies — behaviour unchanged for
@@ -156,7 +156,7 @@ fun CompiledPipeline.analyzeCanonicalDurableExecution(effectiveRegistry: StepReg
     } else {
         canonicalStepIds
     }
-    // WU-RP-035: a block Step's canonical eligibility is its DECLARED body owner, resolved
+    // a block Step's canonical eligibility is its DECLARED body owner, resolved
     // from the effective registry so an external HANDLER_CONTINUATION Step enters exactly
     // like a core CANONICAL_ENGINE one. The static core derivation remains the fallback so
     // the null-registry path behaves exactly as before.
@@ -205,7 +205,7 @@ internal fun StepNode.checkCanonicalExecution(
 ): String? {
     return when (this) {
         is BlockStepNode -> {
-            // WU-RP-035: CANONICAL_ENGINE and HANDLER_CONTINUATION are both canonical-durable
+            // CANONICAL_ENGINE and HANDLER_CONTINUATION are both canonical-durable
             // eligible — the first lets the engine run the body, the second lets the Step's
             // own handler drive it through the bound continuation. Both execute on the same
             // durable spine. LEGACY_LINEAR and unknown keys stay refused: their semantics are
@@ -239,7 +239,7 @@ internal sealed interface StageTimeoutProjection {
 }
 
 internal fun StageNode.projectShellOptions(base: ShOptions): ShOptions {
-    // WS-S-005: merge stage environment (EnvironmentSpec.values: Map<String, String>)
+    // merge stage environment (EnvironmentSpec.values: Map<String, String>)
     // into ShOptions.env (Map<String, SecretHandle>)
     val stageEnv: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle> =
         environment.values
@@ -369,7 +369,7 @@ internal sealed interface InvocationReconciliation {
      * the one that applies. A caller that needs any of them asks [RecoveryInterpretationEngine],
      * which is the single place that knows how to persist this decision.
      *
-     * S4-F1-C1: the payload was `RecoveredTerminal` (retired with the type itself), and that let
+     * the payload was `RecoveredTerminal` (retired with the type itself), and that let
      * the OBSERVER decide semantics —
      * it answered a non-zero exit code with `Failed(FailureKind.SCRIPT)` without knowing the
      * invocation's `returnMode`. F1-C0 measured what that cost: `sh(returnStatus = true)` with exit
@@ -412,7 +412,7 @@ internal sealed interface BlockShellScope {
     data class Retry(val maxAttempts: Int) : BlockShellScope
 
     /**
-     * WU-G5R.3: body-polling contract projected from the `core.waitUntil` payload.
+     * body-polling contract projected from the `core.waitUntil` payload.
      * The body (a condition script) is re-dispatched until it succeeds (exit 0) or
      * backoff exceeds MAX_BACKOFF_MS.  Each poll carries a deterministic journal identity
      * so restart/replay reconstructs poll state from the journal, not memory.
@@ -483,7 +483,7 @@ internal fun BlockStepNode.projectBodyExecution(
     is BodyExecutionPolicy.Sequential -> BodyExecutionProjection.Scope(BlockShellScope.None)
     is BodyExecutionPolicy.Scoped -> projectScopedBody(policy.projection, options)
     is BodyExecutionPolicy.Retrying -> {
-        // WU-LPR-301: dispatch is policy-driven, not StepKey-driven. A Retrying body that
+        // dispatch is policy-driven, not StepKey-driven. A Retrying body that
         // declares a WaitUntilShape projects to WaitUntilScope using the declared cadence;
         // any other Retrying body projects to the shared Retry scope with the decoded
         // attempt budget. The body-routing dispatch is a closed ADT match on

@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import java.nio.file.Path
 
 /**
- * EM-7 / LFC-5.3 — Application seam credential scope contracts.
+ * Application seam credential scope contracts.
  *
  * These types live in `:pipeline-application` and belong to the application seam.
  * They are NOT domain types: the domain has no dependency on application, process,

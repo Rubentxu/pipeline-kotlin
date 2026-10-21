@@ -40,7 +40,7 @@ import kotlinx.serialization.json.put
  * canonical executable IR. It deliberately bypasses PipelineDefinition and
  * SpecDefinitionMapper; validator/planner migration is LFC1-005.
  *
- * LFC1-007: StepSpec.WriteFile is re-mapped to `core.file.writeFile` with typed payload.
+ * StepSpec.WriteFile is re-mapped to `core.file.writeFile` with typed payload.
  * Body-aware steps:
  * - catchError / warnError: compiled via [rewriteWorkflowControl] to the legacy linear
  *   sequence (core.emit.event enter + core.sh + core.emit.event trigger) until EM-5/EM-6
@@ -115,7 +115,7 @@ object DslCompiledPipelineCompiler {
             options = stage.options.toOptions(),
             body = body,
             directives = stage.directives,
-            // S2-B: the declared `post` block becomes typed IR data. The
+            // the declared `post` block becomes typed IR data. The
             // COMPILER only projects; it never decides which finalizer runs —
             // that is the pure PostPlanner's job at execution time.
             post = stage.post.conditions
@@ -183,7 +183,7 @@ object DslCompiledPipelineCompiler {
                     ),
                 ),
             )
-            // WU-RP-033: generic open-registry Block lowering. The plugin StepKey is carried
+            // generic open-registry Block lowering. The plugin StepKey is carried
             // verbatim into a BlockStepNode; the canonical body children are compiled
             // recursively (the SAME lowering every core Block Step uses). Runtime admission
             // resolves the declared BodyExecutionPolicy from the open registry and rejects
@@ -253,12 +253,12 @@ object DslCompiledPipelineCompiler {
             is StepSpec.WithCredentialsBlock,
             is StepSpec.Timestamps,
             is StepSpec.WithEnv,
-            // WU-G5R.2: waitUntil projects to canonical BlockStepNode (body-owning).
+            // waitUntil projects to canonical BlockStepNode (body-owning).
             is StepSpec.WaitUntilBlock,
-            // WU-091 G3: core.lock lowers through the SAME block machinery; the
+            // core.lock lowers through the SAME block machinery; the
             // wire payload is produced exclusively by CoreLockWireCodec (G3.4).
             is StepSpec.Lock,
-            // WU-092 G3: core.input lowers through the SAME block machinery; the
+            // core.input lowers through the SAME block machinery; the
             // wire payload is produced exclusively by CoreInputWireCodec (G3.4).
             is StepSpec.Input ->
                 blockStepNode(
@@ -271,7 +271,7 @@ object DslCompiledPipelineCompiler {
                 parentToken = parentToken,
                 occurrence = occurrence,
             )
-            // S2-A9 / G5: StepSpec.Milestone branch removed (LEGACY_REMOVED). The DSL
+            // StepSpec.Milestone branch removed (LEGACY_REMOVED). The DSL
             // `milestone(ordinal, label)` now lowers directly to StepSpec.RegistryStepSpec
             // (open-world registry path); no dedicated compiler branch needed. Legacy
             // milestonePayload() removed at G5.
@@ -324,10 +324,10 @@ object DslCompiledPipelineCompiler {
             is StepSpec.WithEnv -> step.steps
             is StepSpec.Timestamps -> step.steps
             is StepSpec.WaitUntilBlock -> step.body
-            // WU-091 G3: the lock body children compile like every other block
+            // the lock body children compile like every other block
             // family member; missing this arm would silently drop the body.
             is StepSpec.Lock -> step.steps
-            // WU-092 G3: same law for the input body.
+            // same law for the input body.
             is StepSpec.Input -> step.steps
             else -> emptyList()
         }, "$parentToken/${tokenPrefix}-body-$occurrence")
@@ -381,19 +381,19 @@ object DslCompiledPipelineCompiler {
             put("kind", "retry")
             put("maxAttempts", step.count)
         })
-        // DEBT-WIRE-AUTHORITY: the compiler does NOT hand-write the waitUntil block
+        // the compiler does NOT hand-write the waitUntil block
         // wire JSON. CoreWaitUntilWireCodec is THE single authority for that format,
         // the same law as core.lock (WU-091) and core.input (WU-092). The encoder
         // is byte-identical to the JSON this branch used to build, so no durable
         // body identity moves (BodyStructureDigest appends the payload string).
         is StepSpec.WaitUntilBlock ->
             CoreWaitUntilWireCodec.encode(step.toCoreWaitUntilInput()).value
-        // WU-091 G3.4: the compiler does NOT hand-write the core.lock wire JSON.
+        // the compiler does NOT hand-write the core.lock wire JSON.
         // CoreLockWireCodec is THE single authority for that format; this is the
         // divergence core.sh suffered (kind=sh|shell, command|script) refused in
         // advance. Guarded by Lfc2LockWireAuthorityFitnessTest.
         is StepSpec.Lock -> CoreLockWireCodec.encode(step.toCoreLockInput()).value
-        // WU-092 G3.4: same single-authority law as core.lock. The compiler knows
+        // same single-authority law as core.lock. The compiler knows
         // the StepSpec.Input -> CoreInputInput transformation (a DOMAIN decision)
         // and delegates the ENCODING to CoreInputWireCodec.
         is StepSpec.Input -> CoreInputWireCodec.encode(step.toCoreInputInput()).value
@@ -401,7 +401,7 @@ object DslCompiledPipelineCompiler {
     }
 
     /**
-     * WU-092 G3.3: the compiler knows the `StepSpec.Input -> CoreInputInput`
+     * the compiler knows the `StepSpec.Input -> CoreInputInput`
      * transformation, which is a DOMAIN decision; it does not know the wire
      * format, which is an ENCODING decision owned by [CoreInputWireCodec]. Pure,
      * total, one direction, and it does NOT resolve a blank message here: that
@@ -416,7 +416,7 @@ object DslCompiledPipelineCompiler {
     )
 
     /**
-     * WU-091 G3.3: the compiler knows the `StepSpec.Lock -> CoreLockInput`
+     * the compiler knows the `StepSpec.Lock -> CoreLockInput`
      * transformation, which is a DOMAIN decision (what the step takes as
      * input); it does not know the wire format, which is an ENCODING decision
      * owned by [CoreLockWireCodec]. Pure, total, one direction, no defaults
@@ -430,7 +430,7 @@ object DslCompiledPipelineCompiler {
     )
 
     /**
-     * DEBT-WIRE-AUTHORITY: the compiler knows the `StepSpec.WaitUntilBlock ->
+     * the compiler knows the `StepSpec.WaitUntilBlock ->
      * CoreWaitUntilInput` transformation, which is a DOMAIN decision (what the
      * block declares); it does not know the wire format, which is an ENCODING
      * decision owned by [CoreWaitUntilWireCodec]. Pure, total, one direction, no
@@ -469,7 +469,7 @@ object DslCompiledPipelineCompiler {
         parentToken: String,
         occurrence: Int,
     ): List<StepNode> {
-        // P3-E D3 — was `buildResult?.uppercase() ?: "UNSTABLE"` and
+        // was `buildResult?.uppercase() ?: "UNSTABLE"` and
         // `stageResult?.uppercase() ?: effectiveBuildResult`. The `uppercase()` was the tell:
         // a free-text authoring String was being normalised on its way to the wire, so the
         // token that reached durable history was one the author never wrote. Both defaults
@@ -495,7 +495,7 @@ object DslCompiledPipelineCompiler {
                     put("buildResult", effectiveBuildResult.wireToken)
                     put("stageResult", effectiveStageResult.wireToken)
                     put("enteredAt", System.currentTimeMillis().toString())
-                    // EM-5/EM-6: carry the message so the coordinator's overlay can publish the
+                    // carry the message so the coordinator's overlay can publish the
                     // CatchErrorTriggered event at the real-failure fold (D5). Nullable/absent OK.
                     message?.let { put("message", it) }
                 },
@@ -738,7 +738,7 @@ object DslCompiledPipelineCompiler {
         })
     }
 
-    // S2-A9 / G5: milestonePayload removed (LEGACY_REMOVED). The canonical envelope for
+    // milestonePayload removed (LEGACY_REMOVED). The canonical envelope for
     // core.milestone is produced by the DSL `milestone(...)` function (scripting-api) which
     // lowers to StepSpec.RegistryStepSpec; the runtime decoder/handler is CoreMilestoneStep
     // via the registry. No compiler-side payload construction needed.
@@ -771,7 +771,7 @@ object DslCompiledPipelineCompiler {
                 }
                 is StepSpec.Error -> {
                     put("message", step.message)
-                    // P3-E E6: `failureKind` is typed, and the wire is not. `FailureKind.name` IS
+                    // `failureKind` is typed, and the wire is not. `FailureKind.name` IS
                     // the historical token for every case, so this projection is byte-identical to
                     // the String it replaces — which is the point. The String that used to live
                     // here was the last place a typed decision was degraded before it was
@@ -785,7 +785,7 @@ object DslCompiledPipelineCompiler {
                     put("text", step.text)
                     put("encoding", step.encoding)
                 }
-                // WU-LPR-104: canonical envelopes byte-identical to the registry
+                // canonical envelopes byte-identical to the registry
                 // input codecs (CoreReadFileStep / CoreFileExistsStep).
                 is StepSpec.ReadFile -> {
                     put("kind", "readFile")
@@ -925,7 +925,7 @@ object DslCompiledPipelineCompiler {
         return Json.encodeToString(JsonObject.serializer(), payload)
     }
 
-    // WU-RP-032 / DSL-008: stage options surface carries ONLY timeout (the only option
+    // stage options surface carries ONLY timeout (the only option
     // with a runtime interpreter, projected via projectShellOptions). retry/skip were
     // removed from the DSL surface; unrepresentable instead of accepted-and-dropped.
     //
@@ -935,7 +935,7 @@ object DslCompiledPipelineCompiler {
     // carrier survive only as text. A non-positive value is rejected by the
     // ADT's own invariant rather than becoming a stage that fails at run time.
     //
-    // S3-R1-B: the KDoc here used to say this conversion was total. It was not:
+    // the KDoc here used to say this conversion was total. It was not:
     // `OptionsSpec` had no validation, so `Math.multiplyExact` was a live
     // `ArithmeticException` reachable from `OptionsSpec(timeout = Long.MAX_VALUE)`
     // and from `options { timeout(Long.MAX_VALUE) }`. Both doors now consult one

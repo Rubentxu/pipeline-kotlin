@@ -97,7 +97,7 @@ internal class RedactingOutputIngress(
             reservation.write(payload)
             val committedEnd = reservation.commit()
 
-            // OBS-C2.3: the frame records the order PipelineK OBSERVED this range, and it is
+            // the frame records the order PipelineK OBSERVED this range, and it is
             // appended AFTER the bytes are committed — that ordering is the whole contract, since
             // it is what makes a committed-but-unframed range recoverable rather than lost. The
             // channel is not passed here: it rides in the stream's own identity, so a crash cannot

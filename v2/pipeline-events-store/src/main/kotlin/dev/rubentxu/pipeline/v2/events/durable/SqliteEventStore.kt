@@ -114,7 +114,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     private val sequenceCounters = ConcurrentHashMap<String, AtomicLong>()
 
     // ------------------------------------------------------------------
-    // WU-LPR-042: persistent connection + single-writer batched appends.
+    // persistent connection + single-writer batched appends.
     //
     // Overload policy (explicit, honest): appends enqueue on a bounded
     // queue drained by ONE writer thread that commits in batches inside a
@@ -179,7 +179,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                     """.trimIndent()
                 )
             }
-            // WU-RP-020: the durable sequence authority.
+            // the durable sequence authority.
             //
             // The per-run counter is seeded ONCE per instance from
             // MAX(sequence), so two store instances over the same database
@@ -212,12 +212,12 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         } finally {
             conn.close()
         }
-        // WU-LPR-041: durable sequence truth. The per-run counters MUST be
+        // durable sequence truth. The per-run counters MUST be
         // seeded from SQLite (durable state), not start empty per instance.
         // Without this, a fresh store instance restarts sequences at 1 and
         // duplicates the history of any run already present in the DB.
         seedSequenceCounters()
-        // WU-LPR-042: prepare the insert on the persistent connection and
+        // prepare the insert on the persistent connection and
         // start the single writer.
         insertStatement = writerConnection.prepareStatement(
             "INSERT INTO events (event_id, run_id, sequence, kind, occurred_at, payload) VALUES (?, ?, ?, ?, ?, ?)"
@@ -307,7 +307,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     /**
-     * WU-RP-020: makes `UNIQUE(run_id, sequence)` the durable authority.
+     * makes `UNIQUE(run_id, sequence)` the durable authority.
      *
      * Idempotent: `IF NOT EXISTS`, so opening an already-migrated database
      * is a no-op.
@@ -361,7 +361,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     /**
-     * WU-LPR-105: the store assigns the sequence and returns the assigned
+     * the store assigns the sequence and returns the assigned
      * event explicitly. Single counter, single authority — the read model is
      * never consulted for write metadata.
      */
@@ -381,7 +381,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
         }
         val eventWithSequence = when (event) {
                 is RunStarted -> event.copy(sequence = assignedSequence)
-                // PK-1 / ADR-PK1-IDENTITY: RunCorrelated carries the
+                // RunCorrelated carries the
                 // assigned sequence like every other durable event; it
                 // must appear in the when for the assignment to take
                 // effect.
@@ -416,11 +416,11 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is FileExistsChecked -> event.copy(sequence = assignedSequence)
                 is ArtifactArchived -> event.copy(sequence = assignedSequence)
                 is ArtifactArchiveFailed -> event.copy(sequence = assignedSequence)
-                // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
+                // core.stash/core.unstash durable cross-stage data movement
                 is StashCreated -> event.copy(sequence = assignedSequence)
                 is StashRestored -> event.copy(sequence = assignedSequence)
                 is StashFailed -> event.copy(sequence = assignedSequence)
-                // WU-LPR-090 — core.publishHTML durable HTML report publishing
+                // core.publishHTML durable HTML report publishing
                 is HtmlReportPublished -> event.copy(sequence = assignedSequence)
                 is HtmlReportSkipped -> event.copy(sequence = assignedSequence)
                 is HtmlReportFailed -> event.copy(sequence = assignedSequence)
@@ -482,7 +482,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     /**
-     * WU-RP-020: release every [PendingWrite.FlushBarrier] still queued behind a
+     * release every [PendingWrite.FlushBarrier] still queued behind a
      * writer that is about to die.
      *
      * A barrier is a wait for the writer to make progress. Once the writer has
@@ -551,7 +551,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                     for (pending in batch) {
                         if (pending is PendingWrite.FlushBarrier) pending.done.countDown()
                     }
-                    // WU-RP-020: the writer is dying and will never take another
+                    // the writer is dying and will never take another
                     // item off the queue. A FlushBarrier enqueued AFTER this
                     // batch was taken -- which is exactly what happens when a
                     // producer appends a doomed event and immediately flushes --
@@ -733,7 +733,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
      */
 
     /**
-     * M1-A — authoritatively answer "has this run ever been written to".
+     * authoritatively answer "has this run ever been written to".
      *
      * The [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
      * adapter needs to distinguish a run that does not exist (the
@@ -765,7 +765,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
     }
 
     /**
-     * M1-A — durable `MAX(sequence)` for [runId], or `null` if the run
+     * durable `MAX(sequence)` for [runId], or `null` if the run
      * has no rows.
      *
      * The [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]

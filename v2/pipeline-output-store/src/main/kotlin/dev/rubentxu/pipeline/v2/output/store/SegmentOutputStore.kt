@@ -204,7 +204,7 @@ class SegmentOutputStore(
         requireRecoveredForWriting()
         val layout = layout(stream)
         return withStreamLockFor(stream) {
-            // M1-F.3: an unopened stream is NOT a refusal. Sealing it
+            // an unopened stream is NOT a refusal. Sealing it
             // would mint an authority for bytes nobody wrote, but a
             // stdout-only script (which never opened stderr) must NOT
             // warn here — that was the noise the user reported. The
@@ -1032,7 +1032,7 @@ class SegmentOutputStore(
             // O1: the reservation is durable before this returns, and before any byte is written.
             Files.writeString(layout.reservationFile, "$baseInternal|$limitInternal\n")
 
-            // ADR-OBS-002: from here until commit/abandon, this stream is OWNED, and any recovery in
+            // from here until commit/abandon, this stream is OWNED, and any recovery in
             // any process skips it. Taken last, after every failure that could throw, so a reservation
             // that never became durable also never advertises an owner.
             //

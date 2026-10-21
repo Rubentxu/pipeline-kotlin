@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.domain.directive
 
 /**
- * S2-C — gate composition: the PURE decision layer over an already-admitted
+ * gate composition: the PURE decision layer over an already-admitted
  * set of gate directives.
  *
  * The stage's admitted gates (a pure [StageDirectivePlanner] outcome) carry,

@@ -68,7 +68,7 @@ import java.nio.file.Path
  *
  * It exposes ONLY the capabilities the canonical runtime actually declares and provides today
  * ([EVENT_SINK_CAPABILITY] backed by the runtime's [CanonicalRuntimeContext.eventSink], and — since
- * LB-02 / A4 — [SHELL_OPERATIONS_CAPABILITY] backed by a fresh [ShOperationsAdapter] constructed
+ * [SHELL_OPERATIONS_CAPABILITY] backed by a fresh [ShOperationsAdapter] constructed
  * from the runtime context). It derives the capability values from the runtime context WITHOUT
  * handing the whole [CanonicalRuntimeContext] to a handler and without rebuilding a pipeline
  * context. Direction is contract.requiredCapabilities -> capability admission ->
@@ -80,7 +80,7 @@ import java.nio.file.Path
  */
 open class CanonicalRuntimeCapabilityAccess(
     context: CanonicalRuntimeContext,
-    // S2-A9: milestone state store for MILESTONE_OPERATIONS_CAPABILITY.
+    // milestone state store for MILESTONE_OPERATIONS_CAPABILITY.
     // Always non-null in production (coordinator provides it); nullable for test/adapter flexibility.
     private val milestoneStateStore: MilestoneStateStore? = null,
     // E1.ecosystem-local-first / T1: per-run artifact index. Bound at
@@ -215,22 +215,22 @@ open class CanonicalRuntimeCapabilityAccess(
             secretPatternRegistry = context.secretPatternRegistry,
         )
         builder[SHELL_OPERATIONS_CAPABILITY] = shellOps
-        // S2-A3 / G1: workspace file operations bound to the current stage identity.
+        // workspace file operations bound to the current stage identity.
         //
-        // RP034-D: the adapter also receives the shared execution location, so
+        // the adapter also receives the shared execution location, so
         // file Steps resolve against the same current directory the shell vertical
         // observes inside a `dir` scope. Previously it rebuilt its own
         // WorkspaceResolver per operation and could never see the scope, which is
         // the divergence recorded by ShellFilesystemCwdDivergenceTest.
         builder[WORKSPACE_OPERATIONS_CAPABILITY] = workspaceOperationsFor(context)
-        // S2-A4 / G1: narrow stage identity (name + index) for handlers needing the current
+        // narrow stage identity (name + index) for handlers needing the current
         // stage as a default (core.emit.event StageMarkedUnstable fallback). Derived from the
         // runtime context; never exposes the context itself.
         builder[STAGE_IDENTITY_CAPABILITY] = StageIdentity(
             name = context.stageName,
             index = context.stageIndex,
         )
-        // RP6-A / WU-091: the durable EXECUTION LANE, derived HERE from the
+        // the durable EXECUTION LANE, derived HERE from the
         // runtime's own operation identity — run id plus the parallel lineage the
         // OpId already carries. Deriving it in the bridge is the point: a handler
         // must not be handed the OpId and left to work out its own lane, and
@@ -240,7 +240,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // is re-entrant per build, so a nested `lock` must not deadlock against its
         // own hold), while a SIBLING `parallel` branch is a different lane and must
         // contend — which is the exclusion the lock exists to provide.
-        // RP6-A / WU-091: the projected scope budget, the same value the child
+        // the projected scope budget, the same value the child
         // shell watchdog consumes. Exposed so a SUSPENDING Step (one that runs no
         // process, like core.lock) can honour the block deadline through a typed
         // capability instead of escaping the watchdog. "No budget" is a real
@@ -269,7 +269,7 @@ open class CanonicalRuntimeCapabilityAccess(
         context: CanonicalRuntimeContext,
         builder: MutableMap<StepCapability, Any>,
     ) {
-        // RP6-A / WU-091 G4: the POSIX file lock coordinator for core.lock.
+        // the POSIX file lock coordinator for core.lock.
         //
         // The lock namespace is anchored to the CONTROL ROOT — the engine's own
         // durable territory (journal db parent, `--control-root`) — NOT to the
@@ -294,7 +294,7 @@ open class CanonicalRuntimeCapabilityAccess(
                 root.resolve("locks"),
             )
         }
-        // RP6-B / WU-092 G4: the filesystem answer channel for core.input.
+        // the filesystem answer channel for core.input.
         //
         // Anchored to the CONTROL ROOT for the same reason the lock is, and with the
         // same conditional exposure: a question is a fact about the ENGINE's durable
@@ -363,13 +363,13 @@ open class CanonicalRuntimeCapabilityAccess(
         context: CanonicalRuntimeContext,
         builder: MutableMap<StepCapability, Any>,
     ) {
-        // S2-A5 / G1: raw environmental observation for platform-classification handlers
+        // raw environmental observation for platform-classification handlers
         // (core.isUnix). The single remaining System.getProperty("os.name") read lives HERE,
         // in the bridge adapter — never inside a handler.
         builder[PLATFORM_IDENTITY_CAPABILITY] = PlatformIdentity(
             osName = System.getProperty("os.name", ""),
         )
-        // S2-A6 / G1: canonical workspace observation for workspace-projection
+        // canonical workspace observation for workspace-projection
         // handlers (core.pwd and official plugins). A nested `dir` scope carries
         // its current working directory in ShOptions.workingDirectory, so the
         // typed identity must follow that immutable scope projection rather than
@@ -428,7 +428,7 @@ open class CanonicalRuntimeCapabilityAccess(
         context: CanonicalRuntimeContext,
         builder: MutableMap<StepCapability, Any>,
     ) {
-        // S2-A7 / G3-fix: deleteDir operations for core.deleteDir.
+        // deleteDir operations for core.deleteDir.
         // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex],
         // [controlDirRoot], and [EventSink] — exactly the inputs needed to resolve the
         // workspace, execute deletion, and emit the canonical `DirDeleted` event.
@@ -454,7 +454,7 @@ open class CanonicalRuntimeCapabilityAccess(
             )
             builder[DELETE_DIR_OPERATIONS_CAPABILITY] = deleteOps
         }
-        // LFC-2E1-S2-A10 / G1: cleanWs operations for core.cleanWs (registry candidate).
+        // cleanWs operations for core.cleanWs (registry candidate).
         // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex],
         // [controlDirRoot], and [EventSink] — exactly the inputs needed to resolve the
         // workspace, execute the cleanup via the existing CleanWsExecutor SDK substrate,
@@ -516,13 +516,13 @@ open class CanonicalRuntimeCapabilityAccess(
                 controlDirRoot = root,
                 eventSink = context.eventSink,
                 workspaceBase = context.workspaceBase,
-                // RP034-F: the archive source follows the shared location, so a
+                // the archive source follows the shared location, so a
                 // `dir(...)` scope narrows what the pattern can match.
                 executionLocation = executionLocationFor(context),
             )
             builder[ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY] = archiveOps
         }
-        // WU-LPR-089: stash/unstash capability. Same conditional exposure as
+        // stash/unstash capability. Same conditional exposure as
         // ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY — bound ONLY when controlDirRoot
         // is supplied (production path). Absent otherwise so the registry boundary
         // fails closed at admission. Both CoreStashStep and CoreUnstashStep share
@@ -537,13 +537,13 @@ open class CanonicalRuntimeCapabilityAccess(
                 controlDirRoot = root,
                 eventSink = context.eventSink,
                 workspaceBase = context.workspaceBase,
-                // RP034-E: stash source and unstash target follow the same
+                // stash source and unstash target follow the same
                 // location every other workspace-aware Step reads.
                 executionLocation = executionLocationFor(context),
             )
             builder[STASH_OPERATIONS_CAPABILITY] = stashOps
         }
-        // WU-LPR-090: core.publishHTML capability. Same conditional exposure as
+        // core.publishHTML capability. Same conditional exposure as
         // STASH_OPERATIONS_CAPABILITY — bound ONLY when controlDirRoot is supplied
         // (production path). Absent otherwise so the registry boundary fails
         // closed at admission. CorePublishHtmlStep shares the same
@@ -558,7 +558,7 @@ open class CanonicalRuntimeCapabilityAccess(
                 controlDirRoot = root,
                 eventSink = context.eventSink,
                 workspaceBase = context.workspaceBase,
-                // RP034-F: reportDir follows the shared location too.
+                // reportDir follows the shared location too.
                 executionLocation = executionLocationFor(context),
             )
             builder[PUBLISH_HTML_OPERATIONS_CAPABILITY] = publishHtmlOps
@@ -611,7 +611,7 @@ open class CanonicalRuntimeCapabilityAccess(
         context.bodyInvoker?.let { adapter ->
             builder[BODY_INVOKER_CAPABILITY] = adapter
         }
-        // WU-RP-035: the public body-reentry seam for a Step that declared
+        // the public body-reentry seam for a Step that declared
         // BodyExecutionOwner.HANDLER_CONTINUATION (ADR-0081 as amended). Bound ONLY when the
         // canonical runtime context carries a body-already-bound continuation, and never as a
         // pair with BODY_INVOKER_CAPABILITY: one value, already bound, so a handler cannot be
@@ -660,7 +660,7 @@ open class CanonicalRuntimeCapabilityAccess(
         scopedWorkingDirectory = context.shOptions.workingDirectory,
         fallbackRoot = context.shOptions.workspaceRoot
             ?: Path.of("").toAbsolutePath().normalize(),
-        // RP034-Id: ownership decided at the CLI boundary (ADR-0101) and carried
+        // ownership decided at the CLI boundary (ADR-0101) and carried
         // on the transport. Without this the bridge re-derived `Managed` for every
         // run and the ADR-0102 guard on a user-owned root never fired.
         ownership = context.shOptions.workspaceOwnership,

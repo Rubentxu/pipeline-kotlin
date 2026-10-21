@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import java.nio.charset.StandardCharsets
 
 /**
- * LF-0403 — Result of projecting a single [CredentialBindingSpec].
+ * Result of projecting a single [CredentialBindingSpec].
  *
  * Maps an env var name to a [SecretHandle]. The handle is the typed channel —
  * the actual materialization / String conversion happens at the ProcessBuilder
@@ -82,7 +82,7 @@ data class ProjectionResult(
 }
 
 /**
- * LF-0403 — Port that maps a typed [CredentialBindingSpec] + resolved
+ * Port that maps a typed [CredentialBindingSpec] + resolved
  * [Credential] into the env-var shape that
  * [dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor]
  * hands to the durable step.
@@ -212,7 +212,7 @@ class DefaultCredentialProjector(
                 spec.usernameVariable?.let { varName ->
                     env[varName] = SecretHandle.masked(ssh.username)
                 }
-                // EM-7: retain for deferred cleanup — do NOT call materialized.close() here
+                // retain for deferred cleanup — do NOT call materialized.close() here
                 retainedMaterializations.add(materialized)
             }
             is FileBindingSpec -> {
@@ -227,7 +227,7 @@ class DefaultCredentialProjector(
                         "FILE materialization must produce a path",
                     )
                 env[spec.variable] = SecretHandle.masked(filePath.toString())
-                // EM-7: retain for deferred cleanup — do NOT call materialized.close() here
+                // retain for deferred cleanup — do NOT call materialized.close() here
                 retainedMaterializations.add(materialized)
             }
             is CertificateBindingSpec -> {
@@ -259,7 +259,7 @@ class DefaultCredentialProjector(
                         linkedSecretResolver.resolve(ref)
                     } ?: SecretHandle.masked("")
                 }
-                // EM-7: retain for deferred cleanup — do NOT call materialized.close() here
+                // retain for deferred cleanup — do NOT call materialized.close() here
                 retainedMaterializations.add(materialized)
             }
             is ZipBindingSpec -> {
@@ -274,7 +274,7 @@ class DefaultCredentialProjector(
                         "ZIP materialization must produce a path",
                     )
                 env[spec.variable] = SecretHandle.masked(zipPath.toString())
-                // EM-07: retain for deferred cleanup — do NOT call materialized.close() here
+                // retain for deferred cleanup — do NOT call materialized.close() here
                 retainedMaterializations.add(materialized)
             }
             is UsernameColonPasswordBindingSpec -> {

@@ -38,7 +38,7 @@ data class PipelineEventEnvelope(
     val causation: EventRef? = null,
     val correlation: EventRef? = null,
     /**
-     * LFC-2E2-prep / ADR-0092 / C8: audit projection of the provider
+     * audit projection of the provider
      * metadata for the Step that produced the event. `null` for Steps
      * registered via the legacy `register(StepDefinition)` overload
      * (C10 backwards-compat) and for events not emitted by a Step

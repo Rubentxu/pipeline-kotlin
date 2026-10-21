@@ -14,7 +14,6 @@ package dev.rubentxu.pipeline.v2.output
  * [ADR-M1 §D2] gives to exactly one plane. An external consumer (Fabric's console reader) reads
  * committed bytes; it does not reserve, commit, recover or prune.
  *
- * @see ADR-M1 §D3
  */
 interface OutputReadPort {
 

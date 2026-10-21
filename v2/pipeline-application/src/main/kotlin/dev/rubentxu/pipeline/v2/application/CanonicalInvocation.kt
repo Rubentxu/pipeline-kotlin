@@ -144,7 +144,7 @@ object StructuralOverlayProjection {
         if (kind != "CatchErrorEntered" && kind != "CatchErrorTriggered") {
             return StructuralOverlay.None
         }
-        // P3-E D3 — no defaults here. This used to read
+        // no defaults here. This used to read
         //   `?: "UNSTABLE"` for buildResult and `?: buildResult` for stageResult,
         // which is the same fail-open E4c removed from the store: an unreadable field
         // became a semantic claim, and UNSTABLE is the claim that SUPPRESSES the failure

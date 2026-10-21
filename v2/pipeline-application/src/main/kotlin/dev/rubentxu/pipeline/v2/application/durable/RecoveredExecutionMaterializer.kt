@@ -17,7 +17,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
 /**
- * S4-F1-C2 — the GENERIC adapter that turns an observed terminal into a typed Step value.
+ * the GENERIC adapter that turns an observed terminal into a typed Step value.
  *
  * ## The problem this solves, in one sentence
  *

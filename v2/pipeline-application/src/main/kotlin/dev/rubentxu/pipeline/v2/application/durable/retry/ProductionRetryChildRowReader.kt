@@ -9,7 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryChildRowSnapshot
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 
 /**
- * RETRY-D D2.6 — production adapter for [ChildRowReader].
+ * production adapter for [ChildRowReader].
  *
  * Bridges [OperationJournal] to [dev.rubentxu.pipeline.v2.domain.durable.RetryReconciler]
  * via canonical child identities derived from [RetryIdentityFactory] (D2.2).

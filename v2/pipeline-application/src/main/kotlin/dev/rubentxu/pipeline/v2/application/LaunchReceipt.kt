@@ -11,7 +11,7 @@ import kotlinx.serialization.json.buildJsonObject
 import java.nio.file.Path
 
 /**
- * PK-1 / ADR-PK1-IDENTITY + ADR-PK1-LAUNCHRECEIPT-MODES — typed,
+ * typed,
  * machine-verifiable receipt of a pipeline invocation.
  *
  * Emitted on **stdout** as a single line of JSON once the launch
@@ -46,8 +46,6 @@ import java.nio.file.Path
  * authoritative version. Incompatible changes bump to
  * `pipelinek.launch/2`. Consumers MUST parse by [SCHEMA].
  *
- * @see ADR-PK1-IDENTITY for the channel and schema rationale.
- * @see ADR-PK1-LAUNCHRECEIPT-MODES for the durability semantics.
  */
 @Serializable
 data class LaunchReceipt(

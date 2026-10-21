@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.StageDirective
 import dev.rubentxu.pipeline.v2.domain.StageNode
 
 /**
- * S1-B — Stage directive planning: the pure decision half of the engine seam.
+ * Stage directive planning: the pure decision half of the engine seam.
  *
  * The planner turns a stage's declared directives into a typed decision that a
  * coordinator can interpret at the effect boundary. It is a PURE transformation:

@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.domain.directive
 
 /**
- * S2-A — the `when` predicate wire format.
+ * the `when` predicate wire format.
  *
  * This file is the PURE half of S2-A: a sealed predicate ADT, its total
  * encoder, and its total decoder. The bundled directive's NAME and its

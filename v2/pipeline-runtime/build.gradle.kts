@@ -14,7 +14,7 @@ kotlin {
 }
 
 dependencies {
-    // PK-R1 / CRIC-M2 — module split precondition.
+    // module split precondition.
     //
     // `api(:pipeline-runtime-api)`, not `implementation`: the three production
     // adapters (`RuntimeRecoverPortStoreAdapter`, `RuntimeControlPortStoreAdapter`,
@@ -34,7 +34,7 @@ dependencies {
     // value types it cannot resolve at compile time — exactly the failure mode the
     // M1 read-side wires guard against.
     //
-    // PK-R1 / CRIC-M2 — after the split, these two `api` deps are technically
+    // after the split, these two `api` deps are technically
     // reachable transitively from `:pipeline-runtime-api`. They are kept as direct
     // `api` declarations for the (legitimate) `:pipeline-events` / `:pipeline-output`
     // consumption that the adapters do, NOT because the new module forces it: a
@@ -59,7 +59,7 @@ dependencies {
 
 }
 
-// PK-R1 / CRIC-M2 — module split precondition. This `publishing { }` block is
+// module split precondition. This `publishing { }` block is
 // intentionally ORPHANED in this commit: the four M2 ports live in the new
 // `:pipeline-runtime-api` module, NOT in this one. This block keeps a
 // `sdk` publication declared so the publication machinery is wired up if a

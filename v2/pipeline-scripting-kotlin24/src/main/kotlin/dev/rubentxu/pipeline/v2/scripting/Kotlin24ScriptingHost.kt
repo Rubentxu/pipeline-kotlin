@@ -60,8 +60,8 @@ class Kotlin24ScriptingHost(
     /**
      * Host implementation version fed into the cache key.
      *
-     * S0-C1: bumped to 1.1.0 when `-Xreturn-value-checker=check` was added, and
-     * M1-F.1: bumped to 1.2.0 when `-Xuse-fast-jar-file-system=false` was added. In both
+     * bumped to 1.1.0 when `-Xreturn-value-checker=check` was added, and
+     * bumped to 1.2.0 when `-Xuse-fast-jar-file-system=false` was added. In both
      * cases the bump was the ONLY thing invalidating previously compiled scripts, because the
      * options themselves were not part of the key — OBSERVED in S0-C1: the flag was in the
      * binary, yet a script compiled before the change still discarded its result silently.
@@ -77,7 +77,7 @@ class Kotlin24ScriptingHost(
     /**
      * The compiler options the host always passes to the Kotlin scripting host.
      *
-     * M1-F.1: `-Xuse-fast-jar-file-system=false` is mandatory. Kotlin 2.4.10's
+     * `-Xuse-fast-jar-file-system=false` is mandatory. Kotlin 2.4.10's
      * [FastJarFileSystemKt] (in kotlin-stdlib) calls
      * `sun.misc.Unsafe::invokeCleaner`, which on JDK 21+ emits a warning and
      * is scheduled for removal. Disabling the fast jar file system routes
@@ -98,7 +98,7 @@ class Kotlin24ScriptingHost(
         // The annotation is only enforced where the checker is enabled,
         // so other consumers of the DSL library are unaffected.
         "-Xreturn-value-checker=check",
-        // M1-F.1: real elimination of `sun.misc.Unsafe::invokeCleaner`
+        // real elimination of `sun.misc.Unsafe::invokeCleaner`
         // calls from Kotlin 2.4.10's [FastJarFileSystemKt]. Routes jar
         // reads through the legacy `JarFile` path, which does not
         // touch Unsafe. See the field KDoc above.
@@ -163,7 +163,7 @@ class Kotlin24ScriptingHost(
         // imports, the per-call classpath and the gate flag are all declared in
         // the same builder — so there is still a single source of truth for how
         // a `.pipeline.kts` is compiled.
-        // S0-C1 / TRAIN-DSL-HONESTY: a fail-closed DSL guard that throws while
+        // a fail-closed DSL guard that throws while
         // the script BODY is being built (e.g. the Pure Builder Consumption
         // gate rejecting an unconsumed MUST_CONSUME carrier) escapes the entry
         // point as a plain exception, BEFORE the evaluator can wrap it in
@@ -243,7 +243,7 @@ class Kotlin24ScriptingHost(
             @Suppress("UNCHECKED_CAST")
             val evalResult = rwd.value as kotlin.script.experimental.api.EvaluationResult
 
-            // TRAIN-DSL-HONESTY: a script body that throws during DSL
+            // a script body that throws during DSL
             // construction (any `require(false)` in a stage body, or a
             // fail-closed DSL guard such as `whenCondition`) surfaces here as a
             // ResultValue.Error while `rwd` still reports Success. Mapping that
@@ -304,7 +304,7 @@ class Kotlin24ScriptingHost(
     }
 
     /**
-     * S0-C1: reports a body-build throwable as an honest compilation failure:
+     * reports a body-build throwable as an honest compilation failure:
      * emits the CompilationFinished diagnostic and returns Failure with the
      * author's message verbatim. See the catch-site comment in [compile].
      */

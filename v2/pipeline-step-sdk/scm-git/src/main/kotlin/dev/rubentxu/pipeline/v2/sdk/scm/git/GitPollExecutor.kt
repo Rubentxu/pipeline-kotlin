@@ -20,7 +20,7 @@ import java.util.UUID
  * Structured argv — no secrets in args. Honors inherited env from
  * GitCredentialsApplier (GIT_CONFIG_GLOBAL + HOME for credential helper).
  *
- * INV-L5-CR-006: synchronous poll, no daemon.
+ * synchronous poll, no daemon.
  *
  * @param timeoutSeconds max wait for git command (default 30)
  */

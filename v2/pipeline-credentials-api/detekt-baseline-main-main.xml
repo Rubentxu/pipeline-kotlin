@@ -1,0 +1,16 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:StreamingRedactor.kt:StreamingRedactor.RedactingInputStream$override fun read: Int</ID>
+    <ID>ImplicitDefaultLocale:SecretPatternRegistry.kt:SecretPatternRegistry$"%02X".format(it)</ID>
+    <ID>ImplicitDefaultLocale:SecretPatternRegistry.kt:SecretPatternRegistry$"%02x".format(it)</ID>
+    <ID>UnusedImport:RedactingEventSink.kt:import dev.rubentxu.pipeline.v2.domain.SecretHandle</ID>
+    <ID>UnusedImport:StreamingRedactor.kt:import java.util.ArrayDeque</ID>
+    <ID>UnusedPrivateProperty:CredentialScope.kt:CredentialScope$private val bindings: List&lt;CredentialsBinding&gt;</ID>
+    <ID>UnusedPrivateProperty:StreamingRedactor.kt:StreamingRedactor$private val registry: SecretPatternRegistry</ID>
+    <ID>UseCheckOrError:CredentialScope.kt:CredentialsBinding$throw IllegalStateException("String binding missing variable name")</ID>
+    <ID>UseCheckOrError:CredentialScope.kt:CredentialsBinding$throw IllegalStateException("UsernamePassword binding missing passwordVariable")</ID>
+    <ID>UseCheckOrError:CredentialScope.kt:CredentialsBinding$throw IllegalStateException("UsernamePassword binding missing usernameVariable")</ID>
+  </CurrentIssues>
+</SmellBaseline>

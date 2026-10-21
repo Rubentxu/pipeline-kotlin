@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 
 /**
- * S4-F1-C2 — the ADDITIVE, Step-owned capability for materialising a recovered terminal.
+ * the ADDITIVE, Step-owned capability for materialising a recovered terminal.
  *
  * ## Why this exists, and why it is an interface and not a field on [StepContract]
  *

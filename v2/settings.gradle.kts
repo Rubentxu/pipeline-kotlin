@@ -15,9 +15,9 @@ pluginManagement {
         // the plugin cannot be re-applied by accident. Reintroducing a compiler layer that
         // writes Step metadata is pinned by NoSecondStepMetadataAuthorityFitnessTest.
         id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
-        // WU-RP-040 R4: selective mutation testing (codecs/policies only).
+        // selective mutation testing (codecs/policies only).
         id("info.solidsoft.pitest") version "1.19.0"
-        // WU-RP-040 R5: SAST. detekt 2.0.0-alpha.6 = Kotlin 2.4.10 compatible.
+        // SAST. detekt 2.0.0-alpha.6 = Kotlin 2.4.10 compatible.
         id("dev.detekt") version "2.0.0-alpha.6"
     }
 }
@@ -33,7 +33,7 @@ rootProject.name = "pipeline-v2"
 include(
     ":pipeline-domain",
     ":pipeline-application",
-    // DIST-PRODUCT P0: product identity, distribution manifest, candidate
+    // product identity, distribution manifest, candidate
     // handoff and the cheap identity gate. Pure contract plus the ZIP probe;
     // the build wires the gate at candidate materialization.
     //
@@ -72,7 +72,7 @@ include(
     // published artifact carries no writer, no recovery entry point and no filesystem authority.
     // Not published, and deliberately so: see its build script.
     ":pipeline-output-store",
-    // PK-R1 / CRIC-M2 — module split precondition (NOT a publication).
+    // module split precondition (NOT a publication).
     //
     // `:pipeline-runtime-api` holds the four M2 verbs (RuntimeRecoverPort /
     // RuntimeControlPort / RuntimeIntrospectionPort) plus the public pure decider

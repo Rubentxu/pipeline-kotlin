@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.domain.durable
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 
 /**
- * LB-02 / G3-A4.3 — marker interface for Step-produced outputs that carry a canonical
+ * marker interface for Step-produced outputs that carry a canonical
  * [StepOutcome] alongside the durable payload.
  *
  * The pre-decode durable substrate [OperationOutput] stays untouched: it represents ONLY
@@ -27,7 +27,7 @@ interface TypedStepOutput {
 }
 
 /**
- * S4-D2 — the ONE authority for `typed output -> StepOutcome`.
+ * the ONE authority for `typed output -> StepOutcome`.
  *
  * This is the rule `CommonExecutionBoundary` has always applied inline:
  * `(produced as? TypedStepOutput)?.outcome ?: StepOutcome.Success`. It is extracted here,

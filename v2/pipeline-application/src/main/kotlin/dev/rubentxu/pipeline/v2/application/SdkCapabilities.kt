@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 /**
- * PK-1 / ADR-PK1-IDENTITY — the registry of SDK capabilities the
+ * the registry of SDK capabilities the
  * current build advertises.
  *
  * Source of truth for which [Capability] IDs the runtime knows. The
@@ -13,7 +13,6 @@ package dev.rubentxu.pipeline.v2.application
  * [SdkCapabilitiesRegistryTest]: adding or removing a capability
  * requires updating both this registry AND the test.
  *
- * @see ADR-PK1-IDENTITY for the design rationale.
  */
 object SdkCapabilities {
     /** All 11 capabilities shipped as of the v0.55.0-rc1 chain close. */

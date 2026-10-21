@@ -7,7 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 import kotlin.ConsistentCopyVisibility
 
 /**
- * LB-02 / G3-A4.3 — typed output carrier for `core.error` handlers.
+ * typed output carrier for `core.error` handlers.
  *
  * S2-A1 / G3-A4.3 amendment: the handler does NOT throw to signal a typed failure (handler
  * MUST NOT throw to signal a step failure per the Step Constitution); it returns this carrier,

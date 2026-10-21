@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.step.PipelineKApiRange
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
 
 /**
- * PK-RC-PLUGIN-001 — the loader for the policy-derived compatibility resource.
+ * the loader for the policy-derived compatibility resource.
  *
  * <h2>Why this exists</h2>
  *

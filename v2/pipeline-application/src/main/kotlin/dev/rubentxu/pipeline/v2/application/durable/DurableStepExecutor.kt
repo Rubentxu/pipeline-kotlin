@@ -10,7 +10,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * WU-RP-031 E4: effective-execution block extracted from [CanonicalDurableRunCoordinator]
+ * effective-execution block extracted from [CanonicalDurableRunCoordinator]
  * (the Execute branch of the dispatch reconciliation). This is the ONLY code that invokes
  * the effective executor: beginOperation, the [StepExecutionBoundary]-wrapped
  * [CommonExecutionBoundary] call, the terminal journal write and the cursor advance

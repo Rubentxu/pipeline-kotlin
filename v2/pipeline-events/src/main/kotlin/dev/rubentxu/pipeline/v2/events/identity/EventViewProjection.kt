@@ -4,7 +4,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
 /**
- * WU-LPR-050 — Read-side projection of an event history query.
+ * Read-side projection of an event history query.
  *
  * ## CORRECTION (M1-P3). This KDoc was false and said so at length.
  *

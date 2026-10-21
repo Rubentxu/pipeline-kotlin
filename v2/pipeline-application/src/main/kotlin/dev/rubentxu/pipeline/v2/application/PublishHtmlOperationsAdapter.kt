@@ -51,7 +51,7 @@ class PublishHtmlOperationsAdapter(
     /** WU-LPR-062 parity: optional project-workspace override (--workspace). */
     private val workspaceBase: Path? = null,
     /**
-     * RP034-F: the shared execution location. `null` keeps the previous
+     * the shared execution location. `null` keeps the previous
      * reconstruction for direct construction; the bridge always supplies it and
      * retiring the fallback is RP034-I.
      */
@@ -61,7 +61,7 @@ class PublishHtmlOperationsAdapter(
     /**
      * The directory `reportDir` is resolved against.
      *
-     * RP034-F: the report directory is a user path, so it anchors on
+     * the report directory is a user path, so it anchors on
      * CURRENT_DIRECTORY and a `dir(...)` scope moves it. With no scope this is
      * the stage workspace — what the private resolver returned — so behaviour
      * at the root is unchanged. The published archive is a separate durable

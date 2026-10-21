@@ -28,7 +28,7 @@ import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * M1-P3 — the consumable read side: console output, addressed by [OutputCursor].
+ * the consumable read side: console output, addressed by [OutputCursor].
  *
  * ## What this is for
  *
@@ -821,7 +821,7 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
 }
 
 /**
- * M1-P3 — the console reader CLI.
+ * the console reader CLI.
  *
  * ```text
  * pipeline console --control-dir <path> <runId> <opId> [--max-bytes N] [--after-cursor TOKEN]
@@ -1628,7 +1628,7 @@ object MainConsoleCli {
     /**
  * The stream id a consumer is handed for one operation's console.
  *
- * OBS-C2.3: the console is the operation's channel-addressed streams, and a reader that wants one
+ * the console is the operation's channel-addressed streams, and a reader that wants one
  * channel asks for it by name. This stays a single helper so the shape is minted in ONE place — the
  * same reason [OutputStreamAddress.parse] reads it back from the two ends.
  */

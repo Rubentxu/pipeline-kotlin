@@ -70,7 +70,7 @@ class JUnitResultsStepDefinition : StepDefinition<JUnitResultsInput, JUnitResult
         ),
         inputCodec = JUnitResultsInputCodec,
         outputCodec = JUnitResultsOutputCodec,
-        // WU-LPR-WC: the handler reads the canonical workspace root from
+        // the handler reads the canonical workspace root from
         // the typed WORKSPACE_IDENTITY_CAPABILITY seam. The capability
         // admission is fail-closed before the handler runs when the
         // runtime context does not supply it. The historical
@@ -81,7 +81,7 @@ class JUnitResultsStepDefinition : StepDefinition<JUnitResultsInput, JUnitResult
     )
 
     override val handler = StepHandler<JUnitResultsInput, JUnitResultsOutput> { input, ctx ->
-        // WU-LPR-WC: read the canonical workspace root from the typed
+        // read the canonical workspace root from the typed
         // capability seam. The capability access is fail-closed: the
         // boundary re-checks the declared capabilities before the
         // handler runs and throws EngineInvariantViolation if any are
@@ -113,7 +113,7 @@ class JUnitResultsStepDefinition : StepDefinition<JUnitResultsInput, JUnitResult
             Files.isDirectory(configured) -> configured
             else -> capabilityWorkspaceRoot
         }
-        // RP034-I: the developer-escape hatch is gone. When no usable base was
+        // the developer-escape hatch is gone. When no usable base was
         // selected, the run is malformed — falling back to
         // `System.getProperty("pipeline.workspace.root") ?: user.dir` made a
         // broken context silently resolve against whatever directory the JVM

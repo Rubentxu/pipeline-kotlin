@@ -24,7 +24,7 @@ class EnvelopeProjectingEventSink(
     }
 
     /**
-     * WU-LPR-105: the projection consumes the store's explicit write-side
+     * the projection consumes the store's explicit write-side
      * acknowledgement (`appendAssigned` returns the ASSIGNED event) and never
      * re-reads the read model to discover write metadata. The previous
      * `eventsFor(...) ?: event.sequence` fallback published sequence=0

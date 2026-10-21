@@ -29,7 +29,7 @@ val WHEN_DIRECTIVE_KEY: DirectiveKey = DirectiveKey("core.when")
  * script would declare a key nothing resolves — which is exactly the defect the
  * predicate codec already guards against for `when`.
  *
- * S3-R1-D: this paragraph used to say the key was "NOT yet registered" by a
+ * this paragraph used to say the key was "NOT yet registered" by a
  * [dev.rubentxu.pipeline.v2.domain.directive.DirectiveDefinition], that "the
  * definition, the resolver and the interpreter do not [exist]", and that "the
  * DSL still throws". All three were false from S3.1 onward and had been read as

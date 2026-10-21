@@ -54,7 +54,7 @@ class AntStyleGlob private constructor(internal val patternList: List<String>) {
     companion object {
         /**
          * Jenkins 13-entry default excludes (verbatim from Jenkins `archiveArtifacts` page).
-         * INV-L6-ANT-001: this list must remain exactly 13 entries.
+         * this list must remain exactly 13 entries.
          */
         val DEFAULT_EXCLUDES: List<String> = listOf(
             "**/.git/**",

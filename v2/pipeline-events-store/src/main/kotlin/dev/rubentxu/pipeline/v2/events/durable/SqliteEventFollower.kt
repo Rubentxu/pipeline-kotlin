@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.events.follow.EventFollowOptions
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort
 
 /**
- * M1-C — production [EventFollower] backed by the real
+ * production [EventFollower] backed by the real
  * [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort] (the M1-A
  * read port) composed with the existing event-store authority.
  *

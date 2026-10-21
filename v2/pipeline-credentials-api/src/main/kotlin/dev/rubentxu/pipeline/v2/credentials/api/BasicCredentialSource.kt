@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
 /**
- * H5-B — the contract a plugin uses to turn a credential NAME into a username and a
+ * the contract a plugin uses to turn a credential NAME into a username and a
  * password, and the runtime's obligation to supply it.
  *
  * ## Why this contract lives here and not in the plugin that wants it

@@ -279,7 +279,7 @@ internal class ExternalSubprocessRecovery(
     }
 
     /**
-     * S4-F1-C1 — the facts a terminated process left behind, and the whole of what this observer
+     * the facts a terminated process left behind, and the whole of what this observer
      * knows about its VALUE.
      *
      * Two reads, no interpretation:

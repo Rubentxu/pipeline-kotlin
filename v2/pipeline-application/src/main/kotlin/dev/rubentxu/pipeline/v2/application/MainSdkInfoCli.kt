@@ -8,7 +8,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * PK-1 / ADR-PK1-IDENTITY — `pipeline sdk-info` subcommand.
+ * `pipeline sdk-info` subcommand.
  *
  * Emits the SDK manifest the current build was compiled against on
  * stdout as a single line of `pipelinek.sdk/1` JSON. The output is

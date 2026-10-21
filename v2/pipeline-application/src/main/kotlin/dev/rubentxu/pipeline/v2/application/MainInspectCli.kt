@@ -495,7 +495,7 @@ object MainInspectCli {
     /**
      * Parse the option args (run id consumed upstream) into a [CompiledInspectionQuery].
      *
-     * CC-1 / R4 / WU-R4.7 — delegates to [CliParser.parseInspect]; the body that used to live here
+     * delegates to [CliParser.parseInspect]; the body that used to live here
      * moved into [CliParser] as part of the four-verb parser unification. This signature stays so the
      * existing test surface (`MainInspectCli.parseInspect`) keeps compiling without changes.
      * `MainInspectCli.parseInspect` is the test seam; `CliParser.parseInspect` is the production

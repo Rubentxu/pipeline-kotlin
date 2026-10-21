@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.output.OutputTailState
 import java.io.Writer
 
 /**
- * OBS-E4: the run-time half of the read model — a drain that keeps up with a run IN PROGRESS.
+ * the run-time half of the read model — a drain that keeps up with a run IN PROGRESS.
  *
  * ```text
  * process stdout/stderr -> OutputIngress -> SegmentOutputStore (committed)

@@ -52,7 +52,7 @@ internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlockin
     val state = request.state
     val policy = request.policy
     CanonicalDurableRunCoordinator(
-        // P3-B/P3-C: the ONE registry this run resolves plugin event kinds against, on the write
+        // the ONE registry this run resolves plugin event kinds against, on the write
         // side and on the read-back side. S6/G: resolved in PluginComposition, before this
         // function was called, and already cross-checked against what the plugins emit.
         eventRegistry = request.composition.events,
@@ -82,7 +82,7 @@ internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlockin
         controlDirRoot = policy.controlDirRoot,
         workspaceBase = policy.workspace.base,
         shOptions = ShOptions(
-            // WU-LPR-071: with --workspace <dir>, the project's own directory IS the
+            // with --workspace <dir>, the project's own directory IS the
             // workspace — stages share it (Jenkins-familiar semantics). Adding
             // .resolve("workspace") would point to a subdirectory of the project root
             // (typically nonexistent), and every `sh` step would fail with
@@ -94,11 +94,11 @@ internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlockin
             timeoutMs = null,
             env = emptyMap(),
             sandbox = SandboxConfigResolver.resolve(policy.sandboxProfile),
-            // RP034-Id: carry the ownership the CLI decided (ADR-0101) into the
+            // carry the ownership the CLI decided (ADR-0101) into the
             // runtime transport, so the ADR-0102 destructive guard reads the real
             // owner of this root instead of re-deriving `Managed`.
             workspaceOwnership = policy.workspace.ownership,
-            // RP6-C / LFC-2E3: egress is DENIED unless the operator asked for it
+            // egress is DENIED unless the operator asked for it
             // with --allow-network. The bridge turns this gate into the generic
             // NETWORK_EGRESS_CAPABILITY, and a Step that needs the network declares
             // it — so the default run cannot reach one.
@@ -155,7 +155,7 @@ internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlockin
         // which is what keeps "open by key" honest. If either had needed its own registration
         // path, the seam would not be open.
         directiveRegistry = request.composition.directives,
-        // S2-A: gates read the environment the STAGE actually declares, plus
+        // gates read the environment the STAGE actually declares, plus
         // the process environment for names the stage names explicitly.
         //
         // The stage's own `environment { env(...) }` block is the source of

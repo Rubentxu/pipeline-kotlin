@@ -1,0 +1,256 @@
+package dev.rubentxu.pipeline.v2.sdk.api
+
+import dev.rubentxu.pipeline.v2.domain.BlockNestingConstants
+import dev.rubentxu.pipeline.v2.dsl.StepSpec
+
+/**
+ * Thrown when block nesting depth exceeds the Jenkins CPS continuation limit (3).
+ */
+class BlockNestingDepthExceededException(
+    val depth: Int,
+    val maxDepth: Int = BlockNestingConstants.MAX_BLOCK_DEPTH,
+) : RuntimeException("Block nesting depth $depth exceeds maximum $maxDepth")
+
+/**
+ * Result of flattening a block step — a step with its depth and block path.
+ *
+ * @property spec The step specification
+ * @property depth Nesting depth (0 = top-level, 1 = inside one block, etc.)
+ * @property blockPath Dot-separated path of block indices from root (e.g., "0.1.2")
+ */
+data class FlattenedStep(
+    val spec: StepSpec,
+    val depth: Int,
+    val blockPath: String,
+)
+
+/**
+ * Result of indexing a block tree — a step with its execution index and block path.
+ *
+ * @property spec The step specification
+ * @property stepIndex Monotonically increasing index in execution order
+ * @property depth Nesting depth (0 = top-level)
+ * @property blockPath Dot-separated path of block indices from root
+ */
+data class IndexedStep(
+    val spec: StepSpec,
+    val stepIndex: Int,
+    val depth: Int,
+    val blockPath: String,
+)
+
+/**
+ * Block-step flattener and indexer.
+ *
+ * Provides three operations:
+ * 1. [flatten] — expand any block step (WithEnv, Parallel, WithCredentialsBlock, etc.)
+ *    into a flat list of [FlattenedStep] with depth and block-path metadata.
+ * 2. [index] — assign monotonic step indices to the flattened view.
+ * 3. [depthGuard] — validate that no block exceeds nesting depth 3.
+ *
+ * The flattener is generic: it handles ANY [StepSpec] that carries a `steps: List<StepSpec>`
+ * field, not just [StepSpec.WithEnv].
+ *
+ * Design: D1, D2 (ADR-0052 §D1/D2)
+ * R-1 mitigation: extracted before new step kinds land, locks shape for ml-r10..r13
+ *
+ * ## Extensibility
+ *
+ * When a new block-type [StepSpec] is added (e.g., [StepSpec.Dir], [StepSpec.TimeoutBlock],
+ * [StepSpec.RetryBlock]), add a `when` branch here BEFORE the terminal-cases section.
+ * The terminal-cases `else` branch ensures exhaustive matching even for not-yet-existent types.
+ */
+object BlockStepFlattener {
+
+    /**
+     * Maximum block nesting depth per Jenkins CPS continuation limit.
+     *
+     * Delegates to [BlockNestingConstants.MAX_BLOCK_DEPTH] (single source of truth).
+     * Retained as const for binary compatibility with existing consumers.
+     */
+    const val MAX_BLOCK_DEPTH = BlockNestingConstants.MAX_BLOCK_DEPTH
+
+    /**
+     * Flattens a step tree into a list of [FlattenedStep].
+     *
+     * Recursively expands any step that has nested `steps: List<StepSpec>`.
+     * Terminal steps (Echo, Shell, Sleep, etc.) are returned as-is at their depth.
+     *
+     * @param root The root step to flatten
+     * @param depth Current nesting depth (incremented when entering a block)
+     * @param blockPath Dot-separated block index path from root
+     * @return List of [FlattenedStep] in execution order
+     */
+    fun flatten(root: StepSpec, depth: Int = 0, blockPath: String = ""): List<FlattenedStep> {
+        val result = mutableListOf<FlattenedStep>()
+        flattenImpl(root, depth, blockPath, result)
+        return result
+    }
+
+    private fun flattenImpl(
+        step: StepSpec,
+        depth: Int,
+        blockPath: String,
+        result: MutableList<FlattenedStep>,
+    ) {
+        // A slot is authoring sugar: the step it names IS the step, and the name is an
+        // address rather than a level of nesting. So the tree keeps showing the real
+        // steps — the name lives in the compiled node, where the engine reads it.
+        if (step is StepSpec.Slot) {
+            flattenImpl(step.step, depth, blockPath, result)
+            return
+        }
+
+        result.add(FlattenedStep(step, depth, blockPath))
+
+        // Recurse into nested steps for any block-type step
+        when (step) {
+            // Registry step is a leaf: no nested body to flatten (LB-02 / EP-F2).
+            is StepSpec.RegistryStepSpec -> {}
+            // registry Block form owns a body — flatten children like any block.
+            is StepSpec.RegistryBlockSpec -> {
+                flattenChildren(step.body, depth, blockPath, result)
+            }
+            is StepSpec.WithEnv -> {
+                flattenChildren(step.steps, depth, blockPath, result)
+            }
+            is StepSpec.Parallel -> {
+                for ((idx, branch) in step.branches.withIndex()) {
+                    val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
+                    for ((innerIdx, inner) in branch.steps.withIndex()) {
+                        val innerPath = if (childPath.isEmpty()) "$innerIdx" else "$childPath.$innerIdx"
+                        flattenImpl(inner, depth + 1, innerPath, result)
+                    }
+                }
+            }
+            is StepSpec.WithCredentialsBlock -> {
+                flattenChildren(step.steps, depth, blockPath, result)
+            }
+            // --- ML-R9 block-type steps (T-04..T-10) ---
+            is StepSpec.Dir -> {
+                flattenChildren(step.steps, depth, blockPath, result)
+            }
+            is StepSpec.CatchError -> {
+                flattenChildren(step.steps, depth, blockPath, result)
+            }
+            is StepSpec.WarnError -> {
+                flattenChildren(step.steps, depth, blockPath, result)
+            }
+            // ML-R9 T-08 output-decorators
+            is StepSpec.Timestamps -> {
+                flattenChildren(step.steps, depth, blockPath, result)
+            }
+            is StepSpec.AnsiColor -> {
+                flattenChildren(step.steps, depth, blockPath, result)
+            }
+            is StepSpec.NodeNoOp -> {
+                flattenChildren(step.steps, depth, blockPath, result)
+            }
+            // ML-R9 T-09 milestone
+            is StepSpec.Milestone -> {
+                // Milestone has no nested steps
+            }
+            // ML-R9 T-10 timeout/retry blocks
+            is StepSpec.TimeoutBlock -> {
+                flattenChildren(step.steps, depth, blockPath, result)
+            }
+            is StepSpec.RetryBlock -> {
+                flattenChildren(step.steps, depth, blockPath, result)
+            }
+            // core.lock is a body-bearing block step — its body
+            // flattens like any other block (G3.6 inventory: this exhaustive `when`
+            // is the consumer a new sealed case BREAKS at source level, which is
+            // exactly why the compiler caught it).
+            is StepSpec.Lock -> {
+                flattenChildren(step.steps, depth, blockPath, result)
+            }
+            // core.input is body-bearing for the same reason: the
+            // body is conditional (it runs only on a Proceed), so it must flatten
+            // like any other block rather than disappear.
+            is StepSpec.Input -> {
+                flattenChildren(step.steps, depth, blockPath, result)
+            }
+            // --- Terminal steps — no recursion ---
+            is StepSpec.Echo,
+            is StepSpec.Shell,
+            is StepSpec.Sleep,
+            is StepSpec.Error,
+            is StepSpec.Checkout,
+            is StepSpec.WriteFile,
+            is StepSpec.ReadFile,
+            is StepSpec.FileExists,
+            is StepSpec.ArchiveArtifacts,
+            // E1.1 / T7: artifactQuery is a terminal leaf (registry step with no body)
+            is StepSpec.ArtifactQuery,
+            is StepSpec.DeleteDir,
+            is StepSpec.CleanWs,
+            is StepSpec.Unstable,
+            is StepSpec.Pwd,
+            is StepSpec.IsUnix,
+            is StepSpec.Load -> {
+                // Terminal step: nothing to flatten.
+            }
+            is dev.rubentxu.pipeline.v2.dsl.StepSpec.WaitUntilBlock -> {
+                // Body-bearing — recurse into the captured body steps.
+                flattenChildren(step.body, depth, blockPath, result)
+            }
+            is StepSpec.Slot -> {
+                // Unreachable: a slot is unwrapped before this point. The branch exists so
+                // that the exhaustiveness of this dispatch stays a compile-time fact, and it
+                // fails loudly rather than silently dropping the step if that ever changes.
+                error("A slot is unwrapped before the flattening dispatch")
+            }
+        }
+    }
+
+    /**
+     * The children of a block-type step, one level deeper.
+     *
+     * The child path is the index of the child among its siblings, so the flattened tree can
+     * be walked back to the step it came from.
+     */
+    private fun flattenChildren(
+        children: List<StepSpec>,
+        depth: Int,
+        blockPath: String,
+        result: MutableList<FlattenedStep>,
+    ) {
+        for ((idx, inner) in children.withIndex()) {
+            val childPath = if (blockPath.isEmpty()) "$idx" else "$blockPath.$idx"
+            flattenImpl(inner, depth + 1, childPath, result)
+        }
+    }
+
+    /**
+     * Indexes a step tree, assigning monotonic step indices.
+     *
+     * @param root The root step to index
+     * @return List of [IndexedStep] in execution order with stepIndex assigned
+     */
+    fun index(root: StepSpec): List<IndexedStep> {
+        val flattened = flatten(root)
+        var currentIndex = 0
+        return flattened.map { flatted ->
+            IndexedStep(
+                spec = flatted.spec,
+                stepIndex = currentIndex++,
+                depth = flatted.depth,
+                blockPath = flatted.blockPath,
+            )
+        }
+    }
+
+    /**
+     * Validates that the step tree does not exceed maximum block nesting depth.
+     *
+     * @param root The root step to validate
+     * @throws BlockNestingDepthExceededException if depth exceeds [MAX_BLOCK_DEPTH]
+     */
+    fun depthGuard(root: StepSpec) {
+        val flattened = flatten(root)
+        val maxDepth = flattened.maxOfOrNull { it.depth } ?: 0
+        if (maxDepth > MAX_BLOCK_DEPTH) {
+            throw BlockNestingDepthExceededException(maxDepth, MAX_BLOCK_DEPTH)
+        }
+    }
+}

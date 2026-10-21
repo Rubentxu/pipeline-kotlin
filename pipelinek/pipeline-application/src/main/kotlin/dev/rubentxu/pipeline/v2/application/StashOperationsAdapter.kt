@@ -41,7 +41,7 @@ class StashOperationsAdapter(
     /** WU-LPR-062 parity: optional project-workspace override (--workspace). */
     private val workspaceBase: Path? = null,
     /**
-     * RP034-E / ADR-0100: the shared execution location.
+     * the shared execution location.
      *
      * `stash` and `unstash` operate on the current directory (anchor matrix),
      * so they must read the same location every other workspace-aware Step
@@ -73,7 +73,7 @@ class StashOperationsAdapter(
     override fun stash(input: StashInput): StashResult {
         val workspaceRoot = sourceRoot()
 
-        // WU-RP-012 — paths confinement for stash.
+        // paths confinement for stash.
         // Resolve the workspace's real path so we can detect symlinks that
         // escape (or point to an external location) at any level.
         val workspaceRootReal: Path = try {
@@ -121,7 +121,7 @@ class StashOperationsAdapter(
             return StashFailed(failureKind = FailureKind.SCRIPT, message = reason)
         }
 
-        // WU-RP-012 — symlink filter. After AntStyleGlob.match (which uses
+        // symlink filter. After AntStyleGlob.match (which uses
         // Files.walk with FOLLOW_LINKS=true), every `matched` path may resolve
         // to an external target via a symlink. We reject:
         //   (a) any matched path that IS a symlink (refuses to copy symlink targets);
@@ -228,7 +228,7 @@ class StashOperationsAdapter(
             return StashFailed(failureKind = FailureKind.USER, message = reason)
         }
 
-        // WU-RP-012 — paths confinement for unstash.
+        // paths confinement for unstash.
         // The stashRoot itself MUST NOT be a symlink (otherwise the walk below
         // could follow it). Resolve real paths for both stashRoot and workspaceRoot.
         val stashRootReal: Path = try {
@@ -296,7 +296,7 @@ class StashOperationsAdapter(
 
         return try {
             val entries = mutableListOf<RestoredEntry>()
-            // WU-RP-012 — symlink filter on the source. Files.walk with the
+            // symlink filter on the source. Files.walk with the
             // JVM default FOLLOW_LINKS=true would expose files from a
             // symlink-to-file (which `Files.isRegularFile` returns true for
             // because it follows the link). Refuse any regular file that is

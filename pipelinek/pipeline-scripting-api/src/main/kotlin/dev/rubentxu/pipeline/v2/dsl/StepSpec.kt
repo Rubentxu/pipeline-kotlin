@@ -56,7 +56,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     }
 
     /**
-     * P3-E E4 — [failureKind] defaults to [FailureKind.USER], not `UNKNOWN`.
+     * [failureKind] defaults to [FailureKind.USER], not `UNKNOWN`.
      *
      * `error("msg")` is a deliberate, human-authored abort: somebody wrote it, on purpose,
      * with a message. `USER` is what that is. `UNKNOWN` means "this runtime could not
@@ -69,7 +69,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      * the default used to be the one value that could only ever have come from nobody
      * choosing.
      *
-     * P3-E E6 — [failureKind] is now [FailureKind], not a [String].
+     * [failureKind] is now [FailureKind], not a [String].
      *
      * As a String, a typo compiled. `error("boom", "USR")` produced a pipeline that ran, and
      * only failed when `CoreErrorStep`'s decoder reached a token outside the vocabulary — a
@@ -296,7 +296,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
             "remains as the rewrite's input shape; do not introduce new direct uses.",
     )
     data class CatchError(
-        // P3-E D3: typed at authoring. `FailureKind` on Error did the same for error handling;
+        // typed at authoring. `FailureKind` on Error did the same for error handling;
         // catchError had the identical shape of defect — a free string that only a runtime
         // `else` ever read — and it was the worse of the two, because that `else` SUPPRESSED
         // the failure. No String overload is kept on purpose: two spellings for one decision,

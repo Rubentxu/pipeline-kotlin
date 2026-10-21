@@ -57,19 +57,19 @@ private val HELP_TOKENS = setOf("--help", "-h", "help")
  * stops here either way.
  */
 internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
-    // WU-LPR-011 F1: `version` is a real subcommand. Reports the CLI version from the build-generated
+    // `version` is a real subcommand. Reports the CLI version from the build-generated
     // version resource (authoritative source = project.version) and exits 0.
-    // WU-LPR-071: the version MUST be produced by the build from project.version. The legacy
+    // the version MUST be produced by the build from project.version. The legacy
     // "0.1.0-SNAPSHOT" sentinel is removed: if the generated resource is missing, that is a packaging
     // defect, NOT a fallback case.
     // Fail-closed: print an explicit error and exit non-zero so CI cannot ship an
     // unversioned artifact.
     if (args.firstOrNull() == "version" && args.getOrNull(1) != "--json") {
-        // S6-COMPOSITION: ONE authority for "what version is this". Admission reads the same value
+        // ONE authority for "what version is this". Admission reads the same value
         // through RuntimeApiVersion, so the number a plugin is judged against and the number the
         // CLI reports cannot come from two readers free to disagree.
         //
-        // S6-COMPOSITION: the source moved from the jar manifest to a generated RESOURCE, because
+        // the source moved from the jar manifest to a generated RESOURCE, because
         // 34 harnesses run the CLI from a classes directory where Package.getImplementationVersion()
         // is null. The manifest attribute is still populated for pipeline-release and external
         // inspection, and RuntimeApiVersionDriftTest fails if the two ever diverge.
@@ -113,7 +113,7 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
         return true
     }
 
-    // PK-1 / ADR-PK1-IDENTITY: `capabilities` is a real subcommand.
+    // `capabilities` is a real subcommand.
     // Emits `pipelinek.capabilities/1` JSON line on stdout; side-effect
     // free. Machine-verifiable surface for external consumers.
     if (args.firstOrNull() == "capabilities") {
@@ -122,7 +122,7 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
         return true
     }
 
-    // PK-1 / ADR-PK1-IDENTITY: `sdk-info` is a real subcommand.
+    // `sdk-info` is a real subcommand.
     // Emits `pipelinek.sdk/1` JSON line on stdout; side-effect free.
     if (args.firstOrNull() == "sdk-info") {
         val exitCode = MainSdkInfoCli.main(args.drop(1).toTypedArray())
@@ -130,11 +130,11 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
         return true
     }
 
-    // WU-LPR-011 F1: `doctor` is a real subcommand. Local-only health
+    // `doctor` is a real subcommand. Local-only health
     // diagnostics: JDK version, working directory writability probe. Exits
     // 0 when the local runtime is healthy, 2 on an environment defect.
     if (args.firstOrNull() == "doctor") {
-        // WU-LPR-071: route host-environment reads through the canonical
+        // route host-environment reads through the canonical
         // RuntimeConfig adapter (single authority); direct System.getProperty
         // here would be a second runtime-value authority (WULpr402 property 6).
         val runtimeConfig = dev.rubentxu.pipeline.v2.application.SystemRuntimeConfig()

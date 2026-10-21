@@ -94,7 +94,7 @@ internal fun compileScriptForRun(
     } else null
 
     val failure: RunOutcome.Failure? = if (result is ScriptCompilationResult.Failure) {
-        // TRAIN-DSL-HONESTY: evaluation failures (any exception thrown while the DSL
+        // evaluation failures (any exception thrown while the DSL
         // body constructs its IR, including the fail-closed rejections of
         // whenCondition/retry) arrive here as a Failure. The user's own diagnostic
         // message must survive instead of becoming an anonymous NPE.

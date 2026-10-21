@@ -145,6 +145,11 @@ class SagaCompensationInterpreterTest {
         slotInvoker = slots,
         eventSink = events,
         clock = FixedClock,
+        // These tests are about the loop, not about the body the promise names: they arm
+        // promises that name no body, so there is nothing to compare and every compensation
+        // runs. The body check has its own tests.
+        bodies = null,
+        promisedBodies = SagaPromisedBodyReader { null },
     )
 
     /**

@@ -465,6 +465,10 @@ object SagaChainStepDefinition : StepDefinition<SagaChainInput, SagaChainOutput>
             planFingerprint = SagaPlanFingerprint.compute(sagaId, plan),
             resourceRef = plan.resourceRef,
             kind = plan.kind,
+            // The body that will undo the effect. The chain owns that body — it is a child of
+            // this step's own body — so the engine can measure it and check, later, that the
+            // body that runs is the body that was promised.
+            compensateSlot = plan.compensateSlot,
         )
     }
 

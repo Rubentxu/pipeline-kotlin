@@ -178,6 +178,22 @@ enum class InterventionReason {
     COMPENSATION_NOT_DISPATCHED,
 
     /**
+     * The compensation was NOT dispatched, because the body that would run is not the body the
+     * promise named.
+     *
+     * The promise says which body will undo the effect. If the body that is about to run is a
+     * different one — or is not there — then running it would undo the effect with a body
+     * nobody promised, which is not compensation but a second guess. So the body does not run,
+     * the effect stays, and a human decides.
+     *
+     * It is a different fact from [PLAN_DIVERGENCE]: the plan is the same, the BODY behind the
+     * plan changed. It is also different from [COMPENSATION_NOT_DISPATCHED], which says the
+     * durable state refused the write-ahead: here the durable state was happy and the body was
+     * the wrong one.
+     */
+    COMPENSATION_BODY_DIVERGED,
+
+    /**
      * The completion was NOT recorded, because the durable state refused the write.
      *
      * The mirror of [COMPENSATION_NOT_DISPATCHED]: there, the compensation never ran; here, the

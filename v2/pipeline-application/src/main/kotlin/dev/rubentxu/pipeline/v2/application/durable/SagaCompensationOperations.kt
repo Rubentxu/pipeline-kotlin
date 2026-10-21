@@ -67,6 +67,13 @@ class SagaCompensationOperations(
     private val eventSink: EventSink,
     private val clock: Clock,
     private val ownerPluginId: String? = null,
+    /**
+     * The bodies this step owns, so the engine can measure the body a promise names.
+     *
+     * `null` when the step has no body at all: there is nothing to measure, and a promise that
+     * names a body in a step that has none is refused rather than recorded unchecked.
+     */
+    private val bodies: SagaBodyResolver? = null,
 ) : CompensationOperations {
 
     override fun arm(declaration: CompensationDeclaration): CompensationArmOutcome {
@@ -74,6 +81,21 @@ class SagaCompensationOperations(
             return CompensationArmOutcome.Rejected(
                 ArmRejection.UnsupportedIntentVersion(declaration.intentVersion),
             )
+        }
+
+        // The body the promise is paid with. It is measured HERE, while the promise is being
+        // made, because that is the only moment when the body and the promise are known
+        // together: a promise that names a body nobody has cannot be kept, and it is refused
+        // before the forward effect runs behind it.
+        val promisedBody = when (val slot = declaration.compensateSlot) {
+            null -> null
+            else -> {
+                val digest = bodies?.digestOf(slot)
+                if (digest == null) {
+                    return CompensationArmOutcome.Rejected(ArmRejection.UnknownCompensationBody(slot))
+                }
+                digest
+            }
         }
 
         val now = clock.now()
@@ -98,7 +120,7 @@ class SagaCompensationOperations(
             updatedAtMs = nowMs,
         )
 
-        return when (val persistence = store.arm(requested.toRow(runId, ownerPluginId))) {
+        return when (val persistence = store.arm(requested.toRow(runId, ownerPluginId, promisedBody))) {
             is SagaArmPersistence.Inserted -> {
                 // The row is the promise, and the row is what the STORE decided: the arm
                 // timestamp it recorded is the one the promise was made at, and it may differ

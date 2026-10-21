@@ -1,3 +1,4 @@
+//@ expect-stdout effects=1
 // 32-durable-replay.pipeline.kts — the ONE real replay guarantee.
 //
 //@ durable

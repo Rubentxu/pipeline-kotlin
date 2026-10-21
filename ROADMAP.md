@@ -18,7 +18,7 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `9c5b41c44` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `c28600f34` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **22** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 5 | ídem |
@@ -26,7 +26,7 @@ una medición.
 | Escenarios E2E | 46 (**45 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
 | `VERIFY_LOC / PRODUCT_LOC` | **11495 / 65786 = 0.175** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **121 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **78 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -1492,7 +1492,7 @@ La puerta se corrió sobre el tip de la rama (`9c7af06ee`), cuyo árbol es
 fusionado**, con `check-budgets.py` y `git ls-files`.
 
 
-**z) El fingerprint del plan no tenía forma canónica publicada — CERRADO en `9c5b41c44`.**
+**z) El fingerprint del plan no tenía forma canónica publicada — CERRADO en `c28600f34`.**
 El bloque `fingerprint-canonico` cierra el punto **F13** del informe de auditoría
 (`pipelinek-saga-evolution/auditoria/INFORME-AUDITORIA-2026-10-20.md`): «
 `SagaPlanFingerprint` existe, pero su forma canónica no está publicada: dos
@@ -1611,12 +1611,43 @@ el KDoc dice ahora que la garantía es **estructural** (el locale se nombra) en
 vez de descansar en el hecho empírico de que los dígitos hexadecimales no se
 localizan.
 
-**Lo que este bloque NO cierra, y lo dice.** El fixture
-`v2/pipeline-events-store/src/test/resources/real-saga-plane-success.json` trae
-`planFingerprint: d720a447…` y `fd376b01…`, que **no** son los digests que el
-producto produce hoy (`b17b1d63…` y `3055da2d…`): el fixture está **desfasado**
-respecto de la forma real. No se ha perseguido aquí; es otro bloque, y
-perseguirlo es medir antes de tocar.
+**El fixture «desfasado» no lo estaba, y se comprobó.** Este bloque lo marcó
+como sospechoso: sus `planFingerprint` (`d720a447…` y `fd376b01…`) no son los que
+el producto produce hoy (`b17b1d63…` y `3055da2d…`), lo que olía a forma vieja.
+**Medido: el fixture es correcto y la forma publicada lo reproduce BIT A BIT.**
+Los dos digests grabados son los de la forma con los **nombres de slot de
+aquella época** —el plugin de ejemplo usaba entonces `core.dir` / `core.withEnv`
+y `core.timeout` / `core.retry`, y hoy deriva un nombre por acción
+(`example.saga.reserve.forward` / `example.saga.reserve.compensate`):
+
+| Digest grabado | Forma que lo reproduce, con los slots de su época |
+|---|---|
+| `d720a447…` | `saga-v1|checkout|reserve|release|stock/42|core.dir|core.withEnv|RESTORE` |
+| `fd376b01…` | `saga-v1|checkout|charge|refund|payment/42|core.timeout|core.retry|RESTORE` |
+
+Lo que cambió entre la grabación y hoy fueron las **entradas** (los slots), no la
+**forma**. Y un plano capturado tiene que quedarse congelado: si se actualizara
+con cada cambio del producto dejaría de ser una grabación. El fixture está
+haciendo lo que debe, y es además una **segunda prueba independiente** de que la
+forma publicada es la que el producto usaba de verdad —esta vez sobre una
+corrida **anterior** a este bloque.
+
+La afirmación que este bloque publicó sobre el fixture era **falsa** y se
+corrige aquí. Un veredicto que dice que corre sin comprobarlo es exactamente el
+defecto que este bloque vino a cerrar, aplicado a sí mismo.
+
+**Un defecto del arnés que este bloque encontró de paso, y que queda abierto.**
+`v2/examples/run.sh` **no tiene ningún timeout**: ni por escenario ni global. Un
+escenario que se cuelgue cuelga el stage 3 entero, y con él la puerta, hasta que
+un `timeout` **externo** la mata —y esa muerte no deja veredicto: la etapa 3
+muere sin su recuento de escenarios y la línea `PASS` no llega a escribirse.
+Medido: una corrida de la puerta sobre este mismo árbol se quedó colgada en el
+stage 3 más de 1 400 s (el log de la etapa quedó **vacío**, porque el lanzador
+imprime el informe al final) y hubo que matarla desde fuera; la corrida
+siguiente, sobre el **mismo árbol**, pasó en **78 s**. El defecto no es del
+producto —el árbol es byte a byte el mismo— sino del arnés: convierte un
+cuelgue en un silencio. **No se arregla aquí**; es el siguiente candidato de la
+cola.
 
 **Instrumento y cobertura.** La forma publicada vive en `pipeline-domain` y tiene
 **test unitario propio**: ahí es donde está ahora la garantía. Las dos
@@ -1633,7 +1664,7 @@ casi todo KDoc), `VERIFY_LOC` 11 389 → **11 495** (+106), ratio global **0.175
 el ratio máximo por módulo sigue siendo **1.633** (`pipeline-step-sdk:workflow-control`)
 y `pipeline-domain` queda en 0.277.
 
-Puerta sobre el SHA del bloque: `PASS sha=9c5b41c44… elapsed=96s budget=900s
+Puerta sobre el SHA del bloque: `PASS sha=c28600f34… elapsed=78s budget=900s
 tests=rewritten:752 read:0 gaps=1 not_run`.
 
 

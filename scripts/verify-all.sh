@@ -594,6 +594,23 @@ scenarios_suffix() {
     fi
 }
 
+# Everything the run observed, as ONE argument.
+#
+# These used to travel as three separate `%s` in the verdict format, and that is
+# how the observation count went missing without anybody noticing: the format
+# carried five conversions and the call passed six arguments, so the shell read
+# the surplus as a second pass over the same format and printed the leftover
+# field as its own line of garbage. The verdict still said PASS, the gate still
+# exited 0, and the one number that says whether the scenarios checked anything
+# was on a line nobody reads.
+#
+# Composing them first makes that unrepresentable. One string, one `%s`: a
+# field can no longer be separated from the line by a mismatched count, and each
+# field keeps saying NOT_RUN rather than going quiet when its stage was skipped.
+evidence_suffixes() {
+    printf '%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)"
+}
+
 if want_stage 3; then
 log "stage 3/5  E2E scenarios in v2/examples/"
 stage_started_at=$(date +%s)
@@ -673,9 +690,9 @@ if [[ "$subset" == 1 ]]; then
     # subset that spends 900 is not evidence the gate would. Comparing either
     # against 900 s would be a number about nothing, so none is printed.
     echo "    elapsed ${total}s (SUBSET: not compared against the ${BUDGET_SECONDS}s gate)"
-    printf '\nPASS (subset)  sha=%s  elapsed=%ss%s%s\n' \
+    printf '\nPASS (subset)  sha=%s  elapsed=%ss%s\n' \
         "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" \
-        "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)"
+        "$(evidence_suffixes)"
     printf 'This is not the gate. Quote scripts/verify-all.sh with no filters for that.\n'
     exit 0
 fi
@@ -695,14 +712,14 @@ fi
 # exactly the line somebody quotes as "the gate passed" while the contract it
 # checks was never measured.
 if [[ "$skip_budget" == 1 ]]; then
-    printf '\nPASS (no LOC budget)  sha=%s  elapsed=%ss  budget=%ss%s%s\n' \
+    printf '\nPASS (no LOC budget)  sha=%s  elapsed=%ss  budget=%ss%s\n' \
         "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS" \
-        "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)"
+        "$(evidence_suffixes)"
     printf 'The 2:1 LOC contract was NOT verified: stage 4 was skipped by --no-budget.\n'
     printf 'Quote scripts/verify-all.sh with no flags for that.\n'
     exit 0
 fi
 
-printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss%s%s\n' \
+printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss%s\n' \
     "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS" \
-    "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)"
+    "$(evidence_suffixes)"

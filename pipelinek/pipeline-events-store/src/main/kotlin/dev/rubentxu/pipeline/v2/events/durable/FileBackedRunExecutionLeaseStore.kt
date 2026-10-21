@@ -32,7 +32,7 @@ import java.nio.file.Path
 */
 class FileBackedRunExecutionLeaseStore(
     private val leaseDir: Path,
-) : AutoCloseable, RunLeaseObservationPort {
+) : AutoCloseable, RunLeasePort {
 
     private var channel: FileChannel? = null
     private var held: FileLock? = null
@@ -47,7 +47,7 @@ class FileBackedRunExecutionLeaseStore(
      * an exception: losing the race is how ownership is enforced, and the
      * caller must surface it as a typed rejection.
 */
-    fun acquire(request: LeaseRequest): LeaseAcquisition {
+    override fun acquire(request: LeaseRequest): LeaseAcquisition {
         Files.createDirectories(leaseDir)
         val lockFile = leaseDir.resolve(lockFileName(request.runId))
 
@@ -133,7 +133,7 @@ class FileBackedRunExecutionLeaseStore(
      * [RunExecutionLease.release] and re-checked here against the durable
      * record.
 */
-    fun release(ownerId: RunOwnerId) {
+    override fun release(ownerId: RunOwnerId) {
         val runId = heldRunId
         val lock = held
         val channel = this.channel

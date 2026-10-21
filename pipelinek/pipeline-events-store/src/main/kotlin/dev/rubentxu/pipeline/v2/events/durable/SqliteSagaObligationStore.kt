@@ -2,14 +2,10 @@ package dev.rubentxu.pipeline.v2.events.durable
 
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationId
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationKey
-import dev.rubentxu.pipeline.v2.domain.saga.CompensationKind
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationObligationStatus
-import dev.rubentxu.pipeline.v2.domain.saga.EffectReceiptRef
-import dev.rubentxu.pipeline.v2.domain.saga.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaIntentContract
-import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
 import java.sql.Connection
 import kotlin.concurrent.withLock
 
@@ -252,7 +248,7 @@ class SqliteSagaObligationStore(
                 statement.executeQuery().use { rs ->
                     val rows = mutableListOf<SagaObligationRow>()
                     while (rs.next()) {
-                        rows.add(readRow(rs))
+                        rows.add(SagaObligationRowCodec.read(rs))
                     }
                     return rows
                 }
@@ -311,7 +307,7 @@ class SqliteSagaObligationStore(
             statement.setString(3, actionId.value)
             statement.setString(4, compensationId.value)
             statement.executeQuery().use { rs ->
-                return if (rs.next()) readRow(rs) else null
+                return if (rs.next()) SagaObligationRowCodec.read(rs) else null
             }
         }
     }
@@ -336,36 +332,6 @@ class SqliteSagaObligationStore(
                 return if (rs.next()) rs.getInt(1) else 0
             }
         }
-    }
-
-    /**
-     * Reads one row.
-     *
-     * Fails closed on anything this build does not understand: an unknown intent version, an
-     * unknown status or an unknown kind raises instead of being coerced into a default. A
-     * promise whose meaning cannot be established is not a promise this build may honour.
-     */
-    private fun readRow(rs: java.sql.ResultSet): SagaObligationRow {
-        val intentVersion = rs.getInt("intent_version")
-        SagaIntentContract.requireSupported(intentVersion)
-        val receipt = rs.getString("receipt_ref")
-        return SagaObligationRow(
-            runId = rs.getString("run_id"),
-            sagaId = SagaId.of(rs.getString("saga_id")),
-            actionId = SagaActionId.of(rs.getString("action_id")),
-            compensationId = CompensationId.of(rs.getString("compensation_id")),
-            intentVersion = intentVersion,
-            planFingerprint = SagaPlanFingerprint(rs.getString("plan_fingerprint")),
-            resourceRef = ResourceRef.of(rs.getString("resource_ref")),
-            kind = CompensationKind.valueOf(rs.getString("compensation_kind")),
-            status = CompensationObligationStatus.valueOf(rs.getString("status")),
-            forwardOpId = rs.getString("forward_op_id"),
-            compensationOpId = rs.getString("compensation_op_id"),
-            leaseEpoch = rs.getLong("lease_epoch"),
-            createdAtMs = rs.getLong("created_at_ms"),
-            updatedAtMs = rs.getLong("updated_at_ms"),
-            receiptRef = receipt?.let { EffectReceiptRef.of(it) },
-        )
     }
 
     private companion object {

@@ -36,6 +36,7 @@ internal val CLI_VERBS: List<Pair<String, String>> = listOf(
     "console" to "read one step's output plane as frames or lines",
     "events" to "read one run's domain events as text or json",
     "inspect" to "read a run id's digests, steps and provenance",
+    "saga" to "read what a run's saga still owes (saga inspect <runId> --db <path>)",
     "runs cancel" to "close a run that no live process is working on (--db, --control-root, --reason)",
     "credentials" to "list registered credential material (redacted)",
     "doctor" to "report the installation's health",

@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.domain.saga
 
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
 /**
@@ -36,6 +37,18 @@ sealed interface ArmRejection {
 
     /** Another process owns the run now: this writer lost the lease. */
     data class LeaseSuperseded(val heldEpoch: Long, val currentEpoch: Long) : ArmRejection
+
+    /**
+     * The declaration named a body that this step does not have.
+     *
+     * The promise says which body will undo the effect, and the engine resolves that name
+     * against the arming step's own body. A name that resolves to nothing — or to several
+     * children at once — is a promise nobody could keep, so it is refused HERE, before the
+     * forward effect runs: a promise that cannot be kept is not a reason to make the effect.
+     *
+     * The refusal names the slot, because the slot is what the plugin has to fix.
+     */
+    data class UnknownCompensationBody(val slot: PluginStepId) : ArmRejection
 }
 
 /**

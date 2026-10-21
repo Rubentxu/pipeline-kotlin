@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
+import dev.rubentxu.pipeline.v2.domain.saga.CompensationBodyDigest
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationId
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationKind
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationObligationStatus
@@ -49,6 +50,7 @@ internal object SagaObligationRowCodec {
             updatedAtMs = rs.getLong("updated_at_ms"),
             receiptRef = receipt?.let { EffectReceiptRef.of(it) },
             ownerPluginId = ownerOf(rs),
+            bodyDigest = bodyDigestOf(rs),
         )
     }
 
@@ -67,5 +69,24 @@ internal object SagaObligationRowCodec {
         return null
     }
 
+    /**
+     * The shape of the body the promise is paid with, when the database says so.
+     *
+     * Two absences are possible and both mean "this promise names no body": a database written
+     * before digests were kept has no such column, and a digest that cannot be read back cannot
+     * be compared with anything. A promise that cannot prove a divergence does not block
+     * anything, so an unreadable digest is not a failure.
+     */
+    private fun bodyDigestOf(rs: ResultSet): CompensationBodyDigest? {
+        val meta = rs.metaData
+        for (index in 1..meta.getColumnCount()) {
+            if (meta.getColumnLabel(index) != BODY_DIGEST_COLUMN) continue
+            val hex = rs.getString(index) ?: return null
+            return runCatching { CompensationBodyDigest(hex) }.getOrNull()
+        }
+        return null
+    }
+
     private const val OWNER_COLUMN = "owner_plugin_id"
+    private const val BODY_DIGEST_COLUMN = "body_digest"
 }

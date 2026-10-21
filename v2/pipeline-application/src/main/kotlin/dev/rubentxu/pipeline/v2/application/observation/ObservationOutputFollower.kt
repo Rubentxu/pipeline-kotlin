@@ -13,7 +13,7 @@ package dev.rubentxu.pipeline.v2.application.observation
  *
  * ## It polls, and that is deliberate
  *
- * There is no wakeup source here. `ObservationWakeup` exists and coalesces correctly (OBS-D3), but
+ * There is no wakeup source here. `ObservationWakeup` exists and coalesces correctly, but
  * nothing publishes one yet, and a follower built on a signal that does not exist would be a follower
  * that never runs. So this polls, which is exactly the property the wakeup law was written to allow:
  *

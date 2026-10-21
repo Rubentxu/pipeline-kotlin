@@ -15,7 +15,7 @@
 pipeline {
     stages {
         stage("credentials-bindings") {
-            // Exercise all 5 NEW binding kinds ( widened in ML-R10 / commit 682d4e5 )
+            // Exercise all 5 NEW binding kinds (widened)
             // plus the 2 pre-existing kinds for a complete 7-kind corpus entry.
             // DSL syntax: reconcile against fixture 08-withEnv + widened factories.
             // Rule 13: shell variable expansion in strings. The CORRECT Kotlin
@@ -23,7 +23,7 @@ pipeline {
             // braced identifier). The form `\${'$'}VAR` looks similar but is
             // a TRAP: Kotlin compiles `${'$'}` to a literal `$`, then `VAR`
             // is adjacent text, and bash receives `${'$'}VAR` which it
-            // rejects as `sustitución errónea`. See CHARACTERISATION.md §5.3
+            // rejects as `sustitución errónea`. See CHARACTERISATION.md
             // for the byte-level proof. The line below uses the safe form.
 
             withCredentials(listOf(
@@ -38,27 +38,27 @@ pipeline {
                     "DB_USER",
                     "DB_PASS"
                 ),
-                // Kind.SSH_USER_PRIVATE_KEY (NEW in ML-R10) — pure DSL
+                // Kind.SSH_USER_PRIVATE_KEY
                 StepSpec.CredentialsBinding.sshUserPrivateKey(
                     "ssh-creds",
                     "SSH_KEY_FILE"
                 ),
-                // Kind.FILE (NEW in ML-R10) — pure DSL
+                // Kind.FILE
                 StepSpec.CredentialsBinding.file(
                     "file-creds",
                     "SECRET_FILE"
                 ),
-                // Kind.CERTIFICATE (NEW in ML-R10) — pure DSL
+                // Kind.CERTIFICATE
                 StepSpec.CredentialsBinding.certificate(
                     "cert-creds",
                     "KEYSTORE_PATH"
                 ),
-                // Kind.ZIP (NEW in ML-R10) — pure DSL
+                // Kind.ZIP
                 StepSpec.CredentialsBinding.zip(
                     "zip-creds",
                     "ZIP_PATH"
                 ),
-                // Kind.USERNAME_COLON_PASSWORD (NEW in ML-R10) — pure DSL
+                // Kind.USERNAME_COLON_PASSWORD
                 StepSpec.CredentialsBinding.usernameColonPassword(
                     "ucp-creds",
                     "U_P"

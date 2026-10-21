@@ -16,7 +16,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * THE single wire authority for the `core.input` OUTPUT (RP6-B / WU-092).
+ * THE single wire authority for the `core.input` OUTPUT.
  *
  * A named authority rather than a private object inside the Step, for the same
  * reason [CoreInputWireCodec] is one: the journal reader, the tests and the Step

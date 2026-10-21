@@ -93,7 +93,7 @@ tasks.jar {
     // Reproducible by construction. Without these two, the archive carries
     // the source files' mtimes and orders entries by filesystem iteration,
     // so the same commit produces a different digest in every checkout --
-    // which makes the S2-D byte pin impossible to hold anywhere but the
+    // which makes the byte pin impossible to hold anywhere but the
     // machine that set it.
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
@@ -122,7 +122,7 @@ val directiveNamespace = providers
     .orElse("example-directive-plugin")
 
 /**
- * The SDK, on the runtime classpath of the BUILD-TIME emitter only.
+ * The SDK, on the runtime classpath of the build-time emitter only.
  *
  * Every dependency above is `compileOnly`, and that is the plugin's whole point: it ships classes
  * only, and the host supplies the contracts at runtime. So `sourceSets.main.runtimeClasspath` is
@@ -144,7 +144,7 @@ val computeDirectiveRelease = tasks.register("computeDirectiveRelease") {
     val namespaceName = directiveNamespace
     val releaseVersion = version.toString()
 
-    // R4 / WU-R4.0.0 — declare sdkVersion as an explicit input so the
+    // Declare sdkVersion as an explicit input so the
     // apiRange is regenerated when the host version changes (see
     // example-block-plugin for the same change with the full story).
     inputs.property("sdkVersion", sdkVersion)

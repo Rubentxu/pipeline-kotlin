@@ -23,7 +23,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Typed input payload of `core.readFile` (WU-LPR-104).
+ * Typed input payload of `core.readFile`.
  *
  * Decoding validates the complete canonical envelope before the handler can create an
  * effect: non-blank `file`, non-null `encoding`.
@@ -35,7 +35,7 @@ data class CoreReadFileInput(val file: String, val encoding: String) {
 }
 
 /**
- * Typed successful output for `core.readFile` (WU-LPR-087, LFC-2R2).
+ * Typed successful output for `core.readFile`.
  *
  * `content` is the file content as String (null when the file does not exist
  * — the substrate's path guard returns `exists=false` for out-of-workspace,
@@ -43,8 +43,7 @@ data class CoreReadFileInput(val file: String, val encoding: String) {
  * observation in Jenkins predicate semantics, NOT a typed step failure.
  *
  * Observable read evidence is the `FileRead` domain event emitted by the
- * [WorkspaceOperationsAdapter] (path, sha256, size — NEVER content,
- * INV-L6-EVT-001). The content stays inside the typed step result and the
+ * [WorkspaceOperationsAdapter] (path, sha256, size — NEVER content). The content stays inside the typed step result and the
  * codec's canonical envelope; the runtime-returning façade decodes it back
  * to `String` for the scripted caller.
  */
@@ -56,8 +55,7 @@ data class CoreReadFileOutput(
 }
 
 /**
- * Registry authority for `core.readFile` (WU-LPR-104, blocker closure for the
- * LPR certification checkpoint).
+ * Registry authority for `core.readFile`.
  *
  * The handler reaches workspace file operations ONLY through the typed
  * [WorkspaceOperations] seam (capability `WORKSPACE_OPERATIONS_CAPABILITY`), which binds

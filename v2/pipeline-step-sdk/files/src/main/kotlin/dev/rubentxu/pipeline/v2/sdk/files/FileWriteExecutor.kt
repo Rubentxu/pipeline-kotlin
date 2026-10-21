@@ -37,18 +37,18 @@ data class FileWriteResult(
  *
  * - Resolves `file` against workspace
  * - Enforces the path traversal guard on REAL paths, so a symlink out of the
- *   workspace is refused rather than written through
- * - Enforces reserved .v2 directory guard
+ * workspace is refused rather than written through
+ * - Enforces reserved.v2 directory guard
  * - Auto-creates parent directories
  *
  * ## Encoding
  *
  * - `encoding = "UTF-8"` (default): `text.toByteArray(UTF_8)`
- * - `encoding = "Base64"`: decodes text via `Base64.getDecoder().decode(text)`
+ * - `encoding = "Base64"`: decodes text via `Base64.getDecoder.decode(text)`
  *
  * ## Events
  *
- * Event emission is handled by the dispatcher (T-09) which has access to DomainEvent types.
+ * Event emission is handled by the dispatcher which has access to DomainEvent types.
  * The [FileWriteResult] carries all data needed for event creation.
  *
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`

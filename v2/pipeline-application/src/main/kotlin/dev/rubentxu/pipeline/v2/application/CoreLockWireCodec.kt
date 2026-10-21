@@ -14,7 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * THE single authority for the `core.lock` wire format (RP6-A / WU-091).
+ * THE single authority for the `core.lock` wire format.
  *
  * ## Why this is extracted rather than private to [CoreLockStep]
  *
@@ -27,13 +27,13 @@ import kotlinx.serialization.json.put
  * today has to accept BOTH spellings of the same payload:
  *
  * ```text
- * kind        = sh      (compiler)  |  shell   (codec's own self-encoding)
- * script      = command (compiler)  |  ...
- * returnStdout/ returnMode            (two vocabularies, one meaning)
+ * kind = sh (compiler) | shell (codec's own self-encoding)
+ * script = command (compiler) |...
+ * returnStdout/ returnMode (two vocabularies, one meaning)
  * ```
  *
  * Every one of those aliases is a compatibility shim added after the two producers
- * diverged. WU-091 refuses to manufacture the same debt: the compiler and the Step
+ * diverged. The compiler and the Step
  * both call [encode] on this ONE object, so the payload has one spelling by
  * construction.
  *
@@ -42,8 +42,8 @@ import kotlinx.serialization.json.put
  * `pipeline-scripting-api` and `pipeline-domain` never learn about JSON, the
  * coordinator, the capability or the backend. The compiler knows the
  * `StepSpec.Lock -> CoreLockInput` transformation, which is a DOMAIN decision; it
- * does not know the wire format, which is an ENCODING decision. `G3.5` in
- * `SPEC_WU091_LOCK.md` makes that boundary mechanically checkable.
+ * does not know the wire format, which is an ENCODING decision, and the boundary
+ * between the two is mechanically checkable.
  *
  * `internal` rather than private precisely so the compiler in this same module can
  * reach it; it is not part of any published surface.

@@ -23,16 +23,16 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Registry candidate for `core.archiveArtifacts` (LFC-2E1 S2-B10 / G1 registry seam proof).
+ * Registry candidate for `core.archiveArtifacts` (registry seam proof).
  *
- * G1 registered this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`. **G4 (2026-09-13) flipped
+ * This candidate was registered WITHOUT changing `LEGACY_PLUGIN_IDS`. **A later milestone (2026-09-13) flipped
  * the authority**: `"core.archiveArtifacts"` was removed from `LEGACY_PLUGIN_IDS`, so
  * `StructuralFamilyResolver` now classifies the key `Registry` and this definition is the
  * production authority (wired through `CoreStepRegistryFactory`).
  *
  * The legacy decoder branch, the `CanonicalCoreStepMetadata["core.archiveArtifacts"]` row and
  * `CanonicalArchiveArtifactsNodeDispatcher` remain physically present but are UNREACHABLE in
- * production until G5 (LEGACY_REMOVED) deletes them. Counter: 2 ids / 3 metadata rows /
+ * production until the LEGACY_REMOVED milestone deletes them. Counter: 2 ids / 3 metadata rows /
  * 3 dispatcher files.
  *
  * ## Capability discipline
@@ -48,7 +48,9 @@ import kotlinx.serialization.json.jsonPrimitive
  * The legacy metadata row declares `Effect.READ_ONLY`, but archiveArtifacts copies files
  * OUT of the workspace into the artefacts retention directory. The closest existing
  * Effect variant is [Effect.WRITES_WORKSPACE] (the ADT has no ARTIFACTS_WRITE variant
- * and the memo justifies not inventing one at G1). The delta is recorded for the G2
+ * and the memo justifies not inventing one at this point). The delta is recorded
+ * for the differential contract freeze. Replay policy stays MEMOIZED (byte-equivalent with
+ * the legacy row).
  * differential contract freeze. Replay policy stays MEMOIZED (byte-equivalent with the
  * legacy row).
  */
@@ -181,7 +183,7 @@ object CoreArchiveArtifactsStep {
      * typed output ADT. The adapter is the single emitter of `ArtifactArchived` /
      * `ArtifactArchiveFailed`; the handler never touches the event sink.
      *
-     * E1.ecosystem-local-first: when `input.name != null`, the handler ALSO
+     * When `input.name != null`, the handler ALSO
      * resolves the [ARTIFACT_INDEX_CAPABILITY] (via `available()` since the
      * capability is OPTIONAL — see contract KDoc). When the capability is
      * absent, the handler returns a typed SCRIPT failure. When

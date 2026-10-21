@@ -597,7 +597,7 @@ class DurableShellExecutor : DurableShellLaunching {
         val coercedEnv: Map<String, String> = transformedEnv.mapValues { entry -> entry.value.materialize() }
         pbEnv.putAll(coercedEnv)
 
-        // SB-S-005 regression fix (T-02): re-normalize PATH after user env merge.
+        // SB-S-005 regression fix: re-normalize PATH after user env merge.
         // User-provided PATH overrides the sandbox-normalized PATH if it contains
         // entries outside the keep-set. Re-apply normalization to ensure sandbox
         // filtering is enforced on user-provided PATH values.

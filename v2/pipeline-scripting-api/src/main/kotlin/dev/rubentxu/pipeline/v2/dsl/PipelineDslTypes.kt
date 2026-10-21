@@ -88,7 +88,7 @@ enum class TimeoutAction {
 }
 
 /**
- * Post conditions declared on a stage (S2-B).
+ * Post conditions declared on a stage.
  *
  * Keyed by the closed [PostCondition] set rather than three named lists, so the
  * DSL and the IR speak the same typed vocabulary and a condition that the

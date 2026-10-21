@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.step.SemVer
 import java.nio.file.Path
 
 /**
- * B3.2 — operator-declared trust database for plugin artifacts.
+ * Operator-declared trust database for plugin artifacts.
  *
  * ## The authority split
  *

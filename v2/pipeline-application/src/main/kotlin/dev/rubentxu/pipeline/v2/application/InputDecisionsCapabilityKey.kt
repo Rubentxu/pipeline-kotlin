@@ -4,7 +4,6 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
 /**
  * Capability key under which the engine supplies the [InputDecisions] port
- * (RP6-B / WU-092).
  *
  * ## Why this is a capability and not a wider `StepHandlerContext`
  *
@@ -13,12 +12,12 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * clock or a coordinator. Widening `StepHandlerContext` would push the answer
  * mechanism onto every Step handler in the system to serve one of them.
  *
- * The same reasoning as [LOCK_COORDINATION_CAPABILITY] (RP6-A): the handler asks
+ * The same reasoning as [LOCK_COORDINATION_CAPABILITY]: the handler asks
  * for the port, the bridge builds the adapter, and a Step that does not need
  * human input never sees this capability.
  *
  * Deliberately NOT an authorization surface: [InputRequest.submitter] is
- * attribution (SPEC_WU092_INPUT.md §3.5), because a headless runner has no user
+ * attribution, because a headless runner has no user
  * database to authorize against.
  */
 val INPUT_DECISIONS_CAPABILITY: StepCapability = StepCapability("inputDecisions")

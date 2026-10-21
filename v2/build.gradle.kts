@@ -3,7 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.protobuf) apply false
     alias(libs.plugins.detekt) apply false
-    // C5 / D-011 (audit 2026-09-26): binary-compatibility-validator declared at
+    // binary-compatibility-validator declared at
     // root and applied per-module via subprojects { ... } below. See comments in
     // the application block for the phased rollout scope.
     alias(libs.plugins.binary.compatibility.validator) apply false
@@ -18,170 +18,12 @@ group = "dev.rubentxu.pipeline.v2"
 repositories {
     mavenCentral()
 }
-// WU-RP-034 closes here. The version is DERIVED from the commit history since the
-// previous tag, never chosen by hand:
-//
-//   git tag --sort=-creatordate  ->  v0.44.1 (0f45a201)
-//   v0.44.1..HEAD carries seven breaking commits:
-//     feat(cli)!            3cd0d0d2  local-first workspace default
-//     fix(steps)!           19577730  core.pwd reports the cwd
-//     refactor(workspace)!  b797ca27  the capability value IS the ExecutionLocation ADT
-//     refactor(steps)!      4d615fff  scm checkout and junit results anchored to the location
-//     fix(workspace)!       9ef19694  ambient-state escape hatch removed
-//     fix(workspace)!       9d2e999a  ownership crosses the boundary; a user root is not destructible
-//     fix(corpus)!          459f431c  each fixture states the workspace mode it requires
-//
-// Breaking under 0.x convention bumps the MINOR component: 0.44.1 -> 0.45.0.
-//
-// This also repairs pre-existing drift: the declared version said 0.44.0 while
-// the previous tag was v0.44.1, so the single-version provider had been stale.
-//
-// WU-RP-035 release train, derived from history since v0.45.0 (a277d67a):
-//
-//     feat(domain)          83d5b2b0  HANDLER_CONTINUATION + body-bound continuation
-//     feat(engine)          5a2c8a7d  handler-driven route over the durable spine
-//     feat(examples)        03e77df2  example.repeat external body plugin
-//     fix(engine)           342897f0  canonical eligibility admits handler-driven blocks
-//     docs(uat)             25c670f7  RP3_EXIT_REVIEW corrective addendum
-//     docs(uat)             d2f40691  RP035-E receipt
-//
-// No breaking commits; pipeline-domain.api is purely additive (+21/-0), so the 0.x
-// convention keeps the MINOR bump: 0.45.0 -> 0.46.0.
-//
-// S4 train, derived from history since v0.46.0 (63ef3220):
-//
-//     docs(adr)             de1c812c  ADR-S4-F2 ACCEPTED — StageBody.Scripted de primera clase
-//     feat(domain)          0c04b543  StageBody.Scripted y ScriptedStageRef (base de F2)
-//     refactor(durable)     fa72c901  una sola regla de finalizacion de stage (B0)
-//     Merge:                9deaa9f9  absorbe el M1 Output Plane (8 commits, SHAs preservados)
-//     fix(s4-m1)            294aea19  una sola autoridad de salida de proceso (B1)
-//     test(output)          63dda75f  el contrato medido del plano para un paso sin salida (B2a)
-//     feat(output)          051fb610  autoridad de retencion propia del Output Plane (B2b)
-//     fix(output)           4f82fd3a  soltar una reserva nunca falla ni inventa bytes (B2c)
-//     fix(test)             (este)    el corpus release-scale vuelve a mirar donde estan los bytes
-//
-// `v0.46.0` remains a certified, immutable tag over the bytes at 63ef3220 and is NOT reused.
-// New public surface arrives rather than being removed: a new `pipeline-output` module
-// (OutputStore, the four ports, OutputCursor), `StageBody.Scripted`, and the durable/process
-// transcript separation. Nothing pre-existing was taken away, so the 0.x convention takes the
-// MINOR component: 0.46.0 -> 0.47.0. MINOR rather than PATCH because the added module and the
-// added `StageBody` case both change what a consumer can build against, and because
-// `EchoOutputCaptured` stops carrying process output — which is a semantic change even though the
-// type still exists.
-//
-// TRAIN P3 identity law below: the product version is final from the moment the candidate is
-// built, and the tag is applied afterwards to exactly the certified bytes. So this line opens the
-// 0.48.0 train WITHOUT creating a tag and WITHOUT claiming certification.
-//
-// ROADMAP A (2026-10-09): MINOR, following the same rule the 0.46.0 -> 0.47.0 note above states.
-// `:pipeline-sdk-bom` is a new published module, which changes what a consumer can build
-// against; `:pipeline-step-sdk:processor` is retired in the same window. Nothing pre-existing
-// was removed, so the 0.x convention takes the MINOR component: 0.47.0 -> 0.48.0.
-//
-// This line carries NO candidate suffix and MUST NOT grow one. `ProductVersion` rejects a
-// candidate suffix by construction (`^(\d+)\.(\d+)\.(\d+)$`) because the v0.43.0 incident:
-// an artifact internally consistent at `0.43.0-rc1` was later presented under a GA identity.
-// Candidate state lives in `CandidateHandoff` (`candidateSequence`, `candidateId` = sha256 of
-// ROADMAP A (2026-10-11): 0.50.0 -> 0.51.0 (MINOR). CRIC-M3 publishes
-// output.read.digested.v1, output.pin.v1, and output.refusal.retention.v1
-// as EXPERIMENTAL consumer-negotiable capabilities. M1 and M2 capabilities
-// carry forward (M1 PUBLICADA, M2 EXPERIMENTAL → PUBLICADA on cert).
-// The 0.50.0 train is closed (v0.50.0-rc1 was the only candidate); the
-// 0.51.0 train opens with v0.51.0-rc1. ProductVersion rejects a candidate
-// suffix by construction; the candidate is identified by digest
-// (CandidateId = sha256 of the distribution ZIP), not by the version
-// string.
-//
-// R4 / WU-D — the 0.61.0 train publishes v0.61.0-rc1 (and now rc2) with
-// the train version as ProductVersion. v0.60.0 was the version shipped
-// at v0.61.0-rc1 (an oversight in the rc1 block: ProductVersion was the
-// 0.60.0 string while the candidate was the 0.61.0 train). Bumped here
-// to 0.61.0 so the rc2 candidate has ProductVersion = 0.61.0, satisfying
-// PRODUCT IDENTITY LAW across all five surfaces.
-//
-// 2026-10-16: the 0.61.0 train closes at v0.61.0-rc6. The 0.62.0 train
-// opens here (ProductVersion 0.62.0) so the next candidate can be tagged
-// v0.62.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
-//
-// 2026-10-19: the 0.62.0 train closes at v0.62.0. The 0.63.0 train opens
-// here (ProductVersion 0.63.0) so the next candidate can be tagged
-// v0.63.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
-//
-// 2026-10-19: the 0.63.0 train closes at v0.63.0-rc1. The 0.64.0 train opens
-// here (ProductVersion 0.64.0) so the next candidate can be tagged
-// v0.64.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
-// The public SDK contracts grew in this train: the Saga SLOT seam
-// (BodySlotInvoker, BodySlots, SlotResolution) is new published API, so the
-// version that carries it cannot be the version that shipped without it.
-//
-// 2026-10-19: the 0.64.0 train closes at v0.64.0-rc1. The 0.65.0 train opens
-// here (ProductVersion 0.65.0) so the next candidate can be tagged
-// v0.65.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
-// The public SDK contracts grew in this train too: the Saga PLAN port
-// (SagaPlanOperations, SAGA_PLAN_CAPABILITY, CompensationDirective,
-// SagaSnapshot, CompensationLifecycle, CompensationObservation) and the Saga
-// obligation lifecycle states are new published API, so the version that
-// carries them cannot be the version that shipped without them.
-//
-// 2026-10-19: the 0.65.0 train closes at v0.65.0-rc1. The 0.66.0 train opens
-// here (ProductVersion 0.66.0) so the next candidate can be tagged
-// v0.66.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
-// The public SDK contracts grew again in this train: the Saga RUNTIME seam
-// (SagaRuntime, SagaPlan, SagaActionPlan, SagaCompensationReport,
-// SAGA_RUNTIME_CAPABILITY) is new published API, so the version that carries it
-// cannot be the version that shipped without it.
-//
-// 2026-10-19: the 0.66.0 train closes at v0.66.0-rc1. The 0.67.0 train opens
-// here (ProductVersion 0.67.0) so the next candidate can be tagged
-// v0.67.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
-// The public SDK grew additively in this train: InterventionReason gained
-// COMPENSATION_NOT_DISPATCHED, the word for a compensation that was NOT
-// dispatched because the durable state refused the write-ahead. The published
-// vocabulary of a Saga is closed on purpose, so a fact the old one could not
-// name needs a new name in it.
-//
-// 2026-10-19: the 0.67.0 train closes at v0.67.0-rc1. The 0.68.0 train opens
-// here (ProductVersion 0.68.0) so the next candidate can be tagged
-// v0.68.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
-// The public SDK grew additively in this train too: the Saga's own facts are
-// EVENTS now (CompensationStarted, CompensationFinished, SagaTerminal), so a
-// consumer of the event plane can see what the compensation loop did instead
-// of having to read the durable rows to find out. New event kinds are new
-// published API, and the version that carries them cannot be the version that
-// shipped without them.
-// 2026-10-19: the 0.68.0 train closes at v0.68.0-rc1. The 0.69.0 train opens
-// here (ProductVersion 0.69.0) so the next candidate can be tagged
-// v0.69.0-rc1 and satisfy PRODUCT IDENTITY LAW across all five surfaces.
-// The distribution grew in this train: the external Saga consumer now travels
-// with the shipped product, because the E2E scenarios have to reach the Saga
-// contract the way a real plugin does — from OUTSIDE, through published
-// capabilities, with the engine owning the durable state.
-// 2026-10-19: the 0.69.0 train closes at v0.69.0-rc1. The 0.70.0 train opens
-// here (ProductVersion 0.70.0) so the next candidate can be tagged v0.70.0-rc1
-// and satisfy PRODUCT IDENTITY LAW across all five surfaces.
-//
-// The distribution grew in this train: the run's verdict now says what happened
-// to its Saga, and the example plugin's provider contract is a closed set
-// instead of a String whose typo would have meant the opposite in silence.
-//
-// The published ABI does NOT change — the five published artifacts are
-// identical — but the shipped product is not, and the version that carries a
-// content cannot be the one that already went out without it.
-// 2026-10-20: the 0.70.0 train closes at v0.70.0-rc1. The 0.71.0 train opens
-// here (ProductVersion 0.71.0) so the next candidate can be tagged v0.71.0-rc1
-// and satisfy PRODUCT IDENTITY LAW across all five surfaces.
-//
-// This train carries a change in the RELEASE PROTOCOL, not in the shipped
-// runtime: the publication gate no longer loses a plugin whose manifest does
-// not declare a range. The gate is part of the product's contract — AGENTS.md
-// §1 counts identity, digests and reproducible release assets among the
-// non-negotiable product constraints — and the 0.70.0 train shipped with the
-// blind spot, so the train that carries the fixed gate cannot be 0.70.0.
-//
-// It is MINOR and not PATCH because the history derives it that way: every
-// train in this repository's history has been a MINOR, and the one train that
-// was a behavioural fix (0.66.0 -> 0.67.0) was MINOR too. The published ABI
-// does NOT change either way — the five published artifacts are identical.
+// The product version is derived from commit history, never chosen by hand.
+// Read `CHANGELOG.md` for the per-train rationale; read `git log` for the
+// per-commit content. The 0.x convention takes MINOR on any change to the
+// published surface, PATCH otherwise. Candidate suffixes are rejected by
+// `ProductVersion`; candidates are identified by sha256 of the distribution ZIP.
+
 version = "0.75.0"
 
 // The product version is the IDENTITY the binary reports and the candidate is tagged
@@ -209,18 +51,18 @@ require(Regex("""\d+\.\d+\.\d+""").matches(version.toString())) {
 // Snapshot policy (v0.43-train):
 //   - v0.40.0 and v0.41.0-rc1 are released candidates and remain immutable.
 //   - v0.42.0-rc1 is the released candidate of the previous train; immutable.
-//     Its receipt was corrected to retract the scmGit finding (e18ef439); the
-//     finding is now fixed properly by the S0-C1 consumption gate.
+// Its receipt was corrected to retract the scmGit finding; the
+//     finding is now fixed properly by the consumption gate.
 //   - v0.43.0-rc1 was the candidate of the previous train; immutable. Its
-//     installed-distribution UAT certified the bytes built at 1910083e.
+//     installed-distribution UAT certified the bytes built there.
 //   - v0.44.0-rc1 was the candidate of the previous step of this train; its
 //     bytes remain a historical candidate and are NOT renamed to GA. TRAIN P3
 //     changed the declared product version to the final 0.44.0, which produced
 //     NEW bytes with a NEW CandidateId. MINOR because the v0.43.0..HEAD range
-//     carries six feats (S1-A directive kernel, S1-B DSL block plus admission
-//     planner, S1-C typed directive observability events, S1-D external
+//     carries six feats (directive kernel, DSL block plus admission
+//     planner, typed directive observability events, external
 //     directive plugin, plus the directive kernel fitness and the
-//     RUN-CONCURRENCY-1 characterisation) and one fix (CLI: typed rejection for
+//     characterisation) and one fix (CLI: typed rejection for
 //     a missing pipeline script) with no breaking change and no `!` footer.
 //     Train derived from the history, not chosen by hand.
 //
@@ -240,8 +82,8 @@ require(Regex("""\d+\.\d+\.\d+""").matches(version.toString())) {
 //   identity surface of the artifact, and the tag is applied later to exactly
 //   the bytes the harness certified, or not at all.
 //
-// RP-042 consequence: the S1-E/F UAT certified the 0.43.0-rc1 bytes, and commit
-// 0fa47f74 changed production code (Main.kt). Because the bytes changed, that
+// Consequence: the UAT certified the 0.43.0-rc1 bytes, and commit
+// the bytes changed, that
 // certification does not transfer to this candidate: the installed-distribution
 // smoke MUST be re-run against the bytes built at this version before any tag.
 //
@@ -297,7 +139,7 @@ subprojects {
 //
 // This block used to assert that detekt was NOT in `check` and pointed at
 // `lpr0-ci.yml` as the authority that ran it instead. That workflow was deleted
-// in `754ddda0` (2026-09-30) after 60 consecutive cancelled runs against offline
+// later after 60 consecutive cancelled runs against offline
 // self-hosted runners. The comment therefore described a gate that no longer
 // existed, and SAST quietly stopped being enforced by anything. The fix is not
 // to restore the comment's claim or to recreate the workflow; it is to make the
@@ -314,7 +156,7 @@ subprojects {
             // a non-existent source directory is how a source-set guard silently
             // covers nothing.
             source.setFrom(files("src/main/kotlin"))
-            // initial honest debt snapshot (2026-09-23, HEAD 6f7c445f).
+            // initial honest debt snapshot.
             // Baseline freezes pre-existing findings; the gate fails on ANY new
             // issue. Debt burn-down tracked in the slice receipt.
             //
@@ -392,8 +234,8 @@ subprojects {
     }
 }
 
-// ── C5 / D-011 (audit 2026-09-26, R7): binary-compatibility-validator ──────────
-// Phase 1 (2026-09-26, commit `2d83fe3d`): opt-in to four modules with the most stable
+// ── binary-compatibility-validator ─────────────────────────────────────────
+// Phase 1: opt-in to four modules with the most stable
 // public Kotlin surface. The plugin emits one .api file per module under
 // api/<module>.api (default location; explicit below for predictability) and
 // exposes the `apiCheck` task. Phase 2 below wires that task into each selected
@@ -447,8 +289,8 @@ val bcvModules = setOf(
     // the task did not exist. Guarding three published contracts and leaving the fourth free would
     // have been the inconsistency, not the fix.
     "pipeline-scripting-api",
-    // 0.52.0-rc1 / CRIC-M2: runtime ports publication. The new `:pipeline-runtime-api` module
-    // (carved out of `:pipeline-runtime` in commit 2a97653a) carries the M2 publish/subscribe
+    // runtime ports publication. The new `:pipeline-runtime-api` module
+    // (carved out of `:pipeline-runtime`) carries the publish/subscribe
     // ports and their ADTs. Guiding the published ABI here so `apiCheck` refuses an
     // unannounced surface change.
     "pipeline-runtime-api",
@@ -503,7 +345,7 @@ val publishedContractModules = listOf(
     // BLOCK 2: the event contract (envelope, cursor, read/paging) and the output read contract.
     "pipeline-events",
     "pipeline-output",
-    // 0.52.0-rc1 / CRIC-M2: the runtime publish/subscribe ports. The four existing entries
+    // The runtime publish/subscribe ports. The four existing entries
     // (read-side contracts for events, output, scripting, and domain) gave consumers a
     // complete read plane; this fifth entry adds the write plane, and the BOM picks up the
     // matching `api(...)` constraint (see v2/pipeline-sdk-bom/build.gradle.kts).
@@ -534,7 +376,7 @@ val publishedContractModules = listOf(
  */
 val sdkBomModules = listOf(
     "pipeline-sdk-bom",
-    // 0.52.0-rc1 / CRIC-M2: the runtime API module is also in the BOM, so a consumer that
+    // The runtime API module is also in the BOM, so a consumer that
     // pins the platform version pulls the runtime ports automatically. The BOM is the
     // single resolution document, and leaving the runtime ports out of it would force
     // every consumer to declare the version independently.
@@ -562,12 +404,12 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
     // The plugin's output depends on the SDK jars of THIS revision, not on the
     // repository's timestamped snapshot filenames.
     //
-    // `pipeline-events` joins the list in P3-D: the plugin now contributes an event definition and
+    // `pipeline-events` joins the list: the plugin now contributes an event definition and
     // emits it through the published emission seam, so it compiles against that contract too.
-    // Omitting it from these inputs would let the task consider its output UP-TO-DATE after a
+    // Omitting it from these inputs would let the task consider its output up-to-date after a
     // change to the Event Plane — and the plugin would then be shipping against a stale seam.
     inputs.files(":pipeline-domain:jar", ":pipeline-scripting-api:jar", ":pipeline-events:jar")
-    // R4 / WU-R4.0.0 — declare rootProject.version as an explicit input. See
+    // Declare rootProject.version as an explicit input. See
     // buildExampleBlockPlugin for the full story (apiRange goes stale when
     // the host version bumps but the SDK jar content does not).
     inputs.property("rootProject.version", rootProject.version.toString())
@@ -590,7 +432,7 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
     )
 }
 
-// SAGA / PK-1 — the external CONSUMER of the Saga intent port.
+// The external CONSUMER of the Saga intent port.
 //
 // It exists for the same reason as the plugin above and with the same discipline: it is built
 // by a SECOND Gradle, against the SDK artifacts this revision PUBLISHED, so the contract is
@@ -598,7 +440,7 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
 // consumes: a published capability that only the host can provide.
 //
 // The SDK jars of THIS revision are declared inputs, so the task cannot consider its output
-// UP-TO-DATE after a change to the Saga contract: a consumer built against a stale seam is
+// up-to-date after a change to the Saga contract: a consumer built against a stale seam is
 // exactly the failure this task exists to make visible.
 val buildExampleSagaPlugin by tasks.registering(Exec::class) {
     group = "build"
@@ -663,7 +505,7 @@ val buildExternalDirectivePlugin by tasks.registering(Exec::class) {
     inputs.dir(pluginDir.resolve("src"))
     inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
     inputs.files(":pipeline-domain:jar")
-    // R4 / WU-R4.0.0 — declare rootProject.version as an explicit input. See
+    // Declare rootProject.version as an explicit input. See
     // buildExampleBlockPlugin for the full story.
     inputs.property("rootProject.version", rootProject.version.toString())
     outputs.file(pluginDir.resolve("build/libs/example-directive-plugin-0.1.0.jar"))
@@ -679,8 +521,8 @@ val buildExternalDirectivePlugin by tasks.registering(Exec::class) {
     )
 }
 
-// WU-RP-035 / slice D: the BODY-bearing analogue. This plugin is the proof that the
-// corrected ADR-0081 claim holds from outside the build: its handler drives its own body
+// The BODY-bearing analogue. This plugin is the proof that the
+// The claim holds from outside the build: its handler drives its own body
 // through the bound continuation, compiled against the public SDK only. It is built as an
 // INDEPENDENT Gradle project on purpose — if it needed anything from pipeline-application,
 // the open-world claim this WU certifies would be false.
@@ -693,7 +535,7 @@ val buildExampleBlockPlugin by tasks.registering(Exec::class) {
     inputs.dir(pluginDir.resolve("src"))
     inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
     inputs.files(":pipeline-domain:jar")
-    // R4 / WU-R4.0.0 — declare rootProject.version as an explicit input. The
+    // Declare rootProject.version as an explicit input. The
     // example plugin's Gradle property `-PsdkVersion=` is derived from this
     // value at commandLine time, but Gradle's default fingerprint for an
     // Exec task does NOT see the version string when only the SDK jar content
@@ -716,7 +558,7 @@ val buildExampleBlockPlugin by tasks.registering(Exec::class) {
     )
 }
 
-// PK-RELEASE-CONSOLIDATION H1.4 follow-up — stage the three external example
+// Stage the three external example
 // plugin JARs into the application distribution so the releaseGate (and
 // DistributionMandatoryPluginsTest) can observe them.
 //
@@ -775,7 +617,7 @@ val stageExternalExamples by tasks.registering {
 // the lib directory.
 //
 // `mustRunAfter` is necessary but not sufficient: Gradle would still
-// see installDist as UP-TO-DATE if the staged JARs are not declared as
+// see installDist as up-to-date if the staged JARs are not declared as
 // inputs. The staged JARs are in `lib/`, which installDist does not
 // know about; the input declaration is the only way to make Gradle
 // re-run installDist when an external JAR changes.

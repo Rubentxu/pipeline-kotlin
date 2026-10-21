@@ -39,21 +39,21 @@ interface ReplayCursorStore {
     fun advance(runId: String, opId: String, stageIndex: Int)
 
     /**
-     * Advances the replay cursor past a parallel frame, using the maximum
-     * stage index from all branch results as the next cursor position.
-     *
-     * This is the join barrier for parallel frames (ADR-0035). It computes
-     * `max(branchResults.map { it.stageIndex })` and atomically writes
-     * the new cursor position using the same idempotent CAS semantics as [advance].
-     *
-     * @param runId The run identifier, used to derive cursor keys.
-     * @param frame The parallel frame that just completed.
-     * @param branchResults The results of each branch, containing the stage index.
-     * @param explicitMaxStageIndex Optional explicit max stage index. When non-null,
-     *        overrides the computed max from branchResults. Use this when the caller
-     *        knows the stage index more accurately than branchResults can provide.
-     * @return The new [StageIndex] after advancing.
-     */
+ * Advances the replay cursor past a parallel frame, using the maximum
+ * stage index from all branch results as the next cursor position.
+ *
+ * This is the join barrier for parallel frames. It computes
+ * `max(branchResults.map { it.stageIndex })` and atomically writes
+ * the new cursor position using the same idempotent CAS semantics as [advance].
+ *
+ * @param runId The run identifier, used to derive cursor keys.
+ * @param frame The parallel frame that just completed.
+ * @param branchResults The results of each branch, containing the stage index.
+ * @param explicitMaxStageIndex Optional explicit max stage index. When non-null,
+ * overrides the computed max from branchResults. Use this when the caller
+ * knows the stage index more accurately than branchResults can provide.
+ * @return The new [StageIndex] after advancing.
+ */
     fun advancePastParallelFrame(
         runId: String,
         frame: ParallelFrame,
@@ -182,23 +182,23 @@ class SqliteReplayCursorStoreImpl(
     }
 
     /**
-     * Advances the replay cursor past a parallel frame.
-     *
-     * Computes `max(branchResults.map { it.stageIndex })` and atomically
-     * writes the new cursor position using the same idempotent CAS semantics
-     * as [advance].
-     *
-     * ## Concurrency note (ADR-0035)
-     *
-     * Full concurrency stress testing for this join barrier is deferred to M3-R4.3.
-     * The current implementation relies on SQLite's transaction isolation and the
-     * idempotent ON CONFLICT clause for safety, but production concurrency
-     * should be validated with UatDurable010 before promotion.
-     *
-     * @param frame The parallel frame that just completed.
-     * @param branchResults The results of each branch.
-     * @return The new [StageIndex] after advancing.
-     */
+ * Advances the replay cursor past a parallel frame.
+ *
+ * Computes `max(branchResults.map { it.stageIndex })` and atomically
+ * writes the new cursor position using the same idempotent CAS semantics
+ * as [advance].
+ *
+ * ## Concurrency note 
+ *
+ * Full concurrency stress testing for this join barrier is deferred to M3-R4.3.
+ * The current implementation relies on SQLite's transaction isolation and the
+ * idempotent ON CONFLICT clause for safety, but production concurrency
+ * should be validated with UatDurable010 before promotion.
+ *
+ * @param frame The parallel frame that just completed.
+ * @param branchResults The results of each branch.
+ * @return The new [StageIndex] after advancing.
+ */
     override fun advancePastParallelFrame(
         runId: String,
         frame: ParallelFrame,

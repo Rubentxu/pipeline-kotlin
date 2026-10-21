@@ -14,7 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * THE single wire authority for `core.input` (RP6-B / WU-092 G3.4).
+ * THE single wire authority for `core.input`.
  *
  * Both the DSL compiler and the Step use this object; neither writes the format
  * by hand. That is the whole point: `core.sh` carries a dialect split
@@ -103,7 +103,7 @@ object InputAnswerCodec {
      *
      * `null` is the honest answer for "a human is still typing" and for "this is
      * not an answer at all". Neither may end the wait: a half-written file is not
-     * a refusal (SPEC_WU092_INPUT.md §3.4).
+     * a refusal.
      */
     fun decode(raw: String): InputDecision? {
         val obj = try {

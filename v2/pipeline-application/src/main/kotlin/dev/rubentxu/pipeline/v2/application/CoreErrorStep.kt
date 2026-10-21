@@ -42,14 +42,14 @@ data class CoreErrorInput(
 }
 
 /**
- * `core.error` registered as an open [StepDefinition] (B1.2b, ADR-0070).
+ * `core.error` registered as an open [StepDefinition].
  *
  * Mirrors the structure of [CoreEchoStep] (atomic) and [CoreShellStep] (effectful via
  * `TypedStepOutput`). The handler returns a [CoreErrorOutput] (a [TypedStepOutput] carrier)
  * — it MUST NOT throw to signal a failure. The boundary folds `produced as? TypedStepOutput`
  * into the canonical `CommonExecutionResult.outcome` (Step-agnostic).
  *
- * S2-A1 / G3-A4.3 amendment: the carrier's invariant
+ * The carrier's invariant
  * `outcome == StepOutcome.Failure(failure)` is enforced in [CoreErrorOutput]'s factory
  * (`from`/`of`). The handler does NOT compute the outcome; it calls [CoreErrorOutput.of]
  * and the boundary projects `outcome` unchanged.

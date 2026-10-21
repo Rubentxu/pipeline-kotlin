@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 /**
  * Pure, total sanitiser for `core.publishHTML` `reportName` values.
  *
- * Reference: jenkinsci/htmlpublisher-plugin master @ 6a536b8d
+ * Reference: jenkinsci/htmlpublisher-plugin master
  *   HtmlPublisherTarget.java (MIT) — `sanitizeReportName()` method.
  *   Source lines (verbatim behaviour):
  *
@@ -28,7 +28,7 @@ package dev.rubentxu.pipeline.v2.application
  * }
  * ```
  *
- * Behavioural contract (R3 in WU-LPR-090/spec.md):
+ * Behavioural contract (R3):
  * - R3.a (alphanumeric): letter / digit / '-' / '_' (when not escape) preserved as-is;
  *   any other char replaced with '_' followed by 4-char lowercase hex of the char code.
  * - R3.b (traversal): even hostile chars (newlines, control, unicode) produce a value
@@ -39,7 +39,7 @@ package dev.rubentxu.pipeline.v2.application
  *   and `_` is no longer in the "safe" set. Mirrors `escapeUnderscores` in Jenkins.
  * - R3.e (collision): sanitisation is a total function (same input → same output). Two
  *   different inputs MAY collide (e.g. "a:b" and "a_b0041" both → "a_b0041b") and the
- *   caller must handle this via `name` validation upstream, not here.
+ *   caller must handle this via `reportName` validation upstream, not here.
  *
  * Pure function. No IO, no clock, no globals. Tested via PublishHtmlSanitiserTest.
  */

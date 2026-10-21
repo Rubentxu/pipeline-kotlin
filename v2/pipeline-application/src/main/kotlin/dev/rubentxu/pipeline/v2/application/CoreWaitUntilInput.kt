@@ -20,7 +20,7 @@ import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS
  * `kind="waitUntil"`; if both carriers shared one type, nothing would stop a
  * block payload being handed to the registry decoder and the refusal would
  * surface late, as a `require` at decode time rather than at the type level.
- * Distinct types make that confusion unrepresentable (AGENTS.md §8).
+ * Distinct types make that confusion unrepresentable.
  *
  * Not annotated `@Serializable` on purpose: `pipeline-application` does not
  * apply the kotlinx-serialization compiler plugin, so a generated
@@ -38,7 +38,7 @@ import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS
  * STRUCTURE and that "the structural projection reads the declared shape, not this carrier".
  * The projection did read the shape — for the cadence — so `StageScope.waitUntil(
  * initialRecurrencePeriod = 7)` compiled, was encoded, and reached neither polling branch.
- * A dead semantic parameter (SEMANTIC CONSTITUTION §2), and a documented one.
+ * A dead semantic parameter, and a documented one.
  *
  * [maxBackoffMs] is the field that disproved the claim: it is RUNTIME DATA — a per-block
  * ceiling the shape cannot express — and before it existed the only code that could set it

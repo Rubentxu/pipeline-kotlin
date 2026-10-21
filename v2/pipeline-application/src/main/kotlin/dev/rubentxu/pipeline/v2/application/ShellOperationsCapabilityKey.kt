@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
 /**
  * Capability key under which the engine supplies a typed [ShellOperations]
- * seam to a handler that must execute a shell process (LB-02 / G3).
+ * seam to a handler that must execute a shell process.
  *
  * Mirrors the [EVENT_SINK_CAPABILITY] shape:
  *

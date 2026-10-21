@@ -12,11 +12,11 @@ import dev.rubentxu.pipeline.v2.events.registry.PLUGIN_EVENT_EMISSION_CAPABILITY
 import dev.rubentxu.pipeline.v2.events.registry.PluginEventEmission
 
 /**
- * P3-D / S6.4 — the plugin's SECOND Step, and the reason there are two.
+ * The plugin's SECOND Step, and the reason there are two.
  *
  * `uppercase` demands nothing from the host: it is the reference proof that an external Step runs
  * with zero capabilities and zero core changes, and the certification suite asserts exactly that.
- * The first attempt at P3-D added the event emission to `uppercase` itself, and that suite caught
+ * An earlier attempt added the event emission to `uppercase` itself, and that suite caught
  * it — a standing assertion that the reference plugin is capability-free, broken by a well-meaning
  * change. The assertion was right and the change was wrong: a reference that has quietly acquired
  * a dependency is no longer the reference.

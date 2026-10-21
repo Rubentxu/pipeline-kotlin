@@ -360,7 +360,7 @@ internal class ScriptedRegistryInvoker(
     }
 
     suspend fun invoke(call: ScriptedRegistryCall): ScriptedRegistryResult {
-        // 1. ADDRESS — the frontend's own durable coordinate system (ADR-0103 RPL-1).
+        // 1. ADDRESS — the frontend's own durable coordinate system.
         val stepId = scriptedStepId(call.stepKey)
         val input = OperationInput(
             stepId = stepId,

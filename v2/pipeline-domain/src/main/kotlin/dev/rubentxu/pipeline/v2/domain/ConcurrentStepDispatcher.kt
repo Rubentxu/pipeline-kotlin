@@ -21,7 +21,7 @@ import java.util.concurrent.Future
  * All wave steps are submitted before any result is collected, and
  * results are collected in **declaration order** — not completion order.
  * Downstream folding via [RunOutcomeReducer] ("first failure wins") is
- * therefore deterministic regardless of thread scheduling (M2-005).
+ * therefore deterministic regardless of thread scheduling.
  *
  * ## Executor ownership
  *

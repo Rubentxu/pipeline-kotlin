@@ -28,11 +28,11 @@ data class CleanWsResult(
  *
  * 1. Resolves workspace root
  * 2. Determines files to delete:
- *    - `patterns != null`: delete only files matching any pattern (Ant-style globs)
- *    - `patterns == null`: delete all non-.v2 files
+ * - `patterns!= null`: delete only files matching any pattern (Ant-style globs)
+ * - `patterns == null`: delete all non-.v2 files
  * 3. Deletes matching files (or all non-.v2 files)
  * 4. If `deleteDirs=true`: removes now-empty parent directories recursively
- * 5. Preserves `.v2/artifacts/` tree (F-ARCH-L6-003)
+ * 5. Preserves `.v2/artifacts/` tree 
  * 6. Writes `.cleaned` marker with sha256 for MEMOIZED replay
  *
  * ## Ant-Style Glob Semantics
@@ -47,8 +47,8 @@ data class CleanWsResult(
  * - Operates only within workspace root
  * - Never touches `.v2/artifacts/` per F-ARCH-L6-003 invariant
  * - C9: refuses the pattern-less form when [rootDestruction] does not permit it.
- *   `cleanWs(patterns = null)` means "delete every non-.v2 file", so against a
- *   `--workspace` root that is the user's whole project. See [CleanWsExecutor].
+ * `cleanWs(patterns = null)` means "delete every non-.v2 file", so against a
+ * `--workspace` root that is the user's whole project. See [CleanWsExecutor].
  *
  * ## Why C8 and C9 share one type
  *

@@ -1,13 +1,13 @@
 package dev.rubentxu.pipeline.v2.application
 
 /**
- * Typed input of `core.lock` (RP6-A / WU-091).
+ * Typed input of `core.lock`.
  *
  * The WHOLE payload is encoded; the engine does not probe individual fields, and
  * the codec is not required to round-trip only some of them.
  *
  * Not annotated `@Serializable` on purpose: `pipeline-application` does not apply
- * the kotlinx-serialization compiler plugin, so a generated `.serializer()` would
+ * the kotlinx-serialization compiler plugin, so a generated `.serializer` would
  * not exist. The codec in [CoreLockStep] is written out explicitly, exactly as
  * [CoreShellInput] is.
  *
@@ -15,11 +15,10 @@ package dev.rubentxu.pipeline.v2.application
  *
  * Derived from the official `lock` step reference
  * (<https://www.jenkins.io/doc/pipeline/steps/lockable-resources/>). The
- * parameters that step also accepts and WU-091 deliberately does NOT expose are
+ * parameters that step also accepts and this Step deliberately does NOT expose are
  * excluded with the reason for each:
- * they need a resource catalogue or an ordered queue, which are RP-8
- * requirements, and `variable` couples this Step to the context system without
- * adding anything to exclusion.
+ * they need a resource catalogue or an ordered queue, and `variable` couples
+ * this Step to the context system without adding anything to exclusion.
  *
  * ## Coherence is decided once, in one place
  *

@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 
 /**
- * Typed input for `core.sh`, registry-routed (LB-02 / G1).
+ * Typed input for `core.sh`, registry-routed.
  *
  * The Input codec encodes ONLY the durable subset of shell arguments:
  *   `{ script, encoding?, label?, returnMode }`. Per-call runtime args
@@ -12,9 +12,9 @@ import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
  *   capability-resolved seams at execute-time; they MUST NOT be encoded
  *   into the durable payload (no secrets in `OperationInput`).
  *
- * G1 (registry seam proof): the handler body is a deterministic stub
+ * Registry seam proof: the handler body is a deterministic stub
  * returning `ShellInvocationResult.UnitValue`. The real sh execution path
- * is wired in G3 REGISTRY_PRIMARY by injecting the `SHELL_OPERATIONS`
+ * is wired in REGISTRY_PRIMARY by injecting the `SHELL_OPERATIONS`
  * capability adapter.
  */
 data class CoreShellInput(

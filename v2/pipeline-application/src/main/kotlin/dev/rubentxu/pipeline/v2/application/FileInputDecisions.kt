@@ -7,7 +7,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.delay
 
 /**
- * [InputDecisions] over the control directory (RP6-B / WU-092 G2).
+ * [InputDecisions] over the control directory.
  *
  * ```text
  * <root>/<opId>/request.json    written by this adapter

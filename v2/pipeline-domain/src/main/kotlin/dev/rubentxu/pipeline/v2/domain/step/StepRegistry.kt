@@ -129,7 +129,7 @@ sealed interface StepInvocationOutcome<out O : Any> {
 }
 
 /**
- * Open registry of Step families, as an immutable READ VIEW (ADR-0070).
+ * Open registry of Step families, as an immutable READ VIEW.
  *
  * Composition is open to core Steps and external plugins alike; there is no privileged
  * registration path. A duplicate key MUST fail deterministically so a plugin cannot
@@ -141,12 +141,12 @@ sealed interface StepInvocationOutcome<out O : Any> {
  * registry changing shape underneath it. Two additive registration shapes are supported on
  * the builder:
  * - [StepRegistryBuilder.add] of a bare [StepDefinition] — the legacy path
- *   used by the CORE Steps and by `example.uppercase`; provider metadata is
- *   unknown to the registry, and [providerOf] returns null for that key
- *   (C10 backwards-compat).
+ * used by the CORE Steps and by `example.uppercase`; provider metadata is
+ * unknown to the registry, and [providerOf] returns null for that key
+ * (C10 backwards-compat).
  * - [StepRegistryBuilder.add] of a [StepRegistration] — the additive path
- *   used by the new plugin shape; the registry stores the provider metadata
- *   and exposes it via [providerOf] (C3, O(1)).
+ * used by the new plugin shape; the registry stores the provider metadata
+ * and exposes it via [providerOf] (C3, O(1)).
  *
  * Both share the same underlying map. A duplicate key is rejected on either path, naming the
  * StepKey in the diagnostic. No plugin can shadow a CORE Step via either path.
@@ -270,7 +270,7 @@ private class FrozenStepRegistry(entries: Map<PluginStepId, StepRegistryEntry>) 
 }
 
 /**
- * Generic canonical invocation seam (ADR-0070 / ADR-0073).
+ * Generic canonical invocation seam.
  *
  * Resolves [StepRegistry] → capability admission → typed decode → [StepHandler].
  * Unknown step, decode failure and missing capability all fail closed BEFORE the handler

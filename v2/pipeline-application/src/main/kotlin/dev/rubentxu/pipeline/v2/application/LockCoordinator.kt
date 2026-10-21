@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 /**
  * Typed seam a registry-routed `core.lock` handler calls to take and release a
- * named resource (RP6-A / WU-091).
+ * named resource.
  *
  * Mirrors [ShellOperations] exactly: this interface is the *only* contract the
  * handler holds for coordination. The handler MUST NOT open files, keep maps of

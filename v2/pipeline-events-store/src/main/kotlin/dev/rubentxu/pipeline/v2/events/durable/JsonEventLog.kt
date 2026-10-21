@@ -823,7 +823,7 @@ object JsonEventLog {
                     newSha = newSha,
                 )
             }
-            // L7 Jenkins File + Artefact Events (ML-R7)
+            // L7 Jenkins File + Artefact Events 
             "FileWritten" -> {
                 val pathStr = EventJsonFields.stringField(s, "path") ?: ""
                 val path = java.nio.file.Paths.get(pathStr)

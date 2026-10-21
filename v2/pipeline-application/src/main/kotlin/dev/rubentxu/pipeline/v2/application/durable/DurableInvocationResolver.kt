@@ -31,7 +31,7 @@ internal class DurableInvocationResolver(
     private val divergenceDetector: dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector,
     private val effectReplayPolicy: EffectReplayPolicy,
     private val journal: OperationJournal,
-    // TRAIN H3 / PR-019: the a2 external-subprocess compatibility hook is a PORT. The resolver
+    // The a2 external-subprocess compatibility hook is a PORT. The resolver
     // decides when recovery applies; the adapter observes the process. The resolver no longer
     // constructs StepReconcilerL1 / DurableShellExecutor, so this class stays free of process
     // and control-directory knowledge and remains testable with no filesystem.
@@ -69,7 +69,7 @@ internal class DurableInvocationResolver(
      *    external process. It is an explicit a2 compatibility hook, NOT generic durable-protocol
      *    semantics.
      *
-     * ## Where the WHEN lives, after ADR-0103 R1-E
+     * ## Where the WHEN lives
      *
      * This function decides **whether** a subprocess observation is owed
      * ([recoveryRequirement]) and only then asks **what** was found
@@ -103,13 +103,13 @@ internal class DurableInvocationResolver(
                     return InvocationReconciliation.RecoveryUnobservable(operationId)
                 // The substrate said the process was still reattachable and our window closed
                 // without a terminal. The OBSERVER reports that fact; giving it meaning is this
-                // class's job, and ADR-S4-R1 §2.3 fixes the meaning as a compatibility policy:
+                // class's job, and the runtime architecture decision fixes the meaning as a compatibility policy:
                 //
                 //     ReattachWindowExpired  ->  Recover(RecoveredTerminal.Lost(...))
                 //
                 // which preserves the certified observable behaviour byte for byte. The
                 // non-terminal alternative — leave the row RUNNING, invent nothing — is DEFERRED
-                // decision D-1, and it is a decision rather than a defect. Until it is taken, this
+                // this lifecycle decision, and it is a decision rather than a defect. Until it is taken, this
                 // line is the only place in the codebase allowed to collapse the two facts, and it
                 // collapses them with that reason written next to it.
                 //
@@ -137,7 +137,7 @@ internal class DurableInvocationResolver(
     }
 
     /**
-     * Whether a subprocess observation is owed — ADR-0103 RPL-2, enforced from the DECLARED
+     * Whether a subprocess observation is owed, enforced from the DECLARED
      * descriptor properties and never from a literal or a concrete Step key.
      *
      * Pure, and the only place in the recovery path allowed to answer this question. [RecoveryPolicy.None]

@@ -12,7 +12,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventTail
 import dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope
 
 /**
- * S5.4 — a bounded, FILTERED answer for an observer, assembled only from [EventTail].
+ * A bounded, FILTERED answer for an observer, assembled only from [EventTail].
  *
  * ## Why this exists instead of filtering in the caller
  *
@@ -28,7 +28,7 @@ import dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope
  * **What that failure actually was, measured.** It is tempting to say `history` silently drops the
  * unreadable row, because its result type has no case for one. It does not: `EventStore.eventsFor`
  * cannot represent a refusal and therefore THROWS `UndecodableEventRecordException` at that row. The
- * observed consequence under mutation D-M5 is that one unreadable row destroys the entire read — an
+ * observed consequence under mutation is that one unreadable row destroys the entire read — an
  * unhandled exception, a stack trace, no history, and an exit status the command never chose. The
  * forty readable rows before row 41 are lost too, which is the part that makes it worse than a gap.
  *

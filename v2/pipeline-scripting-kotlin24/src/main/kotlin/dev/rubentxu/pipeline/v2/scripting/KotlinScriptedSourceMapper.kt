@@ -133,7 +133,7 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                                 expression.textRange.length,
                             )
                         // Unqualified runtime-returning `readFile(...)`: workspace file-read
-                        // step (LFC-2R2). The argument is the path; encoding defaults at the
+                        // step. The argument is the path; encoding defaults at the
                         // façade.
                         //
                         // S4-DATA. The author's path EXPRESSION is carried, as PSI text,
@@ -144,7 +144,7 @@ class KotlinScriptedSourceMapper : ScriptedSourceMapper {
                             !isDotQualified ->
                             recordPathArgument(source, expression, "file", ScriptedCallKind::ReadFile, calls, diagnostics)
                         // Unqualified runtime-returning `fileExists(...)`: workspace
-                        // file-existence check (LFC-2R2). The argument is the path.
+                        // file-existence check. The argument is the path.
                         expression.calleeExpression?.text == "fileExists" &&
                             !isDotQualified ->
                             recordPathArgument(source, expression, "file", ScriptedCallKind::FileExists, calls, diagnostics)

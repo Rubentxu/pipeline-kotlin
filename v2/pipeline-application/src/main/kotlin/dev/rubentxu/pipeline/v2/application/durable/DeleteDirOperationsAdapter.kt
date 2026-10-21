@@ -17,7 +17,7 @@ import java.util.UUID
 
 /**
  * The canonical implementation of [dev.rubentxu.pipeline.v2.application.DeleteDirOperations] —
- * the typed port consumed by `CoreDeleteDirStep.handler` (S2-A7 / G3-fix).
+ * the typed port consumed by `CoreDeleteDirStep.handler`.
  *
  * ## Why an adapter rather than inlining the IO into the handler
  *
@@ -56,22 +56,22 @@ class DeleteDirOperationsAdapter(
     /** optional project-workspace override (--workspace).*/
     private val workspaceBase: java.nio.file.Path? = null,
     /**
-     * RP034-G (ADR-0102): the typed workspace lease for this step.
-     *
-     * Additive and optional. When supplied, ownership of the root is read from
-     * this value. RP034-I made it required and deleted the
-     * `ProjectCheckoutDetector` heuristic it replaced: with typed ownership
-     * there is nothing left for a VCS marker to decide.
-     */
+ * RP034-G: the typed workspace lease for this step.
+ *
+ * Additive and optional. When supplied, ownership of the root is read from
+ * this value. RP034-I made it required and deleted the
+ * `ProjectCheckoutDetector` heuristic it replaced: with typed ownership
+ * there is nothing left for a VCS marker to decide.
+ */
     private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation,
 ) : DeleteDirOperations {
     /**
-     * Idempotent creation of the workspace directory this Step operates on.
-     *
-     * The base itself comes from the execution location (RP034-I); this only
-     * ensures the directory exists, which is what the SDK executor and its
-     * `.deleted` / `.cleaned` marker require.
-     */
+ * Idempotent creation of the workspace directory this Step operates on.
+ *
+ * The base itself comes from the execution location; this only
+ * ensures the directory exists, which is what the SDK executor and its
+ * `.deleted` / `.cleaned` marker require.
+ */
     private fun ensureWorkspace(workspace: Path) {
         if (!Files.isDirectory(workspace)) {
             Files.createDirectories(workspace)
@@ -87,22 +87,22 @@ class DeleteDirOperationsAdapter(
         // writeFile created the directory in the scope and deleteDir then
         // looked for it under the reconstructed workspace root, failing with
         // NoSuchFileException while writing its `.deleted` marker. Two bases
-        // for one scope is the divergence ADR-0100 removes.
+        // for one scope is the divergence the perimeter authority removes.
         val workspace: Path = executionLocation.cwd
         ensureWorkspace(workspace)
 
         val executor = DeleteDirExecutor(
             workspaceResolver = { _, _ -> workspace },
-            // RP034-G (ADR-0102): the guard is derived from the typed lease, not
+            // The guard is derived from the typed lease, not
             // from a VCS marker.
             //
             // The previous condition was
             //   workspaceBase != null && isProjectCheckout(workspaceBase)
-            // which had two defects ADR-0102 removes:
+            // which had two defects the perimeter authority removes:
             //
             //  1. it only engaged when `--workspace` was passed explicitly, so the
             //     no-flag path reached the user's directory unprotected — exactly
-            //     the intermediate state WU-RP-034 forbids;
+            //     the intermediate state the runs policy forbids;
             //  2. it treated a bare non-VCS project tree as disposable scratch,
             //     because ownership was inferred from the absence of a marker.
             //

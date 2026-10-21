@@ -33,7 +33,7 @@ import kotlinx.serialization.json.jsonPrimitive
 data object PwdTmpInput
 
 /**
- * Typed output payload of `core.pwd.tmp` — APPROVED_ARCHITECTURAL_DELTA (the pwdTmp seam, decision D2).
+ * Typed output payload of `core.pwd.tmp` — APPROVED_ARCHITECTURAL_DELTA (the pwdTmp seam).
  *
  * Same typed output as `core.pwd`: `PwdOutput(path: String)` with `outcome = Success`.
  * The output path is the absolute path of the deterministic temp workspace
@@ -71,7 +71,7 @@ typealias PwdTmpOutput = PwdOutput
  * ```
  *
  * That's it. The deterministic `tmp-pwd-<sha256(opId.format())>` derivation
- * (D5–D12), the directory creation, and the `PwdResolved` event emission all
+ * , the directory creation, and the `PwdResolved` event emission all
  * live in [dev.rubentxu.pipeline.v2.application.durable.TemporaryWorkspaceOperationsAdapter].
  *
  * ## Why a single capability, not three
@@ -89,7 +89,7 @@ typealias PwdTmpOutput = PwdOutput
  * Step's contract** — the handler does not need the durable OpId to do its
  * work; the bridge adapter does, and only there.
  *
- * ## Determinism laws (D5–D12, the pwdTmp seam)
+ * ## Determinism laws (the pwdTmp seam)
  *
  * Lives in the adapter. Proven by the family-level fitness matrix (24 rows):
  * same OpId ⇒ same path; distinct stepIndex / branchIndex / bodyPath ⇒ distinct
@@ -109,7 +109,7 @@ typealias PwdTmpOutput = PwdOutput
  *   contains `"core.pwd"` and the legacy dispatcher remains the production
  *   authority until a separate G4 flip).
  * - the public DSL (`PipelineDsl.pwd(tmp=true)`) is NOT rewired yet — that
- *   lower-binding is the runtime-return consumer work (LFC-2R runtime-return consumer). For this
+ *   lower-binding is the runtime-return consumer work. For this
  *   slice the Step is reachable only through the generic registry path.
  *
  * ## Replay law
@@ -162,7 +162,7 @@ object CorePwdTmpStep {
 
     // Distinct from CorePwdStep (READ_ONLY + MEMOIZED): the tmp directory is
     // physically created, so the effect class MUST reflect that. Replay law
-    // (D4 frozen at G2 for the family): idempotent mkdir on fresh/rerun,
+    // Replay law: idempotent mkdir on fresh/rerun,
     // persisted observation on resume/reuse.
     private val descriptor = StepDescriptor(
         stepId = "core.pwd.tmp",

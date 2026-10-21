@@ -17,7 +17,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /**
- * [LockCoordinator] backed by POSIX file locks (the POSIX-file-lock contract / WU-091).
+ * [LockCoordinator] backed by POSIX file locks.
  *
  * ## Why a file and not a durable queue
  *

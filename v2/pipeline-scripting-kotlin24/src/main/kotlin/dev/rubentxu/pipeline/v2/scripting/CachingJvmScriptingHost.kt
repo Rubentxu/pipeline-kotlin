@@ -20,13 +20,13 @@ import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
  * and a divergence between them would serve the wrong artifact silently —
  * the second-authority defect DR-1 forbids. Passing the key also means this
  * host carries no mutable state, which the explicit-immutable-context law
- * (CTX-P) requires of anything that participates in execution.
+ * requires of anything that participates in execution.
  *
  * ### Why the override is not a reimplementation
  *
  * `BasicScriptingHost.eval` is `compiler.invoke(source, compilationConfiguration)`
  * and, on success, `evaluator.invoke(compiled.value,
- * evaluationConfiguration ?: ScriptEvaluationConfiguration.Default)` with the
+ * evaluationConfiguration?: ScriptEvaluationConfiguration.Default)` with the
  * compile diagnostics merged into the result via `ResultWithDiagnostics.plus`.
  * That body was read out of the shipped bytecode before this class was written,
  * and it is reproduced here call for call against the same `compiler` and
@@ -44,7 +44,7 @@ import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
  * quarter of its bytes still loads — the entry the loader reads is at the front
  * of the file — and it fails at evaluation, not at load. The failure arrives as
  * a `RuntimeException("Compiled script is not loaded yet")` thrown by
- * `KJvmCompiledScriptLazilyLoadedFromClasspath.getScriptOrError()`, which is why
+ * `KJvmCompiledScriptLazilyLoadedFromClasspath.getScriptOrError`, which is why
  * the recovery below catches an exception rather than inspecting the result.
  * Because a hit never stored anything, the damaged entry then served that same
  * failure on every subsequent run — the exact opposite of the interface's
@@ -64,7 +64,7 @@ import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
  * two the store degrades from.
  *
  * @param cache where to look and to store; [CompiledScriptCache.Disabled] to
- *   keep the uncached behaviour.
+ * keep the uncached behaviour.
  * @param cacheKey the identity of the one compilation this host exists to run.
  */
 class CachingJvmScriptingHost(

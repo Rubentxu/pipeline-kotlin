@@ -3,7 +3,7 @@ package example.uppercase
 import dev.rubentxu.pipeline.v2.dsl.StageScope
 
 /**
- * External DSL facade (EP-5). The plugin teaches the DSL its own step; core,
+ * External DSL facade. The plugin teaches the DSL its own step; core,
  * compiler and coordinator never learn the name `uppercase`.
  *
  * The user-visible script becomes:
@@ -12,11 +12,11 @@ import dev.rubentxu.pipeline.v2.dsl.StageScope
  * import example.uppercase.uppercase
  *
  * pipeline {
- *     stages {
- *         stage("External") {
- *             uppercase("hello")
- *         }
- *     }
+ * stages {
+ * stage("External") {
+ * uppercase("hello")
+ * }
+ * }
  * }
  * ```
  *
@@ -33,7 +33,7 @@ fun StageScope.uppercase(text: String) {
 }
 
 /**
- * The observing sibling of [uppercase] (P3-D): same work, plus an event this plugin owns.
+ * The observing sibling of [uppercase]: same work, plus an event this plugin owns.
  *
  * Separate rather than a flag on `uppercase` because the reference `uppercase` is deliberately
  * capability-free, and a `boolean observe` on it would quietly make every caller depend on a seam
@@ -43,11 +43,11 @@ fun StageScope.uppercase(text: String) {
  * import example.uppercase.uppercaseObserved
  *
  * pipeline {
- *     stages {
- *         stage("External") {
- *             uppercaseObserved("hello")
- *         }
- *     }
+ * stages {
+ * stage("External") {
+ * uppercaseObserved("hello")
+ * }
+ * }
  * }
  * ```
  */

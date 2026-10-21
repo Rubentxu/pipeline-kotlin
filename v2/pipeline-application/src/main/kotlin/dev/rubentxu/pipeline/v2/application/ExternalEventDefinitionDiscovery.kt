@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.events.registry.RegistrationOutcome
 import java.util.ServiceLoader
 
 /**
- * Runtime discovery adapter for the event kinds SEAMS OFFICIAL_PLUGINs contribute (P3-B / S6.4).
+ * Runtime discovery adapter for the event kinds SEAMS OFFICIAL_PLUGINs contribute.
  *
  * ## Why this exists
  *
@@ -22,7 +22,7 @@ import java.util.ServiceLoader
  * be a change to core — the dependency direction this architecture forbids. A plugin ships by
  * dropping a JAR on the classpath, and the registry is what decides whether that is allowed.
  *
- * This is deliberately a small ADAPTER and not a fourth composition identity. S6 has to converge
+ * This is deliberately a small ADAPTER and not a fourth composition identity. It has to converge
  * identity, versioning, provenance and discovery across Steps, Directives, Capabilities and Events;
  * what belongs to that future is the manifest, not this loader, which is exactly the shape the
  * other three loaders already have.
@@ -73,7 +73,7 @@ object ExternalEventDefinitionDiscovery {
      * Deterministic and fresh per call; no global registry, matching
      * [CoreStepRegistryFactory.registry].
      *
-     * S6/F: declarations are admitted onto a BUILDER and the frozen registry is produced once,
+     * Declarations are admitted onto a BUILDER and the frozen registry is produced once,
      * at the end. Composition is the only window in which a kind can enter, and it closes before
      * any emitter or reader receives the registry — the registry type has no `register`, so a
      * plugin that was not admitted here cannot join the run by any later route.

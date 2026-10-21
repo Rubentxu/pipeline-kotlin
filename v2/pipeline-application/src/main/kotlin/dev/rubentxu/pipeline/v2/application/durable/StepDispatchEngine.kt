@@ -449,7 +449,7 @@ internal class StepDispatchEngine(
                     // (CanonicalBodyInvokerAdapter.open): a per-attempt segment is appended
                     // to the body path so a retried body gets its own durable identity, and
                     // the scope patch is applied by pure derivation without mutating the
-                    // caller's context (CTX-P).
+                    // caller's context.
                     val attemptSegment = bodyContext.attempt?.let { segment ->
                         listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(segment.index, segment.key))
                     } ?: emptyList()
@@ -588,7 +588,7 @@ internal class StepDispatchEngine(
         // measure.
         val bodies: SagaBodyResolver? = ownedBodies?.let { SagaBodyResolver(it) }
 
-        // BlockStepNode bypasses decoder and goes directly to dispatchBody (EM-4).
+        // BlockStepNode bypasses decoder and goes directly to dispatchBody.
         // EM-4 handles only the body-execution substrate for dir/withEnv/withCredentials/
         // timeout/retry. catchError and warnError remain on the legacy linear path
         // (rewriteWorkflowControl) until EM-5/EM-6 semantics are implemented.
@@ -879,7 +879,7 @@ internal class StepDispatchEngine(
         var contextInBody = executionContext
         var outcome: StepOutcome = StepOutcome.Success
         val scope = when (projection) {
-            // EM-7/LFC-5.3 (INC-022), reworked by W1d: the credential lease is a body
+            // EM-7/LFC-5.3, reworked by W1d: the credential lease is a body
             // PREAMBLE, not a path of its own. Acquisition is an effectful preamble and the
             // body then re-enters the engine through the same child loop every other block
             // Step uses. Routed BY POLICY, never by Step name, and never dispatched as an
@@ -936,7 +936,7 @@ internal class StepDispatchEngine(
         // the body through `BodyInvoker.invoke`. The single shared body-child
         // iteration site stays inside `invokeBodyChildren`; this adapter NEVER
         // iterates body children itself.
-        // TRAIN H2 slice 3b (PR-018): the scoped-body execution (reentry binding,
+        // TRAIN H2 slice 3b: the scoped-body execution (reentry binding,
         // engine delegation or inline loops, and the bracketed bookends) lives in
         // BodyExecutionEngine; the coordinator composes it with the projected
         // scope decided above. The credential-lease path composes through the
@@ -1030,24 +1030,24 @@ internal class StepDispatchEngine(
     ).result.outcome
 
     /**
-     * EM-7/LFC-5.3 (INC-022), reworked by W1d — a credential lease as a body PREAMBLE.
-     *
-     * The acquisition is an effectful preamble that yields an environment overlay; the body
-     * itself re-enters the engine through [invokeBodyChildren], the same loop every other
-     * block Step uses. Release ALWAYS runs — it is the `finally` of the same attempt that
-     * dispatches the body, so it also runs when a child fails — and its typed outcome is
-     * folded with the body's outcome by [mergeBodyAndCleanup], a total pure function of two
-     * values.
-     *
-     * Fail-closed: an [CredentialScopeOutcome.Unavailable] or
-     * [CredentialScopeOutcome.Invalid] acquisition returns BEFORE any child is dispatched, so
-     * a lease that cannot be acquired never runs its body. The bindings were already decoded
-     * by the pure projection (`decodeCredentialBindings`), so a malformed payload never
-     * reaches this function.
-     *
-     * The env overlay reaches children as an immutable derived value (CTX-P): the caller's
-     * execution context is not mutated and needs no restore.
-     */
+ * EM-7/LFC-5.3, reworked by W1d — a credential lease as a body PREAMBLE.
+ *
+ * The acquisition is an effectful preamble that yields an environment overlay; the body
+ * itself re-enters the engine through [invokeBodyChildren], the same loop every other
+ * block Step uses. Release ALWAYS runs — it is the `finally` of the same attempt that
+ * dispatches the body, so it also runs when a child fails — and its typed outcome is
+ * folded with the body's outcome by [mergeBodyAndCleanup], a total pure function of two
+ * values.
+ *
+ * Fail-closed: an [CredentialScopeOutcome.Unavailable] or
+ * [CredentialScopeOutcome.Invalid] acquisition returns BEFORE any child is dispatched, so
+ * a lease that cannot be acquired never runs its body. The bindings were already decoded
+ * by the pure projection (`decodeCredentialBindings`), so a malformed payload never
+ * reaches this function.
+ *
+ * The env overlay reaches children as an immutable derived value: the caller's
+ * execution context is not mutated and needs no restore.
+ */
     private suspend fun executeCredentialLeasedBody(
         bindings: List<CredentialBindingSpec>,
         block: BlockStepNode,

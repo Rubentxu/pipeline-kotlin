@@ -11,7 +11,7 @@ import java.nio.file.Path
 import java.util.ServiceLoader
 
 /**
- * S6-COMPOSITION, pass 2 — the declaration/implementation cross-check, wired to the product.
+ * The declaration/implementation cross-check, wired to the product.
  *
  * ## What this closes
  *

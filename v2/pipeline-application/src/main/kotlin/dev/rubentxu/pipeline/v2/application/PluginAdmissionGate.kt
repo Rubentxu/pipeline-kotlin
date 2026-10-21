@@ -21,7 +21,7 @@ import dev.rubentxu.pipeline.v2.events.registry.EventDefinitionCreation
 import java.util.ServiceLoader
 
 /**
- * S6/D — the composition gate that makes "admit, THEN load" an ordering, not a promise.
+ * The composition gate that makes "admit, THEN load" an ordering, not a promise.
  *
  * ## Why this type exists
  *
@@ -45,7 +45,7 @@ import java.util.ServiceLoader
  * the class without running its static initialiser, which is what lets the manifest be read
  * "by artifact" without touching a line of plugin code. A reader that needed an instance to
  * find the declaration could not make that promise, and the difference between those two
- * readers is the whole content of ADR-EVO-003.
+ * readers is the whole content of that decision.
  *
  * ## A refused plugin is never linked
  *

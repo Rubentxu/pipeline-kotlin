@@ -54,7 +54,7 @@ internal class BeforeStageDirectiveEngine(
     private val gateContext: (dev.rubentxu.pipeline.v2.domain.EnvironmentSpec) -> dev.rubentxu.pipeline.v2.domain.directive.GateContext,
     private val gateEvaluator: (WhenPredicate, dev.rubentxu.pipeline.v2.domain.directive.GateContext) -> dev.rubentxu.pipeline.v2.domain.directive.GateVerdict,
     /**
-     * B4: the capabilities THIS run's composition supplies.
+     * The capabilities THIS run's composition supplies.
      *
      * The engine's own dependency, like the resolver below, and the reason the resolver's
      * default can stop being the empty set. A composition root that knows what it supplies
@@ -63,11 +63,11 @@ internal class BeforeStageDirectiveEngine(
     capabilityContributor: dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor =
         dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor { emptyMap() },
     /**
-     * S3.1: the ONE seam allowed to answer "does a target exist".
+     * The ONE seam allowed to answer "does a target exist".
      *
      * Injected rather than constructed, so the engine interprets a decision it
      * did not make. A coordinator that both decided satisfiability and applied
-     * the result would be the same defect the S3.1 port exists to prevent.
+     * the result would be the same defect the port exists to prevent.
      *
      * The default lives HERE, on the consumer, rather than as another
      * parameter on the coordinator's constructor, and that placement is
@@ -88,7 +88,7 @@ internal class BeforeStageDirectiveEngine(
      * know the granted capability set; until then the default refuses a
      * `CapabilitySet` requirement loudly instead of granting it speculatively.
      *
-     * B4 closes that seam's other half: the default is no longer the empty set
+     * closes that seam's other half: the default is no longer the empty set
      * unconditionally — it is the KEYS of [capabilityContributor], this run's own
      * composed capability authority, so `agentWithCapabilities` is granted exactly
      * when the capability is real for this run. A static table of "capabilities
@@ -203,7 +203,7 @@ internal class BeforeStageDirectiveEngine(
             return Verdict.Denied(resourceConflict.reason, FailureKind.USER)
         }
 
-        // S3.1: resolve declared execution-target requirements BEFORE composing gates.
+        // resolve declared execution-target requirements BEFORE composing gates.
         //
         // Order matters and is not arbitrary. A gate answers "may this stage
         // proceed"; a resource answers "what is it running on". Resolving first
@@ -304,7 +304,7 @@ internal class BeforeStageDirectiveEngine(
                                 is DirectiveExecutionPolicy.Evaluate -> "evaluate"
                                 is DirectiveExecutionPolicy.Gate -> "gate"
                                 is DirectiveExecutionPolicy.ProvideContext -> "provide-context"
-                                // S3.1: observable like any other admitted policy. A resource
+                                // observable like any other admitted policy. A resource
                                 // request that is admitted and then refused is still an admitted
                                 // request, and collapsing the two would make "declared and never
                                 // resolved" indistinguishable from "never declared".
@@ -318,14 +318,14 @@ internal class BeforeStageDirectiveEngine(
                 // seam are the ones the DECISION admitted there with policy Gate OR Evaluate —
                 // never a re-scan of the stage declaration. Membership is read from the closed
                 // policy ADT, never from a key. Admitted directives in other phases or policies
-                // (e.g. ProvideContext, D5) are outside this seam.
+                // (e.g. ProvideContext) are outside this seam.
                 Admission.Permitted(
                     decision.phases
                         .getValue(DirectivePhase.BEFORE_STAGE)
                         .filter {
                             it.policy is DirectiveExecutionPolicy.Gate ||
                                 it.policy is DirectiveExecutionPolicy.Evaluate ||
-                                // S3.1: a resource request is resolved in this seam too. It
+                                // a resource request is resolved in this seam too. It
                                 // is the same phase as a gate - before the body - and
                                 // filtering it out here would make it admitted and then
                                 // invisible, which is the accepted-metadata defect.
@@ -451,7 +451,7 @@ internal class BeforeStageDirectiveEngine(
                 "declared policy provide-context is not interpretable in the BEFORE_STAGE decode seam",
             )
 
-            // S3.1: a resource request decodes to its REQUIREMENT, not to a predicate.
+            // a resource request decodes to its REQUIREMENT, not to a predicate.
             // The seam is right for it - both are considered before the body - but the
             // shape is different, so it is a distinct case rather than a reused one.
             // [encodedArguments] is carried alongside so the resolution event can report what
@@ -476,7 +476,7 @@ internal class BeforeStageDirectiveEngine(
     }
 
     /**
-     * S3.1: resolve every declared execution target, observing each outcome.
+     * Resolve every declared execution target, observing each outcome.
      *
      * Returns a [Verdict.Denied] on the FIRST refusal and null when every
      * requirement was satisfied. A denial is emitted as a [DirectiveDenied] and
@@ -637,7 +637,7 @@ internal sealed interface DecodedBeforeStage {
     ) : DecodedBeforeStage
 
     /**
-     * S3.1: a resource request decoded to its requirement.
+     * A resource request decoded to its requirement.
      *
      * [encoded] is the exact byte sequence the script declared, carried so the
      * resolution event reports the declaration rather than a re-encoding of

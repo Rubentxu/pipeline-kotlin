@@ -1,6 +1,6 @@
 //@ expect-exit 1
 //@ expect-stderr Zip Slip
-// LFC-2E2 utilities OFFICIAL_PLUGIN live fixture (Slice 2 / S2.4 + S2.5).
+// Live end-to-end fixture for the unzip utility plugin.
 //
 // End-to-end defence-in-depth proof of CVE-2023-32981 containment on
 // BOTH sides of the zip chain. The fixture:

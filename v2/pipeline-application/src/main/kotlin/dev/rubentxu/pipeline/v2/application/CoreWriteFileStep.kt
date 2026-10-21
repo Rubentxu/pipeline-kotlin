@@ -23,7 +23,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Typed input payload of `core.file.writeFile` (S2-A3).
+ * Typed input payload of `core.file.writeFile`.
  *
  * Decoding validates the complete canonical envelope before the handler can create an
  * effect: non-blank `file`, non-null `encoding`.
@@ -47,12 +47,12 @@ data object CoreWriteFileOutput : TypedStepOutput {
 }
 
 /**
- * Registry authority for `core.file.writeFile` (S2-A3 / G1 registry seam proof).
+ * Registry authority for `core.file.writeFile`.
  *
  * G1 registers this candidate without changing `LEGACY_PLUGIN_IDS`, the legacy decoder,
  * the metadata row, or the legacy dispatcher: `StructuralFamilyResolver`'s
  * legacy-membership-wins rule keeps LegacyCore as the production authority until the
- * G3/G4 flip.
+ * next flip.
  *
  * The handler reaches workspace file operations ONLY through the typed
  * [WorkspaceOperations] seam (capability `WORKSPACE_OPERATIONS_CAPABILITY`), which binds

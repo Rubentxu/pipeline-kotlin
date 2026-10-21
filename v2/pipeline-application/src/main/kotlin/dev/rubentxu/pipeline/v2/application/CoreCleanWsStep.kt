@@ -26,7 +26,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Typed input payload of `core.cleanWs` (LFC-2E1-S2-A10 / G1).
+ * Typed input payload of `core.cleanWs`.
  *
  * The legacy wire payload for `core.cleanWs` is
  * `{"kind":"cleanWs","deleteDirs":<bool>,"patterns":[...]}` — the compiler
@@ -65,7 +65,7 @@ data class CleanWsOutput(
 }
 
 /**
- * Registry candidate for `core.cleanWs` (LFC-2E1-S2-A10 / G1).
+ * Registry candidate for `core.cleanWs`.
  *
  * ## Architecture
  *
@@ -79,7 +79,7 @@ data class CleanWsOutput(
  * All filesystem semantics, workspace resolution, and event emission live in
  * [dev.rubentxu.pipeline.v2.application.durable.CleanWsOperationsAdapter],
  * accessed via [CLEAN_WS_OPERATIONS_CAPABILITY]. This follows the certified
- * pattern of `CoreDeleteDirStep` / `DeleteDirOperations` (S2-A7 / G3-fix).
+ * pattern of `CoreDeleteDirStep` / `DeleteDirOperations`.
  *
  * ## Capability discipline
  *
@@ -103,7 +103,7 @@ data class CleanWsOutput(
  * (`CanonicalCoreStepMetadata["core.cleanWs"]`). While `core.cleanWs` remains
  * in LEGACY_PLUGIN_IDS, StructuralFamilyResolver's legacy-membership-wins rule
  * keeps LegacyCore as the production authority; this registration is
- * candidate-only (G1).
+ * candidate-only.
  */
 object CoreCleanWsStep {
 

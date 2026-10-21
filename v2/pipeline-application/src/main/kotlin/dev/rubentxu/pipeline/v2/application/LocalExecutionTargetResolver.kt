@@ -8,7 +8,7 @@ import dev.rubentxu.pipeline.v2.domain.directive.TargetLeaseResult
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
 /**
- * S3.1 — the local execution-target resolver.
+ * The local execution-target resolver.
  *
  * The single-host profile. It answers every [ExecutionTargetRequirement] case
  * with a typed result, and it is the ONLY place in the runtime that decides
@@ -34,8 +34,8 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  *
  * ## What it refuses, and why that is the feature
  *
- * [ExecutionTargetRequirement.Remote] is refused. There is no remote allocator
- * until RP-8, and a resolver that "succeeded" for a remote selector would be
+ * [ExecutionTargetRequirement.Remote] is refused. There is no remote allocator,
+ * and a resolver that "succeeded" for a remote selector would be
  * running the stage somewhere the author named while the runtime never
  * contacted it — the exact silent semantic drop this train exists to remove.
  *

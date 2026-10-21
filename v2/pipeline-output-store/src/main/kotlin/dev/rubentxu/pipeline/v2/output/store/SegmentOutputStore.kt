@@ -177,29 +177,29 @@ class SegmentOutputStore(
     // ------------------------------------------------------------------ the tail
 
     /**
-     * Records that [stream] will receive no further bytes, and returns the
-     * [SealOutcome] that names which of the four cases the call landed in.
-     *
-     * The marker is written with the stream's committed extent AT THE MOMENT of sealing, not at the
-     * moment it is read. That is what makes it a fact rather than a view: a reader in a fresh JVM
-     * after a crash sees the same end the writer saw, instead of inferring it from whatever bytes
-     * happen to be present.
-     *
-     * Idempotent by construction — if the marker exists it is left alone. Rewriting it with a later
-     * extent would make a resumed run's seal depend on WHEN it happened to run, which is exactly the
-     * non-determinism recovery must not have.
-     *
-     * ## Per-channel contract (M1-F.3)
-     *
-     *  - [SealOutcome.Sealed]: stream exists and was sealed by this call.
-     *  - [SealOutcome.AlreadySealed]: stream exists and was already sealed.
-     *    Idempotent: the recorded end is returned unchanged.
-     *  - [SealOutcome.NeverOpened]: stream has never been opened by any
-     *    writer. The legitimate-absence case a stdout-only script
-     *    produces for stderr — silent no-op, not a refusal.
-     *  - [SealOutcome.Failure]: real I/O failure while writing the marker.
-     *    The cause is propagated as data so the caller can route on it.
-     */
+ * Records that [stream] will receive no further bytes, and returns the
+ * [SealOutcome] that names which of the four cases the call landed in.
+ *
+ * The marker is written with the stream's committed extent AT THE MOMENT of sealing, not at the
+ * moment it is read. That is what makes it a fact rather than a view: a reader in a fresh JVM
+ * after a crash sees the same end the writer saw, instead of inferring it from whatever bytes
+ * happen to be present.
+ *
+ * Idempotent by construction — if the marker exists it is left alone. Rewriting it with a later
+ * extent would make a resumed run's seal depend on WHEN it happened to run, which is exactly the
+ * non-determinism recovery must not have.
+ *
+ * ## Per-channel contract 
+ *
+ * - [SealOutcome.Sealed]: stream exists and was sealed by this call.
+ * - [SealOutcome.AlreadySealed]: stream exists and was already sealed.
+ * Idempotent: the recorded end is returned unchanged.
+ * - [SealOutcome.NeverOpened]: stream has never been opened by any
+ * writer. The legitimate-absence case a stdout-only script
+ * produces for stderr — silent no-op, not a refusal.
+ * - [SealOutcome.Failure]: real I/O failure while writing the marker.
+ * The cause is propagated as data so the caller can route on it.
+ */
     override fun seal(stream: OutputStreamId): SealOutcome {
         requireRecoveredForWriting()
         val layout = layout(stream)
@@ -544,7 +544,7 @@ class SegmentOutputStore(
             // The key is the directory name itself, which IS `streamKey(stream)` for the stream
             // that wrote this directory: prune reaches a stream by its directory (the id is not
             // invertible), so keying on the name is what lets it share the writer's lock instead of
-            // adding a permanent second one (AUD-08).
+            // adding a permanent second one.
             val streamLock = synchronized(perStream) {
                 perStream.getOrPut(dir.fileName.toString()) { ReentrantLock() }
             }

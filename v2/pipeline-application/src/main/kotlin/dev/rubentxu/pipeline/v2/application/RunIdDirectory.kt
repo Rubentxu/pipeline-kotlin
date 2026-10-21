@@ -14,7 +14,7 @@ sealed interface StoredRunId {
 
 /**
  * Persistent mapping from a pipeline [DefinitionId] to the [RunId] of its
- * most recent invocation (LF-0206) and, since PK-1, the [CorrelationId]
+ * most recent invocation and, since PK-1, the [CorrelationId]
  * that the invoker supplied.
  *
  * ## Storage format
@@ -23,7 +23,7 @@ sealed interface StoredRunId {
  *
  * ```
  * <runId.value>
- * <correlationId.value>     # optional; absent for legacy records
+ * <correlationId.value> # optional; absent for legacy records
  * ```
  *
  * The format is line-based, not JSON, because the file is read by other

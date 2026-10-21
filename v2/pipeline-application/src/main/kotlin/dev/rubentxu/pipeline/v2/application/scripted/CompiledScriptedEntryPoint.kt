@@ -171,15 +171,15 @@ internal class RuntimeScriptedStepFacade(
         }
 
     /**
-     * WU-LPR-087 (LFC-2R2) — runtime-returning file-read façade. Mirrors the
-     * existing `pwd` impl shape: identity + encoded input → invoker → encoded
-     * output → Step's declared codec → String.
-     *
-     * The StepKey is `core.readFile`, registered in
-     * [dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory] alongside
-     * `core.pwd`. Missing registry → typed Rejection, never a fabricated empty
-     * String.
-     */
+ * WU-LPR-087 — runtime-returning file-read façade. Mirrors the
+ * existing `pwd` impl shape: identity + encoded input → invoker → encoded
+ * output → Step's declared codec → String.
+ *
+ * The StepKey is `core.readFile`, registered in
+ * [dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory] alongside
+ * `core.pwd`. Missing registry → typed Rejection, never a fabricated empty
+ * String.
+ */
     override suspend fun readFile(
         callSite: ScriptedCallSiteId,
         file: String,
@@ -207,11 +207,11 @@ internal class RuntimeScriptedStepFacade(
     }
 
     /**
-     * WU-LPR-087 (LFC-2R2) — runtime-returning file-existence check façade.
-     * Mirrors the existing `isUnix` impl shape (returns Boolean): identity +
-     * encoded input → invoker → encoded output → Step's declared codec →
-     * Boolean. The StepKey is `core.fileExists`.
-     */
+ * WU-LPR-087 — runtime-returning file-existence check façade.
+ * Mirrors the existing `isUnix` impl shape (returns Boolean): identity +
+ * encoded input → invoker → encoded output → Step's declared codec →
+ * Boolean. The StepKey is `core.fileExists`.
+ */
     override suspend fun fileExists(
         callSite: ScriptedCallSiteId,
         file: String,

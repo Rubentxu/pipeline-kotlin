@@ -371,27 +371,6 @@ public final class dev/rubentxu/pipeline/v2/output/OutputReadResult$Refused : de
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/output/OutputRefusal {
-	public static final field CORRUPT_REASON_MAX_LEN I
-	public static final field Companion Ldev/rubentxu/pipeline/v2/output/OutputRefusal$Companion;
-}
-
-public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$Companion {
-	public static final field CORRUPT_REASON_MAX_LEN I
-}
-
-public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$Corrupt : dev/rubentxu/pipeline/v2/output/OutputRefusal {
-	public synthetic fun <init> (Ljava/lang/String;Lkotlin/ranges/LongRange;Ljava/lang/String;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1-_Q_Q91I ()Ljava/lang/String;
-	public final fun component2 ()Lkotlin/ranges/LongRange;
-	public final fun component3 ()Ljava/lang/String;
-	public final fun copy-6Ce8pk8 (Ljava/lang/String;Lkotlin/ranges/LongRange;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$Corrupt;
-	public static synthetic fun copy-6Ce8pk8$default (Ldev/rubentxu/pipeline/v2/output/OutputRefusal$Corrupt;Ljava/lang/String;Lkotlin/ranges/LongRange;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$Corrupt;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getReason ()Ljava/lang/String;
-	public final fun getRequestedRange ()Lkotlin/ranges/LongRange;
-	public final fun getStream-_Q_Q91I ()Ljava/lang/String;
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
 }
 
 public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$DanglingCommit : dev/rubentxu/pipeline/v2/output/OutputRefusal {
@@ -403,17 +382,6 @@ public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$DanglingCommit 
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getReadableBytes ()J
 	public final fun getRequestedEnd ()J
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
-}
-
-public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$FollowCancelled : dev/rubentxu/pipeline/v2/output/OutputRefusal {
-	public fun <init> (Ljava/lang/String;)V
-	public final fun component1 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$FollowCancelled;
-	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/output/OutputRefusal$FollowCancelled;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$FollowCancelled;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getRunId ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -453,21 +421,6 @@ public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$OffsetBeyondCom
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCommitted ()J
 	public final fun getRequested ()J
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
-}
-
-public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$RangeLostRetention : dev/rubentxu/pipeline/v2/output/OutputRefusal {
-	public synthetic fun <init> (Ljava/lang/String;Lkotlin/ranges/LongRange;JLkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun component1-_Q_Q91I ()Ljava/lang/String;
-	public final fun component2 ()Lkotlin/ranges/LongRange;
-	public final fun component3 ()J
-	public final fun copy-6Ce8pk8 (Ljava/lang/String;Lkotlin/ranges/LongRange;J)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$RangeLostRetention;
-	public static synthetic fun copy-6Ce8pk8$default (Ldev/rubentxu/pipeline/v2/output/OutputRefusal$RangeLostRetention;Ljava/lang/String;Lkotlin/ranges/LongRange;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/output/OutputRefusal$RangeLostRetention;
-	public fun equals (Ljava/lang/Object;)Z
-	public final fun getLastCommitted ()J
-	public final fun getRequestedRange ()Lkotlin/ranges/LongRange;
-	public final fun getStream-_Q_Q91I ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -514,13 +467,6 @@ public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$StreamLostReten
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getLastCommitted ()J
 	public final fun getStream-_Q_Q91I ()Ljava/lang/String;
-	public fun hashCode ()I
-	public fun toString ()Ljava/lang/String;
-}
-
-public final class dev/rubentxu/pipeline/v2/output/OutputRefusal$Unavailable : dev/rubentxu/pipeline/v2/output/OutputRefusal {
-	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/output/OutputRefusal$Unavailable;
-	public fun equals (Ljava/lang/Object;)Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

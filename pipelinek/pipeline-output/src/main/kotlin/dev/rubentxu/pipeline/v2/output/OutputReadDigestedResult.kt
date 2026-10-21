@@ -23,8 +23,8 @@ sealed interface OutputReadDigestedResult {
 
     /**
      * The read could not be served; [reason] is a closed [OutputRefusal]
-     * case (the cases from — `RetentionGap`, `Corrupt`, `Unavailable`,
-     * `RangeLostRetention` — are the additions)
+     * case (the cases from — `RetentionGap` and `Unavailable` — are the
+     * additions)
 */
     data class Refused(val reason: OutputRefusal) : OutputReadDigestedResult
 }

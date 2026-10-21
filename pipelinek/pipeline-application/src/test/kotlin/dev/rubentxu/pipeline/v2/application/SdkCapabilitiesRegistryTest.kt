@@ -31,9 +31,11 @@ class SdkCapabilitiesRegistryTest {
 
     /** The catalogue as a consumer reads it: id, state, first publication. */
     private val expected = listOf(
-        Triple("output.follow.v1", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.49.0-rc1"),
+        Triple("output.follow.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.49.0-rc1"),
+        Triple("output.follow.v2", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
         Triple("events.follow.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.49.0-rc1"),
-        Triple("events.follow.v2", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
+        Triple("events.follow.v2", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.62.0"),
+        Triple("events.follow.v3", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
         Triple("runtime.inspect.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.50.0-rc1"),
         Triple("runtime.cancel.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.50.0-rc1"),
         Triple("runtime.recover.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.50.0-rc1"),
@@ -92,7 +94,9 @@ class SdkCapabilitiesRegistryTest {
 
         assertEquals(
             listOf(
+                "output.follow.v1",
                 "events.follow.v1",
+                "events.follow.v2",
                 "runtime.structure.v1",
                 "runtime.operation.v1",
                 "runtime.eventshape.v1",
@@ -151,22 +155,34 @@ class SdkCapabilitiesRegistryTest {
     }
 
     @Test
-    @DisplayName("the follow vocabulary is delivered under the id this build announces")
-    fun `the follow vocabulary is delivered under the announced id`() {
+    @DisplayName("each follow vocabulary is delivered under exactly one id")
+    fun `each follow vocabulary is delivered under one id`() {
         val announced = SdkCapabilities.ALL.map { it.id }
+        val delivered = mapOf(
+            "events.follow." to "events.follow.v3",
+            "output.follow." to "output.follow.v2",
+        )
 
         assertTrue(
-            announced.contains("events.follow.v2"),
-            "the build delivers the grown follow refusal vocabulary, so it must announce the id " +
-                "that names it",
+            announced.contains("events.follow.v3"),
+            "the build delivers the follow refusal vocabulary with no unreachable case left in it, " +
+                "so it must announce the id that names it",
         )
         assertTrue(
-            SdkCapabilities.ALL.none {
-                it.id.startsWith("events.follow.") && it.status == SdkCapabilities.CapabilityStatus.PUBLICADA &&
-                    it.id != "events.follow.v2"
-            },
-            "only the id this build delivers may claim to be delivered; two ids for one " +
-                "vocabulary leave the consumer choosing between them",
+            announced.contains("output.follow.v2"),
+            "the output plane's refusal vocabulary lost the cases the product cannot report, so it " +
+                "must announce the id that names it",
         )
+        for ((family, id) in delivered) {
+            assertTrue(
+                SdkCapabilities.ALL.none {
+                    it.id.startsWith(family) &&
+                        it.status == SdkCapabilities.CapabilityStatus.PUBLICADA &&
+                        it.id != id
+                },
+                "only $id may claim to be delivered; two ids for one vocabulary leave the consumer " +
+                    "choosing between them",
+            )
+        }
     }
 }

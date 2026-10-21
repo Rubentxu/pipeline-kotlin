@@ -24,17 +24,20 @@ package dev.rubentxu.pipeline.v2.application
  *
  * ## The table, and where it came from
  *
- * The fifteen ids and their publication state. The first two were published
+ * The seventeen ids and their publication state. The first two were published
  * together; the three runtime verbs came with the next release; the output
  * trio with the one after; the runtime trio with the following two; the
  * step's verdict, with the event shape that carries it, and the failure's
- * stage, with this build.
+ * stage, with this build. The two follow vocabularies carry two ids each: the
+ * one this build delivers, and the one it announces and does not.
  *
  * | Capability ID                 | Status     | First published |
  * |-------------------------------|------------|-----------------|
- * | `output.follow.v1`            | PUBLICADA  | `v0.49.0-rc1`   |
+ * | `output.follow.v1`            | DEPRECATED | `v0.49.0-rc1`   |
+ * | `output.follow.v2`            | PUBLICADA  | `v0.62.0`       |
  * | `events.follow.v1`            | DEPRECATED | `v0.49.0-rc1`   |
- * | `events.follow.v2`            | PUBLICADA  | `v0.62.0`       |
+ * | `events.follow.v2`            | DEPRECATED | `v0.62.0`       |
+ * | `events.follow.v3`            | PUBLICADA  | `v0.62.0`       |
  * | `runtime.inspect.v1`          | EXPERIMENTAL | `v0.50.0-rc1` |
  * | `runtime.cancel.v1`           | EXPERIMENTAL | `v0.50.0-rc1` |
  * | `runtime.recover.v1`          | EXPERIMENTAL | `v0.50.0-rc1` |
@@ -54,6 +57,43 @@ package dev.rubentxu.pipeline.v2.application
  * publication, a second list to keep in step, and not a single reader. The
  * catalogue that the product actually prints is the one above, so it is the
  * one that owns the truth.
+ *
+ * ## Why the refusal vocabularies changed their version
+ * The previous version changed these vocabularies by GROWING them: a fact that used to be folded
+ * into another one became a case of its own, so a consumer could tell it apart. This version
+ * changes them by SHRINKING them, and the reason is the mirror image.
+ *
+ * A refusal vocabulary names the reasons a read can be refused. Every case in it must be a fact
+ * the product can actually report, because a consumer writes a branch for each one: a branch for a
+ * fact that cannot happen is a promise the consumer cannot keep, and it is paid for in every
+ * switch the consumer writes over the whole life of the contract.
+ *
+ * Four cases in these two vocabularies could not happen, and the census is not a matter of
+ * opinion:
+ *
+ * - `OutputRefusal.Corrupt` said "the bytes in this range are unparseable: a row exists but its
+ *   payload does not back it". The output plane's payloads are the bytes a child process wrote;
+ *   nothing parses them, so nothing can find them unparseable. The plane whose payloads ARE
+ *   parsed is the event plane, and it already answers with its own vocabulary: a row that does
+ *   not decode is reported as an undecodable record inside the page, not as a refusal.
+ * - `OutputRefusal.RangeLostRetention` was the read-side twin of `RetentionGap`, with the same
+ *   three fields and the same meaning. Two public cases for one fact is one case too many.
+ * - `OutputRefusal.FollowCancelled` said the consumer closed the follow handle. Closing a handle
+ *   is a lifecycle operation of the consumer's own, and the follow's contract says the close is
+ *   idempotent; it is not a refusal of a read.
+ * - `EventFollowRefusal.RetentionLost` said the run's retention had lost its beginning. The
+ *   event store keeps every row it writes — it never deletes one — so a cursor is only ever
+ *   behind the tail, never ahead of a beginning that no longer exists.
+ *
+ * So the two ids that named those shapes are announced and NOT delivered, and the ids this
+ * build delivers are `output.follow.v2` and `events.follow.v3`. A consumer compiled against the
+ * old ids matches that sealed type exhaustively, and a case it does not know is a crash at
+ * runtime rather than a compile error; that is why the old ids cannot keep claiming to be
+ * delivered.
+ *
+ * The event plane's vocabulary is published in
+ * `dev.rubentxu.pipeline.v2.events.follow` and the output plane's in
+ * `dev.rubentxu.pipeline.v2.output`; their frozen ABI is in the `api` directory of each module.
  *
  * ## Why the follow capability changed its version
  * The follow's refusal vocabulary grew: `EventFollowRefusal` now names the
@@ -128,25 +168,46 @@ package dev.rubentxu.pipeline.v2.application
  * or to refuse — never to assume.
  */
 object SdkCapabilities {
-    /** All 15 capabilities this build knows. */
+    /** All 17 capabilities this build knows. */
     val ALL: List<CapabilityEntry> = listOf(
         CapabilityEntry(
+            // Announced, and NOT delivered by this build. The output plane's refusal vocabulary
+            // named three facts the product cannot report: a payload that is unparseable (nothing
+            // parses the output plane's bytes), a second case for a retention gap that already had
+            // one, and the close of a follow handle (a lifecycle operation of the consumer's own).
+            // A consumer compiled against the old vocabulary matches that sealed type
+            // exhaustively: a case it does not know is a crash at runtime. `output.follow.v2` is
+            // the id this build delivers.
             id = "output.follow.v1",
-            status = CapabilityStatus.PUBLICADA,
+            status = CapabilityStatus.DEPRECATED,
             firstPublished = "v0.49.0-rc1",
+        ),
+        CapabilityEntry(
+            id = "output.follow.v2",
+            status = CapabilityStatus.PUBLICADA,
+            firstPublished = "v0.62.0",
         ),
         CapabilityEntry(
             // Announced, and NOT delivered by this build. The follow's refusal vocabulary grew
             // (the cursor past the tail and the storage failure became facts of their own), and a
             // consumer compiled against the three-case vocabulary matches that sealed type
             // exhaustively: a case it does not know is a crash at runtime. `events.follow.v2` is
-            // the id this build delivers.
+            // the id this build delivered at the time.
             id = "events.follow.v1",
             status = CapabilityStatus.DEPRECATED,
             firstPublished = "v0.49.0-rc1",
         ),
         CapabilityEntry(
+            // Announced, and NOT delivered by this build. This vocabulary named a case for a run
+            // whose retention had lost its beginning, and the event store keeps every row it
+            // writes: nothing can produce that fact. `events.follow.v3` is the id this build
+            // delivers.
             id = "events.follow.v2",
+            status = CapabilityStatus.DEPRECATED,
+            firstPublished = "v0.62.0",
+        ),
+        CapabilityEntry(
+            id = "events.follow.v3",
             status = CapabilityStatus.PUBLICADA,
             firstPublished = "v0.62.0",
         ),

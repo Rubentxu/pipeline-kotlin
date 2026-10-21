@@ -30,7 +30,8 @@ Un motor CI/CD moderno y con tipado seguro construido con Kotlin DSL, ofreciendo
 - **♻️ Una lectura del event lane que se puede REANUDAR**: el cursor que devuelve es la posición del último hecho recibido, así que leer por cursor en páginas, desconectarse y volver no salta ningún hecho ni repite ninguno. Un cliente externo lo comprueba en `examples/events/`: lee, corta entre páginas y compara con la lectura completa
 - **✅ El veredicto de un step, publicado en el evento que lo termina**: el evento terminal de un step lleva su resultado (`success`, `unstable`, `failure`), así que un consumidor externo sabe si el step funcionó **sin deducirlo** y sin unir dos eventos. Antes el evento no llevaba resultado y se emitía también para un step que había fallado, y la proyección tipada metía el *tipo* del step en un campo llamado `outcome`. Se publica como la capacidad `events.stepoutcome.v1`
 - **📍 El fallo de un step dice el stage en el que ocurrió**: el evento `StepFailed` lleva el stage, así que un consumidor externo atribuye el fallo a su stage **del propio evento de fallo**, sin unirlo con otro evento. Antes el evento declaraba el step y no el stage, y el índice de step significa un step distinto en cada stage del run, así que esa unión no era unívoca entre stages. Un fallo que no dice su stage lo dice: no es un fallo del primer stage. Se publica como la capacidad `events.failurestage.v1`
-- **🧪 Verificación con presupuesto**: `scripts/verify-all.sh` ejecuta las pruebas unitarias y los 49 escenarios E2E reales, y falla si se superan los 900 s o la razón VERIFY_LOC ≤ 2 × PRODUCT_LOC
+- **⏱️ Un follow con filtro termina cuando termina el run**: el verbo `events --follow` con `--kind` busca el hecho terminal en el almacén y no en los hechos que entrega el filtro, así que un cliente que sigue un run ya acabado con un filtro quedaba esperando para siempre (medido: código 124 por tiempo agotado). El filtro decide **qué** recibe el cliente, no **si** el run se acabó
+- **🧪 Verificación con presupuesto**: `scripts/verify-all.sh` ejecuta las pruebas unitarias y los 50 escenarios E2E reales, y falla si se superan los 900 s o la razón VERIFY_LOC ≤ 2 × PRODUCT_LOC
 - **🐳 Contenedores Primero**: Soporte nativo de Docker para ejecución de tareas basadas en agentes
 - **⚡ Alto Rendimiento**: Ejecución asíncrona con corrutinas de Kotlin
 - **🛡️ Gestión de Recursos**: Límites de CPU, memoria y tiempo de ejecución con monitoreo detallado
@@ -297,7 +298,7 @@ Ejecuta, en este orden y-parando en el primer stage que falle:
 | Capa | Estado |
 |---|---|
 | Análisis estático y compatibilidad de API | Activa: `detekt`, `apiCheck` |
-| E2E sobre la distribución real | Activa: 49 escenarios en `examples/`, cada uno ejecutado en las dos rutas del CLI (con journal privado y sin él) |
+| E2E sobre la distribución real | Activa: 50 escenarios en `examples/`, cada uno ejecutado en las dos rutas del CLI (con journal privado y sin él) |
 | Tests unitarios Kotlin | Activa: `src/test` en 26 de los 27 módulos declarados |
 | Carriles de prueba bespoke (`pluginContractTest`, `installedContractTest`) | no existen; la puerta busca esos nombres y falla si vuelven |
 

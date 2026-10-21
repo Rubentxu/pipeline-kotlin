@@ -18,15 +18,16 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `4b0a63415` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `173c665da` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **22** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 5 | ídem |
-| Tests unitarios ejecutados | **752** (95 informes JUnit, **95** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:752 read:0` |
+| Tests unitarios ejecutados | **774** (95 informes JUnit, **95** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:774 read:0` |
 | Escenarios E2E | 46 (**45 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **11702 / 65786 = 0.178** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **12139 / 66328 = 0.183** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **88 s** (la más baja de las tres corridas de este bloque: 88, 95 y 109 s), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **97 s** (corridas de este bloque: 97 s, y 80 s y 98 s sobre el mismo contenido), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| Coste por escenario E2E | mediana **6,9 s**, p95 **14,8 s**, máximo **15,2 s** | el lanzador publica ahora el tiempo de cada escenario en su línea |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -39,24 +40,24 @@ de los 95 informes —se limpiaron las salidas de test antes de correr, así que
 ninguno pudo venir de la caché—.
 
 **Y el total viaja ahora en la línea de veredicto**, que es la única que alguien
-pega en un informe: `tests=rewritten:752 read:0`. Antes esa línea decía
+pega en un informe: `tests=rewritten:774 read:0`. Antes esa línea decía
 `PASS  sha=…  elapsed=345s  budget=900s  gaps=1 not_run` y no decía **nada** de
 los tests: el dato estaba en el log de la etapa 2, y el log lo lee quien corrió la
 puerta, no quien la cita. Una cifra con el verbo equivocado ya no puede colarse
 ni por el lado del log ni por el lado de la línea (§2.2 u).
 
-La corrida que se publica es la de `4b0a63415` (**88 s**). El reloj de este gate
+La corrida que se publica es la de `173c665da` (**97 s**). El reloj de este gate
 tiene ruido, y publicarlo sin decirlo vuelve a ser una afirmación que nadie
-puede reproducir: el ciclo anterior (`a2ffb90db`) publicó **99 s**, el de
+puede reproducir: el ciclo anterior (`4b0a63415`) publicó **88 s**, el de
 `main-partido` (`03bdc2a3a`) midió **107 s**, y otra corrida sobre ese **mismo**
 contenido, con los módulos tocados compilando de cero, midió 98 s. Y el ruido de
-este bloque es mayor que el de un ciclo: sus tres corridas dieron **88 s**, **95 s**
-y **109 s** sobre el mismo contenido, con la caché de Gradle warm. La cifra
-publicada es la más baja de las tres, y se dice cuál es para que nadie la lea
-como la típica. Este bloque **no añade tests ni escenarios** —los **752** tests y
-los **46** escenarios E2E son los mismos—, así que su coste es el de la puerta
-anterior, y **cuánto cuesta por sí solo el cambio no se midió aislado**, así que
-no se afirma.
+este bloque es el habitual: sobre este mismo contenido, dos corridas dieron
+**80 s** y **97 s**, y una anterior —con el lanzador aún sin el arreglo del
+escenario storage-agnostic— dio **98 s**. Se publica la del **SHA final**, que es
+la que corresponde al árbol que se publica, y se dicen las otras para que nadie
+la lea como la típica. Este bloque **añade 22 tests** —los **774**— y **no añade
+ningún escenario E2E**: los **46** son los mismos, porque la capacidad nueva se
+prueba con pruebas deterministas y con un UAT que no se queda.
 
 **Lo que este bloque movió, y lo que no.** El bloque `main-partido` (PR #183
 → `03bdc2a3a`) no toca el censo de módulos con test, ni añade tests, ni añade
@@ -1740,6 +1741,105 @@ módulo sigue siendo **1.633** (`pipeline-step-sdk:workflow-control`).
 
 Puerta sobre el SHA del bloque: `PASS sha=4b0a63415… elapsed=88s budget=900s
 tests=rewritten:752 read:0 gaps=1 not_run`.
+
+
+**bb) El operador no tenía forma de saber qué debía un run — CERRADO en `173c665da`.**
+
+**El problema, en una frase**: cuando un Saga no acababa bien, la única forma de
+saber qué quedaba era abrir la base a mano —o peor, leer el log— y no había forma
+de decirlo sin riesgo de que el estado leído fuera una reconstrucción de un texto
+y no la promesa que el motor había escrito.
+
+**Lo que hay ahora**: un verbo, `pipelinek saga inspect <runId> --db <path>`, que
+dice por acción el recurso, la fase, el estado, la evidencia (el recibo), el
+último error clasificado, la próxima acción y si hace falta una persona. La salida
+es una tabla para quien lee y un documento JSON para quien programa.
+
+```
+saga inspect: run 285c37dc-… — 3 obligations, operator needed: yes
+run outcome: failure (PLUGIN) — the action ship failed: shell exited with code 1
+saga checkout: NEEDS_INTERVENTION (UNKNOWN_EFFECT)
+ACTION   COMPENSATION  RESOURCE    PHASE       STATUS            EVIDENCE         NEXT            OPERATOR
+reserve  release       stock/42    compensate  EFFECT_CONFIRMED  receipt-reserve  compensate      yes
+charge   refund        payment/42  compensate  EFFECT_CONFIRMED  receipt-charge   compensate      yes
+ship     unship        parcel/42   forward     EFFECT_UNKNOWN    -                settle_forward  yes
+```
+
+**De dónde sale cada cosa.** El estado sale de la **tabla de promesas**
+(`saga_obligation`), que es donde el motor escribe cada promesa **antes** de dejar
+que ocurra el efecto que promete deshacer: una promesa puede existir sin el evento
+que la anunció —una caída entre la escritura y el anuncio— y nunca al revés, así
+que el log de eventos y la consola **no** pueden reconstruir el estado. El veredicto
+del run y el motivo por el que paró el Saga salen de las declaraciones del propio
+run, leídas con la proyección que el módulo del plano ya publica. La huella del
+plan que sale es la que el motor calculó al armar la promesa, y una prueba lo
+comprueba contra el **plano capturado** de una corrida real: el digest que muestra
+el lector es el mismo que el run anunció.
+
+**La lectura no escribe.** La conexión se abre en modo sólo lectura
+(`mode=ro`), y el permiso lo da el propio SQLite: una escritura sobre esa
+conexión falla con un rechazo del motor de base de datos. Una prueba lo
+comprueba (y otra que el **digest del fichero de la base no cambia** después de
+leer). Se eligió ese modo y no un `PRAGMA query_only` sobre una conexión normal
+porque con `mode=ro` el permiso es de la conexión y no del código que la abre: un
+refactor que seolvide de una restricción no puede escribir por accidente.
+
+**Falla cerrado, y se nota.** Una base que no está, una base que no es un store,
+una base sin la tabla de promesas, un run que no está en el store y una fila
+ilegible se responden **con su motivo** y código 2. Un run que existe y no armó
+ninguna promesa se responde como lo que es —«no debe nada»— y con código 0. Lo
+que **nunca** sale es una lista vacía: una lista vacía se puede leer como «no hay
+nada pendiente», y esa es la lectura que hace que alguien vaya a buscar lo
+equivocado.
+
+**El mapa del estado no se inventa.** La fase, la próxima acción y el error
+clasificado salen de **una** tabla de decisión sobre el vocabulario de estados, y
+esa tabla es **total** (un estado nuevo no compila hasta que alguien dice qué
+significa) y se **contrasta con la lifecycle que el motor obedece**: una promesa
+es terminal exactamente cuando el motor no puede moverla más, y necesita una
+persona exactamente cuando la próxima acción es la decisión de una persona. La
+prueba que lo contrasta es la que falla si las dos tablas dejan de hablar.
+
+**Mutaciones vistas en rojo**, seis, cada una en la prueba que tiene que verlo:
+
+| mutación | qué se rompe |
+|---|---|
+| la fase de una compensación fallida dice `COMPENSATE` | la prueba que contrasta la tabla con la lifecycle |
+| la conexión se abre sin `mode=ro` | la prueba que exige que la escritura sea rechazada |
+| un run inexistente se responde como si existiera | la prueba que separa «no está» de «no debe nada» |
+| la proyección ignora que el Saga paró | la prueba de la vista, que dice que hace falta una persona |
+| el verbo responde «no debe nada» cuando el estado no se puede leer | la prueba del verbo, que exige el motivo y el código 2 |
+| el lector deja de leer las promesas | las dos pruebas de la vista |
+
+**El UAT es real y no se queda**: una corrida del escenario que acaba en
+`NEEDS_INTERVENTION`, con su base durable, y el verbo de verdad leyéndola —de ahí
+salen las líneas de arriba—. No se convirtió en un escenario permanente, porque
+lo que protege la capacidad ya está cubierto por pruebas deterministas y rápidas:
+un E2E nuevo habría **sumado** coste a la puerta para volver a comprobar lo que
+las pruebas unitarias comprueban con el store real y el plano real.
+
+**Y el arnés mejoró, que era la otra mitad del encargo.** El lanzador ya medía
+cada corrida del pipeline y **no enseñaba el resultado**: el coste de un escenario
+sólo se podía sacar midiendo aparte. Ahora cada línea del informe lleva su tiempo,
+y con él se puede ver qué parte de la puerta es la cara —mediana **6,9 s**, p95
+**14,8 s**, máximo **15,2 s**—. Medirlo destapó un defecto del propio informe: el
+escenario que se declara storage-agnostic pasaba **sin imprimir su línea**, así que
+el informe tenía una línea menos que escenarios que pasaron y nadie podía decir
+cuál faltaba. Ahora imprime su línea, y el lanzador **comprueba** que todo
+escenario con veredicto tenga su línea: un veredicto sin línea es un fallo del
+arnés, no un verde que nadie ve (mutación vista en rojo, y el arreglo de esa
+mutación encontró un fallo propio: un `grep` sin coincidencias tumbaba el
+lanzador entero bajo `set -e`).
+
+**Lo que este bloque NO toca**: ni el esquema de eventos, ni la forma de
+`RunFinished` ni de `OperationStatus`, ni el meaning de nada publicado. El `.api`
+del dominio **crece** (165 líneas nuevas, ninguna quitada): los tipos de la vista
+son aditivos. `VERIFY_LOC` 11 702 → **12 139** (+437: las pruebas y el lanzador),
+`PRODUCT_LOC` 65 786 → **66 328** (+542), ratio global **0.183**; el ratio máximo
+por módulo sigue siendo **1.633** (`pipeline-step-sdk:workflow-control`).
+
+Puerta sobre el SHA del bloque: `PASS sha=173c665da… elapsed=97s budget=900s
+tests=rewritten:774 read:0 gaps=1 not_run`.
 
 
 ### 2.3 Cierre de ciclo

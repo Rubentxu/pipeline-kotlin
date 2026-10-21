@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 
 /**
- * New authority seam for the EFFECTIVE execution of a Step's concrete semantics (CDE.3-b2).
+ * New authority seam for the EFFECTIVE execution of a Step's concrete semantics.
  * This is the seam the durable protocol observes for the a1 law going forward: a call to [execute]
  * means "the concrete Step will actually run and may produce side effects". It supersedes
  * [CanonicalInvocationExecutor] as the architectural authority. During the migration the old
@@ -62,7 +62,7 @@ object LegacyExecutionAdapter {
 
 /**
  * Composes the two structural execution-strategy families behind a single [CommonExecutionBoundary]
- * (CDE.3-d2).
+
  * Selection is by the PreparedExecution strategy kind (legacy-compatible vs registry), NEVER by step
  * key and NEVER over concrete plugin steps, so no concrete handler is special-cased. The [when] is
  * exhaustive over the two sealed structural forms. Each family is backed by its own executor boundary

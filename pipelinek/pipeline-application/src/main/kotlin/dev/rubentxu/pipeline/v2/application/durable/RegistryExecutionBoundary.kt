@@ -13,7 +13,7 @@ import dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability
 import kotlinx.coroutines.CancellationException
 
 /**
- * Registry strategy executor behind the [CommonExecutionBoundary] (CDE.3-d3).
+ * Registry strategy executor behind the [CommonExecutionBoundary].
  * A [PreparedRegistryExecution] already passed registry resolution, capability admission and typed
  * decode during [RegistryExecutionPreparation.prepare]; it carries the admitted definition and its
  * already-decoded input. Therefore [CommonExecutionBoundary.execute] here runs the typed handler

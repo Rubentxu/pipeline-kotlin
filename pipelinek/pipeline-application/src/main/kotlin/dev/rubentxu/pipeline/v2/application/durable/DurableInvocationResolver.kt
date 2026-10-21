@@ -60,7 +60,7 @@ internal class DurableInvocationResolver(
     }
 
     /**
-     * Resolves the durable replay/reconcile decision for an invocation (.2c2-a2.3, CDE.2-b4)
+     * Resolves the durable replay/reconcile decision for an invocation
      * The decision has two purity domains, kept separate:
      *  - [deterministicGate] is pure: fingerprint divergence and the effect-aware replay policy decide
      *    from their inputs alone.
@@ -75,7 +75,7 @@ internal class DurableInvocationResolver(
      * recover" — a distinction the decision core then had no way to recover, because the port's only
      * non-answer was a single sentinel.
      * The durable decision consumes only the typed [StepMetadata] properties resolved by step key
-     * (CDE.2-b2/b4); it never selects behaviour by a concrete Step name.
+     * it never selects behaviour by a concrete Step name.
      * Precedence reproduces the frozen a1 flow exactly: divergence first, then recovery, then replay.
      * No journal, cursor, event or executor is touched here; terminal resolutions carry only the data
      * their own handling needs.

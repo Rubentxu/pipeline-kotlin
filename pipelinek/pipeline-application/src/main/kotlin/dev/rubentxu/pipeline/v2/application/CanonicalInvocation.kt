@@ -11,7 +11,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Structural, pre-decode canonical invocation (.2c2-CDE.1)
+ * Structural, pre-decode canonical invocation
  * This is the durable, extensible input form for routing and execution: a Step identified by its
  * [PluginStepId] together with its raw canonical payload, carried exactly as the engine persisted it.
  * It deliberately predates [CanonicalCoreStepCommand] (the closed, already-decoded legacy/core world),
@@ -37,7 +37,7 @@ data class CanonicalInvocation(
 }
 
 /**
- * Outcome of the structural (pre-decode) phase of an invocation (.2c2-CDE.2-a)
+ * Outcome of the structural (pre-decode) phase of an invocation
  * Structural preparation validates only what a step-agnostic envelope gate may decide before any
  * concrete Step semantics run: the canonical payload schema version and that the encoded payload is a
  * well-formed dsl-v1 JSON object. It deliberately predates [CanonicalCoreStepDecoder.decode], so a
@@ -95,7 +95,7 @@ object CanonicalStructuralPreparation {
 }
 
 /**
- * Structural, closed overlay descriptor for this invocation (.2c2-CDE.2-c0)
+ * Structural, closed overlay descriptor for this invocation
  * Expresses exactly the pre-reconcile control context an invocation contributes, derived from the
  * structural envelope WITHOUT building a typed command. It is NOT Step metadata (stable per plugin:
  * [StepMetadata]) and NOT a typed Step input (post-reconcile): it is the structural control info of
@@ -121,7 +121,7 @@ sealed interface StructuralOverlay {
 }
 
 /**
- * Projects the pre-reconcile control overlay from a structurally-validated envelope (CDE.2-c0).
+ * Projects the pre-reconcile control overlay from a structurally-validated envelope.
  * This is the structural-overlay boundary: it reads only the known control-emission envelope shape
  * (the legacy `core.emit.event` CatchErrorEntered/Triggered) and yields a closed [StructuralOverlay].
  * It deliberately does not decode full Step input; everything else is [StructuralOverlay.None] and

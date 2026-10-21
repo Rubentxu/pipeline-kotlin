@@ -9,7 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 
 /**
  * Typed input preparation extracted from [CanonicalDurableRunCoordinator]
- * (CDE.2-c/d + CDE.3-b3/e4.3). Strategy preparation runs ONLY on actual execution and NEVER
+ * . Strategy preparation runs ONLY on actual execution and NEVER
  * produces Step side effects. Selection is by the CLOSED structural family (LegacyCore vs
  * Registry), never by concrete step name. Reuse/divergence/recover never prepare.
 */

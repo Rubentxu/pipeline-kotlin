@@ -45,7 +45,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * The codec round-trip, key uniqueness, and required-capabilities contract
  * hold without depending on `ShExecution.invokeShell` or the legacy canonical-core
  * decode/dispatch path. The codec encodes well-formed JSON objects, fulfilling
- * durable-spine eligibility CDE.3-e1/e2.
+ * durable-spine eligibility
  * ## — REGISTRY_PRIMARY (this slice,)
  * Real sh execution is reached through the declared
  * `SHELL_OPERATIONS_CAPABILITY`. The handler:

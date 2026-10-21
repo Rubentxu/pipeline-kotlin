@@ -201,7 +201,7 @@ internal class StepDispatchEngine(
         )
 
     /**
-     * CDE.3-e4.3: the runtime context is built here so registry prepare can derive the available
+     * the runtime context is built here so registry prepare can derive the available
      * capabilities from the capability bridge, never the raw context handed to a handler.
      *
      * It is built only on the execution path: reuse, divergence and recovery never reach it,
@@ -329,8 +329,8 @@ internal class StepDispatchEngine(
      * Order is contract. The durable identity is derived FIRST because every rejection path
      * needs it to journal the rejection. The structural gate precedes typed decode because a
      * structurally-invalid node must be rejected before any typed semantics are read
-     * (CDE.2-c0, C3/C5). Metadata is resolved by structural step key BEFORE the fingerprint, so
-     * reconciliation never depends on a decoded command (CDE.2-b2).
+     * . Metadata is resolved by structural step key BEFORE the fingerprint, so
+     * reconciliation never depends on a decoded command.
      */
     private fun prepareDispatch(
         step: StepNode,
@@ -390,7 +390,7 @@ internal class StepDispatchEngine(
             deriveOverlay(executionContext, projectedOverlay)
         }
 
-        // CDE.2-b2: durable metadata resolved by structural step key BEFORE typed semantics, so
+        // durable metadata resolved by structural step key BEFORE typed semantics, so
         // fingerprint and reconcile never depend on the decoded command.
         val metadata = metadataResolver.resolve(step.pluginStepId)
             ?: throw EngineInvariantViolation("No durable metadata for canonical step '${step.pluginStepId.value}'")
@@ -593,7 +593,7 @@ internal class StepDispatchEngine(
         // timeout/retry. catchError and warnError remain on the legacy linear path
         // (rewriteWorkflowControl) until EM-5/EM-6 semantics are implemented.
 
-        // CDE.2-c0: the whole pre-execution prologue is ONE pure decision — durable identity,
+        // the whole pre-execution prologue is ONE pure decision — durable identity
         // structural verdict, control overlay, metadata and fingerprint. It is decided here and
         // interpreted below, so the executor is reachable only under a Ready preparation and a
         // structural rejection can never fall through to typed decode.
@@ -690,7 +690,7 @@ internal class StepDispatchEngine(
         // Execute is the ONLY resolution that reaches the effective executor. beginOperation, the
         // StepExecutionBoundary-wrapped executor call, the terminal journal write and cursor advance
         // live here, so the concrete semantics are invoked exclusively under this decision.
-        // CDE.3-e4.3: runtime context is hoisted here so registry prepare can derive the
+        // runtime context is hoisted here so registry prepare can derive the
         // available capabilities from the capability bridge (never the raw context to a handler).
         val runtime = runtimeContext(
             opId = opId,
@@ -705,7 +705,7 @@ internal class StepDispatchEngine(
             ownerPluginId = pluginIdOf(step),
         )
 
-        // CDE.2-c/d + CDE.3-b3/e4.3: strategy preparation runs ONLY on actual execution and NEVER
+        // +: strategy preparation runs ONLY on actual execution and NEVER
         // produces Step side effects. Selection is by the CLOSED structural family (LegacyCore vs
         // Registry), never by concrete step name. Reuse/divergence/recover never prepare. A
         // Rejected admission (typed field / unsupported command / missing capability) is a
@@ -753,7 +753,7 @@ internal class StepDispatchEngine(
     }
 
     /**
-     * Applies the pre-reconcile control overlay projected from the structural envelope (CDE.2-c0),
+     * Applies the pre-reconcile control overlay projected from the structural envelope
      * establishing or closing a CatchError context frame. This runs BEFORE durable resolution, so a
      * reused CatchErrorEntered still establishes its scope without re-executing (C6: executor stays 0).
      * Only the structural overlay descriptor is consumed; no typed command is built here.

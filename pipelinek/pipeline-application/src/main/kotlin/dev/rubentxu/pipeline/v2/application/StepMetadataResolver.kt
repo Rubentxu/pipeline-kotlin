@@ -4,12 +4,12 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 
 /**
  * Resolves the pre-decode durable metadata of an invocation from its structural step key
- * (CDE.2-b2). The durable protocol consumes only the typed properties of the returned
+ * . The durable protocol consumes only the typed properties of the returned
  * [StepMetadata]; it never interprets a concrete Step name. Identity selects metadata; metadata
  * expresses properties.
  * Today the only implementation is the legacy core catalog ([CoreLegacyStepMetadataResolver]). The
  * registry/definition metadata composite (migrated definitions + this legacy table) belongs to
- * CDE.3/CDE.5; this interface is the seam it will implement, so durable resolution does not need to
+ * this interface is the seam it will implement, so durable resolution does not need to
  * change again.
 */
 fun interface StepMetadataResolver {

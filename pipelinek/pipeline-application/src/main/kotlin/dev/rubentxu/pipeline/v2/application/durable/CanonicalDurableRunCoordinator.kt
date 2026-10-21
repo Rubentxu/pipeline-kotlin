@@ -81,8 +81,8 @@ class CanonicalDurableRunCoordinator(
     // avoid this parameter — kept the count and lost the architecture.
     private val capabilityContributor: RuntimeCapabilityContributor = RuntimeCapabilityContributor { emptyMap() },
     private val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector(),
-    // CDE.2-b2: durable metadata resolved by structural step key (pre-decode). Nullable default so a
-    // registry-injected constructor can opt into the composite (CDE.3-e4.2); legacy call-sites that do
+    // durable metadata resolved by structural step key (pre-decode). Nullable default so a
+    // registry-injected constructor can opt into the composite; legacy call-sites that do
     // not pass a resolver keep the [CoreLegacyStepMetadataResolver] authority exactly as before.
     private val stepMetadataResolver: StepMetadataResolver? = null,
     // Temporary compatibility seam for the EFFECTIVE step invocation. Optional so the
@@ -90,7 +90,7 @@ class CanonicalDurableRunCoordinator(
     // dispatcher. Not the final DI architecture.
     invocationExecutor: CanonicalInvocationExecutor? = null,
 
-    // CDE.3-b3: the new authority seam for effective execution. Optional for dual characterization;
+    // the new authority seam for effective execution. Optional for dual characterization
     // when absent it defaults to the legacy adapter over [invocationExecutor] (or the legacy
     // dispatcher), preserving behaviour exactly. Existing callers that inject the old executor keep
     // working unchanged because the default boundary routes to it.
@@ -248,7 +248,7 @@ class CanonicalDurableRunCoordinator(
 
 
     /**
-     * Effective pre-decode metadata authority (CDE.3-e4.2). An explicit [stepMetadataResolver] wins;
+     * Effective pre-decode metadata authority. An explicit [stepMetadataResolver] wins
      * otherwise an injected [stepRegistry] opts into the composite (core keys -> legacy authority,
      * other keys -> registry metadata, unknown -> hard defect); otherwise the legacy core authority.
      * The durable coordinator only ever consumes [StepMetadata]; it does not know where it came from.
@@ -258,7 +258,7 @@ class CanonicalDurableRunCoordinator(
         else CoreLegacyStepMetadataResolver
 
     /**
-     * Effective step executor, routed through the new common seam (CDE.3-b3). The production default
+     * Effective step executor, routed through the new common seam. The production default
      * adapts the injected legacy [invocationExecutor] (or the legacy dispatcher) behind
      * [CommonExecutionBoundary], preserving behaviour exactly; a caller may inject its own boundary
      * for dual characterization. The durable coordinator only ever hands an opaque [PreparedExecution]

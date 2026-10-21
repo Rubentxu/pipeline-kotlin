@@ -277,6 +277,17 @@ timed_out() {
 # How long the last measured run took, in milliseconds.
 last_run_ms=0
 
+# How long the scenario being run took, in milliseconds, counting every pipeline
+# invocation it made. A scenario can run the pipeline more than once, and the
+# cost of the scenario is the sum of what it did.
+scenario_ms=0
+
+# The cost of a scenario, in words a reader can compare at a glance.
+elapsed_label() {
+    local ms="$1"
+    printf '%d.%01ds' "$(( ms / 1000 ))" "$(( (ms % 1000) / 100 ))"
+}
+
 # Run one pipeline invocation under the ceiling, and MEASURE it. The elapsed
 # time is what tells "the ceiling stopped this run" apart from "this run died
 # on its own", so it is measured here, where the run happens.
@@ -287,6 +298,7 @@ run_measured() {
     run_under_ceiling "$ceiling_ms" "$@" || code=$?
     ended="$(now_ms)"
     last_run_ms=$(( ended - started ))
+    scenario_ms=$(( scenario_ms + last_run_ms ))
     return "$code"
 }
 
@@ -431,6 +443,17 @@ EOF
     # becomes a timeout when there is no ceiling to reach.
     self_check "with no ceiling, no run is a timeout" "no" \
         "$(timed_out 124 999999 0 && printf yes || printf no)" || failures=$((failures + 1))
+
+    # The cost of a scenario is shown in the report, so it has to be a number a
+    # reader can compare with the next one. A label that loses its tenths, or
+    # that rounds a third of a second to nothing, makes the slow scenario look
+    # like the free one.
+    self_check "a scenario's cost is shown in seconds" "12.3s" \
+        "$(elapsed_label 12300)" || failures=$((failures + 1))
+    self_check "a scenario shorter than a second keeps its tenth" "0.4s" \
+        "$(elapsed_label 400)" || failures=$((failures + 1))
+    self_check "a scenario that took nothing is shown as nothing" "0.0s" \
+        "$(elapsed_label 0)" || failures=$((failures + 1))
 
     if (( failures > 0 )); then
         printf 'self-test: %s check(s) failed\n' "$failures" >&2
@@ -588,6 +611,9 @@ run_scenario() {
     fi
 
     local root="$cycle_root/$slug"
+    # The cost of THIS scenario starts here: the number the report shows is the
+    # time this scenario took, not the time the whole run took.
+    scenario_ms=0
     # A private working directory per scenario, entered with `cd`, so a step
     # that writes a relative path cannot land in the repository. AGENTS.md
     # section 3 asks for one temporary directory per example; --isolated and
@@ -758,17 +784,24 @@ run_scenario() {
     # that the storage choice does not change what the script does.
     if [[ "$storage_agnostic" == 1 ]]; then
         if ! expectations_met "$code" "$verdict_stderr"; then
-            printf 'FAIL %-52s the DURABLE run did not meet the expectations\n' "$label"
+            printf 'FAIL %-52s the DURABLE run did not meet the expectations  %s\n' \
+                "$label" "$(elapsed_label "$scenario_ms")"
             sed 's/^/       | /' "$verdict_stderr" | head -20
             verdict_fail "$name: the durable run did not meet the expectations"
             return
         fi
         if ! expectations_met "$memory_code" "$root/stderr.memory.txt"; then
-            printf 'FAIL %-52s the IN-MEMORY run did not meet the expectations\n' "$label"
+            printf 'FAIL %-52s the IN-MEMORY run did not meet the expectations  %s\n' \
+                "$label" "$(elapsed_label "$scenario_ms")"
             sed 's/^/       | /' "$root/stderr.memory.txt" | head -20
             verdict_fail "$name: the in-memory run did not meet the expectations"
             return
         fi
+        # The scenario PASSED, so the report has to say so. This branch used to
+        # return without a line, and the report then showed one line fewer than
+        # the number of scenarios that passed: the reader could not tell which
+        # scenario was missing, only that some of them were.
+        printf 'ok   %-52s exit %s  %s\n' "$label" "$code" "$(elapsed_label "$scenario_ms")"
         verdict_ok
         return
     fi
@@ -783,8 +816,8 @@ run_scenario() {
             fi
         done
         if [[ -n "$missing" ]]; then
-            printf 'FAIL %-52s exit %s as expected, but stderr lacked: %s\n' \
-                "$label" "$code" "$missing"
+            printf 'FAIL %-52s exit %s as expected, but stderr lacked: %s  %s\n' \
+                "$label" "$code" "$missing" "$(elapsed_label "$scenario_ms")"
             verdict_fail "$name: exit matched but expected stderr substring absent"
             return
         fi
@@ -802,20 +835,21 @@ run_scenario() {
             # effect, and a row that looks exactly like a first attempt.
             after_snapshot="$(workspace_snapshot "$root/cwd")"
             if [[ "$before_snapshot" != "$after_snapshot" ]]; then
-                printf 'FAIL %-52s the resumed run changed the workspace: the effect repeated\n' \
-                    "$label"
+                printf 'FAIL %-52s the resumed run changed the workspace: the effect repeated  %s\n' \
+                    "$label" "$(elapsed_label "$scenario_ms")"
                 diff <(printf '%s\n' "$before_snapshot") <(printf '%s\n' "$after_snapshot") \
                     | sed 's/^/       | /' | head -10
                 verdict_fail "$name: the resumed run changed the workspace"
                 return
             fi
         fi
-        printf 'ok   %-52s exit %s\n' "$label" "$code"
+        printf 'ok   %-52s exit %s  %s\n' "$label" "$code" "$(elapsed_label "$scenario_ms")"
         verdict_ok
         return
     fi
 
-    printf 'FAIL %-52s exit %s, expected %s\n' "$label" "$code" "$expect_exit"
+    printf 'FAIL %-52s exit %s, expected %s  %s\n' \
+        "$label" "$code" "$expect_exit" "$(elapsed_label "$scenario_ms")"
     # In durable and resume modes the verdict is the SECOND run's exit code, so
     # the stderr that explains it is the second run's stderr. Showing the first
     # run's would point at a run that died before it could say anything.
@@ -941,15 +975,27 @@ for script in ${selected[@]+"${selected[@]}"}; do
     fi
     # The human lines, in scenario order. The markers are the machine's
     # reading of the same file and do not belong in the report.
+    #
+    # A scenario that produced a verdict has to have produced a LINE. A report
+    # with fewer lines than scenarios hides one of them, and the reader cannot
+    # tell which one is missing -- they can only count. So the count is checked
+    # here, where the files are read, and a scenario without a line is a
+    # failure of the harness, not a pass nobody can see.
+    human_lines="$(grep -v -e '^__VERDICT__ ' -e '^__FAILURE__ ' -e '^[[:space:]]*$' "$file" | wc -l || true)"
     grep -v -e '^__VERDICT__ ' -e '^__FAILURE__ ' "$file" || true
-    verdict_line="$(grep -m 1 '^__VERDICT__ ' "$file" 2>/dev/null || true)"
-    case "${verdict_line#__VERDICT__ }" in
-        ok)       passed=$((passed + 1)) ;;
-        not_run)  not_run=$((not_run + 1)) ;;
-        fail)     failed=$((failed + 1)) ;;
-        *)        failed=$((failed + 1))
-                  failures+=("${script#"$here"/}: the scenario produced no readable verdict") ;;
-    esac
+    if [[ "$human_lines" -eq 0 ]]; then
+        failed=$((failed + 1))
+        failures+=("${script#"$here"/}: the scenario produced a verdict but no line in the report")
+    else
+        verdict_line="$(grep -m 1 '^__VERDICT__ ' "$file" 2>/dev/null || true)"
+        case "${verdict_line#__VERDICT__ }" in
+            ok)       passed=$((passed + 1)) ;;
+            not_run)  not_run=$((not_run + 1)) ;;
+            fail)     failed=$((failed + 1)) ;;
+            *)        failed=$((failed + 1))
+                      failures+=("${script#"$here"/}: the scenario produced no readable verdict") ;;
+        esac
+    fi
     while IFS= read -r reason; do
         if [[ -n "$reason" ]]; then failures+=("$reason"); fi
     done < <(grep '^__FAILURE__ ' "$file" 2>/dev/null | sed 's/^__FAILURE__ //' || true)

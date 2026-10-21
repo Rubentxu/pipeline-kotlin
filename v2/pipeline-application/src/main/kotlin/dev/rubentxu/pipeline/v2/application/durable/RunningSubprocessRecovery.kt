@@ -14,7 +14,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * TRAIN H3 / PR-019, corrected by ADR-0103 R1-E — the observer behind the "a2" external-subprocess
+ * TRAIN H3, corrected by ADR-0103 R1-E — the observer behind the "a2" external-subprocess
  * compatibility hook.
  *
  * [DurableInvocationResolver] used to reach for [StepReconcilerL1] and [DurableShellExecutor]

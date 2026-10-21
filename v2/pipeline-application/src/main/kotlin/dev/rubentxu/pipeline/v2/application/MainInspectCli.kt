@@ -174,7 +174,7 @@ object MainInspectCli {
             return 2
         }
 
-        // D3 — the admission is the ONE decision on whether this store may be opened. It used to
+        // the admission is the ONE decision on whether this store may be opened. It used to
         // be re-asked here, and this catch only knew about IOException, so a `--db` pointing at a
         // missing directory escaped as a raw java.sql.SQLException with a fourteen-frame stack
         // trace and exit 1 — the code this CLI reserves for a run that executed and failed.
@@ -192,7 +192,7 @@ object MainInspectCli {
             return 2
         }
 
-        // D2 — resolve each event to its operation BEFORE any Output Plane read, because the
+        // resolve each event to its operation BEFORE any Output Plane read, because the
         // tail belongs to the operation and not to the run.
         val opIds: List<OpId?> = operationIdPerEvent(events, runId)
 

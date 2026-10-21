@@ -148,7 +148,7 @@ internal fun runDurablePipeline(
     val workspaceTransport = WorkspaceIntent.resolveRuntimeTransport(
         config, Path.of("").toAbsolutePath().normalize(), controlDirRoot,
     )
-    // SAGA: the terminal state of the Sagas this run executed. The verdict block has to
+    // the terminal state of the Sagas this run executed. The verdict block has to
     // say it: a Saga that needs a human and a Saga that was fully compensated look
     // identical on stderr otherwise, and they call for opposite responses from whoever
     // reads the run.
@@ -221,7 +221,7 @@ internal fun runDurablePipeline(
                                 allowNetwork = config.allowNetwork,
                                 secretPatternRegistry = secretPatternRegistry,
                             ),
-                            // S6/G: the frozen composition, not a step registry plus a classloader.
+                            // the frozen composition, not a step registry plus a classloader.
                             composition = composition,
                         ),
                     )
@@ -265,7 +265,7 @@ internal fun runDurablePipeline(
     val runOutcome = runOutcomeAndLastEvent.first
     val lastEvent = runOutcomeAndLastEvent.second
     val exitFailure = durableRunFailed(runOutcome, lastEvent)
-    // SAGA: what happened to the Sagas of this run. It belongs in the verdict block, next
+    // what happened to the Sagas of this run. It belongs in the verdict block, next
     // to the reason the run failed, because "the Saga settled" and "a human has to resolve
     // a pending obligation right now" are different worlds and the exit code cannot say
     // which one this was.

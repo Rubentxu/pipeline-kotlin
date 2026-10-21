@@ -487,7 +487,7 @@ object CoreShellStep {
                 runId = ctx.runId,
                 stepIndex = ctx.stepIndex,
             )
-            // A4.3 — outcome is the SINGLE classifier output (NOT re-derived downstream).
+            // outcome is the SINGLE classifier output (NOT re-derived downstream).
             // `CommonExecutionBoundary` reads `outcome` from the typed carrier via
             // `produced as? TypedStepOutput`; the boundary stays Step-agnostic.
             CoreShellOutput(

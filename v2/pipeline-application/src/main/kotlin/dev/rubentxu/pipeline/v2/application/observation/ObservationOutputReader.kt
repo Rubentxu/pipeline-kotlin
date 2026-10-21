@@ -62,7 +62,7 @@ interface ObservationOutputReader {
     fun readOutput(runId: String, afterOrdinal: Long, frameLimit: Int): ObservationOutputRead
 
     /**
-     * R4 / WU-RC2 (P0 frame integrity) — per-operation [readOutput] overload.
+     * R4 (P0 frame integrity) — per-operation [readOutput] overload.
      *
      * The opId-less [readOutput] above reads every frame in [runId], regardless of which
      * operation wrote it. The console verb, by contrast, addresses ONE operation at a time:
@@ -135,7 +135,7 @@ interface ObservationOutputReader {
     fun readTail(runId: String, tailBytes: Long): ObservationOutputRead
 
     /**
- * R4 / WU-R4.1.3 — per-operation readTail.
+ * R4 — per-operation readTail.
  *
  * Reads the last [tailBytes] of one operation's output, scoped by the operation's
  * stream-id prefix. Where [readTail] returns the trailing bytes of the WHOLE run, this
@@ -248,7 +248,7 @@ class FrameIndexedObservationOutputReader(
     }
 
     /**
-     * R4 / WU-RC2 (P0 frame integrity) — per-operation [readOutput].
+     * R4 (P0 frame integrity) — per-operation [readOutput].
      *
      * The opId filter is `streamId.contains("/<opId>/")` — the stream id is shaped
      * `<runId>/<opId>/<channel>` (see [OutputStreamAddress]), so the opId is the middle
@@ -346,7 +346,7 @@ class FrameIndexedObservationOutputReader(
     }
 
     /**
-     * R4 / WU-R4.1.3 — per-operation readTail overload.
+     * R4 — per-operation readTail overload.
      *
      * Filters the run's frames to those whose stream id carries [opId] as a middle segment
      * (`<runId>/<opId>/<channel>`), then applies the same tail-budget walk as the

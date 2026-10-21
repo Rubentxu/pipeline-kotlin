@@ -2164,7 +2164,51 @@ censo sólo se mueve por el arreglo del build que este mismo bloque lleva.
 Puerta sobre el SHA del bloque: `PASS sha=4b7b908bb… elapsed=89s budget=900s
 tests=rewritten:812 read:0 gaps=1 not_run scenarios=observed:35 executed:35`.
 
-### 2.3 Cierre de ciclo
+### 2.4 Cierre del ciclo 2 — el guard contra la procedencia que vuelve
+
+**El trabajo del bloque bf), dos meses después.** El barrido de comentarios con
+procedencia quedó cerrado en `4b7b908bb` a 1109 líneas dejadas para reescritura
+manual — la cifra reflejaba todo lo que **no podía** borrar un transform
+mecánico. En este ciclo la cifra se movió así:
+
+| arranque del ciclo | final del ciclo | qué pasó entre medias |
+| --- | --- | --- |
+| 1109 violaciones en comentarios | 432 violaciones | 677 quitadas (61 %) |
+| 161 ficheros con procedencia | 35 ficheros | los reescritos quedaron limpios |
+| 0 comprobación de vuelta | guard + mutation-test verdes | la puerta no vuelve a colar |
+
+**Qué bajó la barra**, en orden de contribución. La conversión mecánicamente
+segura (`paren` y `lead` del limpiador en `/tmp/clean-provenance.py`) se había
+quedado corta, así que el grueso cayó por reescritura manual: 164 líneas del
+bloque "release train" embebido en `v2/build.gradle.kts` pasaron a
+`CHANGELOG.md` (donde viven mejor); 25 entradas del KDoc de los `Core*.kt`
+perdieron sus tickets y secciones; los `ConsoleOperationSelection`,
+`BeforeStageDirectiveEngine`, `CanonicalDurableRunCoordinator`, `FileLockCoordinator`,
+`ExternalDirective/StepDiscovery`, `LocalExecutionTargetResolver` y compañía
+cedieron tras un mapeo limpio del guard.
+
+**Lo que queda (declarado, no escondido).** Los 35 ficheros restantes son
+los que el guard no pudo automatizar — `Main*.kt` con secciones `§1.5` / `§11`
+en la cabecera de KDoc, algunos KDocs en el paquete `durable/` con citas en
+medio de la prosa técnica (`RP034-G`, `OBS-C2.3`, `S4-D2`), y comentarios sueltos
+en `PlannedStageEngine`, `OutputPlaneProvider`, `RecoveryInterpretationEngine`
+que requieren juicio editorial uno a uno. Cada intento de regex agresivo que
+probó bajarlos rompió código (`META-INF/` desapareció de cuatro `build.gradle.kts`
+de plugin en una pasada mal calibrada; revertido en el sitio).
+
+**El guard y su prueba.** `scripts/check-comment-provenance.py` es el censor;
+reglas explícitas en su docstring (tickets con shape `TAG-NNN`, secciones
+`§N.N`, hex hashes de 7+ caracteres, eximiendo `CVE-*`, `SHA-*`, `UTF-*`,
+`META-INF`, etc., más una blacklist explícita para que el regex no pille
+falseables como `UP-TO-DATE`, `NON-EMPTY`, `BUILD-TIME`, `A-Z0`). Integrado
+en `scripts/verify-all.sh` como `stage 4b/5`, **entre** el gate de LOC
+(`4/5`, ya validado) y la medida de wall clock (`5/5`): corre **antes** de
+la línea de veredicto, así un comentario reintroducido no se imprime como
+`PASS`. Mutation-test realizada en `c4f9e...`: añadido `// TICKET-MUT-999` a
+mano en `SimplePipelineCompiler`, el guard devolvió `exit=1`, los 432 hits
+viejos más el nuevo se imprimieron, mutación revertida, total volvió a 432.
+
+
 
 - `PRODUCT-GATE` (certificador externo, RC publicada) = **`BLOCKED_EXTERNAL`**.
   No hay CI remoto en este repositorio. La ausencia de CI **nunca** se declara

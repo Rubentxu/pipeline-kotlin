@@ -51,7 +51,7 @@ class RunIdDirectory(private val root: Path) {
         runId: RunId,
         correlationId: CorrelationId? = null,
     ) {
-        // RUN-01 fix: write-to-temp + atomic rename replaces the previous `Files.writeString`
+        // 01 fix: write-to-temp + atomic rename replaces the previous `Files.writeString`
         // which was a non-atomic truncate-then-write that could leave the file partially written
         // if the process died mid-write. After this change, the file is either the prior value
         // or the new one — never a partial value. Atomic move on POSIX is rename(2); on Windows

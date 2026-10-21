@@ -256,7 +256,7 @@ internal fun StageNode.projectShellOptions(base: ShOptions): ShOptions {
 }
 
 internal fun StageNode.timeoutProjection(): StageTimeoutProjection {
-    // S3.3: a CLOSED match over the typed carrier.
+    // a CLOSED match over the typed carrier.
     //
     // The previous shape discriminated on a name string and re-parsed the value:
     //

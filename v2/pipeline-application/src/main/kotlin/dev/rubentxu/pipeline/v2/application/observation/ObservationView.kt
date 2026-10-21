@@ -17,7 +17,7 @@ package dev.rubentxu.pipeline.v2.application.observation
  * - [ObservationFormat] — HOW that selection is encoded on the wire;
  * - [ObservationQuery] (declared in the design docs, not yet implemented) —
  *   WHICH records are selected;
- * - presentation (see `docs/proposals/CLI-CONSOLE-OBSERVABILITY-DRAFT.md`) —
+ * - presentation (see `docs/proposals`) —
  *   HOW each selected record is decorated.
  *
  * `view` and `format` never change execution semantics or persistence. This is

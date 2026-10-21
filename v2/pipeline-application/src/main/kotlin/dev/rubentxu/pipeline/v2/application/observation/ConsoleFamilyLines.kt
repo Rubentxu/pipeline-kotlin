@@ -226,7 +226,7 @@ internal object ConsoleFamilyLines {
         // closes the step's span on success, failure and exception alike, and the event carries
         // no outcome field to justify any verdict — `StepFailed` is the event that carries the
         // failure. Rendering it "ok" printed, for one failing step and in this order:
-        //     ERROR: step 's1/sh-0' failed [SCRIPT]: shell exited with code 7
+        // step 's1/sh-0' failed [SCRIPT]: shell exited with code 7
         //     [PipelineK] [step: s1] s1/sh-0 ok
         // Measured 2026-10-18 against distribution 0.62.0. SEMANTIC CONSTITUTION §8: a
         // projection must not render a status its event does not carry. `StageFinished` above
@@ -364,7 +364,7 @@ internal object ConsoleFamilyLines {
                 "skipped ${event.skippedConditions.size}",
         )
 
-        // SAGA / PK-1: the promise, not the effect. The line says the obligation was armed;
+        // the promise, not the effect. The line says the obligation was armed;
         // it deliberately does not say anything happened, because nothing has happened yet.
         is CompensationArmed -> Line(
             Family.NOTE,
@@ -534,7 +534,7 @@ internal object ConsoleFamilyLines {
                 // catch-all control char drop, otherwise the introducer gets
                 // dropped and the parameters/final leak into the output.
                 c == '\u001B' -> {
-                    // ANSI: ESC [ <params> <final> 0x40..0x7E
+                    // ESC [ <params> <final> 0x40..0x7E
                     //       ESC ] <payload> BEL   (OSC)
                     //       ESC P <payload> ESC \ (DCS, terminated by ST)
                     //       ESC X <single>        (single-char escape, rare)

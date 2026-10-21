@@ -83,7 +83,7 @@ object ScriptedFrontendRunner {
             )
         }
 
-        // ADR-0103 RPL-4 + D7 — the scripted frontend COMPOSES the canonical authorities
+        // 0103 RPL-4 + D7 — the scripted frontend COMPOSES the canonical authorities
         // instead of owning a second replay protocol. Everything below is existing
         // production wiring: the same resolver, the same executor, the same recovery
         // interpretation and the same registry boundary the canonical coordinator uses.

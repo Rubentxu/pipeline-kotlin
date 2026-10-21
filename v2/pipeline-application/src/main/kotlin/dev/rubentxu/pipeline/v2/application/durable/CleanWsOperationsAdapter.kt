@@ -17,7 +17,7 @@ import java.util.UUID
 
 /**
  * The canonical implementation of [dev.rubentxu.pipeline.v2.application.CleanWsOperations] —
- * the typed port consumed by `CoreCleanWsStep.handler` (LFC-2E1-S2-A10 / G1).
+ * the typed port consumed by `CoreCleanWsStep.handler` .
  *
  * ## Why an adapter rather than inlining the IO into the handler
  *
@@ -88,14 +88,14 @@ class CleanWsOperationsAdapter(
 
         val executor = CleanWsExecutor(
             workspaceResolver = { _, _ -> workspace },
-            // RP034-G: derived from the typed lease, not from a VCS
+            // derived from the typed lease, not from a VCS
             // marker. The previous condition engaged only when `--workspace` was
             // passed explicitly, leaving the no-flag path unprotected, and it
             // treated a bare non-VCS project tree as disposable scratch. A
             // user-owned root is now refused regardless of what is on disk,
             // while PipelineK-managed scratch keeps its wipe contract.
             //
-            // C8: the decision is now a value, not a bit. The adapter maps the
+            // the decision is now a value, not a bit. The adapter maps the
             // lease verdict onto the shared RootDestruction intent so the
             // executor cannot be handed a half-resolved question.
             rootDestruction = RootDestruction.from(

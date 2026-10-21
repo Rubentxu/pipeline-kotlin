@@ -681,6 +681,21 @@ else
     echo "    ok in $(elapsed "$stage_started_at")s"
 fi
 
+# --- Stage 4b: comment-provenance guard --------------------------------------
+#
+# A comment that names its ticket, its document section, or its commit is the
+# comment that anchors the code to a process, not to its behaviour. The
+# provenance guard reads Kotlin, `.kts` and `.sh` files, and walks the comment
+# stream tokenised by hand so a `//` inside a string literal stays a string.
+# It runs here, between the LOC gate and the wall clock, because the LOC
+# contract already names the file as a whole — a guard that runs later cannot
+# qualify the verdict the way the 2:1 contract qualifies the budget.
+log "stage 4b/5 comment provenance"
+python3 scripts/check-comment-provenance.py >/tmp/.verify-comment.out 2>&1 \
+    || { cat /tmp/.verify-comment.out >&2
+         fail "stage 4b: comment provenance" ; }
+echo "    ok in $(elapsed "$stage_started_at")s"
+
 # --- Stage 5: wall-clock -----------------------------------------------------
 
 total=$(elapsed "$started_at")

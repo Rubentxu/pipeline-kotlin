@@ -26,7 +26,7 @@ import kotlinx.coroutines.CancellationException
  * [StepHandlerContext] built from the runtime identity plus its declared capabilities; it never sees a
  * [CanonicalRuntimeContext].
  *
- * ## LB-02 / G3-A3: atomic outcome + encodedOutput
+ * ## LB-02: atomic outcome + encodedOutput
  *
  * The registry boundary returns the same shape as every other [CommonExecutionBoundary]
  * implementation: a [CommonExecutionResult] carrying both `outcome` and `encodedOutput?`. The encoded
@@ -165,7 +165,7 @@ object RegistryExecutionBoundary {
 
         return try {
             val produced: Any = definition.handler.execute(prepared.decodedInput, handlerContext)
-            // A1/A3: persist typed O only when it is NOT `Unit`. Encoded under the
+            // persist typed O only when it is NOT `Unit`. Encoded under the
             // Step's declared output codec so the durable layer can replay-decode only
             // through that same codec, never through opaque assumptions.
             val encoded: EncodedStepValue? = if (produced is Unit) {
@@ -176,7 +176,7 @@ object RegistryExecutionBoundary {
                     as dev.rubentxu.pipeline.v2.domain.step.StepCodec<Any>)
                 codec.encode(produced)
             }
-            // A4.3: project the canonical `StepOutcome` from the typed output
+            // project the canonical `StepOutcome` from the typed output
             // when the carrier implements `TypedStepOutput`. Steps whose handler
             // returns `Unit` or a non-typed payload default to `Success` (the
             // legacy convention preserved by `core.echo`'s EventSink-shaped

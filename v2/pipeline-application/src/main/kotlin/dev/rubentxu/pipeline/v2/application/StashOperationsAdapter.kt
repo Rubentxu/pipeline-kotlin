@@ -79,7 +79,7 @@ class StashOperationsAdapter(
         val workspaceRootReal: Path = try {
             workspaceRoot.toRealPath()
         } catch (e: IOException) {
-            // INFRASTRUCTURE: the workspace itself cannot be resolved.
+            // the workspace itself cannot be resolved.
             val reason = "stash workspace root cannot be resolved to a real path: ${e.message}"
             eventSink.append(stashFailedEvent(input.name, "stash", reason))
             return StashFailed(failureKind = FailureKind.INFRASTRUCTURE, message = reason)
@@ -301,7 +301,7 @@ class StashOperationsAdapter(
             // symlink-to-file (which `Files.isRegularFile` returns true for
             // because it follows the link). Refuse any regular file that is
             // actually a symlink, with a typed SCRIPT-level rejection (not
-            // INFRASTRUCTURE — symlinks in the archive are a script-author
+            // symlinks in the archive are a script-author
             // decision, not a runtime crash).
             //
             // Materialise the walk first (the walk follows links; filtering

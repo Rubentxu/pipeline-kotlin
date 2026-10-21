@@ -30,7 +30,7 @@ import java.util.jar.JarFile
  * [PluginComposition.resolve] discovers through `ServiceLoader`, and `ServiceLoader` **instantiates**
  * providers as it iterates them. Putting admission there would load plugin code and initialise its
  * static state before the decision that is supposed to precede exactly that — the inversion
- * ADR-EVO-003 exists to forbid. So admission happens over a plain list of artifact PATHS, with no
+ * The platform-composition decision exists to forbid that. So admission happens over a plain list of artifact PATHS, with no
  * `ClassLoader`, no `ServiceLoader` and no contributor class anywhere in this file.
  *
  * What pass 1 decides is exactly what [PluginAdmission.admit] decides, because

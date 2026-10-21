@@ -170,7 +170,7 @@ internal fun runVolatilePipeline(
                         journal = journal,
                         cursorStore = cursorStore,
                         eventSink = eventStore,
-                        // P6: the Saga seam does NOT depend on `--db`. This branch binds the
+                        // the Saga seam does NOT depend on `--db`. This branch binds the
                         // VOLATILE store, so the capabilities are the same ones the durable
                         // branch exposes and the SAME script behaves the same in both worlds.
                         // What changes is the DURABILITY of the promise, not the algorithm:
@@ -218,7 +218,7 @@ internal fun runVolatilePipeline(
                         allowNetwork = config.allowNetwork,
                         secretPatternRegistry = secretPatternRegistry,
                     ),
-                    // S6/G: the frozen composition, not a step registry plus a classloader.
+                    // the frozen composition, not a step registry plus a classloader.
                     // There is no path here that can reach a registry without a directive registry
                     // having been resolved under the same loader.
                     composition = composition,
@@ -254,7 +254,7 @@ internal fun runVolatilePipeline(
         )
     }
     val exitFailure = volatileRunFailed(runOutcome, events)
-    // P6: the Saga verdict travels in BOTH worlds. A Saga can now run without
+    // the Saga verdict travels in BOTH worlds. A Saga can now run without
     // `--db` —the volatile store is bound exactly like the durable one—, so the
     // run has to SAY what happened to it, exactly as the durable path says. A
     // Saga that settled without saying so is a Saga the operator cannot see,

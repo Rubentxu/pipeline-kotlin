@@ -313,7 +313,7 @@ open class CanonicalRuntimeCapabilityAccess(
                 root.resolve("inputs"),
             )
         }
-        // SAGA: the compensation intent port.
+        // the compensation intent port.
         //
         // Exposed ONLY when the engine bound one for this invocation. The port is the only
         // way a plugin may promise a compensation, and a promise that cannot be kept is
@@ -322,7 +322,7 @@ open class CanonicalRuntimeCapabilityAccess(
         context.sagaCompensation?.let { operations ->
             builder[SAGA_COMPENSATION_CAPABILITY] = operations
         }
-        // SAGA: the compensation PLAN port.
+        // the compensation PLAN port.
         //
         // Exposed ONLY when the engine bound one for this invocation, for the same reason as
         // the intent port above: a Step that asks what a Saga owes must not reach a handler
@@ -331,7 +331,7 @@ open class CanonicalRuntimeCapabilityAccess(
         context.sagaPlan?.let { plan ->
             builder[SAGA_PLAN_CAPABILITY] = plan
         }
-        // SAGA: the compensation RUNTIME.
+        // the compensation RUNTIME.
         //
         // Exposed ONLY when the engine bound one for this invocation, for the same reason as
         // the two ports above: a Step that asks the engine to run a compensation must not
@@ -339,7 +339,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // through, or no way to record what happened.
         context.sagaRuntime?.let { runtime ->
             builder[SAGA_RUNTIME_CAPABILITY] = runtime
-            // SAGA: the Saga's LIFECYCLE — the runtime that can also KEEP the
+            // the Saga's LIFECYCLE — the runtime that can also KEEP the
             // effects of a Saga that ended well, instead of only undoing them.
             //
             // Exposed ONLY when the bound runtime really is that port, for the same reason as
@@ -377,7 +377,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // as `junitResults("build/test-results/test.xml", ".")` inside the
         // active `dir` body.
         //
-        // NOTE: `WorkspaceIdentity` is a low-level observation capability. The
+        // `WorkspaceIdentity` is a low-level observation capability. The
         // `core.pwd.tmp` Step does NOT use it directly — it goes through the
         // dedicated `TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY` port below, which
         // composes the effective workspace + canonical OpId into the deterministic
@@ -621,7 +621,7 @@ open class CanonicalRuntimeCapabilityAccess(
         context.bodyContinuation?.let { continuation ->
             builder[BODY_CONTINUATION_CAPABILITY] = continuation
         }
-        // SAGA: the slot seam. Exposed ONLY when the engine bound a slot
+        // the slot seam. Exposed ONLY when the engine bound a slot
         // invoker for this invocation, which it does only for a
         // HANDLER_CONTINUATION Step whose body is already bound — the same
         // condition as the continuation above, and for the same reason: a

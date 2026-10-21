@@ -3,10 +3,10 @@ package dev.rubentxu.pipeline.v2.domain.durable
 /**
  * Snapshot of a single retry child effect row.
  *
- * ADR-0075 §4 + §5 — the durable evidence that a particular child effect
- * (canonical dispatch output) reached a particular terminal (or in-flight)
- * state at a particular retry attempt. The reconciler reads a multiset of
- * these per attempt and uses them to decide between
+ * The durable evidence that a particular child effect (canonical dispatch
+ * output) reached a particular terminal (or in-flight) state at a particular
+ * retry attempt. The reconciler reads a multiset of these per attempt and
+ * uses them to decide between
  * [RetryReconciliationDecision.CloseSuccessFromChild],
  * [RetryReconciliationDecision.AdvanceAfterFailure], and
  * [RetryReconciliationDecision.RejectDivergence].
@@ -34,8 +34,8 @@ data class RetryChildRowSnapshot(
      * 0-based position of the child within the retry body. For Block
      * Steps with a sequential body this is always 0; for parallel blocks
      * the index within the body's parallel branches would also appear
-     * here, but RETRY-D only governs sequential retry bodies in this
-     * scope.
+     * here, but the retry reconciliation in this scope only governs
+     * sequential retry bodies.
      */
     val childIndex: Int,
 

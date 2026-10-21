@@ -5,13 +5,13 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  *
  * Three values are defined:
  * - [NONE]: Default behaviour. No sandboxing applied. Cwd = control dir (legacy).
- *   Env passthrough unchanged. PATH unchanged. Full ML-R2 back-compat.
+ *   Env passthrough unchanged. PATH unchanged. Full back-compat.
  * - [LOCAL]: Cwd = per-stage workspace. Env deny-list applied to pb.environment().
  *   PATH normalised to keep-set prefixes + JAVA_HOME/bin + M2_HOME/bin prepends.
  *   Local profile is NOT a filesystem jail — JDK has no portable chroot.
- *   OS-level sandbox remains M5/M9 (see [ADR-0016]).
+ *   OS-level sandbox is not implemented here yet.
  * - [OS]: Recognised but not instantiable in L3. The factory constructor throws
- *   [SandboxProfileUnsupportedException] citing ADR-0016 M5/M9.
+ *   [SandboxProfileUnsupportedException].
  *
  * ## Jenkins-wrapper mapping
  *
@@ -22,9 +22,6 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  * | OS      | Container profile  | Not available in L3 (M5/M9) |
  *
  * @see SandboxConfig
- * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
- * @see <a href="ADR-0048">ADR-0048 — Sandbox Profile Local</a>
- * @see <a href="ADR-0016">ADR-0016 — Scope Firewall</a>
  */
 enum class SandboxProfile {
     /** No sandboxing. Cwd = control dir; env passthrough; PATH unchanged. Full ML-R2 back-compat. */
@@ -37,13 +34,13 @@ enum class SandboxProfile {
      *
      * NOTE: local profile is NOT a filesystem jail. JDK has no portable chroot.
      * Write attempts outside workspace are reported but not blocked.
-     * OS-level sandbox requires M5/M9 (see [ADR-0016]).
+     * OS-level sandbox is not implemented here yet.
      */
     LOCAL,
 
     /**
      * OS-level sandbox profile. Recognised but NOT instantiable in L3.
-     * Instantiation throws [SandboxProfileUnsupportedException] citing ADR-0016 M5/M9.
+     * Instantiation throws [SandboxProfileUnsupportedException].
      * OS-level sandbox (container, seccomp, unshare) is deferred to M5/M9.
      */
     OS;
@@ -51,7 +48,7 @@ enum class SandboxProfile {
     /**
      * Factory for [OS] profile. Throws because OS profile is not available in L3.
      *
-     * @throws SandboxProfileUnsupportedException always, citing ADR-0016 M5/M9
+     * @throws SandboxProfileUnsupportedException always
      */
     companion object {
         /**
@@ -71,7 +68,7 @@ enum class SandboxProfile {
  * - [SandboxProfile.OS] factory is called directly (not available in L3)
  *
  * The message contains machine-checkable substrings:
- * - `ADR-0016` — scope firewall ADR
+ * - scope firewall
  * - `M5` — milestone 5
  * - `M9` — milestone 9
  *

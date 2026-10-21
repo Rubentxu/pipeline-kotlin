@@ -11,7 +11,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
  * generator, validation, execution planning, and graph projection share one
  * contract. It does not carry command payload or runtime state.
  *
- * ## Pre-decode durable metadata (LB-02 / G3-A4.1)
+ * ## Pre-decode durable metadata
  *
  * The descriptor is the SINGLE source of pre-decode metadata that the durable protocol
  * may need BEFORE typed input decode. That set is:
@@ -49,9 +49,8 @@ data class StepDescriptor(
     val securityProfile: String = "",
     val deprecation: String = "",
     /**
-     * The body this Step kind declares (EM-4 body metadata, one typed value since
-     * B10 / W1d). See [StepBody] for the ADT, its laws, and what it makes
-     * unrepresentable.
+     * The body this Step kind declares (one typed value). See [StepBody] for
+     * the ADT, its laws, and what it makes unrepresentable.
      *
      * [StepBody.None] is the total default: a Step that declares nothing is terminal.
      * A body Step states its cardinality, its execution owner and its execution shape

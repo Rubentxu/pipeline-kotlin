@@ -1,28 +1,24 @@
 package dev.rubentxu.pipeline.v2.events.shape
 
 /**
- * M7 — typed read port that returns the typed events the journal recorded
+ * Typed read port that returns the typed events the journal recorded
  * for a run, in execution order.
  *
  * ## What this port is and is not
  *
- * `EventShapeReadPort` is the source of truth for the M6 PARTIAL closure
- * (`M6_CONTEXT_PRESSURE_AUDIT.md` §D I.6, "synthetic single-stage /
- * single-step view"): the published `PipelineEventEnvelope` strips the
- * type-specific fields of the typed events (stageIndex, stepOrdinal,
+ * `EventShapeReadPort` returns typed events directly. The published `PipelineEventEnvelope`
+ * strips the type-specific fields of the typed events (stageIndex, stepOrdinal,
  * stageName, stepKey), so reading them from envelopes is NOT in scope of
- * any existing port. This port returns the typed events directly, so the
- * `RuntimeIntrospectionPort.runStructure` adapter can drive
- * event-driven grouping.
+ * any existing port. This port exists so a `RuntimeIntrospectionPort.runStructure`
+ * adapter can drive event-driven grouping.
  *
  * The port composes the same primitives `EventRecordReadPort` composes
  * (the event sink + the typed event decoder) but projects to typed
- * events instead of envelopes. The composition rule (M7 design §A) is:
+ * events instead of envelopes. The composition rule is:
  *
  *  - `eventReads` (the M1 EventRecordReadPort) for the read-page
  *  - the typed event decoder for `StageStarted` / `StageFinished` /
- *    `StageSkipped` / `StepStarted` / `StepFinished` (the five cases
- *    the M6 audit names)
+ *    `StageSkipped` / `StepStarted` / `StepFinished` (the five lifecycle cases)
  *
  * ## Read-only by construction
  *
@@ -32,12 +28,9 @@ package dev.rubentxu.pipeline.v2.events.shape
  *
  * ## Stability
  *
- * The port ships as `EXPERIMENTAL` in `v0.54.0-rc1` (the M7 candidate).
- * Promotion to `PUBLICADA` happens after the certifier's `CERTIFIED`
+ * The port ships as `EXPERIMENTAL` and is promoted after the certifier's certified
  * verdict. The five-case `TypedEvent` ADT is closed; a sixth case would
  * be a breaking change requiring consumer recompile.
- *
- * @see M7_FINAL_HARDENING_DESIGN.md §A.
  */
 fun interface EventShapeReadPort {
 
@@ -51,8 +44,7 @@ fun interface EventShapeReadPort {
      * page passes the result's cursor back as `options.cursor`.
      * Forward-only pagination; the cursor is opaque to consumers.
      *
-     * @param runId The run to read. `String`, NOT a typed `RunId` (the
-     *   M1 design §7 pins `runId` as `String`).
+     * @param runId The run to read. `String`, NOT a typed `RunId`.
      * @param options The bounded-scan + resume-cursor options. A
      *   convenience overload below accepts no options; this method
      *   is the SAM so it cannot have a default parameter value.

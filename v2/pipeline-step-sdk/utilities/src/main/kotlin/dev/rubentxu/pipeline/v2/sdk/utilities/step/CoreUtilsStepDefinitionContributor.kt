@@ -12,9 +12,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistration
 import java.io.File
 
 /**
- * LFC-2E2 utilities OFFICIAL_PLUGIN contributor.
+ * Utilities OFFICIAL_PLUGIN contributor.
  *
- * Mirrors the proven scm-git pattern (F5.1 / ADR-0092):
+ * The registration rules:
  *
  * - Real [StepProviderMetadata] built from a typed [PluginManifest].
  * - Build-time provenance is required: the publisher / namespace / version /

@@ -5,32 +5,34 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 
 /**
- * S6/B1 — what a plugin CONTRIBUTS, as distinct from what it IS.
+ * What a plugin CONTRIBUTS, as distinct from what it IS.
  *
  * ## Why this is separate from [PluginFamily]
  *
- * [PluginFamily] answers "what domain is this plugin for" (SCM, NETWORK, TESTING,
- * ...). Its own KDoc records that the runtime does not branch on it and that it is
- * metadata rather than a verdict. These types answer "which structural shapes does
- * this plugin add to the pipeline". The two are orthogonal and neither is derivable
- * from the other: a TESTING family plugin contributes Steps, and a NETWORK family
- * plugin contributes a Step plus a Capability. Keeping both, rather than merging
- * them, is what lets admission check structure without having to invent a taxonomy.
+ * [PluginFamily] answers "what domain is this plugin for" (SCM, NETWORK,
+ * TESTING, ...). Its own KDoc records that the runtime does not branch on
+ * it and that it is metadata rather than a verdict. These types answer
+ * "which structural shapes does this plugin add to the pipeline". The two
+ * are orthogonal and neither is derivable from the other: a TESTING family
+ * plugin contributes Steps, and a NETWORK family plugin contributes a Step
+ * plus a Capability. Keeping both, rather than merging them, is what lets
+ * admission check structure without having to invent a taxonomy.
  *
  * ## Why these are typed lists and not a `Map<String, Any?>`
  *
- * Every entry names one contribution and carries only the payload that contribution
- * means. A Step declares the capabilities it requires; a Directive and an Event do
- * not, so they do not get a nullable capability field. The union is a sealed set of
- * shapes, not an open map of anything.
+ * Every entry names one contribution and carries only the payload that
+ * contribution means. A Step declares the capabilities it requires; a
+ * Directive and an Event do not, so they do not get a nullable capability
+ * field. The union is a sealed set of shapes, not an open map of anything.
  *
  * ## Why Reactor is absent
  *
- * S5.5 is `DEFERRED` by ADR-0104, which named S6 as where a plugin-contributed
- * reactive construct belongs. This is that place, and it still does not declare one:
- * a manifest slot with no consumer is the same defect ADR-0104 refused to let S5.5
- * commit, reached by another road. When ADR-0104's reopening condition is met,
- * Reactor joins this hierarchy as a fifth shape with a real producer behind it.
+ * S5.5 is `DEFERRED` by ADR-0104, which named this layer as where a
+ * plugin-contributed reactive construct belongs. This is that place, and
+ * it still does not declare one: a manifest slot with no consumer is the
+ * same defect ADR-0104 refused to let S5.5 commit, reached by another
+ * road. When ADR-0104's reopening condition is met, Reactor joins this
+ * hierarchy as a fifth shape with a real producer behind it.
  */
 data class PluginStepContribution(
     val stepKey: PluginStepId,
@@ -84,13 +86,13 @@ data class PluginContributions(
 }
 
 /**
- * S6/B1 — the PipelineK API range a plugin declares compatibility with.
+ * The PipelineK API range a plugin declares compatibility with.
  *
- * §2 of the plugin SDK package requires `apiRange`, and it is what makes admission
- * able to refuse a plugin before its classes load: a plugin built against PipelineK
- * 0.48 is not silently loadable into 0.52. Exclusive upper bound, because a
- * compatibility range states where a plugin stops being supported, not where it
- * stops being parseable.
+ * §2 of the plugin SDK package requires `apiRange`, and it is what makes
+ * admission able to refuse a plugin before its classes load: a plugin built
+ * against PipelineK 0.48 is not silently loadable into 0.52. Exclusive upper
+ * bound, because a compatibility range states where a plugin stops being
+ * supported, not where it stops being parseable.
  */
 data class PipelineKApiRange(
     val fromInclusive: SemVer,

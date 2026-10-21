@@ -118,7 +118,7 @@ class CredentialTeardownTest {
         assertEquals(2, failed.firstFailure.throwable.suppressed.size)
     }
 
-    // --- A4: an append failure no longer leaks the handles ------------------------
+    // --- an append failure no longer leaks the handles ---------------------------
 
     @Test
     fun `a rejected unbound append still wipes the secret handle`() {

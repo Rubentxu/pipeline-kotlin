@@ -15,7 +15,7 @@ import dev.rubentxu.pipeline.v2.domain.step.EgressRefusal
  * carrier that holds the attempt, and the only way out of that recursion is for
  * the carrier to report a hardcoded outcome.
  *
- * A hardcoded `Success` is exactly the defect WU-092 measured in `core.input`:
+ * A hardcoded `Success` is a defect this codebase has already been bitten by:
  * a refused question closed the run green with exit 0. The previous shape of this
  * file carried `override val outcome get() = StepOutcome.Success` while its KDoc
  * claimed that implementing `TypedStepOutput` "is not decoration" — the

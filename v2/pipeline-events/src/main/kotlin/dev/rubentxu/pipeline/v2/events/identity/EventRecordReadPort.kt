@@ -37,10 +37,8 @@ import dev.rubentxu.pipeline.v2.events.EventRecordSlice
  * This port is `EXPERIMENTAL` for the M1 first cut (capability ID
  * `events.follow.v1` is published only after the contract test suite
  * is green and the M1-D cross-JVM e2e test is green). The
- * implementation may add a typed `RunId` parameter in a future M-block;
+ * implementation may add a typed `RunId` parameter in a future release;
  * the port signature is additive.
- *
- * @see M1_FOLLOW_DESIGN.md §2.3.
  */
 interface EventRecordReadPort {
 

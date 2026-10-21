@@ -3,16 +3,16 @@ package dev.rubentxu.pipeline.v2.domain.durable
 /**
  * Snapshot of a single retry-attempt control row.
  *
- * ADR-0075 §4 — this record is the durable source of truth for the
- * retry aggregate's state at a given attempt. The reconciler reads one
- * snapshot per attempt and reconciles them against child evidence.
+ * This record is the durable source of truth for the retry aggregate's
+ * state at a given attempt. The reconciler reads one snapshot per attempt
+ * and reconciles them against child evidence.
  *
- * ## Persistence-before-effects contract (ADR-0075 §6)
+ * ## Persistence-before-effects contract
  * The reconciler produces a plan; the writer persists the plan BEFORE
  * any child effect is launched. Persisting the [RetryControlRowSnapshot]
  * is how the retry observes its own progress durably.
  *
- * ## Fingerprint field (ADR-0075 §9)
+ * ## Fingerprint field
  * [fingerprint] is the retry contract fingerprint at the moment this row
  * was persisted. A different fingerprint on read means the contract has
  * changed; the reconciler MUST reject in that case.

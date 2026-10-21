@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
 
 /**
- * EVT-2 canonical-path decorator over the legacy [EventSink] facade.
+ * Canonical-path decorator over the legacy [EventSink] facade.
  *
  * Write path: `append(DomainEvent)` → inner store (assigns sequence — the store
  * remains the sole sequence authority) → EnvelopeProjector on the event WITH its

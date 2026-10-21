@@ -24,7 +24,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.isRegularFile
 
 /**
- * `core-utils.readJson` OFFICIAL_PLUGIN Step (LFC-2E2 utilities).
+ * `core-utils.readJson` OFFICIAL_PLUGIN Step.
  *
  * Capability discipline: declares `WORKSPACE_IDENTITY_CAPABILITY` and reads the
  * canonical workspace root from the typed capability seam. The handler does

@@ -92,7 +92,7 @@ class CredentialMaterializer(
     }
 
     private fun materializeSecretFile(credential: SecretFile): MaterializedCredential {
-        // Create parent dir with 0700 perms (mkstemp-style) to satisfy CR-MZ-001 spec
+        // Create parent dir with 0700 perms (mkstemp-style)
         val parentDir = createTempDir(
             prefix = "pipeline-secret-dir-",
             suffix = "-${credential.id.value}"
@@ -293,8 +293,8 @@ class CredentialMaterializer(
  * `DirectoryNotEmptyException`, and swallowed it -- leaving the extracted credential on disk.
  *
  * `internal` and top-level rather than private so the decision is reachable without a filesystem:
- * the only thing that reads it is a `Files.createDirectories` call, and AGENTS.md section 2
- * forbids that in a unit test.
+ * the only thing that reads it is a `Files.createDirectories` call, and the unit-test rule
+ * forbids that.
  */
 internal fun createDirectoriesFrom(from: Path, to: Path): List<Path> {
     // Both ends are normalised rather than trusted. Walked raw, `a/./x/../b` yields
@@ -322,12 +322,11 @@ internal fun createDirectoriesFrom(from: Path, to: Path): List<Path> {
  * arbitrary path, with attacker-chosen content, during credential materialization.
  *
  * `Path.startsWith` compares name ELEMENTS, so the sibling-prefix form (`<tmpdir>-evil`) is
- * refused too. A character prefix would admit exactly the case an attacker picks -- the same
- * distinction `DirExecutor.resolveTargetPath` was corrected for.
+ * refused too. A character prefix would admit exactly the case an attacker picks.
  *
  * `internal` and top-level rather than private and inline so the decision is reachable without
  * a filesystem: `materializeZip` calls `Files.createDirectories` and `Files.write`, and
- * AGENTS.md section 2 forbids both in a unit test. A guard whose only path runs through a file
+ * the unit-test rule forbids both. A guard whose only path runs through a file
  * write is a guard with no coverage.
  *
  * @throws ZipEntryEscapesMaterializationException if [entryName] leaves [tempDir]
@@ -344,8 +343,8 @@ internal fun resolveZipEntryPath(credentialsId: CredentialsId, tempDir: Path, en
  * Thrown when a `Zip` credential carries an entry name that leaves its materialization directory.
  *
  * Declared here rather than beside [MaterializationKindUnsupportedException] in
- * `:pipeline-credentials-api` because that module has an `api/` compatibility gate, and
- * AGENTS.md section 1 forbids changing a published artifact's surface without an authorised
+ * `:pipeline-credentials-api` because that module has an `api/` compatibility gate, and the
+ * versioning rule forbids changing a published artifact's surface without an authorised
  * versioned break. The refusal belongs to this materializer, which is the only thing that
  * decides where an entry may land.
  *

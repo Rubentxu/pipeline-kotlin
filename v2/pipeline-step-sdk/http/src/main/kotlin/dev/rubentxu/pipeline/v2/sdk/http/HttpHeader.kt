@@ -1,8 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.http
 
 /**
- * One HTTP header, with its name and value as separate value classes
- * (RP6-C / WU-093).
+ * One HTTP header, with its name and value as separate value classes.
  *
  * A `Map<String, String>` is wrong twice over: it cannot represent a header that
  * legitimately repeats (`Set-Cookie` is the canonical case), and it says nothing

@@ -12,9 +12,9 @@ import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
  * production adapter for [ChildRowReader].
  *
  * Bridges [OperationJournal] to [dev.rubentxu.pipeline.v2.domain.durable.RetryReconciler]
- * via canonical child identities derived from [RetryIdentityFactory] (D2.2).
+ * via canonical child identities derived from [RetryIdentityFactory].
  *
- * Laws (ADR-0075 §7):
+ * Laws:
  *   - The reader is a *read-only port*. It does not mutate [OperationJournal].
  *   - The reader does NOT walk StepSpec / DSL IR. It consumes the canonical
  *     [BlockStepNode] body description provided at construction.
@@ -25,7 +25,7 @@ import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
  *   - The retry body is captured at construction time so the reader is reusable
  *     across multiple `childrenForControlOpId` calls (one per journal refresh).
  *
- * Status semantics (ADR-0075 §6):
+ * Status semantics:
  *   - journal.get returns null → snapshot.status = PENDING (Missing)
  *   - journal.get returns RUNNING → snapshot.status = RUNNING (InFlight)
  *   - journal.get returns a terminal success (SUCCEEDED) → snapshot.status = SUCCEEDED

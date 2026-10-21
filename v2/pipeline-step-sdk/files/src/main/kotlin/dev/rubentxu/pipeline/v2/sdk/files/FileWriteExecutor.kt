@@ -128,7 +128,7 @@ class FileWriteExecutor(
 
     companion object {
         /**
-         * SHA-256 hex of [bytes], routed through the shared utility (B0).
+         * SHA-256 hex of [bytes], routed through the shared utility.
          *
          * Byte-identical to the local implementation this replaces: same algorithm, same
          * lowercase hex, same input. The value is emitted in the Step's observability event,

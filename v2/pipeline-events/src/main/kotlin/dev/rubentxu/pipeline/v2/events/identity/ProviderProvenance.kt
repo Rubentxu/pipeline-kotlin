@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * Audit-class projection of a [dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata]
- * attached to a [PipelineEventEnvelope] (LFC-2E2-prep / ADR-0092 / C8).
+ * attached to a [PipelineEventEnvelope].
  *
  * Carries the **immutable identifiers** needed to answer "what code ran in
  * this run?" without reconstructing stringly segments at query time:
@@ -18,10 +18,10 @@ import kotlinx.serialization.Serializable
  *
  * The provenance field on the envelope is **strictly additive** (nullable,
  * default = null). Envelopes emitted by Steps registered via the legacy
- * `register(StepDefinition)` overload have `provenance = null` (C10).
+ * `register(StepDefinition)` overload have `provenance = null`.
  * Steps registered with provider metadata through
  * `register(StepRegistration)` have their provenance projected on
- * audit events (C8).
+ * audit events.
  *
  * The provenance is the typed audit projection, NOT the
  * `StepProviderMetadata` itself; the durable engine and event consumers

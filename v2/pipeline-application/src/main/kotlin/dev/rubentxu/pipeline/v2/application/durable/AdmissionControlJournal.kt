@@ -12,9 +12,9 @@ import java.nio.file.StandardCopyOption
 import java.time.Instant
 
 /**
- * B3.2 — single-writer durable store for admission control rows.
+ * Single-writer durable store for admission control rows.
  *
- * ## The RETRY-D analogy, applied to admission
+ * ## The retry control-row analogy, applied to admission
  *
  * The retry aggregate has a control row so a second invocation of the binary with the
  * same `--db` and `--control-root` does not re-run a successful child. The admission
@@ -88,11 +88,11 @@ class AdmissionControlJournal(controlDirRoot: Path) {
 }
 
 /**
- * B3.2 — one durable admission decision.
+ * One durable admission decision.
  *
- * Written BEFORE the gate's refusal returns (RETRY-D, ADR-0075 §6). The [verdict] field
- * is the runtime's typed identity verdict; [refusedKind] / [refusedDetail] name the
- * specific [AdmissionRejection] case when the gate refused.
+ * Written BEFORE the gate's refusal returns. The [verdict] field is the runtime's
+ * typed identity verdict; [refusedKind] / [refusedDetail] name the specific
+ * [AdmissionRejection] case when the gate refused.
  *
  * @property pluginId the canonical [ResourceRef] text of the plugin; the durable key
  * @property origin the [ArtifactOrigin.canonicalText] the gate measured

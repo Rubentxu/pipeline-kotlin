@@ -13,7 +13,7 @@ import javax.crypto.spec.SecretKeySpec
  * sealed = nonce(12) || ciphertext || tag(16)
  * Total overhead = 12 + 16 = 28 bytes
  *
- * ## Design (ADR-0049 D2)
+ * ## Design
  *
  * Uses Java JCE AES/GCM/NoPadding (backed by bouncycastle bcprov).
  * - AES-256 key (KEY_SIZE_BYTES = 32)

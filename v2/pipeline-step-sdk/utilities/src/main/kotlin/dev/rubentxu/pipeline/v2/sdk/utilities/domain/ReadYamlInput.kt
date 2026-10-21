@@ -5,15 +5,13 @@ import kotlinx.serialization.Serializable
 /**
  * Typed input for [dev.rubentxu.pipeline.v2.sdk.utilities.step.CoreUtilsReadYamlStepDefinition].
  *
- * The [source] sealed hierarchy encodes Jenkins' `file XOR text` invariant
- * directly in the type system: an invocation that supplies BOTH (or neither)
- * cannot be constructed without the codec rejecting it at decode time. This
- * is the typed form of Jenkins' runtime check in
- * [AbstractFileOrTextStep](https://github.com/jenkinsci/pipeline-utility-steps-plugin/blob/master/src/main/java/org/jenkinsci/plugins/pipeline/utility/steps/AbstractFileOrTextStep.java).
+ * The [source] sealed hierarchy encodes the `file XOR text` invariant directly
+ * in the type system: an invocation that supplies BOTH (or neither) cannot be
+ * constructed, and the codec rejects such a record at decode time. A runtime
+ * check is not needed to reach the same conclusion.
  *
- * The two safety knobs surfaced by Jenkins (`codePointLimit`,
- * `maxAliasesForCollections`) are optional. Defaults are documented on the
- * Step handler itself and follow the Jenkins reference:
+ * The two safety knobs (`codePointLimit`, `maxAliasesForCollections`) are
+ * optional. Their defaults are documented on the Step handler itself:
  *
  *  - `codePointLimit = 8 MiB`
  *  - `maxAliasesForCollections = 64`
@@ -39,8 +37,8 @@ data class ReadYamlInput(
 /**
  * Sealed source for a YAML read.
  *
- * Jenkins' `AbstractFileOrTextStep` enforces `file XOR text` at runtime;
- * this hierarchy enforces it at compile time. The codec rejects dual sources
+ * This hierarchy enforces `file XOR text` at compile time rather than at
+ * runtime. The codec rejects dual sources
  * (i.e. a record that somehow contained both fields) — that case cannot
  * occur through the typed API.
  */

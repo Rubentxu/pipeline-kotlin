@@ -17,10 +17,10 @@ import java.util.UUID
  *
  * Layout: `<controlRoot>/artefacts/<runId>/<stageName>/<ts>-<uuid>.tar`
  *
- * Design: D6 — artefacts live OUTSIDE the workspace (F-ARCH-L7 workspace-cleanup
- * preservation invariant). When `WorkspaceResolver.cleanupAfterComplete()` wipes the
- * stage workspace, the artefacts directory survives because it is a sibling of the
- * workspace directory under `<controlRoot>`, not a descendant.
+ * Artefacts live OUTSIDE the workspace to preserve the workspace-cleanup invariant.
+ * When `WorkspaceResolver.cleanupAfterComplete()` wipes the stage workspace, the
+ * artefacts directory survives because it is a sibling of the workspace directory
+ * under `<controlRoot>`, not a descendant.
  *
  * ## API
  *
@@ -28,7 +28,7 @@ import java.util.UUID
  * - [archive] — creates a tar archive from files matching the given Ant-style pattern
  * - [close] — idempotent cleanup
  *
- * ## Workspace-Cleanup Preservation (F-ARCH-L7 / INV-L7-FS-007)
+ * ## Workspace-Cleanup Preservation
  *
  * The artefacts directory is `<controlRoot>/artefacts/` and the workspace is
  * `<controlRoot>/workspace/<stageName>-<stageIndex>/`. They are siblings under
@@ -143,7 +143,7 @@ class LocalArtifactStore(
     }
 
     /**
-     * SHA-256 of an existing file, streamed (shared utility, B0).
+     * SHA-256 of an existing file, streamed.
      *
      * The previous implementation read the whole file into a `ByteArray` before hashing it,
      * which meant a large artifact had to be resident. The digest value is unchanged, so

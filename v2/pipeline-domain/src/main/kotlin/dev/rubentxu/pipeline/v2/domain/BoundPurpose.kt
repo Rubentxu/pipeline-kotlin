@@ -10,9 +10,9 @@ package dev.rubentxu.pipeline.v2.domain
  * [CredentialUsed][dev.rubentxu.pipeline.v2.events.CredentialUsed] events.
  * The purpose is informational only - it does not affect security.
  *
- * ## Variants (ML-R6)
+ * ## Variants
  *
- * Maps to Jenkins credentials-binding kinds per JENKINS_FAMILIARITY_CATALOG.md §1.6:
+ * Maps to Jenkins credentials-binding kinds:
  * - [API_KEY]: Secret text credential — `string` binding → env variable
  * - [USERNAME_PASSWORD]: Username/password pair — `usernamePassword` binding
  * - [SSH_KEY]: SSH private key with optional passphrase — `sshUserPrivateKey` binding
@@ -24,7 +24,7 @@ package dev.rubentxu.pipeline.v2.domain
  * ## Deprecation aliases
  *
  * [ENV] is deprecated — renamed to [API_KEY] (semantically equivalent for L4 callers).
- * [VALUE] is deprecated — no direct replacement in ML-R6; reserved for future `returnStdout` interplay.
+ * [VALUE] is deprecated — reserved for future `returnStdout` interplay.
  */
 enum class BoundPurpose {
     /**

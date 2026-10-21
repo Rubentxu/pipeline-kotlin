@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.ScriptedStageRef
 import dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint
 
 /**
- * S4-F2 edge — the one place a [ScriptedStageRef] becomes a runnable artifact.
+ * The one place a [ScriptedStageRef] becomes a runnable artifact.
  *
  * ## Why the IR carries a key and the edge carries the object
  *

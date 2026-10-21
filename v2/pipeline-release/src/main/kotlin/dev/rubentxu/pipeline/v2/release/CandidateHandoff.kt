@@ -11,14 +11,11 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 
 /**
- * P0.4 — the candidate handoff descriptor, emitted by `pipeline-kotlin` for
+ * The candidate handoff descriptor, emitted by `pipeline-kotlin` for
  * the external `pipelinek-release-harness`.
  *
- * Authority: `docs/pipelinek-release-evolution/shared/03-handoff-schemas.md` §1
- * and `shared/01-cross-repo-contract.md` §4.
- *
  * The single most important property is that [candidateId] is the SHA-256 of
- * the distribution ZIP and nothing else. Per contract §4 it is NOT a branch, an
+ * the distribution ZIP and nothing else. It is NOT a branch, an
  * isolated Git SHA, a mutable tag, `latest`, or a human RC name. Those remain
  * as mandatory *metadata* ([sourceCommit], [releaseTrain], [candidateSequence])
  * but they never substitute for the digest. This is the type-level expression
@@ -108,8 +105,8 @@ value class CandidateId private constructor(val digest: String) {
 }
 
 /**
- * Serialises [CandidateId] in the canonical `sha256:<hex>` wire form required
- * by `shared/03-handoff-schemas.md` §1, and validates on the way back in.
+ * Serialises [CandidateId] in the canonical `sha256:<hex>` wire form and
+ * validates on the way back in.
  *
  * Validating in [deserialize] matters: a descriptor authored by hand (or
  * rewritten downstream) must not be able to smuggle a name in as a candidate

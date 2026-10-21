@@ -32,10 +32,9 @@ object EventHarness {
 
     /**
      * Adapter-side construction. Order = (store insertion order, sequence).
-     * Under BASELINE DEBT INC-EVT3-1 durable reuse re-appends skeleton events with
-     * restarting sequences; insertion order keeps the last execution segment a
-     * contiguous suffix, so AFTER_LAST_RUN_STARTED scope stays deterministic
-     * WITHOUT timestamps (INC-021d law honored).
+     * Durable reuse re-appends skeleton events with restarting sequences, so insertion order
+     * keeps the last execution segment a contiguous suffix and AFTER_LAST_RUN_STARTED scope
+     * stays deterministic without timestamps.
      */
     fun typedHistory(sink: EventSink, runId: String, fromSequence: Long = 0L): List<TypedEvent> =
         sink.eventsFor(runId)
@@ -51,7 +50,7 @@ object EventHarness {
      */
     /**
      * Last execution segment: insertion-order suffix starting at the LAST RunStarted.
-     * Deterministic under INC-EVT3-1 duplicate-sequence debt; never timestamp-based.
+     * Deterministic even when sequences are reused; never timestamp-based.
      */
     fun lastSegment(history: List<TypedEvent>): List<TypedEvent> = scoped(history, Scope.AFTER_LAST_RUN_STARTED)
 

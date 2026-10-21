@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * Capability key under which the engine supplies the [dev.rubentxu.pipeline.v2.events.EventSink] to a
  * handler that must emit typed output/domain events.
  *
- * Kept at a neutral owner (CDE.3-d1) so the durable runtime capability bridge and the registry step
+ * Kept at a neutral owner so the durable runtime capability bridge and the registry step
  * definitions can both reference the SAME token without the execution seam depending on any concrete
  * plugin definition (e.g. `core.echo`). A handler may use the capability only if it declares it in its
  * [dev.rubentxu.pipeline.v2.domain.step.StepContract.requiredCapabilities]; admission is fail-closed
@@ -16,7 +16,7 @@ val EVENT_SINK_CAPABILITY: StepCapability = StepCapability("eventSink")
 
 /**
  * Capability key under which the engine supplies the [WorkspaceOperations] typed seam to a
- * handler that must perform stage-workspace file operations (S2-A3 / G1).
+ * handler that must perform stage-workspace file operations.
  *
  * Neutral owner, mirroring [EVENT_SINK_CAPABILITY] and `SHELL_OPERATIONS_CAPABILITY`: the
  * durable runtime capability bridge and the registry Step definitions reference the SAME
@@ -29,7 +29,7 @@ val WORKSPACE_OPERATIONS_CAPABILITY: StepCapability = StepCapability("workspaceO
 
 /**
  * Runtime stage identity supplied to a handler that must resolve the CURRENT stage as a
- * default (S2-A4 / G1), e.g. `core.emit.event`'s `StageMarkedUnstable` stageName fallback.
+ * default, e.g. `core.emit.event`'s `StageMarkedUnstable` stageName fallback.
  *
  * Deliberately a narrow value (name + index) — NOT a step toward a PipelineContext: the
  * handler sees only this immutable pair, derived by the durable capability bridge from the
@@ -46,12 +46,12 @@ val STAGE_IDENTITY_CAPABILITY: StepCapability = StepCapability("runtime.stage-id
 
 /**
  * Runtime platform observation supplied to a handler that must classify the CURRENT
- * execution environment (S2-A5 / G1), e.g. `core.isUnix`.
+ * execution environment, e.g. `core.isUnix`.
  *
  * Deliberately carries ONLY the raw observation ([PlatformIdentity.osName]) — NOT a
  * derived `isUnix` boolean: the classification POLICY belongs to the Step, the
  * environmental OBSERVATION belongs to this capability. This separation lets the
- * canonical policy be decided/compared (G2) without changing how the environment is
+ * canonical policy be decided and compared without changing how the environment is
  * acquired, and keeps the handler from calling `System.getProperty` directly.
  *
  * Declared in `StepContract.requiredCapabilities`; admission is fail-closed before
@@ -65,26 +65,26 @@ val PLATFORM_IDENTITY_CAPABILITY: StepCapability = StepCapability("runtime.platf
 
 /**
  * Runtime stage workspace observation supplied to a handler that must resolve the CURRENT
- * canonical stage workspace as a default (S2-A6 / G1), e.g. `core.pwd` returning its
+ * canonical stage workspace as a default, e.g. `core.pwd` returning its
  * per-stage workspace root.
  *
  * Deliberately carries ONLY the canonical stage workspace path — NOT a derived `pwd`
  * string and NOT a generic filesystem accessor: the WORKSPACE itself belongs to the
  * canonical execution substrate (WorkspaceResolver under controlDirRoot), and the Step
  * decides what to project from it. This separation lets the canonical path be decided
- * (G2) without changing how the workspace is acquired, and keeps the handler from
+ * without changing how the workspace is acquired, and keeps the handler from
  * reading the controller user-directory property or the relative-path shorthand directly.
  *
  * Bridge wiring: `CanonicalRuntimeCapabilityAccess.buildProvided` populates this
  * capability from `context.shOptions.workspaceRoot` (the same source the legacy
- * `pwdContext()` consumed) — preserving byte-equivalent truth with PATH_B.
+ * `pwdContext()` consumed) — preserving byte-equivalent truth with the path-B provenance.
  *
  * Declared in `StepContract.requiredCapabilities`; admission is fail-closed before
  * the handler runs when it is not available.
  *
- * **WU-LPR-WC**: `WorkspaceIdentity` and `WORKSPACE_IDENTITY_CAPABILITY` were hoisted
- * to `:pipeline-domain` so plugin handlers can declare the capability without
- * depending on `:pipeline-application`. The declarations below are typealiases
+ * `WorkspaceIdentity` and `WORKSPACE_IDENTITY_CAPABILITY` live in `:pipeline-domain`
+ * so plugin handlers can declare the capability without depending on
+ * `:pipeline-application`. The declarations below are typealiases
  * preserving the historical import path for application-internal code.
  */
 typealias WorkspaceIdentity = dev.rubentxu.pipeline.v2.domain.step.WorkspaceIdentity
@@ -92,14 +92,14 @@ typealias WorkspaceIdentity = dev.rubentxu.pipeline.v2.domain.step.WorkspaceIden
 val WORKSPACE_IDENTITY_CAPABILITY: StepCapability = dev.rubentxu.pipeline.v2.domain.step.WORKSPACE_IDENTITY_CAPABILITY
 
 /**
- * Typed seam for `core.pwd.tmp` (S2-A6 / G3T post-correction) — the ONLY capability
+ * Typed seam for `core.pwd.tmp` — the ONLY capability
  * the registry-routed `CorePwdTmpStep.handler` consumes to derive a deterministic
  * tmp workspace path.
  *
  * ## Why a typed seam and not a generic `OpId`/`Files` capability?
  *
- * AGENTS.md STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (handler adapts to typed
- * seams, never embeds process/IO logic). The certified `core.sh` Step reaches a
+ * The step-implementation rule that effectful handlers adapt to typed seams and
+ * never embed process/IO logic. The certified `core.sh` Step reaches a
  * `ShellOperations` capability and never touches `ProcessBuilder` directly. By
  * symmetry, the registry `core.pwd.tmp` reaches this `TemporaryWorkspaceOperations`
  * capability and never touches `Files.createDirectories` directly.
@@ -121,7 +121,7 @@ val WORKSPACE_IDENTITY_CAPABILITY: StepCapability = dev.rubentxu.pipeline.v2.dom
  * to [dev.rubentxu.pipeline.v2.domain.StepOutcome] is the responsibility of the
  * registry execution boundary.
  *
- * ## Determinism (D5–D12, S2-A6 / G3T)
+ * ## Determinism
  *
  * The adapter derives the path from `sha256(opId.format())` so the same OpId lands
  * on the same directory and a different OpId lands on a different directory. No
@@ -145,14 +145,14 @@ val TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY: StepCapability =
     StepCapability("workspace.temporary-operations")
 
 /**
- * Typed seam for `core.deleteDir` (S2-A7 / G3-fix) — the ONLY capability
+ * Typed seam for `core.deleteDir` — the ONLY capability
  * the registry-routed `CoreDeleteDirStep.handler` consumes to perform atomic
  * workspace directory deletion.
  *
  * ## Why a typed seam and not `DeleteDirExecutor` directly?
  *
- * AGENTS.md STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (handler adapts to typed
- * seams, never embeds process/IO logic). The certified `core.sh` Step reaches a
+ * The step-implementation rule that effectful handlers adapt to typed seams and
+ * never embed process/IO logic. The certified `core.sh` Step reaches a
  * `ShellOperations` capability and never touches `ProcessBuilder` directly. By
  * symmetry, `core.deleteDir` reaches this `DeleteDirOperations` capability and
  * never touches `DeleteDirExecutor`, `Files`, `EventSink`, or `sha256` directly.
@@ -177,8 +177,8 @@ val TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY: StepCapability =
  *
  * ## Reference
  *
- * Mirrors `WorkspaceOperations` (S2-A3 / G1) and `TemporaryWorkspaceOperations`
- * (S2-A6 / G3T). The adapter is constructed once per capability-access lookup,
+ * Mirrors `WorkspaceOperations` and `TemporaryWorkspaceOperations`.
+ * The adapter is constructed once per capability-access lookup,
  * binding the canonical runtime inputs so the handler receives only the typed seam.
  */
 interface DeleteDirOperations {
@@ -208,12 +208,12 @@ data class DeleteDirResult(
 val DELETE_DIR_OPERATIONS_CAPABILITY: StepCapability = StepCapability("delete-dir.operations")
 
 /**
- * Typed seam for `core.cleanWs` (LFC-2E1-S2-A10 / G1) — the ONLY capability
+ * Typed seam for `core.cleanWs` — the ONLY capability
  * the registry candidate `CoreCleanWsStep.handler` consumes to perform
  * workspace cleanup.
  *
- * Mirrors `DeleteDirOperations` (S2-A7 / G3-fix): the handler reaches this typed
- * seam and never touches `CleanWsExecutor`, `Files`, `EventSink`, or sha256
+ * Mirrors `DeleteDirOperations`: the handler reaches this typed seam and
+ * never touches `CleanWsExecutor`, `Files`, `EventSink`, or sha256
  * directly. All filesystem semantics, workspace resolution, and `WsCleaned`
  * emission live in
  * [dev.rubentxu.pipeline.v2.application.durable.CleanWsOperationsAdapter].
@@ -251,7 +251,7 @@ data class CleanWsResult(
 val CLEAN_WS_OPERATIONS_CAPABILITY: StepCapability = StepCapability("clean-ws.operations")
 
 /**
- * Typed seam capability for milestone ordinal state operations (S2-A9 / spike).
+ * Typed seam capability for milestone ordinal state operations.
  *
  * Declared by `CoreMilestoneStep` in its [dev.rubentxu.pipeline.v2.domain.step.StepContract].
  * The handler consumes [dev.rubentxu.pipeline.v2.application.MilestoneOperations] to
@@ -264,27 +264,26 @@ val CLEAN_WS_OPERATIONS_CAPABILITY: StepCapability = StepCapability("clean-ws.op
  *
  * ## Why a capability and not a var in the handler?
  *
- * AGENTS.md §STEP IMPLEMENTATION: handler MUST NOT hold mutable state. The previous
- * `CoreMilestoneStep` implementation used `private var lastReachedOrdinal: Int? = null`
- * in the singleton object — global classloader state that bleeds across runs and JVM
- * classloader boundaries. The capability system + run-scoped store provides proper
- * isolation.
+ * The step-implementation rule that a handler MUST NOT hold mutable state. A singleton
+ * `private var lastReachedOrdinal: Int? = null` is global classloader state that
+ * bleeds across runs and JVM classloader boundaries. The capability system plus a
+ * run-scoped store provides proper isolation.
  */
 val MILESTONE_OPERATIONS_CAPABILITY: StepCapability =
     StepCapability("milestone.operations")
 
 /**
- * Typed seam for `core.stash` / `core.unstash` (WU-LPR-089 / Tier B #1) — the ONLY
+ * Typed seam for `core.stash` / `core.unstash` — the ONLY
  * capability the registry-routed `CoreStashStep.handler` / `CoreUnstashStep.handler`
  * consume to move files across stage boundaries within a run.
  *
  * ## Why a typed seam and not filesystem primitives directly?
  *
- * AGENTS.md §STEP IMPLEMENTATION — OPERATIVE GUIDE rule 9 (handler adapts to typed
- * seams, never embeds IO logic). Mirrors the certified pattern:
- * - `WorkspaceOperations` / `WorkspaceOperationsAdapter` (S2-A3 / G1)
- * - `ArchiveArtifactsOperations` / `ArchiveArtifactsOperationsAdapter` (S2-B10 / G1)
- * - `ShellOperations` / `ShOperationsAdapter` (LB-02 / G3)
+ * The step-implementation rule that handlers adapt to typed seams and
+ * never embed IO logic. Mirrors the certified pattern:
+ * - `WorkspaceOperations` / `WorkspaceOperationsAdapter`
+ * - `ArchiveArtifactsOperations` / `ArchiveArtifactsOperationsAdapter`
+ * - `ShellOperations` / `ShOperationsAdapter`
  *
  * ## Scope
  *
@@ -346,7 +345,7 @@ interface StashOperations {
 }
 
 /**
- * Input payload for `core.stash` (G6 typed contract).
+ * Input payload for `core.stash`.
  *
  * Jenkins-verbatim signature `stash(name, includes, excludes = "")`.
  */
@@ -367,12 +366,12 @@ data class StashInput(
 }
 
 /**
- * Input payload for `core.unstash` (G6 typed contract).
+ * Input payload for `core.unstash`.
  *
- * Jenkins-verbatim signature `unstash(name)`. The optional `into` parameter is
- * Pipeline-K local-first: it scopes the restore to a subdirectory of the
- * workspace (relative path, must not escape the workspace via `..` segments).
- * When `into` is null/blank, files are restored at the workspace root.
+ * Jenkins-verbatim signature `unstash(name)`. The optional `into` parameter scopes
+ * the restore to a subdirectory of the workspace (relative path, must not escape
+ * the workspace via `..` segments). When `into` is null or blank, files are restored
+ * at the workspace root.
  */
 data class UnstashInput(
     val name: String,
@@ -419,10 +418,10 @@ data class StashFailed(
 ) : StashResult
 
 // ---------------------------------------------------------------------------
-// core.publishHTML (Tier B #2) capability seam + closed result ADT
-// Reference: jenkinsci/htmlpublisher-plugin master @ 6a536b8d
-//   HtmlPublisher.java + HtmlPublisherTarget.java (MIT)
-//   sanitizeReportName() replicated verbatim in PublishHtmlSanitiser
+// core.publishHTML capability seam + closed result ADT.
+//
+// sanitizeReportName() logic is replicated from the upstream jenkinsci/htmlpublisher-plugin
+// HtmlPublisherTarget.java (MIT) and lives verbatim in PublishHtmlSanitiser.
 // ---------------------------------------------------------------------------
 
 /**
@@ -454,10 +453,9 @@ interface PublishHtmlOperations {
 }
 
 /**
- * Input payload for `core.publishHTML` (G6 typed contract).
+ * Input payload for `core.publishHTML`.
  *
- * Jenkins-verbatim signature `publishHTML(target)` where `target` is a
- * [HtmlPublisherTarget] in upstream Java. Pipeline-K keeps the public DSL
+ * Mirrors the Jenkins `publishHTML(target)` signature by keeping the public DSL
  * surface narrow and typed: name, reportFiles glob, reportDir (workspace
  * relative), keepAll (replay override), allowMissing, escapeUnderscores
  * (sanitiser mode).

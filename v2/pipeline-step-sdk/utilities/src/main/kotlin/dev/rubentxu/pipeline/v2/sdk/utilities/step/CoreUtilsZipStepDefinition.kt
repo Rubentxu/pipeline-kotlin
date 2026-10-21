@@ -30,10 +30,7 @@ import kotlin.io.path.relativeTo
 import kotlin.streams.toList
 
 /**
- * `core-utils.zip` OFFICIAL_PLUGIN Step (LFC-2E2 utilities, Slice 2 / S2.4).
- *
- * Jenkins reference: pipeline-utility-steps-plugin::ZipStep
- * (MIT, CloudBees).
+ * `core-utils.zip` OFFICIAL_PLUGIN Step.
  *
  * Security:
  *  - Every source path is resolved against its declared base (workspace

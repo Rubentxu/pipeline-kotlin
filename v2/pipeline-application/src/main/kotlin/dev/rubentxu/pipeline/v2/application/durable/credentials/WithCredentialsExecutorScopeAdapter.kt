@@ -34,7 +34,7 @@ import dev.rubentxu.pipeline.v2.events.EventSink
  * emission; it throws a
  * [WithCredentialsExecutor.CleanupException] when a secure wipe fails. This
  * adapter converts that to [CredentialScopeCleanup.Failed] so the coordinator
- * finally can fold it into a typed operational `StepOutcome.Failure` per design §73.
+ * finally can fold it into a typed operational `StepOutcome.Failure`.
  */
 class WithCredentialsExecutorScopeAdapter(
     private val executor: WithCredentialsExecutor?,
@@ -83,7 +83,7 @@ class WithCredentialsExecutorScopeAdapter(
  * Cleanup is delegated to the executor's idempotent [WithCredentialsExecutor.BoundCredentials.close]
  * and mapped to the typed [CredentialScopeCleanup]: wipe failure surfaces the
  * orphan paths as [CredentialScopeCleanup.Failed] instead of escaping as an
- * exception, so the coordinator's total outcome merge (design §73) never sees
+ * exception, so the coordinator's total outcome merge never sees
  * an unhandled throw from the cleanup seam.
  */
 private class BoundCredentialsScope(

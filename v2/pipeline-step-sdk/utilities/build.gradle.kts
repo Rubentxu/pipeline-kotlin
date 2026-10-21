@@ -14,7 +14,7 @@ dependencies {
     implementation(project(":pipeline-scripting-api"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
-    // LFC-2E2 Slice 2: SnakeYAML is the safe-loader for `core-utils.readYaml`.
+    // SnakeYAML is the safe-loader for `core-utils.readYaml`.
     // The version is pinned in libs.versions.toml; the Step uses a custom
     // SafeConstructorOnlyOptions to refuse arbitrary-class instantiation,
     // alias bombs, and oversize documents.
@@ -36,10 +36,9 @@ kotlin {
 }
 
 // ----------------------------------------------------------------------------
-// LFC-2E2 utilities OFFICIAL_PLUGIN provenance seam.
+// Utilities OFFICIAL_PLUGIN provenance seam.
 //
-// Mirrors the proven scm-git build-time provenance pattern (F5.1 / ADR-0092):
-// the contributor (CoreUtilsStepDefinitionContributor) refuses to register
+// The contract: the contributor (CoreUtilsStepDefinitionContributor) refuses to register
 // without the real SHA-256 of its own artefact — that is the "no fabricated
 // SHA" contract.
 //
@@ -268,12 +267,11 @@ tasks.withType<Test>().configureEach {
     }
 }
 
-// Unit-test wiring (re-added 2026-10-20, block `cobertura-modulos-riesgo`).
+// Unit-test wiring.
 //
-// The wiring was removed on 2026-10-18 because this module carried no test source, and a
-// `Test` task whose source set is empty reports success while executing zero classes: a
-// SILENT green. That reason is now gone: the module HAS a test source, and the silent green
-// it warned about is impossible while `src/test/kotlin` holds a class.
+// These lines exist because a test source does. A `Test` task whose source set is empty
+// reports success while executing zero classes — a SILENT green — and that green is
+// impossible while `src/test/kotlin` holds a class.
 //
 // What the test buys, and what it does not: `UnzipEntryPathTest` pins where an archive entry
 // is allowed to land -- the Zip Slip decision, which is a pure rule over two paths. It does

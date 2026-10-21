@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 /**
  * Default implementation of [ContributedBindingFactory] for all 7 Jenkins credential kinds.
  *
- * ## Supported Kinds (JENKINS_FAMILIARITY_CATALOG.md §1.6)
+ * ## Supported Kinds
  *
  * - `string`: Secret text → single env var
  * - `usernamePassword`: Username with password → USERNAME_VAR + PASSWORD_VAR
@@ -18,7 +18,7 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
  *
  * ## Design Notes
  *
- * - Variable names are persisted WITHOUT case coercion (INV-L6-CR-007)
+ * - Variable names are persisted WITHOUT case coercion.
  * - For typed credential extraction (UsernamePassword, etc.), the caller should
  *   pass a resolver that can return typed [Credential] objects when needed.
  *   This factory receives [SecretHandle] via the resolver, which is sufficient for

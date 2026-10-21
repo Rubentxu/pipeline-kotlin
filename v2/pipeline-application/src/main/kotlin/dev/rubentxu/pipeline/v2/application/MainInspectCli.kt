@@ -23,7 +23,7 @@ import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
  *
  * ## What this verb is
  *
- * The primary bounded diagnostic surface named by ADR-0088 §Decision. Five typed dimensions:
+ * The primary bounded diagnostic surface. Five typed dimensions:
  *
  * ```text
  * inputs   --control-root PATH, --db PATH, <runId>
@@ -33,9 +33,8 @@ import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
  * output   --format json|text
  * ```
  *
- * `--failed`, `--kind`, `--stage`, `--step`, `--context` and `--log-tail` close the gaps
- * in R4_CLI_GAP_ANALYSIS §1..§4. `--fields` projects to one of the [InspectField] cases; the
- * ADT is closed so adding a sixth field forces every caller to be revisited.
+ * `--fields` projects to one of the [InspectField] cases; the ADT is closed
+ * so adding a sixth field forces every caller to be revisited.
  *
  * ## What this verb is NOT
  *
@@ -47,13 +46,11 @@ import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
  *  - NOT a follow loop. A query that wants live events uses `observe --follow`; `inspect`
  *    is a static query against the durable history.
  *
- * ## R4 / WU-R4.1 — skeleton
+ * ## Skeleton
  *
- * This slice ships the PARSER + the closed ADT + the typed query record + the dispatcher
- * entry point. The full read-side (event-store and Output Plane wiring) is implemented
- * incrementally under the same closed ADT; for now the verb parses, validates, and reports
- * the typed query on stdout so a caller can confirm the surface and the field selection
- * before the durable read is wired.
+ * The verb parses, validates, and reports the typed query on stdout so the
+ * CLI dispatch and field selection are exercisable today; the full read side is
+ * wired incrementally under the same closed ADT.
  *
  * Exit codes follow the canonical contract:
  *   0 — parsed successfully and emitted the typed query;
@@ -71,7 +68,7 @@ object MainInspectCli {
     /**
      * The five dimensional columns a caller can request from the inspection document.
      *
-     * Closed ADT (R4 / WU-R4.1, distinct from `EventField`):
+     * Closed ADT (distinct from `EventField`):
      *
      *   * `Stage`    — the stage name the record was inspected for (--stage).
      *   * `Step`     — the step ordinal within the stage (--step).
@@ -144,10 +141,10 @@ object MainInspectCli {
     /**
      * Entry point for `pipelinek inspect <runId> [opts]`.
      *
-     * R4 / WU-R4.1 — the parser + the typed query are the contract. The durable read seam
-     * (SqliteEventStore + FrameIndexedObservationOutputReader.readTail) is the next slice; for
-     * now the verb reports the typed query on stdout so the CLI dispatch + field selection
-     * are exercisable today.
+     * The parser and the typed query are the contract. The durable read seam
+     * (SqliteEventStore + FrameIndexedObservationOutputReader.readTail) is wired under the
+     * same closed ADT; the verb reports the typed query on stdout so the CLI dispatch and
+     * field selection are exercisable today.
      */
     fun main(args: Array<String>): Int {
         val runId = args.firstOrNull()?.takeIf { !it.startsWith("--") }
@@ -167,7 +164,7 @@ object MainInspectCli {
             }
         }
 
-        // R4 / WU-R4.1.2 — durable read seam.
+        // Durable read seam.
         if (compiled.dbPath == null) {
             System.err.println("inspect: --db <path> is required to read the durable event store")
             return 2
@@ -246,7 +243,7 @@ object MainInspectCli {
      * ## The defect this removes
      *
      * `--log-tail` used to be answered ONCE for the whole run and the same value stamped onto
-     * every row. Measured 2026-10-18 against distribution 0.62.0, a two-stage run whose first
+     * every row. Measured against the current distribution on a two-stage run whose first
      * stage printed `DESPUES` and whose second stage exited 7:
      *
      * ```text
@@ -467,7 +464,7 @@ object MainInspectCli {
      * is per-frame determinism, and a carry-over buffer would re-decode the same bytes differently
      * depending on where a reader resumed. `inspect --log-tail`, however, presents ONE transcript
      * to a human; a multi-byte codepoint straddling a frame boundary must be reassembled or the
-     * tail shows two U+FFFD characters instead of the original character. PC-08 names that defect
+     * tail shows two U+FFFD characters instead of the original character. the defect is named in the contract; this helper is the fix
      * for the human-facing surface; this helper is the fix.
      *
      * The decoder is the same [StreamingUtf8Decoder] the [StreamingUtf8DecoderTest] exercises; the
@@ -514,7 +511,7 @@ data class CompiledInspectionQuery(
     val context: Int = 0,
     val logTail: Int = 0,
     /**
-     * R4 / WU-R4.1.3 — when set, the `--log-tail` scope is one operation (this opId),
+     * When set, the `--log-tail` scope is one operation (this opId),
      * not the whole run. The per-op read filters frames whose stream id carries this
      * opId as a middle segment. When null, the tail is the run-wide last-N-bytes path.
      */

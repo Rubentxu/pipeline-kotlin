@@ -18,12 +18,12 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Production adapter for [StashOperations] (WU-LPR-089 / Tier B #1).
+ * Production adapter for [StashOperations] (the durable stash tier work / Tier B #1).
  *
  * Storage layout: `<controlDirRoot>/stashes/<runId>/<name>/`. The stash directory
  * is a SIBLING of `<controlDirRoot>/workspace/...` and `<controlDirRoot>/artefacts/...`,
  * so `WorkspaceResolver.cleanupAfterComplete()` does NOT destroy stashes when the
- * producing stage finishes (F-ARCH-L7 workspace-cleanup integrity preserved).
+ * producing stage finishes (the workspace-cleanup integrity preserved).
  *
  * The adapter is the ONLY place that:
  * - reads/writes the stash directory on disk,
@@ -38,7 +38,7 @@ class StashOperationsAdapter(
     private val stageIdentity: StageIdentity,
     private val controlDirRoot: Path,
     private val eventSink: EventSink,
-    /** WU-LPR-062 parity: optional project-workspace override (--workspace). */
+    /** the project-workspace overlay parity: optional project-workspace override (--workspace). */
     private val workspaceBase: Path? = null,
     /**
      * the shared execution location.
@@ -46,7 +46,7 @@ class StashOperationsAdapter(
      * `stash` and `unstash` operate on the current directory (anchor matrix),
      * so they must read the same location every other workspace-aware Step
      * reads instead of re-deriving `controlDirRoot/stageName/index` themselves
-     * — the reconstruction the domain resolver exists to eliminate (INV-WS-012).
+     * — the reconstruction the domain resolver exists to eliminate (the shared-execution-location invariant).
      * `null` keeps direct construction working; the bridge always supplies it.
      */
     private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation? = null,

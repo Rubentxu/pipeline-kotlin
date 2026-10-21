@@ -8,41 +8,44 @@ import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import kotlinx.serialization.Serializable
 
 /**
- * Static, pre-decode declaration of HOW the body of a block Step is executed
- * (B10 / W1b; concretizes ADR-0081 on the execution side).
+ * Static, pre-decode declaration of HOW the body of a block Step is executed.
  *
  * ## Why this exists
  *
- * The engine must decide the execution shape of a body (run it once in sequence,
- * project a scope around it, retry it, fan it out) BEFORE typed input decode, and
- * it must do so WITHOUT branching on a concrete StepKey. Today that decision is
- * taken by name (`when (pluginStepId.value) { "core.dir" -> ... }`), which is the
- * `B10` concreteness debt pinned by `Lfc2ConcreteBodyRoutingDebtFitnessTest`.
+ * The engine must decide the execution shape of a body (run it once in
+ * sequence, project a scope around it, retry it, fan it out) BEFORE typed
+ * input decode, and it must do so WITHOUT branching on a concrete StepKey.
+ * Today that decision is taken by name (`when (pluginStepId.value) {
+ * "core.dir" -> ... }`), which is the concreteness debt pinned by the
+ * routing-debt fitness test.
  *
  * The policy is the typed replacement: it is DECLARED on the
- * [StepDescriptor] of the Step family (criterion 2), RESOLVED by a pure function
- * over the open [StepRegistry] (criterion 3), and REJECTED fail-closed when the
- * declaration is unknown, incoherent, or not executable by the engine (criterion 4).
+ * [StepDescriptor] of the Step family, RESOLVED by a pure function over the
+ * open [StepRegistry], and REJECTED fail-closed when the declaration is
+ * unknown, incoherent, or not executable by the engine.
  *
  * ## What it is NOT
  *
- * - NOT runtime data. `dir`'s path, `withEnv`'s overrides, `timeout`'s seconds and
- *   `retry`'s `maxAttempts` are decoded typed input, never part of the policy.
- *   The policy is a total function of the Step KIND, identical on every run.
- * - NOT a replacement for [BodyInvocationContext] / [ExecutionContextPatch], which
- *   carry the runtime VALUES projected around one invocation.
- * - NOT a step-name carrier. `BodyExecutionPolicy` names shapes of execution; a
- *   Step family declares which shape it has. The engine reads the shape, not the key.
+ * - NOT runtime data. `dir`'s path, `withEnv`'s overrides, `timeout`'s
+ *   seconds and `retry`'s `maxAttempts` are decoded typed input, never
+ *   part of the policy. The policy is a total function of the Step KIND,
+ *   identical on every run.
+ * - NOT a replacement for [BodyInvocationContext] / [ExecutionContextPatch],
+ *   which carry the runtime VALUES projected around one invocation.
+ * - NOT a step-name carrier. `BodyExecutionPolicy` names shapes of
+ *   execution; a Step family declares which shape it has. The engine reads
+ *   the shape, not the key.
  *
  * ## Relationship to the existing descriptor metadata
  *
- * [dev.rubentxu.pipeline.v2.domain.StepBody.Declared.invocation] (cardinality) and
- * [dev.rubentxu.pipeline.v2.domain.StepBody.Declared.introduces] (context-kind hint) CANNOT
- * derive the execution shape: `core.timeout` and
- * `core.catchError` both declare [ContextKind.CANCELLATION] yet require different
- * shapes (`Scoped(Deadline)` vs `Sequential`). The policy is therefore declared
- * explicitly and checked for COHERENCE against those hints
- * ([BodyPolicyRejection.IncoherentMetadata]) rather than derived from them.
+ * [dev.rubentxu.pipeline.v2.domain.StepBody.Declared.invocation] (cardinality)
+ * and [dev.rubentxu.pipeline.v2.domain.StepBody.Declared.introduces]
+ * (context-kind hint) CANNOT derive the execution shape: `core.timeout` and
+ * `core.catchError` both declare [ContextKind.CANCELLATION] yet require
+ * different shapes (`Scoped(Deadline)` vs `Sequential`). The policy is
+ * therefore declared explicitly and checked for COHERENCE against those
+ * hints ([BodyPolicyRejection.IncoherentMetadata]) rather than derived from
+ * them.
  */
 @Serializable
 sealed interface BodyExecutionPolicy {
@@ -72,7 +75,7 @@ sealed interface BodyExecutionPolicy {
      *
      * Each attempt carries a deterministic per-attempt identity so restart and
      * replay reconstruct attempt state from durable control rows and the journal,
-     * never from memory (ADR-0075, ADR-0081 D9).
+     * never from memory.
      *
      * The optional [waitUntil] sub-shape carries `waitUntil`-specific timing
      * parameters (initial recurrence, poll backoff ceiling) and is consumed by the canonical
@@ -90,7 +93,7 @@ sealed interface BodyExecutionPolicy {
     /**
      * The body's branches are dispatched concurrently and their typed outcomes
      * folded by the declared branch policy. Branches are Named Bodies, not a
-     * permanent stage-terminal (ADR-0073).
+     * permanent stage-terminal.
      */
     data class Parallel(val policy: ParallelPolicy) : BodyExecutionPolicy
 
@@ -125,7 +128,7 @@ enum class BodyExecutionPolicyShape {
 }
 
 /**
- * Which engine executes a Step's body (B10 / W1c).
+ * Which engine executes a Step's body.
  *
  * ## Why this is a declaration and not a shape
  *
@@ -146,9 +149,10 @@ enum class BodyExecutionPolicyShape {
  * ownership from the shape, would silently route them to an engine that does not
  * implement their semantics.
  *
- * This enum is therefore the declared migration frontier of body execution: the
- * canonical eligible body set is derived from it (never from a hard-coded list of
- * StepKeys), and `LEGACY_LINEAR` counts what is left to migrate.
+ * This enum is therefore the declared migration frontier of body execution:
+ * the canonical eligible body set is derived from it (never from a
+ * hard-coded list of StepKeys), and `LEGACY_LINEAR` counts what is left to
+ * migrate.
  *
  * ## Relationship to the decode/dispatch family
  *
@@ -163,9 +167,9 @@ enum class BodyExecutionOwner {
     /**
      * The body is re-entered and executed by the canonical durable body engine:
      * scope projection, attempt re-dispatch, and typed event emission all live
-     * there. It is the target state for every body, and since W1d it is also
-     * REQUIRED to be stated: a body row that omits its owner does not compile, so
-     * no Step acquires canonical semantics by defaulting.
+     * there. It is the target state for every body, and it is also REQUIRED to
+     * be stated: a body row that omits its owner does not compile, so no Step
+     * acquires canonical semantics by defaulting.
      */
     CANONICAL_ENGINE,
 
@@ -178,27 +182,27 @@ enum class BodyExecutionOwner {
     LEGACY_LINEAR,
 
     /**
-     * The handler owns the INVOCATION decision; the engine still owns EXECUTION
-     * (WU-RP-035, ADR-0081 as amended 2026-10-01).
+     * The handler owns the INVOCATION decision; the engine still owns EXECUTION.
      *
      * A Step declaring this runs its registered handler through the canonical
      * durable spine, and reaches its own body only through a
-     * [BodyContinuation] the engine binds for that invocation. The engine NEVER
-     * auto-executes the children of such a Step: if the handler does not invoke
-     * the continuation, the body does not run, and that is the declared
+     * [BodyContinuation] the engine binds for that invocation. The engine
+     * NEVER auto-executes the children of such a Step: if the handler does not
+     * invoke the continuation, the body does not run, and that is the declared
      * semantics, not a missing effect.
      *
      * ## Invocation authority is not execution authority
      *
-     * This owner is about WHEN, WHETHER and HOW MANY TIMES the body is invoked —
-     * a decision that belongs to the Step author, because a wrapper, a retry
+     * This owner is about WHEN, WHETHER and HOW MANY TIMES the body is invoked
+     * — a decision that belongs to the Step author, because a wrapper, a retry
      * condition or a plugin-specific rule is not expressible by the engine. It
      * is NOT about who executes the children. The engine remains the only
      * executor, through the same durable body loop, with the same journal,
      * events and replay law as any other body.
      *
-     * The handler never receives a [StepNode], never iterates children and never
-     * executes a body itself. It receives a bound continuation and nothing else.
+     * The handler never receives a [StepNode], never iterates children and
+     * never executes a body itself. It receives a bound continuation and
+     * nothing else.
      */
     HANDLER_CONTINUATION,
 }
@@ -233,8 +237,9 @@ sealed interface BodyContextProjection {
      *
      * [Timestamps] has none: the existing [ContextKind] family enumerates
      * ENVIRONMENT / CWD / CREDENTIALS / OUTPUT_DECORATOR / CANCELLATION, and a
-     * timestamp source is none of those. The `null` is a real "no corresponding
-     * kind" fact of the closed [ContextKind] family, not a sentinel.
+     * timestamp source is none of those. The `null` is a real "no
+     * corresponding kind" fact of the closed [ContextKind] family, not a
+     * sentinel.
      */
     val requiredContextKind: ContextKind?
         get() = when (this) {
@@ -247,9 +252,10 @@ sealed interface BodyContextProjection {
 }
 
 /**
- * Structural retry parameters that are a property of the Step KIND (not of one
- * invocation): the key from which each attempt's deterministic body-path segment
- * is derived. Attempt COUNT is decoded typed input and is deliberately absent.
+ * Structural retry parameters that are a property of the Step KIND (not of
+ * one invocation): the key from which each attempt's deterministic body-path
+ * segment is derived. Attempt COUNT is decoded typed input and is
+ * deliberately absent.
  */
 @Serializable
 data class RetryPolicy(
@@ -260,16 +266,18 @@ data class RetryPolicy(
 /**
  * `waitUntil`-specific sub-shape carried by [BodyExecutionPolicy.Retrying.waitUntil].
  *
- * Declared on the Step descriptor (not derived from a StepKey) so the canonical
- * body engine can dispatch the polling loop without a per-StepKey branch in the
- * coordinator. The default `initialRecurrencePeriodMs` matches Jenkins verbatim
- * (`1000ms`). Jenkins' `quiet` flag is deliberately absent: this engine renders the polling
- * narration at `Family.NOTE`, which `ObservationView.NORMAL` already hides, so the flag had
- * no observable effect to carry and carrying it would be a metadata field nothing reads.
+ * Declared on the Step descriptor (not derived from a StepKey) so the
+ * canonical body engine can dispatch the polling loop without a per-StepKey
+ * branch in the coordinator. The default `initialRecurrencePeriodMs` matches
+ * the Jenkins verbatim value of `1000ms`. Jenkins' `quiet` flag is
+ * deliberately absent: this engine renders the polling narration at
+ * `Family.NOTE`, which `ObservationView.NORMAL` already hides, so the flag
+ * had no observable effect to carry and carrying it would be a metadata
+ * field nothing reads.
  *
- * The shape is a structural property of the Step KIND, not runtime data: the
- * engine re-dispatches the body using this declaration; the attempt budget and
- * the deadline still arrive as decoded typed input.
+ * The shape is a structural property of the Step KIND, not runtime data:
+ * the engine re-dispatches the body using this declaration; the attempt
+ * budget and the deadline still arrive as decoded typed input.
  */
 @Serializable
 data class WaitUntilShape(
@@ -278,39 +286,46 @@ data class WaitUntilShape(
 )
 
 /**
- * The poll cadence a `waitUntil` uses when neither the call site nor its payload declares one.
+ * The poll cadence a `waitUntil` uses when neither the call site nor its
+ * payload declares one.
  *
- * One authority, declared here because this is the innermost module every participant can
- * reach: the DSL surface (`StepSpec`, `StageScope`), the block carrier, both codecs and the
- * descriptor all name it instead of writing a value. `1000ms` is Jenkins' own `waitUntil`
- * interval and is what this engine executed before the parameter became readable, so naming
- * it preserves every pipeline that omits the argument.
+ * One authority, declared here because this is the innermost module every
+ * participant can reach: the DSL surface (`StepSpec`, `StageScope`), the
+ * block carrier, both codecs and the descriptor all name it instead of
+ * writing a value. `1000ms` is Jenkins' own `waitUntil` interval and is
+ * what this engine executed before the parameter became readable, so
+ * naming it preserves every pipeline that omits the argument.
  *
- * Before it was named, six sites declared a value — three `1000L` and three `1L` — and each
- * was dead for a different reason, so the disagreement was invisible rather than harmless.
+ * Before it was named, six sites declared a value and disagreed in
+ * invisible ways, so the inconsistency was harmless-looking rather than
+ * harmless.
  */
 const val DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS: Long = 1_000L
 
 /**
- * The backoff ceiling a `waitUntil` polls with when neither the call site nor its payload
- * declares one.
+ * The backoff ceiling a `waitUntil` polls with when neither the call site
+ * nor its payload declares one.
  *
  * The second half of the waitUntil default authority, beside
- * [DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS]. It lives in the domain rather than in the
- * wire codec because the DSL surface needs it too: once `StageScope.waitUntil` exposes the
- * ceiling, `StepSpec` and `StageScope` must default to the same value, and an `internal`
- * constant in `pipeline-application` cannot be named from `pipeline-scripting-api`. A second
- * literal on the DSL side would be a second authority for the same question -- which is how
- * six sites ended up declaring three `1000L` and three `1L` for the cadence.
+ * [DEFAULT_WAIT_UNTIL_INITIAL_RECURRENCE_PERIOD_MS]. It lives in the domain
+ * rather than in the wire codec because the DSL surface needs it too: once
+ * `StageScope.waitUntil` exposes the ceiling, `StepSpec` and `StageScope`
+ * must default to the same value, and an `internal` constant in
+ * `pipeline-application` cannot be named from `pipeline-scripting-api`. A
+ * second literal on the DSL side would be a second authority for the same
+ * question — which is how six sites ended up declaring three `1000L` and
+ * three `1L` for the cadence.
  *
- * `60_000ms` is the value every polling branch used before the ceiling became readable.
+ * `60_000ms` is the value every polling branch used before the ceiling
+ * became readable.
  */
 const val DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS: Long = 60_000L
 
 /**
- * Structural parallel parameters that are a property of the Step KIND: the key
- * from which each branch's deterministic body-path segment is derived. Branch
- * COUNT and failure mode are decoded typed input and are deliberately absent.
+ * Structural parallel parameters that are a property of the Step KIND: the
+ * key from which each branch's deterministic body-path segment is derived.
+ * Branch COUNT and failure mode are decoded typed input and are deliberately
+ * absent.
  */
 @Serializable
 data class ParallelPolicy(
@@ -336,21 +351,24 @@ data class BodyExecutionSupport(val shapes: Set<BodyExecutionPolicyShape>) {
         val NONE: BodyExecutionSupport = BodyExecutionSupport(emptySet())
 
         /**
-         * The W1b engine support: the coordinator still executes bodies through its
-         * concrete scope switch, so only `Sequential` bodies are policy-addressable.
-         * W1c widens this as it routes scoped/retrying/parallel bodies behind the policy.
+         * The early-W1b engine support: the coordinator still executed bodies
+         * through its concrete scope switch, so only `Sequential` bodies were
+         * policy-addressable. Subsequent steps in that work widened this as
+         * they routed scoped/retrying/parallel bodies behind the policy.
          */
         val SEQUENTIAL_ONLY: BodyExecutionSupport =
             BodyExecutionSupport(setOf(BodyExecutionPolicyShape.SEQUENTIAL))
 
         /**
-         * The W1c engine support: the coordinator projects scoped bodies, re-dispatches
-         * retrying bodies and runs plain sequential bodies, and it resolves all three
-         * from the declared policy instead of from a StepKey switch.
+         * The wider engine support: the coordinator projects scoped bodies,
+         * re-dispatches retrying bodies and runs plain sequential bodies, and
+         * it resolves all three from the declared policy instead of from a
+         * StepKey switch.
          *
-         * `PARALLEL` is deliberately absent: branch fan-out is still executed as a plain
-         * sequence, so a Step declaring `Parallel` is rejected fail-closed rather than
-         * silently run sequentially (B13 owns the fan-out).
+         * `PARALLEL` is deliberately absent: branch fan-out is still executed
+         * as a plain sequence, so a Step declaring `Parallel` is rejected
+         * fail-closed rather than silently run sequentially. The branch fan-out
+         * follows its own incremental rollout.
          */
         val SCOPED_SEQUENTIAL_RETRYING: BodyExecutionSupport =
             BodyExecutionSupport(
@@ -381,14 +399,14 @@ sealed interface BodyPolicyRejection {
     data class UnknownStep(val key: PluginStepId) : BodyPolicyRejection
 
     /**
-     * [key] is a terminal Step ([StepBody.None]): it has no body, so it has no body
-     * execution policy to resolve. Asking for one is a caller error, reported instead of
-     * answered with a default.
+     * [key] is a terminal Step ([StepBody.None]): it has no body, so it has no
+     * body execution policy to resolve. Asking for one is a caller error,
+     * reported instead of answered with a default.
      *
-     * Since W1d the contradictory shape this case used to describe — "declares a reshaping
-     * policy while taking no body" — is no longer constructible: a terminal Step has
-     * nowhere to declare a policy. The case stays because the QUESTION remains answerable
-     * and must stay answerable fail-closed.
+     * The contradictory shape this case used to describe — "declares a
+     * reshaping policy while taking no body" — is no longer constructible: a
+     * terminal Step has nowhere to declare a policy. The case stays because
+     * the QUESTION remains answerable and must stay answerable fail-closed.
      */
     data class NotABodyStep(val key: PluginStepId) : BodyPolicyRejection
 
@@ -415,13 +433,14 @@ sealed interface BodyPolicyRejection {
     ) : BodyPolicyRejection
 
     /**
-     * The declared [BodyExecutionOwner] and the declared capabilities contradict
-     * each other: a [BodyExecutionOwner.HANDLER_CONTINUATION] Step that does not
-     * declare [BODY_CONTINUATION_CAPABILITY] has no way to reach its own body, and
-     * a Step that declares the capability under any other owner was handed a
-     * continuation it must not drive. Both are rejected before any effect instead of
-     * being papered over by the engine executing the body on the Step's behalf, which
-     * is exactly the substitution ADR-0081 (as amended) forbids.
+     * The declared [BodyExecutionOwner] and the declared capabilities
+     * contradict each other: a [BodyExecutionOwner.HANDLER_CONTINUATION]
+     * Step that does not declare [BODY_CONTINUATION_CAPABILITY] has no way
+     * to reach its own body, and a Step that declares the capability under
+     * any other owner was handed a continuation it must not drive. Both are
+     * rejected before any effect instead of being papered over by the engine
+     * executing the body on the Step's behalf, which is exactly the
+     * substitution the executive authority amendment forbids.
      */
     data class IncoherentCapabilities(
         val key: PluginStepId,
@@ -485,9 +504,9 @@ fun resolveBodyExecutionPolicy(
         return BodyPolicyResolution.Rejected(key, BodyPolicyRejection.UnknownStep(key))
     }
 
-    // W1d: the declaration is one value. A terminal Step has no policy to resolve, so the
-    // only fail-closed answer is a typed rejection; there is no "sequential default" for a
-    // Step with no body, and no contradictory declaration left to detect here.
+    // The declaration is one value. A terminal Step has no policy to resolve, so the
+    // only fail-closed answer is a typed rejection; there is no "sequential default"
+    // for a Step with no body, and no contradictory declaration left to detect here.
     val declaredBody = descriptor.body.declared
         ?: return BodyPolicyResolution.Rejected(key, BodyPolicyRejection.NotABodyStep(key))
     val declared = declaredBody.execution.policy
@@ -510,14 +529,16 @@ fun resolveBodyExecutionPolicy(
 }
 
 /**
- * Resolves from a registered [StepDefinition], reading the policy off its contract
- * descriptor. This is the port the engine uses: the authority is the open
- * [StepRegistry], so a core Step and an external plugin Step resolve identically.
+ * Resolves from a registered [StepDefinition], reading the policy off its
+ * contract descriptor. This is the port the engine uses: the authority is
+ * the open [StepRegistry], so a core Step and an external plugin Step
+ * resolve identically.
  *
  * This overload additionally checks COHERENCE between the declared
- * [BodyExecutionOwner] and the declared capabilities, because only the contract carries
- * both (WU-RP-035). The descriptor-only overload below cannot see the capabilities and is
- * therefore used for static validation where that half of the contract is not available.
+ * [BodyExecutionOwner] and the declared capabilities, because only the
+ * contract carries both. The descriptor-only overload below cannot see the
+ * capabilities and is therefore used for static validation where that half
+ * of the contract is not available.
  */
 fun resolveBodyExecutionPolicy(
     definition: StepDefinition<*, *>,
@@ -530,11 +551,12 @@ fun resolveBodyExecutionPolicy(
     }
     val owner = definition.contract.descriptor.body.declared?.execution?.owner
     val declaresContinuation = BODY_CONTINUATION_CAPABILITY in definition.contract.requiredCapabilities
-    // Exhaustive over the CLOSED owner family: an `else` here would silently absorb the next
-    // case, which is exactly the debt Lfc2BodyExecutionPolicyFitnessTest pins. `null` is its
-    // own branch and means "this Step declares no body at all", so there is no owner to be
-    // coherent with; the descriptor-only resolution above already reported it as
-    // NotABodyStep before this check is reached.
+    // Exhaustive over the CLOSED owner family: an `else` here would silently absorb
+    // the next case, which is exactly the debt the body-execution-policy fitness
+    // test pins. `null` is its own branch and means "this Step declares no body
+    // at all", so there is no owner to be coherent with; the descriptor-only
+    // resolution above already reported it as NotABodyStep before this check
+    // is reached.
     val coherent = when (owner) {
         BodyExecutionOwner.HANDLER_CONTINUATION -> declaresContinuation
         BodyExecutionOwner.CANONICAL_ENGINE -> !declaresContinuation

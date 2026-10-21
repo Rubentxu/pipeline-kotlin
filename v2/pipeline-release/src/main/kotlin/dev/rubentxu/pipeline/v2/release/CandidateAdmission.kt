@@ -96,7 +96,7 @@ object CandidateAdmission {
         return when (result) {
             is MaterializationResult.Refused -> AdmissionOutcome.Refused(result.reason)
             is MaterializationResult.Materialized -> {
-                // PK-R1 R1-C: fail-closed bundled-plugin compatibility gate.
+                // Fail-closed bundled-plugin compatibility gate.
                 // Runs AFTER the manifest is written so the operator's failure
                 // diagnostic carries the candidate id, but BEFORE the outcome
                 // is reported as Admitted, so a host version the bundled

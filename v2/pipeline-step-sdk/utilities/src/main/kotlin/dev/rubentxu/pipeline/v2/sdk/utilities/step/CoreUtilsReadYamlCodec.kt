@@ -18,7 +18,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * JSON codec for [ReadYamlInput] (LFC-2E2 utilities OFFICIAL_PLUGIN).
+ * JSON codec for [ReadYamlInput].
  *
  * The sealed [ReadYamlSource] hierarchy is encoded as a discriminator field
  * `source.kind` with `path` / `text` per variant. The `file XOR text` invariant

@@ -27,7 +27,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * TRAIN H4 / PR-020 — the BEFORE_STAGE directive seam, out of the run loop.
+ * The BEFORE_STAGE directive seam, out of the run loop.
  *
  * Admission plus interpretation of a stage's declared directives used to be ~317 lines inline in
  * `CanonicalDurableRunCoordinator.run`, interleaved with the run's control flow: every denial
@@ -37,7 +37,7 @@ import java.util.UUID
  * The split is the one AGENTS.md asks for everywhere else:
  *
  *  - the PURE decisions were already elsewhere and stay there — [StageDirectivePlanner] admits,
- *    [GateCompositionPlanner] composes, and `gateEvaluator` is injected (S2-A) so this engine
+ *    [GateCompositionPlanner] composes, and `gateEvaluator` is injected so this engine
  *    interprets a verdict rather than computing one;
  *  - this engine OBSERVES: it emits the admission, denial, evaluation and skip events, which is
  *    interpretation of a decided outcome;
@@ -111,12 +111,13 @@ internal class BeforeStageDirectiveEngine(
          *
          * [kind] defaults to [FailureKind.USER] because almost every denial here
          * IS the author's: a gate that cannot be decoded, a target nothing
-         * satisfies. S3-R1-A added the one case that is not — a definition that
-         * faulted is a PLUGIN defect, and reporting it as USER would point an
-         * operator at their pipeline to fix a bug in ours, and would count our
-         * bug among the user's in every run dashboard. The coordinator applies
-         * [kind] verbatim; it does not classify, because the engine is where the
-         * distinction between the two causes is actually known.
+         * satisfies. The directive-definition compile pass added the one case
+         * that is not — a definition that faulted is a PLUGIN defect, and
+         * reporting it as USER would point an operator at their pipeline to
+         * fix a bug in ours, and would count our bug among the user's in every
+         * run dashboard. The coordinator applies [kind] verbatim; it does not
+         * classify, because the engine is where the distinction between the two
+         * causes is actually known.
          */
         data class Denied(val reason: String, val kind: FailureKind = FailureKind.USER) : Verdict
 
@@ -384,9 +385,9 @@ internal class BeforeStageDirectiveEngine(
      * reporting genuine resource exhaustion, and relabelling that as "this directive is
      * broken" would be a false diagnosis pointed at the wrong owner, so it propagates.
      *
-     * The bundled definitions are all total after S3-R1-A, so this guard is a second line of
-     * defence, not the mechanism the first one relies on: it exists for the day an external
-     * definition reintroduces what the codec tests now prevent.
+     * The bundled definitions are all total after the directive-definition compile pass, so
+     * this guard is a second line of defence, not the mechanism the first one relies on: it
+     * exists for the day an external definition reintroduces what the codec tests now prevent.
      */
     private fun decodeThrough(definition: DirectiveDefinitionAny, encodedArguments: String): DecodeOutcome =
         try {
@@ -659,7 +660,7 @@ internal sealed interface DecodedBeforeStage {
      * be interpreted in this seam). The stage never starts.
      *
      * [kind] is [FailureKind.USER] for every case where the author is at fault,
-     * and [FailureKind.PLUGIN] for the one case where the definition is — S3-R1-A.
+     * and [FailureKind.PLUGIN] for the one case where the definition itself is.
      */
     data class Denied(
         override val key: dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey,

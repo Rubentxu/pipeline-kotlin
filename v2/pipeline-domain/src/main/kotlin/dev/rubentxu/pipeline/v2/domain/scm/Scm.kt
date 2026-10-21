@@ -4,7 +4,8 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
 
 /**
  * Sealed root for SCM types.
- * L5: only GitScm is defined; SubversionScm/GithubScm deferred to ML-R5.1
+ * Only GitScm is defined; SubversionScm/GithubScm are deferred to a future
+ * credential cycle.
  */
 sealed interface Scm
 

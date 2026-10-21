@@ -14,7 +14,7 @@ enum class ResourceKind {
     STEP,
     OPERATION,
 
-    // LFC-2E2-prep (ADR-0092 / C1..C10): plugin provider kinds.
+    // Plugin provider kinds.
     // ResourceRef construction is still typed via [ResourceRefs] builders;
     // these kinds exist so the provider identity is addressable in audit
     // projections without re-parsing string segments. The wire serializer

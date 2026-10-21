@@ -9,12 +9,12 @@ import java.nio.file.attribute.PosixFilePermission
 
 /**
  * [CredentialsStorePosix] is the one authority for credential-store filesystem permissions.
- * The store reads (0600 file, 0700 directory) from [CredentialFilePermissions] (D-001), so
+ * The store reads (0600 file, 0700 directory) from [CredentialFilePermissions], so
  * the only thing to test in unit-land is the one function that does NOT touch the
  * filesystem: [assertSupported], which decides whether the runtime can enforce them at all.
  *
  * The file-creating and chmod-applying helpers are deliberately not exercised here: the
- * unit-test rule (AGENTS.md §2) forbids real filesystem mutations, and the E2E layer is
+ * unit-test rule forbids real filesystem mutations, and the E2E layer is
  * the right place to observe a real file's mode bits.
  */
 class CredentialsStorePosixTest {
@@ -71,7 +71,7 @@ class CredentialsStorePosixTest {
     fun `OWNER_READ_WRITE has read and write, no execute, no group, no other`() {
         // The store file's permission set is a contract: a future edit that adds "execute"
         // would let another user on the same box run the file. The set is loaded from
-        // CredentialFilePermissions (D-001) and tested here by its public surface.
+        // CredentialFilePermissions and tested here by its public surface.
         val perms: Set<PosixFilePermission> = dev.rubentxu.pipeline.v2.domain.credentials.CredentialFilePermissions.OWNER_READ_WRITE
 
         assertEquals(

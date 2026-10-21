@@ -4,9 +4,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import kotlinx.serialization.Serializable
 
 /**
- * `core-utils.findFiles` typed Input (LFC-2E2 utilities, Slice 2 / S2.3).
+ * `core-utils.findFiles` typed Input.
  *
- * Jenkins reference: pipeline-utility-steps-plugin::FindFilesStep.
  * Behaviour summary: enumerate entries under the workspace, optionally
  * filtered by a glob. An empty pattern lists direct children only.
  *
@@ -24,7 +23,7 @@ data class FindFilesInput(
         }
     }
 
-    /** The dispatch policy for this step (E-EM-11 NEVER-1). */
+    /** The dispatch policy for this step. */
     val replayPolicy: ReplayPolicy get() = ReplayPolicy.NEVER
 }
 

@@ -12,7 +12,7 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * not: re-asserting a status is idempotent, not a move. Finality means "cannot reach a *different*
  * state", which is what `OperationStatusTest` pins.
  *
- * ## LOST State (ML-R1 / ADR-0046)
+ * ## LOST State
  *
  * LOST is a terminal state used when a durable process (e.g., `sh` step) was
  * executing but the worker process died mid-execution. Unlike SUCCEEDED/FAILED
@@ -22,11 +22,11 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * - The subprocess may have crashed, or
  * - The result.txt file may not exist yet
  *
- * Per UAT-REC-002: fail-closed — LOST never implies success. Reconciliation
+ * Fail-closed: LOST never implies success. Reconciliation
  * must not assume the step completed; a new attempt must be scheduled with
  * appropriate policy.
  *
- * ## FAILED_TIMEOUT State (ML-R2 / ADR-0047)
+ * ## FAILED_TIMEOUT State
  *
  * FAILED_TIMEOUT is a terminal state used when a durable shell step's watchdog
  * timer fires and kills the process tree via SIGKILL. Unlike FAILED (script
@@ -36,23 +36,20 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * The distinction from LOST is important: LOST means worker crash (unknown outcome),
  * FAILED_TIMEOUT means deadline enforcement (known killed, unknown if it would have succeeded).
  *
- * ## Durable format and the downgrade boundary (P2 decision)
+ * ## Durable format and the downgrade boundary
  *
  * Statuses are persisted BY NAME (`status.name`) and decoded with `OperationStatus.valueOf`.
  * That makes the format self-describing and forward-extensible: a newer binary reads every
  * journal an older binary wrote, because old names never disappear. The reverse is NOT
  * supported, deliberately: a binary older than the case that wrote a name — `UNSTABLE` since
- * P1 of the Runtime Observation Contract Closure, exactly like `FAILED_TIMEOUT` before it —
+ * the Runtime Observation Contract Closure, exactly like `FAILED_TIMEOUT` before it —
  * throws `IllegalArgumentException` from `valueOf` and fails closed, loudly, instead of
  * silently misreading a status it cannot represent. **Downgrade is outside the contract.**
  *
- * This is position A of the P2-G decision: no schema version bump and no migration path are
- * provided for downgrade, because every added name so far has been an additive widening of
- * the same epoch. If a future change ever REMOVES or renames a case, that is a new durable
- * epoch and requires versioning at the journal layer before it lands — not this enum.
- *
- * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
- * @see <a href="ADR-0047">ADR-0047 — FAILED_TIMEOUT Terminal State</a>
+ * No schema version bump and no migration path are provided for downgrade, because every
+ * added name so far has been an additive widening of the same epoch. If a future change
+ * ever REMOVES or renames a case, that is a new durable epoch and requires versioning at
+ * the journal layer before it lands — not this enum.
  */
 enum class OperationStatus {
     /** Operation has been created but execution has not started. */
@@ -99,10 +96,11 @@ enum class OperationStatus {
     /**
      * Operation's worker/process was lost mid-execution.
      *
-     * Used by durable shell steps (ML-R1) when:
+     * Used by durable shell steps when:
      * - The JVM worker crashed during a `sh` step, OR
      * - The subprocess was detached (nohup) but result.txt was never written, AND
-     * - Heartbeat detection determined the process is stale (> HEARTBEAT_CHECK_INTERVAL + HEARTBEAT_MINIMUM_DELTA)
+     * - Heartbeat detection determined the process is stale (past the heartbeat
+     *   check interval by at least the minimum delta).
      *
      * Fail-closed: LOST never implies success. The reconciler must apply policy
      * (typically: re-run with same fingerprint, never assume completion).
@@ -112,15 +110,15 @@ enum class OperationStatus {
     /**
      * Operation was killed by deadline timeout (SIGKILL via watchdog).
      *
-     * Used by durable shell steps (ML-R2) when:
+     * Used by durable shell steps when:
      * - The step had a timeout deadline set (step.timeoutMillis or stage.options.timeout)
      * - The watchdog timer fired before result.txt was written
      * - The process tree was killed via `setsid pgid kill -9`
-     * - The timeout.flag file was written BEFORE the kill (per TMO-S-005)
+     * - The timeout.flag file was written BEFORE the kill.
      *
      * FAILED_TIMEOUT is terminal: the step will not be re-executed on resume.
      * The fingerprint is preserved (same script, same attempt) but the terminal
-     * status prevents re-execution per TMO-S-007 / DSE-S-025.
+     * status prevents re-execution.
      *
      * Distinct from LOST: LOST = unknown outcome (worker crash);
      * FAILED_TIMEOUT = known killed by deadline (distinguishable via timeout.flag).

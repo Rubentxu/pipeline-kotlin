@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 
 /**
- * LB-02 / G3-A4.3.4 / A4.3.7 — public classifier from the closed [ShellInvocationResult] ADT
+ * Public classifier from the closed [ShellInvocationResult] ADT
  * into the canonical [StepOutcome].
  *
  * This is the SAME table that the legacy `ShExecution.runShellCommandTyped` path uses

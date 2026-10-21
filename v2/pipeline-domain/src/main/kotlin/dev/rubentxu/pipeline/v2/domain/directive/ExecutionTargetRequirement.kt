@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.domain.directive
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
 /**
- * S3.1 — the `agent` directive's typed carrier: what an execution target MUST
+ * The `agent` directive's typed carrier: what an execution target MUST
  * satisfy before the stage body runs.
  *
  * This file is PURE. It is a sealed ADT of requirements plus a total codec.
@@ -34,7 +34,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * [LocalAny], [LocalLabels] and [CapabilitySet] are what a single-host runtime
  * can actually decide, so they are executable today. [Remote] is declared
  * because the DSL surface is Jenkins-familiar and authors will write it, but
- * there is no remote allocator until RP-8; it is carried, decoded and then
+ * there is no remote allocator yet; it is carried, decoded and then
  * refused with a diagnostic that says why, rather than rejected at the syntax
  * level where the author would learn nothing.
  */
@@ -53,10 +53,10 @@ value class AgentLabel(val value: String) {
  * How a remote target is addressed.
  *
  * Deliberately a single opaque string rather than a structured selector: until
- * RP-8 defines a wire handshake, there is nothing to structure it against, and
- * a structured type would imply a protocol that does not exist. Keeping it
- * opaque means adding a real selector later is a versioned change to ONE case
- * rather than a rewrite of the carrier.
+ * a remote runtime defines a wire handshake, there is nothing to structure it
+ * against, and a structured type would imply a protocol that does not exist.
+ * Keeping it opaque means adding a real selector later is a versioned change
+ * to ONE case rather than a rewrite of the carrier.
  */
 @JvmInline
 value class RemoteSelector(val value: String) {

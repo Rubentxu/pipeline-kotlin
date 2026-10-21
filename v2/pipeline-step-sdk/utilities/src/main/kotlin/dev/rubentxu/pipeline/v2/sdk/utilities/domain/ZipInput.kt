@@ -3,9 +3,7 @@ package dev.rubentxu.pipeline.v2.sdk.utilities.domain
 import kotlinx.serialization.Serializable
 
 /**
- * `core-utils.zip` typed Input (LFC-2E2 utilities, Slice 2 / S2.4).
- *
- * Jenkins reference: pipeline-utility-steps-plugin::ZipStep.
+ * `core-utils.zip` typed Input.
  *
  * The shape is closed: exactly one of the three [ZipSources] cases is
  * chosen by the caller. The dst `path` is workspace-relative unless

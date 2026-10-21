@@ -29,14 +29,14 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Typed input payload of `core.isUnix` (S2-A5 / G1). The legacy wire payload for this
+ * Typed input payload of `core.isUnix` (the isUnix capability seam). The legacy wire payload for this
  * Step is the empty object `"{}"` (compiler `encodePayload` else-branch), so the input
  * is a unit value and the codec preserves that exact durable envelope.
  */
 data object IsUnixInput
 
 /**
- * TYPED_RUNTIME_OUTPUT — APPROVED_ARCHITECTURAL_DELTA (S2-A5 / G2, decision D2).
+ * TYPED_RUNTIME_OUTPUT — APPROVED_ARCHITECTURAL_DELTA (the isUnix policy decision, decision D2).
  *
  * Legacy durable path produces NO typed output (`StepOutcome.Success` only; the
  * boolean is observable solely through the `UnixDetected` event). The candidate
@@ -56,7 +56,7 @@ data class IsUnixOutput(
 }
 
 /**
- * Registry candidate for `core.isUnix` (S2-A5 / G1 registry seam proof).
+ * Registry candidate for `core.isUnix` (the isUnix capability seam registry seam proof).
  *
  * G1 registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy decoder,
  * the metadata row, or the legacy dispatcher: `StructuralFamilyResolver`'s

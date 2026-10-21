@@ -10,7 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.step.CancellationReason
 import kotlinx.coroutines.runBlocking
 
 /**
- * Canonical implementation of the [BodyInvoker] port (ADR-0073 / ADR-0081 D1; B11).
+ * Canonical implementation of the [BodyInvoker] port.
  *
  * The engine adapter for the body-reentry seam. Block-step handlers registered with the
  * registry (or any future block-step author) declare [BODY_INVOKER_CAPABILITY] in their
@@ -20,23 +20,24 @@ import kotlinx.coroutines.runBlocking
  *
  * ## Why this exists
  *
- * Before B11 the body execution machinery ([CanonicalDurableRunCoordinator.dispatchBody])
- * dispatched children directly via the canonical shared loop. The [BodyInvoker] port was
- * declared but never bound to a real implementation: registry-driven block-step handlers
- * had no way to re-enter the engine. This adapter is the engine-side implementation:
+ * Before the body re-entry seam, the body execution machinery
+ * ([CanonicalDurableRunCoordinator.dispatchBody]) dispatched children directly via
+ * the canonical shared loop. The [BodyInvoker] port was declared but never bound to
+ * a real implementation: registry-driven block-step handlers had no way to re-enter
+ * the engine. This adapter is the engine-side implementation:
  * - `open(bodyRef, runner)` is called by the canonical coordinator when it enters a body,
  *   registering a `BodyRef -> suspend () -> StepOutcome` mapping for the body's lifetime.
  * - `invoke(bodyRef, ctx)` is called by a registered handler when it wants to execute
  *   its body. The adapter looks up the runner, invokes it, and wraps the typed outcome
  *   in the closed [BodyOutcome] algebra.
  *
- * ## Single-shared-path contract (B10 / W1d, ADR-0073)
+ * ## Single-shared-path contract
  *
  * The mapping from [BodyRef] to body-children is populated by the **same**
  * [CanonicalDurableRunCoordinator.dispatchBody] function that dispatches the legacy
  * executable body Steps. This adapter never iterates body children itself,
  * so the durable coordinator's body-child loop count remains exactly one
- * (enforced by `Lfc2ConcreteBodyRoutingDebtFitnessTest.BodyChildLoopScanner`).
+ * (enforced by the body-child loop scanner fitness test).
  *
  * ## Lifetime
  *
@@ -59,7 +60,7 @@ class CanonicalBodyInvokerAdapter : BodyInvoker {
      * reaches the runner through `context.attempt`, scope patches through `context.patch`,
      * and non-context decorations (timestamps) through `context.decorator`.
      *
-     * WU-LPR-302 (Phase 1, 2026-09-18): the runner signature evolves from
+     * The runner signature evolves from
      * `suspend () -> StepOutcome` to `suspend (BodyInvocationContext) -> StepOutcome`.
      * The port [BodyInvoker] already received the context; the binding is now
      * contextually faithful to its public contract.

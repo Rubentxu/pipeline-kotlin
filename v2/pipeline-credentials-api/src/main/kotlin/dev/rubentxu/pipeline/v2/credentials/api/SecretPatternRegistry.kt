@@ -225,7 +225,7 @@ class SecretPatternRegistry {
      */
     internal fun literalSeam(): List<ByteArray> {
         if (registeredSecrets.isEmpty()) {
-            // WU-B FIX 3 — an EMPTY registry is a PASSTHROUGH, and it says so by having no
+            // An EMPTY registry is a PASSTHROUGH, and it says so by having no
             // literals at all.
             //
             // This used to return `listOf(SCRUB_MARKER)` — a synthetic four-byte literal. The
@@ -273,7 +273,7 @@ class SecretPatternRegistry {
      * @return Maximum literal byte length, floored at [MIN_SECRET_WINDOW]
      */
     internal fun maxLiteralByteLength(): Int {
-        // WU-B FIX 3 — with no literals the lookahead is ONE byte, not MIN_SECRET_WINDOW.
+        // With no literals the lookahead is ONE byte, not MIN_SECRET_WINDOW.
         //
         // A one-byte ring is fully decided the moment its byte arrives (no literal can start
         // with it, because there are no literals), so the ring never fills and never withholds.
@@ -303,7 +303,7 @@ class SecretPatternRegistry {
      * registered secrets and all encoding variants. Uses the SAME [generateEncodedVariants]
      * seam as [buildActivePatterns] to ensure consistent enumeration without duplication.
      *
-     * Per [StreamingRedactor] design §Byte-window redaction algorithm:
+     * Per [StreamingRedactor] byte-window redaction algorithm:
      * - `secret_window = max(registeredPatternLiteralLength) - 1`
      * - `buffer capacity = secret_window + chunkSize`
      *

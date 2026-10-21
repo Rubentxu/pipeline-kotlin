@@ -50,8 +50,8 @@ import java.nio.charset.StandardCharsets
  *
  * The [sandbox] stage is recorded in the composition result metadata but
  * **deny-list / PATH-normalise are NOT applied inside the composer**.
- * Per the M4 Slice 2 design amendment (2026-09-03), those overlays remain
- * at the [DurableShellExecutor.launch] choke (the inherited-ProcessBuilder
+ * Those overlays remain at the [DurableShellExecutor.launch] choke
+ * (the inherited-ProcessBuilder
  * sandbox pre-merge carve-out).
  *
  * @see EnvCompositionRequest for the full request shape
@@ -129,8 +129,8 @@ object EnvironmentComposer {
         }
 
         // Stage 6: sandbox config — recorded for launch-choke processing.
-        // applyDenyList / normalizePath remain at DurableShellExecutor.launch
-        // per the M4 Slice 2 design amendment (2026-09-03).
+        // applyDenyList / normalizePath are applied at
+        // DurableShellExecutor.launch, deliberately.
         return result
     }
 }

@@ -6,12 +6,12 @@ import dev.rubentxu.pipeline.v2.events.identity.EventQuery
 import java.time.Duration
 
 /**
- * P1 — public follow contract for the DomainEvent plane.
+ * Public follow contract for the DomainEvent plane.
  *
  * ## What this is and what it is not
  *
  * [EventFollower] composes
- * [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort] (M1-A) into
+ * [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort] into
  * a pull-style handle. It does NOT introduce a new event store, a new
  * envelope codec, or a new cursor vocabulary. The existing event-plane
  * types are the source of truth, and the follow contract is additive on
@@ -43,8 +43,8 @@ import java.time.Duration
  * via `use { }`). After `close`, the iterator returns no further events
  * and the implementation releases any store-side resources.
  *
- * @see M1_FOLLOW_DESIGN.md §2.2 for the full type surface and §4 for the
- *   composition contract.
+ * @see [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort] for the read contract
+ *   this composes with.
  */
 interface EventFollower {
 
@@ -68,7 +68,7 @@ interface EventFollower {
      * iterators over the same handle would be cursor sharing; the
      * contract does not allow that, because cursor sharing across
      * consumers is exactly the kind of "two parallel histories" bug
-     * P3-E E4c was written to prevent.
+     * this contract is written to prevent.
      */
     fun open(runId: String, options: EventFollowOptions): EventFollowHandle
 }
@@ -101,29 +101,22 @@ interface EventFollower {
  *
  * | Consumer intent | Pattern | Terminal event? |
  * | --- | --- | --- |
- * | **Live follow** (default) | keep the handle open and the iterator polling; the implementation re-polls while alive. | [EventFollowEvent.Completed] only at the two terminal conditions: [EventFollowUntil.UntilSequence] satisfied (3c) or a [dev.rubentxu.pipeline.v2.events.RunFinished] observed in the page (3d). |
+ * | **Live follow** (default) | keep the handle open and the iterator polling; the implementation re-polls while alive. | [EventFollowEvent.Completed] only at the two terminal conditions: [EventFollowUntil.UntilSequence] satisfied, or a [dev.rubentxu.pipeline.v2.events.RunFinished] observed in the page. |
  * | **Snapshot** (one-shot) | open, drain pages until the first empty `Page` (or any `Page` whose `slice.records` is empty), call [close]. | None emitted. The handle terminates by the consumer's `close` call, not by an in-band `Completed`. |
  * | **Bounded live** | open with [EventFollowUntil.UntilSequence] or [EventFollowUntil.UntilRunFinished]; the follow terminates on the bound. | [EventFollowEvent.Completed] at the bound. |
  *
  * **A page with `hasMore = false` is NOT a terminal condition.** The
- * pre-R1.1 handle conflated "no new data right now" with "the run is
+ * pre-`1.1` handle conflated "no new data right now" with "the run is
  * finished" and emitted `Completed` on the first quiet page; that
- * conflated snapshot with live follow and was the F2 finding from the
- * PK-58A T1 audit. The natural tail is now a state the follow re-polls
- * past while the handle is open. The falsifiers that pin this
- * contract are:
- *
- * - `dev.rubentxu.pipeline.v2.events.durable.SqliteEventFollowLiveTailTest`
- *   (in-process, R1.1)
- * - `dev.rubentxu.pipeline.v2.application.follow.M1DCrossJvmFollowTest.7 UAT-PK-M1-007`
- *   (cross-JVM, R1.2)
+ * conflated snapshot with live follow. The natural tail is now a state the
+ * follow re-polls past while the handle is open.
  *
  * ## Refusal and cursor past tail
  *
  * Opening a follow with a cursor past the durable tail of the run
  * surfaces as a single [EventFollowEvent.Refused] carrying
  * [EventFollowRefusal.UnknownRun] (the closed event-follow refusal
- * hierarchy has no `CursorBeyondTail` case; the M1-A adapter translates
+ * hierarchy has no `CursorBeyondTail` case; the adapter translates
  * that condition to the same refusal the open boundary emits for an
  * unknown run, because both mean "the cursor points past known
  * history"). After a `Refused`, the iterator returns no further events

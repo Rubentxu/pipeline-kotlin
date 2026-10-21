@@ -34,7 +34,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  *    a round trip untouched.
  *  - **Total, and it never throws on user input.** Every failure is a value.
  *
- *    That sentence was an aspiration until S3-R1, and three payload-derived
+ *    That sentence was an aspirational claim, and three payload-derived
  *    numbers broke it. Each is now refused before it can act, and the reasons
  *    are recorded here rather than only in the test names:
  *
@@ -52,10 +52,10 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  *        -> the bounds check subtracts rather than adds, so it cannot wrap
  *    ```
  *
- *    The claim is falsifiable rather than aspirational: `S3R1AgentCodecTotalityTest`
- *    holds a hostile-payload sweep plus a counter-test, and the engine guard in
- *    `BeforeStageDirectiveEngine` is a second, independent line of defence for
- *    the day a future case reintroduces a throwable.
+ *    The claim is falsifiable rather than aspirational: the agent-codec
+ *    totality test holds a hostile-payload sweep plus a counter-test, and
+ *    the engine guard in `BeforeStageDirectiveEngine` is a second, independent
+ *    line of defence for the day a future case reintroduces a throwable.
  *
  * Human readability was traded away deliberately, for the same reason
  * [WhenPredicateCodec] did: the DSL is where a human reads the declaration, and

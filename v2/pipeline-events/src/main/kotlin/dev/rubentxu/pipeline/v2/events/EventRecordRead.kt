@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.events
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 
 /**
- * What ONE durable row turned out to be. P3-E E4c — Durable Read Truth.
+ * What ONE durable row turned out to be.
  *
  * ## The defect this exists to close
  *
@@ -140,7 +140,7 @@ sealed interface UndecodableReason {
 
 /**
  * One bounded page of durable rows, each [Decoded] or [Undecodable], cut by the store's own
- * sequence. P3-E E4c.
+ * sequence.
  *
  * This is [EventSlice]'s honest counterpart and it replaces [EventSlice] as the authority: the
  * page bound counts ROWS, not decodable events, so a row that refuses to decode cannot shrink the

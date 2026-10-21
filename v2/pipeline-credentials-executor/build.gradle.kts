@@ -21,11 +21,11 @@ dependencies {
     implementation(project(":pipeline-scripting-api"))
     implementation(project(":pipeline-step-sdk:api"))
 
-    // Unit-test wiring ADDED (2026-10-19) for the teardown decisions.
+    // Unit-test wiring for the teardown decisions.
     //
     // The three defects this module carried were all in the ORDERING and ACCUMULATION of the
     // credential bind/unbind teardown, none of which is reachable from a `.pipeline.kts` example
-    // without a real lock, a real event store and a real filesystem — and AGENTS.md section 2
+    // without a real lock, a real event store and a real filesystem — and the unit-test rule
     // puts those out of reach of a unit test in the first place. The decisions were therefore
     // extracted into pure top-level functions in `CredentialTeardown.kt` and
     // `:pipeline-domain`'s `wipeMaterialization`, each with its filesystem, event-store and

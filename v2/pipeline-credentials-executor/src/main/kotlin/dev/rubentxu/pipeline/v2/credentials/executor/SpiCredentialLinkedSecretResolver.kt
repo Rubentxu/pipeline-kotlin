@@ -7,8 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.credentials.LinkedSecretRef
 import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
 
 /**
- * LF-0403 (ADR-0097) — Production adapter of the
- * [CredentialLinkedSecretResolver] domain port.
+ * Production adapter of the [CredentialLinkedSecretResolver] domain port.
  *
  * Lives in `:pipeline-credentials-executor` because that's the module that
  * already owns the `CredentialProvider` SPI port (which has access to the

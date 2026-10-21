@@ -29,7 +29,7 @@ import kotlin.coroutines.cancellation.CancellationException
  * ## Spec invariants implemented here
  *
  * - **ExecTask preserves argv**: `ProcessBuilder(argv)` with no shell in
- *   between — M3-002 ("argv con spaces/quotes sin shell") holds by
+ *   between, so an argv containing spaces or quotes survives by
  *   construction.
  * - **ShellScriptTask writes the script to a file** (`script.sh` in the
  *   operation's control dir) and executes `[interpreter.binary, file]`.

@@ -92,7 +92,7 @@ object PluginManifestResourceReader {
  * ## Why this returns an unmeasured identity rather than hashing something
  *
  * An earlier version of this method read the manifest resource back and hashed it, then
- * offered that hash as `measuredDigest`. That was fabrication with a SHA-256 on top: the
+ * offered that hash as `measuredDigest`. That was fabrication with a the cryptographic digest: the
  * declared digest covers the whole artifact, while the bytes reachable through a
  * [ClassLoader] are the declaration document, so the comparison is between a container and
  * its contents and can only ever disagree. Worse, it disagreed *meaningfully* — a Mismatch

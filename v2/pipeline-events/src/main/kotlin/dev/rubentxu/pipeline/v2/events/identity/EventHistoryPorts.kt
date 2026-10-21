@@ -15,7 +15,8 @@ import dev.rubentxu.pipeline.v2.events.EventRecordRead
  * Semantics: `runId` + `lastSequence`, where sequence is the STORE-assigned
  * monotonic per-run value (frozen law: the store/boundary owns sequence
  * assignment). Continuation selects events with sequence > lastSequence, ordered
- * by sequence. NEVER timestamp-based (INC-021d). Deliberately a distinct type
+ * by sequence. NEVER timestamp-based; sequence is the only ordering key.
+ * Deliberately a distinct type
  * from the OperationJournal ReplayCursor: event-tail cursors and durable
  * replay cursors are different authorities and MUST NOT be unified.
  */
@@ -74,7 +75,7 @@ sealed class EventQuery {
     data class BySequenceRange(val fromSequence: Long, val toSequence: Long) : EventQuery()
 
     /**
-     * S5.4 — whether [envelope] satisfies this query. Pure, total, no I/O.
+     * Whether [envelope] satisfies this query. Pure, total, no I/O.
      *
      * This predicate used to be a private method of [EventHistoryReader], which made it unreachable
      * for a consumer that reads through [EventTail] instead: `readAfter` returns a typed [EventPage]
@@ -97,7 +98,7 @@ sealed class EventQuery {
 /**
  * A page of history plus the continuation cursor. Never claims completeness:
  * [remaining] distinguishes a definite end from a truncated page. Absence of a
- * RunFinished event is NOT interpreted as "complete" (EVT-2 law).
+ * RunFinished event is NOT interpreted as "complete": a missing `RunFinished` only means the run has not yet emitted one, not that history is bounded.
  */
 data class EventPage(
     val envelopes: List<PipelineEventEnvelope>,
@@ -114,7 +115,7 @@ data class EventPage(
     val nextCursor: EventCursor?,
     val hasMore: Boolean,
     /**
-     * S5.4 — the durable rows in this page that exist and could NOT be read.
+     * The durable rows in this page that exist and could NOT be read.
      *
      * These are not envelopes and must never become envelopes. A row whose `kind` this runtime
      * does not know, or whose payload is unparseable text, is still a row: it occupies its place in

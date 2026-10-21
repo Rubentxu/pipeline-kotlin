@@ -7,12 +7,12 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Step-level reconciler for L1 durable shell (ML-R1 / ADR-0046).
+ * Step-level reconciler for L1 durable shell.
  *
  * This reconciler classifies RUNNING step rows into:
  * - **COMPLETE**: result.txt exists and heartbeat is fresh → use cached exit code
  * - **REATTACH**: result.txt missing but heartbeat is fresh → re-run with same fingerprint
- * - **TIMED_OUT**: timeout.flag present → watchdog killed the process (ML-R2)
+ * - **TIMED_OUT**: timeout.flag present → watchdog killed the process
  * - **LOST**: result.txt missing AND heartbeat is stale → fail-closed per UAT-REC-002
  *
  * ## UAT-REC-002 (Fail-Closed LOST)
@@ -29,7 +29,7 @@ import java.nio.file.Path
  * - Do NOT skip the step
  * - Schedule a new attempt with the SAME fingerprint
  *
- * ## ML-R2 TimedOut (ADR-0047)
+ * ## TimedOut
  *
  * > "timeout.flag written BEFORE kill"
  *
@@ -56,8 +56,6 @@ import java.nio.file.Path
  * @param config The durable shell configuration.
  * @param journal The operation journal for querying RUNNING rows during resume.
  *
- * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern</a>
- * @see <a href="ADR-0047">ADR-0047 — FAILED_TIMEOUT Terminal State</a>
  * @see <a href="UAT-REC-002">UAT-REC-002 — Fail-Closed LOST</a>
  */
 class StepReconcilerL1(
@@ -91,7 +89,7 @@ class StepReconcilerL1(
          * because we KNOW the process was killed by deadline.
          *
          * TIMED_OUT is terminal: FAILED_TIMEOUT is journaled and the step
-         * will NOT be re-executed on resume per TMO-S-007 / DSE-S-025.
+         * will NOT be re-executed on resume.
          */
         data class TimedOut(val controlDir: Path, val logPath: Path) : Classification()
 
@@ -108,7 +106,7 @@ class StepReconcilerL1(
      * Classifies a RUNNING step's control directory.
      *
      * Checks (in order):
-     * 1. Is timeout.flag present? → TIMED_OUT (per TMO-S-005: flag written BEFORE kill)
+     * 1. Is timeout.flag present? → TIMED_OUT (flag written BEFORE kill)
      * 2. Is result.txt present? → COMPLETE
      * 3. Is heartbeat fresh (log file touched within checkInterval + minimumDelta)? → REATTACH
      * 4. Heartbeat is stale → LOST
@@ -120,7 +118,7 @@ class StepReconcilerL1(
      *
      * ## Timeout Priority
      *
-     * Per TMO-S-005: timeout.flag is written BEFORE kill, so we check it FIRST.
+     * timeout.flag is written BEFORE kill, so we check it FIRST.
      * This ensures that even if heartbeat is stale due to slow I/O, the presence
      * of timeout.flag correctly identifies a timeout-killed process.
      *
@@ -143,7 +141,7 @@ class StepReconcilerL1(
         val logFile = DurableShellFiles.resolveConsoleLog(controlDir)
         val timeoutFlag = controlDir.resolve("timeout.flag")
 
-        // Check 0: Is timeout.flag present? (check BEFORE heartbeat per TMO-S-005)
+        // Check 0: Is timeout.flag present? (checked BEFORE the heartbeat)
         if (Files.exists(timeoutFlag)) {
             return Classification.TimedOut(controlDir, logFile)
         }

@@ -7,9 +7,9 @@ import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
  * production paths that pass `CanonicalNodeDispatcher()` to the coordinator). The class
  * retained its name because it is part of the durable infrastructure surface; the body
  * it used to dispatch is now exclusively in [CanonicalCoreStepCommand] subtypes that are
- * themselves deleted (LEGACY_REMOVED, WU-LPR-301 / G5).
+ * themselves deleted (LEGACY_REMOVED).
  *
- * WU-LPR-301 / G5 (2026-09-18): every legacy canonical core Step subtype is gone
+ * Every legacy canonical core Step subtype is gone
  * (CanonicalCoreStepCommand.Load / WaitUntil / Pwd / IsUnix / EmitEvent / Milestone /
  * DeleteDir / CleanWs / ArchiveArtifacts / Error are all LEGACY_REMOVED). The remaining
  * subtypes are produced only by structural / block commands and the registry, so this
@@ -22,24 +22,16 @@ import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand
  * [CanonicalCoreStepDecoder] decoder falls through to a typed rejection for any unknown
  * legacy envelope.
  *
- * C1-A (2026-09-26): the `CanonicalRuntimeContext` data class that previously lived here
+ * The `CanonicalRuntimeContext` data class that previously lived here
  * has been extracted to `CanonicalRuntimeContext.kt` (same package). The extraction
- * follows the H1/H2/H3 partition plan
- * and is bit-equivalent at the FQN level: 62 referencing files continue to compile
- * without import edits because the import path
+ * preserves the FQN level: every referencing file continues to compile without import
+ * edits because the import path
  * `dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext` is unchanged.
  */
 class CanonicalNodeDispatcher {
-    // No fields. The dispatch surface has been emptied by the WU-LPR-301 burn-down:
-    //   - emitEventDispatcher removed at S2-A4 / G5
-    //   - milestoneDispatcher  removed at S2-A9 / G5
-    //   - deleteDirDispatcher  removed at S2-A7 / G5
-    //   - cleanWsDispatcher    removed at S2-A10 / G5 (2026-09-13)
-    //   - pwdDispatcher        removed at S2-A6 / G5
-    //   - isUnixDispatcher     removed at S2-A5 / G5
-    //   - archiveArtifactsDispatcher removed at S2-B10 / G5 (2026-09-13)
-    //   - loadDispatcher       removed at WU-LPR-301 / G5 (2026-09-18)
-    //   - waitUntilDispatcher  removed at WU-LPR-301 / G5 (2026-09-18)
+    // No fields. The dispatch surface has been emptied by the legacy burn-down: every
+    // per-Step dispatcher (emitEvent, milestone, deleteDir, cleanWs, pwd, isUnix,
+    // archiveArtifacts, load, waitUntil) has been removed together with its subtype.
     //
     // The dispatch() function is removed because CanonicalCoreStepCommand has no surviving
     // subtypes (its sealed subtypes were deleted with their dispatchers). The class is
@@ -48,8 +40,8 @@ class CanonicalNodeDispatcher {
     /**
      * Signature-preserving fallback for callers that historically invoked the legacy dispatcher.
      *
-     * WU-LPR-301 / G5 (2026-09-18): the legacy core canonical command set is fully retired. Every
-     * production StepKey routes through the registry family in [StructuralFamilyResolver] (see
+     * The legacy core canonical command set is fully retired. Every production StepKey
+     * routes through the registry family in [StructuralFamilyResolver] (see
      * `LEGACY_PLUGIN_IDS == emptySet()`), and the canonical decoder rejects unknown legacy
      * envelopes typed. There is therefore no value of [command] for which this method could
      * dispatch a real Step. The signature is kept so the three historical callsites in

@@ -3,15 +3,15 @@ package dev.rubentxu.pipeline.v2.domain.durable
 /**
  * Sealed ADT returned by [RetryReconciler.reconcile].
  *
- * ADR-0075 §3 + §4 — every reconciliation outcome is one of these
- * variants, each carrying the minimum evidence a downstream caller
- * needs to act. There are NO nullable booleans, no `failed: Boolean?`,
- * no `attempt: Int?` flag bags. The variant IS the state.
+ * Every reconciliation outcome is one of these variants, each carrying the
+ * minimum evidence a downstream caller needs to act. There are NO nullable
+ * booleans, no `failed: Boolean?`, no `attempt: Int?` flag bags. The
+ * variant IS the state.
  *
  * ## Variants
  * - [ScheduleAttempt] — execute the body as a fresh attempt at [attempt].
  *   Only one writer must persist the control row BEFORE any child is
- *   launched. (ADR-0075 §6.)
+ *   launched.
  * - [ResumeAttempt] — re-attach to an in-flight attempt [attempt] whose
  *   child journal evidence is mid-run. NO new child is launched; the
  *   canonical child dispatch resumes.
@@ -40,9 +40,8 @@ sealed interface RetryReconciliationDecision {
     data class ResumeAttempt(val attempt: Int) : RetryReconciliationDecision
 
     /**
-     * Window C (ADR-0075 §7) — child evidence at attempt [attempt]
-     * proves success; close the aggregate as success without scheduling
-     * any new child execution.
+     * Child evidence at attempt [attempt] proves success; close the
+     * aggregate as success without scheduling any new child execution.
      */
     data class CloseSuccessFromChild(val attempt: Int) : RetryReconciliationDecision
 
@@ -57,12 +56,12 @@ sealed interface RetryReconciliationDecision {
     data class ReuseSuccess(val attempt: Int) : RetryReconciliationDecision
 
     /**
-     * Aggregate completed UNSTABLE at [attempt] (P2 of the Runtime Observation Contract
-     * Closure). No new child execution, and no advance: fresh retry semantics return an
-     * unstable outcome immediately without consuming another attempt, so the restart must
-     * answer the same fact the control row already carries — `UNSTABLE` — instead of
-     * re-running finished work or counting the attempt as a failure. The caller surfaces
-     * `StepOutcome.Unstable`.
+     * Aggregate completed UNSTABLE at [attempt]. No new child execution, and
+     * no advance: fresh retry semantics return an unstable outcome
+     * immediately without consuming another attempt, so the restart must
+     * answer the same fact the control row already carries — `UNSTABLE` —
+     * instead of re-running finished work or counting the attempt as a
+     * failure. The caller surfaces `StepOutcome.Unstable`.
      */
     data class ReuseUnstable(val attempt: Int) : RetryReconciliationDecision
 

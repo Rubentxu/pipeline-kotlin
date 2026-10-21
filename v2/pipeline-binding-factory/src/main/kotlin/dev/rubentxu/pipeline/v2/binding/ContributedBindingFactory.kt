@@ -10,7 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
  * Each implementation handles specific [CredentialsBinding] kinds and resolves
  * them to environment variable entries.
  *
- * ## Design (INV-L6-CR-010)
+ * ## Design
  *
  * Parallel multi-binding isolation: each [ContributedBindingFactory] is invoked
  * independently for its supported kinds. Failures in one factory MUST NOT affect

@@ -33,7 +33,7 @@ dependencies {
     implementation(libs.snakeyaml)
 }
 
-// Unit-test wiring REMOVED (2026-10-18, testing RESET).
+// Unit-test wiring REMOVED.
 //
 // This module carries no unit tests: it is the runtime behind the `pipeline events verify` CLI
 // verb -- product functionality whose proof is running the verb. Its verification is the

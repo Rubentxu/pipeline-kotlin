@@ -23,7 +23,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Typed input payload of `core.deleteDir` (S2-A7 / G3-fix).
+ * Typed input payload of `core.deleteDir` (the deleteDir handler refactor).
  *
  * The legacy wire payload for `core.deleteDir` is `{"kind":"deleteDir","path":"."}`
  * (compiler `encodePayload` else-branch). The `path` field defaults to "." (current
@@ -56,9 +56,9 @@ data class DeleteDirOutput(
 }
 
 /**
- * Registry candidate for `core.deleteDir` (S2-A7 / G3-fix).
+ * Registry candidate for `core.deleteDir` (the deleteDir handler refactor).
  *
- * ## Architecture (G3-fix)
+ * ## Architecture (the capability refactor)
  *
  * The handler is a thin typed seam — it receives [DeleteDirInput] and returns
  * [DeleteDirOutput]. Zero infrastructure in the handler:
@@ -71,9 +71,9 @@ data class DeleteDirOutput(
  * [DeleteDirOperationsAdapter], accessed via [DELETE_DIR_OPERATIONS_CAPABILITY].
  *
  * This follows the certified pattern of:
- * - `WorkspaceOperations` / `WorkspaceOperationsAdapter` (S2-A3 / G1)
- * - `TemporaryWorkspaceOperations` / `TemporaryWorkspaceOperationsAdapter` (S2-A6 / G3T)
- * - `ShellOperations` / `ShOperationsAdapter` (LB-02 / G3)
+ * - `WorkspaceOperations` / `WorkspaceOperationsAdapter` (the workspace capability seam)
+ * - `TemporaryWorkspaceOperations` / `TemporaryWorkspaceOperationsAdapter` (the pwdTmp seam)
+ * - `ShellOperations` / `ShOperationsAdapter` (the shell seam discipline)
  *
  * ## Capability discipline
  *
@@ -89,10 +89,10 @@ data class DeleteDirOutput(
  * `core.deleteDir` and the step is never dispatched — the rest of the registry
  * is unaffected.
  *
- * ## Re-entry (G1 → G3-fix)
+ * ## Re-entry (the capability refactor)
  *
- * G1 registered the candidate with three capabilities. G3-fix refactors to the
- * single-capability pattern per ADR-0070..0074 and AGENTS.md STEP CONSTITUTION.
+ * G1 registered the candidate with three capabilities. the capability refactor refactors to the
+ * single-capability pattern per ADR-0070..0074 and the step-implementation guide STEP CONSTITUTION.
  * Counters remain 6 / 6 / 6 (LEGACY_PLUGIN_IDS unchanged until G4).
  */
 object CoreDeleteDirStep {

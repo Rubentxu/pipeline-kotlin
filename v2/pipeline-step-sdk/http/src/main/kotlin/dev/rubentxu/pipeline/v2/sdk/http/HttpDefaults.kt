@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.sdk.http
 
 /**
  * Declared defaults of `httpRequest`, shared by the DSL surface and the runtime
- * contract (RP6-C / WU-093).
+ * contract.
  *
  * These live in `domain` because BOTH sides must state the same number: the DSL
  * author writing `httpRequest(url)` and the handler that enforces it. Two

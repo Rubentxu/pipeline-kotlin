@@ -29,8 +29,7 @@ import java.nio.file.Files
 import java.util.UUID
 
 /**
- * The body-execution machinery, extracted from the durable coordinator
- * (TRAIN H2 / PR-018 slice 1).
+ * The body-execution machinery, extracted from the durable coordinator.
  *
  * The coordinator remains the composition point: it constructs this engine
  * and hands it its own child dispatcher, so the body loop re-enters the SAME
@@ -135,7 +134,7 @@ internal class BodyExecutionEngine(
      * derives the child ShOptions, emits the scope's scheduling/entry events,
      * and pushes the context overlays. Moved verbatim from the coordinator.
      *
-     * AUD-06 (B1d): the scope bookends whose event kinds have no other producer
+     * The scope bookends whose event kinds have no other producer
      * here — DirEntered/DirExited, TimestampsEntered/TimestampsExited and
      * TimeoutTriggered — take `occurredAt` from the injected durable [clock],
      * exactly like the sibling TimeoutScheduled already did. The WaitUntil and
@@ -157,7 +156,7 @@ internal class BodyExecutionEngine(
     ): ScopedBody = when (scope) {
         BlockShellScope.None -> ScopedBody(stageShOptions, context)
         is BlockShellScope.Retry -> ScopedBody(stageShOptions, context)
-        // B13/E-EM-11: block deadline becomes the child Sh watchdog budget -
+        // Block deadline becomes the child Sh watchdog budget -
         // the tighter of the block budget and any inherited stage timeout.
         is BlockShellScope.Timeout -> {
             val inherited = stageShOptions.timeoutMs
@@ -193,7 +192,7 @@ internal class BodyExecutionEngine(
                     eventId = UUID.randomUUID().toString(),
                     runId = runId.value,
                     sequence = 0L,
-                    // AUD-06 (B1d): DirEntered has no other producer, and its sibling
+                    // DirEntered has no other producer, and its sibling
                     // TimeoutScheduled already reads the injected durable [clock]. Take
                     // `occurredAt` from the same seam so the dir bookends are reproducible
                     // under an injected clock like the timeout bookends are.
@@ -210,7 +209,7 @@ internal class BodyExecutionEngine(
                     eventId = UUID.randomUUID().toString(),
                     runId = runId.value,
                     sequence = 0L,
-                    // AUD-06 (B1d): no other producer; same injected seam as DirEntered.
+                    // No other producer; same injected seam as DirEntered.
                     occurredAt = clock.now(),
                 ),
             )
@@ -418,19 +417,19 @@ internal class BodyExecutionEngine(
         }
 
         try {
-            // B13/E-EM-11: `core.retry` re-dispatches the SAME body per attempt.
+            // `core.retry` re-dispatches the SAME body per attempt.
             // Each attempt appends a deterministic BlockSegment ("{attempt}:retry-attempt")
             // to the child bodyPath, so every attempt gets its own journal rows under
             // exactly-once OpId semantics; completed attempts are never re-executed on
             // restart/replay (journal lookup, not memory). Other scopes run the body once.
             //
-            // RETRY-D (ADR-0075): when `retryControlJournal` is bound, the retry aggregate
+            // When `retryControlJournal` is bound, the retry aggregate
             // is reconciled against durable state BEFORE each attempt dispatch. The legacy
             // in-memory counter is replaced by a control journal that survives restarts.
-            // When the journal is NOT bound, the pre-RETRY-D inline loop is preserved
+            // When the journal is NOT bound, the pre-journal inline loop is preserved
             // bit-equivalent — existing callers and tests see no change.
             if (scope is BlockShellScope.Retry && retryControlJournal != null) {
-                // WU-LPR-302 Phase 2: retry aggregate is owned by RetryEngine
+                // The retry aggregate is owned by RetryEngine
                 // (dev.rubentxu.pipeline.v2.application.durable.retry.RetryEngine).
                 // The coordinator hands the body to the engine through the
                 // public BodyInvoker port (the body-ref was opened by the
@@ -460,7 +459,7 @@ internal class BodyExecutionEngine(
                 )
                 outcome = retryEngine.execute(bodyRef)
             } else if (scope is BlockShellScope.WaitUntilScope && waitUntilControlJournal != null) {
-                // WU-LPR-302 Phase 3: waitUntil aggregate is owned by WaitUntilEngine
+                // The waitUntil aggregate is owned by WaitUntilEngine
                 // (dev.rubentxu.pipeline.v2.application.durable.waituntil.WaitUntilEngine).
                 // The coordinator hands the body to the engine through the public
                 // BodyInvoker port; the engine plans, persists, polls and folds
@@ -489,7 +488,7 @@ internal class BodyExecutionEngine(
                     )
                 outcome = waitUntilEngine.execute(bodyRef)
             } else if (scope is BlockShellScope.WaitUntilScope) {
-                // Legacy waitUntil (no journal): the pre-WU-G5R.5 inline polling
+                // Legacy waitUntil (no journal): the pre-engine inline polling
                 // loop remains bit-equivalent.
                 outcome = executeWaitUntilInline(
                     scope = scope,
@@ -560,7 +559,7 @@ internal class BodyExecutionEngine(
                         break@bodyLoop
                     }
                     else -> {
-                        // Body completed without failure — no extra attempt (WL-R2).
+                        // Body completed without failure — no extra attempt.
                         break@bodyLoop
                     }
                 }
@@ -577,7 +576,7 @@ internal class BodyExecutionEngine(
                         eventId = UUID.randomUUID().toString(),
                         runId = runId.value,
                         sequence = 0L,
-                        // AUD-06 (B1d): no other producer; keeps the DirEntered/DirExited
+                        // No other producer; keeps the DirEntered/DirExited
                         // pair on one reproducible time source.
                         occurredAt = clock.now(),
                         path = scope.target.toString(),
@@ -591,13 +590,13 @@ internal class BodyExecutionEngine(
                         eventId = UUID.randomUUID().toString(),
                         runId = runId.value,
                         sequence = 0L,
-                        // AUD-06 (B1d): no other producer; keeps the Timestamps* pair on
+                        // No other producer; keeps the Timestamps* pair on
                         // one reproducible time source.
                         occurredAt = clock.now(),
                     ),
                 )
             }
-            // B13/E-EM-11 block authority closure: `TimeoutScheduled` is projected when the
+            // Block authority closure: `TimeoutScheduled` is projected when the
             // block deadline is admitted (above), but the deadline is ENFORCED by the child
             // shell watchdog, which surfaces only the child's own StepFailed(TIMEOUT). Without
             // this event the block's `timeout()` has an admission record but no breach record,
@@ -617,7 +616,7 @@ internal class BodyExecutionEngine(
                             eventId = UUID.randomUUID().toString(),
                             runId = runId.value,
                             sequence = 0L,
-                            // AUD-06 (B1d): the breach pairs with the already-durable
+                            // The breach pairs with the already-durable
                             // TimeoutScheduled admission; same seam, so an observer can
                             // subtract the two reproducibly under an injected clock.
                             occurredAt = clock.now(),

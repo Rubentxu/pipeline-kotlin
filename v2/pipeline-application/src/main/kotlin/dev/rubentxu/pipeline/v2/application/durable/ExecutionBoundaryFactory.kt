@@ -72,7 +72,7 @@ object ExecutionBoundaryFactory {
         // branch. `stepKey` is forwarded to the router for future per-step routing, but does not
         // gate the canonical case (the registry reachability is established at prepare-time).
         if (stepRegistry != null) {
-            // WU-LPR-301 / G5 (2026-09-18): the legacy canonical command family is LEGACY_REMOVED,
+            // The legacy canonical command family is LEGACY_REMOVED,
             // so the dispatcher fallback cannot route a real Step. The LegacyOnly boundary is
             // preserved only for binary compatibility: when the legacy fallback is reached WITHOUT
             // an invocationExecutor, it MUST fail closed (FailureKind.ENGINE) instead of returning a
@@ -92,7 +92,7 @@ object ExecutionBoundaryFactory {
                     )
                 },
             )
-            // E1.1 / T1: thread the artifact index through the registry boundary's capability
+            // Thread the artifact index through the registry boundary's capability
             // bridge so core.archiveArtifacts and core.artifact.query share one instance per run.
             val registry = RegistryExecutionBoundary.adapt(
                 milestoneStateStore = milestoneStateStore,
@@ -113,7 +113,7 @@ object ExecutionBoundaryFactory {
             stepRegistry = stepRegistry,
             stepKey = stepKey,
         )) {
-            // WU-LPR-301 / G5 (2026-09-18): see the matching comment above. The LegacyOnly fallback
+            // See the matching comment above. The LegacyOnly fallback
             // returns Failure(ENGINE) when no invocationExecutor is supplied so a step that never
             // ran cannot produce a silent Success; the typed failure names the cause and the
             // expected resolution path. The registry boundary decides reachability per prepared

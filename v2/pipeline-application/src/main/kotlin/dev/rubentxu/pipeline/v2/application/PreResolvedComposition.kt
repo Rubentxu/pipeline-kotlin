@@ -24,7 +24,7 @@ import java.nio.file.Path
  * could observe two different answers: a plugin's Step present while its Directive was not yet
  * folded in, or an eligibility analysis already computed against a Step registry that a later
  * throw would discard. `runCanonical` also defaulted `stepRegistry` to
- * `CoreStepRegistryFactory.registry()`, so a caller who forgot to pass one got a silent CORE-ONLY
+ * `CoreStepRegistryFactory.registry()`, so a caller who forgot to pass one got a silent core-only
  * registry — a fail-open path through exactly the admission guarantee BLOCK 1-D/1-E built.
  *
  * ## The law this type states
@@ -257,14 +257,14 @@ object PluginComposition {
      * rather than at composition as a refusal. One window means every registry is resolved
      * against the same loader that will run the Step.
      *
-     * A null [pluginClassLoader] is the CORE-ONLY case, and it is a real case rather than a
+     * A null [pluginClassLoader] is the core-only case, and it is a real case rather than a
      * degraded one: it is what a run with no external JARs gets. It produces empty plugin
      * registries on purpose, and it is written out rather than defaulted so that "no plugins"
      * is a decision somebody made instead of a value nobody supplied.
      *
      * @param admittedArtifacts the artifacts pass 1 admitted, so the contribution cross-check can
      *   verify each manifest against what its OWN code contributes. Defaults to empty, which skips
-     *   the cross-check entirely — correct for the CORE-ONLY case and for tests that exercise
+     *   the cross-check entirely — correct for the core-only case and for tests that exercise
      *   composition in isolation, and the reason the existing composition tests are unaffected.
      *
      * @throws IllegalStateException if any contributor is broken or any key collides. There is
@@ -310,7 +310,7 @@ object PluginComposition {
             // refused for something its own plugin never got to provide.
             val capabilities = ExternalCapabilityContributorDiscovery.discover()
 
-            // S6-COMPOSITION pass 2: with every registry now built under this one loader, verify
+            // Composition pass 2: with every registry now built under this one loader, verify
             // that each admitted artifact's manifest matches what it actually contributed. It runs
             // HERE, and not after the window closes, so both sides of the comparison are resolved
             // against the same loader that will run the Steps. A refusal throws

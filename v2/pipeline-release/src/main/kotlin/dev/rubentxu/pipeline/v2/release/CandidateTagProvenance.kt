@@ -1,16 +1,16 @@
 package dev.rubentxu.pipeline.v2.release
 
 /**
- * P0.5b — published-asset provenance law.
+ * Published-asset provenance law.
  *
  * The defect this exists to prevent is the *published* version of what
  * [SourceProvenance] prevents *in-tree*. The in-tree half refuses a build whose
  * recorded source commit does not identify the bytes compiled. This file
  * refuses the published artifact whose tag/bytes association is broken —
- * either by republishing an asset without moving the tag (v0.40.0 / v0.43.0
- * version-laundering) or by uploading bytes that were built from a different
- * commit than the tag's peel (the v0.48.0-rc2 proveniencia incident of
- * 2026-10-10).
+ * either by republishing an asset without moving the tag (version-laundering)
+ * or by uploading bytes that were built from a different commit than the
+ * tag's peel (the proveniencia incident in which the published tag named
+ * bytes that were not built from its own peel).
  *
  * The law: **the published asset's bytes must identify with the source commit
  * the handoff names; the tag (when present) must identify with the same source
@@ -25,24 +25,21 @@ package dev.rubentxu.pipeline.v2.release
  * The three refusal shapes, in priority order:
  *
  *  1. `rebuildFromCommit != sourceCommit` — the recorded source commit is
- *     not the commit the publisher claims to have rebuilt from. This is the
- *     v0.43.0 family arriving through a different door: the bytes were
- *     compiled from a different commit than the manifest names, so the
+ *     not the commit the publisher claims to have rebuilt from. The bytes
+ *     were compiled from a different commit than the manifest names, so the
  *     manifest is a lie about the bytes. (See [SourceProvenance.evaluate]
  *     for the in-tree half of the same law.)
  *
  *  2. `rebuildFromCommit == sourceCommit` AND `rebuildSha256 != publishedSha256`
  *     — the publisher did rebuild from the recorded source commit, but the
  *     uploaded asset is not the artifact that rebuild produced. This is the
- *     republish-without-moving-the-tag laundering pattern (v0.40.0 / v0.43.0
- *     family, version-laundering).
+ *     republish-without-moving-the-tag laundering pattern.
  *
  *  3. `tagPeelCommit != null` AND `tagPeelCommit != sourceCommit` AND
  *     `rebuildFromCommit == null` — the tag's peel is not the source commit
  *     AND the publisher has not recorded a `rebuildFromCommit` to explain
- *     why. This is the v0.48.0-rc2 proveniencia-incident shape: the tag
- *     promises bytes that do not proceed from its peel, and the publisher
- *     did not even claim a separate rebuild commit.
+ *     why. The tag promises bytes that do not proceed from its peel, and the
+ *     publisher did not even claim a separate rebuild commit.
  */
 object CandidateTagProvenance {
 
@@ -124,7 +121,7 @@ data class CandidateTagProvenanceFacts(
     /**
      * The peel of the published tag (`git rev-parse &lt;tag&gt;^{}`), or `null`
      * if the candidate is published without a tag (e.g. the SHA-only publication
-     * path from release-model-v2 §4 option A).
+     * path).
      */
     val tagPeelCommit: String?,
     /**

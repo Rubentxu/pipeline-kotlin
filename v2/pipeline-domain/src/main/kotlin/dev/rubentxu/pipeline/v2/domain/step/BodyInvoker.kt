@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * Serializable identity of a body owned by the engine, referenced by a block
- * Step handler through [BodyInvoker] (ADR-0081, D2).
+ * Step handler through [BodyInvoker].
  *
  * A [BodyRef] carries ONLY value identity — the canonical deterministic
  * `bodyPath` encoding owned by the durable execution model
@@ -33,8 +33,8 @@ value class BodyRef(val encoded: String) {
 /**
  * Closed factory surface for [BodyRef]s. The encoding is derived
  * deterministically from the engine-owned `bodyPath` segments, mirroring
- * `BlockSegment`'s canonical format, so the same body lands on the same ref in
- * every process and restart (ADR-0081, D2 / D7).
+ * `BlockSegment`'s canonical format, so the same body lands on the same ref
+ * in every process and restart.
  */
 object BodyRefs {
 
@@ -42,7 +42,7 @@ object BodyRefs {
     fun childBody(bodyPath: List<BlockSegment>): BodyRef =
         BodyRef(encode(bodyPath, kind = "body"))
 
-    /** A parallel branch body with its deterministic branch index (ADR-0081, D6). */
+    /** A parallel branch body with its deterministic branch index. */
     fun branchBody(parentPath: List<BlockSegment>, branchIndex: Int, key: PluginStepId): BodyRef =
         BodyRef(encode(parentPath + BlockSegment("b$branchIndex:${key.value}"), kind = "branch"))
 
@@ -57,7 +57,7 @@ object BodyRefs {
 }
 
 /**
- * Reason a body invocation ended in cancellation (ADR-0081, D3 / D8).
+ * Reason a body invocation ended in cancellation.
  *
  * Closed ADT: cancellation is an execution mechanism (ADR-0076) and is never
  * reclassified as a step failure.
@@ -75,8 +75,7 @@ enum class CancellationReason {
 }
 
 /**
- * Closed typed outcome of a body invocation through [BodyInvoker]
- * (ADR-0081, D3).
+ * Closed typed outcome of a body invocation through [BodyInvoker].
  *
  * - [Completed] reuses the closed [StepOutcome] algebra. A
  *   `Completed(StepOutcome.Failure)` is a CONTAINED typed result that block
@@ -95,23 +94,23 @@ sealed interface BodyOutcome {
 }
 
 /**
- * Explicit immutable execution context for one body invocation (ADR-0081, D4).
+ * Explicit immutable execution context for one body invocation.
  *
  * Pure data derived by the caller — never ambient state, never an owner of
- * journal, registry, coroutine scope, or process executor (CTX-P law). The
- * engine adapter projects [patch] into the canonical scope structure
- * (`BlockShellScope`-equivalent); the port does not reimplement scope logic.
+ * journal, registry, coroutine scope, or process executor (context-purity
+ * law). The engine adapter projects [patch] into the canonical scope
+ * structure; the port does not reimplement scope logic.
  *
  * [decorator] propagates non-context-dimension projection state across the
- * reentry seam (B11 / W1d-W2). The default [BodyDecorator.None] keeps every
- * existing call site unchanged: sequential, retrying, credential-leased and
- * plain scoped bodies do not push a decorator frame and stay bit-equivalent.
+ * reentry seam. The default [BodyDecorator.None] keeps every existing call
+ * site unchanged: sequential, retrying, credential-leased and plain scoped
+ * bodies do not push a decorator frame and stay bit-equivalent.
  */
 data class BodyInvocationContext(
     /**
-     * Per-attempt identity for retried bodies. When present, the engine appends
-     * it to the body path as a deterministic `BlockSegment`, exactly as the
-     * retry dispatch loop does today (ADR-0081, D9).
+     * Per-attempt identity for retried bodies. When present, the engine
+     * appends it to the body path as a deterministic `BlockSegment`, exactly
+     * as the retry dispatch loop does today.
      */
     val attempt: AttemptSegment? = null,
 
@@ -119,8 +118,8 @@ data class BodyInvocationContext(
     val patch: ExecutionContextPatch = ExecutionContextPatch.None,
 
     /**
-     * Non-context-dimension decorator (B11 / W1d-W2): carries forward the fact
-     * that the body is inside an active scope whose projection declares no
+     * Non-context-dimension decorator: carries forward the fact that the
+     * body is inside an active scope whose projection declares no
      * `ContextKind` (today: [BodyContextProjection.Timestamps]). Defaults to
      * [BodyDecorator.None] — adding the field does not change the equality
      * semantics of any pre-existing call site.
@@ -132,7 +131,7 @@ data class BodyInvocationContext(
     }
 }
 
-/** Identity of one retry attempt of a body (ADR-0081, D9). */
+/** Identity of one retry attempt of a body. */
 data class AttemptSegment(val index: Int, val key: PluginStepId = PluginStepId("retry-attempt"))
 
 /**
@@ -156,8 +155,8 @@ sealed interface ExecutionContextPatch {
 }
 
 /**
- * The single typed port by which a block Step handler re-enters the engine to
- * execute a body (ADR-0081, D1; concretizes ADR-0073).
+ * The single typed port by which a block Step handler re-enters the engine
+ * to execute a body.
  *
  * Supplied to a handler as a capability value under [BODY_INVOKER_CAPABILITY]
  * with fail-closed admission: a handler that declares the capability never runs
@@ -185,22 +184,23 @@ fun interface BodyInvoker {
 val BODY_INVOKER_CAPABILITY: StepCapability = StepCapability("bodyInvoker")
 
 /**
- * The public, body-ALREADY-BOUND re-entry port a body Step handler uses
- * (WU-RP-035; ADR-0081 D1/D2/D10 as amended 2026-10-01).
+ * The public, body-ALREADY-BOUND re-entry port a body Step handler uses.
  *
- * A `BodyExecutionOwner.HANDLER_CONTINUATION` Step receives one of these under
- * [BODY_CONTINUATION_CAPABILITY] and invokes it. The continuation already carries
- * the engine-issued [BodyRef] for that invocation, so the handler never sees, derives or
- * constructs a body identity: it cannot name a body that is not its own, cannot reach a
- * sibling body, and cannot survive past the scope that bound it.
+ * A `BodyExecutionOwner.HANDLER_CONTINUATION` Step receives one of these
+ * under [BODY_CONTINUATION_CAPABILITY] and invokes it. The continuation
+ * already carries the engine-issued [BodyRef] for that invocation, so the
+ * handler never sees, derives or constructs a body identity: it cannot
+ * name a body that is not its own, cannot reach a sibling body, and cannot
+ * survive past the scope that bound it.
  *
  * ## Why this is one value and not two capabilities
  *
- * The obvious alternative is to hand the handler [BODY_INVOKER_CAPABILITY] plus a
- * `CURRENT_BODY_REF` capability and let it correlate them. That is rejected on purpose: the
- * two would have to come from the same body invocation, and nothing in the type system would
- * say so. One capability that is already bound is one authority, and it is impossible to
- * project one without the other.
+ * The obvious alternative is to hand the handler
+ * [BODY_INVOKER_CAPABILITY] plus a `CURRENT_BODY_REF` capability and let it
+ * correlate them. That is rejected on purpose: the two would have to come
+ * from the same body invocation, and nothing in the type system would say
+ * so. One capability that is already bound is one authority, and it is
+ * impossible to project one without the other.
  *
  * ```text
  * BodyRef + BodyInvoker          INTERNAL, engine-owned
@@ -212,12 +212,14 @@ val BODY_INVOKER_CAPABILITY: StepCapability = StepCapability("bodyInvoker")
  * external handler
  * ```
  *
- * A continuation is valid only for the handler invocation that received it. Invoking it after
- * that scope closes is a typed [BodyOutcome.Cancelled], never a stale child dispatch.
+ * A continuation is valid only for the handler invocation that received it.
+ * Invoking it after that scope closes is a typed [BodyOutcome.Cancelled],
+ * never a stale child dispatch.
  *
- * The context is explicit rather than defaulted because a Kotlin functional interface cannot
- * carry a default value on its abstract method, and an explicit parameter is the honest
- * reading anyway: a body invocation always has a context, even when that context is the plain
+ * The context is explicit rather than defaulted because a Kotlin functional
+ * interface cannot carry a default value on its abstract method, and an
+ * explicit parameter is the honest reading anyway: a body invocation
+ * always has a context, even when that context is the plain
  * `BodyInvocationContext()`.
  */
 fun interface BodyContinuation {
@@ -225,13 +227,14 @@ fun interface BodyContinuation {
 }
 
 /**
- * Capability key under which the engine supplies the [BodyContinuation] for the body of the
- * Step being executed, to a handler that declares
+ * Capability key under which the engine supplies the [BodyContinuation] for
+ * the body of the Step being executed, to a handler that declares
  * [BodyExecutionOwner.HANDLER_CONTINUATION].
  *
- * A Step declaring this capability without that owner, or an owner without the capability, is
- * an incoherent declaration rejected fail-closed at admission — the same discipline as every
- * other capability (ADR-0070), and the same rule that a declared capability the engine did not
- * bind keeps the handler from running at all.
+ * A Step declaring this capability without that owner, or an owner without
+ * the capability, is an incoherent declaration rejected fail-closed at
+ * admission — the same discipline as every other capability, and the same
+ * rule that a declared capability the engine did not bind keeps the handler
+ * from running at all.
  */
 val BODY_CONTINUATION_CAPABILITY: StepCapability = StepCapability("bodyContinuation")

@@ -32,11 +32,11 @@ kotlin {
 }
 
 // ----------------------------------------------------------------------------
-// SCM/Git OFFICIAL_PLUGIN provenance seam (LFC-2E2 / F5.1 / ADR-0092).
+// SCM/Git OFFICIAL_PLUGIN provenance seam.
 //
-// The contributor (ScmGitStepDefinitionContributor) refuses to register
+// The contract: the contributor (ScmGitStepDefinitionContributor) refuses to register
 // without the real SHA-256 of its own artefact — that is the "no
-// fabricated SHA" contract the human reviewer asked for.
+// fabricated SHA" rule.
 //
 // We compute the digest at build time by streaming the contents of every
 // class file produced by `compileKotlin` and every resource processed by
@@ -265,12 +265,11 @@ tasks.test {
     }
 }
 
-// Unit-test wiring (re-added 2026-10-20, block `cobertura-modulos-riesgo`).
+// Unit-test wiring.
 //
-// The wiring was removed on 2026-10-18 because this module carried no test source, and a
-// `Test` task whose source set is empty reports success while executing zero classes: a
-// SILENT green. That reason is now gone: the module HAS a test source, and the silent green
-// it warned about is impossible while `src/test/kotlin` holds a class.
+// These lines exist because a test source does. A `Test` task whose source set is empty reports
+// success while executing zero classes -- a SILENT green -- and that green is impossible while
+// `src/test/kotlin` holds a class.
 //
 // What the test buys, and what it does not: `GitArgvGuardTest` pins the argv guard -- the
 // decision that keeps a credential out of the process table -- which is a pure rule over a

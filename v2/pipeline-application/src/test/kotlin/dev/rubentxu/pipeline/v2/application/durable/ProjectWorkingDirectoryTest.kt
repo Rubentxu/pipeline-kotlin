@@ -117,17 +117,17 @@ class ProjectWorkingDirectoryTest {
     fun `an absolute path outside the boundary is rejected`() {
         // This is the one that was open. Absolute paths used to skip the check entirely, so
         // `dir("/etc/cron.d")` in a .pipeline.kts projected a Scope, BodyExecutionEngine ran
-        // Files.createDirectories on it and handed it to the child as its CWD. ADR-0100 section 8/9
-        // says an absolute path outside the root is rejected, and WorkspacePathResolver and
-        // DirExecutor both implement that; this projection was the live guard and did not.
+        // Files.createDirectories on it and handed it to the child as its CWD. An absolute path
+        // outside the root is rejected, and WorkspacePathResolver and DirExecutor both implement
+        // that; this projection was the live guard and did not.
         val detail = reject("/etc/cron.d")
         assertTrue(detail.contains("escapes the workspace"), "was: $detail")
     }
 
     @Test
     fun `an absolute path inside the boundary is accepted`() {
-        // Not every absolute path is a hole: ADR-0100 accepts one that stays inside the root,
-        // because some Step contracts name one. Rejecting all absolutes would break that.
+        // Not every absolute path is a hole: an absolute path that stays inside the root is
+        // accepted, because some Step contracts name one. Rejecting all absolutes would break that.
         val directory = assertInstanceOf(BlockShellScope.Directory::class.java, accept("/w/base/sub").scope)
         assertEquals(workspace.resolve("sub"), directory.target)
     }

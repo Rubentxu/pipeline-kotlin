@@ -9,8 +9,7 @@ import dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter
 import java.time.Instant
 
 /**
- * Binds the open event registry to ONE invocation, and is the whole of what a plugin sees of it
- * (P3-C / S6.4).
+ * Binds the open event registry to ONE invocation, and is the whole of what a plugin sees of it.
  *
  * There is no logic here on purpose. Everything decidable — is the kind registered, does its codec
  * accept this payload — was already decided inside [RegistryEventEmitter], and the only effect left
@@ -32,12 +31,12 @@ internal class PluginEventEmissionAdapter(
 }
 
 /**
- * Binds the open event registry to one run's sink and to THAT run's clock (P3-C / S6.4).
+ * Binds the open event registry to one run's sink and to THAT run's clock.
  *
  * It lives beside the adapter rather than in the coordinator because it is not a coordinator
  * responsibility: composing the emission seam belongs to the dispatch machinery that owns the sink
- * and the clock, and `CoordinatorGrowthGuardrailTest` exists precisely to stop unrelated seams
- * accumulating in that file.
+ * and the clock, and the coordinator growth guardrail test exists precisely to stop unrelated
+ * seams accumulating in that file.
  *
  * The clock adapter is the whole reason this is a function and not a `Clock.systemUTC()`. The run's
  * clock is a port ([dev.rubentxu.pipeline.v2.domain.durable.Clock]) so a replay can be given a

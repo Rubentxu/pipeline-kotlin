@@ -46,7 +46,7 @@ fun StepReconcilerL1.terminalFromReconciliation(
 )
 fun DurableTaskTerminal.toLegacyShellResult(controlDir: Path): DurableShellResult = when (this) {
     is DurableTaskTerminal.Exited -> {
-        // WU-RP-044 (M5 RSS debt): the canonical executor no longer
+        // The canonical executor no longer
         // materialises the console transcript in JENKINS_LOG projection; the
         // legacy projection recovers it lazily from the durable console.log
         // (jenkins-log.txt) when the terminal carried no typed value. The
@@ -134,7 +134,7 @@ fun DurableShellResult.toDurableTaskTerminal(opId: String): DurableTaskTerminal 
 }
 
 /**
- * Compatibility bridge used by the pre-EM-1 entry points. It makes the
+ * Compatibility bridge used by the older string-status entry points. It makes the
  * terminal conversion explicit while preserving their existing result shape.
  */
 @Suppress("DEPRECATION")

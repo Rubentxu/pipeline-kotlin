@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.BlockSegment
  * Typed operation identifier. Format: "$runId-s$stageIndex-$stepIndex[-b$branchIndex][-bp{N}-{seg}...]".
  *
  * Replaces the string-templated `$runId-s$stageIndex-$stepIndex` hidden contract
- * in [dev.rubentxu.pipeline.v2.application.PipelineRun] (F01 HIGH finding from M3-R3 debt-report).
+ * in [dev.rubentxu.pipeline.v2.application.PipelineRun].
  *
  * The format is designed to be lexicographically sortable by runId, stage, then step,
  * which enables efficient range queries on the journal.
@@ -19,7 +19,7 @@ import dev.rubentxu.pipeline.v2.domain.BlockSegment
  * @param stageIndex The 0-based stage index within the pipeline.
  * @param stepIndex The 0-based step index within the stage.
  * @param branchIndex The optional 0-based branch index for parallel frame execution.
- * @param bodyPath The optional list of block segments for body dispatch (length-prefix per ADR-0066 §1).
+ * @param bodyPath The optional list of block segments for body dispatch (length-prefixed encoding).
  */
 data class OpId(
     val runId: String,
@@ -72,7 +72,7 @@ data class OpId(
     override fun toString(): String = format()
 
     /**
-     * Legacy format that is byte-identical to pre-EM-4 format for empty bodyPath.
+     * Legacy format. Byte-identical to the format produced when bodyPath is empty.
      * Use this for linear-path operations to preserve existing journal keys.
      */
     fun legacyFormat(): String =

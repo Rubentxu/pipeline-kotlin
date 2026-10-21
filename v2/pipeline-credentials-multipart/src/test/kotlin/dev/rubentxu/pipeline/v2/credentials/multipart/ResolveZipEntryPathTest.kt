@@ -16,7 +16,7 @@ import java.nio.file.Paths
  * than hoped for.
  *
  * The entry names below are the ones an archive actually carries. The materializer itself is
- * untestable as a unit test -- it creates directories and writes files, and AGENTS.md section 2
+ * untestable as a unit test -- it creates directories and writes files, and the unit-test rule
  * forbids both -- which is why the decision lives in a pure function rather than inline in
  * `materializeZip`. The consequence is stated plainly: this pins WHERE an entry may land, not
  * that the write happened.

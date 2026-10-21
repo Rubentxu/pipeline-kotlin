@@ -5,11 +5,11 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 
 /**
- * S2.5.7 / B1.2c3: the family-routing decision for a pipeline step's effective execution boundary.
+ * The family-routing decision for a pipeline step's effective execution boundary.
  *
  * Replaces the implicit `if (stepRegistry != null)` inside
  * [buildDefaultExecutionBoundary] with an exhaustive, named, sealed ADT that the future
- * `ExecutionBoundaryFactory.build(...)` (WU-3) will `when`-match.
+ * `ExecutionBoundaryFactory.build(...)` will `when`-match.
  *
  * Hexagonal rule 3 (strict typed functional design): a sealed ADT, not a boolean coupled with a
  * nullable. Each case carries the data it needs.
@@ -35,11 +35,11 @@ sealed interface FamilyRoutingDecision {
 }
 
 /**
- * S2.5.7 / B1.2c3: pure decision function (no I/O, no `runBlocking`, no clock).
+ * Pure decision function (no I/O, no `runBlocking`, no clock).
  *
  * Returns [FamilyRoutingDecision.LegacyOnly] when no registry is supplied. When a registry IS
  * supplied AND the caller knows the step key AND the registry owns that key, returns
- * [FamilyRoutingDecision.SeamedRouting] with both pre-built boundaries so the factory (WU-3) only
+ * [FamilyRoutingDecision.SeamedRouting] with both pre-built boundaries so the factory only
  * has to apply the seamed router. When a registry is supplied but the key is unknown or the
  * registry does not own it, returns [FamilyRoutingDecision.LegacyOnly] (the seamed router is
  * never applied if the registry would not receive the call).
@@ -57,7 +57,7 @@ object FamilyRouter {
         stepRegistry: StepRegistry?,
         stepKey: PluginStepId? = null,
     ): FamilyRoutingDecision {
-        // WU-LPR-301 / G5 (2026-09-18): the legacy canonical command family is LEGACY_REMOVED,
+        // The legacy canonical command family is LEGACY_REMOVED,
         // so the dispatcher fallback cannot route a real Step. The LegacyOnly boundary is
         // preserved only for binary compatibility: when the legacy fallback is reached WITHOUT
         // an invocationExecutor, it MUST fail closed (FailureKind.ENGINE) instead of returning a
@@ -80,7 +80,7 @@ object FamilyRouter {
         val registry = stepRegistry ?: return FamilyRoutingDecision.LegacyOnly
 
         // Without a known step key, the per-step decision happens in the prepare/boundary
-        // layer; the routing decision is LegacyOnly. The factory (WU-3) that needs per-step
+        // layer; the routing decision is LegacyOnly. The factory that needs per-step
         // routing will pass the key explicitly.
         if (stepKey == null) return FamilyRoutingDecision.LegacyOnly
 

@@ -13,8 +13,7 @@ import dev.rubentxu.pipeline.v2.output.RunLifecycle
  * A closed vocabulary, not a `Boolean` and not a nullable report: "the policy kept it", "it was
  * released" and "the release could not be carried out" are three different facts, and a caller
  * confirming whether the bytes are gone needs to tell the last one apart from the first. Collapsing
- * them into `report? ` would make a failed release indistinguishable from a deliberate retention —
- * which is the same defect ADR-M1 D2 exists to prevent on the read side.
+ * them into `report? ` would make a failed release indistinguishable from a deliberate retention.
  */
 sealed interface RunOutputDisposition {
 
@@ -47,7 +46,7 @@ sealed interface RunOutputDisposition {
  *
  * `OutputRetentionPort` shipped with a full closed vocabulary and **no caller**: nothing in the
  * product ever pruned, so the store was never pruned for the life of a control root — the leak
- * `M1_INTEGRATION_REGROUND_RECEIPT` §"the Output Plane is never pruned" recorded as having no owner.
+ * "the Output Plane is never pruned" recorded as having no owner.
  * A delete capability with no owner is worse than no capability: the first person to wire it would
  * have had to invent their own notion of "is this run finished", and any such notion re-derived from
  * a directory scan or a journal query is a **second authority on run lifecycle** — the exact thing
@@ -67,7 +66,7 @@ sealed interface RunOutputDisposition {
  * ## Why the port arrives as a supplier
  *
  * `[OutputRetentionPort]` rather than an instance, so the store is touched **only if the policy
- * actually authorises a release**. Recovering the plane is not free (`ADR-M1 §D4` O3), and a
+ * actually authorises a release**. Recovering the plane is not free, and a
  * configuration that retains everything must not pay for — nor be perturbed by — a recovery it never
  * uses. It also keeps the decision separable from the effect: [intentFor] is pure and needs no
  * filesystem at all.
@@ -84,7 +83,7 @@ sealed interface RunOutputDisposition {
  *
  * The verdict has to be REPORTED, and the reporting is interpretation: "a release that did not fully
  * happen" is a sentence about retention, not about orchestration. Putting it in the coordinator grew
- * that file past its own `CoordinatorGrowthGuardrailTest` ceiling, and the guard was right to object
+ * that file past its own coordinator growth guardrail ceiling, and the guard was right to object
  * — the coordinator would have been interpreting a collaborator's verdict. So this owns the sentence,
  * through a defaulted sink so a caller can route it (tests assert on the disposition, not on stderr)
  * while the default is the operator's terminal, which is where a post-run diagnostic belongs.
@@ -99,7 +98,7 @@ sealed interface RunOutputDisposition {
  * name for one thing.
  *
  * Public here means "the runtime's retention seam is nameable", NOT "the output store is published".
- * The half that BLOCK 2 does not publish — `SegmentOutputStore`, its layout and its recovery — moved
+ * The half that block 2 does not publish — `SegmentOutputStore`, its layout and its recovery — moved
  * into `:pipeline-output-store` when the plane was split, and is reached only through the
  * [OutputRetentionPort] interface. Nothing in this type names it, and the published artifact does
  * not contain it.

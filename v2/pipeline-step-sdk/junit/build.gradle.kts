@@ -45,7 +45,7 @@ val junitReleaseProps = layout.buildDirectory.file("resources/main/META-INF/juni
 val junitClassesDir = layout.buildDirectory.dir("classes/kotlin/main")
 val junitResourcesDir = layout.buildDirectory.dir("resources/main")
 
-// AUD-01 (B0.2): exclusions by EXACT FRAMED relative path, which is
+// Exclusions by EXACT FRAMED relative path, which is
 // `<root name>/<relative path>`, NOT an absolute filesystem path.
 //
 // Two separate defects are fixed here, and they are distinct:
@@ -232,7 +232,7 @@ tasks.named("jar") {
     dependsOn(emitJunitManifest)
 }
 
-// Unit-test wiring REMOVED (2026-10-18, testing RESET).
+// Unit-test wiring.
 //
 // This module carries no unit tests: it is the `junit.results` STEP parser, which consumes
 // JUnit XML as DATA -- a JUnit-on-JUnit test cannot exercise it. Its verification is the

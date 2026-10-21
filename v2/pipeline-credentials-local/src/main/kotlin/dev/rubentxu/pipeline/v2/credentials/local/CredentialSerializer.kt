@@ -16,7 +16,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Canonical part serialization of a credential into the local store format (ADR-0049 D2).
+ * Canonical part serialization of a credential into the local store format.
  *
  * Pure and state-free: it reads no file, takes no lock and touches no cached
  * value. The credential kind ids are duplicated here rather than widened in
@@ -37,7 +37,7 @@ internal object CredentialSerializer {
 
 // === Credential serialization ===
 
-// Canonical part format (D2):
+// Canonical part format:
 //   normal part:  [nameLen:1][name][len:4 BE][bytes]
 //   linked-ref:   [nameLen:1][name][0xFFFFFFFF:4][refIdLen:4][refId]
 //   absent opt:   [nameLen:1][name][0x00000000:4]

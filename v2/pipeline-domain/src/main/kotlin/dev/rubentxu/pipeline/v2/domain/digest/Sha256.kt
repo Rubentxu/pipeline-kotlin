@@ -7,13 +7,13 @@ import java.nio.file.Path
 import java.security.MessageDigest
 
 /**
- * The one SHA-256 utility in this repository (B0).
+ * The one SHA-256 utility in this repository.
  *
  * ## Why this exists
  *
- * An inventory at `6e8e86bd` found 29 `MessageDigest.getInstance("SHA-256")` call sites across
- * seven modules and four separately written `sha256Hex` helpers, with no shared utility. Each
- * site re-decided two things that must agree:
+ * An inventory found 29 `MessageDigest.getInstance("SHA-256")` call sites
+ * across seven modules and four separately written `sha256Hex` helpers, with
+ * no shared utility. Each site re-decided two things that must agree:
  *
  * ```text
  * hex encoding   lowercase "%02x" vs something else
@@ -91,8 +91,8 @@ object Sha256 {
      *
      * Exists because this caller needs a PREFIX of the digest, not the digest. It is a named
      * truncation rather than a caller-side `.take(n)` on a full hex string: a local
-     * `joinToString` truncation is one more spelling of the hex form, which is what B0 exists
-     * to remove. The bytes hashed and the truncation point are unchanged from the previous
+     * `joinToString` truncation is one more spelling of the hex form, which is what this utility
+     * exists to remove. The bytes hashed and the truncation point are unchanged from the previous
      * implementation, so existing lock file names are unaffected.
      *
      * @param byteCount how many digest bytes to keep; must be positive.
@@ -119,9 +119,9 @@ object Sha256 {
      *
      * Every method above states the format in prose — "lowercase, 64 characters" — and until
      * this one, no caller could ask whether a string it *received* held that format. So each
-     * site that consumes a digest written elsewhere had to re-decide the format, and measured
-     * 2026-10-18 that several of them decided it as `length == 64` alone: 64 characters of any
-     * kind passed, and reached every consumer as a digest that could never match a real one.
+     * site that consumes a digest written elsewhere had to re-decide the format, and several of
+     * them decided it as `length == 64` alone: 64 characters of any kind passed,
+     * and reached every consumer as a digest that could never match a real one.
      * A length check against a field documented as a SHA-256 is an assertion about a format it
      * does not test.
      *
@@ -131,8 +131,8 @@ object Sha256 {
      * ## Why uppercase is refused rather than accepted
      *
      * [ofBytes] emits `0-9a-f` only, so uppercase was not written by this object. Accepting it
-     * would give one digest two spellings that compare unequal, which is the same defect
-     * B0 exists to remove. `dev.rubentxu.pipeline.v2.domain.step.SemVer` accepts `A-F`
+     * would give one digest two spellings that compare unequal, which is the same defect this
+     * object exists to remove. `dev.rubentxu.pipeline.v2.domain.step.SemVer` accepts `A-F`
      * deliberately — that is a version string, not a digest, and it simply does not call this.
      */
     fun isSha256Hex(value: String): Boolean =

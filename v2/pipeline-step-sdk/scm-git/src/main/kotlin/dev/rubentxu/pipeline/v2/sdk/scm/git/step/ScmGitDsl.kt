@@ -5,8 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.dsl.StageScope
 
 /**
- * Ergonomic Kotlin DSL extension for the `scm-git.checkout` Step
- * (LFC-2E2 / F5.1).
+ * Ergonomic Kotlin DSL extension for the `scm-git.checkout` Step.
  *
  * The façade is intentionally narrow:
  *   - constructs the typed [GitCheckoutInput] from positional/named

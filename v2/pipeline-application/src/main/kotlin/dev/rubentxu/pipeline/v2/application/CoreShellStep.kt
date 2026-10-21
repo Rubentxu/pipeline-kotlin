@@ -36,7 +36,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * `core.sh` registered as an open [StepDefinition] (LB-02 / G1 registry seam proof).
+ * `core.sh` registered as an open [StepDefinition] (the shell seam work / G1 registry seam proof).
  *
  * Follows the same generic mechanism an external plugin uses. The contract
  * shape mirrors [CoreEchoStep]: typed input codec, typed output codec,
@@ -450,7 +450,7 @@ object CoreShellStep {
     )
 
     /**
-     * G3-A4.2 capability-routed handler: delegates to the typed
+     * the capability-routed handler discipline capability-routed handler: delegates to the typed
      * [ShellOperations] seam reached through [SHELL_OPERATIONS_CAPABILITY].
      *
      * The handler:
@@ -462,7 +462,7 @@ object CoreShellStep {
      * - projects the typed `ShellInvocationResult` into a [CoreShellOutput] that
      *   ALSO carries the canonical [dev.rubentxu.pipeline.v2.domain.StepOutcome]
      *   computed by the single authority
-     *   [dev.rubentxu.pipeline.v2.application.durable.toStepOutcome] (LB-02 / G3-A4.3).
+     *   [dev.rubentxu.pipeline.v2.application.durable.toStepOutcome] (the boundary mapper).
      *   No string parsing; no event emission; the [ShExecution] substrate is
      *   the single authority for `EchoOutputCaptured` — on the NON-durable path.
      *   Measured 2026-10-18: with a `controlRoot` the same bytes are sealed in the Output

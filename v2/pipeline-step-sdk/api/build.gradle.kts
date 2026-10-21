@@ -21,7 +21,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 }
 
-// Unit-test wiring REMOVED (2026-10-18, testing RESET).
+// Unit-test wiring.
 //
 // This module carries no unit tests: it is the SDK's public API surface, whose guarantee is
 // `apiCheck` (binary compatibility), the pyramid's leg 3. Its verification is the executable

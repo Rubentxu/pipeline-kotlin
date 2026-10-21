@@ -196,7 +196,7 @@ data class StepFinished(
  * Emitted when an agent is resolved for parallel execution.
  * Records which agent label was selected and any associated metadata.
  *
- * @deprecated S3.1. This event has never had a producer, and the reason is
+ * @deprecated. This event has never had a producer, and the reason is
  *   now on record rather than merely absent: its payload is a LABEL plus an
  *   optional remote URI, and neither can express the semantics that actually
  *   exist. `LocalAny` has no label, and a `CapabilitySet` requirement is not a
@@ -230,7 +230,7 @@ data class AgentResolved(
 }
 
 /**
- * S3.1 — emitted when a declared execution-target requirement is RESOLVED to a
+ * Emitted when a declared execution-target requirement is RESOLVED to a
  * concrete target, before the stage body runs.
  *
  * Both halves are carried as data: [requirement] is the declared constraint,
@@ -436,7 +436,7 @@ data class CredentialUnbound(
 }
 
 // =============================================================================
-// L5 SCM Events (ML-R5)
+// L5 SCM Events
 // =============================================================================
 
 /**
@@ -538,7 +538,7 @@ data class GitPollChanged(
 }
 
 // =============================================================================
-// L7 Jenkins File + Artefact Events (ML-R7)
+// L7 Jenkins File + Artefact Events
 // =============================================================================
 
 /**
@@ -564,7 +564,7 @@ data class ArtifactEntry(
  * Emitted when a writeFile step completes successfully.
  *
  * Payload is restricted to path + sha256 + size — NEVER text/content/bytes.
- * INV-L6-EVT-001 (F-ARCH-L6-004): no secret material.
+ * Carries no secret material.
  *
  * @param runId Run ID
  * @param stageName Stage name
@@ -591,7 +591,7 @@ data class FileWritten(
  * Emitted when a readFile step executes.
  *
  * Payload is restricted to path + sha256 + size — NEVER text/content/bytes.
- * INV-L6-EVT-001 (F-ARCH-L6-004): no secret material.
+ * Carries no secret material.
  * readText is captured ONLY for files created within the same run (writeFile→readFile pipeline).
  * Files read from outside the run have exists=false and no bytes captured.
  *
@@ -615,7 +615,7 @@ data class FileRead(
 }
 
 /**
- * Emitted when a fileExists step executes (WU-LPR-104).
+ * Emitted when a fileExists step executes.
  *
  * Payload restricted to path + exists flag — no content, no bytes.
  * Single emitter: the workspace-operations application adapter.
@@ -637,10 +637,10 @@ data class FileExistsChecked(
 /**
  * Emitted when archiveArtifacts completes successfully.
  *
- * ONE event per call (not per file) — INV-L6-ARC-006 journal hygiene.
+ * ONE event per call (not per file).
  * Each ArtifactEntry carries sha256 + size for auditability.
  * Payload is restricted to typed ArtifactEntry list — NEVER content/bytes/data.
- * INV-L6-EVT-001 (F-ARCH-L6-004): no secret material.
+ * Carries no secret material.
  *
  * @param runId Run ID
  * @param stageName Stage name
@@ -679,7 +679,7 @@ data class ArtifactArchiveFailed(
 }
 
 // =============================================================================
-// ML-R9 workflow-control events
+// workflow-control events
 // =============================================================================
 
 /**
@@ -717,7 +717,7 @@ data class DirExited(
 }
 
 // =============================================================================
-// ML-R9 workspace-cleanup events (T-05)
+// workspace-cleanup events
 // =============================================================================
 
 /**
@@ -763,7 +763,7 @@ data class WsCleaned(
 }
 
 // =============================================================================
-// ML-R9 error-handling events (T-06)
+// error-handling events
 // =============================================================================
 
 /**
@@ -866,7 +866,7 @@ data class WaitUntilCompleted(
 }
 
 // =============================================================================
-// ML-R9 T-07 utility-introspection events: pwd, isUnix, waitUntil
+// utility-introspection events: pwd, isUnix, waitUntil
 // =============================================================================
 
 /**
@@ -908,7 +908,7 @@ data class UnixDetected(
 }
 
 // =============================================================================
-// ML-R9 milestone events (T-09)
+// milestone events
 // =============================================================================
 
 /**
@@ -949,7 +949,7 @@ data class MilestoneAborted(
 }
 
 // =============================================================================
-// ML-R9 timeout event (T-10)
+// timeout event
 // =============================================================================
 
 /**
@@ -972,7 +972,7 @@ data class TimeoutTriggered(
 }
 
 // =============================================================================
-// ML-R9 output-decorator events (T-08) — timestamps
+// output-decorator events — timestamps
 // =============================================================================
 
 /**
@@ -1000,14 +1000,14 @@ data class TimestampsExited(
 }
 
 // =============================================================================
-// S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation
+// durable-spine admission observation
 // =============================================================================
 
 /**
  * Emitted by the durable spine after each step's reconciliation. Reports which admission law
- * (C1..C6 or Other) was observed for the step and the executor-call count seen for THIS resolution.
- * S2.5.7 / B1.2c3: introduced to name the durable-protocol admission laws at the spine rather
- * than only in characterization tests.
+ * (one of the closed spine admission-law values, or Other) was observed for the step and the
+ * executor-call count seen for THIS resolution. The event exists to name the durable-protocol
+ * admission laws at the spine rather than only in characterization tests.
  */
 data class StepAdmissionObserved(
     override val eventId: String,
@@ -1027,7 +1027,7 @@ data class StepAdmissionObserved(
  * Emitted when `core.stash` successfully copies workspace files into the
  * run-scoped stash directory.
  *
- * ONE event per call (not per file) — INV-L6-ARC-006 journal hygiene.
+ * ONE event per call (not per file).
  * The list of [StashedEntry]s carries `sha256` + `sizeBytes` for auditability.
  * Payload is restricted to typed entries — NEVER file content/bytes/data.
  *
@@ -1078,7 +1078,7 @@ data class StashRestored(
 /**
  * Emitted when `core.stash` or `core.unstash` fails (empty match, missing
  * stash, IO error). The reason is passed through `SecretPatternRegistry.scrub()`
- * BEFORE emit (INV-L6-EVT-001 no-secret-material contract).
+ * BEFORE emit, satisfying the no-secret-material contract.
  */
 data class StashFailed(
     override val eventId: String,
@@ -1108,13 +1108,13 @@ data class RestoredEntry(
 )
 
 // ---------------------------------------------------------------------------
-// core.publishHTML (WU-LPR-090, Tier B #2) — see openspec/changes/wu-lpr-090-publish-html
+// core.publishHTML events
 // ---------------------------------------------------------------------------
 
 /**
  * Per-file deterministic summary of a published HTML report (no content,
  * no timestamp). Mirrors StashedEntry/RestoredEntry contract: stable for
- * fingerprinting, no secret material, INV-L6-EVT-001 compliant.
+ * fingerprinting and carries no secret material.
  */
 data class HtmlReportEntry(
     val relPath: String,
@@ -1163,7 +1163,7 @@ data class HtmlReportSkipped(
  * Emitted when `core.publishHTML` fails. `failureKind` distinguishes a
  * typed Step failure (`SCRIPT`) from an infrastructure failure
  * (`INFRASTRUCTURE`). `reason` is passed through `SecretPatternRegistry.scrub()`
- * BEFORE emit (INV-L6-EVT-001 no-secret-material contract).
+ * BEFORE emit, satisfying the no-secret-material contract.
  */
 data class HtmlReportFailed(
     override val eventId: String,
@@ -1281,8 +1281,7 @@ data class PostConditionSelected(
 }
 
 /**
- * RP6-A / WU-091 §6 — the five `core.lock` events (SPEC_WU091_LOCK.md §6,
- * `Dir*`/`Milestone*` convention, MilestoneReached shape). Emission authority:
+ * The five `core.lock` events. Emission authority:
  * the `core.lock` handler, through [dev.rubentxu.pipeline.v2.domain.step.EVENT_SINK_CAPABILITY].
  * No sensitive payload: `resource` is a pipeline-author-declared resource name.
  */
@@ -1343,7 +1342,7 @@ data class LockAcquireFailed(
 }
 
 /**
- * RP6-B / WU-092 §6 — the four `core.input` events (SPEC_WU092_INPUT.md §6).
+ * The four `core.input` events.
  * Emission authority: the `core.input` handler, through the event sink
  * capability. No sensitive payload: `message` is written by the pipeline author.
  *
@@ -1397,9 +1396,9 @@ data class InputDenied(
     override val kind: String get() = "InputDenied"
 }
 
-// ── http.request (RP6-C / WU-093 §5) — OFFICIAL_PLUGIN ──────────────────────
+// ── http.request — OFFICIAL_PLUGIN ──────────────────────
 //
-// INV-L6-EVT-001 (see FileRead): no payload of an `http.request` event carries
+// No payload of an `http.request` event carries
 // the response body or a header VALUE. A response body can hold a token and a header
 // can be `Authorization`, and this is the same hole that rule closed for file reads.
 // What travels is metadata: what was asked, what came back as a number, and how long

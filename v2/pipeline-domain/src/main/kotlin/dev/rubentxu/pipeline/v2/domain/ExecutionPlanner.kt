@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.domain
 
 /**
  * Pure planner that resolves a [PipelineDefinition] into an
- * [ExecutionPlan] (LF-0207 canonical parallel).
+ * [ExecutionPlan] (canonical parallel).
  *
  * ## Concurrency is opt-in
  *
@@ -19,7 +19,7 @@ package dev.rubentxu.pipeline.v2.domain
  * | Edge kind       | Meaning for the plan |
  * |-----------------|----------------------|
  * | `SEQUENTIAL`    | ordering constraint: `from` before `to` |
- * | `CONDITIONAL`   | ordering constraint (predicate runtime is LF-0307) |
+ * | `CONDITIONAL`   | ordering constraint (predicate runtime is the conditional predicate system) |
  * | `PARALLEL`      | **no** ordering constraint; asserts both endpoints are co-scheduled in the same wave |
  *
  * ## Algorithm
@@ -27,7 +27,7 @@ package dev.rubentxu.pipeline.v2.domain
  * 1. Fail-closed validation: every edge must reference known step ids.
  * 2. Longest-path leveling (Kahn) over the ordering edges assigns each
  *    step a wave level; ties are broken by declaration order, so the same
- *    definition always plans identically (M2-005 determinism property).
+ *    definition always plans identically.
  * 3. A cycle among ordering edges fails closed and names the stuck steps.
  * 4. Every `PARALLEL` edge is validated: both endpoints must sit at the
  *    same level — a PARALLEL edge across levels is contradictory (other

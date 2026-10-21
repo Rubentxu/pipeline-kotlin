@@ -15,7 +15,7 @@ import dev.rubentxu.pipeline.v2.events.EventSink
  * make in-code filtering appropriate now; pushing filters into SQL with an index
  * on (run_id, sequence, kind) is a recorded optimization trigger, not EVT-2 work.
  *
- * **F5.1 / ADR-0092 / C8**: the reader accepts an optional
+ * The reader accepts an optional
  * [providerLookup] seam so envelopes emitted for Step-keyed events can
  * carry the [ProviderProvenance] projection when the Step was registered
  * with [StepProviderMetadata] through the additive
@@ -55,7 +55,7 @@ class EventHistoryReader(
         // envelopes for the whole run. Neither is a memory or a correctness matter today; both are
         // the same defect, which is a second place deciding what the store already decided.
         //
-        // P3-E E4c made this call `readSlice`, which is `readRecords(...).requireFullyDecoded()`:
+        // The `readSlice` call is `readRecords(...).requireFullyDecoded()`:
         // an unreadable row stopped the read by refusing the whole page. That was the right default
         // for a port whose result could only carry envelopes, and projecting an unreadable row into
         // an envelope would have been inventing a record the store could not interpret.

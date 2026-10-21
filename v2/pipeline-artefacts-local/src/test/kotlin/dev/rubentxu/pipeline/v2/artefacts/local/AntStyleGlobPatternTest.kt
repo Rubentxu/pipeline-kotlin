@@ -122,9 +122,8 @@ class AntStyleGlobPatternTest {
 
     @Test
     fun `the default excludes are exactly the thirteen Jenkins entries`() {
-        // INV-L6-ANT-001, as stated in the companion's own KDoc. The matcher is Jenkins-
-        // compatible only while this list is, and an edit that dropped or added an entry would be
-        // invisible at every call site.
+        // The matcher is Jenkins-compatible only while this list is, and an edit that dropped
+        // or added an entry would be invisible at every call site.
         assertEquals(13, AntStyleGlob.DEFAULT_EXCLUDES.size)
         assertEquals(
             listOf("**/.git/**", "**/.svn/**", "**/.bzr/**", "**/.hg/**", "**/CVS/**"),

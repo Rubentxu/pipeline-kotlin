@@ -47,7 +47,7 @@ tasks.test {
     }
 }
 
-// Unit-test wiring REMOVED (2026-10-18, testing RESET).
+// Unit-test wiring.
 //
 // This module carries no unit tests: it is a filesystem STEP whose guarantee is that a pipeline
 // reads and writes real files. Its verification is the executable E2E layer -- `.pipeline.kts`

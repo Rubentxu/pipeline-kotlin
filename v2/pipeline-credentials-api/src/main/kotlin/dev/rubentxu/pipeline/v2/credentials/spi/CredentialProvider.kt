@@ -7,7 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.credentials.Credential
 /**
  * SPI port for credential resolution — ISP-optimal single-responsibility interface.
  *
- * Design (design §2.1, research §4.1-proposed; backlog L-126):
+ * Design:
  * - `providerId`: identifies the provider for audit/debugging
  * - `resolve(id)`: retrieves a credential as SecretHandle (typed channel)
  * - `close()`: implements AutoCloseable for lifecycle management
@@ -17,11 +17,11 @@ import dev.rubentxu.pipeline.v2.domain.credentials.Credential
  * SPI port, NOT on concrete implementations.
  *
  * ## Design constraints
- * - H0 scope: LocalCredentialProvider only (design §3.1)
- * - META-INF/services SPI registration deferred to H1+ (design §7)
- * - Composition-root constructs concrete directly (design §4.2)
+ * - LocalCredentialProvider only (current scope)
+ * - META-INF/services SPI registration is deferred
+ * - Composition-root constructs concrete directly
  *
- * @see dev.rubentxu.pipeline.v2.credentials.local.LocalCredentialProvider for the H0 implementation
+ * @see dev.rubentxu.pipeline.v2.credentials.local.LocalCredentialProvider for the current implementation
  */
 interface CredentialProvider : AutoCloseable {
 

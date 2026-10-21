@@ -186,7 +186,7 @@ object EnvelopeProjector {
         is StageFinished -> ResourceRefs.stage(event.runId, event.stageIndex)
         is ParallelBranchStarted -> ResourceRefs.stage(event.runId, event.parentStageIndex)
         is ParallelBranchFinished -> ResourceRefs.stage(event.runId, event.parentStageIndex)
-        // RUN subject: stepIndex exists but no stage identity (frozen EVT-1 law)
+        // RUN subject: stepIndex exists but no stage identity
         is StepFailed -> runRef
         is EchoOutputCaptured -> runRef
         is CredentialUsed -> runRef
@@ -240,7 +240,7 @@ object EnvelopeProjector {
         is UnixDetected,
         is MilestoneReached,
         is MilestoneAborted,
-        // RP6-A / WU-091 §6: lock lifecycle is run-scoped (no stage/step index in
+        // lock lifecycle is run-scoped (no stage/step index in
         // the event payload; the step events carry the position).
         is LockRequested,
         is LockAcquired,
@@ -260,11 +260,11 @@ object EnvelopeProjector {
         is TimeoutTriggered,
         is TimestampsEntered,
         is TimestampsExited,
-        // SAGA / PK-1: a compensation obligation is a run-scoped fact. The obligation's
+        // A compensation obligation is a run-scoped fact. The obligation's
         // identity is (run, saga, action, compensation), and none of those three finer
         // identities is a stage or a step, so the run is the honest subject.
         //
-        // SAGA / PK-2: the same holds for the loop's own facts. A compensation that started
+        // The same holds for the loop's own facts. A compensation that started
         // or finished, and the Saga that reached a terminal state, are facts about the Saga
         // and about the run that owns it — not about the step that happened to ask.
         is CompensationArmed,

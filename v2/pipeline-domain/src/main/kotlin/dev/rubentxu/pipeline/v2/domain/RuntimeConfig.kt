@@ -29,8 +29,8 @@ package dev.rubentxu.pipeline.v2.domain
  *
  * Migration of the 19 production call sites of
  * `DurableShConfig.fromSystemProperties()` and the 8 direct `System.getenv`
- * / `System.getProperty` sites is M2 work (LF-0205 redirect CLI / LF-0307
- * migrate sh). The fitness test does NOT pin "no direct System.getenv /
+ * / `System.getProperty` sites is in flight (CLI redirect / sh migration).
+ * The fitness test does NOT pin "no direct System.getenv /
  * System.getProperty in application" yet — that pin lands with the
  * migration so each replacement has a clean regression net.
  *

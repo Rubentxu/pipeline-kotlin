@@ -6,16 +6,16 @@ package dev.rubentxu.pipeline.v2.domain.durable
  * This enum is the declared INPUT to the replay decision, not the decision itself.
  * The single authority that decides is the ordered table in
  * `dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy.decide`
- * (ADR-0103 D1: "the table is normative and its ORDER is the contract"), which is why the
+ * ("the table is normative and its ORDER is the contract"), which is why the
  * rows below describe the policy's meaning WITHIN that table rather than claiming to be it.
  *
  * ## The names do not all mean what they say, and that is deliberate
  *
- * [RERUN] is the load-bearing example, and ADR-0103 D2a fixed the CONTRACT while D2b deferred
- * the RENAME, because the enum name is inside the fingerprint hash and renaming it would change
- * the durable identity of existing history. So the name stays and the meaning is corrected here.
- * AGENTS.md carries the same warning for the decision type: do not read `RERUN` as "this is a
- * re-run".
+ * [RERUN] is the load-bearing example: fixing the contract was done first and the
+ * rename was deferred, because the enum name is inside the fingerprint hash and
+ * renaming it would change the durable identity of existing history. So the name
+ * stays and the meaning is corrected here. The project rules carry the same warning
+ * for the decision type: do not read `RERUN` as "this is a re-run".
  */
 enum class ReplayPolicy {
     /**

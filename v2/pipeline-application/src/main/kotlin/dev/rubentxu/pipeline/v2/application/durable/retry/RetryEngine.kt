@@ -24,8 +24,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Application-internal authority for the retry aggregate (WU-LPR-302 Phase 2,
- * 2026-09-18; ADR-0075).
+ * Application-internal authority for the retry aggregate.
  *
  * ## What this owns
  *
@@ -34,7 +33,7 @@ import java.util.UUID
  * It does NOT iterate body children; it does NOT call the canonical
  * `invokeBodyChildren` directly. The body-child traversal lives in the
  * canonical coordinator's shared loop; the engine reaches that loop through the
- * `BodyInvoker` port (B11 / W2) so the canonical "one body-child traversal
+ * `BodyInvoker` port so the canonical "one body-child traversal
  * authority" law is preserved.
  *
  * ## What it does NOT own
@@ -55,7 +54,7 @@ import java.util.UUID
  * [RetryReconciliationDriver]: read the journal, build the input, delegate to
  * [RetryReconciler]. The engine mutates ONLY through `journal.beginAttempt`
  * and `journal.updateStatus`, and only after a plan() emits a mutation
- * decision. The single-writer law (ADR-0075 §11) is preserved: this engine is
+ * decision. The single-writer law is preserved: this engine is
  * the only place that mutates [FileBasedRetryControlJournal] for the retry
  * aggregate.
  *

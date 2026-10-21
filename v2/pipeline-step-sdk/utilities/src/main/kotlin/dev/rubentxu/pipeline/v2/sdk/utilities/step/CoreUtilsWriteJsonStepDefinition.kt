@@ -24,14 +24,14 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * `core-utils.writeJson` OFFICIAL_PLUGIN Step (LFC-2E2 utilities).
+ * `core-utils.writeJson` OFFICIAL_PLUGIN Step.
  *
  * Capability discipline: declares `WORKSPACE_IDENTITY_CAPABILITY` and reads
  * the canonical workspace root from the typed capability seam.
  *
  * Effects: `WRITES_WORKSPACE` (durable side-effect on disk).
  * ReplayPolicy: `NEVER` — a successful durable write MUST NOT silently
- *   re-execute on replay (E-EM-11 NEVER-1). If a previous run recorded a
+ *   re-execute on replay. If a previous run recorded a
  *   successful write, replay aborts the re-execution with a typed failure
  *   rather than duplicating the effect.
  * RecoveryPolicy: `None`.

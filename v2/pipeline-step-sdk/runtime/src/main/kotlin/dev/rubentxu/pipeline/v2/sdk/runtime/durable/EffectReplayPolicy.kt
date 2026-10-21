@@ -13,7 +13,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
  * [ReplayPolicy] is part of its fingerprint, so changing what this decides
  * changes what a resumed run is allowed to do.
  *
- * ## Decision matrix — ADR-0103 D1
+ * ## Decision matrix
  *
  * This table is **normative**, and so is its ORDER. It previously contradicted
  * the implementation in two ways, both of which survived because nothing
@@ -55,10 +55,10 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
  * executor that declared no effect has said nothing about purity.
  *
  * Note on names: `ReplayPolicy.RERUN` means "reuse a journalled reusable completion",
- * the opposite of what the name suggests. ADR-0103 D2a fixes the
- * documented contract; D2b defers the rename, because the enum name is inside
- * the fingerprint hash and renaming it would migrate every operation that
- * declares it on both the canonical and the scripted history.
+ * the opposite of what the name suggests. The documented contract is the one
+ * this class implements and a test pins it; the rename is deferred, because the
+ * enum name is inside the fingerprint hash and renaming it would migrate every
+ * operation that declares it on both the canonical and the scripted history.
  */
 interface EffectReplayPolicy {
     /**
@@ -85,9 +85,9 @@ interface EffectReplayPolicy {
  *
  * This is the ONE authority for "reusable": rules 4 and 5 of the decision matrix and the
  * memoisation rule all read it, and nothing else re-derives the set. `UNSTABLE` joined
- * `SUCCEEDED` when P2 closed the recorded replay debt (S4-D2 frontier): an unstable run is a
- * finished run, and refusing to reuse it re-executed completed work purely because the durable
- * status was not green. Every other status — failed, timed out, aborted, divergent, lost, or
+ * `SUCCEEDED`: an unstable run is a finished run, and refusing to reuse it
+ * re-executed completed work purely because the durable status was not green.
+ * Every other status — failed, timed out, aborted, divergent, lost, or
  * still in flight — is not a completion and stays non-reusable. `ABORTED` keeps the existing
  * non-reuse behaviour; it is not promoted by analogy.
  */
@@ -139,21 +139,21 @@ class DefaultEffectReplayPolicy : EffectReplayPolicy {
             //    only, which is what rule 1 just excluded.
             Effect.ABORTS_PIPELINE in effects -> ReplayDecision.ABORT
 
-            // 3. NON-REPLAYABLE HISTORY (E-EM-11/NEVER, classification A): NEVER
-            //    constrains re-execution of durable history and nothing else.
+            // 3. NON-REPLAYABLE HISTORY: NEVER constrains re-execution of
+            //    durable history and nothing else.
             replayPolicy == ReplayPolicy.NEVER -> ReplayDecision.ABORT
 
             // 4. REUSE OF A REUSABLE COMPLETION. The name `RERUN` means the opposite of
-            //    what it says: this is reuse, not re-execution. ADR-0103 D2a fixes
-            //    the documented contract and pins it with a test; D2b defers the
-            //    rename to a durable compatibility epoch, because the enum name is
-            //    inside the fingerprint hash. `UNSTABLE` is reusable since P2: the
-            //    decoded typed carrier carries the Unstable marker, so the reuse
-            //    reports unstable without re-running the handler.
+            //    what it says: this is reuse, not re-execution. The documented
+            //    contract is the one implemented here and a test pins it; the
+            //    rename is deferred to a durable compatibility epoch, because the
+            //    enum name is inside the fingerprint hash. `UNSTABLE` is reusable:
+            //    the decoded typed carrier carries the Unstable marker, so the
+            //    reuse reports unstable without re-running the handler.
             replayPolicy == ReplayPolicy.RERUN && reusable -> ReplayDecision.SKIP
 
             // 5. EFFECT-AWARE MEMOISATION. The effect set must be PURELY read-only
-            //    (WU-RP-040 R8 category C): a mixed set containing
+            //    a mixed set containing
             //    WRITES_WORKSPACE or EXECUTES_SUBPROCESS must not memoise even
             //    when READ_ONLY is also declared, or the engine would skip
             //    re-writing workspace state. The descriptor's `effects:

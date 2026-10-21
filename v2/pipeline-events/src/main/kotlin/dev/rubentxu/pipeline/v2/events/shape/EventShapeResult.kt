@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.events.shape
 
 /**
- * M7 — closed envelope returned by [EventShapeReadPort.eventShapesForRun].
+ * Closed envelope returned by [EventShapeReadPort.eventShapesForRun].
  *
  * Three cases:
  *
@@ -12,12 +12,9 @@ package dev.rubentxu.pipeline.v2.events.shape
  *  - [Refused] — the substrate cannot be inspected at all; `refusal`
  *    carries the closed [EventShapeRefusal] reason.
  *
- * Mirrors the M6 pattern: a sealed result ADT with three cases, no
- * `Either`/`Result` reuse. The distinction between [Empty] and
- * [Refused] is the same one [Events.Empty] / [Events.Refused] pin
- * for the read ports: "known but empty" vs "substrate unobservable".
- *
- * @see M7_FINAL_HARDENING_DESIGN.md §A.3.
+ * The shape is a sealed ADT with three cases. The distinction between [Empty]
+ * and [Refused] is the same one the read ports pin: "known but empty" vs
+ * "substrate unobservable".
  */
 sealed interface EventShapeResult {
 

@@ -7,25 +7,24 @@ import dev.rubentxu.pipeline.v2.domain.step.BlockShellScopeDescriptor
 import java.nio.file.Path
 
 /**
- * WU-LPR-024 (slice 1/3) — Adapter from canonical coordinator types to the
- * parallel descriptor vocabulary introduced by WU-LPR-021..023.
+ * Adapter from canonical coordinator types to the parallel descriptor
+ * vocabulary.
  *
  * ## Why this exists
  *
- * WU-LPR-021 created `BodyInterpreter` with its own descriptor family
+ * The body interpreter introduced its own descriptor family
  * ([BodyExecutionProjectionDescriptor], [BlockShellScopeDescriptor]) because
  * `pipeline-domain` cannot depend on the canonical coordinator's private
  * types. That worked for tests and for the seam itself, but it left the
- * canonical coordinator untouched: it still inlines the dispatch loop,
- * still holds its private `BlockShellScope` / `BodyExecutionProjection`
- * types, and still branches on `is BodyShellScope.Directory` etc.
+ * canonical coordinator untouched: it still inlined the dispatch loop,
+ * still held its private `BlockShellScope` / `BodyExecutionProjection`
+ * types, and still branched on `is BodyShellScope.Directory` etc.
  *
- * WU-LPR-024 slice 1/3 is the **adapter** that lets the canonical
- * coordinator publish its types and consume the interpreter. Once this
- * adapter is in place, slices 2/3 and 3/3 migrate the inline loops
- * (`dispatchBody`, `runParallelStage`, retry loop) to consume the
- * interpreter + durable control engine policy + branch invoker without
- * changing the durable event/journal byte stream.
+ * This file is the **adapter** that lets the canonical coordinator
+ * publish its types and consume the interpreter. Once this adapter is in
+ * place, the inline loops (`dispatchBody`, `runParallelStage`, retry loop)
+ * migrate to consume the interpreter + durable control engine policy +
+ * branch invoker without changing the durable event/journal byte stream.
  *
  * ## What this is NOT
  *
@@ -45,9 +44,9 @@ import java.nio.file.Path
  * currently `private` inside `CanonicalDurableRunCoordinator`. To make this
  * adapter usable by the canonical code, those types must be published
  * (moved to `:pipeline-domain` or made public inside `:pipeline-application`).
- * Slice 1/3 prepares the adapter; slice 2/3 publishes the types and
- * introduces the canonical coordinator's `interpret(...)` call site;
- * slice 3/3 migrates the inline loops behind the engines.
+ * The adapter prepares that move; publishing the types and introducing the
+ * canonical coordinator's `interpret(...)` call site follow; the inline
+ * loops then migrate behind the engines.
  */
 object CanonicalToDescriptorAdapter {
 
@@ -121,8 +120,8 @@ object CanonicalToDescriptorAdapter {
 }
 
 /**
- * WU-LPR-024 (slice 1/3) — Stand-in mirror of the canonical coordinator's
- * private `BlockShellScope` and `BodyExecutionProjection` types.
+ * Stand-in mirror of the canonical coordinator's private `BlockShellScope`
+ * and `BodyExecutionProjection` types.
  *
  * ## Why a mirror, not a re-export
  *
@@ -130,8 +129,8 @@ object CanonicalToDescriptorAdapter {
  * `CanonicalDurableRunCoordinator.kt`; they cannot be re-exported without
  * publishing them. The mirror lets the adapter + golden parity tests
  * reason about the canonical shape WITHOUT forcing the publication in this
- * WU. Once slice 2/3 publishes the canonical types, the mirror collapses
- * and the adapter consumes them directly.
+ * WU. Once the canonical types are published, the mirror collapses and the
+ * adapter consumes them directly.
  *
  * The mirror is intentionally minimal: it names the variants, carries the
  * payload, and is `Any`-typed in the adapter's signature so a future

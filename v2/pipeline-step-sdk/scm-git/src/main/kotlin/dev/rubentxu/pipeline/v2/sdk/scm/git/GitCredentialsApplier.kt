@@ -12,9 +12,9 @@ import java.nio.file.Path
 import java.util.Base64
 
 /**
- * Applies Git credentials using the answer-file pattern (INV-L6-CR-011/012).
+ * Applies Git credentials using the answer-file pattern.
  *
- * ## Answer-File Pattern (D6 Design)
+ * ## Answer-File Pattern
  *
  * The credential helper and GIT_ASKPASS scripts NEVER receive secrets via environment
  * variables. Instead:
@@ -25,8 +25,8 @@ import java.util.Base64
  *
  * ## Security Properties
  *
- * - Secrets NEVER in helper env (INV-L6-CR-011)
- * - Helper script unsets any env vars after reading (INV-L6-CR-012)
+ * - Secrets NEVER in helper env
+ * - Helper script unsets any env vars after reading
  * - Temp files 0600 (credentials, ssh keys), 0700 (directories)
  * - Wiped in finally block
  *
@@ -47,7 +47,7 @@ class GitCredentialsApplier(
     private val linkedSecretResolver: CredentialLinkedSecretResolver? = null,
 ) : AutoCloseable {
 
-    // WU-RP-050 (ADR-0098): if no explicit resolver was injected, build one from
+    // If no explicit resolver was injected, build one from
     // the SecretStore so all LinkedSecretRef resolution in this class flows
     // through the canonical CredentialLinkedSecretResolver port. May still be
     // null if neither was supplied; resolveSecret/resolveAndEncode throw
@@ -521,7 +521,7 @@ class GitCredentialsApplier(
 
     /**
      * Wipes all temp files using fill(0) + Files.delete.
-     * Called in finally block — safe against SIGKILL residue documented in ADR-0050.
+     * Called in finally block — safe against SIGKILL residue.
      */
     override fun close() {
         if (isClosed) return

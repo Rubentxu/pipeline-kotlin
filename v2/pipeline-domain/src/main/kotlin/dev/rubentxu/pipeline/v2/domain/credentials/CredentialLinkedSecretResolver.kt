@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.domain.credentials
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 
 /**
- * LF-0403 (ADR-0097) — Domain port for resolving a [LinkedSecretRef] to its referenced
+ * Domain port for resolving a [LinkedSecretRef] to its referenced
  * [SecretText] bytes.
  *
  * Lives in `:pipeline-domain` so [DefaultCredentialProjector] can compose against it
@@ -25,7 +25,7 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
  * [ThrowingCredentialLinkedSecretResolver] is the safe default for tests/call sites
  * that do not exercise [LinkedSecretRef]: it surfaces accidental unconfigured
  * dependencies as a clear error instead of silently injecting empty bytes
- * (the historical LF-0403 placeholder behaviour).
+ * (the historical placeholder behaviour).
  */
 fun interface CredentialLinkedSecretResolver {
     fun resolve(ref: LinkedSecretRef): SecretHandle
@@ -35,7 +35,7 @@ fun interface CredentialLinkedSecretResolver {
  * Fail-closed default for [CredentialLinkedSecretResolver]. Surfaces any attempt
  * to resolve a [LinkedSecretRef] without explicit resolver wiring as a clear
  * [IllegalStateException] with the referenced credential id, instead of silently
- * injecting empty bytes (the LF-0403 placeholder bug).
+ * injecting empty bytes.
  */
 object ThrowingCredentialLinkedSecretResolver : CredentialLinkedSecretResolver {
     override fun resolve(ref: LinkedSecretRef): SecretHandle =

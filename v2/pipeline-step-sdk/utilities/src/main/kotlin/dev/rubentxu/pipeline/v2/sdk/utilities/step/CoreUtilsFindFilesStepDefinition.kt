@@ -30,10 +30,7 @@ import kotlin.io.path.relativeTo
 import kotlin.streams.toList
 
 /**
- * `core-utils.findFiles` OFFICIAL_PLUGIN Step (LFC-2E2 utilities, Slice 2 / S2.3).
- *
- * Jenkins reference: pipeline-utility-steps-plugin::FindFilesStep
- * (MIT, CloudBees).
+ * `core-utils.findFiles` OFFICIAL_PLUGIN Step.
  *
  * Strategy:
  *  - Pattern.None       -> direct children of the base directory only.
@@ -42,8 +39,7 @@ import kotlin.streams.toList
  *                          (if e != null). Files.walk does not follow
  *                          symlinks (no FOLLOW_LINKS) — symlinks appear
  *                          in the listing as themselves and are not
- *                          traversed, matching Jenkins' FilePath.list
- *                          semantics.
+ *                          traversed.
  *  - maxResults cap of 100_000; on overflow a typed PluginStepException
  *    with FailureKind.USER is raised before the response is constructed.
  */

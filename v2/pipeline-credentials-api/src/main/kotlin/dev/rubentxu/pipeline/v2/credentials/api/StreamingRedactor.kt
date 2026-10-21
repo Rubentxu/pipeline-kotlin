@@ -7,7 +7,7 @@ import java.util.ArrayDeque
 /**
  * The mutable state of a single [StreamingRedactor] pass.
  *
- * R2.3(b) / TODO 3: the redactor's state used to be hidden inside
+ * The redactor's state used to be hidden inside
  * [StreamingRedactor.RedactingInputStream], which made "no more data" and
  * "end of stream" the same event — `close()` did both, so a caller that
  * wanted to drain the lookahead at EOF also had to close the source. The
@@ -42,8 +42,10 @@ class RedactorState internal constructor(
      * so a single feed can emit up to `chunkSize` bytes plus one SCRUB_MARKER.
      * Without this, a large `feed` call wraps the output ring and overwrites
      * bytes that the next [take] has not yet read — R2.3(b) / TODO 4 caught
-     * this as f04 "stdout garbled" (outputQueue=56, feed emits 8136 bytes,
-     * first 25 are clobbered before the take loop drains them).
+     * Without this, a large `feed` call wraps the output ring and overwrites
+     * bytes that the next [take] has not yet read — caught as "stdout garbled"
+     * (outputQueue=56, feed emits 8136 bytes, first 25 are clobbered before
+     * the take loop drains them).
      */
     internal val outputQueue = ByteArray(maxOf(maxLiteral, chunkSize) + SecretPatternRegistry.SCRUB_MARKER.length)
     internal var outputHead = 0
@@ -244,7 +246,7 @@ class StreamingRedactor(
     }
 
     /**
-     * WU-B FIX 1 — the only way out of a full ring with nothing decidable.
+     * The only way out of a full ring with nothing decidable.
      *
      * Emit the ring head as plain text. It is emitted rather than dropped because a byte inside
      * the lookahead has to reach the Output Plane eventually, and it is emitted NOW because the
@@ -282,7 +284,7 @@ class StreamingRedactor(
             if (state.seamFirstBytes[li] != first) continue
             val literal = state.seam[li]
             if (literal.size > state.ringCount) {
-                // WU-A FIX 4 — a literal that does not FIT yet means the head is UNDECIDED, and
+                // A literal that does not FIT yet means the head is UNDECIDED, and
                 // undecided must not fall through to a shorter literal.
                 //
                 // This used to `continue`, so the scan went on to the next literal. When two
@@ -346,7 +348,7 @@ class StreamingRedactor(
      * are safe.
      */
     /**
-     * PERFORMANCE (WU-RP-022 finding P1): the previous implementation used
+     * PERFORMANCE: the previous implementation used
      * `ArrayDeque<Byte>` (one boxed Byte per byte) plus a full pendingArray copy
      * and a linear scan over every seam literal PER BYTE. Throughput measured at
      * ~100 KB/s, which stalls any pipeline whose child writes >~100 MiB to the
@@ -383,7 +385,7 @@ class StreamingRedactor(
         private var closed = false
 
         /**
-         * WU-B FIX 2 — the part of the EOF flush this call could not hand back.
+         * The part of the EOF flush this call could not hand back.
          *
          * `finish` empties the state's output queue and zeroes it, so a flush that does not fit
          * the caller's buffer is otherwise **gone**: the bytes left the pipe, the state was
@@ -446,15 +448,13 @@ class StreamingRedactor(
                 // held. The guard could therefore only ever fire after a blocking read — which is
                 // the opposite of what it was written to prevent.
                 //
-                // The defect that produced: the transcript pump asks for a whole
-                // `TRANSCRIPT_LIVE_WINDOW_BYTES` (64 KiB) and relies on this returning as soon as
-                // anything is available. With the guard unreachable the wrapper instead filled the
+                // With the guard unreachable the wrapper instead filled the
                 // entire buffer or blocked, so:
                 //
                 //   15-byte payload     -> nothing committed mid-step (waits for EOF)
                 //   128 KiB payload     -> exactly one 64 KiB window committed, then a block
                 //
-                // Both were measured by the OBS-B rows. Placing the guard BEFORE the refill is the
+                // Placing the guard BEFORE the refill is the
                 // minimal change: it can only fire when `written > 0` and the input buffer is
                 // drained, so it never returns before any decision has been made.
                 //
@@ -485,7 +485,7 @@ class StreamingRedactor(
                         inputOffset += chunk
                         continue
                     }
-                    // WU-B FIX 1 — the ring is FULL and nothing is decidable at its head.
+                    // The ring is FULL and nothing is decidable at its head.
                     //
                     // This is the branch that used to not exist. The feed above is bounded by the
                     // ring's FREE SPACE, so a full ring means the wrapper can never call `feed`,
@@ -553,8 +553,7 @@ class StreamingRedactor(
             // `inputBuffer` is zeroed too, and that is not incidental. It holds RAW bytes straight
             // off the pipe — including any that were never fed, because the ring filled first —
             // so leaving them in a discarded object is exactly the leak the whole class exists to
-            // prevent. This was already asserted by "close clears all buffers"; WU-B made it
-            // reachable by letting the read loop leave the buffer partly consumed.
+            // prevent.
             java.util.Arrays.fill(inputBuffer, 0.toByte())
             inputOffset = 0
             inputLimit = 0

@@ -4,38 +4,30 @@ import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 
 /**
- * Single source of truth for the durable metadata of each canonical core plugin (CDE.2-b1).
+ * Single source of truth for the durable metadata of each canonical core plugin.
  *
  * The metadata value is constant per pluginId. [CanonicalCoreStepCommand.defaultMetadata] delegates
- * here (so no duplicate literal is scattered across the 14 sealed subtypes), and CDE.2-b2+ lets the
- * durable resolution read this same authority by StepKey before any typed decode.
+ * here (so no duplicate literal is scattered across the sealed subtypes), and the durable
+ * resolution reads this same authority by StepKey before any typed decode.
  *
  * This table is the compatibility authority of the legacy core world only. It is NOT the future
- * global registry authority: CDE.3/CDE.5 introduces the registry/definition metadata (a
+ * global registry authority: the registry/definition metadata is a
  * `StepMetadataResolver` consumed by durable resolution over a composite of migrated definitions and
- * this legacy core table). Keeping it behind its own object leaves that seam open without coupling the
+ * this legacy core table. Keeping it behind its own object leaves that seam open without coupling the
  * durable protocol to a specific core Step name.
+ *
+ * The map is intentionally empty: every executable core plugin now lives behind the registry, so
+ * every legacy core row has been removed. The legacy authority survives as a typed fast-fail
+ * channel and a placeholder for any future row that must land here for parity.
  */
 object CanonicalCoreStepMetadata {
     private val table: Map<String, StepMetadata> = mapOf(
-        // "core.milestone" row removed (LEGACY_REMOVED). Production metadata is
-        // now read exclusively from CoreMilestoneStep.descriptor via RegistryStepMetadataResolver.
-        // S2-A7 / G5 (2026-09-12): "core.deleteDir" row removed (LEGACY_REMOVED).
-        // Production metadata is CoreDeleteDirStep.descriptor via RegistryStepMetadataResolver.
-        // S2-A10 / G5 (2026-09-13): "core.cleanWs" row removed (LEGACY_REMOVED). Production
-        // metadata is CoreCleanWsStep.descriptor via RegistryStepMetadataResolver.
-        // S2-A10 / G5 metadata counter converges 4/4/4 -> 3/3/3.
-        // S2-B10 / G5 (2026-09-13): "core.archiveArtifacts" row removed (LEGACY_REMOVED).
-        // Production metadata is CoreArchiveArtifactsStep.descriptor via
-        // RegistryStepMetadataResolver. This is what makes the registry the pre-decode
-        // metadata authority for the key: no legacy row exists to fall back to.
-        // S2-B10 / G5 metadata counter converges 3/3/3 -> 2/2/2.
-        // WU-LPR-301 / G5 (2026-09-18): "core.load" and "core.waitUntil" rows removed
-        // (LEGACY_REMOVED). Production metadata is read exclusively from the registry
-        // descriptors (CoreWaitUntilStep.descriptor for waitUntil; core.load has no descriptor
-        // because the key is DEFERRED + UNSUPPORTED in local-core-v1). This is what makes the
-        // registry the pre-decode metadata authority for every surviving key.
-        // WU-LPR-301 / G5 metadata counter converges 2/2/2 -> 0/0/0.
+        // The map is empty. Every legacy canonical core plugin row has been removed
+        // (core.milestone, core.deleteDir, core.cleanWs, core.archiveArtifacts, core.load,
+        // core.waitUntil). Production metadata is now read exclusively from each Step's
+        // descriptor via the RegistryStepMetadataResolver. There is no legacy row to fall
+        // back to for any surviving plugin key — a lookup miss means the key is unknown to
+        // the canonical authority, not that a default exists to be silently inherited.
     )
 
     /** Durable metadata for a canonical core plugin; fails fast when a plugin id is not registered. */

@@ -7,7 +7,7 @@ import java.util.ServiceLoader
 /**
  * Orchestrates credential binding resolution using SPI-discovered [ContributedBindingFactory] instances.
  *
- * ## Design (INV-L6-CR-010 — Parallel Multi-Binding Isolation)
+ * ## Design (Parallel Multi-Binding Isolation)
  *
  * Each contributed factory is loaded independently via `ServiceLoader` and handles
  * only its supported kinds. This provides:
@@ -75,7 +75,7 @@ class MultiBindingWithCredentials(
     /**
      * Resolves ALL bindings with fail-fast semantics.
      *
-     * ## Fail-Fast (INV-L6-CR-010)
+     * ## Fail-Fast
      *
      * If ANY binding fails to resolve:
      * 1. All successfully resolved entries are discarded (zero injected)
@@ -98,7 +98,7 @@ class MultiBindingWithCredentials(
         val resolvedEntries = mutableListOf<ContributedBindingFactory.EnvEntry>()
         var firstFailure: BindingResolutionException? = null
 
-        // Phase 1: Resolve ALL bindings (isolation per INV-L6-CR-010)
+        // Phase 1: Resolve ALL bindings (isolation per binding)
         for (binding in bindings) {
             try {
                 val entries = resolve(binding, credentialResolver)

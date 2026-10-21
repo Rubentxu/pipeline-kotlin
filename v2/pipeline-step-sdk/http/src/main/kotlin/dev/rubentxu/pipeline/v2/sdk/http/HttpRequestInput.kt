@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 
 /**
- * Typed input of `http.request` (RP6-C / WU-093), owned by the HTTP
+ * Typed input of `http.request`, owned by the HTTP
  * OFFICIAL_PLUGIN rather than by core.
  *
  * Derived from the official `httpRequest` reference

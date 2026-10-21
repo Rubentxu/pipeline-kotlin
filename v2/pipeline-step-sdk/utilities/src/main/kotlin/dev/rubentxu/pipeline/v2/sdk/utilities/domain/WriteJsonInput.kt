@@ -21,7 +21,7 @@ import kotlinx.serialization.json.JsonElement
  *   JSON document. Defaults to `false`.
  *
  * **Replay policy:** `NEVER`. A successful durable write MUST NOT silently
- * re-execute on replay (E-EM-11 NEVER-1). The codec encodes the path + value
+ * re-execute on replay. The codec encodes the path + value
  * so the durable fingerprint is stable, but the runtime decision authority
  * (`EffectReplayPolicy.decide`) refuses re-execution when there is an
  * existing journaled status.

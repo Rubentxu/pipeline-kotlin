@@ -16,7 +16,7 @@ enum class InterpreterPolicy(val binary: String) {
 }
 
 /**
- * Specification of ONE durable task to execute (LF-0301).
+ * Specification of ONE durable task to execute.
  *
  * The closed set is [ShellScriptTask] and [ExecTask] — exactly the two
  * process shapes the durable runtime supports.
@@ -25,8 +25,8 @@ enum class InterpreterPolicy(val binary: String) {
  *
  * - **[ExecTask] preserves argv; there is no `bash -c`.** The argv array
  *   is handed to the OS verbatim: no shell interpolation, no quoting
- *   layer, no re-tokenisation. This is what makes M3-002 ("argv con
- *   spaces/quotes sin shell") hold by construction.
+ *   layer, no re-tokenisation. This is what makes "argv with
+ *   spaces/quotes without shell" hold by construction.
  * - **[ShellScriptTask] is written to a file** by the runtime (never fed
  *   through stdin or `bash -c`), and executed with the chosen
  *   [InterpreterPolicy].

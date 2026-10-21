@@ -23,7 +23,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * `core-utils.findFiles` codecs (input + output) (LFC-2E2, Slice 2 / S2.3).
+ * `core-utils.findFiles` codecs (input + output).
  *
  * Envelope shape (durable eligible):
  *   input  : { "base": <string>, "pattern": { "kind": "none" } |

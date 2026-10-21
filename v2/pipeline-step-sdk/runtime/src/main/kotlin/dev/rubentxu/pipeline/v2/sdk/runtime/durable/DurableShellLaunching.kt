@@ -11,7 +11,7 @@ import java.nio.file.Path
  *
  * ## P2 Invariant: User Script Never in argv
  *
- * The core security guarantee (ADR-0046 P2) is that the user script content
+ * The core security guarantee is that the user script content
  * NEVER appears in any argv passed to the OS. This is enforced by:
  * 1. Writing the script to `script.sh` on disk (filesystem, not argv)
  * 2. Passing only the fixed wrapper command to `sh -c`
@@ -43,7 +43,6 @@ import java.nio.file.Path
  * 6. [cleanup] removes the control directory
  *
  * @see DurableShConfig for configuration options
- * @see <a href="ADR-0046">ADR-0046 — Durable sh Pattern (P1/P2)</a>
  */
 interface DurableShellLaunching {
 
@@ -96,7 +95,7 @@ interface DurableShellLaunching {
     /**
      * Polls for result.txt existence and reads the exit code.
      *
-     * Uses 100ms polling interval as specified in ADR-0046.
+     * Uses a 100ms polling interval.
      *
      * @param controlDir The control directory.
      * @param timeoutMs Maximum time to wait for result.txt (0 = no limit).
@@ -144,7 +143,7 @@ interface DurableShellLaunching {
     /**
      * Builds the Jenkins-style wrapper command for durable shell.
      *
-     * ## D3 Wrapper Contract (ADR-0046)
+     * ## Wrapper Contract
      *
      * The wrapper MUST:
      * 1. Quote the script path (single-quoted to prevent expansion)

@@ -54,7 +54,7 @@ dependencies {
         api("dev.rubentxu.pipeline.v2:pipeline-scripting-api:${rootProject.version}")
         api("dev.rubentxu.pipeline.v2:pipeline-events:${rootProject.version}")
         api("dev.rubentxu.pipeline.v2:pipeline-output:${rootProject.version}")
-        // 0.52.0-rc1 / CRIC-M2: the runtime publish/subscribe ports join the BOM. They are also
+        // The runtime publish/subscribe ports join the BOM. They are also
         // listed in `publishedContractModules`, so a consumer that pins the platform version
         // pulls the runtime ports automatically; declaring them in only one of the two lists
         // would force every consumer to repeat the coordinate, defeating the BOM's purpose.

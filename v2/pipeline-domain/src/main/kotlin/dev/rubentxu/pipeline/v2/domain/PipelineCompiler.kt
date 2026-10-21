@@ -53,7 +53,7 @@ sealed interface CompileResult {
 /**
  * Port for compiling a pipeline source string into a [PipelineDefinition].
  *
- * This is the LF-0201 contract. The M2 compiler takes a textual source
+ * This is the compiler port contract. The M2 compiler takes a textual source
  * (`.kts`, `.groovy`, plain text, anything serialisable to a `String`) and
  * returns either a fully resolved [PipelineDefinition] or a list of
  * diagnostics that describe why it could not.
@@ -64,10 +64,9 @@ sealed interface CompileResult {
  *   resolves a [PipelineDefinition] by id from a frozen map. Useful for
  *   characterisation, fixtures, and any site that wants to skip parsing.
  *
- * - The application-side `SimplePipelineCompiler` (LF-0201, lands in a
- *   follow-up slice) parses a trivial line-based syntax. Real parsing
- *   (Kotlin Script DSL, Groovy Script DSL) lands in LF-0205 along with
- *   the [RunCoordinator] migration.
+ * - The application-side `SimplePipelineCompiler` (a follow-up slice) parses
+ *   a trivial line-based syntax. Real parsing (Kotlin Script DSL, Groovy
+ *   Script DSL) lands with the [RunCoordinator] migration.
  *
  * ## Why the port lives in domain
  *

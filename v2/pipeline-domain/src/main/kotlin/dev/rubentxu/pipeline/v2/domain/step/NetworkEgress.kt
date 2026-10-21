@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.domain.step
 
 /**
- * Whether THIS EXECUTION may reach the network, and to where (LFC-2E3 / WU-093).
+ * Whether THIS EXECUTION may reach the network, and to where.
  *
  * This is a runtime decision, not a protocol one, and that is exactly why the
  * type lives here, in the innermost seam, rather than beside the HTTP code. A
@@ -196,9 +196,9 @@ class RestrictedEgressGate(private val rules: List<EgressRule>) : NetworkEgressG
         // expression below already enforces it.
         //
         // An explicit `if (rules.isEmpty()) return Refused(...)` used to stand in
-        // this spot. Mutation M-http-29 proved it unreachable by behaviour — it
-        // produced byte-identical decisions — so it was removed rather than kept as
-        // a comment nobody maintains. The property survives as a canary (E8), and a
+        // this spot. A mutation coverage exercise proved it unreachable by behaviour —
+        // it produced byte-identical decisions — so it was removed rather than kept
+        // as a comment nobody maintains. The property survives as a canary, and a
         // guard that cannot change an outcome is not a guard.
         val permitted = rules.any { it.permits(destination) }
         return if (permitted) {

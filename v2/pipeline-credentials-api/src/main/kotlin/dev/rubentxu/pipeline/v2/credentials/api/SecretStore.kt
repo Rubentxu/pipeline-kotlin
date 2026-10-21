@@ -7,11 +7,11 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 /**
  * Credential store interface — ISP-optimal: bind/release/materialize split.
  *
- * Design (ADR-0049 D2 — rung ii):
+ * Design choices:
  * - KEK derives from passphrase via Argon2id (OWASP floor: m≥19456 KiB, t≥2, p≥1)
  * - Per-entry AES-256-GCM with random 96-bit nonce + AAD (anti-swap/rename)
  * - Typed channel: [SecretHandle] is the ONLY carrier for secret bytes
- * - No secret bytes cross the DSL/event boundary (CR-BD-016)
+ * - No secret bytes cross the DSL/event boundary
  *
  * ## ISP Analysis
  *
@@ -30,16 +30,16 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 interface SecretStore : AutoCloseable {
 
     /**
-     * Stores a typed credential (ML-R6).
+     * Stores a typed credential.
      *
-     * @param id The credential ID (L1 structural carrier, not secret)
+     * @param id The credential ID (structural carrier, not secret)
      * @param credential The typed credential to store
      * @throws CredentialsStoreException on storage failure
      */
     fun add(id: CredentialsId, credential: Credential)
 
     /**
-     * Legacy single-blob storage (ML-R4 compatibility).
+     * Legacy single-blob storage (compatibility entry point).
      *
      * Internally wraps the bytes as a [dev.rubentxu.pipeline.v2.credentials.multipart.SecretText]
      * and delegates to [add].
@@ -51,7 +51,7 @@ interface SecretStore : AutoCloseable {
     fun put(id: CredentialsId, bytes: ByteArray)
 
     /**
-     * Retrieves a typed credential (ML-R6).
+     * Retrieves a typed credential.
      *
      * @param id The credential ID
      * @return [Credential] typed credential
@@ -60,10 +60,9 @@ interface SecretStore : AutoCloseable {
     fun get(id: CredentialsId): Credential
 
     /**
-     * Retrieves a credential as [SecretHandle] (v1 compatibility).
+     * Retrieves a credential as [SecretHandle] (compatibility entry point).
      *
-     * This is the ML-R4 compatibility method. Prefer [get] which returns
-     * the typed [Credential].
+     * Prefer [get] which returns the typed [Credential].
      *
      * @param id The credential ID
      * @return [SecretHandle] wrapping the secret bytes
@@ -89,7 +88,7 @@ interface SecretStore : AutoCloseable {
     /**
      * Lists all credential IDs in the store.
      *
-     * @return List of credential IDs (NEVER returns values — CR-BD-010)
+     * @return List of credential IDs (NEVER returns values)
      */
     fun list(): List<CredentialsId>
 
@@ -101,7 +100,7 @@ interface SecretStore : AutoCloseable {
     fun remove(id: CredentialsId)
 
     /**
-     * Re-encrypts a credential with new bytes, preserving the DEK (ML-R6).
+     * Re-encrypts a credential with new bytes, preserving the DEK.
      *
      * @param id The credential ID
      * @param credential The new typed credential
@@ -110,7 +109,7 @@ interface SecretStore : AutoCloseable {
     fun rotate(id: CredentialsId, credential: Credential)
 
     /**
-     * Re-encrypts a credential with new bytes, preserving the DEK (v1 compatibility).
+     * Re-encrypts a credential with new bytes, preserving the DEK (compatibility entry point).
      *
      * Internally wraps the bytes as [dev.rubentxu.pipeline.v2.domain.credentials.SecretText]
      * and delegates to [rotate].

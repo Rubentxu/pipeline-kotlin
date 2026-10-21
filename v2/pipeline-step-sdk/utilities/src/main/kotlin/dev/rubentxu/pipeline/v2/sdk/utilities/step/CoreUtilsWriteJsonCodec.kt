@@ -13,14 +13,14 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * JSON codec for [WriteJsonInput] (LFC-2E2 utilities OFFICIAL_PLUGIN).
+ * JSON codec for [WriteJsonInput].
  *
  * The codec preserves both [WriteJsonInput.value] (typed JsonElement) and
  * [WriteJsonInput.rawText]. Exactly one is expected to be populated at
  * decode-time per the [WriteJsonInput.useRawText] flag.
  *
- * C3 / D-011 (audit 2026-09-26, H14): migrated to `PipelineJson` /
- * `JsonAccessors`. Wire format unchanged.
+ * Decoding goes through `PipelineJson` / `JsonAccessors`. The wire format
+ * is unchanged.
  */
 object CoreUtilsWriteJsonInputCodec : StepCodec<WriteJsonInput> {
 
@@ -63,7 +63,7 @@ object CoreUtilsWriteJsonInputCodec : StepCodec<WriteJsonInput> {
 }
 
 /**
- * JSON codec for [WriteJsonOutput]. Migrated to `PipelineJson` (C3 / D-011).
+ * JSON codec for [WriteJsonOutput], built on `PipelineJson`.
  */
 object CoreUtilsWriteJsonOutputCodec : StepCodec<WriteJsonOutput> {
 

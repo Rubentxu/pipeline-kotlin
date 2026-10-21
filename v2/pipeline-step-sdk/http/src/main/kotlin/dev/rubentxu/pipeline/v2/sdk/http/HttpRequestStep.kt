@@ -18,20 +18,20 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 
 /**
- * The canonical StepKey of the HTTP OFFICIAL_PLUGIN (LFC-2E3 / WU-093).
+ * The canonical StepKey of the HTTP OFFICIAL_PLUGIN.
  *
  * It is namespaced under the PLUGIN, not under `core`. That is the whole
  * delivery classification in one string: `http.request` belongs to
- * `pipeline-plugin-http` (STEP_ECOSYSTEM_POLICY) and the matrix calls it an
- * `OFFICIAL_PLUGIN candidate`. A `core.httpRequest` would have been core closed
- * by accident, which is the drift the ARCHITECTURAL_STOP recorded.
+ * `pipeline-plugin-http` and is an OFFICIAL_PLUGIN candidate. A
+ * `core.httpRequest` would be core functionality closed by accident, which is
+ * the drift this naming rule exists to prevent.
  */
 object HttpRequestKey {
     val VALUE: PluginStepId = PluginStepId("http.request")
 }
 
 /**
- * `http.request` — one request to a remote service (LFC-2E3 / WU-093).
+ * `http.request` — one request to a remote service.
  *
  * ## Why this is a StepDefinition and not a `StepSpec` variant
  *

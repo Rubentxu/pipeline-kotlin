@@ -16,7 +16,7 @@ import java.nio.file.Paths
  * The tests pin the three rules: env value present -> use it, env blank -> treat as absent,
  * env absent -> use the home default. They are written so an edit that restores the old
  * `<controlRoot>/../credentials.bin` default would have to also add a control-root parameter
- * to keep the tests passing, which is the property AGENTS.md §1 calls for.
+ * to keep the tests passing.
  */
 class CredentialsStorePathTest {
 

@@ -50,10 +50,10 @@ object ResourceRefs {
             ),
         )
 
-    // ---- LFC-2E2-prep plugin provider builders (ADR-0092) ----
+    // ---- Plugin provider builders ----
 
     /**
-     * Logical plugin identity (PLUGIN_IDENTITY_MODEL §"ResourceRef").
+     * Logical plugin identity (PLUGIN_IDENTITY_MODEL "ResourceRef").
      * Segment convention: `<ns, plugin, <identity>>` (single-segment identity).
      * Use this for the logical identity of a provider; for an immutable
      * artifact, use [pluginRelease].

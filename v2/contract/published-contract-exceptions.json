@@ -348,7 +348,7 @@
     },
     {
       "module": "pipeline-domain",
-      "sha": "11b55ce19",
+      "sha": "c47d557a3",
       "surface": "SagaRecordRejection",
       "change": "added a case `ForeignOwner(String owner, String writer)` to the sealed interface SagaRecordRejection; the interface itself is unchanged and the new class is additive in the ABI dump",
       "permitting_maturity": "EXPERIMENTAL",

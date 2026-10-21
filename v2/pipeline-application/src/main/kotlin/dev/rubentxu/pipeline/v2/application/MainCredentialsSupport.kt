@@ -22,11 +22,13 @@ import java.nio.file.Path
  * ONE authority: PIPELINE_CREDENTIALS_STORE if set, else ~/.pipeline/credentials.bin.
  * PIPELINE_STORE_PASSPHRASE supplies the passphrase.
  *
- * This function used to exist TWICE — once for each branch — with the same
- * body and two different clocks. Two copies of a decision is two chances to
- * disagree, and the disagreement would be invisible: the durable branch would
- * open the store with the run's clock while the in-memory branch opened it
- * with a fresh one. One function, one clock, one store.
+ * This decision used to be written TWICE: the in-memory branch called
+ * `composeWithCredentialsExecutor`, and the durable branch carried an inline
+ * copy of the same body. The two copies even disagreed on a detail nobody had
+ * noticed — the in-memory one opened the store with a fresh `SystemClock()`
+ * while the durable one used the run's clock. Two copies of a decision is two
+ * chances to disagree, and the disagreement would have been invisible. One
+ * function, one clock, one store.
  *
  * Behavior:
  * - Store file does not exist -> null (user runs `pipeline credentials add`

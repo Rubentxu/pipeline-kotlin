@@ -6,7 +6,7 @@ package dev.rubentxu.pipeline.v2.application.observation
  * ## Why this exists
  *
  * `pipeline run` historically printed a raw JSON event array to stdout (the two
- * `run` branches, which now live in [MainVolatileRun] and [MainDurableRun]).
+ * `run` branches, which now live in `MainVolatileRun.kt` and `MainDurableRun.kt`).
  * That is a machine wire format presented as
  * if it were a human interface. Users got a wall of JSON instead of a console.
  *

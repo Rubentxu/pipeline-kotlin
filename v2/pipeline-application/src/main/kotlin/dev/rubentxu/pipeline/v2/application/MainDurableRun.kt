@@ -210,10 +210,12 @@ internal fun runDurablePipeline(
                                 // `--isolated` preserves the historical PipelineK-managed scratch;
                                 // `--workspace <path>` stays authoritative.
                                 workspace = workspaceTransport,
-                                // H5-B: same on the canonical run path. The credential seam is offered on
-                                // EVERY path or it is offered inconsistently, and an inconsistently
-                                // admitted Step is a Step whose behaviour depends on which branch the CLI
-                                // happened to take.
+                                // H5-B: the CAPABILITY is offered on every path — the coordinator always
+                                // contributes `credentials.basic`, and a run with no store is backed by a
+                                // source that refuses every lookup with `NotConfigured`. What this path
+                                // adds is the PROVIDER, because this world opened the store the operator
+                                // configured. The volatile world offers the same capability with no
+                                // provider, and that is the honest answer for a run with nowhere to look.
                                 credentialProvider = credentials.provider,
                                 withCredentialsExecutor = credentials.executor,
                                 allowNetwork = config.allowNetwork,
@@ -616,13 +618,6 @@ private fun resolveScriptedFrontend(
 }
 
 /**
- * The exit decision of a durable run.
- *
- * When the coordinator ran, the typed outcome is the single authority for the
- * exit decision; the legacy event-based branch only covers compile-failure
- * paths where no definition was produced.
- */
-/**
  * H8-D2 — says WHY the run failed, on the stream an operator is already reading.
  *
  * ## The defect this exists to end
@@ -649,11 +644,18 @@ private fun resolveScriptedFrontend(
  * The message is printed as-is, with no prefix of its own: the failure kinds are
  * already typed, and re-labelling them here would create a second vocabulary.
  */
-internal fun reportRunFailure(failure: PipelineFailure) {
+private fun reportRunFailure(failure: PipelineFailure) {
     System.err.println("  cause [${failure.kind}]: ${failure.message}")
     failure.cause?.let { System.err.println("  origin: $it") }
 }
 
+/**
+ * The exit decision of a durable run.
+ *
+ * When the coordinator ran, the typed outcome is the single authority for the
+ * exit decision; the legacy event-based branch only covers compile-failure
+ * paths where no definition was produced.
+ */
 private fun durableRunFailed(runOutcome: RunOutcome?, lastEvent: DomainEvent?): Boolean =
     if (runOutcome != null) {
         when (runOutcome) {

@@ -24,7 +24,7 @@ import java.nio.file.Path
  *
  * The helpers only ONE world uses live in that world's file — the failure
  * report belongs to the durable world, the live output observer to the
- * volatile one — and the ones only [main] uses live in [Main].
+ * volatile one — and the ones only `main` uses live in `Main.kt`.
  */
 
 /**
@@ -39,12 +39,12 @@ import java.nio.file.Path
  * without an out-of-order window.
  */
 internal fun emitCorrelationAndReceipt(
-    eventStore: dev.rubentxu.pipeline.v2.events.EventSink,
-    runId: dev.rubentxu.pipeline.v2.domain.RunId,
-    correlationId: dev.rubentxu.pipeline.v2.domain.CorrelationId,
-    ownerId: dev.rubentxu.pipeline.v2.events.durable.RunOwnerId,
+    eventStore: EventSink,
+    runId: RunId,
+    correlationId: CorrelationId,
+    ownerId: RunOwnerId,
     startedAtMs: Long,
-    controlDir: java.nio.file.Path,
+    controlDir: Path,
     format: ObservationFormat,
 ) {
     val correlatedEvent = RunCorrelated(
@@ -158,10 +158,10 @@ internal fun writeEventDocument(
  */
 
 internal fun compileOrRefuse(
-    spec: dev.rubentxu.pipeline.v2.dsl.PipelineSpec,
+    spec: PipelineSpec,
     sourcePath: String,
     sourceContent: String,
-): dev.rubentxu.pipeline.v2.domain.CompiledPipeline =
+): CompiledPipeline =
     try {
         DslCompiledPipelineCompiler.compile(
             spec = spec,

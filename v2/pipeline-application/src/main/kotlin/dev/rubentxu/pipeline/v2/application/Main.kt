@@ -343,9 +343,12 @@ fun main(args: Array<String>) {
     }
 
     // "run" command. The world is decided here and only here: without `--db`
-    // the run is volatile, with it the run is durable. Both worlds run the SAME
-    // canonical pipeline; what changes is the durability of the promise, not
-    // the algorithm.
+    // the run is volatile, with it the run is durable. Both worlds reach the
+    // SAME canonical run; what changes is the durability of the promise, not
+    // the algorithm. (The two are not identical in every detail: the durable
+    // world also resolves the scripted-frontend form, and it binds a credential
+    // provider where the volatile one does not. `runVolatilePipeline` says
+    // which.)
     if (config.dbPath == null) {
         runVolatilePipeline(
             config = config,

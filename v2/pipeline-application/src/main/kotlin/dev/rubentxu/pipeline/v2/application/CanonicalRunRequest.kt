@@ -17,13 +17,32 @@ import java.nio.file.Path
 /**
  * Where a run's durable state lives.
  *
- * This is the ONLY group of facts that differs between the in-memory world and
- * the durable (`--db`) world. Everything else — the clock, the replay policy,
- * the sandbox, the workspace, the credential seam — is decided once, the same
- * way, for both.
+ * This group decides **whether the run survives the process**: the journal,
+ * the cursor store, the event sink and the Saga seam. The in-memory world
+ * binds in-memory implementations of all four; the durable (`--db`) world binds
+ * the SQLite ones.
  *
- * Grouping it makes that claim checkable: if a fact is not in here, the two
- * worlds cannot disagree about it.
+ * ## What it does NOT decide
+ *
+ * Nothing here says the two worlds are otherwise identical, because they are
+ * not, and pretending otherwise would be a lie in a KDoc. Two facts of
+ * [CanonicalRunPolicy] differ too, and both on purpose:
+ *
+ * - `credentialProvider`: the in-memory world passes **no** provider (H5-B),
+ *   so a Step that reads a credential gets `NotConfigured` — the honest answer
+ *   for a run with nowhere to look;
+ * - `controlDirRoot`: necessarily different, because the two worlds keep their
+ *   control state in different places.
+ *
+ * And the two worlds do not even have the same set of execution routes: the
+ * scripted-frontend form is resolved only in the durable world. That
+ * asymmetry predates this file and is the honest reason to be careful with
+ * the phrase "the same pipeline in both worlds".
+ *
+ * What this grouping buys is narrower and true: **the difference is now in
+ * one reviewable place instead of spread over eighteen arguments at two call
+ * sites.** Before, any of the eighteen could differ between the worlds and
+ * nothing said which.
  */
 internal data class CanonicalRunState(
     val journal: OperationJournal,
@@ -55,12 +74,17 @@ internal data class CanonicalRunPolicy(
 )
 
 /**
- * The one and only description of "run this pipeline", shared by the
- * in-memory world and the durable world.
+ * The description of "run this pipeline" that both worlds hand to
+ * [runCanonical].
  *
- * Both worlds build one of these and hand it to [runCanonical]. There is no
- * second call site, so the two worlds cannot drift: the difference between
- * "runs in memory" and "runs in SQL" is the [state] group, and nothing else.
+ * [runCanonical] has exactly two call sites — one per world — and both of them
+ * build one of these. There is no third, and there is no other way to reach
+ * the canonical run, so the two worlds can only differ in the VALUES they put
+ * here. Before this type existed they could differ in any of eighteen
+ * arguments, at either of two call sites, and nothing said which.
+ *
+ * What the values may differ in is written down where it is decided, not here:
+ * the [state] group and the two fields of [policy] that differ on purpose.
  */
 internal data class CanonicalRunRequest(
     val pipeline: CompiledPipeline,

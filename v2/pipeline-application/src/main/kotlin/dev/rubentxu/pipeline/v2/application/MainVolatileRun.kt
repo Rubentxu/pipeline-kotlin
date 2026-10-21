@@ -33,8 +33,21 @@ import dev.rubentxu.pipeline.v2.application.observation.LiveOutputPresentation
  * LF-0208 (Single Runtime Spine): the storage choice must not select a
  * different execution algorithm. This branch runs the SAME canonical
  * coordinator as the durable one, with volatile stores; nothing survives the
- * process. The two worlds differ in the STORES, not in the algorithm, and
- * that is why the differences live in the wiring below and not in the run.
+ * process. The differences live in the wiring below and not in the run.
+ *
+ * ## Where the two worlds are NOT the same
+ *
+ * The law is about the ALGORITHM, and the algorithm is shared: both worlds
+ * reach [runCanonical] and both bind the same coordinator. Two facts of the
+ * request differ on purpose — the credential provider (H5-B: a run with nowhere
+ * to look answers `NotConfigured`) and the control root (necessarily, because
+ * the two worlds keep their control state in different places).
+ *
+ * And one route exists ONLY in the durable world: the scripted-frontend form
+ * (`runScriptedFrontend`), which the durable branch resolves and this one does
+ * not. That asymmetry predates this file; it is written down here because a
+ * KDoc that says "the same in both worlds" when it is not is worse than no
+ * KDoc at all.
  *
  * ## What is decided here and not in [main]
  *
@@ -313,13 +326,6 @@ private fun establishVolatileIdentity(
 }
 
 /**
- * The event store of a volatile run: in memory, and mirrored live in TEXT.
- *
- * ADR-0088: in TEXT the run is mirrored live as events are appended, so
- * the end-of-run dump is suppressed in the caller. Machine formats keep stdout
- * untouched and are written once, at the end, exactly as before.
- */
-/**
  * OBS-E4: the run-time output observer, started before the pipeline and stopped after it.
  *
  * ## What this is for
@@ -403,6 +409,13 @@ private fun startLiveOutputObserver(
 
 private const val OBSERVER_JOIN_TIMEOUT_MS = 5_000L
 
+/**
+ * The event store of a volatile run: in memory, and mirrored live in TEXT.
+ *
+ * ADR-0088: in TEXT the run is mirrored live as events are appended, so
+ * the end-of-run dump is suppressed in the caller. Machine formats keep stdout
+ * untouched and are written once, at the end, exactly as before.
+ */
 private fun composeVolatileEventStore(
     config: CliFlags,
     secretPatternRegistry: SecretPatternRegistry,

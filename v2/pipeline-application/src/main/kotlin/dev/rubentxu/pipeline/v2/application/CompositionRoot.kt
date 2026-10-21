@@ -13,7 +13,6 @@ import dev.rubentxu.pipeline.v2.application.durable.RunOutputRetention
 import dev.rubentxu.pipeline.v2.application.durable.credentials.WithCredentialsExecutorScopeAdapter
 import dev.rubentxu.pipeline.v2.output.RetainUntil
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
-import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfigResolver
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import kotlinx.coroutines.runBlocking
@@ -29,9 +28,11 @@ import kotlinx.coroutines.runBlocking
  * It now takes ONE [CanonicalRunRequest], and both worlds build the same
  * request. The difference between "runs in memory" and "runs in SQL" is the
  * [CanonicalRunState] group: the journal, the cursor store, the event sink
- * and the Saga seam. Everything else -- the clock, the replay policy, the
- * sandbox, the workspace, the credential seam -- is decided once and lands in
- * the request, so the two worlds cannot disagree about it.
+ * and the Saga seam. The rest of the request -- the clock, the replay policy,
+ * the sandbox, the workspace, the credential seam -- is the SAME set of facts
+ * for both, filled in with the values each world decided. Two of them differ
+ * on purpose (the credential provider, by H5-B, and the control root, by
+ * construction); [CanonicalRunRequest] says which.
  *
  * Two parameters are GONE, and their absence is the point:
  *

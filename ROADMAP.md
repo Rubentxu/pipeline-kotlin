@@ -1365,12 +1365,13 @@ la de `runCanonicalPipeline`), y las 390 entradas del módulo pasan a 362.
    llevaba 18 parámetros y la llamaban los dos mundos —el volátil y el durable—
    con 18 argumentos cada uno. Dos puntos de llamada son dos que pueden divergir,
    y la divergencia posible era grave: `--db` podía acabar ejecutando un camino
-   distinto del que se ejecuta sin `--db`. Ahora hay **un** punto de llamada
-   (`runCanonical`) y los dos mundos construyen la misma petición
-   (`CanonicalRunRequest`), agrupada por costura: `state` (dónde vive el estado:
-   journal, cursor store, event sink, costura Saga) y `policy` (lo que se le dio
-   al run: reloj, política de replay, sandbox, workspace, costura de
-   credenciales, permiso de red, registro de redacción).
+   distinto del que se ejecuta sin `--db`. Ahora la ruta canónica se decide en
+   **un** sitio (`runCanonical`) y tiene **dos** llamadas —una por mundo— que
+   construyen la misma petición (`CanonicalRunRequest`), agrupada por costura:
+   `state` (dónde vive el estado: journal, cursor store, event sink, costura
+   Saga) y `policy` (lo que se le dio al run: reloj, política de replay,
+   sandbox, workspace, costura de credenciales, permiso de red, registro de
+   redacción).
 
    Lo que esto compra es más estrecho que «los dos mundos son iguales», y por
    eso se dice así: **la diferencia entre los dos mundos está ahora en un sitio

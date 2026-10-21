@@ -203,33 +203,33 @@ interface OutputRecoveryPort {
 interface OutputSealPort {
 
     /**
-     * Records that no further bytes will be written to [stream], and returns the resulting
-     * [SealOutcome].
-     *
-     * ## Closed return type, by design (M1-F.3)
-     *
-     * A channel that was never opened is NOT a failure: `sh("echo hi")` writes
-     * to stdout and never opens stderr, so the stderr seal must be a silent
-     * no-op. A real I/O failure (disk full, FS permission) IS a failure, and
-     * must surface as a typed [SealOutcome.Failure] rather than an exception
-     * that the caller cannot distinguish from "unknown stream".
-     *
-     * The return type makes all four outcomes explicit:
-     *   - [SealOutcome.Sealed] — newly sealed; `end` is the committed extent
-     *   - [SealOutcome.AlreadySealed] — was sealed before; `end` is the
-     *     previously-recorded end. Idempotent: re-sealing is a no-op.
-     *   - [SealOutcome.NeverOpened] — legitimate absence; `end` is null.
-     *     This is the per-channel "no bytes were ever produced" case the
-     *     durable shell substrate observes for the silent channel of a
-     *     stdout-only (or stderr-only) script.
-     *   - [SealOutcome.Failure] — real I/O failure; `cause` is the throwable
-     *     and `end` may be null or a partial extent (the failure might have
-     *     happened before the marker could be written).
-     *
-     * Refuses an append after a seal rather than accepting it, because a
-     * sealed stream that grows would make [dev.rubentxu.pipeline.v2.output.OutputTailState.Sealed]
-     * a promise the store had already broken.
-     */
+ * Records that no further bytes will be written to [stream], and returns the resulting
+ * [SealOutcome].
+ *
+ * ## Closed return type, by design 
+ *
+ * A channel that was never opened is NOT a failure: `sh("echo hi")` writes
+ * to stdout and never opens stderr, so the stderr seal must be a silent
+ * no-op. A real I/O failure (disk full, FS permission) IS a failure, and
+ * must surface as a typed [SealOutcome.Failure] rather than an exception
+ * that the caller cannot distinguish from "unknown stream".
+ *
+ * The return type makes all four outcomes explicit:
+ * - [SealOutcome.Sealed] — newly sealed; `end` is the committed extent
+ * - [SealOutcome.AlreadySealed] — was sealed before; `end` is the
+ * previously-recorded end. Idempotent: re-sealing is a no-op.
+ * - [SealOutcome.NeverOpened] — legitimate absence; `end` is null.
+ * This is the per-channel "no bytes were ever produced" case the
+ * durable shell substrate observes for the silent channel of a
+ * stdout-only (or stderr-only) script.
+ * - [SealOutcome.Failure] — real I/O failure; `cause` is the throwable
+ * and `end` may be null or a partial extent (the failure might have
+ * happened before the marker could be written).
+ *
+ * Refuses an append after a seal rather than accepting it, because a
+ * sealed stream that grows would make [dev.rubentxu.pipeline.v2.output.OutputTailState.Sealed]
+ * a promise the store had already broken.
+ */
     fun seal(stream: OutputStreamId): SealOutcome
 }
 

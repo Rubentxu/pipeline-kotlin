@@ -443,7 +443,7 @@ internal object EventJsonWriter {
                 sb.append(",\"newSha\":")
                 sb.append(EventJsonWriter.jsonString(event.newSha))
             }
-            // L7 Jenkins File + Artefact Events (ML-R7)
+            // L7 Jenkins File + Artefact Events 
             is FileWritten -> {
                 sb.append(",\"path\":")
                 sb.append(EventJsonWriter.jsonString(event.path.toString()))
@@ -726,7 +726,7 @@ internal object EventJsonWriter {
                 sb.append(EventJsonWriter.jsonString(event.reason))
             }
             // RP6-C / WU-093 §5 httpRequest events. Metadata only: no body, no
-            // header values (INV-L6-EVT-001).
+            // header values.
             is HttpRequestStarted -> {
                 sb.append(",\"url\":")
                 sb.append(EventJsonWriter.jsonString(event.url))
@@ -797,7 +797,7 @@ internal object EventJsonWriter {
             is TimestampsExited -> {
                 // no extra fields
             }
-            // S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation (WU-1)
+            // S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation 
             is StepAdmissionObserved -> {
                 sb.append(",\"stageIndex\":")
                 sb.append(event.stageIndex)

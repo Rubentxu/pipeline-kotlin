@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry
 import java.util.ServiceLoader
 
 /**
- * Runtime discovery adapter for external DIRECTIVE plugins (S1-D).
+ * Runtime discovery adapter for external DIRECTIVE plugins.
  *
  * The domain defines the [DirectiveContributor] SPI but never calls
  * [ServiceLoader] itself: discovery is a runtime-adapter concern. This adapter

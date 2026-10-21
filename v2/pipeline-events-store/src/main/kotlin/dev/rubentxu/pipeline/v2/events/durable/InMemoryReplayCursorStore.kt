@@ -13,11 +13,11 @@ import dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame
  * ## Mirrored semantics
  *
  * - [advance]: upsert per run id with the same CAS rule as the SQLite
- *   `WHERE excluded.stage_index >= replay_cursor.stage_index` — an
- *   advance to an EARLIER stage index is a no-op (idempotency).
+ * `WHERE excluded.stage_index >= replay_cursor.stage_index` — an
+ * advance to an EARLIER stage index is a no-op (idempotency).
  * - [advancePastParallelFrame]: join barrier keyed `$runId:parallel` /
- *   `$runId:parallel-completed` (ADR-0035), same CAS rule, returns the
- *   [StageIndex] it advanced to.
+ * `$runId:parallel-completed`, same CAS rule, returns the
+ * [StageIndex] it advanced to.
  * - [load]: `null` when no cursor exists for the run.
  */
 class InMemoryReplayCursorStore(

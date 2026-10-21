@@ -43,7 +43,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * `core.lock` — hold a named resource while the enclosed body runs (the POSIX-file-lock contract / WU-091).
+ * `core.lock` — hold a named resource while the enclosed body runs, under POSIX-file-lock semantics.
  *
  * ## Why HANDLER_CONTINUATION and not a body policy
  *
@@ -452,7 +452,7 @@ object CoreLockStep {
                 // One declaration, five halves: the port that decides WHETHER to run
                 // the body, the bound continuation that runs it, the durable lane
                 // that decides WHO owns the resulting hold, the event sink that
-                // makes the lifecycle observable (the named-resource contract document.md §6), and the
+                // makes the lifecycle observable, and the
                 // scope budget that BOUNDS the wait. Admission is fail-closed before
                 // the handler runs when any is absent, and resolveBodyExecutionPolicy
                 // rejects the owner/capability mismatch.

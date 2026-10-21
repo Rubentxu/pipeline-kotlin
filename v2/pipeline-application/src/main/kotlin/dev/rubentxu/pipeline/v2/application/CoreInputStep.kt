@@ -42,7 +42,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 
 /**
- * `core.input` — ask a human and continue only if they say yes (RP6-B / WU-092).
+ * `core.input` — ask a human and continue only if they say yes.
  *
  * ## Why HANDLER_CONTINUATION and not a body policy
  *

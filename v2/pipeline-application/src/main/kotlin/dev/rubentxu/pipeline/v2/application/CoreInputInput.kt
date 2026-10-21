@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 
 /**
- * Typed input of `core.input` (RP6-B / WU-092).
+ * Typed input of `core.input`.
  *
  * The WHOLE payload is encoded; the engine does not probe individual fields, and
  * the codec is not required to round-trip only some of them. Not annotated
@@ -50,7 +50,7 @@ sealed interface InputDecision {
  * A malformed response and a lost race are deliberately NOT cases here. A
  * malformed file is ignored and the wait continues; a lost race is a filesystem
  * fact on the answering side. Neither can be an outcome of the Step
- * (SPEC_WU092_INPUT.md §2, D4).
+ * .
  */
 sealed interface InputDenialReason {
     data class TimedOut(val waitedMillis: Long) : InputDenialReason
@@ -84,7 +84,7 @@ data class CoreInputOutput(
      * running a body, so the body engine has no outcome to propagate and the handler's
      * return value alone would default to Success — a run whose permission was DENIED,
      * TIMED OUT or ABORTED would report success and exit 0. Measured on the real CLI
-     * before this carrier existed (WU-092 G4).
+     * before this carrier existed.
      */
     override val outcome: StepOutcome get() = runOutcome()
 

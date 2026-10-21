@@ -459,7 +459,7 @@ class SqliteEventStore(private val file: String) : EventSink, AutoCloseable {
                 is TimeoutTriggered -> event.copy(sequence = assignedSequence)
                 is TimestampsEntered -> event.copy(sequence = assignedSequence)
                 is TimestampsExited -> event.copy(sequence = assignedSequence)
-                // S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation (WU-1)
+                // S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation 
                 is StepAdmissionObserved -> event.copy(sequence = assignedSequence)
                 // SAGA / PK-1: the armed-obligation notification carries the assigned
                 // sequence like every other durable event; without this branch it would be

@@ -33,7 +33,7 @@ import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeP
 // durable waitUntil reconciliation driver and identity factory.
 import dev.rubentxu.pipeline.v2.application.durable.WaitUntilIdentityFactory
 
-// control journal + reconciliation driver (ADR-0075 §11).
+// control journal + reconciliation driver.
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.RetryIdentityFactory
 import dev.rubentxu.pipeline.v2.application.durable.retry.RetryReconciliationDriver
@@ -190,7 +190,7 @@ fun CompiledPipeline.supportsCanonicalDurableExecution(effectiveRegistry: StepRe
 
 /**
  * Default body-owner resolver over the static core descriptor registry. Preserves the
- * pre-RP-035 behaviour for callers that do not thread an effective registry: core
+ * previous behaviour for callers that do not thread an effective registry: core
  * CANONICAL_ENGINE rows are eligible, everything else is refused exactly as before.
  */
 internal val standardBodyOwnerOf: (PluginStepId) -> dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner? =
@@ -314,13 +314,13 @@ internal sealed interface CanonicalContinuation {
 /**
  * Whether the decision core considers recovery REQUIRED for this operation.
  *
- * ADR-0103 RPL-2: `effects`, `replayPolicy` and `recoveryPolicy` come from the Step's descriptor,
- * and no execution surface substitutes a literal for a declared one. This ADT is where the WHEN is
+ * The Step's descriptor fixes `effects`, `replayPolicy` and `recoveryPolicy`; no execution surface
+ * substitutes a literal for a declared one. This ADT is where the WHEN is
  * decided, and it is a closed pair because the alternatives are exactly two — the declared policy
  * does not ask for a subprocess observation, or it does and the row is in flight.
  *
  * It is declared here, beside [InvocationReconciliation], and NOT in the observer, because the
- * observer cannot see the declared policy. That asymmetry is the whole point: the S4-R-REC spike
+ * observer cannot see the declared policy. That asymmetry is the whole point: a spike
  * measured that an observer asked to decide this question answered it by collapsing three distinct
  * facts into one sentinel, and the third of them — required but unobservable — fell through to the
  * replay kernel and re-executed an external effect of unknown prior state.
@@ -372,7 +372,7 @@ internal sealed interface InvocationReconciliation {
      * the payload was `RecoveredTerminal` (retired with the type itself), and that let
      * the OBSERVER decide semantics —
      * it answered a non-zero exit code with `Failed(FailureKind.SCRIPT)` without knowing the
-     * invocation's `returnMode`. F1-C0 measured what that cost: `sh(returnStatus = true)` with exit
+     * invocation's `returnMode`. A spike measured what that cost: `sh(returnStatus = true)` with exit
      * 42 journalled FAILED, while the contract says `Status(42) · Success`. The exit code was
      * observed. The carrier is now the substrate's own fact type, which the Step-owned projection
      * already knows how to read.
@@ -396,7 +396,7 @@ internal sealed interface BlockShellScope {
     data class EnvScope(val overrides: List<String>, val parentEnv: Map<String, dev.rubentxu.pipeline.v2.domain.SecretHandle>) : BlockShellScope
 
     /**
-     * B13/E-EM-11: body-deadline contract projected from the `core.timeout` payload.
+     * Body-deadline contract projected from the `core.timeout` payload.
      * The deadline flows to child ShOptions as the certified per-invocation Sh
      * watchdog budget (min of own and inherited remaining), so cancellation
      * propagates to the child subprocess through the kill seam.
@@ -404,7 +404,7 @@ internal sealed interface BlockShellScope {
     data class Timeout(val budgetMs: Long) : BlockShellScope
 
     /**
-     * B13/E-EM-11: body-attempt contract projected from the `core.retry` payload.
+     * Body-attempt contract projected from the `core.retry` payload.
      * The body is re-dispatched up to [maxAttempts] times; each attempt carries a
      * deterministic journal identity (attempt BlockSegment appended to bodyPath),
      * so restart/replay reconstructs attempt state from the journal, not memory.
@@ -585,7 +585,7 @@ internal fun BlockStepNode.projectScopedBody(
  * root silently refuses its own children, because `/ws/./sub` does not start with `/ws/./`.
  *
  * Absolute paths are held to the same boundary as relative ones. They used to be exempt, and
- * that exemption was a hole rather than a decision: ADR-0100 section 8/9 states that an absolute
+ * that exemption was a hole rather than a decision: an external counter section states that an absolute
  * path inside the root is accepted and one outside it is rejected, [WorkspacePathResolver]
  * implements that policy, and [DirExecutor.resolveTargetPath] implements it too -- but the latter
  * has no production construction site, so this function was the live guard and it was the only
@@ -616,7 +616,7 @@ internal fun BlockStepNode.projectEnvironment(options: ShOptions): BodyExecution
     return BodyExecutionProjection.Scope(BlockShellScope.EnvScope(overrides = overrides, parentEnv = options.env))
 }
 
-// B13/E-EM-11: fail-closed contract decode — malformed deadline/attempt payloads are
+// Fail-closed contract decode — malformed deadline/attempt payloads are
 // typed schema rejections, never a silent plain-sequence fallback.
 internal fun BlockStepNode.decodeDeadline(): BodyExecutionProjection {
     val payload = Json.parseToJsonElement(this.payload.encoded).jsonObject
@@ -626,7 +626,7 @@ internal fun BlockStepNode.decodeDeadline(): BodyExecutionProjection {
     return BodyExecutionProjection.Scope(BlockShellScope.Timeout(budgetMs = seconds * 1000L))
 }
 
-// EM-7/LFC-5.3 (INC-022): the credential bindings are decoded HERE, in the pure projection,
+// The credential bindings are decoded HERE, in the pure projection,
 // so an invalid payload is a typed schema rejection before the acquisition effect runs and
 // before any child is dispatched. There is no second decode on the execution path (W1d).
 internal fun BlockStepNode.decodeCredentialBindings(): BodyExecutionProjection =

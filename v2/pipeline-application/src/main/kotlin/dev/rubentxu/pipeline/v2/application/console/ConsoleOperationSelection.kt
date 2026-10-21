@@ -7,7 +7,7 @@ import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreRefusal
 
 /**
- * R4 / WU-RC3 — the ONE decision that answers "which operations does this console request want?",
+ * The ONE decision that answers "which operations does this console request want?",
  * resolved once and consumed by every frame path.
  *
  * ## Why this exists
@@ -16,13 +16,13 @@ import dev.rubentxu.pipeline.v2.events.durable.EventStoreRefusal
  *
  *  - `--follow` was dispatched BEFORE the filter branch in `CliParser.consoleValidate`, so
  *    `console --frames --follow --stage build` admitted a plain `FollowFrames` and **silently
- *    dropped the filter**. That is the audit's P0-4.
+ *    dropped the filter**.
  *  - `StageStepKindResolver` matched the user's `--stage`/`--step` against the **stringified
  *    index** the opId carries, so `--stage 0` hit and `--stage build` missed against the very
  *    same operation.
  *  - `--kind` was `val kindOk = true` — a non-empty kind set contributed a *true* conjunct. Any
  *    `--kind nonsense` matched every frame in the run. That is the "semantic drop" the Semantic
- *    Constitution §2 forbids outright: a flag accepted, never interpreted.
+ *    Constitution forbids outright: a flag accepted, never interpreted.
  *
  * None of those is fixable by adjusting a comparison. The names and the kinds are not in the
  * stream id; they are in the **events journal**, and `StepStarted` carries exactly what is needed
@@ -121,7 +121,7 @@ sealed interface SelectionOutcome {
 }
 
 /**
- * R4 / WU-RC3 — resolve `--stage` / `--step` / `--kind` tokens into an [OperationSelection].
+ * Resolve `--stage` / `--step` / `--kind` tokens into an [OperationSelection].
  *
  * ## The resolution, stated once
  *
@@ -184,7 +184,7 @@ object ConsoleOperationSelection {
             )
         }
 
-        // WU-C FIX — the events are traversed ONCE and materialised.
+        // The events are traversed ONCE and materialised.
         //
         // `SqliteEventStore.eventsFor` hands back a sequence that can be consumed only once, so
         // the two `filterIsInstance` calls this used to make threw

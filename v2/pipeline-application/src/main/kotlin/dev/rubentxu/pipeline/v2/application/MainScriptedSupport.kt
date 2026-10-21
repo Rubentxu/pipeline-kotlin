@@ -13,7 +13,7 @@ import java.nio.file.Path
 /**
  * D-032 (audit D-011 H3.d): scripted-frontend run wrapper extracted from Main.kt.
  *
- * Single classloader for the plugin JAR list (LB-02 / EP-6): parented on the
+ * Single classloader for the plugin JAR list: parented on the
  * application classloader so the plugin sees the SDK contracts; installed as
  * the thread-context classloader during composition so ServiceLoader discovery
  * finds the contributed descriptors. The SAME jars are also given to the Kotlin

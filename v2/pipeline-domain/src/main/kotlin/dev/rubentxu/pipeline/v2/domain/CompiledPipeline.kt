@@ -158,9 +158,9 @@ data class ToolSpec(val name: String, val version: String) {
 }
 
 /**
- * The `post` block as it appears in the compiled IR (S2-B).
+ * The `post` block as it appears in the compiled IR.
  *
- * TYPED over [PostCondition] rather than `Map<String, ...>`: a bare string key
+ * TYPED over [PostCondition] rather than `Map<String,...>`: a bare string key
  * would let `post { alwyas { } }` compile into a block that silently never runs,
  * which is the exact fake-fallback class the Step Constitution forbids. The
  * closed enum makes an unrecognised condition a compile error instead.

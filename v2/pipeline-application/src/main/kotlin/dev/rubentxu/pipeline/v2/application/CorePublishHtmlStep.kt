@@ -24,14 +24,14 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * `core.publishHTML` Step (WU-LPR-090 / Tier B #2).
+ * `core.publishHTML` Step (Tier B #2).
  *
  * Copies workspace files matching an Ant-style `reportFiles` glob (default
  * recursive match) into the run-scoped reports archive under a sanitized
  * `reportName`, generating an `index.html` wrapper with one `<a>` link per
  * published file. The reports archive is a SIBLING of `stashes/` so that
  * `WorkspaceResolver.cleanupAfterComplete()` does not destroy published
- * reports when the producing stage finishes (F-ARCH-L7).
+ * reports when the producing stage finishes.
  *
  * Jenkins signature: `publishHTML(target)` where `target` is an
  * `HtmlPublisherTarget` in upstream Java. Pipeline-K keeps the public DSL

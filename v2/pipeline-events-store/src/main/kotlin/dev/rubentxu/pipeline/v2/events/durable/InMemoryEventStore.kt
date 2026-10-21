@@ -138,7 +138,7 @@ class InMemoryEventStore : EventSink {
             is GitCheckoutCompleted -> event.copy(sequence = assignedSequence)
             is GitCheckoutFailed -> event.copy(sequence = assignedSequence)
             is GitPollChanged -> event.copy(sequence = assignedSequence)
-            // L7 Jenkins File + Artefact Events (ML-R7)
+            // L7 Jenkins File + Artefact Events 
             is FileWritten -> event.copy(sequence = assignedSequence)
             is FileRead -> event.copy(sequence = assignedSequence)
             is FileExistsChecked -> event.copy(sequence = assignedSequence)
@@ -155,17 +155,17 @@ class InMemoryEventStore : EventSink {
             // ML-R9 workflow-control events
             is DirEntered -> event.copy(sequence = assignedSequence)
             is DirExited -> event.copy(sequence = assignedSequence)
-            // ML-R9 workspace-cleanup events (T-05)
+            // ML-R9 workspace-cleanup events 
             is DirDeleted -> event.copy(sequence = assignedSequence)
             is WsCleaned -> event.copy(sequence = assignedSequence)
-            // ML-R9 error-handling events (T-06)
+            // ML-R9 error-handling events 
             is CatchErrorTriggered -> event.copy(sequence = assignedSequence)
             is DirectiveAdmitted -> event.copy(sequence = assignedSequence)
             is ExecutionTargetResolved -> event.copy(sequence = assignedSequence)
             is DirectiveDenied -> event.copy(sequence = assignedSequence)
             is GateEvaluated -> event.copy(sequence = assignedSequence)
             is StageMarkedUnstable -> event.copy(sequence = assignedSequence)
-            // ML-R9 workflow-utility events (T-07)
+            // ML-R9 workflow-utility events 
             is WorkflowLoaded -> event.copy(sequence = assignedSequence)
             is WaitUntilPolled -> event.copy(sequence = assignedSequence)
             is WaitUntilCompleted -> event.copy(sequence = assignedSequence)
@@ -194,7 +194,7 @@ class InMemoryEventStore : EventSink {
             // ML-R9 T-08 timestamps decorator events
             is TimestampsEntered -> event.copy(sequence = assignedSequence)
             is TimestampsExited -> event.copy(sequence = assignedSequence)
-            // S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation (WU-1)
+            // S2.5.7 / B1.2c3 — LB-01 durable-spine admission observation 
             is StepAdmissionObserved -> event.copy(sequence = assignedSequence)
             // SAGA / PK-1: the armed-obligation notification carries the assigned sequence
             // like every other durable event.

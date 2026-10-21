@@ -11,7 +11,7 @@ import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 
 /**
  * Trivial line-based [PipelineCompiler] used to demonstrate and exercise
- * the M2 contract without committing to a full DSL parser.
+ * the publish/subscribe contract without committing to a full DSL parser.
  *
  * ## Syntax
  *

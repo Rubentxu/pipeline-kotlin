@@ -92,7 +92,7 @@ data class DeleteDirOutput(
  * ## Re-entry (the capability refactor)
  *
  * G1 registered the candidate with three capabilities. the capability refactor refactors to the
- * single-capability pattern per ADR-0070..0074 and the step-implementation guide STEP CONSTITUTION.
+ * single-capability pattern per the step-implementation guide STEP CONSTITUTION.
  * Counters remain 6 / 6 / 6 (LEGACY_PLUGIN_IDS unchanged until G4).
  */
 object CoreDeleteDirStep {

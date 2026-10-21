@@ -4,18 +4,18 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
 /**
  * Capability key under which the engine supplies a typed [LockCoordinator] to a
- * handler that must take a shared resource (RP6-A / WU-091).
+ * handler that must take a shared resource.
  *
  * Mirrors [SHELL_OPERATIONS_CAPABILITY]:
  *
  * - Kept at a neutral owner so the durable runtime capability bridge and the
- *   registry step definitions reference the SAME token without the execution
- *   seam depending on any concrete Step definition.
+ * registry step definitions reference the SAME token without the execution
+ * seam depending on any concrete Step definition.
  * - A handler may use it only if it declares it in its
- *   [dev.rubentxu.pipeline.v2.domain.step.StepContract.requiredCapabilities];
- *   admission is fail-closed before the handler runs when it is not available.
+ * [dev.rubentxu.pipeline.v2.domain.step.StepContract.requiredCapabilities];
+ * admission is fail-closed before the handler runs when it is not available.
  * - `context.capabilities.get<LockCoordinator>(LOCK_COORDINATION_CAPABILITY)` is
- *   the only call site a `lock` handler is allowed to use for coordination.
+ * the only call site a `lock` handler is allowed to use for coordination.
  *
  * `core.lock` declares this TOGETHER WITH
  * [dev.rubentxu.pipeline.v2.domain.step.BODY_CONTINUATION_CAPABILITY], because
@@ -28,7 +28,7 @@ val LOCK_COORDINATION_CAPABILITY: StepCapability = StepCapability("lockCoordinat
 
 /**
  * Capability key under which the engine supplies the current
- * [ExecutionLaneId] (RP6-A / WU-091).
+ * [ExecutionLaneId].
  *
  * ## Why this is a capability and not a wider `StepHandlerContext`
  *

@@ -418,13 +418,13 @@ class BranchScope {
     }
 
     /**
-     * `lock` inside a parallel branch (RP6-A / WU-091). The composed scenario
-     * `branch("left") { lock("res") { ... } }` vs a sibling branch contending
-     * for the same resource is exactly the case the durable execution lane
-     * (`ExecutionLaneId = runId + parallelLineage`) was introduced for: two
-     * sibling branches are DIFFERENT lanes and must contend; a nested `lock`
-     * on the SAME lane re-enters. Same declarative shape as [dir].
-     */
+ * `lock` inside a parallel branch. The composed scenario
+ * `branch("left") { lock("res") {... } }` vs a sibling branch contending
+ * for the same resource is exactly the case the durable execution lane
+ * (`ExecutionLaneId = runId + parallelLineage`) was introduced for: two
+ * sibling branches are DIFFERENT lanes and must contend; a nested `lock`
+ * on the SAME lane re-enters. Same declarative shape as [dir].
+ */
     fun lock(
         resource: String,
         timeoutSeconds: Int? = null,
@@ -460,7 +460,7 @@ class ScriptScope {
         commands.add(command)
     }
 
-    // WU-LPR-071 (fixture 05-scripted-if): the @DslMarker hierarchy (LPR-401) correctly
+    // WU-LPR-071 (fixture 05-scripted-if): the @DslMarker hierarchy correctly
     // blocks implicit outer receivers inside `script { }`, so script bodies can no longer
     // resolve `echo`/`sh` from [StageScope]. Jenkins-familiar script blocks still expect
     // these step verbs, so the scope carries its own step shims that record the
@@ -481,7 +481,7 @@ class ScriptScope {
 
 /**
  * Builder for a stage, capturing its name, steps, options, environment, and
- * declared directives (S1-B).
+ * declared directives.
  */
 class StageBuilder(
     private val name: String,

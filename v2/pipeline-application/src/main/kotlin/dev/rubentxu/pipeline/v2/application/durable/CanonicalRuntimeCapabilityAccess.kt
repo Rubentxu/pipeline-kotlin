@@ -63,7 +63,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
 
 /**
- * CDE.3-d1: explicit, small capability bridge from a [CanonicalRuntimeContext] to a
+ * Explicit, small capability bridge from a [CanonicalRuntimeContext] to a
  * [StepCapabilityAccess].
  *
  * It exposes ONLY the capabilities the canonical runtime actually declares and provides today
@@ -83,7 +83,7 @@ open class CanonicalRuntimeCapabilityAccess(
     // milestone state store for MILESTONE_OPERATIONS_CAPABILITY.
     // Always non-null in production (coordinator provides it); nullable for test/adapter flexibility.
     private val milestoneStateStore: MilestoneStateStore? = null,
-    // E1.ecosystem-local-first / T1: per-run artifact index. Bound at
+    // Per-run artifact index. Bound at
     // composition root; shared between the producer (core.archiveArtifacts)
     // and the consumer (core.artifact.query). When null (e.g. legacy /
     // nested-step sub-contexts) the capability stays unexposed and BOTH
@@ -123,7 +123,7 @@ open class CanonicalRuntimeCapabilityAccess(
      * prepare-time by the ordinary fail-closed admission path — before any handler
      * runs and before a socket could exist.
      *
-     * H6 reads `permitsAny` rather than testing the gate against its
+     * Reads `permitsAny` rather than testing the gate against its
      * implementations. A run with no network entitlement at all never sees the
      * capability, so the default is still refused at ADMISSION and not inside a
      * handler; a run with an allowlist does get the capability and is refused per
@@ -313,7 +313,7 @@ open class CanonicalRuntimeCapabilityAccess(
                 root.resolve("inputs"),
             )
         }
-        // SAGA / PK-1: the compensation intent port.
+        // SAGA: the compensation intent port.
         //
         // Exposed ONLY when the engine bound one for this invocation. The port is the only
         // way a plugin may promise a compensation, and a promise that cannot be kept is
@@ -322,7 +322,7 @@ open class CanonicalRuntimeCapabilityAccess(
         context.sagaCompensation?.let { operations ->
             builder[SAGA_COMPENSATION_CAPABILITY] = operations
         }
-        // SAGA / PK-2: the compensation PLAN port.
+        // SAGA: the compensation PLAN port.
         //
         // Exposed ONLY when the engine bound one for this invocation, for the same reason as
         // the intent port above: a Step that asks what a Saga owes must not reach a handler
@@ -331,7 +331,7 @@ open class CanonicalRuntimeCapabilityAccess(
         context.sagaPlan?.let { plan ->
             builder[SAGA_PLAN_CAPABILITY] = plan
         }
-        // SAGA / PK-2: the compensation RUNTIME.
+        // SAGA: the compensation RUNTIME.
         //
         // Exposed ONLY when the engine bound one for this invocation, for the same reason as
         // the two ports above: a Step that asks the engine to run a compensation must not
@@ -339,7 +339,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // through, or no way to record what happened.
         context.sagaRuntime?.let { runtime ->
             builder[SAGA_RUNTIME_CAPABILITY] = runtime
-            // SAGA / PK-2 (3b-5): the Saga's LIFECYCLE — the runtime that can also KEEP the
+            // SAGA: the Saga's LIFECYCLE — the runtime that can also KEEP the
             // effects of a Saga that ended well, instead of only undoing them.
             //
             // Exposed ONLY when the bound runtime really is that port, for the same reason as
@@ -381,12 +381,12 @@ open class CanonicalRuntimeCapabilityAccess(
         // `core.pwd.tmp` Step does NOT use it directly — it goes through the
         // dedicated `TEMPORARY_WORKSPACE_OPERATIONS_CAPABILITY` port below, which
         // composes the effective workspace + canonical OpId into the deterministic
-        // `tmp-pwd-<sha256(opId)>` resource path (D5–D12, S2-A6 / G3T).
+        // `tmp-pwd-<sha256(opId)>` resource path.
         val effectiveWorkspaceRoot = context.shOptions.workingDirectory ?: context.shOptions.workspaceRoot
         builder[WORKSPACE_IDENTITY_CAPABILITY] = WorkspaceIdentity(
             workspaceRoot = effectiveWorkspaceRoot,
         )
-        // RP034-C (ADR-0100): the typed execution location, registered alongside
+        // The typed execution location, registered alongside
         // the legacy WorkspaceIdentity above so consumers migrate per vertical
         // instead of all at once.
         //
@@ -400,7 +400,7 @@ open class CanonicalRuntimeCapabilityAccess(
         // This is a pure binding: it introduces no new behaviour and changes no
         // value the legacy consumers already observe.
         builder[EXECUTION_LOCATION_CAPABILITY] = executionLocationFor(context)
-        // S2-A6 / G3T (post-correction): the ONLY capability consumed by
+        // The ONLY capability consumed by
         // CorePwdTmpStep.handler. The adapter binds the runtime's
         // [runIdString], [OpId], [ShOptions] (workspaceRoot), [EventSink] —
         // exactly the inputs needed to derive the deterministic tmp path and
@@ -420,9 +420,8 @@ open class CanonicalRuntimeCapabilityAccess(
      * What the run may DESTROY: the stage workspace itself (`deleteDir`) and its
      * contents (`cleanWs`). They share an anchor, a conditional exposure, and a
      * security story, so they live together: both are gated by the typed lease
-     * through [executionLocationFor] rather than by the VCS-marker heuristic
-     * that RP034-I retires, because a user-owned root may not be destroyed on the
-     * strength of a dotfile.
+     * through [executionLocationFor] rather than by the VCS-marker heuristic,
+     * because a user-owned root may not be destroyed on the strength of a dotfile.
      */
     private fun bindWorkspaceDestructionCapabilities(
         context: CanonicalRuntimeContext,
@@ -447,9 +446,8 @@ open class CanonicalRuntimeCapabilityAccess(
                 controlDirRoot = root,
                 eventSink = context.eventSink,
                 workspaceBase = context.workspaceBase,
-                // RP034-G (ADR-0102): the typed lease decides whether a
-                // user-owned root may be destroyed, replacing the VCS-marker
-                // heuristic that RP034-I retires.
+                // The typed lease decides whether a user-owned root may be
+                // destroyed, replacing the VCS-marker heuristic.
                 executionLocation = executionLocationFor(context),
             )
             builder[DELETE_DIR_OPERATIONS_CAPABILITY] = deleteOps
@@ -474,9 +472,8 @@ open class CanonicalRuntimeCapabilityAccess(
                 controlDirRoot = root,
                 eventSink = context.eventSink,
                 workspaceBase = context.workspaceBase,
-                // RP034-G (ADR-0102): the typed lease decides whether a
-                // user-owned root may be destroyed, replacing the VCS-marker
-                // heuristic that RP034-I retires.
+                // The typed lease decides whether a user-owned root may be
+                // destroyed, replacing the VCS-marker heuristic.
                 executionLocation = executionLocationFor(context),
             )
             builder[CLEAN_WS_OPERATIONS_CAPABILITY] = cleanWsOps
@@ -496,7 +493,7 @@ open class CanonicalRuntimeCapabilityAccess(
         context: CanonicalRuntimeContext,
         builder: MutableMap<StepCapability, Any>,
     ) {
-        // LFC-2E1 S2-B10 / G1: archiveArtifacts operations for core.archiveArtifacts.
+        // archiveArtifacts operations for core.archiveArtifacts.
         // The adapter binds runId, StageIdentity, controlDirRoot and the EventSink —
         // exactly the inputs needed to glob the stage workspace via the certified
         // AntStyleGlob substrate, copy matched files into the artefacts retention
@@ -579,7 +576,7 @@ open class CanonicalRuntimeCapabilityAccess(
         context: CanonicalRuntimeContext,
         builder: MutableMap<StepCapability, Any>,
     ) {
-        // S2-A9 spike: milestone state operations (core.milestone). The store is optional
+        // Milestone state operations (core.milestone). The store is optional
         // so existing call-sites that don't bind it see no change; when bound, the
         // MILESTONE_OPERATIONS_CAPABILITY is populated with a MilestoneOperationsAdapter
         // backed by the run-scoped store. The store lifetime is the coordinator lifetime,
@@ -588,7 +585,7 @@ open class CanonicalRuntimeCapabilityAccess(
             val milestoneOps: MilestoneOperations = MilestoneOperationsAdapter(store)
             builder[MILESTONE_OPERATIONS_CAPABILITY] = milestoneOps
         }
-        // E1.ecosystem-local-first / T1: per-run artifact index for the
+        // Per-run artifact index for the
         // core.archiveArtifacts → core.artifact.query bridge. Bound at
         // composition root; the same instance is shared between the
         // producer and the consumer so a successful archive is visible
@@ -601,7 +598,7 @@ open class CanonicalRuntimeCapabilityAccess(
         artifactIndex?.let { idx ->
             builder[ARTIFACT_INDEX_CAPABILITY] = idx
         }
-        // B11 / W2: body-reentry seam (ADR-0073 / ADR-0081 D1).
+        // Body-reentry seam.
         // BODY_INVOKER_CAPABILITY is exposed ONLY when the canonical runtime context carries
         // a `bodyInvoker` adapter. The adapter is the engine-side implementation of the
         // `BodyInvoker` port and is the single reentry point for any future block-step
@@ -612,7 +609,7 @@ open class CanonicalRuntimeCapabilityAccess(
             builder[BODY_INVOKER_CAPABILITY] = adapter
         }
         // the public body-reentry seam for a Step that declared
-        // BodyExecutionOwner.HANDLER_CONTINUATION (ADR-0081 as amended). Bound ONLY when the
+        // BodyExecutionOwner.HANDLER_CONTINUATION. Bound ONLY when the
         // canonical runtime context carries a body-already-bound continuation, and never as a
         // pair with BODY_INVOKER_CAPABILITY: one value, already bound, so a handler cannot be
         // handed an invoker without a body identity or an identity without an invoker.
@@ -624,7 +621,7 @@ open class CanonicalRuntimeCapabilityAccess(
         context.bodyContinuation?.let { continuation ->
             builder[BODY_CONTINUATION_CAPABILITY] = continuation
         }
-        // SAGA / PK-2: the slot seam. Exposed ONLY when the engine bound a slot
+        // SAGA: the slot seam. Exposed ONLY when the engine bound a slot
         // invoker for this invocation, which it does only for a
         // HANDLER_CONTINUATION Step whose body is already bound — the same
         // condition as the continuation above, and for the same reason: a
@@ -634,7 +631,7 @@ open class CanonicalRuntimeCapabilityAccess(
             builder[BODY_SLOT_CAPABILITY] = slotInvoker
         }
 
-        // P3-C / S6.4: the plugin event seam, bound ONLY when the composition actually produced a
+        // The plugin event seam, bound ONLY when the composition actually produced a
         // registry. Null is the honest signal that this run has no plugin-contributed event kinds
         // at all, and a Step declaring the capability is then refused at admission by the ordinary
         // fail-closed path — never handed a seam that silently drops its observations.
@@ -645,14 +642,13 @@ open class CanonicalRuntimeCapabilityAccess(
     }
 
     /**
-     * Derives the typed [ExecutionLocation] for this invocation
-     * (RP034-C / ADR-0100).
-     *
-     * Kept out of [buildProvided] so the bridge stays readable and so the
-     * derivation has one name a test can reason about. It is a pure function of
-     * the context: the same context always yields the same location, and it
-     * reads no ambient process state.
-     */
+ * Derives the typed [ExecutionLocation] for this invocation
+ *
+ * Kept out of [buildProvided] so the bridge stays readable and so the
+ * derivation has one name a test can reason about. It is a pure function of
+ * the context: the same context always yields the same location, and it
+ * reads no ambient process state.
+ */
     private fun executionLocationFor(
         context: CanonicalRuntimeContext,
     ): ExecutionLocation = ShOptionsExecutionLocationAdapter.from(
@@ -660,20 +656,20 @@ open class CanonicalRuntimeCapabilityAccess(
         scopedWorkingDirectory = context.shOptions.workingDirectory,
         fallbackRoot = context.shOptions.workspaceRoot
             ?: Path.of("").toAbsolutePath().normalize(),
-        // ownership decided at the CLI boundary (ADR-0101) and carried
+        // ownership decided at the CLI boundary and carried
         // on the transport. Without this the bridge re-derived `Managed` for every
-        // run and the ADR-0102 guard on a user-owned root never fired.
+        // run and the guard on a user-owned root never fired.
         ownership = context.shOptions.workspaceOwnership,
     )
 
     /**
-     * Binds the file-Step vertical to this stage and to the shared execution
-     * location (RP034-D / ADR-0100).
-     *
-     * [executionLocationFor] is passed explicitly rather than recomputed inside
-     * the adapter, so the file vertical and the capability projection are
-     * guaranteed to describe the same location for a given step.
-     */
+ * Binds the file-Step vertical to this stage and to the shared execution
+ * location.
+ *
+ * [executionLocationFor] is passed explicitly rather than recomputed inside
+ * the adapter, so the file vertical and the capability projection are
+ * guaranteed to describe the same location for a given step.
+ */
     private fun workspaceOperationsFor(
         context: CanonicalRuntimeContext,
     ): WorkspaceOperations = WorkspaceOperationsAdapter(

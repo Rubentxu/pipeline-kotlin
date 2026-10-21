@@ -30,18 +30,18 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Example external BLOCK plugin (WU-RP-035, slice D).
+ * Example external BLOCK plugin.
  *
- * This is the plugin ADR-0081 claimed was possible: an external Step that owns a body and
- * whose OWN logic decides whether, when and how many times that body runs. It depends only
- * on public SDK contracts (`pipeline-domain`) and the public DSL (`pipeline-scripting-api`),
+ * This is the body-bound Step that the open registry made possible: an external Step that owns a
+ * body and whose OWN logic decides whether, when and how many times that body runs. It depends
+ * only on public SDK contracts (`pipeline-domain`) and the public DSL (`pipeline-scripting-api`),
  * contains no import of `pipeline-application`, and is discovered through
  * [StepDefinitionContributor] via ServiceLoader. Zero core edits.
  *
  * What it proves that an atomic plugin cannot:
  *
- *  1. The handler is actually INVOKED for a body-bearing external Step. Before RP-035 the
- *     engine short-circuited a `BlockStepNode` straight to the body dispatcher, so this
+ *  1. The handler is actually INVOKED for a body-bearing external Step. Without this shape,
+ *     the engine short-circuited a `BlockStepNode` straight to the body dispatcher, so this
  *     handler would never have run and `times` would have been ignored.
  *  2. The handler reaches its body only through the bound [BodyContinuation]. It never sees a
  *     `BodyRef`, never holds a `StepNode` and never iterates children.

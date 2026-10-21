@@ -28,22 +28,22 @@ object WorkspacePathResolver {
         }
 
     /**
-     * Resolve a user path against its declared anchor and authorise it.
-     *
-     * Policy (ADR-0100 §8, §9):
-     * - a relative path is resolved against [anchor] and must stay inside the
-     *   workspace root;
-     * - `..` traversal out of the root is rejected;
-     * - an absolute path inside the root is accepted, because some Step
-     *   contracts historically allowed it;
-     * - an absolute path outside the root is rejected — host-wide access needs a
-     *   separate, explicit capability.
-     *
-     * Symlink escapes are NOT decided here: that requires filesystem reads and
-     * belongs to the authorising adapter, which calls [rejectSymlinkEscape] once
-     * it has resolved real paths. Keeping the check out of this function is what
-     * preserves the functional-core / effectful-shell split.
-     */
+ * Resolve a user path against its declared anchor and authorise it.
+ *
+ * Policy:
+ * - a relative path is resolved against [anchor] and must stay inside the
+ * workspace root;
+ * - `..` traversal out of the root is rejected;
+ * - an absolute path inside the root is accepted, because some Step
+ * contracts historically allowed it;
+ * - an absolute path outside the root is rejected — host-wide access needs a
+ * separate, explicit capability.
+ *
+ * Symlink escapes are NOT decided here: that requires filesystem reads and
+ * belongs to the authorising adapter, which calls [rejectSymlinkEscape] once
+ * it has resolved real paths. Keeping the check out of this function is what
+ * preserves the functional-core / effectful-shell split.
+ */
     fun resolve(
         location: ExecutionLocation,
         anchor: PathAnchor,

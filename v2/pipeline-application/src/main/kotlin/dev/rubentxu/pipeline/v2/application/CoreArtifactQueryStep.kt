@@ -27,8 +27,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Registry-driven core Step for `core.artifact.query`
- * (E1.ecosystem-local-first cycle).
+ * Registry-driven core Step for `core.artifact.query`.
  *
  * Given a logical [ArtifactQueryInput.name], returns the
  * [ArtifactHandle] recorded by an earlier `core.archiveArtifacts`
@@ -36,7 +35,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * emission; the only capability is the typed
  * [ArtifactIndexCapability].
  *
- * ## Effect classification (E1 cycle, no new Effect variants)
+ * ## Effect classification (no new Effect variants)
 
  * `core.artifact.query` is a pure read of the in-memory index; it
  * does NOT touch the filesystem (the durable record) and it does
@@ -58,7 +57,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * a typed `INPUT_INVALID` failure carrying a closed
  * [ArtifactQueryFailureOutput] envelope. The Step itself does not
  * throw; `PluginStepException` would be re-classified as `ENGINE`
- * by the boundary (F5.2 / WU-LPR-FK precedent), losing the declared
+ * by the boundary, losing the declared
  * kind.
  */
 object CoreArtifactQueryStep {
@@ -164,9 +163,9 @@ object CoreArtifactQueryStep {
     /**
      * [RecoveryPolicy.None] — re-execution after a crash follows the
      * generic replay/reconcile path. The index is in-memory and
-     * ephemeral, so a crash wipes it; this is acceptable for the E1
-     * cycle (the durable record is the filesystem; the index is a
-     * derived projection). A future cycle may introduce a journaled
+     * ephemeral, so a crash wipes it; this is acceptable for the
+     * current cycle (the durable record is the filesystem; the index
+     * is a derived projection). A future cycle may introduce a journaled
      * index if cross-restart queries become a real requirement.
      */
     private val descriptor = StepDescriptor(

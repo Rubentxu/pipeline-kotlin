@@ -56,21 +56,21 @@ class CleanWsOperationsAdapter(
     /** optional project-workspace override (--workspace).*/
     private val workspaceBase: java.nio.file.Path? = null,
     /**
-     * RP034-G (ADR-0102): the typed workspace lease for this step.
-     *
-     * Additive and optional. When supplied, ownership of the root is read from
-     * this value rather than inferred from a VCS marker; RP034-I retires the
-     * fallback.
-     */
+ * RP034-G: the typed workspace lease for this step.
+ *
+ * Additive and optional. When supplied, ownership of the root is read from
+ * this value rather than inferred from a VCS marker; RP034-I retires the
+ * fallback.
+ */
     private val executionLocation: dev.rubentxu.pipeline.v2.domain.workspace.ExecutionLocation,
 ) : CleanWsOperations {
     /**
-     * Idempotent creation of the workspace directory this Step operates on.
-     *
-     * The base itself comes from the execution location (RP034-I); this only
-     * ensures the directory exists, which is what the SDK executor and its
-     * `.deleted` / `.cleaned` marker require.
-     */
+ * Idempotent creation of the workspace directory this Step operates on.
+ *
+ * The base itself comes from the execution location; this only
+ * ensures the directory exists, which is what the SDK executor and its
+ * `.deleted` / `.cleaned` marker require.
+ */
     private fun ensureWorkspace(workspace: Path) {
         if (!Files.isDirectory(workspace)) {
             Files.createDirectories(workspace)
@@ -88,7 +88,7 @@ class CleanWsOperationsAdapter(
 
         val executor = CleanWsExecutor(
             workspaceResolver = { _, _ -> workspace },
-            // RP034-G (ADR-0102): derived from the typed lease, not from a VCS
+            // RP034-G: derived from the typed lease, not from a VCS
             // marker. The previous condition engaged only when `--workspace` was
             // passed explicitly, leaving the no-flag path unprotected, and it
             // treated a bare non-VCS project tree as disposable scratch. A

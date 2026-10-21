@@ -31,17 +31,17 @@ data class FileReadResult(
  * ## Reading
  *
  * - `Files.readAllBytes(realPath)` for content, where `realPath` is the
- *   symlink-resolved target the containment guard approved
+ * symlink-resolved target the containment guard approved
  * - `encoding = "UTF-8"` (default): decodes bytes via `String(bytes, UTF_8)`
- * - `encoding = "Base64"`: encodes bytes via `Base64.getEncoder().encodeToString(bytes)`
+ * - `encoding = "Base64"`: encodes bytes via `Base64.getEncoder.encodeToString(bytes)`
  *
  * ## Path Safety
  *
- * - Returns exists=false for paths outside workspace or in .v2 directory
+ * - Returns exists=false for paths outside workspace or in.v2 directory
  *
  * ## Events
  *
- * Event emission is handled by the dispatcher (T-09). This executor returns [FileReadResult]
+ * Event emission is handled by the dispatcher. This executor returns [FileReadResult]
  * with all data needed for event creation.
  *
  * @param workspaceResolver Resolves stage workspace root: `(stageName, stageIndex) -> workspacePath`

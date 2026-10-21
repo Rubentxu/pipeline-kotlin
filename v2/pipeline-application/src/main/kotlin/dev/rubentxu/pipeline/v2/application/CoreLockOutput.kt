@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
 
 /**
- * Typed output carrier for the `core.lock` handler (RP6-A / WU-091).
+ * Typed output carrier for the `core.lock` handler.
  *
  * Implements [TypedStepOutput], and that is not decoration. `core.lock` is a
  * `HANDLER_CONTINUATION` Step, so the body is invoked BY THE HANDLER and its
@@ -20,13 +20,13 @@ import dev.rubentxu.pipeline.v2.domain.durable.TypedStepOutput
  *
  * @param resource the resource this invocation acted on.
  * @param bodyRan whether the body was invoked. `false` on a declined
- *   acquisition, which is a normal outcome for `skipIfLocked` and NOT a failure.
+ * acquisition, which is a normal outcome for `skipIfLocked` and NOT a failure.
  * @param admission why the resource was or was not taken. Carried in the output so
- *   a reader of the journal can tell "took it and the body succeeded" from "never
- *   took it", which are otherwise the same `Success` outcome.
+ * a reader of the journal can tell "took it and the body succeeded" from "never
+ * took it", which are otherwise the same `Success` outcome.
  * @param outcome the verdict the execution boundary must record. On an acquired
- *   hold this is the body's own [StepOutcome]; on a denial it is the Step's
- *   failure or success, per [LockDenialReason].
+ * hold this is the body's own [StepOutcome]; on a denial it is the Step's
+ * failure or success, per [LockDenialReason].
  */
 data class CoreLockOutput(
     val resource: String,

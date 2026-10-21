@@ -76,7 +76,7 @@ tasks.named<Jar>("jar") {
 // with `FATAL - jar manifest is missing Implementation-Version` and exit 3. The fail-closed rule
 // was right; the SOURCE was wrong, because it conflated "no manifest" with "not a build artifact".
 //
-// Both are populated from the same `project.version`, which is the sole authority (WU-LPR-071).
+// Both are populated from the same `project.version`, which is the sole authority.
 // `RuntimeApiVersionDriftTest` asserts the two agree, so this can never become a second authority
 // free to disagree with the manifest that `pipeline-release` certifies against.
 val generateVersionResource by tasks.registering {
@@ -150,7 +150,7 @@ dependencies {
     // the Output Plane. Process transcript bytes are written here and nowhere else, and no
     // console event carries them. The dependency points ONE WAY - :pipeline-output depends on
     // neither :pipeline-events nor :pipeline-domain, so the event plane cannot reach back into the
-    // output plane and re-acquire an authority over the bytes. See ADR-M1 D2/D3.
+    // output plane and re-acquire an authority over the bytes. See the Output Plane ADR.
     //
     // BLOCK 2 splits the plane in two: the CONTRACT above, and the store below. Only the runtime
     // needs the store, so only the runtime names it - which is the point. The published artifact
@@ -192,7 +192,7 @@ dependencies {
     implementation(libs.sqlite.jdbc)
     implementation(libs.kotlinx.coroutines.core)
 
-    // PK-RELEASE-CONSOLIDATION H1.4 follow-up: the three external example
+    // The three external example
     // plugins are mandatory in the release gate. Wiring them as
     // `runtimeOnly` files puts their JARs on the runtime classpath of
     // the application, which `installDist` then stages into `lib/`
@@ -217,7 +217,7 @@ dependencies {
     runtimeOnly(files(rootDir.resolve("examples/example-uppercase-plugin/build/libs/example-uppercase-plugin-0.1.0.jar")))
     runtimeOnly(files(rootDir.resolve("examples/example-directive-plugin/build/libs/example-directive-plugin-0.1.0.jar")))
     runtimeOnly(files(rootDir.resolve("examples/example-block-plugin/build/libs/example-block-plugin-0.1.0.jar")))
-    // SAGA / PK-2: the external CONSUMER of the Saga contract, and the only bundled plugin
+    // The external CONSUMER of the Saga contract, and the only bundled plugin
     // that drives a real compensation loop. It is bundled for the same reason the other three
     // are: the E2E scenarios have to reach the Saga contract the way a real plugin does —
     // from OUTSIDE, through published capabilities, with the engine owning the state.
@@ -262,7 +262,7 @@ tasks.test {
 // the false compliance the current testing policy exists to prevent.
 //
 // Two guards that were inside those blocks are removed with them, and neither is a loss:
-//   * the FAST-LANE INVARIANT `doFirst { check(...) }` refused to let `:test` depend on the
+//   * the fast-lane invariant `doFirst { check(...) }` refused to let `:test` depend on the
 //     three external plugin builds. Its subject was a lane split that no longer exists --
 //     there is one test configuration left in this build and it has no plugin-build edge.
 //   * `forkEveryPerClass` was read by `tasks.test` and by nothing else. Left declared, an

@@ -9,9 +9,8 @@ import kotlin.ConsistentCopyVisibility
 /**
  * typed output carrier for `core.error` handlers.
  *
- * S2-A1 / G3-A4.3 amendment: the handler does NOT throw to signal a typed failure (handler
- * MUST NOT throw to signal a step failure per the Step Constitution); it returns this carrier,
- * which:
+ * The handler does NOT throw to signal a typed failure (per the Step Constitution);
+ * it returns this carrier, which:
  *  - carries the canonical [PipelineFailure] (kind + message) — the typed failure authority,
  *  - carries the canonical [StepOutcome] (its single [StepOutcome.Failure] variant), which is
  *    `derived from` [failure] in a single, dedicated factory [CoreErrorOutput.from]; there is

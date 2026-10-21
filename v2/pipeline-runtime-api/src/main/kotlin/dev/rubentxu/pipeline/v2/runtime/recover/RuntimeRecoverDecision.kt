@@ -27,21 +27,21 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 object RuntimeRecoverDecision {
 
     /**
-     * Decide what to do with `observation` given the durable `journal` proof.
-     *
-     * The function is PURE and TOTAL: every (observation, journal) tuple maps to
-     * exactly one [RecoveryChoice]. The contract test
-     * `RuntimeRecoverDecisionTableFitnessTest` (§7.3) pins every cell of the
-     * matrix.
-     *
-     * @param observation The run-level view from
-     *   [dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPort.inspect].
-     * @param journal     A `JournalProof` snapshot — the journal rows for the run
-     *   + the cursor state. The decider does NOT call the journal; it reads from
-     *   the proof the caller passes in.
-     * @return A [RecoveryChoice] that the recover port interprets into a
-     *   [RecoverOutcome].
-     */
+ * Decide what to do with `observation` given the durable `journal` proof.
+ *
+ * The function is PURE and TOTAL: every (observation, journal) tuple maps to
+ * exactly one [RecoveryChoice]. The contract test
+ * `RuntimeRecoverDecisionTableFitnessTest` pins every cell of the
+ * matrix.
+ *
+ * @param observation The run-level view from
+ * [dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPort.inspect].
+ * @param journal A `JournalProof` snapshot — the journal rows for the run
+ * + the cursor state. The decider does NOT call the journal; it reads from
+ * the proof the caller passes in.
+ * @return A [RecoveryChoice] that the recover port interprets into a
+ * [RecoverOutcome].
+ */
     fun decideRecovery(
         observation: RuntimeObservation,
         journal: JournalProof,

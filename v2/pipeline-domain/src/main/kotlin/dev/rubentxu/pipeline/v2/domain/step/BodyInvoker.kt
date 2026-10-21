@@ -59,7 +59,7 @@ object BodyRefs {
 /**
  * Reason a body invocation ended in cancellation.
  *
- * Closed ADT: cancellation is an execution mechanism (ADR-0076) and is never
+ * Closed ADT: cancellation is an execution mechanism and is never
  * reclassified as a step failure.
  */
 @Serializable

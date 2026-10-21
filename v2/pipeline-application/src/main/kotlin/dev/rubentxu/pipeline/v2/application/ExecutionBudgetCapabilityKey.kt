@@ -4,14 +4,14 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
 /**
  * Capability key under which the engine supplies the remaining execution budget of
- * the enclosing scope (RP6-A / WU-091).
+ * the enclosing scope.
  *
  * ## Why the lock needs it
  *
  * The block deadline is *projected* onto child execution as a budget — the body
  * engine writes `shOptions.copy(timeoutMs = effective)` — and the historical
  * enforcement mechanism is the child **shell watchdog**. A Step that does not run a
- * process therefore escapes that enforcement: `timeout(2) { lock("db") { ... } }`
+ * process therefore escapes that enforcement: `timeout(2) { lock("db") {... } }`
  * left the lock waiting INDEFINITELY, acquired the resource the instant the holder
  * released it, and ran its body long after the deadline had expired. Measured, not
  * inferred — see `UatLockBlockDurableTest.WL-L6`.
@@ -24,7 +24,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepCapability
  * ## Semantics
  *
  * @property remainingMs budget in milliseconds for this invocation, or `null` when
- *   no scope budget applies (the wait is then unbounded, exactly as declared).
+ * no scope budget applies (the wait is then unbounded, exactly as declared).
  *
  * Exposed UNCONDITIONALLY: "no budget" is a legitimate value, not an absent
  * capability, so admission of a Step that declares it is deterministic in every

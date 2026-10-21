@@ -9,7 +9,7 @@ plugins {
 group = "example.block"
 version = "0.1.0"
 
-// INDEPENDENT BUILD (WU-RP-035 / slice D): separate Gradle boundary, same lane as the
+// Separate Gradle boundary, same lane as the
 // atomic example plugin. It depends ONLY on public SDK artifacts (pipeline-domain for the
 // Step contract, body-continuation port and capability; pipeline-scripting-api for the DSL
 // facade surface). No import of pipeline-application, no engine or journal dependency.
@@ -128,7 +128,7 @@ val blockNamespace = providers
     .orElse("example-block-plugin")
 
 /**
- * The SDK, on the runtime classpath of the BUILD-TIME emitter only.
+ * The SDK, on the runtime classpath of the build-time emitter only.
  *
  * Every dependency above is `compileOnly`, and that is the plugin's whole point: it ships classes
  * only, and the host supplies the contracts at runtime. So `sourceSets.main.runtimeClasspath` is
@@ -150,15 +150,15 @@ val computeBlockRelease = tasks.register("computeBlockRelease") {
     val namespaceName = blockNamespace
     val releaseVersion = version.toString()
 
-    // R4 / WU-R4.0.0 — declare sdkVersion as an explicit input. Without this, the
+    // Declare sdkVersion as an explicit input. Without this, the
     // `release-properties` document (and downstream the apiRange in
     // `plugin-manifest.json`) goes STALE when the host version changes but the
     // SDK jar content does not: Gradle's default fingerprint does not see the
-    // `-PsdkVersion=...` Gradle property, so a host version bump from 0.59.0 to
-    // 0.60.0 with no source change produced a build whose apiRange was still
-    // [0.59.0, 0.60.0). The shipped installDist then refused the example
-    // plugins for IncompatibleApiRange, which made every `pipelinek run` exit
-    // 2 BEFORE the run body compiled.
+    // `-PsdkVersion=...` Gradle property, so a host version bump with no source
+    // change produced a build whose apiRange was still anchored to the prior
+    // version. The shipped installDist then refused the example plugins for
+    // IncompatibleApiRange, which made every `pipelinek run` exit 2 BEFORE the
+    // run body compiled.
     inputs.property("sdkVersion", sdkVersion)
     inputs.property("blockApiRangeMin", blockApiRangeMin)
 

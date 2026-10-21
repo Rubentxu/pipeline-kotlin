@@ -135,26 +135,26 @@ interface ObservationOutputReader {
     fun readTail(runId: String, tailBytes: Long): ObservationOutputRead
 
     /**
-     * R4 / WU-R4.1.3 — per-operation readTail.
-     *
-     * Reads the last [tailBytes] of one operation's output, scoped by the operation's
-     * stream-id prefix. Where [readTail] returns the trailing bytes of the WHOLE run, this
-     * overload returns the trailing bytes of one operation, so an inspect consumer can
-     * attach a step's tail to that step's `StepFailed` record (CON-2.x).
-     *
-     * Frames whose [OutputFrame.stream] does NOT carry [opId] as a segment are skipped.
-     * The stream id format is `<runId>/<operationId>/<channel>` (see [OutputStreamAddress]),
-     * so the opId appears as a literal segment between run and channel. Frames with
-     * stream ids from BEFORE the durable-task v1 minting shape (the pre-ADR-0088
-     * `<runId>/<opId>/transcript` exception) carry the same shape; this is honest about
-     * the indexing it can prove.
-     *
-     * The semantics match [readTail]: oldest frame included is narrowed, never dropped,
-     * never invented. A frame that straddles the byte budget keeps its ordinal and is
-     * re-issued with `from` moved forward. A future slice can re-derive opId from a
-     * [durable]/[events] cross-reference; this overload accepts the opId as input on
-     * purpose, so the resolution lives at the caller (which has both lanes).
-     */
+ * R4 / WU-R4.1.3 — per-operation readTail.
+ *
+ * Reads the last [tailBytes] of one operation's output, scoped by the operation's
+ * stream-id prefix. Where [readTail] returns the trailing bytes of the WHOLE run, this
+ * overload returns the trailing bytes of one operation, so an inspect consumer can
+ * attach a step's tail to that step's `StepFailed` record.
+ *
+ * Frames whose [OutputFrame.stream] does NOT carry [opId] as a segment are skipped.
+ * The stream id format is `<runId>/<operationId>/<channel>` (see [OutputStreamAddress]),
+ * so the opId appears as a literal segment between run and channel. Frames with
+ * stream ids from BEFORE the durable-task v1 minting shape (the pre-ADR-0088
+ * `<runId>/<opId>/transcript` exception) carry the same shape; this is honest about
+ * the indexing it can prove.
+ *
+ * The semantics match [readTail]: oldest frame included is narrowed, never dropped,
+ * never invented. A frame that straddles the byte budget keeps its ordinal and is
+ * re-issued with `from` moved forward. A future slice can re-derive opId from a
+ * [durable]/[events] cross-reference; this overload accepts the opId as input on
+ * purpose, so the resolution lives at the caller (which has both lanes).
+ */
     fun readTail(runId: String, opId: String, tailBytes: Long): ObservationOutputRead
 }
 

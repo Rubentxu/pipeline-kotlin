@@ -16,8 +16,7 @@ import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
 /**
- * THE single wire authority for the `core.waitUntil` **block** payload
- * (DEBT-WIRE-AUTHORITY, `bl-bl-01M3YGH3FE000387X13PG607G0`).
+ * THE single wire authority for the `core.waitUntil` **block** payload.
  *
  * Before this object existed, `DslCompiledPipelineCompiler.blockPayload`
  * hand-wrote this format in JSON while the Step's own codec wrote the
@@ -25,7 +24,7 @@ import kotlinx.serialization.json.put
  * (`kind=sh|shell`, `command|script`, `returnStdout|returnMode`), where every
  * alias is a compatibility shim added after the fact.
  * [Lfc2WaitUntilWireAuthorityFitnessTest] freezes the law, the third Step after
- * `core.lock` (WU-091) and `core.input` (WU-092).
+ * `core.lock` and `core.input`.
  *
  * ## The bytes are unchanged, and that is the contract
  *
@@ -33,23 +32,23 @@ import kotlinx.serialization.json.put
  * including the `kind` discriminator and the key order. Two measured reasons:
  *
  * 1. `Lfc2WaitUntilDslCanonicalProjectionTest` asserts, across the productive
- *    authority, that the compiled block payload carries `kind="waitUntilBlock"`.
+ * authority, that the compiled block payload carries `kind="waitUntilBlock"`.
  * 2. The compiled payload is the one string hashed into the operation identity
- *    (`StepDispatchEngine` puts `payload.encoded` into `OperationInput.params`,
- *    which `OperationInput` documents as fingerprint input), and the replay
- *    table's first rule is `!hasJournalEntry -> RERUN`. So a changed payload does
- *    not silently reuse old history: the operation runs again.
+ * (`StepDispatchEngine` puts `payload.encoded` into `OperationInput.params`,
+ * which `OperationInput` documents as fingerprint input), and the replay
+ * table's first rule is `!hasJournalEntry -> RERUN`. So a changed payload does
+ * not silently reuse old history: the operation runs again.
  *
- * This text previously cited `BodyStructureDigest` for reason 2. That was wrong.
- * `BodyStructureDigest.of()` appends the payload string, but its only call-site is
+ * Reason 2 does not flow through `BodyStructureDigest`; its only call-site is
  * guarded by `hasBodyContinuation`, bound solely for the `HANDLER_CONTINUATION`
- * owner, which only `core.lock` and `core.input` declare. `core.waitUntil` is an
- * engine-driven block, so its payload never reaches that digest. The conclusion
- * (bytes unchanged, extraction is about authorship) survived; the mechanism did not.
+ * owner that `core.lock` and `core.input` declare. Because `core.waitUntil` is
+ * engine-driven, its payload never reaches that digest. The conclusion (bytes
+ * unchanged, extraction is about authorship) still holds; only the cited
+ * mechanism has shifted.
  *
  * `maxBackoffMs` is therefore a deliberate format CHANGE made in a later slice,
  * and it is safe for the reason above: the durable resume misses its old key and
- * re-executes, which is the fail-closed direction DR-10 asks for. Removing the
+ * re-executes, which is the fail-closed direction. Removing the
  * discriminator later is a separate decision that needs a compatibility review.
  *
  * ## Not the same format as the registry one

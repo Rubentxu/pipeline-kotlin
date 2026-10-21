@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
 import java.util.ServiceLoader
 
 /**
- * Runtime discovery adapter for external Step plugins (LB-02 / EP-4).
+ * Runtime discovery adapter for external Step plugins.
  *
  * The domain defines the [StepDefinitionContributor] SPI but never calls
  * [ServiceLoader] itself: discovery is a runtime-adapter concern. This adapter
@@ -25,11 +25,10 @@ object ExternalStepPluginDiscovery {
     /**
      * Discovers contributors from the RUNTIME classpath and registers them into [registry].
      *
-     * Uses the additive [StepDefinitionContributor.registrations] path
-     * (LFC-2E2 / F5.1 / ADR-0092). The default implementation wraps each
-     * [StepDefinition] in a [StepRegistration] with legacy-shape provider
-     * metadata, so contributors that only override `definitions()` continue
-     * to work unchanged (C10 backwards-compat).
+     * Uses the additive [StepDefinitionContributor.registrations] path. The
+     * default implementation wraps each [StepDefinition] in a [StepRegistration]
+     * with legacy-shape provider metadata, so contributors that only override
+     * `definitions()` continue to work unchanged (backwards-compat).
      */
     fun registerInto(builder: StepRegistryBuilder): List<String> {
         val registered = mutableListOf<String>()

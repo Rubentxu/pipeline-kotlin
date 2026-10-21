@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_INITIAL_RECURRENC
 import dev.rubentxu.pipeline.v2.domain.step.DEFAULT_WAIT_UNTIL_MAX_BACKOFF_MS
 
 /**
- * Receiver scope for the `directives { }` block inside a stage (S1-B).
+ * Receiver scope for the `directives { }` block inside a stage.
  *
  * Pure data construction: each entry records a directive key plus its opaque
  * encoded arguments. No registry, no decoding, no effects — the canonical
@@ -148,7 +148,7 @@ class StageScope(
     }
 
     // =============================================================================
-    // ML-R9 error-handling DSL (T-06)
+    // ML-R9 error-handling DSL 
     // =============================================================================
 
     /**
@@ -188,24 +188,24 @@ class StageScope(
     }
 
     /**
-     * The STABLE historical spelling, kept as a validated adapter.
-     *
-     * `DSL_SURFACE_MANIFEST.md` documents `catchError(buildResult?, stageResult?, message?)` and
-     * declares the construct **DEPRECATED** (LFC1-007) — which is a promise about this
-     * signature: DEPRECATED means members may be removed only after the declared removal
-     * boundary, not at the convenience of the next migration. It parses IMMEDIATELY — see
-     * [LegacyResultVocabulary] — so the token is typed before the pipeline exists and never
-     * reaches the IR or the runtime.
-     *
-     * `catchError { ... }` with no results resolves HERE, because the typed overload requires
-     * `buildResult`. That is deliberate rather than accidental: two overloads with all
-     * parameters defaulted would make every bare `catchError { }` call ambiguous, which was
-     * measured (mutation D3-M1 failed to compile for exactly that reason). A declared absence
-     * produces the same typed state either way, so nothing is lost by routing it through here.
-     *
-     * Removal is not scheduled. It needs the LFC1-007 exit (`try/catch` at the orchestrator),
-     * which is the declared replacement path — not a deprecation added by this change.
-     */
+ * The STABLE historical spelling, kept as a validated adapter.
+ *
+ * `DSL_SURFACE_MANIFEST.md` documents `catchError(buildResult?, stageResult?, message?)` and
+ * declares the construct **DEPRECATED** — which is a promise about this
+ * signature: DEPRECATED means members may be removed only after the declared removal
+ * boundary, not at the convenience of the next migration. It parses IMMEDIATELY — see
+ * [LegacyResultVocabulary] — so the token is typed before the pipeline exists and never
+ * reaches the IR or the runtime.
+ *
+ * `catchError {... }` with no results resolves HERE, because the typed overload requires
+ * `buildResult`. That is deliberate rather than accidental: two overloads with all
+ * parameters defaulted would make every bare `catchError { }` call ambiguous, which was
+ * measured (mutation D3-M1 failed to compile for exactly that reason). A declared absence
+ * produces the same typed state either way, so nothing is lost by routing it through here.
+ *
+ * Removal is not scheduled. It needs the LFC1-007 exit (`try/catch` at the orchestrator),
+ * which is the declared replacement path — not a deprecation added by this change.
+ */
     @Deprecated(
         message = "LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.",
         replaceWith = ReplaceWith("catchError(buildResult, stageResult, message, block)"),
@@ -489,7 +489,7 @@ class StageScope(
     }
 
     // =============================================================================
-    // ML-R9 output-decorator DSL (T-08)
+    // ML-R9 output-decorator DSL 
     // =============================================================================
 
     /**
@@ -534,7 +534,7 @@ class StageScope(
     }
 
     // =============================================================================
-    // ML-R9 milestone DSL (T-09)
+    // ML-R9 milestone DSL 
     // =============================================================================
 
     /**
@@ -703,7 +703,7 @@ class StageScope(
     }
 
     // =============================================================================
-    // ML-R9 timeout/retry DSL (T-10)
+    // ML-R9 timeout/retry DSL 
     // =============================================================================
 
     /**

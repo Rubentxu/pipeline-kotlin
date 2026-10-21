@@ -247,19 +247,19 @@ object DslCompiledPipelineCompiler {
             // substrate, the Kotlin scripting contract suite). The compiler does not pick the family:
             // the DSL variant already says which one it is. The else ->
             // OpaqueStepNode catch-all MUST NOT fire for any of these keys.
-            is StepSpec.TimeoutBlock, // JEP-020
-            is StepSpec.RetryBlock, // JEP-021
-            is StepSpec.Dir, // JEP-022
+            is StepSpec.TimeoutBlock,
+            is StepSpec.RetryBlock,
+            is StepSpec.Dir,
             is StepSpec.WithCredentialsBlock,
             is StepSpec.Timestamps,
             is StepSpec.WithEnv,
             // waitUntil projects to canonical BlockStepNode (body-owning).
             is StepSpec.WaitUntilBlock,
             // core.lock lowers through the SAME block machinery; the
-            // wire payload is produced exclusively by CoreLockWireCodec (G3.4).
+            // wire payload is produced exclusively by CoreLockWireCodec.
             is StepSpec.Lock,
             // core.input lowers through the SAME block machinery; the
-            // wire payload is produced exclusively by CoreInputWireCodec (G3.4).
+            // wire payload is produced exclusively by CoreInputWireCodec.
             is StepSpec.Input ->
                 blockStepNode(
                     step = step,
@@ -294,7 +294,7 @@ object DslCompiledPipelineCompiler {
      * up from `StepDescriptorRegistry.standard` and the runtime `ContextOverlay` pushed
      * by the coordinator when dispatching the block.
      *
-     * JEP-029 (body-execution IR): BlockStepNode is the canonical representation
+     * The body-execution IR uses BlockStepNode as the canonical representation
      * for all block-type steps. The coordinator's [CanonicalDurableRunCoordinator.dispatchBody]
      * handles the body children with proper per-child journal rows and context-stack
      * restoration.
@@ -853,8 +853,8 @@ object DslCompiledPipelineCompiler {
                 // Previously the else-branch produced
                 // {"kind":"cleanWs","declarativeValue":"StepSpec.CleanWs(deleteDirs=…, patterns=…)"}
                 // which made the typed decode fall back to defaults (empty
-                // patterns), erasing the user's glob selectors. C2
-                // The cleanWs regression test incidentally passed because `patterns=[]` is
+                // patterns), erasing the user's glob selectors.
+                // C2: The cleanWs regression test incidentally passed because `patterns=[]` is
                 // its own valid default; the defect was not discriminated but
                 // was structurally identical to the deleteDir / pwd family.
                 // Locking the canonical envelope here closes the structural
@@ -914,7 +914,7 @@ object DslCompiledPipelineCompiler {
                 // body as-is). The step is body-aware; the inner `steps` are
                 // lowered by `stepNodes` and live inside a [BlockStepNode]
                 // body. The envelope carries only the agent label.
-                // the Jenkins `node` reference reference: Jenkins `node(label?: String) { block }`.
+                // the Jenkins `node` step: `node(label?: String) { block }`.
                 is StepSpec.NodeNoOp -> {
                     put("kind", "node")
                     step.label?.let { put("label", it) }

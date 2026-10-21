@@ -23,7 +23,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * `core.stash` Step (WU-LPR-089 / Tier B #1 — first Tier B Step).
+ * `core.stash` Step (Tier B #1 — the first Tier B Step).
  *
  * Copies workspace files matching an Ant-style `includes` pattern into the
  * run-scoped stash directory, so a later stage (within the same run) can
@@ -43,7 +43,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * `Effect.WRITES_WORKSPACE` is declared because the handler physically
  * modifies filesystem state (creates the run-scoped stash directory and copies
  * files into it). The stash directory lives OUTSIDE the stage workspace
- * (F-ARCH-L7 workspace-cleanup preservation invariant) but the WORKSPACE
+ * (workspace-cleanup preservation invariant) but the WORKSPACE
  * effect class still applies because the durable side-effect is a filesystem
  * write scoped to this run.
  *
@@ -194,7 +194,7 @@ object CoreStashStep {
 }
 
 /**
- * `core.unstash` Step (WU-LPR-089 / Tier B #2 — paired with [CoreStashStep]).
+ * `core.unstash` Step (Tier B #2 — paired with [CoreStashStep]).
  *
  * Restores files from a previously-produced stash into the current stage
  * workspace. Existing files are OVERWRITTEN (matching Jenkins `unstash`).

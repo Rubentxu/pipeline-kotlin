@@ -15,7 +15,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Example external plugin (LB-02 EP-3..EP-5).
+ * Example external plugin.
  *
  * Depends ONLY on public SDK contracts (pipeline-domain) and the public DSL
  * (pipeline-scripting-api, for the extension function in UppercaseDsl.kt).
@@ -68,9 +68,9 @@ object UppercaseStepDefinition : StepDefinition<UppercaseInput, UppercaseOutput>
         outputCodec = UppercaseOutputCodec,
         // ZERO capabilities, on purpose, and that is the reference value this Step carries.
         // It is the strongest statement a plugin can make about not needing core changes: this
-        // Step asks the host for nothing at all and still runs. P3-D first added the emission here
-        // and the certification suite caught it — `contract completeness - no privileged
-        // capabilities` is a standing assertion that the reference plugin demands nothing.
+        // Step asks the host for nothing at all and still runs. An earlier change added event
+        // emission here and the certification suite caught it — `contract completeness - no
+        // privileged capabilities` is a standing assertion that the reference plugin demands nothing.
         //
         // So the observation lives in a SECOND Step, `example.uppercase.observed`, which declares
         // exactly one capability and asks the host for it. One plugin, both shapes, and the
@@ -84,7 +84,7 @@ object UppercaseStepDefinition : StepDefinition<UppercaseInput, UppercaseOutput>
 }
 
 /**
- * ServiceLoader entry point (EP-4). Discovered generically by the runtime:
+ * ServiceLoader entry point. Discovered generically by the runtime:
  * `META-INF/services/dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor`.
  */
 class UppercaseContributor : StepDefinitionContributor {

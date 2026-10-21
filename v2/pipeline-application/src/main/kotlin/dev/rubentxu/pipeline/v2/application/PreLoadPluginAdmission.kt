@@ -15,7 +15,7 @@ import java.nio.file.Path
 import java.util.jar.JarFile
 
 /**
- * S6-COMPOSITION, pass 1 — admit every plugin artifact BEFORE a line of plugin code runs.
+ * Admits every plugin artifact BEFORE a line of plugin code runs.
  *
  * ## What this closes
  *

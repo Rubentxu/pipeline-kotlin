@@ -91,7 +91,7 @@ pipeline {
                     //
                     // The COUNTS are not the whole claim. The keys are:
                     //
-                    //   - each line carries a NON-EMPTY key, so the body really received the
+                    //   - each line carries a non-empty key, so the body really received the
                     //     operation key the engine handed it (a body that got an empty key
                     //     would still write its line, and the counts alone would not notice);
                     //   - the two keys DIFFER, because the forward and the compensation are

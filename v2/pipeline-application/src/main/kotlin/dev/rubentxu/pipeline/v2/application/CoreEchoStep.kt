@@ -26,7 +26,7 @@ import kotlinx.serialization.json.jsonPrimitive
 data class EchoInput(val text: String)
 
 /**
- * `core.echo` registered as an open [StepDefinition] (B1.2b, ADR-0070).
+ * `core.echo` registered as an open [StepDefinition].
  *
  * Registers through the SAME generic mechanism an external plugin would use. The handler reuses the
  * existing SDK echo runtime authority and emits [dev.rubentxu.pipeline.v2.events.EchoOutputCaptured]

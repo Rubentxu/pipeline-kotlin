@@ -14,7 +14,7 @@ import dev.rubentxu.pipeline.v2.domain.scm.Scm
  *
  * This interface extends [dev.rubentxu.pipeline.v2.domain.durable.StepSpec] to enable
  * the domain layer's [dev.rubentxu.pipeline.v2.domain.durable.BranchSpec] to reference
- * DSL steps without creating a domain→DSL dependency (ADR-0033).
+ * DSL steps without creating a domain→DSL dependency.
  */
 sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     override val name: String
@@ -415,20 +415,20 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     }
 
     /**
-     * `lock(resource) { ... }` — hold a named resource while the enclosed body
-     * runs (RP6-A / WU-091). declarative structural IR only: the compiler
-     * lowers this variant through [dev.rubentxu.pipeline.v2.application.CoreLockInput]
-     * and the single wire authority `CoreLockWireCodec`; this type carries no
-     * wire vocabulary of its own.
-     *
-     * Source-compatibility note (G3.6 classification, SPEC_WU091_LOCK.md):
-     * adding a case to this sealed hierarchy is binary-compatible but is
-     * SOURCE-ADDITIVE for consumers holding an exhaustive `when(step)` without
-     * an `else` branch. In this repository the only concrete-case consumer is
-     * the DSL compiler itself, whose dispatch is guarded by
-     * `Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest` and the lock
-     * wire-authority fitness.
-     */
+ * `lock(resource) {... }` — hold a named resource while the enclosed body
+ * runs. declarative structural IR only: the compiler
+ * lowers this variant through [dev.rubentxu.pipeline.v2.application.CoreLockInput]
+ * and the single wire authority `CoreLockWireCodec`; this type carries no
+ * wire vocabulary of its own.
+ *
+ * Source-compatibility note (G3.6 classification, SPEC_WU091_LOCK.md):
+ * adding a case to this sealed hierarchy is binary-compatible but is
+ * SOURCE-ADDITIVE for consumers holding an exhaustive `when(step)` without
+ * an `else` branch. In this repository the only concrete-case consumer is
+ * the DSL compiler itself, whose dispatch is guarded by
+ * `Lfc2BlockStepCompilerBodyExhaustivenessFitnessTest` and the lock
+ * wire-authority fitness.
+ */
     /**
      * `slot("name") { ... }` — a step of a body that the plugin gave a NAME.
      *
@@ -472,13 +472,13 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     }
 
     /**
-     * `input(message) { ... }` — ask a human and continue only if they say yes
-     * (RP6-B / WU-092). declarative structural IR only: the compiler lowers this
-     * variant through
-     * [dev.rubentxu.pipeline.v2.application.CoreInputInput] and the single wire
-     * authority `CoreInputWireCodec`; this type carries no wire vocabulary of its
-     * own.
-     */
+ * `input(message) {... }` — ask a human and continue only if they say yes
+ *. declarative structural IR only: the compiler lowers this
+ * variant through
+ * [dev.rubentxu.pipeline.v2.application.CoreInputInput] and the single wire
+ * authority `CoreInputWireCodec`; this type carries no wire vocabulary of its
+ * own.
+ */
     data class Input(
         val message: String,
         val ok: String = "Proceed",

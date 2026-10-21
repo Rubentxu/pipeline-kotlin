@@ -227,16 +227,16 @@ class SqliteOperationJournalImpl(
     }
 
     /**
-     * Begins a durable operation by writing a RUNNING row.
-     *
-     * ## ADR-0037 Option A: Caller-Passes-Formatted
-     *
-     * The caller is responsible for formatting the [opId] string before calling this method.
-     * The journal uses [opId] exactly as provided — no derivation, no suffix appending.
-     * This ensures the journal is never responsible for formatting operation IDs (C-013/C-026).
-     *
-     * @throws IllegalStateException if a row already exists for (opId, attempt).
-     */
+ * Begins a durable operation by writing a RUNNING row.
+ *
+ * ## ADR-0037 Option A: Caller-Passes-Formatted
+ *
+ * The caller is responsible for formatting the [opId] string before calling this method.
+ * The journal uses [opId] exactly as provided — no derivation, no suffix appending.
+ * This ensures the journal is never responsible for formatting operation IDs.
+ *
+ * @throws IllegalStateException if a row already exists for (opId, attempt).
+ */
     override fun beginOperation(
         opId: String,
         attempt: Int,

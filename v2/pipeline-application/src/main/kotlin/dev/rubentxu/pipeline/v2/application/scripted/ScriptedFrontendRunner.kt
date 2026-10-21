@@ -210,7 +210,7 @@ object ScriptedFrontendRunner {
  * hardcoded `stageIndex = 0` would therefore address a scripted stage at index 2 as though it were
  * the stage at index 0 — two bodies, one row, and the second one to run would read the first one's
  * durable facts as its own replay evidence. That is the failure the two-scheme identity law
- * (R4A-L1) exists to make impossible, so the address is derived, never assumed.
+ * exists to make impossible, so the address is derived, never assumed.
  */
 sealed interface ScriptedStructuralAddress {
 

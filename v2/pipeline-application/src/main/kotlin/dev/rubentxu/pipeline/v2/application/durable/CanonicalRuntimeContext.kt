@@ -7,7 +7,7 @@ import java.nio.file.Path
 /**
  * Runtime dependencies required by the canonical core step dispatcher.
  *
- * [bodyInvoker] is the B11 / W2 seam: a per-run [CanonicalBodyInvokerAdapter] that re-enters
+ * [bodyInvoker] is the body re-entry seam: a per-run [CanonicalBodyInvokerAdapter] that re-enters
  * the canonical body machinery (`invokeBodyChildren`) for block-step handlers that declare
  * `BODY_INVOKER_CAPABILITY`. Defaulted to `null` so every pre-existing constructor site
  * (legacy dispatch, registry-aware dispatch, scripted runners, and ~25 unit tests)
@@ -16,8 +16,8 @@ import java.nio.file.Path
  * which is the correct behaviour: only runs that explicitly wire the adapter expose
  * the body-reentry seam.
  *
- * C1-A (2026-09-26): extracted from `CanonicalNodeDispatcher.kt` to its own file as part
- * of the H1/H2/H3 partition plan.
+ * The data class was extracted from `CanonicalNodeDispatcher.kt` to its own file as part
+ * of the partition plan.
  * The data class is the canonical seam between the dispatcher body and the runtime
  * adapters; isolating it shrinks `CanonicalNodeDispatcher.kt` from 100 LOC to 67 LOC
  * and gives the field bundle its own focus. The FQN
@@ -46,7 +46,7 @@ data class CanonicalRuntimeContext(
     // fail-closed admission honest: a handler that declares the capability never
     // runs when the engine did not bind it.
     val bodyContinuation: dev.rubentxu.pipeline.v2.domain.step.BodyContinuation? = null,
-    // WU-LPR-011 secret-redaction slice: the active secret pattern registry,
+    // The active secret pattern registry,
     // threaded to the shell-operations adapter so the console transcript is
     // redacted chunk-boundary-safe BEFORE it reaches the observable plane.
     // Optional (null → no transcript redaction) so legacy callers/tests that
@@ -57,7 +57,7 @@ data class CanonicalRuntimeContext(
     // stage workspaces resolve under <dir> instead of <controlRoot>/workspace, so real
     // project fixtures (Gradle/Maven/Node) execute against the actual project files.
     val workspaceBase: java.nio.file.Path? = null,
-    // P3-C / S6.4: the open event registry composed from plugin contributors, already bound to
+    // The open event registry composed from plugin contributors, already bound to
     // THIS run's sink and clock as a [dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter].
     //
     // It rides here rather than as a constructor parameter of
@@ -71,7 +71,7 @@ data class CanonicalRuntimeContext(
     // so the capability stays unexposed and a Step that declares it is refused at admission
     // instead of reaching a handler with a null seam.
     val pluginEventEmitter: dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter? = null,
-    // SAGA / PK-1: the compensation intent port, bound to THIS invocation.
+    // SAGA: the compensation intent port, bound to THIS invocation.
     //
     // It is built per dispatch, not per run, because it carries the forward operation's
     // identity: the compensation an obligation names is the compensation OF that operation.
@@ -80,7 +80,7 @@ data class CanonicalRuntimeContext(
     // SAGA_COMPENSATION_CAPABILITY is refused at admission instead of reaching a handler
     // with a port that cannot keep a promise.
     val sagaCompensation: dev.rubentxu.pipeline.v2.domain.saga.CompensationOperations? = null,
-    // SAGA / PK-2: the compensation PLAN port, bound to THIS run.
+    // SAGA: the compensation PLAN port, bound to THIS run.
     //
     // It answers "what does the Saga owe now?" and records what the plugin observed about the
     // effects it triggered. It is a separate port from the intent one because making a promise
@@ -91,7 +91,7 @@ data class CanonicalRuntimeContext(
     // SAGA_PLAN_CAPABILITY is refused at admission instead of reaching a handler that cannot
     // keep the state it is about to write.
     val sagaPlan: dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations? = null,
-    // SAGA / PK-2: the compensation RUNTIME, bound to THIS invocation.
+    // SAGA: the compensation RUNTIME, bound to THIS invocation.
     //
     // It is the engine's loop: ask the durable state what is owed, dispatch the body that
     // owes it, record what happened, ask again. The plugin hands over the plan (data) and
@@ -101,7 +101,7 @@ data class CanonicalRuntimeContext(
     // through, so a Step that declares SAGA_RUNTIME_CAPABILITY without both is refused at
     // admission instead of reaching a handler that could not keep the promise.
     val sagaRuntime: dev.rubentxu.pipeline.v2.domain.saga.SagaRuntime? = null,
-    // SAGA / PK-2: the slot seam. A handler whose body is already bound may run ONE
+    // SAGA: the slot seam. A handler whose body is already bound may run ONE
     // named child of that body, chosen by it, and the engine dispatches it through the
     // same canonical spine — so the slot's durable identity is the identity it would
     // have had if the engine had dispatched it.

@@ -74,7 +74,7 @@ data class MilestoneOutput(
  *   within this pipeline run → [MilestoneAborted] event emitted.
  *
  * In the local single-run model, an aborted milestone records the event and returns
- * [StepOutcome.Unstable] but does NOT abort the pipeline (per ML-R9 T-09, ADR-0046 §ML).
+ * [StepOutcome.Unstable] but does NOT abort the pipeline.
  */
 sealed class MilestoneStatus {
     abstract val kind: String
@@ -94,14 +94,14 @@ sealed class MilestoneStatus {
 }
 
 /**
- * Registry candidate for `core.milestone` (S2-A9 / G1 registry seam proof).
+ * Registry candidate for `core.milestone`.
  *
  * G1 registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy
  * decoder, the metadata row, or the legacy dispatcher:
  * `StructuralFamilyResolver`'s legacy-membership-wins rule keeps LegacyCore as
  * the production authority until the G3/G4 flip. Counters stay 6 / 6 / 6.
  *
- * **Semantics (per Jenkins verbatim, ADR-0046 §ML / ML-R9 T-09):**
+ * **Semantics (per Jenkins verbatim):**
  * - Strictly increasing ordinal (within this pipeline run) → MilestoneReached event + Success.
  * - Non-increasing ordinal → MilestoneAborted event + Unstable (record-only, never aborts run).
  *

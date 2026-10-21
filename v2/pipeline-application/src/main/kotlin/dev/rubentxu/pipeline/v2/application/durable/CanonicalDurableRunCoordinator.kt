@@ -17,7 +17,7 @@ import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
 // durable waitUntil reconciliation driver and identity factory.
 
-// control journal + reconciliation driver (ADR-0075 §11).
+// control journal + reconciliation driver.
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.retry.RetryReconciliationDriver
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
@@ -62,7 +62,7 @@ class CanonicalDurableRunCoordinator(
     private val clock: Clock,
     private val effectReplayPolicy: EffectReplayPolicy,
     private val eventSink: EventSink,
-    // P3-B/P3-C / S6.4: the open event registry for this run. Empty rather than null, so that
+    // the open event registry for this run. Empty rather than null, so that
     // "a plugin declared nothing" and "nothing is registered" are the same typed refusal.
     private val eventRegistry: dev.rubentxu.pipeline.v2.events.registry.EventRegistry =
         dev.rubentxu.pipeline.v2.events.registry.EventRegistry.create(),
@@ -71,41 +71,41 @@ class CanonicalDurableRunCoordinator(
     /** optional project-workspace override (--workspace <dir>).*/
     private val workspaceBase: Path? = null,
     private val shOptions: ShOptions = ShOptions.EMPTY,
-    // WU-LPR-011 secret-redaction slice: active secret registry threaded to the
+    // active secret registry threaded to the
     // runtime context so the durable console transcript is redacted at the
     // transcript seam before reaching the observable event plane.
     private val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
-    // WU-093 H2b: OFFICIAL_PLUGIN capability contributions. PREPARE and EXECUTE
+    // H2b: OFFICIAL_PLUGIN capability contributions. PREPARE and EXECUTE
     // must observe the SAME set, so both get this one contributor. The
     // alternative tried first — a `Map<StepCapability, Any>` on `ShOptions` to
     // avoid this parameter — kept the count and lost the architecture.
     private val capabilityContributor: RuntimeCapabilityContributor = RuntimeCapabilityContributor { emptyMap() },
     private val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector(),
-    // CDE.2-b2: durable metadata resolved by structural step key (pre-decode). Nullable default so a
-    // registry-injected constructor can opt into the composite (CDE.3-e4.2); legacy call-sites that do
+    // durable metadata resolved by structural step key (pre-decode). Nullable default so a
+    // registry-injected constructor can opt into the composite; legacy call-sites that do
     // not pass a resolver keep the [CoreLegacyStepMetadataResolver] authority exactly as before.
     private val stepMetadataResolver: StepMetadataResolver? = null,
-    // B1.2c2-a1: temporary compatibility seam for the EFFECTIVE step invocation. Optional so the
+    // temporary compatibility seam for the EFFECTIVE step invocation. Optional so the
     // existing ~25 construction sites compile unchanged; production default delegates to the legacy
     // dispatcher. Not the final DI architecture.
     invocationExecutor: CanonicalInvocationExecutor? = null,
 
-    // CDE.3-b3: the new authority seam for effective execution. Optional for dual characterization;
+    // the new authority seam for effective execution. Optional for dual characterization;
     // when absent it defaults to the legacy adapter over [invocationExecutor] (or the legacy
     // dispatcher), preserving behaviour exactly. Existing callers that inject the old executor keep
     // working unchanged because the default boundary routes to it.
     commonExecutionBoundary: CommonExecutionBoundary? = null,
-    // CDE.3-e4.1: optional open StepRegistry (plugin definitions) for registry-driven metadata and,
+    // optional open StepRegistry (plugin definitions) for registry-driven metadata and,
     // later, execution. Additive at the end of the ctor so the ~25 legacy call-sites (positional or
     // named) compile unchanged. No global registry, no service locator, no singleton.
     private val stepRegistry: StepRegistry? = null,
     // optional retry control journal. When bound, the retry branch of `dispatchBody`
-    // routes through RetryReconciliationDriver (ADR-0075 §11). When null, the pre-ADR-0075
+    // routes through RetryReconciliationDriver. When null, the pre-ADR-0075
     // inline retry loop is preserved bit-equivalent — existing callers and tests see no change.
     private val retryControlJournal: FileBasedRetryControlJournal? = null,
     // optional waitUntil control journal. When bound, the waitUntil
     // branch routes through the WaitUntilReconciler (durable polling aggregate). When null,
-    // the pre-WU-G5R.5 inline polling loop is preserved — existing callers and tests see no change.
+    // the inline polling loop is preserved — existing callers and tests see no change.
     private val waitUntilControlJournal: WaitUntilControlJournal? = null,
     // milestone state store scoped to this coordinator/run. Each coordinator instance
     // creates its own MilestoneStateStore by default, so all milestone invocations within a run
@@ -115,7 +115,7 @@ class CanonicalDurableRunCoordinator(
     // a store; tests that need to control the store explicitly pass their own instance.
     private val milestoneStateStore: MilestoneStateStore = MilestoneStateStore(),
 
-    // E1.1 / T1: per-run artifact index for the core.archiveArtifacts →
+    // per-run artifact index for the core.archiveArtifacts →
     // core.artifact.query bridge. Defaults to a fresh InMemoryArtifactIndex
     // when absent; tests that need to control the index explicitly pass
     // their own instance. Lifetime is the coordinator lifetime — i.e. one
@@ -124,12 +124,12 @@ class CanonicalDurableRunCoordinator(
     // the bridge stays unwired and both Steps fail closed at runtime.
     private val artifactIndex: dev.rubentxu.pipeline.v2.domain.step.artifact.ArtifactIndexCapability? = null,
 
-    // B10/W1c + WU-RP-033: the body execution policy authority. Composed in the class body
+    // the body execution policy authority. Composed in the class body
     // (see bodyPolicyResolver below). A caller may inject another authority to characterize
     // the fail-closed laws. Appended last so existing positional call-sites compile unchanged.
     private val injectedBodyPolicyResolver: BodyPolicyResolver? = null,
 
-    // B11 / W2: the body-reentry adapter bound under BODY_INVOKER_CAPABILITY (ADR-0073 / ADR-0081 D1).
+    // the body-reentry adapter bound under BODY_INVOKER_CAPABILITY.
     // Per-run lifetime: a fresh adapter is constructed when no caller injects one; the canonical
     // coordinator passes it into CanonicalRuntimeContext for every dispatch so the capability
     // bridge exposes the seam and any registered handler can re-enter the engine through the
@@ -207,7 +207,7 @@ class CanonicalDurableRunCoordinator(
      */
     sagaBinding: SagaCompensationBinding? = null,
 ) {
-    // B10/W1c + WU-RP-033: the body execution policy authority. The production default
+    // the body execution policy authority. The production default
     // composes TWO declared-policy authorities, both fail-closed and neither key-specific:
     //   1. the OPEN StepRegistry (same seam that resolves handlers) — a core or external
     //      plugin Step whose descriptor declares a body resolves here identically;
@@ -234,7 +234,7 @@ class CanonicalDurableRunCoordinator(
         divergenceDetector = divergenceDetector as StrictFingerprintDivergenceDetector,
         effectReplayPolicy = effectReplayPolicy,
         journal = journal,
-        // TRAIN H3 / PR-019: the a2 external-subprocess compatibility hook is COMPOSED here and
+        // the a2 external-subprocess compatibility hook is COMPOSED here and
         // reaches the resolver only as a port. The resolver decides when recovery applies; this
         // adapter owns the only place that knows a control directory and a live process exist.
         runningSubprocessRecovery = ExternalSubprocessRecovery(clock, controlDirRoot, reattachPoll),
@@ -250,7 +250,7 @@ class CanonicalDurableRunCoordinator(
 
 
     /**
-     * Effective pre-decode metadata authority (CDE.3-e4.2). An explicit [stepMetadataResolver] wins;
+     * Effective pre-decode metadata authority. An explicit [stepMetadataResolver] wins;
      * otherwise an injected [stepRegistry] opts into the composite (core keys -> legacy authority,
      * other keys -> registry metadata, unknown -> hard defect); otherwise the legacy core authority.
      * The durable coordinator only ever consumes [StepMetadata]; it does not know where it came from.
@@ -260,24 +260,24 @@ class CanonicalDurableRunCoordinator(
         else CoreLegacyStepMetadataResolver
 
     /**
-     * Effective step executor, routed through the new common seam (CDE.3-b3). The production default
+     * Effective step executor, routed through the new common seam. The production default
      * adapts the injected legacy [invocationExecutor] (or the legacy dispatcher) behind
      * [CommonExecutionBoundary], preserving behaviour exactly; a caller may inject its own boundary
      * for dual characterization. The durable coordinator only ever hands an opaque [PreparedExecution]
      * to this seam and never names a decoded command type.
      *
-     * As of S2.5.7 WU-5 the call is routed through [ExecutionBoundaryFactory.build] (the named
+     * The call is routed through [ExecutionBoundaryFactory.build] (the named
      * producer seam) directly, bypassing the [buildDefaultExecutionBoundary] forwarder. The factory
      * is the structural-switch authority (binary `if (stepRegistry != null)` preserved bit-a-bit); the
      * forwarder is kept as a source-compatibility shim for any external callers.
      */
     private val executionBoundary: CommonExecutionBoundary = commonExecutionBoundary
 
-        // CDE.3-e4.5 / B1.2c3-S2.5.7 WU-5: structural switch lives in ExecutionBoundaryFactory.build
+        // structural switch lives in ExecutionBoundaryFactory.build
         // (binary legacy-bit-equivalent: registry present -> SeamedRouting; otherwise -> LegacyOnly).
-        // S2-A9 spike: pass milestoneStateStore so RegistryExecutionBoundary can provide
+        // pass milestoneStateStore so RegistryExecutionBoundary can provide
         // MILESTONE_OPERATIONS_CAPABILITY during handler execution.
-        // E1.1 / T1: pass artifactIndex so the producer (core.archiveArtifacts)
+        // pass artifactIndex so the producer (core.archiveArtifacts)
         // and the consumer (core.artifact.query) share one instance per run.
         ?: ExecutionBoundaryFactory.build(
             dispatcher = dispatcher,
@@ -295,17 +295,17 @@ class CanonicalDurableRunCoordinator(
         journal = journal,
     )
 
-    // C3 / WU-PR-017: the run-lifecycle bookends and the running outcome live in
+    // the run-lifecycle bookends and the running outcome live in
     // the extracted engine (same events, same ordering, same quirks).
     private val runLifecycle = RunLifecycleEngine(eventSink)
-    // TRAIN H4 / PR-020: the BEFORE_STAGE directive seam. It admits, decodes, composes,
+    // The BEFORE_STAGE directive seam. It admits, decodes, composes,
     // evaluates and observes, then returns a closed verdict; this class keeps the run's control
     // flow, because only the owner of the loop may decide what the run does next.
     private val beforeStageDirectives = BeforeStageDirectiveEngine(eventSink, gateContext, gateEvaluator, capabilityContributor)
-    // TRAIN H3 / PR-019: the INTERPRETATION of a recovery resolution. The DECISION already
+    // The INTERPRETATION of a recovery resolution. The DECISION already
     // lives in invocationResolver; this engine performs the journal write and the lifecycle
     // events that a resolution names, and reports ProceedToExecution for the one resolution
-    // that is not a recovery case. ADR-0103 D7: it advances no cursor — that is traversal state.
+    // that is not a recovery case. It advances no cursor — that is traversal state.
     private val recoveryInterpretation = RecoveryInterpretationEngine(eventSink, journal)
     private val bodyExecutionEngine = BodyExecutionEngine(
         eventSink,
@@ -314,7 +314,7 @@ class CanonicalDurableRunCoordinator(
         retryControlJournal,
         waitUntilControlJournal,
     )
-    // TRAIN H4 / PR-020: the step-execution spine. `dispatch` falls through to `dispatchBody`,
+    // The step-execution spine. `dispatch` falls through to `dispatchBody`,
     // which hands the body back to the body engine with this class's own `dispatchChild` as the
     // re-entry reference, and a parallel branch walks its steps through `dispatch` again. That
     // recursion is the unit of cohesion, so the whole closed cycle moves together and the
@@ -340,11 +340,11 @@ class CanonicalDurableRunCoordinator(
         workspaceBase = workspaceBase,
         secretPatternRegistry = secretPatternRegistry,
         capabilityContributor = capabilityContributor,
-        // SAGA / PK-1: the per-run Saga seam, forwarded so the dispatch can build the
+        // the per-run Saga seam, forwarded so the dispatch can build the
         // invocation-bound intent port.
         sagaBinding = sagaBinding,
     )
-    // TRAIN H4 / PR-020: a parallel stage is a composite with its own durable aggregate, not a
+    // A parallel stage is a composite with its own durable aggregate, not a
     // Step, so it does not belong to the step spine. It dispatches branch steps back through
     // `stepDispatch`, which keeps one direction only and one dispatch spine.
     private val parallelStages = ParallelStageEngine(
@@ -356,7 +356,7 @@ class CanonicalDurableRunCoordinator(
         controlDirRoot = controlDirRoot,
         workspaceBase = workspaceBase,
     )
-    // TRAIN H4 / PR-020: what a stage DOES once the run has decided to start it — its linear
+    // What a stage DOES once the run has decided to start it — its linear
     // body, its continuation, and its `post` finalizers. A stage reports a closed verdict and
     // the context it leaves behind; only this loop decides what the run does next.
     private val stageExecution = StageExecutionEngine(
@@ -376,7 +376,7 @@ class CanonicalDurableRunCoordinator(
             stagesLoop@ for (stageIndex in pipeline.stages.indices) {
                 val stage = pipeline.stages[stageIndex]
 
-                // TRAIN H4 / PR-020: the BEFORE_STAGE directive seam is interpreted by
+                // the BEFORE_STAGE directive seam is interpreted by
                 // BeforeStageDirectiveEngine, which admits, decodes, composes, evaluates and
                 // OBSERVES, then returns a closed verdict. Only this loop owns the run's control
                 // flow: a collaborator may not write `return@run` or `continue@stagesLoop`.
@@ -441,7 +441,7 @@ class CanonicalDurableRunCoordinator(
                 }
                 val stageBaseOptions = if (stageWorkspace != null) shOptions.copy(workspaceRoot = stageWorkspace) else shOptions
                 val stageShOptions = stage.projectShellOptions(stageBaseOptions)
-                // B13/E-EM-11: parallel stages re-enter the SAME dispatch spine —
+                // parallel stages re-enter the SAME dispatch spine —
                 // each branch is dispatched as a bodyPath-rooted branch with its
                 // own branchIndex (deterministic durable identity via OpId -b{N}
                 // journal keys). No second engine, no ParallelFrameExecutor.
@@ -483,13 +483,13 @@ class CanonicalDurableRunCoordinator(
                 }
                 // Fail closed on a body shape this spine does not run, and NAME the shape.
                 val steps1 = steps ?: throw IllegalArgumentException("Unsupported ${stage.body::class.simpleName} in '${stage.name}'")
-                // D5: Per-stage workspaceRoot override at dispatch boundary
-                // C1: Workspace pre-creation - ensure stage workspace exists before shell dispatch
-                // restore stage bookends lost in the LF-0208 spine migration.
+                // Per-stage workspaceRoot override at dispatch boundary
+                // Workspace pre-creation - ensure stage workspace exists before shell dispatch
+                // restore stage bookends lost in the spine migration.
                 // The canonical coordinator emits StageStarted at entry and StageFinished on normal
                 // completion (success/unstable). An aborting stage returns before StageFinished;
                 // RunFinished carries the failure.
-                // TRAIN H4 / PR-020: the stage body, its continuation and its `post`
+                // the stage body, its continuation and its `post`
                 // finalizers live in StageExecutionEngine. The run loop keeps only the two
                 // things a stage may say to a run: carry on carrying this context, or abort
                 // with this typed reason. A collaborator may not write return@run.
@@ -513,10 +513,10 @@ class CanonicalDurableRunCoordinator(
                 ),
             ))
         } finally {
-            // C3 / WU-PR-017: the closing bookend is the engine's; the correlation
+            // the closing bookend is the engine's; the correlation
             // invariant (RunFinished only if RunStarted was emitted) lives there.
             runLifecycle.closeRun(runId)
-            // S4 retention: the run has ENDED, the only moment that can authorise discarding its
+            // The run has ENDED, the only moment that can authorise discarding its
             // output. Not gated on the bookend invariant: that asks whether RunFinished may be EMITTED.
             outputRetention?.onRunTerminal(runId)
         }
@@ -534,7 +534,7 @@ class CanonicalDurableRunCoordinator(
  * historical behaviour (open-registry lookup returns UnknownStep and the canonical
  * core table answers).
  *
- * S6/F note: this adapter used to implement both `register` overloads by throwing
+ * Note: this adapter used to implement both `register` overloads by throwing
  * `UnsupportedOperationException`. That was the "freeze boolean" shape — a mutable-shaped
  * object carrying a flag that said it was immutable — and a caller could still reach the
  * method and be told so at runtime. [StepRegistry] no longer declares `register` at all, so

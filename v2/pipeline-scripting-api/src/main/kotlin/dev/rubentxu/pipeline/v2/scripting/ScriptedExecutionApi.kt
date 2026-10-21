@@ -101,21 +101,21 @@ data class ScriptedSourceLocation(
     )
 
     /**
-     * Stable source identity emitted for a generated runtime-returning file-read
-     * call (LFC-2R2). Deliberately DISTINCT from [shellCallSite], [unixCallSite],
-     * and [pwdCallSite]: each call-site kind keeps its own collision-free bucket
-     * so the same source position never produces two competing identities.
-     */
+ * Stable source identity emitted for a generated runtime-returning file-read
+ * call. Deliberately DISTINCT from [shellCallSite], [unixCallSite],
+ * and [pwdCallSite]: each call-site kind keeps its own collision-free bucket
+ * so the same source position never produces two competing identities.
+ */
     fun readFileCallSite(): ScriptedCallSiteId = ScriptedCallSiteId(
         "${sourceId.value}:$line:$column:readFile",
     )
 
     /**
-     * Stable source identity emitted for a generated runtime-returning
-     * file-existence check (LFC-2R2). Deliberately DISTINCT from
-     * [readFileCallSite], [shellCallSite], [unixCallSite], and
-     * [pwdCallSite]: one identity per kind, no collision across kinds.
-     */
+ * Stable source identity emitted for a generated runtime-returning
+ * file-existence check. Deliberately DISTINCT from
+ * [readFileCallSite], [shellCallSite], [unixCallSite], and
+ * [pwdCallSite]: one identity per kind, no collision across kinds.
+ */
     fun fileExistsCallSite(): ScriptedCallSiteId = ScriptedCallSiteId(
         "${sourceId.value}:$line:$column:fileExists",
     )
@@ -177,36 +177,36 @@ sealed interface ScriptedCallKind {
     data class Pwd(val tmp: Boolean = false) : ScriptedCallKind
 
     /**
-     * Runtime-returning workspace file read (LFC-2R2). Mirrors [IsUnix] and
-     * [Pwd]: the returned String is the file content materialised before
-     * control returns to Kotlin. FRESH observes through the registry Step
-     * (`core.readFile`); REUSE reproduces the persisted observation
-     * without re-reading the file.
-     *
-     * S4-DATA. [pathExpression] is the author's ORIGINAL Kotlin expression, as
-     * PSI text, not its value. It was a payload-free `data object` before, so the
-     * lowering had nothing to put in the call and wrote a literal `""` — which
-     * both dropped the user's path and, combined with the hardcoded span, left
-     * the argument's own text trailing after the rewritten call, producing
-     * Kotlin that does not compile.
-     *
-     * Carrying the EXPRESSION rather than the value is what makes
-     * `readFile(file)`, `readFile("$dir/config.yaml")` and
-     * `readFile(resolve(p))` work at all: the generated call is the same text
-     * re-scoped, so the expression is evaluated where the author put it. This is
-     * the same rule [Shell] already follows for its `script`.
-     */
+ * Runtime-returning workspace file read. Mirrors [IsUnix] and
+ * [Pwd]: the returned String is the file content materialised before
+ * control returns to Kotlin. FRESH observes through the registry Step
+ * (`core.readFile`); REUSE reproduces the persisted observation
+ * without re-reading the file.
+ *
+ * S4-DATA. [pathExpression] is the author's ORIGINAL Kotlin expression, as
+ * PSI text, not its value. It was a payload-free `data object` before, so the
+ * lowering had nothing to put in the call and wrote a literal `""` — which
+ * both dropped the user's path and, combined with the hardcoded span, left
+ * the argument's own text trailing after the rewritten call, producing
+ * Kotlin that does not compile.
+ *
+ * Carrying the EXPRESSION rather than the value is what makes
+ * `readFile(file)`, `readFile("$dir/config.yaml")` and
+ * `readFile(resolve(p))` work at all: the generated call is the same text
+ * re-scoped, so the expression is evaluated where the author put it. This is
+ * the same rule [Shell] already follows for its `script`.
+ */
     data class ReadFile(val pathExpression: String) : ScriptedCallKind
 
     /**
-     * Runtime-returning workspace file existence check (LFC-2R2). Mirrors
-     * [IsUnix] and [Pwd]: the returned Boolean is a durable runtime value.
-     * FRESH observes through the registry Step (`core.fileExists`);
-     * REUSE reproduces the persisted observation without re-stat-ing.
-     *
-     * S4-DATA. Carries the author's original expression as PSI text, for the
-     * same reason and with the same property as [ReadFile.pathExpression].
-     */
+ * Runtime-returning workspace file existence check. Mirrors
+ * [IsUnix] and [Pwd]: the returned Boolean is a durable runtime value.
+ * FRESH observes through the registry Step (`core.fileExists`);
+ * REUSE reproduces the persisted observation without re-stat-ing.
+ *
+ * S4-DATA. Carries the author's original expression as PSI text, for the
+ * same reason and with the same property as [ReadFile.pathExpression].
+ */
     data class FileExists(val pathExpression: String) : ScriptedCallKind
 }
 
@@ -477,19 +477,19 @@ interface ScriptedStepFacade {
     suspend fun pwd(callSite: ScriptedCallSiteId, tmp: Boolean = false): String
 
     /**
-     * Runtime-returning workspace file read (LFC-2R2). Mirrors [pwd] in shape:
-     * FRESH observes the file content through the registry Step (`core.readFile`);
-     * REUSE reproduces the persisted observation without re-reading the file.
-     * A failure NEVER fabricates an empty string.
-     */
+ * Runtime-returning workspace file read. Mirrors [pwd] in shape:
+ * FRESH observes the file content through the registry Step (`core.readFile`);
+ * REUSE reproduces the persisted observation without re-reading the file.
+ * A failure NEVER fabricates an empty string.
+ */
     suspend fun readFile(callSite: ScriptedCallSiteId, file: String): String
 
     /**
-     * Runtime-returning workspace file existence check (LFC-2R2). Mirrors
-     * [isUnix] in shape (returns Boolean): FRESH observes through the
-     * registry Step (`core.fileExists`); REUSE reproduces the persisted
-     * observation without re-stat-ing. A failure NEVER fabricates `false`.
-     */
+ * Runtime-returning workspace file existence check. Mirrors
+ * [isUnix] in shape (returns Boolean): FRESH observes through the
+ * registry Step (`core.fileExists`); REUSE reproduces the persisted
+ * observation without re-stat-ing. A failure NEVER fabricates `false`.
+ */
     suspend fun fileExists(callSite: ScriptedCallSiteId, file: String): Boolean
 
     // `shReturnStdout` is REMOVED, not deprecated. It was a second spelling

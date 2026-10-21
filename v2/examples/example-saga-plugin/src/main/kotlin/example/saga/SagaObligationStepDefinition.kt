@@ -16,6 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.saga.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_COMPENSATION_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.saga.SAGA_PLAN_CAPABILITY
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
+import dev.rubentxu.pipeline.v2.domain.saga.SagaActionPlan
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanOperations
@@ -28,7 +29,6 @@ import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import java.security.MessageDigest
 
 /**
  * The external consumer of the Saga contract.
@@ -63,6 +63,18 @@ data class SagaObligationInput(
     val actionId: String,
     val compensationId: String,
     val resourceRef: String,
+    /**
+     * The body that performs the forward effect.
+     *
+     * The two slot names are part of the PLAN, and the plan's digest is the only place the
+     * engine records them: the durable obligation carries the digest, not the bodies. A
+     * step that armed a promise without saying which bodies it was promising could not
+     * produce a plan fingerprint at all, and two steps that spelled the same plan
+     * differently would have been refused as a divergence.
+     */
+    val forwardSlot: String,
+    /** The body that undoes it. */
+    val compensateSlot: String,
 )
 
 @Serializable
@@ -145,13 +157,22 @@ object SagaObligationStepDefinition : StepDefinition<SagaObligationInput, SagaOb
         val plan: SagaPlanOperations =
             context.capabilities.get(SAGA_PLAN_CAPABILITY)
 
-        val declaration = CompensationDeclaration(
-            sagaId = SagaId.of(input.sagaId),
+        val sagaId = SagaId.of(input.sagaId)
+        val actionPlan = SagaActionPlan(
             actionId = SagaActionId.of(input.actionId),
             compensationId = CompensationId.of(input.compensationId),
-            planFingerprint = planFingerprintOf(input),
             resourceRef = ResourceRef.of(input.resourceRef),
             kind = CompensationKind.RESTORE,
+            forwardSlot = PluginStepId(input.forwardSlot),
+            compensateSlot = PluginStepId(input.compensateSlot),
+        )
+        val declaration = CompensationDeclaration(
+            sagaId = sagaId,
+            actionId = actionPlan.actionId,
+            compensationId = actionPlan.compensationId,
+            planFingerprint = SagaPlanFingerprint.compute(sagaId, actionPlan),
+            resourceRef = actionPlan.resourceRef,
+            kind = actionPlan.kind,
         )
 
         val armed = operations.arm(declaration)
@@ -223,28 +244,6 @@ object SagaObligationStepDefinition : StepDefinition<SagaObligationInput, SagaOb
         is SagaRecordOutcome.Refused -> "Refused(${outcome.reason::class.simpleName})"
     }
 
-    /**
-     * The fingerprint of the compensation PLAN, derived deterministically from the declaration.
-     *
-     * Deterministic on purpose: the same plan must produce the same fingerprint in a later
-     * process, or a resumed run would arm a DIFFERENT promise under the same key and be refused
-     * as a divergence. The content is the plan itself — what is compensated, by which
-     * compensation — and nothing about the moment it was armed.
-     */
-    private fun planFingerprintOf(input: SagaObligationInput): SagaPlanFingerprint {
-        val canonical = listOf(
-            "saga-v1",
-            input.sagaId,
-            input.actionId,
-            input.compensationId,
-            input.resourceRef,
-            CompensationKind.RESTORE.name,
-        ).joinToString("|")
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(canonical.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-        return SagaPlanFingerprint(digest)
-    }
 }
 
 /**

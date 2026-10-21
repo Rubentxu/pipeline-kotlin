@@ -18,29 +18,35 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `09cd325a8` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `09cd325a8` | `git rev-parse HEAD` |
+| SHA | `ac24475e1` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `ac24475e1` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **911** (123 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Escenarios E2E | **52 (52 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios que sólo comprueban el código de salida | **0**, con **una excepción declarada**: `plugins/lock-directive` afirma su sujeto *por medio* del código de salida —su directiva no emite nada, y si el plugin no se descubriera la etapa se negaría—, así que ahí el código de salida es la aserción y no un testigo vacío | censo por directiva y por cuerpo, sobre los **52** escenarios; el número anterior («0», sin excepción y sobre 47) no nombraba el caso que lo contiene |
-| `VERIFY_LOC / PRODUCT_LOC` | **15499 / 65325 = 0.237** (límite 2) | `scripts/check-budgets.py --json` |
+| Tests unitarios ejecutados | **919** (125 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Escenarios E2E | **54 (54 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios que sólo comprueban el código de salida | **0**, con **una excepción declarada**: `plugins/lock-directive` afirma su sujeto *por medio* del código de salida —su directiva no emite nada, y si el plugin no se descubriera la etapa se negaría—, así que ahí el código de salida es la aserción y no un testigo vacío | censo por directiva y por cuerpo, sobre los **54** escenarios; el número anterior («0», sin excepción y sobre 47) no nombraba el caso que lo contiene |
+| `VERIFY_LOC / PRODUCT_LOC` | **15655 / 65419 = 0.239** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **645 / 626 / 631** en los tres ensayos, los tres sobre `09cd325a8`, peor 645 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **739 / 679 / 719** en los tres ensayos, los tres sobre `ac24475e1`, peor 739 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **802** entradas de baseline: **sin cambio**, porque la ley que este ciclo añadió salió a su propio objeto en vez de empujar a `ProtocolGrammar` por encima del límite de detekt | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 Las cifras de este ciclo suben en lo que este ciclo añadió y sólo en eso:
-**911** tests (6 más que los 905 del ciclo anterior) y **52** escenarios (los
-mismos). Los 6 tests nuevos son las **5** filas del adaptador de cancelación
-(§2.33) —que no tenía ni una prueba— y la **1** del adaptador de recuperación
-(un run cancelado no se reanuda). El bloque de la cancelación a medias **no
-añadió ningún escenario permanente**: su UAT efímero, que sí se ejecutó con el
-binario real y se encendió contra el binario previo, se retiró al cerrar el
-ciclo con su evidencia escrita aquí, y lo que se promovió son las seis filas
-unitarias, que son más baratas y discriminan cada cláusula.
+**919** tests (**8** más que los 911 del ciclo anterior) y **54** escenarios
+(**2** más que los 52). Los 8 tests nuevos son las **3** filas que fijan la
+calle del store —que un lector no puede escribir en el journal del
+productor— y las **5** que fijan el texto que el operario lee cuando el store
+no se puede abrir (§2.34). Los 2 escenarios nuevos son el observador que
+muere en pleno vuelo (`events/06`) y el rechazo por base sin historia
+(`negative/events-no-event-history`), y los dos se encendieron en rojo a
+propósito antes de darse por buenos.
+
+El bloque de la cancelación a medias (§2.33) **no añadió ningún escenario
+permanente**: su UAT efímero, que sí se ejecutó con el binario real y se
+encendió contra el binario previo, se retiró al cerrar el ciclo con su
+evidencia escrita aquí, y lo que se promovió son las seis filas unitarias,
+que son más baratas y discriminan cada cláusula.
 
 El bloque del reloj (§2.32) **no añadió ni un test permanente ni un escenario
 permanente**, y ese es el punto: lo que protege la garantía es el auto-control
@@ -48,7 +54,7 @@ del arranque, que ya corre en cada invocación del lanzador. Los dos UAT que lo
 probaron (una escena colgada y una escena que falla de verdad) se retiraron al
 cerrar el ciclo, con su evidencia escrita aquí.
 
-El ratio de LOC sube de 0.230 a **0.237** en los dos últimos ciclos, todavía
+El ratio de LOC sube de 0.230 a **0.239** en los tres últimos ciclos, todavía
 muy por debajo del límite 2, y el peor módulo sigue siendo el mismo de siempre
 (`pipeline-step-sdk:workflow-control`, 1.633) porque este ciclo no lo tocó.
 
@@ -658,6 +664,53 @@ el arreglo; los demás siguen verdes).
   porque es lo que impide que alguien lo vuelva a proponer; y se corrige también
   el comentario de la línea de llamada, que es donde el ojo encuentra primero la
   contradicción.
+- **El observador de un run escribía en el journal del productor.** El verbo
+  `events` —y con él `observe`, `inspect`, `console` y `events verify`— abría el
+  store del productor **con permisos de escritor**: su constructor creaba el
+  esquema, migraba el journal, hacía `backfill` de `run_id` y dejaba un **hilo
+  escritor vivo**, y mantenía una conexión **capaz de escribir** durante toda su
+  vida. Un lector que escribe no es un lector: era un segundo escritor del
+  journal del productor, y podía tomar un **lock de escritura** sobre él. Que
+  hoy no haya breakage se debe a una mitigación **accidental**
+  (`PRAGMA busy_timeout = 5000`), no a una garantía.
+
+  La corrección es que el store se abre en una de **dos calles** y la calle la
+  decide el **propósito** (`EventStorePurpose.storeMode`, puro y decidible sin
+  disco): **Writable** para el productor, **ReadOnly** para el lector. En la
+  calle de lectura el motor **SQLite rechaza toda escritura** —DML y DDL— con
+  `SQLITE_READONLY`, porque la conexión se abre con el flag de sólo-lectura: la
+  garantía la impone la base de datos, no la disciplina del código. Sin
+  esquema, sin migración, sin `backfill` y sin hilo escritor.
+
+  Un store de lectura sobre una base **sin historia** se rechaza con un motivo
+  **tipado** (`NoEventHistory`) en vez de responder «run desconocido», que
+  señalaría al operario hacia el run en vez de hacia el fichero.
+
+  Medido con el driver publicado (sqlite-jdbc 3.46.1.3): la conexión de sólo
+  lectura abre una base WAL que otro proceso tiene abierta, la lee con el
+  escritor vivo, la lee **tras un escritor muerto sin consolidar** y la lee
+  **tras un escritor cerrado limpiamente**; toda escritura la rechaza el motor.
+  La forma URI (`?mode=ro`) exige escapar `%`, `#` y `?` —un URI termina su
+  ruta en el primer `?` o `#`, así que un fichero con esos caracteres se
+  abriría **por otro lado**—, y se comprobó con `PRAGMA database_list` que el
+  fichero abierto es exactamente el pedido.
+
+  Verificado contra el binario real: leer el journal de un run **no cambia ni
+  un byte** del fichero —`sha256` idéntico antes y después de `events` y de
+  `inspect --state`—. Antes, esa lectura creaba tablas, migraba y hacía
+  `backfill` en el fichero del productor.
+
+  Y la **primera versión de la sonda** que decide si una base tiene historia
+  tenía un fallo de orden de inicialización que la hacía responder siempre que
+  sí —el `var` con inicializador pisa lo que el constructor calcula—, de modo que
+  una base sin historia pasaba y moría después con una traza cruda. Se encontró
+  a mano y se corrigió antes de cerrar el bloque; el detalle está en §2.34.
+
+  El detalle de fondo, con su por qué, está en §2.34; las filas permanentes que
+  lo fijan son `EventStoreModeTest` (3) y `EventStoreRefusalRenderingTest` (5),
+  y los ejemplos permanentes que lo vigilan de punta a punta son
+  `examples/events/06-observer-death-does-not-kill-the-producer` y
+  `examples/negative/events-no-event-history`.
 
 ### 2.2 Lo que queda abierto, por valor operativo
 
@@ -1308,13 +1361,22 @@ busqué las guardas con una ventana de 6 líneas alrededor del campo, y
 `OutputPin` las tiene 15 líneas más abajo. Un instrumento más estrecho que su
 sujeto reporta un número con seguridad y con error.
 
-**j) ~295 líneas de código en 126 ficheros citan documentos ADR que no existen.**
-La misma clase que 2.2 e, pero **diez veces más grande**. Medido con
-`git grep -cE 'ADR-0'` sobre todo lo trackeado: **309 líneas / 126 ficheros**, de
-las cuales **14 están en este mismo ROADMAP.md** —el censo contándose a sí mismo—
-y **295 en código**. Reparto por módulo: `pipeline-application` 136,
-`pipeline-domain` 79, `pipeline-step-sdk` 50, `pipeline-events-store` 7, y once
-módulos más con 1–3 cada uno. Los tres primeros son el **90 %** del total.
+**j) Las líneas que citaban documentos que no existen: saldadas.**
+
+> **Estado: saldado en este ciclo.** El bloque nació midiendo **295 líneas en
+> 126 ficheros** que citaban documentos ADR inexistentes. Medido hoy, con el
+> mismo instrumento, el número en código es **0**: este ciclo reescribió las
+> últimas citas y las que quedaban fuera del código. El relato de abajo se
+> conserva como el registro de lo que se midió y de por qué se reparó por
+> clases y no en bloque; la tabla es la de hoy.
+
+La misma clase que 2.2 e, pero **diez veces más grande** cuando se escribió.
+Medido entonces con `git grep -cE 'ADR-0'` sobre todo lo trackeado: **309
+líneas / 126 ficheros**, de las cuales **14 estaban en este mismo ROADMAP.md** —el
+censo contándose a sí mismo— y **295 en código**. Reparto por módulo:
+`pipeline-application` 136, `pipeline-domain` 79, `pipeline-step-sdk` 50,
+`pipeline-events-store` 7, y once módulos más con 1–3 cada uno. Los tres
+primeros eran el **90 %** del total.
 
 **La cifra que este bloque declaraba antes —«~297 líneas en 120 ficheros» medido
 en `28667109`— se queda sin cifra.** Los cinco números que convivían aquí (292,
@@ -1346,20 +1408,36 @@ Y 6 de esas citas —las de `ADR-0051`, que sólo aparecían aquí— se elimina
 este ciclo como parte del barrido de 2.2 e.
 
 
-| Token | Líneas | Ficheros |
+| Token | Entonces (sitios / ficheros, en código) | Hoy (sitios / ficheros, en código) |
 |---|---|---|
-| `ADR-0…` | 295 (309 con este ROADMAP) | 126 |
-| `INV-L…` | 63 | 22 |
-| `docs/` | 23 | 10 |
-| `FArchL` | 2 | 1 |
-| `WCL-S` | 2 | 2 |
-| `FIL-ALL` | 1 | 1 |
-| `design.md §` | 0 en código (2 son las de este ROADMAP) | 1 |
+| `ADR-[0-9]{4}` | 295 / 126 | **0 / 0** |
+| `INV-L` | 5 / 1 | 5 / 1 |
+| `docs/` | 13 / 5 | 12 / 4 |
+| `FArchL` | 2 / 1 | **0 / 0** |
+| `WCL-S` | 2 / 2 | **0 / 0** |
+| `FIL-ALL` | 1 / 1 | **0 / 0** |
+| `design.md §` | 0 | **0** |
 
-Todas las filas de esta tabla se remedieron con **un solo instrumento**,
-`git grep -n <token> -- .` sobre todo lo trackeado, que **incluye este
-ROADMAP.md**. Las cifras anteriores mezclaban instrumentos: por eso las de
-`ADR-0…` no cuadraban con su propia prosa.
+La columna de hoy se midió con **un solo instrumento**, el mismo de entonces:
+
+```
+git ls-files -z '*.kt' '*.kts' '*.java' '*.md' | grep -zv '^ROADMAP.md$' \
+  | xargs -0 grep -ohIE '<token>'
+```
+
+**Las dos filas que no bajan a 0 están justificadas, y no son deuda:**
+
+- `INV-L6-CR-011` y `INV-L6-CR-012` aparecen en `GitCredentialsApplier` dentro
+  del **config de git que el producto escribe**: son contenido emitido, no
+  comentarios. Cambiarlos cambiaría el artefacto que ve el usuario final, y eso
+  ya no es un comentario.
+- `docs/` ya sólo aparece donde debe: en `AGENTS.md` y en los README, que
+  **explican la retirada** de ese árbol, y en `examples/durable/31-stash-unstash`,
+  donde `docs/` es un **directorio de fixture** que el escenario crea. En
+  `src/main` el número es **0**.
+
+Las cifras de entonces mezclaban instrumentos: por eso las de `ADR-0…` no
+cuadraban con su propia prosa.
 
 
 El denominador que lo confirma: **`git ls-files` no devuelve ni un solo
@@ -1976,7 +2054,16 @@ como producto en el techo de LOC sin estar compilado, y por eso el ciclo lo
 detectó **leyendo**, no por un instrumento. Un instrumento que lo detectara
 tendría que ser un guard de estructura del build, y el árbol no tiene ninguno.
 
-### 2.5 Las promesas colgantes que quedan — medido, no estimado
+### 2.5 Las promesas colgantes: medidas, y saldadas
+
+> **Estado: saldadas en este ciclo.** Cuando este bloque se escribió, el
+> instrumento de abajo contaba **74** clases de test que `src/main` nombraba sin
+> que existiera el fichero que las declarara, repartidas en **70** ficheros de
+> producción, y **12** de ellas **afirmaban además** un instrumento
+> (`pins`/`guarded`/`falsifier`/`asserts`). Este ciclo las reparó todas: el
+> censo da hoy **0**. El texto que sigue se conserva como el relato de lo que
+> se midió y de por qué la reparación fue de este modo, no como el estado
+> actual.
 
 El patrón anterior no era de `pipeline-events`. Se extendía.
 
@@ -1985,42 +2072,62 @@ El patrón anterior no era de `pipeline-events`. Se extendía.
 ```
 tracked=$(git ls-files '*src/test/*' | sed 's|.*/||; s|\.kt$||' | sort -u)
 grep -rhoE '\b[A-Z][A-Za-z0-9]*(Test|Tests|FitnessTest|FalsifierTest|LawsTest)\b' \
-     --include='*.kt' pipelinek/*/src/main | sort -u   # menos los que $tracked contiene
+     --include='*.kt' pipelinek/*/src/main pipelinek/*/*/src/main \
+  | sort -u | grep -vxF "$tracked"
 ```
 
 **Cifras, con su denominador:**
 
-| magnitud | valor |
-|---|---|
-| referencias a clases de test citadas en `src/main` **sin** fichero que las declare | **73** |
-| ficheros de producción que contienen al menos una | **70** |
-| módulos afectados | **11** |
-| de esas 73, las que además **afirman** un instrumento (`pins`/`guarded`/`falsifier`/`asserts`) | **13** |
+| magnitud | entonces | hoy |
+|---|---|---|
+| clases de test citadas en `src/main` **sin** fichero que las declare | **74** | **0** |
+| ficheros de producción con al menos una | **70** | **0** |
+| de ellas, las que además **afirman** un instrumento | **12** | **0** |
 
-Dos advertencias sobre el propio instrumento, porque sin ellas la cifra engaña:
+Tres advertencias sobre el propio instrumento, porque sin ellas la cifra engaña:
 
-1. Con el sufijo `*Spec` el mismo barrido da **102**, no 73. La diferencia no son
-   tests faltantes: `ToolSpec`, `TaskSpec`, `TimeoutSpec` son ADTs de dominio. Un
-   censo que no conoce el vocabulario del repositorio cuenta su propia
-   exclamación como deuda.
-2. El censo cuenta **menciones**, no promesas. Las 2 referencias de
-   `pipeline-events` que sobreviven al filtro fuerte son menciones en pasado que
-   escribí yo al reescribir (`used to pin`). Quedan **11 abiertas de verdad**.
+1. Con el sufijo `*Spec` el mismo barrido da más: `ToolSpec`, `TaskSpec`,
+   `TimeoutSpec` son ADTs de dominio. Un censo que no conoce el vocabulario
+   del repositorio cuenta su propia exclamación como deuda.
+2. El censo cuenta **menciones**, no promesas: una mención en pasado (`used to
+   pin`) no es una promesa, y una que nombra un test **existente** es una cita
+   útil, no una deuda.
+3. El primer instrumento miraba `pipelinek/*/src/main` y se le escapaban **12**
+   referencias de los **módulos anidados** (`pipeline-step-sdk/*`). Ampliado a
+   `pipelinek/*/*/src/main`, el total real era **74**, no 73. Un censo con
+   el denominador equivocado subestima.
+4. Queda **un** falso positivo que hay que nombrar para que el «0» sea
+   creíble: `ParallelTest` es el **nombre de un stage** en el mensaje de error
+   de un ejemplo, no una clase de test.
 
-**Lo que la clasificación cambia.** Casi todas las 73 prometían un instrumento que
-la política ya no permite: eran *source-text fitness*, tests que grepeaban el
-árbol de fuentes, y AGENTS.md §2 los prohíbe dentro de tests unitarios. No se
-pueden «reescribir» como test; solo honestarse o cerrarse. De las 13 fuertes, dos
-prometían un **negativo** —«ningún sitio de producción construye `OptionSpec`»,
-«nadie vuelve a llamar a `outcomeOf`»— que ningún test unitario puede sostener sin
-convertirse en un escaneo de fuentes. Esas dos se reescribieron esta misma pasada
-(`CompiledPipeline.kt`, `PostPlan.kt`): la verdad es que la única línea que las
-sostiene es la propia `@Deprecated` y la propia totality fail-closed.
+**Lo que cambió la decisión.** Este bloque decía antes: «**NO se reparan las
+73** […] la regla que sí se adopta, para el trabajo que venga: una promesa en
+KDoc se reescribe cuando se toca el fichero, no en una campaña». El encargo de
+este ciclo cambió esa regla: pedía comentarios estándar que expliquen la
+funcionalidad integrada, sin identificadores de tareas ni de especificaciones.
+Una campaña es exactamente lo que se@Spring, así que la campaña se hizo —pero
+**acotada a lo que miente** y con el daño del barrido medido y reparado:
 
-**Decisión: NO se reparan las 73.** Repararlas todas es la auditoría interminable
-que este encargo prohíbe explícitamente. Se registran aquí con su cifra y su
-instrumento. La regla que sí se adopta, para el trabajo que venga: **una promesa en
-KDoc se reescribe cuando se toca el fichero, no en una campaña.**
+- Primero las que **afirmaban un instrumento inexistente** (12): un KDoc que
+  promete un guard que no existe es una afirmación falsa, y una afirmación
+  falsa en el código es un defecto, no una cuestión de estilo.
+- Después las **neutras** —las que nombraban un test sin afirmar que lo
+  protegía—, por coherencia del texto.
+- Y las referencias a **documentos que no existen**: `ADR-0…` bajó de **295
+  líneas en 126 ficheros** a **0 en código**, e igual `FArchL`, `WCL-S`,
+  `FIL-ALL` y `design.md §`.
+- El barrido **mecánico** dejó prosa rota —«the ingest agent of ``»,
+  «documents:,,,,», «the launcher ('s», negritas vacías, «the
+  invariantprotects»— y esa prosa rota se reparó **a mano**: una sustitución
+  automática sobre 86 ficheros no puede mantener la gramática, y una gramática
+  rota en el KDoc es un defecto de la misma familia que una cita falsa.
+
+**Lo que NO se reparó, y por qué.** Las referencias `INV-L6-CR-011` que salen
+en `GitCredentialsApplier` no son comentarios: son **contenido del config de
+git que el producto escribe**. Cambiarlas cambiaría el artefacto emitido, y eso
+ya no es un comentario. Los `docs/` de `examples/durable/31-stash-unstash` son
+un **directorio de fixture** dentro del escenario, no una referencia al árbol
+de documentos borrado.
 
 ### 2.6 El `NOT_RUN` que impide el `PASS` — y por qué no se ha cerrado
 
@@ -4203,6 +4310,160 @@ existe ni aquí ni en remoto. Los tres ensayos corrieron con la máquina cargada
 por procesos **ajenos a este repositorio** —hay otro workspace trabajando en
 ella— y los tres siguieron dentro del presupuesto.
 
+### 2.34 El observador que muere: la vista ya no puede escribir en el journal
+
+El bloque B2.1 pedía resolver la incidencia #145: *matar un observador no debe
+matar, cancelar ni alterar al productor*. Lo primero que había que hacer era
+**reproducirla en el binario actual**, y eso no se pudo. Lo segundo —que es lo
+que sí tenía remediable— era mirar **cómo se acopla hoy el observador al
+productor**, y ahí estaba el defecto real.
+
+**La incidencia no se reproduce en este entorno, y hay que decirlo con todas
+las letras.** El script mínimo de la propia incidencia (productor con un
+`sleep 30`, `events --follow` en segundo plano, `kill -9` del observador) se
+ejecutó **contra el árbol actual** y **contra la línea publicada `v0.61.0`**
+—extraída con `git archive` y compilada—: en los dos casos el productor
+sigue vivo, sale con 0 y termina con su `RunFinished`. El script de la
+incidencia **no reproduce su propio síntoma aquí**. Su hipótesis —un
+`subscriber` registrado en la cola de salida del publisher— **no aplica a este
+producto**: ese concepto no existe en él. Se descartó además la explicación
+por `SIGPIPE`: con la salida del productor en una FIFO cuyo lector muere de
+`SIGKILL`, el productor **termina con `SUCCESS`** (código 0 y `RunFinished`),
+así que la presentación no es autoridad sobre la vida del run. Por lo tanto
+**la incidencia #145 no puede cerrarse desde aquí**: el ROADMAP V2 exige
+«issue #145 cerrado sólo si se verifica», y aquí no se verifica. Queda
+**abierta**, con el motivo medido.
+
+**El acoplamiento, en cambio, era real y estaba medido.** El verbo `events`
+—y con él `observe`, `inspect`, `console` y `events verify`— abría el store del
+productor con **permisos de escritor**: su constructor crea el esquema, crea el
+índice de unicidad, migra el journal, hace `backfill` de `run_id` y **deja un
+hilo escritor vivo**, y además mantiene **una conexión capaz de escribir**
+durante toda su vida. Un lector que escribe no es un lector: era un segundo
+escritor del journal del productor, y podía tomar un **lock de escritura**
+sobre él. Que hoy no haya breakage se debe a una mitigación **accidental**
+(`PRAGMA busy_timeout = 5000`), no a una garantía.
+
+**La corrección: dos calles, y el motor como autoridad.** El store se abre en
+una de dos calles y la calle la decide el **propósito** —`EventStorePurpose.storeMode`,
+que es puro y decidible sin disco—:
+
+- **Writable**: la del productor. Crea el esquema, añade hechos, es dueño del fichero.
+- **ReadOnly**: la del lector. El motor **SQLite rechaza toda escritura**
+  (DML y DDL) con `SQLITE_READONLY`, de modo que la garantía la impone la base
+  de datos y no la disciplina del código. Sin esquema, sin migración, sin
+  `backfill` y sin hilo escritor.
+
+Lo que hace el motor es mejor que una promesa: la conexión se abre con el
+flag de sólo-lectura de SQLite, así que **ni el código ni un descuido
+accidental pueden escribir**. Un store de lectura sobre una base **sin
+historia** —sin
+tabla `events`— se rechaza con un motivo **tipado** (`NoEventHistory`) en vez
+de responder «run desconocido», que señalaría al operario hacia el run en vez
+de hacia el fichero. El texto de los cuatro rechazos queda fijado por test,
+porque es un contrato que los operadores y los scripts leen con `grep`.
+
+**Medido con el driver publicado** (sqlite-jdbc 3.46.1.3): una conexión de
+sólo-lectura abre una base **WAL** que otro proceso tiene abierta, la lee con
+el escritor vivo, la lee **tras un escritor muerto sin consolidar** y la lee
+**tras un escritor cerrado limpiamente**. Toda escritura la rechaza el motor.
+La forma URI (`?mode=ro`) tiene un detalle que hubo que resolver: un URI
+termina su ruta en el primer `?` o `#`, así que un fichero con esos
+caracteres se abriría **por otro lado** —un lector apuntando al journal
+equivocado—. Se escapan `%`, `#` y `?`, y se comprobó con
+`PRAGMA database_list` que el fichero abierto es exactamente el pedido,
+incluso con un `%20` literal en el nombre.
+
+**Verificado contra el binario real:** leer el journal de un run **no cambia
+ni un byte** del fichero —`sha256` idéntico antes y después de `events` y de
+`inspect --state`—. Antes de este bloque, esa lectura creaba tablas, migraba
+y hacía `backfill` en el fichero del productor.
+
+**El instrumento permanente.** Nace el ejemplo
+`examples/events/06-observer-death-does-not-kill-the-producer`, que levanta un
+observador **real** —un segundo proceso, el verbo `pipelinek events --follow`,
+apuntando a la base de datos de ese mismo run—, **espera a que entregue un
+hecho** (para que el acoplamiento estuviera vivo y no hipotético) y deja que el
+pipeline lo **mate con `SIGKILL` en pleno vuelo** mientras el productor sigue
+trabajando. Se comprueban cuatro cosas, y cada una puede fallar por su
+cuenta: que el observador **se adhirió** (su salida trae un hecho de ese
+run), que **murió** (la muerte es un paso, así que una muerte que no surtió
+efecto falla el run), que el **productor siguió** (el paso posterior a la
+muerte se ejecutó) y que el run **acabó `succeeded`** —el `run-state` del
+lanzador, que es el hecho terminal del propio run; un run abortado en vez de
+terminado se delata ahí—.
+
+**La mutación, vista en rojo.** Sustituyendo la muerte del observador por la
+muerte del **productor**, el ejemplo se puso **rojo** con la causa exacta —
+`inspect: run ... is being published by ... (fencing token 1)`, que es un run
+que **nunca llegó a su hecho terminal**— y el lanzador salió con **1**. Esa es
+precisamente la forma del síntoma publicado de la incidencia. En verde, el
+escenario pasó **cinco ejecuciones seguidas**: la adhesión del observador no
+es una carrera.
+
+**El rechazo nuevo, y un fallo que había que encontrar.** El store de lectura
+sobre una base **sin historia** se rechaza con un motivo tipado. La primera
+versión de esa sonda **no funcionaba**, y no lo habría encontrado ningún test: la sonda era
+un `var` que el constructor llenaba y que un inicializador posterior volvía a
+poner a `true`. El orden de inicialización de Kotlin hace que el inicializador
+corra **después** del cuerpo del constructor, así que la sonda contestaba
+siempre que sí: una base sin tabla `events` era admitida y moría más tarde con
+el `no such table` crudo de SQLite, **escupido como traza de pila** y con el
+código de salida **1** —el que el producto reserva para un run que se ejecutó y
+falló—. Se encontró a mano, apuntando el verbo `events` a una base creada sin
+la tabla de eventos: la traza lo decía todo.
+
+El arreglo tiene dos partes. La sonda pasa a ser un **`val` con su propio
+inicializador**, que es una forma que **no puede** ser sobrescrita por otro
+inicializador: la trampa desaparece en vez de esquivarse. Y las lecturas se
+blindan con ella —`hasRun`, `tailSequence`, `eventsFor` y `readRecords`
+contestan vacío cuando no hay historia—, de modo que **ninguna ruta** pueda
+sacar una traza cruda aunque la sonda fallara: una base sin historia contesta
+«nada», no un error.
+
+**Y el rechazo se hace alcanzable de forma hermética.** Un fichero de **cero
+bytes** es, para SQLite, una base de datos válida y vacía: no hace falta
+fabricar una base con otra tabla, basta con un fichero vacío. Con eso nace el
+caso negativo `negative/events-no-event-history`, que comprueba **dos** cosas:
+que el rechazo diga **qué** pasa —`Error: db has no event history: <path>`— y
+que el fichero siga **vacío** después. Lo segundo es la mitad con dientes: un
+lector que abre el fichero con permisos de escritor convierte un fichero de
+cero bytes en una base de datos con el esquema de eventos dentro, y uno que no
+puede escribir se lo deja intacto. **Medido**: el fichero salió con 0 bytes.
+
+**La mutación, vista en rojo en los dos niveles.** Devolviendo al lector los
+permisos de escritor —una sola línea, el mapa propósito→modo—, el caso
+negativo se puso **rojo** con el mensaje exacto (`the reader wrote to a
+database it was only asked to read`, lanzador con salida **1**) y el test puro
+encendió las **mismas 2 filas** que la mutación anterior, sin colaterales.
+
+**Lo que este bloque NO cubre, dicho.** La mitad «ni alterar el productor» no
+tiene un final de azar: el motor lo impone, y la lectura se midió por
+`sha256` (y por el fichero vacío que sigue vacío). La mitad «ni cancelar» la
+cubre el hecho terminal del run. Lo que **no** se cubre es la **reconexión**
+desde un cursor persistido —sin pérdida ni duplicación—, que es territorio de
+**B2.2**: este bloque no la toca.
+
+**La medición de este bloque, sobre `ac24475e1`.** La puerta completa corrió
+**tres veces** sin filtros: **739 / 679 / 719 s**, peor **739 s** contra el
+límite de 900 s. Las tres reescribieron los **125** informes JUnit —**919**
+tests, 0 fallos, 0 errores, 0 skips— y pasaron los **54** escenarios E2E con
+**0 bloqueados**, 2 reruns durables y 7 credenciales sembradas. El ratio de LOC
+sube de 0.237 a **0.239** (**15655 / 65419**), y el peor módulo sigue siendo
+`pipeline-step-sdk:workflow-control` (**1.633**), que este bloque no tocó. La
+deuda estática congelada sigue en **802** entradas y el certificador externo en
+**`BLOCKED_EXTERNAL`**. No hay `NOT_RUN` ni `BLOCKED` en la puerta: el
+certificador es lo único que sigue impedido, porque no existe ni aquí ni en
+remoto.
+
+El reloj sube frente al ciclo anterior (645 / 626 / 631 s) y el motivo se sabe:
+este bloque añadió **dos** escenarios que arrancan **otro proceso** cada uno —
+el observador del `events/06` es una JVM propia—, y el escenario nuevo del
+observador espera a que esa JVM levante, se adhiera al run y entregue un hecho
+antes de poder matarla. Es tiempo **comprado**: se paga por una garantía que
+antes no tenía instrumento. Sigue dentro del presupuesto con **161 s** de
+holgura en el peor ensayo.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
@@ -4892,6 +5153,87 @@ ella— y los tres siguieron dentro del presupuesto.
   por su cuenta, se separarían el primer día que alguien cambiara el prefijo.
   `CancelReceipt` es ese sitio, y la rama «cancelled» del decider —que estaba
   muerta, porque nadie producía ese vocablo— vuelve a tener a quién servir.
+
+- **La calle del store la decide el propósito, no el verbo.** Que el store tenga
+  una calle de escritura y otra de sólo-lectura no bastaba: lo que importa es
+  **quién decide** en qué calle se abre, y la respuesta es el propósito que
+  declara el llamante. `EventStorePurpose.storeMode` es esa decisión, es pura
+  y por eso se puede fijar con un test que no toca disco. Si la decisión
+  viviera dentro de cada verbo, el día que un verbo nuevo naciera con un
+  store mal construido nadie lo vería: el síntoma —un lector escribiendo en el
+  journal del productor— sólo aparece cuando un lector y un productor tocan el
+  mismo fichero a la vez, y eso no se fuerza a voluntad.
+
+- **Que el motor imponga la garantía es mejor que prometerla.** La alternativa
+  barata era dejar el store como estaba y limitarse a **no** escribir desde el
+  lector: disciplina, no garantía. Con el flag de sólo-lectura de SQLite, la
+  conexión del lector **no puede** escribir, ni por descuido ni por un cambio
+  futuro. El motor es la autoridad, y el código es el que le pide permiso.
+
+- **Una vista que no entrega ningún hecho no es un observador.** El ejemplo
+  espera a que el observador entregue un hecho de **ese** run antes de matarlo.
+  Sin esa espera, el escenario pasaría igual con un observador que murió al
+  arrancar —su muerte sería tan inocua como la de uno sano—, y la garantía
+  quedaría sin comprobar: se habría medido la muerte de un proceso que nunca
+  estuvo acoplado con el productor.
+
+- **Un hecho que se calcula, no un dato que se asigna.** La sonda que decide si
+  una base tiene historia fue primero un `var` que el constructor llenaba, y
+  acabó siendo un `val` con su propio inicializador. La diferencia no es de
+  estilo: en Kotlin el inicializador de una propiedad corre **después** del
+  cuerpo del constructor, así que un `var` con inicializador **pisa** lo que el
+  constructor acaba de calcular. Ese fue el fallo, y era de los que no se ven:
+  la sonda contestaba siempre que sí, la base sin historia era admitida, y el
+  `no such table` crudo de SQLite salía como traza de pila. Un `val` calculado
+  en un solo sitio **no puede** ser sobrescrito por otro inicializador: la
+  trampa se elimina por construcción y no por cuidado.
+
+- **Un fichero de cero bytes es una base de datos.** Para buscar una base sin
+  tabla de eventos —un caso que no se puede fabricar con el producto, porque
+  el producto crea esa tabla al escribir— hizo falta un truco pequeño: SQLite
+  trata un fichero vacío como una base válida y vacía. Con eso, el rechazo es
+  alcanzable **herméticamente** y el caso negativo puede además comprobar que
+  el fichero sigue vacío. Un rechazo que sólo se puede provocar con una
+  herramienta que el arnés no tiene es un rechazo sin probar.
+
+- **Una incidencia que no se reproduce no se cierra.** El ROADMAP V2 pide
+  cerrar la #145 «sólo si se verifica», y aquí no se verifica: el script de la
+  propia incidencia no reproduce su propio síntoma ni contra el árbol actual ni
+  contra la línea publicada `v0.61.0`. Cerrarla sería escribir un verde que
+  nadie midió. Queda **abierta** con el motivo medido, y lo que sí se entrega
+  es la garantía que la hacía posible —un lector que no puede escribir en el
+  journal del productor—, protegida por un test puro y por un ejemplo que usa
+  el binario real.
+
+- **Un KDoc que nombra un guard que no existe es una afirmación falsa.** Un
+  comentario que dice «esto lo fija `XTest`» promete un instrumento. Si `XTest`
+  no está en el árbol, la promesa es falsa y el lector que llegue después
+  concluirá que una garantía está vigilada cuando nadie la vigila. Eso no es
+  una cuestión de estilo: es el mismo tipo de defecto que un `NOT_RUN` vendido
+  como `PASS`. El censo que lo mide es de una línea, y da **0** sobre los
+  **74** nombres que había.
+
+- **La diferencia entre una mención y una promesa la marca el verbo.** Nombrar
+  un test **existente** es una cita útil: dice dónde está la garantía. Nombrar
+  uno **inexistente** es una promesa rota. Por eso el barrido reparó primero
+  las **12** que afirmaban un instrumento y después, por coherencia, las
+  neutras: el orden no es indiferente, porque una campaña que empieza por las
+  neutras acaba pareciendo una tanda de sustitución de texto.
+
+- **Un identificador de tarea no viaja en el código.** Un sha, un número de
+  incidencia, un id de CI, un token de ADR y el nombre de una tarea son
+  punteros a un contexto que el lector del código no tiene: funcionan el día
+  que se escriben y no dicen nada el día siguiente. Lo que sobrevive es la
+  **decisión** —qué garantiza el código y por qué— escrita con las palabras
+  del código. Los shas y las incidencias se quedan en este ROADMAP, que es
+  donde el lector de contexto los busca.
+
+- **Un barrido mecánico no reescribe prosa.** Sustituir un nombre por una
+  frase deja las costuras: comas sueltas, mayúsculas a mitad de frase, negritas
+  vacías, paréntesis sin cerrar. El barrido automático acierta en el
+  *contenido* y destroza la *forma*, y la forma rota es lo primero que ve el
+  lector. Por eso las 86 fichas tocadas se repasaron a mano después: el
+  instrumento localiza, la mano reescribe.
 
 ## 4. Referencias
 

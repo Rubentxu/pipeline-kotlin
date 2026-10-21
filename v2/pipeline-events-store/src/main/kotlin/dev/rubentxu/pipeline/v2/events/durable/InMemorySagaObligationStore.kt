@@ -90,6 +90,9 @@ class InMemorySagaObligationStore : SagaObligationStore {
         }
         val key = StoreKey(update.runId, update.key)
         val stored = rows[key] ?: return@synchronized SagaUpdatePersistence.NotFound
+        if (isForeignOwner(stored, update.ownerPluginId)) {
+            return@synchronized SagaUpdatePersistence.ForeignOwner(stored)
+        }
         // Only the STATE, the RECEIPT and the moment change: the promise keeps its identity,
         // its plan and the epoch that armed it.
         val moved = stored.copy(
@@ -108,6 +111,7 @@ class InMemorySagaObligationStore : SagaObligationStore {
         to: CompensationObligationStatus,
         updatedAtMs: Long,
         leaseEpoch: Long,
+        ownerPluginId: String?,
     ): SagaBulkMove = synchronized(lock) {
         val mark = highWaterMark(runId)
         if (mark > leaseEpoch) {
@@ -117,6 +121,14 @@ class InMemorySagaObligationStore : SagaObligationStore {
         val moved = rows.keys.filter {
             val row = rows[it] ?: return@filter false
             row.runId == runId && row.sagaId == sagaId && row.status == from
+        }
+        // The bulk move is all or nothing: one promise that belongs to another plugin stops the
+        // whole move, instead of leaving the Saga half-closed.
+        val foreign = moved
+            .mapNotNull { rows[it] }
+            .firstOrNull { isForeignOwner(it, ownerPluginId) }
+        if (foreign != null) {
+            return@synchronized SagaBulkMove.ForeignOwner(foreign)
         }
         for (key in moved) {
             val row = rows[key] ?: continue

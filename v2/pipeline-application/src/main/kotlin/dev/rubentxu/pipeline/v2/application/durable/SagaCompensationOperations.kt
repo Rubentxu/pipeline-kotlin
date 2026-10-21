@@ -14,6 +14,9 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaDecider
 import dev.rubentxu.pipeline.v2.domain.saga.SagaIntentContract
 import dev.rubentxu.pipeline.v2.domain.saga.SagaOperationIdentity
 import dev.rubentxu.pipeline.v2.domain.saga.SagaOperationPhase
+import dev.rubentxu.pipeline.v2.domain.saga.SagaOwnershipVerdict
+import dev.rubentxu.pipeline.v2.domain.saga.SagaPromiseOrigin
+import dev.rubentxu.pipeline.v2.domain.saga.SagaPromiseOwnership
 import dev.rubentxu.pipeline.v2.domain.saga.SagaDecision
 import dev.rubentxu.pipeline.v2.events.CompensationArmed
 import dev.rubentxu.pipeline.v2.events.EventSink
@@ -63,6 +66,7 @@ class SagaCompensationOperations(
     private val store: SagaObligationStore,
     private val eventSink: EventSink,
     private val clock: Clock,
+    private val ownerPluginId: String? = null,
 ) : CompensationOperations {
 
     override fun arm(declaration: CompensationDeclaration): CompensationArmOutcome {
@@ -94,7 +98,7 @@ class SagaCompensationOperations(
             updatedAtMs = nowMs,
         )
 
-        return when (val persistence = store.arm(requested.toRow(runId))) {
+        return when (val persistence = store.arm(requested.toRow(runId, ownerPluginId))) {
             is SagaArmPersistence.Inserted -> {
                 // The row is the promise, and the row is what the STORE decided: the arm
                 // timestamp it recorded is the one the promise was made at, and it may differ
@@ -107,11 +111,25 @@ class SagaCompensationOperations(
                 SagaDecider.armOutcome(existing = null, requested = persisted)
             }
 
-            is SagaArmPersistence.Existing ->
+            is SagaArmPersistence.Existing -> {
+                // A promise that belongs to another plugin is not this writer's to reuse: the
+                // plan may look the same, but the bodies behind it are the other plugin's.
+                val verdict = SagaPromiseOwnership.verdict(
+                    stored = persistence.row.toOrigin(),
+                    writer = ownerPluginId?.let { SagaPromiseOrigin(it, requested.intentVersion) },
+                )
+                if (verdict is SagaOwnershipVerdict.ForeignOwner) {
+                    return CompensationArmOutcome.Rejected(
+                        ArmRejection.NotAuthorized(
+                            "the promise under this key was armed by plugin '${verdict.owner}'",
+                        ),
+                    )
+                }
                 SagaDecider.armOutcome(
                     existing = persistence.row.toObligation(),
                     requested = requested,
                 )
+            }
 
             is SagaArmPersistence.Fenced -> CompensationArmOutcome.Rejected(
                 ArmRejection.LeaseSuperseded(

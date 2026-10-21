@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `ba5decd9c` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `5d410ecaf` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **22** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 5 | ídem |
-| Tests unitarios ejecutados | **792** (96 informes JUnit, **96** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:792 read:0` |
+| Tests unitarios ejecutados | **812** (104 informes JUnit, **104** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:812 read:0` |
 | Escenarios E2E | 46 (**45 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **12515 / 66532 = 0.188** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **13007 / 66685 = 0.195** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **110 s** (corridas de este bloque: 110 s sobre el árbol comiteado, con el cache de Gradle caliente), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **98 s** (corridas de este bloque: 98 s sobre el árbol comiteado, con el cache de Gradle caliente; 107 s y 151 s en las dos corridas anteriores sobre el mismo árbol), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Coste por escenario E2E | mediana **6,7 s**, p95 **14,9 s**, máximo **15,5 s** | el lanzador publica ahora el tiempo de cada escenario en su línea |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
@@ -40,23 +40,22 @@ de los 95 informes —se limpiaron las salidas de test antes de correr, así que
 ninguno pudo venir de la caché—.
 
 **Y el total viaja ahora en la línea de veredicto**, que es la única que alguien
-pega en un informe: `tests=rewritten:792 read:0`. Antes esa línea decía
+pega en un informe: `tests=rewritten:812 read:0`. Antes esa línea decía
 `PASS  sha=…  elapsed=345s  budget=900s  gaps=1 not_run` y no decía **nada** de
 los tests: el dato estaba en el log de la etapa 2, y el log lo lee quien corrió la
 puerta, no quien la cita. Una cifra con el verbo equivocado ya no puede colarse
 ni por el lado del log ni por el lado de la línea (§2.2 u).
 
-La corrida que se publica es la de este bloque: **110 s** sobre el árbol
+La corrida que se publica es la de este bloque: **98 s** sobre el árbol
 comiteado, con el caché de Gradle caliente. El reloj de este gate tiene ruido,
 y publicarlo sin decirlo vuelve a ser una afirmación que nadie puede
-reproducir: el bloque anterior (`ad61e9b2c`) publicó **95 s**, el de
-`main-partido` (`03bdc2a3a`) midió **107 s**, y sobre el mismo árbol de este
-bloque, con los módulos tocados compilando de cero, se midió 98 s. Se publica
-la del **SHA que queda publicado**, que es la que corresponde al árbol que se
-publica, y se dicen las otras para que nadie la lea como la típica. Este bloque
-**añade 18 tests** —los **792**— y **no añade ningún escenario E2E**: los **46**
-son los mismos, porque la capacidad nueva se prueba contra una base durable
-real y con pruebas deterministas, no con otro escenario lento.
+reproducir: el bloque anterior (`2c3b87083`) publicó **110 s**, y sobre el
+mismo árbol de este bloque se midieron **107 s** y **151 s**. Se publica la del
+**SHA que queda publicado**, que es la que corresponde al árbol que se publica,
+y se dicen las otras para que nadie la lea como la típica. Este bloque **añade
+20 tests** —los **812**— y **no añade ningún escenario E2E**: los **46** son los
+mismos, porque la capacidad nueva se prueba contra una base durable real y con
+pruebas deterministas, no con otro escenario lento.
 
 **Lo que este bloque movió, y lo que no.** El bloque `main-partido` (PR #183
 → `03bdc2a3a`) no toca el censo de módulos con test, ni añade tests, ni añade
@@ -1909,6 +1908,39 @@ sigue siendo **1.633** (`pipeline-step-sdk:workflow-control`).
 Puerta sobre el SHA del bloque: `PASS sha=c47d557a3… elapsed=110s budget=900s
 tests=rewritten:792 read:0 gaps=1 not_run`.
 
+
+**bd) Una promesa no decía qué cuerpo la deshacía, y la compensación corría con el cuerpo que hubiera — CERRADO en `5d410ecaf`.**
+
+**El problema, en una frase**: la promesa decía **qué efecto** se calfía y **de qué plugin** venía, pero no decía **qué cuerpo** lo desharía, y el plan nunca vio el cuerpo: los slots son **nombres locales** del plugin, así que dos plugins —o dos versiones del mismo plugin— pueden tener los mismos slots con cuerpos distintos.
+
+**Por qué eso muerde.** El bloque anterior cerró quién escribe en la promesa; este cierra **qué corre** al compensar. Sin digest, la compensación se despacha por el slot que dice el plan, y ese slot lo resuelve **el cuerpo del plugin que está en ejecución**. La fila dice una cosa —la promesa del plugin A— y el efecto que se deshace es el de B, con el cuerpo de B. Y el caso fino: el mismo plugin se actualiza, su cuerpo cambia de payload, y la compensación corre con un cuerpo que nadie prometió.
+
+**Lo que hay ahora**: la promesa **nombra** el cuerpo que la deshace (`compensateSlot`) y el motor lo **mide**: el digest de su estructura queda en la fila. La compensación **comprueba el cuerpo antes de despachar**: si el cuerpo que va a correr no es el prometido, el bucle **para** con `COMPENSATION_BODY_DIVERGED` y el refusal lleva **los dos digests**, no un «difieren» que manda a buscar.
+
+**El plugin nombra, el motor mide.** Un plugin no puede declarar la forma de un cuerpo que no escribió —eso es una medición del motor—, y un plugin que declarase mal el digest haría que la promesa se comprobara a sí misma, que no es comprobar nada. Es la misma división que el dueño: el plugin nombra, el motor mide.
+
+**El brazo se niega antes del efecto.** Una promesa que nombra un cuerpo que nadie tiene no se puede cumplir, y se rechaza **antes** de que corra el efecto: el refusal (`ArmRejection.UnknownCompensationBody`) **nombra el slot**, porque el slot es lo que el plugin tiene que arreglar. Si se aceptara, el error se descubriría al compensar —con el efecto ya hecho— y además la promesa no comprobaría nada.
+
+**La regla vive en el dominio, y es total.** `SagaBodyPromise` decide en un solo sitio si el cuerpo que corre es el prometido, y su vocabulario es **cerrado**: `Agreed` y `Diverged`, y los dos son *decisiones*, no estados. La ausencia de un cuerpo no es un tercer caso: es un `Diverged` sin cuerpo actual, porque una promesa que nombró un cuerpo y un cuerpo que no está no coinciden.
+
+**El digest es del cuerpo que compensa, no del cuerpo entero.** Si fuera del cuerpo entero, un cambio en una parte que no es el compensador invalidaría una compensación que sí se puede hacer —y una compensación rechazada deja el recurso roto esperando a una persona—. El digest mide **un** cuerpo.
+
+**Lo viejo sigue funcionando.** La columna del cuerpo prometido es **nullable** y se añade con una migración **aditiva**: una base escrita antes de esto se abre, se le añade la columna y sus promesas —que no nombran cuerpo— **no pueden probar una divergencia**, así que no bloquean a nadie. Una promesa que no nombra cuerpo es una promesa que no se comprueba: el precio, dicho en voz alta.
+
+**Mutaciones vistas en rojo**, seis, cada una en la prueba que tiene que verlo:
+
+| mutación | qué se rompe |
+|---|---|
+| la regla acepta cualquier cuerpo | las dos pruebas de dominio que exigen el `Diverged` con los dos digests |
+| el brazo no estampa el cuerpo | las dos pruebas de puerto que dependen de saber qué cuerpo se prometió |
+| el brazo no rechaza un cuerpo que no existe | las dos pruebas que exigen el refusal con el slot |
+| la compensación no comprueba el cuerpo | la prueba que exige que el cuerpo **no** corra |
+| la fila no guarda el cuerpo | las tres pruebas del store que dependen de leerlo |
+| la re-pregunta no comprueba el cuerpo | la prueba que exige que una compensación sin respuesta no se pregunte con otro cuerpo |
+
+**El contrato publicado crece y rompe el fuente en cuatro sitios**, cada uno con su motivo y su alcance en el ledger de rupturas deliberadas: la declaración (campo nuevo), el rechazo del brazo (caso nuevo en un `sealed interface`), el motivo de intervención (constante nueva) y el refusal (campo nuevo con la divergencia). `VERIFY_LOC` 12 515 → **13 007** (+492), `PRODUCT_LOC` 66 532 → **66 685** (+153), ratio global **0.195**; el ratio máximo por módulo sigue siendo **1.633** (`pipeline-step-sdk:workflow-control`).
+
+Puerta sobre el SHA del bloque: `PASS sha=5d410ecaf… elapsed=98s budget=900s tests=rewritten:812 read:0 gaps=1 not_run`.
 
 ### 2.3 Cierre de ciclo
 

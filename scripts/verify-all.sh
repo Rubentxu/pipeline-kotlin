@@ -571,6 +571,17 @@ gaps_suffix() {
 if want_stage 3; then
 log "stage 3/5  E2E scenarios in examples/"
 stage_started_at=$(date +%s)
+# The launcher gets the time this gate has LEFT, minus a reserve for the
+# stages that come after it. The launcher's own clock then stops the stage
+# BEFORE the gate's ceiling, and it names the scenarios it did not get to --
+# which is the difference between "the run was stopped" and "scenario X was
+# stuck". Without this, a hung scenario takes the whole gate down with it and
+# the only thing the operator learns is that time ran out.
+stage_budget=$(( BUDGET_SECONDS - (stage_started_at - started_at) - 30 ))
+if (( stage_budget <= 0 )); then
+    fail "stage 3: the gate has no budget left for the E2E stage"
+fi
+export PIPELINEK_E2E_BUDGET_SECONDS="$stage_budget"
 if [[ -n "$scenario_filter" ]]; then
     ./examples/run.sh "$scenario_filter" > "$log_dir/stage3.log" 2>&1 \
         || { tail -40 "$log_dir/stage3.log" >&2; fail "stage 3 (see "$log_dir/stage3.log")"; }

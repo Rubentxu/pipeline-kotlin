@@ -63,7 +63,7 @@ sealed interface ScriptedRegistryResult {
 }
 
 /**
- * S4-D2 — what [ScriptedRegistryInvoker.invokeTyped] hands back: the decoded value the Kotlin
+ * what [ScriptedRegistryInvoker.invokeTyped] hands back: the decoded value the Kotlin
  * program receives, and the canonical outcome recovered from it.
  *
  * Both frontend call paths need both halves. The program needs the value; the run needs the
@@ -126,7 +126,7 @@ data class ScriptedRegistryCall(
     val stepKey: PluginStepId,
     val encodedInput: EncodedStepValue,
     /**
-     * S4-A1: the compiled artifact identity, carried in the operation input so the
+     * the compiled artifact identity, carried in the operation input so the
      * fingerprint is bound to it. Without this a scripted registry step replays
      * across two different compiled artifacts of the same source position.
      */
@@ -146,7 +146,7 @@ data class ScriptedRegistryCall(
 }
 
 /**
- * LFC-2R / R1 — THE generic scripted→registry seam.
+ * THE generic scripted→registry seam.
  *
  * Responsibility (and NOTHING else): call-site identity + step identity + encoded
  * input → durable execute-or-reuse → encoded output. The invoker is STEP-AGNOSTIC:
@@ -286,7 +286,7 @@ internal class ScriptedRegistryInvoker(
         registry.definition(key)
 
     /**
-     * S4-A1 — THE single typed authority for scripted → registry invocation.
+     * THE single typed authority for scripted → registry invocation.
      *
      * Everything a runtime-returning scripted call needs is here, exactly once:
      * the durable identity tuple, the Step's DECLARED input codec, the
@@ -334,7 +334,7 @@ internal class ScriptedRegistryInvoker(
                 definitionDigest = identity.definitionDigest,
             ),
         )
-        // S4-D2: FRESH and REUSE converge on ONE line. Both arrive here as
+        // FRESH and REUSE converge on ONE line. Both arrive here as
         // `Success(encoded)`, both are decoded through the Step's own declared codec, and both
         // recover their outcome from the decoded carrier. That is why outcome(FRESH) ==
         // outcome(REUSE) holds by construction rather than by two implementations happening to
@@ -444,7 +444,7 @@ internal class ScriptedRegistryInvoker(
             // mixing the decision with the materialisation is exactly what RPL-5 forbids.
             InvocationReconciliation.ReuseCompleted -> restoredOutput(journaled?.output)
 
-            // S4-F1-C2 — a recovered terminal now DOES yield a typed value, and this is where a
+            // a recovered terminal now DOES yield a typed value, and this is where a
             // scripted call finally receives one. The interpretation engine owns the projection and
             // the journal write; this arm only reads the carrier it hands back.
             //
@@ -464,7 +464,7 @@ internal class ScriptedRegistryInvoker(
                         input = input,
                         lifecycleContext = lifecycleFor(call),
                         definition = registry.definition(call.stepKey),
-                        // S4-F1-C2: this surface's durable input is the IDENTITY WRAPPER, so the
+                        // this surface's durable input is the IDENTITY WRAPPER, so the
                         // Step's own payload is the nested `encodedInput` the call already carries.
                         // Passing it verbatim is what lets a recovered value be materialised here
                         // exactly as it is on the canonical surface.
@@ -557,7 +557,7 @@ internal class ScriptedRegistryInvoker(
     }
 
     /**
-     * S4-C4 — TOTAL. A durable payload this runtime cannot read is a typed
+     * TOTAL. A durable payload this runtime cannot read is a typed
      * [ScriptedRegistryResult.Failed], never a thrown [ClassCastException].
      *
      * The previous `else -> Success(EncodedStepValue((raw as JsonPrimitive).content))`

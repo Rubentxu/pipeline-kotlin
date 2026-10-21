@@ -108,15 +108,15 @@ internal fun runVolatilePipeline(
         )
     }
 
-    // LB-02 / EP-6: compose registry BEFORE the gate so contributed keys are eligible.
-    // S6-COMPOSITION: admission happens FIRST and inside the same function, so the in-memory and
+    // compose registry BEFORE the gate so contributed keys are eligible.
+    // admission happens FIRST and inside the same function, so the in-memory and
     // durable branches cannot admit differently. S6/G's "one resolution for the whole run" now
     // also covers the decision about WHICH artifacts are allowed to resolve at all.
     val composition = admitThenComposeOrExit(config.pluginJars)
     val composedStepRegistry = composition.steps
     val nonCanonicalSteps = compiledPipeline
         ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()
-    // WU-LPR-103: the default `pipeline run <script>` (in-memory) branch composes
+    // the default `pipeline run <script>` (in-memory) branch composes
     // the SAME credential injection stack as the durable branch, through the SAME
     // function. The default path is the temp in-memory control dir's sibling;
     // PIPELINE_CREDENTIALS_STORE env overrides, exactly like the durable path.
@@ -134,7 +134,7 @@ internal fun runVolatilePipeline(
     val workspaceTransport = WorkspaceIntent.resolveRuntimeTransport(
         config, Path.of("").toAbsolutePath().normalize(), controlDirRoot,
     )
-    // OBS-E4: the process output of a step lives in the Output Plane, not on the event spine,
+    // the process output of a step lives in the Output Plane, not on the event spine,
     // so the event sink above never saw it. This observer follows the plane while the run is in
     // flight, which is what makes a build's progress visible while the build runs. It is
     // started BEFORE the pipeline (there is nothing to observe until a step produces bytes) and
@@ -151,7 +151,7 @@ internal fun runVolatilePipeline(
             // which only fires when nonCanonicalSteps is non-empty OR pipelineSpec is non-null.
             compilation.failure
         } else if (pipeline == null) {
-            // TRAIN-DSL-HONESTY: compile "succeeded" but produced no PipelineSpec. Before this
+            // compile "succeeded" but produced no PipelineSpec. Before this
             // branch this reached the canonical run with a `!!` and died as an NPE
             // with exit 0. A script that cannot produce its IR is an admission failure.
             RunOutcome.Failure(
@@ -201,7 +201,7 @@ internal fun runVolatilePipeline(
                         // `--isolated` preserves the historical PipelineK-managed scratch;
                         // `--workspace <path>` stays authoritative.
                         workspace = workspaceTransport,
-                        // H5-B: NO credentialProvider on this path, deliberately. It composes
+                        // NO credentialProvider on this path, deliberately. It composes
                         // with an in-memory journal and receives no store, so the seam takes
                         // its default: a source that refuses every lookup with
                         // `NotConfigured`. That is the honest answer for a run that has
@@ -211,7 +211,7 @@ internal fun runVolatilePipeline(
                         // one.
                         credentialProvider = null,
                         withCredentialsExecutor = credentialSeam.executor,
-                        // H8-D1: this path composes its own coordinator and had the same
+                        // this path composes its own coordinator and had the same
                         // omission as the durable one. `--allow-network` is a per-RUN
                         // permission; a run whose flag is ignored is a run where the
                         // operator believes they opened the network and did not.
@@ -242,7 +242,7 @@ internal fun runVolatilePipeline(
     }
 
     val events = eventStore.eventsFor(runId).toList()
-    // ADR-0088: human text was already streamed live by ConsolePrintingEventSink.
+    // human text was already streamed live by ConsolePrintingEventSink.
     // Only the machine formats still need a document at the end.
     if (config.format != ObservationFormat.TEXT) {
         writeEventDocument(
@@ -285,14 +285,14 @@ private fun establishVolatileIdentity(
 ): VolatileRunIdentity {
     val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
     val fresh = UuidRunIdGenerator().next()
-    // PK-1 / ADR-PK1-IDENTITY: build the correlationId once here at
+    // build the correlationId once here at
     // the CLI boundary so both the durable last-run record and the
     // in-memory RunCorrelated event share the same token.
     val correlationId: CorrelationId = config.correlationId?.let { CorrelationId(it) }
         ?: UuidCorrelationIdGenerator().next()
     runIdDirectory.record(definitionId, fresh, correlationId)
     val runId: String = fresh.value
-    // PK-1 / ADR-PK1-IDENTITY: emit the RunCorrelated event on the
+    // emit the RunCorrelated event on the
     // event sink so a consumer can join durable state to the
     // external correlationId. We emit after the rest of the run is wired
     // (so the event is observed in the same order as it would be in the
@@ -307,7 +307,7 @@ private fun establishVolatileIdentity(
                 java.util.UUID.randomUUID().toString().take(8),
         ),
     )
-    // PK-1 / ADR-PK1-IDENTITY: emit the RunCorrelated event and
+    // emit the RunCorrelated event and
     // the LaunchReceipt. The receipt is durable machine-readable
     // metadata, not a human message; in TEXT view it goes to
     // stderr so the human console is not polluted. In JSON/JSONL
@@ -326,7 +326,7 @@ private fun establishVolatileIdentity(
 }
 
 /**
- * OBS-E4: the run-time output observer, started before the pipeline and stopped after it.
+ * the run-time output observer, started before the pipeline and stopped after it.
  *
  * ## What this is for
  *
@@ -412,7 +412,7 @@ private const val OBSERVER_JOIN_TIMEOUT_MS = 5_000L
 /**
  * The event store of a volatile run: in memory, and mirrored live in TEXT.
  *
- * ADR-0088: in TEXT the run is mirrored live as events are appended, so
+ * in TEXT the run is mirrored live as events are appended, so
  * the end-of-run dump is suppressed in the caller. Machine formats keep stdout
  * untouched and are written once, at the end, exactly as before.
  */
@@ -487,7 +487,7 @@ private fun volatileRunFailed(runOutcome: RunOutcome?, events: List<dev.rubentxu
                 System.err.println("Pipeline finished with UNSTABLE"); false
             }
             is RunOutcome.Failure -> {
-                // TRAIN-DSL-HONESTY: an admission failure (compile or DSL
+                // an admission failure (compile or DSL
                 // construction) must carry its diagnostic. "FAILURE" alone
                 // sent users hunting with zero context.
                 runOutcome.failure.message

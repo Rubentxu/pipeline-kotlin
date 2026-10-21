@@ -62,7 +62,7 @@ internal class StageExecutionEngine(
     }
 
     /**
-     * P3-E E2 — the projection of a stage outcome onto the wire spellings that have always
+     * the projection of a stage outcome onto the wire spellings that have always
      * been published, carried UNCHANGED.
      *
      * `success` / `unstable` / `failed` are not interchangeable with the `failure` of
@@ -85,7 +85,7 @@ internal class StageExecutionEngine(
     }
 
     /**
-     * P3-E E2 — why a stage that reached an outcome records no `StageFinished`.
+     * why a stage that reached an outcome records no `StageFinished`.
      *
      * This is a closed set because each case is a distinct FACT about the run, and a fact
      * that has to be re-derived from a boolean at a call site is a fact nobody can check.
@@ -102,7 +102,7 @@ internal class StageExecutionEngine(
     }
 
     /**
-     * P3-E E2 — the CLOSED decision, replacing `outcome` plus an `emitStageFinished` flag
+     * the CLOSED decision, replacing `outcome` plus an `emitStageFinished` flag
      * that had to be kept in step by hand at every call site.
      *
      * The flag was the defect. Two coordinated values make four representable states and
@@ -119,7 +119,7 @@ internal class StageExecutionEngine(
         data class DoNotEmit(val reason: StageFinishSuppression) : StageFinishedDecision
     }
 
-    /** P3-E E2 — the whole projection, total over [StageOutcome] with no `else`. */
+    /** the whole projection, total over [StageOutcome] with no `else`.*/
     internal fun StageOutcome.wire(): StageOutcomeWire = when (this) {
         StageOutcome.Succeeded -> StageOutcomeWire.SUCCEEDED
         StageOutcome.Unstable -> StageOutcomeWire.UNSTABLE
@@ -129,7 +129,7 @@ internal class StageExecutionEngine(
     }
 
     /**
-     * P3-E E2 — whether the stage terminal is recorded, as one pure function.
+     * whether the stage terminal is recorded, as one pure function.
      *
      * Exhaustive over the wire, so a new outcome is a compile error here rather than a
      * silent `else` that reports success — the defect class this exists to prevent.
@@ -184,7 +184,7 @@ internal class StageExecutionEngine(
                     stageUnstable = true
                 }
                 is CanonicalContinuation.Abort -> {
-                    // S2-B: a step failure is still a stage outcome. The
+                    // a step failure is still a stage outcome. The
                     // failure/always/cleanup finalizers MUST run before the run
                     // aborts, or `post { failure { ... } }` would be dead code
                     // for the exact case it exists for. A finalizer that itself
@@ -197,7 +197,7 @@ internal class StageExecutionEngine(
                 }
             }
         }
-        // S2-B: the stage's own steps decided the outcome; the `post`
+        // the stage's own steps decided the outcome; the `post`
         // block finalizes the stage BEFORE its StageFinished, so the
         // terminal record already includes the finalizers' work.
         val outcome = if (stageUnstable) StageOutcome.Unstable else StageOutcome.Succeeded
@@ -207,7 +207,7 @@ internal class StageExecutionEngine(
     }
 
     /**
-     * S4-F2 — runs one SCRIPTED stage body, through the same rule as a linear one.
+     * runs one SCRIPTED stage body, through the same rule as a linear one.
      *
      * ## Why this is a method and not a coordinator branch
      *
@@ -254,7 +254,7 @@ internal class StageExecutionEngine(
     }
 
     /**
-     * S4-F2 — the stage TAIL, shared by every body shape that produces one outcome.
+     * the stage TAIL, shared by every body shape that produces one outcome.
      *
      * A linear stage folds after every step, so it cannot use this; but a `parallel` body and a
      * `scripted` body each produce exactly one outcome for the whole stage, and both need the same
@@ -299,7 +299,7 @@ internal class StageExecutionEngine(
     }
 
     /**
-     * S4-F2 — the ONE place where a stage that has already REACHED AN OUTCOME is finalised.
+     * the ONE place where a stage that has already REACHED AN OUTCOME is finalised.
      *
      * ## Why this exists, and why it is here rather than in the coordinator
      *
@@ -333,7 +333,7 @@ internal class StageExecutionEngine(
         finalize(stage, stageIndex, outcome, runId, stageShOptions, ambient, outcome.finishedDecision())
 
     /**
-     * P3-E E2 — the finalisation of a stage whose RUN is being failed.
+     * the finalisation of a stage whose RUN is being failed.
      *
      * This is a separate entry point rather than a flag on [finalizeStage] on purpose. The
      * difference between the two is not an optimisation: `RunFinished` carries the failure, so a
@@ -382,7 +382,7 @@ internal class StageExecutionEngine(
     }
 
     /**
-     * S2-B: interprets a stage's declared `post` block for a KNOWN stage
+     * interprets a stage's declared `post` block for a KNOWN stage
      * outcome. The single stage-level finalizer seam of the canonical
      * coordinator.
      *

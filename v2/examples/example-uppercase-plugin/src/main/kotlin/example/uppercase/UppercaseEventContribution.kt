@@ -7,7 +7,7 @@ import dev.rubentxu.pipeline.v2.events.registry.EventPayloadCodec
 import dev.rubentxu.pipeline.v2.events.registry.PayloadDecode
 
 /**
- * P3-D: this plugin contributes an event KIND, not just a Step (S6.4).
+ * this plugin contributes an event KIND, not just a Step (S6.4).
  *
  * Until now a plugin could ship an `EventDefinition` and the runtime would never hear of it —
  * there was no `ServiceLoader` path for events and the registry was only reachable from a test.

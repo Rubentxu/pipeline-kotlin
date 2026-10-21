@@ -1,0 +1,365 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>AbstractClassCanBeInterface:CoreMilestoneStep.kt:MilestoneStatus$MilestoneStatus</ID>
+    <ID>AbstractClassCanBeInterface:MainEventsCli.kt:MainEventsCli.EventsInspectionFlag$EventsInspectionFlag</ID>
+    <ID>AbstractClassCanBeInterface:MainEventsCli.kt:MainEventsCli.EventsInspectionParseResult$EventsInspectionParseResult</ID>
+    <ID>AbstractClassCanBeInterface:MilestoneOperations.kt:MilestoneAdvanceResult$MilestoneAdvanceResult</ID>
+    <ID>CyclomaticComplexMethod:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$suspend fun run: RunOutcome</ID>
+    <ID>CyclomaticComplexMethod:PluginAdmissionGate.kt:PluginAdmissionGate$fun admitThenLoad: PluginAdmissionResult</ID>
+    <ID>CyclomaticComplexMethod:SimplePipelineCompiler.kt:SimplePipelineCompiler$override fun compile: CompileResult</ID>
+    <ID>DoubleMutabilityForCollection:CliParser.kt:CliParser$var kinds: MutableSet&lt;String&gt; = LinkedHashSet()</ID>
+    <ID>DoubleMutabilityForCollection:CliParser.kt:CliParser$var stages: MutableSet&lt;String&gt; = LinkedHashSet()</ID>
+    <ID>DoubleMutabilityForCollection:CliParser.kt:CliParser$var steps: MutableSet&lt;String&gt; = LinkedHashSet()</ID>
+    <ID>ImplicitDefaultLocale:PluginManifestResourceReader.kt:PluginManifestResourceReader$"%02x".format(it)</ID>
+    <ID>ImplicitDefaultLocale:PublishHtmlSanitiser.kt:PublishHtmlSanitiser$"%04x".format(ch.code)</ID>
+    <ID>InjectDispatcher:FileLockCoordinator.kt:FileLockCoordinator$IO</ID>
+    <ID>InjectDispatcher:ParallelStageEngine.kt:ParallelStageEngine$Default</ID>
+    <ID>InstanceOfCheckForException:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$e is EngineInvariantViolation</ID>
+    <ID>InstanceOfCheckForException:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$e is IllegalStateException</ID>
+    <ID>LongMethod:PluginAdmissionGate.kt:PluginAdmissionGate$fun admitThenLoad: PluginAdmissionResult</ID>
+    <ID>LongMethod:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$override fun publish: PublishHtmlResult</ID>
+    <ID>LongMethod:StepDispatchEngine.kt:StepDispatchEngine$suspend fun dispatch: Dispatched</ID>
+    <ID>LongMethod:WaitUntilEngine.kt:WaitUntilEngine$suspend fun execute: StepOutcome</ID>
+    <ID>LongParameterList:BodyExecutionEngine.kt:BodyExecutionEngine$@Suppress("LongMethod", "CyclomaticComplexMethod") suspend fun executeScope3b: StepOutcome</ID>
+    <ID>LongParameterList:BodyExecutionEngine.kt:BodyExecutionEngine$suspend fun executeWaitUntilInline: StepOutcome</ID>
+    <ID>LongParameterList:BodyExecutionEngine.kt:BodyExecutionEngine$suspend fun invokeBodyChildren: StepOutcome</ID>
+    <ID>LongParameterList:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator</ID>
+    <ID>LongParameterList:CliParser.kt:CliParser$private fun consoleAdmitFollowFrames: ConsoleCliParseResult</ID>
+    <ID>LongParameterList:CliParser.kt:CliParser$private fun consoleAdmitFramesFiltered: ConsoleCliParseResult</ID>
+    <ID>LongParameterList:CliParser.kt:CliParser$private fun consoleDecideVerb: ConsoleCliParseResult</ID>
+    <ID>LongParameterList:CliParser.kt:CliParser$private fun consoleValidate: ConsoleCliParseResult</ID>
+    <ID>LongParameterList:CliParser.kt:ParseState</ID>
+    <ID>LongParameterList:MainScriptedSupport.kt:internal fun runScriptedFrontend: RunOutcome?</ID>
+    <ID>LongParameterList:RetryEngine.kt:RetryEngine</ID>
+    <ID>LongParameterList:ScriptedFrontendRunner.kt:ScriptedFrontendRunner$fun run: Outcome</ID>
+    <ID>LongParameterList:ShExecution.kt:ShExecution$private suspend fun executeNonDurableInvocation: ShellInvocationResult</ID>
+    <ID>LongParameterList:ShExecution.kt:ShExecution$suspend fun executeBranchStep: ShellInvocationResult</ID>
+    <ID>LongParameterList:ShExecution.kt:ShExecution$suspend fun invokeShell: ShellInvocationResult</ID>
+    <ID>LongParameterList:StepDispatchEngine.kt:StepDispatchEngine</ID>
+    <ID>LongParameterList:StepDispatchEngine.kt:StepDispatchEngine$private suspend fun executeCredentialLeasedBody: StepOutcome</ID>
+    <ID>LongParameterList:StepDispatchEngine.kt:StepDispatchEngine$private suspend fun invokeBodyChildren: StepOutcome</ID>
+    <ID>LongParameterList:WaitUntilEngine.kt:WaitUntilEngine</ID>
+    <ID>MaxLineLength:MainEventsVerifyCli.kt:MainEventsVerifyCli$System.err.println("Usage: pipeline events verify --db &lt;path&gt; --run &lt;runId&gt; --contract &lt;events.yaml&gt; [--from-sequence N] [--after-last-run-started]")</ID>
+    <ID>MaxLineLength:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$val reason = "reportDir '${input.reportDir}' (resolved to $reportDir) cannot be resolved to a real path; refusing to publish (possible broken symlink): ${e.message}"</ID>
+    <ID>MaxLineLength:PublishHtmlOperationsAdapter.kt:PublishHtmlOperationsAdapter$val reason = "reportDir '${input.reportDir}' resolves to '$reportDirReal' which escapes the workspace (real path '$workspaceRootReal'); refusing to follow symlinks"</ID>
+    <ID>MaxLineLength:StashOperationsAdapter.kt:StashOperationsAdapter$val reason = "stash '${input.name}' matched path '$file' (real '$fileReal') which escapes the workspace (real '$workspaceRootReal'); refusing to follow symlinks"</ID>
+    <ID>MaxLineLength:StashOperationsAdapter.kt:StashOperationsAdapter$val reason = "unstash '${input.name}' 'into' path '$target' (real '$targetReal') escapes workspace (real '$workspaceRootReal'); refusing to follow symlinks"</ID>
+    <ID>NewLineAtEndOfFile:EventStoreRefusalRendering.kt:dev.rubentxu.pipeline.v2.application.EventStoreRefusalRendering.kt</ID>
+    <ID>ObjectLiteralToLambda:TextSelector.kt:object : CompiledTextSelector { override fun matches(text: String): Boolean = compiled.getOrThrow().containsMatchIn(text) }</ID>
+    <ID>ObjectLiteralToLambda:TextSelector.kt:object : CompiledTextSelector { override fun matches(text: String): Boolean = if (selector.ignoreCase) text.contains(selector.value, ignoreCase = true) else text.contains(selector.value) }</ID>
+    <ID>SpreadOperator:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$( "set +e", "set +o pipefail", "__rc=0", *commands.mapIndexed { idx, cmd -&gt; "($cmd) || __rc=\$?; : done $idx" }.toTypedArray(), "exit \$__rc", )</ID>
+    <ID>TooManyFunctions:ConsoleFamilyLines.kt:ConsoleFamilyLines</ID>
+    <ID>TooManyFunctions:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler</ID>
+    <ID>TooManyFunctions:MainInspectCli.kt:MainInspectCli</ID>
+    <ID>UnnecessaryNotNullOperator:CoreInputInput.kt:CoreInputOutput$denial!!</ID>
+    <ID>UnnecessaryNotNullOperator:MainConsoleCli.kt:ConsoleReadService$after!!</ID>
+    <ID>UnnecessaryNotNullOperator:SimplePipelineCompiler.kt:SimplePipelineCompiler$name!!</ID>
+    <ID>UnnecessarySafeCall:ShExecution.kt:ShExecution$controlDirRoot?.let { root -&gt; val store = OutputPlaneProvider.storeForWriting(root) val streams = OutputPlaneProvider.streamsOf(runId, opId.format()) buildMap { ProcessOutputChannel.all.forEach { channel -&gt; val address = when (channel) { ProcessOutputChannel.STDOUT -&gt; streams.stdout ProcessOutputChannel.STDERR -&gt; streams.stderr } put( channel, RedactingOutputIngress( { store.open(address.stream) }, store.frameIndex(), address, ) as ProcessOutputSink, ) } } }</ID>
+    <ID>UnreachableCode:BodyExecutionEngine.kt:BodyExecutionEngine$return outcome</ID>
+    <ID>UnreachableCode:CanonicalCoreStepDecoder.kt:CanonicalCoreStepDecoder$return when (node.pluginStepId.value) { // EMIT_EVENT_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw // core.emit.event envelope is consumed structurally (StructuralOverlayProjection, // pre-decode) and executively by CoreEmitEventStep via the registry — never here. // MILESTONE_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw // core.milestone envelope is consumed structurally and executively by // CoreMilestoneStep via the registry — never here. // S2-A7 / G5 (2026-09-12): DELETE_DIR_PLUGIN_ID decoder branch removed (LEGACY_REMOVED). // S2-A10 / G5 (2026-09-13): CLEAN_WS_PLUGIN_ID decoder branch removed (LEGACY_REMOVED). // The raw core.cleanWs envelope is consumed structurally (WsCleaned event, // pre-decode) and executively by CoreCleanWsStep via the registry — never here. // WU-LPR-301 / G5 (2026-09-18): LOAD_PLUGIN_ID branch removed (LEGACY_REMOVED). // The `core.load` execution authority is DEFERRED + UNSUPPORTED in `local-core-v1`; // any `core.load` envelope falls through to the `else` rejection below. // PWD_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw core.pwd // envelope is consumed structurally (PwdResolved event, pre-decode) and // executively by CorePwdStep via the registry — never here. The DSL // `pwd()` / `pwd(tmp=false)` lower to StepSpec.RegistryStepSpec (S2-A6 / G3R). // IS_UNIX_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw // core.isUnix envelope is consumed structurally (UnixDetected event, pre-decode) // and executively by CoreIsUnixStep via the registry — never here. // WU-LPR-301 / G5 (2026-09-18): WAIT_UNTIL_PLUGIN_ID branch removed (LEGACY_REMOVED). // The `core.waitUntil` execution authority is the registry (CoreWaitUntilStep.definition). // The polling cadence is declared structurally via // `BodyExecutionPolicy.Retrying(waitUntil = ...)`; any `core.waitUntil` envelope // falls through to the `else` rejection below — as it must, since the registry // is the only execution authority. // S2-B10 / G5 (2026-09-13): ARCHIVE_ARTIFACTS_PLUGIN_ID branch removed // (LEGACY_REMOVED). A core.archiveArtifacts node now falls through to the // `else` rejection below — as it must, since the registry and not this decoder // is its execution authority. That rejection is asserted behaviourally by the // contract suite (no silent fall-through to a no-op). else -&gt; throw IllegalArgumentException( "Unsupported core plugin step '${node.pluginStepId.value}' for '${node.id.value}'" ) }</ID>
+    <ID>UnreachableCode:CanonicalRuntimeCapabilityAccess.kt:CanonicalRuntimeCapabilityAccess$context.shOptions.workspaceRoot ?: Path.of("").toAbsolutePath().normalize()</ID>
+    <ID>UnsafeCallOnNullableType:AdmissionControlJournal.kt:AdmissionControlRow.Companion$rejection::class.simpleName!!</ID>
+    <ID>UnsafeCallOnNullableType:RunObservationOutput.kt:RunObservationOutput.Stream$console!!</ID>
+    <ID>UnsafeCallOnNullableType:SimplePipelineCompiler.kt:SimplePipelineCompiler$configRef!!</ID>
+    <ID>UnsafeCallOnNullableType:SimplePipelineCompiler.kt:SimplePipelineCompiler$name!!</ID>
+    <ID>UnsafeCallOnNullableType:SimplePipelineCompiler.kt:SimplePipelineCompiler$version!!</ID>
+    <ID>UnusedImport:CanonicalCoreStepDecoder.kt:import kotlinx.serialization.json.jsonArray</ID>
+    <ID>UnusedImport:CanonicalCoreStepMetadata.kt:import dev.rubentxu.pipeline.v2.domain.durable.Effect</ID>
+    <ID>UnusedImport:CanonicalCoreStepMetadata.kt:import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import dev.rubentxu.pipeline.v2.application.durable.retry.RetryReconciliationDriver</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import dev.rubentxu.pipeline.v2.domain.BlockSegment</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import dev.rubentxu.pipeline.v2.domain.BlockStepNode</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import dev.rubentxu.pipeline.v2.domain.StageNode</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import dev.rubentxu.pipeline.v2.domain.StepOutcome</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import dev.rubentxu.pipeline.v2.domain.post.PostCondition</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import dev.rubentxu.pipeline.v2.domain.post.PostPlanner</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import dev.rubentxu.pipeline.v2.domain.step.StepDefinition</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistration</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import dev.rubentxu.pipeline.v2.events.RunFinished</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import dev.rubentxu.pipeline.v2.events.RunStarted</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import java.time.Instant</ID>
+    <ID>UnusedImport:CanonicalDurableRunCoordinator.kt:import java.util.UUID</ID>
+    <ID>UnusedImport:CanonicalRuntimeCapabilityAccess.kt:import dev.rubentxu.pipeline.v2.application.durable.CleanWsOperationsAdapter</ID>
+    <ID>UnusedImport:CanonicalRuntimeCapabilityAccess.kt:import dev.rubentxu.pipeline.v2.application.durable.DeleteDirOperationsAdapter</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.MilestoneStateStore</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.StepMetadata</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.StepMetadataResolver</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.StructuralOverlay</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.StructuralOverlayProjection</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.StructuralPreparation</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.durable.RetryIdentityFactory</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.durable.WaitUntilIdentityFactory</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeCleanup</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.application.durable.retry.RetryReconciliationDriver</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.BlockSegment</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.BoundPurpose</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.ContextOverlay</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.ContextTransition</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.RunId</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.RunOutcome</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.BranchTerminal</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.Clock</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.CompositeOperation</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.Effect</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.OperationInput</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.ParallelAggregateId</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.ParallelAggregateSnapshot</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.ParallelBranchChildSnapshot</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.ParallelDecision</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciler</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciliationInput</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolver</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.events.DirEntered</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.events.DirExited</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.events.EventSink</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.events.RunFinished</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.events.RunStarted</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.events.WaitUntilPolled</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.events.durable.OperationJournal</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ReplayDecision</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import java.nio.file.Files</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import java.time.Instant</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import java.util.UUID</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import kotlinx.coroutines.Deferred</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import kotlinx.coroutines.async</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import kotlinx.serialization.encodeToString</ID>
+    <ID>UnusedImport:CanonicalStructuralDecisions.kt:import kotlinx.serialization.json.JsonPrimitive</ID>
+    <ID>UnusedImport:CliExit.kt:import kotlinx.serialization.Serializable</ID>
+    <ID>UnusedImport:CliExit.kt:import kotlinx.serialization.json.add</ID>
+    <ID>UnusedImport:CliExit.kt:import kotlinx.serialization.json.putJsonObject</ID>
+    <ID>UnusedImport:CommonExecutionBoundary.kt:import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand</ID>
+    <ID>UnusedImport:CompiledScriptedEntryPoint.kt:import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext</ID>
+    <ID>UnusedImport:CompiledScriptedEntryPoint.kt:import dev.rubentxu.pipeline.v2.scripting.ScriptedArtifactIdentity</ID>
+    <ID>UnusedImport:CompositionRoot.kt:import dev.rubentxu.pipeline.v2.domain.directivekey.WHEN_DIRECTIVE_KEY</ID>
+    <ID>UnusedImport:CoreArchiveArtifactsStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreArtifactQueryStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreCleanWsStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreDeleteDirStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreEchoStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreEmitEventStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext</ID>
+    <ID>UnusedImport:CoreEmitEventStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreErrorStep.kt:import dev.rubentxu.pipeline.v2.domain.StepOutcome</ID>
+    <ID>UnusedImport:CoreFileExistsStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreInputOutputCodec.kt:import kotlinx.serialization.json.booleanOrNull</ID>
+    <ID>UnusedImport:CoreInputOutputCodec.kt:import kotlinx.serialization.json.put</ID>
+    <ID>UnusedImport:CoreInputStep.kt:import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue</ID>
+    <ID>UnusedImport:CoreInputStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepCodec</ID>
+    <ID>UnusedImport:CoreInputStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreInputStep.kt:import kotlinx.serialization.json.Json</ID>
+    <ID>UnusedImport:CoreInputStep.kt:import kotlinx.serialization.json.JsonObject</ID>
+    <ID>UnusedImport:CoreInputStep.kt:import kotlinx.serialization.json.JsonPrimitive</ID>
+    <ID>UnusedImport:CoreInputStep.kt:import kotlinx.serialization.json.booleanOrNull</ID>
+    <ID>UnusedImport:CoreInputStep.kt:import kotlinx.serialization.json.buildJsonObject</ID>
+    <ID>UnusedImport:CoreInputStep.kt:import kotlinx.serialization.json.contentOrNull</ID>
+    <ID>UnusedImport:CoreInputStep.kt:import kotlinx.serialization.json.jsonObject</ID>
+    <ID>UnusedImport:CoreInputStep.kt:import kotlinx.serialization.json.jsonPrimitive</ID>
+    <ID>UnusedImport:CoreInputStep.kt:import kotlinx.serialization.json.put</ID>
+    <ID>UnusedImport:CoreInputWireCodec.kt:import kotlinx.serialization.json.booleanOrNull</ID>
+    <ID>UnusedImport:CoreInputWireCodec.kt:import kotlinx.serialization.json.put</ID>
+    <ID>UnusedImport:CoreIsUnixStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext</ID>
+    <ID>UnusedImport:CoreIsUnixStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreLockStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreLockStep.kt:import kotlinx.serialization.json.booleanOrNull</ID>
+    <ID>UnusedImport:CoreLockStep.kt:import kotlinx.serialization.json.contentOrNull</ID>
+    <ID>UnusedImport:CoreLockStep.kt:import kotlinx.serialization.json.jsonPrimitive</ID>
+    <ID>UnusedImport:CoreLockStep.kt:import kotlinx.serialization.json.put</ID>
+    <ID>UnusedImport:CoreLockWireCodec.kt:import kotlinx.serialization.json.put</ID>
+    <ID>UnusedImport:CoreMilestoneStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CorePublishHtmlStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CorePwdStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CorePwdTmpStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreReadFileStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreShellCodecException.kt:import kotlinx.serialization.json.jsonPrimitive</ID>
+    <ID>UnusedImport:CoreShellInput.kt:import dev.rubentxu.pipeline.v2.domain.ShellReturnMode</ID>
+    <ID>UnusedImport:CoreShellStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreSleepStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreStashStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreWaitUntilStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CoreWaitUntilStep.kt:import java.security.MessageDigest</ID>
+    <ID>UnusedImport:CoreWaitUntilStep.kt:import kotlinx.serialization.json.booleanOrNull</ID>
+    <ID>UnusedImport:CoreWaitUntilWireCodec.kt:import kotlinx.serialization.json.booleanOrNull</ID>
+    <ID>UnusedImport:CoreWaitUntilWireCodec.kt:import kotlinx.serialization.json.put</ID>
+    <ID>UnusedImport:CoreWriteFileStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext</ID>
+    <ID>UnusedImport:CoreWriteFileStep.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
+    <ID>UnusedImport:CredentialBindingsPayload.kt:import kotlinx.serialization.json.JsonPrimitive</ID>
+    <ID>UnusedImport:DslCompiledPipelineCompiler.kt:import dev.rubentxu.pipeline.v2.domain.BlockSegment</ID>
+    <ID>UnusedImport:DslCompiledPipelineCompiler.kt:import dev.rubentxu.pipeline.v2.domain.DefinitionId</ID>
+    <ID>UnusedImport:DurableInvocationResolver.kt:import dev.rubentxu.pipeline.v2.domain.BlockSegment</ID>
+    <ID>UnusedImport:ExecutionBoundaryFactory.kt:import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepCommand</ID>
+    <ID>UnusedImport:FileBasedRetryControlJournal.kt:import kotlinx.serialization.json.JsonObject</ID>
+    <ID>UnusedImport:FileBasedRetryControlJournal.kt:import kotlinx.serialization.json.encodeToJsonElement</ID>
+    <ID>UnusedImport:LiveOutputDrain.kt:import java.io.Writer</ID>
+    <ID>UnusedImport:MainCapabilitiesCli.kt:import kotlinx.serialization.json.put</ID>
+    <ID>UnusedImport:MainObserveCli.kt:import dev.rubentxu.pipeline.v2.application.observation.ObservationJsonLines</ID>
+    <ID>UnusedImport:MainSdkInfoCli.kt:import kotlinx.serialization.json.put</ID>
+    <ID>UnusedImport:ObservationQuery.kt:import dev.rubentxu.pipeline.v2.events.RunFinished</ID>
+    <ID>UnusedImport:OutputPlaneProvider.kt:import dev.rubentxu.pipeline.v2.output.OutputReadPort</ID>
+    <ID>UnusedImport:OutputPlaneProvider.kt:import dev.rubentxu.pipeline.v2.output.store.OutputAppendPort</ID>
+    <ID>UnusedImport:OutputPlaneProvider.kt:import dev.rubentxu.pipeline.v2.output.store.OutputRecoveryPort</ID>
+    <ID>UnusedImport:PublishHtmlOperationsAdapter.kt:import java.nio.file.LinkOption</ID>
+    <ID>UnusedImport:RecoveredExecutionMaterializer.kt:import kotlinx.serialization.json.Json</ID>
+    <ID>UnusedImport:RegistryScriptedShellRuntime.kt:import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult</ID>
+    <ID>UnusedImport:RetryReconciliationDriver.kt:import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus</ID>
+    <ID>UnusedImport:RetryReconciliationDriver.kt:import dev.rubentxu.pipeline.v2.domain.durable.RetryChildRowSnapshot</ID>
+    <ID>UnusedImport:RetryReconciliationDriver.kt:import dev.rubentxu.pipeline.v2.domain.durable.RetryControlRowSnapshot</ID>
+    <ID>UnusedImport:ScriptedFrontendRunner.kt:import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured</ID>
+    <ID>UnusedImport:ScriptedRegistryInvoker.kt:import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy</ID>
+    <ID>UnusedImport:ScriptedRegistryInvoker.kt:import kotlinx.serialization.json.put</ID>
+    <ID>UnusedImport:ShExecution.kt:import dev.rubentxu.pipeline.v2.sdk.StepContext</ID>
+    <ID>UnusedImport:StageExecutionEngine.kt:import dev.rubentxu.pipeline.v2.domain.post.PostCondition</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import dev.rubentxu.pipeline.v2.domain.CompiledPipeline</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import dev.rubentxu.pipeline.v2.domain.StageBody</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import dev.rubentxu.pipeline.v2.domain.StageNode</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import dev.rubentxu.pipeline.v2.domain.durable.BranchTerminal</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import dev.rubentxu.pipeline.v2.domain.durable.CompositeOperation</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import dev.rubentxu.pipeline.v2.domain.durable.ParallelAggregateId</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import dev.rubentxu.pipeline.v2.domain.durable.ParallelAggregateSnapshot</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import dev.rubentxu.pipeline.v2.domain.durable.ParallelBranchChildSnapshot</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import dev.rubentxu.pipeline.v2.domain.durable.ParallelDecision</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciler</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciliationInput</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import java.time.Instant</ID>
+    <ID>UnusedImport:StepDispatchEngine.kt:import kotlinx.coroutines.async</ID>
+    <ID>UnusedImport:WaitUntilControlJournal.kt:import dev.rubentxu.pipeline.v2.domain.BlockSegment</ID>
+    <ID>UnusedImport:WaitUntilControlJournal.kt:import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilControlRowSnapshot</ID>
+    <ID>UnusedImport:WaitUntilEngine.kt:import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilControlIdentity</ID>
+    <ID>UnusedImport:WaitUntilEngine.kt:import dev.rubentxu.pipeline.v2.domain.step.BodyRefs</ID>
+    <ID>UnusedImport:WaitUntilEngine.kt:import dev.rubentxu.pipeline.v2.domain.step.CancellationReason</ID>
+    <ID>UnusedImport:WaitUntilEngine.kt:import kotlin.math.min</ID>
+    <ID>UnusedImport:WaitUntilIdentityFactory.kt:import dev.rubentxu.pipeline.v2.domain.PluginStepId</ID>
+    <ID>UnusedParameter:CanonicalNodeDispatcher.kt:CanonicalNodeDispatcher$context: CanonicalRuntimeContext</ID>
+    <ID>UnusedParameter:DurableInvocationResolver.kt:DurableInvocationResolver$effects: Set&lt;Effect&gt;</ID>
+    <ID>UnusedParameter:DurableInvocationResolver.kt:DurableInvocationResolver$replayPolicy: ReplayPolicy</ID>
+    <ID>UnusedParameter:FamilyRouter.kt:FamilyRouter$dispatcher: CanonicalNodeDispatcher</ID>
+    <ID>UnusedParameter:FileBasedRetryControlJournal.kt:FileBasedRetryControlJournal$currentFingerprint: Fingerprint</ID>
+    <ID>UnusedParameter:PluginAdmissionGate.kt:PluginAdmissionGate$origin: ArtifactOrigin</ID>
+    <ID>UnusedParameter:ScriptedRuntime.kt:ScriptedScope$returnStatus: ReturnStatus</ID>
+    <ID>UnusedParameter:ScriptedRuntime.kt:ScriptedScope$returnStdout: ReturnStdout</ID>
+    <ID>UnusedParameter:ShExecution.kt:ShExecution$stageIndex: Int</ID>
+    <ID>UnusedParameter:WorkspaceResolver.kt:WorkspaceResolver$path: Path</ID>
+    <ID>UnusedPrivateFunction:CanonicalCoreStepDecoder.kt:CanonicalCoreStepDecoder$private fun kotlinx.serialization.json.JsonObject.requiredBoolean: Boolean</ID>
+    <ID>UnusedPrivateFunction:CanonicalCoreStepDecoder.kt:CanonicalCoreStepDecoder$private fun kotlinx.serialization.json.JsonObject.requiredInt: Int</ID>
+    <ID>UnusedPrivateFunction:CanonicalCoreStepDecoder.kt:CanonicalCoreStepDecoder$private fun kotlinx.serialization.json.JsonObject.requiredLong: Long</ID>
+    <ID>UnusedPrivateFunction:CanonicalCoreStepDecoder.kt:CanonicalCoreStepDecoder$private fun kotlinx.serialization.json.JsonObject.requiredString: String</ID>
+    <ID>UnusedPrivateFunction:MainConsoleCli.kt:MainConsoleCli$private fun frameReader: dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader</ID>
+    <ID>UnusedPrivateFunction:MainInspectCli.kt:MainInspectCli$private fun decodePageBytesAsUtf8: String</ID>
+    <ID>UnusedPrivateFunction:MainObserveCli.kt:private fun ObservationParseResult.Parsed.controlRootOrNull: String?</ID>
+    <ID>UnusedPrivateProperty:BodyExecutionEngine.kt:BodyExecutionEngine$private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$/** * S4-R1 §3b — the reattach wait, forwarded to the composed [ExternalSubprocessRecovery]. * * `null`, which is every production call site, leaves the observer on its own real-executor * default, so no production behaviour or timing changes. The dependency and its rationale live * on the observer's constructor; this parameter is the coordinator's own view of it. */ private val reattachPoll: ((Path, Long) -&gt; Int?)? = null</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$/** * the PURE decision. Injected so the engine interprets a verdict * rather than computing one, keeping "decide" and "interpret" separate as * the architecture requires. */ private val gateEvaluator: ( predicate: dev.rubentxu.pipeline.v2.domain.directive.WhenPredicate, context: dev.rubentxu.pipeline.v2.domain.directive.GateContext, ) -&gt; dev.rubentxu.pipeline.v2.domain.directive.GateVerdict = { predicate, context -&gt; dev.rubentxu.pipeline.v2.domain.directive.WhenPredicateEvaluator.evaluate(predicate, context) }</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$/** * the facts a gate is evaluated against, read at the effect boundary. * * Takes the CURRENT STAGE's declared environment: a gate is a property of * the stage that carries it, and the stage's own `environment { }` block * is the only environment the DSL can express. Reading a pipeline-level or * ambient environment instead would make the same script gate differently * for reasons its author never wrote. */ private val gateContext: ( stageEnvironment: dev.rubentxu.pipeline.v2.domain.EnvironmentSpec, ) -&gt; dev.rubentxu.pipeline.v2.domain.directive.GateContext = { dev.rubentxu.pipeline.v2.domain.directive.GateContext.EMPTY }</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter = CanonicalBodyInvokerAdapter()</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val clock: Clock</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val credentialScopePort: CredentialScopePort</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val cursorStore: ReplayCursorStore</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val effectReplayPolicy: EffectReplayPolicy</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val eventRegistry: dev.rubentxu.pipeline.v2.events.registry.EventRegistry = dev.rubentxu.pipeline.v2.events.registry.EventRegistry.create()</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val eventSink: EventSink</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val injectedBodyPolicyResolver: BodyPolicyResolver? = null</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val journal: OperationJournal</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val retryControlJournal: FileBasedRetryControlJournal? = null</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val stepMetadataResolver: StepMetadataResolver? = null</ID>
+    <ID>UnusedPrivateProperty:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator$private val waitUntilControlJournal: WaitUntilControlJournal? = null</ID>
+    <ID>UnusedPrivateProperty:CleanWsOperationsAdapter.kt:CleanWsOperationsAdapter$/** optional project-workspace override (--workspace).*/ private val workspaceBase: java.nio.file.Path? = null</ID>
+    <ID>UnusedPrivateProperty:CleanWsOperationsAdapter.kt:CleanWsOperationsAdapter$private val controlDirRoot: java.nio.file.Path</ID>
+    <ID>UnusedPrivateProperty:CoreWaitUntilStep.kt:CoreWaitUntilStep$private const val DEADLINE_MS = Long.MAX_VALUE</ID>
+    <ID>UnusedPrivateProperty:DeleteDirOperationsAdapter.kt:DeleteDirOperationsAdapter$/** optional project-workspace override (--workspace).*/ private val workspaceBase: java.nio.file.Path? = null</ID>
+    <ID>UnusedPrivateProperty:DeleteDirOperationsAdapter.kt:DeleteDirOperationsAdapter$private val controlDirRoot: java.nio.file.Path</ID>
+    <ID>UnusedPrivateProperty:FileBasedRetryControlJournal.kt:FileBasedRetryControlJournal$private val controlDirRoot: Path</ID>
+    <ID>UnusedPrivateProperty:FileBasedWaitUntilControlJournal.kt:FileBasedWaitUntilControlJournal$private val controlDirRoot: Path</ID>
+    <ID>UnusedPrivateProperty:LaunchReceipt.kt:LaunchReceipt.Companion$/** * JSON encoder configured to emit a single line (no pretty-print, * no HTML escaping, no lenient parsing). The output is stable * byte-for-byte for a given input. */ private val ENCODER: Json = Json { prettyPrint = false encodeDefaults = true }</ID>
+    <ID>UnusedPrivateProperty:OpId.kt:OpId.Companion$/** * Pattern for OpId with optional branch: "runId-s{stageIndex}-{stepIndex}[-b{branchIndex}]" * The branchIndex group is captured as an optional group (may be null). */ private val BRANCH_PATTERN = Regex("^(.+)-s(\\d+)-(\\d+)(-b(\\d+))?$")</ID>
+    <ID>UnusedPrivateProperty:OpId.kt:OpId.Companion$/** * Pattern for OpId without branch: "runId-s{stageIndex}-{stepIndex}" */ private val ROOT_PATTERN = Regex("^(.+)-s(\\d+)-(\\d+)$")</ID>
+    <ID>UnusedPrivateProperty:ScriptedRegistryInvoker.kt:ScriptedRegistryInvoker$private val eventSink: EventSink</ID>
+    <ID>UnusedPrivateProperty:StepDispatchEngine.kt:StepDispatchEngine$private val capabilityContributor: dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor = dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor { emptyMap() }</ID>
+    <ID>UnusedPrivateProperty:StepDispatchEngine.kt:StepDispatchEngine$private val runLifecycle: RunLifecycleEngine</ID>
+    <ID>UnusedPrivateProperty:WaitUntilEngine.kt:WaitUntilEngine$private val blockId: StepId</ID>
+    <ID>UnusedPrivateProperty:WaitUntilEngine.kt:WaitUntilEngine$private val blockPluginStepId: PluginStepId</ID>
+    <ID>UnusedPrivateProperty:WaitUntilEngine.kt:WaitUntilEngine$private val parentBodyPath: List&lt;BlockSegment&gt;</ID>
+    <ID>UnusedPrivateProperty:WaitUntilEngine.kt:WaitUntilEngine$private val stageIndex: Int</ID>
+    <ID>UnusedPrivateProperty:WaitUntilEngine.kt:WaitUntilEngine$private val stepIndex: Int</ID>
+    <ID>UnusedVariable:AdmissionControlJournal.kt:TinyJsonObject$val esc = source[pos++]</ID>
+    <ID>UnusedVariable:CanonicalCoreStepDecoder.kt:CanonicalCoreStepDecoder$val payload = Json.parseToJsonElement(node.payload.encoded).jsonObject</ID>
+    <ID>UnusedVariable:CoreWaitUntilStep.kt:CoreWaitUntilStep$val startTime = System.currentTimeMillis()</ID>
+    <ID>UnusedVariable:MainEventsCli.kt:MainEventsCli$val a = args[i]</ID>
+    <ID>UnusedVariable:OperatorTrustDatabase.kt:JsonObjectCursor$val esc = source[pos++]</ID>
+    <ID>UnusedVariable:StepDispatchEngine.kt:StepDispatchEngine$var outcome: StepOutcome = StepOutcome.Success</ID>
+    <ID>UseCheckOrError:CliParser.kt:CliParser.ResolvedRunAxis.Admitted$throw IllegalStateException("admitted")</ID>
+    <ID>UseCheckOrError:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$throw IllegalStateException( "Workflow-control scope '$scopeToken' cannot compile structured step '${step.name}' " + "into its shell wrapper; only sh/echo/writeFile are embeddable and " + "catchError/warnError/unstable are rewritten. Refusing to emit a silent shell comment.", )</ID>
+    <ID>UseCheckOrError:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$throw IllegalStateException( "buildShellScript cannot embed structured step '${step.name}' into a " + "workflow-control shell wrapper; the pre-compiler rewrite must project it. " + "Refusing to emit a silent shell comment.", )</ID>
+    <ID>UseCheckOrError:ExternalEventDefinitionDiscovery.kt:ExternalEventDefinitionDiscovery$throw IllegalStateException( "Event definition contributor '${contributor.id}' declared an invalid " + "event definition: ${outcome.problems.joinToString("; ")}. " + "Aborting composition.", )</ID>
+    <ID>UseCheckOrError:ExternalEventDefinitionDiscovery.kt:ExternalEventDefinitionDiscovery$throw IllegalStateException( "Event definition contributor '${contributor.id}' declared kind " + "'${outcome.kind}', already owned by '${outcome.registeredBy}'. " + "Aborting composition: a shadowed event kind makes every recorded " + "payload of that kind ambiguous forever.", )</ID>
+    <ID>UseCheckOrError:FileBasedRetryControlJournal.kt:FileBasedRetryControlJournal$throw IllegalStateException( "updateStatus: no control row for $controlOpId@$attempt; call beginAttempt first", )</ID>
+    <ID>UseCheckOrError:FileBasedWaitUntilControlJournal.kt:FileBasedWaitUntilControlJournal$throw IllegalStateException( "updateStatus: no control row for $controlOpId@$attempt; call beginAttempt first", )</ID>
+    <ID>UseCheckOrError:MainConsoleCli.kt:MainConsoleCli$throw IllegalStateException( ConsoleReadService.renderRefusal(result.reason), )</ID>
+    <ID>UseCheckOrError:RuntimeApiVersion.kt:RuntimeApiVersion$throw IllegalStateException( "the generated version resource is missing or empty at $RESOURCE. Refusing to decide " + "plugin compatibility against a version that did not come from the build. Rebuild " + "via Gradle so the resource is generated from project.version.", )</ID>
+    <ID>UseCheckOrError:RuntimeApiVersion.kt:RuntimeApiVersion$throw IllegalStateException( "version '$raw' read from $RESOURCE is not MAJOR.MINOR.PATCH. The SDK admits plugin " + "apiRanges against a three-component SemVer and nothing else, so a version it " + "cannot read is a version it cannot safely compare.", )</ID>
+    <ID>UseCheckOrError:StepDispatchEngine.kt:StepDispatchEngine$throw IllegalStateException( "Context stack underflow: CatchErrorTriggered without matching CatchErrorEntered", )</ID>
+    <ID>UseCheckOrError:WorkspaceOperations.kt:WorkspaceOperationsAdapter$throw IllegalStateException("controlDirRoot is required for workspace file operations")</ID>
+    <ID>UseOrEmpty:AdmissionControlJournal.kt:row.measuredDigest?.value ?: ""</ID>
+    <ID>UseOrEmpty:BodyExecutionEngine.kt:BodyExecutionEngine$ctx.attempt?.let { seg -&gt; listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(seg.index, seg.key)) } ?: emptyList()</ID>
+    <ID>UseOrEmpty:BodyStructureDigest.kt:BodyStructureDigest$(this as? dev.rubentxu.pipeline.v2.domain.BlockStepNode)?.body?.map { it.id.value } ?: emptyList()</ID>
+    <ID>UseOrEmpty:BundledPluginClasspathPlan.kt:BundledPluginClasspathPlan$it.version ?: ""</ID>
+    <ID>UseOrEmpty:CanonicalDurableRunCoordinator.kt:NoopStepRegistry$delegate?.keys() ?: emptySet()</ID>
+    <ID>UseOrEmpty:CanonicalStructuralDecisions.kt:overridesArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()</ID>
+    <ID>UseOrEmpty:CoreArchiveArtifactsStep.kt:CoreArchiveArtifactsStep.&lt;no name provided&gt;$obj["excludes"]?.jsonPrimitive?.content ?: ""</ID>
+    <ID>UseOrEmpty:CoreCleanWsStep.kt:CoreCleanWsStep.&lt;no name provided&gt;$obj["patterns"]?.jsonArray ?.map { it.jsonPrimitive.content } ?: emptyList()</ID>
+    <ID>UseOrEmpty:CoreShellStep.kt:CoreShellStep.&lt;no name provided&gt;$frObj["details"]?.asStringMapOrNull() ?: emptyMap()</ID>
+    <ID>UseOrEmpty:CoreShellStep.kt:CoreShellStep.&lt;no name provided&gt;$obj["details"]?.asStringMapOrNull() ?: emptyMap()</ID>
+    <ID>UseOrEmpty:CoreStashStep.kt:CoreStashStep.&lt;no name provided&gt;$obj["excludes"]?.jsonPrimitive?.content ?: ""</ID>
+    <ID>UseOrEmpty:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$git?.url ?: ""</ID>
+    <ID>UseOrEmpty:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$message ?: ""</ID>
+    <ID>UseOrEmpty:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$step.buildResult?.wireToken ?: ""</ID>
+    <ID>UseOrEmpty:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$step.patterns ?: emptyList()</ID>
+    <ID>UseOrEmpty:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$step.stageResult?.wireToken ?: ""</ID>
+    <ID>UseOrEmpty:FileBasedRetryControlJournal.kt:FileBasedRetryControlJournal$obj["fingerprint"]?.jsonPrimitive?.content ?: ""</ID>
+    <ID>UseOrEmpty:FileBasedWaitUntilControlJournal.kt:FileBasedWaitUntilControlJournal$obj["fingerprint"]?.jsonPrimitive?.content ?: ""</ID>
+    <ID>UseOrEmpty:MainInspectCli.kt:MainInspectCli.InspectField.Message$record.message ?: ""</ID>
+    <ID>UseOrEmpty:MainInspectCli.kt:MainInspectCli.InspectField.Stage$record.stage ?: ""</ID>
+    <ID>UseOrEmpty:MainInspectCli.kt:MainInspectCli.InspectField.Step$record.stepOrdinal?.toString() ?: ""</ID>
+    <ID>UseOrEmpty:MainObserveCli.kt:ComposeLanes.&lt;no name provided&gt;$eventStore?.eventsFor(runId) ?: emptySequence()</ID>
+    <ID>UseOrEmpty:ShExecution.kt:ShExecution$controlDirRoot?.let { root -&gt; val store = OutputPlaneProvider.storeForWriting(root) val streams = OutputPlaneProvider.streamsOf(runId, opId.format()) buildMap { ProcessOutputChannel.all.forEach { channel -&gt; val address = when (channel) { ProcessOutputChannel.STDOUT -&gt; streams.stdout ProcessOutputChannel.STDERR -&gt; streams.stderr } put( channel, RedactingOutputIngress( { store.open(address.stream) }, store.frameIndex(), address, ) as ProcessOutputSink, ) } } } ?: emptyMap()</ID>
+    <ID>UseOrEmpty:StepDispatchEngine.kt:StepDispatchEngine$bodyContext.attempt?.let { segment -&gt; listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(segment.index, segment.key)) } ?: emptyList()</ID>
+    <ID>UseRequire:FileLockCoordinator.kt:LockBackendUnavailableException$throw IllegalArgumentException("expected an I/O cause, got ${cause::class.simpleName}")</ID>
+    <ID>UseRequire:RunIdDirectory.kt:RunIdDirectory$throw IllegalArgumentException( "Recorded run id for this pipeline definition is blank; " + "delete the corrupted record $file or run without --resume" )</ID>
+    <ID>UselessCallOnNotNull:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$listOfNotNull( emitStep( stepId = "$parentToken/unstable-$occurrence", eventKind = "StageMarkedUnstable", payload = buildJsonObject { put("message", message) }, ), OpaqueStepNode( id = StepId("$parentToken/unstable-exit-0-$occurrence"), pluginStepId = PluginStepId("core.sh"), payload = VersionedStepPayload( PAYLOAD_SCHEMA_VERSION, shellPayload("exit 0", isScriptBlock = false, returnStdout = false), ), ), )</ID>
+    <ID>VarCouldBeVal:BodyExecutionEngine.kt:BodyExecutionEngine$var contextInBody = context</ID>
+    <ID>VarCouldBeVal:CliParser.kt:CliParser$var limit = EVENTS_DEFAULT_LIMIT</ID>
+    <ID>VarCouldBeVal:ParallelStageEngine.kt:ParallelStageEngine$var outcome: StepOutcome = StepOutcome.Success</ID>
+    <ID>VarCouldBeVal:StepDispatchEngine.kt:StepDispatchEngine$var contextInBody = executionContext</ID>
+    <ID>VarCouldBeVal:StepDispatchEngine.kt:StepDispatchEngine$var outcome: StepOutcome = StepOutcome.Success</ID>
+  </CurrentIssues>
+</SmellBaseline>

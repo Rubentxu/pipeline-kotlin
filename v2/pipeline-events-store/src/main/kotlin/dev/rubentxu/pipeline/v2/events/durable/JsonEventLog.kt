@@ -352,7 +352,7 @@ object JsonEventLog {
      * drift.
      */
     private val KNOWN_KINDS: Set<String> = setOf(
-        // PK-1 / ADR-PK1-IDENTITY: RunCorrelated carries the external
+        // RunCorrelated carries the external
         // correlationId + ownerId + startedAtMs bound to the runId.
         "RunCorrelated", "RunStarted", "CompilationStarted", "CompilationFinished", "RunFinished",
         "StageStarted", "StageFinished", "StepStarted", "StepFinished",
@@ -391,7 +391,7 @@ object JsonEventLog {
     /**
      * Locates the JSON event array inside [payload], returning its `[` and `]` as indices.
      *
-     * PK-RC-RENDER-001: `decode` assumed the array started at index 0 and ended at the last
+     * `decode` assumed the array started at index 0 and ended at the last
      * character. That is right for a document from [encode], but the CLI writes the
      * `LaunchReceipt` (`pipelinek.launch/1`) to the same stream first, so positional slicing
      * removed the receipt's `}` and the last progress line instead of the array's own brackets.
@@ -509,7 +509,7 @@ object JsonEventLog {
                     scriptPath = scriptPath,
                 )
             }
-            // PK-1 / ADR-PK1-IDENTITY: decode the correlation event so
+            // decode the correlation event so
             // the durable log can re-emit it on a replay / observe
             // without losing the correlationId binding.
             "RunCorrelated" -> {
@@ -890,7 +890,7 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
-            // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
+            // core.stash/core.unstash durable cross-stage data movement
             "StashCreated" -> {
                 val stageName = EventJsonFields.stringField(s, "stageName")
                     ?: return absent("stageName")
@@ -941,7 +941,7 @@ object JsonEventLog {
                     reason = reason,
                 )
             }
-            // WU-LPR-090 — core.publishHTML durable HTML report publishing
+            // core.publishHTML durable HTML report publishing
             "HtmlReportPublished" -> {
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
                 val reportName = EventJsonFields.stringField(s, "reportName") ?: ""
@@ -1139,13 +1139,13 @@ object JsonEventLog {
             }
             "CatchErrorTriggered" -> {
                 val stageName = EventJsonFields.stringField(s, "stageName") ?: ""
-                // P3-E D3 — both results now cross the codec as a CLOSED vocabulary.
+                // both results now cross the codec as a CLOSED vocabulary.
                 // `buildResult` stays nullable (a declared absence is legitimate: the DSL's
                 // default), but a PRESENT token outside the vocabulary is corruption and is
                 // refused, exactly like the absent-and-required `stageResult` below.
                 val buildResult = EventJsonFields.optionalStringField(s, "buildResult")
                     ?.let { CatchErrorBuildResult.parse(it) ?: return unreadable("buildResult", it) }
-                // P3-E E4 — was `?: "UNSTABLE"`. That default turned a MISSING field into a
+                // was `?: "UNSTABLE"`. That default turned a MISSING field into a
                 // semantic claim, and the claim was not neutral: UNSTABLE means the run
                 // continues while FAILURE aborts it. A record whose stageResult could not be
                 // read therefore came back describing a different run than the one that
@@ -1216,7 +1216,7 @@ object JsonEventLog {
             "WaitUntilCompleted" -> {
                 val totalAttempts = EventJsonFields.intField(s, "totalAttempts") ?: 0
                 val totalDurationMs = EventJsonFields.longField(s, "totalDurationMs") ?: 0L
-                // P3-E E4 — was `?: "completed"`. Same defect, opposite direction: a missing
+                // was `?: "completed"`. Same defect, opposite direction: a missing
                 // outcome decoded as SATISFACTION. `completed` is the one value that means
                 // the wait condition held, so the default reported success for a record that
                 // said nothing at all. The field is non-null in the event and the writer
@@ -1446,7 +1446,7 @@ object JsonEventLog {
                     durationMs = durationMs,
                 )
             }
-            // WU-RP-030 — connascence fix: these three variants were encodable
+            // connascence fix: these three variants were encodable
             // but NOT decodable (decodeEvent returned null), silently dropping
             // them from every replay/observation surface that reads persisted
             // history through JsonEventLog.

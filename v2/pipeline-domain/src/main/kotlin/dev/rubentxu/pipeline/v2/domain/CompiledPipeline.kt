@@ -225,7 +225,7 @@ data class StageNode(
     val post: PostSpec? = null,
 
     /**
-     * S1-B: directives declared on this stage, in declaration order.
+     * directives declared on this stage, in declaration order.
      *
      * Declarative data only: a key plus its already-encoded arguments. The
      * canonical coordinator admits every entry against the [DirectiveRegistry]
@@ -286,7 +286,7 @@ sealed interface StageBody {
 }
 
 /**
- * S4-F2 — reference to a compiled scripted artifact, carrying only what the canonical spine needs
+ * reference to a compiled scripted artifact, carrying only what the canonical spine needs
  * in order to RECONCILE a stage: which artifact, and which entry point inside it.
  *
  * ## Why this holds a key and not the six identity fields
@@ -408,7 +408,7 @@ sealed interface ContextOverlay {
     // catchError fold-walk can publish the CatchErrorTriggered domain event at the point of the
     // real failure (re-throw/suppress decision) instead of at a later IR marker step.
     //
-    // P3-E D3: both results are typed, and both keep travelling as BARE JSON STRINGS. The
+    // both results are typed, and both keep travelling as BARE JSON STRINGS. The
     // explicit serializer is load-bearing — kotlinx would otherwise emit `{"type":"UNSTABLE"}`
     // and change the compiled-pipeline format this overlay has always had.
     @Serializable

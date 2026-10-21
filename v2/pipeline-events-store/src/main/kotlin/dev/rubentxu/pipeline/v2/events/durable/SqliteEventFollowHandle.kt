@@ -18,7 +18,7 @@ import java.util.concurrent.locks.Condition
 import java.util.concurrent.locks.ReentrantLock
 
 /**
- * M1-C — production [dev.rubentxu.pipeline.v2.events.follow.EventFollowHandle]
+ * production [dev.rubentxu.pipeline.v2.events.follow.EventFollowHandle]
  * driven by a polling loop on the consumer's thread, backed by the
  * M1-A [EventRecordReadPort].
  *

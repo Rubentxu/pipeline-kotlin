@@ -35,7 +35,7 @@ data class CheckoutSpec(val scm: Scm)
 
 /**
  * Typed carrier for secret handle reference.
- * INV-L5-CR-005: credentials carried as typed refs, never Map<String,String>.
+ * credentials carried as typed refs, never Map<String,String>.
  *
  * @param id The CredentialsId referencing the secret in SecretStore
  * @param kind Optional kind hint ("string", "usernamePassword", etc.)
@@ -47,9 +47,9 @@ data class SecretHandleRef(
 
 /**
  * Git credentials — three-channel auth.
- * INV-L5-CR-005: typed carriers only, no Map<String,String>.
- * INV-L5-CR-004: credentials NEVER enter argv — temp files + GIT_CONFIG_GLOBAL only.
- * INV-L6-CR-011: git credential scope decided by git itself — no host literals.
+ * typed carriers only, no Map<String,String>.
+ * credentials NEVER enter argv — temp files + GIT_CONFIG_GLOBAL only.
+ * git credential scope decided by git itself — no host literals.
  *
  * @param string SecretHandleRef for API token (string channel)
  * @param user SecretHandleRef for username (usernamePassword channel)

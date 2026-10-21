@@ -44,7 +44,7 @@ interface EventStore {
     fun append(event: DomainEvent)
 
     /**
-     * WU-LPR-105: append with EXPLICIT write-side acknowledgement.
+     * append with EXPLICIT write-side acknowledgement.
      *
      * Returns the store-ASSIGNED event (the sequence authority's own decision),
      * so callers never discover write metadata by racing the read model

@@ -25,7 +25,7 @@ import java.nio.file.Path
 class WorkspaceResolver(
     private val controlDirRoot: Path,
     /**
-     * WU-LPR-062: optional project-workspace override (--workspace <dir>).
+     * optional project-workspace override (--workspace <dir>).
      * When set, [resolve] returns paths under [workspaceBase]; the journal,
      * artefacts and locks stay under [controlDirRoot].
      *
@@ -56,7 +56,7 @@ class WorkspaceResolver(
      * @return The deterministic workspace path: `<controlDirRoot>/workspace/<stageName>-<stageIndex>/`
      */
     fun resolve(stageName: String, stageIndex: Int): Path {
-        // WU-LPR-062: with an explicit project workspace (--workspace), stages SHARE
+        // with an explicit project workspace (--workspace), stages SHARE
         // the given directory (Jenkins-familiar single-workspace semantics): a real
         // project build must run with CWD == the project root where gradlew lives.
         if (workspaceBase != null) return workspaceBase

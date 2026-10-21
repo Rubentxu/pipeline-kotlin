@@ -20,7 +20,7 @@ import java.util.UUID
  * Format: `<7-char-sha> <first-line-of-subject>` (truncated 256 chars, non-ASCII stripped).
  * Idempotent: parses existing file for already-listed SHAs and skips duplicates.
  *
- * INV-L5-CR-005: plain-text changelog, no JDOM XML.
+ * plain-text changelog, no JDOM XML.
  *
  * @param timeoutSeconds max wait for git log command (default 10)
  */

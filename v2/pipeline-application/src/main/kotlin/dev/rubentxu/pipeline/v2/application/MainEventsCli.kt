@@ -200,7 +200,7 @@ object MainEventsCli {
     }
 
     fun main(args: Array<String>): Int {
-        // CC-1 / R4 / WU-R4.7 — admission is [CliParser.parseEvents]. The wire prefix `Error:`
+        // admission is [CliParser.parseEvents]. The wire prefix `Error:`
         // (the AUD-04 / AUD-05 contract for events argument refusals) is preserved here in the
         // translation, exactly as before. Refusal of the data-plane read (a different concern, the
         // one [MainEventsCli.reportRefusals] emits on stdout / stderr as `evt-refusal-v1:` /

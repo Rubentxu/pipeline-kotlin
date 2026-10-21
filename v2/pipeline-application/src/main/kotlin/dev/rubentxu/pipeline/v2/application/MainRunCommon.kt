@@ -28,7 +28,7 @@ import java.nio.file.Path
  */
 
 /**
- * PK-1 / ADR-PK1-IDENTITY — emit the [RunCorrelated] event on the
+ * emit the [RunCorrelated] event on the
  * supplied event sink AND the [LaunchReceipt] JSON line on stdout.
  *
  * Called at the moment durable state is established (lease acquired for
@@ -65,7 +65,7 @@ internal fun emitCorrelationAndReceipt(
         controlDir = controlDir,
     )
     val bytes = LaunchReceipt.encode(receipt).toByteArray(Charsets.UTF_8)
-    // ADR-PK-NEXT-R0.3: in TEXT view the receipt goes to stderr so the
+    // in TEXT view the receipt goes to stderr so the
     // human console is not polluted. In JSON / JSON_LINES view the
     // receipt is the first stdout line so a machine consumer can
     // join it to the event stream by line index. Either way, the
@@ -85,7 +85,7 @@ internal fun emitCorrelationAndReceipt(
 }
 
 // ------------------------------------------------------------------------
-// PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING — opt-in output protocol helpers.
+// opt-in output protocol helpers.
 // ------------------------------------------------------------------------
 
 

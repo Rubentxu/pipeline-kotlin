@@ -32,7 +32,7 @@ class DirectivesScope {
     }
 
     /**
-     * S2-A: the typed `when` gate, as a first-class convenience.
+     * the typed `when` gate, as a first-class convenience.
      *
      * The generic [directive] entry point stays available and unchanged; this
      * only removes the need for an author to hand-encode the predicate. It
@@ -157,7 +157,7 @@ class StageScope(
      * Jenkins verbatim (catalog §1.1 lines 41-43):
      * `catchError(buildResult: String? = null, stageResult: String? = null, message: String? = null) { ... }`
      *
-     * P3-E D3 — both results are [CatchErrorBuildResult] and no longer `String`. A typo such
+     * both results are [CatchErrorBuildResult] and no longer `String`. A typo such
      * as `catchError(buildResult = "USR")` used to compile and reach the runtime, where the
      * only thing that read it was an `else` arm that suppressed the caught failure. It is now
      * a compile error.
@@ -307,7 +307,7 @@ class StageScope(
      *   subdirectory under the workspace root and returns its absolute path
      */
     fun pwd(tmp: Boolean = false): String {
-        // WU-LPR-402 — both branches lower to the registry path. The legacy
+        // both branches lower to the registry path. The legacy
         // StepSpec.Pwd / StepSpec.PwdTmp steps were retired at S2-A6/G5
         // (LEGACY_REMOVED) and S2-A6/G3T (deterministic tmp); the registry
         // candidates `core.pwd` and `core.pwd.tmp` are the only production
@@ -542,7 +542,7 @@ class StageScope(
      *
      * Jenkins verbatim: `milestone(ordinal: Int, label: String? = null)`
      *
-     * S2-A9 / G5: this DSL lowers directly to `StepSpec.RegistryStepSpec` (open-world registry
+     * this DSL lowers directly to `StepSpec.RegistryStepSpec` (open-world registry
      * path). The payload is encoded inline here to match the canonical codec of
      * `CoreMilestoneStep.inputCodec` byte-for-byte, so the durable fingerprint is preserved
      * across the G5 destructive flip. The legacy `StepSpec.Milestone` subtype and its compiler
@@ -771,7 +771,7 @@ class StageScope(
     fun directives(block: DirectivesScope.() -> Unit) {
         val scope = DirectivesScope()
         scope.block()
-        // S2-A: ACCUMULATE, do not assign. Two paths declare stage directives
+        // ACCUMULATE, do not assign. Two paths declare stage directives
         // (`directives { }` and the typed `when*` helpers) and both may be
         // used in the same stage. Assigning here silently discarded a `when`
         // declared earlier in the stage body, which would have run the stage
@@ -781,7 +781,7 @@ class StageScope(
     }
 
     /**
-     * S2-A: conditional stage execution, now REAL.
+     * conditional stage execution, now REAL.
      *
      * Previously `whenCondition("1 == 2")` was rejected outright, because a
      * `String` cannot carry semantics into the IR: the expression would have
@@ -912,7 +912,7 @@ class StageScope(
     }
 
     fun toStageBuilder(): StageBuilder {
-        // S2-B: `post { }` is now REAL. It was previously accepted surface whose
+        // `post { }` is now REAL. It was previously accepted surface whose
         // semantics were not implemented, so it threw here rather than silently
         // never running (WU-RP-032 / DSL-008). The block is carried as typed
         // data and the coordinator decides which finalizer fires from the pure

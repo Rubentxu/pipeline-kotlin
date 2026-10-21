@@ -110,7 +110,7 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
         runIdValue: String,
         executionContext: ExecutionContext,
     ): CanonicalContinuation {
-        // CTX-P2: identical EM-5/6 walk over the pure trailing chain (outermost-first fold order).
+        // identical EM-5/6 walk over the pure trailing chain (outermost-first fold order).
         val chain = executionContext.trailingCatchErrorChain()
         for (overlay in chain) {
             // P3-E E4 parsed once at the decision, over the closed vocabulary, never with a

@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.domain.directive
 
 /**
- * S3-R1-C — resource composition: the PURE decision layer over already-admitted
+ * resource composition: the PURE decision layer over already-admitted
  * and already-decoded resource directives.
  *
  * ## Why this exists when the only Resource key in production is the agent one

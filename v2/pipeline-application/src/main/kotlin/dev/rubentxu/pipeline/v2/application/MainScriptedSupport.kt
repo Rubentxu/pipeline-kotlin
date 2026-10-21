@@ -53,7 +53,7 @@ internal fun runScriptedFrontend(
         )
     }
     return when (outcome) {
-        // S4-D2: the aggregate is ALREADY a RunOutcome, produced by RunOutcomeReducer inside
+        // the aggregate is ALREADY a RunOutcome, produced by RunOutcomeReducer inside
         // `runBody`. This branch used to re-derive it from a StepOutcome with a second
         // hand-written Success/Unstable/Failure table — precedence written twice, with the copy
         // here able to disagree with the reducer that is supposed to own it. The reducer is now

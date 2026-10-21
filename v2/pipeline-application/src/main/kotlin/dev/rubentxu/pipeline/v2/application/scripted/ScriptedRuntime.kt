@@ -43,7 +43,7 @@ data class ScriptedOperation(
 }
 
 /**
- * S4-D2 — what ONE scripted operation hands back: the value the Kotlin program receives, and the
+ * what ONE scripted operation hands back: the value the Kotlin program receives, and the
  * canonical outcome the durable substrate already decided.
  *
  * Before this type the port returned a bare [ShellInvocationResult], and that narrowing is
@@ -67,7 +67,7 @@ data class ScriptedOperationResult(
 )
 
 /**
- * S4-D2 — the single run-local accumulator of outcomes that are ALREADY classified.
+ * the single run-local accumulator of outcomes that are ALREADY classified.
  *
  * It is deliberately not a decision maker. It does not know any Step, does not decide precedence,
  * does not convert `Unstable` into anything, does not read the journal, and does not hold a
@@ -101,7 +101,7 @@ class ScriptedOutcomeCollector {
 /**
  * Durable/replay adapter for a single scripted operation.
  *
- * S4-D2: returns [ScriptedOperationResult], not a bare [ShellInvocationResult], so the semantic
+ * returns [ScriptedOperationResult], not a bare [ShellInvocationResult], so the semantic
  * outcome survives the seam. The value alone cannot express "this succeeded but is unstable".
  */
 fun interface ScriptedOperationRuntime {
@@ -214,7 +214,7 @@ class ScriptedScope internal constructor(
                 command = command,
             ),
         )
-        // S4-D2: the outcome is recorded HERE, at the point that sees every shell invocation, and
+        // the outcome is recorded HERE, at the point that sees every shell invocation, and
         // the Kotlin program receives only the value. The scope owns the collector; the runtime
         // never learns it exists, and never decides what the outcome means.
         outcomes.record(settled.outcome)
@@ -236,7 +236,7 @@ class ScriptedScope internal constructor(
     ).block()
 
     /**
-     * S4-D2 — the single registration point for a RUNTIME-RETURNING scripted step.
+     * the single registration point for a RUNTIME-RETURNING scripted step.
      *
      * The façade is the only place that sees every per-call result (see
      * [dev.rubentxu.pipeline.v2.application.scripted.CompiledScriptedEntryPoint]), so it is where
@@ -271,7 +271,7 @@ internal data class ScriptedScopeIdentity(
     val entryPointId: String,
     val dynamicScopePath: List<String>,
     /**
-     * S4-A1: the compiled artifact identity this execution came from.
+     * the compiled artifact identity this execution came from.
      *
      * The scripted durable spine that production never built — the `JournaledScriptedOperationRuntime`
      * of old, deleted in S4-F1-B — put this into its `OperationInput`, so two different compiled

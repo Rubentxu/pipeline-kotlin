@@ -19,7 +19,6 @@ package dev.rubentxu.pipeline.v2.output
  * bytes themselves — that would make the event store a second holder of bytes it does not own, and
  * would recreate the double authority that [ADR-M1 D2] removed.
  *
- * @see ADR-M1 §D3
  */
 @JvmInline
 value class OutputStreamId(val value: String) {

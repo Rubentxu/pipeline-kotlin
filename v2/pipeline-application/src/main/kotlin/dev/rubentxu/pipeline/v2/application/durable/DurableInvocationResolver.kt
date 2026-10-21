@@ -21,7 +21,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 
 /**
- * WU-RP-031 E2 — durable invocation reconciliation extracted from the
+ * durable invocation reconciliation extracted from the
  * coordinator. Owns exactly the frozen a1/a2.3 decision: divergence gate,
  * external-subprocess recovery hook, effect-aware replay resolution.
  * Deps are the minimal collaborators of that decision; no event sink, no

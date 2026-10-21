@@ -110,7 +110,7 @@ internal class BodyExecutionEngine(
                             sequence = 0L,
                             occurredAt = clock.now(),
                             credentialsId = binding.credentialsId,
-                            // AUD-07: the single domain authority. The previous local
+                            // the single domain authority. The previous local
                             // `when` covered only 3 of 7 kinds and reported `file`,
                             // `certificate`, `zip` and `usernameColonPassword` as API_KEY.
                             purpose = binding.boundPurpose,
@@ -165,7 +165,7 @@ internal class BodyExecutionEngine(
                 inherited == null -> scope.budgetMs
                 else -> minOf(inherited, scope.budgetMs)
             }
-            // E-EM-11 T2.2: the timeout is now ADMITTED. Project the scheduling
+            // the timeout is now ADMITTED. Project the scheduling
             // transition once, BEFORE any child StepStarted.
             eventSink.append(
                 dev.rubentxu.pipeline.v2.events.TimeoutScheduled(
@@ -237,7 +237,7 @@ internal class BodyExecutionEngine(
             )
             ScopedBody(stageShOptions.copy(env = mergedEnv), contextAfterPush)
         }
-        // WU-G5R.3: waitUntil scope passes through ShOptions without special flags.
+        // waitUntil scope passes through ShOptions without special flags.
         // The polling backoff is handled in the executeWaitUntilBody loop below.
         is BlockShellScope.WaitUntilScope -> ScopedBody(stageShOptions, context)
     }
@@ -255,7 +255,7 @@ internal class BodyExecutionEngine(
     dispatcher: BodyChildDispatcher,
     ): StepOutcome {
         val overallStartMs = System.currentTimeMillis()
-        // WU-G5R.3: initial sleep before first poll
+        // initial sleep before first poll
         if (scope.initialRecurrencePeriod > 0) {
             kotlinx.coroutines.delay(scope.initialRecurrencePeriod)
         }
@@ -637,7 +637,7 @@ internal class BodyExecutionEngine(
 }
 
     /**
-     * RETRY-D: deterministic fingerprint of a retry aggregate's contract.
+     * deterministic fingerprint of a retry aggregate's contract.
      * The fingerprint is stable across attempts for a given parent bodyPath and
      * maxAttempts — divergence triggers [RetryReconciliationDecision.RejectDivergence].
      */

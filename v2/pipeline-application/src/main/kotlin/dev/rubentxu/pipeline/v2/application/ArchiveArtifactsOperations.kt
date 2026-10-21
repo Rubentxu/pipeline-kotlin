@@ -145,10 +145,10 @@ class ArchiveArtifactsOperationsAdapter(
     private val stageIdentity: StageIdentity,
     private val controlDirRoot: Path,
     private val eventSink: dev.rubentxu.pipeline.v2.events.EventSink,
-    /** WU-LPR-062: optional project-workspace override (--workspace). */
+    /** optional project-workspace override (--workspace).*/
     private val workspaceBase: Path? = null,
     /**
-     * RP034-F: the shared execution location. `null` keeps the previous
+     * the shared execution location. `null` keeps the previous
      * reconstruction for direct construction; the bridge always supplies it and
      * retiring the fallback is RP034-I.
      */
@@ -158,7 +158,7 @@ class ArchiveArtifactsOperationsAdapter(
     /**
      * The directory the user pattern is resolved against.
      *
-     * RP034-F: the archive source is a user path, so it anchors on
+     * the archive source is a user path, so it anchors on
      * CURRENT_DIRECTORY and a `dir(...)` scope moves it. With no scope this is
      * the stage workspace — what the private resolver returned — so behaviour at
      * the root is unchanged.

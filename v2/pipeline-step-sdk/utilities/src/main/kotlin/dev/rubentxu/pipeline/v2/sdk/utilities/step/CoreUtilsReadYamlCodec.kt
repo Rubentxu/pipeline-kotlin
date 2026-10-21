@@ -121,7 +121,7 @@ object CoreUtilsReadYamlInputCodec : StepCodec<ReadYamlInput> {
  * successful Step replayed through the codec reproduces the original ADT
  * shape, which is what makes replay safe.
  *
- * D-012: migrated to `PipelineJson` / `JsonAccessors`.
+ * migrated to `PipelineJson` / `JsonAccessors`.
  */
 object CoreUtilsReadYamlOutputCodec : StepCodec<ReadYamlOutput> {
 

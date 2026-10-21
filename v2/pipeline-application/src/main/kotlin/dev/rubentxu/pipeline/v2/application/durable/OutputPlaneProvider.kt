@@ -34,7 +34,6 @@ import java.util.concurrent.ConcurrentHashMap
  * recovers again — that is the crash path, and it is exercised deliberately rather than cached
  * across it.
  *
- * @see ADR-M1 §D2
  */
 object OutputPlaneProvider {
 
@@ -59,7 +58,7 @@ object OutputPlaneProvider {
     /**
      * The store for [controlDirRoot], **without** recovering. The read-side opening.
      *
-     * ADR-OBS-002: a reader must never reconcile durable state, because reconciliation truncates the
+     * a reader must never reconcile durable state, because reconciliation truncates the
      * uncommitted tail of a stream and an uncommitted tail is exactly what a writer that is alive
      * right now looks like. `OBSG_READER_RECOVERY_INTERFERENCE_RECEIPT.md` measured what that cost: a
      * successful `console` query in a second JVM destroyed 4096 bytes a live writer had written and

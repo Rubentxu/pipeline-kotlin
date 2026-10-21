@@ -169,7 +169,7 @@ sealed interface CanonicalCoreStepCommand {
     }
 
     /**
-     * S2-A4 / G5: the legacy `EmitEvent` command subtype was removed (LEGACY_REMOVED).
+     * the legacy `EmitEvent` command subtype was removed (LEGACY_REMOVED).
      * Production routing is exclusively `CoreEmitEventStep.definition` via the registry.
      * The RAW `core.emit.event` envelope remains the structural control protocol for
      * catchError: `StructuralOverlayProjection` projects push/pop pre-decode from it —
@@ -177,7 +177,7 @@ sealed interface CanonicalCoreStepCommand {
      */
 
     /**
-     * S2-A9 / G5: the legacy `Milestone` command subtype was removed (LEGACY_REMOVED).
+     * the legacy `Milestone` command subtype was removed (LEGACY_REMOVED).
      * Production routing is exclusively `CoreMilestoneStep.definition` via the registry.
      * The DSL `milestone(ordinal, label)` now lowers to `StepSpec.RegistryStepSpec` carrying
      * the same canonical envelope (`{"kind":"milestone","ordinal":N,"label":...}`); the raw
@@ -186,7 +186,7 @@ sealed interface CanonicalCoreStepCommand {
      */
 
     /**
-     * T-05: deleteDir step — DELETED at S2-A7 / G5 (2026-09-12, LEGACY_REMOVED).
+     * deleteDir step — DELETED at S2-A7 / G5 (2026-09-12, LEGACY_REMOVED).
      * Production authority is exclusively the registry (CoreDeleteDirStep.definition
      * via RegistryStepMetadataResolver). Legacy forms removed in this
      * slice: DeleteDir subtype, DELETE_DIR_PLUGIN_ID + decoder branch,
@@ -195,7 +195,7 @@ sealed interface CanonicalCoreStepCommand {
      */
 
     /**
-     * T-05: cleanWs step — DELETED at S2-A10 / G5 (2026-09-13, LEGACY_REMOVED).
+     * cleanWs step — DELETED at S2-A10 / G5 (2026-09-13, LEGACY_REMOVED).
      * Production authority is exclusively the registry (CoreCleanWsStep.definition
      * via RegistryStepMetadataResolver). Legacy forms removed in this
      * slice: CleanWs subtype, CLEAN_WS_PLUGIN_ID + decoder branch,
@@ -204,7 +204,7 @@ sealed interface CanonicalCoreStepCommand {
      */
 
     /**
-     * T-05: load step — DELETED at WU-LPR-301 / G5 (LEGACY_REMOVED). The `core.load` execution
+     * load step — DELETED at WU-LPR-301 / G5 (LEGACY_REMOVED). The `core.load` execution
      * authority in `local-core-v1` is DEFERRED + UNSUPPORTED: no `CoreLoadStep` is registered, the
      * DSL `load(path)` is fail-closed at compile-time, and the canonical decoder does not
      * recognise a Load data class. Any `core.load` envelope falls through to the `else` rejection
@@ -212,7 +212,7 @@ sealed interface CanonicalCoreStepCommand {
      */
 
     /**
-     * T-07: pwd step — DELETED at S2-A6 / G5 (LEGACY_REMOVED). The `core.pwd` execution
+     * pwd step — DELETED at S2-A6 / G5 (LEGACY_REMOVED). The `core.pwd` execution
      * authority is now exclusively the registry (CorePwdStep.definition via
      * RegistryStepMetadataResolver). The DSL `pwd()` / `pwd(tmp=false)` lower to
      * `StepSpec.RegistryStepSpec(core.pwd, ...)` (S2-A6 / G3R); the canonical decoder
@@ -221,7 +221,7 @@ sealed interface CanonicalCoreStepCommand {
      */
 
     /**
-     * T-07: waitUntil step — DELETED at WU-LPR-301 / G5 (LEGACY_REMOVED). The execution
+     * waitUntil step — DELETED at WU-LPR-301 / G5 (LEGACY_REMOVED). The execution
      * authority is now exclusively the registry (CoreWaitUntilStep.definition). The polling
      * cadence is declared structurally via `BodyExecutionPolicy.Retrying(waitUntil = ...)`,
      * so the canonical decoder does not recognise a WaitUntil data class. The canonical body
@@ -231,7 +231,7 @@ sealed interface CanonicalCoreStepCommand {
      */
 
     /**
-     * T-08: archiveArtifacts step — DELETED at S2-B10 / G5 (LEGACY_REMOVED). The
+     * archiveArtifacts step — DELETED at S2-B10 / G5 (LEGACY_REMOVED). The
      * `core.archiveArtifacts` execution authority is now exclusively the registry
      * (CoreArchiveArtifactsStep.definition via CoreStepRegistryFactory). The DSL
      * `archiveArtifacts(...)` lowers to `StepSpec.RegistryStepSpec(core.archiveArtifacts, ...)`;
@@ -242,8 +242,8 @@ sealed interface CanonicalCoreStepCommand {
 /** Decodes a supported canonical core node without reconstructing the DSL model. */
 object CanonicalCoreStepDecoder {
     private const val SCHEMA_VERSION = "dsl-v1"
-    // S2-A4 / G5: EMIT_EVENT_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
-    // S2-A9 / G5: MILESTONE_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED). The raw
+    // EMIT_EVENT_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
+    // MILESTONE_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED). The raw
     // core.milestone envelope is consumed structurally (pre-decode) and executively by
     // CoreMilestoneStep via the registry — never here.
     // S2-A10 / G5 (2026-09-13): CLEAN_WS_PLUGIN_ID removed with the legacy branch (LEGACY_REMOVED).
@@ -273,10 +273,10 @@ object CanonicalCoreStepDecoder {
         }
         val payload = Json.parseToJsonElement(node.payload.encoded).jsonObject
         return when (node.pluginStepId.value) {
-            // S2-A4 / G5: EMIT_EVENT_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw
+            // EMIT_EVENT_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw
             // core.emit.event envelope is consumed structurally (StructuralOverlayProjection,
             // pre-decode) and executively by CoreEmitEventStep via the registry — never here.
-            // S2-A9 / G5: MILESTONE_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw
+            // MILESTONE_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw
             // core.milestone envelope is consumed structurally and executively by
             // CoreMilestoneStep via the registry — never here.
             // S2-A7 / G5 (2026-09-12): DELETE_DIR_PLUGIN_ID decoder branch removed (LEGACY_REMOVED).
@@ -286,11 +286,11 @@ object CanonicalCoreStepDecoder {
             // WU-LPR-301 / G5 (2026-09-18): LOAD_PLUGIN_ID branch removed (LEGACY_REMOVED).
             // The `core.load` execution authority is DEFERRED + UNSUPPORTED in `local-core-v1`;
             // any `core.load` envelope falls through to the `else` rejection below.
-            // S2-A6 / G5: PWD_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw core.pwd
+            // PWD_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw core.pwd
             // envelope is consumed structurally (PwdResolved event, pre-decode) and
             // executively by CorePwdStep via the registry — never here. The DSL
             // `pwd()` / `pwd(tmp=false)` lower to StepSpec.RegistryStepSpec (S2-A6 / G3R).
-            // S2-A5 / G5: IS_UNIX_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw
+            // IS_UNIX_PLUGIN_ID branch removed (LEGACY_REMOVED). The raw
             // core.isUnix envelope is consumed structurally (UnixDetected event, pre-decode)
             // and executively by CoreIsUnixStep via the registry — never here.
             // WU-LPR-301 / G5 (2026-09-18): WAIT_UNTIL_PLUGIN_ID branch removed (LEGACY_REMOVED).

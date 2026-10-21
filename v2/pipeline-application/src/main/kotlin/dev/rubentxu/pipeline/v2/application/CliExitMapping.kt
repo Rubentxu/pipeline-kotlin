@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 /**
- * PK-1 / ADR-PK1-IDENTITY — exhaustive mapping from [CliError] to [CliExit].
+ * exhaustive mapping from [CliError] to [CliExit].
  *
  * Every [CliError] case is mapped to exactly one [CliExit] case. The
  * mapping is total: a missing branch is a compile error. New [CliError]

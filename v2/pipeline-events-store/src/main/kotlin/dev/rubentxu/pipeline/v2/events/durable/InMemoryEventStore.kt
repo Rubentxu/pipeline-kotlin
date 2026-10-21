@@ -94,7 +94,7 @@ class InMemoryEventStore : EventSink {
         appendAssigned(event)
     }
 
-    /** WU-LPR-105: returns the store-assigned event (explicit write-side acknowledgement). */
+    /** returns the store-assigned event (explicit write-side acknowledgement).*/
     override fun appendAssigned(event: DomainEvent): DomainEvent {
         val counter = sequenceCounters.computeIfAbsent(event.runId) { AtomicLong() }
         val assignedSequence = if (event.sequence == 0L) {
@@ -108,7 +108,7 @@ class InMemoryEventStore : EventSink {
         }
         val eventWithSequence = when (event) {
             is RunStarted -> event.copy(sequence = assignedSequence)
-            // PK-1 / ADR-PK1-IDENTITY: RunCorrelated carries the assigned
+            // RunCorrelated carries the assigned
             // sequence just like every other durable event; it must
             // appear in the when for the assignment to take effect.
             is RunCorrelated -> event.copy(sequence = assignedSequence)
@@ -144,11 +144,11 @@ class InMemoryEventStore : EventSink {
             is FileExistsChecked -> event.copy(sequence = assignedSequence)
             is ArtifactArchived -> event.copy(sequence = assignedSequence)
             is ArtifactArchiveFailed -> event.copy(sequence = assignedSequence)
-            // WU-LPR-089 — core.stash/core.unstash durable cross-stage data movement
+            // core.stash/core.unstash durable cross-stage data movement
             is StashCreated -> event.copy(sequence = assignedSequence)
             is StashRestored -> event.copy(sequence = assignedSequence)
             is StashFailed -> event.copy(sequence = assignedSequence)
-            // WU-LPR-090 — core.publishHTML durable HTML report publishing
+            // core.publishHTML durable HTML report publishing
             is HtmlReportPublished -> event.copy(sequence = assignedSequence)
             is HtmlReportSkipped -> event.copy(sequence = assignedSequence)
             is HtmlReportFailed -> event.copy(sequence = assignedSequence)
@@ -216,7 +216,7 @@ class InMemoryEventStore : EventSink {
     }
 
     /**
-     * M1-A — authoritatively answer "has this run ever been written to".
+     * authoritatively answer "has this run ever been written to".
      *
      * The [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
      * adapter needs to distinguish a run that does not exist from a
@@ -229,7 +229,7 @@ class InMemoryEventStore : EventSink {
     fun hasRun(runId: String): Boolean = store.containsKey(runId)
 
     /**
-     * M1-A — the durable `MAX(sequence)` of the in-memory list, or
+     * the durable `MAX(sequence)` of the in-memory list, or
      * `null` if the run has no rows.
      *
      * Mirrors [dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore.tailSequence]

@@ -53,7 +53,7 @@ object CompiledExecutionPlanner {
                 }
                 is StageBody.Matrix -> error("Matrix planning is not supported yet for stage '${stage.name}'")
 
-                // S4-F2: a scripted body contributes NO static unit, and that is a fact rather
+                // a scripted body contributes NO static unit, and that is a fact rather
                 // than a gap. The planner enumerates structure known at COMPILE time, and a
                 // scripted body has none by construction: its steps are produced at RUN time by
                 // the artifact. Emitting a placeholder unit here would be the declarative

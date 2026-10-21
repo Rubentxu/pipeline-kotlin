@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.domain.directive
 
 /**
- * S2-A — the first real directive: a typed `when` predicate.
+ * the first real directive: a typed `when` predicate.
  *
  * ## Why an ADT and not a String
  *

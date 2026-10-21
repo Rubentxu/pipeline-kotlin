@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import java.nio.file.Path
 
 /**
- * LF-0403 — Domain-level port for materializing file-based credentials.
+ * Domain-level port for materializing file-based credentials.
  *
  * This port lives in `:pipeline-domain` so that
  * [DefaultCredentialProjector] can compose against it without dragging in

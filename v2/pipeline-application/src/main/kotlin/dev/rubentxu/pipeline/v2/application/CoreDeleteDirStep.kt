@@ -191,7 +191,7 @@ object CoreDeleteDirStep {
                 descriptor = descriptor,
                 inputCodec = inputCodec,
                 outputCodec = outputCodec,
-                // G3-fix: single capability — all workspace resolution, execution,
+                // single capability — all workspace resolution, execution,
                 // and event emission are bound by the adapter.
                 requiredCapabilities = setOf(DELETE_DIR_OPERATIONS_CAPABILITY) as Set<StepCapability>,
             )

@@ -7,7 +7,7 @@ import java.util.concurrent.Future
 /**
  * Concurrent dispatch of one [ExecutionUnit.Concurrent] wave through the
  * **same** [StepDispatcher] instance that single steps use (LF-0207 —
- * M2-004: "parallel usa dispatcher principal").
+ * "parallel usa dispatcher principal").
  *
  * ## The single-dispatcher property
  *

@@ -66,7 +66,7 @@ internal class RecoveryInterpretationEngine(
     private val eventSink: EventSink,
     private val journal: OperationJournal,
     /**
-     * S4-F1-C2 — how a recovered terminal becomes a Step's typed value. NOT nullable, and that is
+     * how a recovered terminal becomes a Step's typed value. NOT nullable, and that is
      * a correction rather than a style choice.
      *
      * It started nullable, with a fail-closed default, on the reasoning that an engine without a
@@ -96,7 +96,7 @@ internal class RecoveryInterpretationEngine(
      * advance the replay cursor, and an unused field is exactly how a responsibility
      * reappears in the wrong class later.
      *
-     * S4-F1-C3: [definition] joins it because materialising a recovered value needs the Step's own
+     * [definition] joins it because materialising a recovered value needs the Step's own
      * codecs, and reaching the registry from here would invert the dependency. The caller that owns
      * the registry hands it over, so this engine still never resolves a Step by name.
      */
@@ -108,7 +108,7 @@ internal class RecoveryInterpretationEngine(
         val definition: dev.rubentxu.pipeline.v2.domain.step.StepDefinition<*, *>? = null,
 
         /**
-         * S4-F1-C2 — the Step's OWN encoded payload, when the durable [input] is not itself that
+         * the Step's OWN encoded payload, when the durable [input] is not itself that
          * payload.
          *
          * NEITHER surface stores the Step payload as the durable input. F1-C found this by making the
@@ -143,7 +143,7 @@ internal class RecoveryInterpretationEngine(
     /**
      * The two shapes every resolution can take. Closed: a new resolution will not compile.
      *
-     * S4-F1-C3 — [Settled] now carries the WHOLE [CommonExecutionResult], not a bare
+     * [Settled] now carries the WHOLE [CommonExecutionResult], not a bare
      * [StepOutcome]. The narrowing it used to perform was R14: a recovered invocation could produce
      * an encoded value and the carrier dropped it on the floor before leaving this class, so a
      * recovered `core.sh` could never hand user Kotlin the `42` it had just recovered. Consumers
@@ -262,7 +262,7 @@ internal class RecoveryInterpretationEngine(
     }
 
     /**
-     * S4-F1-C2 — resolve the terminal through the Step-owned projection, and fail closed otherwise.
+     * resolve the terminal through the Step-owned projection, and fail closed otherwise.
      *
      * Every non-materialised case still produces a REAL [CommonExecutionResult] whose outcome states
      * why, rather than a sentinel or a `null` the caller has to interpret. The durable status is

@@ -142,7 +142,7 @@ internal class BeforeStageDirectiveEngine(
         }
         if (admitted.isEmpty()) return Verdict.Admitted
 
-        // S2-C/S2-D: interpret the BEFORE_STAGE seam. Decode EVERY admitted Gate|Evaluate
+        // interpret the BEFORE_STAGE seam. Decode EVERY admitted Gate|Evaluate
         // directive through its own definition codec (the registry carries the decoder; the
         // engine never switches on a key).
         val decoded: List<DecodedBeforeStage> = admitted.map { entry ->
@@ -167,7 +167,7 @@ internal class BeforeStageDirectiveEngine(
             return Verdict.Denied(reason, deniedDirective.kind)
         }
 
-        // S3-R1-C: check the resource declarations for conflict BEFORE resolving any of
+        // check the resource declarations for conflict BEFORE resolving any of
         // them, and while they are still pure values.
         //
         // Order is the whole point. Resolving first would acquire a target for the first
@@ -212,7 +212,7 @@ internal class BeforeStageDirectiveEngine(
         val unresolved = resolveRequirements(decoded, stage, stageIndex, runId)
         if (unresolved != null) return unresolved
 
-        // S2-D: only GATE predicates compose; a decoded Evaluate is observed and dropped by
+        // only GATE predicates compose; a decoded Evaluate is observed and dropped by
         // this filter. gateKeys therefore stays the GATE keys — GateEvaluated keeps gate
         // semantics (it is never reused for an Evaluate).
         val predicates = decoded.filterIsInstance<DecodedBeforeStage.GatePredicate>().map { gate ->
@@ -286,7 +286,7 @@ internal class BeforeStageDirectiveEngine(
             }
 
             is StageDirectiveDecision.Permitted -> {
-                // S1-C: one typed admitted event per declared directive, emitted at the same
+                // one typed admitted event per declared directive, emitted at the same
                 // seam that will later interpret them.
                 decision.phases.values.flatten().forEach { entry ->
                     eventSink.append(
@@ -313,7 +313,7 @@ internal class BeforeStageDirectiveEngine(
                     )
                 }
 
-                // S2-C/S2-D: the directives the interpreter will decode in the BEFORE_STAGE
+                // the directives the interpreter will decode in the BEFORE_STAGE
                 // seam are the ones the DECISION admitted there with policy Gate OR Evaluate —
                 // never a re-scan of the stage declaration. Membership is read from the closed
                 // policy ADT, never from a key. Admitted directives in other phases or policies
@@ -340,7 +340,7 @@ internal class BeforeStageDirectiveEngine(
     }
 
     /**
-     * S3-R1-A: the outcome of decoding through a definition's OWN codec, with the
+     * the outcome of decoding through a definition's OWN codec, with the
      * definition's own failure kept structurally distinct.
      *
      * Private to this file and deliberately NOT a case of [DecodedBeforeStage]. Two
@@ -369,7 +369,7 @@ internal class BeforeStageDirectiveEngine(
     }
 
     /**
-     * S3-R1-A: decode through the registry with the boundary guarded.
+     * decode through the registry with the boundary guarded.
      *
      * [DirectiveRegistry.decodeAny] contracts that the engine "fails closed on it without
      * exception-based control flow", but nothing enforced that: a definition contributed
@@ -540,7 +540,7 @@ internal class BeforeStageDirectiveEngine(
         val context = gateContext(stage.environment)
         return when (val verdict = gateEvaluator(composition.predicate, context)) {
             is dev.rubentxu.pipeline.v2.domain.directive.GateVerdict.Satisfied -> {
-                // S2-C: the verdict is observable even when it admits the stage — otherwise a
+                // the verdict is observable even when it admits the stage — otherwise a
                 // satisfied gate and an absent gate are indistinguishable.
                 eventSink.append(
                     GateEvaluated(
@@ -559,7 +559,7 @@ internal class BeforeStageDirectiveEngine(
             }
 
             is dev.rubentxu.pipeline.v2.domain.directive.GateVerdict.NotSatisfied -> {
-                // S2-C: the negative verdict is observable BEFORE the skip it causes.
+                // the negative verdict is observable BEFORE the skip it causes.
                 eventSink.append(
                     GateEvaluated(
                         eventId = UUID.randomUUID().toString(),
@@ -573,7 +573,7 @@ internal class BeforeStageDirectiveEngine(
                         reason = verdict.reason,
                     ),
                 )
-                // S2-B: a skip is itself a stage outcome; the coordinator runs the finalizers
+                // a skip is itself a stage outcome; the coordinator runs the finalizers
                 // the pure planner selects for Skipped. The skip event is emitted here because
                 // it is the observation of the decision, while the post block is the run's
                 // control flow and belongs to the coordinator.
@@ -685,7 +685,7 @@ internal fun seamDecodeFailureReason(
 }
 
 /**
- * S3-R1-A: the reason when a definition FAULTED, as distinct from a payload that
+ * the reason when a definition FAULTED, as distinct from a payload that
  * failed to decode.
  *
  * The two must never read alike, because they have different owners and different

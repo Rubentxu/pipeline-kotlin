@@ -88,7 +88,7 @@ class GitCheckoutStepDefinition(
         ),
         inputCodec = GitCheckoutInputCodec,
         outputCodec = GitCheckoutOutputCodec,
-        // WU-LPR-WC-SCM: declare the typed workspace identity capability
+        // declare the typed workspace identity capability
         // so the canonical engine admits the invocation AND so the
         // capability admission is fail-closed before the handler runs.
         // The handler reads the canonical workspace root from
@@ -131,7 +131,7 @@ class GitCheckoutStepDefinition(
      * a valid workspace identity through the registry.
      */
     override val handler = StepHandler<GitCheckoutInput, GitCheckoutOutput> { input, ctx ->
-        // WU-LPR-WC-SCM: read the canonical workspace root from the typed
+        // read the canonical workspace root from the typed
         // capability seam. The capability access is fail-closed: the
         // boundary re-checks the declared capabilities before the handler
         // runs and throws if any are missing, so reaching this `get(...)`
@@ -152,7 +152,7 @@ class GitCheckoutStepDefinition(
         // capability points at a directory that no longer exists on disk
         // (rare; covers direct unit-test construction outside the
         // canonical bridge).
-        // RP034-I: the developer-escape hatch is gone. Falling back to
+        // the developer-escape hatch is gone. Falling back to
         // `System.getProperty("pipeline.workspace.root") ?: user.dir` meant a
         // run whose typed location had gone missing would silently operate on
         // whatever directory the JVM happened to start in — ambient state as a

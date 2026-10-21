@@ -11,7 +11,7 @@ import dev.rubentxu.pipeline.v2.domain.directive.WhenPredicateCodec
 import dev.rubentxu.pipeline.v2.domain.directivekey.WHEN_DIRECTIVE_KEY
 
 /**
- * S2-A — the `core.when` directive definition.
+ * the `core.when` directive definition.
  *
  * This is the FIRST real [DirectiveDefinition] on the S1 kernel, and it is
  * deliberately built with zero engine knowledge of `when`: it contributes

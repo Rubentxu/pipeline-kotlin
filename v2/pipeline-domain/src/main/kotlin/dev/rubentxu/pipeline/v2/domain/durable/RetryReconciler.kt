@@ -12,7 +12,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision.Sched
 /**
  * Pure reconciler for retry control state.
  *
- * ADR-0075 — authoritative spec for durable retry reconciliation.
+ * authoritative spec for durable retry reconciliation.
  * The function takes only pure value snapshots
  * ([RetryReconciliationInput]) and returns only pure decisions
  * ([RetryReconciliationDecision]). It owns ZERO effects: no journal

@@ -48,7 +48,7 @@ object UtilitiesPluginDeclaration {
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/utilities-release.properties"
 
     /**
-     * PK-RC-PLUGIN-001 — the apiRange is no longer a literal. The policy in
+     * the apiRange is no longer a literal. The policy in
      * `buildSrc/PluginCompatibilityPolicy` reads `rootProject.version` and emits
      * the resource this declaration reads at runtime. The literal moved out;
      * a future product-version bump is observable from the build, not from a

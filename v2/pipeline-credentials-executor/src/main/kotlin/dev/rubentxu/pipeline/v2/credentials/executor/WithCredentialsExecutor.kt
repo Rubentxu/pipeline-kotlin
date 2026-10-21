@@ -112,7 +112,7 @@ class WithCredentialsExecutor(
      * Binds credentials to environment variables directly from the typed domain
      * [CredentialBindingSpec] sealed shape.
      *
-     * EM-7 / LFC-5.3 — this is the entry point consumed by the canonical
+     * this is the entry point consumed by the canonical
      * `CredentialScopePort` adapter. It shares the same acquire/emit/retain
      * core as [bind], but receives already-validated domain specs (no DSL
      * round-trip), so the coordinator can pass through the sealed specs it
@@ -132,7 +132,7 @@ class WithCredentialsExecutor(
         val credentialIds = mutableListOf<CredentialsId>()
         val retainedProjections = mutableListOf<dev.rubentxu.pipeline.v2.domain.credentials.ProjectionResult>()
 
-        // WU-RP-020: NO local sequence counter. The durable sequence authority is
+        // NO local sequence counter. The durable sequence authority is
         // the store (`SqliteEventStore.appendAssigned`), which assigns when the
         // incoming sequence is 0. A local counter starting at 1 bypasses that
         // authority entirely, so CredentialBound always claimed sequence 1 of a
@@ -143,7 +143,7 @@ class WithCredentialsExecutor(
             for (spec in specs) {
                 val credentialsId = spec.credentialsId
                 credentialIds.add(credentialsId)
-                // AUD-07: single domain authority for kind → BoundPurpose. The
+                // single domain authority for kind → BoundPurpose. The
                 // local 7-arm copy was removed so there is exactly one mapping.
                 val purpose = spec.boundPurpose
 
@@ -164,7 +164,7 @@ class WithCredentialsExecutor(
                 // Delegate the per-kind projection to the port
                 val projection = projector.project(spec, credential, runId)
                 env.putAll(projection.bindings)
-                // EM-7: retain materializations for deferred cleanup
+                // retain materializations for deferred cleanup
                 retainedProjections.add(projection)
             }
 
@@ -275,7 +275,7 @@ class WithCredentialsExecutor(
     ): Throwable? {
         var firstThrowable = primaryThrowable
 
-        // WU-RP-020: no local sequence counter here either. Restarting at 1 per
+        // no local sequence counter here either. Restarting at 1 per
         // teardown was the same authority bypass as the bind path, and it also
         // made the first CredentialUnbound of every teardown collide with
         // sequence 1 of the run. The store assigns the durable sequence.

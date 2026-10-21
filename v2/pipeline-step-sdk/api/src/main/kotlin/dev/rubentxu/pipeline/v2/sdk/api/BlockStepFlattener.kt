@@ -107,7 +107,7 @@ object BlockStepFlattener {
         when (step) {
             // Registry step is a leaf: no nested body to flatten (LB-02 / EP-F2).
             is StepSpec.RegistryStepSpec -> {}
-            // WU-RP-033: registry Block form owns a body — flatten children like any block.
+            // registry Block form owns a body — flatten children like any block.
             is StepSpec.RegistryBlockSpec -> {
                 flattenChildren(step.body, depth, blockPath, result)
             }
@@ -157,14 +157,14 @@ object BlockStepFlattener {
             is StepSpec.RetryBlock -> {
                 flattenChildren(step.steps, depth, blockPath, result)
             }
-            // RP6-A / WU-091: core.lock is a body-bearing block step — its body
+            // core.lock is a body-bearing block step — its body
             // flattens like any other block (G3.6 inventory: this exhaustive `when`
             // is the consumer a new sealed case BREAKS at source level, which is
             // exactly why the compiler caught it).
             is StepSpec.Lock -> {
                 flattenChildren(step.steps, depth, blockPath, result)
             }
-            // RP6-B / WU-092: core.input is body-bearing for the same reason: the
+            // core.input is body-bearing for the same reason: the
             // body is conditional (it runs only on a Proceed), so it must flatten
             // like any other block rather than disappear.
             is StepSpec.Input -> {

@@ -17,7 +17,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
 
 /**
- * S4-F2 — executes ONE scripted stage body, and nothing else.
+ * executes ONE scripted stage body, and nothing else.
  *
  * ## The scope, stated as a boundary
  *

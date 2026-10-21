@@ -22,7 +22,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 
 
 /**
- * LFC-2R / R4B — scripted frontend execution adapter.
+ * scripted frontend execution adapter.
  *
  * One scripted body execution = one canonical stage step (`s{stageIndex}-{stepIndex}`).
  * The adapter owns NO durable authority of its own: the invoker's registry invocation
@@ -48,7 +48,7 @@ object ScriptedFrontendRunner {
     /**
      * Closed result of one scripted frontend run.
      *
-     * S4-D2: [Completed.aggregate] is a [RunOutcome], not a [StepOutcome]. It used to be a
+     * [Completed.aggregate] is a [RunOutcome], not a [StepOutcome]. It used to be a
      * `StepOutcome` that [dev.rubentxu.pipeline.v2.application.MainScriptedSupport] then mapped to
      * a `RunOutcome` with a second hand-written table — so precedence was written twice, and the
      * copy in the frontend could disagree with the reducer that is supposed to own it. Reducing
@@ -103,7 +103,7 @@ object ScriptedFrontendRunner {
             executionBoundary = RegistryExecutionBoundary.adapt(milestoneStateStore = null),
             journal = journal,
         )
-        // S4-F1-C2: the scripted surface runs the SAME authorities as the canonical coordinator,
+        // the scripted surface runs the SAME authorities as the canonical coordinator,
         // with the materialiser supplied by the engine's own default — so a recovered `core.sh`
         // returns the same value on both surfaces, and neither composition site can forget it.
         val interpretation = RecoveryInterpretationEngine(eventSink, journal)
@@ -118,7 +118,7 @@ object ScriptedFrontendRunner {
             metadataResolver = RegistryStepMetadataResolver.composite(registry),
             runtimeContextFactory = { call ->
                 CanonicalRuntimeContext(
-                    // S4-F2: the STRUCTURAL address of an operation depends on WHERE the body
+                    // the STRUCTURAL address of an operation depends on WHERE the body
                     // runs, and the two places are not the same. A whole-program scripted entry
                     // has no canonical stage, so it keeps stage 0 and the invocation ordinal as
                     // its step. A scripted STAGE inside a canonical run must carry its real stage
@@ -135,7 +135,7 @@ object ScriptedFrontendRunner {
                 )
             },
         )
-        // S4-A1 — the scripted shell reaches the durable engine through the SAME
+        // the scripted shell reaches the durable engine through the SAME
         // registry spine as every other scripted step. There is deliberately no
         // second implementation of ScriptedOperationRuntime wired here: the only
         // path to a subprocess is one that admits SHELL_OPERATIONS_CAPABILITY.
@@ -148,7 +148,7 @@ object ScriptedFrontendRunner {
     }
 
     /**
-     * S4-D2 — the ONE place a scripted run's outcome is decided.
+     * the ONE place a scripted run's outcome is decided.
      *
      * The collector is created HERE, above the `try`, and handed to the runtime. That placement
      * is the whole point: if the runtime owned it, a body that threw would abort the scope that

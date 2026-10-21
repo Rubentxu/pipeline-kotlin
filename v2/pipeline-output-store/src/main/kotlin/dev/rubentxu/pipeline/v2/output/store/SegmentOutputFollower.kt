@@ -9,7 +9,7 @@ import dev.rubentxu.pipeline.v2.output.follow.OutputFollowHandle
 import dev.rubentxu.pipeline.v2.output.follow.OutputFollowOptions
 
 /**
- * M1-B — production [OutputFollower] backed by the real
+ * production [OutputFollower] backed by the real
  * [SegmentOutputStore] + [SegmentFrameIndex] + [OutputTailPort] composition.
  *
  * ## What this is and what it is not

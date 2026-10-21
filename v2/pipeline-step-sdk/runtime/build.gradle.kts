@@ -1,6 +1,6 @@
 plugins {
     kotlin("jvm")
-    // WU-RP-040 R4: selective mutation (durable decision kernels). Run explicitly: :pipeline-step-sdk:runtime:pitest
+    // selective mutation (durable decision kernels). Run explicitly: :pipeline-step-sdk:runtime:pitest
     id("info.solidsoft.pitest")
 }
 

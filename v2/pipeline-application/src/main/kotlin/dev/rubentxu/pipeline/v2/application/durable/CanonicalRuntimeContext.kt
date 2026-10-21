@@ -35,7 +35,7 @@ data class CanonicalRuntimeContext(
     val controlDirRoot: Path?,
     val eventSink: EventSink,
     val bodyInvoker: CanonicalBodyInvokerAdapter? = null,
-    // WU-RP-035: the body-ALREADY-BOUND continuation of a Step that declared
+    // the body-ALREADY-BOUND continuation of a Step that declared
     // BodyExecutionOwner.HANDLER_CONTINUATION, supplied under
     // BODY_CONTINUATION_CAPABILITY to that Step's handler only.
     //
@@ -53,7 +53,7 @@ data class CanonicalRuntimeContext(
     // construct the context directly keep compiling; the production wire-up
     // in CanonicalDurableRunCoordinator always supplies it.
     val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
-    // WU-LPR-062: optional project-workspace override (--workspace <dir>). When set,
+    // optional project-workspace override (--workspace <dir>). When set,
     // stage workspaces resolve under <dir> instead of <controlRoot>/workspace, so real
     // project fixtures (Gradle/Maven/Node) execute against the actual project files.
     val workspaceBase: java.nio.file.Path? = null,

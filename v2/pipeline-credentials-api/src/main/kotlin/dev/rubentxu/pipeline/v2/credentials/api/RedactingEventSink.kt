@@ -87,7 +87,7 @@ class RedactingEventSink(
                     diag.copy(message = scrubString(diag.message, patterns))
                 }
             )
-            // INV-L6-CR-013: GitCheckoutFailed.reason may contain embedded credentials in URLs.
+            // GitCheckoutFailed.reason may contain embedded credentials in URLs.
             // Scrub the reason field to prevent credential leakage in CI logs.
             is GitCheckoutFailed -> event.copy(
                 reason = scrubString(event.reason, patterns)

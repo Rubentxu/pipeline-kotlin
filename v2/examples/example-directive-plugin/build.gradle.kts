@@ -32,7 +32,7 @@ val sdkVersion: String = requireNotNull(providers.gradleProperty("sdkVersion").o
 }
 
 // ----------------------------------------------------------------------------
-// PK-RELEASE-CONSOLIDATION D1 — the apiRange is derived from the resolved SDK.
+// the apiRange is derived from the resolved SDK.
 //
 // It used to be a Kotlin literal, `PipelineKApiRange(SemVer(0,47,0), SemVer(0,57,0))`, which went
 // stale the moment the host moved: 0.56.0 fell outside `[0.47.0, 0.57.0)` only by accident of how
@@ -205,7 +205,7 @@ val computeDirectiveRelease = tasks.register("computeDirectiveRelease") {
                 appendLine("pipeline.example.directive.namespace=${namespaceName.get()}")
                 appendLine("pipeline.example.directive.release.version=$releaseVersion")
                 appendLine("pipeline.example.directive.release.digest=sha256:$hex")
-                // PK-RELEASE-CONSOLIDATION D1: the compatibility range is DERIVED, not typed.
+                // the compatibility range is DERIVED, not typed.
                 // The ceiling is the NEXT MINOR of the resolved SDK, not the resolved version itself:
                 // PipelineKApiRange.accepts() is `runtime < untilExclusive`, so a ceiling equal to
                 // sdkVersion would make the plugin refuse the very host that loads it. See ADR.

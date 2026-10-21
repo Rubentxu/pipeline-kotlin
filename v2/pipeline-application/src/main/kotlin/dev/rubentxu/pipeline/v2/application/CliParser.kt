@@ -21,7 +21,7 @@ import dev.rubentxu.pipeline.v2.output.OutputCursor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.events.identity.EventField
 
-// CC-1 — parser unification. The four verb mains used to own their own admission
+// parser unification. The four verb mains used to own their own admission
 // parsers; their bodies lived next to the verb and drifted the moment a flag gained
 // a case. `parseConsole`, `parseEvents`, `parseInspect` are now the single entry
 // point for argv-to-typed-request conversion; the verb mains translate the typed
@@ -48,10 +48,10 @@ data class CliFlags(
     val durableRunPolicy: DurableRunPolicy,
     val scriptPath: String,
     val controlRoot: String? = null,
-    /** WU-LPR-062: project workspace base directory (--workspace). */
+    /** project workspace base directory (--workspace).*/
     val workspace: String? = null,
     /**
-     * RP034-H / ADR-0101: request the historical PipelineK-managed scratch
+     * request the historical PipelineK-managed scratch
      * workspace instead of the default attached invocation directory.
      *
      * Mutually exclusive with [workspace]; the parser rejects the combination
@@ -73,7 +73,7 @@ data class CliFlags(
     /** External plugin JARs: one list feeds compilation and runtime discovery. */
     val pluginJars: List<String> = emptyList(),
     /**
-     * PK-1 / ADR-PK1-IDENTITY: external invoker correlation token. When
+     * external invoker correlation token. When
      * supplied, the runtime binds it to the [RunId] in durable state
      * and emits it on the [dev.rubentxu.pipeline.v2.events.RunCorrelated]
      * event. The raw string is held here; conversion to [CorrelationId]
@@ -86,13 +86,13 @@ data class CliFlags(
      */
     val view: ObservationView = ObservationView.NORMAL,
     /**
-     * ADR-0088: wire encoding. `TEXT` is human and the default; JSON and JSONL
+     * wire encoding. `TEXT` is human and the default; JSON and JSONL
      * are opt-in, so a machine consumer must ask for them explicitly instead of
      * discovering them by accident.
      */
     val format: ObservationFormat = ObservationFormat.TEXT,
     /**
-     * PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: opt-in versioned output
+     * opt-in versioned output
      * protocol. The parser holds the raw token(s) the operator
      * supplied (last token wins on repetition). Validation happens
      * in [dev.rubentxu.pipeline.v2.application.Main] which translates
@@ -142,7 +142,7 @@ sealed interface CliError {
     }
     data class InvalidSandboxProfile(val value: String) : CliError
     data class UnsupportedSandboxProfile(val value: String) : CliError {
-        // D-012: enrich the typed error message with cross-references so the
+        // enrich the typed error message with cross-references so the
         // fail-closed CLI surface cites the contract documents the operator
         // expects to see at the boundary (ADR-0016 sandbox policy, M5 OS-level
         // isolation, M9 multi-tenant gate). The value token echoes the rejected
@@ -440,18 +440,18 @@ private class ParseState(
     var durableRunPolicy: DurableRunPolicy = DurableRunPolicy.ReusePriorRun,
     var controlRoot: String? = null,
     var workspace: String? = null,
-    /** RP034-H / ADR-0101: `--isolated` requests managed scratch. */
+    /** `--isolated` requests managed scratch.*/
     var isolated: Boolean = false,
     var sandboxProfile: SandboxProfile = SandboxProfile.NONE,
     /**
-     * RP6-C / LFC-2E3: `--allow-network` permits outbound egress for this run.
+     * `--allow-network` permits outbound egress for this run.
      * FALSE by default, so a pipeline that reaches for the network without the
      * flag is rejected at capability admission rather than quietly succeeding.
      */
     var allowNetwork: Boolean = false,
     val pluginJars: MutableList<String> = mutableListOf(),
     /**
-     * PK-1 / ADR-PK1-IDENTITY: external invoker correlation token, set by
+     * external invoker correlation token, set by
      * `--correlation-id <uuid>`. The raw string lives here; conversion
      * to a typed [CorrelationId] happens after parsing succeeds so
      * a malformed value surfaces as a typed [InvalidCorrelationId]
@@ -459,7 +459,7 @@ private class ParseState(
      */
     var correlationId: String? = null,
     /**
-     * PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: every `--output-protocol`
+     * every `--output-protocol`
      * token the operator supplied. The last one wins. Validation
      * against [dev.rubentxu.pipeline.v2.application.OutputProtocol.SUPPORTED_IDS]
      * happens in Main.kt — a missing or unknown id surfaces as
@@ -735,7 +735,7 @@ object CliParser {
     // --------------------------------------------------------------- CC-1 verb parsers
 
     /**
-     * CC-1 / R4 / WU-R4.7 — `pipelinek inspect <runId> [opts]`.
+     * `pipelinek inspect <runId> [opts]`.
      *
      * Body verbatim from [MainInspectCli.parseInspect]; the verb main now calls this and translates
      * the typed result into the `inspect: ...` stderr line + exit 2 it has always used. The
@@ -842,7 +842,7 @@ object CliParser {
         InspectParseResult.Rejected(message)
 
     /**
-     * CC-1 / R4 / WU-R4.7 — `pipelinek events --db <path> <runId> [opts]`.
+     * `pipelinek events --db <path> <runId> [opts]`.
      *
      * Body verbatim from [MainEventsCli.parseMainArgs]; the verb main calls this and renders the
      * typed rejection as `Error: <reason>` (the AUD-04 / AUD-05 contract the events verb has used
@@ -952,7 +952,7 @@ object CliParser {
     }
 
     /**
-     * CC-1 / R4 / WU-R4.7 — `--fields` token parse for the events verb. Kept private on the
+     * `--fields` token parse for the events verb. Kept private on the
      * parser; the closed vocabulary is the parser's contract, not the verb's.
      */
     private fun parseEventsFieldsToken(raw: String): List<EventField>? {
@@ -973,7 +973,7 @@ object CliParser {
         return out
     }
 
-    /** CC-1 — non-negative Int parse for `--context` / `--tail`. */
+    /** non-negative Int parse for `--context` / `--tail`.*/
     private fun parseEventsNonNegativeInt(raw: String): Int? {
         val n = raw.toIntOrNull() ?: return null
         if (n < 0) return null
@@ -981,7 +981,7 @@ object CliParser {
     }
 
     /**
-     * CC-1 / R4 / WU-R4.7 — `pipelinek console --control-dir <path> <runId> <opId> [opts]`.
+     * `pipelinek console --control-dir <path> <runId> <opId> [opts]`.
      *
      * Body verbatim from the now-removed [MainConsoleCliAdmission]. The verb main calls this and
      * renders the typed [ConsoleCliRefusal] through [renderConsoleCliRefusal], which produces the
@@ -1564,7 +1564,7 @@ object CliParser {
         }
     }
 
-    /** CC-1 — events verb default page size; the same value [MainEventsCli] used locally. */
+    /** events verb default page size; the same value [MainEventsCli] used locally.*/
     private const val EVENTS_DEFAULT_LIMIT: Int = 100
 }
 
@@ -1587,7 +1587,7 @@ private enum class FlagOption(val token: String) {
     RESUME("--resume"),
     RERUN("--rerun"),
 
-    /** RP034-H / ADR-0101: managed scratch workspace. */
+    /** managed scratch workspace.*/
     ISOLATED("--isolated"),
 
     /**
@@ -1624,13 +1624,13 @@ private enum class ValuedOption(val token: String) {
     TAIL_BYTES("--tail-bytes"),
     LIMIT("--limit"),
     CHANNEL("--channel"),
-    // PK-1 / ADR-PK1-IDENTITY: external invoker correlation token.
+    // external invoker correlation token.
     // The string is held as-is and converted to a typed
     // [CorrelationId] after parsing; the parser refuses blank
     // values via the same [MissingOptionValue] path as every
     // other valued flag.
     CORRELATION_ID("--correlation-id"),
-    // PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: opt-in versioned
+    // opt-in versioned
     // output protocol. Repeating the flag collects the tokens;
     // Main.kt validates the last-supplied id against
     // [OutputProtocol.SUPPORTED_IDS] and exits InvalidArgument
@@ -1702,7 +1702,7 @@ private object ValuedOptions {
         ValuedOption.CONTROL_ROOT -> { state.controlRoot = value; ApplyOutcome.Applied(index + 2) }
         ValuedOption.WORKSPACE -> { state.workspace = value; ApplyOutcome.Applied(index + 2) }
         ValuedOption.PLUGIN_JAR -> { state.pluginJars += value; ApplyOutcome.Applied(index + 2) }
-        // PK-1 / ADR-PK1-IDENTITY: blank values are rejected here at
+        // blank values are rejected here at
         // the boundary; downstream the CliFlags.correlationId field
         // converts the string to a typed [CorrelationId] with the
         // same init guard.
@@ -1714,7 +1714,7 @@ private object ValuedOptions {
                 ApplyOutcome.Applied(index + 2)
             }
         }
-        // PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING: collect every supplied
+        // collect every supplied
         // --output-protocol token in the order the operator passed them.
         // The list is the client's priority for the negotiation. Resolution
         // (intersection with OutputProtocol.SUPPORTED_IDS, fail-closed on
@@ -1861,7 +1861,7 @@ private object TextFilterOptions {
 // ====================================================================== CC-1 types
 
 /**
- * CC-1 / R4 / WU-R4.7 — typed result of [CliParser.parseConsole].
+ * typed result of [CliParser.parseConsole].
  *
  * Same shape the verb used locally; promoted to a top-level type so the parser and the verb main
  * share one result algebra. The wire prefixes (`Error:` for argument refusals,
@@ -1875,7 +1875,7 @@ sealed interface ConsoleCliParseResult {
 }
 
 /**
- * CC-1 / R4 / WU-R4.7 — closed ADT of what `pipelinek events` may emit per row.
+ * closed ADT of what `pipelinek events` may emit per row.
  *
  * Same shape [MainEventsCli.RowProjection] had locally; promoted to a top-level type because the
  * parser and the verb main now share the type. The two cases are deliberately separate: a future
@@ -1891,7 +1891,7 @@ sealed interface EventsRowProjection {
 }
 
 /**
- * CC-1 / R4 / WU-R4.7 — typed arguments [CliParser.parseEvents] hands the verb main.
+ * typed arguments [CliParser.parseEvents] hands the verb main.
  *
  * Every field is the value the runtime needs to issue a [dev.rubentxu.pipeline.v2.events.identity.EventQuery],
  * a follow, or a typed projection; nothing here is a positional placeholder. The fields mirror
@@ -1913,7 +1913,7 @@ data class EventsCliArgs(
 )
 
 /**
- * CC-1 / R4 / WU-R4.7 — typed result of [CliParser.parseEvents].
+ * typed result of [CliParser.parseEvents].
  *
  * Same two-case shape as the verb's local `MainArgs`. The verb main translates a [Rejected] into
  * `Error: <reason>` on stderr; a [Parsed] flows into the typed [runWithArgs] path the events

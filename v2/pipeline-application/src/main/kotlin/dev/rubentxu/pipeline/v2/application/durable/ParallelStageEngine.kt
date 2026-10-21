@@ -71,7 +71,7 @@ internal class ParallelStageEngine(
         // Dispatches parallel branch bodies with fresh per-child journal rows so
         // every branch child gets independent durable rows and a durable rerun
         // reuses completed branch work instead of duplicating it.
-        // E-EM-11 Z2: the canonical stage law is StageStarted < stage execution <
+        // the canonical stage law is StageStarted < stage execution <
         // StageFinished for EVERY admitted stage, including parallel bodies. The
         // parallel path previously forked before the linear-path StageStarted emitter,
         // an accidental implementation difference, not a different Stage semantic.
@@ -79,7 +79,7 @@ internal class ParallelStageEngine(
         // by the caller's continuation handling.
         runLifecycle.stageStarted(runId, stageIndex, stage.name)
 
-        // PAR-D D2: plan the parallel aggregate from durable facts BEFORE any branch
+        // plan the parallel aggregate from durable facts BEFORE any branch
         // launches. The reconciler is pure; this class is the single writer.
         val aggregateId = ParallelAggregateId(runId = runId.value, stageIndex = stageIndex)
         val aggregateInput = OperationInput(
@@ -154,7 +154,7 @@ internal class ParallelStageEngine(
 
         val branchOutcomes = launchBranches(branches, branchesToRun, runId, stageIndex, stageShOptions, executionContext)
 
-        // PAR-D D2: fold the typed branch outcomes (exact semantic knowledge at fresh
+        // fold the typed branch outcomes (exact semantic knowledge at fresh
         // execution time) and close the aggregate row with the lossless carrier.
         val outcomeByBranch = branchesToRun.mapIndexed { i, branchIdx ->
             val o = branchOutcomes[i]
@@ -210,7 +210,7 @@ internal class ParallelStageEngine(
                     val branchOutcome = executeBranchSteps(
                         branch, runId, stageIndex, branchIndex, stageShOptions, executionContext,
                     )
-                    // P3-E E2: exhaustive WITHOUT `else`, on purpose. This used to end
+                    // exhaustive WITHOUT `else`, on purpose. This used to end
                     // in `else -> "success"`, which meant a `StepOutcome` case nobody had
                     // written yet would be reported to every external observer as a
                     // SUCCESS. The type system is the only thing standing between a new
@@ -427,7 +427,7 @@ internal class ParallelStageEngine(
     ): StepOutcome {
         // CTX-P2 branch derivation: immutable value; today branchContext == parentContext.
         val branchContext = executionContext
-        // SB-S-008 / WU-LPR-071: parallel branches get ISOLATED cwds. The workspace is
+        // parallel branches get ISOLATED cwds. The workspace is
         // derived purely from (controlDirRoot, stageIndex, branchIndex) and carried in
         // the branch's immutable ShOptions copy — no coordinator state is mutated and
         // no branch can observe a sibling's working directory. With --workspace

@@ -9,7 +9,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 
 /**
- * PK-1 / ADR-PK1-IDENTITY — closed taxonomy of CLI exit codes.
+ * closed taxonomy of CLI exit codes.
  *
  * A consumer that branches on a process exit code SHOULD map the [code]
  * to one of the cases below. The [name] is stable across releases and
@@ -19,7 +19,6 @@ import kotlinx.serialization.json.putJsonObject
  * The 8 cases are exhaustive: any new exit reason must extend this
  * sealed interface, not return an ad-hoc `Int`.
  *
- * @see ADR-PK1-IDENTITY for the design rationale.
  */
 sealed interface CliExit {
     /** Exit code returned to the OS. Stable. */

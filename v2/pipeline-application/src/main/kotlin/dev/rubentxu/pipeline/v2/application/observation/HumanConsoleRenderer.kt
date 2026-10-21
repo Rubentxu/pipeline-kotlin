@@ -231,7 +231,7 @@ object HumanConsoleRenderer {
     @Suppress("DEPRECATION") // AgentResolved has no producer but is part of the sealed hierarchy.
     internal fun line(event: DomainEvent, scope: Scope): Line = when (event) {
         is RunStarted, is RunFinished, is CompilationStarted, is CompilationFinished,
-        // PK-1 / ADR-PK1-IDENTITY: RunCorrelated is run-scoped metadata
+        // RunCorrelated is run-scoped metadata
         // (not a lifecycle bookend). For the text console it shares the
         // run-line rendering with the other run-family events; the
         // correlationId is in the event data and surfaces through the

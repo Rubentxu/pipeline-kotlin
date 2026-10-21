@@ -21,7 +21,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * EM-7 / LFC-5.3 — Symmetric JSON codec for credential binding specs across the
+ * Symmetric JSON codec for credential binding specs across the
  * compiled BlockStepNode payload seam.
  *
  * [CredentialBindingSpec] is a sealed ADT (per ADR-0051) and deliberately NOT

@@ -10,7 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciler
  * Driver that ties together the durable control journal and the pure
  * [WaitUntilReconciler] into a single decision point.
  *
- * WU-G5R.5 — mirrors [RetryReconciliationDriver].
+ * mirrors [RetryReconciliationDriver].
  *
  * The driver is the THINKER, not the WRITER:
  *  1. Reads the durable state for the given waitUntil logical invocation;

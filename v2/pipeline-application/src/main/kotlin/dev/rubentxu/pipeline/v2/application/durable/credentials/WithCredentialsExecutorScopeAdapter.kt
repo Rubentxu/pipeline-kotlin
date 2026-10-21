@@ -9,7 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
 import dev.rubentxu.pipeline.v2.events.EventSink
 
 /**
- * EM-7 / LFC-5.3 — Application adapter implementing [CredentialScopePort].
+ * Application adapter implementing [CredentialScopePort].
  *
  * Wraps the port-driven [WithCredentialsExecutor] (an adapter of the credential
  * SPI ports) so the canonical coordinator only names the application seam

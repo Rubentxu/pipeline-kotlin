@@ -14,7 +14,7 @@ import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
 
 /**
- * H5-B — how the runtime presents a credential store to a plugin as a NARROW seam.
+ * how the runtime presents a credential store to a plugin as a NARROW seam.
  *
  * This is the adapter the H5-A commit had to leave open. It sits here, in the module
  * that already owns [CredentialProvider], for the same reason the port sits in

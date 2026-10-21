@@ -64,27 +64,27 @@ import dev.rubentxu.pipeline.v2.domain.Capability
  * "ausencia => fallback o refusal" unchanged.
  */
 object Capabilities {
-    // CRIC-M1 — PUBLICADA in v0.49.0-rc1; carried forward as PUBLICADA in v0.50.0-rc1, v0.51.0-rc1, v0.53.0-rc1.
+    // PUBLICADA in v0.49.0-rc1; carried forward as PUBLICADA in v0.50.0-rc1, v0.51.0-rc1, v0.53.0-rc1.
     val OUTPUT_FOLLOW_V1: Capability = Capability("output.follow.v1")
     val EVENTS_FOLLOW_V1: Capability = Capability("events.follow.v1")
 
-    // CRIC-M2 — EXPERIMENTAL since v0.50.0-rc1; promoted to PUBLICADA after the candidate is CERTIFIED.
+    // EXPERIMENTAL since v0.50.0-rc1; promoted to PUBLICADA after the candidate is CERTIFIED.
     val RUNTIME_INSPECT_V1: Capability = Capability("runtime.inspect.v1")
     val RUNTIME_CANCEL_V1: Capability = Capability("runtime.cancel.v1")
     val RUNTIME_RECOVER_V1: Capability = Capability("runtime.recover.v1")
 
-    // CRIC-M3 — EXPERIMENTAL since v0.51.0-rc1; promoted to PUBLICADA after the candidate is CERTIFIED.
+    // EXPERIMENTAL since v0.51.0-rc1; promoted to PUBLICADA after the candidate is CERTIFIED.
     val OUTPUT_READ_DIGESTED_V1: Capability = Capability("output.read.digested.v1")
     val OUTPUT_PIN_V1: Capability = Capability("output.pin.v1")
     val OUTPUT_REFUSAL_RETENTION_V1: Capability = Capability("output.refusal.retention.v1")
 
-    // CRIC-M6 — EXPERIMENTAL since v0.53.0-rc1 (this release); promoted to PUBLICADA after the candidate is CERTIFIED.
+    // EXPERIMENTAL since v0.53.0-rc1 (this release); promoted to PUBLICADA after the candidate is CERTIFIED.
     // runStructure adds typed enumeration of stages / steps / operations with bounded scan + resume cursor.
     val RUNTIME_STRUCTURE_V1: Capability = Capability("runtime.structure.v1")
     // inspectOperation adds typed per-operation terminality query.
     val RUNTIME_OPERATION_V1: Capability = Capability("runtime.operation.v1")
 
-    // CRIC-M7 — EXPERIMENTAL since v0.54.0-rc1 (this release); promoted to PUBLICADA after the candidate is CERTIFIED.
+    // EXPERIMENTAL since v0.54.0-rc1 (this release); promoted to PUBLICADA after the candidate is CERTIFIED.
     // EventShapeReadPort adds typed read of the Stage / Step boundary events on :pipeline-events.
     val RUNTIME_EVENT_SHAPE_V1: Capability = Capability("runtime.eventshape.v1")
 }

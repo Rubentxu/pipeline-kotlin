@@ -40,7 +40,7 @@ object HttpPluginDeclaration {
     const val RELEASE_PROPERTIES_RESOURCE: String = "META-INF/http-release.properties"
 
     /**
-     * PK-RC-PLUGIN-001 — the apiRange is no longer a literal.
+     * the apiRange is no longer a literal.
      *
      * Before this refactor, the upper bound was hand-typed here, and a product version
      * bump from 0.53.x to 0.54.x was published without updating the literal: the

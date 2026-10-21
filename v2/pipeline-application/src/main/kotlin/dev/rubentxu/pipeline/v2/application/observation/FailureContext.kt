@@ -12,7 +12,7 @@ import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import dev.rubentxu.pipeline.v2.output.OutputStreamAddress
 
 /**
- * OBS-E3: the failure-context projection — the one view an agent asks for instead of reading a
+ * the failure-context projection — the one view an agent asks for instead of reading a
  * 200 MB build log.
  *
  * ```text

@@ -23,7 +23,7 @@ kotlin {
 }
 
 dependencies {
-    // P3-E E6: `StepSpec.Error.failureKind` is typed as `FailureKind`, so the published ABI of
+    // `StepSpec.Error.failureKind` is typed as `FailureKind`, so the published ABI of
     // this module names a type from `:pipeline-domain`. That makes the dependency part of the
     // contract and it has to be `api`, not `implementation`.
     //

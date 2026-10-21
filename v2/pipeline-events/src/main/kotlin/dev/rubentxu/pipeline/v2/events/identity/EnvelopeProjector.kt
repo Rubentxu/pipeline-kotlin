@@ -195,7 +195,7 @@ object EnvelopeProjector {
         is PluginEventEmitted -> runRef
         // RUN subject: run lifecycle / no finer stable identity in the event
         is RunStarted,
-        // PK-1 / ADR-PK1-IDENTITY: correlation event is also a run-scoped
+        // correlation event is also a run-scoped
         // event; its subject is the run itself, the correlationId rides
         // along in the envelope's data fields.
         is RunCorrelated,
@@ -217,13 +217,13 @@ object EnvelopeProjector {
         is StashCreated,
         is StashFailed,
         is StashRestored,
-        // S1-C — directive seam observability (run-scoped: no stage resource
+        // directive seam observability (run-scoped: no stage resource
         // exists yet; denial aborts before StageStarted creates one)
         is DirectiveAdmitted,
         is DirectiveDenied,
         is ExecutionTargetResolved,
         is GateEvaluated,
-        // WU-LPR-090 — core.publishHTML (Tier B #2)
+        // core.publishHTML (Tier B #2)
         is HtmlReportPublished,
         is HtmlReportSkipped,
         is HtmlReportFailed,
@@ -247,7 +247,7 @@ object EnvelopeProjector {
         is LockReleased,
         is LockSkipped,
         is LockAcquireFailed,
-        // RP6-B / WU-092: input lifecycle is run-scoped (no stage/step index;
+        // input lifecycle is run-scoped (no stage/step index;
         // the step events around it carry the position).
         is InputRequested,
         is InputProceed,

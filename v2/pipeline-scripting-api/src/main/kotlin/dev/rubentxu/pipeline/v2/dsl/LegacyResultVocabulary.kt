@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 
 /**
- * P3-E E6 — the STABLE authoring boundary for results whose vocabulary is CLOSED.
+ * the STABLE authoring boundary for results whose vocabulary is CLOSED.
  *
  * ## Why this object exists at all
  *

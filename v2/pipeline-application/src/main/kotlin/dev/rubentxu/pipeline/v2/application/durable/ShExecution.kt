@@ -81,7 +81,7 @@ object ShExecution {
 
 
     /**
-     * WU-LPR-011: redacts observable transcript content when a secret registry
+     * redacts observable transcript content when a secret registry
      * is active. Chunk-boundary-safe: a secret split across process output
      * chunks is still scrubbed (the registry's StreamingRedactor carries
      * boundary state across reads).
@@ -270,11 +270,11 @@ object ShExecution {
                 captureStdout = command.returnMode == ShellReturnMode.STDOUT,
             )
 
-            // OBS-B: the composed destination for the child's bytes. This is the whole change — the
+            // the composed destination for the child's bytes. This is the whole change — the
             // transcript is handed to the Output Plane by the pump WHILE the step runs, instead of
             // being written to a control-dir file and ingested once the step has returned.
             //
-            // OBS-C2.3: one ingress per CHANNEL, each addressing its own channel-addressed stream.
+            // one ingress per CHANNEL, each addressing its own channel-addressed stream.
             // The channel is part of the stream identity, so attribution survives a crash, a reopen
             // and a cursor hand-off with nothing extra to keep in step with the bytes. Declaring
             // both streams up front is what makes a crash between the first byte commit and the
@@ -340,7 +340,7 @@ object ShExecution {
                 transcriptRedactor = secretPatternRegistry?.let { registry ->
                     { raw -> dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor(registry).wrap(raw) }
                 },
-                // OBS-B: live destination, one per channel. Empty only when there is no control-dir root,
+                // live destination, one per channel. Empty only when there is no control-dir root,
                 // which is the non-durable fallback handled above.
                 channelSinks = ingressSinks,
             )
@@ -354,7 +354,7 @@ object ShExecution {
             //     read as terminal.capturedStdout) and is NOT part of the transcript at all; the
             //     stderr stream is the observable transcript. The stdout value must NOT be re-emitted
             //     as a console event.
-            // OBS-B: there is nothing left to ingest here, and that is the point.
+            // there is nothing left to ingest here, and that is the point.
             //
             // M1-P2 established that the transcript enters the Output Plane exactly once and that
             // no console event carries it. Before this it entered by a whole-file read AFTER the
@@ -375,7 +375,7 @@ object ShExecution {
             // What did NOT change, and is checked above and by OutputSingleAuthorityFitnessTest:
             // redaction happens before persistence, the bytes land in one authority, and no
             // console event is emitted for them.
-            // OBS-C3: the terminal is the only place that knows the operation is over, so it is the
+            // the terminal is the only place that knows the operation is over, so it is the
             // only place a tail may be sealed. The pump ending is NOT that fact: when the JVM dies
             // mid-`sh`, the pump ends while the operation continues, and a resumed run re-attaches to
             // the same operation id and appends to these very streams. Sealing on pump close would
@@ -384,7 +384,7 @@ object ShExecution {
             // Both channels are sealed because OBS-C2.3 gave the operation one stream per channel,
             // and a consumer that merged them must be able to see both reach their end.
             //
-            // M1-F.3 — per-channel seal. A stdout-only script (e.g. `sh("echo hi")`)
+            // per-channel seal. A stdout-only script (e.g. `sh("echo hi")`)
             // never opened stderr; sealing it would be a "no seal" outcome, not a
             // warning. The [OutputSealPort.seal] return type makes the four cases
             // explicit, and the per-channel loop below is the place that decides
@@ -393,7 +393,7 @@ object ShExecution {
             // controlDirRoot is non-null from this point: the function
             // checked it at the top and returned early otherwise.
             //
-            // WU-B: a seal is the durable statement "this operation's output is complete", and it is
+            // a seal is the durable statement "this operation's output is complete", and it is
             // the statement `console --follow` terminates on. So it MUST NOT be made for a
             // transcript the runtime has just declared it could not complete: a sink that lost a
             // write, or a pump still holding the read end at the drain budget. Sealing there would
@@ -425,7 +425,7 @@ object ShExecution {
                 secretPatternRegistry = secretPatternRegistry,
             )
         } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
-            // PAR-D: a CancellationException is an execution mechanism, not a failure.
+            // a CancellationException is an execution mechanism, not a failure.
             // Mapping it to Failed(INFRASTRUCTURE) would make "the run was cancelled"
             // indistinguishable from "the shell substrate broke". Rethrow unchanged.
             throw ce
@@ -691,7 +691,7 @@ object ShExecution {
             val result = try {
                 runtime.execute(request, sink)
             } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
-                // PAR-D: a cancellation is an execution mechanism, not a failure. The
+                // a cancellation is an execution mechanism, not a failure. The
                 // runtime already recorded its own durable CANCELLED terminal; mapping
                 // it to a Failed(INFRASTRUCTURE) value is the forbidden conversion.
                 throw ce
@@ -715,7 +715,7 @@ object ShExecution {
             // "EchoOutputCaptured is never emitted" would have been wrong here and would have pushed
             // someone into deleting the only observable console this path has.
             //
-            // WU-LPR-011: the observable content is redacted with the chunk-boundary-safe redactor
+            // the observable content is redacted with the chunk-boundary-safe redactor
             // before emission, exactly as on the durable path.
             val output = stdoutBuilder.toString() + stderrBuilder.toString()
             val observableContent = redactTranscript(output, secretPatternRegistry)

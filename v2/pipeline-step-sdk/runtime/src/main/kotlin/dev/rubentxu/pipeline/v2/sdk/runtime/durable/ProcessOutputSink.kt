@@ -300,7 +300,7 @@ data class ProcessOutputSinks(
 const val TRANSCRIPT_LIVE_WINDOW_BYTES: Int = 64 * 1024
 
 /**
- * WU-B: the failure code carried when a transcript could not be persisted or could not be drained.
+ * the failure code carried when a transcript could not be persisted or could not be drained.
  *
  * It lives here, next to the refusal it describes, so the runtime that PRODUCES it and the caller
  * that acts on it cannot drift onto two spellings of the same fact. A caller branching on this must

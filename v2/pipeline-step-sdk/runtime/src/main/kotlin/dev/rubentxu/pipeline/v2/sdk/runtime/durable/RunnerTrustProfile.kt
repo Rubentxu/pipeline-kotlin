@@ -1,7 +1,7 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 /**
- * WU-RP-041: declared trust profile of a local runner (roadmap RP-4 criterion:
+ * declared trust profile of a local runner (roadmap RP-4 criterion:
  * "diferenciar ejecución confiable de multi-tenant").
  *
  * Closed ADT. Each case carries ONLY the sandbox guarantees that profile can

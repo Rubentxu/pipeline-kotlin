@@ -80,7 +80,7 @@ internal fun runDurablePipeline(
         scriptContent,
     )
     val controlDirRoot = resolveDurableControlRoot(config, dbPath)
-    // WU-LPR-WC: the canonical engine threads `workspaceBase` through
+    // the canonical engine threads `workspaceBase` through
     // `CanonicalRuntimeContext.workspaceBase`; the capability bridge
     // populates `WORKSPACE_IDENTITY_CAPABILITY` from
     // `context.shOptions.workspaceRoot`. Plugins consume the typed
@@ -132,11 +132,11 @@ internal fun runDurablePipeline(
     // LF-0205 (closed LEG-1.1): the legacy PipelineOrchestrator was constructed here but
     // never invoked. The CLI reaches the durable runtime ONLY through the canonical
     // RunCoordinator (fail-closed exit 2 otherwise). LEG-1 burn-down deleted the class.
-    // LB-02 / EP-6: compose the registry BEFORE the canonical-eligibility gate —
+    // compose the registry BEFORE the canonical-eligibility gate —
     // eligibility is registry-derived, so external plugin contributions must be
     // visible to the gate or a contributed key would be wrongly rejected as
     // non-canonical. Same composed registry is handed to the coordinator below.
-    // S6-COMPOSITION: same single entry point as the in-memory branch above. Writing the admission
+    // same single entry point as the in-memory branch above. Writing the admission
     // wiring out a second time here would let the two branches disagree about which plugins were
     // admitted, which is precisely the defect S6/G removed once already.
     val composition = admitThenComposeOrExit(config.pluginJars)
@@ -167,7 +167,7 @@ internal fun runDurablePipeline(
     // event inside the try; guarantee the close in finally on every path.
     val runOutcomeAndLastEvent: Pair<RunOutcome?, DomainEvent?> = try {
         val outcome: RunOutcome? = when {
-            // LFC-2R / R4B: the scripted FRONTEND form runs against the SAME durable
+            // the scripted FRONTEND form runs against the SAME durable
             // authority (journal, registry, event sink, control root) composed for the
             // canonical path. This is a frontend selection, never a second runner: the
             // invocation authority is the registry seam proven in R1/R2 (R4A model B).
@@ -210,7 +210,7 @@ internal fun runDurablePipeline(
                                 // `--isolated` preserves the historical PipelineK-managed scratch;
                                 // `--workspace <path>` stays authoritative.
                                 workspace = workspaceTransport,
-                                // H5-B: the CAPABILITY is offered on every path — the coordinator always
+                                // the CAPABILITY is offered on every path — the coordinator always
                                 // contributes `credentials.basic`, and a run with no store is backed by a
                                 // source that refuses every lookup with `NotConfigured`. What this path
                                 // adds is the PROVIDER, because this world opened the store the operator
@@ -255,7 +255,7 @@ internal fun runDurablePipeline(
         rawEventStore.close()
         Pair(outcome, lastEventCaptured)
     } finally {
-        // S2-R0: release ownership on every exit path, including the
+        // release ownership on every exit path, including the
         // exception paths, so a crashed run is immediately recoverable by the
         // next owner instead of waiting for the OS to reap the lock.
         runCatching { lease.leaseStore.release(requireNotNull(lease.runOwner)) }
@@ -378,7 +378,7 @@ private fun establishDurableIdentity(
     definitionId: dev.rubentxu.pipeline.v2.domain.DefinitionId,
 ): DurableRunIdentity {
     val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
-    // PK-1 / ADR-PK1-IDENTITY: build the correlationId once here at
+    // build the correlationId once here at
     // the CLI boundary so both the durable last-run record and the
     // RunCorrelated event share the same token.
     val pk1Correlation: CorrelationId = config.correlationId?.let { CorrelationId(it) }
@@ -392,7 +392,7 @@ private fun establishDurableIdentity(
             correlationId = pk1Correlation,
         )
     } catch (e: IllegalArgumentException) {
-        // WU-LPR-011 F4: --resume without a prior durable run is an
+        // --resume without a prior durable run is an
         // invocation/admission error, not a pipeline failure. Typed
         // rejection, no stack trace, exit 2 per the CLI exit contract.
         System.err.println("Error: ${e.message}")
@@ -401,10 +401,10 @@ private fun establishDurableIdentity(
     }
     val runId = runSelection.runId.value
     val lease = acquireDurableLease(controlDirRoot, runId)
-    // PK-1 / ADR-PK1-IDENTITY: lease is held; emit the RunCorrelated
+    // lease is held; emit the RunCorrelated
     // event on the durable event sink and the LaunchReceipt on stdout.
     // The owner is the lease-acquired runOwner.
-    // PK-1 / ADR-PK1-IDENTITY: the durable branch's correlation is the
+    // the durable branch's correlation is the
     // one persisted alongside the runId; fall back to the CLI-bound
     // token if the durable record has none.
     emitCorrelationAndReceipt(
@@ -457,7 +457,7 @@ private fun admitDurableEventStore(
 /**
  * Where a durable run writes its control state.
  *
- * ML-R1: controlDirRoot is the parent directory of the SQLite db file (default).
+ * controlDirRoot is the parent directory of the SQLite db file (default).
  * Can be overridden via --control-root flag for testing.
  * Each step gets a subdirectory: $controlDirRoot/$runId-$stageIndex-$stepIndex/
  * C5: Validate control-root path before use
@@ -485,7 +485,7 @@ private data class DurableLease(
 )
 
 private fun acquireDurableLease(controlDirRoot: Path, runId: String): DurableLease {
-    // S2-R0: first-class run ownership. Before any event is written for this
+    // first-class run ownership. Before any event is written for this
     // run we must prove we are the only process writing to it. Without this,
     // two concurrent `--resume` invocations of the same definition both proceed
     // and collide on the durable `ux_events_run_sequence` uniqueness index, so
@@ -529,7 +529,7 @@ private fun acquireDurableLease(controlDirRoot: Path, runId: String): DurableLea
 /**
  * The scripted frontend of a durable run, when the source is generator-level.
  *
- * LFC-2R / R4B — frontend FORM selection. The compiler-backed mapping decides
+ * frontend FORM selection. The compiler-backed mapping decides
  * whether this source contains runtime-effectful scripted calls; the CLI only
  * picks the closed artifact FORM, never an execution authority and never a
  * concrete Step (R4A law: the CLI may choose the frontend, never the backend).
@@ -618,7 +618,7 @@ private fun resolveScriptedFrontend(
 }
 
 /**
- * H8-D2 — says WHY the run failed, on the stream an operator is already reading.
+ * says WHY the run failed, on the stream an operator is already reading.
  *
  * ## The defect this exists to end
  *

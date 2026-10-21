@@ -10,7 +10,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.ParallelDecision.ReuseUnstable
 import dev.rubentxu.pipeline.v2.domain.durable.ParallelDecision.Start
 
 /**
- * WU-LPR-023 — Pure plan port for parallel branch dispatch.
+ * Pure plan port for parallel branch dispatch.
  *
  * ## Why this exists
  *
@@ -106,7 +106,7 @@ sealed interface BranchPlan {
 }
 
 /**
- * WU-LPR-023 — Reference implementation of [BranchInvoker].
+ * Reference implementation of [BranchInvoker].
  *
  * Translation table (decision → plan):
  *

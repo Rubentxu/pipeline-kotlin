@@ -7,7 +7,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * S2-R0 — the effectful half of [RunExecutionLease]: a cross-process lease store.
+ * the effectful half of [RunExecutionLease]: a cross-process lease store.
  *
  * ## Why this is not `DbLock`
  *

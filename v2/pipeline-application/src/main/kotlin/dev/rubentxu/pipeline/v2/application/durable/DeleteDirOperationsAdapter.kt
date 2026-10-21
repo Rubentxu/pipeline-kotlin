@@ -53,7 +53,7 @@ class DeleteDirOperationsAdapter(
     private val stepIndex: Int,
     private val controlDirRoot: java.nio.file.Path,
     private val eventSink: EventSink,
-    /** WU-LPR-062: optional project-workspace override (--workspace). */
+    /** optional project-workspace override (--workspace).*/
     private val workspaceBase: java.nio.file.Path? = null,
     /**
      * RP034-G (ADR-0102): the typed workspace lease for this step.
@@ -80,7 +80,7 @@ class DeleteDirOperationsAdapter(
 
 
     override fun delete(input: DeleteDirInput): DeleteDirResult {
-        // RP034-I: `deleteDir` anchors on CURRENT_DIRECTORY (anchor matrix),
+        // `deleteDir` anchors on CURRENT_DIRECTORY (anchor matrix),
         // the same base `writeFile` and `sh` resolve against. It used to
         // re-derive the stage workspace from the control root, so inside a
         // `dir(...)` scope the two Steps disagreed about where "sub" was:

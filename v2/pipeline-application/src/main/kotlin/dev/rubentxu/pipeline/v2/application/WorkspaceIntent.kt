@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceRequest
 import java.nio.file.Path
 
 /**
- * RP034-H / ADR-0101 — CLI workspace intent, resolved once at the boundary.
+ * CLI workspace intent, resolved once at the boundary.
  *
  * The parser has already rejected `--isolated` together with `--workspace`, so
  * by the time these functions run the intent is unambiguous. The decision is a

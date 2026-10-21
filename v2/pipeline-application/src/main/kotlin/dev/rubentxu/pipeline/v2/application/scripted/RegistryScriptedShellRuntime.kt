@@ -5,7 +5,7 @@ import dev.rubentxu.pipeline.v2.application.CoreShellStep
 import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 
 /**
- * S4-A1 — the scripted shell reaches the durable engine through the REGISTRY,
+ * the scripted shell reaches the durable engine through the REGISTRY,
  * or it does not run at all.
  *
  * ## Why this type exists
@@ -49,7 +49,7 @@ internal class RegistryScriptedShellRuntime(
 ) : ScriptedOperationRuntime {
 
     /**
-     * S4-D2: the decoded `CoreShellOutput` carries BOTH the value the program receives and the
+     * the decoded `CoreShellOutput` carries BOTH the value the program receives and the
      * canonical outcome. Narrowing to `.result` alone is what discarded the outcome and let an
      * `Unstable` scripted shell report `Success`; both halves now cross the port.
      *

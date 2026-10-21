@@ -79,7 +79,7 @@ class WorkspaceOperationsAdapter(
     private val controlDirRoot: Path?,
     private val eventSink: EventSink,
     private val runId: String = "",
-    /** WU-LPR-062: optional project-workspace override (--workspace). */
+    /** optional project-workspace override (--workspace).*/
     private val workspaceBase: Path? = null,
     /**
      * RP034-D (ADR-0100): the shared execution location for this step.
@@ -96,7 +96,7 @@ class WorkspaceOperationsAdapter(
     /**
      * The base directory file paths resolve against for the current scope.
      *
-     * RP034-D: this prefers the shared [executionLocation] cwd and falls back to
+     * this prefers the shared [executionLocation] cwd and falls back to
      * the stage workspace. Keeping one method here is what makes the verticals
      * agree: every file operation resolves through this, so none of them can
      * drift back to a private reconstruction.
@@ -112,7 +112,7 @@ class WorkspaceOperationsAdapter(
     override fun writeFile(file: String, text: String, encoding: String): FileWriteResult {
         val root = controlDirRoot
             ?: throw IllegalStateException("controlDirRoot is required for workspace file operations")
-        // RP034-D: resolve against the shared execution location so a `dir`
+        // resolve against the shared execution location so a `dir`
         // scope applies to file Steps exactly as it does to `sh`.
         val base = effectiveWorkspaceRoot(root)
         Files.createDirectories(base)

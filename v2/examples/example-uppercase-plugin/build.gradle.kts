@@ -38,7 +38,7 @@ val sdkVersion: String = requireNotNull(providers.gradleProperty("sdkVersion").o
 }
 
 // ----------------------------------------------------------------------------
-// PK-RELEASE-CONSOLIDATION D1 — the apiRange is derived from the resolved SDK.
+// the apiRange is derived from the resolved SDK.
 //
 // Two derivations, deliberately not one:
 //   - CEILING from sdkVersion, because the host version is the thing that moves.
@@ -219,7 +219,7 @@ val computeUppercaseRelease = tasks.register("computeUppercaseRelease") {
                 appendLine("pipeline.example.uppercase.namespace=${namespaceName.get()}")
                 appendLine("pipeline.example.uppercase.release.version=$releaseVersion")
                 appendLine("pipeline.example.uppercase.release.digest=sha256:$hex")
-                // PK-RELEASE-CONSOLIDATION D1: the compatibility range is DERIVED, not typed.
+                // the compatibility range is DERIVED, not typed.
                 // The ceiling is the NEXT MINOR of the resolved SDK, not the resolved version itself:
                 // PipelineKApiRange.accepts() is `runtime < untilExclusive`, so a ceiling equal to
                 // sdkVersion would make the plugin refuse the very host that loads it. See ADR.

@@ -15,9 +15,9 @@ import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.post.StageOutcome
 import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
-// WU-G5R.5: durable waitUntil reconciliation driver and identity factory.
+// durable waitUntil reconciliation driver and identity factory.
 
-// RETRY-D: control journal + reconciliation driver (ADR-0075 §11).
+// control journal + reconciliation driver (ADR-0075 §11).
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.retry.RetryReconciliationDriver
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
@@ -68,7 +68,7 @@ class CanonicalDurableRunCoordinator(
         dev.rubentxu.pipeline.v2.events.registry.EventRegistry.create(),
     private val credentialScopePort: CredentialScopePort,
     private val controlDirRoot: Path? = null,
-    /** WU-LPR-062: optional project-workspace override (--workspace <dir>). */
+    /** optional project-workspace override (--workspace <dir>).*/
     private val workspaceBase: Path? = null,
     private val shOptions: ShOptions = ShOptions.EMPTY,
     // WU-LPR-011 secret-redaction slice: active secret registry threaded to the
@@ -99,15 +99,15 @@ class CanonicalDurableRunCoordinator(
     // later, execution. Additive at the end of the ctor so the ~25 legacy call-sites (positional or
     // named) compile unchanged. No global registry, no service locator, no singleton.
     private val stepRegistry: StepRegistry? = null,
-    // RETRY-D: optional retry control journal. When bound, the retry branch of `dispatchBody`
+    // optional retry control journal. When bound, the retry branch of `dispatchBody`
     // routes through RetryReconciliationDriver (ADR-0075 §11). When null, the pre-ADR-0075
     // inline retry loop is preserved bit-equivalent — existing callers and tests see no change.
     private val retryControlJournal: FileBasedRetryControlJournal? = null,
-    // WU-G5R.4 / WU-G5R.5: optional waitUntil control journal. When bound, the waitUntil
+    // optional waitUntil control journal. When bound, the waitUntil
     // branch routes through the WaitUntilReconciler (durable polling aggregate). When null,
     // the pre-WU-G5R.5 inline polling loop is preserved — existing callers and tests see no change.
     private val waitUntilControlJournal: WaitUntilControlJournal? = null,
-    // S2-A9: milestone state store scoped to this coordinator/run. Each coordinator instance
+    // milestone state store scoped to this coordinator/run. Each coordinator instance
     // creates its own MilestoneStateStore by default, so all milestone invocations within a run
     // share the same store (shared by all pipeline stages in the run) while concurrent runs
     // are fully isolated. This mirrors the legacy CanonicalMilestoneNodeDispatcher.lastReachedOrdinal
@@ -137,7 +137,7 @@ class CanonicalDurableRunCoordinator(
     // single shared-loop law is preserved: the adapter NEVER iterates body children itself.
     private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter = CanonicalBodyInvokerAdapter(),
 
-    // S1-B: the open DirectiveRegistry. When bound, every stage's declared
+    // the open DirectiveRegistry. When bound, every stage's declared
     // directives are admitted against it BEFORE the stage starts (pure
     // decision via StageDirectivePlanner, interpreted here at the effect
     // boundary); a denial fails the run closed with a typed USER failure and
@@ -147,7 +147,7 @@ class CanonicalDurableRunCoordinator(
     private val directiveRegistry: dev.rubentxu.pipeline.v2.domain.directive.DirectiveRegistry? = null,
 
     /**
-     * S2-A: the facts a gate is evaluated against, read at the effect boundary.
+     * the facts a gate is evaluated against, read at the effect boundary.
      *
      * Takes the CURRENT STAGE's declared environment: a gate is a property of
      * the stage that carries it, and the stage's own `environment { }` block
@@ -161,7 +161,7 @@ class CanonicalDurableRunCoordinator(
         { dev.rubentxu.pipeline.v2.domain.directive.GateContext.EMPTY },
 
     /**
-     * S2-A: the PURE decision. Injected so the engine interprets a verdict
+     * the PURE decision. Injected so the engine interprets a verdict
      * rather than computing one, keeping "decide" and "interpret" separate as
      * the architecture requires.
      */
@@ -190,7 +190,7 @@ class CanonicalDurableRunCoordinator(
     private val outputRetention: RunOutputRetention? = null,
 
     /**
-     * S4-F2 — how a [StageBody.Scripted] body becomes a runnable artifact. Injected because the
+     * how a [StageBody.Scripted] body becomes a runnable artifact. Injected because the
      * registry is composed where artifacts are compiled, not here. `null` means this coordinator
      * cannot run scripted bodies, and a scripted stage then says exactly that rather than
      * degrading into a stage that quietly did nothing.
@@ -240,7 +240,7 @@ class CanonicalDurableRunCoordinator(
         runningSubprocessRecovery = ExternalSubprocessRecovery(clock, controlDirRoot, reattachPoll),
     )
 
-    // WU-RP-031 E3: typed input preparation behind a narrow collaborator.
+    // typed input preparation behind a narrow collaborator.
     private val typedInputPreparation: DurableTypedInputPreparation = DurableTypedInputPreparation(
         stepRegistry = stepRegistry,
         milestoneStateStore = milestoneStateStore,
@@ -288,7 +288,7 @@ class CanonicalDurableRunCoordinator(
             capabilityContributor = capabilityContributor,
         )
 
-    // WU-RP-031 E4 / ADR-0103 D7: the executor folds ONE operation; the traversal owns the cursor.
+    // the executor folds ONE operation; the traversal owns the cursor.
     private val stepExecutor: DurableStepExecutor = DurableStepExecutor(
         eventSink = eventSink,
         executionBoundary = executionBoundary,
@@ -367,7 +367,7 @@ class CanonicalDurableRunCoordinator(
 
     suspend fun run(pipeline: CompiledPipeline, runId: RunId): RunOutcome {
         runLifecycle.openRun(pipeline, runId)
-        // CTX-P2: ambient execution context is a run-local immutable value threaded
+        // ambient execution context is a run-local immutable value threaded
         // explicitly through dispatch; no coordinator field, no restore idiom.
         var ambient = ExecutionContext.EMPTY
 
@@ -394,7 +394,7 @@ class CanonicalDurableRunCoordinator(
                     }
 
                     is BeforeStageDirectiveEngine.Verdict.SkipStage -> {
-                        // S2-B: a skip is itself a stage outcome. The finalizers that fire for
+                        // a skip is itself a stage outcome. The finalizers that fire for
                         // it are exactly the ones the pure planner selects for Skipped
                         // (always + cleanup); if the author declared none, this is a no-op.
                         stageExecution.runPostBlock(
@@ -448,7 +448,7 @@ class CanonicalDurableRunCoordinator(
                 if (steps == null && stage.body is StageBody.Parallel) {
                     // Workspace creation is required before branch dispatch (D5/C1 reuse).
                     val parallelOutcome = parallelStages.runParallelStage(stage, stageIndex, stageShOptions, runId, ambient)
-                    // S4-F2: post-block + StageFinished are ONE rule, in StageExecutionEngine, and
+                    // post-block + StageFinished are ONE rule, in StageExecutionEngine, and
                     // this arm used to spell it out with outcome STRINGS while the engine passed
                     // StageOutcome — a copy that had already drifted. It is a call now, and it is
                     // the SAME call the scripted body makes.
@@ -463,7 +463,7 @@ class CanonicalDurableRunCoordinator(
                     }
                     continue@stagesLoop
                 }
-                // S4-F2: a scripted body enters the SAME spine. The continuation rule and the
+                // a scripted body enters the SAME spine. The continuation rule and the
                 // finalisation live in StageExecutionEngine, so this arm is a call, not a copy.
                 if (steps == null && stage.body is StageBody.Scripted) {
                     val scripted = scriptedStageExecution ?: throw EngineInvariantViolation(
@@ -485,7 +485,7 @@ class CanonicalDurableRunCoordinator(
                 val steps1 = steps ?: throw IllegalArgumentException("Unsupported ${stage.body::class.simpleName} in '${stage.name}'")
                 // D5: Per-stage workspaceRoot override at dispatch boundary
                 // C1: Workspace pre-creation - ensure stage workspace exists before shell dispatch
-                // LFC-2 / ERR-S-004: restore stage bookends lost in the LF-0208 spine migration.
+                // restore stage bookends lost in the LF-0208 spine migration.
                 // The canonical coordinator emits StageStarted at entry and StageFinished on normal
                 // completion (success/unstable). An aborting stage returns before StageFinished;
                 // RunFinished carries the failure.
@@ -529,7 +529,7 @@ class CanonicalDurableRunCoordinator(
 }
 
 /**
- * WU-RP-033: read-only [StepRegistry] view over a nullable registry. Used by the
+ * read-only [StepRegistry] view over a nullable registry. Used by the
  * composed body-policy authority so callers that never wired a registry keep the
  * historical behaviour (open-registry lookup returns UnknownStep and the canonical
  * core table answers).

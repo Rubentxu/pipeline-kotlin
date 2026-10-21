@@ -8,7 +8,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
 
 /**
- * M1-A — production adapter for [EventRecordReadPort] backed by any [EventStore].
+ * production adapter for [EventRecordReadPort] backed by any [EventStore].
  *
  * ## Why this adapter exists
  *

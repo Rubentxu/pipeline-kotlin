@@ -362,7 +362,7 @@ class SecretPatternRegistry {
      * where the error message may contain embedded credentials that need to be
      * redacted before the event is emitted.
      *
-     * INV-L6-CR-013: `GitCheckoutFailed.reason` must be scrubbed via this method
+     * `GitCheckoutFailed.reason` must be scrubbed via this method
      * before construction of the event.
      *
      * @param input The string to scrub

@@ -37,7 +37,7 @@ internal class RuntimeScriptedStepFacade(
 ) : ScriptedStepFacade {
 
     /**
-     * S4-A1 — the façade's single seam to durable execution.
+     * the façade's single seam to durable execution.
      *
      * Everything a runtime-returning call needs before it can name a Step is
      * here, once: the invoker must exist (fail loud, never a fabricated value),
@@ -60,7 +60,7 @@ internal class RuntimeScriptedStepFacade(
                 "runtime-returning scripted steps require a registry invoker; " +
                     "wire ScriptedRegistryInvoker into this entry point runtime",
             )
-        // S4-D2: `invokeTyped` hands back the value AND the canonical outcome. The outcome is
+        // `invokeTyped` hands back the value AND the canonical outcome. The outcome is
         // recorded here — the one place that sees every runtime-returning call — and only the
         // value crosses into Kotlin. The program never sees, and must never set, the outcome.
         val settled = invoker.invokeTyped(
@@ -82,7 +82,7 @@ internal class RuntimeScriptedStepFacade(
     }
 
     /**
-     * S4-A1 — all three `sh` shapes reach the durable engine through the registry,
+     * all three `sh` shapes reach the durable engine through the registry,
      * so the scripted frontend admits `core.sh`'s declared
      * `SHELL_OPERATIONS_CAPABILITY` on the same path a declarative `sh` does.
      *
@@ -133,7 +133,7 @@ internal class RuntimeScriptedStepFacade(
     ).result
 
     /**
-     * LFC-2R / R2 — the first runtime-returning scripted consumer of the generic
+     * the first runtime-returning scripted consumer of the generic
      * scripted→registry seam. This is a THIN ADAPTATION: identity + encoded unit
      * input → [ScriptedRegistryInvoker] → encoded output → the Step's OWN
      * [dev.rubentxu.pipeline.v2.domain.step.StepCodec] → Boolean.
@@ -150,7 +150,7 @@ internal class RuntimeScriptedStepFacade(
         call(callSite, CoreIsUnixStep.definition, IsUnixInput).isUnix
 
     /**
-     * WU-LPR-402 — runtime-returning workspace query façade. Mirrors [isUnix]
+     * runtime-returning workspace query façade. Mirrors [isUnix]
      * in shape: identity + encoded input → [ScriptedRegistryInvoker] →
      * encoded output → the Step's OWN [StepCodec] → String path.
      *

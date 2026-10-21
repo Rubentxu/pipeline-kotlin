@@ -29,7 +29,7 @@ fun readSecretText(): SecretText {
     val secret = System.console()?.readPassword() ?: error("no TTY available")
     if (secret.isEmpty()) error("empty secret not allowed")
     return SecretText(
-        // WU-RP-042: the store entry key is the CLI-supplied id passed to
+        // the store entry key is the CLI-supplied id passed to
         // SecretStore.add(id, credential); the embedded credential.id is not
         // the entry key and MUST NOT be constructed blank (CredentialsId has a
         // non-blank invariant). The placeholder CredentialsId("") threw on

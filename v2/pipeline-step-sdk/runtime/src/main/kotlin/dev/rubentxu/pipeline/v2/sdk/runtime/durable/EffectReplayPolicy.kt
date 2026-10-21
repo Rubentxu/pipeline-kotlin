@@ -117,7 +117,7 @@ class DefaultEffectReplayPolicy : EffectReplayPolicy {
     ): ReplayDecision {
         val reusable = journaledOutcome != null && journaledOutcome.isReusableCompletion()
 
-        // ADR-0103 D1 — the table is normative and its ORDER is the contract.
+        // the table is normative and its ORDER is the contract.
         // This was a cascade of `if`s whose order had grown accidental semantics
         // twice: the `RERUN` and `NEVER` branches returned before the effect set
         // was consulted, so `ABORTS_PIPELINE` could be pre-empted by a policy

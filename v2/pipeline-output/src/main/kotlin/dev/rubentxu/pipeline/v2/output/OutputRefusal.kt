@@ -9,7 +9,6 @@ package dev.rubentxu.pipeline.v2.output
  * an empty page — an empty page is a valid answer, and conflating it with "wrong stream" would let
  * a caller read position 0 of a different stream and believe it had read nothing.
  *
- * @see ADR-M1 §D3
  */
 sealed interface OutputRefusal {
 
@@ -59,7 +58,7 @@ sealed interface OutputRefusal {
     ) : OutputRefusal
 
     /**
-     * M1-B — a follow's declared stream lost retention between two polls.
+     * a follow's declared stream lost retention between two polls.
      *
      * Surfaced by [dev.rubentxu.pipeline.v2.output.follow.OutputFollower.open]
      * when a stream the consumer was tailing was pruned by the
@@ -74,7 +73,7 @@ sealed interface OutputRefusal {
     ) : OutputRefusal
 
     /**
-     * M1-B — the consumer closed the follow handle. Surfaced as a
+     * the consumer closed the follow handle. Surfaced as a
      * refusal when the follow's iterator was still being driven by
      * another consumer; the public contract is that the close is
      * idempotent and the refusal is the final event of the
@@ -83,7 +82,7 @@ sealed interface OutputRefusal {
     data class FollowCancelled(val runId: String) : OutputRefusal
 
     /**
-     * M1-B — the underlying storage failed during a follow poll.
+     * the underlying storage failed during a follow poll.
      *
      * The follow contract is total: a thrown exception from
      * [OutputReadPort.read], [OutputFrameIndex.framesOfRun] or

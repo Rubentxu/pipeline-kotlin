@@ -77,7 +77,7 @@ tasks.register<JavaExec>("candidateAdmission") {
     description = "DIST-PRODUCT P0.3: cheap identity admission for the distribution ZIP."
 
     dependsOn(":pipeline-application:distZip")
-    // PR-012 / WU-RP-5: every admitted candidate carries its SBOM. The cyclonedx plugin
+    // every admitted candidate carries its SBOM. The cyclonedx plugin
     // already produces build/reports/bom.json; the admission previously recorded
     // "sbom": null because nothing placed the BOM where the probe looks. Generate it as
     // part of admission and stage it under the probed name — no manual step, and the
@@ -327,7 +327,7 @@ fun gitCommitOf(root: Project): String = try {
 }
 
 // ----------------------------------------------------------------------------
-// PK-RC-PLUGIN-001 — the release gate.
+// the release gate.
 //
 // A release MUST NOT be published without this gate producing a PASS receipt
 // bound to the ZIP's sha256. The gate runs:

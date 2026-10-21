@@ -14,7 +14,7 @@ import dev.rubentxu.pipeline.v2.scripting.CacheKey
 internal object EventJsonFields {
 
     /**
-     * P3-E E6 — how "this optional field was not declared" travels on the wire.
+     * how "this optional field was not declared" travels on the wire.
      *
      * An optional field is written as the empty string, and read back as `null`. That pair used
      * to be two independent literals: thirteen `?: ""` in [EventJsonWriter] and thirteen

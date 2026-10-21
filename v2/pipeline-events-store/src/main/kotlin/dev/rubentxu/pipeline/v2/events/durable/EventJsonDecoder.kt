@@ -177,7 +177,7 @@ internal object EventJsonDecoder {
         return ScriptingDiagnostic(severity, message, line, column, path)
     }
 
-    // WU-LPR-089 — Stash helpers (compact JSON arrays).
+    // Stash helpers (compact JSON arrays).
     // parseJsonArrayObjects (which the ArtifactArchiveFailed-family already uses).
     /**
      * Decodes an entry list, distinguishing "the field is absent or empty" from
@@ -219,7 +219,7 @@ internal object EventJsonDecoder {
         return if (entries.size == arr.size) entries else null
     }
 
-    // WU-LPR-090 — HtmlReport helpers (compact JSON arrays, same shape as Stash).
+    // HtmlReport helpers (compact JSON arrays, same shape as Stash).
 
     fun decodeHtmlReportEntries(s: String): List<HtmlReportEntry> {
         val arr = extractJsonArray(s, "entries") ?: return emptyList()

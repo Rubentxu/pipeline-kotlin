@@ -7,7 +7,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilControlRowSnapshot
 // WaitUntilControlState is in the same package — no import needed.
 
 /**
- * WU-G5R.4 / WU-G5R.5: durable control journal for the waitUntil predicate polling loop.
+ * durable control journal for the waitUntil predicate polling loop.
  *
  * ## Single-writer law
  * The dispatch loop in [CanonicalDurableRunCoordinator] is the only caller of journal

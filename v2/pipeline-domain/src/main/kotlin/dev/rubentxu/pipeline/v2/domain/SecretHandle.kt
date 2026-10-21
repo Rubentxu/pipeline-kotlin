@@ -106,7 +106,7 @@ class SecretHandle private constructor(
     fun <R> peek(block: (ByteArray) -> R): R = block(bytes)
 
     /**
-     * LF-0402 — Non-destructive time-bounded access.
+     * Non-destructive time-bounded access.
      *
      * Hands the secret bytes to [block] inside a defensive copy. After the block
      * returns, the handle is NOT closed and the internal buffer is NOT wiped —
@@ -128,7 +128,7 @@ class SecretHandle private constructor(
     }
 
     /**
-     * LF-0402 — Read-only inspection of the secret bytes.
+     * Read-only inspection of the secret bytes.
      *
      * Returns a defensive copy of the internal byte array without touching the
      * wipe state. Mirrors [borrow] without the block parameter; intended for

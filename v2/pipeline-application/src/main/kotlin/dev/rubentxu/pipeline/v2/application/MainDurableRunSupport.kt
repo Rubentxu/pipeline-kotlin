@@ -16,7 +16,7 @@ import dev.rubentxu.pipeline.v2.domain.RunIdGenerator
  * alongside the durable-run types ([DurableRunPolicy], [RunIdDirectory],
  * [StoredRunId], [DurableRunSelection], [RunIdGenerator]) in the same package.
  *
- * PK-1 / ADR-PK1-IDENTITY: a [CorrelationId] is plumbed through
+ * a [CorrelationId] is plumbed through
  * [selectDurableRun] and persisted alongside the [dev.rubentxu.pipeline.v2.domain.RunId]
  * via [RunIdDirectory.record]. The correlation is durable and survives
  * the durable run selection.

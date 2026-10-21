@@ -443,7 +443,7 @@ object CoreShellStep {
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.EXECUTES_SUBPROCESS),
         replayPolicy = ReplayPolicy.RERUN,
-        // LB-02 / G3-A4.1.3: recovery is a declared Step property. Mirrors the
+        // recovery is a declared Step property. Mirrors the
         // CanonicalCoreStepMetadata["core.sh"] row so the registry-resolved
         // metadata is byte-equivalent to the legacy one before A4.8 flips routing.
         recoveryPolicy = RecoveryPolicy.ExternalSubprocess,
@@ -497,7 +497,7 @@ object CoreShellStep {
         }
 
     /**
-     * S4-F1-C2 — the Step-owned projection for a RECOVERED terminal.
+     * the Step-owned projection for a RECOVERED terminal.
      *
      * This is where «what does exit code 42 mean?» is answered, and the answer is: whatever this
      * invocation's `returnMode` says, which is why the method takes the decoded [CoreShellInput]
@@ -549,7 +549,7 @@ object CoreShellStep {
             descriptor = descriptor,
             inputCodec = inputCodec,
             outputCodec = outputCodec,
-            // LB-02 / G3-A4.2: capability declaration. The handler reaches
+            // capability declaration. The handler reaches
             // shell execution ONLY through this token; admission is fail-closed
             // at prepare-time when the runtime bridge does not provide it.
             requiredCapabilities = setOf(SHELL_OPERATIONS_CAPABILITY),
@@ -557,7 +557,7 @@ object CoreShellStep {
 
         override val handler: StepHandler<CoreShellInput, CoreShellOutput> = capabilityRoutedHandler
 
-        // S4-F1-C2: materialising a recovered terminal is NOT executing, so it needs no capability
+        // materialising a recovered terminal is NOT executing, so it needs no capability
         // and never reaches the handler above. The engine finds it by asking for the INTERFACE.
         override fun project(
             input: CoreShellInput,

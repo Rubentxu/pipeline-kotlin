@@ -51,7 +51,6 @@ import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepHandler
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import java.security.MessageDigest
 
 /**
  * What a failed call MEANS for the provider that failed.
@@ -447,16 +446,27 @@ object SagaChainStepDefinition : StepDefinition<SagaChainInput, SagaChainOutput>
      * The fingerprint is DERIVED, and derived from the plan: the same plan must produce the
      * same fingerprint in a later process, or a resumed run would arm a DIFFERENT promise
      * under the same key and be refused as a divergence.
+     *
+     * It is derived from the plan THIS declaration is built from, not from a second reading
+     * of the action. Two readings of one action are two chances to spell the same plan
+     * differently, and the digest is the only place the engine remembers which bodies the
+     * promise was made about.
+     *
+     * The form is the PUBLISHED one (`SagaPlanFingerprint.compute`), not a local copy: a
+     * consumer outside this repository has to be able to arrive at the same digest, and it
+     * can only do that if there is one form to arrive at.
      */
-    private fun declarationOf(sagaId: SagaId, action: SagaChainAction): CompensationDeclaration =
-        CompensationDeclaration(
+    private fun declarationOf(sagaId: SagaId, action: SagaChainAction): CompensationDeclaration {
+        val plan = actionPlanOf(action)
+        return CompensationDeclaration(
             sagaId = sagaId,
-            actionId = SagaActionId.of(action.actionId),
-            compensationId = CompensationId.of(action.compensationId),
-            planFingerprint = fingerprintOf(sagaId, action),
-            resourceRef = ResourceRef.of(action.resourceRef),
-            kind = CompensationKind.RESTORE,
+            actionId = plan.actionId,
+            compensationId = plan.compensationId,
+            planFingerprint = SagaPlanFingerprint.compute(sagaId, plan),
+            resourceRef = plan.resourceRef,
+            kind = plan.kind,
         )
+    }
 
     /** The action, as the engine's plan describes it. */
     private fun actionPlanOf(action: SagaChainAction): SagaActionPlan = SagaActionPlan(
@@ -467,23 +477,6 @@ object SagaChainStepDefinition : StepDefinition<SagaChainInput, SagaChainOutput>
         forwardSlot = PluginStepId(action.forwardSlot),
         compensateSlot = PluginStepId(action.compensateSlot),
     )
-
-    private fun fingerprintOf(sagaId: SagaId, action: SagaChainAction): SagaPlanFingerprint {
-        val canonical = listOf(
-            "saga-v1",
-            sagaId.value,
-            action.actionId,
-            action.compensationId,
-            action.resourceRef,
-            action.forwardSlot,
-            action.compensateSlot,
-            CompensationKind.RESTORE.name,
-        ).joinToString("|")
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(canonical.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-        return SagaPlanFingerprint(digest)
-    }
 }
 
 /** The codec of the chain's input. */

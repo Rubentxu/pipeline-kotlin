@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.domain.saga
 
+import java.util.Locale
+
 /**
  * The identity vocabulary of a Saga.
  *
@@ -140,6 +142,12 @@ value class CompensationId private constructor(val value: String) {
  * A plan fingerprint changes when the compensation changes: the resource it restores, the body it
  * invokes, the version of the codec. That is what makes "same key, different plan" detectable
  * instead of silently overwriting an obligation that was armed under another plan.
+ *
+ * The digest is DERIVED, not chosen: [Companion.compute] derives it from the plan's
+ * [canonicalFormOf][Companion.canonicalFormOf], whose version is
+ * [CANONICAL_FORM_VERSION][Companion.CANONICAL_FORM_VERSION]. A fingerprint that is not derived
+ * from a published form is a fingerprint two implementations will not agree on, and the whole
+ * point of this type is that they do.
  */
 @JvmInline
 value class SagaPlanFingerprint(val hex: String) {
@@ -156,6 +164,103 @@ value class SagaPlanFingerprint(val hex: String) {
     override fun toString(): String = hex
 
     companion object {
+        /**
+         * The version of the CANONICAL FORM this fingerprint is derived from.
+         *
+         * ## Why the version is a published constant and not a string in the code
+         *
+         * The form is a CONTRACT with whoever computes a fingerprint outside this repository: a
+         * consumer that arms a compensation has to produce the same digest the engine will
+         * compare against, or the engine will read its own promise as a different plan and
+         * refuse it. A consumer that cannot know WHICH form it is reproducing has to guess,
+         * and two consumers that guess differently produce two digests for one plan.
+         *
+         * So the version travels WITH the form. When the form changes, this constant changes
+         * with it, and a consumer that still implements the old one says so out loud instead
+         * of quietly disagreeing.
+         */
+        const val CANONICAL_FORM_VERSION: String = "saga-v1"
+
+        /**
+         * The CANONICAL FORM of a plan: the text the fingerprint is derived from.
+         *
+         * ## The form, exactly
+         *
+         * Eight fields, in this order, separated by `|`:
+         *
+         * ```text
+         * <version>|<sagaId>|<actionId>|<compensationId>|<resourceRef>|<forwardSlot>|<compensateSlot>|<kind>
+         * ```
+         *
+         * The version is [CANONICAL_FORM_VERSION]. The other seven are the plan itself: which
+         * Saga the action belongs to, which action it is, which compensation undoes it, what
+         * resource it touches, WHICH BODIES run it, and what kind of compensation it is.
+         *
+         * The bodies are in the form because the fingerprint is the only place the engine
+         * records them: the durable obligation carries the digest, not the bodies, and the
+         * digest is what lets a later process tell "the same promise" from "the same key with
+         * another plan under it".
+         *
+         * ## Why a field containing `|` is refused
+         *
+         * The separator is not escaped, so a field that carries one would let two DIFFERENT
+         * plans spell the same text — and then the same digest, and the engine would accept
+         * the second plan as the first. A silent collision is worse than a refusal, so the
+         * form is only defined for fields that do not carry the separator, and a field that
+         * does is refused HERE, by name, before any digest is computed.
+         *
+         * Refusing here and not in the identifier types is deliberate: the identifiers stay
+         * what they were, and the rule that matters — "this text means one plan" — is enforced
+         * where the text is built.
+         */
+        fun canonicalFormOf(sagaId: SagaId, plan: SagaActionPlan): String {
+            val fields = listOf(
+                "sagaId" to sagaId.value,
+                "actionId" to plan.actionId.value,
+                "compensationId" to plan.compensationId.value,
+                "resourceRef" to plan.resourceRef.value,
+                "forwardSlot" to plan.forwardSlot.value,
+                "compensateSlot" to plan.compensateSlot.value,
+                "kind" to plan.kind.name,
+            )
+            fields.forEach { (name, value) ->
+                require(SEPARATOR !in value) {
+                    "SagaPlanFingerprint canonical form: $name must not contain '$SEPARATOR', " +
+                        "because the separator is not escaped and two different plans would " +
+                        "spell the same text. Got: '$value'"
+                }
+            }
+            return (listOf(CANONICAL_FORM_VERSION) + fields.map { it.second }).joinToString(SEPARATOR)
+        }
+
+        /**
+         * The fingerprint of a plan, derived from its canonical form.
+         *
+         * The digest is SHA-256 over the UTF-8 bytes of [canonicalFormOf], rendered as
+         * lowercase hexadecimal. Both halves are part of the contract: an implementer that
+         * hashed the same text with another algorithm, or rendered the bytes in another case,
+         * would produce a different digest for the same plan.
+         *
+         * The rendering is pinned to [Locale.ROOT], so it does not depend on the
+         * operator's locale. That is the guarantee, and it is STRUCTURAL: the locale
+         * is named, not assumed. The rendering would happen to be the same in any
+         * locale today — hexadecimal digits are not localized, only the decimal
+         * conversion is — but a promise that rests on a property of
+         * `java.util.Formatter` is a promise a JDK can break underneath it, and this
+         * one does not have to be. A digest that moved with the locale would be a
+         * promise that changed shape on a different machine.
+         */
+        fun compute(sagaId: SagaId, plan: SagaActionPlan): SagaPlanFingerprint {
+            val canonical = canonicalFormOf(sagaId, plan)
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(canonical.toByteArray(Charsets.UTF_8))
+                .joinToString("") { byte -> "%02x".format(Locale.ROOT, byte) }
+            return SagaPlanFingerprint(digest)
+        }
+
+        /** The separator between the fields of the canonical form. */
+        private const val SEPARATOR: String = "|"
+
         /** The nullable form, for digests that arrive from an untrusted source. */
         fun ofOrNull(hex: String): SagaPlanFingerprint? =
             runCatching { SagaPlanFingerprint(hex) }.getOrNull()

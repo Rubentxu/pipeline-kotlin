@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `03bdc2a3a` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `9c5b41c44` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **22** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 5 | ídem |
-| Tests unitarios ejecutados | **743** (94 informes JUnit, **94** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:743 read:0` |
+| Tests unitarios ejecutados | **752** (95 informes JUnit, **95** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:752 read:0` |
 | Escenarios E2E | 46 (**45 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **11389 / 65771 = 0.173** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **11495 / 65786 = 0.175** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **97 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **121 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -34,12 +34,12 @@ calientes, y por eso **no** se compara con la de 2026-10-19 (226 s, la peor de
 tres ensayos tras `rm -rf` de las salidas de build reales, que es la condición
 que hace que la cifra mida el gate y no una restauración de caché). Un total
 correcto con el verbo equivocado ya no puede colarse: la etapa 2 separa
-`rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 94
-de los 94 informes —se limpiaron las salidas de test antes de correr, así que
+`rewritten` de `read` y **falla** si no reescribe ninguno, y aquí reescribió 95
+de los 95 informes —se limpiaron las salidas de test antes de correr, así que
 ninguno pudo venir de la caché—.
 
 **Y el total viaja ahora en la línea de veredicto**, que es la única que alguien
-pega en un informe: `tests=rewritten:743 read:0`. Antes esa línea decía
+pega en un informe: `tests=rewritten:752 read:0`. Antes esa línea decía
 `PASS  sha=…  elapsed=345s  budget=900s  gaps=1 not_run` y no decía **nada** de
 los tests: el dato estaba en el log de la etapa 2, y el log lo lee quien corrió la
 puerta, no quien la cita. Una cifra con el verbo equivocado ya no puede colarse
@@ -1490,6 +1490,151 @@ La puerta se corrió sobre el tip de la rama (`9c7af06ee`), cuyo árbol es
 `c231bafd5` para los dos), así que la cifra es del contenido que está en
 `main` y no de un árbol vecino. El censo de LOC sí se remedió **sobre el SHA
 fusionado**, con `check-budgets.py` y `git ls-files`.
+
+
+**z) El fingerprint del plan no tenía forma canónica publicada — CERRADO en `9c5b41c44`.**
+El bloque `fingerprint-canonico` cierra el punto **F13** del informe de auditoría
+(`pipelinek-saga-evolution/auditoria/INFORME-AUDITORIA-2026-10-20.md`): «
+`SagaPlanFingerprint` existe, pero su forma canónica no está publicada: dos
+implementaciones pueden producir el mismo plan con fingerprints distintos».
+
+**Lo que había, medido.** El SDK tenía **dos** implementaciones del mismo
+fingerprint, y **no se parecían**:
+
+| Implementación | Campos de la forma | Marcador de versión |
+|---|---|---|
+| `SagaChainStepDefinition.fingerprintOf` | 8 — con `forwardSlot` y `compensateSlot` | `saga-v1` |
+| `SagaObligationStepDefinition.planFingerprintOf` | 6 — **sin los cuerpos** | `saga-v1` |
+
+El plan que la segunda hasheaba era `saga-v1|<sagaId>|<actionId>|<compensationId>|
+<resourceRef>|<kind>`; el de la primera metía los dos cuerpos entre `<resourceRef>`
+y `<kind>`. **El mismo marcador de versión sobre dos formas distintas**: la ley
+«misma intención, mismo fingerprint» no tenía mecanismo, porque no había forma
+que dos implementaciones pudieran compartir.
+
+**Por qué el defecto era grave y no cosmético.** La fila durable de una
+obligación lleva el **digest**, no los cuerpos: el digest es lo único que el
+motor registra del plan. Por eso dos formas distintas no son dos deletreos
+distintos, son **dos promesas distintas** para la misma acción — y el motor
+compara el digest del plan armado con el del plan re-armado para detectar una
+divergencia. Con dos formas en circulación, esa comparación comparaba peras con
+manzanas, y un plan legítimo podía leerse como divergencia.
+
+**Lo que se publicó.** La forma vive ahora en `pipeline-domain`, que es un
+módulo **publicado** (y EXPERIMENTAL), en `SagaIdentity.kt`:
+
+- `SagaPlanFingerprint.CANONICAL_FORM_VERSION` — la versión, que es parte de la
+  forma y no un string suelto en el código.
+- `SagaPlanFingerprint.canonicalFormOf(sagaId, plan)` — **la forma**, que es la
+  especificación ejecutable.
+- `SagaPlanFingerprint.compute(sagaId, plan)` — el digest: SHA-256 sobre los
+  bytes UTF-8 de la forma, en hexadecimal minúsculo, con el locale **fijado** a
+  `Locale.ROOT`.
+
+La forma es exactamente:
+
+```text
+saga-v1|<sagaId>|<actionId>|<compensationId>|<resourceRef>|<forwardSlot>|<compensateSlot>|<kind>
+```
+
+**Los cuerpos están dentro, y es a propósito**: si no estuvieran, cambiar el
+cuerpo de compensación no se detectaría como cambio de plan, y el digest —que
+es lo único que el motor registra— no lo diría.
+
+**El separador no se escapa, y por eso un campo con `|` se rechaza POR NOMBRE.**
+Escaparlo habría cambiado la forma y roto todas las identidades ya escritas. En
+vez de mover la forma, la forma se cierra: un campo que lleve el separador es
+**rechazado antes de hashear**, y el rechazo dice qué campo fue. Dos planes
+distintos no pueden deletrear el mismo texto, y el digest no se calcula nunca
+sobre un texto ambiguo.
+
+**La identidad NO se movió.** La forma publicada reproduce bit a bit lo que el
+producto ya había escrito: se reejecutó `durable/38-saga-success.pipeline.kts`
+contra un store durable real y se leyeron las filas `CompensationArmed`:
+
+| Acción | Digest antes | Digest después |
+|---|---|---|
+| `reserve` | `b17b1d63381bc4c94167243a4028b5a5180b864f0790520a48042c52d9b1bac0` | **igual** |
+| `charge` | `3055da2d90346c88a3cfc4837808d0a92692dbf60c34fd48be53fe8f295779cc` | **igual** |
+
+Cambiar la forma habría re-armado como divergencia **todas** las promesas de
+**todas** las corridas pasadas. Publicar la forma no la cambió: la sacó a la luz.
+
+**Las dos implementaciones del plugin de ejemplo convergen.** `SagaChainStepDefinition`
+deja de tener su propia copia: su declaración se deriva del **mismo**
+`SagaActionPlan` que el motor recibe, y el digest sale de
+`SagaPlanFingerprint.compute`. `SagaObligationStepDefinition` hace lo mismo, y
+para poder hacerlo su entrada `SagaObligationInput` **dice qué cuerpos promete**
+(`forwardSlot` / `compensateSlot`) — antes no los decía, y sin ellos no había
+plan que hashear. La fachada `sagaObligation` en `SagaDsl.kt` gana los dos
+parámetros. Dos lecturas de una acción son dos ocasiones para deletrear el
+mismo plan de dos maneras; ahora hay **una**.
+
+**Dos tests, y no son el mismo test.** El del productor
+(`SagaPlanFingerprintCanonicalFormTest`, **9 tests**) es un test de dominio
+puro: sin ficheros, sin subprocesos, sin red, como manda `AGENTS.md` §2. El
+digest congelado que comprueba **no es inventado**: es el que el producto
+escribió en su store durable, leído de una corrida real. El del consumidor
+(`pipelinek-saga`, `SagaPlanFingerprintContractTest`, **6 tests**) implementa la
+forma **por su cuenta** —la versión está escrita en el test, no leída del SDK— y
+después la compara con la del SDK. Si llamara al `compute` del SDK, el test
+compararía el SDK consigo mismo y pasaría lo que el SDK hiciera, que es
+justo el error que un test de contrato existe para impedir.
+
+**Mutaciones vistas en rojo.** Un verde que nunca se vio rojo no es evidencia, así
+que las dos derivas se rompieron a propósito:
+
+| Mutación | Productor | Consumidor |
+|---|---|---|
+| Intercambiar `forwardSlot` y `compensateSlot` | **2 de 9** en rojo (orden de campos + digest congelado) | **2 de 6** en rojo, y el mensaje trae el **texto canónico** de los dos lados: dice **qué campo** se movió |
+| Cambiar la versión `saga-v1` → `saga-v2` | **2 de 9** en rojo | **3 de 6** en rojo, y el primero dice «the form changed: implement the new one, or the engine will read this repository's promise as a different plan» |
+
+Restaurada la forma, ambos lados vuelven a verde y el digest sigue siendo el de
+la tabla de arriba. La primera mutación es la que importa: es una deriva
+**silenciosa** (no cambia la versión ni el número de campos) y aun así el
+consumidor la ve y la **localiza**.
+
+**El desvío por detekt, y una falsa alarma que mereció la pena.** La primera
+corrida de la puerta se paró en la etapa 1 con
+`ImplicitDefaultLocale` sobre `"%02x".format(byte)`. La regla tiene razón y el
+arreglo es `Locale.ROOT`. Pero al perseguirlo estuve a punto de reportar una
+**regresión del bloque anterior**: `"fmt".format(Locale.ROOT, args)` *parece* que
+metería el locale en el primer hueco `%s`, y en Java a pelo eso es lo que
+pasaría. Medido: el stdlib de Kotlin tiene **dos** extensiones `format`, y la
+que lleva locale lo tiene como **segundo** argumento (`format(String, Locale,
+Object...)`), así que `"%-13s %s".format(Locale.ROOT, verb, summary)` es
+correcto. La salida de uso de la CLI —capturada **byte a byte** en el bloque
+anterior— es correcta, y la misma forma en `MainVerbs.kt` también lo es. Lo que
+**no** estaba bien era el código **nuevo**, que usaba la sobrecarga sin locale.
+Fijado `Locale.ROOT` en el SDK y en la implementación propia del consumidor, y
+el KDoc dice ahora que la garantía es **estructural** (el locale se nombra) en
+vez de descansar en el hecho empírico de que los dígitos hexadecimales no se
+localizan.
+
+**Lo que este bloque NO cierra, y lo dice.** El fixture
+`v2/pipeline-events-store/src/test/resources/real-saga-plane-success.json` trae
+`planFingerprint: d720a447…` y `fd376b01…`, que **no** son los digests que el
+producto produce hoy (`b17b1d63…` y `3055da2d…`): el fixture está **desfasado**
+respecto de la forma real. No se ha perseguido aquí; es otro bloque, y
+perseguirlo es medir antes de tocar.
+
+**Instrumento y cobertura.** La forma publicada vive en `pipeline-domain` y tiene
+**test unitario propio**: ahí es donde está ahora la garantía. Las dos
+implementaciones que convergieron están en el **plugin de ejemplo**, que **no**
+tiene test unitario (los ejemplos no entran en el censo de la etapa 2): su
+instrumento es la suite E2E. Un bloque que publica una forma y además cambia
+código sin test unitario conviene decirlo, no dejar que la puerta verde lo
+tape.
+
+**ABI y LOC.** El cambio publicado es **aditivo**: tres miembros públicos en
+`pipeline-domain`, un módulo EXPERIMENTAL; `apiDump` refrescado y `apiCheck`
+verde, ninguna ruptura. `PRODUCT_LOC` 65 771 → **65 786** (+15: el crecimiento es
+casi todo KDoc), `VERIFY_LOC` 11 389 → **11 495** (+106), ratio global **0.175**;
+el ratio máximo por módulo sigue siendo **1.633** (`pipeline-step-sdk:workflow-control`)
+y `pipeline-domain` queda en 0.277.
+
+Puerta sobre el SHA del bloque: `PASS sha=9c5b41c44… elapsed=96s budget=900s
+tests=rewritten:752 read:0 gaps=1 not_run`.
 
 
 ### 2.3 Cierre de ciclo

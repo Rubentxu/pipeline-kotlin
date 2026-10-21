@@ -64,11 +64,27 @@ object EventPageDrain {
         val page: EventPage
 
         /**
+         * Whether the rows the STORE returned hold the run's terminal fact.
+         *
+         * ## Why the drain reports it
+         * The drain is the only component that sees the store's rows, so it is the only one that
+         * can say whether the run has ended **independently of the filter**. A filter decides what
+         * the client is handed; it does not decide whether the run is over. See [RunTerminal] for
+         * the rule, and for what happened when the answer was read from the delivered facts
+         * instead: the follow with a filter never ended, and polled forever on a finished run.
+         *
+         * The fact is read from the rows of every page the drain read, not only from the facts it
+         * delivered: the terminal fact is often exactly the fact a filter excludes, and a page
+         * holds rows the client was not handed.
+         */
+        val runEnded: Boolean
+
+        /**
          * The requested number of matching envelopes was reached, or the store reported no more rows.
          * [page.hasMore] is the store's own answer, copied rather than recomputed: it is true when
          * the drain stopped at the limit with rows still unread, and false when the history ended.
 */
-        data class Answered(override val page: EventPage) : Outcome
+        data class Answered(override val page: EventPage, override val runEnded: Boolean) : Outcome
 
         /**
          * The store claimed more rows exist and the continuation did not move.
@@ -79,6 +95,7 @@ object EventPageDrain {
         data class Stalled(
             override val page: EventPage,
             val stuckAfter: EventCursor?,
+            override val runEnded: Boolean,
         ) : Outcome
     }
 
@@ -102,11 +119,18 @@ object EventPageDrain {
         val refusals = ArrayList<EventRecordRead.Undecodable>()
         var readFrom = cursor
         var lastDelivered: Long? = null
+        var runEnded = false
 
         while (true) {
             val page = tail.readAfter(run, readFrom, limit)
             val continuation = page.nextCursor
             refusals.addAll(page.refusals)
+            // The terminal fact is read from the ROWS the store returned, never from the facts
+            // this drain hands out: with a filter in play the terminal fact is usually the one
+            // fact the filter excludes, and a follow that cannot see it never ends.
+            if (!runEnded && RunTerminal.hasEnded(page.envelopes.asSequence().map { it.kind })) {
+                runEnded = true
+            }
             for (envelope in page.envelopes) {
                 if (envelopes.size == limit) break
                 if (query.matches(envelope)) {
@@ -121,12 +145,13 @@ object EventPageDrain {
 
             if (reachedLimit || !page.hasMore) {
                 return Outcome.Answered(
-                    EventPage(
+                    page = EventPage(
                         envelopes = envelopes.toList(),
                         nextCursor = clientCursor(run.segments.last(), lastDelivered, continuation),
                         hasMore = page.hasMore,
                         refusals = refusals.toList(),
                     ),
+                    runEnded = runEnded,
                 )
             }
             if (!advanced) {
@@ -138,6 +163,7 @@ object EventPageDrain {
                         refusals = refusals.toList(),
                     ),
                     stuckAfter = readFrom,
+                    runEnded = runEnded,
                 )
             }
             readFrom = continuation
@@ -181,11 +207,20 @@ object EventPageDrain {
         val refusals = ArrayList<EventRecordRead.Undecodable>()
         var readFrom = cursor
         var lastDelivered: Long? = null
+        var runEnded = false
 
         while (true) {
             val slice = store.readRecords(run.segments.last(), readFrom, limit)
             val continuation = slice.nextCursor
             refusals.addAll(slice.refusals)
+            // The same fact, read from the same rows: a record that could not be decoded carries
+            // no kind, and a row the client was not handed still counts.
+            if (!runEnded && RunTerminal.hasEnded(
+                    slice.records.asSequence().mapNotNull { (it as? EventRecordRead.Decoded)?.event?.kind },
+                )
+            ) {
+                runEnded = true
+            }
             for (record in slice.records) {
                 if (events.size == limit) break
                 if (record !is EventRecordRead.Decoded) continue
@@ -199,12 +234,13 @@ object EventPageDrain {
 
             if (reachedLimit || !slice.hasMore) {
                 return TypedOutcome.Answered(
-                    TypedPage(
+                    page = TypedPage(
                         events = events.toList(),
                         nextCursor = clientCursor(run.segments.last(), lastDelivered, continuation),
                         hasMore = slice.hasMore,
                         refusals = refusals.toList(),
                     ),
+                    runEnded = runEnded,
                 )
             }
             if (!advanced) {
@@ -216,6 +252,7 @@ object EventPageDrain {
                         refusals = refusals.toList(),
                     ),
                     stuckAfter = readFrom,
+                    runEnded = runEnded,
                 )
             }
             readFrom = continuation
@@ -245,11 +282,15 @@ object EventPageDrain {
     sealed interface TypedOutcome {
         val page: TypedPage
 
-        data class Answered(override val page: TypedPage) : TypedOutcome
+        /** The same fact as [Outcome.runEnded], read from the same rows. */
+        val runEnded: Boolean
+
+        data class Answered(override val page: TypedPage, override val runEnded: Boolean) : TypedOutcome
 
         data class Stalled(
             override val page: TypedPage,
             val stuckAfter: EventCursor?,
+            override val runEnded: Boolean,
         ) : TypedOutcome
     }
 }

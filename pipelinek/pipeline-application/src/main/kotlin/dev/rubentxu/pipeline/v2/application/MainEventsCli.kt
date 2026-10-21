@@ -390,7 +390,6 @@ object MainEventsCli {
                         is EventPageDrain.Outcome.Answered -> {
                             outcome.page.envelopes.forEach { envelope ->
                                 println(EnvelopeCodec.encode(envelope))
-                                if (envelope.kind == "RunFinished") runFinished = true
                             }
                             reportRefusals(runId, outcome.page.refusals)
                             val next = outcome.page.nextCursor
@@ -398,14 +397,21 @@ object MainEventsCli {
                                 reportContinuation(next)
                                 currentCursor = next
                             } else {
-                                // store said no more rows; nothing to follow.
+                                // The store said no more rows; nothing to follow. This is not the
+                                // run's terminal fact — the run may still be alive — and the drain
+                                // reports that fact separately, from the rows it read.
                                 runFinished = true
                             }
+                            // The ONE authority on "the run is over": the drain read the terminal
+                            // fact from the rows the STORE returned, which is not the same set as
+                            // the rows this filter delivered. Reading it from the delivered
+                            // envelopes instead is what made a filtered follow poll forever on a
+                            // run that had already finished.
+                            if (outcome.runEnded) runFinished = true
                         }
                         is EventPageDrain.Outcome.Stalled -> {
                             outcome.page.envelopes.forEach { envelope ->
                                 println(EnvelopeCodec.encode(envelope))
-                                if (envelope.kind == "RunFinished") runFinished = true
                             }
                             reportRefusals(runId, outcome.page.refusals)
                             reportContinuation(outcome.page.nextCursor)
@@ -414,6 +420,9 @@ object MainEventsCli {
                                     "the store reported more rows and the continuation did not advance; " +
                                     "history past this point was NOT read",
                             )
+                            // The stall ends the observation whatever the terminal fact says: the
+                            // history past this point was not read, so waiting for it would only
+                            // wait for a row that this reader cannot reach.
                             return exitCodeFor(outcome)
                         }
                     }
@@ -423,7 +432,6 @@ object MainEventsCli {
                         is EventPageDrain.TypedOutcome.Answered -> {
                             outcome.page.events.forEach { event ->
                                 println(JsonEventLog.encodeOne(event))
-                                if (event.kind == "RunFinished") runFinished = true
                             }
                             reportRefusals(runId, outcome.page.refusals)
                             val next = outcome.page.nextCursor
@@ -433,6 +441,8 @@ object MainEventsCli {
                             } else {
                                 runFinished = true
                             }
+                            // The same authority as the envelope branch, for the same reason.
+                            if (outcome.runEnded) runFinished = true
                         }
                         is EventPageDrain.TypedOutcome.Stalled -> {
                             outcome.page.events.forEach { println(JsonEventLog.encodeOne(it)) }
@@ -448,18 +458,38 @@ object MainEventsCli {
                     }
                 }
             }
-            if (!runFinished && !shutdown.get()) {
-                try {
-                    Thread.sleep(FOLLOW_POLL_MILLIS)
-                } catch (_: InterruptedException) {
-                    // Shutdown hook may have set the flag; the loop will exit on the next check.
-                    Thread.currentThread().interrupt()
-                }
+            if (!runFinished) {
+                awaitNextPoll(shutdown)
             }
         }
         // Follow completed: 0 if RunFinished was reached, 2 if interrupted (the caller can
         // distinguish by `evt-stalled-v1` on stderr, which the loop emits on a stall).
         return if (shutdown.get()) 2 else 0
+    }
+
+    /**
+     * Waits one poll interval before the next round of the follow loop.
+     *
+     * ## Why this is its own function
+     * The loop body reads a page, decides, and then either waits or ends. Keeping the wait inline
+     * made the whole loop one function whose complexity counted the sleep, its interruption
+     * handling and the two conditions that guard it — a number that grew with every branch the
+     * loop needed, not with the reasoning of any one of them. Extracting it says what it is: a
+     * wait between rounds, with no opinion about the run and no authority over the terminal fact.
+     *
+     * ## What it does not do
+     * It does not decide whether the run ended; the drain does, and the loop asks the drain. It
+     * only makes the next read happen later rather than immediately, and it returns early when
+     * the JVM is already shutting down so a Ctrl-C is not delayed by a full interval.
+    */
+    private fun awaitNextPoll(shutdown: java.util.concurrent.atomic.AtomicBoolean) {
+        if (shutdown.get()) return
+        try {
+            Thread.sleep(FOLLOW_POLL_MILLIS)
+        } catch (_: InterruptedException) {
+            // Shutdown hook may have set the flag; the loop will exit on the next check.
+            Thread.currentThread().interrupt()
+        }
     }
 
     /**

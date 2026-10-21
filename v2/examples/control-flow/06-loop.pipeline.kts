@@ -1,3 +1,4 @@
+//@ expect-stdout iteration 1
 pipeline {
     stages {
         stage("loop") {

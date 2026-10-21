@@ -1,3 +1,4 @@
+//@ expect-stdout build/utils/scan/a.txt
 // LFC-2E2 utilities OFFICIAL_PLUGIN live fixture (Slice 2 / S2.3).
 //
 // End-to-end exercise of findFiles. The fixture creates a directory

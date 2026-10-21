@@ -1,3 +1,4 @@
+//@ expect-stdout step-A
 pipeline {
     stages {
         stage("workspace-control") {

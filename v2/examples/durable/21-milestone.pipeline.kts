@@ -1,3 +1,4 @@
+//@ expect-stdout between
 // 21-milestone.pipeline.kts — S2-A9 / G5 installed-CLI canary
 // Real .pipeline.kts using core.milestone through the open-world registry path.
 // Validates that after G5 destructive (subtype/branch/constant/metadata row/dispatcher

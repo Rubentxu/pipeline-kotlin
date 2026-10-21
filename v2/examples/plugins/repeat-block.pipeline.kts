@@ -1,3 +1,4 @@
+//@ expect-stdout iteration
 import example.block.repeatBlock
 
 pipeline {

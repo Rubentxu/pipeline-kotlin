@@ -1,3 +1,4 @@
+//@ expect-stdout READY
 // 22-wait-until.pipeline.kts — WU-G5R.6 / S2-A8 / G5R installed-CLI canary
 // Real .pipeline.kts using the structural waitUntil block through the canonical
 // dispatch path (BlockStepNode + BodyExecutionPolicy.RepeatUntil + dispatchRepeatUntilBody).

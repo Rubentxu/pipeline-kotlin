@@ -3,11 +3,19 @@
 #
 # It runs real .pipeline.kts programs against the compiled distribution. It is
 # deliberately not a framework: it discovers scenarios, gives each one a
-# private control root, checks the exit code, and cleans up. It has no notion of
-# assertions beyond two optional per-pipeline directives, so a scenario cannot
-# grow into a test suite with its own vocabulary.
+# private control root, checks the exit code and what the run PRODUCED, and
+# cleans up. It has no notion of assertions beyond three optional per-pipeline
+# directives, so a scenario cannot grow into a test suite with its own
+# vocabulary.
 #
 #   //@ expect-exit 1                 default is 0
+#   //@ expect-stdout <substring>     the run must have PRODUCED this text. A
+#                                     scenario whose name promises a capability
+#                                     promises it HERE, because the launcher is
+#                                     the only party that can say the effect
+#                                     was observed, and a verdict that cannot
+#                                     say what it checked is half a verdict.
+#                                     REPEATABLE, like expect-stderr.
 #   //@ expect-stderr <substring>     the refusal must be this specific, not
 #                                     merely a nonzero exit. REPEATABLE: every
 #                                     declared substring must be present, and
@@ -124,6 +132,23 @@
 # "// durable execution over the journal", so a bare `//` prefix would let a
 # sentence in a comment silently switch a directive on.
 #
+# Why `expect-stdout` exists, and why it is checked the way it is. A scenario
+# whose name promises a capability — `readFile`, `zip-unzip`, `artifact-query` —
+# makes a promise the exit code cannot keep: a run that produced nothing at all
+# exits 0 exactly like a run that produced the right thing, so a green that
+# only watched the exit code was a claim about the process, not about the
+# product. The launcher is the only party that can see what the run PRODUCED,
+# and a verdict that cannot say what it checked is half a verdict, so the
+# observation belongs HERE rather than inside the scenario, where a failing
+# check is only visible as an opaque nonzero exit.
+#
+# The substring is searched in the whole stdout of the process, which also
+# carries the engine's own trace. That is a real limitation and it is why the
+# expected text has to be the scenario's own output and not a word the trace
+# happens to contain: a trace line is the engine talking about itself, and a
+# scenario that expects the engine's voice is testing the trace, not the
+# behaviour.
+#
 # Why `expect-stderr` is REPEATABLE, and every one of them must hold. It used to
 # be "the last one wins": a scenario that declared two of them silently lost the
 # first, and the second one was the only thing the verdict ever looked at. That is
@@ -162,6 +187,7 @@ parse_directives() {
     local declared_total="${1:-0}"
     directive_error=""
     expect_exit=0
+    expect_stdout=()
     expect_stderr=()
     durable=0
     durable_once=0
@@ -182,6 +208,7 @@ parse_directives() {
         [[ -n "$directive" ]] || continue
         case "$directive" in
             '//@ expect-exit '*)   expect_exit="${directive#//@ expect-exit }" ;;
+            '//@ expect-stdout '*) expect_stdout+=("${directive#//@ expect-stdout }") ;;
             '//@ expect-stderr '*) expect_stderr+=("${directive#//@ expect-stderr }") ;;
             '//@ durable')         durable=1 ;;
             '//@ durable-once')    durable_once=1 ;;
@@ -345,20 +372,23 @@ self_check() {
 # in the same file as the code it protects: one authority, no second harness.
 self_test() {
     local failures=0
-    local expect_exit expect_stderr durable durable_once resume storage_agnostic needs_seeded_credentials
+    local expect_exit expect_stdout expect_stderr durable durable_once resume storage_agnostic needs_seeded_credentials
     local directive_error
 
     # A valid set of directives is understood, and the flags are not confused
     # with each other.
     directive_error=""
-    parse_directives 4 <<'EOF' || true
+    parse_directives 5 <<'EOF' || true
 //@ expect-exit 1
+//@ expect-stdout algo
 //@ expect-stderr algo
 //@ durable-once
 //@ storage-agnostic
 EOF
     self_check "expect-exit is read" "1" "$expect_exit" || failures=$((failures + 1))
+    self_check "expect-stdout is read" "1" "${#expect_stdout[@]}" || failures=$((failures + 1))
     self_check "expect-stderr is read" "1" "${#expect_stderr[@]}" || failures=$((failures + 1))
+    self_check "expect-stdout is NOT confused with expect-stderr" "1" "${#expect_stdout[@]}" || failures=$((failures + 1))
     self_check "durable-once is read" "1" "$durable_once" || failures=$((failures + 1))
     self_check "durable is NOT confused with durable-once" "0" "$durable" || failures=$((failures + 1))
     self_check "storage-agnostic is read" "1" "$storage_agnostic" || failures=$((failures + 1))
@@ -390,6 +420,58 @@ EOF
 EOF
     self_check "too many directives are refused" "refused" \
         "$([[ -n "$directive_error" ]] && printf refused || printf accepted)" || failures=$((failures + 1))
+
+    # The observation is a real one. A run that produced the expected text
+    # meets the expectation, and a run that did not does not: that is the
+    # whole guarantee the new directive exists for, so it is checked here
+    # instead of being left to a mutation somebody ran once.
+    local probe_dir probe_stdout probe_stderr
+    probe_dir="$(mktemp -d "${TMPDIR:-/tmp}/pipelinek-selftest-XXXXXXXX")"
+    printf 'the run produced what was promised\n' > "$probe_dir/stdout.txt"
+    printf 'the run refused for the stated reason\n' > "$probe_dir/stderr.txt"
+    probe_stdout="$probe_dir/stdout.txt"
+    probe_stderr="$probe_dir/stderr.txt"
+
+    expect_exit=0
+    expect_stdout=("what was promised")
+    expect_stderr=()
+    self_check "a run that produced the expected text meets the expectation" "yes" \
+        "$(expectations_met 0 "$probe_stdout" "$probe_stdout" "$probe_stderr" && printf yes || printf no)" || failures=$((failures + 1))
+    self_check "the observations a verdict rests on are counted" "1" \
+        "$(observed_count)" || failures=$((failures + 1))
+    expect_stdout=("something else entirely")
+    self_check "a run that did NOT produce the expected text does not meet it" "no" \
+        "$(expectations_met 0 "$probe_stdout" "$probe_stdout" "$probe_stderr" && printf yes || printf no)" || failures=$((failures + 1))
+    expect_stdout=()
+    expect_stderr=("the stated reason")
+    self_check "a refusal that says the expected reason meets the expectation" "yes" \
+        "$(expectations_met 0 "$probe_stdout" "$probe_stdout" "$probe_stderr" && printf yes || printf no)" || failures=$((failures + 1))
+    # The text the run produced can be in the published output OR in the
+    # console, and a harness that watched only one of them would call a
+    # scenario that observed nothing a pass.
+    expect_stdout=("only in the console")
+    printf 'only in the console\n' > "$probe_dir/console.txt"
+    self_check "a run that said it in the console meets the expectation" "yes" \
+        "$(expectations_met 0 "$probe_stdout" "$probe_dir/console.txt" "$probe_stderr" && printf yes || printf no)" || failures=$((failures + 1))
+    # The rule that NAMES what was missing is the rule that decides whether
+    # anything was missing: one place, so a change to one is a change to both.
+    expect_stdout=("never said")
+    self_check "the missing expectation is named" "stdout: never said" \
+        "$(missing_expectation "$probe_stdout" "$probe_stdout" "$probe_stderr")" || failures=$((failures + 1))
+    expect_stdout=()
+    expect_stderr=()
+    self_check "a scenario that only watched the exit code rests on no observation" "0" \
+        "$(observed_count)" || failures=$((failures + 1))
+
+    # The run id is read from the launch record the product writes, because
+    # that record is what names the run whose published output is checked.
+    printf '{"schema":"pipelinek.launch/1","runId":"1234-abcd","correlationId":"x","status":"Launched"}\n' \
+        > "$probe_dir/launch.txt"
+    self_check "the run id is read from the launch record" "1234-abcd" \
+        "$(run_id_of "$probe_dir/launch.txt")" || failures=$((failures + 1))
+    self_check "a record without a run id yields no run id" "" \
+        "$(run_id_of "$probe_dir/stdout.txt")" || failures=$((failures + 1))
+    rm -rf "$probe_dir"
 
     # A death is a signal, not a normal exit.
     self_check "137 (SIGKILL) is a death" "yes" \
@@ -463,6 +545,108 @@ EOF
     return 0
 }
 
+# The first declared expectation the run did not meet, or nothing when it met
+# them all.
+#
+# ONE rule, in ONE place. The check used to exist twice -- once for the run
+# that counts and once for the run in the other world -- and a rule that
+# exists in two places is a rule that can exist in one version and not in the
+# other, which is how a harness ends up checking nothing in one world and
+# everything in the other.
+#
+# The produced output is looked for in BOTH places the run can say something:
+# the output the run published, and the console of the process. The engine
+# writes some steps to the console and keeps others in the published output,
+# so a harness that watched only one of them would miss half of what the run
+# said -- and would call a scenario that observed nothing a pass.
+missing_expectation() {
+    local run_projection="$1" run_console="$2" run_stderr="$3"
+    local wanted
+    for wanted in ${expect_stdout[@]+"${expect_stdout[@]}"}; do
+        if ! grep -qF -- "$wanted" "$run_projection" 2>/dev/null \
+            && ! grep -qF -- "$wanted" "$run_console" 2>/dev/null; then
+            printf 'stdout: %s' "$wanted"
+            return 0
+        fi
+    done
+    for wanted in ${expect_stderr[@]+"${expect_stderr[@]}"}; do
+        if ! grep -qF -- "$wanted" "$run_stderr" 2>/dev/null; then
+            printf 'stderr: %s' "$wanted"
+            return 0
+        fi
+    done
+    return 0
+}
+
+# Whether ONE run met the scenario's declared expectations: the exit code AND
+# every declared line of produced output AND every declared line of refusal --
+# not only the last one of either.
+#
+# A helper because a scenario can be run in more than one world (P6), and the
+# rule has to be the SAME rule in each of them: checking one world with the
+# real code and the other with a copy of it is how two worlds drift apart.
+expectations_met() {
+    local run_code="$1" run_projection="$2" run_console="$3" run_stderr="$4"
+    [[ "$run_code" == "$expect_exit" ]] || return 1
+    [[ -z "$(missing_expectation "$run_projection" "$run_console" "$run_stderr")" ]]
+}
+
+# The observations a verdict rests on: every declared line of produced output,
+# every declared line of refusal, and the exit code when it is NOT the default
+# success. A run that is expected to fail says something the run is not
+# supposed to do, which is an observation in its own right.
+observed_count() {
+    local count="${#expect_stdout[@]}"
+    count=$(( count + ${#expect_stderr[@]} ))
+    if [[ "$expect_exit" != 0 ]]; then
+        count=$(( count + 1 ))
+    fi
+    printf '%s' "$count"
+}
+
+# The same observations, in words, for the report. A reader who sees "ok" and
+# a duration learns nothing about WHAT was checked, and a report that cannot
+# say what it checked is a list of green lights.
+checked_words() {
+    local words=""
+    if (( ${#expect_stdout[@]} > 0 )); then
+        words="stdout"
+    fi
+    if (( ${#expect_stderr[@]} > 0 )); then
+        words="${words:+$words+}stderr"
+    fi
+    if [[ "$expect_exit" != 0 ]]; then
+        words="${words:+$words+}exit($expect_exit)"
+    fi
+    printf '%s' "${words:--}"
+}
+
+# The id of the run, read from the record the product writes when it launches
+# one. The launch record is the product's own, and it names the run, so the
+# harness does not have to guess it from a file name or from the order of the
+# runs.
+run_id_of() {
+    sed -n 's/.*"runId":"\([^"]*\)".*/\1/p' "${1:-/dev/null}" 2>/dev/null | head -1
+}
+
+# What the run PRODUCED, read from the projection the product publishes.
+#
+# The stdout of the PROCESS is not the stdout of the RUN. The engine's own
+# trace shares it, so a scenario that expected a line of output could be
+# satisfied by a line of log; and in a durable run the engine keeps the output
+# of the steps in the output plane instead of echoing it to the console, so a
+# harness that read the console would see nothing where the run produced
+# something. The product publishes that projection through `observe`, and the
+# harness reads it from there: one source, the same rule in every world, and
+# no reading of the engine's log format.
+observed_stdout() {
+    local run_id="$1" control_root="$2" out="$3"
+    : > "$out"
+    [[ -n "$run_id" ]] || return 1
+    "$binary" observe "$run_id" --control-root "$control_root" \
+        --view console --channel stdout --format text > "$out" 2>/dev/null
+}
+
 if [[ "${1:-}" == "--self-test" ]]; then
     self_test
     exit $?
@@ -511,6 +695,12 @@ passed=0
 failed=0
 not_run=0
 failures=()
+# How many scenarios declared an observation the launcher could check, and how
+# many observations they declared in total. A report that says "46 scenarios
+# passed" cannot say whether the run OBSERVED anything or merely watched
+# processes exit, and those are different amounts of evidence.
+observed_scenarios=0
+observed_total=0
 
 # A content-sensitive picture of a directory: its files, sorted, with their
 # digests. Two pictures that differ mean the world changed in between, which
@@ -529,21 +719,6 @@ workspace_snapshot() {
     ) 2>/dev/null || true
 }
 
-# Whether ONE run met the scenario's declared expectations: the exit code AND
-# every declared stderr line, not only the last one.
-#
-# A helper because a scenario can be run in more than one world (P6), and the
-# rule has to be the SAME rule in each of them: checking one world with the
-# real code and the other with a copy of it is how two worlds drift apart.
-expectations_met() {
-    local run_code="$1" run_stderr="$2"
-    local wanted
-    [[ "$run_code" == "$expect_exit" ]] || return 1
-    for wanted in ${expect_stderr[@]+"${expect_stderr[@]}"}; do
-        grep -qF -- "$wanted" "$run_stderr" || return 1
-    done
-    return 0
-}
 
 # One scenario, fully isolated. Nothing is read from the developer's HOME and
 # nothing is written outside $cycle_root.
@@ -555,12 +730,14 @@ run_scenario() {
     slug="$(scenario_slug "$script")"
 
     local expect_exit=0
+    local expect_stdout=()
     local expect_stderr=()
     local durable=0
     local durable_once=0
     local resume=0
     local storage_agnostic=0
     local memory_code=0
+    local memory_run_id=""
     local needs_seeded_credentials=0
     local directive_error=""
 
@@ -580,7 +757,7 @@ run_scenario() {
     if ! parse_directives "$directive_total" < <(grep -m 21 '^//@ ' "$script" || true); then
         printf 'FAIL %-52s %s\n' "$name" "$directive_error"
         if [[ "$directive_error" == "unknown directive: "* ]]; then
-            printf '       known: expect-exit, expect-stderr, durable, durable-once, resume, requires-seeded-credentials\n'
+            printf '       known: expect-exit, expect-stdout, expect-stderr, durable, durable-once, resume, storage-agnostic, requires-seeded-credentials\n'
         fi
         verdict_fail "$name: $directive_error"
         return
@@ -609,6 +786,14 @@ run_scenario() {
         verdict_not_run
         return
     fi
+
+    # How many observations this scenario's verdict rests on. It is counted
+    # HERE, after the scenario has been read and before it runs, so that the
+    # number means "declared" and not "held": a scenario that failed to
+    # produce what it declared still declared it, and a scenario that never
+    # ran declared nothing that anybody observed. The report quotes it to
+    # say how much of the run was observed rather than merely executed.
+    printf '__OBSERVED__ %s\n' "$(observed_count)"
 
     local root="$cycle_root/$slug"
     # The cost of THIS scenario starts here: the number the report shows is the
@@ -644,7 +829,16 @@ run_scenario() {
     # This directory is removed with the scenario, so nothing leaks.
     export PIPELINEK_E2E_HOME="$root/cwd"
 
+    # The control root of THIS run: what the run publishes -- archived
+    # artifacts, published reports, the output plane -- lives under it, and a
+    # scenario that observes a published effect needs the path. It is this
+    # scenario's own root, and it goes away with the scenario.
+    export PIPELINEK_E2E_CONTROL_ROOT="$root/control"
+
     local stdout="$root/stdout.txt" stderr="$root/stderr.txt" code=0
+    # The id of the run this scenario started, read from the launch record the
+    # product wrote. It is what names the published output of the run.
+    local run_id=""
 
     # A durable scenario needs a REAL durable store. Without `--db` the CLI
     # runs in memory: there is no journal, nothing to resume, and the second
@@ -685,6 +879,7 @@ run_scenario() {
     run_measured "$scenario_ceiling_ms" "$binary" run --isolated --control-root "$root/control" "${db_args[@]}" "$script" \
         >"$stdout" 2>"$stderr" || code=$?
     cd "$caller_pwd"
+    run_id="$(run_id_of "$stderr")"
 
     # A run that reached the ceiling is a scenario of its own, in red, with
     # its reason. Without this check the launcher would say "exit 124,
@@ -709,11 +904,14 @@ run_scenario() {
     if [[ "$storage_agnostic" == 1 ]]; then
         mkdir -p "$root/cwd-memory"
         export PIPELINEK_E2E_HOME="$root/cwd-memory"
+        export PIPELINEK_E2E_CONTROL_ROOT="$root/control-memory"
         cd "$root/cwd-memory"
         run_measured "$scenario_ceiling_ms" "$binary" run --isolated --control-root "$root/control-memory" "$script" \
             >"$root/stdout.memory.txt" 2>"$root/stderr.memory.txt" || memory_code=$?
         cd "$caller_pwd"
         export PIPELINEK_E2E_HOME="$root/cwd"
+        export PIPELINEK_E2E_CONTROL_ROOT="$root/control"
+        memory_run_id="$(run_id_of "$root/stderr.memory.txt")"
 
         # The volatile run has its own ceiling: it is a different run of the
         # pipeline, and it can hang on its own.
@@ -723,10 +921,17 @@ run_scenario() {
         fi
     fi
 
-    # Which stderr carries the verdict. In `durable` it is the FIRST run's (the
+    # Which output carries the verdict. In `durable` it is the FIRST run's (the
     # second one replays the first one's checks); in `resume` it is the SECOND
     # run's, because the first one died before it could say anything.
     local verdict_stderr="$stderr"
+    # The stdout that carries the verdict is the one the run PUBLISHED, read
+    # from the projection the product exposes. It is not the stdout of the
+    # process: that one carries the engine's trace, and in a durable run it
+    # does not carry the output of the steps at all.
+    local verdict_stdout="$root/observed.stdout"
+    # The console of the run that counts: the other half of what the run said.
+    local console_stdout="$stdout"
 
     if [[ "$durable" == 1 || "$resume" == 1 ]]; then
         # The workspace picture BEFORE the resumed run. This is the observation
@@ -747,6 +952,9 @@ run_scenario() {
         run_measured "$scenario_ceiling_ms" "$binary" run --isolated --control-root "$root/control" "${db_args[@]}" "$script" \
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
+        # The run that counts is the one that just happened, so the published
+        # output that is checked is the one of THAT run.
+        run_id="$(run_id_of "$root/stderr.rerun.txt")"
 
         # The second run has its own ceiling too. This one matters as much as
         # the first: a resumed run that hangs is exactly the failure the
@@ -770,6 +978,7 @@ run_scenario() {
             fi
             code="$second"
             verdict_stderr="$root/stderr.rerun.txt"
+            console_stdout="$root/stdout.rerun.txt"
         else
             # The verdict is the SECOND run's exit code, and the expectation is
             # the one the scenario DECLARED. Forcing it to 0 here discarded what
@@ -778,19 +987,39 @@ run_scenario() {
         fi
     fi
 
+    # The output the run produced, read from the projection the product
+    # publishes. It is read AFTER every run of this scenario is over, because a
+    # resumed run completes the output of the run it resumes, and the published
+    # output of the run is the whole of it.
+    if ! observed_stdout "$run_id" "$root/control" "$verdict_stdout"; then
+        printf 'FAIL %-52s the published output of the run could not be read\n' \
+            "$label"
+        verdict_fail "$name: the published output of the run could not be read"
+        return
+    fi
+    local memory_stdout="$root/observed.memory.stdout"
+    if [[ "$storage_agnostic" == 1 ]]; then
+        if ! observed_stdout "$memory_run_id" "$root/control-memory" "$memory_stdout"; then
+            printf 'FAIL %-52s the published output of the in-memory run could not be read\n' \
+                "$label"
+            verdict_fail "$name: the published output of the in-memory run could not be read"
+            return
+        fi
+    fi
+
     # P6: a scenario that declares itself storage-agnostic has to meet its
     # expectations in BOTH worlds. The durable run happened above; the volatile
     # one right after it. One world meeting them is not evidence: the point is
     # that the storage choice does not change what the script does.
     if [[ "$storage_agnostic" == 1 ]]; then
-        if ! expectations_met "$code" "$verdict_stderr"; then
+        if ! expectations_met "$code" "$verdict_stdout" "$console_stdout" "$verdict_stderr"; then
             printf 'FAIL %-52s the DURABLE run did not meet the expectations  %s\n' \
                 "$label" "$(elapsed_label "$scenario_ms")"
             sed 's/^/       | /' "$verdict_stderr" | head -20
             verdict_fail "$name: the durable run did not meet the expectations"
             return
         fi
-        if ! expectations_met "$memory_code" "$root/stderr.memory.txt"; then
+        if ! expectations_met "$memory_code" "$memory_stdout" "$root/stdout.memory.txt" "$root/stderr.memory.txt"; then
             printf 'FAIL %-52s the IN-MEMORY run did not meet the expectations  %s\n' \
                 "$label" "$(elapsed_label "$scenario_ms")"
             sed 's/^/       | /' "$root/stderr.memory.txt" | head -20
@@ -801,24 +1030,31 @@ run_scenario() {
         # return without a line, and the report then showed one line fewer than
         # the number of scenarios that passed: the reader could not tell which
         # scenario was missing, only that some of them were.
-        printf 'ok   %-52s exit %s  %s\n' "$label" "$code" "$(elapsed_label "$scenario_ms")"
+        printf 'ok   %-52s exit %s  %-16s %s\n' "$label" "$code" "$(checked_words)" "$(elapsed_label "$scenario_ms")"
         verdict_ok
         return
     fi
 
     if [[ "$code" == "$expect_exit" ]]; then
-        # Every declared stderr expectation must hold, not only the last one.
-        local missing="" wanted
-        for wanted in ${expect_stderr[@]+"${expect_stderr[@]}"}; do
-            if ! grep -qF -- "$wanted" "$verdict_stderr"; then
-                missing="$wanted"
-                break
-            fi
-        done
+        # Every declared expectation must hold: the output the run PRODUCED and
+        # the refusal it gave, not only the last one of either. The one that
+        # failed is named, because "the exit code matched but something else
+        # did not" sends the reader back to the scenario to guess what.
+        local missing
+        missing="$(missing_expectation "$verdict_stdout" "$console_stdout" "$verdict_stderr")"
         if [[ -n "$missing" ]]; then
-            printf 'FAIL %-52s exit %s as expected, but stderr lacked: %s  %s\n' \
+            printf 'FAIL %-52s exit %s as expected, but the run did not produce: %s  %s\n' \
                 "$label" "$code" "$missing" "$(elapsed_label "$scenario_ms")"
-            verdict_fail "$name: exit matched but expected stderr substring absent"
+            # What the run DID produce, so the reader can see the difference
+            # without running it again: the published output first, because it
+            # is the run's own voice, and the console after it.
+            if [[ "$missing" == stdout:* ]]; then
+                printf '       published output:\n'
+                sed 's/^/       | /' "$verdict_stdout" | head -10
+                printf '       console:\n'
+                sed 's/^/       | /' "$console_stdout" | head -10
+            fi
+            verdict_fail "$name: exit matched but the expected output was absent ($missing)"
             return
         fi
 
@@ -843,7 +1079,7 @@ run_scenario() {
                 return
             fi
         fi
-        printf 'ok   %-52s exit %s  %s\n' "$label" "$code" "$(elapsed_label "$scenario_ms")"
+        printf 'ok   %-52s exit %s  %-16s %s\n' "$label" "$code" "$(checked_words)" "$(elapsed_label "$scenario_ms")"
         verdict_ok
         return
     fi
@@ -981,8 +1217,19 @@ for script in ${selected[@]+"${selected[@]}"}; do
     # tell which one is missing -- they can only count. So the count is checked
     # here, where the files are read, and a scenario without a line is a
     # failure of the harness, not a pass nobody can see.
-    human_lines="$(grep -v -e '^__VERDICT__ ' -e '^__FAILURE__ ' -e '^[[:space:]]*$' "$file" | wc -l || true)"
-    grep -v -e '^__VERDICT__ ' -e '^__FAILURE__ ' "$file" || true
+    human_lines="$(grep -v -e '^__VERDICT__ ' -e '^__FAILURE__ ' -e '^__OBSERVED__ ' -e '^[[:space:]]*$' "$file" | wc -l || true)"
+    grep -v -e '^__VERDICT__ ' -e '^__FAILURE__ ' -e '^__OBSERVED__ ' "$file" || true
+    # The observations this scenario declared, read from the marker its own
+    # subshell left behind. A marker that is not a number is ignored rather
+    # than counted: a counter that reads a corrupted value is a number
+    # nobody can trust, and the count is here to be trusted.
+    local_observed="$(grep -m 1 '^__OBSERVED__ ' "$file" 2>/dev/null | sed 's/^__OBSERVED__ //' || true)"
+    if [[ "$local_observed" =~ ^[0-9]+$ ]]; then
+        observed_total=$(( observed_total + local_observed ))
+        if [[ "$local_observed" -gt 0 ]]; then
+            observed_scenarios=$(( observed_scenarios + 1 ))
+        fi
+    fi
     if [[ "$human_lines" -eq 0 ]]; then
         failed=$((failed + 1))
         failures+=("${script#"$here"/}: the scenario produced a verdict but no line in the report")
@@ -1003,6 +1250,13 @@ done
 
 printf '\n%d scenario(s), %d passed, %d failed, %d not run\n' \
     "$scenario_index" "$passed" "$failed" "$not_run"
+# What the run OBSERVED, next to what it executed. The scenarios that only
+# watched a process exit are counted by name: a gate that cannot say which of
+# its checks were real is a gate whose cost nobody can weigh against what it
+# bought. The count is of scenarios that DECLARED an observation, so a failed
+# scenario still counts -- it declared the observation and failed to meet it.
+printf '%d of %d executed scenario(s) declared an observation; %d only watched the exit code\n' \
+    "$observed_scenarios" "$(( passed + failed ))" "$(( passed + failed - observed_scenarios ))"
 if (( not_run > 0 )); then
     printf 'not run (NOT_RUN is not a pass):\n'
     printf '  - every scenario above marked NOT_RUN needs external state this\n'

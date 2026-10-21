@@ -547,6 +547,10 @@ fi
 # rather than read as a clean zero.
 e2e_not_run=0
 e2e_stage3_ran=0
+# How many of the executed scenarios declared an observation the harness could
+# check, and how many scenarios were executed at all.
+e2e_observed=""
+e2e_executed=""
 
 # The suffix travels WITH the verdict line. A gap that only exists in the
 # stage log disappears the moment somebody quotes the one line that says the
@@ -577,6 +581,16 @@ tests_suffix() {
         printf '  tests=rewritten:%s read:%s' "$xml_fresh_tests" "$xml_read_tests"
     else
         printf '  tests=NOT_RUN'
+    fi
+}
+
+# How much of the E2E stage was OBSERVED rather than merely executed. It
+# travels with the verdict line for the same reason the test census does.
+scenarios_suffix() {
+    if [[ "$e2e_stage3_ran" == 1 && -n "$e2e_observed" ]]; then
+        printf '  scenarios=observed:%s executed:%s' "$e2e_observed" "$e2e_executed"
+    else
+        printf '  scenarios=NOT_RUN'
     fi
 }
 
@@ -617,6 +631,21 @@ if [[ "$e2e_not_run" -gt 0 ]]; then
     # verdict line, not only the stage log.
     echo "    ${e2e_not_run} scenario(s) NOT_RUN — declared unrunnable, NOT a pass"
 fi
+# How much of the stage was OBSERVED rather than merely executed. The launcher
+# counts the scenarios that declared an observation the harness could check,
+# and the count reaches the verdict line for the same reason the test census
+# does: the line is what gets pasted into a report, and a report that cannot
+# say whether the scenarios checked anything is a report about a number of
+# green lights.
+e2e_observed=""
+e2e_executed=""
+observation_line="$(grep -E '^[0-9]+ of [0-9]+ executed scenario' "${TMPDIR:-/tmp}/verify-all-stage3.log" | head -1 || true)"
+e2e_observed="$(printf '%s\n' "$observation_line" | sed -n 's/^\([0-9][0-9]*\) of \([0-9][0-9]*\) executed.*/\1/p')"
+e2e_executed="$(printf '%s\n' "$observation_line" | sed -n 's/^[0-9][0-9]* of \([0-9][0-9]*\) executed.*/\1/p')"
+if [[ -z "$e2e_observed" || -z "$e2e_executed" ]]; then
+    fail "stage 3 printed no observation count; the launcher must say how much of the run was observed"
+fi
+echo "    ${e2e_observed} of ${e2e_executed} executed scenario(s) declared an observation"
 echo "    ok in $(elapsed "$stage_started_at")s"
 else
   log "stage 3/5  SKIPPED by --stage"
@@ -646,7 +675,7 @@ if [[ "$subset" == 1 ]]; then
     echo "    elapsed ${total}s (SUBSET: not compared against the ${BUDGET_SECONDS}s gate)"
     printf '\nPASS (subset)  sha=%s  elapsed=%ss%s%s\n' \
         "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" \
-        "$(tests_suffix)" "$(gaps_suffix)"
+        "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)"
     printf 'This is not the gate. Quote scripts/verify-all.sh with no filters for that.\n'
     exit 0
 fi
@@ -668,7 +697,7 @@ fi
 if [[ "$skip_budget" == 1 ]]; then
     printf '\nPASS (no LOC budget)  sha=%s  elapsed=%ss  budget=%ss%s%s\n' \
         "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS" \
-        "$(tests_suffix)" "$(gaps_suffix)"
+        "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)"
     printf 'The 2:1 LOC contract was NOT verified: stage 4 was skipped by --no-budget.\n'
     printf 'Quote scripts/verify-all.sh with no flags for that.\n'
     exit 0
@@ -676,4 +705,4 @@ fi
 
 printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss%s%s\n' \
     "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS" \
-    "$(tests_suffix)" "$(gaps_suffix)"
+    "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)"

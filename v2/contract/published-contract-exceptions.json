@@ -345,6 +345,26 @@
       ],
       "removal_boundary": "n/a — no member removed; this is an added member on a published interface and a parameter added with a default on two published data classes. The blast radius is the implementors of StepNode outside this repository, of which there are none: pipelinek-saga consumes the SDK through the DSL and never implements the IR node interface.",
       "supersedes": null
+    },
+    {
+      "module": "pipeline-domain",
+      "sha": "11b55ce19",
+      "surface": "SagaRecordRejection",
+      "change": "added a case `ForeignOwner(String owner, String writer)` to the sealed interface SagaRecordRejection; the interface itself is unchanged and the new class is additive in the ABI dump",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "A SOURCE break, not a binary one: the ABI dump only grows, so apiCheck passes, but a consumer that writes an EXHAUSTIVE `when` over SagaRecordRejection stops compiling until it says what a foreign owner means.",
+        "",
+        "The alternative considered and rejected: refuse a foreign owner with one of the cases that already existed. `UnknownObligation` would be a lie (the promise is there), `IllegalTransition` would be a lie (the transition is legal), and `LeaseSuperseded` would be a lie (the lease is fine). A refusal that names the wrong reason is worse than no refusal, because the reader acts on it.",
+        "",
+        "What it buys: the refusal says WHICH plugin holds the promise and WHICH plugin tried to write to it. A promise belongs to the plugin that armed it, and the plan fingerprint cannot express that, because the slots are local names: two plugins can declare the same action, the same resource and the same slots and get the same digest while their bodies differ.",
+        "",
+        "The cost is bounded and measured: the example plugin in this repository prints the refusal by class name rather than enumerating the cases, so it keeps compiling; a consumer with an exhaustive `when` has to add one branch, and the compiler says exactly where.",
+        "",
+        "Nothing about the DURABLE WIRE changed: the promise rows written before this SHA are read by the same statement and decode to the same values, and the new column is nullable, so a row written by an older build keeps working."
+      ],
+      "removal_boundary": "n/a — no member removed; this is an added case on a sealed interface",
+      "supersedes": null
     }
   ]
 }

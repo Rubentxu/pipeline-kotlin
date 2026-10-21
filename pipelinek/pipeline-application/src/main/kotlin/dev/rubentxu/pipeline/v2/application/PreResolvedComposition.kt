@@ -90,7 +90,7 @@ data class PreResolvedComposition internal constructor(
 }
 
 /**
- * S6-COMPOSITION — the product's ONE path from "these artifacts are on the classpath" to "a frozen
+ * the product's ONE path from "these artifacts are on the classpath" to "a frozen
  * composition exists".
  *
  * ## Why this is a single function and not two call sites

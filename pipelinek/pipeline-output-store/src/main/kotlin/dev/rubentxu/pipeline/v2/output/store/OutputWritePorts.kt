@@ -271,7 +271,7 @@ data class OutputRecoveryReport(
     val reservationsReleased: Int,
     /**
      * Bytes a commit record claims that the payload does not hold. **Non-zero means the store is
-     * damaged and is NOT repaired automatically** — see [OutputNotEstablished.CORRUPT_COMMIT_RECORD].
+     * damaged and is NOT repaired automatically** — see [parseCommittedOffset] in `:pipeline-output-store`.
      * A read that would need those bytes fails loudly rather than returning a plausible short page.
 */
     val bytesUnbacked: Long,

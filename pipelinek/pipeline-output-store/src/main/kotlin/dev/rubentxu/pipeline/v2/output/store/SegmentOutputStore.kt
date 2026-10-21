@@ -718,7 +718,9 @@ class SegmentOutputStore(
         // lost. So the claim stands, is counted in bytesUnbacked, and the reads that would need it
         // Fail loudly instead of returning a short page that reads as an end of stream
         // Deciding what a corrupt commit record MEANS is a product decision, and this store does
-        // not make it silently. See OutputNotEstablished.CORRUPT_COMMIT_RECORD.
+        // not make it silently. The authorising decision lives inside the parser, in
+        // [parseCommittedOffset]; the surrounding code's job is to let it propagate so the call
+        // site sees an IOException rather than a fabricated zero.
         return 0L
     }
 

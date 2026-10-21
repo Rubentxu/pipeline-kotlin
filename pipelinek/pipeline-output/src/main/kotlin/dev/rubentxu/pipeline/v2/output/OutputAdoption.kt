@@ -172,27 +172,6 @@ enum class OutputNotEstablished(
             "none, because a global console order is a presentation decision and imposing it in the " +
             "store would reintroduce the coupling the Output Plane exists to remove",
     ),
-
-    /**
-     * Not silent recovery from a corrupt commit record.
-     * The committed offset is the authoritative cursor across every other fact in the store; a body
-     * the parser cannot decode is therefore the store's loudest refusal, not a number the parser
-     * picks on the author's behalf. A corrupt `cur.cmt` raises an [java.io.IOException] out of the
-     * parse, the surrounding code lets it propagate, and the recovery or read that called it fails
-     * loudly. The bytes behind that commit record are NOT silently rewound to zero and the segment
-     * is NOT truncated to a negative size, because both were reachable from this defect.
-     * The owner of this property is the parse in `pipeline-output-store`
-     * (`parseCommittedOffset`); the read and recovery paths in `SegmentOutputStore` give the
-     * exception room to propagate.
-*/
-    CORRUPT_COMMIT_RECORD(
-        "silent recovery from a corrupt cur.cmt",
-        "an authority above the file-system parser for what a corrupt `cur.cmt` means — losing " +
-            "bytes vs acknowledging corruption — and the discipline to refuse to invent one. The " +
-            "store today picks 'loud failure' as the only failure mode it authorises, and the " +
-            "audit trail of the lost bytes is what an external repair tool would have to supply, " +
-            "not what this store invents in place",
-    ),
 }
 
 /** Whether an adoption may claim crash consistency. */

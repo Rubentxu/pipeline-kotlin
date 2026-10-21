@@ -18,15 +18,15 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA del censo | `c28600f34` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
+| SHA del censo | `4b0a63415` | el SHA sobre el que se midió; el `HEAD` avanza al commit que actualiza esta tabla |
 | Módulos declarados | 27 | bloque `include(` de `v2/settings.gradle.kts` (líneas 33-106) |
 | Módulos con test unitario permanente | **22** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 5 | ídem |
 | Tests unitarios ejecutados | **752** (95 informes JUnit, **95** reescritos por la corrida, 0 fallos, 0 skips) | etapa 2 del gate, y la línea de veredicto: `tests=rewritten:752 read:0` |
 | Escenarios E2E | 46 (**45 pasan, 0 fallan, 1 `NOT_RUN`**) | `v2/examples/**/*.pipeline.kts` |
-| `VERIFY_LOC / PRODUCT_LOC` | **11495 / 65786 = 0.175** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **11702 / 65786 = 0.178** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **78 s** (una corrida; el resultado varía ±10 s según la caché de Gradle), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **88 s** (la más baja de las tres corridas de este bloque: 88, 95 y 109 s), límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 La cifra de reloj de este ciclo es de **una** corrida con las cachés de Gradle
@@ -45,13 +45,16 @@ los tests: el dato estaba en el log de la etapa 2, y el log lo lee quien corrió
 puerta, no quien la cita. Una cifra con el verbo equivocado ya no puede colarse
 ni por el lado del log ni por el lado de la línea (§2.2 u).
 
-La corrida que se publica es la de `a2ffb90db` (**99 s**). El reloj de este gate
+La corrida que se publica es la de `4b0a63415` (**88 s**). El reloj de este gate
 tiene ruido, y publicarlo sin decirlo vuelve a ser una afirmación que nadie
-puede reproducir: el ciclo anterior (`cb37779f2`) midió **95 s** con 90
-informes, y otra corrida sobre ese **mismo** contenido, con los módulos tocados
-compilando de cero, midió 98 s. La diferencia entre 95 y 99 s entra de sobra en
-el ruido medido de este reloj (±10 s). Este ciclo **añadió 26 tests** en cuatro
-módulos y **ningún escenario E2E nuevo**, así que su coste es el de la puerta
+puede reproducir: el ciclo anterior (`a2ffb90db`) publicó **99 s**, el de
+`main-partido` (`03bdc2a3a`) midió **107 s**, y otra corrida sobre ese **mismo**
+contenido, con los módulos tocados compilando de cero, midió 98 s. Y el ruido de
+este bloque es mayor que el de un ciclo: sus tres corridas dieron **88 s**, **95 s**
+y **109 s** sobre el mismo contenido, con la caché de Gradle warm. La cifra
+publicada es la más baja de las tres, y se dice cuál es para que nadie la lea
+como la típica. Este bloque **no añade tests ni escenarios** —los **752** tests y
+los **46** escenarios E2E son los mismos—, así que su coste es el de la puerta
 anterior, y **cuánto cuesta por sí solo el cambio no se midió aislado**, así que
 no se afirma.
 
@@ -1665,6 +1668,77 @@ el ratio máximo por módulo sigue siendo **1.633** (`pipeline-step-sdk:workflow
 y `pipeline-domain` queda en 0.277.
 
 Puerta sobre el SHA del bloque: `PASS sha=c28600f34… elapsed=78s budget=900s
+tests=rewritten:752 read:0 gaps=1 not_run`.
+
+
+**aa) El arnés E2E no tenía techo: un cuelgue era un silencio — CERRADO en `4b0a63415`.**
+El bloque `fingerprint-canonico` (§2.2 z) dejó escrito que el defecto **no era del
+producto** sino del arnés: «convierte un cuelgue en un silencio». El lanzador imprimía
+su informe al **final**, así que un escenario que se colgaba no escribía su
+veredicto, la etapa 3 seguía esperando y el **log de la etapa quedaba vacío**: la
+puerta se quedaba **sin veredicto**, y sólo la mataba un `timeout` **externo**.
+Medido en este árbol: una corrida se colgó más de **1400 s** en la etapa 3 con el
+log vacío, y la corrida siguiente, sobre el **mismo** árbol, pasó en 78 s.
+
+**La regla es una y es total**: cada corrida del pipeline dentro de un escenario
+tiene un techo (`PIPELINEK_E2E_SCENARIO_TIMEOUT`, **120 s** por defecto), y un
+escenario que lo alcanza produce su **propia** fila roja, con su nombre y su
+motivo, mientras los demás escenarios siguen corriendo. El recuento final no
+cambia: un escenario colgado cuenta como **fallido**, no desaparece del informe.
+
+**Mutación vista en rojo.** Con el techo a 30 s y un escenario que dormía 600 s:
+
+```
+ok   steps/04-sh.pipeline.kts                             exit 0
+ok   steps/08-withEnv-pipeline.pipeline.kts               exit 0
+ok   steps/13-workspace-helpers.pipeline.kts              exit 0
+ok   steps/16-sleep.pipeline.kts                          exit 0
+ok   steps/17-writeFile.pipeline.kts                      exit 0
+ok   steps/18-cleanWs.pipeline.kts                        exit 0
+ok   steps/26-find-files.pipeline.kts                     exit 0
+ok   steps/33-glob-ant-alternation.pipeline.kts           exit 0
+FAIL steps/99-hang.pipeline.kts                           timed out after 30s: the run was killed, not finished
+
+9 scenario(s), 8 passed, 1 failed, 0 not run
+failures:
+  - steps/99-hang.pipeline.kts: timed out after 30s
+```
+
+El colgado tuvo su fila, su nombre y su motivo; los otros ocho pasaron; y el
+recuento cuadró. **El otro lado de la mutación**: con el techo desactivado
+(`PIPELINEK_E2E_SCENARIO_TIMEOUT=0`), la misma corrida **se colgó** y el log de
+la etapa terminó con **0 líneas** —el silencio, medido—, y sólo la mató un
+`timeout` externo.
+
+**El techo se reconoce por el TIEMPO TRANSCURRIDO, no sólo por el código de
+salida**, porque el código no alcanza: GNU `timeout` devuelve **124** cuando el
+hijo muere por SIGTERM, pero devuelve **137** cuando lo ignora y hay que
+rematarlo, y 137 es exactamente lo que produce el SIGKILL que un escenario de
+`resume` se aplica a sí mismo. Un escenario que se cuelga y uno que muere a
+propósito no pueden acabar pareciendo lo mismo.
+
+**El instrumento permanente es el `--self-test` del lanzador**, que ya protege su
+propio contrato: ahora comprueba también que la perilla se lee, que una perilla
+que no es un número se rechaza, que una corrida que llega al techo **es** un
+timeout y que una que falla dentro del techo **no** lo es. El self-test encontró
+dos fallos reales durante el desarrollo —`timeout` no admite el sufijo `ms`, y una
+expectativa del propio self-test estaba invertida—, que es justo para lo que un
+self-test debe existir.
+
+**El valor por defecto deja pasar los 46 escenarios.** Medido sobre el árbol de
+este bloque, el escenario más lento es `durable/37-saga-reconcile` con **17 s**
+—y el techo son 120 s—, así que la margen es de más de siete veces y ningún
+escenario legítimo llega a pisar el techo. El techo es por **corrida del
+pipeline**, no por escenario, porque un escenario puede ejecutar el pipeline hasta
+tres veces (`durable`, `resume`, `storage-agnostic`) y cada una de esas corridas
+es donde puede colgarse.
+
+**Lo que este bloque NO toca**: ni una línea del producto, ni el esquema de
+eventos, ni un `.api`. `VERIFY_LOC` 11 495 → **11 702** (+207, el lanzador),
+`PRODUCT_LOC` **65 786** (sin cambio), ratio global **0.178**; el ratio máximo por
+módulo sigue siendo **1.633** (`pipeline-step-sdk:workflow-control`).
+
+Puerta sobre el SHA del bloque: `PASS sha=4b0a63415… elapsed=88s budget=900s
 tests=rewritten:752 read:0 gaps=1 not_run`.
 
 

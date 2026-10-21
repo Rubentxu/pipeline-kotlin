@@ -380,6 +380,80 @@ escrito en la cabecera del propio escenario.
 
 ---
 
+### 2.36 El arnés ejecutable, probado a fallar: 5/6 escenarios encendieron con su mutación esperada
+
+Este ciclo hizo la auditoría propuesta en §1: «romper la garantía que cada escenario
+cubre y contar los que se encienden; los que no pueden encenderse se reescriben
+para afirmar algo discriminante, o se retiran». La auditoría se ejecutó como
+mutación contra seis escenarios representativos, elegida por variedad de categoría
+y por tipo de aserción. Cada mutación atacaba el input del step bajo prueba (no
+el árbol del producto): cambiar la entrada que el escenario le pasa al step, y
+observar si el escenario pasa a rojo en una corrida limpia de `examples/run.sh`.
+
+**Muestra mutada, una mutación por escenario.** Cada fila es
+`edit → ./examples/run.sh '<filtro>' → git checkout`. La mutación se deshace
+antes de pasar a la siguiente, así el orden no contamina.
+
+| # | Escenario | Mutación | Tipo de aserción | Veredicto observado | Esperado | Encendido |
+|---|---|---|---|---|---|---|
+| 1 | `steps/17-writeFile` | `text = "hello"` → `text = "WRONG_TEXT"` | `sh("grep -qx hello out.txt")` (in‑pipeline) | RED: `exit 1, expected 0` | RED | **✓** |
+| 2 | `steps/18-cleanWs` | `listOf("test/**")` → `listOf("nonexistent/**")` | `sh("test ! -e test/a.txt && test ! -e test/b.txt")` (in‑pipeline) | RED: `exit 1, expected 0` | RED | **✓** |
+| 3 | `smoke/02-environment` | `"KEY=value"` → `"KEY=MISMATCHED"` (dentro del bloque `withEnv`) | `sh("test \"${'$'}KEY\" = value && …")` (in‑pipeline) | RED: `exit 1, expected 0` | RED | **✓** |
+| 4 | `steps/13-workspace-helpers` | `echo("waitUntil done")` → `echo("waitUntil DIVERGED")` | `//@ expect-stdout waitUntil done` (lanzador) | RED: `stdout lacked: waitUntil done` | RED | **✓** |
+| 5 | `steps/16-sleep` | eliminar la línea `sleep(1)` | `sh("test \"$(( $(cat sleep-ended) - $(cat sleep-started) ))\" -ge 1")` (in‑pipeline) | RED: `exit 1, expected 0` | RED | **✓** |
+| 6 | `steps/26-find-files` | `glob = "**/*.txt"` → `glob = "**/*.nope"` (segunda llamada) | `sh("test \"$(find build/utils/scan -name '*.txt' \| wc -l)\" -eq 3")` (in‑pipeline) | **GREEN** (`exit 0`) | RED | **✗** |
+
+**Lectura: el arnés enciende con su mutación esperada en 5 de 6 casos.** Los
+cinco que encienden lo hacen por la superficie observable correcta: `exit code`
+para los efectos en shell, y `expect-stdout` para una cadena que el step imprime.
+La diferencia entre la fila 4 y la fila 6 es exactamente el tamaño del problema:
+la fila 4 enciende porque el step bajo prueba emite texto al stdout, y el
+lanzador compara contra el substring declarado; la fila 6 no enciende porque
+la aserción del escenario no toca lo que `findFiles` devolvió.
+
+**Por qué la fila 6 no enciende, y no es un fallo del escenario sino del
+arnés.** `findFiles` está declarado `effects = listOf(Effect.READ_ONLY)` y
+devuelve un `FindFilesOutput(…)` tipado — un valor que el DSL declarativo no
+expone al script. La cabecera del propio escenario lo dice sin rodeos: «The
+step's RETURNED SET is not asserted, and cannot be: the DSL is declarative, so
+a step's result is never handed back to the script and nothing it computed can
+reach stdout». La aserción `find -name '*.txt' | wc -l -eq 3` comprueba el
+árbol subyacente, no la respuesta del step; un step que devuelva vacío o el
+conjunto equivocado pasa esta aserción mientras los archivos sigan ahí. La
+misma asimetría se da entre las dos llamadas a `findFiles`: la llamada con
+`*.txt` (hijos directos) está cruzada con `ls *.txt` (que también mira el
+árbol), no con el resultado del step. El árbol existe independientemente del
+step; la igualdad se cumple sin que el step la haya medido.
+
+**El principio que el arnés no resuelve y el escenario tampoco.** Cualquier
+step con `Effect.READ_ONLY` que devuelva un valor tipado — `findFiles`, un
+futuro `readJson`, un futuro `diffTree` — entra en esta misma clase: el
+lanzador no tiene superficie para leer su salida. Cerrar el agujero exige uno
+de tres caminos, y los tres cambian el arnés:
+
+1. **Extender el arnés** con un verbo que lea el Output Plane del step y lo
+   haga visible al script (analogía: `console` para el `expect-transcript`,
+   pero aplicado al output del step). Esto es trabajo del arnés, no del
+   escenario, y entra en otra iniciativa.
+2. **Reescribir el escenario** para que su garantía coincida con lo que el
+   arnés SÍ puede observar: la integridad del árbol antes y después, y que el
+   step no lo mute. La garantía pasa a ser «`findFiles` no corrompe el árbol,
+   ni siquiera con un glob que no casa con nada», y deja de ser «enumera
+   correctamente por glob». La propuesta es esa, con la mutación
+   correspondiente (cambiar el segundo glob por uno que case con cero
+   entradas y verificar que el árbol sobrevive). La propuesta vive como
+   objetivo propuesto, no se aplica en este ciclo.
+3. **Retirar el escenario** y dejar a la prueba unitaria de `findFiles` como
+   única cobertura de la garantía fuerte. La prueba unitaria sí puede sujetar
+   `FindFilesOutput`.
+
+Este ciclo cierra con la fila 6 declarada en el inventario, con la opción 2
+encabezada como siguiente paso, y con el resto del inventario (cincuenta
+escenarios sin auditar todavía) cubierto en próximas iteraciones del mismo
+ciclo. El arnés no se modifica en este commit.
+
+---
+
 ## 2. Deuda técnica abierta
 
 ### 2.1 Defectos materiales corregidos en este ciclo

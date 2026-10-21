@@ -450,10 +450,11 @@ class RuntimeIntrospectionPortStoreAdapter(
     // Are not on the envelope. A follow-up (or.x patch) that
     // exposes a typed event-shape read port can lift this limitation; until
     // Then, the first cut uses a SYNTHETIC single-stage single-step view
-    // derived from the journal alone. The contract test
-    // `RuntimeIntrospectionPortStructureAdapterTest` pins the synthetic
-    // Grouping explicitly; a future that adds event-shape correlation
-    // will update the test to pin the event-driven grouping.
+    // derived from the journal alone. Nothing pins that synthetic grouping
+    // today: the test that used to is gone, and the capability it would have
+    // protected is announced and NOT delivered
+    // (`runtime.structure.v1` — see `SdkCapabilities`). A future that adds
+    // event-shape correlation has to bring the test with it.
     // The audit's I.6 PARTIAL closure is therefore "synthetic grouping in
     // First cut; event-driven grouping in a follow-up ". The
     // PARTIAL is honest: a consumer that needs true event-driven grouping
@@ -735,9 +736,9 @@ class RuntimeIntrospectionPortStoreAdapter(
     /**
      * Build the synthetic single-stage / single-step view (the
      * fallback). Every operation is placed under a synthetic stage 0
-     * / step 0. The test `RuntimeIntrospectionPortStructureAdapterTest`
-     * Pins this fallback explicitly; the contract test row for
-     * "synthetic grouping" lives on.
+     * / step 0. Nothing pins this fallback today: the method is not
+     * composed by anything, so the capability that would carry it is
+     * announced and NOT delivered (`runtime.structure.v1`).
 */
     private fun buildSyntheticStage(
         runId: String,

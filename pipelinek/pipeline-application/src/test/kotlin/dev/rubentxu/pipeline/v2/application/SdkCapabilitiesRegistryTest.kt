@@ -40,8 +40,8 @@ class SdkCapabilitiesRegistryTest {
         Triple("output.read.digested.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.51.0-rc1"),
         Triple("output.pin.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.51.0-rc1"),
         Triple("output.refusal.retention.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.51.0-rc1"),
-        Triple("runtime.structure.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.53.0-rc1"),
-        Triple("runtime.operation.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.53.0-rc1"),
+        Triple("runtime.structure.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.53.0-rc1"),
+        Triple("runtime.operation.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.53.0-rc1"),
         Triple("runtime.eventshape.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.54.0-rc1"),
         Triple("runtime.eventshape.v2", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
         Triple("events.stepoutcome.v1", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
@@ -91,7 +91,12 @@ class SdkCapabilitiesRegistryTest {
             .map { it.id }
 
         assertEquals(
-            listOf("events.follow.v1", "runtime.eventshape.v1"),
+            listOf(
+                "events.follow.v1",
+                "runtime.structure.v1",
+                "runtime.operation.v1",
+                "runtime.eventshape.v1",
+            ),
             deprecated,
             "the ids this build announces but does NOT deliver are exactly the ones a consumer " +
                 "must not build on; anything else here is either an id the build stopped " +

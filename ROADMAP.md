@@ -1841,7 +1841,7 @@ Puerta sobre el SHA del bloque: `PASS sha=ad61e9b2c… elapsed=95s budget=900s
 tests=rewritten:774 read:0 gaps=1 not_run`.
 
 
-**bc) Una promesa no decía de quién era, y otro plugin podía escribir en ella — CERRADO en `11b55ce19`.**
+**bc) Una promesa no decía de quién era, y otro plugin podía escribir en ella — CERRADO en `c47d557a3`.**
 
 **El problema, en una frase**: el `plan_fingerprint` dice **qué** se prometió, pero
 **no dice quién** lo prometió, y como los slots son nombres **locales** del plugin,
@@ -1906,7 +1906,7 @@ motivo y su alcance. `VERIFY_LOC` 12 139 → **12 515** (+376), `PRODUCT_LOC`
 66 328 → **66 532** (+204), ratio global **0.188**; el ratio máximo por módulo
 sigue siendo **1.633** (`pipeline-step-sdk:workflow-control`).
 
-Puerta sobre el SHA del bloque: `PASS sha=11b55ce19… elapsed=110s budget=900s
+Puerta sobre el SHA del bloque: `PASS sha=c47d557a3… elapsed=110s budget=900s
 tests=rewritten:792 read:0 gaps=1 not_run`.
 
 

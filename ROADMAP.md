@@ -499,6 +499,102 @@ checkout`), elegida por variedad de categoría (control-flow, durable, plugins, 
 aserción (in-pipeline `sh`, `//@ expect-stdout`, `//@ expect-transcript`, `//@ expect-exit`,
 `//@ expect-stderr`, `//@ run-state`, `//@ events-*`, `//@ step-verdict`).
 
+### 2.38 El P0 de `committedLocked()` cur.cmt corrupto: parse fail-loud
+
+El P0 que abrió este ciclo sobre el Output Plane decía:
+
+> `committedLocked()` interpreta un `cur.cmt` corrupto como offset `0`; `reconcile()` puede
+> usar ese valor para truncar bytes.
+
+El defecto medido en código (`SegmentOutputStore.kt:730-735` antes de este ciclo):
+
+```kotlin
+private fun committedLocked(layout: Layout): Long =
+    if (Files.exists(layout.commitFile)) {
+        Files.readString(layout.commitFile).trim().toLongOrNull() ?: 0L
+    } else 0L
+```
+
+La traición es exactamente la que dice el `?:` silencioso: el archivo existe pero su cuerpo no parsea
+y el código lo trata como cero. A partir de ese cero:
+
+* `reconcile()` ve `readableEnd = currentBase + onDisk > 0 = committed` y llama
+  `truncateTo(layout.segmentFile, onDisk - (readableEnd - committed))` con un argumento
+  `size = -currentBase`. Para un offset positivo, ese argumento es negativo y
+  `FileChannel.truncate` lanza `IllegalArgumentException`; para un offset en cero, `truncateTo`
+  no toca el archivo (su guarda `if (size >= current) return` se cumple con `0 >= 0`). El camino
+  "silencioso" tiene dos finales — `IllegalArgumentException` o rewind a cero — y los dos
+  contradicen el KDoc de la propia clase que dice "this store does not make it silently".
+
+#### Lo que cambia
+
+Dos operaciones, una sola evidencia. La función de parse sale del lugar privado como
+`internal fun parseCommittedOffset(content: String): Long` en `SegmentOutputStore.kt`, con un
+contrato mínimo y nominativo:
+
+* **Ausente** se sigue tratando fuera de `parseCommittedOffset`: `committedLocked` devuelve `0L`
+  cuando `cur.cmt` no existe en disco, exactamente igual que antes.
+* **Válido** — cuerpo que parsea a `Long` no-negativo, con trim de espacios y newlines en los
+  bordes (los escritores usan `\n` como terminador).
+* **Corrupto** — cualquier otra cosa. Antes: `?: 0L`. Ahora: `IOException` con un mensaje que
+  nombra `cur.cmt` y muestra el cuerpo sanitizado.
+
+El enum `OutputNotEstablished` gana el caso que el KDoc del propio fichero referencia desde
+hace tiempo sin existir:
+
+```kotlin
+CORRUPT_COMMIT_RECORD(
+    "silent recovery from a corrupt cur.cmt",
+    "an authority above the file-system parser for what a corrupt `cur.cmt` means — losing " +
+        "bytes vs acknowledging corruption — and the discipline to refuse to invent one. " +
+        "The store today picks 'loud failure' as the only failure mode it authorises, " +
+        "and the audit trail of the lost bytes is what an external repair tool would have " +
+        "to supply, not what this store invents in place",
+)
+```
+
+El `committedLocked` ahora propaga esa excepción al `tryWithStreamOwnership` que ya tenía
+escrito en KDoc ("silently skipping would be a hole rather than a safety. It propagates, and the
+recovery that called it fails loudly"). El camino de recovery, los lectores y los tails ya no
+reciben un `0L` fabricado; reciben la excepción, y el operador la ve.
+
+#### Discriminación medida, no supuesta
+
+Cinco filas, sobre la función pura `parseCommittedOffset` (`String` in, `Long` out, sin disco):
+
+| Fila | Entrada | Resultado esperado | Mutación observada |
+|---|---|---|---|
+| `a plain decimal body parses to its long value` | `"0"`, `"1"`, `"42"`, `"4096"` | `0L`, `1L`, `42L`, `4096L` | sigue verde tras la mutación |
+| `a body trimmed at the edges still parses` | `"  42  "`, `"42\n"`, `"\n42"`, `"\n42\n"` | `42L` | sigue verde tras la mutación |
+| `an empty body refuses with IOException` | `""` | `IOException` cuyo mensaje nombra `cur.cmt` | **ROJO** tras la mutación |
+| `a non-numeric body refuses with IOException` | `"not-a-number"`, `"42abc"`, `"  abc  "`, `"42.0"` | `IOException` | **ROJO** tras la mutación |
+| `a negative body is refused` | `"-1"` | `IllegalArgumentException` con la palabra `negative` | sigue verde (la mutación no toca el `require`) |
+
+La mutación ejecutada fue exactamente el defecto original: `toLongOrNull() ?: 0L` reintroducido
+dentro de `parseCommittedOffset`. Dos filas en rojo (las que cubren la garantía), tres en verde
+(las que cubren las decisiones vecinales que no cambian). Ningún test colateral fuera de este
+fichero se enciende ni se apaga: `pipeline-output` 13/13 y
+`pipeline-output-store` 5+10+14+12 = 53/53 siguen como antes. El módulo gana una clase de
+test (la quinta) y 5 tests; los cuatro módulos vecinos no se mueven.
+
+#### Lo que queda abierto por cierre de bloque
+
+* **`committedLocked` no se puede probar directamente** porque `Layout` es privado: el ejercicio
+  end-to-end (escribir un `cur.cmt` corrupto, llamar a `recover()` y observar la propagación) es
+  trabajo del ciclo de integración, no de la unidad. La función pura `parseCommittedOffset` es
+  el seam más barato para fijar la garantía fuerte sin ese coste; las filas discrimantes
+  siguen verdes tras la mutación y la mutación reproduzca exactamente el defecto original.
+* **El formato del mensaje de error** no es estable todavía: el `replace("\n", "\\n").replace("\r", "\\r")`
+  Sanitization es defensiva contra el camino `DiagnosticText` que ya documentó el caso
+  `MainInspectCli`; cuando `recover()` exponga el `IOException` al operador, ese mensaje llega
+  sin garantía adicional de una sola línea. Es el mismo riesgo que `DiagnosticText` ya cierra
+  para los `OutputRefusal.Corrupt.reason`, y queda como bloque aparte para mantener este commit
+  quirúrgico.
+* **El P0/P1 de las cancelaciones** (escritura del marcador antes del sellado) y de los rechazos
+  `CursorBeyondTail` / `StorageError` confundidos en `UnknownRun` no se tocan aquí: viven en
+  `main` y son previos a este ciclo. El branch `integration/reconcile-main` no los contiene en
+  su árbol.
+
 ---
 
 ## 2. Deuda técnica abierta

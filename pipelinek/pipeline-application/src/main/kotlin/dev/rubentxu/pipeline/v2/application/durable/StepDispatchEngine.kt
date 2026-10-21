@@ -1067,7 +1067,7 @@ internal class StepDispatchEngine(
         val leased: AcquiredCredentialScope = when (val acquisition = credentialScopePort.acquire(bindings, runId)) {
             is CredentialScopeOutcome.Unavailable -> {
                 emitCredentialLeaseAdmissionFailure(
-                    runId = runId, stepIndex = stepIndex,
+                    runId = runId, stageIndex = stageIndex, stepIndex = stepIndex,
                     stepName = "${block.pluginStepId.value}", stepType = "withcredentials",
                     failureKind = dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
                     message = acquisition.failure.describe(),
@@ -1081,7 +1081,7 @@ internal class StepDispatchEngine(
             }
             is CredentialScopeOutcome.Invalid -> {
                 emitCredentialLeaseAdmissionFailure(
-                    runId = runId, stepIndex = stepIndex,
+                    runId = runId, stageIndex = stageIndex, stepIndex = stepIndex,
                     stepName = "${block.pluginStepId.value}", stepType = "withcredentials",
                     failureKind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
                     message = acquisition.failure.describe(),
@@ -1148,6 +1148,7 @@ internal class StepDispatchEngine(
      */
     private fun emitCredentialLeaseAdmissionFailure(
         runId: RunId,
+        stageIndex: Int,
         stepIndex: Int,
         stepName: String,
         stepType: String,
@@ -1160,6 +1161,10 @@ internal class StepDispatchEngine(
                 runId = runId.value,
                 sequence = 0L,
                 occurredAt = clock.now(),
+                // The stage this rejection belongs to. The rejection happens before the body's own
+                // step starts, so this event is the only thing that says which stage the run
+                // stopped in, and it has to say it itself.
+                stageIndex = stageIndex,
                 stepIndex = stepIndex,
                 stepName = stepName,
                 stepType = stepType,

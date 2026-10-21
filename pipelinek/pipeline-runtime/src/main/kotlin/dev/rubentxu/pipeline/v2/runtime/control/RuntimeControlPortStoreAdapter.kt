@@ -10,10 +10,10 @@ import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.RunFinished
-import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
 import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
+import dev.rubentxu.pipeline.v2.events.durable.RunLeasePort
 import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import dev.rubentxu.pipeline.v2.events.identity.EventQuery
@@ -86,7 +86,9 @@ import java.util.UUID
  * @param journal the operation journal. The cancel's own receipt is written
  *   here; the run's operations are not touched.
  * @param lease the run's lease store. The cancel takes the lease for the
- *   duration of the write and releases it afterwards.
+ *   duration of the write and releases it afterwards. It is the PORT, not the
+ *   file-backed implementation: the adapter composes authorities, and a test
+ *   has to be able to answer them without a disk.
  * @param events the event lane's write side.
  * @param eventReader the event lane's read side, used to find the run's
  *   terminal bookend.
@@ -100,7 +102,7 @@ import java.util.UUID
  */
 class RuntimeControlPortStoreAdapter(
     private val journal: OperationJournal,
-    private val lease: FileBackedRunExecutionLeaseStore,
+    private val lease: RunLeasePort,
     private val events: EventSink,
     private val eventReader: EventRecordReadPort,
     private val frames: OutputFrameIndex,
@@ -195,16 +197,48 @@ class RuntimeControlPortStoreAdapter(
 
     /**
      * Writes the terminal facts of a cancellation, in the order that keeps the
-     * run honest if the process dies half-way through.
+     * run honest if one of the writes fails.
      *
-     * The receipt goes first because it is the intent, and the intent is what
-     * makes a retry a no-op rather than a second terminal state. The bookend
-     * goes second because it is the run's terminal fact, and a run with a
-     * receipt but no bookend is a run a later cancel can still finish.
+     * ## The order is the contract
+     *
+     * [CancelOutcome.Cancelled] says what it means: this call closed the run,
+     * the cancellation was recorded, and the output streams were sealed. That
+     * claim is only true if the run's terminal fact is written LAST. So the
+     * order is: the receipt, then the seal, then the bookend.
+     *
+     * The order used to be the receipt, the bookend, then the seal, and it
+     * left a state nothing could finish: a run whose terminal fact existed
+     * (so it was ABORTED) and whose streams were never sealed (so its bytes
+     * never ended). The next cancel found a recorded cancellation and a
+     * terminal run, said "already cancelled", and sealed nothing — so the
+     * output of an aborted run stayed open forever, and a reader following it
+     * waited forever. The cancel that had failed had also answered "refused",
+     * which contradicted the run's own bookend.
+     *
+     * With the terminal fact last, a failure in the middle leaves the run
+     * UNCLOSED, with the receipt of the intent already in the journal. That
+     * is the state the next cancel finishes: it sees a recorded cancellation
+     * and no terminal fact, seals what is left to seal (the seal is
+     * idempotent), writes the bookend once, and answers [CancelOutcome.Cancelled].
+     * The first cancel's refusal is then true as well — nothing terminal
+     * happened — instead of contradicting the run it refused to close.
+     *
+     * ## Why the receipt comes first
+     * Because it is the intent, and the intent is what makes a retry a repair
+     * instead of a second terminal state: the receipt is keyed by the run, so
+     * writing it again updates that one row instead of adding another.
+     *
+     * ## Why the seal comes before the bookend and not after
+     * Because the seal is the statement "no more bytes will be written to this
+     * stream", and the cancel holds the run's lease while it says it: nobody
+     * else can be publishing this run, so the statement is true at the moment
+     * it is made — and it stays true whether or not the bookend lands.
      */
     private fun closeRun(runId: String, reason: CancelReason): CancelOutcome {
         val now = clock.now()
 
+        // 1. The receipt: the intent. It makes the retry a repair instead of
+        //    a second terminal state, because the row is keyed by the run.
         try {
             journal.append(cancelReceipt(runId, reason, now))
         } catch (failure: Exception) {
@@ -213,27 +247,9 @@ class RuntimeControlPortStoreAdapter(
             )
         }
 
-        try {
-            events.append(
-                RunFinished(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = runId,
-                    // Zero asks the store for the next per-run sequence; it is
-                    // not a value, it is a request.
-                    sequence = 0L,
-                    occurredAt = now,
-                    outcome = RunOutcome.Aborted.wireToken,
-                    diagnostics = listOf(cancelDiagnostic(reason)),
-                ),
-            )
-        } catch (failure: Exception) {
-            return CancelOutcome.Refused(
-                CancelRefusal.StorageError(failure.shortDiagnostic()),
-            )
-        }
-
+        // 2. The seal: the run's bytes are complete. The seal needs the store
+        //    to have reconciled its segments first.
         val streamsSealed = try {
-            // The seal needs the store to have reconciled its segments first.
             outputRecovery.recover()
             var sealed = 0
             for (stream in frames.streamsOfRun(runId)) {
@@ -247,6 +263,27 @@ class RuntimeControlPortStoreAdapter(
                 }
             }
             sealed
+        } catch (failure: Exception) {
+            return CancelOutcome.Refused(
+                CancelRefusal.StorageError(failure.shortDiagnostic()),
+            )
+        }
+
+        // 3. The terminal fact: the run is closed. It goes last, so that a
+        //    run is never closed and unsealed at the same time.
+        try {
+            events.append(
+                RunFinished(
+                    eventId = UUID.randomUUID().toString(),
+                    runId = runId,
+                    // Zero asks the store for the next per-run sequence; it is
+                    // not a value, it is a request.
+                    sequence = 0L,
+                    occurredAt = now,
+                    outcome = RunOutcome.Aborted.wireToken,
+                    diagnostics = listOf(cancelDiagnostic(reason)),
+                ),
+            )
         } catch (failure: Exception) {
             return CancelOutcome.Refused(
                 CancelRefusal.StorageError(failure.shortDiagnostic()),
@@ -394,8 +431,11 @@ class RuntimeControlPortStoreAdapter(
          * run as a whole. The prefix keeps it from ever colliding with an
          * operation id, and keeps the receipt out of the readers that look for
          * operations by shape.
+         *
+         * The shape itself lives in [CancelReceipt], because the recover reads
+         * it too.
          */
-        fun receiptOpId(runId: String): String = "cancel-$runId"
+        fun receiptOpId(runId: String): String = CancelReceipt.opIdOf(runId)
 
         /** The `path` the cancel's diagnostic carries: the producer's name. */
         const val CANCEL_DIAGNOSTIC_PATH: String = "pipelinek:runs cancel"

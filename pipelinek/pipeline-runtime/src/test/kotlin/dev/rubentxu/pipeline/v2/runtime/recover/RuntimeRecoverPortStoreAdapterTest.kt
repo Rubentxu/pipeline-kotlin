@@ -25,6 +25,7 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.LeaseHolder
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
+import dev.rubentxu.pipeline.v2.runtime.control.CancelReceipt
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Test
@@ -268,6 +269,45 @@ class RuntimeRecoverPortStoreAdapterTest {
             failed.reason,
             "another live process owns this run, and the recover must say so instead of " +
                 "closing it underneath",
+        )
+    }
+
+    /**
+     * Un run cancelado no se reanuda.
+     *
+     * El cancel interrumpe el trabajo a propósito, y un step puede quedarse en
+     * RUNNING: el run no tiene veredicto propio y su journal no dice que el
+     * run terminó. El recover NO debe ofrecer un re-attach de ese run:
+     * reanudarlo repetiría un efecto que el step interrumpido puede ya haber
+     * tenido, que es justo lo que un cancel quería evitar.
+     *
+     * El cancel es el hecho terminal del run — lo dice el journal, en su
+     * propio vocabulario — y por eso el recover no escribe una fila terminal
+     * para un run cancelado: no tiene nada que añadir.
+     */
+    @Test
+    fun `un run cancelado no se reanuda`() {
+        val fixture = fixture(
+            ops = listOf(
+                op("op-1", OperationStatus.RUNNING),
+                op(CancelReceipt.opIdOf(runId), OperationStatus.SUCCEEDED),
+            ),
+            observation = runningWithDeadWriter(),
+        )
+
+        val outcome = fixture.adapter.recover(runId, RecoverOptions.Default)
+
+        assertInstanceOf(
+            RecoverOutcome.AlreadyRecovered::class.java,
+            outcome,
+            "a cancelled run is not a run to re-attach: the operator cancelled it on purpose, " +
+                "and resuming it could repeat an effect the interrupted step already had",
+        )
+        assertEquals(
+            2,
+            fixture.journal.size(),
+            "the recover wrote a terminal row for a run that was cancelled: the cancel is the " +
+                "run's terminal fact, and the recover has nothing to add to it",
         )
     }
 

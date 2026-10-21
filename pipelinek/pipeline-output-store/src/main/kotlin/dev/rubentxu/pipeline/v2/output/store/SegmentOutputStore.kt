@@ -27,6 +27,7 @@ import dev.rubentxu.pipeline.v2.output.OutputRetentionPort
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import dev.rubentxu.pipeline.v2.output.PruneAuthorisation
 import dev.rubentxu.pipeline.v2.output.PruneRefusal
+import java.io.IOException
 import java.io.InputStream
 import java.nio.channels.FileChannel
 import java.nio.file.Files
@@ -729,7 +730,7 @@ class SegmentOutputStore(
     /** The global committed offset: the authority */
     private fun committedLocked(layout: Layout): Long =
         if (Files.exists(layout.commitFile)) {
-            Files.readString(layout.commitFile).trim().toLongOrNull() ?: 0L
+            parseCommittedOffset(Files.readString(layout.commitFile))
         } else 0L
 
     /**
@@ -1093,3 +1094,34 @@ class SegmentOutputStore(
  * same run differently.
 */
 internal fun safeStreamName(name: String): String = name.replace(Regex("[^A-Za-z0-9._-]"), "_")
+
+/**
+ * Parse the body of a stream's `cur.cmt` as the global committed offset.
+ *
+ * Two states are recognised, and a third is rejected loudly.
+ *
+ *   * [Absent][dev.rubentxu.pipeline.v2.output.OutputNotEstablished.POWER_LOSS_DURABILITY] — the
+ *     file does not exist on disk and a stream that never committed has no `cur.cmt` at all. Callers
+ *     translate the absence to `0L` before this function is reached.
+ *   * **Valid** — the body parses as a non-negative `Long`. Whitespace around the digits is allowed
+ *     and trimmed off, because the writer is the only party that owns the format and a stray newline
+ *     is the kind of integrity the writer can introduce on its own.
+ *   * **Corrupt** — anything else. The previous implementation substituted `0L` for this case, which
+ *     silently rewound the stream to its beginning and let `reconcile` truncate the live segment to a
+ *     negative size. The contract the surrounding code relies on says the opposite
+ *     (`SegmentOutputStore.kt`'s class KDoc: *"Deciding what a corrupt commit record MEANS is a product
+ *     decision, and this store does not make it silently"*), so the parse surfaces an [IOException]
+ *     here and lets the recovery and read paths propagate it as a loud failure.
+ *
+ * Exposed as `internal` (rather than private) so the test can pin down each branch without touching a
+ * disk; the on-disk admission is exercised through the higher paths. See [CommittedOffsetParseTest].
+*/
+internal fun parseCommittedOffset(content: String): Long {
+    val trimmed = content.trim()
+    val parsed = trimmed.toLongOrNull()
+        ?: throw IOException("cur.cmt body is not a valid long offset: <${trimmed.replace("\n", "\\n").replace("\r", "\\r")}>")
+    require(parsed >= 0) {
+        "cur.cmt body is negative: $parsed"
+    }
+    return parsed
+}

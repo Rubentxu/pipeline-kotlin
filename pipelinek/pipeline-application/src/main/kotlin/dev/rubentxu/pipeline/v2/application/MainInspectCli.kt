@@ -17,6 +17,11 @@ import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
 import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
 import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
+import dev.rubentxu.pipeline.v2.runtime.inspect.IntrospectionRefusal
+import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
+import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
+import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
+import java.nio.file.Paths
 
 /**
  * `pipelinek inspect <run>` — bounded diagnostic surface for a single run.
@@ -57,7 +62,8 @@ object MainInspectCli {
             "[--failed] [--kind K] [--stage S] [--step N] " +
             "[--context N] [--log-tail N] " +
             "[--fields STAGE,STEP,OUTCOME,MESSAGE,CONSOLETAIL] " +
-            "[--format text|json]"
+            "[--format text|json] " +
+            "[--state]"
 
     /**
      * The five dimensional columns a caller can request from the inspection document.
@@ -162,6 +168,17 @@ object MainInspectCli {
         if (compiled.controlRoot == null) {
             System.err.println("inspect: --control-root <path> is required to read the Output Plane")
             return 2
+        }
+
+        // The run's state is a MODE, not a filter.
+        //
+        // The filters above select RECORDS; a record is not a run. Asking for
+        // the state of a filtered view of a run has no honest answer, so the
+        // two are not combined: `--state` answers about the run and prints no
+        // records. The answer comes from the published introspection port,
+        // whose terminal fact is the event lane's `RunFinished` bookend.
+        if (compiled.state) {
+            return reportRunState(runId, compiled)
         }
 
         // The admission is the ONE decision on whether this store may be opened. It used to
@@ -480,6 +497,121 @@ object MainInspectCli {
 */
     @Suppress("CyclomaticComplexMethod")
     fun parseInspect(args: Array<String>): InspectParseResult = CliParser.parseInspect(args)
+
+    /**
+     * Report the RUN's lifecycle state, read through the published
+     * introspection port.
+     *
+     * ## What this answers
+     * Whether the run is still going, and — if it is over — how it ended and
+     * when. The answer comes from the run's own terminal fact: the event
+     * lane's `RunFinished` bookend. A terminal OPERATION row does not end a
+     * run, and this surface says so.
+     *
+     * ## The line it prints
+     * One line, one shape, so a caller can read it without parsing prose:
+     *
+     * ```
+     * run-state running
+     * run-state terminal outcome=succeeded at=1792575000000
+     * run-state empty
+     * ```
+     *
+     * `empty` is not a refusal: it says the substrate was read and holds no
+     * live evidence of this run. A refusal is a refusal, it goes to stderr,
+     * and it exits 2.
+     */
+    private fun reportRunState(runId: String, query: CompiledInspectionQuery): Int {
+        val dbPath = query.dbPath
+        val controlRoot = query.controlRoot
+        if (dbPath == null || controlRoot == null) {
+            // The caller checked both before reaching this point. Kept as a
+            // refusal rather than a crash: a verb that cannot name its own
+            // missing input is a verb that fails with a stack trace.
+            System.err.println("inspect: --db and --control-root are required to read the run's state")
+            return 2
+        }
+
+        val admission = admitEventStore(dbPath, EventStorePurpose.Read)
+        if (admission is EventStoreAdmission.Refused) {
+            System.err.println(admission.refusal.render())
+            return 2
+        }
+        val store = (admission as EventStoreAdmission.Admitted).store
+
+        val result = try {
+            store.use { eventStore ->
+                composeRuntimeIntrospectionPort(
+                    eventStore = eventStore,
+                    controlRoot = Paths.get(controlRoot),
+                    clock = SystemClock(),
+                ).inspect(runId)
+            }
+        } catch (failure: Exception) {
+            System.err.println("inspect: ${failure.shortDiagnostic()}")
+            return 2
+        }
+
+        return when (result) {
+            is RuntimeIntrospectionResult.Observation -> {
+                println(renderRunState(result.observation))
+                0
+            }
+
+            is RuntimeIntrospectionResult.Refused -> {
+                System.err.println("inspect: ${renderIntrospectionRefusal(result.refusal, runId)}")
+                2
+            }
+        }
+    }
+
+    /** The one line the state surface prints. */
+    private fun renderRunState(observation: RuntimeObservation): String = when (observation) {
+        is RuntimeObservation.Running -> "run-state running"
+
+        is RuntimeObservation.Terminal ->
+            "run-state terminal outcome=${renderTerminalOutcome(observation.terminal)} at=${observation.terminalAtMs}"
+
+        is RuntimeObservation.LiveButEmpty -> "run-state empty"
+
+        is RuntimeObservation.Unobservable -> "run-state unobservable"
+    }
+
+    /** The run's outcome word, from the book's own vocabulary. */
+    private fun renderTerminalOutcome(terminal: TerminalObservation): String = when (terminal) {
+        is TerminalObservation.Succeeded -> "succeeded"
+        is TerminalObservation.Failed -> "failed"
+        is TerminalObservation.Unstable -> "unstable"
+        is TerminalObservation.Aborted -> "aborted"
+        is TerminalObservation.Cancelled -> "cancelled"
+        is TerminalObservation.Other -> terminal.rawOutcome
+    }
+
+    /** The refusal, in the operator's words. */
+    private fun renderIntrospectionRefusal(refusal: IntrospectionRefusal, runId: String): String = when (refusal) {        is IntrospectionRefusal.UnknownRun -> "this instance does not know run '$runId'."
+        IntrospectionRefusal.NoControlRoot -> "there is no control root to read the run's state from."
+        IntrospectionRefusal.NoEventStore -> "the event plane is not configured for this instance."
+        IntrospectionRefusal.NoOutputPlane -> "the output plane is not configured for this instance."
+        is IntrospectionRefusal.LeaseHeldByAnother ->
+            "run $runId is being published by '${refusal.heldBy}' (fencing token ${refusal.fencingToken})."
+
+        is IntrospectionRefusal.StorageError -> "the run's storage failed: ${refusal.cause}"
+        is IntrospectionRefusal.InconsistentLeaseState ->
+            "the run's lease state is inconsistent: ${refusal.details}"
+
+        is IntrospectionRefusal.UnknownOperation ->
+            "this instance does not know operation '${refusal.operationId}' (attempt ${refusal.attempt})."
+    }
+
+    /**
+     * A short, one-line diagnostic for a failure that must not become a
+     * stack trace on the operator's terminal.
+     */
+    private fun Throwable.shortDiagnostic(): String {
+        val cls = this::class.simpleName ?: this.javaClass.name
+        val msg = message?.take(160)?.replace('\n', ' ')
+        return if (msg.isNullOrBlank()) cls else "$cls: $msg"
+    }
 }
 
 /** Parsed inspection query. Immutable data class. */
@@ -500,6 +632,16 @@ data class CompiledInspectionQuery(
     val format: MainInspectCli.InspectFormat = MainInspectCli.InspectFormat.TEXT,
     val controlRoot: String? = null,
     val dbPath: String? = null,
+    /**
+     * Report the RUN's lifecycle state instead of its records.
+     *
+     * The state is the run's own terminal fact — the event lane's `RunFinished`
+     * bookend — read through the published introspection port. It is a MODE
+     * and not another filter: the filters below select RECORDS, and a record
+     * is not a run. Asking for the state of a filtered view of a run has no
+     * honest answer, so the two are not combined.
+     */
+    val state: Boolean = false,
 )
 
 /** Result of [MainInspectCli.parseInspect]. */

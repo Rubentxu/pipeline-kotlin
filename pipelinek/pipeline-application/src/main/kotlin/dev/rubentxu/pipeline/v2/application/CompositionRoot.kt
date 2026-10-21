@@ -24,8 +24,11 @@ import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
 import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
 import dev.rubentxu.pipeline.v2.events.durable.SqliteOperationJournalImpl
+import dev.rubentxu.pipeline.v2.events.durable.SqliteReplayCursorStoreImpl
 import dev.rubentxu.pipeline.v2.runtime.control.RuntimeControlPort
 import dev.rubentxu.pipeline.v2.runtime.control.RuntimeControlPortStoreAdapter
+import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPort
+import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPortStoreAdapter
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
@@ -307,5 +310,56 @@ internal fun composeRuntimeControlPort(
         sealStream = { stream -> output.seal(stream) },
         clock = clock,
         ownerId = requireNotNull(owner) { "the cancel owner id is always well formed" },
+    )
+}
+
+/**
+ * The introspection plane: the published [RuntimeIntrospectionPort] composed
+ * over the same stores every other read in this CLI reads.
+ *
+ * ## Why this exists
+ * The adapter had a consumer nowhere. Its rule — "the run's terminal fact is
+ * the event lane's `RunFinished` bookend" — was therefore untested and, until
+ * this composition, unreachable: an operator could not ask the product
+ * whether a run was still going, and an external worker (Fabric) could not
+ * ask it either, because the port had no in-tree implementation to stand on.
+ *
+ * ## Why the same stores, and not new ones
+ * The plane is a READ of the run that already exists: the event lane for its
+ * facts, the lease for who holds it, the journal and the cursor for the
+ * durable operation state, the Output Plane for the tails. Reusing them is
+ * what keeps the plane an observation rather than a second copy of the run.
+ *
+ * ## Why the READ side of the Output Plane
+ * The store is opened WITHOUT recovery. A reader must never reconcile durable
+ * state, because reconciliation truncates the uncommitted tail of a stream and
+ * an uncommitted tail is exactly what a live writer looks like right now.
+ */
+internal fun composeRuntimeIntrospectionPort(
+    eventStore: SqliteEventStore,
+    controlRoot: Path,
+    clock: Clock,
+): RuntimeIntrospectionPort {
+    val journal = SqliteOperationJournalImpl(
+        connectionFactory = eventStore.underlyingConnectionFactory(),
+        clock = clock,
+        json = Json { ignoreUnknownKeys = true; encodeDefaults = true },
+        dbPath = eventStore.databasePath(),
+    )
+    val cursors = SqliteReplayCursorStoreImpl(eventStore.underlyingConnectionFactory(), clock)
+    val lease = FileBackedRunExecutionLeaseStore(controlRoot.resolve("leases"))
+    val output = OutputPlaneProvider.storeForReading(controlRoot)
+    val eventReader = EventRecordReadPortStoreAdapter(
+        store = eventStore,
+        runExists = { runId -> lease.isKnown(runId) || eventStore.hasRun(runId) },
+        tailSequence = { runId -> eventStore.tailSequence(runId) },
+    )
+    return RuntimeIntrospectionPortStoreAdapter(
+        eventReads = eventReader,
+        tails = output,
+        frames = output.frameIndex(),
+        journal = journal,
+        cursors = cursors,
+        lease = lease,
     )
 }

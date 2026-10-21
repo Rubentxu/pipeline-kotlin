@@ -32,7 +32,7 @@ import java.nio.file.Path
 */
 class FileBackedRunExecutionLeaseStore(
     private val leaseDir: Path,
-) : AutoCloseable {
+) : AutoCloseable, RunLeaseObservationPort {
 
     private var channel: FileChannel? = null
     private var held: FileLock? = null
@@ -172,7 +172,7 @@ class FileBackedRunExecutionLeaseStore(
      * acquired, or acquired on a previous lease-dir that has since been
      * cleaned up).
 */
-    fun isKnown(runId: String): Boolean =
+    override fun isKnown(runId: String): Boolean =
         Files.isRegularFile(leaseDir.resolve(recordFileName(runId)))
 
     /**
@@ -198,7 +198,7 @@ class FileBackedRunExecutionLeaseStore(
      * @return The current `LeaseRecord`, or `null` when no lease has ever been
      *   issued for [runId].
 */
-    fun observe(runId: String): LeaseRecord? =
+    override fun observe(runId: String): LeaseRecord? =
         readRecord(leaseDir.resolve(recordFileName(runId)))
 
     override fun close() {

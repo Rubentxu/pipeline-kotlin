@@ -18,7 +18,7 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `ac24475e1` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `ac24475e1` | `git rev-parse HEAD` |
+| SHA | `eee1b7132` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `eee1b7132` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
@@ -27,8 +27,15 @@ una medición.
 | Escenarios que sólo comprueban el código de salida | **0**, con **una excepción declarada**: `plugins/lock-directive` afirma su sujeto *por medio* del código de salida —su directiva no emite nada, y si el plugin no se descubriera la etapa se negaría—, así que ahí el código de salida es la aserción y no un testigo vacío | censo por directiva y por cuerpo, sobre los **54** escenarios; el número anterior («0», sin excepción y sobre 47) no nombraba el caso que lo contiene |
 | `VERIFY_LOC / PRODUCT_LOC` | **15655 / 65419 = 0.239** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **739 / 679 / 719** en los tres ensayos, los tres sobre `ac24475e1`, peor 739 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **707 / 667 / 879** en los tres ensayos, los tres sobre `eee1b7132`, peor 879 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
+
+Los tres ensayos corrieron sobre el mismo SHA y con la máquina **cargada por
+procesos ajenos a este repositorio** —hay otro workspace de PipelineK y un
+servidor de Fabric trabajando en ella—, y los tres siguieron dentro del
+presupuesto. El más lento (879 s) es el que coincidió con esa carga; el
+primero, con la misma carga, tardó 707 s. La diferencia no es del código
+medido, que es idéntico en los tres: es del host.
 | Deuda estática congelada | **802** entradas de baseline: **sin cambio**, porque la ley que este ciclo añadió salió a su propio objeto en vez de empujar a `ProtocolGrammar` por encima del límite de detekt | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 

@@ -4,9 +4,44 @@ import dev.rubentxu.pipeline.v2.domain.saga.CompensationObligationStatus
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionView
 import dev.rubentxu.pipeline.v2.domain.saga.SagaObligationStanding
 import dev.rubentxu.pipeline.v2.domain.saga.SagaOutcome
+import dev.rubentxu.pipeline.v2.domain.saga.SagaPromiseOrigin
 import dev.rubentxu.pipeline.v2.domain.saga.SagaRunView
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.identity.RunPresentationProjection
+
+/**
+ * Where one promise comes from.
+ *
+ * The key says WHICH promise, and the origin says who made it and under which version of the
+ * intent contract. An operator reading a run needs both: knowing that a promise is pending is
+ * not enough to know who has to answer for it.
+ */
+data class SagaInspectedOrigin(
+    val sagaId: String,
+    val actionId: String,
+    val compensationId: String,
+    val origin: SagaPromiseOrigin,
+)
+
+/**
+ * What an operator reads of a run: what the run owes, and where each promise comes from.
+ *
+ * The two travel together because they are read from the same rows: an operator that had to
+ * join them apart could see a promise with no origin, and a promise with no origin is
+ * indistinguishable from a promise nobody made.
+ */
+data class SagaInspectionReport(
+    val view: SagaRunView,
+    val origins: List<SagaInspectedOrigin>,
+) {
+    /**
+     * The origin of the promise under [key], when the run has one.
+     */
+    fun originOf(sagaId: String, actionId: String, compensationId: String): SagaPromiseOrigin? =
+        origins.firstOrNull {
+            it.sagaId == sagaId && it.actionId == actionId && it.compensationId == compensationId
+        }?.origin
+}
 
 /**
  * Presents the durable promises of a run as the work they leave behind.
@@ -39,7 +74,7 @@ object SagaInspectionProjection {
         runId: String,
         rows: List<SagaObligationRow>,
         events: List<DomainEvent>,
-    ): SagaRunView {
+    ): SagaInspectionReport {
         val presentation = RunPresentationProjection.read(runId, events)
         val stoppedSagas = presentation.sagas
             .filterIsInstance<SagaOutcome.NeedsIntervention>()
@@ -65,11 +100,24 @@ object SagaInspectionProjection {
             )
         }
 
-        return SagaRunView(
-            runId = runId,
-            actions = actions,
-            sagas = presentation.sagas,
-            outcome = presentation.outcome,
+        return SagaInspectionReport(
+            view = SagaRunView(
+                runId = runId,
+                actions = actions,
+                sagas = presentation.sagas,
+                outcome = presentation.outcome,
+            ),
+            origins = rows.map { row ->
+                SagaInspectedOrigin(
+                    sagaId = row.sagaId.value,
+                    actionId = row.actionId.value,
+                    compensationId = row.compensationId.value,
+                    origin = SagaPromiseOrigin(
+                        pluginId = row.ownerPluginId,
+                        intentVersion = row.intentVersion,
+                    ),
+                )
+            },
         )
     }
 

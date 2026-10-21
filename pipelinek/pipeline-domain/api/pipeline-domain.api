@@ -6159,6 +6159,29 @@ public final class dev/rubentxu/pipeline/v2/domain/saga/SagaOutcome$Settled : de
 	public fun toString ()Ljava/lang/String;
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/domain/saga/SagaOwnershipVerdict {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaOwnershipVerdict$Allowed : dev/rubentxu/pipeline/v2/domain/saga/SagaOwnershipVerdict {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/saga/SagaOwnershipVerdict$Allowed;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaOwnershipVerdict$ForeignOwner : dev/rubentxu/pipeline/v2/domain/saga/SagaOwnershipVerdict {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaOwnershipVerdict$ForeignOwner;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/SagaOwnershipVerdict$ForeignOwner;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaOwnershipVerdict$ForeignOwner;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOwner ()Ljava/lang/String;
+	public final fun getWriter ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/saga/SagaPlan {
 	public synthetic fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationPolicy;Ljava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun action-DFknhno (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaActionPlan;
@@ -6209,6 +6232,24 @@ public final class dev/rubentxu/pipeline/v2/domain/saga/SagaPlanOperationsKt {
 	public static final fun getSAGA_PLAN_CAPABILITY ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaPromiseOrigin {
+	public fun <init> (Ljava/lang/String;I)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun copy (Ljava/lang/String;I)Ldev/rubentxu/pipeline/v2/domain/saga/SagaPromiseOrigin;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/SagaPromiseOrigin;Ljava/lang/String;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaPromiseOrigin;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIntentVersion ()I
+	public final fun getPluginId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaPromiseOwnership {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/domain/saga/SagaPromiseOwnership;
+	public final fun verdict (Ldev/rubentxu/pipeline/v2/domain/saga/SagaPromiseOrigin;Ldev/rubentxu/pipeline/v2/domain/saga/SagaPromiseOrigin;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaOwnershipVerdict;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/domain/saga/SagaRecordOutcome {
 }
 
@@ -6237,6 +6278,19 @@ public final class dev/rubentxu/pipeline/v2/domain/saga/SagaRecordOutcome$Refuse
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/saga/SagaRecordRejection {
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/saga/SagaRecordRejection$ForeignOwner : dev/rubentxu/pipeline/v2/domain/saga/SagaRecordRejection {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaRecordRejection$ForeignOwner;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/saga/SagaRecordRejection$ForeignOwner;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/SagaRecordRejection$ForeignOwner;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOwner ()Ljava/lang/String;
+	public final fun getWriter ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/saga/SagaRecordRejection$IllegalTransition : dev/rubentxu/pipeline/v2/domain/saga/SagaRecordRejection {

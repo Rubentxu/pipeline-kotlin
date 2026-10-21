@@ -63,6 +63,17 @@ sealed interface SagaRecordRejection {
 
     /** Another process owns the run now: this writer lost the lease. */
     data class LeaseSuperseded(val heldEpoch: Long, val currentEpoch: Long) : SagaRecordRejection
+
+    /**
+     * The promise belongs to another plugin.
+     *
+     * A promise belongs to the plugin that armed it, and nobody else writes to it: the plan may
+     * look the same, but the bodies behind it are the other plugin's.
+     *
+     * @property owner the plugin that armed the promise.
+     * @property writer the plugin that tried to write to it.
+     */
+    data class ForeignOwner(val owner: String, val writer: String) : SagaRecordRejection
 }
 
 /**

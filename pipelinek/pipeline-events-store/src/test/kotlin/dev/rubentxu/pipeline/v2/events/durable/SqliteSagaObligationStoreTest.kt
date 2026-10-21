@@ -62,6 +62,7 @@ class SqliteSagaObligationStoreTest {
         createdAtMs = createdAtMs,
         updatedAtMs = createdAtMs,
         receiptRef = null,
+        ownerPluginId = null,
     )
 
     /**

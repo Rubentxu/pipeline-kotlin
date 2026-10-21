@@ -46,7 +46,7 @@ dependencies {
     // override it to `runtime` scope in the POM — the same trap the
     // `:pipeline-events` build script calls out below.
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
 }
 
 tasks.test {

@@ -55,7 +55,7 @@ dependencies {
     implementation(libs.kotlin.stdlib)
     // Test-only: the vocabulary the recover adapter writes into the journal (pure rules).
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
 
 }
 

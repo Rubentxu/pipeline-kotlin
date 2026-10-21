@@ -17,7 +17,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     // Test-only: the argv guard's decision table (a pure rule over a list of strings).
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
 
 }
 

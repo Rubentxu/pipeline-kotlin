@@ -224,7 +224,7 @@ dependencies {
     // The runtime classpath is unchanged: the `implementation(project(":pipeline-step-sdk:junit"))`
     // line above is the PRODUCT's `junit.results` OFFICIAL_PLUGIN, not a test dependency.
     testImplementation(libs.junit.jupiter)
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:6.1.3")
 }
 
 tasks.test {

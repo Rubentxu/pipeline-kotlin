@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationDirective
@@ -12,6 +13,8 @@ import dev.rubentxu.pipeline.v2.domain.saga.EffectEvidence
 import dev.rubentxu.pipeline.v2.domain.saga.EffectReceiptRef
 import dev.rubentxu.pipeline.v2.domain.saga.InterventionReason
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
+import dev.rubentxu.pipeline.v2.domain.saga.SagaBodyPromise
+import dev.rubentxu.pipeline.v2.domain.saga.SagaBodyVerdict
 import dev.rubentxu.pipeline.v2.domain.saga.SagaCompensationReport
 import dev.rubentxu.pipeline.v2.domain.saga.SagaCompletionReport
 import dev.rubentxu.pipeline.v2.domain.saga.SagaLifecycle
@@ -89,6 +92,14 @@ class SagaCompensationInterpreter(
     private val slotInvoker: BodySlotInvoker,
     private val eventSink: EventSink,
     private val clock: Clock,
+    /**
+     * The bodies this step owns, so the interpreter can tell which body is about to run.
+     */
+    private val bodies: SagaBodyResolver?,
+    /**
+     * The body each promise is paid with, read from the durable row.
+     */
+    private val promisedBodies: SagaPromisedBodyReader,
 ) : SagaLifecycle {
 
     override suspend fun compensate(plan: SagaPlan): SagaCompensationReport {
@@ -136,6 +147,29 @@ class SagaCompensationInterpreter(
                                 InterventionReason.OBLIGATION_NOT_ARMED,
                             ),
                         )
+
+                    // The body that is about to run must be the body the promise named.
+                    //
+                    // A promise says which body will undo the effect. If the body that is about
+                    // to run is a different one, running it would undo the effect with a body
+                    // nobody promised — and the effect would be undone by something that may
+                    // not even be the body that made it. So the body does not run, the promise
+                    // stays owed, and a human decides which body was meant.
+                    //
+                    // The check comes BEFORE the write-ahead: a compensation that is refused
+                    // must not have left a row saying "in flight", because nothing ran.
+                    val divergence = bodyDivergence(obligation, action.compensateSlot)
+                    if (divergence != null) {
+                        return terminal(
+                            plan,
+                            compensated,
+                            CompensationDirective.NeedsIntervention(
+                                obligation,
+                                InterventionReason.COMPENSATION_BODY_DIVERGED,
+                                divergence,
+                            ),
+                        )
+                    }
 
                     // The write-ahead: BEFORE the body leaves the process.
                     //
@@ -305,6 +339,18 @@ class SagaCompensationInterpreter(
             CompensationObligationStatus.COMPENSATION_PENDING -> {
                 // The COMPENSATION's answer was lost. Ask the body that undoes the effect,
                 // with the compensation's own key — the same key the first attempt used.
+                //
+                // The body asked again must still be the body the promise named: the ANSWER
+                // was lost, but the promise did not change. Asking a different body would be
+                // a second guess wearing the first attempt's key.
+                val divergence = bodyDivergence(obligation, action.compensateSlot)
+                if (divergence != null) {
+                    return CompensationDirective.NeedsIntervention(
+                        obligation,
+                        InterventionReason.COMPENSATION_BODY_DIVERGED,
+                        divergence,
+                    )
+                }
                 val observation = observe(
                     slotInvoker.invoke(
                         action.compensateSlot,
@@ -329,6 +375,33 @@ class SagaCompensationInterpreter(
                 unresolvedReason(obligation.status),
             )
         }
+    }
+
+    /**
+     * The divergence between the body the promise is paid with and the body that is about to
+     * run, or `null` when there is none.
+     *
+     * ## What it compares
+     *
+     * The body the PROMISE named — read from the durable row, because that is where the
+     * promise lives — against the body that is about to RUN, resolved from the slot the plan
+     * says to dispatch. Both are measured the same way, by the engine, so the comparison means
+     * something.
+     *
+     * ## What it does NOT compare
+     *
+     * The plan is not compared here. The plan says which SLOT to dispatch; the slot is a local
+     * name, and the same slot name in two plugins means two different bodies. The body is what
+     * tells them apart.
+     */
+    private fun bodyDivergence(
+        obligation: CompensationObligation,
+        slot: PluginStepId,
+    ): SagaBodyVerdict.Diverged? {
+        val promised = promisedBodies.digestOf(obligation.key)
+        val current = bodies?.digestOf(slot)
+        val verdict = SagaBodyPromise.verdict(promised = promised, current = current)
+        return verdict as? SagaBodyVerdict.Diverged
     }
 
     /**

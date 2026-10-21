@@ -218,6 +218,7 @@ internal class StepDispatchEngine(
         stageShOptions: ShOptions,
         bodyContinuation: dev.rubentxu.pipeline.v2.domain.step.BodyContinuation?,
         bodySlotInvoker: BodySlotInvoker?,
+        bodies: SagaBodyResolver?,
         ownerPluginId: String?,
     ): CanonicalRuntimeContext = CanonicalRuntimeContext(
         opId = opId,
@@ -257,6 +258,9 @@ internal class StepDispatchEngine(
                 eventSink = eventSink,
                 clock = clock,
                 ownerPluginId = ownerPluginId,
+                // The bodies this Step owns. The engine measures the body a promise names, so
+                // the promise can be checked against the body that will run.
+                bodies = bodies,
             )
         },
         // SAGA / PK-2: the plan port for THIS run. It carries no operation identity — what a
@@ -303,6 +307,14 @@ internal class StepDispatchEngine(
                 // them true.
                 eventSink = eventSink,
                 clock = clock,
+                // The bodies this Step owns: the compensation bodies are children of this
+                // Step's own body, so this is where the body that is about to run is found.
+                bodies = bodies,
+                // The body each promise is paid with, read from the durable row. The row is
+                // where the promise lives, and the promise is what says which body it names.
+                promisedBodies = SagaPromisedBodyReader { key ->
+                    sagaBinding.store.find(runId.value, key)?.bodyDigest
+                },
             )
         } else {
             null
@@ -497,10 +509,15 @@ internal class StepDispatchEngine(
         // it (body path + attempt + BlockSegment(index, key)). So the slot's journal
         // rows are the rows that child would have had, and a body dispatched by the
         // engine and a body dispatched by the handler are the same operation.
+        // The bodies this Step owns, or `null` when it owns none.
+        //
+        // A body-bearing Step is a HANDLER_CONTINUATION block, and that is the same condition
+        // that binds the slot seam: the compensation bodies ARE this Step's own body
+        // children. One question, one answer, and both seams read it.
+        val ownedBodies: List<StepNode>? = ownedBodyOf(step)
+
         val bodySlotInvoker: BodySlotInvoker? =
-            if (step is BlockStepNode && declaredBodyOwnerOf(step) ==
-                dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner.HANDLER_CONTINUATION
-            ) {
+            if (ownedBodies != null) {
                 BodySlotInvoker { slot, slotContext ->
                     when (
                         val resolution = BodySlots.resolve(
@@ -508,7 +525,7 @@ internal class StepDispatchEngine(
                             // kind when nobody named it. So a body that names its children can
                             // hold two of the same kind, and a body that names none behaves
                             // exactly as it did before names existed.
-                            step.body.map { it.address },
+                            ownedBodies.map { it.address },
                             slot,
                         )
                     ) {
@@ -523,7 +540,7 @@ internal class StepDispatchEngine(
 
                         is SlotResolution.Found -> {
                             val childIndex = resolution.childIndex
-                            val child = step.body[childIndex]
+                            val child = ownedBodies[childIndex]
                             val attemptSegment = slotContext.attempt?.let { segment ->
                                 listOf(BlockSegment(segment.index, segment.key))
                             }.orEmpty()
@@ -562,6 +579,14 @@ internal class StepDispatchEngine(
             } else {
                 null
             }
+
+        // The bodies this Step owns, so the engine can measure the body a promise names and
+        // compare it with the body that is about to run.
+        //
+        // It exists exactly when the slot seam exists: the compensation bodies ARE this Step's
+        // own body children, so a Step without a body has nothing to promise and nothing to
+        // measure.
+        val bodies: SagaBodyResolver? = ownedBodies?.let { SagaBodyResolver(it) }
 
         // BlockStepNode bypasses decoder and goes directly to dispatchBody (EM-4).
         // EM-4 handles only the body-execution substrate for dir/withEnv/withCredentials/
@@ -676,6 +701,7 @@ internal class StepDispatchEngine(
             stageShOptions = stageShOptions,
             bodyContinuation = bodyContinuation,
             bodySlotInvoker = bodySlotInvoker,
+            bodies = bodies,
             ownerPluginId = pluginIdOf(step),
         )
 
@@ -805,6 +831,19 @@ internal class StepDispatchEngine(
             ?.declared
             ?.execution
             ?.owner
+
+    /**
+     * The body this Step owns, or `null` when it owns none.
+     *
+     * A body-bearing Step is a `HANDLER_CONTINUATION` block: its handler runs on the durable
+     * spine and dispatches its own children. That is the same condition that binds the slot
+     * seam, so both seams read this ONE answer instead of asking the question twice.
+     */
+    private fun ownedBodyOf(step: StepNode): List<StepNode>? {
+        if (step !is BlockStepNode) return null
+        if (declaredBodyOwnerOf(step) != BodyExecutionOwner.HANDLER_CONTINUATION) return null
+        return step.body
+    }
 
     private suspend fun dispatchBody(
         block: BlockStepNode,

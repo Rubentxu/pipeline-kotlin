@@ -15,4 +15,5 @@ internal fun EventStoreRefusal.render(): String = when (this) {
     is EventStoreRefusal.Absent -> "Error: db not found: $path"
     is EventStoreRefusal.NoDirectory -> "Error: no directory for db: $path"
     is EventStoreRefusal.NotReadable -> "Error: db is not readable: $path ($detail)"
+    is EventStoreRefusal.NoEventHistory -> "Error: db has no event history: $path"
 }

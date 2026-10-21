@@ -58,4 +58,56 @@ object SqliteConnectionFactory {
             throw e
         }
     }
+
+    /**
+     * Opens a connection the database engine refuses to write through.
+     *
+     * ## Why a separate door
+     * [open] is the producer's door: it sets the journal mode and verifies WAL, because a
+     * writer that does not persist durably is a defect. A reader needs none of that and must
+     * not have it — `PRAGMA journal_mode = WAL` is a WRITE to the database header, so a reader
+     * that used the producer's door changed the file it was only asked to look at.
+     *
+     * ## What `mode=ro` buys
+     * The connection is opened with SQLite's read-only flag, so the engine refuses every write
+     * — DML and DDL alike — with `SQLITE_READONLY`. The guarantee is therefore enforced by the
+     * database and not by this code remembering not to write.
+     *
+     * Measured against the shipped driver (sqlite-jdbc 3.46.1.3): a read-only connection opens
+     * a WAL database that another process holds open, reads it while the writer is alive, reads
+     * it after the writer was killed without a checkpoint, and reads it after the writer closed
+     * cleanly. Every write is refused by the engine.
+     *
+     * ## The path, escaped
+     * `mode=ro` is a URI, and a URI ends its path at the first `?` or `#`. A database file whose
+     * name contains one of those characters would otherwise be opened as a DIFFERENT file — a
+     * reader pointed at the wrong journal, reading another run's history. The three characters
+     * that carry that meaning (`%`, `#`, `?`) are percent-encoded here; everything else, spaces
+     * included, is passed through as SQLite accepts it.
+     *
+     * @param file Path to the SQLite database file.
+     * @return A JDBC [Connection] that cannot write.
+     */
+    fun openReadOnly(file: String): Connection {
+        val connection = DriverManager.getConnection("jdbc:sqlite:file:${escapeForUri(file)}?mode=ro")
+        try {
+            connection.createStatement().use { stmt ->
+                // Wait up to 5 seconds when SQLITE_BUSY encountered.
+                stmt.execute("PRAGMA busy_timeout = 5000")
+            }
+            return connection
+        } catch (e: Exception) {
+            connection.close()
+            throw e
+        }
+    }
+
+    /**
+     * Percent-encodes the characters that would otherwise end the path of a SQLite URI.
+     *
+     * `%` goes first: it is the escape character itself, and encoding it after the others
+     * would encode the `%` this method has just written.
+     */
+    private fun escapeForUri(path: String): String =
+        path.replace("%", "%25").replace("#", "%23").replace("?", "%3F")
 }

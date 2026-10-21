@@ -741,12 +741,14 @@ object CliParser {
         var format: MainInspectCli.InspectFormat = MainInspectCli.InspectFormat.TEXT
         var controlRoot: String? = null
         var dbPath: String? = null
+        var state = false
 
         var i = 0
         while (i < args.size) {
             val a = args[i]
             when (a) {
                 "--failed" -> failed = true
+                "--state" -> state = true
                 "--kind" -> {
                     kind = args.getOrNull(++i) ?: return rejectInspect("--kind requires a value")
                 }
@@ -815,6 +817,7 @@ object CliParser {
                 format = format,
                 controlRoot = controlRoot,
                 dbPath = dbPath,
+                state = state,
             ),
         )
     }

@@ -310,6 +310,7 @@ run_scenario() {
     local step_verdict=""
     local failure_stage=""
     local events_follow=""
+    local run_state=""
     local directive
     while IFS= read -r directive; do
         case "$directive" in
@@ -329,6 +330,7 @@ run_scenario() {
             '//@ step-verdict '*)   step_verdict="${directive#//@ step-verdict }" ;;
             '//@ failure-stage '*)  failure_stage="${directive#//@ failure-stage }" ;;
             '//@ events-follow '*)  events_follow="${directive#//@ events-follow }" ;;
+            '//@ run-state '*)      run_state="${directive#//@ run-state }" ;;
         esac
     done < <(grep -m 20 '^//@ ' "$script" || true)
 
@@ -485,7 +487,7 @@ run_scenario() {
     # durable scenario writes lives in this directory, so the second execution
     # would find the first one's effect and read it as a repeat.
     local run_volatile=1
-    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$cancel" == 1 || "$events_refusal" != "" || "$events_resume" != "" || "$step_verdict" != "" ]]; then
+    if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$cancel" == 1 || "$events_refusal" != "" || "$events_resume" != "" || "$step_verdict" != "" || "$run_state" != "" ]]; then
         run_volatile=0
     fi
 
@@ -568,6 +570,67 @@ run_scenario() {
         # say anything about the outcome of the run.
         verdict_stdout="$root/stdout.rerun.txt"
         verdict_stderr="$root/stderr.rerun.txt"
+    fi
+
+    if [[ "$run_state" != "" ]]; then
+        # The id of the run this scenario produced. The launcher reads it from
+        # the run's own record of its last run, for the same reason the cancel
+        # flow reads it there: the id is a UUID nobody can know in advance.
+        local state_run_id=""
+        local state_record
+        for state_record in "$root"/control/last-run/*; do
+            [[ -f "$state_record" ]] || continue
+            state_run_id="$(head -1 "$state_record")"
+            break
+        done
+        if [[ -z "$state_run_id" ]]; then
+            printf 'FAIL %-52s the run left no run id, so its state cannot be read\n' "$name"
+            failed=$((failed + 1))
+            failures+=("$name: the run left no run id")
+            return
+        fi
+
+        # The introspection plane answers about the RUN, through the published
+        # port, and the answer is the run's own terminal fact: the event lane's
+        # `RunFinished` bookend.
+        local state_code=0
+        "$binary" inspect "$state_run_id" --db "$root/events.db" --control-root "$root/control" --state \
+            >"$root/stdout.state.txt" 2>"$root/stderr.state.txt" || state_code=$?
+        if [[ "$state_code" != 0 ]]; then
+            printf 'FAIL %-52s reading the run state exited %s, expected 0\n' "$name" "$state_code"
+            show_printed "$root/stderr.state.txt"
+            failed=$((failed + 1))
+            failures+=("$name: reading the run state exited $state_code")
+            return
+        fi
+        if ! grep -aqF -- "$run_state" "$root/stdout.state.txt"; then
+            printf 'FAIL %-52s the run state did not say: %s\n' "$name" "$run_state"
+            show_printed "$root/stdout.state.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the run state did not say: $run_state")
+            return
+        fi
+
+        # A run nobody knows is not a run that finished. It is a refusal, it
+        # says so, and it does not invent a state to answer with.
+        local unknown_code=0
+        "$binary" inspect "no-such-run-$state_run_id" --db "$root/events.db" --control-root "$root/control" --state \
+            >"$root/stdout.state-unknown.txt" 2>"$root/stderr.state-unknown.txt" || unknown_code=$?
+        if [[ "$unknown_code" != 2 ]]; then
+            printf 'FAIL %-52s reading the state of an unknown run exited %s, expected 2\n' \
+                "$name" "$unknown_code"
+            show_printed "$root/stderr.state-unknown.txt"
+            failed=$((failed + 1))
+            failures+=("$name: reading the state of an unknown run exited $unknown_code")
+            return
+        fi
+        if ! grep -aqF -- "does not know run" "$root/stderr.state-unknown.txt"; then
+            printf 'FAIL %-52s the refusal for an unknown run did not say it does not know it\n' "$name"
+            show_printed "$root/stderr.state-unknown.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the refusal for an unknown run did not name the unknown run")
+            return
+        fi
     fi
 
     if [[ "$cancel" == 1 ]]; then
@@ -1059,7 +1122,9 @@ run_scenario() {
     fi
 
     local label="$name"
-    if [[ "$cancel" == 1 ]]; then
+    if [[ "$run_state" != "" ]]; then
+        label="$name (run-state)"
+    elif [[ "$cancel" == 1 ]]; then
         label="$name (cancel)"
     elif [[ "$events_refusal" != "" ]]; then
         label="$name (events-refusal)"

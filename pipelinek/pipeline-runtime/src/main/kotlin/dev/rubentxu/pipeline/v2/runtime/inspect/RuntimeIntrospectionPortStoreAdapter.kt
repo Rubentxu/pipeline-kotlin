@@ -1,12 +1,18 @@
 package dev.rubentxu.pipeline.v2.runtime.inspect
 
 import dev.rubentxu.pipeline.v2.domain.AttemptId
+import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
-import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
+import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.events.durable.RunExecutionLease
+import dev.rubentxu.pipeline.v2.events.durable.RunLeaseObservationPort
+import dev.rubentxu.pipeline.v2.events.identity.EventCursor
+import dev.rubentxu.pipeline.v2.events.identity.EventQuery
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort
+import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal
+import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
 import dev.rubentxu.pipeline.v2.events.shape.EventShapeReadPort
 import dev.rubentxu.pipeline.v2.events.shape.StageFinishedTyped
 import dev.rubentxu.pipeline.v2.events.shape.StageStartedTyped
@@ -26,17 +32,27 @@ import dev.rubentxu.pipeline.v2.output.OutputTailState
  * journal, or a new event/output store. Every authority it composes is named in
  * the "Read-only by construction" list below. Wiring it in production is
  * the application-layer's job; this adapter takes the read-side ports and the
- * internal stores as constructor arguments so the tests can wire them up
- * against `@TempDir` SQLite + segment stores.
+ * internal stores as constructor arguments, so a test can wire them up against
+ * in-memory answers instead of a directory of lock files.
+ * ## What the run's terminal fact is
+ * The **event lane's** `RunFinished` bookend. It used to be the journal's
+ * first row whose status is terminal, which is a fact about an OPERATION: an
+ * operation reaches a terminal state long before the run does, so a run whose
+ * first step succeeded and whose second step is still running was reported as
+ * Terminal. The bookend is the run's own terminal fact, it is what the writer
+ * writes and what the cancel writes, and reading it is what makes this
+ * adapter answer about the RUN.
  * ## Read-only by construction
  * The adapter MUST NOT mutate durable state. The only operations it calls are
  * SELECTs (the journal's [OperationJournal.listForRun] /
  * [dev.rubentxu.pipeline.v2.events.durable.OperationJournal.getEndedAt]), tail-
  * state queries ([OutputTailPort.tailState]), the read-page
- * ([EventRecordReadPort.readRecords]) used only for "is there any row?" checks,
- * the durable cursor ([ReplayCursorStore.load]), and the pure lease decider
+ * ([EventRecordReadPort.readRecords]), the durable cursor
+ * ([ReplayCursorStore.load]), the lease's read-only observation
+ * ([RunLeaseObservationPort]) and the pure lease decider
  * ([RunExecutionLease.acquire]) with a synthetic [dev.rubentxu.pipeline.v2.events.durable.LeaseRequest].
- * The `IntrospectionDoesNotMutateStateTest` contract test pins this.
+ * The `RuntimeIntrospectionPortStoreAdapterTest` unit test pins this: its
+ * stores answer from memory and count the writes they were asked for.
 */
 class RuntimeIntrospectionPortStoreAdapter(
     private val eventReads: EventRecordReadPort,
@@ -44,7 +60,7 @@ class RuntimeIntrospectionPortStoreAdapter(
     private val frames: OutputFrameIndex,
     private val journal: OperationJournal,
     private val cursors: ReplayCursorStore,
-    private val lease: FileBackedRunExecutionLeaseStore,
+    private val lease: RunLeaseObservationPort,
     private val syntheticObserverId: String = "m2-observer",
     /**
      * Optional typed-event read port. When present, `runStructure`
@@ -124,25 +140,45 @@ class RuntimeIntrospectionPortStoreAdapter(
                 )
             }
 
-            // Terminal row (any row whose status is terminal). Used both for the
-            // Terminal observation and for the journalPosition.latestTerminalAtMs.
-            val terminalOp = journalOps.firstOrNull {
-                it.status.isTerminal
+            // ## The run's terminal fact is the event lane's bookend
+            //
+            // It used to be the journal's first row whose status is terminal.
+            // That is a fact about an OPERATION, and an operation reaches a
+            // terminal state long before the run does: a run whose first step
+            // succeeded and whose second step is still running already has a
+            // terminal row. Reading that row as "the run finished" reported a
+            // half-finished run as Terminal — the exact defect that section
+            // 2.20 of the ROADMAP fixed in the control adapter, left standing
+            // here, and left unfixed precisely because nothing consumed this
+            // adapter.
+            //
+            // The run's own terminal fact is the event lane's `RunFinished`
+            // bookend: the same bookend the writer writes and the same one the
+            // cancel writes. Reading it means the adapter answers about the
+            // RUN, and a run with no bookend is a run that is not over, even
+            // if some of its operations are.
+            val runTerminal = when (val read = readRunTerminal(runId)) {
+                is RunTerminalRead.Unreadable -> return RuntimeIntrospectionResult.Refused(
+                    IntrospectionRefusal.StorageError(read.cause),
+                )
+
+                // The lane does not know the run, so it cannot have a bookend
+                // for it. That is an answer about the lane, not about the
+                // run's terminal state, and it is NOT a terminal fact.
+                RunTerminalRead.NoEvents -> null
+
+                is RunTerminalRead.Read -> read.finished
             }
 
-            if (terminalOp != null) {
-                val terminalAtMs: Long = try {
-                    journal.getEndedAt(terminalOp.id, terminalOp.attempt)
-                        ?: terminalAtMsOf(terminalOp)
-                } catch (e: Exception) {
-                    return RuntimeIntrospectionResult.Refused(
-                        IntrospectionRefusal.StorageError(e.shortDiagnostic()),
-                    )
-                }
+            if (runTerminal != null) {
+                val terminalAtMs: Long = runTerminal.occurredAt.toEpochMilli()
                 return RuntimeIntrospectionResult.Observation(
                     RuntimeObservation.Terminal(
-                        attempt = AttemptId(terminalOp.attempt),
-                        terminal = terminalObservationOf(terminalOp, terminalAtMs),
+                        // The bookend does not carry an attempt ordinal: a run
+                        // is one invocation, and the ordinal of an OPERATION is
+                        // not the ordinal of the run.
+                        attempt = AttemptId(1),
+                        terminal = terminalObservationOf(runTerminal),
                         terminalAtMs = terminalAtMs,
                     ),
                 )
@@ -322,37 +358,76 @@ class RuntimeIntrospectionPortStoreAdapter(
             )
     }
 
-    private fun terminalObservationOf(
-        op: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation,
-        terminalAtMs: Long,
-    ): TerminalObservation {
-        val outcome = op.status.name.lowercase()
-        return when (op.status) {
-            dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.SUCCEEDED ->
-                TerminalObservation.Succeeded(terminalAtMs)
-            dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.FAILED,
-            dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.FAILED_TIMEOUT,
-            dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.DIVERGENT ->
-                TerminalObservation.Failed(outcome, terminalAtMs)
-            dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.UNSTABLE ->
-                TerminalObservation.Unstable(terminalAtMs)
-            dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.ABORTED ->
-                TerminalObservation.Aborted(terminalAtMs)
-            dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.LOST ->
-                TerminalObservation.Other("lost", terminalAtMs)
-            dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.PENDING,
-            dev.rubentxu.pipeline.v2.domain.durable.OperationStatus.RUNNING ->
-                TerminalObservation.Other(outcome, terminalAtMs)
+    /**
+     * The run's terminal fact, projected from the bookend.
+     *
+     * The vocabulary is the RUN's, not the operation's: the bookend spells the
+     * outcome as one of [RunOutcome]'s tokens, and those are the four words a
+     * consumer of the run's terminal fact can rely on. A token this adapter
+     * does not know is surfaced verbatim as [TerminalObservation.Other] rather
+     * than collapsed into a failure — a vocabulary that grew is not a failure.
+     */
+    private fun terminalObservationOf(finished: RunFinished): TerminalObservation {
+        val terminalAtMs: Long = finished.occurredAt.toEpochMilli()
+        return when (finished.outcome) {
+            RunOutcome.SUCCESS_TOKEN -> TerminalObservation.Succeeded(terminalAtMs)
+            RunOutcome.UNSTABLE_TOKEN -> TerminalObservation.Unstable(terminalAtMs)
+            RunOutcome.FAILURE_TOKEN -> TerminalObservation.Failed(RunOutcome.FAILURE_TOKEN, terminalAtMs)
+            RunOutcome.ABORTED_TOKEN -> TerminalObservation.Aborted(terminalAtMs)
+            else -> TerminalObservation.Other(finished.outcome, terminalAtMs)
         }
     }
 
-    // terminalAtMsOf is the documented placeholder for the journal stub: callers
-    // fall back to it via `?: terminalAtMsOf(terminalOp)` when the journal has
-    // not yet recorded a terminal timestamp. Returning 0L is by design until
-    // the journal grows the field; the `op` parameter is the future-proofed
-    // signature shape. Touching this would change observed introspection output.
-    @Suppress("FunctionOnlyReturningConstant", "UnusedParameter")
-    private fun terminalAtMsOf(op: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation): Long = 0L
+    /**
+     * The run's terminal bookend, read from the event lane.
+     *
+     * The lane serves the run's events in sequence order and the bookend is
+     * the last one, so the read pages to the end of the run and keeps the last
+     * `RunFinished` it sees. Three answers, because the read has three: the
+     * lane served the run (with or without a bookend), the lane does not know
+     * the run, or the lane could not be read.
+     *
+     * The third one matters. A store that fails is not a run that has no
+     * terminal fact: folding a storage failure into "the run is not over"
+     * would answer a question about the run with a fact about the read.
+     */
+    private fun readRunTerminal(runId: String): RunTerminalRead {
+        var cursor: EventCursor? = null
+        var finished: RunFinished? = null
+        while (true) {
+            val result = eventReads.readRecords(runId, cursor, EventQuery.All, EVENT_PAGE_SIZE)
+            when (result) {
+                is EventRecordReadResult.Refused -> return when (result.refusal) {
+                    // The lane does not know the run. That is a fact about the
+                    // run, not an error: the journal or the lease may still
+                    // know it.
+                    is EventRecordReadRefusal.UnknownRun -> RunTerminalRead.NoEvents
+                    else -> RunTerminalRead.Unreadable(result.refusal.toString())
+                }
+
+                is EventRecordReadResult.Page -> {
+                    finished = result.slice.decoded.filterIsInstance<RunFinished>().lastOrNull() ?: finished
+                    if (!result.slice.hasMore) {
+                        return RunTerminalRead.Read(finished)
+                    }
+                    cursor = result.slice.nextCursor
+                }
+            }
+        }
+    }
+
+    /** What the event lane knows about the run's terminal state. */
+    private sealed interface RunTerminalRead {
+
+        /** The lane served the run. [finished] is its last bookend, if any. */
+        data class Read(val finished: RunFinished?) : RunTerminalRead
+
+        /** The lane does not know this run. */
+        data object NoEvents : RunTerminalRead
+
+        /** The lane could not be read. */
+        data class Unreadable(val cause: String) : RunTerminalRead
+    }
 
     private fun Throwable.shortDiagnostic(): String {
         val cls = this::class.simpleName ?: this.javaClass.name
@@ -819,3 +894,12 @@ private sealed interface EventStorePresence {
     data object Absent : EventStorePresence
     data class Unreadable(val refusal: IntrospectionRefusal) : EventStorePresence
 }
+
+/**
+ * How many events one page of the terminal read carries.
+ *
+ * The read pages to the END of the run, because the bookend is the last
+ * event. A run with many events therefore costs more than one read, and this
+ * is the size of each step of that walk.
+ */
+private const val EVENT_PAGE_SIZE: Int = 512

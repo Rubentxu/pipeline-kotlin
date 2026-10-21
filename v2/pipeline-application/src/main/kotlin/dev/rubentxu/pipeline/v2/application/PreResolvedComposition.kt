@@ -23,7 +23,7 @@ import java.nio.file.Path
  * Three authorities for one question ("what does this installation contribute?") means a run
  * could observe two different answers: a plugin's Step present while its Directive was not yet
  * folded in, or an eligibility analysis already computed against a Step registry that a later
- * throw would discard. `runCanonicalPipeline` also defaulted `stepRegistry` to
+ * throw would discard. `runCanonical` also defaulted `stepRegistry` to
  * `CoreStepRegistryFactory.registry()`, so a caller who forgot to pass one got a silent CORE-ONLY
  * registry — a fail-open path through exactly the admission guarantee BLOCK 1-D/1-E built.
  *

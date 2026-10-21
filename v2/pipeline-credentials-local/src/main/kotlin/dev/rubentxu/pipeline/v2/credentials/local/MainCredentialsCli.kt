@@ -48,7 +48,7 @@ object MainCredentialsCli {
 
     // The store location is decided by CredentialsStorePath, the ONE authority.
     // This comment used to spell the rule out here AND claim the runtime agreed
-    // (Main.kt, composeWithCredentialsExecutor) — and the runtime resolved a
+    // (the runtime, composeCredentialSeam) — and the runtime resolved a
     // different default, because it took <controlRoot>/../credentials.bin. Two
     // copies of one rule is how `credentials add` came to write somewhere the run
     // never looked. See CredentialsStorePath's KDoc.

@@ -12,7 +12,7 @@ import java.nio.file.Path
  *
  * ```text
  * MainCredentialsCli.resolveStoreFile()   -> PIPELINE_CREDENTIALS_STORE, else ~/.pipeline/credentials.bin
- * composeWithCredentialsExecutor()        -> PIPELINE_CREDENTIALS_STORE, else <controlRoot>/../credentials.bin
+ * composeCredentialSeam()                 -> PIPELINE_CREDENTIALS_STORE, else <controlRoot>/../credentials.bin
  * Main.kt (in-memory branch, same rule)   -> PIPELINE_CREDENTIALS_STORE, else <controlRoot>/../credentials.bin
  * ```
  *

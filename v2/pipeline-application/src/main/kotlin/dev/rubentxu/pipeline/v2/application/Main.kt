@@ -1,78 +1,13 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
-import dev.rubentxu.pipeline.v2.application.durable.SagaVerdict
-import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal
-import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
-import dev.rubentxu.pipeline.v2.events.durable.FileBackedRunExecutionLeaseStore
-import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
-import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
-import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
-import dev.rubentxu.pipeline.v2.application.durable.NonCanonicalStep
-import dev.rubentxu.pipeline.v2.application.durable.analyzeCanonicalDurableExecution
-import dev.rubentxu.pipeline.v2.application.durable.credentials.WithCredentialsExecutorScopeAdapter
-import dev.rubentxu.pipeline.v2.application.durable.supportsCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
-import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
-import dev.rubentxu.pipeline.v2.domain.CorrelationId
-import dev.rubentxu.pipeline.v2.domain.RunId
-import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
-import dev.rubentxu.pipeline.v2.domain.RunIdGenerator
-import dev.rubentxu.pipeline.v2.domain.PipelineFailure
-import dev.rubentxu.pipeline.v2.domain.RunOutcome
-import dev.rubentxu.pipeline.v2.credentials.local.CredentialsStorePath
-import dev.rubentxu.pipeline.v2.credentials.local.LocalSecretStore
-import dev.rubentxu.pipeline.v2.credentials.local.LocalCredentialProvider
-import dev.rubentxu.pipeline.v2.credentials.multipart.CredentialMaterializer
-import dev.rubentxu.pipeline.v2.credentials.multipart.LocalFileMaterialization
-import dev.rubentxu.pipeline.v2.credentials.executor.WithCredentialsExecutor
-import dev.rubentxu.pipeline.v2.credentials.local.MainCredentialsCli
-import dev.rubentxu.pipeline.v2.credentials.local.PassphraseResolver
-import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.application.observation.SelectorCompileResult
-import dev.rubentxu.pipeline.v2.application.observation.ConsolePrintingEventSink
-import dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader
-import dev.rubentxu.pipeline.v2.application.observation.LiveOutputDrain
-import dev.rubentxu.pipeline.v2.application.observation.LiveOutputPresentation
-import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
-import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
-import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
 import dev.rubentxu.pipeline.v2.application.observation.compileQuery
-import dev.rubentxu.pipeline.v2.events.durable.JsonEventLog
-import dev.rubentxu.pipeline.v2.events.RunFinished
-import dev.rubentxu.pipeline.v2.events.RunCorrelated
-import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore
-import dev.rubentxu.pipeline.v2.events.durable.EventStoreAdmission
-import dev.rubentxu.pipeline.v2.events.durable.EventStorePurpose
-import dev.rubentxu.pipeline.v2.events.durable.admitEventStore
-import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
-import kotlinx.serialization.json.Json
-import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
-import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
-import dev.rubentxu.pipeline.v2.events.durable.SqliteOperationJournalImpl
-import dev.rubentxu.pipeline.v2.events.durable.SqliteReplayCursorStoreImpl
-import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DefaultEffectReplayPolicy
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfigResolver
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.scripting.Kotlin24ScriptingHost
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
-import dev.rubentxu.pipeline.v2.scripting.ScriptEvaluationOutput
-import dev.rubentxu.pipeline.v2.scripting.KotlinScriptedSourceMapper
-import dev.rubentxu.pipeline.v2.scripting.ScriptedSource
-import dev.rubentxu.pipeline.v2.scripting.isRuntimeReturning
-import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLowering
-import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceLowering.LoweringResult
-import dev.rubentxu.pipeline.v2.scripting.ScriptedSourceId
-import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.Files
 
@@ -90,9 +25,9 @@ import java.nio.file.Files
  * list in prose is worse than no list, because it is read as authoritative.
  *
  * So: one constant, rendered by [printUsage], referenced by the hints. The dispatch
- * chain below still spells each verb as its own comparison — collapsing the two is a
- * separate concern from telling the truth about the current shape, and it would change
- * the admission order that the per-verb guards depend on.
+ * chain in [MainVerbs.handleReadOnlyVerb] still spells each verb as its own comparison
+ * — collapsing the two is a separate concern from telling the truth about the current
+ * shape, and it would change the admission order that the per-verb guards depend on.
  */
 internal val CLI_VERBS: List<Pair<String, String>> = listOf(
     "validate" to "compile a script and report every diagnostic",
@@ -163,30 +98,92 @@ internal val CLI_ENVIRONMENT_INTERNAL: List<Pair<String, String>> = listOf(
     "PIPELINE_OP_COOKIE" to "internal: tags one durable operation's process tree (do not set)",
 )
 
-private fun printUsage(out: Appendable) {
-    out.append("Usage: pipelinek <verb> [options] [args]\n\nVerbs:\n")
-    CLI_VERBS.forEach { (verb, summary) -> out.append("  %-13s %s\n".format(verb, summary)) }
-    out.append("\nEnvironment:\n")
-    CLI_ENVIRONMENT.forEach { (name, purpose) -> out.append("  %-28s %s\n".format(name, purpose)) }
-    out.append("\nEnvironment (internal, set by the product itself):\n")
-    CLI_ENVIRONMENT_INTERNAL.forEach { (name, purpose) ->
-        out.append("  %-28s %s\n".format(name, purpose))
-    }
-    out.append("\nEach verb prints its own usage when called without a required argument.\n")
+/**
+ * Resolve the operator-supplied `--output-protocol` tokens to a
+ * concrete [OutputProtocol] or fail closed with
+ * [CliExit.InvalidArgument] (exit 2).
+ *
+ * Rules (ADR-PK1-OUTPUT-FRAMING):
+ * - Empty list → [OutputProtocol.DEFAULT] (Published). No change
+ *   in behaviour for callers that did not opt in.
+ * - The token list is the CLIENT'S PREFERENCE ORDER. The first id
+ *   in the list that intersects [OutputProtocol.SUPPORTED_IDS] wins.
+ *   Unknown ids in the list are SKIPPED, not rejected — clients
+ *   may declare more ids than this binary supports, as long as at
+ *   least one matches.
+ * - When NO id in the list intersects the supported set, the
+ *   process exits with [CliExit.InvalidArgument] (code 2) and an
+ *   envelope listing every supported id. The server NEVER falls
+ *   back to Published on an unknown request — silent degradation
+ *   is the exact defect the ADR was written to prevent.
+ *
+ * Resolution lives in [OutputProtocol.negotiate]; this wrapper
+ * only translates "no intersection" into the typed CLI envelope.
+ */
+private fun negotiateOutputProtocolOrExit(tokens: List<String>): OutputProtocol {
+    val resolved = OutputProtocol.negotiate(tokens)
+    if (resolved != null) return resolved
+    val supported = OutputProtocol.SUPPORTED_IDS.joinToString(", ")
+    val requested = tokens.joinToString(", ")
+    val exit = CliExit.InvalidArgument(
+        message = "no acceptable --output-protocol in [$requested]. Supported: $supported",
+        hint = "see ADR-PK1-OUTPUT-FRAMING for the negotiation contract",
+    )
+    System.err.write(exit.encodeEnvelope().toByteArray(Charsets.UTF_8))
+    System.err.flush()
+    System.exit(exit.code)
+    // unreachable; System.exit never returns control. The return
+    // statement below exists only to satisfy the Kotlin compiler's
+    // "missing return on a path" check on a function declared with a
+    // non-Unit return type.
+    return OutputProtocol.DEFAULT
 }
 
+
 /**
- * Whether [args] asks for the usage surface.
+ * Opt-in system property that registers the redaction canaries.
  *
- * Extracted so the hints printed on a rejection can be CHECKED against it. A hint that
- * names a flag the CLI does not accept is a promise with nothing behind it, and the
- * cheapest way to keep that from returning is to make the question answerable in a test.
+ * ## Why it exists rather than the canaries being unconditional
+ *
+ * A registered secret is not only something to scrub: its encoded length IS the redactor's
+ * lookahead, and the lookahead is the number of bytes that must be seen before the first byte can
+ * be published. Registering a 28-character canary therefore claims a 56-byte window (its hex form)
+ * and withholds up to 56 bytes of live output on EVERY run — including the runs that have no
+ * credentials at all and could not leak anything.
+ *
+ * So the canaries are test material and are requested by tests. The round-gates that need them set
+ * this property, which makes the proof explicit and keeps the default run's latency at
+ * `MIN_SECRET_WINDOW`.
  */
-internal fun isHelpRequest(args: Array<String>): Boolean =
-    args.firstOrNull() in HELP_TOKENS
+private const val REDACTION_CANARY_PROPERTY = "pipelinek.redaction.canaries"
 
-private val HELP_TOKENS = setOf("--help", "-h", "help")
 
+/**
+ * The CLI's entry point.
+ *
+ * ## What this function is, after the split
+ *
+ * The seam between the operator and the product, and deliberately small: it
+ * resolves the verb, it decides the world the run lives in, and it hands
+ * over. Everything else lives in a file named after the thing it does.
+ *
+ * Before the split this function was 1 148 lines and carried two detekt
+ * suppressions (`LongMethod` and `CyclomaticComplexMethod`) that the baseline
+ * kept quiet. The baseline is where a smell goes to stop being visible, so
+ * the split is measured by the baseline entries it removes, not by the number
+ * of files it creates.
+ *
+ * ## The order of the checks is the contract
+ *
+ *  1. `--help`/`-h`/`help` are real verbs.
+ *  2. The read-only verbs answer and exit; they never reach the parser.
+ *  3. The parser decides, and its rejection is rendered by [CliExitMapping].
+ *  4. `--output-protocol` is validated BEFORE the run starts.
+ *  5. The script is checked for existence BEFORE any store, journal or
+ *     process is created.
+ *  6. `validate` compiles and reports; it never starts a process.
+ *  7. `run` picks its world: volatile without `--db`, durable with it.
+ */
 fun main(args: Array<String>) {
     // `--help`, `-h` and `help` are real. Before this they fell through to the same
     // rejection that told the operator to run them.
@@ -195,158 +192,9 @@ fun main(args: Array<String>) {
         return
     }
 
-    // WU-LPR-011 F1: `version` is a real subcommand. Reports the CLI version from the build-generated
-    // version resource (authoritative source = project.version) and exits 0.
-    // WU-LPR-071: the version MUST be produced by the build from project.version. The legacy
-    // "0.1.0-SNAPSHOT" sentinel is removed: if the generated resource is missing, that is a packaging
-    // defect, NOT a fallback case.
-    // Fail-closed: print an explicit error and exit non-zero so CI cannot ship an
-    // unversioned artifact.
-    if (args.firstOrNull() == "version" && args.getOrNull(1) != "--json") {
-        // S6-COMPOSITION: ONE authority for "what version is this". Admission reads the same value
-        // through RuntimeApiVersion, so the number a plugin is judged against and the number the
-        // CLI reports cannot come from two readers free to disagree.
-        //
-        // S6-COMPOSITION: the source moved from the jar manifest to a generated RESOURCE, because
-        // 34 harnesses run the CLI from a classes directory where Package.getImplementationVersion()
-        // is null. The manifest attribute is still populated for pipeline-release and external
-        // inspection, and RuntimeApiVersionDriftTest fails if the two ever diverge.
-        val manifestVersion = RuntimeApiVersion.readImplementationVersion()
-        if (manifestVersion.isNullOrBlank()) {
-            System.err.println(
-                "pipeline: FATAL — the generated version resource is missing. " +
-                    "Refusing to report a version derived from a hard-coded sentinel. " +
-                    "Rebuild via Gradle so it is generated from project.version."
-            )
-            System.exit(3)
-            return
-        }
-        println("pipeline $manifestVersion")
-        System.exit(0)
-        return
-    }
-
-    // H1.4 — the same authority, reported as a machine-readable object.
-    //
-    // `version` prints a line a human reads and a version that identifies a release LINE. Neither
-    // answers "which commit is this binary", and a harness must be able to ask. Emitting the
-    // provenance as JSON keeps the report machine-checkable and keeps the product version as the
-    // release identity it actually is, without overloading it into a fake commit identity.
-    //
-    // Absent provenance is reported as `null`, not as an empty string and not as an error: a
-    // working-tree build has no commit to report, and the candidate gate decides whether that is
-    // acceptable for what it is certifying.
-    if (args.firstOrNull() == "version" && args.getOrNull(1) == "--json") {
-        val identity = RuntimeApiVersion.buildIdentity()
-        val commitField = when (identity) {
-            is RuntimeApiVersion.BuildIdentity.Recorded -> "\"${identity.commit}\""
-            RuntimeApiVersion.BuildIdentity.Absent -> "null"
-        }
-        val versionField =
-            RuntimeApiVersion.readImplementationVersion()?.let { "\"$it\"" } ?: "null"
-        println(
-            """{"productVersion":$versionField,"buildCommit":$commitField}""",
-        )
-        System.exit(0)
-        return
-    }
-
-    // PK-1 / ADR-PK1-IDENTITY: `capabilities` is a real subcommand.
-    // Emits `pipelinek.capabilities/1` JSON line on stdout; side-effect
-    // free. Machine-verifiable surface for external consumers.
-    if (args.firstOrNull() == "capabilities") {
-        val exitCode = MainCapabilitiesCli.main(args.drop(1).toTypedArray())
-        System.exit(exitCode)
-        return
-    }
-
-    // PK-1 / ADR-PK1-IDENTITY: `sdk-info` is a real subcommand.
-    // Emits `pipelinek.sdk/1` JSON line on stdout; side-effect free.
-    if (args.firstOrNull() == "sdk-info") {
-        val exitCode = MainSdkInfoCli.main(args.drop(1).toTypedArray())
-        System.exit(exitCode)
-        return
-    }
-
-    // WU-LPR-011 F1: `doctor` is a real subcommand. Local-only health
-    // diagnostics: JDK version, working directory writability probe. Exits
-    // 0 when the local runtime is healthy, 2 on an environment defect.
-    if (args.firstOrNull() == "doctor") {
-        // WU-LPR-071: route host-environment reads through the canonical
-        // RuntimeConfig adapter (single authority); direct System.getProperty
-        // here would be a second runtime-value authority (WULpr402 property 6).
-        val runtimeConfig = dev.rubentxu.pipeline.v2.application.SystemRuntimeConfig()
-        val checks = buildList {
-            add("jdk: ${runtimeConfig.property("java.version")} (${runtimeConfig.property("java.vendor")})")
-            add("os: ${runtimeConfig.osName()} ${runtimeConfig.property("os.version")}")
-            val cwd = Paths.get("").toAbsolutePath()
-            val writable = try {
-                val probe = Files.createTempFile(cwd, "pipelinek-doctor-", ".probe")
-                Files.deleteIfExists(probe)
-                true
-            } catch (_: java.io.IOException) {
-                false
-            }
-            add("workdir: $cwd (${if (writable) "writable" else "NOT WRITABLE"})")
-        }
-        checks.forEach(::println)
-        System.exit(if (checks.any { it.contains("NOT WRITABLE") }) 2 else 0)
-        return
-    }
-
-    // Events subcommand (EVT-2): structured local history inspection
-    if (args.firstOrNull() == "events") {
-        if (args.getOrNull(1) == "verify") {
-            val exitCode = MainEventsVerifyCli.main(args.drop(2).toTypedArray())
-            System.exit(exitCode)
-            return
-        }
-        val exitCode = MainEventsCli.main(args.drop(1).toTypedArray())
-        System.exit(exitCode)
-        return
-    }
-
-    // Console subcommand (M1-P3): read process output from the Output Plane by OutputCursor.
-    //
-    // Deliberately a SEPARATE verb from `events`. The two planes are different orders and a
-    // different authority: `events` continues on a store-assigned sequence, `console` continues on
-    // a committed byte offset and never reads an event. Folding console into `events` — as a view,
-    // or as a flag — is the conflation ADR-M1 D3 exists to prevent, and it is exactly what the
-    // deprecated EventViewProjection.CONSOLE was.
-    if (args.firstOrNull() == "console") {
-        val exitCode = MainConsoleCli.main(args.drop(1).toTypedArray())
-        System.exit(exitCode)
-        return
-    }
-
-    // Observe subcommand (OBS-E5): one public verb over both durable authorities.
-    //
-    // NOT a third universe alongside `events` and `console` — it reads the same two planes and
-    // composes them read-side. What it refuses is the thing neither of the other two can promise:
-    // a document claiming an interleaving. `Event.sequence` and `OutputFrame.ordinal` have no
-    // total order, so `--view full` stays refused here exactly as it is in `run`.
-    if (args.firstOrNull() == "observe") {
-        val exitCode = MainObserveCli.main(args.drop(1).toTypedArray())
-        System.exit(exitCode)
-        return
-    }
-
-    // Credentials subcommand — delegated to MainCredentialsCli
-    if (args.firstOrNull() == "credentials") {
-        val exitCode = MainCredentialsCli.main(args.drop(1).toTypedArray())
-        System.exit(exitCode)
-        return
-    }
-
-    // Inspect subcommand (R4 / WU-R4.1, ADR-0088): bounded diagnostic surface.
-    //
-    // The verb is the same workflow for `inspect` that `observe`, `events`, and `console`
-    // are for their lanes: a typed parser + a typed query + a typed projection. The dispatcher
-    // adds it without disturbing the existing CLI surface (R4 / WU-R4.5 is the cross-CLI
-    // canary that catches any regression here).
-    if (args.firstOrNull() == "inspect") {
-        val exitCode = MainInspectCli.main(args.drop(1).toTypedArray())
-        System.exit(exitCode)
+    // The verbs that only read. They answer and exit; nothing after this point
+    // is reached when one of them is the verb.
+    if (handleReadOnlyVerb(args)) {
         return
     }
 
@@ -434,7 +282,6 @@ fun main(args: Array<String>) {
         // and reports diagnostics — nothing else.
         val rawStore = InMemoryEventStore()
         val store = RedactingEventSink(rawStore, secretPatternRegistry)
-        val scriptContent = scriptPath.toFile().readText()
         val validateRunId = java.util.UUID.randomUUID().toString()
         val host = Kotlin24ScriptingHost(store, validateRunId)
         val dslClasspath = computeScriptClasspath(config.pluginJars)
@@ -495,1158 +342,28 @@ fun main(args: Array<String>) {
         return
     }
 
-    // "run" command.
+    // "run" command. The world is decided here and only here: without `--db`
+    // the run is volatile, with it the run is durable. Both worlds reach the
+    // SAME canonical run; what changes is the durability of the promise, not
+    // the algorithm. (The two are not identical in every detail: the durable
+    // world also resolves the scripted-frontend form, and it binds a credential
+    // provider where the volatile one does not. `runVolatilePipeline` says
+    // which.)
     if (config.dbPath == null) {
-        // LF-0208 (Single Runtime Spine): storage choice must not select a
-        // different execution algorithm. Without --db the run uses the
-        // canonical durable coordinator with volatile (in-memory) stores;
-        // nothing survives the process.
-        // Durable run selection flags are rejected without persistent state.
-        if (config.durableRunPolicy != DurableRunPolicy.ReusePriorRun) {
-            System.err.println("Error: --resume and --rerun require --db (no durable state exists without a journal database)")
-            System.exit(2)
-            return
-        }
-        val rawEventStore = InMemoryEventStore()
-        val redactedStore = RedactingEventSink(rawEventStore, secretPatternRegistry)
-        // ADR-0088: in TEXT the run is mirrored live as events are appended, so
-        // the end-of-run dump is suppressed below. Machine formats keep stdout
-        // untouched and are written once, at the end, exactly as before.
-        val eventStore: dev.rubentxu.pipeline.v2.events.EventSink =
-            if (config.format == ObservationFormat.TEXT) {
-                // The query rides along because this is the only place a TEXT run is printed: the
-                // end-of-run dump is suppressed below, so a filter honoured only there would be
-                // honoured by nothing. It suppresses presentation only; the store still receives
-                // every event.
-                ConsolePrintingEventSink(redactedStore, config.view, compiledQuery) { line ->
-                    System.out.println(line)
-                }
-            } else {
-                redactedStore
-            }
-        val scriptContent = scriptPath.toFile().readText()
-        val definitionId = dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator.definitionId(
-            scriptPath.toString(),
-            scriptContent,
+        runVolatilePipeline(
+            config = config,
+            secretPatternRegistry = secretPatternRegistry,
+            compiledQuery = compiledQuery,
+            scriptPath = scriptPath,
+            outputProtocol = outputProtocol,
         )
-        // `--control-root` is honoured HERE TOO, and it used not to be. The flag is parsed and
-        // validated in the durable branch (ML-R1) and was silently ignored in this one, which
-        // hard-coded a fresh temp directory per run. That made the flag mean two different
-        // things depending on whether `--db` was present, and it made the Output Plane
-        // unreachable from the CLI on the DEFAULT path: `pipeline console --control-dir X`
-        // could not be pointed at a run that had not been given a database.
-        //
-        // That is not a cosmetic inconsistency. M1 moved process output into the plane
-        // (ADR-M1 D2/D3), so "where the plane is written" IS the product question, and a flag
-        // that answers it only on one of two execution paths is a flag that cannot be relied on
-        // to observe the default one. The default is unchanged: with no `--control-root`, this
-        // still creates a private temp directory.
-        val controlDirRoot: Path = if (config.controlRoot != null) {
-            try {
-                validateControlRoot(config.controlRoot)
-            } catch (e: IllegalArgumentException) {
-                System.err.println("Error: ${e.message}")
-                System.exit(2)
-                throw e // unreachable
-            }
-        } else {
-            java.nio.file.Files.createTempDirectory("pipelinek-inmem-run")
-        }
-        val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
-        val fresh = UuidRunIdGenerator().next()
-        // PK-1 / ADR-PK1-IDENTITY: build the correlationId once here at
-        // the CLI boundary so both the durable last-run record and the
-        // in-memory RunCorrelated event share the same token.
-        val correlationId: CorrelationId = config.correlationId?.let { CorrelationId(it) }
-            ?: UuidCorrelationIdGenerator().next()
-        runIdDirectory.record(definitionId, fresh, correlationId as CorrelationId)
-        val runId: String = fresh.value
-        // PK-1 / ADR-PK1-IDENTITY: emit the RunCorrelated event on the
-        // event sink so a consumer can join durable state to the
-        // external correlationId. The in-memory eventStore is created
-        // below; we emit after the rest of the run is wired (so the
-        // event is observed in the same order as it would be in the
-        // durable branch: lease -> RunCorrelated -> RunStarted).
-        // We also emit the LaunchReceipt on stdout for the consumer.
-        // For the in-memory branch the owner is a synthetic CLI pid +
-        // uuid; for the durable branch the lease-acquired owner is
-        // used (see below).
-        val syntheticOwner: RunOwnerId = RunOwnerId.of(
-            "cli-inmem-" + ProcessHandle.current().pid() + "-" +
-                java.util.UUID.randomUUID().toString().take(8)
-        )!!
-        // PK-1 / ADR-PK1-IDENTITY: emit the RunCorrelated event and
-        // the LaunchReceipt. The receipt is durable machine-readable
-        // metadata, not a human message; in TEXT view it goes to
-        // stderr so the human console is not polluted. In JSON/JSONL
-        // view it is the first stdout line so a machine consumer can
-        // join the receipt to the event stream by line index.
-        emitCorrelationAndReceipt(
-            eventStore = eventStore,
-            runId = dev.rubentxu.pipeline.v2.domain.RunId(runId),
-            correlationId = correlationId,
-            ownerId = syntheticOwner,
-            startedAtMs = System.currentTimeMillis(),
-            controlDir = controlDirRoot,
-            format = config.format,
-        )
-        val host = Kotlin24ScriptingHost(eventStore, runId)
-        val dslClasspath = computeScriptClasspath(config.pluginJars)
-        val definition0 = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
-        // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
-        // return values reflect the host environment. Lfc0GlobalStateFitnessTest
-        // requires :pipeline-scripting-api to read no global state; this scope is
-        // the single bridge. Cleared in a finally block.
-        dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.set(SystemRuntimeConfig())
-        val result = try {
-            host.compile(definition0)
-        } finally {
-            dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.clear()
-        }
-
-        val pipelineSpec: PipelineSpec? = if (result.isSuccess) {
-            val scriptInstance = result.scriptInstance
-            scriptInstance?.let { inst ->
-                try {
-                    val resultMethod = inst.javaClass.getMethod("get\$\$result")
-                    @Suppress("UNCHECKED_CAST")
-                    resultMethod.invoke(inst) as? PipelineSpec
-                } catch (_: Exception) {
-                    null
-                }
-            }
-        } else null
-
-        val compileOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = if (result is dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Failure) {
-            // TRAIN-DSL-HONESTY: evaluation failures (any exception thrown while
-            // the DSL body constructs its IR, including the fail-closed
-            // rejections of whenCondition/retry) arrive here as a Failure. The
-            // user's own diagnostic message must survive instead of becoming an
-            // anonymous NPE.
-            val reason = result.diagnostics
-                .lastOrNull { it.severity == dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity.ERROR }
-                ?.message
-                ?.takeIf { it.isNotBlank() }
-                ?: "Kotlin compilation failed"
-            dev.rubentxu.pipeline.v2.domain.RunOutcome.Failure(
-                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                    kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
-                    message = reason
-                )
-            )
-        } else null
-
-        val clock: dev.rubentxu.pipeline.v2.domain.durable.Clock = SystemClock()
-        val journal: dev.rubentxu.pipeline.v2.events.durable.OperationJournal =
-            dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal(clock)
-        val cursorStore: dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore =
-            dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore(clock)
-
-        val compiledPipeline = pipelineSpec?.let { spec ->
-            compileOrRefuse(
-                spec = spec,
-                sourcePath = scriptPath.toString(),
-                sourceContent = scriptContent,
-            )
-        }
-
-        // LB-02 / EP-6: compose registry BEFORE the gate so contributed keys are eligible.
-        // S6-COMPOSITION: admission happens FIRST and inside the same function, so the in-memory and
-        // durable branches cannot admit differently. S6/G's "one resolution for the whole run" now
-        // also covers the decision about WHICH artifacts are allowed to resolve at all.
-        val composition = admitThenComposeOrExit(config.pluginJars)
-        val composedStepRegistry = composition.steps
-        val nonCanonicalSteps = compiledPipeline
-            ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()
-        // WU-LPR-103: the default `pipeline run <script>` (in-memory) branch composes
-        // the SAME credential injection stack as the durable branch. The default path
-        // is the temp in-memory control dir's sibling; PIPELINE_CREDENTIALS_STORE env
-        // overrides, exactly like the durable path.
-        val withCredentialsExecutor = composeWithCredentialsExecutor(secretPatternRegistry)
-        // RP034-H / ADR-0101 clause 3.1 + RP034-Id: the workspace origin is decided
-        // ONCE, here at the boundary. Both facts cross into the runtime — the shared
-        // directory and its owner — because a runtime that receives only the root
-        // re-derives ownership and lets `deleteDir` erase a user's project under the
-        // local-first default. `--isolated` keeps the historical PipelineK scratch;
-        // `--workspace <path>` stays authoritative.
-        val workspaceTransport = WorkspaceIntent.resolveRuntimeTransport(
-            config, Path.of("").toAbsolutePath().normalize(), controlDirRoot,
-        )
-        // OBS-E4: the process output of a step lives in the Output Plane, not on the event spine,
-        // so the event sink above never saw it. This observer follows the plane while the run is in
-        // flight, which is what makes a build's progress visible while the build runs. It is
-        // started BEFORE the pipeline (there is nothing to observe until a step produces bytes) and
-        // closed after it returns, so the last committed bytes are flushed.
-        val outputObserver = startLiveOutputObserver(runId, controlDirRoot, config.format)
-
-        val runOutcome: dev.rubentxu.pipeline.v2.domain.RunOutcome? = try {
-            when {
-            // Compilation must be checked FIRST. If the script failed to compile there is no
-            // compiled pipeline to run; jumping to runCanonicalPipeline would NPE on `!!`. This
-            // regression was introduced when the per-step canonical gate was added (v0.33.1 P2
-            // corpus-closure) but the compile-failure branch was left inside `else -> compileOutcome`
-            // which only fires when nonCanonicalSteps is non-empty OR pipelineSpec is non-null.
-            compileOutcome != null -> compileOutcome
-            // TRAIN-DSL-HONESTY: compile "succeeded" but produced no PipelineSpec. Before this
-            // branch this reached runCanonicalPipeline(compiledPipeline!!) and died as an NPE
-            // with exit 0. A script that cannot produce its IR is an admission failure.
-            compiledPipeline == null -> dev.rubentxu.pipeline.v2.domain.RunOutcome.Failure(
-                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                    kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
-                    message = "the script compiled but did not produce a PipelineSpec; " +
-                        "its body failed during construction and no pipeline can run"
-                )
-            )
-            nonCanonicalSteps.isEmpty() -> runCanonicalPipeline(
-                pipeline = compiledPipeline!!,
-                runId = RunId(runId),
-                journal = journal,
-                cursorStore = cursorStore,
-                clock = clock,
-                effectReplayPolicy = DefaultEffectReplayPolicy(),
-                eventSink = eventStore,
-                controlDirRoot = controlDirRoot,
-                sandboxProfile = config.sandboxProfile,
-                // RP034-H / ADR-0101 clause 3.1: the CLI default is local-first. The
-                // workspace origin is decided once, here at the boundary, and BOTH
-                // facts cross into the runtime: the shared directory and its owner.
-                // `--isolated` preserves the historical PipelineK-managed scratch;
-                // `--workspace <path>` stays authoritative.
-                workspaceBase = workspaceTransport.base,
-                workspaceOwnership = workspaceTransport.ownership,
-                // S6/G: the frozen composition, not a step registry plus a classloader.
-                // There is no path here that can reach a registry without a directive registry
-                // having been resolved under the same loader.
-                composition = composition,
-                secretPatternRegistry = secretPatternRegistry,
-                withCredentialsExecutor = withCredentialsExecutor,
-                // H5-B: NO credentialProvider on this path, deliberately. It composes
-                // with an in-memory journal and receives no store, so the seam takes
-                // its default: a source that refuses every lookup with
-                // `NotConfigured`. That is the honest answer for a run that has
-                // nowhere to look, and it is the same answer the durable path gives
-                // when the operator configured no store. Passing a provider here
-                // would mean opening a secret store for a path that has no use for
-                // one.
-                // H8-D1: this path composes its own coordinator and had the same
-                // omission as the durable one. `--allow-network` is a per-RUN
-                // permission; a run whose flag is ignored is a run where the
-                // operator believes they opened the network and did not.
-                allowNetwork = config.allowNetwork,
-                // P6: the Saga seam does NOT depend on `--db`. This branch binds the
-                // VOLATILE store, so the capabilities are the same ones the durable
-                // branch exposes and the SAME script behaves the same in both worlds.
-                // What changes is the DURABILITY of the promise, not the algorithm:
-                // nothing survives the process here, exactly like the journal and the
-                // event log of this branch.
-                //
-                // Before this binding, this branch bound NO saga store at all, so the
-                // Saga capabilities were never exposed and a script that declares them
-                // was refused at admission — the same script behaving differently with
-                // and without `--db`, which is the contradiction LF-0208 forbids.
-                //
-                // The epoch is 0 because a volatile run has no lease: there is no
-                // takeover to fence against, and one writer owns the run for as long as
-                // the process lives.
-                sagaBinding = dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding(
-                    store = dev.rubentxu.pipeline.v2.events.durable.InMemorySagaObligationStore(),
-                    leaseEpoch = 0,
-                ),
-            )
-            else -> {
-                // Fail-closed: non-canonical pipelines are not supported by the canonical bridge.
-                // Same gate and message as the durable path (STEP SEMANTICS: fail-closed on every run path).
-                System.err.println(NON_CANONICAL_CANONICAL_BRIDGE_ERROR)
-                for (step in nonCanonicalSteps) {
-                    System.err.println("  - Step '${step.stepId}' (${step.pluginStepId}): ${step.reason}")
-                }
-                System.exit(2)
-                null // unreachable
-            }
-            }
-        } finally {
-            // The observer stops here, not before: everything the pipeline committed is already in
-            // the plane, and stopping first would drop the final frames of the last step. `finally`
-            // rather than a plain call so a throwing pipeline still releases the thread.
-            outputObserver.close()
-        }
-
-        val events = eventStore.eventsFor(runId).toList()
-        // ADR-0088: human text was already streamed live by ConsolePrintingEventSink.
-        // Only the machine formats still need a document at the end.
-        if (config.format != ObservationFormat.TEXT) {
-            writeEventDocument(
-                events = events,
-                view = config.view,
-                format = config.format,
-                query = compiledQuery,
-                protocol = outputProtocol,
-            )
-        }
-        val exitFailure: Boolean = if (runOutcome != null) {
-            when (runOutcome) {
-                is dev.rubentxu.pipeline.v2.domain.RunOutcome.Success -> {
-                    System.err.println("Pipeline finished with SUCCESS"); false
-                }
-                is dev.rubentxu.pipeline.v2.domain.RunOutcome.Unstable -> {
-                    System.err.println("Pipeline finished with UNSTABLE"); false
-                }
-                is dev.rubentxu.pipeline.v2.domain.RunOutcome.Failure -> {
-                    // TRAIN-DSL-HONESTY: an admission failure (compile or DSL
-                    // construction) must carry its diagnostic. "FAILURE" alone
-                    // sent users hunting with zero context.
-                    runOutcome.failure.message
-                        ?.takeIf { it.isNotBlank() && it != "Kotlin compilation failed" }
-                        ?.let { System.err.println("Pipeline finished with FAILURE: $it") }
-                        ?: System.err.println("Pipeline finished with FAILURE")
-                    true
-                }
-                else -> {
-                    System.err.println("Pipeline finished with FAILURE"); true
-                }
-            }
-        } else {
-            // The LEGACY path: no typed outcome was produced, so there are only two stories —
-            // "it finished successfully" and "it did not". The "unstable" arm that used to live
-            // here was UNREACHABLE: the word it compared against could only be those two, so
-            // the arm could never run and only misled whoever read it.
-            val lastEvent = events.lastOrNull()
-            val succeeded = lastEvent is RunFinished && lastEvent.outcome == RunOutcome.SUCCESS_TOKEN
-            if (succeeded) {
-                System.err.println("Pipeline finished with SUCCESS"); false
-            } else {
-                System.err.println("Pipeline finished with FAILURE"); true
-            }
-        }
-        // P6: the Saga verdict travels in BOTH worlds. A Saga can now run without
-        // `--db` —the volatile store is bound exactly like the durable one—, so the
-        // run has to SAY what happened to it, exactly as the durable path says. A
-        // Saga that settled without saying so is a Saga the operator cannot see,
-        // and "the run was green" is not a substitute for "the Saga was settled".
-        val sagaTerminals = events.filterIsInstance<dev.rubentxu.pipeline.v2.events.SagaTerminal>()
-        SagaVerdict.verdicts(sagaTerminals).forEach { System.err.println(it) }
-        if (exitFailure) System.exit(1)
         return
     }
-
-    // Durable mode: SqliteEventStore + PipelineOrchestrator for replay/divergence gating.
-    // Both stores are wrapped with RedactingEventSink at construction time (design §Data Flow).
-    // D3 — a run CREATES its event store, so the file is legitimately absent; only the DIRECTORY
-    // has to exist. That is why the purpose is part of the admission and not a flag at each site:
-    // `run` used to reach the same constructor as the read verbs and inherited neither the refusal
-    // nor the exit code, so a `--db` under a missing directory escaped as a raw SQLException with
-    // exit 1 — the code this CLI reserves for a pipeline that ran and failed.
-    val dbAdmission = admitEventStore(config.dbPath, EventStorePurpose.Write)
-    if (dbAdmission is EventStoreAdmission.Refused) {
-        System.err.println(dbAdmission.refusal.render())
-        // `main` returns Unit and this is the depth at which every other refusal ends, so the
-        // exit is the process's rather than a value handed upwards.
-        System.exit(2)
-    }
-    val rawEventStore = (dbAdmission as EventStoreAdmission.Admitted).store
-    // Call raw methods BEFORE wrapping — RedactingEventSink delegates these to the inner store
-    val factory = rawEventStore.underlyingConnectionFactory()
-    val dbPathStr = rawEventStore.databasePath()
-    val eventStore = RedactingEventSink(rawEventStore, secretPatternRegistry)
-
-    // The script-derived hash is the DefinitionId. Durable policy decides
-    // whether its persisted RunId is reused or intentionally replaced.
-    val scriptContent = scriptPath.toFile().readText()
-    val definitionId = dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator.definitionId(
-        scriptPath.toString(),
-        scriptContent,
+    runDurablePipeline(
+        config = config,
+        dbPath = config.dbPath,
+        secretPatternRegistry = secretPatternRegistry,
+        compiledQuery = compiledQuery,
+        scriptPath = scriptPath,
     )
-    // ML-R1: controlDirRoot is the parent directory of the SQLite db file (default).
-    // Can be overridden via --control-root flag for testing.
-    // Each step gets a subdirectory: $controlDirRoot/$runId-$stageIndex-$stepIndex/
-    // C5: Validate control-root path before use
-    val dbPath = Paths.get(config.dbPath!!)
-    val controlDirRoot: Path = if (config.controlRoot != null) {
-        try {
-            validateControlRoot(config.controlRoot)
-        } catch (e: IllegalArgumentException) {
-            System.err.println("Error: ${e.message}")
-            System.exit(2)
-            throw e // unreachable
-        }
-    } else {
-        dbPath.parent.resolve("durable-shell")
-    }
-    // WU-LPR-WC: the canonical engine threads `workspaceBase` through
-    // `CanonicalRuntimeContext.workspaceBase`; the capability bridge
-    // populates `WORKSPACE_IDENTITY_CAPABILITY` from
-    // `context.shOptions.workspaceRoot`. Plugins consume the typed
-    // seam via `StepHandlerContext.capabilities.get<WorkspaceIdentity>(...)`
-    // instead of reading a process-global property. The system-property
-    // bridge has been removed: no production code reads
-    // `pipeline.workspace.root` any more (the historical writers were
-    // F5.1 SCM/Git and F5.2 JUnit; F5.2 JUnit migrated to the typed
-    // capability here; F5.1 SCM/Git migration is filed as a sibling
-    // follow-up, OUT OF SCOPE for this WU).
-    val runIdDirectory = RunIdDirectory(controlDirRoot.resolve("last-run"))
-    // PK-1 / ADR-PK1-IDENTITY: build the correlationId once here at
-    // the CLI boundary so both the durable last-run record and the
-    // RunCorrelated event share the same token.
-    val pk1Correlation: CorrelationId = config.correlationId?.let { CorrelationId(it) }
-        ?: UuidCorrelationIdGenerator().next()
-    val runSelection: DurableRunSelection = try {
-        selectDurableRun(
-            policy = config.durableRunPolicy,
-            runIdDirectory = runIdDirectory,
-            definitionId = definitionId,
-            runIdGenerator = UuidRunIdGenerator(),
-            correlationId = pk1Correlation,
-        )
-    } catch (e: IllegalArgumentException) {
-        // WU-LPR-011 F4: --resume without a prior durable run is an
-        // invocation/admission error, not a pipeline failure. Typed
-        // rejection, no stack trace, exit 2 per the CLI exit contract.
-        System.err.println("Error: ${e.message}")
-        System.exit(2)
-        throw e // unreachable
-    }
-    val runId = runSelection.runId.value
-    // S2-R0: first-class run ownership. Before any event is written for this
-    // run we must prove we are the only process writing to it. Without this,
-    // two concurrent `--resume` invocations of the same definition both proceed
-    // and collide on the durable `ux_events_run_sequence` uniqueness index, so
-    // the loser sees a raw SQLite constraint violation instead of a typed
-    // refusal. The lease turns that crash into an explicit admission decision.
-    val runOwner = RunOwnerId.of("cli-" + ProcessHandle.current().pid() + "-" +
-        java.util.UUID.randomUUID().toString().take(8))
-    val leaseStore = FileBackedRunExecutionLeaseStore(controlDirRoot.resolve("leases"))
-    val lease = leaseStore.acquire(LeaseRequest(runId, requireNotNull(runOwner)))
-    // SAGA / PK-1: the fencing token of the lease THIS process holds. It is the epoch the
-    // durable Saga store uses to refuse a write from a writer that lost the run to a
-    // takeover, so it has to travel from the acquisition to the store.
-    val leaseEpoch: Long = when (lease) {
-        is LeaseAcquisition.Acquired -> lease.fencingToken.value
-        is LeaseAcquisition.TakenOver -> lease.fencingToken.value
-        is LeaseAcquisition.Reentered -> lease.fencingToken.value
-        is LeaseAcquisition.AlreadyOwned -> {
-            // Typed admission rejection: this run already has a live owner.
-            // Exit 2 (invocation/admission), not a pipeline failure.
-            runCatching { leaseStore.close() }
-            System.err.println(
-                "Error: run $runId is already owned by '${lease.heldBy.value}'; " +
-                    "another process is publishing events for this run"
-            )
-            System.exit(2)
-            throw IllegalStateException("unreachable")
-        }
-        is LeaseAcquisition.Unverifiable -> {
-            // Fail closed: a process that cannot prove it is the authority must
-            // not publish. Kept distinct from AlreadyOwned because the
-            // operator response differs.
-            runCatching { leaseStore.close() }
-            System.err.println("Error: cannot establish ownership of run $runId: ${lease.reason}")
-            System.exit(2)
-            throw IllegalStateException("unreachable")
-        }
-    }
-    // PK-1 / ADR-PK1-IDENTITY: lease is held; emit the RunCorrelated
-    // event on the durable event sink and the LaunchReceipt on stdout.
-    // The owner is the lease-acquired runOwner.
-    // PK-1 / ADR-PK1-IDENTITY: the durable branch's correlation is the
-    // one persisted alongside the runId; fall back to the CLI-bound
-    // token if the durable record has none.
-    val resolvedCorrelationId: CorrelationId = pk1Correlation
-    emitCorrelationAndReceipt(
-        eventStore = eventStore,
-        runId = dev.rubentxu.pipeline.v2.domain.RunId(runId),
-        correlationId = resolvedCorrelationId,
-        ownerId = requireNotNull(runOwner),
-        startedAtMs = System.currentTimeMillis(),
-        controlDir = controlDirRoot,
-        format = config.format,
-    )
-    val host = Kotlin24ScriptingHost(eventStore, runId)
-    val dslClasspath = computeScriptClasspath(config.pluginJars)
-    val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
-    // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
-    // return values reflect the host environment for the durable run path.
-    dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.set(SystemRuntimeConfig())
-    val result = try {
-        host.compile(definition)
-    } finally {
-        dev.rubentxu.pipeline.v2.dsl.DslRuntimeConfigScope.clear()
-    }
-
-    val pipelineSpec: PipelineSpec? = if (result.isSuccess) {
-        val scriptInstance = result.scriptInstance
-        scriptInstance?.let { inst ->
-            try {
-                val resultMethod = inst.javaClass.getMethod("get\$\$result")
-                @Suppress("UNCHECKED_CAST")
-                resultMethod.invoke(inst) as? PipelineSpec
-            } catch (invocationError: java.lang.reflect.InvocationTargetException) {
-                // S0-C1 / TRAIN-DSL-HONESTY: `get$$result` runs the script BODY,
-                // so this is where a fail-closed DSL guard fires (e.g. the Pure
-                // Builder Consumption gate rejecting an unconsumed MUST_CONSUME
-                // carrier). Swallowing it into `null` turned a construction
-                // rejection into "no pipeline", which the runner then reported
-                // downstream as a runtime step failure — the author's discarded
-                // value disappeared and a StepFailed appeared instead.
-                //
-                // Unwrap the reflective wrapper so the real, actionable message
-                // reaches the author verbatim.
-                throw (invocationError.targetException ?: invocationError)
-            }
-        }
-    } else null
-
-    // LFC-2R / R4B — frontend FORM selection. The compiler-backed mapping decides
-    // whether this source contains runtime-effectful scripted calls; Main only
-    // picks the closed artifact FORM, never an execution authority and never a
-    // concrete Step (R4A law: Main may choose the frontend, never the backend).
-    val scriptedFrontend: dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.EntryPointArtifact? =
-        if (result.isSuccess) {
-            val mapping = KotlinScriptedSourceMapper().map(ScriptedSource(ScriptedSourceId(scriptPath.fileName.toString()), scriptContent))
-            val mappedCalls = if (mapping is dev.rubentxu.pipeline.v2.scripting.ScriptedSourceMapping.Mapped) {
-                mapping.calls.filter { it.kind.isRuntimeReturning() }
-            } else emptyList()
-            // R4B scope: the R3 lowering emits a generator-level entry point
-            // body only. A `pipeline { stages { stage { ... } } }` structure
-            // keeps the eager PipelineSpec frontend this slice (no DSL-body
-            // migration, per the R4B GO). Frontend FORM selection, never an
-            // execution-authority switch.
-            val isGeneratorLevelSource = mappedCalls.isNotEmpty() &&
-                !Regex("""\bpipeline\s*\{""").containsMatchIn(scriptContent)
-            if (isGeneratorLevelSource) {
-                when (val lowered = ScriptedSourceLowering.lower(
-                    sourceId = ScriptedSourceId(scriptPath.fileName.toString()),
-                    sourceText = scriptContent,
-                    mapper = KotlinScriptedSourceMapper(),
-                    facadeSchemaVersion = ScriptedSourceLowering.FACADE_SCHEMA_VERSION,
-                )) {
-                    is LoweringResult.Generated -> dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.EntryPointArtifact(
-                        loweredSource = lowered.source,
-                        identity = lowered.artifact,
-                    )
-                    is LoweringResult.InvalidSyntax -> {
-                        // The source already compiled (host), so this is an internal
-                        // invariant violation: fail closed, never fall back to eager.
-                        System.err.println("Error: scripted source lowering failed: ${lowered.diagnostics}")
-                        System.exit(2)
-                        null // unreachable
-                    }
-                }
-            } else null
-        } else null
-
-    val scriptedEntryPoint: dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint? =
-        scriptedFrontend?.let { artifact ->
-            val definitionScript = """
-                ${artifact.loweredSource}
-            """.trimIndent()
-            val scriptedDefinition = ScriptDefinition.inline(
-                text = definitionScript,
-                classpath = computeScriptClasspath(config.pluginJars),
-            )
-            // Compiled WITHOUT the eager RuntimeConfig injection: a runtime-returned
-            // body must never observe the platform through the eager DSL port.
-            val scriptedResult = host.compile(scriptedDefinition)
-            when {
-                scriptedResult is dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Failure -> {
-                    System.err.println("Error: scripted frontend compilation failed: ${scriptedResult.diagnostics}")
-                    System.exit(2)
-                    null // unreachable
-                }
-                else -> when (val out = (scriptedResult as dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Success).output) {
-                    is ScriptEvaluationOutput.CompiledEntryPoint -> out.entryPoint
-                    else -> {
-                        System.err.println("Error: scripted frontend did not produce a compiled entry point")
-                        System.exit(2)
-                        null // unreachable
-                    }
-                }
-            }
-        }
-
-    val compileOutcome: RunOutcome? = if (result is dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Failure) {
-        RunOutcome.Failure(
-            dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
-                message = "Kotlin compilation failed"
-            )
-        )
-    } else null
-
-    val compiledPipeline = pipelineSpec?.let { spec ->
-        compileOrRefuse(
-            spec = spec,
-            sourcePath = scriptPath.toString(),
-            sourceContent = scriptContent,
-        )
-    }
-
-    // Build orchestrator with all durable dependencies
-    val clock: Clock = SystemClock()
-    val journal: OperationJournal = SqliteOperationJournalImpl(factory, clock, Json { ignoreUnknownKeys = true; encodeDefaults = true }, dbPathStr)
-    // SAGA / PK-1: the durable Saga obligations live in the SAME database as the journal and
-    // the event log, through the same connection factory. One authority for the run's durable
-    // state, not a second store with its own lifecycle.
-    val sagaObligationStore = dev.rubentxu.pipeline.v2.events.durable.SqliteSagaObligationStore(
-        connectionFactory = factory,
-        dbPath = dbPathStr,
-    )
-    val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(factory, clock)
-    val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector()
-    val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
-
-    // T12: Resolve SecretStore for credential injection in withCredentials blocks.
-    //
-    // The store location is CredentialsStorePath's, the ONE authority, and it is
-    // the same value composeWithCredentialsExecutor uses on the durable branch.
-    // This block used to recompute it from controlDirRoot, which is how the two
-    // branches came to disagree about a credentials file; the duplicated copy is
-    // what made the divergence invisible. PIPELINE_STORE_PASSPHRASE supplies the
-    // passphrase.
-    //
-    // Behavior:
-    // - Store file does not exist → pass null (user runs `pipeline credentials add`
-    //   first to create it; no error at startup)
-    // - Store file exists + passphrase available → inject credentials
-    // - Store file exists + passphrase wrong/missing → fail fast with actionable error
-    val credentialsStorePath: Path = CredentialsStorePath.fromEnvironment(System.getenv())
-
-    val secretStore: dev.rubentxu.pipeline.v2.credentials.api.SecretStore? =
-        if (!credentialsStorePath.toFile().exists()) {
-            // File doesn't exist yet — user must create it via `pipeline credentials add`
-            null
-        } else {
-            // File exists — resolve passphrase and open the store
-            try {
-                val passphraseChars = PassphraseResolver.resolve()
-                val store = LocalSecretStore(credentialsStorePath, passphraseChars)
-                // Do NOT wipe passphraseChars here — LocalSecretStore stores the
-                // same CharArray reference and would lose its own copy. The store
-                // zeros the passphrase in its own close().
-                store
-            } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
-                System.err.println("Error: ${e.message}")
-                System.err.println("Hint: set PIPELINE_STORE_PASSPHRASE env var, or run interactively in a TTY.")
-                System.exit(3)
-                null // unreachable
-            } catch (e: LocalSecretStore.SecretStorePassphraseMismatchException) {
-                System.err.println("Error: $e.message")
-                System.err.println("Hint: the passphrase does not match. Check PIPELINE_STORE_PASSPHRASE.")
-                System.exit(3)
-                null // unreachable
-            } catch (e: LocalSecretStore.SecretStoreTamperException) {
-                System.err.println("Error: credentials store tampered: ${e.message}")
-                System.exit(4)
-                null // unreachable
-            }
-        }
-
-    // H0 composition root: construct credential ports and executor
-    // LocalSecretStore (existing) -> LocalCredentialProvider -> CredentialMaterializer -> LocalFileMaterialization -> WithCredentialsExecutor
-    val credentialProvider: dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider? = secretStore?.let { LocalCredentialProvider(it) }
-    val credentialMaterialization: dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization? = secretStore?.let { LocalFileMaterialization(CredentialMaterializer(it)) }
-    val withCredentialsExecutor: WithCredentialsExecutor? = if (credentialProvider != null && credentialMaterialization != null) {
-        WithCredentialsExecutor(credentialProvider, credentialMaterialization, clock, secretPatternRegistry)
-    } else {
-        null
-    }
-
-    // LF-0205 (closed LEG-1.1): the legacy PipelineOrchestrator was constructed here but
-    // never invoked. The CLI reaches the durable runtime ONLY through the canonical
-    // RunCoordinator (fail-closed exit 2 otherwise). LEG-1 burn-down deleted the class.
-    // LB-02 / EP-6: compose the registry BEFORE the canonical-eligibility gate —
-    // eligibility is registry-derived, so external plugin contributions must be
-    // visible to the gate or a contributed key would be wrongly rejected as
-    // non-canonical. Same composed registry is handed to the coordinator below.
-    // S6-COMPOSITION: same single entry point as the in-memory branch above. Writing the admission
-    // wiring out a second time here would let the two branches disagree about which plugins were
-    // admitted, which is precisely the defect S6/G removed once already.
-    val composition = admitThenComposeOrExit(config.pluginJars)
-    val composedStepRegistry = composition.steps
-    // RP034-H / ADR-0101 clause 3.1 + RP034-Id: the workspace origin is decided
-    // ONCE, here at the boundary, and both facts cross into the runtime — the
-    // shared directory and its owner. `--isolated` keeps the historical
-    // PipelineK scratch; `--workspace <path>` stays authoritative.
-    val workspaceTransport = WorkspaceIntent.resolveRuntimeTransport(
-        config, Path.of("").toAbsolutePath().normalize(), controlDirRoot,
-    )
-    // SAGA: the terminal state of the Sagas this run executed. The verdict block has to
-    // say it: a Saga that needs a human and a Saga that was fully compensated look
-    // identical on stderr otherwise, and they call for opposite responses from whoever
-    // reads the run.
-    //
-    // The EVENT, not the obligation store: the event is the published fact, and the store
-    // answers a different question (what is owed, not what was concluded). Declared HERE,
-    // outside the `try`, because the verdict is printed after it — and because a run that
-    // threw still has to say what it left behind.
-    val sagaTerminals = mutableListOf<dev.rubentxu.pipeline.v2.events.SagaTerminal>()
-    // UAT-RP-024 collateral finding fix (shutdown race 1/3): the sqlite
-    // single-writer thread is NON-daemon. If any exception escapes the run
-    // or the stdout envelope streaming below, rawEventStore.close() is
-    // skipped, the writer keeps blocking on queue.take(), and
-    // DestroyJavaVM hangs forever (observed: first replay of the dogfood
-    // receipt hung until manual kill). Compute the outcome and the last
-    // event inside the try; guarantee the close in finally on every path.
-    val runOutcomeAndLastEvent: Pair<RunOutcome?, dev.rubentxu.pipeline.v2.events.DomainEvent?> = try {
-    val outcome: RunOutcome? = when {
-        // LFC-2R / R4B: the scripted FRONTEND form runs against the SAME durable
-        // authority (journal, registry, event sink, control root) composed for the
-        // canonical path. This is a frontend selection, never a second runner: the
-        // invocation authority is the registry seam proven in R1/R2 (R4A model B).
-        scriptedEntryPoint != null -> runScriptedFrontend(
-            entryPoint = scriptedEntryPoint,
-            runId = runId,
-            artifact = requireNotNull(scriptedFrontend) { "scripted frontend artifact" }.identity,
-            stepRegistry = composedStepRegistry,
-            journal = journal,
-            eventSink = eventStore,
-            clock = clock,
-            controlDirRoot = controlDirRoot,
-            sandboxProfile = config.sandboxProfile,
-        )
-        compiledPipeline?.supportsCanonicalDurableExecution(composedStepRegistry) == true -> runCanonicalPipeline(
-            pipeline = compiledPipeline,
-            runId = RunId(runId),
-            journal = journal,
-            cursorStore = cursorStore,
-            clock = clock,
-            effectReplayPolicy = effectPolicy,
-            eventSink = eventStore,
-            controlDirRoot = controlDirRoot,
-            sandboxProfile = config.sandboxProfile,
-            // RP034-H / ADR-0101 clause 3.1: the CLI default is local-first. The
-            // workspace origin is decided once, here at the boundary, and BOTH
-            // facts cross into the runtime: the shared directory and its owner.
-            // `--isolated` preserves the historical PipelineK-managed scratch;
-            // `--workspace <path>` stays authoritative.
-            workspaceBase = workspaceTransport.base,
-            workspaceOwnership = workspaceTransport.ownership,
-            withCredentialsExecutor = withCredentialsExecutor,
-            // H5-B: same on the canonical run path. The credential seam is offered on
-            // EVERY path or it is offered inconsistently, and an inconsistently
-            // admitted Step is a Step whose behaviour depends on which branch the CLI
-            // happened to take.
-            credentialProvider = credentialProvider,
-            // S6/G: the frozen composition, not a step registry plus a classloader.
-            composition = composition,
-            secretPatternRegistry = secretPatternRegistry,
-            allowNetwork = config.allowNetwork,
-            // SAGA / PK-1: the run's Saga seam — the durable store plus the lease epoch that
-            // fences a writer that lost this run to a takeover.
-            sagaBinding = dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding(
-                store = sagaObligationStore,
-                leaseEpoch = leaseEpoch,
-            ),
-        )
-        pipelineSpec != null -> {
-            // Fail-closed: non-canonical pipelines are not supported by the canonical bridge
-            System.err.println(NON_CANONICAL_CANONICAL_BRIDGE_ERROR)
-            System.exit(2)
-            null // unreachable
-        }
-        else -> compileOutcome
-    }
-
-    // WU-LPR-089 + WU-LPR-011 regression fix: the WU-LPR-042 single-writer thread
-    // is non-daemon and processes events asynchronously. We must FLUSH the pending
-    // writes BEFORE reading the events back from SQL, otherwise async events emitted
-    // just before run-finished (e.g. StashCreated/StashRestored from a final stage)
-    // are lost from the stdout JSON envelope (the SQL row exists but hasn't been
-    // committed when eventsFor(runId) runs). After flush, close() stops the writer
-    // and releases the persistent connection; the JVM exits cleanly because
-    // DestroyJavaVM no longer waits on queue.take().
-    rawEventStore.flush()
-    // WU-RP-044 (M5 RSS debt): stream the JSON envelope to stdout one event at a
-    // time (identical byte output to JsonEventLog.encode) and track only the last
-    // event for the legacy outcome branch — never materialise the full list or a
-    // single monolithic JSON String (1 GiB transcripts made this multi-GB).
-    val eventSequence = eventStore.eventsFor(runId)
-    var lastEventCaptured: dev.rubentxu.pipeline.v2.events.DomainEvent? = null
-    val stdout = System.out
-    val writer = java.io.BufferedWriter(java.io.OutputStreamWriter(stdout, Charsets.UTF_8), 1 shl 16)
-    val lastEventRef = { event: dev.rubentxu.pipeline.v2.events.DomainEvent -> lastEventCaptured = event }
-    RunObservationOutput.writeTo(
-        eventSequence.map { event ->
-            lastEventRef(event)
-            if (event is dev.rubentxu.pipeline.v2.events.SagaTerminal) sagaTerminals += event
-            event
-        },
-        writer,
-        config.view,
-        config.format,
-        compiledQuery,
-    )
-    writer.flush()
-    rawEventStore.close()
-    Pair(outcome, lastEventCaptured)
-    } finally {
-        // S2-R0: release ownership on every exit path, including the
-        // exception paths, so a crashed run is immediately recoverable by the
-        // next owner instead of waiting for the OS to reap the lock.
-        runCatching { leaseStore.release(requireNotNull(runOwner)) }
-        runCatching { leaseStore.close() }
-        runCatching { rawEventStore.close() }
-    }
-    val runOutcome = runOutcomeAndLastEvent.first
-    val lastEvent = runOutcomeAndLastEvent.second
-    // When the coordinator ran, the typed outcome is the single authority for the
-    // exit decision; the legacy event-based branch only covers compile-failure
-    // paths where no definition was produced.
-    val exitFailure: Boolean = if (runOutcome != null) {
-        when (runOutcome) {
-            is RunOutcome.Success -> {
-                System.err.println("Pipeline finished with SUCCESS"); false
-            }
-            is RunOutcome.Unstable -> {
-                System.err.println("Pipeline finished with UNSTABLE"); false
-            }
-            is RunOutcome.Failure -> {
-                System.err.println("Pipeline finished with FAILURE")
-                reportRunFailure(runOutcome.failure)
-                true
-            }
-            is RunOutcome.Aborted -> {
-                System.err.println("Pipeline finished with FAILURE")
-                System.err.println("  cause [ABORTED]: the run was cancelled or interrupted before a terminal outcome")
-                true
-            }
-        }
-    } else {
-        // The LEGACY path: no typed outcome was produced, so there are only two stories —
-        // "it finished successfully" and "it did not". The "unstable" arm that used to live
-        // here was UNREACHABLE: the word it compared against could only be those two, so the
-        // arm could never run and only misled whoever read it.
-        val last = lastEvent
-        val succeeded = last is RunFinished && last.outcome == RunOutcome.SUCCESS_TOKEN
-        if (succeeded) {
-            System.err.println("Pipeline finished with SUCCESS"); false
-        } else {
-            System.err.println("Pipeline finished with FAILURE"); true
-        }
-    }
-    // SAGA: what happened to the Sagas of this run. It belongs in the verdict block, next
-    // to the reason the run failed, because "the Saga settled" and "a human has to resolve
-    // a pending obligation right now" are different worlds and the exit code cannot say
-    // which one this was.
-    // The Saga verdict: what happened to the Sagas this run executed, from the
-    // EVENT and not from the obligation store (the event is the published fact,
-    // and the store answers a different question: what is owed, not what was
-    // concluded). It is printed in BOTH worlds: a Saga can run with and without
-    // `--db` (P6), and a run that keeps its promises has to say so in each.
-    SagaVerdict.verdicts(sagaTerminals).forEach { System.err.println(it) }
-    if (exitFailure) System.exit(1)
 }
-
-/**
- * H8-D2 — says WHY the run failed, on the stream an operator is already reading.
- *
- * ## The defect this exists to end
- *
- * The exit decision has always been correct: a failure exits 1. But the exit carried
- * no reason. stderr said "Pipeline finished with FAILURE", the JSON envelope's
- * `RunFinished` carried an empty `diagnostics`, and the typed `PipelineFailure`
- * message went nowhere an operator could see it.
- *
- * That silence is not cosmetic — it is the reason three separate delivery defects
- * shipped: a Step refused at admission, refused at execute-time, and refused for a
- * missing network permission all produced **byte-identical** output. A user filing
- * that report could not have told them apart, and neither could triage.
- *
- * ## Why stderr and not the event stream
- *
- * The `RunFinished` event is a lifecycle bookend and its shape is a published
- * contract; widening it is a separate decision. stderr is where the outcome is
- * already summarised one line above, and where `--allow-network` and every other
- * operator-facing diagnostic already goes. A message that is emitted nowhere is a
- * message that does not exist, and this one is the difference between a bug report
- * and a fix.
- *
- * The message is printed as-is, with no prefix of its own: the failure kinds are
- * already typed, and re-labelling them here would create a second vocabulary.
- */
-private fun reportRunFailure(failure: PipelineFailure) {
-    System.err.println("  cause [${failure.kind}]: ${failure.message}")
-    failure.cause?.let { System.err.println("  origin: $it") }
-}
-
-
-/**
- * OBS-E4: the run-time output observer, started before the pipeline and stopped after it.
- *
- * ## What this is for
- *
- * `ConsolePrintingEventSink` mirrors the EVENT spine as events are appended. Process output is not
- * on that spine — it lives in the Output Plane — so before this the bytes a step printed were
- * durable and unobservable until someone ran `pipeline console` against the control directory, which
- * is not a public verb. A build's progress was therefore invisible while the build ran.
- *
- * ## Why a thread, and why the run never waits for it
- *
- * The observer polls, so it cannot run on the thread that is executing the pipeline. That makes the
- * backpressure law the reason for its existence as much as the convenience: the run does not wait on
- * it, so a wedged terminal, a closed pipe or a slow reader can delay only its own output. The
- * consumer-backpressure law says no observation consumer may reach the execution path, and a
- * terminal that can block the run is exactly that.
- *
- * ## Why the owner stops it, not the plane
- *
- * `ShExecution` seals a step's streams from INSIDE `invoke`, while the run continues, so there is a
- * window in which every stream the run has is sealed and the run is not over. An observer that
- * treated "all sealed" as "done" would end inside that window and drop the output of every later
- * step. `runFinished` is therefore the terminator, and the tail states only classify how it ended.
- *
- * ## `json` is the one format that does not stream
- *
- * A JSON array is a document, and a document cannot be streamed. So for `--format json` this starts
- * NO thread and collects nothing; the end-of-run document already renders every event, and adding
- * output to it is the job of a later block rather than of a half-measure here.
- */
-private fun startLiveOutputObserver(
-    runId: String,
-    controlDirRoot: java.nio.file.Path,
-    format: ObservationFormat,
-): AutoCloseable {
-    if (format == ObservationFormat.JSON) {
-        return AutoCloseable { }
-    }
-
-    val presentation = LiveOutputPresentation(format, System.out, System.err)
-    val store = dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider.storeForReading(controlDirRoot)
-    val reader = FrameIndexedObservationOutputReader(store.frameIndex(), store, store)
-    val drain = LiveOutputDrain(reader, frameLimit = 64, pollIntervalMs = 10)
-    val runFinished = java.util.concurrent.atomic.AtomicBoolean(false)
-
-    val thread = Thread(
-        {
-            when (val result = drain.drain(runId, { runFinished.get() }) { record ->
-                presentation.emit(record)
-            }) {
-                is dev.rubentxu.pipeline.v2.application.observation.LiveOutputDrainResult.Refused ->
-                    presentation.reportRefusal(result.reason)
-
-                else -> Unit
-            }
-        },
-        "pipelinek-output-observer",
-    ).apply {
-        // A daemon, so an observer that is somehow never stopped cannot keep the JVM alive past the
-        // run that owns it. The run does not depend on this thread existing.
-        isDaemon = true
-    }
-    thread.start()
-
-    return AutoCloseable {
-        runFinished.set(true)
-        // Bounded, because a run that has ended must not be held hostage by a reader that is wedged.
-        // The bytes stay committed either way: this is an observer, not the authority.
-        thread.join(OBSERVER_JOIN_TIMEOUT_MS)
-    }
-}
-
-/**
- * How long a finished run waits for its observer to notice and flush.
- *
- * Bounded because the run has already produced its result and holding the terminal for an unbounded
- * wait would turn a slow reader into a hung command. What is lost by stopping early is nothing the
- * run owns: the bytes are committed and `observe` can read them afterwards.
- */
-private const val OBSERVER_JOIN_TIMEOUT_MS = 5_000L
-
-/**
- * Opt-in system property that registers the redaction canaries.
- *
- * ## Why it exists rather than the canaries being unconditional
- *
- * A registered secret is not only something to scrub: its encoded length IS the redactor's
- * lookahead, and the lookahead is the number of bytes that must be seen before the first byte can
- * be published. Registering a 28-character canary therefore claims a 56-byte window (its hex form)
- * and withholds up to 56 bytes of live output on EVERY run — including the runs that have no
- * credentials at all and could not leak anything.
- *
- * So the canaries are test material and are requested by tests. The round-gates that need them set
- * this property, which makes the proof explicit and keeps the default run's latency at
- * `MIN_SECRET_WINDOW`.
- */
-private const val REDACTION_CANARY_PROPERTY = "pipelinek.redaction.canaries"
-
-/**
- * PK-1 / ADR-PK1-IDENTITY — emit the [RunCorrelated] event on the
- * supplied event sink AND the [LaunchReceipt] JSON line on stdout.
- *
- * Called at the moment durable state is established (lease acquired for
- * the durable branch; RunIdDirectory record for the in-memory branch).
- * The event is the durable witness of the correlation; the receipt is
- * the immediate stdout confirmation. Both are emitted in the same
- * order so a consumer reading the event log + stdout can join them
- * without an out-of-order window.
- */
-private fun emitCorrelationAndReceipt(
-    eventStore: dev.rubentxu.pipeline.v2.events.EventSink,
-    runId: dev.rubentxu.pipeline.v2.domain.RunId,
-    correlationId: dev.rubentxu.pipeline.v2.domain.CorrelationId,
-    ownerId: dev.rubentxu.pipeline.v2.events.durable.RunOwnerId,
-    startedAtMs: Long,
-    controlDir: java.nio.file.Path,
-    format: ObservationFormat,
-) {
-    val correlatedEvent = RunCorrelated(
-        eventId = "e-correlated-${System.nanoTime()}",
-        runId = runId.value,
-        sequence = 0L,
-        occurredAt = java.time.Instant.ofEpochMilli(startedAtMs),
-        correlationId = correlationId,
-        ownerId = ownerId.value,
-        startedAtMs = startedAtMs,
-    )
-    eventStore.append(correlatedEvent)
-    val receipt = LaunchReceipt.launched(
-        runId = runId,
-        correlationId = correlationId,
-        ownerId = ownerId,
-        startedAtMs = startedAtMs,
-        controlDir = controlDir,
-    )
-    val bytes = LaunchReceipt.encode(receipt).toByteArray(Charsets.UTF_8)
-    // ADR-PK-NEXT-R0.3: in TEXT view the receipt goes to stderr so the
-    // human console is not polluted. In JSON / JSON_LINES view the
-    // receipt is the first stdout line so a machine consumer can
-    // join it to the event stream by line index. Either way, the
-    // receipt is NOT a substitute for the durable RunCorrelated
-    // event; the certifier must validate the durable record, not
-    // trust the receipt alone.
-    when (format) {
-        ObservationFormat.TEXT -> {
-            System.err.write(bytes)
-            System.err.flush()
-        }
-        ObservationFormat.JSON, ObservationFormat.JSON_LINES -> {
-            System.out.write(bytes)
-            System.out.flush()
-        }
-    }
-}
-
-// ------------------------------------------------------------------------
-// PK-0-57-RC1 / ADR-PK1-OUTPUT-FRAMING — opt-in output protocol helpers.
-// ------------------------------------------------------------------------
-
-/**
- * Resolve the operator-supplied `--output-protocol` tokens to a
- * concrete [OutputProtocol] or fail closed with
- * [CliExit.InvalidArgument] (exit 2).
- *
- * Rules (ADR-PK1-OUTPUT-FRAMING):
- * - Empty list → [OutputProtocol.DEFAULT] (Published). No change
- *   in behaviour for callers that did not opt in.
- * - The token list is the CLIENT'S PREFERENCE ORDER. The first id
- *   in the list that intersects [OutputProtocol.SUPPORTED_IDS] wins.
- *   Unknown ids in the list are SKIPPED, not rejected — clients
- *   may declare more ids than this binary supports, as long as at
- *   least one matches.
- * - When NO id in the list intersects the supported set, the
- *   process exits with [CliExit.InvalidArgument] (code 2) and an
- *   envelope listing every supported id. The server NEVER falls
- *   back to Published on an unknown request — silent degradation
- *   is the exact defect the ADR was written to prevent.
- *
- * Resolution lives in [OutputProtocol.negotiate]; this wrapper
- * only translates "no intersection" into the typed CLI envelope.
- */
-private fun negotiateOutputProtocolOrExit(tokens: List<String>): OutputProtocol {
-    val resolved = OutputProtocol.negotiate(tokens)
-    if (resolved != null) return resolved
-    val supported = OutputProtocol.SUPPORTED_IDS.joinToString(", ")
-    val requested = tokens.joinToString(", ")
-    val exit = CliExit.InvalidArgument(
-        message = "no acceptable --output-protocol in [$requested]. Supported: $supported",
-        hint = "see ADR-PK1-OUTPUT-FRAMING for the negotiation contract",
-    )
-    System.err.write(exit.encodeEnvelope().toByteArray(Charsets.UTF_8))
-    System.err.flush()
-    System.exit(exit.code)
-    // unreachable; System.exit never returns control. The return
-    // statement below exists only to satisfy the Kotlin compiler's
-    // "missing return on a path" check on a function declared with a
-    // non-Unit return type.
-    return OutputProtocol.DEFAULT
-}
-
-/**
- * Write the end-of-run event document to the channel the negotiated
- * protocol dictates. The bytes do not change between protocols; the
- * channel does.
- *
- * - [OutputProtocol.Published] (default) → stdout.
- * - [OutputProtocol.SeparatedV2] → stderr (machine events go to
- *   stderr; the receipt is unaffected and stays on stdout via
- *   [emitCorrelationAndReceipt]).
- * - TEXT view is unaffected in both protocols; this helper is
- *   only called for JSON / JSON_LINES.
- */
-private fun writeEventDocument(
-    events: List<dev.rubentxu.pipeline.v2.events.DomainEvent>,
-    view: dev.rubentxu.pipeline.v2.application.observation.ObservationView,
-    format: ObservationFormat,
-    query: dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery,
-    protocol: OutputProtocol,
-) {
-    val bytes = RunObservationOutput.encode(events, view, format, query).toByteArray(Charsets.UTF_8)
-    val sink = when (protocol) {
-        OutputProtocol.Published -> System.out
-        OutputProtocol.SeparatedV2 -> System.err
-    }
-    sink.write(bytes)
-    sink.flush()
-}
-
-/**
- * Compile the DSL into the canonical form, or refuse it.
- *
- * ## Why this wrapper exists
- *
- * `DslCompiledPipelineCompiler` rejects an invalid definition with `error()`, which is the right call
- * from inside a compiler that has no idea how a CLI reports things. What it did NOT have was a caller
- * that knew it was being handed user input rather than a programmer's bug, and the consequence was
- * measured:
- *
- * ```console
- * $ pipelinek run --format json mixed-body-and-sibling.pipeline.kts
- * stdout: {"schema":"pipelinek.launch/1",...,"status":"Launched"}
- * stderr: Exception in thread "main" java.lang.IllegalStateException:
- *             Stage 'ParallelTest' cannot mix a parallel body with sibling steps
- *             at ...DslCompiledPipelineCompiler.stageNode(DslCompiledPipelineCompiler.kt:107)
- *             at ...MainKt.main(Main.kt:498)
- * exit 1
- * ```
- *
- * Correct verdict, right exit code, right message — delivered as an uncaught exception. A stack trace
- * tells the author that something broke inside the runtime, when what happened is that their pipeline
- * is wrong and the runtime is working. AGENTS.md reserves exceptions for adapter boundaries and
- * programmer defects (STRICT TYPED FUNCTIONAL DESIGN §11); a stage that mixes a `parallel` body with
- * sibling steps is neither.
- *
- * ## What it does NOT swallow
- *
- * The catch is scoped to this one call and to [IllegalStateException], which is what the guards throw.
- * Nothing else is converted: a `NullPointerException` or a `ClassCastException` inside the compiler is
- * a defect, and it still surfaces as a defect with its stack trace intact. The refusal prints the
- * message verbatim, because the message is the part the author needs.
- *
- * Exit code is 1, matching every other definition-level failure (`CliCompileErrorExitsOneTest`); 2 is
- * reserved for admission refusals, which are a different decision about a different thing.
- */
-private fun compileOrRefuse(
-    spec: dev.rubentxu.pipeline.v2.dsl.PipelineSpec,
-    sourcePath: String,
-    sourceContent: String,
-): dev.rubentxu.pipeline.v2.domain.CompiledPipeline =
-    try {
-        DslCompiledPipelineCompiler.compile(
-            spec = spec,
-            sourcePath = sourcePath,
-            sourceContent = sourceContent,
-            pluginLockDigest = dev.rubentxu.pipeline.v2.domain.Digest("builtin"),
-        )
-    } catch (rejection: IllegalStateException) {
-        System.err.println("Error: ${rejection.message}")
-        kotlin.system.exitProcess(1)
-    }

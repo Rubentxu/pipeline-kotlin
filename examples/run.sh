@@ -81,6 +81,9 @@
 #                                     never requires, `lying-directives` declares a
 #                                     Directive nobody contributes, and `lying-events`
 #                                     declares an Event nobody contributes.
+#                                     `lying-capabilities-omitted` is the OTHER
+#                                     direction: the plugin's contract requires a
+#                                     capability and the manifest omits it.
 #   //@ timeout <seconds>            the clock this scenario gets. The default is
 #                                    an order of magnitude above what any scenario
 #                                    takes today, so the clock only fires on a
@@ -357,13 +360,25 @@ build_lying_plugin_fixture() {
     #   steps        a Step the plugin does not implement is declared.
     #   capabilities a capability the plugin's contract does not require is declared for one of
     #                its Steps: the plugin says it needs something its own code never asks for.
+    #   capabilities-omitted
+    #                the OTHER direction: the plugin's contract requires a capability and the
+    #                manifest does not declare it for that Step. Here the drift is a MISSING
+    #                capability, so the check below looks for the ABSENCE of the drift, not for
+    #                its presence.
     #   directives   a Directive nobody contributes is declared.
     #   events       an Event nobody contributes is declared.
     #
     # Each substitution is anchored on a literal that the manifest really contains, and the result
-    # is checked twice: the document must have CHANGED, and the ghost must be IN it. A manifest
-    # whose shape moved would leave the document untouched, the fixture would fail loudly, and the
-    # scenario would go RED on the missing refusal -- never green on a fixture that stopped lying.
+    # is checked twice: the document must have CHANGED, and the drift must be IN it -- or, for the
+    # one kind whose drift is an absence, it must be GONE from it. A manifest whose shape moved
+    # would leave the document untouched, the fixture would fail loudly, and the scenario would
+    # go RED on the missing refusal -- never green on a fixture that stopped lying.
+    #
+    # The drift is checked by the SENSE of the change, not by the key alone: the omitted
+    # capability is still in the manifest's global capability list, so looking for it would find
+    # it there and prove nothing about the per-Step declaration, which is the thing under test.
+    drift_check="$ghost_key"
+    drift_present=1
     case "$kind" in
         steps)
             sed "s|\"steps\": \[|\"steps\": [{\"stepKey\": \"$ghost_key\", \"declaredCapabilities\": []}, |" \
@@ -372,6 +387,12 @@ build_lying_plugin_fixture() {
         capabilities)
             sed "0,/\"declaredCapabilities\": \[\]/s||\"declaredCapabilities\": [\"$ghost_key\"]|" \
                 "$manifest" >"$rewritten"
+            ;;
+        capabilities-omitted)
+            sed "s|\"declaredCapabilities\": \[\"example.uppercase.case-table\", \"$ghost_key\"\]|\"declaredCapabilities\": [\"example.uppercase.case-table\"]|" \
+                "$manifest" >"$rewritten"
+            drift_check="\"declaredCapabilities\": [\"example.uppercase.case-table\", \"$ghost_key\"]"
+            drift_present=0
             ;;
         directives)
             sed "s|\"directives\": \[|\"directives\": [\"$ghost_key\", |" \
@@ -393,14 +414,24 @@ build_lying_plugin_fixture() {
         return 1
     fi
     if cmp -s "$manifest" "$rewritten"; then
-        printf 'run.sh: the lying fixture could not add a %s drift to the plugin manifest\n' "$kind" >&2
+        printf 'run.sh: the lying fixture could not apply a %s drift to the plugin manifest\n' "$kind" >&2
         rm -rf "$workdir"
         return 1
     fi
-    if ! grep -aqF -- "$ghost_key" "$rewritten"; then
-        printf 'run.sh: the lying fixture lost its %s drift on the way into the manifest\n' "$kind" >&2
-        rm -rf "$workdir"
-        return 1
+    if (( drift_present == 1 )); then
+        if ! grep -aqF -- "$drift_check" "$rewritten"; then
+            printf 'run.sh: the lying fixture lost its %s drift on the way into the manifest\n' "$kind" >&2
+            rm -rf "$workdir"
+            return 1
+        fi
+    else
+        # The drift is an ABSENCE: the fixture proves it by the literal that used to be there
+        # no longer being there. Finding it would mean the fixture stopped lying.
+        if grep -aqF -- "$drift_check" "$rewritten"; then
+            printf 'run.sh: the lying fixture lost its %s drift on the way into the manifest\n' "$kind" >&2
+            rm -rf "$workdir"
+            return 1
+        fi
     fi
 
     mv "$rewritten" "$manifest" || {
@@ -852,8 +883,8 @@ run_scenario_body() {
     # different.
     if [[ -n "$distribution" ]]; then
         case "$distribution" in
-            lying-uppercase|lying-capabilities|lying-directives|lying-events)
-                # Four kinds of lie, one instrument. The copy is byte for byte the installed
+            lying-uppercase|lying-capabilities|lying-capabilities-omitted|lying-directives|lying-events)
+                # Five kinds of lie, one instrument. The copy is byte for byte the installed
                 # distribution, with ONE JAR inside it replaced, and the run happens against that
                 # copy. The alternative -- offering the lying plugin IN ADDITION to the bundled
                 # one -- is a different artifact with the same identity, and it is refused for
@@ -864,6 +895,9 @@ run_scenario_body() {
                 local lying_key="example.uppercase.ghost"
                 case "$distribution" in
                     lying-capabilities) lying_kind="capabilities"; lying_key="example.uppercase.ghostCapability" ;;
+                    lying-capabilities-omitted)
+                                        lying_kind="capabilities-omitted"
+                                        lying_key="plugin.event-emission" ;;
                     lying-directives)   lying_kind="directives";   lying_key="example.uppercase.ghostDirective" ;;
                     lying-events)       lying_kind="events";       lying_key="example.uppercase.ghostEvent" ;;
                 esac

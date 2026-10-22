@@ -52,14 +52,20 @@ Y cerró la **dirección contraria de la familia de capacidades** (§2.50): un
 plugin cuyo Step exige una capacidad que su manifiesto no declara. Con esto,
 **los tres casos residuales que nombra el §2.44 están observados contra un
 artefacto real** — eventos falsos, orden de carga y capacidades omitidas —, cada
-uno con su escenario y su fila. El del orden de carga está medido pero **su
-arreglo sigue pendiente**: es el hueco 1 de la lista de abajo.
+uno con su escenario y su fila.
+
+Y después arregló el **diagnóstico** del caso del orden de carga (§2.51): el
+rechazo por identidad duplicada ahora nombra **los dos artefactos** —el que se
+rechaza y el que se queda—, sin tocar el vocabulario publicado ni la política de
+quién gana la identidad. Ese hueco queda cerrado **a medias**, y se dice por
+qué: el diagnóstico era un rumor y ya no lo es; la política sigue siendo la de
+hoy, y cambiarla es una ruptura versionada que no se hace sin autorización.
 
 **Lo que está abierto ahora mismo:**
 
 | # | Qué falta | Por qué sigue abierto |
 |---|---|---|
-| 1 | El plugin que miente y es **el primero** que se carga | **medido** (§2.49): el rechazo por identidad duplicada se adelanta al cruce, así que el mentiroso es admitido sin que su manifiesto se cruce contra su código, y el rechazo apunta al artefacto legítimo. Falta el arreglo del **diagnóstico**: que el rechazo nombre el artefacto que se quedó |
+| 1 | **La política** de la identidad duplicada: el primero que llega se queda y el legítimo es expulsado | el **diagnóstico** ya nombra a los dos artefactos (§2.51), así que el operador sabe cuál es cuál. Lo que queda es la **política**: rechazar ambos, o ninguno, es un cambio de comportamiento observable y por tanto una ruptura versionada, que no se hace sin autorización explícita |
 | 2 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
 | 3 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | el nombre no es invertible y nadie ha demostrado que ningún consumidor necesite distinguir los dos (§2.45) |
 | 4 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
@@ -68,17 +74,17 @@ arreglo sigue pendiente**: es el hueco 1 de la lista de abajo.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `6e3ed7df7` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `6e3ed7df7` | `git rev-parse HEAD` |
+| SHA | `0b0438114` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `0b0438114` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1066** (147 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1070** (147 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
-| Escenarios E2E | **59 (59 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **59 de 59**: 155 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 59 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **18893 / 67363 = 0.280** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios E2E | **60 (60 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios con una garantía comprobada | **60 de 60**: 162 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 60 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **18900 / 67377 = 0.281** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **177 / 161 / 160** en los tres ensayos, los tres sobre `6e3ed7df7`, peor 177 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **240 / 165 / 176** en los tres ensayos, los tres sobre `0b0438114`, peor 240 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -90,12 +96,12 @@ sale mejor que la realidad.
 
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
-165 s en el bloque de las tres familias; este ciclo midió **177, 161 y 160 s**:
+165 s en el bloque de las tres familias; este ciclo midió **240, 165 y 176 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 177 s, es menos
-de la quinta parte de los 900 s—, y eso que el árbol medido incluye la
-distribución, la API pública, los 1066 tests y los 59 escenarios.
+de este ciclo el presupuesto se cumplió con holgura —el peor, 240 s, es menos
+de la tercera parte de los 900 s—, y eso que el árbol medido incluye la
+distribución, la API pública, los 1070 tests y los 60 escenarios.
 
 **Dos ensayos anteriores a estos tres se descartaron, y hay que decir por
 qué.** Sobre el mismo árbol, la puerta dio dos veredictos con rojos, y **todos
@@ -123,8 +129,8 @@ nativa a un fichero temporal de un megabyte por conexión y no lo borra —**508
 pares, medio gigabyte, con la fecha de hoy en una máquina donde la puerta corrió
 tres veces—. El arnés borra su ciclo; el driver no borra el suyo.
 
-El ratio de LOC se queda en **0.280** (18852 → 18893 líneas de verificación), y
-el peor módulo sigue siendo el mismo (`pipeline-step-sdk:workflow-control`,
+El ratio de LOC sube de 0.280 a **0.281** (18893 → 18900 líneas de verificación),
+y el peor módulo sigue siendo el mismo (`pipeline-step-sdk:workflow-control`,
 1.633), porque este bloque no lo tocó.
 
 **Lo que este ciclo añadió.** Un cambio de producto en la segunda puerta de
@@ -5865,6 +5871,69 @@ dos scenarios salgan verdes.
 | `VERIFY_LOC / PRODUCT_LOC` | **18893 / 67363 = 0.280** (límite 2) |
 | Reloj de la puerta | **177 / 161 / 160 s** en tres ensayos sobre `6e3ed7df7`, contra 900 s |
 
+### 2.51 El artefacto que se queda: el rechazo, por fin, con los dos nombres
+
+**El hueco, tal y como se midió** (§2.49). El rechazo decía
+`DuplicateIdentity(identity=X, incumbent=X)`: dos campos con el mismo texto,
+mientras su documentación promete «which identity collided **and with whom**»,
+y el campo `incumbent` promete «the incumbent it collides with». No había ningún
+artefacto ahí. El mensaje nombraba al artefacto **rechazado** —el fichero que
+el operador nombró— y no al que **se queda**, que es el que el operador tiene
+que encontrar.
+
+**Lo que cambia, y lo que no.** El `detail` del rechazo —que la CLI ya
+imprimía, y que hasta ahora nadie llenaba— lleva ahora el artefacto que gana
+la identidad. La **política no cambia**: qué artefacto gana la identidad sigue
+siendo «el primero que llega», y eso no se toca aquí. Lo que cambia es que el
+diagnóstico deja de ser un rumor: el operador lee los dos nombres y puede
+decidir cuál de los dos ficheros es el suyo.
+
+**Por qué por el `detail` y no por el vocabulario.**
+`PluginManifestRejection.DuplicateIdentity` está en el ABI publicado de
+`pipeline-domain`, con `copy(String, String)`: añadir un tercer campo rompe la
+API de los consumidores. `CompositionOutcome.Refused` lleva un `detail` que la
+CLI ya imprime, y `pipeline-application` **no está publicado** —no tiene
+`api/`—, así que ahí cabía el nombre sin romper nada. Es la diferencia entre
+romper a los que leen y no romper a nadie.
+
+**Los dos instrumentos, y cada uno cubriendo lo suyo.**
+
+- El test unitario (**4 filas**) cubre **la regla**: qué dice el `detail`, y que
+  no inventa un artefacto que no conoce ni nombra a uno que no está.
+- El escenario `negative/plugin-duplicate-identity` cubre **el cableado**: que el
+  runtime recuerde qué artefacto se quedó, y que ese nombre llegue a la consola
+  del operador. Lo hace con dos artefactos **reales** con la misma identidad y
+  bytes distintos: la copia del plugin de ejemplo que la distribución trae
+  doctorada, y la copia que el operador ofrece por `--plugin-jar`.
+
+**Las dos mutaciones, vistas en rojo.**
+
+| Mutación | Filas unitarias rojas | Escenarios rojos |
+|---|---|---|
+| **A** — la regla pura deja de nombrar a nadie | **2 de 4** | **1 de 60** |
+| **B** — el runtime deja de recordar qué artefacto se quedó | **0 de 4** | **1 de 60** |
+
+La segunda es la que enseña algo, y por eso se escribe: un test unitario que
+**no se enciende** cuando se rompe el cableado **no protege el cableado**. No
+es un defecto del test —un test puro, por definición, no puede tocar el disco—:
+es que cada instrumento tiene que medirse con la mutación que le corresponde, y
+que hay que decir cuál cubre cuál. Un arnés que presume de cobertura sin esa
+medida presume de algo que nadie ha comprobado. Los otros 59 escenarios no se
+mueven en ninguno de los dos casos, y el fichero de producción se restauró
+byte-idéntico en los dos.
+
+**Medido, sobre el árbol de este bloque:**
+
+| Métrica | Valor |
+|---|---|
+| Filas unitarias del diagnóstico | **4**, 2 encendidas por la mutación de la regla |
+| Escenarios | **60**, los 60 verdes, 60 de 60 con garantía comprobada (162 garantías) |
+| Mutación A (la regla) | **2** filas rojas de 4 y **1** escenario rojo de 60 |
+| Mutación B (el cableado) | **0** filas rojas de 4 y **1** escenario rojo de 60 |
+| Tests unitarios | **1070**, 0 fallos, 0 skips |
+| `VERIFY_LOC / PRODUCT_LOC` | **18900 / 67377 = 0.281** (límite 2) |
+| Reloj de la puerta | **240 / 165 / 176 s** en tres ensayos sobre `0b0438114`, contra 900 s |
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
@@ -6879,6 +6948,24 @@ dos scenarios salgan verdes.
   un test más: era el que distingue una regla simétrica de una regla a medias.
   Y al apagarla se encienden los dos escenarios de la familia a la vez, que es
   la prueba de que lo que los unía era la regla, no el escenario.
+
+- **Un instrumento se mide con la mutación que le corresponde, y hay que decir
+  cuál cubre cuál.** La segunda mutación de este bloque dejó las cuatro filas
+  unitarias en verde, y eso no es un defecto del test: un test puro, por
+  definición, no toca el disco y por eso no puede ver el cableado. Lo que el
+  ciclo establece es el método —mutar la regla y ver las filas, mutar el
+  cableado y ver los escenarios, y **decir qué cubre cada instrumento**—, y no
+  la comfyción de un «todo verde» que nadie ha desarmado. Un arnés que presume
+  de cobertura sin esa medida presume de algo que nadie ha comprobado.
+
+- **Un diagnóstico que nombra lo que pasó es un arreglo; un cambio de política es
+  una versión.** El rechazo por identidad duplicada decía «otro artefacto ya
+  tiene este nombre» sin decir cuál: eso se arregla, porque un diagnóstico no es
+  un contrato y el hueco que dejaba era el de dejar al operador sin la única
+  pista accionable. Lo que **no** se arregla aquí es qué artefacto gana la
+  identidad: eso es comportamiento observable, y cambiarlo rompería a los
+  consumidores que hoy admiten un plugin y rechazan el otro. Se deja escrito, con
+  nombre, y esperando la autorización que le corresponde.
 
 ## 4. Referencias
 

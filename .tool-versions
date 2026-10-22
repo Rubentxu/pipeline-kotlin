@@ -1,0 +1,8 @@
+# The JDK the product is built with.
+#
+# The build declares the same version in its Gradle toolchain, and this file
+# makes the machine agree with that declaration BEFORE Gradle starts: a daemon
+# that runs on a JDK the Kotlin DSL compiler cannot read fails before it
+# compiles a single source file, and the failure names neither the source nor
+# the rule. The version here is the same one `devbox.json` installs.
+java temurin-21.0.8+9.0.LTS

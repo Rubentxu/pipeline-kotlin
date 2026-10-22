@@ -1,3 +1,6 @@
+import org.gradle.api.plugins.JavaPluginExtension
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+
 plugins {
     base
     alias(libs.plugins.kotlin.jvm) apply false
@@ -169,6 +172,29 @@ subprojects {
     // Expose the repository root to tests that must read files from the repository.
     tasks.withType<Test>().configureEach {
         systemProperty("pipeline.repoRoot", repositoryRoot)
+    }
+}
+
+// The JDK the product is compiled with.
+//
+// The build used to inherit whatever `java` the machine happened to point at,
+// and that made the build depend on the room rather than on the project: a
+// JDK the Kotlin compiler cannot even parse its own version number fails the
+// compilation with a message that names no source file and no rule, and the
+// failure arrives only when a source file actually changes, because an
+// unchanged tree is served from the cache and never reaches the compiler.
+//
+// So the toolchain is DECLARED, the way the version is declared: one place
+// that says which JDK the product is built with, and the build finds it
+// wherever the machine keeps it. A machine whose `java` is newer, older or
+// simply different produces the same bytes.
+subprojects {
+    pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+        extensions.configure<JavaPluginExtension> {
+            toolchain {
+                languageVersion = JavaLanguageVersion.of(21)
+            }
+        }
     }
 }
 

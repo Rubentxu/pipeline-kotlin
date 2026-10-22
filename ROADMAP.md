@@ -48,31 +48,37 @@ comparten identidad** (§2.49): el que se carga primero se queda, el segundo es
 rechazado, y el rechazo **no nombra al que se quedó**. Eso abría un hueco nuevo
 en la lista de abajo, y no es el mismo que el que había antes.
 
+Y cerró la **dirección contraria de la familia de capacidades** (§2.50): un
+plugin cuyo Step exige una capacidad que su manifiesto no declara. Con esto,
+**los tres casos residuales que nombra el §2.44 están observados contra un
+artefacto real** — eventos falsos, orden de carga y capacidades omitidas —, cada
+uno con su escenario y su fila. El del orden de carga está medido pero **su
+arreglo sigue pendiente**: es el hueco 1 de la lista de abajo.
+
 **Lo que está abierto ahora mismo:**
 
 | # | Qué falta | Por qué sigue abierto |
 |---|---|---|
 | 1 | El plugin que miente y es **el primero** que se carga | **medido** (§2.49): el rechazo por identidad duplicada se adelanta al cruce, así que el mentiroso es admitido sin que su manifiesto se cruce contra su código, y el rechazo apunta al artefacto legítimo. Falta el arreglo del **diagnóstico**: que el rechazo nombre el artefacto que se quedó |
-| 2 | Capacidades en la **dirección contraria**: el plugin exige más de lo que su manifiesto declara | la regla lo mide, pero ninguna fila lo mira (§2.44) |
-| 3 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
-| 4 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | el nombre no es invertible y nadie ha demostrado que ningún consumidor necesite distinguir los dos (§2.45) |
-| 5 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
+| 2 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
+| 3 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | el nombre no es invertible y nadie ha demostrado que ningún consumidor necesite distinguir los dos (§2.45) |
+| 4 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
 
 ## 1. Estado medido
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `2eb77abcb` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `2eb77abcb` | `git rev-parse HEAD` |
+| SHA | `6e3ed7df7` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `6e3ed7df7` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
 | Tests unitarios ejecutados | **1066** (147 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
-| Escenarios E2E | **58 (58 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **58 de 58**: 149 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 58 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **18852 / 67363 = 0.280** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios E2E | **59 (59 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios con una garantía comprobada | **59 de 59**: 155 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 59 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **18893 / 67363 = 0.280** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **175 / 162 / 163** en los tres ensayos, los tres sobre `2eb77abcb`, peor 175 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **177 / 161 / 160** en los tres ensayos, los tres sobre `6e3ed7df7`, peor 177 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -84,12 +90,12 @@ sale mejor que la realidad.
 
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
-165 s en el bloque de las tres familias; este ciclo midió **175, 162 y 163 s**:
+165 s en el bloque de las tres familias; este ciclo midió **177, 161 y 160 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 175 s, es menos
+de este ciclo el presupuesto se cumplió con holgura —el peor, 177 s, es menos
 de la quinta parte de los 900 s—, y eso que el árbol medido incluye la
-distribución, la API pública, los 1066 tests y los 58 escenarios.
+distribución, la API pública, los 1066 tests y los 59 escenarios.
 
 **Dos ensayos anteriores a estos tres se descartaron, y hay que decir por
 qué.** Sobre el mismo árbol, la puerta dio dos veredictos con rojos, y **todos
@@ -117,7 +123,7 @@ nativa a un fichero temporal de un megabyte por conexión y no lo borra —**508
 pares, medio gigabyte, con la fecha de hoy en una máquina donde la puerta corrió
 tres veces—. El arnés borra su ciclo; el driver no borra el suyo.
 
-El ratio de LOC se queda en **0.280** (18845 → 18852 líneas de verificación), y
+El ratio de LOC se queda en **0.280** (18852 → 18893 líneas de verificación), y
 el peor módulo sigue siendo el mismo (`pipeline-step-sdk:workflow-control`,
 1.633), porque este bloque no lo tocó.
 
@@ -5800,6 +5806,65 @@ y que ese `detail` nombre **el artefacto que se quedó**, de modo que el
 rechazo diga a quién desplazó. Eso es el siguiente bloque, y es un bloque de
 diagnóstico, no de política: qué artefacto gana la identidad no cambia.
 
+### 2.50 La dirección contraria de las capacidades: el manifiesto que olvida lo que su código exige
+
+**El sujeto.** Un plugin cuyo Step exige **dos** capacidades y cuyo manifiesto
+declara **una**. Es la dirección contraria de una deriva que ya se había
+observado: el manifiesto declarando una capacidad que el contrato del Step no
+exige.
+
+**Por qué esta dirección es la que el operador nota.** Declarar de más es una
+promesa de sobra: al host le llega algo que el Step no pidió y nada se rompe.
+Exigir de más es una **dependencia que nadie declaró**: el host tiene que
+resolverla, y si no puede, el Step falla **en ejecución**, cuando el rechazo de
+admisión era posible y barato. La diferencia es de responsabilidades: en un caso
+sobra una promesa; en el otro falta una.
+
+**La regla ya era simétrica; lo que faltaba era una fila.** El KDoc del propio
+plugin de ejemplo dice que la admisión compara el conjunto del contrato con la
+declaración por Step **en ambas direcciones**. Es decir: la regla existía y era
+correcta. Lo que no existía era un caso que la mirara por el otro lado, y una
+regla que nadie ha visto fallar por ese lado es indistinguishable de una regla
+que no cubre ese lado.
+
+**El instrumento.** El doctoring quita, de la declaración por Step de
+`example.uppercase.announcedCased`, la capacidad que el contrato de ese Step
+exige. Todo lo demás es del publisher: la identidad, la versión, el publisher,
+el rango de API y la lista global de capacidades del plugin.
+
+**El detalle que casi vuelve inútil al fixture.** La capacidad quitada
+**sigue** en el array global `capabilities` del manifiesto. Un chequeo que la
+buscara en el documento la encontraría ahí y no probaría nada sobre la
+declaración por Step, que es lo que está bajo prueba. Por eso el fixture se
+verifica **al revés** —comprueba que el literal exacto que antes estaba ya no
+está— y por eso es la primera deriva del arnés cuya prueba es una **ausencia**.
+
+**La mutación, vista en rojo.** Apagada la comparación de capacidades:
+
+- **exactamente 2 de 59** escenarios rojos: los dos de la familia, el de más y
+  el de menos. Los otros 57 siguen verdes.
+- **exactamente 1 de 8** filas unitarias rojas: la que afirma que una
+  capacidad que el contrato no exige **se nombra por los dos lados**.
+
+**Por qué dos escenarios y no uno.** Porque la regla es simétrica y el mutante
+apaga las dos direcciones a la vez. Y ése es justo el valor del escenario nuevo:
+sin él, la suite entera habría pasado con un guardián que comparase los
+conjuntos **en una sola dirección**, porque el único caso de la familia miraba
+sólo una de las dos. Con él, el guardián tiene que ser simétrico para que los
+dos scenarios salgan verdes.
+
+**Medido, sobre el árbol de este bloque:**
+
+| Métrica | Valor |
+|---|---|
+| Escenarios de la familia de la mentira | **5**: Steps, capacidades de más, capacidades de menos, Directives y Events |
+| Direcciones de la familia de capacidades | **2**, las dos observadas contra un artefacto real |
+| Mutación «ignorar la comparación de capacidades» | **2** escenarios rojos de 59, y **1** fila roja de 8 |
+| Tests unitarios | **1066**, 0 fallos, 0 skips, 147 informes reescritos por la corrida |
+| Escenarios E2E | **59**, los 59 verdes, 59 de 59 con garantía comprobada (155 garantías) |
+| `VERIFY_LOC / PRODUCT_LOC` | **18893 / 67363 = 0.280** (límite 2) |
+| Reloj de la puerta | **177 / 161 / 160 s** en tres ensayos sobre `6e3ed7df7`, contra 900 s |
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
@@ -6794,6 +6859,26 @@ diagnóstico, no de política: qué artefacto gana la identidad no cambia.
   arreglo es de otro bloque —toca el driver o la configuración del proceso—, pero
   dejarlo sin medir sería peor que no mencionarlo: un resto que nadie cuenta es
   un resto que nadie limpia.
+
+- **Una deriva que se expresa como una ausencia necesita un fixture que se
+  verifica al revés.** Las demás familias del doctoring **añaden** un fantasma
+  al manifiesto, y el fixture comprueba que el fantasma está: si dejó de estar,
+  el fixture ha dejado de mentir y el escenario se pondría verde sobre un
+  artefacto honesto. Esta deriva **quita** una capacidad, y la capacidad sigue
+  en el array global de capacidades del manifiesto —buscarla la encontraría
+  ahí, y probaría lo contrario de lo que se quiere probar—. Por eso el fixture
+  comprueba que el literal exacto que antes estaba **ya no está**, y el arnés
+  distingue un caso que añade de un caso que quita. Sin esa distinción, el
+  fixture habría parecido estar mintiendo y no habría mentido.
+
+- **Una regla simétrica necesita un caso por dirección, o no está vigilada.**
+  La comparación de capacidades es simétrica desde el principio: el KDoc del
+  plugin de ejemplo lo dice. Pero hasta este bloque la suite sólo miraba una
+  dirección, así que **la suite entera habría pasado con un guardián que
+  comparase los conjuntos en una sola dirección**. El caso que faltaba no era
+  un test más: era el que distingue una regla simétrica de una regla a medias.
+  Y al apagarla se encienden los dos escenarios de la familia a la vez, que es
+  la prueba de que lo que los unía era la regla, no el escenario.
 
 ## 4. Referencias
 

@@ -38,12 +38,30 @@ class EventStoreAdmissionTest {
     @TestFactory
     fun `all admission decisions match the closed input matrix`(): List<DynamicTest> {
         val cases = listOf(
-        Case("missing file / read refuses", PathObservation.NoFile, EventStorePurpose.Read, EventStoreRefusal.Absent(path)),
-        Case("missing file / write may create", PathObservation.NoFile, EventStorePurpose.Write, null),
-        Case("missing directory / read refuses", PathObservation.NoDirectory, EventStorePurpose.Read, EventStoreRefusal.NoDirectory(path)),
-        Case("missing directory / write refuses", PathObservation.NoDirectory, EventStorePurpose.Write, EventStoreRefusal.NoDirectory(path)),
-        Case("present path / read proceeds", PathObservation.Present, EventStorePurpose.Read, null),
-        Case("present path / write proceeds", PathObservation.Present, EventStorePurpose.Write, null),
+            Case(
+                "missing file / read refuses",
+                PathObservation.NoFile, EventStorePurpose.Read, EventStoreRefusal.Absent(path),
+            ),
+            Case(
+                "missing file / write may create",
+                PathObservation.NoFile, EventStorePurpose.Write, null,
+            ),
+            Case(
+                "missing directory / read refuses",
+                PathObservation.NoDirectory, EventStorePurpose.Read, EventStoreRefusal.NoDirectory(path),
+            ),
+            Case(
+                "missing directory / write refuses",
+                PathObservation.NoDirectory, EventStorePurpose.Write, EventStoreRefusal.NoDirectory(path),
+            ),
+            Case(
+                "present path / read proceeds",
+                PathObservation.Present, EventStorePurpose.Read, null,
+            ),
+            Case(
+                "present path / write proceeds",
+                PathObservation.Present, EventStorePurpose.Write, null,
+            ),
         )
         // A factory returning five green rows is not a green test of a 3x2
         // matrix. Reject omissions and duplicates before generating cases.

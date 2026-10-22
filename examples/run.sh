@@ -70,6 +70,11 @@
 #                                     JAR that is not there: the artifact whose bytes
 #                                     cannot be read, and therefore cannot be
 #                                     verified before anything is loaded from it.
+#                                     `bundled-uppercase` is the distribution's own
+#                                     copy of the example plugin. `repacked-uppercase`
+#                                     is that same plugin packaged a second time: the
+#                                     same manifest, the same code, different bytes.
+#                                     Two artifacts claiming one identity.
 #   //@ distribution <fixture>        the scenario runs against its OWN copy of the
 #                                     installed distribution, with one thing changed
 #                                     inside it. `lying-uppercase` replaces the
@@ -447,6 +452,71 @@ build_lying_plugin_fixture() {
     rm -rf "$workdir"
 }
 
+# The same plugin, packaged twice.
+#
+# Two artifacts that claim one identity only make a question when they are two ARTIFACTS: the
+# same bytes in two files are one artifact twice, and the runtime is right to read them that way.
+# This fixture produces the pair without inventing a second defect. The manifest is the
+# publisher's, byte for byte, so the identity is the publisher's and the artifact is honest about
+# what it declares; the code is the publisher's, so it is a valid plugin; only the PACKAGING is
+# different, which is what a rebuild is.
+#
+# The fixture checks the two claims it makes, because a fixture that quietly stopped being what
+# it says would leave the scenario green for the wrong reason: the two files must differ, and the
+# manifest must not. A repack that came out byte for byte identical leaves nothing to refuse, and
+# that is a loud failure here, not a green scenario.
+build_repacked_plugin_fixture() {
+    local source_jar="$1"
+    local target_jar="$2"
+
+    command -v unzip >/dev/null || {
+        printf 'run.sh: unzip is required to repack a plugin fixture\n' >&2
+        return 1
+    }
+    command -v zip >/dev/null || {
+        printf 'run.sh: zip is required to repack a plugin fixture\n' >&2
+        return 1
+    }
+
+    local workdir
+    workdir="$(mktemp -d)" || {
+        printf 'run.sh: could not create a work directory for the repacked fixture\n' >&2
+        return 1
+    }
+
+    local contents="$workdir/contents"
+    if ! ( cd "$workdir" && unzip -qo "$source_jar" -d contents ); then
+        printf 'run.sh: could not unpack the plugin fixture %s\n' "$source_jar" >&2
+        rm -rf "$workdir"
+        return 1
+    fi
+
+    # A fixed timestamp for every entry: the packaging changes, the contents do not.
+    find "$contents" -exec touch -t 202001010000 {} + 2>/dev/null || true
+
+    if ! ( cd "$contents" && zip -q -r -X "$target_jar" . ); then
+        printf 'run.sh: could not repack the plugin fixture\n' >&2
+        rm -rf "$workdir"
+        return 1
+    fi
+    rm -rf "$workdir"
+
+    if cmp -s "$source_jar" "$target_jar"; then
+        printf 'run.sh: the repacked plugin fixture is byte for byte the original\n' >&2
+        return 1
+    fi
+
+    local manifest_entry="META-INF/pipelinek/plugin-manifest.json"
+    local source_manifest target_manifest
+    source_manifest="$(unzip -p "$source_jar" "$manifest_entry" 2>/dev/null || true)"
+    target_manifest="$(unzip -p "$target_jar" "$manifest_entry" 2>/dev/null || true)"
+    if [[ -z "$source_manifest" || "$source_manifest" != "$target_manifest" ]]; then
+        printf 'run.sh: the repacked plugin fixture does not carry the publisher manifest\n' >&2
+        return 1
+    fi
+}
+# the plugin's bytes, and the row that pins those bytes and names the publisher and the key.
+#
 # The operator's trust material for a scenario: a publisher key pair, the detached signature over
 # the plugin's bytes, and the row that pins those bytes and names the publisher and the key.
 #
@@ -863,6 +933,26 @@ run_scenario_body() {
                 fi
                 mkdir -p "$root/cwd/plugins"
                 cp "$bundled_plugin" "$root/cwd/plugins/uppercase.jar"
+                plugin_jar_args=(--plugin-jar "$root/cwd/plugins/uppercase.jar")
+                ;;
+            repacked-uppercase)
+                # The same plugin, packaged twice. The distribution keeps its own copy and this
+                # one is the operator's, so the composition sees two artifacts with one identity.
+                local bundled_plugin
+                bundled_plugin="$(ls "$repo_root/pipelinek/pipeline-application/build/install/pipelinek/lib/"example-uppercase-plugin-*.jar 2>/dev/null | head -1 || true)"
+                if [[ -z "$bundled_plugin" ]]; then
+                    printf 'FAIL %-52s the distribution has no example plugin to repack\n' "$name"
+                    failed=$((failed + 1))
+                    failures+=("$name: the distribution has no example-uppercase-plugin JAR")
+                    return
+                fi
+                mkdir -p "$root/cwd/plugins"
+                if ! build_repacked_plugin_fixture "$bundled_plugin" "$root/cwd/plugins/uppercase.jar"; then
+                    printf 'FAIL %-52s the repacked plugin fixture could not be built\n' "$name"
+                    failed=$((failed + 1))
+                    failures+=("$name: the repacked plugin fixture could not be built")
+                    return
+                fi
                 plugin_jar_args=(--plugin-jar "$root/cwd/plugins/uppercase.jar")
                 ;;
             *)

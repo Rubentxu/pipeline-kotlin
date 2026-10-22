@@ -5,18 +5,22 @@
 //@ expect-stderr the same identity was already claimed by
 //@ expect-stderr example-uppercase-plugin-0.1.0.jar
 //@ expect-stderr the whole composition is refused
-//@ distribution lying-events
-//@ plugin-jar bundled-uppercase
+//@ plugin-jar repacked-uppercase
 
 // The subject is a composition where two DIFFERENT artifacts claim the same plugin identity, and
 // the refusal has to say which of them claimed it first, and that the composition is refused.
 //
 // The launcher hands the run two artifacts with one identity: the distribution's own copy of the
-// example plugin, whose manifest has been doctored so that it declares an Event nobody
-// contributes, and -- offered on the command line -- the operator's own copy of that same
-// plugin, with the publisher's bytes and the publisher's manifest. The bytes differ, so the
-// runtime cannot read them as one artifact, and the identities are the same, so the second one
-// cannot be admitted beside the first.
+// example plugin, and -- offered on the command line -- the operator's copy of that same plugin,
+// packaged a second time. Both are HONEST: the manifest is the publisher's and the code is the
+// publisher's, so neither artifact is broken in any way. They differ in their bytes, which is
+// what makes them two artifacts rather than one artifact offered twice, and their identities are
+// the same, so the second one cannot be admitted beside the first.
+//
+// Nothing else is wrong with this composition, which is the point: the only reason to refuse it
+// is the identity, so the refusal this scenario reads can only be about the identity. A scenario
+// that also bent the manifest would be asking the reader to believe in two defects at once and
+// would not be able to say which one produced the refusal.
 //
 // The refusal names the artifact that was REJECTED, because that is the file the operator named.
 // And it names the artifact that had claimed the identity FIRST, because that is the one the

@@ -113,9 +113,13 @@ subprojects {
             config.setFrom(rootProject.files("config/detekt/detekt.yml"))
             buildUponDefaultConfig.set(true)
             parallel.set(true)
-            // Only `src/main/kotlin`: `src/test/kotlin` no longer exists, and listing
-            // a non-existent source directory is how a source-set guard silently
-            // covers nothing.
+            // Each detekt task reads the source set it belongs to: `detektMain`
+            // reads `src/main/kotlin` and `detektTest` reads `src/test/kotlin`.
+            // Measured rather than assumed: an unused import added to a test file
+            // failed `detektTest` naming that file, its line and the rule, and the
+            // report counted the test files alone. So the `source` below does not
+            // widen `detektTest` to the main sources, and the test sources are
+            // reached by their own task.
             source.setFrom(files("src/main/kotlin"))
             if (moduleBaseline.asFile.exists()) {
                 baseline.set(moduleBaseline)

@@ -8055,6 +8055,130 @@ tests=rewritten:812 read:0 gaps=1 not_run scenarios=observed:35 executed:35`.
   `tests=rewritten:743 read:0`, **743** tests en **94/94** informes reescritos, 46 escenarios
   (45 ok, 1 NOT_RUN) y LOC `11389/65556 = 0.174`.
 
+### 2.4 La integracion de las dos lineas: que se absorbio, que se porteo y que quedo fuera
+
+**La geometria.** `origin/main` (51 commits) y la integracion (300 commits) salen
+de `3079b2603` y trabajan sobre lo mismo con layouts distintos: `origin/main`
+vive en `v2/` y la integracion en `pipelinek/`. Por eso un merge de arboles
+reporta **531 rutas en conflicto**, y esa cifra no son 531 desacuerdos: es el
+renombrado de 826 ficheros mas 697 diferencias de contenido. Medido fichero a
+fichero, en su ruta logica:
+
+| 920 ficheros comunes | |
+|---|---|
+| 166 | identicos |
+| 609 | difieren **solo** en comentarios |
+| 144 | difieren en codigo |
+
+Los 609 no son ruido: **las dos ramas hicieron una campana de reescritura de
+comentarios**, cada una a su modo, y por eso sus contenidos divergen sin que
+diverga el codigo. Por la misma razon 23 de los 51 commits de `origin/main`
+tienen equivalente por titulo en la integracion, con otro SHA: el contexto del
+parche cambio. `git cherry` los marca a todos como `+` porque el parche no es
+igual, y el titulo dice que el trabajo si.
+
+**La absorcion.** El commit `2cb5dca38` registra la historia de `origin/main`
+sin reescribir el arbol, y lo que `origin/main` aporta de verdad se porta a
+mano, commit a commit y con sus defectos corregidos. No se hizo un merge de
+arboles porque un merge de arboles aqui tiene dos fallos que el commit de
+absorcion no tiene: resucita lo que la integracion corto a proposito
+(`.worktrees/`, `.github/dependabot.yml`, `ci/dogfood-fail.pipeline.kts`, el
+modulo `pipeline-protocol/`) y mezcla 531 resoluciones de conflicto que
+alguien tiene que leer una por una para saber que se quedo con la version
+buena.
+
+**Las tres capacidades en las que `origin/main` iba por delante**, y las tres
+las exige el `AGENTS.md` que las dos ramas comparten:
+
+1. **El guard de procedencia de comentarios y su cableado al gate.** En
+   `origin/main` esta **ROJO sobre su propio arbol**: 432 violaciones, y el
+   commit que lo cableo (`f558bdc5d`) se titula "1109 -> 432 provenance + guard
+   wired to gate", o sea que bajo las violaciones y cableo un guard que no
+   puede pasar. No se puede portar tal cual: el original pide
+   `git ls-files v2`, y en este arbol `v2/` no existe, asi que el guard
+   recorria **cero ficheros** y imprimia su verde sobre un escaneo que no
+   habia ocurrido. Ademas solo tokenizaba `//` y `/* */`, con lo que las ~650
+   lineas de comentario `#` de los scripts de shell quedaban sin mirar, y leia
+   el glob `/*` de shell como inicio de un comentario de bloque. Portado con
+   cuatro correcciones (ruta, comentarios de shell, `/*` de shell, y el falso
+   positivo `UP-TO`), cableado como **stage 4b** entre el presupuesto de LOC y
+   el reloj, y con las violaciones del arbol resueltas: de 88 medidas a **0**.
+   Mutacion comprobada: introducir un ticket en un comentario enciende el
+   stage y sale 1 nombrando fichero y linea.
+2. **La linea de veredicto con la evidencia de lo que corrio.** El AGENTS.md
+   dice "Every verdict line states `tests=rewritten:<n> read:<n>`" y la linea de
+   esta rama era `PASS sha=... elapsed=... budget=900s`: la unica linea que se
+   pega en los informes no distinguia una medicion de un acierto de cache.
+3. **El informe del lanzador**: el coste de cada escenario, el censo de
+   expectativas comprobadas y la comprobacion de que un escenario con
+   veredicto produjo una linea. Y la ejecucion en paralelo.
+
+**La brecha de presupuesto, que era real y no era contencion.** El stage 3 en
+serie llego al **escenario 49 de 56** cuando su reloj de 780 s expiro, y los
+siete que nunca empezaron se reportaron como huecos: un stage que era demasiado
+lento se decia a si mismo un stage con falta de cobertura. Los cuatro rojos
+`transcript drain unfinished after 10000ms` del mismo ensayo **no eran una
+regresion**: reproducibles verdes en aislamiento, y la maquina tenia otra
+sesion compilando Rust encima. Medido sobre la misma maquina, la misma suite y
+los mismos bytes:
+
+| | stage 3 | resultado |
+|---|---|---|
+| en serie | **784 s** | 49 de 56, incompleto |
+| 8 trabajadores | **94 s** | **56 de 56 verdes** |
+
+El reloj de stage deja de decidir **que** escenarios se ejecutan: ahora todos
+los seleccionados arrancan y quedan acotados por su **propio** reloj, y el
+reloj de stage pasa a ser un hecho posterior sobre el stage entero. Un stage
+que se queda sin tiempo dice que se quedo sin tiempo, en vez de reportar
+huecos.
+
+**Lo que el censo destapo en su primera salida.** 19 de los 56 escenarios no
+declaran ninguna expectativa que el arnes pueda mirar: solo comprueban que el
+proceso saliera con 0. El commit `74870d412` ("cada escenario declara la
+garantia que promete") lo decia, y el arnes no lo podia comprobar. Ahora el
+censo viaja en el informe y en la linea de veredicto, que es donde un numero
+tiene que estar para que alguien lo pese.
+
+**La reescritura de autoria, y por que hizo falta.** El push a `origin/main`
+lo bloqueo `~/.config/git-identity/deny.conf`. El bloqueo **no venia de los 303
+commits nuevos** — ninguno lleva identidad denegada (190 `Ruben`, mas
+`SocketStudio`, `Haizea`, `Ilargia`, `RubentxuDev`, `Pablo Cabrera`,
+`Rubentxu`) — sino de **16 commits ya publicados en `origin/main`** (15
+`Claude <claude@anthropic.com>` y 1 `Claude Code <noreply@anthropic.com>`) que
+el merge arrastra en la historia que se publica. Es decir: el guard no
+impidia autoria nueva de IA, estaba congelando la rama. El operador decidio
+reescribir esa autoria y empujar con force. Medido:
+
+- 16 autores y 15 committers reescritos a la identidad del dueno del
+  repositorio;
+- **el arbol del tip es identico byte a byte** (`cc227458…`);
+- los mensajes, las fechas de autor y las de committer son identicas;
+- los otros 40 autores quedan **intactos** (`Ruben` 694 -> 710, los otros 39
+  igual);
+- los 2324 commits anteriores al bloque conservan su SHA;
+- ref de recuperacion: `backup/pre-identity-rewrite` -> `78f7f33cd`.
+
+**Lo que NO se hizo, dicho con sus nombres.** Los 19 escenarios sin garantia
+declarada siguen sin ella: el censo los hace visibles, que no es lo mismo que
+arreglarlos. Y el rewrite de autoria se hizo sobre las **82 ramas** locales
+cuyo historial lo necesitaba, no sobre las 247: las otras 165 no contienen
+ningun commit con identidad denegada y por eso no cambian.
+
+**Un defecto mas que sale de mirar el gate por dentro.** El trap de salida
+`cleanup_logs` terminaba en un `[[ ]]` que es falso cuando
+`VERIFY_ALL_VERDICT` no esta puesto, y en bash **el estado del ultimo comando
+de un trap de EXIT sustituye al del script**. Consecuencia medida: **todo run
+acotado salia con 1** mientras imprimia `PASS (subset)`, y el veredicto
+`INCOMPLETE` -- cuyo propio comentario dice que su estado de salida sigue
+siendo 0 -- tambien salia con 1. El bucle interior que documenta el
+AGENTS.md (`--stage 2 --module ... --test ...`) era, para quien lo llamaba, un
+fallo permanente. Una linea de veredicto y un codigo de salida que dicen
+cosas distintas es exactamente el fallo que este ROADMAP lleva dos ciclos
+persiguiendo en la otra direccion. El trap devuelve ahora el estado que ya
+tenia el run.
+
+
 ---
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
@@ -8318,6 +8442,8 @@ tests=rewritten:812 read:0 gaps=1 not_run scenarios=observed:35 executed:35`.
 - `AGENTS.md` — política vigente; manda sobre cualquier documento histórico.
 - `scripts/verify-all.sh` — la única puerta local.
 - `scripts/check-budgets.py` — el único script de presupuestos.
-- `v2/examples/run.sh` — el único lanzador E2E.
+- `examples/run.sh` — el único lanzador E2E.
+- `scripts/check-comment-provenance.py` — el guard de procedencia de comentarios.
+  **No está cableado todavía**: §2.4 explica por qué.
 - Historia anterior: tag `pre-testing-reset-20261018`. No se resucita en el árbol
   activo.

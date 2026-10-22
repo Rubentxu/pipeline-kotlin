@@ -18,17 +18,17 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `d05acadf1` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `d05acadf1` | `git rev-parse HEAD` |
+| SHA | `657306648` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `657306648` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1055** (146 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1057** (146 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
-| Escenarios E2E | **55 (55 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **55 de 55**: 137 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 55 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **18522 / 67304 = 0.275** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios E2E | **57 (57 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios con una garantía comprobada | **57 de 57**: 145 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 57 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **18616 / 67304 = 0.277** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **177 / 162 / 177** en los tres ensayos, los tres sobre `d05acadf1`, peor 177 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **194 / 172 / 165** en los tres ensayos, los tres sobre `657306648`, peor 194 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **802** entradas de baseline: **sin cambio**, porque la ley que este ciclo añadió salió a su propio objeto en vez de empujar a `ProtocolGrammar` por encima del límite de detekt | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -40,11 +40,11 @@ sale mejor que la realidad.
 
 El reloj de la puerta lo marca también el host. El ciclo anterior midió 699,
 682 y 803 s con la máquina compartida con otro workspace, y este ciclo midió
-177, 162 y 177 s: la distancia entre un ensayo y otro no la explica el código
+194, 172 y 165 s: la distancia entre un ensayo y otro no la explica el código
 medido, que es idéntico dentro de cada ciclo, sino la carga de la máquina. En
 los tres ensayos de este ciclo el presupuesto se cumplió con holgura —el peor,
-177 s, es menos de la quinta parte de los 900 s—, y eso que el árbol medido
-incluye la distribución, la API pública, los 1055 tests y los 55 escenarios.
+194 s, es menos de la quinta parte de los 900 s—, y eso que el árbol medido
+incluye la distribución, la API pública, los 1057 tests y los 57 escenarios.
 
 Lo que este ciclo añadió a la suite: **25** casos de test en **4** clases
 rescatadas del layout viejo —cada una con su regla viva detrás: el
@@ -72,7 +72,7 @@ del arranque, que ya corre en cada invocación del lanzador. Los dos UAT que lo
 probaron (una escena colgada y una escena que falla de verdad) se retiraron al
 cerrar el ciclo, con su evidencia escrita aquí.
 
-El ratio de LOC sube de 0.240 a **0.275** en este ciclo, todavía muy por debajo
+El ratio de LOC sube de 0.240 a **0.277** en este ciclo, todavía muy por debajo
 del límite 2, y el peor módulo sigue siendo el mismo de siempre
 (`pipeline-step-sdk:workflow-control`, 1.633) porque este ciclo no lo tocó.
 
@@ -5316,6 +5316,19 @@ escenario y **su** fila, y nada más:
 |---|---|---|---|
 | La comparación de capacidades se apaga | **1** (`plugin-capability-lies`: exit 0 en vez de 2) | **1** de 8 | **56** escenarios, 7 filas |
 | La comparación de directivas se apaga | **1** (`plugin-directive-lies`: exit 0 en vez de 2) | **1** de 8 | **56** escenarios, 7 filas |
+
+**Medido, sobre el árbol de este bloque:**
+
+| Métrica | Valor |
+|---|---|
+| Familias de la segunda puerta observadas contra un JAR real | **3** de 3 (Steps, capacidades, directivas) |
+| Escenarios ejecutables | **3**: `plugin-manifest-lies`, `plugin-capability-lies`, `plugin-directive-lies` |
+| Fixtures del lanzador | **3**, todos con el mismo doctoring sobre el mismo JAR |
+| Test de la regla pura | **8** filas: las dos direcciones de cada familia |
+| Tests unitarios | **1057**, 0 fallos, 0 skips, 146 informes reescritos por la corrida |
+| Escenarios E2E | **57**, los 57 verdes, 57 de 57 con garantía comprobada (145 garantías) |
+| `VERIFY_LOC / PRODUCT_LOC` | **18616 / 67304 = 0.277** (límite 2) |
+| Reloj de la puerta | **194 / 172 / 165 s** en tres ensayos sobre `657306648`, contra 900 s |
 
 **Lo que sigue sin cubrir, y es lo último que queda de esta puerta.** Tres
 cosas, todas deliberadamente dichas: un plugin que miente sobre sus **eventos**

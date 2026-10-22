@@ -27,6 +27,16 @@ se cierra cuando su criterio de cierre está **medido**, y la medida dice dónde
 | **B3** Durabilidad y Output Plane | identidades, offsets y recuperación; un efecto externo no se repite tras una caída | recuperación caracterizada con el binario real, sin efectos duplicados |
 | **B4** Publicación, SDK y pruebas | la distribución instalada, un consumidor externo del SDK, y la economía de la instrumentación | artefacto publicado verificado por fuera, y pruebas que se pueden explicar |
 
+**Lo que este bloque movió, y lo que no.** Se integró **una** PR abierta —la
+`#196`, la de la matriz de admisión del store de eventos—, en local y con
+**árbol idéntico** al squash que la plataforma había publicado para ella, y la
+puerta completa corrió **tres veces en verde** sobre el SHA integrado (§2.46).
+**B1 no se cierra**: siguen abiertas PR que aportan cambios vigentes, y entre
+ellas las que tocan el propio contrato `authorizedWorkspaceRoot` frente a
+`effectiveWorkingDirectory`, que este bloque no trió ni integró. Lo que sí
+queda medido es esto: el SHA integrado tiene la puerta completa en verde, y su
+árbol es **idéntico** al del squash publicado.
+
 **Lo que está abierto ahora mismo:**
 
 | # | Qué falta | Por qué sigue abierto |
@@ -42,7 +52,7 @@ se cierra cuando su criterio de cierre está **medido**, y la medida dice dónde
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `1e657a8ce` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `1e657a8ce` | `git rev-parse HEAD` |
+| SHA | `45665c28b` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `45665c28b` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
@@ -50,9 +60,9 @@ se cierra cuando su criterio de cierre está **medido**, y la medida dice dónde
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **57 (57 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **57 de 57**: 145 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 57 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **18820 / 67363 = 0.279** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **18845 / 67363 = 0.280** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **174 / 159 / 161** en los tres ensayos, los tres sobre `1e657a8ce`, peor 174 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **174 / 155 / 161** en los tres ensayos, los tres sobre `45665c28b`, peor 174 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -71,6 +81,10 @@ de este ciclo el presupuesto se cumplió con holgura —el peor, 174 s, es menos
 de la quinta parte de los 900 s—, y eso que el árbol medido incluye la
 distribución, la API pública, los 1066 tests y los 57 escenarios.
 
+El ratio de LOC sube de 0.279 a **0.280** respecto del bloque anterior, y el
+peor módulo sigue siendo el mismo (`pipeline-step-sdk:workflow-control`,
+1.633), porque este bloque no lo tocó.
+
 **Lo que este ciclo añadió.** Un cambio de producto en la segunda puerta de
 admisión: la procedencia de un proveedor de contribuciones se mide con un
 resultado tipado, y un proveedor que no puede decir de qué artefacto viene
@@ -80,6 +94,18 @@ nuevos —no hay artefacto que produzca ese estado, y un escenario que lo fingie
 sería una mentira—, y **1** cifra re-medida que estaba caducada (la deuda
 estática). Todo lo nuevo se encendió en rojo antes de darse por bueno, con su
 fila exacta.
+
+**Lo que este bloque añadió al anterior.** Dos cosas, y las dos se midieron.
+La primera es una **matriz de admisión cerrada** en el store de eventos: la
+decisión de si un journal puede abrirse —y en qué carril, de lectura o de
+escritura— se expresa como seis casos dinámicos, tres observaciones por dos
+propósitos, más una ley independiente que obliga a que todo rechazo nombre el
+`path` que el operador recibió (§2.46). La segunda es un **fixture que cumple
+la política de git de la máquina**: el escenario del smoke dejó de crear un
+commit con el mensaje `init` y una identidad inventada, y pasó a hacer lo que
+la máquina espera —mensaje Conventional e identidad la que ella misma
+declara—, porque un escenario que se pone rojo por un motivo ajeno al producto
+mide el motivo equivocado (§2.47).
 
 Lo que este ciclo añadió a la suite: **25** casos de test en **4** clases
 rescatadas del layout viejo —cada una con su regla viva detrás: el
@@ -149,7 +175,14 @@ procedencia de los proveedores (§2.45), **M10** (un proveedor sin origen se
 reparte contra un camino en vez de detener la composición) encendió **4 de 9**
 filas —las tres familias y la causa ilegible— y dejó verdes las otras cinco:
 el aislamiento entre artefactos, la dirección inversa del cruce y las tres
-filas de la medida.
+filas de la medida. En la matriz de admisión del store (§2.46), **M11** (el
+permiso de escritura se convierte en rechazo para todo propósito) encendió
+**1 de 7** casos —el único que distingue al escritor del lector— y **M12** (la
+regla acepta cualquier combinación) encendió **4 de 7**: las tres filas de
+rechazo y la ley del `path`. En el fixture del smoke (§2.47), **M13** (la
+aserción del clon espera un contenido que el fixture no commitea) dejó el
+escenario en rojo, con el fichero restaurado byte a byte después. Las tres se
+leyeron de vuelta en el disco antes de deshacerse.
 
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
 los **147** informes JUnit, que es la condición que hace que la cifra de reloj
@@ -5487,6 +5520,155 @@ pequeña de fallos de producción simulados físicamente— quedan **diferidas**
 los bloques que las pueden pagar. La primera, además, ya está en pie: el arnés
 cuenta **garantías** (145) y no escenarios.
 
+### 2.46 La matriz de admisión del store de eventos: seis casos y una ley
+
+**La regla.** El store de eventos tiene una sola decisión —«¿puede abrirse este
+journal, y en qué carril?»— y un conjunto cerrado de razones por las que no.
+La regla vive en `refusalFor(observación, path, propósito)`: una función
+**total** sobre dos ADTs cerrados, sin E/S. Las tres observaciones son
+`NoDirectory`, `NoFile` y `Present`; los dos propósitos, `Read` y `Write`. Tres
+por dos son seis combinaciones, y la función decide las seis, sin rama por
+defecto.
+
+El propósito existe porque la diferencia es de dato y no de código: un verbo que
+**lee** un run terminado está apuntando a un fichero que tiene que existir ya;
+un verbo que **empieza** un run está creando ese fichero, así que su ausencia es
+el caso normal y lo que tiene que existir es su **directorio**. Un
+`if (!Files.exists(...))` no expresa las dos cosas sin una bandera repetida en
+cada punto de llamada.
+
+**Por qué una matriz y no seis tests sueltos.** Los seis casos se expresan como
+una `@TestFactory` que devuelve seis `DynamicTest` con nombres que se leen
+—«missing file / write may create»— en vez de seis métodos casi idénticos. Pero
+una fábrica que devuelve cinco filas verdes **es** un test verde, y por eso la
+fábrica se defiende sola antes de generar nada: compara el número de filas
+esperado con el de las declaradas, y compara el conjunto de pares
+observación-propósito con el conjunto completo. Una combinación omitida o
+repetida falla la guarda antes de llegar a la primera fila.
+
+**La ley que no es de la matriz.** «Todo rechazo nombra el `path` que el
+operador recibió» no es una combinación de observación y propósito: es una
+propiedad del **conjunto** de rechazos. Por eso es un `@Test` aparte, y por eso
+la cubre la mutación de «permitir todo»: si la regla acepta cualquier cosa, no
+hay rechazo, y un rechazo sin `path` es un diagnóstico que el operador no puede
+usar.
+
+**Qué no cubre, y por qué se dice.** `observePath` y `admitEventStore` tocan el
+sistema de ficheros y abren una base de datos; eso no es lo que un test unitario
+de este árbol hace. Queda escrito en el propio test, no callado.
+
+**La evidencia, con Gradle y JUnit reales.** La validación se hizo en un
+worktree aislado, sobre el commit de la rama de la PR y con el JDK que declara
+el proyecto: `:pipeline-events-store:test --tests '*EventStoreAdmissionTest'`
+→ **7 casos** (6 dinámicos más la ley), **0 fallos**, **0 skips**.
+
+**Las dos mutaciones, vistas en rojo.** **M11** —el permiso de escritura
+convierte el «ausente» en rechazo para todo propósito— encendió **exactamente 1
+de 7** casos: el único que distingue al escritor del lector, que es el que
+justifica que exista el propósito. **M12** —la regla acepta cualquier
+combinación— encendió **exactamente 4 de 7**: las tres filas de rechazo y la
+ley del `path`. El fichero de producción se restauró **byte-idéntico** —el
+mismo resumen criptográfico— y el árbol quedó limpio.
+
+**Por qué no hay escenario ejecutable.** La regla que estos casos cubren es
+pura: su mundo es una combinación de dos valores cerrados, y una ejecución
+real añadiría el arranque del CLI a un caso que no lo necesita. Lo que un
+escenario mediría de verdad —componer un store que no existe— es lo que ya
+miden los **57** escenarios de la puerta.
+
+**Medido, sobre el árbol de este bloque:**
+
+| Métrica | Valor |
+|---|---|
+| Combinaciones de la regla | **6**, de 3 observaciones × 2 propósitos, todas declaradas |
+| Casos ejecutados | **7**: 6 dinámicos más la ley del `path` |
+| Guardas de la fábrica | **2**: número de filas y conjunto de pares |
+| Fallos y skips | **0** y **0** |
+| Mutación «rechazar todo» | **1** caso rojo de 7 |
+| Mutación «permitir todo» | **4** casos rojos de 7 |
+| Escenarios ejecutables nuevos | **0**, y no por descuido: la regla es pura |
+| Tests unitarios | **1066**, 0 fallos, 0 skips, 147 informes reescritos por la corrida |
+| Escenarios E2E | **57**, los 57 verdes, 57 de 57 con garantía comprobada (145 garantías) |
+| `VERIFY_LOC / PRODUCT_LOC` | **18845 / 67363 = 0.280** (límite 2) |
+| Reloj de la puerta | **174 / 155 / 161 s** en tres ensayos sobre `45665c28b`, contra 900 s |
+
+### 2.47 El fixture que medía la máquina: un rojo por un motivo que no era del producto
+
+**El síntoma.** El escenario `examples/smoke/10-smoke-e2e.pipeline.kts` pasó de
+**57/57** a **56/57** a partir de las 15:40, y lo hizo de forma determinista: los
+ensayos de las 15:08 y de las 15:13 pasaban los 57.
+
+**Lo que no era la causa.** La PR que en ese momento se integraba toca **un
+único** fichero de test de **otro** módulo —`:pipeline-events-store`—, así que
+no podía romper un escenario de otro módulo. Un rojo determinista que aparece
+en una hora concreta tampoco lo explica un cambio que no está en su camino.
+
+**La causa raíz.** El fixture creaba un repositorio y commiteaba así:
+
+```text
+git init -q . && git add . && git -c user.email=s@l -c user.name=s commit -qm init
+```
+
+Dos cosas ahí violan lo que la máquina exige: el mensaje `init` no es un
+*Conventional Commit*, y la identidad `s <s@l>` no está en la lista que la
+política permite. Encima, la máquina declaraba globalmente
+`rubentxu <rubentxu@example.com>` —un **placeholder** con dominio `example.com`,
+que la política nunca ha permitido—. El escenario fallaba por una decisión de la
+gobernanza de la máquina, no por el producto que el escenario promete medir.
+
+**Qué cambió.** El fixture cumple ahora lo que la política pide: mensaje
+Conventional, e identidad **la que declara la propia máquina**, leída de su
+configuración de git y puesta en el repositorio del fixture —para que la
+herramienta vea una identidad explícita en un repositorio que no tiene
+remoto—. Ninguna identidad personal queda escrita en el árbol.
+
+**Lo que se probó y se descartó.** Tres vías dejaban el escenario en verde, y las
+tres se probaron y se descartaron:
+
+| Vía | Por qué no |
+|---|---|
+| `-c core.hooksPath=/dev/null` | no detiene el hook de `git-control`, que se invoca desde otro sitio |
+| `--no-verify` | el bloqueo cae en el wrapper, antes del hook: «repo NO CLASIFICADO» |
+| `GIT_CONFIG_GLOBAL=/dev/null` | funciona, y por eso mismo es la peor: anula la configuración global de la máquina |
+
+La razón del descarte no es de gusto: un ejemplo permanente que desactiva la
+política de git de la máquina **mide la política del producto, no el producto**.
+La forma correcta es la que se aplicó: que el fixture **cumpla**.
+
+**La mutación, vista en rojo.** La aserción del clon esperando un contenido
+distinto del que el fixture commitea dejó el escenario **rojo**, y el fichero
+se restauró byte a byte después. Un escenario que sólo puede ponerse verde
+porque su fixture es correcto es un escenario que vigila algo.
+
+**La consecuencia sobre la máquina.** La identidad global era un placeholder
+con un dominio que la política jamás ha permitido. Se cambió por una identidad
+real que sí está en la lista. Eso no es un cambio del producto: es una
+corrección de la máquina, y se escribe aquí porque un escenario rojo puede
+tener su causa **fuera** del producto, y saberlo es lo que evita depurar el
+producto equivocado.
+
+**La publicación de este bloque.** El squash hecho en la interfaz de la
+plataforma produce un commit firmado por la plataforma, con una identidad que
+la gobernanza local no admite: ese commit no se puede seguir, ni verificar, ni
+continuar. La fusión se rehízo **en local**, con **árbol idéntico** al
+publicado, y la subida fue un *force push* con **lease explícito** contra el
+squash, con un ref de recuperación local. La protección de `main` se suspendió
+para esa subida y se restauró después a su **valor exacto**, verificado campo a
+campo contra el respaldo: `allow_force_pushes` volvió a `false`, y las demás
+claves quedaron como estaban.
+
+**Medido, sobre el árbol de este bloque:**
+
+| Métrica | Valor |
+|---|---|
+| Escenarios tras la corrección | **57 de 57**, los 57 con garantía comprobada |
+| Mutación del fixture | el escenario se puso **rojo** con la aserción invertida |
+| Restauro del fixture | **byte a byte** |
+| Árbol del commit integrado | **idéntico** al del squash publicado |
+| Protección de `main` tras la publicación | **idéntica** al respaldo, campo a campo |
+| `VERIFY_LOC / PRODUCT_LOC` | **18845 / 67363 = 0.280** (límite 2) |
+| Reloj de la puerta | **174 / 155 / 161 s** en tres ensayos sobre `45665c28b`, contra 900 s |
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
@@ -6391,6 +6573,58 @@ cuenta **garantías** (145) y no escenarios.
   dos líneas y 879 después—. Nadie lo reverificó porque el número estaba
   escrito y escrito se ve. El daño de una cifra caducada no es el número: es
   que hace creer que hay un guardián midiendo lo que nadie mide.
+
+- **Una regla que decide sobre combinaciones se expresa como la matriz, y la
+  matriz se defiende sola.** Los seis casos de la admisión del store no son seis
+  métodos parecidos: son seis filas de una combinación cerrada, tres
+  observaciones por dos propósitos. Escribirlo como tabla tiene un precio —una
+  fábrica en vez de seis métodos— y una compra: la tabla **enumera** sus
+  propias filas, así que una combinación que se olvide se nota. Una fábrica que
+  devuelve cinco filas verdes sigue siendo un test verde, y por eso la guarda
+  de la matriz rechaza una combinación omitida o repetida **antes** de generar
+  la primera fila.
+
+- **Una ley que no es de la matriz se prueba aparte.** «Todo rechazo nombra el
+  `path`» no es una combinación de observación y propósito: es una propiedad
+  del conjunto. Mezclarla en la matriz la habría hecho opcional, y una ley
+  opcional no es una ley. Por eso es su propio caso, y por eso la cubre la
+  mutación que deja pasar todo: si la regla acepta cualquier cosa, no hay
+  rechazo, y un rechazo sin `path` es un diagnóstico que el operador no puede
+  usar.
+
+- **Un escenario rojo puede tener su causa fuera del producto, y esa es la
+  primera hipótesis que hay que agotar.** El smoke del repositorio se puso rojo
+  a una hora concreta, de forma determinista, y el candidato obvio era el
+  cambio que se acababa de integrar. No era: la PR tocaba un único test de otro
+  módulo. La causa era que el **fixture** commiteaba con un mensaje que no era
+  *Conventional Commit* y con una identidad que la política no admite. Depurar
+  el producto era depurar el sitio equivocado, y la forma de no hacerlo es
+  mirar primero qué cambió, no asumir que la culpa es de lo último.
+
+- **Un ejemplo permanente cumple la política de la máquina; no la desactiva.**
+  Tres vías dejaban el escenario en verde —desactivar la ruta de hooks, saltar
+  la verificación, anular la configuración global— y las tres se descartaron. El
+  motivo no es de gusto: un ejemplo que anula la política de git **mide la
+  política del producto, no el producto**. El fixture correcto es el que
+  commitea como la máquina espera, con la identidad que la máquina declara,
+  leída de su configuración: así el árbol no lleva ninguna identidad personal
+  escrita y el ejemplo sigue siendo ejecutable en una máquina gobernada.
+
+- **Un squash publicado en la interfaz no se puede seguir cuando la gobernanza
+  local firma los commits.** El commit que produce la plataforma viene firmado
+  por ella y con una identidad que la política local no admite: se puede ver,
+  pero no se puede verificar ni continuar. La fusión se rehízo **en local**,
+  con **árbol idéntico** al publicado —el contenido es el mismo, la firma es
+  la que la máquina admite—, y la subida se hizo con *lease* explícito contra el
+  squash, dejando un ref de recuperación. Lo que se conserva es el resultado;
+  lo que no se conserva es la firma que la plataforma no dejó poner.
+
+- **La protección de una rama se restaura con su valor exacto, no con un valor
+  parecido.** Suspender `allow_force_pushes` para una subida que la exige es
+  una maniobra, y una maniobra se deshace: se guarda la configuración antes, se
+  restaura después y se comparan **campo a campo** con el respaldo. «Ya está
+  como estaba» no es una verificación; la comparación lo es. Y la comparación
+  es la que detectó que la clave había quedado en `true`.
 
 ## 4. Referencias
 

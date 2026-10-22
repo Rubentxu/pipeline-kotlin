@@ -30,62 +30,24 @@ class EventStoreAdmissionTest {
     private val path = "/runs/run-42/events.db"
 
     /**
-     * Six observable outcomes, one row per member of the closed product
-     * PathObservation x EventStorePurpose. Parameterization reduces test-code
-     * duplication; it deliberately does NOT reduce the six executed cases.
-     *
-     * The positive and negative pair for NoFile is essential: a blanket refusal
-     * or a blanket admission must both turn this table red.
+     * One data-driven matrix: 3 observations x 2 purposes = 6 separately
+     * reported cases. Both allow/deny directions stay observable.
      */
     @TestFactory
-    fun `all combinations decide admission by purpose and observation`() = listOf(
-        AdmissionCase(
-            "missing file, read: refuse absent",
-            PathObservation.NoFile,
-            EventStorePurpose.Read,
-            EventStoreRefusal.Absent(path),
-        ),
-        AdmissionCase(
-            "missing file, write: permit creation",
-            PathObservation.NoFile,
-            EventStorePurpose.Write,
-            null,
-        ),
-        AdmissionCase(
-            "missing directory, read: refuse",
-            PathObservation.NoDirectory,
-            EventStorePurpose.Read,
-            EventStoreRefusal.NoDirectory(path),
-        ),
-        AdmissionCase(
-            "missing directory, write: refuse",
-            PathObservation.NoDirectory,
-            EventStorePurpose.Write,
-            EventStoreRefusal.NoDirectory(path),
-        ),
-        AdmissionCase(
-            "existing path, read: permit",
-            PathObservation.Present,
-            EventStorePurpose.Read,
-            null,
-        ),
-        AdmissionCase(
-            "existing path, write: permit",
-            PathObservation.Present,
-            EventStorePurpose.Write,
-            null,
-        ),
+    fun `the admission decision is total over the closed inputs`() = listOf(
+        Case("missing file / read is absent", PathObservation.NoFile, EventStorePurpose.Read, EventStoreRefusal.Absent(path)),
+        Case("missing file / write creates", PathObservation.NoFile, EventStorePurpose.Write, null),
+        Case("missing directory / read refuses", PathObservation.NoDirectory, EventStorePurpose.Read, EventStoreRefusal.NoDirectory(path)),
+        Case("missing directory / write refuses", PathObservation.NoDirectory, EventStorePurpose.Write, EventStoreRefusal.NoDirectory(path)),
+        Case("existing path / read proceeds", PathObservation.Present, EventStorePurpose.Read, null),
+        Case("existing path / write proceeds", PathObservation.Present, EventStorePurpose.Write, null),
     ).map { case ->
         dynamicTest(case.label) {
-            assertEquals(
-                case.expected,
-                refusalFor(case.observation, path, case.purpose),
-                "observation=${case.observation}, purpose=${case.purpose}; acceptance cannot be inferred from exit 0",
-            )
+            assertEquals(case.expected, refusalFor(case.observation, path, case.purpose))
         }
     }
 
-    private data class AdmissionCase(
+    private data class Case(
         val label: String,
         val observation: PathObservation,
         val purpose: EventStorePurpose,

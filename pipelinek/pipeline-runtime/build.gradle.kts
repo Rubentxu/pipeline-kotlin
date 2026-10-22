@@ -1,6 +1,5 @@
 plugins {
     kotlin("jvm")
-    `maven-publish`
 }
 
 group = "dev.rubentxu.pipeline.v2"
@@ -91,32 +90,25 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
-// Module split precondition. This `publishing { }` block is
-// Intentionally ORPHANED in this commit: the four ports live in the new
-// `:pipeline-runtime-api` module, NOT in this one. This block keeps a
-// `sdk` publication declared so the publication machinery is wired up if a
-// future cycle decides to publish `:pipeline-runtime` for an internal-only
-// contract test, but `publishedContractModules` in `pipelinek/build.gradle.kts` does
-// NOT name this module and the root `publishSdkForExternalPlugin` task does
-// NOT depend on `:pipeline-runtime:publishSdkPublicationToSdkRepository`.
-// The block is harmless dead code today; the publication itself, were it ever
-// to fire, would publish an adapter-only artifact with a POM that names
-// `:pipeline-events-store` and `:pipeline-output-store` at `implementation`
-// scope — the same architecture-as-policy the new `:pipeline-runtime-api`
-// module exists to make safe.
-publishing {
-    publications {
-        create<MavenPublication>("sdk") {
-            from(components["java"])
-        }
-    }
-    repositories {
-        maven {
-            name = "sdk"
-            url = uri(rootProject.layout.buildDirectory.dir("sdk-repo"))
-        }
-    }
-}
+// NOT published, and the absence of `maven-publish` is the mechanism.
+//
+// The four ports live in `:pipeline-runtime-api`, which is the published
+// contract: it is in `publishedContractModules`, in the BOM and in the
+// release candidate manifest. This module holds the three adapters that
+// implement those ports over the event store, the journal and the lease,
+// and it is consumed only by `:pipeline-application`, at `implementation`
+// scope. An external consumer compiles against the ports and never against
+// the adapters, so an artifact for them would resolve nothing and would
+// carry a POM naming `:pipeline-events-store` and `:pipeline-output-store`.
+//
+// A `publishing { }` block used to sit here, declaring an `sdk` publication
+// that no task depended on: `publishedContractModules` does not name this
+// module and the root `publishSdkForExternalPlugin` task never reached it.
+// It was the fossil of the alternative this module was not built for —
+// published as a contract — and it left two ways to read the module's fate
+// when there is only one. The sibling modules that are not published
+// (`:pipeline-events-store`, `:pipeline-output-store`) carry no
+// `maven-publish` either, and this one now follows the same rule.
 
 // Unit-test wiring, because `src/test/kotlin` is not empty.
 // The subjects of those tests, and why the store-backed half of this module is

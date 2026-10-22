@@ -1,46 +1,54 @@
 package dev.rubentxu.pipeline.v2.runtime.inspect
 
 /**
- * Public read-only port that answers "what does this run
- * look like right now?" for a given runId.
- *  surface (preserved)
- * `RuntimeIntrospectionPort.inspect(runId)` reconciles the existing
- * primitives — the event-plane reads (`EventRecordReadPort`), the output-plane
- * reads (`OutputReadPort`, `OutputFrameIndex`, `OutputTailPort`), the journal
- * (`OperationJournal.listForRun`), the cursor (`ReplayCursorStore.load`), and
- * the pure lease decider (`RunExecutionLease.acquire`) — into one typed
- * `RuntimeObservation`. It does NOT introduce a new event store, output store,
- * journal, or lease authority. Every primitive the port composes is named with
- * Module:file:line in the design's composition table ( of the design)
- *  surface (additive)
- * Two new methods answer the audit's F.1 / F.2 / F.3 gaps:
- *  - `runStructure(runId, options)` returns a bounded, paginated typed
- *    enumeration of the run's stages / steps / operations, projected from the
- *    same journal + `OutputFrameIndex` primitives `inspect` composes.
- *  - `inspectOperation(operationId, attempt)` returns a typed
- *    [OperationInspection] for a single (operation, attempt) pair.
- * Both methods are read-only by construction; the design'sC composition
- * table names the existing primitives they compose. They do NOT introduce a
- * new lease, scheduler, Governor, fairness scheduler, or query engine in.
- * The audit's F.4 / F.5 negative-scope rules are preserved.
+ * Public read-only port that answers "what does this run look like right
+ * now?" for a given runId.
+ *
+ * `inspect(runId)` reconciles the primitives the product already has — the
+ * event-plane reads (`EventRecordReadPort`), the output-plane reads
+ * (`OutputReadPort`, `OutputFrameIndex`, `OutputTailPort`), the journal
+ * (`OperationJournal.listForRun`), the cursor (`ReplayCursorStore.load`) and
+ * the lease decider (`RunExecutionLease.acquire`) — into one typed
+ * `RuntimeObservation`. It introduces no new event store, output store,
+ * journal or lease authority: the port reads, and it never owns.
+ *
+ * `runStructure(runId, options)` and `inspectOperation(operationId, attempt)`
+ * answer the same question with more shape. The first returns a bounded,
+ * paginated typed enumeration of the run's stages, steps and operations,
+ * projected from the same journal and `OutputFrameIndex` that `inspect`
+ * composes. The second returns a typed [OperationInspection] for a single
+ * (operation, attempt) pair. Both are read-only by construction, and neither
+ * introduces a lease, a scheduler, a governor or a query engine.
+ *
  * ## Read-only by construction
  * Every method on this port MUST NOT write to durable state. The composition
- * rule limits them to SELECTs, tail-state
- * queries, and `load`. A consumer that wants recovery invokes
- * `RuntimeRecoverPort.recover`, not `inspectOperation`.
+ * rule limits them to SELECTs, tail-state queries and `load`. A consumer that
+ * wants recovery invokes `RuntimeRecoverPort.recover`, not `inspectOperation`.
+ *
  * ## Concurrency and ordering
  * Two concurrent `inspect(runId)` calls on the same run return observations
  * that differ only in monotonic progress. The same rule applies to
  * `runStructure` and `inspectOperation`: a second call observes a state that
  * is `>=` the previous call's state. The implementation MUST NOT race the
- * writer; the contract test pins this.
+ * writer.
+ *
  * ## Stability
- * The surface is `EXPERIMENTAL` (`runtime.inspect.v1`). The surface
- * ships as `runtime.structure.v1` and `runtime.operation.v1`, also
- * `EXPERIMENTAL` until the candidate is `CERTIFIED`. Promotion to
- * `PUBLICADA` happens only after the corresponding candidate is certified by
- * `pipelinek-release-harness`.
-*/
+ * `runtime.inspect.v1` is the capability id of this port. It is EXPERIMENTAL,
+ * and it is the id the product composes: the `inspect --state` verb reads it.
+ *
+ * The two methods that answer with more shape carry their own ids,
+ * `runtime.structure.v1` and `runtime.operation.v1`, and those are
+ * DEPRECATED — which here means *announced and not delivered*. The adapter
+ * implements them and no consumer in the tree composes them yet. The
+ * capability catalogue is the authority on that status, so a consumer reads
+ * the catalogue before it trusts an id.
+ *
+ * ## Who implements it
+ * The store-backed implementation is an internal module: the ports are
+ * published and the adapters are not. The composition happens inside the
+ * product, which is the only place that holds the event store, the journal
+ * and the lease.
+ */
 interface RuntimeIntrospectionPort {
 
     /**

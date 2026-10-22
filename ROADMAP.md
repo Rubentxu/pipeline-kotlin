@@ -83,17 +83,17 @@ composición se rechaza.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `2c0151b58`, medido en los tres ensayos de este bloque. El **código** cambió respecto a `0b0438114` —el rechazo por identidad duplicada ya no afirma que el artefacto se quede (§2.53)—, así que los tres ensayos de aquel árbol ya no lo describen y se han repetido sobre el nuevo | `git rev-parse HEAD` |
+| SHA | `6abf20388`, medido en los ensayos de este bloque. Entre `2c0151b58` y este **el código de producción no cambia**: lo que se añade es un escenario ejecutable (§2.55) y este documento. Los tres ensayos del árbol anterior siguen describiendo el producto, y los de éste lo describen entero | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
 | Tests unitarios ejecutados | **1071** (148 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
-| Escenarios E2E | **60 (60 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **60 de 60**: 162 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 60 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **18900 / 67377 = 0.281** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios E2E | **61 (61 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios con una garantía comprobada | **61 de 61**: **167 garantías** comprobadas —162 en los 60 anteriores y 5 en el nuevo de coherencia del workspace (§2.55). El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 61 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **19018 / 67378 = 0.282** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **183 / 171 / 169** en los tres ensayos, los tres sobre `2c0151b58`, peor 183 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **190 / 178 / 174** en los tres ensayos, los tres sobre `6abf20388`, peor 190 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -6161,8 +6161,17 @@ mueve.
 | Escenario, con la mutación | **rojo**: exit 1, 0 pasos terminados |
 | Mutación | **1** línea, en el punto compartido por los cuatro pasos |
 | Fichero de producción | restaurado byte a byte (`git diff` vacío) |
+| Puerta | **`PASS`** en tres ensayos sobre `6abf20388`: **190 / 178 / 174 s** contra 900 s, 1071 tests, **61/61** escenarios |
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **Un contrato que ya ha roto una vez necesita un instrumento, no un
+  comentario.** La coherencia de la base del workspace —`dir`, `deleteDir`,
+  `stash` y `unstash` sobre el mismo cwd efectivo— estaba escrita en cuatro
+  adaptadores y dos KDoc, y ya había roto una vez: el KDoc de
+  `DeleteDirOperationsAdapter` lo confiesa. Un KDoc no se rompe, se ignora. El
+  instrumento es un escenario que **falla** si la base se separa, y la mutación
+  que lo demuestra es de **una** línea en el punto compartido por los cuatro
+  pasos, porque un contrato que se rompe en un sitio se rompe en todos.
 - **Un diagnóstico tiene que ser fiel al resultado, no a una parte del
   resultado.** El rechazo por identidad duplicada nombraba al artefacto que
   reclamó la identidad primero y añadía «que se queda en la composición». La

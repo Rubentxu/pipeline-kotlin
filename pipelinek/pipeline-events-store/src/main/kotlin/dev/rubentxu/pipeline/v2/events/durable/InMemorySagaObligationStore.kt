@@ -13,7 +13,7 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaId
  * whether the run has a durable store or not. Before this store, the in-memory branch of the
  * CLI bound NO saga store at all: the Saga capabilities were never exposed, and a script that
  * declares them was refused at admission. The same script therefore behaved differently with
- * and without `--db`, which is exactly the contradiction LF-0208 forbids — "storage choice must
+ * and without `--db`, which is exactly the contradiction forbids — "storage choice must
  * not select a different execution algorithm".
  *
  * The refusal was not wrong in itself (a promise nobody can keep is worse than no promise), but

@@ -27,7 +27,7 @@ interface ReplayCursorStore {
      * This operation is idempotent: if the cursor already points to the same
      * or a later position, the update is a no-op.
      *
-     * ## R-C mitigation reminder
+     * ## mitigation reminder
      *
      * This function MUST be called only AFTER [OperationJournal.append]
      * has returned successfully. Do NOT call it before the append.
@@ -92,7 +92,7 @@ value class StageIndex(val value: Int)
  * [advance] is called after [OperationJournal.append] in the same transaction
  * or across a crash-restart boundary.
  *
- * ## R-C mitigation
+ * ## mitigation
  *
  * [advance] must ONLY be called after
  * [OperationJournal.append] has returned successfully. Calling it before
@@ -145,7 +145,7 @@ class SqliteReplayCursorStoreImpl(
      * This operation is idempotent: if the cursor already points to the same
      * or a later position, the update is a no-op.
      *
-     * ## R-C mitigation reminder
+     * ## mitigation reminder
      *
      * This function MUST be called only AFTER [OperationJournal.append]
      * has returned successfully. Do NOT call it before the append.

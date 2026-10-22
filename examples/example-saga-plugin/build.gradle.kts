@@ -11,7 +11,7 @@ import java.security.MessageDigest
 group = "example.saga"
 version = "0.1.0"
 
-// INDEPENDENT BUILD (EP-3): separate Gradle boundary. It depends ONLY on public
+// INDEPENDENT BUILD: separate Gradle boundary. It depends ONLY on public
 // SDK artifacts (pipeline-domain: StepDefinitionContributor/StepRegistry contracts
 // + domain value types; pipeline-scripting-api: the DSL facade surface). No
 // internal application/runtime imports.
@@ -85,7 +85,7 @@ configurations.all {
 dependencies {
     compileOnly("dev.rubentxu.pipeline.v2:pipeline-domain:$sdkVersion")
     compileOnly("dev.rubentxu.pipeline.v2:pipeline-scripting-api:$sdkVersion")
-    // P3-D / S6.4: the Event Plane's published contract. Carrying the plugin's own event
+    // S6.4: the Event Plane's published contract. Carrying the plugin's own event
     // definition and the emission seam as `compileOnly` is the point: the JAR ships only its
     // classes, and the host supplies the registry, the codec types and the capability at runtime.
     // A plugin that had to bundle the Event Plane would be able to run a SECOND registry beside
@@ -101,7 +101,7 @@ kotlin {
 tasks.jar {
     manifest {}
     // Nothing else: the plugin JAR carries only its own classes. The ServiceLoader
-    // descriptor (EP-4) is a resource; the SDK contracts come from the host at runtime.
+    // descriptor is a resource; the SDK contracts come from the host at runtime.
     isPreserveFileTimestamps = false
     isReproducibleFileOrder = true
 }
@@ -157,7 +157,7 @@ val computeSagaRelease = tasks.register("computeSagaRelease") {
     val namespaceName = sagaNamespace
     val releaseVersion = version.toString()
 
-    // R4 / WU-R4.0.0 — declare sdkVersion as an explicit input so the
+    // R4 — declare sdkVersion as an explicit input so the
     // apiRange is regenerated when the host version changes (see
     // example-block-plugin for the same change with the full story).
     inputs.property("sdkVersion", sdkVersion)

@@ -36,13 +36,13 @@ internal data class ScriptCompilation(
  * | durable | unwrapped the reflective wrapper and **rethrew** the author's exception, so the author read their own message |
  * | volatile | swallowed every exception and answered "no pipeline" |
  *
- * The durable side carries the reason in its own comment (S0-C1 / TRAIN-DSL-HONESTY):
+ * The durable side carries the reason in its own comment:
  * swallowing the construction rejection turned it into "no pipeline", the runner
  * reported it downstream as a step failure, and the author's discarded value
  * disappeared. The volatile side still swallowed it.
  *
  * That is the same fact read by two readers, and the two readers disagreed — which is
- * exactly what LF-0208 (Single Runtime Spine) forbids: the storage choice must not
+ * exactly what (Single Runtime Spine) forbids: the storage choice must not
  * select a different behaviour. So the compilation is now ONE reader, and it is the
  * honest one.
  *

@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 /**
  * Pure, total sanitiser for `core.publishHTML` `reportName` values.
- * Reference: jenkinsci/htmlpublisher-plugin master @ 6a536b8d
+ * Reference: jenkinsci/htmlpublisher-plugin master
  *   HtmlPublisherTarget.java (MIT) — `sanitizeReportName()` method.
  *   Source lines (verbatim behaviour):
  * ```java

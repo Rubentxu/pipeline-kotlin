@@ -373,7 +373,7 @@ data class StashFailed(
 
 // ---------------------------------------------------------------------------
 // Core.publishHTML (Tier B #2) capability seam + closed result ADT
-// Reference: jenkinsci/htmlpublisher-plugin master @ 6a536b8d
+// Reference: jenkinsci/htmlpublisher-plugin master
 //   HtmlPublisher.java + HtmlPublisherTarget.java (MIT)
 //   sanitizeReportName replicated verbatim in PublishHtmlSanitiser
 // ---------------------------------------------------------------------------

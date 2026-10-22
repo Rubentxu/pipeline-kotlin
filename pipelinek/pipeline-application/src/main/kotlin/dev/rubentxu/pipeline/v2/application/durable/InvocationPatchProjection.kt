@@ -111,7 +111,7 @@ internal fun projectInvocationPatch(
 /**
  * The context a patch derives, by the SAME pure derivation the scopes use.
  *
- * The parent is preserved (CTX-P: a derivation never mutates the caller's context), and a
+ * The parent is preserved (a derivation never mutates the caller's context), and a
  * derivation that is rejected falls through to the parent unchanged.
  */
 private fun contextWith(

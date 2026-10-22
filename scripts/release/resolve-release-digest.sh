@@ -11,7 +11,7 @@
 # ---------------------
 # The published SHA256SUMS records the path the asset had inside the release
 # BUILD, not its download name. Observed on the real v0.41.0-rc1 release:
-#   d49edc08...  dist/candidates/v0.41.0-rc1/pipelinek-0.41.0-rc1.zip
+#   ... dist/candidates/v0.41.0-rc1/pipelinek-0.41.0-rc1.zip
 # Comparing the whole field would fail every real release closed. Both the
 # prefixed and the flat form are accepted; only the basename is significant.
 # The old `${asset}.sha256` sidecar is NOT consulted. That URL returns 404 on

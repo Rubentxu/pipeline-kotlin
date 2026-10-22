@@ -17,7 +17,7 @@ import org.junit.jupiter.api.Test
  * canonical text is `v<version>:<kind>:<segments>`. The first version of this pair therefore
  * round-tripped only for hand-written run ids that no producer emits. It surfaced in an independent
  * consumer build that could not decode the token it had just encoded.
- * The guardian for that fix was deleted in `2aa071aab` while the KDoc describing the fix stayed.
+ * The guardian for that fix was deleted in ` ` while the KDoc describing the fix stayed.
  * This file is the guardian the KDoc already implied.
  * Why the E2E layer cannot cover it: `examples/run.sh` reads the process exit code and, at most, a
  * substring of stderr. The cursor travels in the API response on stdout, which the launcher writes

@@ -6,7 +6,7 @@
 // destroys: a WRITE through a link that leaves the workspace.
 // `normalize()` collapses `.` and `..` but never dereferences a symlink, so
 // `<workspace>/escape/pwned.txt` starts with the workspace while `escape`
-// points at the workspace's PARENT. Before c2d3da66 that passed the guard and
+// points at the workspace's PARENT. Before that passed the guard and
 // `Files.createDirectories` + the atomic rename both landed outside.
 // The runner asserts two things and cannot express a third: the run exits
 // nonzero, and the refusal names the escape. That second directive is what

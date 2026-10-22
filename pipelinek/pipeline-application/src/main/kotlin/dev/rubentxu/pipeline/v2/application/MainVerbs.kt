@@ -200,7 +200,7 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
         return true
     }
 
-    // Inspect subcommand (the inspect subcommand work, ADR-0088): bounded diagnostic surface.
+    // Inspect subcommand (the inspect subcommand work): bounded diagnostic surface.
     //
     // The verb is the same workflow for `inspect` that `observe`, `events`, and `console`
     // are for their lanes: a typed parser + a typed query + a typed projection. The dispatcher

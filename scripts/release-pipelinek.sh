@@ -197,7 +197,7 @@ fi
 
 # ----------------------------------------------------------------------------
 # 5a. Tag ↔ artefact identity.
-#     The audit of v0.61.0-rc1 recorded git-head.txt = eda7dd56 while the tag
+#     The audit of v0.61.0-rc1 recorded git-head.txt = while the tag
 #     pointed at fdcadcfd, with no statement of the relationship. That release
 #     was published by hand, so nothing recorded WHICH commit produced the
 #     bytes and nothing recorded that the two commits were parent and child. A

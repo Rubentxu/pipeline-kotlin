@@ -18,7 +18,7 @@ import java.nio.file.Path
  * Compose the credential injection stack ONCE, shared by the durable (--db)
  * and in-memory (default `pipeline run`) branches.
  *
- * T12 / WU-LPR-103: the store location comes from [CredentialsStorePath], the
+ * T12: the store location comes from [CredentialsStorePath], the
  * ONE authority: PIPELINE_CREDENTIALS_STORE if set, else ~/.pipeline/credentials.bin.
  * PIPELINE_STORE_PASSPHRASE supplies the passphrase.
  *

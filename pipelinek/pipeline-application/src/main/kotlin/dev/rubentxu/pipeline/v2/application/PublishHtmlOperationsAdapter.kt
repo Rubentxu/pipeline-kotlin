@@ -32,7 +32,7 @@ import java.util.UUID
  * The handler reaches ONLY [PublishHtmlOperations] via the
  * [PUBLISH_HTML_OPERATIONS_CAPABILITY] typed seam — it never touches `Files`,
  * `MessageDigest`, or `EventSink` directly.
- * Reference: jenkinsci/htmlpublisher-plugin master @ 6a536b8d
+ * Reference: jenkinsci/htmlpublisher-plugin master
  *   `HtmlPublisher.archiveReports()` + `HTMLReportTarget.getArchive()`.
  *   Pipeline-K deviation: no symlink alternative (rejected for cross-platform
  *   portability); no `keepAll` run-overlap (rejected for

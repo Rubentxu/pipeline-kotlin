@@ -14,7 +14,7 @@ import dev.rubentxu.pipeline.v2.domain.scm.Scm
  *
  * This interface extends [dev.rubentxu.pipeline.v2.domain.durable.StepSpec] to enable
  * the domain layer's [dev.rubentxu.pipeline.v2.domain.durable.BranchSpec] to reference
- * DSL steps without creating a domain→DSL dependency (ADR-0033).
+ * DSL steps without creating a domain→DSL dependency.
  */
 sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     override val name: String
@@ -65,7 +65,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      *
      * The old default made every un-annotated `error()` indistinguishable in the durable
      * stream from a fault nobody understood, which is precisely the distinction an
-     * external observer needs (P3-E E1, §5.7). Narrowing it also removes a fail-open edge:
+     * external observer needs (E1). Narrowing it also removes a fail-open edge:
      * the default used to be the one value that could only ever have come from nobody
      * choosing.
      *
@@ -79,7 +79,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
      *
      * Typed, that is a compile error against the vocabulary itself, which is the only place it
      * can be caught without running anything. This closes the last `String` in this module that
-     * a P3-E authored semantic decision passed through.
+     * a authored semantic decision passed through.
      *
      * Two things this deliberately does NOT change:
      *
@@ -416,7 +416,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
 
     /**
      * `lock(resource) { ... }` — hold a named resource while the enclosed body
-     * runs (RP6-A / WU-091). declarative structural IR only: the compiler
+     * runs. declarative structural IR only: the compiler
      * lowers this variant through [dev.rubentxu.pipeline.v2.application.CoreLockInput]
      * and the single wire authority `CoreLockWireCodec`; this type carries no
      * wire vocabulary of its own.
@@ -473,7 +473,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
 
     /**
      * `input(message) { ... }` — ask a human and continue only if they say yes
-     * (RP6-B / WU-092). declarative structural IR only: the compiler lowers this
+     * . declarative structural IR only: the compiler lowers this
      * variant through
      * [dev.rubentxu.pipeline.v2.application.CoreInputInput] and the single wire
      * authority `CoreInputWireCodec`; this type carries no wire vocabulary of its

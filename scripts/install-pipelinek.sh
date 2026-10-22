@@ -156,7 +156,7 @@ asset_zip()    { printf 'pipelinek-%s.zip' "$1"; }
 # The published manifest records the path the asset had INSIDE the release
 # build, not the bare download name. Observed on the real v0.41.0-rc1
 # release:
-#   d49edc08...  dist/candidates/v0.41.0-rc1/pipelinek-0.41.0-rc1.zip
+#   ... dist/candidates/v0.41.0-rc1/pipelinek-0.41.0-rc1.zip
 # so the asset is matched on its BASENAME. Matching the full field would make
 # every real install fail closed, which is the safe direction but still wrong.
 lookup_sha256sums_entry() {

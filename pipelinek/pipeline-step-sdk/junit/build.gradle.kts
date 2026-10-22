@@ -50,9 +50,9 @@ val junitResourcesDir = layout.buildDirectory.dir("resources/main")
 // 1. ABSOLUTE PATHS IN THE MATERIAL. This script used
 //    `sha256sum $all | sha256sum` over ABSOLUTE paths, and `sha256sum` PRINTS THE
 //    FILENAME IT WAS GIVEN, so the checkout path entered the digest. Measured on
-//    6732863c: two checkouts of the same clean tree produced
-//    `pipeline.junit.release.digest` 563804512db1e747… and 3ca0fce6ae20de23…, so the
-//    shipped ZIP digests differed (ea9078de… vs ba0b1d07…) for byte-identical sources.
+//    two checkouts of the same clean tree produced
+//    `pipeline.junit.release.digest` … and …, so the
+//    shipped ZIP digests differed (… vs …) for byte-identical sources.
 //    The shared ProvenanceDigest frames only the root NAME and the RELATIVE path, so
 //    the absolute path never enters the material.
 // 2. A LEAKED TEMPORARY FILE. The shell pipeline wrote `${out}.digest` inside the

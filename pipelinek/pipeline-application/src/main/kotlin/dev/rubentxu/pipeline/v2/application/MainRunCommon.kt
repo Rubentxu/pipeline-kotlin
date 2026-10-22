@@ -143,7 +143,7 @@ internal fun writeEventDocument(
  * Correct verdict, right exit code, right message — delivered as an uncaught exception. A stack trace
  * tells the author that something broke inside the runtime, when what happened is that their pipeline
  * is wrong and the runtime is working. AGENTS.md reserves exceptions for adapter boundaries and
- * programmer defects (STRICT TYPED FUNCTIONAL DESIGN §11); a stage that mixes a `parallel` body with
+ * programmer defects (STRICT TYPED FUNCTIONAL DESIGN); a stage that mixes a `parallel` body with
  * sibling steps is neither.
  *
  * ## What it does NOT swallow

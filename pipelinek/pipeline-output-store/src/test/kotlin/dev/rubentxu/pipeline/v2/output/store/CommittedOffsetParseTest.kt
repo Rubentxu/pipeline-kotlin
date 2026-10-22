@@ -15,7 +15,7 @@ import java.io.IOException
  * break.
  *
  * The function is pure: a `String` in, a `Long` out or an [IOException] out. No disk, no clock, no
- * step, no subprocess. AGENTS.md §2 forbids the heavier setup for a unit test of a domain rule, and
+ * step, no subprocess. AGENTS.md forbids the heavier setup for a unit test of a domain rule, and
  * this rule has a heavier setup cost far above its value — the on-disk admission is exercised by
  * the higher paths. See [SegmentOutputStore.committedLocked] for the call site.
  *

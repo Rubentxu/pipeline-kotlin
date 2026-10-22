@@ -28,7 +28,7 @@ import java.nio.file.Path
  * not, and pretending otherwise would be a lie in a KDoc. Two facts of
  * [CanonicalRunPolicy] differ too, and both on purpose:
  *
- * - `credentialProvider`: the in-memory world passes **no** provider (H5-B),
+ * - `credentialProvider`: the in-memory world passes **no** provider,
  *   so a Step that reads a credential gets `NotConfigured` — the honest answer
  *   for a run with nowhere to look;
  * - `controlDirRoot`: necessarily different, because the two worlds keep their

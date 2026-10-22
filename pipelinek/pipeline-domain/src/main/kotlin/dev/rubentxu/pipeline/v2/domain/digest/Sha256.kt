@@ -9,7 +9,7 @@ import java.security.MessageDigest
 /**
  * The one SHA-256 utility in this repository
  * ## Why this exists
- * An inventory at `6e8e86bd` found 29 `MessageDigest.getInstance("SHA-256")` call sites across
+ * An inventory at ` ` found 29 `MessageDigest.getInstance("SHA-256")` call sites across
  * seven modules and four separately written `sha256Hex` helpers, with no shared utility. Each
  * site re-decided two things that must agree:
  * ```text

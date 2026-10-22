@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test
  * The admission laws of [EventRegistry]: which declarations get in, and what a reader can
  * therefore rely on once they are in.
  * The class KDoc above promises these laws are "each pinned by [EventRegistryTest]". That
- * sentence was a lie until this file existed: `2aa071aab` deleted the 21 test files of this
+ * sentence was a lie until this file existed: ` ` deleted the 21 test files of this
  * module and the promises stayed in the source, so a reader concluded a guardian existed where
  * none did. This file is the guardian that sentence was already claiming.
  * Why the laws matter beyond tidiness: a kind is the identity a recorded event travels under.

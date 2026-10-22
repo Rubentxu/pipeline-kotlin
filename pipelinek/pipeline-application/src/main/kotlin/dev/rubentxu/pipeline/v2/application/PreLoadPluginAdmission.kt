@@ -231,18 +231,27 @@ object PreLoadPluginAdmission {
     }
 
     /**
-     * The artifact that STAYS in the composition when a second artifact claims an identity that is
-     * already admitted, and nothing for any other refusal.
+     * The artifact that had ALREADY CLAIMED the identity when the duplicate was found, and nothing
+     * for any other refusal.
      *
      * [PluginManifestRejection.DuplicateIdentity] carries the identity twice and no artifact at
      * all: the vocabulary of refusals is published, and adding a third field to it would break the
-     * consumers that read it. The artifact that stays is therefore carried by the refusal's
+     * consumers that read it. The earlier artifact is therefore carried by the refusal's
      * `detail`, which the CLI already prints next to the reason.
      *
      * Without it the operator reads "this artifact was refused because another one already has
      * this name" and has no way of learning WHICH other one: the refused artifact is named by the
-     * message, and the one that wins the name is named nowhere. That is the difference between a
-     * diagnosis and a rumour.
+     * message, and the one that claimed the name first is named nowhere. That is the difference
+     * between a diagnosis and a rumour.
+     *
+     * ## What this detail does NOT say
+     *
+     * It does not say the earlier artifact "stays in the composition", because **nothing stays**:
+     * one refusal stops the whole composition, and this one is raised while the artifacts are
+     * being pre-admitted, before there is a composition to stay in. The earlier artifact had
+     * claimed the identity first — that is the only fact worth reporting — but the run refuses to
+     * start either way. A detail that says the artifact "stays" teaches the operator that the
+     * pipeline they just refused is running with their plugin in it, and that is false.
      */
     internal fun duplicateIdentityDetail(
         rejection: AdmissionRejection,
@@ -250,7 +259,8 @@ object PreLoadPluginAdmission {
     ): String? {
         if (rejection !is PluginManifestRejection.DuplicateIdentity) return null
         val incumbent = admittedByIdentity[rejection.identity] ?: return null
-        return "the same identity is already admitted from $incumbent, which stays in the composition"
+        return "the same identity was already claimed by $incumbent, admitted earlier in this " +
+            "pre-admission pass; the whole composition is refused"
     }
 
     /**

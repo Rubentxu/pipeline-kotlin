@@ -65,7 +65,7 @@ hoy, y cambiarla es una ruptura versionada que no se hace sin autorización.
 
 | # | Qué falta | Por qué sigue abierto |
 |---|---|---|
-| 1 | **La política** de la identidad duplicada: el primero que llega se queda y el legítimo es expulsado | el **diagnóstico** ya nombra a los dos artefactos (§2.51), así que el operador sabe cuál es cuál. Lo que queda es la **política**: rechazar ambos, o ninguno, es un cambio de comportamiento observable y por tanto una ruptura versionada, que no se hace sin autorización explícita |
+| 1 | **La política** de la identidad duplicada, si algún día hace falta cambiarla | el **diagnóstico** ya nombra los dos artefactos (§2.51) y dice que la composición entera se rehúsa, así que el operador sabe cuál es cuál y sabe que nada se está ejecutando. Lo que queda **no es un defecto pendiente**: el sistema **ya rechaza la composición** cuando ve el duplicado. Cambiar *qué* artefacto conserva la identidad es un cambio de comportamiento observable y por tanto una ruptura versionada, que sólo se hace con una **necesidad de producto concreta**, no porque el modelo sea más bonito |
 | 2 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
 | 3 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | el nombre no es invertible y nadie ha demostrado que ningún consumidor necesite distinguir los dos (§2.45) |
 | 4 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
@@ -5883,8 +5883,9 @@ el operador nombró— y no al que **se queda**, que es el que el operador tiene
 que encontrar.
 
 **Lo que cambia, y lo que no.** El `detail` del rechazo —que la CLI ya
-imprimía, y que hasta ahora nadie llenaba— lleva ahora el artefacto que gana
-la identidad. La **política no cambia**: qué artefacto gana la identidad sigue
+imprimía, y que hasta ahora nadie llenaba— lleva ahora el artefacto que
+**había reclamado la identidad primero**, y dice que la composición entera se
+rehúsa. La **política no cambia**: qué artefacto conserva la identidad sigue
 siendo «el primero que llega», y eso no se toca aquí. Lo que cambia es que el
 diagnóstico deja de ser un rumor: el operador lee los dos nombres y puede
 decidir cuál de los dos ficheros es el suyo.

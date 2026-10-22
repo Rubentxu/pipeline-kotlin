@@ -180,6 +180,17 @@ internal fun admitThenComposeOrExit(
             error("unreachable: System.exit does not return")
         }
 
+        is CompositionOutcome.UnattributedProvider -> {
+            // No artifact can be named for this one: the provider does not say which artifact
+            // provides it. The provider's own name is the only thing the operator can act on.
+            System.err.println(
+                "Plugin admission refused: provider ${outcome.providerClass} could not be " +
+                    "attributed to an artifact (${outcome.reason})",
+            )
+            System.exit(2)
+            error("unreachable: System.exit does not return")
+        }
+
         is CompositionOutcome.RuntimeVersionUnavailable -> {
             System.err.println("FATAL — ${outcome.detail}")
             System.exit(3)

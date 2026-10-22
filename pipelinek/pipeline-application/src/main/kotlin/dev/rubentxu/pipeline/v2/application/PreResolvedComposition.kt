@@ -240,11 +240,16 @@ object PluginCompositionAdmitter {
                         composition = PluginComposition.resolve(loader, admission.artifacts),
                         admitted = admission.artifacts,
                     )
-                } catch (e: PluginContributionRefusal) {
+                } catch (e: PluginContributionRefusal.Drift) {
                     // Pass 1 admitted the artifact; pass 2 caught the artifact LYING about what it
                     // provides. Turn it back into the same typed refusal a pass-1 rejection produces,
                     // so the CLI exits 2 naming the artifact and the drift, uniformly.
                     CompositionOutcome.Refused(e.artifact, e.rejection)
+                } catch (e: PluginContributionRefusal.Unattributed) {
+                    // Pass 2 could not even tell WHICH artifact a provider belongs to, so there is
+                    // no artifact to name: the provider is named instead, and the composition stops
+                    // rather than admitting a contribution that no manifest can be compared against.
+                    CompositionOutcome.UnattributedProvider(e.providerClass, e.reason)
                 }
             }
         }
@@ -266,6 +271,15 @@ sealed interface CompositionOutcome {
         /** The human sentence behind the refusal, when it has one. */
         val detail: String? = null,
     ) : CompositionOutcome
+
+    /**
+     * A provider in the composition window could not be attributed to an artifact, so the
+     * cross-check could not judge it.
+     *
+     * The provider is named instead of an artifact, because no artifact can be named for it: that
+     * is the whole difference from [Refused], which always has one.
+     */
+    data class UnattributedProvider(val providerClass: String, val reason: String) : CompositionOutcome
 
     /** The running artifact carries no usable version, so no plugin could be judged. */
     data class RuntimeVersionUnavailable(val detail: String) : CompositionOutcome

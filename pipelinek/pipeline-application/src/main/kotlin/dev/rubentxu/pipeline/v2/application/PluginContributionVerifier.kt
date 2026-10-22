@@ -37,6 +37,14 @@ import java.util.ServiceLoader
  * contributions, so providers are attributed to the artifact whose code source they came from,
  * the same scoping the admission gate applies. All THREE families are scoped by that one rule:
  * a Step is not "this plugin's" in some looser sense a Directive is not.
+ * ## Why a provider that cannot say where it came from stops the composition
+ * Bucketing by artifact only means something when every provider can say which artifact it is.
+ * A provider whose origin cannot be measured has no bucket, and a contribution with no bucket
+ * cannot be compared against any manifest: it would be invisible to the cross-check in BOTH
+ * directions, so a plugin could ship a Step nobody declared and the comparison would not see it.
+ * Such a provider is refused, by name, instead of being skipped. It is not attributed to every
+ * artifact either: that would compare one plugin's manifest against a neighbour's contributions
+ * and hide a real drift behind somebody else's implementation.
  * ## Fail-closed, symmetrically
  * The check is exact in BOTH directions — a declared Step with no definition AND a definition with
  * no declaration are both refusals — and it never warns. A malformed event declaration aborts here
@@ -51,9 +59,37 @@ internal object PluginContributionVerifier {
      * the SAME loader that produced the registries, so the two sides of the comparison are resolved
      * against one loader rather than two that could disagree.
      * @throws PluginContributionRefusal naming the artifact and the typed rejection, the
-     *   moment a plugin's contributions drift from its manifest.
-*/
+     *   moment a plugin's contributions drift from its manifest, or naming the provider that
+     *   could not be attributed to an artifact.
+    */
     fun verify(admitted: List<AdmittedArtifact>, classLoader: ClassLoader) {
+        verify(
+            admitted = admitted,
+            steps = providers(StepDefinitionContributor::class.java, classLoader),
+            directives = providers(DirectiveContributor::class.java, classLoader),
+            events = providers(EventDefinitionContributor::class.java, classLoader),
+        )
+    }
+
+    /**
+     * The cross-check itself, over contributions whose origin has already been measured.
+     *
+     * The origin is measured by the caller and arrives here as a value, so the decision this
+     * function makes — that a provider which cannot be attributed stops the composition — is a
+     * decision about data and not about a classloader, and it can be exercised without a
+     * classpath that hides its own origins.
+     * @throws PluginContributionRefusal.Unattributed when a provider does not say which artifact
+     *   provides it. Its contributions would have no bucket, and a contribution with no bucket is
+     *   invisible to the comparison in both directions.
+     * @throws PluginContributionRefusal.Drift when an admitted artifact's contributions do not
+     *   match what its manifest declared.
+    */
+    fun verify(
+        admitted: List<AdmittedArtifact>,
+        steps: List<Attributed<StepDefinitionContributor>>,
+        directives: List<Attributed<DirectiveContributor>>,
+        events: List<Attributed<EventDefinitionContributor>>,
+    ) {
         if (admitted.isEmpty()) return
 
         // Bucket each family's contributions by the ARTIFACT that produced them, in one pass per
@@ -62,30 +98,30 @@ internal object PluginContributionVerifier {
         val directivesByArtifact = mutableMapOf<Path, MutableSet<DirectiveKey>>()
         val eventsByArtifact = mutableMapOf<Path, MutableSet<String>>()
 
-        for (provider in ServiceLoader.load(StepDefinitionContributor::class.java, classLoader)) {
-            val origin = originOf(provider) ?: continue
-            for (registration in provider.registrations()) {
+        for (attributed in steps) {
+            val origin = attributed.artifact()
+            for (registration in attributed.provider.registrations()) {
                 stepsByArtifact.getOrPut(origin) { mutableListOf() }.add(registration.definition)
             }
         }
 
-        for (provider in ServiceLoader.load(DirectiveContributor::class.java, classLoader)) {
-            val origin = originOf(provider) ?: continue
+        for (attributed in directives) {
+            val origin = attributed.artifact()
             val keys = directivesByArtifact.getOrPut(origin) { mutableSetOf() }
-            for (definition in provider.definitions()) {
+            for (definition in attributed.provider.definitions()) {
                 keys.add(definition.key)
             }
         }
 
-        for (provider in ServiceLoader.load(EventDefinitionContributor::class.java, classLoader)) {
-            val origin = originOf(provider) ?: continue
+        for (attributed in events) {
+            val origin = attributed.artifact()
             val kinds = eventsByArtifact.getOrPut(origin) { mutableSetOf() }
-            for (creation in provider.definitions()) {
+            for (creation in attributed.provider.definitions()) {
                 when (creation) {
-                    is EventDefinitionCreation.Invalid -> throw PluginContributionRefusal(
+                    is EventDefinitionCreation.Invalid -> throw PluginContributionRefusal.Drift(
                         artifact = origin,
                         rejection = PluginManifestRejection.MalformedDocument(
-                            "contributor ${provider.id} declared a malformed event: " +
+                            "contributor ${attributed.provider.id} declared a malformed event: " +
                                 creation.problems.joinToString("; "),
                         ),
                     )
@@ -103,7 +139,7 @@ internal object PluginContributionVerifier {
                 eventKinds = eventsByArtifact[origin].orEmpty(),
             )
             if (!crossCheck.isConsistent) {
-                throw PluginContributionRefusal(
+                throw PluginContributionRefusal.Drift(
                     artifact = artifact.path,
                     rejection = PluginManifestRejection.InvalidManifest(
                         crossCheck.pluginId,
@@ -114,31 +150,63 @@ internal object PluginContributionVerifier {
         }
     }
 
-    /**
-     * The artifact a provider instance was loaded from, as a normalised [Path], or null when the
-     * provider has no readable code source.
-     * Normalisation is what lets an artifact PATH (the `--plugin-jar` string or the bundled-plan
-     * entry) be compared with a provider's `codeSource` URL: both are reduced to the same absolute,
-     * normalised file path. A null result — a provider with no code source — is skipped rather than
-     * attributed to every artifact, because attributing it to all of them would compare one
-     * plugin's manifest against a neighbour's contributions.
-*/
-    private fun originOf(provider: Any): Path? = runCatching {
-        provider.javaClass.protectionDomain?.codeSource?.location
-            ?.toURI()
-            ?.let { Path.of(it) }
-            ?.toAbsolutePath()
-            ?.normalize()
-    }.getOrNull()
+    /** Every provider of one family in the window, each with the origin measured for it. */
+    private fun <T : Any> providers(type: Class<T>, classLoader: ClassLoader): List<Attributed<T>> =
+        ServiceLoader.load(type, classLoader).map { Attributed(it, provenanceOf(it)) }
+
+    /** The origin of the code the provider's class was loaded from. */
+    private fun provenanceOf(provider: Any): ProviderOrigin =
+        ProviderProvenance.of(provider.javaClass.protectionDomain?.codeSource?.location)
 }
 
 /**
- * A plugin's contributions drifted from its manifest.
- * Carries the typed [PluginManifestRejection] rather than only a message, so the admission boundary
- * converts it back into a value ([CompositionOutcome.Refused]) and the CLI can exit 2 naming the
- * artifact — instead of this exception becoming a raw stack trace at the top of `main`.
+ * A contribution provider together with the artifact it was measured to come from.
+ */
+internal data class Attributed<T : Any>(val provider: T, val origin: ProviderOrigin) {
+
+    /**
+     * The artifact that provides this contribution, which is the bucket it belongs to.
+     * @throws PluginContributionRefusal.Unattributed when the origin could not be measured. The
+     *   provider is named, because no artifact can be named for it.
+    */
+    fun artifact(): Path = when (val measured = origin) {
+        is ProviderOrigin.Resolved -> measured.artifact
+        is ProviderOrigin.Missing -> throw PluginContributionRefusal.Unattributed(
+            providerClass = provider.javaClass.name,
+            reason = "the class declares no code source, so no artifact can be named for it",
+        )
+
+        is ProviderOrigin.Unreadable -> throw PluginContributionRefusal.Unattributed(
+            providerClass = provider.javaClass.name,
+            reason = "its code source ${measured.location} is not a file on disk (${measured.reason})",
+        )
+    }
+}
+
+/**
+ * The contribution cross-check could not clear the composition.
+ *
+ * Two shapes, because there are two different facts to report and neither one can stand in for
+ * the other:
+ *  - [Drift]: an admitted artifact's contributions do not match its manifest. The artifact is
+ *    known and the drift is named.
+ *  - [Unattributed]: a provider in the composition window does not say which artifact provides
+ *    it, so it cannot be compared against anything. There is no artifact to name, and the
+ *    provider itself is named instead.
+ *
+ * The refusal carries the typed reason rather than only a message, so the admission boundary
+ * converts it back into a value ([CompositionOutcome.Refused]) and the CLI can exit 2 naming
+ * what was wrong — instead of this exception becoming a raw stack trace at the top of `main`.
 */
-class PluginContributionRefusal(
-    val artifact: Path,
-    val rejection: PluginManifestRejection,
-) : IllegalStateException("plugin contribution cross-check failed for $artifact: $rejection")
+sealed class PluginContributionRefusal(message: String) : IllegalStateException(message) {
+
+    /** An admitted artifact's contributions drifted from its manifest. */
+    class Drift(val artifact: Path, val rejection: PluginManifestRejection) :
+        PluginContributionRefusal("plugin contribution cross-check failed for $artifact: $rejection")
+
+    /** A provider could not be attributed to an artifact, so it could not be judged. */
+    class Unattributed(val providerClass: String, val reason: String) :
+        PluginContributionRefusal(
+            "plugin contribution cross-check cannot judge provider $providerClass: $reason",
+        )
+}

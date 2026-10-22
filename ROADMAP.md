@@ -22,7 +22,7 @@ se cierra cuando su criterio de cierre está **medido**, y la medida dice dónde
 
 | Bloque | Qué cierra | Criterio de cierre |
 |---|---|---|
-| **B1** Integración y workspace | el contrato `authorizedWorkspaceRoot` frente a `effectiveWorkingDirectory` —ya presente en el código actual bajo otros nombres, §2.54—, las PR abiertas triadas, y el **instrumento** que faltaba: que los cuatro pasos de workspace coincidieran sobre la misma base | ninguna divergencia conocida entre ramas, la puerta completa en verde sobre el SHA integrado, y un escenario ejecutable que ponga en rojo a cualquiera de los cuatro si vuelve a resolver contra el workspace de la etapa |
+| **B1** Integración y workspace | el contrato `authorizedWorkspaceRoot` frente a `effectiveWorkingDirectory` —ya presente en el código actual bajo otros nombres, §2.54—, las PR abiertas triadas y cerradas (§2.54), y el **instrumento** que ya existe (§2.55): un escenario ejecutable que pone en rojo a cualquiera de los cuatro si vuelve a resolver contra el workspace de la etapa | ninguna divergencia conocida entre ramas, la puerta completa en verde sobre el SHA integrado, y las cuatro patas del contrato demostradas por mutación independiente (§2.55) |
 | **B2** Plugins e identidad | las derivas que quedan de la segunda puerta, y el límite de procedencia, confianza y admisión | cada deriva observada contra un artefacto real, con su escenario y su fila |
 | **B3** Durabilidad y Output Plane | identidades, offsets y recuperación; un efecto externo no se repite tras una caída | recuperación caracterizada con el binario real, sin efectos duplicados |
 | **B4** Publicación, SDK y pruebas | la distribución instalada, un consumidor externo del SDK, y la economía de la instrumentación | artefacto publicado verificado por fuera, y pruebas que se pueden explicar |
@@ -35,9 +35,24 @@ puerta completa corrió **tres veces en verde** sobre el SHA integrado (§2.46).
 `authorizedWorkspaceRoot` frente a `effectiveWorkingDirectory` **ya existe** en
 el código actual, con otros nombres y **más fuerte** —raíz autorizada con
 *lease* tipado frente a cwd efectivo—, y las cuatro PR que lo tocaban apuntan
-a un árbol que ya no existe. Lo que queda de B1 no es código: es el
-**instrumento** que fije que los cuatro pasos de workspace coinciden sobre la
+a un árbol que ya no existe. Lo que quedaba de B1 no era código: era el
+**instrumento** que fijase que los cuatro pasos de workspace coinciden sobre la
 misma base, y el cierre de esas PR con su motivo.
+
+**El instrumento ya está, y las cuatro patas están medidas** (§2.55). Un solo
+escenario, `examples/steps/34-workspace-coherence.pipeline.kts`, con **cuatro
+mutaciones independientes** —una por pata, un solo punto de código cada una— y
+cuatro filas rojas distintas: `writeFile` apaga `WROTE_HERE`; `stash` apaga
+`RESTORED` y `SCOPE_CLEAN`; `unstash` apaga `RESTORED` y `ROOT_NOT_POLLUTED`;
+`deleteDir` apaga `VICTIM_GONE` y `ROOT_VICTIM_SURVIVED`. La fuga de la raíz
+hacia dentro del ámbito y la fuga del ámbito hacia fuera están **medidas**, no
+inferidas.
+
+**Y el contrato de propiedad dejó de ser ambiguo** (§2.56): una raíz de la que
+nadie sabe de quién es **no concede** permiso de destrucción. Antes lo
+concedía, y su propio KDoc llamaba a esa decisión «fail-closed» cuando era
+fail-open. Un default que concede permiso es un default que espera a que
+alguien se olvide.
 
 Después, este bloque cerró la **tercera familia de la mentira**: un plugin que
 declara **eventos** que no aporta, observado contra un artefacto real (§2.48).
@@ -83,17 +98,17 @@ composición se rechaza.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `6abf20388`, medido en los ensayos de este bloque. Entre `2c0151b58` y este **el código de producción no cambia**: lo que se añade es un escenario ejecutable (§2.55) y este documento. Los tres ensayos del árbol anterior siguen describiendo el producto, y los de éste lo describen entero | `git rev-parse HEAD` |
+| SHA | `fb45f23a6`, medido en los ensayos de este bloque. Entre `773ec6a60` y este **el código de producción sí cambia**: la propiedad no acreditada deja de conceder permiso de destrucción (§2.56), y el instrumento del workspace se refuerza con cuatro mutaciones independientes (§2.55) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1071** (148 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1074** (149 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **61 (61 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **61 de 61**: **167 garantías** comprobadas —162 en los 60 anteriores y 5 en el nuevo de coherencia del workspace (§2.55). El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **19018 / 67378 = 0.282** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios con una garantía comprobada | **61 de 61**: **170 garantías** comprobadas —162 en los 60 anteriores y 8 en el nuevo de coherencia del workspace (§2.55). El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 61 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **19066 / 67381 = 0.283** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **190 / 178 / 174** en los tres ensayos, los tres sobre `6abf20388`, peor 190 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **235 / 197 / 225** en los tres ensayos, los tres sobre `fb45f23a6`, peor 235 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -106,12 +121,12 @@ sale mejor que la realidad.
 
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
-165 s en el bloque de las tres familias; este ciclo midió **240, 165 y 176 s**:
+165 s en el bloque de las tres familias; este ciclo midió **235, 197 y 225 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 240 s, es menos
+de este ciclo el presupuesto se cumplió con holgura —el peor, 235 s, es menos
 de la tercera parte de los 900 s—, y eso que el árbol medido incluye la
-distribución, la API pública, los 1070 tests y los 60 escenarios.
+distribución, la API pública, los 1074 tests y los 61 escenarios.
 
 **Dos ensayos anteriores a estos tres se descartaron, y hay que decir por
 qué.** Sobre el mismo árbol, la puerta dio dos veredictos con rojos, y **todos
@@ -6094,15 +6109,15 @@ cuatro llevan el árbol entero como diff porque su base ya no existe; una es
 GitHub Actions, que la política no introduce por defecto; y tres son de
 publicación, SDK o integración, con su propio bloque.
 
-**Lo que queda abierto, y es de instrumento, no de código.** La invariante
-vive repartida entre cuatro adaptadores y dos KDoc, y **nada se pondría rojo**
+**Lo que quedaba abierto, y era de instrumento, no de código.** La invariante
+vivía repartida entre cuatro adaptadores y dos KDoc, y **nada se ponía rojo**
 si uno de ellos volviera a re-derivar el workspace del control root — que es
 justo el defecto que el KDoc de `DeleteDirOperationsAdapter` dice que **ya
-ocurrió una vez**. El instrumento que falta es un escenario ejecutable que
+ocurrió una vez**. El instrumento que faltaba es un escenario ejecutable que
 abra un `dir(...)` y compruebe que `writeFile`, `deleteDir`, `stash` y
-`unstash` ven **la misma** base: si cualquiera de los cuatro resolviera
-contra el workspace de la etapa en vez del cwd efectivo, borraría el archivo
-de la raíz y dejaría vivo el del subdirectorio, y el escenario lo vería.
+`unstash` ven **la misma** base. Ese instrumento **ya existe** (§2.55), y este
+párrafo queda como el registro de lo que faltaba cuando se escribió esta
+tabla.
 
 ### 2.55 El instrumento que faltaba: los cuatro pasos, una sola base
 
@@ -6115,63 +6130,185 @@ workspace de la etapa. Y ese defecto **ya ocurrió una vez**: el KDoc de
 stage workspace from the control root, so inside a `dir(...)` scope the two
 Steps disagreed about where "sub" was»*.
 
-**El escenario.** `examples/steps/34-workspace-coherence.pipeline.kts`. La raíz
-de la etapa tiene `at-root.txt`; el ámbito `dir("inner")` tiene
-`in-inner.txt` y `victim/keep.txt`. Cada uno de los cuatro pasos recibe una
-comprobación que **sólo puede pasar** si resolvió contra el cwd efectivo:
+**El instrumento.** `examples/steps/34-workspace-coherence.pipeline.kts`, un solo
+escenario para las cuatro patas. La raíz de la etapa tiene `at-root.txt` y su
+propio `victim/`; el ámbito `dir("inner")` tiene `anchor.txt`, `written.txt` y su
+propio `victim/keep.txt`. Siete marcas:
 
-| paso | comprobación | qué se ve si resuelve contra la etapa |
+| marca | qué garantiza | qué la apaga |
 |---|---|---|
-| `writeFile` | dentro del ámbito, `in-inner.txt` está | el ámbito queda vacío y el archivo cae en la raíz |
-| `stash` + `unstash` | el stash lleva el contenido del ámbito y el restore lo devuelve ahí | el stash se lleva `at-root.txt` y `in-inner.txt` sigue faltando |
-| `deleteDir` | `victim` queda borrado | busca `<etapa>/victim`, no encuentra nada y deja vivo `<ámbito>/victim/keep.txt` |
+| `WROTE_HERE` | `writeFile` escribió en el ámbito | resolvió contra la raíz de la etapa |
+| `RESTORED` | el `stash` + `unstash` devolvió el contenido al ámbito | el stash tomó la raíz, o el restore fue a la raíz |
+| `SCOPE_CLEAN` | el archivo de la raíz de la etapa **no** entró en el ámbito | el `stash` arrastró la raíz hacia dentro |
+| `VICTIM_GONE` | el `deleteDir` borró el `victim` del ámbito | resolvió contra la raíz de la etapa |
+| `ROOT_SURVIVED` | el archivo de la raíz sigue donde estaba | el ámbito lo tocó |
+| `ROOT_VICTIM_SURVIVED` | el `victim` de la raíz sigue vivo | el `deleteDir` lo borró |
+| `ROOT_NOT_POLLUTED` | el archivo del ámbito no acabó arriba | el restore fue a la raíz |
 
-Y el último marcador cierra la otra dirección: el archivo de la raíz de la
-etapa sobrevive, así que los pasos del ámbito no salieron a tocarlo. Los
-marcadores se emiten **después** de la comprobación, de modo que un paso mal
-resuelto **falla la ejecución** —el escenario se pone rojo por el fallo, no por
-un marcador que falta.
+**Las comprobaciones no abortan la ejecución.** Cada una es
+`test … && echo MARCA || echo TOKEN_DE_FALLO`, así que una comprobación que
+falla imprime **su** token y el run continúa. El informe nombra así exactamente
+qué garantías se perdieron, en vez de pararse en la primera. Los tokens de
+fallo evitan a propósito toda marca esperada, de modo que un fallo nunca puede
+confundirse con un verde. Y las dos comprobaciones que hablan del otro lado —
+`SCOPE_CLEAN` y `ROOT_NOT_POLLUTED`— son las que cierran las dos direcciones de
+la fuga: **la raíz hacia dentro** y **el ámbito hacia fuera**.
 
-**La mutación, vista en rojo.** Una sola línea, y es la compartida por los
-cuatro pasos: `ShOptionsExecutionLocationAdapter` calcula el cwd efectivo, y
-sustituir `(scopedWorkingDirectory ?: root)` por `(root)` hace que todo paso
-dentro de un ámbito `dir(...)` resuelva contra la raíz autorizada. Con eso:
+**Dos árboles `victim/`, en los dos niveles.** Con uno solo, un `deleteDir`
+contra la base equivocada o borraba el archivo del ámbito —tapando la
+regresión— o fallaba por directorio inexistente, abortando el run antes de que
+la comprobación pudiera hablar. Con los dos, la base equivocada tiene algo que
+borrar, la copia del ámbito sobrevive y la comprobación puede hablar.
+
+**Un ancla que el `sh` crea, no el `writeFile`.** `anchor.txt` y
+`victim/keep.txt` se crean con `sh` a propósito: existen diga lo que diga el
+`writeFile`, así que un `writeFile` roto no deja al `stash` sin nada que tomar
+y no aborta el run antes de que el informe pueda nombrar la garantía perdida.
+
+**Las cuatro mutaciones, una por pata.** Cada una toca **un solo** punto de
+código y se mide contra **el mismo** escenario. Ninguna pata espera su propio
+escenario, y ninguna comparte punto de mutación con otra:
+
+| pata | punto mutado | garantías que se apagan | token |
+|---|---|---|---|
+| `writeFile` | `WorkspaceOperations`: `PathAnchor.CURRENT_DIRECTORY` → `WORKSPACE_ROOT` | `WROTE_HERE` | `LEG_write_scope` |
+| `stash` | `StashOperationsAdapter`: la 1.ª `val workspaceRoot = sourceRoot()` → `executionLocation?.workspace?.root` | `RESTORED`, `SCOPE_CLEAN` | `LEG_restore_scope`, `LEG_root_leaked` |
+| `unstash` | el mismo fichero, la **2.ª** ocurrencia (la del `unstash`) | `RESTORED`, `ROOT_NOT_POLLUTED` | `LEG_restore_scope`, `LEG_restore_escaped` |
+| `deleteDir` | `DeleteDirOperationsAdapter`: `executionLocation.cwd` → `executionLocation.workspace.root` | `VICTIM_GONE`, `ROOT_VICTIM_SURVIVED` | `LEG_delete_scope`, `LEG_root_victim_lost` |
+
+Cada fila es una fila roja con su motivo, y las cuatro se distinguen: ningún
+token de una fila aparece en otra.
+
+**La fuga, vista de cerca.** La fila del `stash` es la que responde a la
+pregunta que este bloque tenía que responder —*«¿arrastra el `stash` un archivo
+de la raíz exterior al ámbito?»*—. Con el `stash` tomando la raíz de la etapa,
+el archivo de la raíz **entra** en el ámbito. Medido con una UAT efímera que
+volcaba el árbol (retirada después de evaluarla):
 
 ```
-1 scenario(s), 0 passed, 1 failed   ->   exit 1, expected 0
-Pipeline finished with FAILURE
-  cause [SCRIPT]: shell exited with code 1
+D2_FILES=at-root.txt victim written.txt
+D2_TXT=../at-root.txt ../inner/at-root.txt ../inner/written.txt ../victim/keep.txt
 ```
 
-El fichero de producción se restauró byte a byte y se reconstruyó.
+`../inner/at-root.txt` es el archivo de la raíz de la etapa, dentro del ámbito:
+la fuga, medida, no inferida.
 
-**Lo que el rojo prueba y lo que no, dicho con precisión.** La mutación rompe
-el cwd efectivo **compartido**, así que las cuatro patas se rompen a la vez; el
-escenario se enciende en la **primera** comprobación —`test -f in-inner.txt`— y
-el run aborta ahí, de modo que las otras tres no llegan a evaluarse en esa
-corrida. Lo que queda probado es lo importante: el escenario **enciende** una
-ruptura real de la base compartida, y no se limita a comprobar que un `dir` se
-mueve.
+**Un error mío que casi se publica como si fuera del producto.** La primera
+medición dio la misma señal para `stash` y para `unstash`, lo que parecía decir
+que el instrumento no distinguía las dos patas. No era así: el script de
+mutación acababa en `p.write_text(s.replace(old, new))`, y el `replace` de Python
+reescribe **todas** las ocurrencias —la mutación de `stash` estaba cambiando
+también el `unstash`—. La pata «stash» estaba midiendo, sin decirlo, una
+mutación compartida. Con un único sitio de mutación por pata, las dos se
+separan y cada una enciende las suyas. El defecto estaba en el instrumento de
+medida, que es exactamente donde un error así se esconde: el script era el
+único que podía confirmar que las cuatro patas eran cuatro.
 
 **Medido, sobre el árbol de este bloque:**
 
 | Métrica | Valor |
 |---|---|
-| Escenario, sin mutación | verde: exit 0, **5 garantías** comprobadas, 15 pasos terminados |
-| Escenario, con la mutación | **rojo**: exit 1, 0 pasos terminados |
-| Mutación | **1** línea, en el punto compartido por los cuatro pasos |
+| Escenario, sin mutación | verde: exit 0, **7 garantías** comprobadas, 16 pasos terminados |
+| Mutaciones | **4**, una por pata, un solo punto de código cada una |
 | Fichero de producción | restaurado byte a byte (`git diff` vacío) |
-| Puerta | **`PASS`** en tres ensayos sobre `6abf20388`: **190 / 178 / 174 s** contra 900 s, 1071 tests, **61/61** escenarios |
+| Puerta | **`PASS`** en tres ensayos sobre el SHA definitivo: ver §1 |
+
+### 2.56 Una propiedad no acreditada no concede permiso de destrucción
+
+**El hallazgo.** El permiso de destruir la raíz del workspace se concede en
+**un solo caso** del lease: `Managed`, que afirma que PipelineK reservó ese
+directorio. `Attached` —el directorio del usuario— lo rechaza. El puente que
+traduce el transporte viejo a la ubicación tipada mapeaba la propiedad
+**desconocida** a `Managed`:
+
+```
+WorkspaceOwnership.PIPELINEK, null -> WorkspaceLease.Managed(root)
+```
+
+Es decir: **no saber de quién es el directorio concedía el permiso de
+borrarlo**. Y el KDoc de ese mismo adaptador lo llamaba «the fail-closed choice
+for destruction», cuando era exactamente la decisión **fail-open**. El
+comentario y el código decían cosas opuestas, y el código era el que mandaba.
+
+**Alcanzable, y no sólo en teoría.** El transporte `ShOptions` declara
+`workspaceOwnership: WorkspaceOwnership? = null`, y hay **dos** sitios de
+producción que lo construyen sin acreditarlo:
+
+| sitio | raíz | consecuencia antes del arreglo |
+|---|---|---|
+| `MainScriptedSupport` (el frontend scripted) | `<controlRoot>/workspace` | permiso concedido sin acreditación; por suerte la raíz sí era de PipelineK |
+| `CanonicalDurableRunCoordinator.shOptions`, cuyo **default** es `ShOptions.EMPTY` | un `createTempDirectory` **compartido** | permiso concedido sobre un directorio temporal compartido |
+
+El camino canónico sí acredita la propiedad —la CLI la decide y la cruza—,
+pero el **default** del transporte era *fail-open*, y un default es lo que se
+usa cuando alguien olvida.
+
+**El arreglo.** La propiedad desconocida deja de traducirse en permiso:
+`null` produce el lease que **rechaza**. Y el sitio que sí conoce su
+propiedad la dice, para que su permiso legítimo sea **acreditado** y no
+accidental: el frontend scripted declara `WorkspaceOwnership.PIPELINEK`, que
+es lo que es.
+
+**Por qué no un tercer caso del lease.** El modelo correcto —`Attached` para
+el usuario, `Managed` para lo de PipelineK, y un tercero para «no se sabe»—
+exigiría añadir un caso a `WorkspaceLease`, y ese tipo está en el **ABI
+publicado** de `pipeline-domain` (`api/pipeline-domain.api`, líneas 8981-9015).
+Añadir un caso a una interfaz sellada publicada es una ruptura versionada, y
+eso no se hace sin autorización explícita. Queda escrito como el modelo
+propio, no como un descuido.
+
+**El instrumento mínimo.** `UnaccreditedWorkspaceOwnershipTest` — **3 filas
+puras**, sin disco, sin reloj y sin proceso: una raíz sin dueño acreditado
+**rechaza** la destrucción; la raíz que PipelineK reservó **la permite**; la
+raíz del usuario la **rechaza**.
+
+**La fila, vista en rojo.** Un test que nunca se ha visto rojo no es evidencia.
+Volviendo a poner el default *fail-open* —`null` a `Managed`— el informe JUnit
+dice exactamente esto:
+
+```
+tests="3" skipped="0" failures="1" errors="0"
+<failure message="... an unstated owner must never grant the destructive
+                   permission: Permitted ==> expected: <true> but was: <false>" />
+```
+
+**Una** fila de tres, la que vigila precisamente el default, y ni una más: las
+otras dos no se mueven porque no dependen de él. El fichero de producción se
+restauró byte a byte y la suite volvió a dar 3 de 3.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **No saber de quién es un directorio no es motivo para borrarlo.** El
+  permiso de destruir la raíz se concedía cuando la propiedad era
+  *desconocida*, porque el caso que lo concede afirmaba ser de PipelineK y
+  el puente usaba ese caso para lo que no sabía. La propiedad desconocida
+  produce ahora el caso que **rechaza**, y el sitio que sí conoce su
+  propiedad la declara para que su permiso sea acreditado y no accidental.
+  Un default que concede permiso es un default que espera a que alguien se
+  olvide.
 - **Un contrato que ya ha roto una vez necesita un instrumento, no un
   comentario.** La coherencia de la base del workspace —`dir`, `deleteDir`,
   `stash` y `unstash` sobre el mismo cwd efectivo— estaba escrita en cuatro
   adaptadores y dos KDoc, y ya había roto una vez: el KDoc de
   `DeleteDirOperationsAdapter` lo confiesa. Un KDoc no se rompe, se ignora. El
-  instrumento es un escenario que **falla** si la base se separa, y la mutación
-  que lo demuestra es de **una** línea en el punto compartido por los cuatro
-  pasos, porque un contrato que se rompe en un sitio se rompe en todos.
+  instrumento es **un** escenario que falla si la base se separa —no cuatro
+  escenarios, que sería el mismo contrato medido cuatro veces por el precio de
+  cuatro filas— y la demostración son **cuatro mutaciones, una por pata**, cada
+  una tocando **un solo** punto de código. La primera versión de esa
+  medición mutaba el punto compartido, y con ella las cuatro patas se
+  encendían a la vez: eso demuestra que el contrato se rompe entero, no que
+  cada pata se vigile. Con una mutación por pata, cada una apaga **sus**
+  garantías y deja las demás en verde, y ninguna comparte token con otra.
+- **Un instrumento de medida también puede mentir, y por eso hay que mirar lo
+  que mide, no lo que dice.** La primera matriz dio la misma señal para `stash`
+  y para `unstash`, y la explicación cómoda era «el instrumento no
+  distingue». La verdadera estaba en el script de mutación: acababa en
+  `write_text(s.replace(old, new))`, y el `replace` de Python reescribe
+  **todas** las ocurrencias, así que la pata del `stash` estaba cambiando
+  también la del `unstash` sin decirlo. El defecto no estaba en el producto
+  ni en el escenario: estaba en el instrumento de medida, que es justo donde
+  un error así se esconde, porque el script era el único que podía confirmar
+  que las cuatro patas eran cuatro. Un mutador que no **verifica** cuántos
+  sitios ha tocado no puede usarse para separar dos casos que se parecen.
 - **Un diagnóstico tiene que ser fiel al resultado, no a una parte del
   resultado.** El rechazo por identidad duplicada nombraba al artefacto que
   reclamó la identidad primero y añadía «que se queda en la composición». La

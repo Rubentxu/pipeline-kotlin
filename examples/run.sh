@@ -78,8 +78,9 @@
 #                                     the installation that ADMITS and then lies, which
 #                                     only a second gate can catch. `lying-capabilities`
 #                                     declares a capability the plugin's own contract
-#                                     never requires, and `lying-directives` declares a
-#                                     Directive nobody contributes.
+#                                     never requires, `lying-directives` declares a
+#                                     Directive nobody contributes, and `lying-events`
+#                                     declares an Event nobody contributes.
 #   //@ timeout <seconds>            the clock this scenario gets. The default is
 #                                    an order of magnitude above what any scenario
 #                                    takes today, so the clock only fires on a
@@ -357,6 +358,7 @@ build_lying_plugin_fixture() {
     #   capabilities a capability the plugin's contract does not require is declared for one of
     #                its Steps: the plugin says it needs something its own code never asks for.
     #   directives   a Directive nobody contributes is declared.
+    #   events       an Event nobody contributes is declared.
     #
     # Each substitution is anchored on a literal that the manifest really contains, and the result
     # is checked twice: the document must have CHANGED, and the ghost must be IN it. A manifest
@@ -373,6 +375,10 @@ build_lying_plugin_fixture() {
             ;;
         directives)
             sed "s|\"directives\": \[|\"directives\": [\"$ghost_key\", |" \
+                "$manifest" >"$rewritten"
+            ;;
+        events)
+            sed "s|\"events\": \[|\"events\": [\"$ghost_key\", |" \
                 "$manifest" >"$rewritten"
             ;;
         *)
@@ -846,8 +852,8 @@ run_scenario_body() {
     # different.
     if [[ -n "$distribution" ]]; then
         case "$distribution" in
-            lying-uppercase|lying-capabilities|lying-directives)
-                # Three kinds of lie, one instrument. The copy is byte for byte the installed
+            lying-uppercase|lying-capabilities|lying-directives|lying-events)
+                # Four kinds of lie, one instrument. The copy is byte for byte the installed
                 # distribution, with ONE JAR inside it replaced, and the run happens against that
                 # copy. The alternative -- offering the lying plugin IN ADDITION to the bundled
                 # one -- is a different artifact with the same identity, and it is refused for
@@ -859,6 +865,7 @@ run_scenario_body() {
                 case "$distribution" in
                     lying-capabilities) lying_kind="capabilities"; lying_key="example.uppercase.ghostCapability" ;;
                     lying-directives)   lying_kind="directives";   lying_key="example.uppercase.ghostDirective" ;;
+                    lying-events)       lying_kind="events";       lying_key="example.uppercase.ghostEvent" ;;
                 esac
                 local installed_dist="$repo_root/pipelinek/pipeline-application/build/install/pipelinek"
                 local private_dist="$root/cwd/distribution"

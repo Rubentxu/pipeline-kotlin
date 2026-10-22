@@ -187,6 +187,13 @@ private const val REDACTION_CANARY_PROPERTY = "pipelinek.redaction.canaries"
  *  7. `run` picks its world: volatile without `--db`, durable with it.
  */
 fun main(args: Array<String>) {
+    // Before anything opens a store. The SQLite driver extracts its native
+    // library into the directory named by `org.sqlite.tmpdir`, and falls back
+    // to the shared temporary one when that property is absent — leaving the
+    // extracted pair loose in the root of the system temporary directory.
+    // This gives the driver a directory this process owns and names.
+    SqliteNativeLibraryHome.configure()
+
     // `--help`, `-h` and `help` are real. Before this they fell through to the same
     // rejection that told the operator to run them.
     if (isHelpRequest(args)) {

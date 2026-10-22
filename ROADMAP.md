@@ -4962,6 +4962,121 @@ se revirtió.
 nada lo sustituyó: las reglas son la lista de comprobación del revisor, y ahora
 el fichero lo dice en vez de prometer una puerta que no está.
 
+### 2.36 El censo contaba declaraciones, no garantías
+
+**El defecto, con su número.** El censo del arnés decía «19 de 56 escenarios sólo
+miran el código de salida». El número era verdad sobre el **canal** y falso
+sobre la **garantía**:
+
+- Los 19 **afirman**. Su garantía vive en los pasos del propio pipeline —un
+  `sh("cmp a b")` que hunde el run cuando el producto se equivoca—, y el código
+  de salida es lo que la transporta. El censo contaba declaraciones: un
+  escenario con `//@ expect-stdout` puntuaba 1 y uno que afirma con sus propios
+  pasos puntuaba 0.
+- Y el código de salida **no dice lo que el run concluyó**. El producto publica
+  esa conclusión en su lane de eventos, con cuatro palabras —`success`,
+  `unstable`, `failure`, `aborted`— y el arnés no las leía. Un run que capturó un
+  fallo y siguió adelante sale con 0 igual que uno que no tenía nada que
+  capturar: el código de salida no distingue dos mundos que el operador tiene que
+  distinguir.
+
+Un censo que miente sobre lo que compra la suite no es un número feo: es una
+decisión mal dirigida. Dice «escribe 19 `expect-stdout`», y eso es escribir
+declaraciones, que es lo más barato que hay.
+
+**Lo que hace el arnés ahora.** Lee la conclusión del run del propio producto —el
+bookend terminal de su lane de eventos— y la compara con lo que el escenario
+declara. Una directiva nueva, y en el vocabulario del producto:
+
+```kotlin
+//@ expect-outcome unstable
+```
+
+Sin ella, el resultado esperado se deduce del código de salida esperado: un run
+que debe acabar bien espera `success`, y un run que debe fallar espera
+`failure`. Con ella, el escenario dice qué espera que **concluya** el run, que no
+es lo mismo que cómo termina el proceso.
+
+**El tercer resultado, que no cabe en un bit.** `unstable` es un resultado de
+verdad: un run que capturó un fallo y siguió adelante sale con 0 y se concluye
+`unstable`. Dos escenarios lo producían sin declararlo —
+`negative/12-error-handling` y `control-flow/11-workflow-control`— y ahora lo
+dicen. El censo cuenta cuántos terminaron así, porque un verde inestable es un
+verde más débil que un verde limpio y quien lee el resultado tiene que saber de
+qué clase es.
+
+**Las mutaciones, que es donde esto se prueba.** Un verde que nunca se ha visto
+rojo no es evidencia, así que cada cosa nueva se ha encendido en rojo a
+propósito, y se sabe qué fila se encendió:
+
+| Mutación | Filas rojas | Filas que no se movieron |
+|---|---|---|
+| El producto publica `success` para **todo** run, mudo sobre su propia conclusión | **15**: las seis de saga, las dos de eventos, las cinco de `negative/`, la de Zip Slip y las dos que declaran `unstable` | **41**, ninguna afectada por la mentira |
+| La expectativa de un escenario pasa de `unstable` a `success` | **1**, y el código de salida del run **sigue siendo 0**: un arnés que sólo mirara el código de salida no lo vería | el resto de la suite |
+| La contención de la ruta de entrada de un archivo deja de decidir | **5** de Zip Slip | las 5 que aceptan nombres legales |
+| El guard de credenciales en `argv` pierde el caso del usuario sin contraseña | **2**: el token como usuario, y la independencia del caso del esquema | las 8 restantes, incluidas las 4 que ya existían |
+| Un terminal que el runtime no sabe clasificar se registra como éxito | **1** | las 3 restantes del vocabulario |
+| La receta de la clave de caché `v1` se reescribe | **1** | las 5 restantes |
+
+**El residuo que la mudanza dejó atrás.** Bajo el layout viejo quedaban **9
+ficheros Kotlin que ningún build compilaba**: dos copias viejas de ficheros que
+hoy viven en otro sitio, el módulo que se cortó a propósito, un adaptador que ya
+se había borrado —su propio KDoc decía que «nunca lo llamó nadie»— y **cuatro
+tests unitarios** que eran el **único observador** de reglas vivas:
+
+| Test rescatado | Regla que estaba sin nadie mirándola |
+|---|---|
+| El vocabulario del run recuperado | «Lo que no se sabe no es un éxito»: un terminal que el runtime no clasifica se registra como fallo, y una cancelación como abortada |
+| La ruta de entrada de un archivo descomprimido | La contención: un archivo puede pedir un nombre que cae fuera del destino |
+| El guard de credenciales en `argv` | Las **formas aceptadas**: un guard que lo rechaza todo no protege nada, y el KDoc del propio producto prometía que un test las fijaba |
+| La clave de caché | Que la receta vieja conserve su significado, porque un digest ya escrito tiene que seguir significando lo mismo |
+
+Los cuatro se han portado a su módulo, contra el mismo API y sobre la misma
+función observada, y **cada uno se ha visto rojo** antes de darse por bueno. Los
+otros cinco ficheros se han borrado: eran código que el árbol actual ya no
+tiene, y código que nadie compila es código que nadie sabe que existe.
+
+**El árbol ahora declara el JDK con el que se compila.** El gate lo resolvía
+por su cuenta —busca un JDK 21 entre las instalaciones de asdf y lo exporta
+antes de invocar Gradle—, pero el build **no declaraba** ninguna toolchain, así
+que un `./gradlew` lanzado directamente sobre el `java` de la máquina fallaba con
+un `IllegalArgumentException: 25.0.4.1` que no nombraba ni un fichero ni una
+regla: el compilador del DSL de Gradle no sabe leer la versión de un JDK más
+nuevo que él. El mensaje del gate incluso decía «el build declara
+`jvmToolchain(21)`», y eso no era verdad hasta ahora. Ahora es verdad en los dos
+sitios, y `.tool-versions` hace que el `java` de dentro del repositorio sea el
+que el build pide.
+
+**Una fusión, y una garantía que faltaba.** Los tres escenarios del plugin de
+utilidades —el viaje de ida y vuelta de JSON y YAML, el zip y el unzip, y la
+cadena que los mezcla— afirmaban la misma capacidad repartida en tres ficheros,
+y uno de ellos prometía en su comentario una «prueba de durabilidad por
+entrada» que **no asertaba**: calculaba el SHA-256 de cada entrada y nunca
+comparaba nada, así que un archivo con los nombres correctos y los bytes
+equivocados pasaba. Ahora hay **un** escenario, con las tres garantías y con la
+comparación byte a byte que faltaba. Los dos `withEnv` del árbol **no** se
+fundieron: uno afirma el bloque de variables y el otro el paso de shell, y son
+capacidades distintas.
+
+**Medido, sobre el árbol de este ciclo:**
+
+| Métrica | Valor |
+|---|---|
+| Escenarios E2E | **54**, los 54 verdes, 0 fallidos, 0 bloqueados |
+| Escenarios con una garantía comprobada | **54 de 54** (antes el censo declaraba 19 sin garantía: era falso) |
+| Garantías comprobadas por el arnés | **133** |
+| Pasos que el producto terminó | **195** |
+| Runs que concluyeron `unstable` | **2**, declarados por los escenarios que los producen |
+| Tests unitarios | **1049**, 0 fallos, 0 skips, 145 informes reescritos por la corrida |
+| `VERIFY_LOC / PRODUCT_LOC` | **17958 / 67318 = 0.267** (límite 2) |
+| Reloj de la puerta | **167 s** contra 900 s |
+
+**En una frase, para quien llega nuevo:** el arnés ya no pregunta «¿terminó el
+proceso?», sino «¿qué concluyó el run, y es lo que el escenario esperaba?»; el
+árbol ya no tiene Kotlin que nadie compile, y los cuatro tests que la mudanza
+dejó atrás vuelven a vigilar las reglas que protegían; y el build dice con qué
+JDK se compila, en vez de heredarlo de la máquina.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
@@ -5758,6 +5873,44 @@ el fichero lo dice en vez de prometer una puerta que no está.
   *contenido* y destroza la *forma*, y la forma rota es lo primero que ve el
   lector. Por eso las 86 fichas tocadas se repasaron a mano después: el
   instrumento localiza, la mano reescribe.
+
+- **El arnés lee la conclusión del run, no sólo su código de salida.** El
+  código de salida dice si el proceso acabó bien; no dice **qué concluyó el
+  run**, y hay al menos dos finales que un cero no distingue: el limpio y el de
+  un run que capturó un fallo y siguió adelante. El producto publica esa
+  conclusión con un vocabulario de cuatro palabras, así que leerla no cuesta
+  nada y el arnés la lee.
+
+- **El escenario declara el resultado que espera, en el vocabulario del
+  producto.** La palabra la pone quien conoce la garantía, no quien la deduce
+  de un código de salida. Sin declaración, el resultado esperado se deduce del
+  código de salida esperado, que es una inferencia correcta por construcción y
+  por eso mismo no puede descubrirse: sólo puede confirmarse.
+
+- **El censo mide lo que el arnés comparó, no lo que los escenarios
+  declararon.** Un número que confunde el canal con la garantía no estorba:
+  **dirige el trabajo** hacia lo más barato que hay —una declaración— en vez de
+  hacia lo que falta. Un escenario que afirma con sus propios pasos no necesita
+  que nadie le escriba una directiva encima: necesita que el arnés lea lo que el
+  run concluded.
+
+- **Un test perdido es una regla sin observador, y un fichero que nadie compila
+  es código que nadie sabe que existe.** Los dos son el mismo defecto con
+  distinta cara: la garantía está en el árbol y nadie la mira. La respuesta es
+  la misma en ambos casos —traer el observador o quitar el código—, y en este
+  caso fueron las dos cosas a la vez.
+
+- **El build declara el JDK con el que se compila, igual que declara su
+  versión.** El gate ya lo resolvía por su cuenta y su mensaje de fallo ya
+  nombraba una declaración que el build no tenía. Un mensaje de error que
+  describe un hecho falso enseña al operador a buscar el motivo en el sitio
+  equivocado.
+
+- **Fundir escenarios no pierde el diagnóstico cuando el veredicto nombra el
+  paso que falló.** El miedo a fundir es que un rojo deje de decir qué se
+  rompió; con la conclusión del run, el rojo dice el paso. Una garantía por
+  fichero era una consecuencia de que el arnés no supiera atribuir, no una
+  propiedad de las garantías.
 
 ## 4. Referencias
 

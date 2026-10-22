@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
 import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
 import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.application.durable.AdmissionControlJournal
 import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
@@ -139,7 +140,11 @@ internal fun runDurablePipeline(
     // same single entry point as the in-memory branch above. Writing the admission
     // wiring out a second time here would let the two branches disagree about which plugins were
     // admitted, which is precisely the defect S6/G removed once already.
-    val composition = admitThenComposeOrExit(config.pluginJars)
+    val composition = admitThenComposeOrExit(
+        config.pluginJars,
+        pluginTrustSource(config.pluginTrust),
+        AdmissionControlJournal(controlDirRoot),
+    )
     val composedStepRegistry = composition.steps
     // the workspace decision rule + the typed owner decision: the workspace origin is decided
     // ONCE, here at the boundary, and both facts cross into the runtime — the

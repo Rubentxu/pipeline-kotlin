@@ -7,6 +7,7 @@ import dev.rubentxu.pipeline.v2.application.observation.ConsolePrintingEventSink
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.application.durable.AdmissionControlJournal
 import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
@@ -112,7 +113,11 @@ internal fun runVolatilePipeline(
     // admission happens FIRST and inside the same function, so the in-memory and
     // durable branches cannot admit differently. S6/G's "one resolution for the whole run" now
     // also covers the decision about WHICH artifacts are allowed to resolve at all.
-    val composition = admitThenComposeOrExit(config.pluginJars)
+    val composition = admitThenComposeOrExit(
+        config.pluginJars,
+        pluginTrustSource(config.pluginTrust),
+        AdmissionControlJournal(controlDirRoot),
+    )
     val composedStepRegistry = composition.steps
     val nonCanonicalSteps = compiledPipeline
         ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()

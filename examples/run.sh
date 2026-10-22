@@ -705,11 +705,31 @@ run_scenario_body() {
     cd "$caller_pwd"
 
     if [[ "$run_volatile" == 1 ]]; then
-        cd "$root/cwd"
+        # The volatile execution gets its OWN working directory and its OWN
+        # PIPELINEK_E2E_HOME. The two executions are two different runs of the
+        # same pipeline in two different worlds, and a scenario that writes a
+        # marker has to see only ITS world's marker.
+        #
+        # They used to share one directory, and a scenario that asserts an EXACT
+        # world could not pass in the second execution: the first execution's
+        # marker was still there, so the second read it as its own effect. The
+        # reading it produced — "the effect repeated" — is exactly what a
+        # scenario that runs in both worlds cannot distinguish from "the world
+        # was already like this", and it is a false accusation: the two runs
+        # never shared a world to begin with.
+        #
+        # The control root was already per-execution (`control` and
+        # `control-volatile`); the working directory was the one that was not,
+        # and that is where a scenario's markers live.
+        mkdir -p "$root/cwd-volatile"
+        local durable_home="$PIPELINEK_E2E_HOME"
+        export PIPELINEK_E2E_HOME="$root/cwd-volatile"
+        cd "$root/cwd-volatile"
         binary run --isolated --control-root "$root/control-volatile" \
             ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
             >"$vstdout" 2>"$vstderr" || vcode=$?
         cd "$caller_pwd"
+        export PIPELINEK_E2E_HOME="$durable_home"
     fi
 
     if [[ "$durable" == 1 ]]; then

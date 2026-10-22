@@ -1,8 +1,9 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestFactory
+import org.junit.jupiter.api.DynamicTest.dynamicTest
 
 /**
  * Whether a run's event store may be opened is ONE decision, and the closed set of reasons it may
@@ -28,60 +29,68 @@ class EventStoreAdmissionTest {
 
     private val path = "/runs/run-42/events.db"
 
-    // --- the rule that carries the axis ----------------------------------------
-
-    @Test
-    fun `a read is refused when the file is absent`() {
-        // The specific claim first: a reader pointed at a run that did not happen
-        // must be told so, not handed a store it will create and appear empty.
-        assertEquals(
+    /**
+     * Six observable outcomes, one row per member of the closed product
+     * PathObservation x EventStorePurpose. Parameterization reduces test-code
+     * duplication; it deliberately does NOT reduce the six executed cases.
+     *
+     * The positive and negative pair for NoFile is essential: a blanket refusal
+     * or a blanket admission must both turn this table red.
+     */
+    @TestFactory
+    fun `all combinations decide admission by purpose and observation`() = listOf(
+        AdmissionCase(
+            "missing file, read: refuse absent",
+            PathObservation.NoFile,
+            EventStorePurpose.Read,
             EventStoreRefusal.Absent(path),
-            refusalFor(PathObservation.NoFile, path, EventStorePurpose.Read),
-        )
-    }
-
-    @Test
-    fun `a write proceeds when the file is absent, because creating it is the point`() {
-        // Refusing here would break every first run, which is the most common run
-        // there is -- the case that made the pre-existing split necessary.
-        assertNull(refusalFor(PathObservation.NoFile, path, EventStorePurpose.Write))
-    }
-
-    // --- a missing directory refuses BOTH purposes ------------------------------
-
-    @Test
-    fun `a missing directory refuses a read`() {
-        assertEquals(
+        ),
+        AdmissionCase(
+            "missing file, write: permit creation",
+            PathObservation.NoFile,
+            EventStorePurpose.Write,
+            null,
+        ),
+        AdmissionCase(
+            "missing directory, read: refuse",
+            PathObservation.NoDirectory,
+            EventStorePurpose.Read,
             EventStoreRefusal.NoDirectory(path),
-            refusalFor(PathObservation.NoDirectory, path, EventStorePurpose.Read),
-        )
-    }
-
-    @Test
-    fun `a missing directory refuses a write too`() {
-        // The axis does NOT apply here: a write may create the FILE, not the
-        // DIRECTORY holding it. Both refusals name the path for the same reason --
-        // it is the actionable half for an operator who has to create it.
-        assertEquals(
+        ),
+        AdmissionCase(
+            "missing directory, write: refuse",
+            PathObservation.NoDirectory,
+            EventStorePurpose.Write,
             EventStoreRefusal.NoDirectory(path),
-            refusalFor(PathObservation.NoDirectory, path, EventStorePurpose.Write),
-        )
+        ),
+        AdmissionCase(
+            "existing path, read: permit",
+            PathObservation.Present,
+            EventStorePurpose.Read,
+            null,
+        ),
+        AdmissionCase(
+            "existing path, write: permit",
+            PathObservation.Present,
+            EventStorePurpose.Write,
+            null,
+        ),
+    ).map { case ->
+        dynamicTest(case.label) {
+            assertEquals(
+                case.expected,
+                refusalFor(case.observation, path, case.purpose),
+                "observation=${case.observation}, purpose=${case.purpose}; acceptance cannot be inferred from exit 0",
+            )
+        }
     }
 
-    // --- a present path is admitted for both ------------------------------------
-
-    @Test
-    fun `a present path is admitted for a read`() {
-        assertNull(refusalFor(PathObservation.Present, path, EventStorePurpose.Read))
-    }
-
-    @Test
-    fun `a present path is admitted for a write`() {
-        // A PRESENT path that SQLite still cannot open is `NotReadable`, carrying
-        // SQLite's own words. This layer does not second-guess that, which is why
-        // admission here is not a promise that opening will succeed.
-        assertNull(refusalFor(PathObservation.Present, path, EventStorePurpose.Write))
-    }
+    private data class AdmissionCase(
+        val label: String,
+        val observation: PathObservation,
+        val purpose: EventStorePurpose,
+        val expected: EventStoreRefusal?,
+    )
 
     // --- the refusal set stays closed -------------------------------------------
 

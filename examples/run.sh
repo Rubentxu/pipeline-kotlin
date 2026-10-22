@@ -70,6 +70,13 @@
 #                                     JAR that is not there: the artifact whose bytes
 #                                     cannot be read, and therefore cannot be
 #                                     verified before anything is loaded from it.
+#   //@ distribution <fixture>        the scenario runs against its OWN copy of the
+#                                     installed distribution, with one thing changed
+#                                     inside it. `lying-uppercase` replaces the
+#                                     distribution's own plugin with one whose
+#                                     manifest declares a Step it does not implement:
+#                                     the installation that ADMITS and then lies, which
+#                                     only a second gate can catch.
 #   //@ timeout <seconds>            the clock this scenario gets. The default is
 #                                    an order of magnitude above what any scenario
 #                                    takes today, so the clock only fires on a
@@ -105,6 +112,15 @@ repo_root="$(cd -- "$here/.." && pwd)"
 # whole mechanism exists to prevent. As a function, the only ways to reach
 # the product are the two below, and BOTH of them apply a clock.
 product_path() {
+    # A scenario that runs against its OWN distribution says so here, and only
+    # here. The clock is applied to whatever this function returns, so an
+    # override cannot become a way to run the product without a ceiling. The
+    # variable it reads is a LOCAL of the scenario body, so it dies with the
+    # scenario and no scenario inherits another's distribution.
+    if [[ -n "${scenario_product:-}" ]]; then
+        printf '%s' "$scenario_product"
+        return
+    fi
     printf '%s' "$repo_root/pipelinek/pipeline-application/build/install/pipelinek/bin/pipelinek"
 }
 
@@ -286,6 +302,77 @@ build_binary_fixtures() {
             return 1
         }
     fi
+}
+
+# A plugin whose manifest says more than it provides.
+#
+# The copy is the distribution's own plugin, byte for byte, with ONE thing changed: its manifest
+# declares a Step the plugin does not implement. Nothing else is touched, so the artifact still
+# passes admission -- the manifest is well formed, the identity is the publisher's, the version is
+# the publisher's -- and the run reaches the second gate, the one that compares what the manifest
+# DECLARED against what the contributor ACTUALLY provided.
+#
+# The change is legal to make because the manifest is excluded from the digest the plugin build
+# measures: that digest is provenance, it says which release the manifest describes, and the runtime
+# never compares it with the digest of the file that carries it. A manifest that lies about its
+# Steps is a valid document. Only loading the plugin's code and comparing the two sides can catch
+# it, which is exactly what the scenario needs to observe.
+build_lying_plugin_fixture() {
+    local jar="$1"
+    local ghost_key="$2"
+
+    command -v unzip >/dev/null || {
+        printf 'run.sh: unzip is required to read the plugin manifest for the lying fixture\n' >&2
+        return 1
+    }
+    command -v zip >/dev/null || {
+        printf 'run.sh: zip is required to write the plugin manifest for the lying fixture\n' >&2
+        return 1
+    }
+
+    local workdir
+    workdir="$(mktemp -d)" || {
+        printf 'run.sh: could not create a work directory for the lying fixture\n' >&2
+        return 1
+    }
+
+    local manifest_entry="META-INF/pipelinek/plugin-manifest.json"
+    ( cd "$workdir" && unzip -qo "$jar" "$manifest_entry" ) || {
+        printf 'run.sh: could not read the plugin manifest from %s\n' "$jar" >&2
+        rm -rf "$workdir"
+        return 1
+    }
+
+    local manifest="$workdir/$manifest_entry"
+    local rewritten="$workdir/plugin-manifest.json"
+    # The declared Steps live in one array. The ghost Step is appended to it, and NOTHING else in
+    # the document changes: the identity, the version, the publisher, the api range and every
+    # other declared contribution stay the publisher's own. If the array cannot be found, the
+    # substitution leaves the document untouched and the scenario fails on the missing refusal --
+    # a broken fixture makes the scenario RED, never green.
+    sed "s|\"steps\": \[|\"steps\": [{\"stepKey\": \"$ghost_key\", \"declaredCapabilities\": []}, |" \
+        "$manifest" >"$rewritten" || {
+        printf 'run.sh: could not write the lying plugin manifest\n' >&2
+        rm -rf "$workdir"
+        return 1
+    }
+    if cmp -s "$manifest" "$rewritten"; then
+        printf 'run.sh: the lying fixture could not add a declared Step to the plugin manifest\n' >&2
+        rm -rf "$workdir"
+        return 1
+    fi
+
+    mv "$rewritten" "$manifest" || {
+        printf 'run.sh: could not replace the plugin manifest\n' >&2
+        rm -rf "$workdir"
+        return 1
+    }
+    ( cd "$workdir" && zip -q "$jar" "$manifest_entry" ) || {
+        printf 'run.sh: could not write the lying manifest back into %s\n' "$jar" >&2
+        rm -rf "$workdir"
+        return 1
+    }
+    rm -rf "$workdir"
 }
 
 # The operator's trust material for a scenario: a publisher key pair, the detached signature over
@@ -609,6 +696,12 @@ run_scenario_body() {
     local -a seeds=()
     local plugin_jar=""
     local plugin_trust=""
+    local distribution=""
+    # The product this scenario runs, when it is not the repository's
+    # installation. It is a LOCAL of this function: `product_path` reads it
+    # and nothing else does, so it cannot outlive the scenario and it cannot
+    # be a way to reach the product without the clock.
+    local scenario_product=""
     local events_refusal=""
     local events_resume=""
     local step_verdict=""
@@ -630,6 +723,7 @@ run_scenario_body() {
             '//@ recover')         recover=1 ;;
             '//@ credentials '*)   seeds+=("${directive#//@ credentials }") ;;
             '//@ plugin-jar '*)    plugin_jar="${directive#//@ plugin-jar }" ;;
+            '//@ distribution '*)  distribution="${directive#//@ distribution }" ;;
             '//@ plugin-trust '*)  plugin_trust="${directive#//@ plugin-trust }" ;;
             '//@ events-refusal '*) events_refusal="${directive#//@ events-refusal }" ;;
             '//@ events-resume '*)  events_resume="${directive#//@ events-resume }" ;;
@@ -703,6 +797,55 @@ run_scenario_body() {
                 printf 'FAIL %-52s unknown plugin-jar fixture: %s\n' "$name" "$plugin_jar"
                 failed=$((failed + 1))
                 failures+=("$name: unknown plugin-jar fixture '$plugin_jar'")
+                return
+                ;;
+        esac
+    fi
+
+    # The distribution this scenario runs against, when it is not the repository's installation.
+    # The copy is byte for byte the installed one, with ONE JAR inside it replaced, and the run
+    # happens against that copy. The alternative -- offering the lying plugin IN ADDITION to the
+    # bundled one -- is a different artifact with the same identity, and it is refused for that
+    # before anything else happens, which is a different refusal from the one this scenario is
+    # about. An installation whose plugin lies looks like this: the same distribution, one JAR
+    # different.
+    if [[ -n "$distribution" ]]; then
+        case "$distribution" in
+            lying-uppercase)
+                local installed_dist="$repo_root/pipelinek/pipeline-application/build/install/pipelinek"
+                local private_dist="$root/cwd/distribution"
+                if [[ ! -d "$installed_dist/lib" ]]; then
+                    printf 'FAIL %-52s the distribution has no lib directory to copy\n' "$name"
+                    failed=$((failed + 1))
+                    failures+=("$name: the distribution has no lib directory to copy")
+                    return
+                fi
+                if ! cp -R "$installed_dist" "$private_dist"; then
+                    printf 'FAIL %-52s the distribution could not be copied\n' "$name"
+                    failed=$((failed + 1))
+                    failures+=("$name: the distribution could not be copied")
+                    return
+                fi
+                local private_plugin
+                private_plugin="$(ls "$private_dist/lib/"example-uppercase-plugin-*.jar 2>/dev/null | head -1 || true)"
+                if [[ -z "$private_plugin" ]]; then
+                    printf 'FAIL %-52s the copied distribution has no example plugin to replace\n' "$name"
+                    failed=$((failed + 1))
+                    failures+=("$name: the copied distribution has no example-uppercase-plugin JAR")
+                    return
+                fi
+                if ! build_lying_plugin_fixture "$private_plugin" "example.uppercase.ghost"; then
+                    printf 'FAIL %-52s the lying plugin fixture could not be built\n' "$name"
+                    failed=$((failed + 1))
+                    failures+=("$name: the lying plugin fixture could not be built")
+                    return
+                fi
+                scenario_product="$private_dist/bin/pipelinek"
+                ;;
+            *)
+                printf 'FAIL %-52s unknown distribution fixture: %s\n' "$name" "$distribution"
+                failed=$((failed + 1))
+                failures+=("$name: unknown distribution fixture '$distribution'")
                 return
                 ;;
         esac

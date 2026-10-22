@@ -6808,6 +6808,92 @@ Eso está en el artefacto publicado y en el proceso de release, no en este
 | Colateral | ninguno: el `apiRange` de los plugins se deriva solo, y el `firstPublished` del catálogo no se toca |
 | `:pipeline-runtime` | **vuelve a estar cableado** y lo compila la etapa 1 por su nombre (§2.52) |
 
+### 2.62 Los comentarios que afirman cosas que ya no son ciertas
+
+**La pregunta, tal y como estaba.** ¿Qué debería pasar cuando el código
+cambia y sus comentarios no? La respuesta de este árbol era, sin que nadie lo
+decidiera: el comentario se queda. Y un comentario que se queda afirmando
+una verdad que el código ya no tiene es peor que no escribirlo, porque un
+lector no puede saber que miente.
+
+Este bloque no cambia **una sola línea de comportamiento**. Cambia lo que el
+código afirma sobre sí mismo, y lo hace en cuatro frentes que se
+midieron, no se supusieron.
+
+**1. Guardianes que ya no existen.** Siete comentarios citaban un «fitness
+test» o una «architecture fitness» como la autoridad de una ley. Ese harness
+lo borró el RESET, así que las leyes estaban **sin observador**: el comentario
+prometía una vigilancia que nadie hacía, y el que lo leyera después de esa
+borrada habría creído que la ley vigila sola.
+
+Ahora la ley se enuncia y se dice que nada la vigila, con la fórmula que el
+propio árbol ya usaba en `SystemRuntimeConfig`: *«a reader who assumes a
+boundary the code does not draw will not notice the day one is crossed»*.
+En `AGENTS.md` §2 no se admite el *source-text fitness*, así que la respuesta
+correcta **no** es resucitar el test: es decir la verdad.
+
+**2. Un estado que ya no es el estado.** La constante `LEGACY_PLUGIN_IDS`
+tenía un KDoc de **123 líneas** que narraba un burn-down **ya terminado**, en
+frases a las que una referencia excizada había robado el sujeto:
+
+> «Remains physically present until deletes it (LEGACY_REMOVED)»
+> «Until the legacy dispatcher is unreachable in production but Still type-loadable»
+
+Medido, el estado real es este:
+
+| lo que se afirmaba | lo que se midió |
+|---|---|
+| el set tiene miembros | el set está **vacío** |
+| el decoder legacy tiene ramas | **no tiene ni una**: todo cae al `else` que lanza |
+| quedan dispatchers legacy | **ninguno**: no existe ningún `Canonical*Dispatcher.kt` |
+| quedan filas de metadata legacy | **ninguna**: `CanonicalCoreStepMetadata` no declara ninguna |
+| `CanonicalCoreStepCommand` tiene subtipos | **ninguno**: la interfaz sellada está vacía |
+
+El log se sustituye por **22 líneas** que dicen lo que la constante ES, y por
+qué se sigue leyendo en dos sitios aunque hoy no pueda disparar: porque la
+regla que codifica es sobre la **semántica** del núcleo, no sobre la
+pertenencia actual —una clave en ese set sigue siendo legacy AUNQUE exista
+una definición registrada con la misma clave, así que registrar una
+definición nunca puede cambiar lo que significa una clave del núcleo.
+
+Lo mismo pasó en `CoreStepRegistryFactory`, que afirmaba **nueve veces** que
+«X remains in `LEGACY_PLUGIN_IDS`» y que por eso `LegacyCore` era la
+autoridad de producción. Con el set vacío, las nueve son falsas, y el
+invariante que declaraban (`== 12`) son 0. El archivo pasa de **162 a 91
+líneas**, y ahora describe lo que cada Step **DECLARA** —su capacidad, sus
+efectos, sus políticas— en vez de una migración que ya no existe.
+
+**3. La unidad de trabajo, escrita en el código.** Diecinueve comentarios se
+remitían a «este bloque», «este gate», «este slice», «este ciclo» o «este
+cambio». Un comentario que depende de **quién lo lea** y de **cuándo se
+escribió** no explica la funcionalidad: se explica a sí mismo, y el día que
+se relea será un acertijo. Los **cinco** casos en los que «this block»
+significa bloque de **código** se dejaron intactos, porque ahí la palabra
+designa algo real.
+
+**4. Rutas muertas.** `v2/build.gradle.kts`, `<v2>/build/sdk-repo/` y
+`v2/<module>/src/main/` son directorios que **no existen** desde que el build
+se mudó a `pipelinek/`.
+
+**Dos afirmaciones que la medición desmintió de paso.** El DSL de
+`pwd(tmp=true)` **sí** está cableado a `CorePwdTmpStep` (lo está: lo llama
+`CompiledScriptedEntryPoint`), y `TYPED_RUNTIME_OUTPUT` de `core.isUnix`
+está **aprobado**, no «candidato no aprobado». Las dos se habían escrito al
+revés, y ambas se corrigen según lo medido.
+
+**Medido, sobre el árbol de este bloque:**
+
+| Métrica | Valor |
+|---|---|
+| Ficheros tocados | **25**, todos de comentario: **cero** líneas de comportamiento |
+| Líneas netas | **−25** (302 añadidas, 327 borradas): el árbol dice menos, y dice mejor |
+| KDoc de `LEGACY_PLUGIN_IDS` | de **123** líneas a **22** |
+| `CoreStepRegistryFactory` | de **162** líneas a **91** |
+| Referencias a unidades de trabajo | **40 → 0** |
+| Guardianes inexistentes citados | **7 → 0** |
+| Guard de procedencia | **verde**: ningún comentario nombra un encargo, una sección o un commit |
+| Compilación | los **6** módulos tocados compilan |
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un número de versión que colisiona con una release publicada no es un
   número de versión: es un bloqueo.** Este árbol declaraba `0.62.0`, y

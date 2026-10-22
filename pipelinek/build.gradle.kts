@@ -43,7 +43,15 @@ repositories {
 // bytes it names produces an artifact that is internally consistent and
 // externally false. The history of each bump lives in the commit history,
 // which is the only place it can stay true.
-version = "0.62.0"
+//
+// 2026-10-23: the 0.62.0 that stood here could not be published: it collides
+// with the published v0.62.0, which is a DIFFERENT artifact (the RESET
+// re-founds the product identity). The published train closed at v0.75.0 on
+// 2026-10-22, from the lineage this tree absorbed. This tree carries that
+// work plus the whole integration, so the 0.76.0 train opens here
+// (ProductVersion 0.76.0) and the next candidate can be tagged v0.76.0-rc1
+// with PRODUCT IDENTITY LAW across all five surfaces.
+version = "0.76.0"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

@@ -76,7 +76,10 @@
 #                                     distribution's own plugin with one whose
 #                                     manifest declares a Step it does not implement:
 #                                     the installation that ADMITS and then lies, which
-#                                     only a second gate can catch.
+#                                     only a second gate can catch. `lying-capabilities`
+#                                     declares a capability the plugin's own contract
+#                                     never requires, and `lying-directives` declares a
+#                                     Directive nobody contributes.
 #   //@ timeout <seconds>            the clock this scenario gets. The default is
 #                                    an order of magnitude above what any scenario
 #                                    takes today, so the clock only fires on a
@@ -319,7 +322,8 @@ build_binary_fixtures() {
 # it, which is exactly what the scenario needs to observe.
 build_lying_plugin_fixture() {
     local jar="$1"
-    local ghost_key="$2"
+    local kind="$2"
+    local ghost_key="$3"
 
     command -v unzip >/dev/null || {
         printf 'run.sh: unzip is required to read the plugin manifest for the lying fixture\n' >&2
@@ -345,19 +349,50 @@ build_lying_plugin_fixture() {
 
     local manifest="$workdir/$manifest_entry"
     local rewritten="$workdir/plugin-manifest.json"
-    # The declared Steps live in one array. The ghost Step is appended to it, and NOTHING else in
-    # the document changes: the identity, the version, the publisher, the api range and every
-    # other declared contribution stay the publisher's own. If the array cannot be found, the
-    # substitution leaves the document untouched and the scenario fails on the missing refusal --
-    # a broken fixture makes the scenario RED, never green.
-    sed "s|\"steps\": \[|\"steps\": [{\"stepKey\": \"$ghost_key\", \"declaredCapabilities\": []}, |" \
-        "$manifest" >"$rewritten" || {
+    # The doctoring, one family at a time. In every case ONE thing changes and NOTHING else does:
+    # the identity, the version, the publisher, the api range and every other declared
+    # contribution stay the publisher's own.
+    #
+    #   steps        a Step the plugin does not implement is declared.
+    #   capabilities a capability the plugin's contract does not require is declared for one of
+    #                its Steps: the plugin says it needs something its own code never asks for.
+    #   directives   a Directive nobody contributes is declared.
+    #
+    # Each substitution is anchored on a literal that the manifest really contains, and the result
+    # is checked twice: the document must have CHANGED, and the ghost must be IN it. A manifest
+    # whose shape moved would leave the document untouched, the fixture would fail loudly, and the
+    # scenario would go RED on the missing refusal -- never green on a fixture that stopped lying.
+    case "$kind" in
+        steps)
+            sed "s|\"steps\": \[|\"steps\": [{\"stepKey\": \"$ghost_key\", \"declaredCapabilities\": []}, |" \
+                "$manifest" >"$rewritten"
+            ;;
+        capabilities)
+            sed "0,/\"declaredCapabilities\": \[\]/s||\"declaredCapabilities\": [\"$ghost_key\"]|" \
+                "$manifest" >"$rewritten"
+            ;;
+        directives)
+            sed "s|\"directives\": \[|\"directives\": [\"$ghost_key\", |" \
+                "$manifest" >"$rewritten"
+            ;;
+        *)
+            printf 'run.sh: unknown lying-plugin kind: %s\n' "$kind" >&2
+            rm -rf "$workdir"
+            return 1
+            ;;
+    esac
+    if [[ ! -s "$rewritten" ]]; then
         printf 'run.sh: could not write the lying plugin manifest\n' >&2
         rm -rf "$workdir"
         return 1
-    }
+    fi
     if cmp -s "$manifest" "$rewritten"; then
-        printf 'run.sh: the lying fixture could not add a declared Step to the plugin manifest\n' >&2
+        printf 'run.sh: the lying fixture could not add a %s drift to the plugin manifest\n' "$kind" >&2
+        rm -rf "$workdir"
+        return 1
+    fi
+    if ! grep -aqF -- "$ghost_key" "$rewritten"; then
+        printf 'run.sh: the lying fixture lost its %s drift on the way into the manifest\n' "$kind" >&2
         rm -rf "$workdir"
         return 1
     fi
@@ -811,7 +846,20 @@ run_scenario_body() {
     # different.
     if [[ -n "$distribution" ]]; then
         case "$distribution" in
-            lying-uppercase)
+            lying-uppercase|lying-capabilities|lying-directives)
+                # Three kinds of lie, one instrument. The copy is byte for byte the installed
+                # distribution, with ONE JAR inside it replaced, and the run happens against that
+                # copy. The alternative -- offering the lying plugin IN ADDITION to the bundled
+                # one -- is a different artifact with the same identity, and it is refused for
+                # that before anything else happens, which is a different refusal from the one
+                # these scenarios are about. An installation whose plugin lies looks like this:
+                # the same distribution, one JAR different.
+                local lying_kind="steps"
+                local lying_key="example.uppercase.ghost"
+                case "$distribution" in
+                    lying-capabilities) lying_kind="capabilities"; lying_key="example.uppercase.ghostCapability" ;;
+                    lying-directives)   lying_kind="directives";   lying_key="example.uppercase.ghostDirective" ;;
+                esac
                 local installed_dist="$repo_root/pipelinek/pipeline-application/build/install/pipelinek"
                 local private_dist="$root/cwd/distribution"
                 if [[ ! -d "$installed_dist/lib" ]]; then
@@ -834,7 +882,7 @@ run_scenario_body() {
                     failures+=("$name: the copied distribution has no example-uppercase-plugin JAR")
                     return
                 fi
-                if ! build_lying_plugin_fixture "$private_plugin" "example.uppercase.ghost"; then
+                if ! build_lying_plugin_fixture "$private_plugin" "$lying_kind" "$lying_key"; then
                     printf 'FAIL %-52s the lying plugin fixture could not be built\n' "$name"
                     failed=$((failed + 1))
                     failures+=("$name: the lying plugin fixture could not be built")

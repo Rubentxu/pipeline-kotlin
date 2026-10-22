@@ -355,11 +355,22 @@ trap cleanup_logs EXIT
 #
 # `:pipeline-runtime:compileKotlin` is there because the analysis above does not
 # compile: detekt parses the sources, and a module whose only defect is that it
-# no longer matches the contract it implements parses perfectly. This module
-# implements the published runtime ports, it is not published, and it does not
-# travel in the distribution, so nothing else in the gate would ever notice it
-# drifting away from the contract it is supposed to fulfil. Compiling it is the
-# cheapest instrument that can fail for that guarantee.
+# no longer matches the contract it implements parses perfectly.
+#
+# It is NOT the only thing that compiles it. `:pipeline-application:installDist`
+# already builds `pipeline-runtime-<version>.jar` for the distribution's `lib/`
+# — measured in the installed tree, not inferred — so the module is compiled
+# transitively either way. What the explicit task buys is that the gate NAMES
+# it: the dependency that puts the module in the distribution is invisible in a
+# stage plan, and the day it is dropped the module would fall out of the
+# compiled set without anything turning red. Asking for it by name keeps it
+# inside the gate whatever the dependency graph does, and it costs nothing: the
+# same compilation was already going to happen.
+#
+# A word that is NOT true of this module: it does not "not travel in the
+# distribution". It travels, inside the application's `lib/`. What it is not is
+# a PUBLISHED SDK artifact — an external consumer compiles against the ports in
+# `:pipeline-runtime-api`, never against these adapters.
 
 if want_stage 1; then
 log "stage 1/5  compile + detekt + detektTest + apiCheck + installDist"

@@ -5960,9 +5960,9 @@ runtime los invoca. La rama de retirarlo queda descartada con su motivo.
 | ¿está cableado a un consumidor real? | sí: `:pipeline-application` lo declara en `pipeline-application/build.gradle.kts:189` y compone los tres puertos en `CompositionRoot.kt:222,280,330` |
 | ¿los llama alguien? | sí, por verbo de CLI: `runs cancel` → `RuntimeControlPort.cancel` (`MainRunsCli.kt:132`), `runs recover` → `RuntimeRecoverPort.recover` (`MainRunsCli.kt:222`), `inspect` → `RuntimeIntrospectionPortStoreAdapter` (`MainInspectCli.kt:544`) |
 | ¿lo ejecuta un E2E? | sí: `examples/durable/39-cancel-dead-run` y `examples/durable/40-recover-refuses-a-half-finished-run` |
-| ¿lo compila la puerta? | sí, y a propósito: `scripts/verify-all.sh:371` pide `:pipeline-runtime:compileKotlin` en la etapa 1. La razón está escrita en el propio script: detekt **analiza** y no compila, y este módulo ni se publica ni viaja en la distribución, así que sin esa tarea nadie lo vería derivar del contrato que cumple |
+| ¿lo compila la puerta? | sí, dos veces y por razones distintas: `:pipeline-application:installDist` lo compila **transitivamente**, porque su jar viaja en el `lib/` de la distribución (`pipeline-runtime-0.62.0.jar`, medido en la instalación), y además `scripts/verify-all.sh:371` pide `:pipeline-runtime:compileKotlin` **por su nombre**, para que el plan de la puerta diga que el módulo está dentro de ella |
 | ¿tiene observador? | sí: **5 clases** y **28 filas** de test unitario permanente (`RunCancellationDecisionTest`, `RuntimeControlPortStoreAdapterTest`, `RuntimeIntrospectionPortStoreAdapterTest`, `RuntimeRecoverPortStoreAdapterTest`, `RecoverJournalVocabularyTest`) |
-| ¿se publica? | no, y a propósito: un artefacto para él no resolvería nada para un consumidor externo, que compila contra los puertos, no contra los adaptadores. `:pipeline-runtime-api` **sí** está en `publishedContractModules` y en el BOM |
+| ¿se publica? | no como **artefacto del SDK**, y a propósito: un artefacto para él no resolvería nada para un consumidor externo, que compila contra los puertos, no contra los adaptadores. `:pipeline-runtime-api` **sí** está en `publishedContractModules` y en el BOM. **Ojo con la palabra "publicado": no publicado no es no distribuido** — el jar de `:pipeline-runtime` **sí viaja** en el `lib/` de la distribución de la aplicación |
 
 **Por qué esta rama y no la otra.** Retirar el módulo no era una retractación
 neutra: `pipeline-runtime-api` está en `publishedContractModules`, en el BOM y
@@ -5983,12 +5983,23 @@ contaba **1** clase de test para `:pipeline-runtime` cuando hoy tiene **5** y
 historia y no en §1. Lo que este bloque añade es la fila que falta en la vista
 viva.
 
+**Una premisa falsa que este bloque corrige.** La primera versión de este
+apartado decía que el módulo «ni se publica ni viaja en la distribución», y la
+segunda mitad es **falsa**: `pipeline-runtime-0.62.0.jar` **está** en el `lib/`
+de la distribución instalada, porque `:pipeline-application` lo declara en
+`implementation` y el plugin `application` lo mete en el classpath de
+ejecución. Lo que **no** se publica es el **artefacto del SDK**, que es otra
+cosa: un consumidor externo compila contra los puertos, no contra los
+adaptadores. La confusión entre «no publicado» y «no distribuido» se propagaba
+al propio script de la puerta, que justificaba una tarea con la misma premisa
+falsa. Medido contra el árbol instalado, no inferido.
+
 **Lo que este bloque cierra y lo que no.** Cierra el **destino** del módulo: se
 queda, se queda cableado, y el árbol lo dice en tres sitios que ahora
-concuerdan. No cierra el **comportamiento** de los verbos: sigue abierto que
-una cancelación cuyo sellado del Output Plane falló **después** de registrar
-`ABORTED` pueda reconciliarse sin repetir efectos ni declarar un resultado
-falso. Eso es trabajo de otro bloque, no una duda sobre el destino del módulo.
+concuerdan. No abre ni reabre el **comportamiento** de los verbos, que ya
+está cerrado y caracterizado en §2.33: el cancel escribe el recibo, **luego**
+sella y **luego** escribe el hecho terminal, así que un fallo de sellado deja
+el run sin cerrar y el cancel siguiente lo termina sin repetir efectos.
 
 **Medido, sobre el árbol de este bloque:**
 
@@ -6010,12 +6021,15 @@ falso. Eso es trabajo de otro bloque, no una duda sobre el destino del módulo.
   es real y no nominal son **tres verbos de CLI** que llegan a los puertos y
   **dos escenarios ejecutables** que los ejercitan; un módulo importado y
   nunca invocado habría sido la misma fractura por dentro.
-- **Un módulo que no se publica ni viaja tampoco puede quedar fuera de la
-  puerta.** `:pipeline-runtime` no está en la distribución, así que nada en el
-  artefacto avisaría de que derivar del contrato que cumple. Por eso la etapa 1
-  pide `:pipeline-runtime:compileKotlin` **explícitamente**: detekt analiza y
-  no compila, y el instrumento más barato para ese contrato es pedirle al
-  compilador que lo diga.
+- **Un módulo que la puerta no nombra es un módulo que puede caerse de la
+  puerta sin que nada se ponga rojo.** `:pipeline-runtime` **sí** viaja en la
+  distribución —su jar está en el `lib/` de la instalación—, así que
+  `installDist` lo compila de rebote. Por eso la etapa 1 lo pide
+  **explícitamente**: no para que se compile (ya se compila), sino para que el
+  plan de la puerta lo nombre, y para que el día que la dependencia que lo mete
+  en la distribución desaparezca, el módulo no se caiga del conjunto compilado
+  en silencio. Detekt analiza y no compila, así que el instrumento más barato
+  para ese contrato sigue siendo el compilador.
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
   índice de step, y ese índice ni siquiera dice a qué stage pertenece el

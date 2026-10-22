@@ -18,18 +18,23 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `dddfca8b2` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `dddfca8b2` | `git rev-parse HEAD` |
+| SHA | `1ed401028` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `1ed401028` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **919** (125 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
-| Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0** (eran **6** de 18: dos en el follow de eventos y cuatro en el plano de salida) | censo por construcción sobre el árbol commiteado, en `§2.35` |
+| Tests unitarios ejecutados | **1049** (145 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **54 (54 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios que sólo comprueban el código de salida | **0**, con **una excepción declarada**: `plugins/lock-directive` afirma su sujeto *por medio* del código de salida —su directiva no emite nada, y si el plugin no se descubriera la etapa se negaría—, así que ahí el código de salida es la aserción y no un testigo vacío | censo por directiva y por cuerpo, sobre los **54** escenarios; el número anterior («0», sin excepción y sobre 47) no nombraba el caso que lo contiene |
-| `VERIFY_LOC / PRODUCT_LOC` | **15671 / 65397 = 0.240** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios con una garantía comprobada | **54 de 54**: 133 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 54 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **18260 / 67318 = 0.271** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **699 / 682 / 803** en los tres ensayos, los tres sobre `dddfca8b2`, peor 803 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **182 / 177 / 160** en los tres ensayos, los tres sobre `1ed401028`, peor 182 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
+
+Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
+es la condición con la que el censo de LOC es verdad: el censo lee
+`git ls-files`, así que con el árbol sucio un test nuevo no cuenta y la ratio
+sale mejor que la realidad.
 
 Los tres ensayos corrieron sobre el mismo SHA y con la máquina **cargada por
 procesos ajenos a este repositorio** —hay otro workspace de PipelineK y un
@@ -40,15 +45,19 @@ idéntico en los tres: es del host.
 | Deuda estática congelada | **802** entradas de baseline: **sin cambio**, porque la ley que este ciclo añadió salió a su propio objeto en vez de empujar a `ProtocolGrammar` por encima del límite de detekt | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
-Las cifras de este ciclo suben en lo que este ciclo añadió y sólo en eso:
-**919** tests (**8** más que los 911 del ciclo anterior) y **54** escenarios
-(**2** más que los 52). Los 8 tests nuevos son las **3** filas que fijan la
-calle del store —que un lector no puede escribir en el journal del
-productor— y las **5** que fijan el texto que el operario lee cuando el store
-no se puede abrir (§2.34). Los 2 escenarios nuevos son el observador que
-muere en pleno vuelo (`events/06`) y el rechazo por base sin historia
-(`negative/events-no-event-history`), y los dos se encendieron en rojo a
-propósito antes de darse por buenos.
+Lo que este ciclo añadió a la suite: **24** casos de test en **4** clases
+rescatadas del layout viejo —cada una con su regla viva detrás: el
+vocabulario con el que un run recuperado se registra, la contención de la ruta
+de entrada de un archivo descomprimido, las formas que el guard de
+credenciales en `argv` tiene que dejar pasar, y el significado de la receta
+vieja de la clave de caché—, y **una** directiva nueva en el arnés,
+`expect-outcome`, que hace que el lanzador compruebe la conclusión que el run
+publicó y no sólo su código de salida.
+
+Los escenarios bajaron de **56** a **54**: los tres del plugin de utilidades se
+fundieron en uno, que además aserta la prueba de bytes que el escenario del zip
+prometía en su comentario y nunca comprobaba. Todo lo nuevo se encendió en
+rojo antes de darse por bueno, con su fila exacta (§2.40).
 
 El bloque de la cancelación a medias (§2.33) **no añadió ningún escenario
 permanente**: su UAT efímero, que sí se ejecutó con el binario real y se
@@ -4962,7 +4971,7 @@ se revirtió.
 nada lo sustituyó: las reglas son la lista de comprobación del revisor, y ahora
 el fichero lo dice en vez de prometer una puerta que no está.
 
-### 2.36 El censo contaba declaraciones, no garantías
+### 2.40 El censo contaba declaraciones, no garantías
 
 **El defecto, con su número.** El censo del arnés decía «19 de 56 escenarios sólo
 miran el código de salida». El número era verdad sobre el **canal** y falso
@@ -5068,7 +5077,7 @@ capacidades distintas.
 | Pasos que el producto terminó | **195** |
 | Runs que concluyeron `unstable` | **2**, declarados por los escenarios que los producen |
 | Tests unitarios | **1049**, 0 fallos, 0 skips, 145 informes reescritos por la corrida |
-| `VERIFY_LOC / PRODUCT_LOC` | **17958 / 67318 = 0.267** (límite 2) |
+| `VERIFY_LOC / PRODUCT_LOC` | **18260 / 67318 = 0.271** (límite 2), medido sobre el árbol commiteado: con el árbol sucio el censo no ve los ficheros nuevos y la ratio sale mejor que la verdad |
 | Reloj de la puerta | **167 s** contra 900 s |
 
 **En una frase, para quien llega nuevo:** el arnés ya no pregunta «¿terminó el
@@ -5076,6 +5085,46 @@ proceso?», sino «¿qué concluyó el run, y es lo que el escenario esperaba?»
 árbol ya no tiene Kotlin que nadie compile, y los cuatro tests que la mudanza
 dejó atrás vuelven a vigilar las reglas que protegían; y el build dice con qué
 JDK se compila, en vez de heredarlo de la máquina.
+
+### 2.41 El comentario del análisis estático afirmaba un árbol que ya no existe
+
+**Las dos mitades de la frase eran falsas.** La extensión del análisis estático
+del build decía, sobre la línea que nombra las fuentes del análisis:
+
+> Only `src/main/kotlin`: `src/test/kotlin` no longer exists, and listing a
+> non-existent source directory is how a source-set guard silently covers
+> nothing.
+
+`src/test/kotlin` **existe**: hay **122** ficheros de test repartidos en **18**
+módulos, y **1049** casos ejecutándose en la puerta. Y la razón que se daba
+—que el análisis de las fuentes de test podía no cubrir nada— era una alarma
+sobre un hueco que el análisis no tenía: la tarea de test alcanzó sus propias
+fuentes todo este tiempo.
+
+**Medido, no deducido.** Se añadió un import sin usar a un fichero de test y
+se ejecutó el análisis sobre su módulo: la tarea **falló** nombrando ese
+fichero, su línea y la regla, y su informe contó **5** ficheros .kt —los cinco
+ficheros de test del módulo—. En el mismo módulo, el análisis de producción
+contó **6**, que son los seis ficheros de `src/main/kotlin`. Cada tarea llega a
+su propio conjunto de fuentes, y el conjunto de fuentes de test **no** queda
+ciego por el baseline de producción: sus identificadores llevan el nombre del
+fichero, así que un hallazgo en un fichero de test no se confunde con uno ya
+congelado en producción.
+
+**Lo que se cambió, y lo que no.** La configuración queda como estaba: la línea
+que nombra `src/main/kotlin` sigue ahí, y no se tocó una regla, una tolerancia
+ni un baseline. Lo que se cambió es la **razón** que la justificaba, que era
+una afirmación sobre un árbol que ya no existe. El cambio es de un comentario y
+no de un análisis: quitar la línea habría cambiado lo que se analiza, y eso no
+se midió, así que no se quitó.
+
+**Por qué importa igual.** Un comentario que describe una realidad que no es es
+la forma más barata de que un guardián se crea que cubre algo que no cubre.
+Este ciclo rescató cuatro tests que nadie compilaba —código que nadie sabe que
+existe— y, antes, el build llevaba desde el reset afirmando que las fuentes de
+test no existían. Son el mismo error visto desde dos lados: la garantía —aquí,
+que el análisis estático llega a las fuentes de test— estaba en el árbol, y
+nadie la miraba.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
@@ -5911,6 +5960,14 @@ JDK se compila, en vez de heredarlo de la máquina.
   rompió; con la conclusión del run, el rojo dice el paso. Una garantía por
   fichero era una consecuencia de que el arnés no supiera atribuir, no una
   propiedad de las garantías.
+
+- **Un comentario que describe un árbol que no existe se corrige; la
+  configuración que protege se deja como está.** El análisis estático ya
+  llegaba a las fuentes de test, y el build lo afirmaba al revés. Corregir la
+  frase es gratis y verdad; tocar la línea que nombra las fuentes cambiaría
+  lo que se analiza sin que nadie lo haya medido, y un análisis sin medir es
+  una garantía sin observador, que es exactamente lo que este ciclo vino a
+  quitar del árbol.
 
 ## 4. Referencias
 

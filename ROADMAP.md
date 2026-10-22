@@ -99,7 +99,7 @@ composición se rechaza.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `9d58c4d87`, medido en los ensayos de este bloque. Entre el ciclo anterior y este **el código de producción sí cambia**: el driver de SQLite extrae en un directorio con dueño (§2.58) y el identificador de operación se niega a adivinar cuando su texto no se puede leer exacto (§2.59) | `git rev-parse HEAD` |
+| SHA | `2e9704dd4`, medido en los ensayos de este bloque. Entre el ciclo anterior y este **el código de producción sí cambia**: la versión del producto pasa de `0.62.0` a `0.76.0`, que era un bloqueo de publicación (§2.61), y el README apunta a la release publicada con su digest medido | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
@@ -107,13 +107,13 @@ composición se rechaza.
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **61 (61 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **61 de 61**: **170 garantías** comprobadas —162 en los 60 anteriores y 8 en el nuevo de coherencia del workspace (§2.55). El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **19352 / 67448 = 0.287** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **19352 / 67443 = 0.287** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
 | `VERIFY_ALL_WALL_CLOCK` | **213 / 169 / 174** en los tres ensayos, los tres sobre `9d58c4d87`, peor 213 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
-| Destino de `:pipeline-runtime` | **se queda y está cableado**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52) | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:371` |
+| Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
 es la condición con la que el censo de LOC es verdad: el censo lee
@@ -3230,7 +3230,7 @@ builds independientes en `examples/example-*-plugin/`, fuera del build raíz, qu
 es exactamente lo que su independencia significa.
 
 **El directorio del build pasa de `v2/` a `pipelinek/`.** Un directorio
-llamado `v2` dentro de un repositorio cuyo producto va por `0.62.0` no dice
+llamado `v2` dentro de un repositorio cuyo producto iba por `0.62.0` no dice
 nada: `v2` puede ser «la versión 2 del producto» o «el módulo del producto»,
 y hay que ir a mirar la tabla de versiones para saberlo. `pipelinek/` sí lo dice.
 Los paquetes no cambian —siguen siendo `dev.rubentxu.pipeline.v2.*`— porque el
@@ -4047,13 +4047,19 @@ entrega se anuncia como **`events.follow.v2`**. El dump de ABI de
 nuevos y la función de traducción, nada desaparece.
 
 > **Lo que aquí NO se decide, y por qué.** La versión del **artefacto** no se
-> toca. Este repositorio está en `0.62.0` y el `v0.62.0` ya publicado es un
+> toca. Este repositorio **iba** en `0.62.0` y el `v0.62.0` ya publicado es un
 > artefacto DISTINTO (el RESET re-funda la identidad del producto); subir el
 > número sin publicar una release sería afirmar una versión que no existe, y
-> el README señala el `v0.62.0` como la autoridad pública de hoy. El campo
+> el README señalaba el `v0.62.0` como la autoridad pública de hoy. El campo
 > `firstPublished` del catálogo dice por eso la **línea de versión que primero
 > lleva el id**, no un tag que aún no se ha puesto. La decisión de qué
 > release sale, y con qué tag, es del proceso de release, no de este ciclo.
+>
+> **Lo que este bloque cambió después, y está medido en §2.61:** la versión
+> de este repositorio es hoy `0.76.0`, y la autoridad publicada es `v0.75.0`,
+> con su digest medido. El `firstPublished` del catálogo **no se toca**: nombra
+> la línea de versión que primero lleva el id, y esa línea sigue siendo la
+> misma.
 
 **El guardián que el módulo declaraba huérfano.** Al corregir el KDoc del
 contrato publicado apareció una contradicción que no se podía resolver
@@ -4389,7 +4395,7 @@ no porque estén mal: su SHA es anterior a este trabajo.
 | **H2** El follow confunde `StorageError` y `CursorBeyondTail` con «run desconocido» | **Ya cerrado** (§2.25) | `EventFollowRefusal` nombra las tres negativas; `SqliteEventFollowHandle` traduce sin colapsar; capacidad `events.follow.v2`; dos escenarios E2E que lo demuestran |
 | **H3** La traducción de `StepFinished` puede fabricar un `SUCCESS` | **Ya cerrado** (§2.27) | El veredicto viaja con el evento terminal; capacidad `events.stepoutcome.v1`; `runtime.eventshape.v1` a DEPRECATED |
 | …la mitad de H3: el `StepFailed` no identifica su `stageIndex` | **Ya cerrado** (§2.29) | El fallo declara su stage; capacidad `events.failurestage.v1`; y con él, la ley de contradicción terminal del harness, que el propio código describía y no implementaba |
-| **H4** `pipeline-runtime` es código que merece integración, no eliminación | **Real, y una afirmación del informe que aquí no se sostiene** | El jar `pipeline-runtime-0.62.0.jar` **sí está** en `lib/` de la distribución instalada, y el módulo compila y tiene tests (la etapa 2 del gate lo ejecuta). Lo que falta es el recorrido operativo acreditado: **P1.1** |
+| **H4** `pipeline-runtime` es código que merece integración, no eliminación | **Real, y una afirmación del informe que aquí no se sostiene** | El jar `pipeline-runtime-<version>.jar` **sí está** en `lib/` de la distribución instalada, y el módulo compila y tiene tests (la etapa 2 del gate lo ejecuta). El recorrido operativo acreditado es el que **§2.52** cerró: los tres verbos (`runs cancel`, `runs recover`, `inspect`) llaman a los puertos publicados, y dos escenarios E2E lo ejecutan |
 | **H5** El output plane: intercalado cronológico y durabilidad | **Real y pendiente** | La pieza existe (`OutputFrameIndex.framesOfRun`) y la vista de consola **concatena por stream** y lo declara en su KDoc («es una proyección, no una afirmación de lo que el kernel intercaló»). Falta **decidir qué vista usa la proyección ordenada**: nuevo **P1.5** |
 | **§4** Colisiones entre agentes en el gate | **Ya cerrado** | El gate usa `log_dir="${TMPDIR:-/tmp}/verify-all.$$"`, un directorio por corrida, y escribe el motivo: «a shared path let one run truncate the log while another was still appending to it» |
 | **§4** Métricas que incentivan tests sin valor | **No aplica a Core** | No hay mínimo artificial de líneas de test en este repositorio (el `testLineFloor` que cita el informe es de Fabric). El presupuesto de Core es LOC y reloj, y `AGENTS.md` exige mutación vista en rojo |
@@ -4398,7 +4404,7 @@ no porque estén mal: su SHA es anterior a este trabajo.
 | **§6.2** Un único estado durable de observación, sin crear otro event store | **Ya es la política** | `AGENTS.md` §1: «no second event, Step, recovery or certification authority» |
 | **§6.3** Presupuesto por comportamiento, no por líneas | **Ya es la política** | `AGENTS.md` §2: «un verde que nunca se ha visto rojo no es evidencia»; §4: LOC ≤ 2 × y reloj ≤ 900 s |
 | **§6.4** Cada capacidad nueva, con un ejemplo mínimo que compile externamente | **Real y pendiente, y este ciclo lo dejó a medias** | Este ciclo publicó dos ids (`runtime.eventshape.v2`, `events.stepoutcome.v1`) y **ninguno** tiene todavía ese consumidor mínimo: **P1.6** |
-| **§7** Hay una RC `v0.75.0-rc1` publicada y `main` va por delante | **Real, y es un hecho de esta rama** | La release existe (release-gate PASS, sha256 `e24abea8…`, 20/10/2026) y `origin/main` está **20 commits** por delante. Esta rama declara `0.62.0` y **no se puede publicar tal cual**: su versión colisionaría con la publicada. Fusionarla con `main` es una decisión que no es de la rama |
+| **§7** Hay una RC `v0.75.0-rc1` publicada y `main` va por delante | **Real, y es un hecho de esta rama** | La release existe (release-gate PASS, sha256 `e24abea8…`, 20/10/2026) y `origin/main` está **20 commits** por delante. Esta rama declaraba `0.62.0` y **no se podía publicar tal cual**: su versión colisionaría con la publicada. **Resuelto en §2.61**: la versión de este árbol es `0.76.0`, que no colisiona con nada publicado y coloca este árbol **después** de `v0.75.0`, que es lo que es |
 
 **Lo que este ciclo deja a medias, y por qué se dice.** La publicación del
 veredicto (P1.3a) publicó dos ids de capacidad nuevos y los dos tienen su
@@ -5991,7 +5997,7 @@ runtime los invoca. La rama de retirarlo queda descartada con su motivo.
 | ¿está cableado a un consumidor real? | sí: `:pipeline-application` lo declara en `pipeline-application/build.gradle.kts:189` y compone los tres puertos en `CompositionRoot.kt:222,280,330` |
 | ¿los llama alguien? | sí, por verbo de CLI: `runs cancel` → `RuntimeControlPort.cancel` (`MainRunsCli.kt:132`), `runs recover` → `RuntimeRecoverPort.recover` (`MainRunsCli.kt:222`), `inspect` → `RuntimeIntrospectionPortStoreAdapter` (`MainInspectCli.kt:544`) |
 | ¿lo ejecuta un E2E? | sí: `examples/durable/39-cancel-dead-run` y `examples/durable/40-recover-refuses-a-half-finished-run` |
-| ¿lo compila la puerta? | sí, dos veces y por razones distintas: `:pipeline-application:installDist` lo compila **transitivamente**, porque su jar viaja en el `lib/` de la distribución (`pipeline-runtime-0.62.0.jar`, medido en la instalación), y además `scripts/verify-all.sh:371` pide `:pipeline-runtime:compileKotlin` **por su nombre**, para que el plan de la puerta diga que el módulo está dentro de ella |
+| ¿lo compila la puerta? | sí, dos veces y por razones distintas: `:pipeline-application:installDist` lo compila **transitivamente**, porque su jar viaja en el `lib/` de la distribución (`pipeline-runtime-<version>.jar`, medido en la instalación), y además `scripts/verify-all.sh:371` pide `:pipeline-runtime:compileKotlin` **por su nombre**, para que el plan de la puerta diga que el módulo está dentro de ella |
 | ¿tiene observador? | sí: **5 clases** y **28 filas** de test unitario permanente (`RunCancellationDecisionTest`, `RuntimeControlPortStoreAdapterTest`, `RuntimeIntrospectionPortStoreAdapterTest`, `RuntimeRecoverPortStoreAdapterTest`, `RecoverJournalVocabularyTest`) |
 | ¿se publica? | no como **artefacto del SDK**, y a propósito: un artefacto para él no resolvería nada para un consumidor externo, que compila contra los puertos, no contra los adaptadores. `:pipeline-runtime-api` **sí** está en `publishedContractModules` y en el BOM. **Ojo con la palabra "publicado": no publicado no es no distribuido** — el jar de `:pipeline-runtime` **sí viaja** en el `lib/` de la distribución de la aplicación |
 
@@ -6016,7 +6022,7 @@ viva.
 
 **Una premisa falsa que este bloque corrige.** La primera versión de este
 apartado decía que el módulo «ni se publica ni viaja en la distribución», y la
-segunda mitad es **falsa**: `pipeline-runtime-0.62.0.jar` **está** en el `lib/`
+segunda mitad es **falsa**: `pipeline-runtime-<version>.jar` **está** en el `lib/`
 de la distribución instalada, porque `:pipeline-application` lo declara en
 `implementation` y el plugin `application` lo mete en el classpath de
 ejecución. Lo que **no** se publica es el **artefacto del SDK**, que es otra
@@ -6694,7 +6700,145 @@ evento que miente, y `bundled-uppercase` sigue existiendo para los escenarios
 de confianza. Lo que se ha hecho es **desacoplar** el caso de identidad
 duplicada del caso de manifiesto mentiroso: cada defecto, con su fixture.
 
+### 2.61 La versión que el producto declara, y la que el mundo puede publicar
+
+**La pregunta, tal y como estaba.** Este árbol declaraba la versión `0.62.0`.
+Pero `v0.62.0` **ya está publicada**, y son bytes **distintos**: el RESET
+re-funda la identidad del producto, así que el `v0.62.0` del remoto no es lo
+que este árbol construye. Medido: el tag remoto `v0.62.0` —objeto anotado
+`08a38c49`— apunta a `92ddd58d`, del linaje viejo, y ese commit **no** está
+en la historia de `main`. Mientras tanto la línea publicada había seguido
+adelante: `gh release list` da **`v0.75.0`** como release GA, publicada el
+2026-10-22 16:07Z, con la etiqueta *Latest*.
+
+La versión de este árbol, pues, **colisionaba con una release publicada** y
+además iba **trece releases por detrás** de la línea publicada. El propio
+ROADMAP lo tenía anotado como bloqueo (§2.28): «declara `0.62.0` y **no se
+puede publicar tal cual**: su versión colisionaría con la publicada». Eso
+impedía publicar, y publicar es lo que convierte el trabajo en valor.
+
+**La geometría, medida.** `v0.75.0` es el commit `3079b2603`, y ese commit
+**no** es ancestro de `main`: el merge-base es `56cfd1729`, con **714**
+commits del lado publicado y **1126** del lado de `main`. Dos linajes, no uno
+con retraso. Pero `main` **sí** lleva ese trabajo: `e3a22a050` es su gemelo
+portado a mano, commit por commit y con los defectos corregidos. Así que
+`main` no es una versión vieja de lo publicado: es **lo publicado más la
+integración entera**.
+
+**La salida: `0.76.0`.** Y no `0.75.0`, por una razón que no es de gusto:
+el tag `v0.75.0` existe, y `scripts/release-pipelinek.sh:86-92` **se niega a
+publicar un tag que ya existe**. Reutilizar ese número haría que un
+artefacto afirmara ser una release que no es — la forma exacta que
+`ProductVersion` existe para impedir, y la que ya dejó huella en el
+incidente de la v0.43.0. Un número que no colisiona y **ordena** este árbol
+después de lo publicado es `0.76.0`.
+
+**Una sola autoridad, y por eso no hay dos verdades.** El número vive en una
+sola línea, `pipelinek/build.gradle.kts:46`, y todo lo demás **sale** de ahí:
+el `Implementation-Version` del jar, el recurso `RuntimeApiVersion` que
+responde al subcomando `version`, el nombre del ZIP de distribución, el BOM,
+y el `-PsdkVersion` que los plugins de ejemplo derivan para su `apiRange`.
+Medido: ese `apiRange` se regenera solo (`pipelinek/build.gradle.kts:393,446,473,510`
+pasan `-PsdkVersion=` + `rootProject.version`), así que pasa a
+`[0.76.0, 0.77.0)` sin que nadie lo escriba. No hay un segundo sitio que
+ajustar, y por eso no puede haber dos versiones que discrepen.
+
+**Lo que NO hizo falta tocar, y por qué.** El catálogo de capacidades
+conserva su `firstPublished = "v0.62.0"`: ese campo nombra la **línea de
+versión que primero lleva el id**, no un tag ya puesto, y la línea sigue
+siendo la misma. Medido además que el campo **sólo se publica** —no se
+compara con la versión en runtime en ninguna parte—, así que moverlo no
+cambiaría ninguna decisión y sí rompería un contrato ya publicado. Los dos
+comentarios que citan «distribution 0.62.0» lo hacen como **medición de un
+build anterior**, que sigue siendo cierto. Y el instalador no fija ninguna
+versión: la recibe como argumento y resuelve el digest del `SHA256SUMS` de
+la release.
+
+**El daño colateral que sí había, y era de usuarios.** El README publicaba
+un quickstart **que no verificaba**. Su `sha256sum -c` fallaba, porque el
+tag `v0.62.0` fue recreado el 2026-10-19 sobre `92ddd58d` mientras el README
+certificaba `951b3cb5` —commit del linaje de `main`, de 2026-09-19— con el
+digest `385b140c…`; el ZIP publicado vale `16db1eb2…`. Y el README llamaba
+«la autoridad pública de hoy» a `v0.62.0`, cuando la release *Latest* era
+`v0.75.0` desde el 2026-10-22. Los dos defectos se encontraron **midiendo**,
+no leyendo: la línea que se certifica es la que el mundo puede descargar.
+
+**Lo que ahora dice el README, con los digest medidos.** Los comandos
+apuntan a `v0.75.0`, y sus digest se obtuvieron descargando el ZIP desde
+GitHub Releases el 2026-10-23:
+
+| hecho | valor medido |
+|---|---|
+| ZIP | `e24abea8ed0ef01f8f70f8a2fcfbe8efce52b33d7d4b73acfd5c54cd1b4973fa` — idéntico al `SHA256SUMS` que publica la release |
+| binario | `ccbbad405b8ae886d40954ef70a7418b7c484fb75a9a37437c369943d7c0d233` |
+| commit certificado | `3079b2603594ee92666929317f66224e42b308b4d` |
+| identidad | raíz del archivo `pipelinek-0.75.0`; el binario reporta `pipeline 0.75.0` |
+
+El quickstart se ejecutó **tal cual**, con su `sha256sum -c`, y la respuesta
+fue «la suma coincide». Y el bloque «Verified against the published
+artifact» ya **no** afirma que *toda* afirmación del README se verificó
+contra ese ZIP, porque no es cierto: el catálogo de capacidades y los
+recuentos de escenarios describen **este árbol**. Medido: el catálogo del
+binario publicado tiene **11** ids, todos de nivel `v1`, y no tiene ninguno de
+los seis que este árbol lleva (`events.follow.v2`, `events.follow.v3`,
+`output.follow.v2`, `runtime.eventshape.v2`, `events.stepoutcome.v1`,
+`events.failurestage.v1`). El README lo dice, y dice cuál de las dos cosas
+describe cada bloque.
+
+**Lo que NO se arregla, y por qué sigue siendo deuda.** El `manifest.json`
+de la release `v0.75.0` es **byte a byte el del rc1** —los dos hashean
+`67e5d6c4…`— y dentro de la GA dice `"release_tag": "v0.75.0-rc1"`. Es la
+misma forma del incidente de la v0.43.0: la GA presenta el manifest del
+candidato. La ley de procedencia (`CandidateTagProvenance`) **no lo caza**:
+comprueba bytes ↔ commit de origen ↔ peel del tag, pero nadie compara el
+campo `release_tag` **del propio manifest** con el tag que lleva la release.
+Eso está en el artefacto publicado y en el proceso de release, no en este
+árbol, así que se anota con su nombre y se abre como bloque propio.
+
+**Medido, sobre el árbol de este bloque:**
+
+| Métrica | Valor |
+|---|---|
+| Versión declarada | `0.76.0`, en una sola línea (`pipelinek/build.gradle.kts:46`) |
+| Autoridad publicada | `v0.75.0` (GA, 2026-10-22), digest verificado por descarga propia |
+| Puerta | **PASS** en los tres ensayos, sobre `2e9704dd4`, peor < 900 s |
+| Tests | **1087** unitarios, 153 informes, 0 fallos, 0 errores, 0 skips |
+| Escenarios E2E | **61 de 61** |
+| Presupuesto de reloj | peor ensayo < 900 s, límite 900 s |
+| Colateral | ninguno: el `apiRange` de los plugins se deriva solo, y el `firstPublished` del catálogo no se toca |
+| `:pipeline-runtime` | **vuelve a estar cableado** y lo compila la etapa 1 por su nombre (§2.52) |
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **Un número de versión que colisiona con una release publicada no es un
+  número de versión: es un bloqueo.** Este árbol declaraba `0.62.0`, y
+  `v0.62.0` ya estaba publicada con bytes distintos (§2.61). El síntoma no
+  era un error de build: era que **publicar era imposible**, y una release
+  que no se puede publicar es trabajo que no llega a nadie. Por eso la
+  versión se alza a `0.76.0` —no a `0.75.0`, que ya existe—: un número que
+  no colisiona y además **ordena** este árbol después de lo publicado.
+- **La versión se cambia en un solo sitio, y todo lo demás se deriva.** El
+  número vive en una línea; el `Implementation-Version`, el recurso de
+  runtime, el nombre del ZIP y el `apiRange` de los plugins de ejemplo
+  **salen** de ahí. No es una DRY de estilo: es la razón por la que no
+  puede haber dos versiones que discrepen sin que nadie lo note (§2.61).
+- **La línea de versión que primero lleva un id no se mueve porque el build
+  declare otra cosa.** El `firstPublished` del catálogo nombra la línea, no
+  un tag, y esa línea no ha cambiado. Además el campo **sólo se publica**:
+  moverlo no cambiaría ninguna decisión del producto y sí rompería un
+  contrato ya publicado (§2.61).
+- **El digest que un README publica tiene que ser el del artefacto que el
+  mundo puede descargar HOY.** El quickstart publicaba un checksum que ya
+  no verificaba, porque el tag se había recreado por debajo. El defecto no
+  era el número: era que la instrucción, al seguirse, fallaba. La
+  autoridad se corrige con el digest **medido** —descargando el ZIP y
+  hasheándolo—, y el quickstart se ejecutó tal cual para que la línea que
+  se publica sea la que funciona (§2.61).
+- **Una afirmación que era verdad y dejó de serlo se corrige con la
+  medida, no se reescribe.** El ROADMAP decía «este repositorio está en
+  `0.62.0`» y «el jar `pipeline-runtime-0.62.0.jar` está en `lib/`». Con el
+  número nuevo, esas frases son falsas. Se corrigen: el nombre del jar pasa
+  a `<version>`, que no envejece, y las frases que describen un estado
+  pasado pasan a estar en pasado (§2.61).
 - **Un lector que no puede leer un texto sin adivinar, se niega.** La
   identidad de una operación es la clave con la que el journal la direcciona:
   devolver una identidad *parecida* no es un detalle, es una respuesta
@@ -6877,10 +7021,10 @@ duplicada del caso de manifiesto mentiroso: cada defecto, con su fixture.
   consumidor **negocia**: es la respuesta a «¿este build habla el vocabulario
   que yo entiendo?», y no necesita un número de release para ser verdad. La
   versión del artefacto, en cambio, la fija el proceso de release: este
-  repositorio está en `0.62.0` y el `v0.62.0` publicado es un artefacto
+  repositorio iba en `0.62.0` y el `v0.62.0` publicado es un artefacto
   distinto (el RESET re-funda la identidad del producto). Subir el número sin
   publicar una release sería afirmar una versión que no existe, y el README
-  señala el `v0.62.0` como la autoridad pública de hoy. Por eso `events.follow.v1`
+  señalaba el `v0.62.0` como la autoridad pública de hoy. Por eso `events.follow.v1`
   pasa a DEPRECATED —«anunciado y NO entregado», que es lo que esa columna
   significa en este catálogo— en vez de quedarse mintiendo como entregado.
 - **La traducción entre vocabularios es una función, no una regla por
@@ -7146,7 +7290,7 @@ duplicada del caso de manifiesto mentiroso: cada defecto, con su fixture.
   peor que no escribirlo.
 
 - **El nombre de un directorio debe decir qué contiene.** El build raíz se
-  llamaba `v2` en un repositorio cuyo producto va por `0.62.0`, y los
+  llamaba `v2` en un repositorio cuyo producto iba por `0.62.0`, y los
   ejemplos ejecutables vivían dentro de ese directorio cuando `AGENTS.md` los
   describe en la raíz. Los dos nombres se han cambiado: el build es
   `pipelinek/` y los ejemplos son `examples/`. Motivo: un nombre de directorio

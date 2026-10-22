@@ -62,14 +62,6 @@ data class OpId(
     */
     override fun toString(): String = format()
 
-    /**
-     * Legacy format that is byte-identical to the previous format for empty bodyPath
-     * Use this for linear-path operations to preserve existing journal keys.
-    */
-    fun legacyFormat(): String =
-        if (branchIndex != null) "$runId-s$stageIndex-$stepIndex-b$branchIndex"
-        else "$runId-s$stageIndex-$stepIndex"
-
     companion object {
         /**
          * `pluginStepId` the parallel engine writes for a branch frame segment.
@@ -208,17 +200,6 @@ data class OpId(
             if (pieces.any { it.isBlank() }) return null
             return pieces.map { BlockSegment(it) }
         }
-
-        /**
-         * Constructs an [OpId] for a branch-scoped operation.
-         * @param runId The pipeline run identifier.
-         * @param stageIndex The 0-based stage index within the pipeline.
-         * @param stepIndex The 0-based step index within the stage.
-         * @param branchIndex The 0-based branch index for parallel frame execution.
-         * @return An [OpId] with branchIndex set.
-        */
-        fun forBranch(runId: String, stageIndex: Int, stepIndex: Int, branchIndex: Int): OpId =
-            OpId(runId, stageIndex, stepIndex, branchIndex)
     }
 }
 

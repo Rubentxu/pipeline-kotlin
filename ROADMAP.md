@@ -91,7 +91,7 @@ composición se rechaza.
 |---|---|---|
 | 1 | **La política** de la identidad duplicada, si algún día hace falta cambiarla | el **diagnóstico** ya nombra los dos artefactos (§2.51) y dice que la composición entera se rehúsa, así que el operador sabe cuál es cuál y sabe que nada se está ejecutando. Lo que queda **no es un defecto pendiente**: el sistema **ya rechaza la composición** cuando ve el duplicado. Cambiar *qué* artefacto conserva la identidad es un cambio de comportamiento observable y por tanto una ruptura versionada, que sólo se hace con una **necesidad de producto concreta**, no porque el modelo sea más bonito |
 | 2 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
-| 3 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | el nombre no es invertible y nadie ha demostrado que ningún consumidor necesite distinguir los dos (§2.45) |
+| 3 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | **caracterizada** (§2.57): con el camino de producción actual **dos streams no pueden compartir bytes**, porque los segmentos dirigidos por posición no se pliegan. Lo que sí era un defecto real —el parser de op ids descartaba parte de la identidad **en silencio**, devolviendo otra operación— está arreglado y con su fila vista en rojo. Queda con nombre una deuda: el formato del cuerpo **no es invertible** cuando un identificador lleva `-`, y cerrarlo es ruptura versionada que espera autorización |
 | 4 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
 
 ## 1. Estado medido
@@ -6319,6 +6319,98 @@ y esta UAT la portada, pero un escenario **permanente** que afirme el rechazo
 exige que el lanzador pueda correr un ejemplo con raíz de usuario, y eso es
 capacidad del arnés, no un escenario más. Queda dicho como hueco, con su
 nombre.
+
+### 2.57 La colisión de nombres de stream: caracterizada, con su deuda con nombre
+
+**La pregunta.** El nombre de un stream en disco no es invertible: `safeStreamName`
+pliega a `_` todo lo que no sea `[A-Za-z0-9._-]`, y su propio KDoc lo dice sin
+rodeos —*«Lossy and deliberately never undone… `a/b` and `a_b` produce the same
+name»*. La pregunta era si eso llega a **mezclar los bytes de dos operaciones
+distintas**, y qué es lo que lo impide.
+
+**Las tres piezas, medidas.**
+
+| pieza | hecho |
+|---|---|
+| el **identificador** | `{runId}/{operationId}/{channel}` **sí** es inyectivo, y está razonado: el parser lee por los **extremos** —el run al principio, el canal al final, que es un conjunto cerrado— y todo lo de en medio es el id de operación, separadores incluidos |
+| el **nombre en disco** | no lo es: el directorio de un stream es `streams/safe(stream.value)`, **un solo nombre plano** |
+| el **índice** | el `SegmentFrameIndex` guarda el identificador **completo** en sus propios ficheros y lo lee de ahí, así que el índice **sí** distingue dos streams que en disco se llaman igual |
+
+La consecuencia de las tres: el índice y el store de bytes **no hablan el mismo
+idioma**. El índice sabe qué stream es cada cosa; el store sólo sabe el nombre
+plano. Si dos streams plegaran al mismo nombre, el índice los separaría y el
+store **los mezclaría**.
+
+**Lo que hoy lo impide, y que nadie había escrito.** El cuerpo de una operación
+es una lista de segmentos, y el motor escribe tres formas: `"{índice}:{stepId}"`
+—un hijo, dirigido por su posición—, `"b{índiceRama}:{clave}"` y
+`"n:{nombre}"`. Los segmentos **dirigidos por posición** llevan un número, y un
+número no se pliega ⇒ dos de ellos nunca coinciden. Pero los otros dos **no
+llevan posición**: su identidad **es** el nombre, y el nombre lo elige quien
+escribe el pipeline. Dos de esos nombres que plieguen al mismo valor sí
+colisionarían. La garantía de que los bytes de un stream no se mezclan con los
+de otro dependía, pues, de un supuesto que **no estaba escrito en ningún sitio**
+y que el propio código contradecía en un caso.
+
+**El defecto que la medición destapó, y que sí era real.** El `OpId` es el
+identificador de una operación, y tiene una forma textual (`OpId.format`) y un
+parser (`OpId.parse`) que es **la única puerta por la que un id de operación
+llega al sistema desde fuera** —la consola lo usa para resolver filtros. El
+parser exigía que cada segmento empezara por un índice numérico, y **descartaba
+en silencio** los que no lo tenían. El resultado medido:
+
+```
+run-7-s0-3-bp1-b0:branch   --parse-->   run-7-s0-3
+run-7-s0-3-bp4-0:core.parallel-b1:branch-n:closure-2:core.sh
+                           --parse-->   run-7-s0-3-bp2-0:core.parallel-2:core.sh
+```
+
+No es un detalle: el parser devolvía **otra operación**. En el caso mixto hasta
+cambia el **conteo** del cuerpo (`bp4` → `bp2`), porque el corte por guiones se
+come piezas de más y el `take(count)` se lleva las equivocadas. Un `OpId` que
+al ida y vuelta no vuelve a ser el mismo es una identidad que **no es estable**.
+
+**El arreglo, y que sea compatible.** El parser ahora reconstruye un segmento
+que no va dirigido por posición **tal como estaba escrito**, en vez de
+droppearlo. El texto que se emite **no cambia** —el mismo `format`—, así que no
+se toca ninguna clave del journal, y el resultado observable de la consola no
+cambia: sus dos consumidores (`ConsoleOperationSelection` y
+`StageStepKindResolver`) miran **sólo** el índice de etapa y de paso. El
+efecto lateral útil: un identificador que lleve `/` ahora **sí** sobrevive al
+ida y vuelta, porque el segmento se conserva literal.
+
+**La fila, vista en rojo.** `OpIdRoundTripTest` — **4 filas puras**, sin disco,
+sin reloj y sin proceso: un segmento dirigido por posición, uno de rama
+paralela, uno de cuerpo nombrado, y un camino mixto. Con el parser de antes:
+
+```
+tests="4" skipped="0" failures="3" errors="0"     (con el parser de antes)
+tests="4" skipped="0" failures="0" errors="0"     (con el arreglo)
+```
+
+Las tres filas que caen son exactamente las que dependen de los segmentos sin
+posición, y la única que sobrevive es la que no depende de ellos. El parser se
+revirtió a su estado defectuoso para medir ese rojo y se volvió a aplicar el
+arreglo después; el diff final es **sólo** el del arreglo.
+
+**Lo que NO se arregla, y por qué.** El formato del cuerpo **no es invertible**
+en general: los segmentos se unen con guiones, así que un identificador que
+lleve un `-` dentro (un `pluginStepId`, un nombre de cierre, una clave de
+rama) hace que el corte no sepa dónde acaba un segmento y dónde empieza el
+siguiente. Cerrar eso tiene **dos** caminos y los dos son rupturas versionadas:
+restringir el alfabeto de esos identificadores —un plugin que hoy usa `-` en su
+nombre dejaría de funcionar— o cambiar el formato del texto, que **rompe las
+claves del journal** que el producto promete byte a byte. Queda escrito como
+**deuda con nombre**, no como descuido.
+
+**El veredicto sobre la colisión.** Con el camino de producción actual, **dos
+streams no pueden compartir bytes**: los segmentos dirigidos por posición no se
+pliegan, y los ids de step de producción (`core.sh`, `core.dir`, los de los
+plugins de ejemplo) sólo llevan `[A-Za-z0-9._-]`. La colisión **no es
+alcanzable hoy**. Lo que sí era verdad —y ya no lo es— es que la garantía
+dependía de un supuesto no escrito, y que la puerta por la que un id externo
+entra al sistema **descartaba parte de la identidad en silencio**. Eso era un
+defecto real, y está arreglado.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **No saber de quién es un directorio no es motivo para borrarlo.** El

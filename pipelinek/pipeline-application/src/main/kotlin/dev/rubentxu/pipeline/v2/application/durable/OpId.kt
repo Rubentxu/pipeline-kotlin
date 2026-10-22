@@ -110,18 +110,44 @@ data class OpId(
 
             val bodyPath = if (bodySegs.isNotEmpty() && bodyCountStr.isNotEmpty()) {
                 val count = bodyCountStr.toIntOrNull() ?: 0
-                // Split by hyphen, but each segment is "index:pluginId" (contains colon but not hyphen)
-                // The segments were joined with hyphens, so we split and filter
+                // The segments were joined with hyphens, so this splits on them.
                 val allSegments = bodySegs.split("-").filter { it.isNotBlank() }
-                allSegments.take(count).mapNotNull { seg ->
-                    val parts = seg.split(":")
-                    if (parts.size == 2) {
-                        val index = parts[0].toIntOrNull()
-                        val pluginId = parts[1]
-                        if (index != null && pluginId.isNotBlank()) {
-                            BlockSegment(index, dev.rubentxu.pipeline.v2.domain.PluginStepId(pluginId))
+                if (allSegments.size == count) {
+                    // One piece per segment: the split is exact, so the path can
+                    // be rebuilt as it was written.
+                    allSegments.map { seg ->
+                        val parts = seg.split(":")
+                        val index = parts.getOrNull(0)?.toIntOrNull()
+                        if (parts.size == 2 && index != null && parts[1].isNotBlank()) {
+                            BlockSegment(index, dev.rubentxu.pipeline.v2.domain.PluginStepId(parts[1]))
+                        } else {
+                            // A segment that is NOT addressed by position: a
+                            // parallel branch frame ("b0:branch") or a named body
+                            // ("n:closure"). Its first field is not an index, and
+                            // rebuilding it as one would change the identity — so
+                            // it is kept exactly as it was written. Dropping it
+                            // instead would return an OpId that names a
+                            // DIFFERENT operation: the same stage and step
+                            // without its body.
+                            BlockSegment(seg)
+                        }
+                    }
+                } else {
+                    // More pieces than segments: some identifier inside the path
+                    // carries a '-', and the split cannot say where one segment
+                    // ends and the next begins. The count says how many there
+                    // are, but not which pieces they are. The path is rebuilt as
+                    // far as the pieces allow, and the rest is dropped.
+                    allSegments.take(count).mapNotNull { seg ->
+                        val parts = seg.split(":")
+                        if (parts.size == 2) {
+                            val index = parts[0].toIntOrNull()
+                            val pluginId = parts[1]
+                            if (index != null && pluginId.isNotBlank()) {
+                                BlockSegment(index, dev.rubentxu.pipeline.v2.domain.PluginStepId(pluginId))
+                            } else null
                         } else null
-                    } else null
+                    }
                 }
             } else emptyList()
 

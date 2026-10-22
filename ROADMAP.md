@@ -597,6 +597,147 @@ test (la quinta) y 5 tests; los cuatro módulos vecinos no se mueven.
   `main` y son previos a este ciclo. El branch `integration/reconcile-main` no los contiene en
   su árbol.
 
+
+### 2.39 Los trece rojos del stage 3: cuatro defectos y una expectativa muerta
+
+El gate dejó de dar verde en el stage 3 con trece escenarios rojos. La primera hipótesis fue la
+barata —"el producto evolucionó y el corpus no lo acompañó"— y era **falsa en su mayor parte**.
+Once de los trece no eran expectativas viejas: eran **cuatro defectos de producto y un defecto
+del arnés**, cada uno con su propia causa raíz, su propio arreglo y su propia prueba de que el
+arreglo enciende rojo cuando se revierte. Éste es el bloque.
+
+| # | Escenario rojo | Lo que de verdad pasaba | Quién lo arregla |
+|---|---|---|---|
+| 1 | `output/33-live-process-output` | el camino **durable** no entregaba al terminal lo que el proceso imprimía | el producto |
+| 2 | `control-flow/05-scripted-control-flow` | consecuencia del #1 | el producto |
+| 3 | `control-flow/11-workflow-control` | consecuencia del #1 | el producto |
+| 4 | `durable/32-durable-replay` | consecuencia del #1 | el producto |
+| 5 | `plugins/body-slots` | consecuencia del #1 | el producto |
+| 6 | `plugins/lock-directive` | consecuencia del #1 | el producto |
+| 7 | `steps/33-glob-ant-alternation` | consecuencia del #1 | el producto |
+| 8 | `negative/15-error` | el camino **volatile** fundía el mensaje en la línea de veredicto y **perdía el tipo** del fallo | el producto |
+| 9 | `negative/30-step-failure` | lo mismo que el anterior, con otro tipo (`SCRIPT`) | el producto |
+| 10 | `plugins/trusted-plugin` | la **política de confianza del operador nunca se consultaba** | el producto |
+| 11 | `negative/plugin-trust-digest-mismatch` | la misma política sin consultar: el rechazo era por identidad, no por digest | el producto |
+| 12 | `plugins/repeat-block` | una **expectativa muerta** que el escenario no podía cumplir | el escenario |
+| 13 | `durable/38-saga-success` | el arnés **compartía el mundo** entre las dos ejecuciones | el arnés |
+
+#### Defecto 1 — el camino durable no entregaba la salida del proceso
+
+`MainVolatileRun` tenía un observador vivo que seguía el Output Plane mientras el run estaba en
+vuelo y lo escribía en el terminal. `MainDurableRun` **no tenía ninguno**. Medido con el mismo
+pipeline en los dos mundos:
+
+| | stdout |
+|---|---|
+| volatile | `[PipelineK] [step: live] live/sh-0` + `RAW_PROCESS_MARKER` |
+| durable | `[PipelineK] [step: live] live/sh-0` — **nada más** |
+
+El mundo durable es el que un operador tiene cuando tiene base de datos, y el que usa CI. Es
+decir: **el camino que más se usa era el que escondía la salida del build mientras el build
+corría**. El escenario `output/33-live-process-output` lo decía con todas las letras: *"What
+has to appear is the bytes the child process wrote, which the run committed to the Output Plane
+and the live observer then delivered"*.
+
+El arreglo no es un observador nuevo: es **el mismo observador, movido a un fichero compartido**
+(`LiveOutputObserver.kt`) y conectado al camino durable. Una sola autoridad para "qué se ve en
+terminal mientras el run corre" (AGENTS.md §1: dos autoridades para una decisión divergen).
+
+#### Defecto 2 — el informe de fallo perdía el tipo en el camino volatile
+
+El commit `b76f6dc70` ("one report of a failed run, whatever the execution path") unificó el
+informe **en `v2/`**, el árbol de `main`. Al fusionarse a `pipelinek/` sólo viaja su cambio de
+**escenario**: el producto conservaba el renderizado viejo, que fundía el mensaje en la línea de
+veredicto y nunca nombraba el tipo del fallo.
+
+```
+durable   Pipeline finished with FAILURE
+          cause [USER]: test error message
+volatile  Pipeline finished with FAILURE: test error message      <- sin el tipo
+```
+
+El tipo es el dato que distingue un permiso que falta de un script que falla de un run
+cancelado; sin él, tres entregas distintas producían el mismo informe. La unificación se
+rehace en el árbol que la necesita: `RunOutcomeReport.kt` con `reportRunOutcome`, y los dos
+caminos la llaman. La cita del KDoc del camino volatile —*"the two renderings are not the same
+fact read twice"*— era un argumento, y el argumento era falso: el hecho (el `RunOutcome` tipado)
+era el mismo y sólo cambiaba el renderizado.
+
+#### Defecto 3 — la política de confianza del operador no se consultaba nunca
+
+Éste es el más grave de los tres, y el ROADMAP mismo lo describía como hecho consumado:
+
+> *"Una política que opera en silencio no es una política: el runtime imprime, por cada plugin
+> que la política aprobó, los bytes, el publicador y la clave con que se aprobó. Sin esa línea,
+> un operador no puede distinguir «la política aprobó este plugin» de «la política nunca se
+> consultó»."*
+
+La realidad del código: `pluginTrustSource(trustFile)` estaba **definido y sin llamar**. Los dos
+call sites eran `admitThenComposeOrExit(config.pluginJars)` — sin `trust`, que vale `null`. El
+flag `--plugin-trust` se parseaba, la fuente existía, la política existía, el decisor existía, el
+keyring existía, y **nada se entregaba**. Un operador que fijaba un digest y esperaba que el
+runtime rechazara otros bytes recibía, en su lugar, un rechazo por *identidad duplicada* (que es
+lo que el escenario `plugin-trust-digest-mismatch` vio: `DuplicateIdentity` en vez de
+`RefusedDigestMismatch`).
+
+El arreglo cablea la fuente **y** el diario durable (`AdmissionControlJournal`), que tenía el
+mismo problema por la misma razón: *"su único escritor era una puerta que nadie llamaba"*. El
+ROADMAP describía un mundo que el código no tenía.
+
+#### Defecto 4 — el arnés compartía el mundo entre las dos ejecuciones
+
+El launcher corre **dos** ejecuciones de cada escenario —con journal y sin él— y las somete a
+las mismas expectativas. Las dos ejecuciones compartían el mismo `PIPELINEK_E2E_HOME`, así que un
+escenario que afirma un mundo **exacto** veía el mundo de la primera ejecución en la segunda. El
+`durable/38-saga-success` escribía `reserve\ncharge` en el log y después comparaba el log
+completo con esa cadena: en la segunda ejecución había cuatro líneas, y el escenario accusationaba
+al motor de un efecto repetido que no había ocurrido.
+
+El launcher ya sabía esto —su propio comentario lo dice: *"the marker a durable scenario writes
+lives in this directory, so the second execution would find the first one's effect and read it as
+a repeat"*— pero sólo lo aplicaba a los escenarios con `durable`/`resume`. El control root ya era
+por ejecución (`control` y `control-volatile`); el **directorio de trabajo no**, y ahí es donde
+viven los marcadores de un escenario. Ahora cada ejecución tiene el suyo.
+
+#### La expectativa muerta de `plugins/repeat-block`
+
+La única de los trece que sí era deuda de test. El commit `9c4bd7b88` cambió el body a
+`sh("echo iteration >> iterations.txt")` para que el **conteo** fuera observable; el commit
+`74870d412` ("cada escenario declara la garantía que promete") añadió después
+`//@ expect-stdout iteration` — una directiva que el body ya no podía satisfacer, porque el texto
+esperado nunca llegaba al stdout. El escenario no podía fallar por la razón que declaraba.
+
+El arreglo hace viva la declaración: el body imprime **y** anexa (`echo iteration | tee -a
+iterations.txt`). El escenario vuelve a tener dos observaciones vivas —el marcador en la salida y
+el conteo exacto— en vez de una muerta y otra viva.
+
+#### Discriminación medida
+
+Cada defecto se reintrodujo y se comprobó que enciende **su** fila y sólo la suya:
+
+| Defecto reintroducido | Escenario | Rojo observado |
+|---|---|---|
+| observador vivo en el durable → `AutoCloseable { }` | `output/33-live-process-output` | `stdout lacked: RAW_PROCESS_MARKER` |
+| informe fundido en el volatile | `negative/15-error` | `stderr lacked: cause [USER]: test error message` |
+| `pluginTrustSource(...)` → `null` | `plugins/trusted-plugin` | `stderr lacked: admitted under the operator's trust policy` |
+| `E2E_HOME` compartido otra vez | `durable/38-saga-success` | `exit 1, expected 0` + `SAGA-COMPENSATED-A-CHAIN-THAT-WORKED` |
+
+En los cuatro casos el defecto se reprodujo, la fila roja esperada se encendió, y la restauración
+devolvió el verde. Los trece escenarios quedaron verdes después, y los siete escenarios que
+dependen del `E2E_HOME` o de los dos mundos (32-durable-replay, body-slots,
+39-saga-two-same-kind, 22-wait-until, 14-credentials-bindings, 33-saga-compensation,
+31-stash-unstash) siguen verdes: el cambio del launcher no movió nada que no tuviera que mover.
+
+#### Lo que este bloque deja dicho
+
+La hipótesis de partida —"el producto evolucionó, el corpus no la siguió"— era la explicación
+cómoda, y era la que el ROADMAP propugnaba en §2.36 al dejar cincuenta escenarios sin auditar.
+La realidad es la contraria: de los trece rojos, **cuatro eran defectos del producto** y uno del
+arnés, y ninguno era una expectativa vieja. La próxima vez que un gate dé rojo, la pregunta
+correcta no es *"¿qué cambió en el test?"* sino *"¿qué dejó de ser verdad en el producto?"* — y
+esa pregunta tiene respuesta, medible, en el diff entre lo que el código hace y lo que su
+propio KDoc promete.
+
 ---
 
 ## 2. Deuda técnica abierta

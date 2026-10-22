@@ -6,6 +6,18 @@
 # assertions beyond the optional per-pipeline directives below, so a scenario
 # cannot grow into a test suite with its own vocabulary.
 #   //@ expect-exit 1                 default is 0
+#   //@ expect-outcome <token>       the result the RUN must conclude, in the
+#                                    # product's own vocabulary: success,
+#                                    # unstable or failure. The default follows
+#                                    # the expected exit: a run that must end
+#                                    # well is expected to conclude success, and
+#                                    # a run that must fail is expected to
+#                                    # conclude failure. The token is needed
+#                                    # for the case the exit code cannot
+#                                    # express: a run that caught a failure and
+#                                    # continued ends well AND is not a success,
+#                                    # so say so and the launcher checks the
+#                                    # conclusion the run published.
 #   //@ expect-stdout <substring>     the pipeline must PRODUCE this, not merely
 #                                    # exit 0: without it a step that ran and did
 #                                    # # nothing reads exactly like a step that ran
@@ -420,6 +432,14 @@ run_scenario() {
 
     scenario_index=$((scenario_index + 1))
 
+    # What this scenario's checks will PROVE, and how much machinery they ran
+    # through. They are reset here, before anything can fail, so a scenario
+    # that never reaches its body reports no guarantees rather than the
+    # previous scenario's. The marker writer reads them once the body is done.
+    scenario_guarantees=0
+    scenario_steps=0
+    scenario_outcome="none"
+
     local started_ms
     started_ms="$(now_ms)"
 
@@ -501,8 +521,8 @@ emit_scenario_markers() {
     fi
 
     printf '__VERDICT__ %s\n' "$verdict"
-    printf '__COUNTS__ observed=%s durable=%s seeded=%s\n' \
-        "$(count_declared_observations "$name")" \
+    printf '__COUNTS__ observed=%s steps=%s outcome=%s durable=%s seeded=%s\n' \
+        "$scenario_guarantees" "$scenario_steps" "$scenario_outcome" \
         "$(( durable_runs - before_durable ))" "$(( seeded - before_seeded ))"
     printf '__ELAPSED__ %s\n' "$(( $(now_ms) - started_ms ))"
     local reason
@@ -511,15 +531,22 @@ emit_scenario_markers() {
     done
 }
 
-# What the harness CHECKED for one scenario, as opposed to what it merely ran.
+# What the harness COMPARED for one scenario, as opposed to what it merely ran.
 #
-# Every scenario has to leave with an exit code, so `expect-exit 0` is the shape
-# of a scenario that watched a process end and nothing else. A scenario counts as
-# observed when it declared something the exit code does not carry: text the
-# run must produce, text the refusal must contain, or a non-zero exit that is a
-# guarantee rather than an accident. The count is what lets a reader weigh what
-# a green bought.
-count_declared_observations() {
+# The census used to count what a scenario DECLARED, and that was the wrong
+# number to count. A scenario whose guarantee lives in the pipeline's own steps
+# -- a step that fails the run when the product misbehaves -- declares
+# nothing, and the count said it asserted nothing while the exit code it
+# watched was carrying exactly that guarantee. A metric that misreports what
+# the suite buys does not only mislead: it points the work at declarations
+# instead of guarantees, and a declaration is the cheapest thing to add.
+#
+# What is counted here is what the harness COMPARED: text the run had to
+# produce, text the refusal had to contain, the bytes the run had to commit,
+# and a non-zero exit that is a guarantee rather than an accident. The default
+# exit of zero is what a process returns when it did not crash, so checking it
+# is checking that nothing happened.
+count_content_expectations() {
     local name="$1"
     local script="$here/$name"
     local count=0 directive
@@ -528,12 +555,37 @@ count_declared_observations() {
             '//@ expect-stdout '*|'//@ expect-stderr '*|'//@ expect-transcript '*)
                 count=$((count + 1)) ;;
             '//@ expect-exit '*)
-                # The default is 0 and 0 is what a process returns when it did
-                # not crash; checking it is checking that nothing happened.
                 [[ "${directive#//@ expect-exit }" != "0" ]] && count=$((count + 1)) ;;
         esac
     done < <(grep -m 40 '^//@ expect-' "$script" || true)
     printf '%s' "$count"
+}
+
+# The run's own conclusion, read from the product.
+#
+# The exit code says whether the process ended well. It does not say what the
+# RUN concluded, nor that the run concluded anything at all: a process that
+# dies between its last step and its terminal bookend leaves an exit code and
+# no verdict. The product publishes that conclusion as the terminal bookend of
+# its event lane, and the launcher reads it from there, so the verdict and the
+# exit code are two independent facts about the same run and can be compared.
+#
+# Prints `outcome=<word> steps=<n>`, or nothing when the run left no verdict.
+# The absence is a fact the caller has to handle: it is the difference
+# between "the run failed" and "the run said nothing".
+read_run_verdict() {
+    local db="$1" run_id="$2"
+    local events=""
+    events="$(binary events "$run_id" --db "$db" --typed 2>/dev/null)" || return 1
+    local bookend=""
+    bookend="$(grep -m1 '"kind":"RunFinished"' <<<"$events" || true)"
+    [[ -n "$bookend" ]] || return 1
+    local outcome=""
+    outcome="$(sed -n 's/.*"outcome":"\([a-z]*\)".*/\1/p' <<<"$bookend")"
+    [[ -n "$outcome" ]] || return 1
+    local steps=0
+    steps="$(grep -c '"kind":"StepFinished"' <<<"$events" || true)"
+    printf 'outcome=%s steps=%s\n' "$outcome" "$steps"
 }
 
 # One scenario, fully isolated. Nothing is read from the developer's HOME and
@@ -546,6 +598,7 @@ run_scenario_body() {
     slug="$(printf '%s' "$name" | tr '/.' '--')"
 
     local expect_exit=0
+    local expect_outcome=""
     local durable=0
     local durable_once=0
     local resume=0
@@ -584,8 +637,32 @@ run_scenario_body() {
             '//@ failure-stage '*)  failure_stage="${directive#//@ failure-stage }" ;;
             '//@ events-follow '*)  events_follow="${directive#//@ events-follow }" ;;
             '//@ run-state '*)      run_state="${directive#//@ run-state }" ;;
+            '//@ expect-outcome '*) expect_outcome="${directive#//@ expect-outcome }" ;;
         esac
     done < <(grep -m 20 '^//@ ' "$script" || true)
+
+    # The guarantees this scenario PROMISED, before any of them is checked:
+    # the text it must produce, the refusal it must contain, the bytes it must
+    # commit, and a non-zero exit that is a guarantee rather than an accident.
+    # They are counted as promises, because a scenario that promised one and
+    # failed to meet it still promised it, and a census that hid the failure
+    # would report a smaller suite than the one that ran.
+    scenario_guarantees=$((scenario_guarantees + $(count_content_expectations "$name")))
+
+    # The result the scenario expects its RUN to conclude, in the product's own
+    # vocabulary. The exit code cannot say it: a run that caught a failure and
+    # continued exits well, exactly like a run that had nothing to catch, and
+    # the two are different worlds for whoever reads the result. A scenario
+    # that says nothing expects the clean one; a scenario that expects the run
+    # to have caught something says so, and the harness checks the conclusion
+    # the run published instead of the process that carried it.
+    if [[ -z "$expect_outcome" ]]; then
+        if [[ "$expect_exit" == 0 ]]; then
+            expect_outcome="success"
+        else
+            expect_outcome="failure"
+        fi
+    fi
 
     local root="$cycle_root/$slug"
     # A private working directory per scenario, entered with `cd`, so a step
@@ -1526,12 +1603,15 @@ run_scenario_body() {
     # Declared inside the scenario so it reads the scenario's own expectations
     # without inventing a second place to keep them.
     #
-    # $1 label, $2 stdout file, $3 stderr file, $4 exit code, $5 control root.
+    # $1 label, $2 stdout file, $3 stderr file, $4 exit code, $5 control root,
+    # $6 journal database, or empty when the execution had no journal to read.
     # Returns non-zero when an expectation did not hold, and leaves the reason
     # in $check_detail for the caller to report.
     check_execution() {
         local ex_label="$1" ex_stdout="$2" ex_stderr="$3" ex_code="$4" ex_control="$5"
+        local ex_db="$6"
         local wanted
+        local acceptable=""
 
         if [[ "$ex_code" != "$expect_exit" ]]; then
             printf 'FAIL %-52s exit %s, expected %s\n' "$ex_label" "$ex_code" "$expect_exit"
@@ -1539,6 +1619,68 @@ run_scenario_body() {
             show_printed "$ex_stderr"
             check_detail="exit $ex_code, expected $expect_exit"
             return 1
+        fi
+
+        # The run's own conclusion, when the execution under test WAS a run.
+        #
+        # A scenario that watches a process end is watching the weakest thing
+        # about it. The exit code does not say what the run concluded, and it
+        # does not say that the run concluded anything: a run that dies between
+        # its last step and its terminal bookend leaves an exit code and no
+        # verdict. The product publishes that conclusion in its event lane, and
+        # the launcher reads it from there, so the verdict and the exit code
+        # become two independent facts about the same run and can be compared.
+        #
+        # The verdict is what the scenario's guarantee is really about. A run
+        # that caught a failure and continued ends well, exactly like a run that
+        # had nothing to catch, and the exit code cannot tell the two apart;
+        # the published conclusion can, and it is the conclusion the scenario
+        # declares. A run that ends successfully without publishing a verdict
+        # has said nothing about itself, and a scenario that accepts that as a
+        # pass accepts silence.
+        #
+        # A run that FAILED may legitimately leave no verdict: that is what a
+        # run that died looks like. Only the successful side is a promise.
+        if [[ -n "$ex_db" ]]; then
+            local run_id=""
+            run_id="$(grep -ao '"schema":"pipelinek.launch/1","runId":"[^"]*"' "$ex_stderr" 2>/dev/null \
+                | head -1 | sed 's/.*"runId":"//; s/"$//' || true)"
+            if [[ -n "$run_id" ]]; then
+                local verdict="" run_outcome="" run_steps=0
+                verdict="$(read_run_verdict "$ex_db" "$run_id" || true)"
+                if [[ -z "$verdict" ]]; then
+                    if [[ "$ex_code" == 0 ]]; then
+                        printf 'FAIL %-52s the run %s exited 0 without publishing a verdict\n' \
+                            "$ex_label" "$run_id"
+                        check_detail="the run $run_id exited 0 without publishing a verdict"
+                        return 1
+                    fi
+                else
+                    run_outcome="$(sed -n 's/^outcome=\([a-z]*\).*/\1/p' <<<"$verdict")"
+                    run_steps="$(sed -n 's/.*steps=\([0-9]*\).*/\1/p' <<<"$verdict")"
+                    scenario_guarantees=$((scenario_guarantees + 1))
+                    scenario_steps=$((scenario_steps + run_steps))
+                    scenario_outcome="$run_outcome"
+                    # The conclusions a run may reach, and which of them agree
+                    # with a process that ended well: a clean success, and the
+                    # unstable one a run reaches when it caught a failure and
+                    # carried on. A process that did not end well concluded
+                    # either a failure or an abort, and the exit code cannot
+                    # tell those two apart either.
+                    case "$expect_outcome" in
+                        success)  acceptable="success" ;;
+                        unstable) acceptable="unstable" ;;
+                        failure)  acceptable="failure aborted" ;;
+                        *)        acceptable="$expect_outcome" ;;
+                    esac
+                    if [[ " $acceptable " != *" $run_outcome "* ]]; then
+                        printf 'FAIL %-52s the run %s concluded %s, expected %s\n' \
+                            "$ex_label" "$run_id" "$run_outcome" "$expect_outcome"
+                        check_detail="the run $run_id concluded $run_outcome, expected $expect_outcome"
+                        return 1
+                    fi
+                fi
+            fi
         fi
 
         # -a porque la salida puede traer bytes NUL, y sin el fallo se reporta
@@ -1603,11 +1745,33 @@ run_scenario_body() {
         return 0
     }
 
+    # The checks this scenario made BEYOND watching a process end. Counted from
+    # what the launcher did, not from what the scenario declared: a mode the
+    # launcher ran is a check the launcher made, whether or not the scenario
+    # said so in a directive. A scenario that reads a run's state, replays it
+    # or follows its events has checked the product, and a census that called
+    # it a scenario that "only watched the exit code" was counting the wrong
+    # thing.
+    local projections=0
+    if [[ "$cancel" == 1 ]]; then projections=$((projections + 1)); fi
+    if [[ "$recover" == 1 ]]; then projections=$((projections + 1)); fi
+    if [[ "$events_refusal" != "" ]]; then projections=$((projections + 1)); fi
+    if [[ "$events_resume" != "" ]]; then projections=$((projections + 1)); fi
+    if [[ "$step_verdict" != "" ]]; then projections=$((projections + 1)); fi
+    if [[ "$failure_stage" != "" ]]; then projections=$((projections + 1)); fi
+    if [[ "$events_follow" != "" ]]; then projections=$((projections + 1)); fi
+    if [[ "$run_state" != "" ]]; then projections=$((projections + 1)); fi
+    # A pipeline that ran twice checked that its effect did not repeat, which
+    # is a guarantee no single execution can make.
+    if [[ "$durable" == 1 || "$resume" == 1 ]]; then projections=$((projections + 1)); fi
+    scenario_guarantees=$((scenario_guarantees + projections))
+
     # The execution that decides the verdict, against every expectation the
     # scenario declares. For a resumed scenario it is the SECOND run: the
     # first one died before it could say anything.
     local check_detail=""
-    if ! check_execution "$label" "$verdict_stdout" "$verdict_stderr" "$code" "$root/control"; then
+    if ! check_execution "$label" "$verdict_stdout" "$verdict_stderr" "$code" "$root/control" \
+        "$root/events.db"; then
         failed=$((failed + 1))
         failures+=("$label: $check_detail")
         return
@@ -1615,9 +1779,14 @@ run_scenario_body() {
 
     # The volatile path, when the scenario ran it. Both paths are held to the
     # same expectations: a scenario is ok when BOTH met them.
+    #
+    # The volatile execution has no journal, so it has no event lane and no
+    # verdict to read: what it leaves is its exit code and its output. That is
+    # not a weaker check, it is a different one, and the census counts it as
+    # what it is.
     if [[ "$run_volatile" == 1 ]]; then
         if ! check_execution "$label (volatile)" "$vstdout" "$vstderr" "$vcode" \
-            "$root/control-volatile"; then
+            "$root/control-volatile" ""; then
             failed=$((failed + 1))
             failures+=("$label (volatile): $check_detail")
             return
@@ -1779,6 +1948,8 @@ scenario_index="${#selected[@]}"
 passed=0; failed=0; blocked=0; seeded=0; durable_runs=0; failures=()
 observed_scenarios=0
 observed_expectations=0
+finished_steps=0
+unstable_runs=0
 
 for script in ${selected[@]+"${selected[@]}"}; do
     slug="$(scenario_slug "$script")"
@@ -1816,6 +1987,8 @@ for script in ${selected[@]+"${selected[@]}"}; do
 
     counts="$(grep -m 1 '^__COUNTS__ ' "$file" 2>/dev/null || true)"
     local_observed="$(sed -n 's/.*observed=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
+    local_steps="$(sed -n 's/.*steps=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
+    local_outcome="$(sed -n 's/.*outcome=\([a-z]*\).*/\1/p' <<<"$counts")"
     local_durable="$(sed -n 's/.*durable=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
     local_seeded="$(sed -n 's/.*seeded=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
     # A counter that reads a corrupted value is a number nobody can trust, and
@@ -1824,6 +1997,11 @@ for script in ${selected[@]+"${selected[@]}"}; do
     if [[ "$local_observed" =~ ^[0-9]+$ ]] && (( local_observed > 0 )); then
         observed_scenarios=$((observed_scenarios + 1))
     fi
+    [[ "$local_steps"   =~ ^[0-9]+$ ]] && finished_steps=$((finished_steps + local_steps))
+    # A run that caught a failure and continued is a weaker green than a clean
+    # one, and the exit code cannot tell them apart. The count is here so a
+    # reader of the census knows how many of the greens were of that kind.
+    [[ "$local_outcome" == "unstable" ]] && unstable_runs=$((unstable_runs + 1))
     [[ "$local_durable" =~ ^[0-9]+$ ]] && durable_runs=$((durable_runs + local_durable))
     [[ "$local_seeded"  =~ ^[0-9]+$ ]] && seeded=$((seeded + local_seeded))
 
@@ -1856,15 +2034,24 @@ fi
 printf '\n%d scenario(s), %d passed, %d failed, %d blocked, %d credential(s) seeded, %d durable rerun(s)\n' \
     "$scenario_index" "$passed" "$failed" "$blocked" "$seeded" "$durable_runs"
 
-# What the run OBSERVED, next to what it EXECUTED. A scenario that only watched
-# a process exit is a scenario whose green says nothing about behaviour, and a
-# gate that cannot say which of its checks were real is a gate whose cost
-# cannot be weighed against what it bought. The census counts scenarios that
-# DECLARED an observation, so a scenario that declared one and failed still
-# counts: it declared it, and then it failed to meet it.
-printf '%d of %d executed scenario(s) declared an observation (%d expectations checked); %d only watched the exit code\n' \
-    "$observed_scenarios" "$(( passed + failed ))" "$observed_expectations" \
-    "$(( passed + failed - observed_scenarios ))"
+# What the run CHECKED, next to what it EXECUTED. A gate that cannot say which
+# of its checks were real is a gate whose cost cannot be weighed against what
+# it bought.
+#
+# The census counts what was COMPARED, not what was DECLARED. Those are not
+# the same thing, and the difference decides where the work goes: a scenario
+# whose guarantee lives in the pipeline's own steps declares nothing, and a
+# census that counted declarations reported it as a scenario that asserted
+# nothing while the exit code it watched was carrying exactly that guarantee.
+# A number that misreports what the suite buys points the work at
+# declarations instead of guarantees, and a declaration is the cheapest thing
+# to add.
+#
+# The steps are what the green actually exercised: every step the product
+# finished inside the run that decided the scenario's verdict.
+printf '%d of %d executed scenario(s) had a guarantee checked (%d guarantees, %d steps finished, %d ended unstable); %d asserted nothing\n' \
+    "$observed_scenarios" "$(( passed + failed ))" "$observed_expectations" "$finished_steps" \
+    "$unstable_runs" "$(( passed + failed - observed_scenarios ))"
 
 # The stage clock, as the fact it now is. Every scenario reported, so nothing is
 # hidden by this line: the stage was simply too slow for the budget it was given.

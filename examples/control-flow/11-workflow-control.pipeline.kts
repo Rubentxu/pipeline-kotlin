@@ -1,4 +1,5 @@
 //@ expect-stdout step-A
+//@ expect-outcome unstable
 pipeline {
     stages {
         stage("workspace-control") {

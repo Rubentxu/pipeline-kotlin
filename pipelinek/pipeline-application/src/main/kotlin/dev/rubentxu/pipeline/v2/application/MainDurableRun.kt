@@ -645,11 +645,6 @@ private fun resolveScriptedFrontend(
  * The message is printed as-is, with no prefix of its own: the failure kinds are
  * already typed, and re-labelling them here would create a second vocabulary.
  */
-private fun reportRunFailure(failure: PipelineFailure) {
-    System.err.println("  cause [${failure.kind}]: ${failure.message}")
-    failure.cause?.let { System.err.println("  origin: $it") }
-}
-
 /**
  * The exit decision of a durable run.
  *
@@ -659,24 +654,7 @@ private fun reportRunFailure(failure: PipelineFailure) {
  */
 private fun durableRunFailed(runOutcome: RunOutcome?, lastEvent: DomainEvent?): Boolean =
     if (runOutcome != null) {
-        when (runOutcome) {
-            is RunOutcome.Success -> {
-                System.err.println("Pipeline finished with SUCCESS"); false
-            }
-            is RunOutcome.Unstable -> {
-                System.err.println("Pipeline finished with UNSTABLE"); false
-            }
-            is RunOutcome.Failure -> {
-                System.err.println("Pipeline finished with FAILURE")
-                reportRunFailure(runOutcome.failure)
-                true
-            }
-            is RunOutcome.Aborted -> {
-                System.err.println("Pipeline finished with FAILURE")
-                System.err.println("  cause [ABORTED]: the run was cancelled or interrupted before a terminal outcome")
-                true
-            }
-        }
+        reportRunOutcome(runOutcome)
     } else {
         // The LEGACY path: no typed outcome was produced, so there are only two stories —
         // "it finished successfully" and "it did not". The "unstable" arm that used to live

@@ -395,27 +395,7 @@ private fun resolveVolatileControlRoot(config: CliFlags): Path =
  */
 private fun volatileRunFailed(runOutcome: RunOutcome?, events: List<dev.rubentxu.pipeline.v2.events.DomainEvent>): Boolean =
     if (runOutcome != null) {
-        when (runOutcome) {
-            is RunOutcome.Success -> {
-                System.err.println("Pipeline finished with SUCCESS"); false
-            }
-            is RunOutcome.Unstable -> {
-                System.err.println("Pipeline finished with UNSTABLE"); false
-            }
-            is RunOutcome.Failure -> {
-                // an admission failure (compile or DSL
-                // construction) must carry its diagnostic. "FAILURE" alone
-                // sent users hunting with zero context.
-                runOutcome.failure.message
-                    .takeIf { it.isNotBlank() && it != "Kotlin compilation failed" }
-                    ?.let { System.err.println("Pipeline finished with FAILURE: $it") }
-                    ?: System.err.println("Pipeline finished with FAILURE")
-                true
-            }
-            else -> {
-                System.err.println("Pipeline finished with FAILURE"); true
-            }
-        }
+        reportRunOutcome(runOutcome)
     } else {
         // The LEGACY path: no typed outcome was produced, so there are only two stories —
         // "it finished successfully" and "it did not". The "unstable" arm that used to live

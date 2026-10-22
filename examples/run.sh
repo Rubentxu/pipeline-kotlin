@@ -420,6 +420,9 @@ run_scenario() {
 
     scenario_index=$((scenario_index + 1))
 
+    local started_ms
+    started_ms="$(now_ms)"
+
     # The budget this scenario asked for, or the default.
     local budget="$SCENARIO_TIMEOUT_SECONDS"
     local directive
@@ -433,6 +436,7 @@ run_scenario() {
             "$name" "$budget"
         failed=$((failed + 1))
         failures+=("$name: the timeout directive is not a positive number of seconds")
+        emit_scenario_markers "$name" 0 0 0 0 "$started_ms"
         return
     fi
 
@@ -447,6 +451,7 @@ run_scenario() {
     rm -f "$clock_marker"
 
     local before_passed="$passed" before_failed="$failed" before_failures="${#failures[@]}"
+    local before_blocked="$blocked" before_seeded="$seeded" before_durable="$durable_runs"
 
     run_scenario_body "$script"
 
@@ -470,6 +475,65 @@ run_scenario() {
             failures+=("$name: the clock of ${scenario_budget}s expired; the guarantee was NOT checked")
         fi
     fi
+
+    emit_scenario_markers "$name" "$before_failed" "$before_failures" "$before_blocked" \
+        "$started_ms" "$before_seeded" "$before_durable"
+}
+
+# The verdict of a scenario travels as TEXT, not as a counter.
+#
+# The scenarios run in parallel, each in its own subshell, so a counter the
+# parent incremented is a counter that died with the subshell: the parent would
+# read zero and print a green over a stage where nothing was counted. The
+# scenario therefore writes what it decided into its own output, and the parent
+# reads it back once every scenario has finished. The markers are stripped
+# before the report is printed -- they are the machine's reading of the file,
+# not a line anybody asked for.
+emit_scenario_markers() {
+    local name="$1" before_failed="$2" before_failures="$3" before_blocked="$4"
+    local started_ms="$5" before_seeded="${6:-0}" before_durable="${7:-0}"
+
+    local verdict="ok"
+    if (( blocked > before_blocked )); then
+        verdict="blocked"
+    elif (( failed > before_failed )); then
+        verdict="fail"
+    fi
+
+    printf '__VERDICT__ %s\n' "$verdict"
+    printf '__COUNTS__ observed=%s durable=%s seeded=%s\n' \
+        "$(count_declared_observations "$name")" \
+        "$(( durable_runs - before_durable ))" "$(( seeded - before_seeded ))"
+    printf '__ELAPSED__ %s\n' "$(( $(now_ms) - started_ms ))"
+    local reason
+    for (( i = before_failures; i < ${#failures[@]}; i++ )); do
+        printf '__FAILURE__ %s\n' "${failures[$i]}"
+    done
+}
+
+# What the harness CHECKED for one scenario, as opposed to what it merely ran.
+#
+# Every scenario has to leave with an exit code, so `expect-exit 0` is the shape
+# of a scenario that watched a process end and nothing else. A scenario counts as
+# observed when it declared something the exit code does not carry: text the
+# run must produce, text the refusal must contain, or a non-zero exit that is a
+# guarantee rather than an accident. The count is what lets a reader weigh what
+# a green bought.
+count_declared_observations() {
+    local name="$1"
+    local script="$here/$name"
+    local count=0 directive
+    while IFS= read -r directive; do
+        case "$directive" in
+            '//@ expect-stdout '*|'//@ expect-stderr '*|'//@ expect-transcript '*)
+                count=$((count + 1)) ;;
+            '//@ expect-exit '*)
+                # The default is 0 and 0 is what a process returns when it did
+                # not crash; checking it is checking that nothing happened.
+                [[ "${directive#//@ expect-exit }" != "0" ]] && count=$((count + 1)) ;;
+        esac
+    done < <(grep -m 40 '^//@ expect-' "$script" || true)
+    printf '%s' "$count"
 }
 
 # One scenario, fully isolated. Nothing is read from the developer's HOME and
@@ -1593,6 +1657,55 @@ run_scenario_body() {
     passed=$((passed + 1))
 }
 
+# --- The clock of one scenario, and the label that says it --------------------
+#
+# A scenario that passes has to say what it COST, not only that it passed: the
+# price of the gate is the number an operator needs before deciding whether to
+# wait for it again, and a report that only says "ok" makes that number
+# measurable by hand and by nothing else.
+now_ms() {
+    local now
+    now="$(date +%s%3N 2>/dev/null || true)"
+    if [[ "$now" =~ ^[0-9]+$ ]]; then
+        printf '%s' "$now"
+    else
+        # `date +%3N` is a GNU extension; where it is missing the clock still
+        # works, it just counts whole seconds. A coarse number beats no number.
+        printf '%s' "$(( $(date +%s) * 1000 ))"
+    fi
+}
+
+elapsed_label() {
+    local ms="$1"
+    printf '%d.%01ds' "$(( ms / 1000 ))" "$(( (ms % 1000) / 100 ))"
+}
+
+scenario_slug() {
+    printf '%s' "${1#"$here"/}" | tr '/.' '--'
+}
+
+# How many scenarios run at once. They are isolated BY DESIGN -- each one gets
+# its own root, its own working directory, its own credential store, its own
+# durable database and its own control root -- so they do not need to take
+# turns. The ceiling is a knob, not a constant: a smaller machine gets fewer
+# workers, and `PIPELINEK_E2E_JOBS=1` restores the serial behaviour exactly,
+# which is what a scenario that only fails under contention needs to diagnose.
+#
+# The serial run was measured, and it does not fit: 56 scenarios at a median of
+# about 7 s each reached scenario 49 of 56 when the stage clock of 780 s
+# expired, and a stage that stops is a gate that reports gaps. Eight workers
+# brings the same suite inside the stage clock on the same machine.
+jobs_limit="${PIPELINEK_E2E_JOBS:-0}"
+if [[ ! "$jobs_limit" =~ ^[0-9]+$ ]]; then
+    printf 'run.sh: PIPELINEK_E2E_JOBS needs a number, got: %s\n' "$jobs_limit" >&2
+    exit 2
+fi
+if [[ "$jobs_limit" -eq 0 ]]; then
+    cores="$(nproc 2>/dev/null || echo 4)"
+    (( cores > 8 )) && cores=8
+    jobs_limit="$cores"
+fi
+
 # Optional glob filter, relative to this directory: `run.sh 'control-flow/*'`.
 # Zero matches is an ERROR, not a run of nothing. A filter that quietly runs zero
 # scenarios prints "0 scenario(s), 0 passed, 0 failed" and exits 0, which reads
@@ -1628,30 +1741,110 @@ if (( ${#selected[@]} == 0 )); then
     exit 2
 fi
 
-# The stage clock. When it runs out, the launcher stops and NAMES the
-# scenarios it did not get to. A stage that stops without a name is a stage
-# that dies silently, and the gate's own ceiling would kill the whole run
-# without saying which scenario was stuck.
-scenario_count=${#selected[@]}
-for (( i = 0; i < scenario_count; i++ )); do
-    if (( $(date +%s) >= stage_deadline )); then
-        printf 'run.sh: the stage clock of %ss expired before the run finished\n' \
-            "$STAGE_TIMEOUT_SECONDS" >&2
-        printf '  The scenarios that did not run are a declared gap, not a pass:\n' >&2
-        for (( j = i; j < scenario_count; j++ )); do
-            printf '    - %s\n' "${selected[$j]#"$here"/}" >&2
-        done
-        exit 1
+# --- The stage, in parallel --------------------------------------------------
+#
+# Each scenario writes its verdict into its own file, and the parent prints those
+# files in SCENARIO ORDER at the end. Two reasons: the report keeps the shape a
+# serial run had, so two logs can be compared; and the summary line -- the only
+# thing the gate parses -- keeps meaning the same thing.
+#
+# The stage clock no longer decides WHICH scenarios run. It used to, and that
+# turned slowness into a lie: the serial stage reached scenario 49 of 56 when
+# its 780 s expired, and the seven it never reached were reported as gaps, so a
+# stage that was too slow looked like a stage with holes in it. Now every
+# selected scenario is started and bounded by its OWN clock, and the stage clock
+# is a post-hoc fact about the whole stage: it is reported when it is true, and
+# it no longer decides what counts as covered.
+verdict_dir="$cycle_root/verdicts"
+mkdir -p "$verdict_dir"
+
+running=0
+for script in ${selected[@]+"${selected[@]}"}; do
+    slug="$(scenario_slug "$script")"
+    ( run_scenario "$script" ) > "$verdict_dir/$slug.txt" 2>&1 &
+    running=$((running + 1))
+    if (( running >= jobs_limit )); then
+        # `wait -n` returns when the next job finishes. Its exit status is
+        # whatever that scenario's subshell ended with, which is NOT the
+        # launcher's verdict -- the verdict travels in the file -- so it is
+        # deliberately not turned into a failure here.
+        wait -n || true
+        running=$((running - 1))
     fi
-    run_scenario "${selected[$i]}"
+done
+# Same reason for the last one.
+wait || true
+
+scenario_index="${#selected[@]}"
+passed=0; failed=0; blocked=0; seeded=0; durable_runs=0; failures=()
+observed_scenarios=0
+observed_expectations=0
+
+for script in ${selected[@]+"${selected[@]}"}; do
+    slug="$(scenario_slug "$script")"
+    file="$verdict_dir/$slug.txt"
+    if [[ ! -f "$file" ]]; then
+        failed=$((failed + 1))
+        failures+=("${script#"$here"/}: the scenario produced no verdict at all")
+        continue
+    fi
+
+    # The human lines, in scenario order. The markers are the machine's reading
+    # of the same file and do not belong in the report.
+    #
+    # A scenario that produced a verdict has to have produced a LINE. A report
+    # with fewer lines than scenarios hides one of them, and the reader cannot
+    # tell WHICH one is missing -- they can only count. The count is taken
+    # before the cost line is added, so the cost line cannot excuse an empty
+    # verdict, and a scenario without a line is a failure of the harness rather
+    # than a pass nobody can see.
+    human_lines="$(grep -v -e '^__VERDICT__ ' -e '^__FAILURE__ ' -e '^__COUNTS__ ' \
+                         -e '^__ELAPSED__ ' -e '^[[:space:]]*$' "$file" | wc -l || true)"
+    grep -v -e '^__VERDICT__ ' -e '^__FAILURE__ ' -e '^__COUNTS__ ' -e '^__ELAPSED__ ' \
+        "$file" || true
+
+    local_ms="$(grep -m 1 '^__ELAPSED__ ' "$file" 2>/dev/null | sed 's/^__ELAPSED__ //' || true)"
+    if [[ "$local_ms" =~ ^[0-9]+$ ]]; then
+        printf '     %-52s %s\n' "${script#"$here"/}" "$(elapsed_label "$local_ms")"
+    fi
+
+    if (( human_lines == 0 )); then
+        failed=$((failed + 1))
+        failures+=("${script#"$here"/}: the scenario produced a verdict but no line in the report")
+        continue
+    fi
+
+    counts="$(grep -m 1 '^__COUNTS__ ' "$file" 2>/dev/null || true)"
+    local_observed="$(sed -n 's/.*observed=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
+    local_durable="$(sed -n 's/.*durable=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
+    local_seeded="$(sed -n 's/.*seeded=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
+    # A counter that reads a corrupted value is a number nobody can trust, and
+    # these counts are here to be trusted: they are ignored rather than added.
+    [[ "$local_observed" =~ ^[0-9]+$ ]] && observed_expectations=$((observed_expectations + local_observed))
+    if [[ "$local_observed" =~ ^[0-9]+$ ]] && (( local_observed > 0 )); then
+        observed_scenarios=$((observed_scenarios + 1))
+    fi
+    [[ "$local_durable" =~ ^[0-9]+$ ]] && durable_runs=$((durable_runs + local_durable))
+    [[ "$local_seeded"  =~ ^[0-9]+$ ]] && seeded=$((seeded + local_seeded))
+
+    verdict_line="$(grep -m 1 '^__VERDICT__ ' "$file" 2>/dev/null || true)"
+    case "${verdict_line#__VERDICT__ }" in
+        ok)      passed=$((passed + 1)) ;;
+        fail)    failed=$((failed + 1)) ;;
+        blocked) blocked=$((blocked + 1)) ;;
+        *)       failed=$((failed + 1))
+                 failures+=("${script#"$here"/}: the scenario produced no readable verdict") ;;
+    esac
+
+    while IFS= read -r reason; do
+        [[ -n "$reason" ]] && failures+=("$reason")
+    done < <(grep '^__FAILURE__ ' "$file" 2>/dev/null | sed 's/^__FAILURE__ //' || true)
 done
 
-# The four counters must reconcile before the summary is published: every
-# scenario the launcher selected reached exactly one verdict -- passed, failed
-# or blocked -- and one that reached none was skipped. A skip is a gap, not a
-# pass, so it is declared here rather than left for whoever reads the counts
-# to notice. The gate derives the same gap from the same numbers, and the two
-# cannot disagree because neither invents a fifth.
+# Every selected scenario reached exactly one bucket -- passed, failed or
+# blocked. One that reached none is named above as a failure rather than left
+# for whoever reads the counts to notice. The gate derives the same gap from the
+# same numbers, and the two cannot disagree because neither invents a fifth.
 if (( passed + failed + blocked != scenario_index )); then
     printf 'run.sh: %d scenario(s) selected, %d passed, %d failed, %d blocked -- %d skipped.\n' \
         "$scenario_index" "$passed" "$failed" "$blocked" \
@@ -1662,6 +1855,27 @@ fi
 
 printf '\n%d scenario(s), %d passed, %d failed, %d blocked, %d credential(s) seeded, %d durable rerun(s)\n' \
     "$scenario_index" "$passed" "$failed" "$blocked" "$seeded" "$durable_runs"
+
+# What the run OBSERVED, next to what it EXECUTED. A scenario that only watched
+# a process exit is a scenario whose green says nothing about behaviour, and a
+# gate that cannot say which of its checks were real is a gate whose cost
+# cannot be weighed against what it bought. The census counts scenarios that
+# DECLARED an observation, so a scenario that declared one and failed still
+# counts: it declared it, and then it failed to meet it.
+printf '%d of %d executed scenario(s) declared an observation (%d expectations checked); %d only watched the exit code\n' \
+    "$observed_scenarios" "$(( passed + failed ))" "$observed_expectations" \
+    "$(( passed + failed - observed_scenarios ))"
+
+# The stage clock, as the fact it now is. Every scenario reported, so nothing is
+# hidden by this line: the stage was simply too slow for the budget it was given.
+stage_over_budget=0
+if (( $(date +%s) > stage_deadline )); then
+    stage_over_budget=1
+    printf 'run.sh: the stage took longer than its clock of %ss.\n' "$STAGE_TIMEOUT_SECONDS" >&2
+    printf '  Every selected scenario reported a verdict; the stage as a whole is\n' >&2
+    printf '  too slow for the gate. Fewer workers, or a smaller suite, not a\n' >&2
+    printf '  suite that quietly stops half way.\n' >&2
+fi
 
 # A capability with no scenario exercising it is not covered, it is merely
 # unobserved -- and unobserved is indistinguishable from absent from the outside.
@@ -1677,8 +1891,22 @@ if [[ -z "$filter" ]] && (( durable_runs == 0 )); then
     printf '  A green here would be the absence of the subject, not a passing check.\n' >&2
     exit 1
 fi
+
+# Nothing RAN is not a pass. A stage where every selected scenario was blocked or
+# missing has measured nothing, and reporting "0 failed" about it is the same
+# false green as running zero scenarios.
+if (( passed + failed == 0 )); then
+    printf 'run.sh: no scenario was executed (%d selected, %d blocked).\n' \
+        "$scenario_index" "$blocked" >&2
+    printf '  A gate that runs NOTHING is not a gate that passed.\n' >&2
+    exit 2
+fi
+
 if (( failed > 0 || blocked > 0 )); then
     printf 'failures:\n'
     printf '  - %s\n' "${failures[@]}"
+    exit 1
+fi
+if (( stage_over_budget == 1 )); then
     exit 1
 fi

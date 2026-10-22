@@ -158,6 +158,7 @@ internal fun runDurablePipeline(
     // outside the `try`, because the verdict is printed after it — and because a run that
     // threw still has to say what it left behind.
     val sagaTerminals = mutableListOf<SagaTerminal>()
+    val outputObserver = startLiveOutputObserver(runId, controlDirRoot, config.format)
     // UAT collateral finding fix (shutdown race): the sqlite
     // single-writer thread is NON-daemon. If any exception escapes the run
     // or the stdout envelope streaming below, rawEventStore.close() is
@@ -255,6 +256,7 @@ internal fun runDurablePipeline(
         rawEventStore.close()
         Pair(outcome, lastEventCaptured)
     } finally {
+        runCatching { outputObserver.close() }
         // release ownership on every exit path, including the
         // exception paths, so a crashed run is immediately recoverable by the
         // next owner instead of waiting for the OS to reap the lock.

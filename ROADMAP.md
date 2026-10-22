@@ -88,6 +88,7 @@ hoy, y cambiarla es una ruptura versionada que no se hace sin autorización.
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
+| Destino de `:pipeline-runtime` | **se queda y está cableado**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52) | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:371` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
 es la condición con la que el censo de LOC es verdad: el censo lee
@@ -5934,7 +5935,77 @@ byte-idéntico en los dos.
 | `VERIFY_LOC / PRODUCT_LOC` | **18900 / 67377 = 0.281** (límite 2) |
 | Reloj de la puerta | **240 / 165 / 176 s** en tres ensayos sobre `0b0438114`, contra 900 s |
 
+### 2.52 El destino de `:pipeline-runtime`: se queda, cableado a los puertos publicados
+
+**La pregunta, tal y como estaba.** `:pipeline-runtime` era un módulo sin
+consumidor: sus tres adaptadores implementaban los puertos que
+`:pipeline-runtime-api` publica, y nada en el árbol los invocaba. §2.18 lo
+midió sin adornos —cero consumidores, fuera de la distribución y fuera de la
+compilación de la puerta— y §2.19 decidió **no borrarlo**, porque esos puertos
+son un contrato publicado y retirarlos sería dejar una promesa sin
+implementación. Quedaba una decisión de dos ramas: **cablear** los adaptadores
+a los puertos publicados, o **retirar** el módulo y dejar constancia de que
+esos puertos no tienen implementación en el runtime.
+
+**La salida: se cablea.** `:pipeline-runtime` se queda, sus tres adaptadores
+implementan los tres puertos publicados de `:pipeline-runtime-api`
+(`RuntimeRecoverPort`, `RuntimeControlPort`, `RuntimeIntrospectionPort`) y el
+runtime los invoca. La rama de retirarlo queda descartada con su motivo.
+
+**Lo que se mide hoy, sobre el árbol de este bloque:**
+
+| pregunta | respuesta medida |
+|---|---|
+| ¿está cableado a un consumidor real? | sí: `:pipeline-application` lo declara en `pipeline-application/build.gradle.kts:189` y compone los tres puertos en `CompositionRoot.kt:222,280,330` |
+| ¿los llama alguien? | sí, por verbo de CLI: `runs cancel` → `RuntimeControlPort.cancel` (`MainRunsCli.kt:132`), `runs recover` → `RuntimeRecoverPort.recover` (`MainRunsCli.kt:222`), `inspect` → `RuntimeIntrospectionPortStoreAdapter` (`MainInspectCli.kt:544`) |
+| ¿lo ejecuta un E2E? | sí: `examples/durable/39-cancel-dead-run` y `examples/durable/40-recover-refuses-a-half-finished-run` |
+| ¿lo compila la puerta? | sí, y a propósito: `scripts/verify-all.sh:371` pide `:pipeline-runtime:compileKotlin` en la etapa 1. La razón está escrita en el propio script: detekt **analiza** y no compila, y este módulo ni se publica ni viaja en la distribución, así que sin esa tarea nadie lo vería derivar del contrato que cumple |
+| ¿tiene observador? | sí: **5 clases** y **28 filas** de test unitario permanente (`RunCancellationDecisionTest`, `RuntimeControlPortStoreAdapterTest`, `RuntimeIntrospectionPortStoreAdapterTest`, `RuntimeRecoverPortStoreAdapterTest`, `RecoverJournalVocabularyTest`) |
+| ¿se publica? | no, y a propósito: un artefacto para él no resolvería nada para un consumidor externo, que compila contra los puertos, no contra los adaptadores. `:pipeline-runtime-api` **sí** está en `publishedContractModules` y en el BOM |
+
+**Por qué esta rama y no la otra.** Retirar el módulo no era una retractación
+neutra: `pipeline-runtime-api` está en `publishedContractModules`, en el BOM y
+en el manifiesto de la candidata, así que sus tres verbos son una promesa a un
+consumidor externo. Un módulo retirado deja esa promesa **sin
+implementación**, que es peor que una promesa cumplida. La rama elegida no sólo
+cumple el contrato: le da la autoridad única del journal y de las leases, que
+era lo que §2.19 pedía.
+
+**Dos lecturas que se contradecían, y que este bloque arregla.** La primera
+era un comentario de `settings.gradle.kts` que decía que
+`:pipeline-runtime-api` *"is NOT yet in `publishedContractModules`; this commit
+is the structural precondition only"*. Era falso y ya no lo es: el módulo está
+en la lista desde antes de este bloque, y el comentario era el fósil de la
+pregunta que este ciclo cierra. La segunda era la tabla por módulo de §2, que
+contaba **1** clase de test para `:pipeline-runtime` cuando hoy tiene **5** y
+**28 filas**: es un censo de otro ciclo, y por eso vive en la sección de
+historia y no en §1. Lo que este bloque añade es la fila que falta en la vista
+viva.
+
+**Lo que este bloque cierra y lo que no.** Cierra el **destino** del módulo: se
+queda, se queda cableado, y el árbol lo dice en tres sitios que ahora
+concuerdan. No cierra el **comportamiento** de los verbos: sigue abierto que
+una cancelación cuyo sellado del Output Plane falló **después** de registrar
+`ABORTED` pueda reconciliarse sin repetir efectos ni declarar un resultado
+falso. Eso es trabajo de otro bloque, no una duda sobre el destino del módulo.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **El módulo que implementa los puertos publicados se queda, y se cablea.**
+  `:pipeline-runtime` era un módulo sin consumidor: sus adaptadores
+  implementaban un contrato publicado y nada los invocaba. La decisión no era
+  "código muerto o código vivo", sino **qué contrato se cumple**: retirarlo
+  habría dejado los tres verbos publicados sin implementación —una promesa
+  rota es peor que una promesa cumplida—, y cablearlo le da al runtime la
+  autoridad única del journal y de las leases. La prueba de que el cableado
+  es real y no nominal son **tres verbos de CLI** que llegan a los puertos y
+  **dos escenarios ejecutables** que los ejercitan; un módulo importado y
+  nunca invocado habría sido la misma fractura por dentro.
+- **Un módulo que no se publica ni viaja tampoco puede quedar fuera de la
+  puerta.** `:pipeline-runtime` no está en la distribución, así que nada en el
+  artefacto avisaría de que derivar del contrato que cumple. Por eso la etapa 1
+  pide `:pipeline-runtime:compileKotlin` **explícitamente**: detekt analiza y
+  no compila, y el instrumento más barato para ese contrato es pedirle al
+  compilador que lo diga.
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
   índice de step, y ese índice ni siquiera dice a qué stage pertenece el

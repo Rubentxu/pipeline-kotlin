@@ -70,21 +70,24 @@ include(
     // published artifact carries no writer, no recovery entry point and no filesystem authority.
     // Not published, and deliberately so: see its build script.
     ":pipeline-output-store",
-    // Module split precondition (NOT a publication).
-    // `:pipeline-runtime-api` holds the four verbs (RuntimeRecoverPort /
+    // The runtime ports, as a PUBLISHED contract.
+    // `:pipeline-runtime-api` holds the three verbs (RuntimeRecoverPort /
     // RuntimeControlPort / RuntimeIntrospectionPort) plus the public pure decider
     // RuntimeRecoverDecision and their sealed ADTs / option types. Its
-    // `dependencies { }` block is `api :pipeline-output` only — no `:pipeline-events`,
-    // no store-side module — so a future publication does not leak store dependencies
-    // into the published POM. It is NOT yet in `publishedContractModules`; this
-    // commit is the structural precondition only.
+    // `dependencies { }` block is `api :pipeline-domain` + `api :pipeline-output`
+    // only — no `:pipeline-events`, no store-side module — so the published POM
+    // leaks no store dependency into a consumer's classpath.
+    // It IS in `publishedContractModules` and in the BOM, and `:pipeline-runtime`
+    // implements those three ports over the stores.
     ":pipeline-runtime-api",
     // The runtime surface. The host-internal module that holds the three
-    // adapters and the store composition. Depends on the new `:pipeline-runtime-api`
-    // for the port interfaces (so adapter sources see the published types) and on
-    // the internal `:pipeline-events-store` / `:pipeline-output-store` for adapter
-    // wiring (declared as `implementation` in the module's build script to keep
-    //'s internal types out of the published ABI). Not published.
+    // adapters implementing the published ports, over the event store, the
+    // journal and the lease. `:pipeline-application` depends on it at
+    // `implementation` scope and is its only consumer: it composes the three
+    // ports in `CompositionRoot`, and the CLI verbs `runs cancel`, `runs recover`
+    // and `inspect` call them. Not published, and deliberately so — an artifact
+    // for this module would resolve nothing for an external consumer, which
+    // compiles against the ports, not against the adapters.
     ":pipeline-runtime",
     ":pipeline-step-sdk:api",
     ":pipeline-step-sdk:runtime",

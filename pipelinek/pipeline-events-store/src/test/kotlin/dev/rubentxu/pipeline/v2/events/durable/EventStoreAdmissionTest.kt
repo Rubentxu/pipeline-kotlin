@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.events.durable
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestFactory
+import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.DynamicTest.dynamicTest
 
 /**
@@ -35,20 +36,38 @@ class EventStoreAdmissionTest {
      * mutation must turn at least one row red. No I/O, no duplicate E2E.
      */
     @TestFactory
-    fun `all admission decisions match the closed input matrix`() = listOf(
+    fun `all admission decisions match the closed input matrix`(): List<DynamicTest> {
+        val cases = listOf(
         Case("missing file / read refuses", PathObservation.NoFile, EventStorePurpose.Read, EventStoreRefusal.Absent(path)),
         Case("missing file / write may create", PathObservation.NoFile, EventStorePurpose.Write, null),
         Case("missing directory / read refuses", PathObservation.NoDirectory, EventStorePurpose.Read, EventStoreRefusal.NoDirectory(path)),
         Case("missing directory / write refuses", PathObservation.NoDirectory, EventStorePurpose.Write, EventStoreRefusal.NoDirectory(path)),
         Case("present path / read proceeds", PathObservation.Present, EventStorePurpose.Read, null),
         Case("present path / write proceeds", PathObservation.Present, EventStorePurpose.Write, null),
-    ).map { case ->
-        dynamicTest(case.label) {
-            assertEquals(
-                case.expected,
-                refusalFor(case.observation, path, case.purpose),
-                "observation=${case.observation}, purpose=${case.purpose}",
-            )
+        )
+        // A factory returning five green rows is not a green test of a 3x2
+        // matrix. Reject omissions and duplicates before generating cases.
+        val expectedPairs = listOf(
+            PathObservation.NoFile,
+            PathObservation.NoDirectory,
+            PathObservation.Present,
+        ).flatMap { observation ->
+            listOf(EventStorePurpose.Read, EventStorePurpose.Write).map { purpose ->
+                observation to purpose
+            }
+        }
+        val observedPairs = cases.map { it.observation to it.purpose }
+        assertEquals(expectedPairs.size, observedPairs.size, "the matrix lost a case")
+        assertEquals(expectedPairs.toSet(), observedPairs.toSet(), "matrix omitted or repeated a combination")
+
+        return cases.map { case ->
+            dynamicTest(case.label) {
+                assertEquals(
+                    case.expected,
+                    refusalFor(case.observation, path, case.purpose),
+                    "observation=${case.observation}, purpose=${case.purpose}",
+                )
+            }
         }
     }
 

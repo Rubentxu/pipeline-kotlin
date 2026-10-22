@@ -9,17 +9,17 @@ events, and structured failures — without a controller, agent, or
 remote state.
 
 ```bash
-VERSION=0.62.0
+VERSION=0.75.0
 
 curl -fL -o "pipelinek-${VERSION}.zip" \
   "https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
 
-echo "385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8  pipelinek-${VERSION}.zip" \
+echo "e24abea8ed0ef01f8f70f8a2fcfbe8efce52b33d7d4b73acfd5c54cd1b4973fa  pipelinek-${VERSION}.zip" \
   | sha256sum -c -
 
 unzip "pipelinek-${VERSION}.zip"
 
-./pipelinek-${VERSION}/bin/pipelinek version          # → pipeline 0.62.0
+./pipelinek-${VERSION}/bin/pipelinek version          # → pipeline 0.75.0
 ./pipelinek-${VERSION}/bin/pipelinek doctor           # jdk / os / workdir / writable
 ```
 
@@ -57,16 +57,16 @@ schedule remotely, and does not need a controller.
 ### 1. Install
 
 Download the canonical ZIP from
-[GitHub Releases](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.62.0),
+[GitHub Releases](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.75.0),
 verify its SHA-256, and unzip it:
 
 ```bash
-VERSION=0.62.0
+VERSION=0.75.0
 
 curl -fL -o "pipelinek-${VERSION}.zip" \
   "https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
 
-echo "385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8  pipelinek-${VERSION}.zip" \
+echo "e24abea8ed0ef01f8f70f8a2fcfbe8efce52b33d7d4b73acfd5c54cd1b4973fa  pipelinek-${VERSION}.zip" \
   | sha256sum -c -
 
 unzip "pipelinek-${VERSION}.zip"
@@ -79,10 +79,10 @@ Linux, macOS and Windows (WSL) are supported. The ZIP ships both
 `bin/pipelinek` (UNIX) and `bin/pipelinek.bat` (Windows). Java 21 or
 newer is required on the `PATH`. The snippet above assumes you run it
 from a directory where you want `pipelinek-${VERSION}/` to live
-(`./pipelinek-0.62.0/bin/pipelinek` works without touching your `PATH`
+(`./pipelinek-0.75.0/bin/pipelinek` works without touching your `PATH`
 or needing `sudo`).
 
-> **SDKMAN is not yet available.** `sdk install pipelinek 0.62.0` is the
+> **SDKMAN is not yet available.** `sdk install pipelinek 0.75.0` is the
 > canonical long-term install command but the candidate is still in
 > vendor onboarding; running it today may fail. Until SDKMAN goes live,
 > install from GitHub Releases as shown above. See
@@ -96,7 +96,7 @@ verifies its SHA-256 against the `SHA256SUMS` manifest published with
 the release, and unpacks under `~/.local/share/pipelinek/versions/`:
 
 ```bash
-VERSION=0.62.0
+VERSION=0.75.0
 
 curl -fL -o "install-pipelinek.sh" \
   "https://raw.githubusercontent.com/Rubentxu/pipeline-kotlin/main/scripts/install-pipelinek.sh"
@@ -109,7 +109,7 @@ chmod +x install-pipelinek.sh
 
 # Activate in your shell:
 export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
-pipelinek version                            # → pipeline 0.62.0
+pipelinek version                            # → pipeline 0.75.0
 ```
 
 Available subcommands: `install`, `use`, `list`, `uninstall`, `doctor`,
@@ -283,7 +283,11 @@ prose, since real scenarios already carry comments like
 
 ## Capabilities
 
-PipelineK `0.62.0` ships with:
+PipelineK `0.76.0` ships with:
+
+> This is the version **this tree** builds. The published release is
+> [`v0.75.0`](#releases), which predates the integration carried by this tree,
+> and therefore ships the older capability catalogue.
 
 - Compile, validate, and inspect `.pipeline.kts` pipelines.
 - Durable local execution with a SQLite journal (`--db`) and a
@@ -356,7 +360,7 @@ it does.
 ## Releases
 
 The current published release is
-[`pipelinek 0.62.0`](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.62.0).
+[`pipelinek 0.75.0`](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.75.0).
 
 ## Distribution channels
 
@@ -381,7 +385,7 @@ artifact and verify its SHA-256. The one-artifact rule is enforced in
 the release scripts under `scripts/release/` and, for provenance, in
 `CandidateTagProvenance` (`:pipeline-release`).
 
-The `v0.62.0` ZIP is the public artifact authority today. SDKMAN becomes
+The `v0.75.0` ZIP is the public artifact authority today. SDKMAN becomes
 the recommended channel only once its digest resolution has been exercised
 end to end against a clean runner. It has not been: the install contract
 tests that used to cover it were deleted by the testing RESET and
@@ -391,30 +395,32 @@ oversight. Until it is closed, the canonical path remains the ZIP download.
 
 ### Verified against the published artifact
 
-Every claim in the README above has been verified against the official
-`pipelinek-0.62.0.zip` downloaded from GitHub Releases:
+The digests below were measured on the official `pipelinek-0.75.0.zip`
+downloaded from GitHub Releases on 2026-10-23:
 
-- **ZIP SHA-256**: `385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8`
-- **Binary SHA-256**: `92d0f67d16f7ee12888724cfe9da56f19cc2facd51ebee319770a43f40eedeee`
-- **Certified commit**: `951b3cb5695ecc46c877776e330266e4bd44aa9e`
-- **Examples**: the scenarios in the table above were executed against that
-  binary on JDK 24.0.2 (Temurin) on Linux x86_64 with the reported exit code
-  and outcome. The set has since been reorganised — some scenarios were merged
-  and some retired — so the counts this README publishes are the ones the
-  tree holds today, and the gate runs them against the distribution built from
-  this tree rather than against a published release.
-- **`pipelinek doctor`**: jdk 24.0.2 (Eclipse Adoptium), os Linux,
+- **ZIP SHA-256**: `e24abea8ed0ef01f8f70f8a2fcfbe8efce52b33d7d4b73acfd5c54cd1b4973fa`
+  — the same value the release publishes in its own `SHA256SUMS`.
+- **Binary SHA-256**: `ccbbad405b8ae886d40954ef70a7418b7c484fb75a9a37437c369943d7c0d233`
+- **Certified commit**: `3079b2603594ee92666929317f66224e42b308b4d`
+- **Identity**: the archive root is `pipelinek-0.75.0`, and the binary reports
+  `pipeline 0.75.0`.
+- **`pipelinek doctor`**: jdk 25.0.4.1 (Eclipse Adoptium), os Linux,
   workdir writable.
+
+The capability catalogue and the scenario counts above describe **this tree**,
+not that ZIP: the published release predates the integration carried by this
+tree. The gate runs the scenarios against the distribution built from this
+tree, and publishes the counts it measured there.
 
 Reproduce locally:
 
 ```bash
-VERSION=0.62.0
+VERSION=0.75.0
 
 curl -fL -o "pipelinek-${VERSION}.zip" \
   "https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
 
-echo "385b140c35f6f017d8077eb27d78964ddaf2bd5bd37c5e11afcae5671eb0cbb8  pipelinek-${VERSION}.zip" \
+echo "e24abea8ed0ef01f8f70f8a2fcfbe8efce52b33d7d4b73acfd5c54cd1b4973fa  pipelinek-${VERSION}.zip" \
   | sha256sum -c -
 
 unzip "pipelinek-${VERSION}.zip"

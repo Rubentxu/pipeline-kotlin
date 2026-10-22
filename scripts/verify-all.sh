@@ -368,6 +368,15 @@ fi
 # the modules that are actually asked are enumerated from the filesystem
 # instead of assumed: a module is asked only if src/test holds.kt file.
 
+# The test evidence, declared BEFORE the stage that produces it, because the
+# verdict line at the end of the run has to be able to say `NOT_RUN` about a
+# stage this invocation never asked for. A silent field reads like a zero: a
+# gate that skipped its tests and printed nothing about them is the same line
+# as a gate that ran none and found none.
+stage2_ran=0
+xml_fresh_tests=0
+xml_read_tests=0
+
 if want_stage 2; then
 log "stage 2/5  permanent unit tests"
 stage_started_at=$(date +%s)
@@ -507,6 +516,13 @@ else
             silent_modules+=("$m")
         fi
     done
+    # The two halves of the test census, taken BEFORE the subset branch below
+    # narrows `xml_total` to this run. `rewritten` is what this run really
+    # executed; `read` is what it found on disk and did not ask for -- written
+    # by an earlier invocation. The verdict line carries both, because a reader
+    # cannot otherwise tell a measurement from a cache hit.
+    xml_read_tests=$(( xml_total - xml_fresh_tests ))
+    stage2_ran=1
     if [[ "$subset" == 1 ]]; then
         echo "    JUnit XML (this run only): $xml_fresh_tests test(s) in $xml_fresh report(s)," \
              "failed=$xml_fresh_fail skipped=$xml_fresh_skip"
@@ -568,6 +584,48 @@ gaps_suffix() {
     fi
 }
 
+# The test evidence travels WITH the verdict line, for the same reason the gap
+# count does. The stage log is read by whoever ran the gate; the verdict line is
+# read by everyone else, and it is the one that gets pasted into a report. A line
+# that says "the gate passed" without saying how many tests really executed is
+# half a verdict: the reader cannot tell a measurement from a cache hit.
+#
+#   rewritten   tests in the reports THIS run wrote. They really ran.
+#   read        tests in the reports this run did not write: executed by an
+#               earlier invocation and read from disk.
+#
+# A run that never asked for the tests says NOT_RUN instead of staying silent,
+# because a silent field reads like a zero.
+tests_suffix() {
+    if [[ "$stage2_ran" == 1 ]]; then
+        printf '  tests=rewritten:%s read:%s' "$xml_fresh_tests" "$xml_read_tests"
+    else
+        printf '  tests=NOT_RUN'
+    fi
+}
+
+# How much of the E2E stage was OBSERVED rather than merely executed. It travels
+# with the verdict line for the same reason the test census does.
+scenarios_suffix() {
+    if [[ "$e2e_stage3_ran" == 1 && -n "$e2e_observed" ]]; then
+        printf '  scenarios=observed:%s executed:%s' "$e2e_observed" "$e2e_executed"
+    else
+        printf '  scenarios=NOT_RUN'
+    fi
+}
+
+# Everything the run observed, as ONE argument.
+#
+# These used to travel as separate `%s` in the verdict format, and that is how a
+# count goes missing without anybody noticing: the format carried five
+# conversions and the call passed six arguments, so the shell read the surplus
+# as a second pass over the same format. Composing them first makes that
+# unrepresentable -- one string, one `%s` -- and each field keeps saying NOT_RUN
+# rather than going quiet when its stage was skipped.
+evidence_suffixes() {
+    printf '%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)"
+}
+
 if want_stage 3; then
 log "stage 3/5  E2E scenarios in examples/"
 stage_started_at=$(date +%s)
@@ -598,6 +656,20 @@ if [[ -z "$stage3_summary" ]]; then
     fail "stage 3 printed no scenario summary; a missing count is not a zero count"
 fi
 e2e_stage3_ran=1
+# What the E2E stage OBSERVED, next to what it executed. The launcher publishes
+# the census as its own line; the gate reads it and carries it to the verdict,
+# because a gate that cannot say which of its checks were real is a gate whose
+# cost nobody can weigh against what it bought. A census line the launcher did
+# not print leaves the field empty rather than zero: an absent count is not a
+# count of nothing, it is a count nobody took.
+e2e_observed=""
+e2e_executed=""
+e2e_census="$(grep -aE '^[0-9]+ of [0-9]+ executed scenario' "$log_dir/stage3.log" || true)"
+if [[ -n "$e2e_census" ]]; then
+    e2e_observed="$(sed -nE 's/^([0-9]+) of [0-9]+ executed scenario.*/\1/p' <<<"$e2e_census")"
+    e2e_executed="$(sed -nE 's/^[0-9]+ of ([0-9]+) executed scenario.*/\1/p' <<<"$e2e_census")"
+    printf '    %s\n' "$e2e_census"
+fi
 # The gap is derived, not read from a field. The launcher publishes three
 # independently produced counters -- selected, passed, failed -- and a scenario
 # that was selected but reached neither verdict was skipped. Deriving the gap
@@ -651,7 +723,7 @@ if [[ "$subset" == 1 ]]; then
     # against 900 s would be a number about nothing, so none is printed.
     echo "    elapsed ${total}s (SUBSET: not compared against the ${BUDGET_SECONDS}s gate)"
     printf '\nPASS (subset)  sha=%s  elapsed=%ss%s\n' \
-        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$(gaps_suffix)"
+        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$(evidence_suffixes)"
     printf 'This is not the gate. Quote scripts/verify-all.sh with no filters for that.\n'
     exit 0
 fi
@@ -673,9 +745,9 @@ fi
 # evidence, and a scenario the product cannot launch without a TTY is a gap to
 # name, not a defect to redden the whole gate over.
 if (( e2e_not_run > 0 )); then
-    printf '\nINCOMPLETE  sha=%s  elapsed=%ss  budget=%ss  gaps=%s not_run\n' \
+    printf '\nINCOMPLETE  sha=%s  elapsed=%ss  budget=%ss%s\n' \
         "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" \
-        "$BUDGET_SECONDS" "$e2e_not_run"
+        "$BUDGET_SECONDS" "$(evidence_suffixes)"
     printf 'Every stage above ran and passed, but %s scenario(s) never ran at all.\n' "$e2e_not_run"
     printf 'This is not the gate: a scenario that was selected and skipped is a gap\n'
     printf 'to name, not a pass. AGENTS.md section 4 does not allow an unrun test to be a PASS.\n'
@@ -684,6 +756,7 @@ else
     # subset, and every `fail` keep their logs: those are exactly the runs an
     # operator has to come back and read.
     VERIFY_ALL_VERDICT=PASS
-    printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss\n' \
-        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" "$BUDGET_SECONDS"
+    printf '\nPASS  sha=%s  elapsed=%ss  budget=%ss%s\n' \
+        "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo unknown)" "$total" \
+        "$BUDGET_SECONDS" "$(evidence_suffixes)"
 fi

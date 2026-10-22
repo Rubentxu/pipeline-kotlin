@@ -6104,6 +6104,64 @@ abra un `dir(...)` y compruebe que `writeFile`, `deleteDir`, `stash` y
 contra el workspace de la etapa en vez del cwd efectivo, borraría el archivo
 de la raíz y dejaría vivo el del subdirectorio, y el escenario lo vería.
 
+### 2.55 El instrumento que faltaba: los cuatro pasos, una sola base
+
+**El hueco.** El contrato de coherencia del workspace —`dir`, `deleteDir`,
+`stash` y `unstash` sobre la **misma** base dentro de un `dir(...)`— no tenía
+ningún instrumento. La invariante vivía repartida en cuatro adaptadores y dos
+KDoc, y **nada se pondría rojo** si uno de ellos volviera a resolver contra el
+workspace de la etapa. Y ese defecto **ya ocurrió una vez**: el KDoc de
+`DeleteDirOperationsAdapter` lo dice sin rodeos —*«it used to re-derive the
+stage workspace from the control root, so inside a `dir(...)` scope the two
+Steps disagreed about where "sub" was»*.
+
+**El escenario.** `examples/steps/34-workspace-coherence.pipeline.kts`. La raíz
+de la etapa tiene `at-root.txt`; el ámbito `dir("inner")` tiene
+`in-inner.txt` y `victim/keep.txt`. Cada uno de los cuatro pasos recibe una
+comprobación que **sólo puede pasar** si resolvió contra el cwd efectivo:
+
+| paso | comprobación | qué se ve si resuelve contra la etapa |
+|---|---|---|
+| `writeFile` | dentro del ámbito, `in-inner.txt` está | el ámbito queda vacío y el archivo cae en la raíz |
+| `stash` + `unstash` | el stash lleva el contenido del ámbito y el restore lo devuelve ahí | el stash se lleva `at-root.txt` y `in-inner.txt` sigue faltando |
+| `deleteDir` | `victim` queda borrado | busca `<etapa>/victim`, no encuentra nada y deja vivo `<ámbito>/victim/keep.txt` |
+
+Y el último marcador cierra la otra dirección: el archivo de la raíz de la
+etapa sobrevive, así que los pasos del ámbito no salieron a tocarlo. Los
+marcadores se emiten **después** de la comprobación, de modo que un paso mal
+resuelto **falla la ejecución** —el escenario se pone rojo por el fallo, no por
+un marcador que falta.
+
+**La mutación, vista en rojo.** Una sola línea, y es la compartida por los
+cuatro pasos: `ShOptionsExecutionLocationAdapter` calcula el cwd efectivo, y
+sustituir `(scopedWorkingDirectory ?: root)` por `(root)` hace que todo paso
+dentro de un ámbito `dir(...)` resuelva contra la raíz autorizada. Con eso:
+
+```
+1 scenario(s), 0 passed, 1 failed   ->   exit 1, expected 0
+Pipeline finished with FAILURE
+  cause [SCRIPT]: shell exited with code 1
+```
+
+El fichero de producción se restauró byte a byte y se reconstruyó.
+
+**Lo que el rojo prueba y lo que no, dicho con precisión.** La mutación rompe
+el cwd efectivo **compartido**, así que las cuatro patas se rompen a la vez; el
+escenario se enciende en la **primera** comprobación —`test -f in-inner.txt`— y
+el run aborta ahí, de modo que las otras tres no llegan a evaluarse en esa
+corrida. Lo que queda probado es lo importante: el escenario **enciende** una
+ruptura real de la base compartida, y no se limita a comprobar que un `dir` se
+mueve.
+
+**Medido, sobre el árbol de este bloque:**
+
+| Métrica | Valor |
+|---|---|
+| Escenario, sin mutación | verde: exit 0, **5 garantías** comprobadas, 15 pasos terminados |
+| Escenario, con la mutación | **rojo**: exit 1, 0 pasos terminados |
+| Mutación | **1** línea, en el punto compartido por los cuatro pasos |
+| Fichero de producción | restaurado byte a byte (`git diff` vacío) |
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un diagnóstico tiene que ser fiel al resultado, no a una parte del
   resultado.** El rechazo por identidad duplicada nombraba al artefacto que

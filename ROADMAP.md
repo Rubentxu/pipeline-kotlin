@@ -99,17 +99,17 @@ composición se rechaza.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `7ee0dfe63`, medido en los ensayos de este bloque. Entre `f7ca58ab6` y este **el código de producción sí cambia**: el identificador de operación vuelve a ser el mismo al releerlo (§2.57) | `git rev-parse HEAD` |
+| SHA | `9d58c4d87`, medido en los ensayos de este bloque. Entre el ciclo anterior y este **el código de producción sí cambia**: el driver de SQLite extrae en un directorio con dueño (§2.58) y el identificador de operación se niega a adivinar cuando su texto no se puede leer exacto (§2.59) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1078** (150 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1087** (153 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **61 (61 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **61 de 61**: **170 garantías** comprobadas —162 en los 60 anteriores y 8 en el nuevo de coherencia del workspace (§2.55). El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **19118 / 67393 = 0.284** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **19352 / 67448 = 0.287** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **208 / 173 / 179** en los tres ensayos, los tres sobre `7ee0dfe63`, peor 208 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **213 / 169 / 174** en los tres ensayos, los tres sobre `9d58c4d87`, peor 213 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -122,12 +122,12 @@ sale mejor que la realidad.
 
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
-165 s en el bloque de las tres familias; este ciclo midió **208, 173 y 179 s**:
+165 s en el bloque de las tres familias; este ciclo midió **213, 169 y 174 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 208 s, es menos
-de la tercera parte de los 900 s—, y eso que el árbol medido incluye la
-distribución, la API pública, los 1078 tests y los 61 escenarios.
+de este ciclo el presupuesto se cumplió con holgura —el peor, 213 s, es menos
+de la cuarta parte de los 900 s—, y eso que el árbol medido incluye la
+distribución, la API pública, los 1087 tests y los 61 escenarios.
 
 **Dos ensayos anteriores a estos tres se descartaron, y hay que decir por
 qué.** Sobre el mismo árbol, la puerta dio dos veredictos con rojos, y **todos
@@ -6695,6 +6695,37 @@ de confianza. Lo que se ha hecho es **desacoplar** el caso de identidad
 duplicada del caso de manifiesto mentiroso: cada defecto, con su fixture.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **Un lector que no puede leer un texto sin adivinar, se niega.** La
+  identidad de una operación es la clave con la que el journal la direcciona:
+  devolver una identidad *parecida* no es un detalle, es una respuesta
+  equivocada con la forma de una respuesta. Por eso el parser enumera las
+  lecturas posibles del texto en vez de quedarse con la primera, y devuelve
+  `null` cuando hay más de una o cuando el cuerpo no se puede cortar sin
+  adivinar (§2.59). El coste de esta decisión es que el texto de un
+  identificador con guiones dentro **no se puede leer entero**: es deuda con
+  nombre, y cerrarla es una ruptura versionada que espera una necesidad de
+  producto concreta.
+- **Lo que sí se puede leer sin adivinar, se lee.** La etapa y el paso están en
+  la raíz del identificador y no dependen de cómo se lea el cuerpo. Por eso hay
+  una segunda lectura, sólo de índices, y la consola la usa. Sin ella, el
+  arreglo anterior habría roto en silencio el filtro por etapa y paso de toda
+  operación con cuerpo — y un filtro que deja de seleccionar es indistinguible
+  de un filtro que no tiene nada que seleccionar (§2.59).
+- **El residuo que el producto deja fuera de su raíz se decide en el proceso.**
+  El driver de SQLite extrae su biblioteca nativa cuando se carga, y el
+  directorio donde lo hace lo decide una propiedad del proceso, no de cada
+  conexión: la extracción ocurre antes de la primera conexión, así que fijarla
+  por conexión llegaría tarde para la primera (§2.58). Con la propiedad
+  fijada, el residuo va a un directorio **con nombre**, que el proceso borra al
+  salir bien y que, si el proceso muere a la fuerza, se puede atribuir.
+- **Un escenario que mezcla dos defectos no prueba ninguno.** El caso de
+  identidad duplicada usaba un plugin con el manifiesto manipulado, así que el
+  rechazo que leía podía atribuirse a dos causas a la vez (§2.60). Los dos
+  artefactos ahora son honestos —mismo manifiesto, mismo código, bytes
+  distintos—, de modo que **la única razón para rechazar la composición es la
+  identidad**. Y el fixture comprueba lo que dice: si el reempaquetado saliera
+  idéntico, el escenario se quedaría sin nada que rechazar, y eso es un fallo
+  ruidoso del fixture, no un escenario verde.
 - **No saber de quién es un directorio no es motivo para borrarlo.** El
   permiso de destruir la raíz se concedía cuando la propiedad era
   *desconocida*, porque el caso que lo concede afirmaba ser de PipelineK y

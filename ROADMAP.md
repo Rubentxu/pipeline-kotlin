@@ -93,7 +93,7 @@ composición se rechaza.
 | 2 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
 | 3 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | **caracterizada** (§2.57): con el camino de producción actual **dos streams no pueden compartir bytes**, porque los segmentos dirigidos por posición no se pliegan. Lo que sí era un defecto real —el parser de op ids descartaba parte de la identidad **en silencio**, devolviendo otra operación— está arreglado y con su fila vista en rojo. Queda con nombre una deuda: el formato del cuerpo **no es invertible** cuando un identificador lleva `-`, y cerrarlo es ruptura versionada que espera autorización |
 | 4 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
-| 5 | El techo del drenaje | **caracterizado** (§2.58): el rechazo ya es **tipado** (`DrainIncomplete`) y no se confunde con un fallo del script, que era lo que faltaba saber. Lo que falta es que sea **accionable** — reintentar en vez de subir el techo—, y eso es decisión de producto. Y una corrección de atributos: los temporales del driver SQLite que hay en el tmpdir **no son de este repositorio** —el driver carga del classpath y no extrae—; son de otros procesos de la máquina |
+| 5 | El techo del drenaje | **caracterizado** (§2.58): el rechazo ya es **tipado** (`DrainIncomplete`) y no se confunde con un fallo del script, que era lo que faltaba saber. Lo que falta es que sea **accionable** — reintentar en vez de subir el techo—, y eso es decisión de producto. Y una corrección de atribución: los temporales del driver SQLite que hay en el tmpdir compartido son de procesos que **no salen bien** —el driver extrae al cargarse y borra al salir—, y este producto, desde que fija `org.sqlite.tmpdir`, **no deja nada suelto**: su residuo va a un directorio con nombre |
 
 ## 1. Estado medido
 
@@ -154,6 +154,12 @@ el producto deja en `/tmp`**: el driver JDBC de SQLite extrae su biblioteca
 nativa a un fichero temporal de un megabyte por conexión y no lo borra —**508**
 pares, medio gigabyte, con la fecha de hoy en una máquina donde la puerta corrió
 tres veces—. El arnés borra su ciclo; el driver no borra el suyo.
+
+> **Corregido después** (§2.58): la premisa era a medias. El driver **sí**
+> borra su extracción al salir normalmente; lo que sobrevive en el tmpdir son
+> procesos que mueren a la fuerza. Y el arreglo que este ciclo señalaba como
+> pendiente **está hecho**: el proceso fija `org.sqlite.tmpdir` y su residuo va
+> a un directorio con nombre, no suelto en el tmpdir compartido.
 
 El ratio de LOC sube de 0.280 a **0.281** (18893 → 18900 líneas de verificación),
 y el peor módulo sigue siendo el mismo (`pipeline-step-sdk:workflow-control`,
@@ -6404,16 +6410,27 @@ nombre dejaría de funcionar— o cambiar el formato del texto, que **rompe las
 claves del journal** que el producto promete byte a byte. Queda escrito como
 **deuda con nombre**, no como descuido.
 
-**El veredicto sobre la colisión.** Con el camino de producción actual, **dos
-streams no pueden compartir bytes**: los segmentos dirigidos por posición no se
-pliegan, y los ids de step de producción (`core.sh`, `core.dir`, los de los
-plugins de ejemplo) sólo llevan `[A-Za-z0-9._-]`. La colisión **no es
-alcanzable hoy**. Lo que sí era verdad —y ya no lo es— es que la garantía
-dependía de un supuesto no escrito, y que la puerta por la que un id externo
-entra al sistema **descartaba parte de la identidad en silencio**. Eso era un
-defecto real, y está arreglado.
+**El veredicto sobre la colisión, y lo que NO se demuestra.** Con los caminos
+de producción medidos, **dos streams no comparten bytes**: los segmentos
+dirigidos por posición no se pliegan, y los ids de step de producción
+(`core.sh`, `core.dir`, los de los plugins de ejemplo) sólo llevan
+`[A-Za-z0-9._-]`. Eso es lo que se ha medido, y es lo que vale.
 
-### 2.58 El techo que no depende de la carga, y una causalidad que era falsa
+Lo que **no** se ha demostrado es la propiedad general: que *ningún*
+identificador que el formato admite esté libre de colisión. El nombre en disco
+sigue siendo **lossy** —`a/b` y `a_b` siguen produciendo el mismo nombre—, así
+que un plugin que usara `/` en el nombre de su step escribiría dos streams con
+el mismo nombre, y el índice los separaría mientras el store **los mezclaría**.
+La diferencia no es académica: es justo el caso que el `OpId` estricto deja de
+ocultar. Por eso el veredicto honesto es «no alcanzable **por los caminos de
+producción medidos**», y no «inalcanzable».
+
+Lo que sí era verdad —y ya no lo es— es que la garantía dependía de un supuesto
+no escrito, y que la puerta por la que un id externo entra al sistema
+**descartaba parte de la identidad en silencio**. Eso era un defecto real, y
+está arreglado.
+
+### 2.58 El techo que no depende de la carga, y el residuo que sí tiene dueño
 
 **El drenaje: caracterizado.** El runtime espera a que las bombas de
 transcripción terminen antes de declarar un step completo, y lo hace con un
@@ -6452,36 +6469,80 @@ un número más grande. El primero es el honesto, porque el segundo convierte
 una causa conocida en un síntoma más raro. Queda como decisión, con su coste
 nombrado, y no se toma de paso.
 
-**La basura del tmpdir: la primera versión de esta sección mentía, y está
-corregida.** Se afirmaba que el store de eventos, al abrir su base por JDBC,
-hacía que el driver **extrajera su biblioteca nativa al tmpdir compartido** y
-que por eso el producto dejaba cientos de ficheros ahí. Esa atribución era una
-**inferencia a partir del nombre de los ficheros**, no una medición, y **era
-falsa**. Lo medido:
+**El residuo del driver, medido con la JVM viva.** El store de eventos abre su
+base por JDBC, y el driver JDBC de Xerial **extrae su biblioteca nativa** al
+cargarse: no la usa del classpath. Eso está medido, y la forma de medirlo
+importa: **contando los ficheros mientras el proceso sigue vivo**, no después,
+porque el driver borra lo suyo al salir y un recuento posterior no distingue
+«no extrajo» de «extrajo y limpió».
 
 | medida | valor |
 |---|---|
 | versión del driver | `org.xerial:sqlite-jdbc:3.46.1.3` |
-| el jar **trae** la nativa | sí: `org/sqlite/native/{Linux,Linux-Musl,Mac,Windows,FreeBSD,Linux-Android}/…` ⇒ en todas las plataformas soportadas la carga es **directa del classpath** |
-| qué deja **este** producto | **nada**: con un `run` real que abre el store, el tmpdir compartido **no crece** (846 → 846); y los tests del store de eventos tampoco dejan ninguno |
-| temporales que hay en el host | **846** pares `sqlite-3.46.1.3-*-libsqlitejdbc.so` (+ su `.lck`), con fechas que abarcan **12 horas** |
-| de quién son | **de otros procesos de la máquina**: este host tiene al menos **dos workspaces más con PipelineK** en marcha, y el jar del driver es el mismo |
-| peso de `/tmp` | **2,1 GB** |
+| ¿extrae? | **sí**: con la JVM viva aparece el par `sqlite-3.46.1.3-<uuid>-libsqlitejdbc.so` + su `.lck` |
+| **sin** `org.sqlite.tmpdir` | extrae en la **raíz** del tmpdir compartido, **anónimo**: el tmpdir compartido **crece** durante un `run` |
+| **con** `org.sqlite.tmpdir` — que es lo que hace el producto | extrae en `/tmp/pipelinek-sqlite-<n>/`: un directorio **con dueño**, y el tmpdir compartido **no crece** (423 → 423) |
+| al salir normalmente | el driver **borra lo suyo**: 0 ficheros, medido en un directorio **fijado por el operador**, que nada de este producto borra |
+| tras un `SIGKILL` | **quedan 2 ficheros**, dentro del directorio con dueño |
 
-Y el arreglo que se había aplicado por esa premisa —fijar `org.sqlite.tmpdir`
-para que el driver extraiga en un directorio con dueño— **se ha retirado**: si
-el driver no extrae, el knob no tiene nada que dirigir. Un arreglo a un
-problema que el producto no tiene es código muerto con KDoc, que es peor que
-no tener nada.
+**El error de método, que es lo importante.** Una versión anterior de esta
+sección afirmaba que el jar trae la nativa y que por eso el driver no extrae, y
+concluyó que el producto no era el autor de los residuos del host. **Era
+falso**, y el error no fue de criterio sino de **método**: el recuento
+«846 → 846» se había hecho sobre un binario que **ya llevaba el arreglo**, así
+que no medía lo que parecía medir —medía que el arreglo funcionaba, y se leyó
+como que el driver no extraía—. Con el binario **sin** el arreglo, el tmpdir
+compartido **crece** durante el `run`, y los ficheros aparecen **en la raíz de
+`/tmp`**. La pista estaba en el propio dato: el directorio que apareció en la
+medición, mientras la JVM vivía, se llamaba `pipelinek-sqlite-…`, que es el
+nombre que pone **este** producto.
 
-**Lo que esto deja, y que sigue valiendo.** La propiedad `org.sqlite.tmpdir`
-existe en el driver (leída en el propio jar, no supuesta), y **se respeta**
-cuando el operador la fija: medido, una ejecución con
-`PIPELINEK_OPTS=-Dorg.sqlite.tmpdir=…` no fue pisada por nada. El residuo que
-queda en el host **no es de este repositorio**, y la cifra que el ROADMAP
-viene arrastrando desde antes —«344 pares»— estaba sin verificar por el mismo
-motivo que la atribución: se contaba, pero no se preguntaba **quién** dejaba
-los ficheros. Ahora se sabe: **no son de aquí**.
+**El arreglo, entonces, sí hace falta, y por esto.** Sin él, cada ejecución
+deja un par anónimo en el tmpdir compartido, donde nadie puede saber de quién
+es. Con él, el residuo va a un directorio **con nombre**, que el proceso borra
+al salir bien y que —si el proceso muere a la fuerza— se puede atribuir y
+limpiar. El knob existe y se respeta: una ejecución con
+`PIPELINEK_OPTS=-Dorg.sqlite.tmpdir=…` no la pisa nadie, y entonces la
+extracción va donde el operador quiso.
+
+**La cifra del residuo, corregida también.** Lo que esta sección arrastraba
+como «846 pares» eran **846 ficheros**, no 846 pares: el patrón de búsqueda
+cuenta también los `.lck`, porque el nombre del bloqueo contiene el de la
+biblioteca. Los números reales del tmpdir compartido, medidos:
+
+| medida | valor |
+|---|---|
+| pares sueltos | **423**: 423 `sqlite-3.46.1.3-<uuid>-libsqlitejdbc.so` y 423 `.lck`, **sin huérfanos** — cada biblioteca con su bloqueo |
+| peso | **427 MB** de bibliotecas; los `.lck` son de 0 bytes |
+| ventana temporal | de 09:53 a 21:56: **12 horas** |
+| `/tmp` entero | 2,1 GB — de los cuales el residuo del driver es una parte, no el todo |
+
+**Por qué quedan pares, y hasta dónde se ha medido.** El driver borra su
+extracción **al salir normalmente** —registra los ficheros para borrado al
+terminar la JVM—, y por eso un proceso que muere a la fuerza los deja.
+Medido: con la propiedad fijada a un directorio que nada de este producto
+borra, tras una ejecución correcta quedan **0 ficheros**, y tras un `SIGKILL`
+quedan **2**. Es decir: **un par superviviente es la huella de un proceso que
+no salió bien**, no la costumbre de una ejecución sana.
+
+Y hay un detalle del driver que explica por qué los pares no se van solos: al
+inicializarse **barre su directorio temporal**, pero sólo borra una biblioteca
+**cuyo bloqueo ya no está**. Un par completo —biblioteca con su `.lck`— no se
+toca nunca. Medido: un par falso colocado a mano en un directorio aislado
+sobrevive a la barredura intacto.
+
+**De quién son, y lo que no se afirma.** Lo que **sí** está observado es que en
+este host hay **otra instalación de PipelineK** en marcha —la distribución
+instalada `0.61.0-rc2`, con el **mismo** `sqlite-jdbc-3.46.1.3` en el
+classpath, ejecutando el release candidate de **otro** proyecto— que **no fija**
+la propiedad, y que por lo tanto extrae suelta en el tmpdir compartido, igual
+que hacía este producto antes del arreglo. **Qué proceso dejó cada uno de los
+423 pares no se ha medido, y no se atribuye**: lo que se dice es lo medido, que
+un par vivo es de un proceso que no salió bien, y que este producto, con el
+arreglo, **no añade ninguno al tmpdir compartido**. La cifra que el ROADMAP
+venía arrastrando —«344 pares»— estaba sin verificar por el mismo motivo que
+la atribución: se contaba, pero no se preguntaba **quién** dejaba los ficheros
+ni **cuándo se contaban**.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **No saber de quién es un directorio no es motivo para borrarlo.** El
@@ -7537,6 +7598,12 @@ los ficheros. Ahora se sabe: **no son de aquí**.
   arreglo es de otro bloque —toca el driver o la configuración del proceso—, pero
   dejarlo sin medir sería peor que no mencionarlo: un resto que nadie cuenta es
   un resto que nadie limpia.
+
+  > **Corregido después** (§2.58): la premisa era a medias y el arreglo ya no
+  > está pendiente. El driver **sí** borra su extracción al salir normalmente —
+  > lo que sobrevive es de procesos que mueren a la fuerza—, y el producto
+  > **configura el proceso** para que su residuo vaya a un directorio con
+  > nombre.
 
 - **Una deriva que se expresa como una ausencia necesita un fixture que se
   verifica al revés.** Las demás familias del doctoring **añaden** un fantasma

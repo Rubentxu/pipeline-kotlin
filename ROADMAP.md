@@ -18,7 +18,7 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `ec0c20bef` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `ec0c20bef` | `git rev-parse HEAD` |
+| SHA | `55183340a` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `55183340a` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
@@ -26,9 +26,9 @@ una medición.
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **54 (54 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **54 de 54**: 133 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 54 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **18260 / 67318 = 0.271** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **18260 / 67304 = 0.271** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **197 / 166 / 173** en los tres ensayos, los tres sobre `ec0c20bef`, peor 197 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **201 / 156 / 156** en los tres ensayos, los tres sobre `55183340a`, peor 201 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **802** entradas de baseline: **sin cambio**, porque la ley que este ciclo añadió salió a su propio objeto en vez de empujar a `ProtocolGrammar` por encima del límite de detekt | `detektBaselineMain` y `detektMain` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -40,10 +40,10 @@ sale mejor que la realidad.
 
 El reloj de la puerta lo marca también el host. El ciclo anterior midió 699,
 682 y 803 s con la máquina compartida con otro workspace, y este ciclo midió
-197, 166 y 173 s: la distancia entre un ensayo y otro no la explica el código
+201, 156 y 156 s: la distancia entre un ensayo y otro no la explica el código
 medido, que es idéntico dentro de cada ciclo, sino la carga de la máquina. En
 los tres ensayos de este ciclo el presupuesto se cumplió con holgura —el peor,
-197 s, es menos de la cuarta parte de los 900 s—, y eso que el árbol medido
+201 s, es menos de la cuarta parte de los 900 s—, y eso que el árbol medido
 incluye la distribución, la API pública, los 1049 tests y los 54 escenarios.
 
 Lo que este ciclo añadió a la suite: **25** casos de test en **4** clases
@@ -72,9 +72,9 @@ del arranque, que ya corre en cada invocación del lanzador. Los dos UAT que lo
 probaron (una escena colgada y una escena que falla de verdad) se retiraron al
 cerrar el ciclo, con su evidencia escrita aquí.
 
-El ratio de LOC sube de 0.230 a **0.271** en los tres últimos ciclos —el
-anterior estaba en 0.240—, todavía muy por debajo del límite 2, y el peor
-módulo sigue siendo el mismo de siempre
+El ratio de LOC se queda en **0.271** en los tres últimos ciclos —el anterior
+estaba en 0.240—, todavía muy por debajo del límite 2, y el peor módulo sigue
+siendo el mismo de siempre
 (`pipeline-step-sdk:workflow-control`, 1.633) porque este ciclo no lo tocó.
 
 Lo que este ciclo **no** tocó, y conviene que no se confunda con un avance:
@@ -5183,6 +5183,19 @@ sección para que diga lo que es verdad hoy.
 módulo no expone ninguna tarea de publicación, el root sigue resolviendo los
 mismos seis artefactos, y la puerta compila el módulo entero con sus tres
 adaptadores y sus tres clases de prueba.
+
+**Medido, sobre el árbol de este bloque:**
+
+| Métrica | Valor |
+|---|---|
+| Puertos publicados de `:pipeline-runtime-api` | **4**, en `publishedContractModules` y en el BOM |
+| Adaptadores que los implementan | **3**, los tres cableados a verbos reales (`runs cancel`, `runs recover`, `inspect --state`) |
+| Tareas de publicación del módulo | **0**, tras retirar el bloque huérfano |
+| Módulos que compila la puerta | **26 de 27**: el que falta es `:pipeline-sdk-bom`, que no tiene código |
+| Tests unitarios | **1049**, 0 fallos, 0 skips, 145 informes reescritos por la corrida |
+| Escenarios E2E | **54**, los 54 verdes, 0 fallidos, 0 bloqueados, 54 de 54 con garantía comprobada |
+| `VERIFY_LOC / PRODUCT_LOC` | **18260 / 67304 = 0.271** (límite 2) |
+| Reloj de la puerta | **201 / 156 / 156 s** en tres ensayos sobre `55183340a`, contra 900 s |
 
 **El destino, cerrado.** Los puertos se publican; los adaptadores se quedan
 dentro; y el árbol ya no ofrece la otra respuesta posible.

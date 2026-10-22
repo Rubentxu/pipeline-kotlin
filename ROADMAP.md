@@ -74,7 +74,7 @@ hoy, y cambiarla es una ruptura versionada que no se hace sin autorización.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `0b0438114` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `0b0438114` | `git rev-parse HEAD` |
+| SHA | `beb276192`, medido en la puerta de este bloque. El **código** medido sigue siendo el de `0b0438114` — el de los tres ensayos de la tabla de abajo—: desde entonces sólo hay este ROADMAP y **comentarios** en `pipelinek/settings.gradle.kts`, ningún cambio de producción | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
@@ -84,7 +84,7 @@ hoy, y cambiarla es una ruptura versionada que no se hace sin autorización.
 | Escenarios con una garantía comprobada | **60 de 60**: 162 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 60 escenarios |
 | `VERIFY_LOC / PRODUCT_LOC` | **18900 / 67377 = 0.281** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **240 / 165 / 176** en los tres ensayos, los tres sobre `0b0438114`, peor 240 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **240 / 165 / 176** en los tres ensayos, los tres sobre `0b0438114`, peor 240 s, límite 900 s; y **201 s** en la puerta de este bloque, sobre `beb276192` | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -5988,6 +5988,15 @@ concuerdan. No cierra el **comportamiento** de los verbos: sigue abierto que
 una cancelación cuyo sellado del Output Plane falló **después** de registrar
 `ABORTED` pueda reconciliarse sin repetir efectos ni declarar un resultado
 falso. Eso es trabajo de otro bloque, no una duda sobre el destino del módulo.
+
+**Medido, sobre el árbol de este bloque:**
+
+| Métrica | Valor |
+|---|---|
+| Puerta | **`PASS`** — `sha=beb276192`, **201 s** contra 900 s, `tests=rewritten:1070 read:0`, `scenarios=observed:60 executed:60` |
+| Compilación de `:pipeline-runtime` | la etapa 1 la pide explícitamente (`scripts/verify-all.sh:371`) y la puerta la ejecuta |
+| Observador del módulo | **5** clases de test, **28** filas, 0 fallos, 0 saltados |
+| Cambio de este bloque | `ROADMAP.md` y **comentarios** de `pipelinek/settings.gradle.kts`. **Ningún cambio de producción**, así que el código medido sigue siendo el de `0b0438114`, que es el de los tres ensayos |
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El módulo que implementa los puertos publicados se queda, y se cablea.**

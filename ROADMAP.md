@@ -5126,6 +5126,67 @@ test no existían. Son el mismo error visto desde dos lados: la garantía —aqu
 que el análisis estático llega a las fuentes de test— estaba en el árbol, y
 nadie la miraba.
 
+### 2.42 El destino del runtime, cerrado: los puertos se publican, los adaptadores se quedan dentro
+
+**La decisión ya estaba tomada; el árbol todavía ofrecía dos futuros.** §2.31
+decidió que `:pipeline-runtime` se queda. Esa decisión se sostiene y se ha
+revisado pieza por pieza: los tres adaptadores implementan los puertos
+publicados de `:pipeline-runtime-api` —`RuntimeControlPortStoreAdapter :
+RuntimeControlPort`, `RuntimeRecoverPortStoreAdapter : RuntimeRecoverPort` y
+`RuntimeIntrospectionPortStoreAdapter : RuntimeIntrospectionPort`—, y los
+compone `CompositionRoot` para tres verbos reales: `runs cancel` llama a
+`cancel`, `runs recover` llama a `recover` e `inspect --state` llama a
+`inspect`. Lo que quedaba era un residuo: **el build del módulo seguía
+aplicando `maven-publish` y declarando una publicación `sdk` que ninguna tarea
+pedía**. Su propio comentario la llamaba «código muerto inofensivo».
+
+No era inofensivo por dos razones, y las dos son de lectura, no de ejecución.
+Un artefacto sin consumidor sigue siendo una promesa que el árbol le hace a
+quien lo lea, y **dejaba dos futuros para el mismo módulo** cuando sólo hay
+uno: la alternativa que este módulo no construyó —publicarse como contrato—
+seguía escrita en el build.
+
+**La convención del repositorio ya lo decía.** Los dos módulos hermanos que
+tampoco se publican, `:pipeline-events-store` y `:pipeline-output-store`, no
+aplican `maven-publish`, y su build lo explica: *la ausencia de
+`maven-publish` es el mecanismo*. `:pipeline-runtime` era la excepción sin
+excepción, y el motivo de la excepción era un bloque que se describía a sí
+mismo como muerto.
+
+**Medido antes de tocarlo.** Ninguna tarea dependía de
+`:pipeline-runtime:publishSdkPublicationToSdkRepository`: ni
+`publishedContractModules` ni `sdkBomModules` lo nombran, y el manifiesto del
+candidato de release publica `pipeline-runtime-api`, que es el artefacto de los
+puertos, no el de los adaptadores. El `publishing` del root resolvió los mismos
+seis módulos antes y después del cambio.
+
+**Lo que cambió.** El módulo deja de aplicar `maven-publish` y su bloque
+`publishing { }` desaparece. El comentario que lo explicaba se queda, pero
+diciendo la verdad: los puertos se publican en `:pipeline-runtime-api` y este
+módulo es interno de `:pipeline-application`. El artefacto que la publicación
+fósil habría producido llevaba en su POM los almacenes de eventos y de salida,
+que es exactamente la arquitectura-as-política que el módulo de puertos existe
+para hacer segura.
+
+**La misma historia, en el contrato publicado.** El puerto de introspección
+decía en su documentación que `runtime.structure.v1` y `runtime.operation.v1`
+son EXPERIMENTAL y que se publicarían cuando el certificador certificara el
+candidato. El catálogo dice otra cosa desde §2.31: esos dos ids están en
+DEPRECATED, que aquí significa *anunciados y no entregados* —el adaptador los
+implementa y ningún consumidor los compone—, y sólo `runtime.inspect.v1` lo
+compone el verbo `inspect --state`. Un contrato publicado que promete más de lo
+que el build entrega es un fallo que llega en tiempo de ejecución, y el
+catálogo ya lo había corregido: lo que quedaba era el texto. Se reescribió esa
+sección para que diga lo que es verdad hoy.
+
+**La prueba de que el fósil no era quién lo sostenía.** Tras el cambio, el
+módulo no expone ninguna tarea de publicación, el root sigue resolviendo los
+mismos seis artefactos, y la puerta compila el módulo entero con sus tres
+adaptadores y sus tres clases de prueba.
+
+**El destino, cerrado.** Los puertos se publican; los adaptadores se quedan
+dentro; y el árbol ya no ofrece la otra respuesta posible.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
@@ -5968,6 +6029,13 @@ nadie la miraba.
   lo que se analiza sin que nadie lo haya medido, y un análisis sin medir es
   una garantía sin observador, que es exactamente lo que este ciclo vino a
   quitar del árbol.
+
+- **Un módulo que se queda no conserva la forma del que se iba.** La
+  publicación que nadie pedía, el `maven-publish` que nadie disparaba y el
+  texto del contrato que prometía una entrega que no existía eran la misma
+  puerta abierta: la de leer el módulo como algo que todavía podía ser
+  publicado. Retirarlos no es poda por gusto; es que un destino cerrado se
+  cierra también en las palabras, porque el árbol se lee antes que el código.
 
 ## 4. Referencias
 

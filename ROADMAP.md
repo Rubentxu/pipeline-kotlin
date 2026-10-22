@@ -14,23 +14,47 @@ una medición.
 
 ---
 
+## 0. Vista operativa: qué falta, y dónde está escrito
+
+Esta tabla es lo primero que hay que leer. Debajo está la evidencia de cada punto, y
+cada fila dice en qué sección vive. Un bloque no se cierra porque su fila lo diga:
+se cierra cuando su criterio de cierre está **medido**, y la medida dice dónde.
+
+| Bloque | Qué cierra | Criterio de cierre |
+|---|---|---|
+| **B1** Integración y workspace | las PR abiertas que todavía aportan cambios vigentes, y el contrato `authorizedWorkspaceRoot` frente a `effectiveWorkingDirectory` | ninguna divergencia conocida entre ramas, y la puerta completa en verde sobre el SHA integrado |
+| **B2** Plugins e identidad | las derivas que quedan de la segunda puerta, y el límite de procedencia, confianza y admisión | cada deriva observada contra un artefacto real, con su escenario y su fila |
+| **B3** Durabilidad y Output Plane | identidades, offsets y recuperación; un efecto externo no se repite tras una caída | recuperación caracterizada con el binario real, sin efectos duplicados |
+| **B4** Publicación, SDK y pruebas | la distribución instalada, un consumidor externo del SDK, y la economía de la instrumentación | artefacto publicado verificado por fuera, y pruebas que se pueden explicar |
+
+**Lo que está abierto ahora mismo:**
+
+| # | Qué falta | Por qué sigue abierto |
+|---|---|---|
+| 1 | La tercera familia de la mentira: un plugin que declara **eventos** que no aporta | el doctoring ya sabe tocar las otras dos familias; falta la línea del manifiesto que la tercera necesita (§2.44) |
+| 2 | El plugin que miente y es **el primero** que se carga | el rechazo por identidad duplicada se adelanta al cruce, así que el caso necesita su propio artefacto (§2.44) |
+| 3 | Capacidades en la **dirección contraria**: el plugin exige más de lo que su manifiesto declara | la regla lo mide, pero ninguna fila lo mira (§2.44) |
+| 4 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
+| 5 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | el nombre no es invertible y nadie ha demostrado que ningún consumidor necesite distinguir los dos (§2.45) |
+| 6 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
+
 ## 1. Estado medido
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `657306648` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `657306648` | `git rev-parse HEAD` |
+| SHA | `1e657a8ce` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `1e657a8ce` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1057** (146 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1066** (147 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **57 (57 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **57 de 57**: 145 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 57 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **18616 / 67304 = 0.277** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **18820 / 67363 = 0.279** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **194 / 172 / 165** en los tres ensayos, los tres sobre `657306648`, peor 194 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **174 / 159 / 161** en los tres ensayos, los tres sobre `1e657a8ce`, peor 174 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
-| Deuda estática congelada | **802** entradas de baseline: **sin cambio**, porque la ley que este ciclo añadió salió a su propio objeto en vez de empujar a `ProtocolGrammar` por encima del límite de detekt | `detektBaselineMain` y `detektMain` |
+| Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -38,13 +62,24 @@ es la condición con la que el censo de LOC es verdad: el censo lee
 `git ls-files`, así que con el árbol sucio un test nuevo no cuenta y la ratio
 sale mejor que la realidad.
 
-El reloj de la puerta lo marca también el host. El ciclo anterior midió 699,
-682 y 803 s con la máquina compartida con otro workspace, y este ciclo midió
-194, 172 y 165 s: la distancia entre un ensayo y otro no la explica el código
-medido, que es idéntico dentro de cada ciclo, sino la carga de la máquina. En
-los tres ensayos de este ciclo el presupuesto se cumplió con holgura —el peor,
-194 s, es menos de la quinta parte de los 900 s—, y eso que el árbol medido
-incluye la distribución, la API pública, los 1057 tests y los 57 escenarios.
+El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
+699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
+165 s en el bloque de las tres familias; este ciclo midió 174, 159 y 161 s: la
+distancia entre un ensayo y otro no la explica el código medido, que es
+idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
+de este ciclo el presupuesto se cumplió con holgura —el peor, 174 s, es menos
+de la quinta parte de los 900 s—, y eso que el árbol medido incluye la
+distribución, la API pública, los 1066 tests y los 57 escenarios.
+
+**Lo que este ciclo añadió.** Un cambio de producto en la segunda puerta de
+admisión: la procedencia de un proveedor de contribuciones se mide con un
+resultado tipado, y un proveedor que no puede decir de qué artefacto viene
+**detiene la composición nombrándolo**, en vez de descartarse en silencio
+(§2.45). Con ello: **9** filas unitarias en **1** clase nueva, **0** escenarios
+nuevos —no hay artefacto que produzca ese estado, y un escenario que lo fingiera
+sería una mentira—, y **1** cifra re-medida que estaba caducada (la deuda
+estática). Todo lo nuevo se encendió en rojo antes de darse por bueno, con su
+fila exacta.
 
 Lo que este ciclo añadió a la suite: **25** casos de test en **4** clases
 rescatadas del layout viejo —cada una con su regla viva detrás: el
@@ -72,17 +107,22 @@ del arranque, que ya corre en cada invocación del lanzador. Los dos UAT que lo
 probaron (una escena colgada y una escena que falla de verdad) se retiraron al
 cerrar el ciclo, con su evidencia escrita aquí.
 
-El ratio de LOC sube de 0.240 a **0.277** en este ciclo, todavía muy por debajo
+El ratio de LOC sube de 0.277 a **0.279** en este ciclo, todavía muy por debajo
 del límite 2, y el peor módulo sigue siendo el mismo de siempre
 (`pipeline-step-sdk:workflow-control`, 1.633) porque este ciclo no lo tocó.
 
 Lo que este ciclo **no** tocó, y conviene que no se confunda con un avance:
 el número de módulos con test sigue siendo 26 de 27. La deuda estática
-congelada **no se movió**: sigue en **802** entradas, ni una más ni una menos,
-y el motivo es el de siempre: la ley que este ciclo añadió salió a su propio
-objeto en vez de empujar a `ProtocolGrammar` por encima del límite de
-funciones. Un cambio que crece y no crece la baseline a la vez no es un cambio:
-es una negociación con el guardián.
+congelada **no se movió**: ninguna baseline cambió en este bloque, y el diff
+del bloque no lista ninguna. Pero su **cifra estaba caducada**, y eso se
+corrigió: se venía anotando **802** entradas, y el censo de entradas `<ID>`
+sobre las baselines versionadas da **879** —**770** antes de la unión de las
+dos líneas y **879** después, que es lo que hizo el commit que las fundió en
+una sola. El 802 no lo reproduce ningún instrumento del árbol, así que la fila
+dice ahora el número que sí se puede medir y con qué se mide. La ley que este
+ciclo añadió salió a su propio objeto en vez de empujar a `ProtocolGrammar`
+por encima del límite de funciones: un cambio que crece y no crece la
+baseline a la vez no es un cambio, es una negociación con el guardián.
 
 **Las mutaciones de este ciclo, vistas en rojo.** Un verde que nunca se ha
 visto rojo no es evidencia, así que cada instrumento se rompió a propósito, se
@@ -104,14 +144,19 @@ succeeded» sobre un run a medio hacer. En el reloj del lanzador (§2.32), **M6*
 BLOCKED. En la cancelación (§2.33), **M8** (volver a escribir el hecho terminal
 antes del sellado) encendió **2 de 5** filas del adaptador de cancelación, y
 **M9** (que el recover deje de reconocer el recibo de cancelación) encendió
-**1 de 6** del módulo. Todas se leyeron de vuelta y se deshacieron.
+**1 de 6** del módulo. Todas se leyeron de vuelta y se deshacieron. En la
+procedencia de los proveedores (§2.45), **M10** (un proveedor sin origen se
+reparte contra un camino en vez de detener la composición) encendió **4 de 9**
+filas —las tres familias y la causa ilegible— y dejó verdes las otras cinco:
+el aislamiento entre artefactos, la dirección inversa del cruce y las tres
+filas de la medida.
 
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
-los **145** informes JUnit, que es la condición que hace que la cifra de reloj
+los **147** informes JUnit, que es la condición que hace que la cifra de reloj
 mida el gate y no una restauración de caché. Un total correcto con el verbo
 equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
 **falla** si no reescribe ninguno. Los tres ensayos de este ciclo reescribieron
-los **145** informes —**1049** casos, 0 fallos, 0 skips— y los tres siguieron
+los **147** informes —**1066** casos, 0 fallos, 0 skips— y los tres siguieron
 dentro del presupuesto; el reloj del lanzador no añade tiempo, lo acota.
 
 **El gate cuenta 26 proyectos Gradle con test, y un censo independiente por
@@ -5338,6 +5383,110 @@ en que el plugin que miente es **el primero** que se carga y desplaza a otro;
 y la deriva de **capacidades** en la dirección contraria, cuando el plugin
 exige más de lo que su manifiesto declara.
 
+### 2.45 El proveedor sin origen: la segunda puerta miraba un artefacto que no podía nombrar
+
+**El hallazgo.** La segunda puerta compara lo que un plugin **declaró** con lo que
+su código **aporta**, y para hacerlo reparte las contribuciones por artefacto:
+cada plugin se compara contra las suyas, no contra las del vecino. El reparto
+necesita saber de qué artefacto viene cada contribución, y esa pregunta se
+contestaba descartando al que no supiera responderla: un proveedor cuyo origen
+no se puede medir se **ignoraba en silencio**, en las tres familias.
+
+Ignorarlo no es una omisión neutra, y son dos las formas:
+
+- Si el proveedor era de un plugin admitido, sus Steps declarados parecían no
+  estar implementados. El rechazo llegaba, pero señalaba al síntoma y no a la
+  causa: el plugin(load) fallaba «no implementado» cuando lo cierto es que su
+  contribución no se pudo colocar en ninguna parte.
+- Si el plugin no declaraba nada de esa familia, la contribución **extra** era
+  invisible. La dirección inversa del cruce —«aporta algo que no declaró»—
+  tenía un agujero, y un plugin podía publicar un Step que ningún manifiesto
+  mencionaba sin que nadie lo notara.
+
+**La medición, sobre la distribución instalada.** Una sonda enumeró los
+proveedores que el runtime carga de verdad: **7** de Steps, **2** de Directives
+y **1** de Events, **10** en total. **Todos** tienen origen resoluble y **0**
+carecen de él. El agujero **no es alcanzable hoy** en la distribución; el
+arreglo es preventivo, y por eso queda escrito como lo que es —una puerta que
+estaba abierta, no un fallo reproducido— y no como una incidencia.
+
+**Por qué el classloader no podía ser la autoridad.** La alternativa obvia era
+preguntar al cargador de clases, y es justo la que no sirve. La delegación es
+**padre-primero**, así que el proveedor de un plugin que la instalación ya trae
+—`scm-git`, `utilities`, `junit`— lo carga el cargador de la aplicación, igual
+que a un proveedor del propio runtime. Preguntar al classloader habría
+respondido «es del runtime» para la contribución de un plugin, y esa
+contribución habría quedado sin artefacto: exactamente el agujero que se
+pretende cerrar. La procedencia es el **code source** de la clase, que es lo
+único que la JVM guarda sobre ella.
+
+**Qué cambió.** La procedencia se mide con un resultado tipado —resuelto,
+ausente o ilegible— y un proveedor que no la declara **detiene la composición**,
+con su nombre, en vez de quedarse fuera del reparto. El rechazo es un caso
+nuevo del resultado de la composición, la CLI lo dice y sale con **2**, como
+cualquier otro rechazo de admisión. El sitio de cada pieza importa: la puerta
+`pipeline-application` **no está publicada**, así que su forma puede cambiar sin
+romper a nadie; el vocabulario de rechazos **sí** lo está, y por eso el
+rechazo nuevo **no** se metió ahí —habría roto el ABI de los consumidores, y
+`apiCheck` lo habría detectado en la puerta.
+
+**El instrumento, y por qué no hay escenario ejecutable.** La regla se separó de
+la medida que la produce: la medida lee el code source de la clase, y la regla
+decide sobre un valor. Así la regla se puede ejercitar contra proveedores cuyo
+origen no puede producir ningún classpath, que es justo el caso real, porque en
+la distribución no existe ninguno. Un escenario ejecutable habría sido una
+mentira: no hay artefacto que publicar que produzca ese estado, y un escenario
+que lo fingiera estaría midiendo el adorno, no la garantía. Lo que **sí**
+protege el riesgo de disponibilidad —un proveedor **del runtime** sin origen
+pararía cada carrera— son los **57** escenarios, que componen plugins en cada
+corrida: si existiera uno así, los 57 habrían salido con **2** en vez de **0**,
+y ninguno salió.
+
+**La mutación, vista en rojo.** Apagar el guardián —que un proveedor sin origen
+se reparta contra un camino en vez de detener la composición— encendió
+**exactamente 4 de las 9** filas: las tres familias y la causa ilegible. Las
+otras cinco siguieron verdes: el aislamiento entre artefactos, la dirección
+inversa del cruce y las tres filas de la medida. La mutación se leyó de vuelta
+en el fichero, con su número de línea, antes de darla por aplicada.
+
+**Medido, sobre el árbol de este bloque:**
+
+| Métrica | Valor |
+|---|---|
+| Proveedores que el runtime carga de verdad | **10**: 7 de Steps, 2 de Directives, 1 de Events |
+| De ellos, sin origen resoluble | **0** |
+| Familias con el guardián | **3** de 3 |
+| Test de la regla | **9** filas: tres familias, la causa ilegible, el aislamiento entre artefactos, la dirección inversa del cruce y la medida |
+| Escenarios ejecutables | **0** nuevos, y no por descuido: el estado que el guardián mira no lo produce ningún artefacto |
+| Tests unitarios | **1066**, 0 fallos, 0 skips, 147 informes reescritos por la corrida |
+| Escenarios E2E | **57**, los 57 verdes, 57 de 57 con garantía comprobada (145 garantías) |
+| `VERIFY_LOC / PRODUCT_LOC` | **18820 / 67363 = 0.279** (límite 2) |
+| Reloj de la puerta | **174 / 159 / 161 s** en tres ensayos sobre `1e657a8ce`, contra 900 s |
+
+**Lo que dice la auditoría externa, y qué se hace con cada fila.** Una revisión
+externa no es una verdad: es una lista de candidatos, y cada uno hay que
+contrastarlo con el código antes de aceptarlo. Esto es lo que resultó de
+contrastarlos uno a uno:
+
+| Fila de la auditoría | Veredicto | Por qué |
+|---|---|---|
+| Un proveedor de contribuciones sin origen se ignora en silencio | **corregido en este bloque** | era cierto en el código, y el guardián ahora lo detiene nombrándolo (§2.45) |
+| Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | **abierto, con una razón que lo acota** | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores y `apiCheck` lo ve. Separar los tres nombres es un cambio de contrato y necesita su propio bloque y su versión |
+| Certificación externa bloqueada | **`BLOCKED_EXTERNAL`, sin cambio** | no hay certificador en este repositorio ni en remoto. No es un defecto del producto y no se puede cerrar desde aquí |
+| El frontend scripted compone demasiadas cosas | **diferido al bloque de duración** | es un refactor de la composición, y un refactor sin medida del antes y el después es un cambio de forma |
+| El Output Plane mezcla decisiones puras e infraestructura | **diferido al bloque de duración** | por lo mismo, y porque las garantías de concurrencia del Output Plane no se tocan sin su propio instrumento |
+| Los identificadores de stream pueden colisionar | **abierto, con el código leído** | `safe()` dobla todo lo que no sea `[A-Za-z0-9._-]`, así que dos identificadores distintos pueden acabar en el mismo directorio. El índice de fotogramas guarda el identificador real, pero los bytes van al directorio. Falta demostrar si algún consumidor necesita distinguir los dos, y hasta entonces no se toca el formato en disco, que sí es un contrato |
+| La baseline de análisis estático es grande | **la cifra estaba caducada; la deuda no se movió** | el número real son **879** entradas, no las 802 anotadas (§1), y ninguna baseline cambió en este bloque |
+| Los verificadores tienen demasiada lógica | **diferido al bloque de publicación y pruebas** | el arnés ya no crece en vocabulario, y reducirlo es un bloque con su propia medida de coste, no un recorte a ciegas |
+
+De las cuatro propuestas de pensamiento lateral, este ciclo **adopta una**: la
+de convertir el roadmap en una vista operativa, que es la sección 0 de este
+documento. Las otras tres —certificar por garantías en vez de por cantidad de
+escenarios, derivar el contrato del plugin de sus contribuidores, y una suite
+pequeña de fallos de producción simulados físicamente— quedan **diferidas** a
+los bloques que las pueden pagar. La primera, además, ya está en pie: el arnés
+cuenta **garantías** (145) y no escenarios.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
@@ -6209,6 +6358,39 @@ exige más de lo que su manifiesto declara.
   argumento del lanzador. Un arnés que crece en capacidad —en lo que puede
   observar— y no en nombres de fichero es el que se puede ampliar sin pagar un
   mecanismo nuevo por cada cosa que descubre.
+
+- **La procedencia de un contribuidor se mide por su code source, no por su
+  classloader.** El classloader parece la pregunta obvia y es la que no sirve:
+  con la delegación padre-primero, el proveedor de un plugin que la instalación
+  ya trae lo carga el cargador de la aplicación, igual que a un proveedor del
+  propio runtime. Preguntar por el cargador habría tratado la contribución de
+  un plugin como si fuera de otro, que es el agujero que se quería cerrar. La
+  JVM guarda un solo hecho sobre cada clase que define —de qué código se
+  cargó— y una sola autoridad es más barata de defender que dos.
+
+- **Una contribución sin artefacto no es la contribución de nadie: se nombra al
+  proveedor.** Descartarla en silencio era tolerable mientras no pasara nada,
+  y no pasó nada: la distribución real no tiene ni un proveedor sin origen.
+  Pero un silencio que sólo se sostiene porque hoy no hay quien lo provoque es
+  una puerta abierta, y la diferencia entre una puerta abierta y una cerrada
+  no la nota quien la usa: la nota quien la abre. Nombrar al proveedor convierte
+  un caso invisible en un diagnóstico accionable, y nombrar al proveedor es
+  exactamente lo que se puede hacer cuando no hay artefacto que nombrar.
+
+- **La regla se separa de la medida que la produce, para que la regla se pueda
+  ejercitar.** La procedencia se lee del code source de la clase y la decisión
+  se toma sobre un valor; con esa costura, la regla se puede probar contra
+  proveedores cuyo origen no produce ningún classpath, que es el estado que
+  el runtime no tiene y que por tanto ningún artefacto real puede repetir. Una
+  regla que sólo se puede ejercitar con un artefacto que nadie publica es una
+  regla que nadie comprueba.
+
+- **Un número que no se reproduce con un instrumento del árbol no se copia: se
+  vuelve a medir.** La deuda estática llevaba dos ciclos anotada en 802, y el
+  censo sobre las baselines versionadas da 879 —770 antes de la unión de las
+  dos líneas y 879 después—. Nadie lo reverificó porque el número estaba
+  escrito y escrito se ve. El daño de una cifra caducada no es el número: es
+  que hace creer que hay un guardián midiendo lo que nadie mide.
 
 ## 4. Referencias
 

@@ -5200,6 +5200,75 @@ adaptadores y sus tres clases de prueba.
 **El destino, cerrado.** Los puertos se publican; los adaptadores se quedan
 dentro; y el árbol ya no ofrece la otra respuesta posible.
 
+### 2.43 El plugin que miente: una garantía entera, sin un solo observador
+
+**El defecto.** El producto tiene una **segunda puerta** de admisión. La
+primera lee el documento: el manifiesto está bien formado, la identidad es la
+del publicador, la versión sirve para el runtime, el artefacto es medible. La
+segunda carga al contribuidor y compara lo que el manifiesto **DECLARÓ** con lo
+que el contribuidor **APORTÓ**. Esa comparación es la única que puede ver un
+manifiesto que miente, porque un documento que miente sigue siendo un documento
+bien formado: la mentira sólo existe contra el código del plugin.
+
+Medido: **esa puerta no tenía ni un solo observador**. Ni una clase de test
+que la mencionara, ni un escenario ejecutable que la empujara. Los ficheros de
+`src/test` que hablan de `PluginManifestRejection` eran cero.
+
+**Por qué es tan fácil que no la mire nadie.** La primera puerta lee un
+documento; la segunda necesita el código ya cargado. Quien lee la primera ve un
+manifiesto, y un manifiesto bien formado parece un manifiesto verdadero. La
+garantía era real y estaba en el árbol, y nadie la miraba: la misma forma que
+took el layout viejo y los tests rescatados.
+
+**El instrumento: una distribución con un plugin que miente.** Tres cosas que
+hubo queaveriguar, y las tres son la razón de que el escenario sea como es:
+
+1. **El plugin mentiroso tiene que SUSTITUIR al del bundle, no acompañarlo.**
+   Ofrecerlo además es otro artefacto con la misma identidad, y se rechaza por
+   duplicado antes de tiempo —el primer intento del escenario se equivocó de
+   rechazo exactamente así—. Ese rechazo es correcto y es el que la primera
+   puerta tiene que dar; no es el que este escenario va a observar. Y en
+   cualquier caso, sus Steps chocarían con los del plugin honesto.
+2. **Por eso el escenario corre contra su propia distribución.** La copia es
+   byte a byte la instalada, con **un** JAR distinto dentro, y el binario es el
+   mismo. Es lo que se ve en una instalación cuyo plugin miente. La capacidad
+   que el arnés gana es angosta y con nombre: `//@ distribution`, y el reloj se
+   aplica igual porque el producto se sigue invocando por la misma función.
+3. **El manifiesto se puede doctorar porque el digest que declara no es el
+   digest del fichero.** El runtime nunca los compara, y el manifiesto está
+   excluido del digest que el build mide. Eso es lo que permite que un manifiesto
+   mentiroso pase la integridad y llegue hasta la segunda puerta —que es
+   exactamente donde tiene que llegar para que el escenario lo observe—.
+
+**Qué afirma el escenario.** La salida distinta de cero, el artefacto nombrado
+y la deriva nombrada. La deriva es lo que hace el escenario discriminante: un
+run que sólo fallara dejaría abierto si el plugin se saltó, y el plugin se
+puede saltar sin que la pipeline se entere —el escenario usa un Step que
+nadie invoca—, así que un verde aquí sería indistinguible de un run que
+funcionó con un plugin menos.
+
+**Qué se vio en rojo, y qué no se movió.** Desactivando la segunda puerta, el
+escenario sale con **0 en vez de 2** —el plugin mentiroso se cuela y el run
+termina bien— y los **otros 54 escenarios siguen verdes**. El guardián es la
+puerta, no el escenario.
+
+**La regla pura, por separado.** La comparación es exacta y en **las dos
+direcciones**: un Step declarado sin definición es una mentira por omisión, y
+una definición sin declarar es la misma mentira por comisión. El escenario
+observa la primera; la segunda y las familias de directivas y eventos no las
+observa nadie, y para eso está el test de la regla, que usa el códec real del
+producto y habla de los mismos documentos que el runtime lee de un JAR. Al
+apagar una sola dirección de la comparación, **exactamente 1 de sus 6 filas se
+vuelve roja** y las otras 5 no se mueven.
+
+**Lo que este trabajo NO cubre, dicho con claridad.** El escenario observa un
+plugin que miente **sobre sus Steps**, en una instalación real, y el test
+observa la regla con nombres y conjuntos. No se ha observado: un plugin que
+miente sobre sus capacidades declaradas en un JAR real, ni una deriva de
+directivas contra una instalación real, ni el caso en que el plugin que miente
+es *el primero* que se carga y desplaza a otro. La puerta existe para todos
+esos casos y el árbol los sostiene, pero un observador es un observador.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
@@ -6049,6 +6118,21 @@ dentro; y el árbol ya no ofrece la otra respuesta posible.
   puerta abierta: la de leer el módulo como algo que todavía podía ser
   publicado. Retirarlos no es poda por gusto; es que un destino cerrado se
   cierra también en las palabras, porque el árbol se lee antes que el código.
+
+- **Una garantía que se rompe sin dejar rastro se mira con un artefacto
+  real, no con un doble.** Un plugin que miente sobre sus Steps sólo se puede
+  ver cargando sus clases y comparándolas con su manifiesto, así que el
+  instrumento tiene que ser un artefacto de verdad: un JAR con el manifiesto
+  untrue y el resto de la distribución igual. La comparación pura se prueba
+  aparte, con el códec real y sin proceso; las dos cosas miran cosas
+  distintas y ninguna basta sola.
+
+- **Un guardián se demuestra apagándolo.** Un escenario que afirma un rechazo
+  no prueba que el rechazo sea el del guardián hasta que el guardián se apaga
+  y el escenario se enciende. La prueba de que el guardián es el que habla es
+  que **sólo** esa fila se enciende: una fila roja sola dice que el escenario
+  discrimina; una fila roja sola con las demás verdes dice que el guardián
+  es el guardián.
 
 ## 4. Referencias
 

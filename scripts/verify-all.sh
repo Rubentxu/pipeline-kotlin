@@ -324,7 +324,22 @@ fi
 
 # The logs are removed only when the run reaches a full pass. Every other
 # outcome leaves them in place, because that is when someone needs to read them.
-cleanup_logs() { [[ "${VERIFY_ALL_VERDICT:-FAIL}" == PASS* ]] && rm -rf "$log_dir"; }
+#
+# The trap returns the status the run already had. A trap that ends on a failed
+# test OVERRIDES the exit code of the script that installed it: with
+# `VERIFY_ALL_VERDICT` unset, the `[[ ]]` is false, the function returns 1, and
+# every SUBSET run -- and every INCOMPLETE verdict, whose comment says its exit
+# status stays 0 -- left with status 1 while the verdict line said PASS. The
+# documented inner loop (`--stage 2 --module ... --test ...`) was therefore
+# always a failure to the caller, and the line it printed and the code it
+# returned said different things.
+cleanup_logs() {
+    local status=$?
+    if [[ "${VERIFY_ALL_VERDICT:-FAIL}" == PASS* ]]; then
+        rm -rf "$log_dir"
+    fi
+    return "$status"
+}
 trap cleanup_logs EXIT
 
 # --- Stage 1: compile, static analysis, API compatibility, distribution -------
@@ -706,10 +721,36 @@ if ! want_stage 4; then
     log "stage 4/5  SKIPPED by --stage"
 elif [[ "$skip_budget" == 1 ]]; then
     log "stage 4/5  LOC budget SKIPPED by --no-budget"
+    # The provenance guard does NOT go with the LOC budget. `--no-budget` skips a
+    # CONTRACT, and the guard is not that contract: it is a check on the words
+    # the source says, and skipping it because the operator did not want the
+    # census of lines would be the wrong reason to stop saying what the code
+    # does.
+    log "stage 4b/5 comment provenance"
+    stage_started_at=$(date +%s)
+    python3 scripts/check-comment-provenance.py >/tmp/.verify-comment.out 2>&1 \
+        || { cat /tmp/.verify-comment.out >&2; fail "stage 4b: comment provenance"; }
+    echo "    ok in $(elapsed "$stage_started_at")s"
 else
     log "stage 4/5  LOC budget"
     stage_started_at=$(date +%s)
     python3 scripts/check-budgets.py || fail "stage 4: LOC budget"
+    echo "    ok in $(elapsed "$stage_started_at")s"
+
+    # --- Stage 4b: comment provenance ---------------------------------------
+    #
+    # A comment that names its ticket, its document section, or its commit is
+    # the comment that anchors the code to a process, not to its behaviour. The
+    # guard reads Kotlin, `.kts` and `.sh` files, and walks the comment stream
+    # tokenised by hand so a `//` inside a string literal stays a string.
+    #
+    # It runs here, between the LOC gate and the wall clock, because the LOC
+    # contract already names the file as a whole -- a guard that runs later
+    # cannot qualify the verdict the way the 2:1 contract qualifies the budget.
+    log "stage 4b/5 comment provenance"
+    stage_started_at=$(date +%s)
+    python3 scripts/check-comment-provenance.py >/tmp/.verify-comment.out 2>&1 \
+        || { cat /tmp/.verify-comment.out >&2; fail "stage 4b: comment provenance"; }
     echo "    ok in $(elapsed "$stage_started_at")s"
 fi
 

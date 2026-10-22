@@ -4,8 +4,6 @@ import dev.rubentxu.pipeline.v2.domain.BlockSegment
 
 /**
  * Typed operation identifier. Format: "$runId-s$stageIndex-$stepIndex[-b$branchIndex][-bp{N}-{seg}...]".
- * Replaces the string-templated `$runId-s$stageIndex-$stepIndex` hidden contract
- * In [dev.rubentxu.pipeline.v2.application.PipelineRun] (HIGH finding from debt-report)
  * The format is designed to be lexicographically sortable by runId, stage, then step,
  * which enables efficient range queries on the journal.
  * When branchIndex is non-null, the format extends to: "$runId-s$stageIndex-$stepIndex-b$branchIndex"
@@ -35,7 +33,7 @@ data class OpId(
      * parallel impossible to represent without a breaking change, and a lane
      * identity that cannot express nesting is a lane identity that will be
      * wrong the moment nesting exists.
-*/
+    */
     val parallelLineage: List<Int>
         get() = bodyPath.mapNotNull { segment ->
             // BlockSegment is a value class over "{index}:{pluginStepId}", so the
@@ -49,7 +47,7 @@ data class OpId(
     /**
      * Formats this OpId into the canonical string representation with length-prefix bodyPath.
      * @return String in format "$runId-s$stageIndex-$stepIndex[-b$branchIndex][-bp{N}-{seg}...]"
-*/
+    */
     fun format(): String = buildString {
         append(runId); append("-s"); append(stageIndex); append('-'); append(stepIndex)
         if (branchIndex != null) { append("-b"); append(branchIndex) }
@@ -61,13 +59,13 @@ data class OpId(
 
     /**
      * Returns the string representation (same as format).
-*/
+    */
     override fun toString(): String = format()
 
     /**
      * Legacy format that is byte-identical to the previous format for empty bodyPath
      * Use this for linear-path operations to preserve existing journal keys.
-*/
+    */
     fun legacyFormat(): String =
         if (branchIndex != null) "$runId-s$stageIndex-$stepIndex-b$branchIndex"
         else "$runId-s$stageIndex-$stepIndex"
@@ -77,87 +75,138 @@ data class OpId(
          * `pluginStepId` the parallel engine writes for a branch frame segment.
          * Named here so [parallelLineage] and the engine that emits the segment
          * cannot drift apart.
-*/
+    */
         const val PARALLEL_BRANCH_SEGMENT = "branch"
 
         /**
-         * Pattern for OpId without branch: "runId-s{stageIndex}-{stepIndex}"
-*/
-        private val ROOT_PATTERN = Regex("^(.+)-s(\\d+)-(\\d+)$")
+         * The root of an operation id: the run, the stage, the step and, when the
+         * operation runs inside a branch frame, the branch. The run identifier is
+         * opaque, so the pattern is greedy and reads the LAST `s{stage}-{step}`
+         * — which is where the format puts it.
+        */
+        private val ROOT_PATTERN = Regex("^(.+)-s(\\d+)-(\\d+)(-b(\\d+))?$")
 
         /**
-         * Pattern for OpId with optional branch: "runId-s{stageIndex}-{stepIndex}[-b{branchIndex}]"
-         * The branchIndex group is captured as an optional group (may be null).
-*/
-        private val BRANCH_PATTERN = Regex("^(.+)-s(\\d+)-(\\d+)(-b(\\d+))?$")
+         * The body of an operation id: how many segments it has, and the segments
+         * joined by hyphens.
+        */
+        private val BODY_PATTERN = Regex("^-bp(\\d+)-(.+)$")
+
+        /** Where a body starts. Named so the search and the pattern cannot drift apart. */
+        private const val BODY_MARKER = "-bp"
 
         /**
-         * Pattern for OpId with optional branch and bodyPath:
-         * "runId-s{stageIndex}-{stepIndex}[-b{branchIndex}][-bp{N}-{seg0}-{seg1}-...]"
-         * Segments are encoded as "{index}:{pluginStepId}".
-*/
-        private val BODY_PATTERN = Regex("""^(.+)-s(\d+)-(\d+)(-b(\d+))?(-bp(\d+)(.+))?$""")
-
-        /**
-         * Parses a string representation into an [OpId].
-         * @param s The string to parse, expected in format "$runId-s$stageIndex-$stepIndex[-b$branchIndex][-bp{N}-...]".
-         * @return An [OpId] if parsing succeeds, or `null` if the format is invalid.
-*/
+         * Reads an operation id from its text form.
+         *
+         * The text is read the way it is written: a root —run, stage, step and
+         * an optional branch— and, after it, a body written as `-bp{N}-` followed
+         * by the segments.
+         *
+         * The body is read only when it can be read **exactly**. Its segments are
+         * joined with a hyphen, so a segment that carries a hyphen of its own
+         * leaves more hyphens than the body has segments, and then the text can
+         * be cut in more than one way. Each cut is a different identity, so
+         * rather than pick one, the text is **refused**: a reader that returns an
+         * identity it had to guess is worse than a reader that returns none,
+         * because the guess looks right and names something else.
+         *
+         * The same applies to the text as a whole: when it can be read as more
+         * than one operation id —as a root with a body, or as a root whose run
+         * identifier happens to end in something that looks like one— it is
+         * refused too.
+         *
+         * @return the identity the text names, or `null` when it names none or
+         *   more than one.
+        */
         fun parse(s: String): OpId? {
-            // First try body-aware pattern (most general)
-            val bodyMatch = BODY_PATTERN.matchEntire(s) ?: return null
-            val (runId, sIdx, stepIdx, _, branchIdx, _, bodyCountStr, bodySegs) = bodyMatch.destructured
+            val readings = readings(s)
+            if (readings.size != 1) return null
+            val reading = readings.single()
+            val body = reading.bodyPath ?: return null
+            return OpId(reading.runId, reading.stageIndex, reading.stepIndex, reading.branchIndex, body)
+        }
 
-            val bodyPath = if (bodySegs.isNotEmpty() && bodyCountStr.isNotEmpty()) {
-                val count = bodyCountStr.toIntOrNull() ?: 0
-                // The segments were joined with hyphens, so this splits on them.
-                val allSegments = bodySegs.split("-").filter { it.isNotBlank() }
-                if (allSegments.size == count) {
-                    // One piece per segment: the split is exact, so the path can
-                    // be rebuilt as it was written.
-                    allSegments.map { seg ->
-                        val parts = seg.split(":")
-                        val index = parts.getOrNull(0)?.toIntOrNull()
-                        if (parts.size == 2 && index != null && parts[1].isNotBlank()) {
-                            BlockSegment(index, dev.rubentxu.pipeline.v2.domain.PluginStepId(parts[1]))
-                        } else {
-                            // A segment that is NOT addressed by position: a
-                            // parallel branch frame ("b0:branch") or a named body
-                            // ("n:closure"). Its first field is not an index, and
-                            // rebuilding it as one would change the identity — so
-                            // it is kept exactly as it was written. Dropping it
-                            // instead would return an OpId that names a
-                            // DIFFERENT operation: the same stage and step
-                            // without its body.
-                            BlockSegment(seg)
-                        }
-                    }
-                } else {
-                    // More pieces than segments: some identifier inside the path
-                    // carries a '-', and the split cannot say where one segment
-                    // ends and the next begins. The count says how many there
-                    // are, but not which pieces they are. The path is rebuilt as
-                    // far as the pieces allow, and the rest is dropped.
-                    allSegments.take(count).mapNotNull { seg ->
-                        val parts = seg.split(":")
-                        if (parts.size == 2) {
-                            val index = parts[0].toIntOrNull()
-                            val pluginId = parts[1]
-                            if (index != null && pluginId.isNotBlank()) {
-                                BlockSegment(index, dev.rubentxu.pipeline.v2.domain.PluginStepId(pluginId))
-                            } else null
-                        } else null
-                    }
-                }
-            } else emptyList()
+        /**
+         * Reads the stage and the step an operation id states, without reading
+         * its body.
+         *
+         * A filter over frames asks which stage and which step an operation
+         * belongs to, and both are in the root: they do not depend on how the
+         * body reads. So this reads them even when the body is ambiguous —the
+         * operation is still the one of that stage and that step— and refuses
+         * only when the **root** reads ambiguously, which is the only case in
+         * which the stage and the step could be something else.
+         *
+         * @return the indices the text states, or `null` when it states none or
+         *   more than one.
+        */
+        fun parseIndices(s: String): OpIdIndices? {
+            val readings = readings(s)
+            if (readings.isEmpty()) return null
+            val first = readings.first()
+            val agrees = readings.all {
+                it.stageIndex == first.stageIndex && it.stepIndex == first.stepIndex
+            }
+            return if (agrees) OpIdIndices(first.stageIndex, first.stepIndex) else null
+        }
 
-            return OpId(
-                runId,
-                sIdx.toInt(),
-                stepIdx.toInt(),
-                branchIdx.takeIf { it.isNotEmpty() }?.toInt(),
-                bodyPath
+        /**
+         * Every way the text can be read as an operation id.
+         *
+         * The text is split where a body starts, and the body is read only when
+         * its segments can be told apart. A body that cannot be read is kept as
+         * **unread**, which is not the same as absent: the root still says which
+         * stage and step the text is about.
+        */
+        private fun readings(s: String): List<Reading> {
+            val found = mutableListOf<Reading>()
+            reading(s, s.length)?.let { found.add(it) }
+            var at = s.indexOf(BODY_MARKER)
+            while (at >= 0) {
+                reading(s, at)?.let { found.add(it) }
+                at = s.indexOf(BODY_MARKER, at + 1)
+            }
+            return found
+        }
+
+        /** One reading of the text: the root, and the body when the text carries one. */
+        private fun reading(s: String, split: Int): Reading? {
+            val root = ROOT_PATTERN.matchEntire(s.substring(0, split)) ?: return null
+            val stageIndex = root.groupValues[2].toIntOrNull() ?: return null
+            val stepIndex = root.groupValues[3].toIntOrNull() ?: return null
+            val branchIndex = root.groupValues[5].takeIf { it.isNotEmpty() }?.toIntOrNull()
+
+            val suffix = s.substring(split)
+            if (suffix.isEmpty()) {
+                return Reading(root.groupValues[1], stageIndex, stepIndex, branchIndex, emptyList())
+            }
+            val body = BODY_PATTERN.matchEntire(suffix) ?: return null
+            val count = body.groupValues[1].toIntOrNull() ?: return null
+            return Reading(
+                root.groupValues[1],
+                stageIndex,
+                stepIndex,
+                branchIndex,
+                segments(body.groupValues[2], count),
             )
+        }
+
+        /**
+         * The segments of a body, or `null` when they cannot be told apart.
+         *
+         * With one segment there is nothing to tell apart: the whole text is
+         * the segment. With more, the segments are joined by hyphens, and the
+         * join is only unambiguous when the text has exactly one hyphen less
+         * than it has segments. A body that can be cut in more than one way is
+         * **not read**, because each cut is a different identity.
+        */
+        private fun segments(text: String, count: Int): List<BlockSegment>? {
+            if (count < 1 || text.isBlank()) return null
+            if (count == 1) return listOf(BlockSegment(text))
+            val pieces = text.split("-")
+            if (pieces.size != count) return null
+            if (pieces.any { it.isBlank() }) return null
+            return pieces.map { BlockSegment(it) }
         }
 
         /**
@@ -167,9 +216,33 @@ data class OpId(
          * @param stepIndex The 0-based step index within the stage.
          * @param branchIndex The 0-based branch index for parallel frame execution.
          * @return An [OpId] with branchIndex set.
-*/
+        */
         fun forBranch(runId: String, stageIndex: Int, stepIndex: Int, branchIndex: Int): OpId =
             OpId(runId, stageIndex, stepIndex, branchIndex)
     }
 }
 
+/**
+ * The stage and the step an operation id states.
+ *
+ * A filter over frames needs these two numbers and nothing else, and they are
+ * the one part of an operation id that does not depend on how its body reads.
+ * They come apart from the identity itself on purpose: an identity that could
+ * not be read whole still says which stage and step it is about, and a reader
+ * that returns none of them would take that away.
+*/
+data class OpIdIndices(val stageIndex: Int, val stepIndex: Int)
+
+/**
+ * One reading of an operation id.
+ *
+ * [bodyPath] is `null` when the text carries a body that cannot be read without
+ * guessing, which is not the same as an empty body.
+*/
+private class Reading(
+    val runId: String,
+    val stageIndex: Int,
+    val stepIndex: Int,
+    val branchIndex: Int?,
+    val bodyPath: List<BlockSegment>?,
+)

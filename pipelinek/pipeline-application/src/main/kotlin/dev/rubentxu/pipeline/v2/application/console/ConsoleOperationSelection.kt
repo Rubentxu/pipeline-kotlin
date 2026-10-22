@@ -44,8 +44,9 @@ sealed interface OperationSelection {
      * The no-journal case: the selection is stated as required INDICES, not as an opId set.
      * Its own case, and deliberately not a degenerate [Operations]. Without a journal there is no
      * `StepStarted` to enumerate operations from, so the only authority available is the opId the
-     * caller already scoped the read to. [includes] therefore parses THAT opId and checks its own
-     * indices — which is sound, because an opId states its stage and step exactly.
+     * caller already scoped the read to. [includes] therefore reads THAT opId's indices and checks
+     * them — which is sound, because an opId states its stage and step exactly, and those two are
+     * readable even when the rest of the id is not.
      * Making it a separate case is what lets the refusal be precise: `null` on both axes means
      * the filter genuinely constrains nothing, while `Operations(emptySet())` would mean "this
      * stage exists and wrote nothing" — a fact about the product that this path cannot establish
@@ -63,9 +64,9 @@ sealed interface OperationSelection {
     fun includes(opId: String): Boolean = when (this) {
         AllOperations -> true
         is Operations -> opId in opIds
-        is IndexOnly -> OpId.parse(opId)?.let { parsed ->
-            (requiredStage == null || parsed.stageIndex == requiredStage) &&
-                (requiredStep == null || parsed.stepIndex == requiredStep)
+        is IndexOnly -> OpId.parseIndices(opId)?.let { indices ->
+            (requiredStage == null || indices.stageIndex == requiredStage) &&
+                (requiredStep == null || indices.stepIndex == requiredStep)
         } ?: false
     }
 }

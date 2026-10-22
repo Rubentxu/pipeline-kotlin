@@ -1563,9 +1563,9 @@ internal class StageStepKindResolver private constructor(private val runId: Stri
         if (parts.size < 3) return false
         if (parts[0] != runId) return false
         val opIdStr = parts[1]
-        val parsed = dev.rubentxu.pipeline.v2.application.durable.OpId.parse(opIdStr) ?: return false
-        val stageIndex = parsed.stageIndex.toString()
-        val stepIndex = parsed.stepIndex.toString()
+        val indices = dev.rubentxu.pipeline.v2.application.durable.OpId.parseIndices(opIdStr) ?: return false
+        val stageIndex = indices.stageIndex.toString()
+        val stepIndex = indices.stepIndex.toString()
         val stageOk = filters.stages.isEmpty() || stageIndex in filters.stages
         val stepOk = filters.steps.isEmpty() || stepIndex in filters.steps
         // The kind axis is a pass-through until events-→-opId resolution lands; see the

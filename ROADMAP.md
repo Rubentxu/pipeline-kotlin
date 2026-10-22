@@ -93,7 +93,7 @@ composición se rechaza.
 | 2 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
 | 3 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | **caracterizada** (§2.57): con el camino de producción actual **dos streams no pueden compartir bytes**, porque los segmentos dirigidos por posición no se pliegan. Lo que sí era un defecto real —el parser de op ids descartaba parte de la identidad **en silencio**, devolviendo otra operación— está arreglado y con su fila vista en rojo. Queda con nombre una deuda: el formato del cuerpo **no es invertible** cuando un identificador lleva `-`, y cerrarlo es ruptura versionada que espera autorización |
 | 4 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
-| 5 | El techo del drenaje y los temporales del driver SQLite | **caracterizados** (§2.58): el rechazo del drenaje ya es **tipado** y no se confunde con un fallo del script; lo que falta es que sea **accionable** — reintentar en vez de subir el techo—. Y el driver extrae su biblioteca nativa al tmpdir del sistema porque nadie fija `org.sqlite.tmpdir`; el knob está **leído en el propio jar** y el arreglo es de una línea de arranque, sin tocar el contrato |
+| 5 | El techo del drenaje | **caracterizado** (§2.58): el rechazo ya es **tipado** (`DrainIncomplete`) y no se confunde con un fallo del script, que era lo que faltaba saber. Lo que falta es que sea **accionable** — reintentar en vez de subir el techo—, y eso es decisión de producto. Y una corrección de atributos: los temporales del driver SQLite que hay en el tmpdir **no son de este repositorio** —el driver carga del classpath y no extrae—; son de otros procesos de la máquina |
 
 ## 1. Estado medido
 
@@ -6413,45 +6413,9 @@ dependía de un supuesto no escrito, y que la puerta por la que un id externo
 entra al sistema **descartaba parte de la identidad en silencio**. Eso era un
 defecto real, y está arreglado.
 
-### 2.58 Lo que el producto deja en el host, y el techo que no depende de la carga
+### 2.58 El techo que no depende de la carga, y una causalidad que era falsa
 
-**La basura, medida.** El store de eventos abre su base por JDBC, y lo hace
-**sin propiedades**:
-
-```
-SqliteConnectionFactory:  DriverManager.getConnection("jdbc:sqlite:$file")
-```
-
-El driver JDBC de Xerial, al cargar su biblioteca nativa, la **extrae al
-directorio temporal del sistema** y **la deja ahí**. En este host, medido:
-
-| medida | valor |
-|---|---|
-| versión del driver | `org.xerial:sqlite-jdbc:3.46.1.3` |
-| temporales residuales | **425** pares `sqlite-3.46.1.3-*-libsqlitejdbc.so` (+ su `.lck`), con fechas que abarcan **12 horas** de actividad: el más antiguo es de las 09:53 de hoy y el más reciente, de hace un momento |
-| peso de `/tmp` | **2,1 GB** |
-| qué pasa al salir bien | el driver **limpia los suyos**: durante una puerta el conteo **bajó de 810 a 425**. Los que quedan son de procesos que **no** salieron limpiamente |
-
-**El knob, leído en el propio driver.** No es una suposición: en el jar, las
-clases `SQLiteJDBCLoader` y `SQLiteConnection` mencionan `org.sqlite.tmpdir` y
-`java.io.tmpdir`. El loader lee la propiedad del **sistema** `org.sqlite.tmpdir`
-y, si no está, cae a `java.io.tmpdir`. No es un parámetro de la URL: es una
-propiedad **del proceso**, y se lee al extraer la biblioteca, o sea **antes** de
-la primera conexión.
-
-Eso es lo que hace el arreglo barato: fijar `org.sqlite.tmpdir` a un
-directorio **propio del proceso**, antes de abrir nada, y borrar ese directorio
-al salir. Cero residuos en el tmpdir global, y el residuo pasa a tener dueño.
-
-**Por qué la versión no es la respuesta.** La PR #71 —cerrada— proponía subir
-`sqlite-jdbc` de 3.46.1.3 a 3.53.4.0, y 3.46.1.3 es exactamente la versión que
-deja los temporales nativos en `/tmp`. Pero **subir la versión cambia el
-binario que entra en el artefacto**, y fijar el directorio **no cambia nada**
-salvo dónde aterriza un fichero que no era de nadie. La segunda es la
-respuesta corta; la primera sigue siendo una pregunta de mantenimiento, con
-sus licences y su cierre de seguridad, y no se decide de paso.
-
-**El drenaje, caracterizado.** El runtime espera a que las bombas de
+**El drenaje: caracterizado.** El runtime espera a que las bombas de
 transcripción terminen antes de declarar un step completo, y lo hace con un
 **reloj absoluto**:
 
@@ -6487,6 +6451,37 @@ un techo global más alto —cambia el **tiempo** de un step, no su veredicto—
 un número más grande. El primero es el honesto, porque el segundo convierte
 una causa conocida en un síntoma más raro. Queda como decisión, con su coste
 nombrado, y no se toma de paso.
+
+**La basura del tmpdir: la primera versión de esta sección mentía, y está
+corregida.** Se afirmaba que el store de eventos, al abrir su base por JDBC,
+hacía que el driver **extrajera su biblioteca nativa al tmpdir compartido** y
+que por eso el producto dejaba cientos de ficheros ahí. Esa atribución era una
+**inferencia a partir del nombre de los ficheros**, no una medición, y **era
+falsa**. Lo medido:
+
+| medida | valor |
+|---|---|
+| versión del driver | `org.xerial:sqlite-jdbc:3.46.1.3` |
+| el jar **trae** la nativa | sí: `org/sqlite/native/{Linux,Linux-Musl,Mac,Windows,FreeBSD,Linux-Android}/…` ⇒ en todas las plataformas soportadas la carga es **directa del classpath** |
+| qué deja **este** producto | **nada**: con un `run` real que abre el store, el tmpdir compartido **no crece** (846 → 846); y los tests del store de eventos tampoco dejan ninguno |
+| temporales que hay en el host | **846** pares `sqlite-3.46.1.3-*-libsqlitejdbc.so` (+ su `.lck`), con fechas que abarcan **12 horas** |
+| de quién son | **de otros procesos de la máquina**: este host tiene al menos **dos workspaces más con PipelineK** en marcha, y el jar del driver es el mismo |
+| peso de `/tmp` | **2,1 GB** |
+
+Y el arreglo que se había aplicado por esa premisa —fijar `org.sqlite.tmpdir`
+para que el driver extraiga en un directorio con dueño— **se ha retirado**: si
+el driver no extrae, el knob no tiene nada que dirigir. Un arreglo a un
+problema que el producto no tiene es código muerto con KDoc, que es peor que
+no tener nada.
+
+**Lo que esto deja, y que sigue valiendo.** La propiedad `org.sqlite.tmpdir`
+existe en el driver (leída en el propio jar, no supuesta), y **se respeta**
+cuando el operador la fija: medido, una ejecución con
+`PIPELINEK_OPTS=-Dorg.sqlite.tmpdir=…` no fue pisada por nada. El residuo que
+queda en el host **no es de este repositorio**, y la cifra que el ROADMAP
+viene arrastrando desde antes —«344 pares»— estaba sin verificar por el mismo
+motivo que la atribución: se contaba, pero no se preguntaba **quién** dejaba
+los ficheros. Ahora se sabe: **no son de aquí**.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **No saber de quién es un directorio no es motivo para borrarlo.** El

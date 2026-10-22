@@ -6231,17 +6231,29 @@ for destruction», cuando era exactamente la decisión **fail-open**. El
 comentario y el código decían cosas opuestas, y el código era el que mandaba.
 
 **Alcanzable, y no sólo en teoría.** El transporte `ShOptions` declara
-`workspaceOwnership: WorkspaceOwnership? = null`, y hay **dos** sitios de
-producción que lo construyen sin acreditarlo:
+`workspaceOwnership: WorkspaceOwnership? = null`, y ese `null` producía el lease
+que **concede**:
+
+```
+WorkspaceOwnership.PIPELINEK, null -> WorkspaceLease.Managed(root)
+```
+
+El camino canónico **sí** acredita la propiedad —la política de la CLI la
+decide, `WorkspaceIntent` la cruza y `CompositionRoot` la lleva al
+transporte—, así que el usuario nunca viajaba como `Managed` por ahí. Los dos
+sitios que **no** la acreditaban son:
 
 | sitio | raíz | consecuencia antes del arreglo |
 |---|---|---|
 | `MainScriptedSupport` (el frontend scripted) | `<controlRoot>/workspace` | permiso concedido sin acreditación; por suerte la raíz sí era de PipelineK |
-| `CanonicalDurableRunCoordinator.shOptions`, cuyo **default** es `ShOptions.EMPTY` | un `createTempDirectory` **compartido** | permiso concedido sobre un directorio temporal compartido |
+| el **default** del constructor del coordinador (`ShOptions.EMPTY`), que usan las demás constructoras que no lo pasan | un `createTempDirectory` **compartido** | permiso concedido sobre un directorio temporal compartido |
 
-El camino canónico sí acredita la propiedad —la CLI la decide y la cruza—,
-pero el **default** del transporte era *fail-open*, y un default es lo que se
-usa cuando alguien olvida.
+La segunda fila no es el camino de producción —`CompositionRoot` pasa siempre
+sus `ShOptions`— sino el **default** de una firma con muchas constructoras.
+Y eso es exactamente el problema: un default *fail-open* es lo que se usa
+cuando alguien olvida, y un default que concede permiso de borrar un
+directorio temporal **compartido** no es un default, es un accidente
+esperando a su turno.
 
 **El arreglo.** La propiedad desconocida deja de traducirse en permiso:
 `null` produce el lease que **rechaza**. Y el sitio que sí conoce su
@@ -6275,6 +6287,38 @@ tests="3" skipped="0" failures="1" errors="0"
 **Una** fila de tres, la que vigila precisamente el default, y ni una más: las
 otras dos no se mueven porque no dependen de él. El fichero de producción se
 restauró byte a byte y la suite volvió a dar 3 de 3.
+
+**Y la puerta, vista desde fuera.** Una fila unitaria demuestra que la función
+pura decide bien; no demuestra que el **binario instalado** use esa decisión.
+Una UAT adversarial efímera —retirada después de evaluarla, como manda la
+política— lo comprueba contra el binario real, con dos casos y una sola
+diferencia: la propiedad de la raíz.
+
+| caso | raíz | resultado medido |
+|---|---|---|
+| `run --workspace <dir>` | la del **usuario** | **exit 1**, y el motivo es explícito: `deleteDir refuses to delete the workspace root itself ('<dir>'); pass a sub-path such as deleteDir("build") to remove generated content`. El contenido del usuario **intacto** |
+| `run --isolated` | el scratch de **PipelineK** | **exit 0**: el mismo paso se permite |
+
+La segunda fila es la que importa tanto como la primera: un guard que lo
+rechazara todo también sería «fail-closed», y sería un producto roto. Lo que
+se demuestra es que el permiso **no se perdió**: cambió de *acreditado por
+defecto* a *acreditado a propósito*.
+
+La primera vez que se ejecutó esta UAT dio un **falso positivo**: el binario
+no llegó a arrancar —faltaba la passphrase del store— y el script leyó «el
+contenido del usuario está intacto» como si el guard hubiera actuado. Un
+verde que no se ha visto rojo, ni siquiera de mentira, no es un verde: por eso
+el caso se comprueba por su **código de salida** y por el **motivo**, no por
+la ausencia de daño.
+
+**El hueco que deja esta UAT al retirarse.** El lanzador ejecuta **todos** sus
+escenarios con `--isolated`, así que la mitad del contrato de propiedad —la
+raíz del usuario— **no se puede afirmar** con el arnés actual: no hay forma
+de ejecutar un ejemplo con `--workspace`. La fila unitaria cubre la decisión
+y esta UAT la portada, pero un escenario **permanente** que afirme el rechazo
+exige que el lanzador pueda correr un ejemplo con raíz de usuario, y eso es
+capacidad del arnés, no un escenario más. Queda dicho como hueco, con su
+nombre.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **No saber de quién es un directorio no es motivo para borrarlo.** El

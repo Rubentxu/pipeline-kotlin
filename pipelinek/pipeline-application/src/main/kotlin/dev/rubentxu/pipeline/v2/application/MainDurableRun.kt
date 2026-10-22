@@ -1,12 +1,12 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding
 import dev.rubentxu.pipeline.v2.application.durable.SagaVerdict
 import dev.rubentxu.pipeline.v2.application.durable.supportsCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
 import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
 import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
-import dev.rubentxu.pipeline.v2.application.durable.AdmissionControlJournal
 import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
@@ -37,7 +37,6 @@ import dev.rubentxu.pipeline.v2.scripting.isRuntimeReturning
 import kotlinx.serialization.json.Json
 import java.nio.file.Path
 import java.nio.file.Paths
-import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 
 /**
  * The durable world: a run with `--db`.
@@ -140,11 +139,7 @@ internal fun runDurablePipeline(
     // same single entry point as the in-memory branch above. Writing the admission
     // wiring out a second time here would let the two branches disagree about which plugins were
     // admitted, which is precisely the defect S6/G removed once already.
-    val composition = admitThenComposeOrExit(
-        config.pluginJars,
-        pluginTrustSource(config.pluginTrust),
-        AdmissionControlJournal(controlDirRoot),
-    )
+    val composition = admitPluginsForRun(config, controlDirRoot)
     val composedStepRegistry = composition.steps
     // the workspace decision rule + the typed owner decision: the workspace origin is decided
     // ONCE, here at the boundary, and both facts cross into the runtime — the
@@ -164,13 +159,9 @@ internal fun runDurablePipeline(
     // threw still has to say what it left behind.
     val sagaTerminals = mutableListOf<SagaTerminal>()
     val outputObserver = startLiveOutputObserver(runId, controlDirRoot, config.format)
-    // UAT collateral finding fix (shutdown race): the sqlite
-    // single-writer thread is NON-daemon. If any exception escapes the run
-    // or the stdout envelope streaming below, rawEventStore.close() is
-    // skipped, the writer keeps blocking on queue.take(), and
-    // DestroyJavaVM hangs forever (observed: first replay of the dogfood
-    // receipt hung until manual kill). Compute the outcome and the last
-    // event inside the try; guarantee the close in finally on every path.
+    // The sqlite single-writer thread is NON-daemon: if an exception escapes, the writer keeps
+    // blocking on queue.take() and the JVM hangs. The outcome is computed inside the try and
+    // the close is guaranteed in the finally, on every path.
     val runOutcomeAndLastEvent: Pair<RunOutcome?, DomainEvent?> = try {
         val outcome: RunOutcome? = when {
             // the scripted FRONTEND form runs against the SAME durable
@@ -200,10 +191,7 @@ internal fun runDurablePipeline(
                                 eventSink = eventStore,
                                 // SAGA / durable run: the run's Saga seam — the durable store plus the lease epoch that
                                 // fences a writer that lost this run to a takeover.
-                                sagaBinding = dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding(
-                                    store = sagaObligationStore,
-                                    leaseEpoch = lease.leaseEpoch,
-                                ),
+                                sagaBinding = SagaCompensationBinding(sagaObligationStore, lease.leaseEpoch),
                             ),
                             policy = CanonicalRunPolicy(
                                 clock = clock,

@@ -105,6 +105,29 @@ internal fun computeBundledPlugins(): List<String> {
 }
 
 /**
+ * The admission of a run's plugins, with the operator's trust policy consulted and the decision
+ * journalled.
+ *
+ * The three facts are ONE decision, and they were three omissions: the plugin jars the operator
+ * named, the trust source they named with `--plugin-trust`, and the control root where the
+ * decision is recorded. Naming only the first left a policy that was parsed and never
+ * consulted, and a journal whose only writer was a door nobody called — an operator could not
+ * tell "the policy approved this plugin" from "the policy was never asked".
+ *
+ * Both execution paths call THIS, so the two cannot disagree about what was admitted, what the
+ * policy said about it, or whether it left a record.
+ */
+internal fun admitPluginsForRun(config: CliFlags, controlDirRoot: Path): PreResolvedComposition =
+    admitThenComposeOrExit(
+        config.pluginJars,
+        // The policy is OPT-IN: without the file the runtime admits plugins as it always has.
+        pluginTrustSource(config.pluginTrust),
+        // The row is written before the decision returns, which is what makes the journal an
+        // audit trail rather than a log.
+        AdmissionControlJournal(controlDirRoot),
+    )
+
+/**
  * The product boundary: admit every plugin artifact, then compose, or exit.
  * ## Why the exit lives here and not at the call site
  * `Main` composes from two branches. If each one rendered its own refusal, one could report a

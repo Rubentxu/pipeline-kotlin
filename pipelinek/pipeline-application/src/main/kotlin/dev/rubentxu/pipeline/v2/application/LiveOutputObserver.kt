@@ -5,7 +5,6 @@ import dev.rubentxu.pipeline.v2.application.observation.LiveOutputDrain
 import dev.rubentxu.pipeline.v2.application.observation.LiveOutputDrainResult
 import dev.rubentxu.pipeline.v2.application.observation.LiveOutputPresentation
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
-import dev.rubentxu.pipeline.v2.application.observation.ObservationRecord
 import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
 import java.nio.file.Path
 

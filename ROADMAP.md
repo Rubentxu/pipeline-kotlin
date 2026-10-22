@@ -93,22 +93,23 @@ composición se rechaza.
 | 2 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
 | 3 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | **caracterizada** (§2.57): con el camino de producción actual **dos streams no pueden compartir bytes**, porque los segmentos dirigidos por posición no se pliegan. Lo que sí era un defecto real —el parser de op ids descartaba parte de la identidad **en silencio**, devolviendo otra operación— está arreglado y con su fila vista en rojo. Queda con nombre una deuda: el formato del cuerpo **no es invertible** cuando un identificador lleva `-`, y cerrarlo es ruptura versionada que espera autorización |
 | 4 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
+| 5 | El techo del drenaje y los temporales del driver SQLite | **caracterizados** (§2.58): el rechazo del drenaje ya es **tipado** y no se confunde con un fallo del script; lo que falta es que sea **accionable** — reintentar en vez de subir el techo—. Y el driver extrae su biblioteca nativa al tmpdir del sistema porque nadie fija `org.sqlite.tmpdir`; el knob está **leído en el propio jar** y el arreglo es de una línea de arranque, sin tocar el contrato |
 
 ## 1. Estado medido
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `fb45f23a6`, medido en los ensayos de este bloque. Entre `773ec6a60` y este **el código de producción sí cambia**: la propiedad no acreditada deja de conceder permiso de destrucción (§2.56), y el instrumento del workspace se refuerza con cuatro mutaciones independientes (§2.55) | `git rev-parse HEAD` |
+| SHA | `7ee0dfe63`, medido en los ensayos de este bloque. Entre `f7ca58ab6` y este **el código de producción sí cambia**: el identificador de operación vuelve a ser el mismo al releerlo (§2.57) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1074** (149 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1078** (150 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **61 (61 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **61 de 61**: **170 garantías** comprobadas —162 en los 60 anteriores y 8 en el nuevo de coherencia del workspace (§2.55). El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **19066 / 67381 = 0.283** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **19118 / 67393 = 0.284** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **235 / 197 / 225** en los tres ensayos, los tres sobre `fb45f23a6`, peor 235 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **208 / 173 / 179** en los tres ensayos, los tres sobre `7ee0dfe63`, peor 208 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -121,12 +122,12 @@ sale mejor que la realidad.
 
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
-165 s en el bloque de las tres familias; este ciclo midió **235, 197 y 225 s**:
+165 s en el bloque de las tres familias; este ciclo midió **208, 173 y 179 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 235 s, es menos
+de este ciclo el presupuesto se cumplió con holgura —el peor, 208 s, es menos
 de la tercera parte de los 900 s—, y eso que el árbol medido incluye la
-distribución, la API pública, los 1074 tests y los 61 escenarios.
+distribución, la API pública, los 1078 tests y los 61 escenarios.
 
 **Dos ensayos anteriores a estos tres se descartaron, y hay que decir por
 qué.** Sobre el mismo árbol, la puerta dio dos veredictos con rojos, y **todos
@@ -6411,6 +6412,81 @@ alcanzable hoy**. Lo que sí era verdad —y ya no lo es— es que la garantía
 dependía de un supuesto no escrito, y que la puerta por la que un id externo
 entra al sistema **descartaba parte de la identidad en silencio**. Eso era un
 defecto real, y está arreglado.
+
+### 2.58 Lo que el producto deja en el host, y el techo que no depende de la carga
+
+**La basura, medida.** El store de eventos abre su base por JDBC, y lo hace
+**sin propiedades**:
+
+```
+SqliteConnectionFactory:  DriverManager.getConnection("jdbc:sqlite:$file")
+```
+
+El driver JDBC de Xerial, al cargar su biblioteca nativa, la **extrae al
+directorio temporal del sistema** y **la deja ahí**. En este host, medido:
+
+| medida | valor |
+|---|---|
+| versión del driver | `org.xerial:sqlite-jdbc:3.46.1.3` |
+| temporales residuales | **425** pares `sqlite-3.46.1.3-*-libsqlitejdbc.so` (+ su `.lck`), con fechas que abarcan **12 horas** de actividad: el más antiguo es de las 09:53 de hoy y el más reciente, de hace un momento |
+| peso de `/tmp` | **2,1 GB** |
+| qué pasa al salir bien | el driver **limpia los suyos**: durante una puerta el conteo **bajó de 810 a 425**. Los que quedan son de procesos que **no** salieron limpiamente |
+
+**El knob, leído en el propio driver.** No es una suposición: en el jar, las
+clases `SQLiteJDBCLoader` y `SQLiteConnection` mencionan `org.sqlite.tmpdir` y
+`java.io.tmpdir`. El loader lee la propiedad del **sistema** `org.sqlite.tmpdir`
+y, si no está, cae a `java.io.tmpdir`. No es un parámetro de la URL: es una
+propiedad **del proceso**, y se lee al extraer la biblioteca, o sea **antes** de
+la primera conexión.
+
+Eso es lo que hace el arreglo barato: fijar `org.sqlite.tmpdir` a un
+directorio **propio del proceso**, antes de abrir nada, y borrar ese directorio
+al salir. Cero residuos en el tmpdir global, y el residuo pasa a tener dueño.
+
+**Por qué la versión no es la respuesta.** La PR #71 —cerrada— proponía subir
+`sqlite-jdbc` de 3.46.1.3 a 3.53.4.0, y 3.46.1.3 es exactamente la versión que
+deja los temporales nativos en `/tmp`. Pero **subir la versión cambia el
+binario que entra en el artefacto**, y fijar el directorio **no cambia nada**
+salvo dónde aterriza un fichero que no era de nadie. La segunda es la
+respuesta corta; la primera sigue siendo una pregunta de mantenimiento, con
+sus licences y su cierre de seguridad, y no se decide de paso.
+
+**El drenaje, caracterizado.** El runtime espera a que las bombas de
+transcripción terminen antes de declarar un step completo, y lo hace con un
+**reloj absoluto**:
+
+```
+DurableShellExecutor:  pumps.forEach { it.join(TRANSCRIPT_PUMP_DRAIN_BUDGET_MS) }   // 10 s
+```
+
+Dos hechos, y el segundo es el que importa:
+
+1. El plazo es **por bomba**, no global: con *N* bombas, el peor caso es *N* ×
+   10 s. El KDoc del presupuesto lo razona —«*Bounded, because a pump stuck on
+   a live child must not hold the step open forever*»— y la comprobación es
+   real: `join` devuelve igual en los dos desenlaces, así que lo que decide es
+   `isAlive` **después**, y su fallo es un **rechazo**, no una línea de log.
+2. **El rechazo ya es tipado**: `ProcessOutputRefusal.DrainIncomplete`. Un
+   drenaje agotado **no se confunde con un fallo del script**, y el output
+   plane se niega a dar por buena una transcripción cuya bomba no ha terminado
+   —que es exactamente lo que un plano de salida debe hacer cuando no tiene
+   pruebas de que la transcripción esté completa.
+
+El defecto que queda es uno solo, y es real: **el techo es un reloj que no
+sabe nada de la carga de la máquina**. La evidencia está en este mismo
+documento: dos ensayos de la puerta se descartaron con
+`transcript drain unfinished after 10000ms`, y ambos coincidieron con trabajo
+ajeno corriendo al lado (§1). Con la máquina quieta, el drenaje termina en
+milisegundos y el techo de 10 s es holgado de sobra; saturada, el mismo techo
+se agota.
+
+**Lo que falta es que el rechazo sea accionable**, y hay dos caminos con
+costes distintos: **reintentar** el drenaje hasta que las bombas terminen, con
+un techo global más alto —cambia el **tiempo** de un step, no su veredicto— o
+**subir el techo**, que no arregla nada y sólo esconde la saturación detrás de
+un número más grande. El primero es el honesto, porque el segundo convierte
+una causa conocida en un síntoma más raro. Queda como decisión, con su coste
+nombrado, y no se toma de paso.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **No saber de quién es un directorio no es motivo para borrarlo.** El

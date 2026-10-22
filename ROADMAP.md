@@ -99,7 +99,7 @@ composición se rechaza.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `2e9704dd4`, medido en los ensayos de este bloque. Entre el ciclo anterior y este **el código de producción sí cambia**: la versión del producto pasa de `0.62.0` a `0.76.0`, que era un bloqueo de publicación (§2.61), y el README apunta a la release publicada con su digest medido | `git rev-parse HEAD` |
+| SHA | `636dadda5`, medido en los ensayos de este bloque. Entre el ciclo anterior y este **el código de producción sí cambia**: la versión del producto pasa de `0.62.0` a `0.76.0`, que era un bloqueo de publicación (§2.61), y el README apunta a la release publicada con su digest medido. El segundo bloque del ciclo **no cambia ni una línea de comportamiento**: repara 25 ficheros de comentarios que afirmaban cosas ya falsas (§2.62) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
@@ -109,7 +109,7 @@ composición se rechaza.
 | Escenarios con una garantía comprobada | **61 de 61**: **170 garantías** comprobadas —162 en los 60 anteriores y 8 en el nuevo de coherencia del workspace (§2.55). El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 61 escenarios |
 | `VERIFY_LOC / PRODUCT_LOC` | **19352 / 67443 = 0.287** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **213 / 169 / 174** en los tres ensayos, los tres sobre `9d58c4d87`, peor 213 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **197 / 169 / 376** en los tres ensayos, los tres sobre `636dadda5`, peor 376 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -122,11 +122,12 @@ sale mejor que la realidad.
 
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
-165 s en el bloque de las tres familias; este ciclo midió **213, 169 y 174 s**:
+165 s en el bloque de las tres familias; este ciclo midió **197, 169 y 376 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
-idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 213 s, es menos
-de la cuarta parte de los 900 s—, y eso que el árbol medido incluye la
+idéntico dentro de cada ciclo, sino la carga de la máquina —el tercero corrió
+con el árbol siendo leído desde fuera, y se nota—. En los tres ensayos
+de este ciclo el presupuesto se cumplió con holgura —el peor, 376 s, es menos
+de la mitad de los 900 s—, y eso que el árbol medido incluye la
 distribución, la API pública, los 1087 tests y los 61 escenarios.
 
 **Dos ensayos anteriores a estos tres se descartaron, y hay que decir por
@@ -6801,7 +6802,7 @@ Eso está en el artefacto publicado y en el proceso de release, no en este
 |---|---|
 | Versión declarada | `0.76.0`, en una sola línea (`pipelinek/build.gradle.kts:46`) |
 | Autoridad publicada | `v0.75.0` (GA, 2026-10-22), digest verificado por descarga propia |
-| Puerta | **PASS** en los tres ensayos, sobre `2e9704dd4`, peor < 900 s |
+| Puerta | **PASS** en los tres ensayos, sobre `636dadda5`, peor 376 s de 900 s |
 | Tests | **1087** unitarios, 153 informes, 0 fallos, 0 errores, 0 skips |
 | Escenarios E2E | **61 de 61** |
 | Presupuesto de reloj | peor ensayo < 900 s, límite 900 s |
@@ -6893,8 +6894,22 @@ revés, y ambas se corrigen según lo medido.
 | Guardianes inexistentes citados | **7 → 0** |
 | Guard de procedencia | **verde**: ningún comentario nombra un encargo, una sección o un commit |
 | Compilación | los **6** módulos tocados compilan |
+| Puerta | **PASS** en los tres ensayos sobre `636dadda5`: **197 / 169 / 376 s** de 900 s |
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **Un comentario que afirma una verdad que el código ya no tiene es peor que
+  no escribirlo.** Un lector no puede saber que un comentario miente, así que
+  miente con la autoridad de la fuente. Por eso el bloque de comentarios no
+  se limita a quitar referencias: **re-escribe lo que el código dice sobre sí
+  mismo**, con lo medido (§2.62).
+- **Un guardián que ya no existe no puede ser la autoridad de una ley.** Siete
+  comentarios apoyaban leyes en un harness que el RESET borró. `AGENTS.md` §2
+  no admite el *source-text fitness*, así que la respuesta no es resucitar el
+  observador: es **decir que la ley no está vigilada**, con la fórmula que el
+  árbol ya usaba (§2.62).
+- **Un comentario que depende de quién lo lea no explica la
+  funcionalidad.** Diecinueve comentarios se remitían a «este bloque» o «este
+  gate». Se quedan, y ahora dicen lo que el código hace (§2.62).
 - **Un número de versión que colisiona con una release publicada no es un
   número de versión: es un bloqueo.** Este árbol declaraba `0.62.0`, y
   `v0.62.0` ya estaba publicada con bytes distintos (§2.61). El síntoma no

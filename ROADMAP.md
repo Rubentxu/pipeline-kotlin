@@ -37,32 +37,42 @@ ellas las que tocan el propio contrato `authorizedWorkspaceRoot` frente a
 queda medido es esto: el SHA integrado tiene la puerta completa en verde, y su
 árbol es **idéntico** al del squash publicado.
 
+Después, este bloque cerró la **tercera familia de la mentira**: un plugin que
+declara **eventos** que no aporta, observado contra un artefacto real (§2.48).
+El doctoring del manifiesto gana su tercera línea y el arnés gana su
+tercer escenario, y la regla —que ya existía y ya tenía su fila unitaria— por
+fin se ha visto ocurrir contra una instalación de verdad.
+
+Y midió, con artefactos reales, **qué pasa cuando dos artefactos distintos
+comparten identidad** (§2.49): el que se carga primero se queda, el segundo es
+rechazado, y el rechazo **no nombra al que se quedó**. Eso abría un hueco nuevo
+en la lista de abajo, y no es el mismo que el que había antes.
+
 **Lo que está abierto ahora mismo:**
 
 | # | Qué falta | Por qué sigue abierto |
 |---|---|---|
-| 1 | La tercera familia de la mentira: un plugin que declara **eventos** que no aporta | el doctoring ya sabe tocar las otras dos familias; falta la línea del manifiesto que la tercera necesita (§2.44) |
-| 2 | El plugin que miente y es **el primero** que se carga | el rechazo por identidad duplicada se adelanta al cruce, así que el caso necesita su propio artefacto (§2.44) |
-| 3 | Capacidades en la **dirección contraria**: el plugin exige más de lo que su manifiesto declara | la regla lo mide, pero ninguna fila lo mira (§2.44) |
-| 4 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
-| 5 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | el nombre no es invertible y nadie ha demostrado que ningún consumidor necesite distinguir los dos (§2.45) |
-| 6 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
+| 1 | El plugin que miente y es **el primero** que se carga | **medido** (§2.49): el rechazo por identidad duplicada se adelanta al cruce, así que el mentiroso es admitido sin que su manifiesto se cruce contra su código, y el rechazo apunta al artefacto legítimo. Falta el arreglo del **diagnóstico**: que el rechazo nombre el artefacto que se quedó |
+| 2 | Capacidades en la **dirección contraria**: el plugin exige más de lo que su manifiesto declara | la regla lo mide, pero ninguna fila lo mira (§2.44) |
+| 3 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
+| 4 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | el nombre no es invertible y nadie ha demostrado que ningún consumidor necesite distinguir los dos (§2.45) |
+| 5 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
 
 ## 1. Estado medido
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `45665c28b` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `45665c28b` | `git rev-parse HEAD` |
+| SHA | `2eb77abcb` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `2eb77abcb` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
 | Tests unitarios ejecutados | **1066** (147 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
-| Escenarios E2E | **57 (57 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **57 de 57**: 145 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 57 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **18845 / 67363 = 0.280** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios E2E | **58 (58 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios con una garantía comprobada | **58 de 58**: 149 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 58 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **18852 / 67363 = 0.280** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **174 / 155 / 161** en los tres ensayos, los tres sobre `45665c28b`, peor 174 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **175 / 162 / 163** en los tres ensayos, los tres sobre `2eb77abcb`, peor 175 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -74,15 +84,41 @@ sale mejor que la realidad.
 
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
-165 s en el bloque de las tres familias; este ciclo midió 174, 159 y 161 s: la
-distancia entre un ensayo y otro no la explica el código medido, que es
+165 s en el bloque de las tres familias; este ciclo midió **175, 162 y 163 s**:
+la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 174 s, es menos
+de este ciclo el presupuesto se cumplió con holgura —el peor, 175 s, es menos
 de la quinta parte de los 900 s—, y eso que el árbol medido incluye la
-distribución, la API pública, los 1066 tests y los 57 escenarios.
+distribución, la API pública, los 1066 tests y los 58 escenarios.
 
-El ratio de LOC sube de 0.279 a **0.280** respecto del bloque anterior, y el
-peor módulo sigue siendo el mismo (`pipeline-step-sdk:workflow-control`,
+**Dos ensayos anteriores a estos tres se descartaron, y hay que decir por
+qué.** Sobre el mismo árbol, la puerta dio dos veredictos con rojos, y **todos
+los rojos tenían la misma causa**: `transcript drain unfinished after 10000ms`.
+No es una aserción que falló: es el output plane **negándose** a dar por buena
+una transcripción cuya bomba de drenaje no había terminado a tiempo, que es
+justo lo que un plano de salida debe hacer cuando no tiene pruebas de que la
+transcripción esté completa. Los escenarios afectados —varios de `durable/`, uno
+de `events/`, todos en su segunda ejecución— **vuelven a pasar** al re-correrlos,
+uno por uno y también en serie, con el mismo binario.
+
+Lo que se midió entonces es que la puerta **no es reproducible al cien por
+cient** en una host compartida: los dos ensayos con rojos coincidieron con
+trabajo ajeno corriendo al lado —una medición de seguridad que este mismo
+ciclo lanzó en paralelo, y un `pipelinek run` de otro proyecto—, y el primer
+escenario que expiró su propio reloj de 120 s fue el primero que sufrió de
+ello. Con la máquina quieta, los tres ensayos de la tabla salen verdes. La
+diferencia entre un rojo y un verde, en este caso, no la ha puesto el producto:
+la ha puesto quién corría al lado.
+
+Eso deja dos cosas para su propio bloque, y ninguna se arregla aquí: el **techo
+de 10 s** del drenaje, que no considera la carga de la host, y la **basura que
+el producto deja en `/tmp`**: el driver JDBC de SQLite extrae su biblioteca
+nativa a un fichero temporal de un megabyte por conexión y no lo borra —**508**
+pares, medio gigabyte, con la fecha de hoy en una máquina donde la puerta corrió
+tres veces—. El arnés borra su ciclo; el driver no borra el suyo.
+
+El ratio de LOC se queda en **0.280** (18845 → 18852 líneas de verificación), y
+el peor módulo sigue siendo el mismo (`pipeline-step-sdk:workflow-control`,
 1.633), porque este bloque no lo tocó.
 
 **Lo que este ciclo añadió.** Un cambio de producto en la segunda puerta de
@@ -5669,6 +5705,101 @@ claves quedaron como estaban.
 | `VERIFY_LOC / PRODUCT_LOC` | **18845 / 67363 = 0.280** (límite 2) |
 | Reloj de la puerta | **174 / 155 / 161 s** en tres ensayos sobre `45665c28b`, contra 900 s |
 
+### 2.48 La tercera familia de la mentira: un Event declarado que nadie aporta
+
+**El sujeto.** Un plugin cuyo manifiesto declara un **Event** que ningún
+contribuidor aporta. Es la tercera familia de la misma deriva: ya se había
+observado contra un artefacto real la de los Steps y la de las Directives; la de
+los Events era la única cuyo rechazo no se había visto con un artefacto de
+verdad.
+
+**Por qué esta familia pesa más que las otras dos.** Un Step es algo que el
+pipeline ejecuta y un Directive es algo que el operador invoca por su nombre;
+un Event es algo que el pipeline **publica**. Un plugin que declara un evento que
+nunca emite hace que el diario del operador prometa un hecho que no llega, y
+todo el que lee ese diario queda aguas abajo de la mentira. Un Step que no
+existe rompe un pipeline; un evento que no existe rompe la memoria de lo que
+pasó.
+
+**El instrumento.** El mismo doctoring sobre el mismo JAR: una línea del
+manifiesto y nada más —la lista de eventos declarados recibe un fantasma—,
+con el resto del artefacto intacto. El lanzador gana un artefacto nuevo
+(`lying-events`) y el arnés gana un escenario nuevo
+(`negative/plugin-event-lies`), que exige la salida 2 y el nombre del fantasma.
+
+**Lo que este bloque no añade: una regla.** La regla ya existía, con su fila
+unitaria, y este bloque no la toca. Lo que faltaba era un **observador** que la
+ejerciera contra una instalación de verdad. Un test que verifica una regla y un
+escenario que la ve ocurrir son instrumentos distintos, y sólo el segundo
+demuestra que la regla está donde dice estar: una regla correcta y no
+observada es indistinguible de una regla que no existe.
+
+**La mutación, vista en rojo.** Apagada la comparación de los eventos declarados
+contra los eventos aportados:
+
+- **1 de 8** filas unitarias rojas: exactamente la que afirma que un Event
+  declarado sin contribuidor es un rechazo. Las otras siete, que son de otras
+  familias y de la medida, siguen verdes.
+- **1 de 58** escenarios rojos: el nuevo, que sale con **0** en vez de 2 —el
+  plugin mentiroso pasa, el pipeline termina con `SUCCESS`— mientras los otros
+  57 siguen verdes. Cero colaterales.
+- El fichero de producción se restauró **byte-idéntico** —el mismo resumen
+  criptográfico— y el árbol quedó limpio.
+
+### 2.49 El artefacto que se queda: la identidad duplicada, medida de verdad
+
+**La pregunta.** Dos artefactos distintos con la **misma identidad**, y uno de
+ellos mintiendo. ¿Quién gana, y qué ve el operador?
+
+**El montaje.** Tres composiciones con artefactos reales —no maquetas de
+texto—: el mismo JAR nombrado dos veces por rutas distintas, el JAR legítimo
+empaquetado junto a un JAR con la misma identidad y otros bytes, y ese mismo
+par en el orden inverso.
+
+**Las tres filas, medidas:**
+
+| Composición | Qué pasó |
+|---|---|
+| el mismo JAR dos veces, mismos bytes | **exit 0**: la deduplicación por bytes lo reconoce como el mismo artefacto y no hay colisión |
+| el **mentiroso primero**, el legítimo después | **exit 2** `DuplicateIdentity`, y el rechazo apunta **al artefacto legítimo** |
+| el legítimo primero, el mentiroso después | **exit 2** `DuplicateIdentity`, y el rechazo apunta al mentiroso |
+
+**Lo que se midió en el texto del rechazo.** Dice
+`DuplicateIdentity(identity=X, incumbent=X)`: los dos campos llevan **el mismo
+texto**. El KDoc del caso promete «which identity collided **and with whom**»,
+y el segundo campo vuelve a entregar la identidad. El campo se llama
+`incumbent` y su promesa es «the incumbent it collides with»: **no hay ningún
+artefacto ahí**, ni su ruta ni su resumen.
+
+**Qué no es.** No es ejecución no autorizada. La composición se aborta con
+salida 2 y el artefacto mentiroso no llega a cargarse: el rechazo es
+*fail-closed*. El daño es de otro tipo, y conviene no exagerarlo:
+
+- **de disponibilidad**: el plugin legítimo queda expulsado por la identidad de
+  otro, y el operador no puede usar el suyo hasta que encuentra al otro
+  artefacto;
+- **de diagnóstico**: el mensaje no dice qué artefacto se quedó dentro, así que
+  el operador lee «mi plugin bueno fue rechazado» sin la pista de con quién
+  colisionó.
+
+**Por qué el caso del mentiroso primero es el interesante.** Cuando el
+mentiroso es el primero, la pre-admisión lo admite **sin cruzar su manifiesto
+contra su código** —el cruce sólo corre si *todos* los artefactos son
+admitidos—, y el artefacto al que se le echa la culpa es el legítimo, cuyo
+rechazo no dice nada de la mentira. La mentira no se ve; su desplazamiento sí.
+
+**Lo que este bloque no arregla, y por qué.** El vocabulario de rechazos está
+publicado: `DuplicateIdentity` está en el `.api` de `pipeline-domain` con
+`copy(String, String)`, y ampliarlo con el artefacto que se quedó es una
+**ruptura versionada**, que no se hace sin autorización explícita. El camino que
+no rompe el ABI ya está abierto: `CompositionOutcome.Refused` lleva un `detail`
+que la CLI ya imprime, y `CompositionOutcome` vive en `pipeline-application`,
+que no está publicado. El arreglo que se propone es que
+`PreLoadPluginAdmission` lleve la correspondencia identidad → artefacto admitido
+y que ese `detail` nombre **el artefacto que se quedó**, de modo que el
+rechazo diga a quién desplazó. Eso es el siguiente bloque, y es un bloque de
+diagnóstico, no de política: qué artefacto gana la identidad no cambia.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
@@ -6625,6 +6756,44 @@ claves quedaron como estaban.
   restaura después y se comparan **campo a campo** con el respaldo. «Ya está
   como estaba» no es una verificación; la comparación lo es. Y la comparación
   es la que detectó que la clave había quedado en `true`.
+
+- **Una regla correcta y no observada es indistinguible de una regla que no
+  existe.** La tercera familia de la mentira no añadió ninguna regla: la regla
+  ya estaba, con su fila unitaria. Añadió el **observador**. Un test unitario
+  afirma que una función decide bien; un escenario afirma que esa función decide
+  bien *en la instalación que el operador usa*, con un artefacto real y una
+  línea de manifiesto manipulada. Son instrumentos distintos, y la diferencia es
+  exactamente la que separa un hueco cerrado de un hueco que sólo se ha
+  documentado.
+
+- **Un rechazo que no nombra al artefacto que se quedó no es un diagnóstico: es
+  un rumor.** La identidad duplicada entrega `identity=X, incumbent=X`: dos
+  campos con el mismo texto, donde el KDoc promete «con quién» y el campo
+  `incumbent` promete «the incumbent it collides with». No hay ningún artefacto
+  ahí. Y como el vocabulario de rechazos está **publicado**, el arreglo no es
+  tocar el campo: es llevar el artefacto que se quedó en el `detail` que la CLI
+  ya imprime. **La política no se toca** —qué artefacto gana la identidad sigue
+  siendo la de hoy—; lo que se arregla es el diagnóstico, que es lo único que
+  estaba mintiendo.
+
+- **Un fallo que se reproduce en la puerta y desaparece al re-correrlo es un
+  dato sobre el host, y declararlo es parte de la medida.** Dos ensayos de este
+  bloque se descartaron. Todos sus rojos tenían la misma causa, todos volvían a
+  pasar al re-correrlos, y los dos coincidieron con trabajo ajeno corriendo al
+  lado. Declarar `PASS` con un ensayo que se sabe contaminado no es medir: es
+  **seleccionar**. Se declara el fallo, se mide su causa, y se vuelve a medir
+  con la máquina quieta — y se escribe en el veredicto que la puerta no es
+  reproducible al cien por cien en una host compartida, porque eso también es
+  un hecho del producto que hay que saber.
+
+- **Lo que el producto deja fuera de su raíz no lo borra nadie, y hay que
+  medirlo aunque no se arregle aquí.** El driver JDBC de SQLite extrae su
+  biblioteca nativa a un fichero temporal de un megabyte por conexión y no lo
+  borra: **508** pares, medio gigabyte, con la fecha de hoy. El arnés borra su
+  ciclo, y eso no incluye lo que el producto deja en el scratch del sistema. El
+  arreglo es de otro bloque —toca el driver o la configuración del proceso—, pero
+  dejarlo sin medir sería peor que no mencionarlo: un resto que nadie cuenta es
+  un resto que nadie limpia.
 
 ## 4. Referencias
 

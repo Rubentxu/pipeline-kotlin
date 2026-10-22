@@ -22,7 +22,7 @@ se cierra cuando su criterio de cierre está **medido**, y la medida dice dónde
 
 | Bloque | Qué cierra | Criterio de cierre |
 |---|---|---|
-| **B1** Integración y workspace | las PR abiertas que todavía aportan cambios vigentes, y el contrato `authorizedWorkspaceRoot` frente a `effectiveWorkingDirectory` | ninguna divergencia conocida entre ramas, y la puerta completa en verde sobre el SHA integrado |
+| **B1** Integración y workspace | el contrato `authorizedWorkspaceRoot` frente a `effectiveWorkingDirectory` —ya presente en el código actual bajo otros nombres, §2.54—, las PR abiertas triadas, y el **instrumento** que faltaba: que los cuatro pasos de workspace coincidieran sobre la misma base | ninguna divergencia conocida entre ramas, la puerta completa en verde sobre el SHA integrado, y un escenario ejecutable que ponga en rojo a cualquiera de los cuatro si vuelve a resolver contra el workspace de la etapa |
 | **B2** Plugins e identidad | las derivas que quedan de la segunda puerta, y el límite de procedencia, confianza y admisión | cada deriva observada contra un artefacto real, con su escenario y su fila |
 | **B3** Durabilidad y Output Plane | identidades, offsets y recuperación; un efecto externo no se repite tras una caída | recuperación caracterizada con el binario real, sin efectos duplicados |
 | **B4** Publicación, SDK y pruebas | la distribución instalada, un consumidor externo del SDK, y la economía de la instrumentación | artefacto publicado verificado por fuera, y pruebas que se pueden explicar |
@@ -31,11 +31,13 @@ se cierra cuando su criterio de cierre está **medido**, y la medida dice dónde
 `#196`, la de la matriz de admisión del store de eventos—, en local y con
 **árbol idéntico** al squash que la plataforma había publicado para ella, y la
 puerta completa corrió **tres veces en verde** sobre el SHA integrado (§2.46).
-**B1 no se cierra**: siguen abiertas PR que aportan cambios vigentes, y entre
-ellas las que tocan el propio contrato `authorizedWorkspaceRoot` frente a
-`effectiveWorkingDirectory`, que este bloque no trió ni integró. Lo que sí
-queda medido es esto: el SHA integrado tiene la puerta completa en verde, y su
-árbol es **idéntico** al del squash publicado.
+**B1 no se cierra**, pero ya está **triado** (§2.54): el contrato
+`authorizedWorkspaceRoot` frente a `effectiveWorkingDirectory` **ya existe** en
+el código actual, con otros nombres y **más fuerte** —raíz autorizada con
+*lease* tipado frente a cwd efectivo—, y las cuatro PR que lo tocaban apuntan
+a un árbol que ya no existe. Lo que queda de B1 no es código: es el
+**instrumento** que fije que los cuatro pasos de workspace coinciden sobre la
+misma base, y el cierre de esas PR con su motivo.
 
 Después, este bloque cerró la **tercera familia de la mentira**: un plugin que
 declara **eventos** que no aporta, observado contra un artefacto real (§2.48).
@@ -6060,6 +6062,47 @@ byte.
 | Tests unitarios | **1071** (148 informes en disco), 0 fallos, 0 errores, 0 saltados |
 | Escenarios | **60**, los 60 verdes, `scenarios=observed:60 executed:60` |
 | Mutación | **1** fila roja de 5 |
+
+### 2.54 B1, triado: las cuatro PR de workspace y el contrato que ya está en el código
+
+**La pregunta de B1, medida.** El bloque B1 pide reconciliar el contrato
+`authorizedWorkspaceRoot` frente a `effectiveWorkingDirectory`. Medido sobre
+este árbol, **ese contrato ya existe**, con otros nombres: la raíz autorizada
+es `ExecutionLocation.workspace.root` —con un *lease* tipado, `Attached` para
+el directorio del usuario y `Managed` para el scratch de PipelineK— y el
+directorio efectivo es `ExecutionLocation.cwd`. La partida es exactamente la
+que la PR pedía, y es **más fuerte** que la PR: allí la propiedad del
+directorio se infería de un marcador de VCS; aquí es un valor tipado que
+cruza la frontera de la CLI una sola vez.
+
+**Las cuatro PR de workspace, una por una.** Todas apuntan a `v2/` y
+`docs/v2/07-uat/`, rutas que **no existen en este árbol** (`pipelinek/`, y sin
+`docs/`): se escribieron contra un árbol que ya no está.
+
+| PR | qué pedía | dónde está hoy |
+|---|---|---|
+| #90 | partir la raíz autorizada del cwd efectivo | `ExecutionLocation.workspace.root` frente a `ExecutionLocation.cwd`; el origen del workspace se decide una vez en la frontera de la CLI (`CliParser`, `MainDurableRun`, `MainVolatileRun`) |
+| #95 | pasar `deleteDir` por el cwd efectivo | `DeleteDirOperationsAdapter` resuelve contra `executionLocation.cwd` y pide `authorizeRootDestruction` antes de borrar: una raíz `Attached` no se destruye |
+| #96 | limitar `stash` y `unstash` al cwd efectivo | `StashOperationsAdapter.sourceRoot()` devuelve `executionLocation.cwd`, y el aislamiento trabaja sobre **rutas reales**: rechaza symlinks, `restoreRoot` y cada destino resuelto |
+| #97 | test de caracterización del contrato | **no existe aquí**: no hay `DirRestoreAfterError…` en el árbol. Su parte de `docs/v2/07-uat/*.md` es un árbol de recibos que la política prohíbe |
+
+**Las otras 17, en cinco cubos.** De las 21 PR abiertas: cinco tocan un árbol de
+`docs/` que el RESET borró y que la política no permite recrear; cuatro son
+dependabot que apuntan a `v2/gradle/libs.versions.toml`, ruta que aquí es
+`pipelinek/gradle/…` —el contenido del bump sigue siendo aplicable, la PR no—;
+cuatro llevan el árbol entero como diff porque su base ya no existe; una es
+GitHub Actions, que la política no introduce por defecto; y tres son de
+publicación, SDK o integración, con su propio bloque.
+
+**Lo que queda abierto, y es de instrumento, no de código.** La invariante
+vive repartida entre cuatro adaptadores y dos KDoc, y **nada se pondría rojo**
+si uno de ellos volviera a re-derivar el workspace del control root — que es
+justo el defecto que el KDoc de `DeleteDirOperationsAdapter` dice que **ya
+ocurrió una vez**. El instrumento que falta es un escenario ejecutable que
+abra un `dir(...)` y compruebe que `writeFile`, `deleteDir`, `stash` y
+`unstash` ven **la misma** base: si cualquiera de los cuatro resolviera
+contra el workspace de la etapa en vez del cwd efectivo, borraría el archivo
+de la raíz y dejaría vivo el del subdirectorio, y el escenario lo vería.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un diagnóstico tiene que ser fiel al resultado, no a una parte del

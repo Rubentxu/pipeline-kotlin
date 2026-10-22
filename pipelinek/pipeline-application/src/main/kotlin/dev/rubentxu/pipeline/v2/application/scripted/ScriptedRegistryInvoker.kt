@@ -70,7 +70,7 @@ sealed interface ScriptedRegistryResult {
  * ```kotlin
  * ScriptedTypedResult(value = unstableCarrier, outcome = StepOutcome.Success)   // illegal
  * ```
- * and that is precisely the defect this slice removes: two sources of truth about one fact,
+ * and that is precisely the defect this design removes: two sources of truth about one fact,
  * free to disagree. Here they cannot be built apart.
  * ## Why there is no separate "outcome the boundary already decided" factory
  * Because the invoker does not use the boundary's `StepOutcome` at all. FRESH and REUSE both
@@ -138,8 +138,9 @@ data class ScriptedRegistryCall(
  * THE generic scripted→registry seam.
  * Responsibility (and NOTHING else): call-site identity + step identity + encoded
  * Input → durable execute-or-reuse → encoded output. The invoker is
- * it must never name or special-case any concrete Step. Architecture fitness
- * enforces that by scanning this source with comments stripped.
+ * it must never name or special-case any concrete Step. Nothing enforces that
+ * mechanically today -- it is a property of this file, and a reader who assumes
+ * a boundary the code does not draw will not notice the day one is crossed.
  * This class no longer interprets durable state
  * It used to answer `when (existing.status)` with its own table — `SUCCEEDED` → restore,
  * everything else → `REPLAY_COMPATIBILITY` — and to hash its fingerprint with a hardcoded
@@ -268,8 +269,8 @@ internal class ScriptedRegistryInvoker(
      * definition at admission time, and the definition supplies the codecs that
      * encode and decode the payload.
      * This method stays. It must never name or special-case any
-     * concrete Step; architecture fitness enforces that by scanning this source
-     * with comments stripped.
+     * concrete Step. Nothing scans this file to prove it; the rule holds because
+     * this class keeps no table of concrete Steps.
      * It is `internal` on purpose. An external library contributes a
      * [StepDefinition] and the core invokes it; the library never invokes this
      * seam itself, so publishing it would widen the surface for no consumer.

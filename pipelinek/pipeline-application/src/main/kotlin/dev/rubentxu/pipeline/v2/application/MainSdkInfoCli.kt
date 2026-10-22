@@ -13,7 +13,7 @@ import kotlinx.serialization.json.put
  * stdout as a single line of `pipelinek.sdk/1` JSON. The output is
  * side-effect-free.
  * The list of [COORDINATES] is the contract declared in
- * `v2/build.gradle.kts` (`publishedContractModules` + the BOM). A
+ * `pipelinek/build.gradle.kts` (`publishedContractModules` + the BOM). A
  * consumer that parses this line can verify, by external observation
  * of the resolved artifacts, that the build matches the expected
  * contract.

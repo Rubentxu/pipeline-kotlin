@@ -22,12 +22,12 @@ import dev.rubentxu.pipeline.v2.domain.directivekey.WHEN_DIRECTIVE_KEY
  * reads the POLICY, never the key, so this class contributes semantics while
  * the engine stays closed.
  * It lives here, beside the other `core.*` definitions, and NOT in the
- * `pipeline-domain` directive kernel. The fitness rule
- * (`the kernel declares no hardcoded directive names`) forbids namespaced
- * literals inside the kernel precisely because a concrete plugin instance is a
- * composition fact, not part of the seam. The domain owns the KEY TYPE and the
- * pure predicate codec; the core plugin owns its OWN name, published from
- * `...domain.directivekey` so the DSL and the runtime cannot diverge.
+ * `pipeline-domain` directive kernel. The kernel declares no hardcoded
+ * directive names, precisely because a concrete plugin instance is a composition
+ * fact, not part of the seam. Nothing scans the kernel to prove it; the rule
+ * holds because the kernel only knows the KEY TYPE and the pure predicate codec.
+ * The core plugin owns its OWN name, published from `...domain.directivekey` so
+ * the DSL and the runtime cannot diverge.
 */
 /** The `core.when` definition. */
 class WhenDirectiveDefinition : DirectiveDefinition<WhenPredicate, GateVerdict> {

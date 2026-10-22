@@ -1542,7 +1542,7 @@ object MainConsoleCli {
  * [dev.rubentxu.pipeline.v2.application.durable.OpId]. From the stream id alone the verb main
  * can name the **indexes**, not the user-supplied stage and step names; that mapping lives in
  * the events journal, which the verb main does not (yet) open. To keep the filter contract
- * honest without coupling this slice to the events store, the resolver matches the user-supplied
+ * honest without coupling this verb to the events store, the resolver matches the user-supplied
  * `stage` / `step` against the **stringified index** that opId already carries, so a caller that
  * writes `--stage 0 --step 0` against a `runId-s0-0` opId gets a hit and a caller that writes
  * `--stage build` against the same opId gets a miss with the same answer.

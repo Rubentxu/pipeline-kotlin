@@ -79,10 +79,12 @@ typealias PwdTmpOutput = PwdOutput
  * Step's contract** — the handler does not need the durable OpId to do its
  * work; the bridge adapter does, and only there.
  * ## Determinism laws (–, /)
- * Lives in the adapter. Proven by the family-level fitness matrix (24 rows):
- * same OpId ⇒ same path; distinct stepIndex / branchIndex / bodyPath ⇒ distinct
- * paths; path under workspaceRoot; 64 lowercase hex suffix; idempotent; one
- * `PwdResolved` per fresh execution.
+ * Lives in the adapter. The laws are: same OpId ⇒ same path; distinct
+ * stepIndex / branchIndex / bodyPath ⇒ distinct paths; path under workspaceRoot;
+ * 64 lowercase hex suffix; idempotent; one `PwdResolved` per fresh execution.
+ * Nothing enforces them mechanically today: the adapter derives the path from the
+ * OpId and the hash from those inputs, and a reader who assumes a boundary the
+ * code does not draw will not notice the day one is crossed.
  * ## Capability-routed handler discipline
  * - declared capability = used capability = `{TEMPORARY_WORKSPACE_OPERATIONS}`
  * - no `CanonicalRuntimeContext` reach
@@ -114,7 +116,7 @@ object CorePwdTmpStep {
             // Envelope structure only: legacy-durable empty JSON object — same envelope
             // shape as the empty `{}` we use for `core.isUnix`, by analogy. A future
             // compiler/PSI lowering that wants to discriminate may write a richer
-            // envelope here; this slice keeps the unit shape to match the legacy
+            // envelope here; the unit shape is kept to match the legacy
             // "no input parameters" semantics of pwd(tmp=true).
             Json.parseToJsonElement(encoded.value).jsonObject
             return PwdTmpInput

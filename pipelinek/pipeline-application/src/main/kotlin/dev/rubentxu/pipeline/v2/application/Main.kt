@@ -61,21 +61,20 @@ internal val CLI_VERBS: List<Pair<String, String>> = listOf(
  * surface: a list nobody reads drifts from the code, and here the drift is
  * invisible because a missing env var looks like a program that simply ignored
  * it. `CredentialsStorePath` now resolves every reader to one place, so this
- * list is the only place a new variable has to be remembered — and a fitness
- * checks that a variable added to the code is added here or to
- * [CLI_ENVIRONMENT_INTERNAL].
+ * list is the only place a new variable has to be remembered — and **nothing
+ * keeps the two in sync automatically**: a variable added to the code and not
+ * listed here is invisible to the operator, because this list is the only
+ * inventory of what the program reads from the environment.
  *
- * ## The six, and how the first count of three was wrong
+ * ## The six, and how a first count of three was wrong
  *
- * A sweep for `"PIPELINE[A-Z0-9_]*"` reports six. An earlier sweep of this
- * session reported three, and the fitness disproved the three by failing with
- * the names it had never returned. The cause was not the character class: it
- * was a one-level glob, `v2/<module>/src/main/`, which matches
- * `v2/pipeline-application` but not `v2/pipeline-step-sdk/runtime`, two levels
- * deep. Three of the six live in the SDK. A denominator gathered by a one-level
- * glob is not a small error; it is an error that reads as a complete answer,
- * which is why the row comparing the two sets is the row that carries this
- * block.
+ * A sweep for `"PIPELINE[A-Z0-9_]*"` over the build tree reports six. A
+ * narrower sweep reports three, because the character class was applied to a
+ * one-level glob, `<module>/src/main/`, which matches `pipeline-application`
+ * but not `pipeline-step-sdk/runtime`, two levels deep — and three of the six
+ * live in the SDK. A denominator gathered by a one-level glob is not a small
+ * error; it is an error that reads as a complete answer, which is why the
+ * sweep has to descend as deep as the tree does.
  */
 internal val CLI_ENVIRONMENT: List<Pair<String, String>> = listOf(
     "PIPELINE_CREDENTIALS_STORE" to "credentials store file (default ~/.pipeline/credentials.bin)",

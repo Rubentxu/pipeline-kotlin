@@ -5,7 +5,7 @@ package dev.rubentxu.pipeline.v2.application
  *
  * ## Why it exists
  * Three files used to carry their own hand-written cursor: the operator trust file, the durable
- * admission control row, and (from this cycle) the publisher's detached signature. Three readers
+ * admission control row, and the publisher's detached signature. Three readers
  * for one grammar is three answers to "what does this document say", and they already disagreed:
  * one of them could not read a number at all, another read a number but not an escape sequence.
  * A file this runtime reads is a file whose meaning must not depend on which parser happened to

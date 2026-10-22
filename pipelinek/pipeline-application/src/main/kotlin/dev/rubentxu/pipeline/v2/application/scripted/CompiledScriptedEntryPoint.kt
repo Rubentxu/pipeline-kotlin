@@ -135,8 +135,10 @@ internal class RuntimeScriptedStepFacade(
      * input → [ScriptedRegistryInvoker] → encoded output → the Step's OWN
      * [dev.rubentxu.pipeline.v2.domain.step.StepCodec] → Boolean.
      * Classification authority stays exclusively inside the registry Step: this
-     * façade must never read the platform, classify, or hand-decode the payload
-     * (architecture fitness pins the absence of those identifiers).
+     * façade must never read the platform, classify, or hand-decode the payload.
+     * Nothing scans this file for those identifiers; the rule holds because the
+     * façade delegates the whole payload to the Step, and a reader who assumes a
+     * boundary the code does not draw will not notice the day one is crossed.
      * The nullable [registryInvoker] keeps 's shell-only entry points compiling
      * when it is absent, the runtime-returning surface is unavailable (fail loud,
      * never a fabricated value).

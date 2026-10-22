@@ -46,7 +46,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * hold without depending on `ShExecution.invokeShell` or the legacy canonical-core
  * decode/dispatch path. The codec encodes well-formed JSON objects, fulfilling
  * durable-spine eligibility
- * ## — REGISTRY_PRIMARY (this slice,)
+ * ## — registry primary
  * Real sh execution is reached through the declared
  * `SHELL_OPERATIONS_CAPABILITY`. The handler:
  *  1. Asks the [StepHandlerContext.capabilities] for `ShellOperations`.
@@ -58,10 +58,10 @@ import kotlinx.serialization.json.jsonPrimitive
  * [ShOperationsAdapter]). Capability admission is fail-closed at prepare-time:
  * `RegistryExecutionPreparation.prepare()` rejects with the missing capability
  * before the handler ever runs.
- *  invariants preserved
+ *  Invariants preserved:
  * - Closed execution structure, open Step registry: the canonical
- *   coordinator and dispatcher are unchanged in this slice; legacy decode /
- *   dispatch / metadata row for `core.sh` are intact.
+ *   coordinator and dispatcher read the registry, and there is no legacy
+ *   decode / dispatch / metadata row for `core.sh` left to disagree with it.
  * - No `Any` as a durable contract: typed I/O crosses as [EncodedStepValue].
  * - Required capability == used capability: handler asks only for
  *   `SHELL_OPERATIONS_CAPABILITY` and never reaches another capability.

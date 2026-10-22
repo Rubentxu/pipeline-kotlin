@@ -47,7 +47,7 @@ data class EnvironmentSpec(
  * The validity of `timeout` is enforced HERE as well as in [OptionsScope], and
  * both consult the same [StageTimeout] authority. The [init] is not redundant defence —
  * this data class is public API, so a consumer of the typed model can construct one
- * without ever touching the DSL, and until this block existed that path admitted
+ * without ever touching the DSL, and before this type existed that path admitted
  * `OptionsSpec(timeout = Long.MAX_VALUE)` straight into the compiler's
  * `Math.multiplyExact`. "Invalid surface is unrepresentable" is a claim about the MODEL,
  * and a model with no `init` did not make it.

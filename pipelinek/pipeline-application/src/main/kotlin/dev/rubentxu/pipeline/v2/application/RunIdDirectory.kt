@@ -47,7 +47,7 @@ class RunIdDirectory(private val root: Path) {
     ) {
         // Fix: write-to-temp + atomic rename replaces the previous `Files.writeString`
         // which was a non-atomic truncate-then-write that could leave the file partially written
-        // if the process died mid-write. After this change, the file is either the prior value
+        // if the process died mid-write. After the atomic rename, the file is either the prior value
         // or the new one — never a partial value. Atomic move on POSIX is rename(2); on Windows
         // the existing file is replaced when ATOMIC_MOVE is requested.
         // The temp filename MUST be unique per call: a fixed "<target>.tmp" collides when two

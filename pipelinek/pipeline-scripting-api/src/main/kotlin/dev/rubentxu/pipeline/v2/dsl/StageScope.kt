@@ -190,7 +190,7 @@ class StageScope(
      * Measured (mutation failed to compile for exactly that reason). A declared absence
      * produces the same typed state either way, so nothing is lost by routing it through here.
      * Removal is not scheduled. It needs the exit (`try/catch` at the orchestrator)
-     * which is the declared replacement path — not a deprecation added by this change.
+     * which is the declared replacement path — not a deprecation added here.
 */
     @Deprecated(
         message = "LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.",

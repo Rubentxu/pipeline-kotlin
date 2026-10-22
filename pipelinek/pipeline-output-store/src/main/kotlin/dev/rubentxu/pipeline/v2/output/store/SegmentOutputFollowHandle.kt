@@ -228,7 +228,7 @@ internal class SegmentOutputFollowHandle(
     // delivery, exhausted-check). The branch ordering is contract-bearing — the
     // "sealed-with-pending-bytes falls through to step 6" rule is the boundary
     // between honouring the terminal and not dropping buffered frames. Extracting
-    // helpers in this cycle would re-derive these invariants inside each one.
+    // helpers here would re-derive these invariants inside each one.
     @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun drainOnce(): Boolean {
         lock.lock()
@@ -368,8 +368,8 @@ internal class SegmentOutputFollowHandle(
         }
         if (framesInRun.isEmpty()) {
             // 7. Check `UntilBytesRead` even when no bytes were emitted
-            // this cycle (a long-quiet run may have hit the bound on a
-            // previous cycle).
+            // this pass (a long-quiet run may have hit the bound on an
+            // earlier pass).
             val untilAfter = options.until
             if (untilAfter is FollowUntil.UntilBytesRead && bytesEmitted >= untilAfter.limit) {
                 return queueCompleted()

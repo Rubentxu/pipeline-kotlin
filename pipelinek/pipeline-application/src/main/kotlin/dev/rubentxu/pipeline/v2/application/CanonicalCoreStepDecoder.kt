@@ -37,127 +37,26 @@ sealed interface CanonicalCoreStepCommand {
 
     companion object {
         /**
-         * Closed legacy-core canonical COMMAND plugin IDs — the set of plugin keys the canonical
-         * dispatcher routes through the legacy decode + dispatch family (StructuralStepFamily.LegacyCore).
-         * Registry-routed core plugins (e.g. `core.echo`, and — since / — `core.sh`) are
-         * deliberately excluded: they live behind the open [dev.rubentxu.pipeline.v2.domain.step.StepRegistry]
-         * registered via [CoreStepRegistryFactory] and classify as StructuralStepFamily.Registry.
-         * Naming: this constant does NOT mean "all core plugins" — only the legacy executable ones.
-         * 3 renamed the authority from `ALL_PLUGIN_IDS` to [LEGACY_PLUGIN_IDS] to make the
-         * semantic boundary unmistakable.
-         * `"core.sh"` is removed from this set so the
-         * structural classifier routes it through `Registry` (via `StructuralFamilyResolver.classify`).
-         * The burn-down removed the legacy `CanonicalCoreStepCommand.Shell` subtype, the
-         * legacy Sh decoder branch, the `CanonicalShellNodeDispatcher`, and the
-         * `CanonicalCoreStepMetadata["core.sh"]` row. Production Sh metadata is read exclusively
-         * from `CoreShellStep.descriptor` via `RegistryStepMetadataResolver`.
-*/
+         * The closed set of core plugin keys that belong to the legacy
+         * decode + dispatch family (StructuralStepFamily.LegacyCore).
+         *
+         * **It is empty, and that is the finished state of the migration.**
+         * Every core plugin that still executes is registry-routed: the
+         * registry owns production routing and production metadata. The legacy
+         * decoder has no branch left -- every core key that reaches it is
+         * refused -- and the legacy dispatchers and metadata rows are gone
+         * from the tree.
+         *
+         * The set is still read in two places, and it is read there on
+         * purpose. The rule it encodes is about core semantics, not about the
+         * current membership: a key in this set stays legacy EVEN IF a
+         * definition with the same key is also registered, so registering a
+         * definition can never change what a core key means. With no members
+         * the rule cannot fire today; keeping the readers means that the day a
+         * key is put back, the rule applies in both of them at once instead of
+         * in one and not the other.
+         */
         val LEGACY_PLUGIN_IDS: Set<String> = setOf(
-            // "core.error" was removed.
-            // The production routing authority flipped to the registry path
-            // (CoreErrorStep.definition). The legacy `core.error` source code
-            // Remains physically present until deletes it (LEGACY_REMOVED)
-            //   - CanonicalCoreStepCommand.Error subtype
-            //   - ERROR_PLUGIN_ID decoder branch
-            //   - CanonicalErrorNodeDispatcher.kt file
-            //   - CanonicalCoreStepMetadata["core.error"] row
-            // Until the legacy dispatcher is unreachable in production but
-            // Still type-loadable; the parity test can still drive it
-            // "core.emit.event" removed — REGISTRY_PRIMARY flip.
-            // Production routing authority is now CoreEmitEventStep.definition via the open
-            // registry (CoreStepRegistryFactory). Legacy `core.emit.event` source remains
-            // Physically present until (LEGACY_UNREACHABLE, not LEGACY_REMOVED)
-            //   - CanonicalCoreStepCommand.EmitEvent subtype
-            //   - EMIT_EVENT_PLUGIN_ID decoder branch
-            //   - CanonicalEmitEventNodeDispatcher.kt + CanonicalNodeDispatcher emitEvent branch
-            //   - CanonicalCoreStepMetadata["core.emit.event"] row
-            // StructuralOverlayProjection keeps its own structural dependency on the
-            // "core.emit.event" key (pre-decode control context), independent of the legacy
-            // execution path.
-            // "core.isUnix" removed — REGISTRY_PRIMARY flip.
-            // Production routing authority is now CoreIsUnixStep.definition via the open
-            // registry (CoreStepRegistryFactory). Legacy `core.isUnix` source remains
-            // Physically present until (LEGACY_UNREACHABLE, not LEGACY_REMOVED)
-            //   - CanonicalCoreStepCommand.IsUnix subtype
-            //   - IS_UNIX_PLUGIN_ID decoder branch
-            //   - CanonicalIsUnixNodeDispatcher.kt + CanonicalNodeDispatcher isUnix branch
-            //   - CanonicalCoreStepMetadata["core.isUnix"] row
-            // After this flip StructuralFamilyResolver routes core.isUnix through the
-            // Registry family, and RegistryStepMetadataResolver reads metadata exclusively
-            // from CoreIsUnixStep.descriptor. Legacy execution path remains type-loadable
-            // for parity tests but is unreachable in production.
-            // "core.pwd" legacy execution authority physically
-            // deleted (LEGACY_REMOVED). All four legacy forms are gone:
-            //   - CanonicalCoreStepCommand.Pwd subtype (line ~177, replaced with provenance comment)
-            //   - PWD_PLUGIN_ID decoder branch (line ~278, replaced with provenance comment)
-            //   - PWD_PLUGIN_ID constant (line ~219, replaced with provenance comment)
-            //   - CanonicalCoreStepMetadata["core.pwd"] row (already removed in this slice)
-            // The legacy CanonicalPwdNodeDispatcher.kt file is deleted in this slice;
-            // CanonicalNodeDispatcher.pwd branch + pwdContext helper are removed too.
-            // Counter converges 6 / 8 / 8 -> 6 / 6 / 6 at the end of this slice.
-            // "core.deleteDir" flipped REGISTRY_PRIMARY.
-            // Removed from LEGACY_PLUGIN_IDS; StructuralFamilyResolver routes
-            // core.deleteDir through the Registry family (CoreDeleteDirStep).
-            // Legacy forms stay type-loadable but UNREACHABLE in production until
-            // The physical removal (command subtype, metadata row, dispatcher
-            // File deleted at; counter converges 5/6/6 -> 5/5/5 there)
-            // "core.milestone" flipped REGISTRY_PRIMARY.
-            // "core.milestone" removed from LEGACY_PLUGIN_IDS
-            // (LEGACY_REMOVED — physical destructive). Counter converges 4/5/5 -> 4/4/4.
-            // Legacy forms (CanonicalCoreStepCommand.Milestone subtype, MILESTONE_PLUGIN_ID
-            // decoder branch + constant, metadata row, CanonicalMilestoneNodeDispatcher.kt
-            // file, CanonicalNodeDispatcher Milestone seams) are all removed in this slice.
-            // Production routing is exclusively CoreMilestoneStep.definition via the registry.
-            // "core.cleanWs" removed — REGISTRY_PRIMARY flip.
-            // Production routing authority is now CoreCleanWsStep.definition via the open
-            // registry (CoreStepRegistryFactory). Legacy `core.cleanWs` source remains
-            // Physically present until (LEGACY_REMOVED, not LEGACY_UNREACHABLE)
-            //   - CLEAN_WS_PLUGIN_ID decoder branch + constant
-            //   - CanonicalCleanWsNodeDispatcher.kt file
-            //   - CanonicalCoreStepMetadata["core.cleanWs"] row
-            // Until the legacy dispatcher is unreachable in production but still
-            // type-loadable. Counter converges 4/4/4 -> 3/4/4 (ids only).
-            // Physical removal of legacy forms (LEGACY_REMOVED).
-            // CleanWs subtype, CLEAN_WS_PLUGIN_ID constant + decoder branch,
-            // CanonicalCoreStepMetadata["core.cleanWs"] row, CanonicalCleanWsNodeDispatcher.kt,
-            // and the CanonicalNodeDispatcher cleanWs seams (field, when branch, cleanWsContext)
-            // are all removed in this slice. Production routing is exclusively
-            // CoreCleanWsStep.definition via the registry. Counter converges 3/4/4 -> 3/3/3.
-            // "core.archiveArtifacts" removed — REGISTRY_PRIMARY flip.
-            // Production routing authority is now CoreArchiveArtifactsStep.definition via the open
-            // registry (CoreStepRegistryFactory). This flip is behaviourally observable, not just
-            // structural: the legacy CanonicalArchiveArtifactsNodeDispatcher anchored its glob
-            // against absolute paths (workspaceRoot = controlDirRoot.resolve("workspace")) and
-            // therefore could never match, so `10-smoke-e2e.pipeline.kts` failed end-to-end with
-            // `ArtifactArchiveFailed: No files matched glob pattern 'build/libs/*.jar'`. The
-            // Registry path uses the certified AntStyleGlob engine (frozen delta), which turns
-            // the smoke fixture green (runFixtureFail -> runFixturePass).
-            // Physical removal of legacy forms (LEGACY_REMOVED).
-            // CanonicalCoreStepCommand.ArchiveArtifacts subtype, the ARCHIVE_ARTIFACTS_PLUGIN_ID
-            // constant + decoder branch, the CanonicalCoreStepMetadata["core.archiveArtifacts"]
-            // row, CanonicalArchiveArtifactsNodeDispatcher.kt, and the CanonicalNodeDispatcher
-            // archiveArtifacts seams (field, when branch, archiveArtifactsContext) are all
-            // removed in this slice. Production routing is exclusively
-            // CoreArchiveArtifactsStep.definition via the registry. The behaviour-level proof
-            // that the legacy glob authority is gone (not merely textually absent) is the
-            // counter-preserved A/B: the smoke fixture archives
-            // build/libs/smoke.jar with a real sha256 where the legacy authority failed with
-            // `No files matched glob pattern 'build/libs/*.jar'`. Counter converges
-            // 2/3/3 -> 2/2/2.
-            // "core.load" and "core.waitUntil" removed
-            // from LEGACY_PLUGIN_IDS (counter converges 2/2/2 -> 0/0/0).
-            //   - core.load:    DEFERRED + UNSUPPORTED in local-core-v1; no CoreLoadStep;
-            //                   DSL `load(path)` is fail-closed at compile-time.
-            //   - core.waitUntil: REGISTRY_PRIMARY. CoreWaitUntilStep.definition is the
-            //                   production routing authority; the polling cadence is
-            //                   declared structurally via BodyExecutionPolicy.Retrying(waitUntil =...).
-            // Both keys fall through to the Registry family in StructuralFamilyResolver.classify
-            // (legacy-membership-wins rule no longer fires; LEGACY_PLUGIN_IDS is the empty
-            // The CanonicalCoreStepMetadata["core.load"]
-            // and ["core.waitUntil"] rows were removed; the table now converges to the empty
-            // set (mirroring LEGACY_PLUGIN_IDS). core.waitUntil is REGISTRY_PRIMARY via
-            // CoreWaitUntilStep.registerInto(CoreStepRegistryFactory); core.load is
-            // Unregistered (DSL `load(path)` is fail-closed at compile-time, see)
         )
 
         /** Derives the short type string from a pluginId (e.g. "core.sh" → "sh"). */

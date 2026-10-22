@@ -34,8 +34,8 @@ object SdkZipBuilder {
     /**
      * Build both artifacts and write them under [distDir].
      * @param sdkRepo the local Maven repo produced by
-     *   `publishSdkForExternalPlugin` (typically `<v2>/build/sdk-repo/`).
-     * @param version the product version, e.g. `0.62.0`. Every folder
+     *   `publishSdkForExternalPlugin` (typically `pipelinek/build/sdk-repo/`).
+     * @param version the product version, e.g. `0.76.0`. Every folder
      *   under [sdkRepo] whose name matches this version is included.
      * @param managedCoordinates the SDK coordinates the BOM pins, in
      *   `group:artifact` form. The builder completes each with

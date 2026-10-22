@@ -110,9 +110,9 @@ data class WaitUntilOutput(
  * polling events come from `WaitUntilEngine`, and the body's own effect does happen
  * (and nothing asserts it today). So the stub below is DEAD CODE on
  * the production path. It is kept, not deleted, because the StepDefinition requires a
- * handler and because deleting it would be a wider change than this slice allows;
- * the KDoc previously claimed this stub is reached through the legacy dispatcher,
- * Which stopped being true at and was the reason nobody questioned it
+ * handler; deleting it is a wider change than the handler's own file,
+ * and its KDoc used to claim that the legacy dispatcher reached this stub, which
+ * stopped being true and was the reason nobody questioned it
  * The stub must not be "completed" as if it were a second polling loop: if it were
  * ever made reachable it would report `Satisfied` without evaluating the condition,
  * which Semantic Constitution classifies as a silent no-op.

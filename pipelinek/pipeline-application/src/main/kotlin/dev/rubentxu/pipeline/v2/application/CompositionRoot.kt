@@ -114,7 +114,7 @@ internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlockin
             // re-deriving `Managed`.
             workspaceOwnership = policy.workspace.ownership,
             // Egress is DENIED unless the operator asked for it with --allow-network.
-            // The bridge turns this gate into the generic NETWORK_EGRESS_CAPABILITY,
+            // The bridge turns the operator's request into the generic NETWORK_EGRESS_CAPABILITY,
             // and a step that needs the network declares it — so the default run
             // cannot reach one. The two ends are gates, not verdicts: `--allow-network`
             // is [AllowAll] and the default is [DenyAll], which are the SAME interface as a

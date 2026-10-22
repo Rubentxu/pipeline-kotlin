@@ -36,7 +36,7 @@ import dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope
  *     filter (or around every envelope when no filter is set): N preceding + the match + N following,
  *     deduped. The pure transform is `EventInspection.contextWindow`.
  *   * `--tail N` keeps the last N envelopes. The pure transform is `EventInspection.tail`.
- * What this slice is NOT:
+ * What this verb is NOT:
  * * NOT a wholesale fold of the events parser into `CliParser.parseObservation` (territory)
  *     The local `while` loop stays; a future slice can promote the option list when the four
  *     verbs share a typed option table. The events-only flags (`--subject`, `--after-cursor`,
@@ -636,6 +636,6 @@ private const val ABSENT = "-"
  * Follow poll interval, in milliseconds. The same value
  * `MainObserveCli.FOLLOW_IDLE_MILLIS` uses; the events follow reads the same durable
  * Authority and has the same latency budget. Wakeup-based follow is territory and
- * is not in this slice.
+ * is not part of this verb.
 */
 private const val FOLLOW_POLL_MILLIS: Long = 25L

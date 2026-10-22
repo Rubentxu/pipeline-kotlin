@@ -32,7 +32,7 @@ import kotlin.io.path.isRegularFile
  * ReplayPolicy: `MEMOIZED` (file content is deterministic; replay may reuse
  *   the cached output when the durable fingerprint matches).
  * RecoveryPolicy: `None`.
- * Algorithms supported in this slice: `SHA-256` (default) and `SHA-1`. We
+ * Algorithms supported: `SHA-256` (default) and `SHA-1`. We
  * deliberately do NOT accept any other algorithm name — a caller asking for
  * `MD5` is rejected at admission time with a typed USER-class failure rather
  * than silently substituted.

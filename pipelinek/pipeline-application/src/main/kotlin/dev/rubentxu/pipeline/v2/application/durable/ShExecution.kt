@@ -668,10 +668,10 @@ object ShExecution {
 
             // The fallback, and the one place where a console event is still correct
             // This path runs when there is no controlDirRoot at all — no filesystem privileges, or a
-            // Non-Linux host — so there is no Output Plane to write into. forbids a SECOND
+            // Non-Linux host — so there is no Output Plane to write into. The Output Plane forbids a SECOND
             // authority over the same bytes; it does not require one to exist where none can. Here the
             // event is the only rendering, so it is not a second anything.
-            // The law the fitness test enforces is therefore per-execution, not per-type: "for any
+            // The law is therefore per-execution, not per-type: "for any
             // one execution, the transcript bytes exist in exactly one place." A guard written as
             // "EchoOutputCaptured is never emitted" would have been wrong here and would have pushed
             // someone into deleting the only observable console this path has.

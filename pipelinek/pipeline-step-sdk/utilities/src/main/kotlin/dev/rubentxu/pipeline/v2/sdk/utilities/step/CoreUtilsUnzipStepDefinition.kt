@@ -243,8 +243,8 @@ class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
         // than implied.
         //
         // Future hardening: parse the extra field manually to detect
-        // mode 0xA1ED (Unix symlink) and reject it. Out of scope for
-        // this slice; tracked under Slice 2 debt.
+        // mode 0xA1ED (Unix symlink) and reject it. Out of scope
+        // here; tracked as debt.
         @Suppress("UNUSED_PARAMETER") val ignored = entry
     }
 

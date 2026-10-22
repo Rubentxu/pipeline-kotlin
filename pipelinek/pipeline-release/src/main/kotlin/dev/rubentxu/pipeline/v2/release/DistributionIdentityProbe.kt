@@ -15,7 +15,7 @@ import java.util.zip.ZipInputStream
  * Every surface is probed independently and may come back null. A surface that
  * cannot be read is reported as unobserved, never defaulted to the expected
  * version. Defaulting would let a missing JAR manifest masquerade as a
- * passing check, which is the exact false-green this gate exists to prevent.
+ * passing check, which is the exact false-green this probe exists to prevent.
 */
 object DistributionIdentityProbe {
 

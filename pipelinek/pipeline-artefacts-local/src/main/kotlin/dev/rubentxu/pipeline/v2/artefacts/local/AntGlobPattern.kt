@@ -9,7 +9,7 @@ package dev.rubentxu.pipeline.v2.artefacts.local
  * WHY THE MATCHING IS NOT IN HERE. The dialect is Ant, and Ant's semantics are the ones a
  * Jenkins user writes: `**` spans any number of path segments, `*` and `?` stay inside one
  * segment, `[...]` is a character class and `{a,b}` is an alternation. The two constructs that
- * an Ant user writes most were, until this cycle, read by an engine whose dialect disagreed
+ * an Ant user writes most were read by an engine whose dialect disagreed
  * with Ant's on exactly those two, and both disagreements were measured:
  *
  * - `build/**/*.{jar,war}` matched `build/secret.pem` and `build/app.zip`, because the engine

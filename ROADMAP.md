@@ -91,7 +91,7 @@ composición se rechaza.
 |---|---|---|
 | 1 | **La política** de la identidad duplicada, si algún día hace falta cambiarla | el **diagnóstico** ya nombra los dos artefactos (§2.51) y dice que la composición entera se rehúsa, así que el operador sabe cuál es cuál y sabe que nada se está ejecutando. Lo que queda **no es un defecto pendiente**: el sistema **ya rechaza la composición** cuando ve el duplicado. Cambiar *qué* artefacto conserva la identidad es un cambio de comportamiento observable y por tanto una ruptura versionada, que sólo se hace con una **necesidad de producto concreta**, no porque el modelo sea más bonito |
 | 2 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
-| 3 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | **caracterizada** (§2.57): con el camino de producción actual **dos streams no pueden compartir bytes**, porque los segmentos dirigidos por posición no se pliegan. Lo que sí era un defecto real —el parser de op ids descartaba parte de la identidad **en silencio**, devolviendo otra operación— está arreglado y con su fila vista en rojo. Queda con nombre una deuda: el formato del cuerpo **no es invertible** cuando un identificador lleva `-`, y cerrarlo es ruptura versionada que espera autorización |
+| 3 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | **caracterizada** (§2.57): por los caminos de producción **medidos** **dos streams no comparten bytes**, porque los segmentos dirigidos por posición no se pliegan; lo que **no** se ha demostrado es la propiedad general para todo identificador que el formato admite, y el veredicto lo dice así. Los dos defectos que sí lo eran están **cerrados**: el parser de op ids ya no descarta parte de la identidad **en silencio** (§2.59) —devuelve `null` antes que una identidad truncada, y la consola conserva su filtro por etapa y paso gracias a una lectura de índices— y la afirmación de que la colisión era inalcanzable en general está **matizada**. Queda con nombre una deuda: el formato del cuerpo **no es invertible** cuando un identificador lleva `-`, y cerrarlo es ruptura versionada que espera autorización |
 | 4 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
 | 5 | El techo del drenaje | **caracterizado** (§2.58): el rechazo ya es **tipado** (`DrainIncomplete`) y no se confunde con un fallo del script, que era lo que faltaba saber. Lo que falta es que sea **accionable** — reintentar en vez de subir el techo—, y eso es decisión de producto. Y una corrección de atribución: los temporales del driver SQLite que hay en el tmpdir compartido son de procesos que **no salen bien** —el driver extrae al cargarse y borra al salir—, y este producto, desde que fija `org.sqlite.tmpdir`, **no deja nada suelto**: su residuo va a un directorio con nombre |
 
@@ -6377,14 +6377,18 @@ cambia el **conteo** del cuerpo (`bp4` → `bp2`), porque el corte por guiones s
 come piezas de más y el `take(count)` se lleva las equivocadas. Un `OpId` que
 al ida y vuelta no vuelve a ser el mismo es una identidad que **no es estable**.
 
-**El arreglo, y que sea compatible.** El parser ahora reconstruye un segmento
-que no va dirigido por posición **tal como estaba escrito**, en vez de
-droppearlo. El texto que se emite **no cambia** —el mismo `format`—, así que no
-se toca ninguna clave del journal, y el resultado observable de la consola no
-cambia: sus dos consumidores (`ConsoleOperationSelection` y
-`StageStepKindResolver`) miran **sólo** el índice de etapa y de paso. El
-efecto lateral útil: un identificador que lleve `/` ahora **sí** sobrevive al
-ida y vuelta, porque el segmento se conserva literal.
+**El arreglo, y que sea compatible.** El parser reconstruye un segmento que no
+va dirigido por posición **tal como estaba escrito**, en vez de droppearlo. El
+texto que se emite **no cambia** —el mismo `format`—, así que no se toca
+ninguna clave del journal, y el resultado observable de la consola no cambia:
+sus dos consumidores (`ConsoleOperationSelection` y `StageStepKindResolver`)
+miran **sólo** el índice de etapa y de paso. El efecto lateral útil: un
+identificador que lleve `/` ahora **sí** sobrevive al ida y vuelta, porque el
+segmento se conserva literal.
+
+Y la parte que faltaba —que se puddle devolver una identidad **parcial**— está
+cerrada en §2.59: el parser ya no elige una lectura cuando el texto admite
+varias, sino que se niega.
 
 **La fila, vista en rojo.** `OpIdRoundTripTest` — **4 filas puras**, sin disco,
 sin reloj y sin proceso: un segmento dirigido por posición, uno de rama
@@ -6543,6 +6547,152 @@ arreglo, **no añade ninguno al tmpdir compartido**. La cifra que el ROADMAP
 venía arrastrando —«344 pares»— estaba sin verificar por el mismo motivo que
 la atribución: se contaba, pero no se preguntaba **quién** dejaba los ficheros
 ni **cuándo se contaban**.
+
+### 2.59 El lector que se niega a adivinar
+
+**La pregunta.** Un identificador de operación entra al sistema desde fuera por
+una única puerta: el parser. ¿Qué devuelve esa puerta cuando el texto no se
+puede leer sin adivinar?
+
+**Lo que devolvía.** Una identidad **parcial**, que parecía correcta y nombraba
+otra operación. Medido:
+
+```
+run-7-s0-3-bp1-0:core-with-dash   --parse-->   run-7-s0-3-bp1-0:core
+```
+
+El cuerpo del identificador se une con guiones, así que un segmento que lleva
+guion deja el corte sin regla: el parser se quedaba con los segmentos que
+alcanzaba a colocar y **tiraba el resto**. El `OpId` devuelto tenía el mismo
+run, la misma etapa y el mismo paso —y por eso **parecía** el mismo—, pero un
+cuerpo más corto. Con dos segmentos, hasta el **conteo** del cuerpo cambiaba.
+
+**La regla, y por qué es la regla.** Un lector que devuelve una identidad ha
+devuelto la **única** que el texto nombra. Si el texto admite más de una
+lectura, no hay una identidad que devolver: hay un texto que **no** nombra una
+identidad, y la respuesta honesta es `null`. La diferencia entre «no sé» y
+«seguramente sea esta» es la diferencia entre un rechazo y una respuesta
+equivocada con forma de respuesta.
+
+**El texto se lee ahora como se escribe.** El parser deja de adivinar y pasa a
+**enumerar**: parte el texto donde un cuerpo puede empezar —el marcador es
+`-bp{N}-`— y lee la raíz de cada trozo. De las lecturas posibles:
+
+- si hay **una**, esa es la identidad;
+- si hay **más de una**, el texto nombra más de una operación y no se devuelve
+  ninguna;
+- si el cuerpo de una lectura **no se puede cortar** sin adivinar, ese cuerpo
+  se marca como **ilegible**, que no es lo mismo que vacío.
+
+El último caso es el que hace el trabajo: un cuerpo con dos segmentos, uno de
+ellos con guion, tiene más guiones que segmentos, así que hay más de un corte
+posible. Cada corte es una identidad distinta, y el texto no dice cuál.
+
+**Lo que se conserva: la etapa y el paso.** Un identificador dice en su raíz
+qué etapa y qué paso es, y eso **no depende de cómo se lea el cuerpo**. Por eso
+hay una segunda lectura —la de los índices— y por eso la consola, que filtra
+por ellos, la usa: un filtro por etapa y paso sigue seleccionando las
+operaciones cuyo cuerpo no se puede leer entero.
+
+Eso no es un detalle de implementación: es lo que separa el **arreglo** del
+**daño**. Un parser estricto sin lectura de índices habría roto, en silencio,
+el filtro por etapa y paso de toda operación con cuerpo. El filtro devuelve
+«nada» cuando no puede decidir, y «nada» es indistinguible de «no hubo
+operaciones».
+
+**Dos mutaciones, y qué se enciende en cada una.**
+
+| mutación | filas que se encienden | filas que **no** |
+|---|---|---|
+| restaurar la lectura truncada | las 2 del lector | las 4 del ida y vuelta, las 3 del filtro |
+| filtrar por la identidad entera en vez de por los índices | 1, la del filtro | las 7 del lector |
+
+La primera dice que el lector ya no trunca. La segunda dice que la capacidad
+se ha perdido: con el parser estricto y la consola sin lectura de índices, el
+filtro deja de seleccionar las operaciones cuyo cuerpo no se puede leer, y
+**nadie se entera**.
+
+**La fila, vista en rojo.** `OpIdRejectionTest` — **3 filas puras**, sin disco,
+sin reloj y sin proceso:
+
+| fila | qué afirma |
+|---|---|
+| lo que se lee es lo que se escribió | para cualquier texto, lo que el parser devuelva tiene que **reformatearse** al mismo texto |
+| un texto que no se puede leer exacto se rechaza | dos casos: cuerpo ambiguo, y texto con dos lecturas |
+| la etapa y el paso se leen aunque el cuerpo no | el filtro conserva su capacidad |
+
+La primera fila es la que dice la garantía **completa**: no lista los casos que
+se niegan, afirma que no hay ningún texto del que salga una identidad
+distinta. Con el parser de antes caía, y el mensaje lo decía con todas las
+letras —«expected `run-7-s0-3-bp2-0:core-with-dash-n:closure` but was
+`run-7-s0-3-bp1-0:core`»—.
+
+**Lo que NO se arregla, y por qué sigue siendo deuda.** El formato del cuerpo
+**no es invertible** cuando un identificador lleva un guion dentro: el texto no
+dice dónde acaba un segmento. Hoy eso ya **no** produce una identidad
+equivocada —produce un rechazo—, así que el daño está contenido. Pero el
+formato sigue sin poder *leerse* por completo, y un pipeline con un plugin
+cuyo nombre lleva guiones no se puede filtrar por su identificador completo.
+Cerrarlo tiene los dos caminos de siempre: restringir el alfabeto —un plugin que
+hoy usa `-` en su nombre dejaría de funcionar— o cambiar el formato del texto,
+que **rompe las claves del journal** que el producto promete byte a byte. Esa
+decisión es de producto y no se toma de paso. La **defensa inmediata** —no
+devolver una identidad adivinada— no necesita ninguna de las dos.
+
+### 2.60 Dos artefactos honestos con la misma identidad
+
+**El problema que había.** El escenario de identidad duplicada mezclaba dos
+defectos: el plugin que la distribución llevaba dentro estaba **manipulado** —
+su manifiesto declaraba un evento que nadie aportaba—, y la copia del
+operador era la del editor. El rechazo que el escenario leía era el correcto
+(`DuplicateIdentity`, con los dos nombres), pero **no se podía atribuir**: dos
+cosas estaban mal y el escenario sólo probaba una.
+
+El arnés tenía además una razón explícita para no ofrecer dos artefactos con
+la misma identidad en los escenarios de «manifiesto que miente»: ofrecer el
+plugin engañoso **además** del de la distribución es un artefacto distinto con
+la misma identidad, y se rechaza **por eso** antes que por la mentira. El
+escenario de identidad duplicada usaba esa propiedad para susurrar su caso, y
+heredaba la mezcla.
+
+**Lo que hay ahora.** Los dos artefactos son **honestos**: el mismo manifiesto
+del editor, el mismo código, y bytes distintos porque el empaquetado es
+distinto. Lo único que está mal es que los dos piden el mismo nombre, así que
+**la única razón para rechazar la composición es la identidad** — y el rechazo
+que el escenario lee sólo puede ser sobre la identidad.
+
+| artefacto | manifiesto | código | bytes |
+|---|---|---|---|
+| el de la distribución | el del editor | el del editor | los suyos |
+| el del operador (`--plugin-jar`) | **el mismo**, byte a byte | el mismo | **distintos**: otro empaquetado |
+
+**El fixture, y lo que comprueba.** El lanzador reempaqueta el plugin del
+editor con una marca de tiempo fija y **comprueba las dos cosas que dice**:
+que los dos ficheros difieran y que el manifiesto **no** difiera. Un
+reeempaquetado que saliera byte a byte igual dejaría al escenario sin nada
+que rechazar — y eso es un **fallo ruidoso del fixture**, no un escenario
+verde. Un fixture que deja de ser lo que dice no puede convertirse en un falso
+verde.
+
+**La mutación, y lo que se ve alencoer el rechazo.** Sin la detección de
+duplicado, el escenario se pone rojo, y el rojo **nombra el otro rechazo**:
+
+```
+FAIL ... stderr lacked: DuplicateIdentity
+  Plugin admission refused for .../plugins/uppercase.jar: InvalidManifest(
+      ... declared Steps with no implementation ...)
+```
+
+Eso es la atribución que faltaba: sin la detección, el artefacto entra y
+choca después con la segunda puerta, la que compara lo declarado con lo
+aportado. Los dos rechazos son distintos, el escenario los distingue, y el
+que exige es el de la identidad.
+
+**Lo que no cambia.** El escenario sigue siendo **uno**, con las mismas siete
+garantías. El fixture `lying-events` sigue existiendo para el escenario de
+evento que miente, y `bundled-uppercase` sigue existiendo para los escenarios
+de confianza. Lo que se ha hecho es **desacoplar** el caso de identidad
+duplicada del caso de manifiesto mentiroso: cada defecto, con su fixture.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **No saber de quién es un directorio no es motivo para borrarlo.** El

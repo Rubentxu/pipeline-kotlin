@@ -96,6 +96,33 @@ class PluginContributionCrossCheckTest {
         assertTrue(!check.isConsistent, "a declared Event with no contributor is a refusal")
     }
 
+    @Test
+    fun `a capability the contract does not require is named on both sides`() {
+        val check = admittedPlugin(
+            declaredSteps = listOf("sample.step"),
+            declaredCapabilities = mapOf("sample.step" to setOf("sample.ghost.capability")),
+        ).admitContributions(definitions = listOf(definition("sample.step")))
+
+        assertEquals(
+            listOf("sample.step" to (setOf("sample.ghost.capability") to emptySet<String>())),
+            check.mismatchedCapabilities.map { (key, pair) ->
+                key.value to (pair.first.map { it.key }.toSet() to pair.second.map { it.key }.toSet())
+            },
+        )
+        assertTrue(!check.isConsistent, "a declared capability the contract does not require is a refusal")
+    }
+
+    @Test
+    fun `a capability the contract does require is not a drift`() {
+        val check = admittedPlugin(
+            declaredSteps = listOf("sample.step"),
+            declaredCapabilities = mapOf("sample.step" to setOf("sample.wanted")),
+        ).admitContributions(definitions = listOf(definition("sample.step", requiredCapabilities = setOf("sample.wanted"))))
+
+        assertEquals(emptyList<Any>(), check.mismatchedCapabilities)
+        assertTrue(check.isConsistent, "a declared capability the contract does require is not a drift")
+    }
+
     // --- The fixture ----------------------------------------------------------
     //
     // A manifest decoded from the document the runtime reads, and a Step whose
@@ -106,10 +133,11 @@ class PluginContributionCrossCheckTest {
         declaredSteps: List<String>,
         declaredDirectives: List<String> = emptyList(),
         declaredEvents: List<String> = emptyList(),
+        declaredCapabilities: Map<String, Set<String>> = emptyMap(),
     ): AdmittedPlugin {
         val manifest = when (
             val decoded = PluginManifestCodec.decode(
-                manifestDocument(declaredSteps, declaredDirectives, declaredEvents),
+                manifestDocument(declaredSteps, declaredDirectives, declaredEvents, declaredCapabilities),
             )
         ) {
             is PluginManifestDecodeResult.Accepted -> decoded.manifest
@@ -130,6 +158,7 @@ class PluginContributionCrossCheckTest {
         declaredSteps: List<String>,
         declaredDirectives: List<String>,
         declaredEvents: List<String>,
+        declaredCapabilities: Map<String, Set<String>>,
     ): String = """
         {
           "codec": "pipelinek-manifest-codec/v1",
@@ -142,19 +171,26 @@ class PluginContributionCrossCheckTest {
           "delivery": "EXTERNAL_REFERENCE",
           "trust": "unverified",
           "families": ["UTILITIES"],
-          "steps": [${declaredSteps.joinToString(",") { """{"stepKey": "$it", "declaredCapabilities": []}""" }}],
+          "steps": [${declaredSteps.joinToString(",") { step ->
+                val capabilities = declaredCapabilities[step].orEmpty().joinToString(",") { "\"$it\"" }
+                """{"stepKey": "$step", "declaredCapabilities": [$capabilities]}"""
+            }}],
           "directives": [${declaredDirectives.joinToString(",") { "\"$it\"" }}],
           "events": [${declaredEvents.joinToString(",") { "\"$it\"" }}],
           "capabilities": []
         }
     """.trimIndent()
 
-    private fun definition(key: String): StepDefinition<String, String> = object : StepDefinition<String, String> {
+    private fun definition(
+        key: String,
+        requiredCapabilities: Set<String> = emptySet(),
+    ): StepDefinition<String, String> = object : StepDefinition<String, String> {
         override val contract = StepContract(
             key = PluginStepId(key),
             descriptor = StepDescriptor(stepId = key, name = key, configRef = "sample"),
             inputCodec = StringCodec,
             outputCodec = StringCodec,
+            requiredCapabilities = requiredCapabilities.map { StepCapability(it) }.toSet(),
         )
         override val handler = StepHandler<String, String> { _, _ -> "" }
     }

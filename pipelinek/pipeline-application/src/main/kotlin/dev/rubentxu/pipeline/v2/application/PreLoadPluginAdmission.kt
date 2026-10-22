@@ -93,6 +93,10 @@ object PreLoadPluginAdmission {
     ): AdmittedArtifacts {
         val admitted = mutableListOf<AdmittedArtifact>()
         val alreadyAdmitted = mutableSetOf<String>()
+        // Which artifact already holds each identity. The set above answers "is this identity
+        // taken"; this one answers "WHICH artifact took it" -- the question an operator has when
+        // two artifacts claim the same name and only one of them is told why.
+        val admittedByIdentity = mutableMapOf<String, Path>()
 
         for (artifact in artifacts) {
             val read = readFromArtifact(artifact)
@@ -210,15 +214,43 @@ object PreLoadPluginAdmission {
             )
 
             when (result) {
-                is PluginAdmissionResult.Refused -> return AdmittedArtifacts.Refused(artifact, result.rejection)
+                is PluginAdmissionResult.Refused -> return AdmittedArtifacts.Refused(
+                    artifact,
+                    result.rejection,
+                    detail = duplicateIdentityDetail(result.rejection, admittedByIdentity),
+                )
                 is PluginAdmissionResult.Admitted -> {
                     alreadyAdmitted.add(result.plugin.pluginId)
+                    admittedByIdentity[result.plugin.pluginId] = artifact
                     admitted.add(AdmittedArtifact(artifact, result.plugin, trusted))
                 }
             }
         }
 
         return AdmittedArtifacts.Admitted(admitted)
+    }
+
+    /**
+     * The artifact that STAYS in the composition when a second artifact claims an identity that is
+     * already admitted, and nothing for any other refusal.
+     *
+     * [PluginManifestRejection.DuplicateIdentity] carries the identity twice and no artifact at
+     * all: the vocabulary of refusals is published, and adding a third field to it would break the
+     * consumers that read it. The artifact that stays is therefore carried by the refusal's
+     * `detail`, which the CLI already prints next to the reason.
+     *
+     * Without it the operator reads "this artifact was refused because another one already has
+     * this name" and has no way of learning WHICH other one: the refused artifact is named by the
+     * message, and the one that wins the name is named nowhere. That is the difference between a
+     * diagnosis and a rumour.
+     */
+    internal fun duplicateIdentityDetail(
+        rejection: AdmissionRejection,
+        admittedByIdentity: Map<String, Path>,
+    ): String? {
+        if (rejection !is PluginManifestRejection.DuplicateIdentity) return null
+        val incumbent = admittedByIdentity[rejection.identity] ?: return null
+        return "the same identity is already admitted from $incumbent, which stays in the composition"
     }
 
     /**

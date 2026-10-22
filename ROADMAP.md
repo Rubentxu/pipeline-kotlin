@@ -5283,6 +5283,48 @@ directivas contra una instalación real, ni el caso en que el plugin que miente
 es *el primero* que se carga y desplaza a otro. La puerta existe para todos
 esos casos y el árbol los sostiene, pero un observador es un observador.
 
+### 2.44 Las otras dos familias de la misma mentira: capacidades y directivas
+
+**El instrumento ya estaba pagado.** §2.43 dejó una distribución propia con un
+JAR mentiroso y un lanzador que la construye. Extender la observación a las
+otras dos familias de la segunda puerta no fue arquitectura nueva: fue el mismo
+doctoring sobre el mismo JAR, con dos anclas distintas en el manifiesto. El
+arnés ganó dos fixtures más —`lying-capabilities` y `lying-directives`— y
+nada más: el código que los construye es el mismo que ya existía, con la
+decisión de *qué* mentira se cuenta movida a un argumento.
+
+**La familia de las capacidades.** El manifiesto declara, para uno de sus
+Steps, una capacidad que el contrato de ese Step **no exige**. El plugin dice
+«necesito esto» y su propio código nunca lo pide. Es la mentira más parecida a
+la que cometería un publicador real: prometer un modelo de datos que el plugin
+no entiende. La comparación de la regla es de conjuntos —lo declarado contra lo
+que el contrato exige—, así que la deriva se nombra con **las dos caras**: qué
+declaró el manifiesto y qué exige el contrato.
+
+**La familia de las directivas.** El manifiesto declara una Directive que
+ningún contribuidor aporta. Una Directive no es sólo un dato: es una pieza de
+la composición que el operador **invoca por nombre**. Un plugin que declara una
+que no entrega hace que la pipeline del operador nombre algo que no existe, y
+el rechazo convierte eso en un refusal en tiempo de admisión que nombra al
+fantasma. La regla también mira en la dirección contraria —una Directive que
+alguien aporta y el manifiesto no declara—, y esa fila ya estaba cubierta.
+
+**Las dos mutaciones, vistas en rojo.** Apagar una comparación apaga **su**
+escenario y **su** fila, y nada más:
+
+| Mutación | Escenario rojo | Fila unitaria roja | Sin mover |
+|---|---|---|---|
+| La comparación de capacidades se apaga | **1** (`plugin-capability-lies`: exit 0 en vez de 2) | **1** de 8 | **56** escenarios, 7 filas |
+| La comparación de directivas se apaga | **1** (`plugin-directive-lies`: exit 0 en vez de 2) | **1** de 8 | **56** escenarios, 7 filas |
+
+**Lo que sigue sin cubrir, y es lo último que queda de esta puerta.** Tres
+cosas, todas deliberadamente dichas: un plugin que miente sobre sus **eventos**
+declarados contra una instalación real —la tercera familia de la regla, que el
+test ya mira con nombres pero que ningún JAR real ha mentido todavía—; el caso
+en que el plugin que miente es **el primero** que se carga y desplaza a otro;
+y la deriva de **capacidades** en la dirección contraria, cuando el plugin
+exige más de lo que su manifiesto declara.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **El veredicto viaja en el evento que termina el step.** No en un evento
   aparte, y no en la unión de dos eventos. La unión obligaba a emparejar por
@@ -6147,6 +6189,13 @@ esos casos y el árbol los sostiene, pero un observador es un observador.
   que **sólo** esa fila se enciende: una fila roja sola dice que el escenario
   discrimina; una fila roja sola con las demás verdes dice que el guardián
   es el guardián.
+
+- **Ampliar un instrumento cuesta menos que construir otro.** Las tres familias
+  de la deriva se observan con el **mismo** doctoring sobre el **mismo** JAR:
+  lo que cambia es la línea del manifiesto que se toca, y esa línea es un
+  argumento del lanzador. Un arnés que crece en capacidad —en lo que puede
+  observar— y no en nombres de fichero es el que se puede ampliar sin pagar un
+  mecanismo nuevo por cada cosa que descubre.
 
 ## 4. Referencias
 

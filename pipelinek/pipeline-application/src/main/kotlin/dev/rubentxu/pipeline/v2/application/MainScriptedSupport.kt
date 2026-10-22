@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
+import dev.rubentxu.pipeline.v2.domain.workspace.WorkspaceOwnership
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxConfigResolver
@@ -47,6 +48,12 @@ internal fun runScriptedFrontend(
                 timeoutMs = null,
                 env = emptyMap(),
                 sandbox = SandboxConfigResolver.resolve(sandboxProfile),
+                // This root is the scripted frontend's own scratch under the control
+                // root, so PipelineK owns it and may clean it up. Stating it keeps
+                // that permission ACCREDITED: an unstated owner now arrives as the
+                // refusing lease, so leaving this out would take the permission
+                // away instead of keeping it by accident.
+                workspaceOwnership = WorkspaceOwnership.PIPELINEK,
             ),
             controlDirRoot = controlDirRoot,
         )

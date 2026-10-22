@@ -19,11 +19,12 @@ import java.nio.file.Path
  * - the lease *case* is [ownership], which the CLI resolved at the boundary and
  *   carried across this transport. Ownership is never re-derived here.
  * When neither path field is populated the location is anchored at the current
- * working directory, which is the only authority available. When
- * [ownership] is absent the lease is [WorkspaceLease.Managed]: an unrooted run
- * cannot prove the directory is user-owned, and managed is the fail-closed
- * choice for destruction.
- * **The derived [ExecutionLocation] IS the value carried by
+ * working directory, which is the only authority available. When [ownership] is
+ * absent the root is carried as [WorkspaceLease.Attached], the case that REFUSES
+ * root destruction: an unstated owner has asserted nothing, and the only case
+ * that grants the destructive permission is the one that asserts PipelineK
+ * allocated this root. An unaccredited root is therefore never ours to destroy.
+ * The derived [ExecutionLocation] IS the value carried by
  * `EXECUTION_LOCATION_CAPABILITY`** — the domain type, not a wrapper. An
  * earlier revision registered an `ExecutionLocationCapability` interface here
  * instead. That worked while only `:pipeline-application` read the key, and
@@ -52,8 +53,14 @@ object ShOptionsExecutionLocationAdapter {
      * lease, and `deleteDir()` was therefore permitted to erase the project.
      * The guard was live in the type and dead in the wiring; the installed
      * distribution reproduced it.
-     * `null` keeps the fail-closed [WorkspaceLease.Managed] default for callers
-     * that cannot state ownership.
+     * `null` means the owner was never stated, and it carries the REFUSING lease:
+     * the destructive permission is only ever granted to a root whose owner is
+     * known to be PipelineK. It used to be the other way round — `null` became
+     * `Managed`, the permitting case — and the KDoc above called that the
+     * "fail-closed choice for destruction" when it was the fail-OPEN one. The
+     * permission was reachable with an unstated owner: `ShOptions.EMPTY`, the
+     * default of `CanonicalDurableRunCoordinator`, states no owner and points at
+     * a shared temp directory.
 */
     fun from(
         workspaceRoot: Path?,
@@ -64,7 +71,8 @@ object ShOptionsExecutionLocationAdapter {
         val root = (workspaceRoot ?: fallbackRoot).toAbsolutePath().normalize()
         val lease = when (ownership) {
             WorkspaceOwnership.USER -> WorkspaceLease.Attached(root)
-            WorkspaceOwnership.PIPELINEK, null -> WorkspaceLease.Managed(root)
+            WorkspaceOwnership.PIPELINEK -> WorkspaceLease.Managed(root)
+            null -> WorkspaceLease.Attached(root)
         }
         val cwd = (scopedWorkingDirectory ?: root).toAbsolutePath().normalize()
         return ExecutionLocation(lease, cwd)

@@ -18,7 +18,7 @@ una medición.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `1ed401028` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `1ed401028` | `git rev-parse HEAD` |
+| SHA | `ec0c20bef` medido en los tres ensayos; el commit posterior de documentación sólo toca este ROADMAP, así que el código medido es el de `ec0c20bef` | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
@@ -28,24 +28,25 @@ una medición.
 | Escenarios con una garantía comprobada | **54 de 54**: 133 garantías, 195 pasos terminados y 2 runs que concluyeron `unstable`. El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 54 escenarios |
 | `VERIFY_LOC / PRODUCT_LOC` | **18260 / 67318 = 0.271** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **182 / 177 / 160** en los tres ensayos, los tres sobre `1ed401028`, peor 182 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **197 / 166 / 173** en los tres ensayos, los tres sobre `ec0c20bef`, peor 197 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
+| Deuda estática congelada | **802** entradas de baseline: **sin cambio**, porque la ley que este ciclo añadió salió a su propio objeto en vez de empujar a `ProtocolGrammar` por encima del límite de detekt | `detektBaselineMain` y `detektMain` |
+| Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
 es la condición con la que el censo de LOC es verdad: el censo lee
 `git ls-files`, así que con el árbol sucio un test nuevo no cuenta y la ratio
 sale mejor que la realidad.
 
-Los tres ensayos corrieron sobre el mismo SHA y con la máquina **cargada por
-procesos ajenos a este repositorio** —hay otro workspace de PipelineK y un
-servidor de Fabric trabajando en ella—, y los tres siguieron dentro del
-presupuesto. El más lento (803 s) es el que coincidió con esa carga; el
-tercero tardó 682 s con ella. La diferencia no es del código medido, que es
-idéntico en los tres: es del host.
-| Deuda estática congelada | **802** entradas de baseline: **sin cambio**, porque la ley que este ciclo añadió salió a su propio objeto en vez de empujar a `ProtocolGrammar` por encima del límite de detekt | `detektBaselineMain` y `detektMain` |
-| Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
+El reloj de la puerta lo marca también el host. El ciclo anterior midió 699,
+682 y 803 s con la máquina compartida con otro workspace, y este ciclo midió
+197, 166 y 173 s: la distancia entre un ensayo y otro no la explica el código
+medido, que es idéntico dentro de cada ciclo, sino la carga de la máquina. En
+los tres ensayos de este ciclo el presupuesto se cumplió con holgura —el peor,
+197 s, es menos de la cuarta parte de los 900 s—, y eso que el árbol medido
+incluye la distribución, la API pública, los 1049 tests y los 54 escenarios.
 
-Lo que este ciclo añadió a la suite: **24** casos de test en **4** clases
+Lo que este ciclo añadió a la suite: **25** casos de test en **4** clases
 rescatadas del layout viejo —cada una con su regla viva detrás: el
 vocabulario con el que un run recuperado se registra, la contención de la ruta
 de entrada de un archivo descomprimido, las formas que el guard de
@@ -71,8 +72,9 @@ del arranque, que ya corre en cada invocación del lanzador. Los dos UAT que lo
 probaron (una escena colgada y una escena que falla de verdad) se retiraron al
 cerrar el ciclo, con su evidencia escrita aquí.
 
-El ratio de LOC sube de 0.230 a **0.239** en los tres últimos ciclos, todavía
-muy por debajo del límite 2, y el peor módulo sigue siendo el mismo de siempre
+El ratio de LOC sube de 0.230 a **0.271** en los tres últimos ciclos —el
+anterior estaba en 0.240—, todavía muy por debajo del límite 2, y el peor
+módulo sigue siendo el mismo de siempre
 (`pipeline-step-sdk:workflow-control`, 1.633) porque este ciclo no lo tocó.
 
 Lo que este ciclo **no** tocó, y conviene que no se confunda con un avance:
@@ -106,14 +108,12 @@ antes del sellado) encendió **2 de 5** filas del adaptador de cancelación, y
 **1 de 6** del módulo. Todas se leyeron de vuelta y se deshacieron.
 
 Los ensayos se ejecutaron desde salidas de build limpias y cada uno reescribió
-los **123** informes JUnit, que es la condición que hace que la cifra de reloj
+los **145** informes JUnit, que es la condición que hace que la cifra de reloj
 mida el gate y no una restauración de caché. Un total correcto con el verbo
 equivocado ya no puede colarse: la etapa 2 separa `rewritten` de `read` y
-**falla** si no reescribe ninguno. Los tres ensayos de este bloque se corrieron
-con la máquina cargada por procesos **ajenos a este repositorio** (hay otro
-workspace trabajando en ella): los tres siguieron dentro del presupuesto, y esa
-carga externa es la razón de que sus relojes sean más altos que los del ciclo
-anterior —no el reloj del lanzador, que no añade tiempo sino que lo acota—.
+**falla** si no reescribe ninguno. Los tres ensayos de este ciclo reescribieron
+los **145** informes —**1049** casos, 0 fallos, 0 skips— y los tres siguieron
+dentro del presupuesto; el reloj del lanzador no añade tiempo, lo acota.
 
 **El gate cuenta 26 proyectos Gradle con test, y un censo independiente por
 fichero cuenta los mismos 26.** La etapa 2 imprime un módulo por nombre, y un
@@ -181,9 +181,9 @@ afirmación con ella.
 
 `run.sh` admitía `//@ durable` desde su cabecera, pero **ninguno** de los 36
 escenarios lo declaraba: la segunda ejecución sobre el mismo `--control-root`
-nunca había corrido. Hoy lo declara uno de los 30, y es
-`durable/22-wait-until.pipeline.kts`, que
-es el escenario que puede hablar del assunto y ningún otro puede — un cuerpo que
+nunca había corrido. Hoy lo declaran **dos** de los **54**, y son
+`durable/22-wait-until.pipeline.kts` y `durable/32-durable-replay.pipeline.kts`:
+son los escenarios que pueden hablar del assunto y ningún otro puede — un cuerpo que
 ya llegó a `WaitUntilCompleted` no debe volver a consultarse al repetir, ni
 fallar por no haber hecho nada nuevo, y una sola ejecución no lo observa.
 
@@ -5078,7 +5078,7 @@ capacidades distintas.
 | Runs que concluyeron `unstable` | **2**, declarados por los escenarios que los producen |
 | Tests unitarios | **1049**, 0 fallos, 0 skips, 145 informes reescritos por la corrida |
 | `VERIFY_LOC / PRODUCT_LOC` | **18260 / 67318 = 0.271** (límite 2), medido sobre el árbol commiteado: con el árbol sucio el censo no ve los ficheros nuevos y la ratio sale mejor que la verdad |
-| Reloj de la puerta | **167 s** contra 900 s |
+| Reloj de la puerta | **197 s** contra 900 s (los tres ensayos: 197 / 166 / 173) |
 
 **En una frase, para quien llega nuevo:** el arnés ya no pregunta «¿terminó el
 proceso?», sino «¿qué concluyó el run, y es lo que el escenario esperaba?»; el

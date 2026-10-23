@@ -6,6 +6,7 @@
 //@ credentials zip-creds zip
 //@ credentials ucp-creds username-colon-password
 //@ expect-stdout 7 credential binding kinds resolved
+//@ expect-transcript API_KEY=****
 // The subject is the seven binding kinds, and the launcher seeds each of them
 // into this scenario's own store before the run. The seeded values are
 // synthetic fixtures: nothing here asserts WHAT a binding resolved to, because

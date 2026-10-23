@@ -99,17 +99,17 @@ composición se rechaza.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `b55b1b5a1`, medido en los ensayos de este bloque. El bloque anterior **completó la superficie de la redacción del registro de una corrida** (§2.67). Este bloque cubre la otra mitad de la redacción: la capa que limpia el **transcript** que la corrida compromete, que documentaba cinco defectos ya corregidos y **no tenía ni una sola fila de test** en todo el repositorio. Siete filas puras, un defecto vivo corregido —el estado que se descarta se llevaba el secreto dentro— y un quinto defecto, el que se cuelga, cubierto donde el producto puede detectarlo (§2.68) | `git rev-parse HEAD` |
+| SHA | `aa43c5d09`, medido en los ensayos de este bloque. El bloque anterior **cubrió la capa que limpia el transcript que la corrida compromete** (§2.68). Este bloque arregla el **comparador de las dos rutas de ejecución**: podía declarar que estaban de acuerdo después de comparar menos de lo que debía —un paso que escribe sólo a stderr quedaba fuera— y después de no leer nada —un rechazo del lector se tragaba—. Tres mutaciones lo vieron en rojo, y una de ellas reproduce el falso verde (§2.69) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
 | Tests unitarios ejecutados | **1097** (156 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **61 (61 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **61 de 61**: **375 comparaciones sobre 110 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 375, **88** son esas comparaciones nuevas: **44** de los 61 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **19994 / 67534 = 0.296** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios con una garantía comprobada | **61 de 61**: **377 comparaciones sobre 110 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 375, **88** son esas comparaciones nuevas: **44** de los 61 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **20075 / 67536 = 0.297** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **182 / 141 / 139** en los tres ensayos, los tres sobre `b55b1b5a1`, peor 182 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **187 / 139 / 140** en los tres ensayos, los tres sobre `aa43c5d09`, peor 187 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -122,24 +122,24 @@ sale mejor que la realidad.
 
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
-165 s en el bloque de las tres familias; los tres bloques anteriores a éste
-midieron 187, 130 y 133 s, 197, 169 y 376 s y 168, 141 y 149 s. Este mide
-**182, 141 y 139 s**:
+165 s en el bloque de las tres familias; los cuatro bloques anteriores a éste
+midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s y 182, 141 y 139 s.
+Este mide
+**187, 139 y 140 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 182 s, es menos de
+de este ciclo el presupuesto se cumplió con holgura —el peor, 187 s, es menos de
 la cuarta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
 la API pública, los 1097 tests y los 61 escenarios.
 
-**La etapa del E2E mide 85, 88 y 86 s**, contra los 84, 86 y 86 s del ciclo
-anterior (§2.67) y los 90, 90 y 89 s del anterior a ése (§2.66). Los **siete
+**La etapa del E2E mide 88, 88 y 87 s**, contra los 85, 88 y 86 s del ciclo
+anterior (§2.68) y los 84, 86 y 86 s del anterior a ése (§2.67). Los **siete
 segundos** que cuesta leer, con el propio verbo `console` del producto, los bytes
 que las dos rutas comprometieron (§2.65) siguen ahí, y este ciclo **tampoco añade
-ningún escenario**: los 61 son los mismos. Lo que este bloque añade son siete
-filas unitarias sobre la capa que limpia el transcript, y la comprobación de que
-el quinto defecto documentado de esa capa —el que se cuelga en vez de devolver
-un valor equivocado— lo caza el suite de extremo a extremo, con el diagnóstico
-del propio producto (§2.68). Es el precio de una comparación que encuentra una
+ningún escenario**: los 61 son los mismos. Lo que este bloque arregla es el
+comparador que los lee —el que podía declarar que las dos rutas estaban de
+acuerdo sin haber leído— y lo hace con un paso más en un escenario que ya
+existía, no con otro escenario (§2.69). Es el precio de una comparación que encuentra una
 clase de defecto que ninguna expectativa declarada puede ver, y está medido para
 que la decisión se pueda rehacer con el número delante. El resto del coste sigue siendo el mismo: los 61
 escenarios son los mismos y la caché de scripts compilados que el producto ya
@@ -7561,6 +7561,80 @@ escenarios, 375 comprobaciones sobre 110 ejecuciones, y el LOC en 19994 de
 verificación sobre 67534 de producto (0,296).
 
 
+### 2.69 El comparador de las dos rutas podía declarar que estaban de acuerdo sin haber leído
+
+**La brecha, medida.** La comparación que confronta las dos rutas de ejecución
+—la que sostiene que una corrida con journal y la misma corrida sin journal
+comprometieron lo mismo— podía declarar igualdad después de comparar menos de
+lo que debía, y después de no leer nada. Dos mecanismos, medidos por separado:
+
+- **Descubría las operaciones por un solo canal.** Enumeraba los directorios
+  `*_stdout` del Output Plane. Un paso que escribe sólo a stderr **no tiene
+  directorio `_stdout`**: medido, el plano crea `<runId>_<opId>_stderr` y nada
+  más, y ese paso sí es legible —el verbo `console` lo sirve igual que al
+  otro—. Quedaba fuera de la comparación, sus bytes no se comparaban nunca, y
+  una comparación que no compara puede declarar iguales dos corridas que
+  difieren.
+- **Se tragaba los rechazos del lector.** `2>/dev/null || true` convertía un
+  «no lo sé» en un «no hay nada». Dos lecturas rechazadas llegaban a la
+  comparación como dos salidas vacías, y dos vacías son iguales: el veredicto
+  «las dos rutas prometieron lo mismo» era la respuesta a una pregunta que
+  nadie había contestado.
+
+**El instrumento.** El defecto no está en una clase del producto: está en el
+arnés, que es Bash y se mide contra el binario real. Un test unitario del
+arnés no sería un test del producto, sino un test de la lógica del propio
+comprobador —la comprobación de que el comprobador comprueba—, así que el
+instrumento es un escenario de extremo a extremo, y **no es un escenario
+nuevo**: es el de la salida de un proceso, con un paso más.
+
+El paso nuevo escribe a su propio stderr y a nada más, y su texto se declara
+en el transcript comprometido. Con la enumeración de un solo canal esa fila
+falla por el texto que falta; con el rechazo tragado, el escenario pasa en
+verde sin haber leído nada.
+
+**Cómo se vio en rojo, tres veces.** Cada mutación se aplicó, se leyó de vuelta
+para comprobar que había aterrizado, y se revirtió.
+
+| mutante | qué encendió |
+|---|---|
+| la enumeración vuelve a un solo canal | **una fila**: «the committed transcript lacked: STDERR_ONLY_MARKER» — el transcript_commitido contenía sólo `RAW_PROCESS_MARKER` |
+| el lector pide una operación que no existe | **una fila**: «the bytes the durable path committed for s0-0 could not be read» |
+| …y ese mismo rechazo, tragado como antes | **verde**: dos lecturas vacías comparadas como iguales — el falso verde, reproducido |
+
+La tercera fila es la que demuestra que la segunda no es una formalidad: es
+justo la diferencia entre un comparador que informa y uno que se traga la
+respuesta.
+
+**Lo que cambió.** La enumeración pregunta por los dos canales y deja fuera
+las streams de otra corrida que compartan el control raíz —una corrida
+resumida guarda las de la primera al lado de las suyas—. El rechazo del
+lector es un fallo con nombre: la comparación dice **qué operación** no pudo
+leer, en vez de comparar dos vacíos. Y la comparación comprueba además que
+**las dos rutas comprometieron salida para las mismas operaciones**, que es
+una garantía propia y que nombra la diferencia antes de comparar bytes.
+
+**La ayuda del producto tenía la misma punto ciega.** El verbo `console` decía
+de sí mismo que el listado del plano es «el conjunto exacto» y mostraba un
+directorio `_stdout` por operación legible. Medido: un paso que escribe sólo a
+stderr es legible y su directorio es `_stderr`. La ayuda ahora nombra los dos
+canales.
+
+**Lo que la puerta midió.** `PASS` tres veces sobre el árbol commiteado
+(187 s / 139 s / 140 s; el peor, de 900), `tests=rewritten:1097`, 61 de 61
+escenarios, 377 comprobaciones sobre 110 ejecuciones, y el LOC en 20075 de
+verificación sobre 67536 de producto (0,297). Los 1097 tests unitarios siguen
+siendo los mismos: este defecto no es del producto y no se puede cubrir con
+una fila unitaria.
+
+**Lo que queda, dicho con nombre.** La enumeración sigue leyendo los nombres
+de los directorios del plano, que es el descubrimiento que el propio producto
+documenta. El arreglo de fondo —que la CLI exponga las streams de una corrida
+con su identidad completa, para que ni el arnés ni un consumidor tengan que
+deducirla del sistema de ficheros— es trabajo de producto y queda para el
+bloque siguiente.
+
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un comentario que afirma una verdad que el código ya no tiene es peor que
   no escribirlo.** Un lector no puede saber que un comentario miente, así que
@@ -8966,6 +9040,29 @@ verificación sobre 67534 de producto (0,296).
   usa la máquina de estados no, y esa segunda ruta es la que tira el estado.
   Las dos rutas borran por la misma regla, y la regla vive en un solo sitio
   (§2.68).
+
+- **Un comparador que se traga los rechazos no compara: informa.** El veredicto
+  «las dos rutas prometieron lo mismo» salía de dos lecturas que el lector
+  había rechazado, y dos vacíos son iguales. Un «no lo sé» no es un «no hay
+  nada», y la diferencia entre las dos es justo la que separa una garantía
+  verificada de una que nadie comprobó (§2.69).
+
+- **Enumerar por el canal que se midió deja fuera al otro.** Un paso que
+  escribe sólo a stderr no tiene directorio de stdout, así que la comparación
+  nunca preguntaba por sus bytes: una comparación que no compara puede
+  declarar iguales dos corridas que difieren. El conjunto de lo que hay que
+  leer lo dice el producto —el plano, con sus dos canales—; el arnés sólo
+  tiene que preguntarlo bien (§2.69).
+
+- **El instrumento de un defecto del arnés es un escenario, no un test del
+  arnés.** Un test unitario del comprobador sería la comprobación de que el
+  comprobador comprueba. El discriminator es un programa real contra el
+  binario real, y salió de un escenario que ya existía: un paso más, no otro
+  escenario (§2.69).
+
+- **El falso verde se demuestra reproduciéndolo.** Con el rechazo tragado, el
+  escenario pasa en verde sin haber leído nada. Sin ese ensayo, «el rechazo
+  ahora falla» sería una afirmación; con él, es una diferencia medida (§2.69).
 
 
 ## 4. Referencias

@@ -10,9 +10,12 @@ import java.io.InputStream
  * re-encoded, which matters because three of the kinds are binary and a text
  * round trip would corrupt them. Two details make that rule usable rather than
  * merely correct:
- * - Exactly one trailing newline is dropped, once, from the whole stream. Shell
- *   pipelines add one, and a value the caller did not intend to differ by a
- *   byte is the most common way a store ends up holding the wrong secret.
+ * - The newline a shell adds is dropped ONLY from the values that arrive
+ *   line-wise, because only those are closed by it. A value that IS a file
+ *   has no terminator: its last byte is content, and a file that ends in a
+ *   newline is a file like any other. Which kinds are which is the kind's own
+ *   answer — [MainCredentialsCli.CredentialKind.framing] — so that a store
+ *   seeded from a stream holds the same value as one seeded from a path.
  * - The kinds that carry a username take it from the first line and treat
  *   everything after that newline as the password, verbatim. One separator, one
  *   meaning: a password that itself ends in a newline keeps it, and the caller
@@ -24,7 +27,7 @@ import java.io.InputStream
 internal object StreamCredentialPrompts {
 
     fun read(kind: MainCredentialsCli.CredentialKind, stdin: InputStream): Credential {
-        val bytes = stdin.readBytes().dropOneTrailingNewline()
+        val bytes = kind.framing.value(stdin.readBytes())
         return when (kind) {
             MainCredentialsCli.CredentialKind.SECRET_TEXT ->
                 CredentialValues.secretText(bytes)
@@ -59,9 +62,6 @@ internal object StreamCredentialPrompts {
                 CredentialValues.zip(bytes)
         }
     }
-
-    private fun ByteArray.dropOneTrailingNewline(): ByteArray =
-        if (size > 0 && this[size - 1] == '\n'.code.toByte()) copyOf(size - 1) else this
 
     private fun ByteArray.splitAtFirstNewline(what: String): Pair<String, ByteArray> {
         val newline = indexOf('\n'.code.toByte())

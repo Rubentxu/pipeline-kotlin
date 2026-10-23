@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.credentials.local
 
+import dev.rubentxu.pipeline.v2.domain.credentials.SecretFile
 import dev.rubentxu.pipeline.v2.domain.credentials.SecretText
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernameColonPassword
 import dev.rubentxu.pipeline.v2.domain.credentials.UsernamePassword
@@ -25,6 +26,11 @@ import org.junit.jupiter.api.Test
  * reader that returns the right kind of object holding the wrong value would
  * pass a test that only checked success, so each test compares content and the
  * binary case compares every byte including a NUL and a high byte.
+ * The newline a shell writes is part of that comparison, and it means two
+ * different things depending on the kind: it TERMINATES a value that arrives
+ * line-wise, and it is CONTENT in a value that is a file. A store seeded from a
+ * stream and a store seeded from a path have to hold the same secret, so the
+ * two must not differ by a byte — and they used to.
  * Everything here is in-memory: a byte array in, a credential out. No terminal,
  * no file, no clock, no store.
 */
@@ -100,6 +106,20 @@ class StreamCredentialPromptsTest {
             byteArrayOf(0, 0x7F, 0xFF.toByte(), 0x0A, 0x0D),
             entry,
             "a keystore or archive is binary; any text round trip corrupts it silently",
+        )
+    }
+
+    @Test
+    fun `a file keeps every byte, a trailing newline included`() {
+        val content = "file-contents\n".toByteArray()
+
+        val stored = read(MainCredentialsCli.CredentialKind.SECRET_FILE, content) as SecretFile
+
+        assertArrayEquals(
+            content,
+            stored.bytes,
+            "the bytes of a file ARE the value; a newline that ends the file is part of it, " +
+                "and a store holding a file one byte short is a file nobody gave",
         )
     }
 

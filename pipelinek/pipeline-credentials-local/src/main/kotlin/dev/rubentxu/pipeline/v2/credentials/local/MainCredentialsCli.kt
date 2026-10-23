@@ -78,6 +78,24 @@ object MainCredentialsCli {
 
             const val ALL_KINDS = "secret-text, username-password, ssh-private-key, secret-file, certificate, zip, username-colon-password"
         }
+
+        /**
+         * How the bytes of this kind arrive, and therefore what a newline the
+         * transport writes means for them.
+         *
+         * A value that is closed by a newline arrives line-wise: the shell adds
+         * one, and dropping it is what keeps `echo secret |` from storing a
+         * secret one byte longer than the caller meant. A value that IS a file
+         * has no terminator — its last byte is content like any other — and a
+         * file that ends in a newline is a file, not a line.
+         */
+        internal val framing: CredentialFraming
+            get() = when (this) {
+                SECRET_TEXT, USERNAME_PASSWORD, USERNAME_COLON_PASSWORD, SSH_PRIVATE_KEY ->
+                    CredentialFraming.TERMINATED
+
+                SECRET_FILE, CERTIFICATE, ZIP -> CredentialFraming.WHOLE
+            }
     }
 
     @JvmStatic

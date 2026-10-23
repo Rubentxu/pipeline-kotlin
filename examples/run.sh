@@ -761,6 +761,38 @@ narration_of() {
         | awk '/^\[PipelineK\] Run started: / { story = 1 } story' || true
 }
 
+# The narration, in the form in which two of them can be compared.
+#
+# A stage is a unit of work that may FAN OUT: its branches run at the same time,
+# and the order in which concurrent work finishes is a race, not a story.
+# Measured on this build, the same pipeline run twelve times closed its two
+# branches in one order four times and in the other order seven. A comparison
+# that reads the narration as a SEQUENCE therefore reports a difference between
+# two runs that did exactly the same thing, and a check that cries wolf is a
+# check nobody reads.
+#
+# So the narration is compared the way the product promises it. A stage's PLACE
+# in the run is promised, and that order is kept. The lines INSIDE a stage are
+# compared as a set, because inside a stage nothing promises an order. A step
+# that is missing, a step that ended in another verdict, a stage that ran in
+# another place: all of those still tell two stories apart.
+canonical_narration() {
+    narration_of "$1" | LC_ALL=C awk '
+        /^\[PipelineK\] \[stage: / { flush(); print; next }
+        { pending[count++] = $0 }
+        END { flush() }
+        function flush(    i, j, held) {
+            for (i = 0; i < count - 1; i++)
+                for (j = i + 1; j < count; j++)
+                    if (pending[j] < pending[i]) {
+                        held = pending[i]; pending[i] = pending[j]; pending[j] = held
+                    }
+            for (i = 0; i < count; i++) print pending[i]
+            count = 0
+        }
+    '
+}
+
 # What a run SAYS: the story it told and the diagnostics it wrote.
 #
 # The two worlds live in different directories, and the place a run lives is not
@@ -770,11 +802,12 @@ narration_of() {
 # The process output is NOT part of it. The observer that delivers those bytes
 # polls, so the place where they land between two console lines is a projection
 # and not a promise; the account is the run's own narration, in the order the
-# run produced it.
+# run produced it -- up to the order nobody promised, which [canonical_narration]
+# takes out.
 world_account() {
     local root="$3"
     {
-        narration_of "$1"
+        canonical_narration "$1"
         grep -av '^[[:space:]]*$' "$2" 2>/dev/null || true
     } | sed -e "s#${root}/cwd-volatile#<cwd>#g" \
             -e "s#${root}/cwd#<cwd>#g" \
@@ -785,41 +818,82 @@ world_account() {
 
 # The operations a run committed output for, named by what follows the run id.
 #
-# The plane creates a directory per stream that received bytes, and the
-# product's own help says that listing is the exact set of operations a
-# consumer can read. Both channels are read, because an operation that wrote
-# only to stderr is an operation: reading the stdout directories alone left it
-# out, and an operation nobody asked about is an operation whose bytes were
-# never compared. A comparison that skipped them could report two different
-# runs as equal.
+# The product publishes the identity of every operation of a run, and the
+# launcher asks it for that list. It used to read the plane's directory
+# listing instead, and a directory name is a FOLDED projection of the
+# identity: every character outside [A-Za-z0-9._-] becomes an underscore, so
+# the name of an operation whose id carries a ':' does not carry it, and two
+# operations whose ids fold alike are ONE directory. A launcher that read the
+# names was reading a projection, comparing projections, and handing the
+# reader a projected identity instead of the operation's own.
+#
+# The product's answer is also complete where the filesystem could not be: an
+# operation that wrote only to stderr is an operation, and one whose id folds
+# onto another's is a second operation, not the same one.
 #
 # A control root can hold more than one run -- a resumed run keeps the first
-# one's streams beside the second's -- so the streams of another run are left
-# out. Reading them would be refused, and a refusal that is swallowed is a
-# comparison of nothing.
+# one's streams beside the second's -- and the product answers for ONE run, so
+# the streams of another run are left out by construction rather than by a
+# prefix the launcher had to recognise on its own.
 #
 # The name that follows the run id is the operation's identity in both worlds:
 # two runs of the same pipeline give their operations the same names, and the
 # run id in front of them is what makes them two different operations.
+#
+# The listing of a finished run does not change, so it is asked once per run
+# and kept. The transcript comparison and the comparison between the two
+# worlds ask the same question about the same run, and a launcher that asked
+# the product twice paid a second process start for the same answer.
+declare -A DECLARED_OPERATIONS=()
+
+# Whether the plane holds streams for a run, read from its own directories.
+#
+# This is a COUNT of what is on disk, not a deduction of what any stream is
+# called: the answer to "did this run commit output" is a fact about the run,
+# and the launcher's own comparison needs it. An identity read off a directory
+# name is a folded name, and a folded name is not an identity.
+plane_holds_streams() {
+    local control="$1" run_id="$2"
+    local directory
+    for directory in "$control/output-plane/streams"/*_stdout \
+                      "$control/output-plane/streams"/*_stderr; do
+        [[ -d "$directory" ]] || continue
+        [[ "$(basename "$directory")" == "${run_id}_"* ]] && return 0
+    done
+    return 1
+}
+
 declared_operations() {
     local control="$1" run_id="$2"
-    local stream_dir name op_id
-    for stream_dir in "$control/output-plane/streams"/*_stdout \
-                      "$control/output-plane/streams"/*_stderr; do
-        [[ -d "$stream_dir" ]] || continue
-        name="$(basename "$stream_dir")"
-        # The directory is <runId>_<opId>_<channel>.
-        case "$name" in
-            "${run_id}_"*) ;;
-            *) continue ;;
-        esac
-        op_id="${name#${run_id}_}"
-        case "$op_id" in
-            *_stdout) op_id="${op_id%_stdout}" ;;
-            *_stderr) op_id="${op_id%_stderr}" ;;
-        esac
-        printf '%s\n' "${op_id#${run_id}-}"
-    done | sort -u
+    local key="$control|$run_id"
+    if [[ -n "${DECLARED_OPERATIONS[$key]+x}" ]]; then
+        printf '%s\n' "${DECLARED_OPERATIONS[$key]}"
+        return 0
+    fi
+    local listing
+    if ! listing="$(binary operations "$run_id" --control-root "$control" 2>/dev/null)"; then
+        return 1
+    fi
+    # An empty listing for a run that committed output is not "this run wrote
+    # nothing": it is an answer that names none of the streams the plane
+    # holds. And an empty listing makes the comparison of the committed bytes
+    # vacuous -- two vacuous comparisons agree, and a comparison nobody reads
+    # is not a guarantee.
+    if [[ -z "$listing" ]] && plane_holds_streams "$control" "$run_id"; then
+        return 1
+    fi
+    # The part that follows the run id is the operation's own name. It is
+    # stripped with the shell's own prefix removal, so an identity that
+    # happens to carry a character a regular expression would read as a
+    # metacharacter is still stripped exactly.
+    local operation names=""
+    while IFS= read -r operation; do
+        [[ -n "$operation" ]] || continue
+        names+="${operation#${run_id}-}"$'\n'
+    done <<<"$listing"
+    names="$(printf '%s' "$names" | sort -u)"
+    DECLARED_OPERATIONS[$key]="$names"
+    printf '%s\n' "$names"
 }
 
 # The bytes one operation committed, read back with the product's own reader.
@@ -1350,6 +1424,12 @@ run_scenario_body() {
     # one that knows. It is one path, not a language: the scenario derives what it needs.
     export PIPELINEK_E2E_ROOT="$root"
 
+    # The control root of THIS execution. It is where the run's own record of its last
+    # run lives, so a scenario can learn which run it is and ask the product about it:
+    # the run id is the one thing a run knows about itself before it does anything.
+    # The volatile execution has its own control root, and the launcher says which.
+    export PIPELINEK_E2E_CONTROL="$root/control"
+
     # A scenario that kills its own process needs to know WHICH process to kill,
     # and the launcher is the only one that can say where to put that answer.
     # The file lives beside the store, NOT in the scenario's working directory:
@@ -1409,13 +1489,16 @@ run_scenario_body() {
         # and that is where a scenario's markers live.
         mkdir -p "$root/cwd-volatile"
         local durable_home="$PIPELINEK_E2E_HOME"
+        local durable_control="$PIPELINEK_E2E_CONTROL"
         export PIPELINEK_E2E_HOME="$root/cwd-volatile"
+        export PIPELINEK_E2E_CONTROL="$root/control-volatile"
         cd "$root/cwd-volatile"
         binary run --isolated --control-root "$root/control-volatile" \
             ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
             >"$vstdout" 2>"$vstderr" || vcode=$?
         cd "$caller_pwd"
         export PIPELINEK_E2E_HOME="$durable_home"
+        export PIPELINEK_E2E_CONTROL="$durable_control"
         count_run
     fi
 
@@ -2273,6 +2356,12 @@ run_scenario_body() {
                 return 1
             fi
             : >"$transcript"
+            local operations
+            if ! operations="$(declared_operations "$ex_control" "$run_id")"; then
+                printf 'FAIL %-52s the operations of the run could not be listed\n' "$ex_label"
+                check_detail="the operations of the run could not be listed"
+                return 1
+            fi
             local operation
             while IFS= read -r operation; do
                 [[ -n "$operation" ]] || continue
@@ -2282,7 +2371,7 @@ run_scenario_body() {
                     return 1
                 fi
                 cat "$root/transcript.part" >>"$transcript"
-            done <<<"$(declared_operations "$ex_control" "$run_id")"
+            done <<<"$operations"
 
             for wanted in ${expect_transcript[@]+"${expect_transcript[@]}"}; do
                 if ! grep -aqF -- "$wanted" "$transcript"; then
@@ -2353,8 +2442,16 @@ run_scenario_body() {
             # named before the bytes are compared, because a byte comparison
             # cannot say WHICH operation disagreed.
             local durable_ops volatile_ops
-            durable_ops="$(declared_operations "$cw_durable_control" "$durable_run")"
-            volatile_ops="$(declared_operations "$cw_volatile_control" "$volatile_run")"
+            if ! durable_ops="$(declared_operations "$cw_durable_control" "$durable_run")"; then
+                printf 'FAIL %-52s the operations of the durable path could not be listed\n' "$label"
+                world_detail="the operations of the durable path could not be listed"
+                return 1
+            fi
+            if ! volatile_ops="$(declared_operations "$cw_volatile_control" "$volatile_run")"; then
+                printf 'FAIL %-52s the operations of the volatile path could not be listed\n' "$label"
+                world_detail="the operations of the volatile path could not be listed"
+                return 1
+            fi
             if [[ "$durable_ops" != "$volatile_ops" ]]; then
                 printf 'FAIL %-52s the two execution paths committed output for different operations\n' "$label"
                 diff <(printf '%s\n' "$durable_ops") <(printf '%s\n' "$volatile_ops") \

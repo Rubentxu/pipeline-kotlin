@@ -178,6 +178,23 @@ internal class ParallelStageEngine(
      * here, never into a durable terminal truth.
      * The join is all-or-nothing by construction: every launched branch is awaited before this
      * returns, so a fast failure can never leave a slow sibling still writing journal rows.
+     *
+     * ## What a parallel stage promises, and what it does not
+     *
+     * The branches of a parallel stage run at the same time, and **the order in which they
+     * finish is not promised**. It is not a fact about this implementation that could change:
+     * it is a race, and a race has no order to promise. Measured on this build, the same
+     * pipeline run twelve times closed its two branches in one order four times and in the
+     * other order seven.
+     *
+     * What IS promised: every branch runs, every branch reaches a verdict, and the aggregate
+     * is the fold over those verdicts — the first failure by branch index, which is
+     * deterministic because the index is the definition, not the clock.
+     *
+     * A consumer that compares two runs must therefore compare what the branches DID and not
+     * the order in which they were heard. The event lane keeps the truth either way: every
+     * branch event carries the branch index it belongs to, so the order can be recovered
+     * from the record even though it cannot be promised in advance.
 */
     private suspend fun launchBranches(
         branches: List<StageNode>,

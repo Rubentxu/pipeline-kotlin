@@ -6,6 +6,7 @@
 //@ expect-stdout CAPABILITIES_SCHEMA_V2
 //@ expect-stdout CAPABILITIES_ONE_VOCABULARY
 //@ expect-stdout ONE_VERSION_THREE_FACES
+//@ expect-stdout OPERATIONS_ADDRESS_THEIR_OWN_BYTES
 
 // The product, asked about itself.
 //
@@ -177,6 +178,74 @@ pipeline {
                 else
                     echo "the three faces of the version disagree: version=$(cat version.txt) sdk-info=$(cat sdk-version.txt) capabilities=$(cat capabilities-version.txt)" >&2
                     echo LEG_version_faces_disagree
+                fi
+                """.trimIndent(),
+            )
+        }
+
+        // The operations of THIS run, with the identity a consumer reads.
+        //
+        // The run knows its own id before it does anything: the control root
+        // holds the record of the run that was just started, and it is written
+        // before the first step executes. So the scenario can ask the product
+        // about the run it is running in, which is exactly what a consumer
+        // does when it is handed a run id.
+        //
+        // The two branches exist so that the run has operations whose identity
+        // is not the same as the name their bytes are filed under: the plane
+        // keeps a stream under a FOLDED name, and a folded name cannot tell
+        // two operations apart. The check is deliberately blind to the shape
+        // of an identity -- it never assumes what an operation id looks like.
+        // It asks the product which operations the run has, reads each one back
+        // with the identity the product published, and checks that each read
+        // returns that operation's own bytes and nobody else's.
+        stage("operations") {
+            parallel {
+                branch("a") { sh("""echo 'BRANCH_A_MARKER'""") }
+                branch("b") { sh("""echo 'BRANCH_B_MARKER'""") }
+            }
+        }
+
+        stage("operations-are-addressable") {
+            sh(
+                """
+                control="${'$'}PIPELINEK_E2E_CONTROL"
+                run_id=""
+                for record in "${'$'}control"/last-run/*; do
+                    [ -f "${'$'}record" ] || continue
+                    run_id="$(head -1 "${'$'}record")"
+                    break
+                done
+                if [ -z "${'$'}run_id" ]; then
+                    echo "the run left no record of itself, so its operations cannot be asked about" >&2
+                    echo LEG_no_run_record
+                    exit 1
+                fi
+                listing="$('${product}' operations "${'$'}run_id" --control-root "${'$'}control" 2>/dev/null)"
+                if [ -z "${'$'}listing" ]; then
+                    echo "the product named no operation for a run that committed output" >&2
+                    echo LEG_operations_empty
+                    exit 1
+                fi
+                a_operations=0
+                b_operations=0
+                mixed=0
+                while IFS= read -r operation; do
+                    [ -n "${'$'}operation" ] || continue
+                    bytes="$('${product}' console --control-dir "${'$'}control" "${'$'}run_id" "${'$'}operation" 2>/dev/null)"
+                    has_a=0
+                    has_b=0
+                    case "${'$'}bytes" in *BRANCH_A_MARKER*) has_a=1 ;; esac
+                    case "${'$'}bytes" in *BRANCH_B_MARKER*) has_b=1 ;; esac
+                    a_operations=$((a_operations + has_a))
+                    b_operations=$((b_operations + has_b))
+                    if [ "${'$'}has_a" = 1 ] && [ "${'$'}has_b" = 1 ]; then mixed=1; fi
+                done <<<"${'$'}listing"
+                if [ "${'$'}a_operations" = 1 ] && [ "${'$'}b_operations" = 1 ] && [ "${'$'}mixed" = 0 ]; then
+                    echo OPERATIONS_ADDRESS_THEIR_OWN_BYTES
+                else
+                    echo "the published identities do not address the operations they name: ${'$'}a_operations operation(s) carried the first branch, ${'$'}b_operations the second, and ${'$'}mixed carried both" >&2
+                    echo LEG_operations_address
                 fi
                 """.trimIndent(),
             )

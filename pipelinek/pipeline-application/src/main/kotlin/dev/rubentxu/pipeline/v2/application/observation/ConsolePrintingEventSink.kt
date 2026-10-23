@@ -12,24 +12,27 @@ import dev.rubentxu.pipeline.v2.events.EventSink
  * the same object the engine already calls, so live output costs no extra
  * authority and cannot observe a half-committed page.
  * ## Where it MUST sit
- * Above [dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink], never
- * below it. Every event reaching this sink has already been redacted, which is
- * what makes printing it safe; a console observer below redaction would put
- * credentials on the terminal. That is the "redact before durable persistence
- * or public presentation" rule — and stating it here also states the
- * limit: **this class is not a security boundary**. Redaction happens upstream;
- * this only presents what it is given.
+ * BELOW [dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink], never above
+ * it. Events travel DOWN the chain, so the redaction has to come first: this sink
+ * is handed events that have already been scrubbed, and that is what makes
+ * printing them safe. A console above the redaction would render the event
+ * before it has been scrubbed, and that is how a registered secret reaches the
+ * terminal: the run refuses to keep it and prints it anyway. That is the
+ * "redact before durable persistence or public presentation" rule — and stating
+ * it here also states the limit: **this class is not a security boundary**.
+ * Redaction happens upstream; this only presents what it is given.
  * ## Scope of "live"
  * This streams the EVENT spine: stage and step lifecycle, `echo` messages,
- * failures, directives. It does NOT stream process stdout/stderr. The transcript
- * reaches the Output Plane after the step finishes, by design — `cleanup`
- * deliberately preserves `console.log` so the post-step consumer does not race
- * it (`DurableShellExecutor.cleanup`). Live process output is therefore a
- * separate, later change, not something this class pretends to deliver.
+ * failures, directives. It does NOT stream process stdout/stderr — the bytes a
+ * process writes are not events, they live in the Output Plane, and they reach
+ * the terminal through the observer that follows that plane while the run is in
+ * flight. The transcript of a step reaches the plane after the step finishes, by
+ * design — `cleanup` deliberately preserves `console.log` so the post-step
+ * consumer does not race it (`DurableShellExecutor.cleanup`).
  * ## Interaction with the machine formats
  * Installed only when the format is [ObservationFormat.TEXT]. A JSON consumer
  * requires stdout to carry nothing but its document, so a human line here would
- * Corrupt it. That is the same separation draws between `view` and
+ * Corrupt it. That is the same separation that draws between `view` and
  * `format`.
  * ## Selection is presentation, never storage
  * [query] is a READ filter, and the trap this class exists to avoid is treating it as a write
@@ -38,7 +41,7 @@ import dev.rubentxu.pipeline.v2.events.EventSink
  * make the run unreplayable and would quietly turn a display preference into a durability
  * decision — the CLI would be destroying the record of what happened.
  * It exists at all because this is the DEFAULT path: with `--format text` the end-of-run dump is
- * suppressed (see `Main.kt`), so a filter applied only there would never be applied to anything.
+ * suppressed, so a filter applied only there would never be applied to anything.
  * `--grep`, `--stage`, `--step` and `--kind` were therefore silently dead parameters on the very
  * path they are advertised on. That is the "dead semantic parameter" the Semantic Constitution
  * forbids: the CLI accepts a flag that changes no observable output.

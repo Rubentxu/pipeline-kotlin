@@ -4,8 +4,9 @@ import dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding
 import dev.rubentxu.pipeline.v2.application.durable.SagaVerdict
 import dev.rubentxu.pipeline.v2.application.durable.supportsCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
-import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
@@ -66,20 +67,21 @@ internal fun runDurablePipeline(
     compiledQuery: CompiledObservationQuery,
     scriptPath: Path,
 ) {
-    // Durable mode: SqliteEventStore + PipelineOrchestrator for replay/divergence gating.
-    // Both stores are wrapped with RedactingEventSink at construction time (the only place where
-    // event payloads are redacted on write).
-    val store = admitDurableEventStore(dbPath, secretPatternRegistry)
+    // Durable mode: the run's events are kept in a SQLite journal. The narration is composed by
+    // the SAME authority the volatile world asks, so the two worlds differ in WHERE the events
+    // are kept and in nothing else: a run tells its story the same way with a database as
+    // without one.
+    val store = admitDurableEventStore(dbPath)
     val rawEventStore = store.rawEventStore
-    val eventStore = store.eventStore
+    val eventStore = composeNarratingEventStore(
+        raw = rawEventStore,
+        policy = NarrationPolicy(config.format, config.view, compiledQuery),
+        secretPatternRegistry = secretPatternRegistry,
+    )
 
     // The script-derived hash is the DefinitionId. Durable policy decides
     // whether its persisted RunId is reused or intentionally replaced.
-    val scriptContent = scriptPath.toFile().readText()
-    val definitionId = dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator.definitionId(
-        scriptPath.toString(),
-        scriptContent,
-    )
+    val definition = readDefinitionSource(scriptPath)
     val controlDirRoot = resolveDurableControlRoot(config, dbPath)
     // the canonical engine threads `workspaceBase` through
     // `CanonicalRuntimeContext.workspaceBase`; the capability bridge
@@ -95,7 +97,7 @@ internal fun runDurablePipeline(
         config = config,
         eventStore = eventStore,
         controlDirRoot = controlDirRoot,
-        definitionId = definitionId,
+        definitionId = definition.definitionId,
     )
     val runId = identity.runId
     val lease = identity.lease
@@ -103,7 +105,7 @@ internal fun runDurablePipeline(
         eventStore = eventStore,
         runId = runId,
         scriptPath = scriptPath,
-        scriptContent = scriptContent,
+        scriptContent = definition.content,
         pluginJars = config.pluginJars,
     )
     val compilation = source.compilation
@@ -238,7 +240,7 @@ internal fun runDurablePipeline(
         // and releases the persistent connection; the JVM exits cleanly because
         // DestroyJavaVM no longer waits on queue.take().
         rawEventStore.flush()
-        val lastEventCaptured = streamDurableEvents(
+        val lastEventCaptured = publishDurableObservations(
             eventStore = eventStore,
             runId = runId,
             sagaTerminals = sagaTerminals,
@@ -318,36 +320,52 @@ private fun compileDurableScript(
 }
 
 /**
- * Stream a durable run's events to stdout and report the last one.
+ * The end of a durable run: what reaches stdout, and the two facts the verdict is made of.
  *
- * durable JSON envelope (M5 RSS debt): the JSON envelope goes out one event at a time
- * (identical byte output to JsonEventLog.encode) and only the last event is
- * tracked for the legacy outcome branch — never the full list, never a single
- * monolithic JSON String (1 GiB transcripts made this multi-GB).
+ * ## Why the human story is not told twice
+ * The console was told the story while the run was happening, because the narration is
+ * composed by the same authority the volatile world asks. Printing the same events again
+ * here would repeat it, and the repetition would arrive after the process output it exists
+ * to explain — a transcript that reads as if the run had happened twice.
+ *
+ * The machine formats are the opposite case: a JSON document cannot be streamed, so it is
+ * written once, at the end, from the journal.
+ *
+ * ## Why the journal is read back at all
+ * The verdict of a run is decided by its last event, and the Saga verdict by the Saga
+ * terminals among them. Both live in the journal, so both are read from it — once, here,
+ * where the decision they feed is made.
  */
-private fun streamDurableEvents(
+private fun publishDurableObservations(
     eventStore: dev.rubentxu.pipeline.v2.events.EventSink,
     runId: String,
     sagaTerminals: MutableList<SagaTerminal>,
-    view: dev.rubentxu.pipeline.v2.application.observation.ObservationView,
-    format: dev.rubentxu.pipeline.v2.application.observation.ObservationFormat,
+    view: ObservationView,
+    format: ObservationFormat,
     compiledQuery: CompiledObservationQuery,
 ): DomainEvent? {
-    val eventSequence = eventStore.eventsFor(runId)
     var lastEventCaptured: DomainEvent? = null
+    val observed = eventStore.eventsFor(runId).onEach { event ->
+        lastEventCaptured = event
+        if (event is SagaTerminal) sagaTerminals += event
+    }
+    if (format == ObservationFormat.TEXT) {
+        // The story was told live; this walk only recovers the facts the verdict needs. It
+        // walks WITHOUT keeping: a transcript too large to hold in memory must not become a
+        // list just to be discarded, which is the debt the durable path once paid.
+        val iterator = observed.iterator()
+        while (iterator.hasNext()) {
+            iterator.next()
+        }
+        return lastEventCaptured
+    }
+    // The JSON envelope goes out one event at a time (identical byte output to
+    // JsonEventLog.encode) and only the last event is tracked for the outcome branch — never
+    // the full list, never a single monolithic JSON String (1 GiB transcripts made this
+    // multi-GB).
     val stdout = System.out
     val writer = java.io.BufferedWriter(java.io.OutputStreamWriter(stdout, Charsets.UTF_8), 1 shl 16)
-    val lastEventRef = { event: DomainEvent -> lastEventCaptured = event }
-    RunObservationOutput.writeTo(
-        eventSequence.onEach { event ->
-            lastEventRef(event)
-            if (event is SagaTerminal) sagaTerminals += event
-        },
-        writer,
-        view,
-        format,
-        compiledQuery,
-    )
+    RunObservationOutput.writeTo(observed, writer, view, format, compiledQuery)
     writer.flush()
     return lastEventCaptured
 }
@@ -427,13 +445,9 @@ private data class DurableEventStores(
     val rawEventStore: dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore,
     val factory: () -> java.sql.Connection,
     val dbPathStr: String,
-    val eventStore: dev.rubentxu.pipeline.v2.events.EventSink,
 )
 
-private fun admitDurableEventStore(
-    dbPath: String,
-    secretPatternRegistry: SecretPatternRegistry,
-): DurableEventStores {
+private fun admitDurableEventStore(dbPath: String): DurableEventStores {
     val dbAdmission = admitEventStore(dbPath, EventStorePurpose.Write)
     if (dbAdmission is EventStoreAdmission.Refused) {
         System.err.println(dbAdmission.refusal.render())
@@ -442,11 +456,11 @@ private fun admitDurableEventStore(
         System.exit(2)
     }
     val rawEventStore = (dbAdmission as EventStoreAdmission.Admitted).store
-    // Call raw methods BEFORE wrapping — RedactingEventSink delegates these to the inner store
+    // The raw methods are read before anything wraps the store: the connection factory and the
+    // database path belong to the store itself, not to the decorators that sit on top of it.
     val factory = rawEventStore.underlyingConnectionFactory()
     val dbPathStr = rawEventStore.databasePath()
-    val eventStore = RedactingEventSink(rawEventStore, secretPatternRegistry)
-    return DurableEventStores(rawEventStore, factory, dbPathStr, eventStore)
+    return DurableEventStores(rawEventStore, factory, dbPathStr)
 }
 
 /**

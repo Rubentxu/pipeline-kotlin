@@ -3,14 +3,11 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.durable.SagaVerdict
 import dev.rubentxu.pipeline.v2.application.durable.analyzeCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
-import dev.rubentxu.pipeline.v2.application.observation.ConsolePrintingEventSink
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
-import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
-import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.SagaTerminal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
@@ -39,6 +36,10 @@ import java.nio.file.Path
  * request differ on purpose — the credential provider (the pipeline-managed workspace owner: a run with nowhere
  * to look answers `NotConfigured`) and the control root (necessarily, because
  * the two worlds keep their control state in different places).
+ *
+ * What a world KEEPS and what it NARRATES are not two decisions either: the
+ * store is the only difference between them, and the narration is composed the
+ * same way in both ([composeNarratingEventStore]).
  *
  * And one route exists ONLY in the durable world: the scripted-frontend form
  * (`runScriptedFrontend`), which the durable branch resolves and this one does
@@ -70,18 +71,18 @@ internal fun runVolatilePipeline(
         System.exit(2)
         return
     }
-    val eventStore = composeVolatileEventStore(config, secretPatternRegistry, compiledQuery)
-    val scriptContent = scriptPath.toFile().readText()
-    val definitionId = dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator.definitionId(
-        scriptPath.toString(),
-        scriptContent,
+    val eventStore = composeNarratingEventStore(
+        raw = InMemoryEventStore(),
+        policy = NarrationPolicy(config.format, config.view, compiledQuery),
+        secretPatternRegistry = secretPatternRegistry,
     )
+    val definition = readDefinitionSource(scriptPath)
     val controlDirRoot = resolveVolatileControlRoot(config)
     val identity = establishVolatileIdentity(
         config = config,
         eventStore = eventStore,
         controlDirRoot = controlDirRoot,
-        definitionId = definitionId,
+        definitionId = definition.definitionId,
     )
     val runId: String = identity.runId
     val compilation = compileScriptForRun(
@@ -101,7 +102,7 @@ internal fun runVolatilePipeline(
         compileOrRefuse(
             spec = spec,
             sourcePath = scriptPath.toString(),
-            sourceContent = scriptContent,
+            sourceContent = definition.content,
         )
     }
 
@@ -320,33 +321,6 @@ private fun establishVolatileIdentity(
         format = config.format,
     )
     return VolatileRunIdentity(runId = runId, correlationId = correlationId, ownerId = syntheticOwner)
-}
-
-/**
- * The event store of a volatile run: in memory, and mirrored live in TEXT.
- *
- * in TEXT the run is mirrored live as events are appended, so
- * the end-of-run dump is suppressed in the caller. Machine formats keep stdout
- * untouched and are written once, at the end, exactly as before.
- */
-private fun composeVolatileEventStore(
-    config: CliFlags,
-    secretPatternRegistry: SecretPatternRegistry,
-    compiledQuery: CompiledObservationQuery,
-): EventSink {
-    val rawEventStore = InMemoryEventStore()
-    val redactedStore = RedactingEventSink(rawEventStore, secretPatternRegistry)
-    return if (config.format == ObservationFormat.TEXT) {
-        // The query rides along because this is the only place a TEXT run is printed: the
-        // end-of-run dump is suppressed below, so a filter honoured only there would be
-        // honoured by nothing. It suppresses presentation only; the store still receives
-        // every event.
-        ConsolePrintingEventSink(redactedStore, config.view, compiledQuery) { line ->
-            System.out.println(line)
-        }
-    } else {
-        redactedStore
-    }
 }
 
 /**

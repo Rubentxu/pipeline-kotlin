@@ -1,6 +1,13 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.AdmissionControlJournal
+import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
+import dev.rubentxu.pipeline.v2.application.observation.ConsolePrintingEventSink
+import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
+import dev.rubentxu.pipeline.v2.application.observation.ObservationView
+import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
+import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
+import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.scripting.ScriptDefinition
 import java.nio.file.Files
 import java.nio.file.Path
@@ -102,6 +109,60 @@ internal fun computeBundledPlugins(): List<String> {
             emptyList() // unreachable
         }
     }
+}
+
+/**
+ * What a run is allowed to say: the format that encodes it, the view that
+ * selects it and the query that filters it.
+ *
+ * The three travel together because the command line decides them together,
+ * and a composition that took them apart could be called with one decision from
+ * one place and another from another.
+ */
+internal data class NarrationPolicy(
+    val format: ObservationFormat,
+    val view: ObservationView,
+    val query: CompiledObservationQuery,
+)
+
+/**
+ * The store a run narrates itself through, and the ONE place that decides how.
+ *
+ * Both execution paths call this, so the two cannot disagree about what a run
+ * says about itself. The worlds differ in WHERE the events are kept — a SQLite
+ * journal or an in-memory store — and in nothing else: the same script, run
+ * with a database or without one, tells the operator the same story.
+ *
+ * ## The order of the two decorators IS the security property
+ *
+ * Redaction comes first, and the console presents what the store keeps. A
+ * console wired ABOVE the redaction renders the event before it has been
+ * scrubbed, and that is how a registered secret reaches the terminal: the run
+ * refuses to keep it and prints it anyway.
+ *
+ * ## The human view narrates while the run happens
+ *
+ * A run that is watched has to be legible while it runs. The narration is
+ * printed as the events are appended, so the operator sees which step is
+ * running now instead of a transcript that arrives when everything is over.
+ * The machine formats keep their document at the end: a JSON array is a
+ * document, and a document cannot be streamed.
+ *
+ * @param emit where the narration goes. The caller owns the destination; this
+ * function owns WHAT is narrated and in what shape.
+ */
+internal fun composeNarratingEventStore(
+    raw: EventSink,
+    policy: NarrationPolicy,
+    secretPatternRegistry: SecretPatternRegistry,
+    emit: (String) -> Unit = { line -> System.out.println(line) },
+): EventSink {
+    val narrating = if (policy.format == ObservationFormat.TEXT) {
+        ConsolePrintingEventSink(raw, policy.view, policy.query, emit)
+    } else {
+        raw
+    }
+    return RedactingEventSink(narrating, secretPatternRegistry)
 }
 
 /**

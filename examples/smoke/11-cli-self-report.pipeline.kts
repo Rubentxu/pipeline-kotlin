@@ -7,6 +7,7 @@
 //@ expect-stdout CAPABILITIES_ONE_VOCABULARY
 //@ expect-stdout ONE_VERSION_THREE_FACES
 //@ expect-stdout OPERATIONS_ADDRESS_THEIR_OWN_BYTES
+//@ expect-stdout FOLDED_IDENTITY_GETS_NO_NEIGHBOUR_BYTES
 
 // The product, asked about itself.
 //
@@ -246,6 +247,43 @@ pipeline {
                 else
                     echo "the published identities do not address the operations they name: ${'$'}a_operations operation(s) carried the first branch, ${'$'}b_operations the second, and ${'$'}mixed carried both" >&2
                     echo LEG_operations_address
+                fi
+
+                # A DIFFERENT identity that lands in the SAME directory.
+                #
+                # The plane files a stream under a FOLDED name, and the fold is lossy: two
+                # identities that differ only in a character the fold replaces land in ONE
+                # directory. The bytes there belong to one of them, and the other must not be able
+                # to read them — the neighbour's bytes are not an answer to this question, and
+                # returning them is a silent wrong answer rather than an error.
+                #
+                # The twin is built WITHOUT assuming what an identity looks like: every character
+                # the fold replaces is replaced, so the twin is a different identity whose folded
+                # name is the same one.
+                #
+                # It lives in THIS block on purpose: the listing is read here, and a check that
+                # had to fetch it again in another shell would be a check that could ask about
+                # nothing and still pass.
+                twins_asked=0
+                folded_neighbour_bytes=0
+                while IFS= read -r operation; do
+                    [ -n "${'$'}operation" ] || continue
+                    twin="$(printf '%s' "${'$'}operation" | sed 's/[^A-Za-z0-9._-]/_/g')"
+                    [ "${'$'}twin" = "${'$'}operation" ] && continue
+                    twins_asked=$((twins_asked + 1))
+                    bytes="$('${product}' console --control-dir "${'$'}control" "${'$'}run_id" "${'$'}twin" 2>&1)"
+                    case "${'$'}bytes" in
+                        *BRANCH_A_MARKER*|*BRANCH_B_MARKER*) folded_neighbour_bytes=1 ;;
+                    esac
+                done <<<"${'$'}listing"
+                if [ "${'$'}twins_asked" -ge 1 ] && [ "${'$'}folded_neighbour_bytes" = 0 ]; then
+                    echo FOLDED_IDENTITY_GETS_NO_NEIGHBOUR_BYTES
+                elif [ "${'$'}twins_asked" -lt 1 ]; then
+                    echo "the published identities carry no character a folded name could replace, so this check could not be asked" >&2
+                    echo LEG_folded_identity_never_asked
+                else
+                    echo "an identity that folds onto another one's directory read its bytes" >&2
+                    echo LEG_folded_identity_neighbour_bytes
                 fi
                 """.trimIndent(),
             )

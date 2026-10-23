@@ -99,17 +99,17 @@ composición se rechaza.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `ffbc43d5f`, medido en los ensayos de este bloque. El ciclo anterior movió la versión del producto a `0.76.0` (§2.61), reparó 25 ficheros de comentarios que afirmaban cosas ya falsas (§2.62), auditó dieciséis escenarios del arnés por mutación (§2.63), corrigió el conteo del informe del arnés (§2.64) y comparó las dos rutas de ejecución entre sí (§2.65). Este bloque **cambia el orden de la salida de la consola en las dos rutas**: una sola autoridad compone la narración, la redacción va antes que ella, y la ruta con journal narra en vivo como la otra. De paso cierra una fuga medida: la ruta sin journal imprimía en el terminal un secreto que su propio almacén se negaba a guardar (§2.66) | `git rev-parse HEAD` |
+| SHA | `16e4efa7f`, medido en los ensayos de este bloque. El ciclo anterior unificó la narración de las dos rutas y cerró una fuga medida: la ruta sin journal imprimía en el terminal un secreto que su propio almacén se negaba a guardar (§2.66). Este bloque **completa la superficie de la redacción del registro de una corrida**: la lista cubría cinco tipos de evento y la taxonomía tiene treinta que llevan texto libre, así que veintiséis superficies por las que un secreto registrado podía llegar al registro, incluida la respuesta de una persona a una pregunta del pipeline. Además corrige el encuadre del bloque anterior, que TOMABA por defecto lo que la ley de separación de canales ya decidía (§2.67) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1089** (154 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1090** (155 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **61 (61 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **61 de 61**: **373 comparaciones sobre 110 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 373, **88** son esas comparaciones nuevas: **44** de los 61 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **19654 / 67462 = 0.29** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **19825 / 67530 = 0.29** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **159 / 143 / 142** en los tres ensayos, los tres sobre `ffbc43d5f`, peor 159 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **168 / 141 / 149** en los tres ensayos, los tres sobre `16e4efa7f`, peor 168 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -123,21 +123,21 @@ sale mejor que la realidad.
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
 165 s en el bloque de las tres familias; el ciclo anterior a éste midió 197, 169
-y 376 s, y el anterior a ése 187, 130 y 133 s. Este mide **159, 143 y 142 s**:
+y 376 s, y el anterior a ése 187, 130 y 133 s. Este mide **168, 141 y 149 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
 de este ciclo el presupuesto se cumplió con holgura —el peor, 158 s, es menos de
 la sexta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
 la API pública, los 1087 tests y los 61 escenarios.
 
-**La etapa del E2E mide 90, 90 y 89 s**, contra los 88 s del ciclo anterior
-(§2.65) y los 79-81 s del anterior a ése (§2.63). Los **siete segundos** que
-cuesta leer, con el propio verbo `console` del producto, los bytes que las dos
-rutas comprometieron (§2.65) siguen ahí, y se suman los **dos** que cuesta que
-la narración de la ruta con journal llegue en vivo en vez de al final (§2.66).
-Es el precio de una comparación que encuentra una clase de defecto que ninguna
-expectativa declarada puede ver, y está medido para que la decisión se pueda
-rehacer con el número delante. El resto del coste sigue siendo el mismo: los 61
+**La etapa del E2E mide 84, 86 y 86 s**, contra los 90, 90 y 89 s del ciclo
+anterior (§2.66) y los 88 s del anterior a ése (§2.65). Los **siete segundos**
+que cuesta leer, con el propio verbo `console` del producto, los bytes que las
+dos rutas comprometieron (§2.65) siguen ahí, y este ciclo **no añade ningún
+escenario**: la aserción nueva es una línea dentro de un escenario que ya
+existía (§2.67). Es el precio de una comparación que encuentra una clase de
+defecto que ninguna expectativa declarada puede ver, y está medido para que la
+decisión se pueda rehacer con el número delante. El resto del coste sigue siendo el mismo: los 61
 escenarios son los mismos y la caché de scripts compilados que el producto ya
 tenía apagada sigue siendo la que hace que el E2E no cueste 111 s (§2.63), y
 **la causa de que el arnés corra el producto dos veces por escenario sigue siendo
@@ -7391,6 +7391,102 @@ reproducible. Lo que sí es un defecto sin discusión es que **sea la segunda
 autoridad**: el almacén de eventos redacta, el diario no, y los dos viven en el
 mismo fichero.
 
+**Corrección, medido después.** Esa lectura era equivocada, y la culpa fue de
+este bloque: el diario no es una segunda autoridad sobre lo mismo, es otro
+canal. El del valor tipado, que es exacto por ley porque un paso al que se le
+pide capturar un stdout tiene que recibirlo exacto. Los dos canales responden a
+dos preguntas distintas, y el hueco real estaba en otro sitio: en las 26
+superficies del spine que la lista de redacción no cubría (§2.67).
+
+
+### 2.67 La lista de superficies libres era una promesa que nadie cumplía
+
+Este bloque sigue la pregunta que el anterior dejó abierta, y la respuesta
+corrige parte de lo que aquel bloque afirmó.
+
+**La brecha, medida.** La redacción del registro de una corrida era una lista
+escrita a mano de cinco tipos de evento. La taxonomía del registro tiene
+**76 tipos** que el binario sabe decodificar, y **30 de ellos llevan texto
+libre**: un campo llamado `content`, `message`, `reason` o `url`, o los
+diagnósticos de una compilación o de una corrida. La lista cubría cinco, y uno
+de esos cinco a medias: el fallo de un `git checkout` tenía el motivo limpio y
+la URL sucia.
+
+La cuenta final: **26 superficies** por las que un secreto registrado podía
+llegar al registro de la corrida. Una de ellas es la **respuesta de una persona
+a una pregunta del pipeline**: la consola enseña quién respondió y calla la
+respuesta, y el registro guardaba la respuesta en claro.
+
+**Cómo se encontró, que es la parte que importa.** No leyendo la lista y
+pensando: preguntando al código dos preguntas y comparando las respuestas. La
+primera es qué tipos llevan texto libre (la taxonomía). La segunda es qué
+tipos presenta la consola con texto (el renderizador). La tercera es qué tipos
+cubre la lista. La diferencia entre la segunda y la tercera es la brecha, y
+sale de comparar dos fuentes de verdad que ya existían en el repositorio.
+
+**La decisión: la lista es la regla aplicada.** Ahora se limpia todo tipo que
+lleve texto libre, y el KDoc dice qué significa «texto libre» (cuatro nombres
+de campo) y por qué la lista es sobre la taxonomía y no sobre los emisores de
+hoy: nueve de los tipos listados no los emite nadie todavía, y «nadie lo emite
+todavía» es un dato de esta semana. El coste de ampliar la lista es cero en
+tiempo de ejecución: cada evento se limpia en sus propios campos, así que un
+evento con dos superficies libres cuesta lo mismo que uno con una.
+
+**La forma que acabó tomando la regla.** La lista se podría haber escrito como
+un `when` de treinta brazos sobre el evento, y así se escribió primero. El
+análisis estático lo rechazó: treinta brazos dan una complejidad de 37, y el
+techo del repositorio es 25. La forma que salió de ahí es mejor que la que
+detekt pidió: la regla son cuatro nombres de campo, así que el código son
+**cuatro pasadas, una por nombre** —el contenido, los mensajes, los motivos y
+las URLs—, y cada pasada nombra en su KDoc la superficie que limpia. El código
+dice la regla en vez de describirla.
+
+**Y el censo cazó un fallo del que lo escribió.** Al repartir los treinta
+tipos entre las cuatro pasadas se quedó fuera el `reason` de un fallo de
+petición HTTP, que además de su URL lleva un motivo. El censo lo dijo con su
+nombre, en un mensaje, y la fila se puso a sí misma en rojo. Un instrumento
+que sólo sabe dar verde no sirve para esto; uno que sabe decir QUÉ superficie
+se le escapó, sí.
+
+**El instrumento.** Un test unitario, una fila por tipo, treinta filas. La
+aserción es genérica a propósito: el secreto no puede aparecer en el evento, y
+la marca de enmascarado tiene que estar. La comprobación no nombra un campo
+porque la garantía es sobre el evento y no sobre una de sus propiedades.
+
+**Cómo se vio en rojo, dos veces.**
+
+| mutante | qué encendió |
+|---|---|
+| fuera un brazo (la respuesta de una persona) | una fila: `InputProceed conserva el secreto registrado` |
+| la lista entera de vuelta a los cinco tipos de antes | **26 filas de golpe**, y el test las enseña todas en un solo mensaje |
+
+La segunda es la que importa: un censo que se detiene en el primer fallo
+esconde lo ancho que es el hueco. Por eso el test recoge todos los fallos y
+los cuenta de una vez.
+
+**La prueba de extremo a extremo, en el escenario que ya existía.** El
+transcript —los bytes que la corrida **comprometió**— lo limpia otra capa, y
+esa capa no tenía ninguna cobertura permanente: ningún test mencionaba el
+redactor de flujo, y sólo uno de los 61 escenarios usaba la expectativa de
+transcript. Así que el escenario de credenciales, que ya ejecuta una orden que
+pone una credencial en la salida del proceso, ahora afirma además que el
+transcript comprometido muestra `API_KEY=****`. Una línea, ningún escenario
+nuevo. Y se vio en rojo: con un texto imposible el escenario falla y enseña el
+transcript entregado, en el que los siete valores de credencial están
+enmascarados.
+
+**Lo que muestra el spine de una corrida real.** Leído con el verbo del
+producto después de una corrida que ata una credencial y hace eco de su
+literal: `"content":"the value is ****\n"`. El spine está limpio.
+
+**Lo que sigue exacto, y por qué.** El diario de operaciones conserva el valor
+tipado del paso tal cual, y eso no es un descuido: el canal del valor tipado
+está separado del canal observable a propósito, porque un paso al que se le
+pide capturar un stdout lo recibe exacto y el pipeline recibe ese mismo valor.
+Un secreto que la consola y el spine enmascaran aparece en claro en la fila
+del diario cuando el texto del propio paso lo contiene. Medido, y es la ley:
+los dos canales responden a dos preguntas distintas.
+
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un comentario que afirma una verdad que el código ya no tiene es peor que
@@ -8743,6 +8839,40 @@ mismo fichero.
   que se garantiza: una composición pura se compone, se llama y se lee. Una
   distribución entera para comprobar una cadena de decoradores sería un
   instrumento caro para una ley pequeña (§2.66).
+
+
+- **La lista de redacción es la regla aplicada, no una lista que alguien
+  mantiene.** Se limpia todo tipo que lleve texto libre, y el KDoc dice qué
+  significa eso. La lista es sobre la taxonomía y no sobre los emisores de
+  hoy: nueve de los tipos no los emite nadie todavía, y «nadie lo emite
+  todavía» es un dato de esta semana (§2.67).
+
+- **Un hueco se encuentra comparando dos fuentes de verdad, no leyendo una
+  lista.** La taxonomía decía qué tipos llevan texto libre; el renderizador
+  decía cuáles presenta la consola; la lista decía cuáles estaban cubiertos.
+  El hueco era la diferencia entre dos fuentes que ya existían en el
+  repositorio (§2.67).
+
+- **Antes de buscar un defecto hay que leer las leyes.** La pregunta del
+  diario —si debía guardar el secreto en claro— ya tenía respuesta, escrita
+  en el propio KDoc del redactor: el canal del valor tipado está separado del
+  observable porque un paso al que se le pide capturar un stdout tiene que
+  recibirlo exacto. Un bloque que empieza por buscar una fuga sin leer las
+  leyes acaba culpando al sitio equivocado (§2.67).
+
+- **Un censo que se detiene en el primer fallo esconde lo ancho que es el
+  hueco.** El test recoge todos los fallos y los cuenta de una vez, para que
+  la revisión vea el tamaño del problema y no su primer síntoma (§2.67).
+
+- **Una capa sin cobertura permanente se cubre donde ya se ejercita.** La
+  limpieza del transcript no tenía ninguna prueba, y el escenario de
+  credenciales ya ejecutaba una orden que pone una credencial en la salida del
+  proceso. La aserción fue allí: una línea, ningún escenario nuevo (§2.67).
+
+- **El valor de un ciclo está también en lo que corrige.** Este bloque publicó
+  una afirmación equivocada sobre el diario y la corrigió en el mismo ciclo,
+  con la medición que la desmintió. Un registro que se corrige a sí mismo vale
+  más que un registro que nunca se equivoca (§2.67).
 
 
 ## 4. Referencias

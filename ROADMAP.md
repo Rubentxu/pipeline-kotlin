@@ -93,9 +93,12 @@ el digest de cada uno (§2.71). La candidata `v0.77.0-rc1` está publicada en
 remoto, y sus bytes se comprobaron **desde fuera**: descarga de los siete
 assets, `sha256sum -c` sobre las seis entradas de la autoridad de digest,
 instalación limpia del ZIP descargado y un pipeline real ejecutado con ese
-binario (§2.72). Lo que queda de B4 es el **consumidor externo del SDK** y la
-**economía de la instrumentación**; lo de la publicación, por fin, está
-medido.
+binario (§2.72). El **consumidor externo del SDK** es la otra mitad, y ahora
+también está medido (§2.75): el artefacto publicado dejó de ser algo que
+sólo se verificaba byte a byte y pasó a ser **el SDK que los consumidores
+externos resuelven**, de modo que un SDK publicado que no se pudiera
+resolver detuviese la construcción de la distribución. De B4 queda la
+**economía de la instrumentación**.
 
 **Lo que este ciclo midió por dentro: los verbos que hablan del producto.** El
 censo de los trece verbos de la CLI encontró que **seis** no los ejecutaba
@@ -130,6 +133,14 @@ atención —¿espera al hijo o trabaja en el plano?—, el atascado se rechaza 
 momento y nombrado, el lento se espera, y los dos rechazos son **casos
 tipados distintos** (§2.74).
 
+**Lo que este ciclo midió por fuera: el SDK que publicamos.** El producto
+publica un SDK —un repositorio Maven dentro de un ZIP— y lo verificaba byte a
+byte **sin que nadie lo consumiera jamás**: los plugins externos resolvían
+desde un directorio de paso hacia el ZIP, no desde el ZIP. La puerta no
+preguntaba si lo que enviaba se podía usar. Ahora el artefacto publicado es
+el único SDK que los consumidores ven, y el ZIP incluye además un segundo
+camino de consumo —el BOM— que tampoco estaba probado (§2.75).
+
 **Lo que está abierto ahora mismo:**
 
 | # | Qué falta | Por qué sigue abierto |
@@ -138,13 +149,21 @@ tipados distintos** (§2.74).
 | 2 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
 | 3 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | **caracterizada** (§2.57): por los caminos de producción **medidos** **dos streams no comparten bytes**, porque los segmentos dirigidos por posición no se pliegan; lo que **no** se ha demostrado es la propiedad general para todo identificador que el formato admite, y el veredicto lo dice así. Los dos defectos que sí lo eran están **cerrados**: el parser de op ids ya no descarta parte de la identidad **en silencio** (§2.59) —devuelve `null` antes que una identidad truncada, y la consola conserva su filtro por etapa y paso gracias a una lectura de índices— y la afirmación de que la colisión era inalcanzable en general está **matizada**. Queda con nombre una deuda: el formato del cuerpo **no es invertible** cuando un identificador lleva `-`, y cerrarlo es ruptura versionada que espera autorización |
 | 4 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
+| 6 | El consumidor externo del SDK | **cerrado** (§2.75): el SDK publicado se
+publicaba y se comprobaba byte a byte, pero **nada lo resolvía**: los plugins
+externos lo tomaban de un directorio intermedio. Ahora el ZIP publicado es el
+único SDK que esos consumidores resuelven, y uno de ellos consume **a través
+del BOM**, sin escribir la versión en cada coordenada. Un SDK publicado que no
+se pudiera resolver detiene la construcción de la distribución. Queda fuera:
+el ZIP no lleva las dependencias de terceros, así que no es autosuficiente
+sin red |
 | 5 | El techo del drenaje | **cerrado** (§2.74): el rechazo era tipado pero **no accionable**, y el techo era un reloj que no distinguía una bomba **atascada** (esperando bytes que nadie va a escribir) de una bomba **lenta** (escribiendo porque la máquina está ocupada). Ahora la bomba declara su atención, el atascado se rechaza **al momento y nombrado**, el lento se espera, y los dos rechazos son **casos tipados distintos** (`STUCK_CHILD`, `OUT_OF_TIME`). Queda medir **cuánto** tarda un drenaje con la máquina saturada: reproducir la saturación en un banco de pruebas es una fixture que este repositorio no tiene |
 
 ## 1. Estado medido
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `da479df68`, medido en los ensayos de este bloque. El bloque anterior **sacó la identidad de un stream del nombre plegado** (§2.73). Este bloque **arregla el techo del drenaje**: el runtime esperaba a las bombas de transcripción con un reloj fijo, y un reloj fijo no distingue una bomba atascada de una bomba lenta —a las dos las declaraba un rechazo sin decir cuál, y dos ensayos de la puerta se descartaron por ello—. Ahora la bomba declara su atención, el atascado se rechaza al momento y nombrado, el lento se espera, y los dos rechazos son casos tipados distintos. La candidata `v0.79.0-rc1` queda **publicada y verificada byte a byte** (§2.74) | `git rev-parse HEAD` |
+| SHA | `feda7dca6`, medido en los ensayos de este bloque. El bloque anterior **arregló el techo del drenaje**, que no distinguía una bomba atascada de una bomba lenta (§2.74). Este bloque hace que **el SDK que el producto publica sea el SDK que sus consumidores usan**: el ZIP publicado pasó a ser el único repositorio Maven que resuelven los plugins externos —uno de ellos **a través del BOM**—, de modo que un SDK publicado que no se pudiera resolver detuviese la construcción de la distribución. La candidata `v0.80.0-rc1` queda **publicada y verificada byte a byte**, y el SDK descargado se consumió **desde fuera** (§2.75) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
@@ -152,13 +171,13 @@ tipados distintos** (§2.74).
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **62 de 62**: **398 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 396, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **20891 / 67980 = 0.307** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **20990 / 68000 = 0.309** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **208 / 150 / 148** en los tres ensayos, los tres sobre `da479df68`, peor 208 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **210 / 148 / 146** en los tres ensayos, los tres sobre `feda7dca6`, peor 210 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
-| Candidato publicada | **`v0.79.0-rc1`** (prerelease), `candidate_id` `sha256:92082347021db1a7eecc3ad793c6097aa9e2d55f17ec8f4f63356f239abc678b`, tag en `fbca67427`; verificada **sobre los bytes descargados del remoto** (§2.74) | `gh release view v0.79.0-rc1`, `sha256sum -c SHA256SUMS` |
+| Candidato publicada | **`v0.80.0-rc1`** (prerelease), `candidate_id` `sha256:6ad871a2167de90649bbbcc83d7a5a6001f916a66fb27ae9a60dba2e79d30c4f`, tag en `feda7dca6`; verificada **sobre los bytes descargados del remoto** (§2.75) | `gh release view v0.80.0-rc1`, `sha256sum -c SHA256SUMS` |
 | Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -8208,7 +8227,114 @@ propios bytes y no los de la otra.
   exactamente eso.
 
 
+### 2.75 El SDK que publicamos no lo había consumido nadie
+
+**El hueco.** El producto publica un SDK: un repositorio Maven dentro de un ZIP, con
+los cinco contratos públicos y el BOM que los fija. Cada candidata lo publica y lo
+comprueba **byte a byte** desde el remoto. Y, con todo eso, **nada en este
+repositorio lo había resuelto jamás**: los cuatro plugins externos —los únicos
+consumidores reales de los contratos públicos del árbol— resolvían desde
+`build/sdk-repo`, un **directorio** de paso hacia el ZIP.
+
+La diferencia no era de matiz. El ZIP es lo que se publica y lo que baja un
+tercero; el directorio es un paso intermedio de la construcción. Resolver desde el
+directorio probaba que los contratos existían, no que el artefacto publicado se
+pudiera usar. Un cambio en el grupo de coordenadas, en el BOM, en los metadatos
+de Gradle o en la disposición del ZIP se publicaba candidata tras candidata con la
+puerta en verde, porque la puerta no preguntaba si lo que enviaba se podía
+consumir.
+
+**Medido antes de tocar nada.** Desde fuera, con un proyecto Gradle que no vive en
+este repositorio, el SDK publicado **sí** resolvía: los cinco contratos y el BOM,
+por coordenadas explícitas y también a través del BOM —sin versión propia en las
+dependencias—. Es decir: el artefacto era correcto y **nadie lo había comprobado**.
+La deuda no era el ZIP; era que su corrección dependía de una inspección que nadie
+hacía.
+
+**Lo que ahora es verdad.** El artefacto publicado es el único SDK que los
+consumidores ven:
+
+- el ZIP se desempaqueta en el repositorio Maven que las cuatro construcciones
+  externas resuelven;
+- una de ellas —el plugin insignia— consume **a través del BOM publicado**, sin
+  escribir la versión en cada coordenada: una declaración de plataforma y tres
+  contratos sin versión;
+- el SDK publicado es **entrada declarada** de las cuatro construcciones, así que
+  un cambio en lo que se publica las vuelve a ejecutar.
+
+La consecuencia es la que importa: **un ZIP que no se puede resolver detiene la
+construcción de la distribución**. La garantía deja de ser una frase y pasa a ser
+una condición de salida. Y el escenario E2E no crece: los mismos 62, y los
+plugins que ejecutan son los que compilaron contra el ZIP.
+
+**La regla del paquete, y el defecto que tenía.** Al desempaquetar el ZIP, el
+constructor elegía las entradas **buscando la versión en el texto de la ruta**, y
+sobre la ruta **absoluta**. Una ruta que sólo la menciona —un checkout bajo un
+directorio con el nombre de la versión— selecciona artefactos de otra versión. La
+regla ahora es una función pura de las rutas **relativas**: una entrada pertenece
+a la versión cuando **la carpeta que la contiene** se llama así. Es la regla del
+layout Maven, dicha sin ambigüedad, y ya no puede desviarse por dónde cayó la
+construcción.
+
+**Lo que se vio en rojo.** Tres mutaciones, cada una con su fila exacta:
+
+| Mutación | Fila roja |
+|---|---|
+| la regla vuelve a leer el texto de la ruta | **2** — `a path that mentions the version outside its own folder is left out` y `a file whose name carries the version is left out` |
+| el BOM desaparece del ZIP | el consumidor que consume **por BOM**: `Could not find dev.rubentxu.pipeline.v2:pipeline-sdk-bom:0.79.0`, y los tres contratos **sin versión**, porque el BOM era quien los fijaba |
+| el grupo de coordenadas se pliega en el ZIP | los **dos** modos de consumo: el del BOM (`Could not find …pipeline-sdk-bom`) y el de coordenadas explícitas (`Could not find …pipeline-domain:0.79.0`) |
+
+**Lo que la puerta midió.** `PASS` tres veces sobre el árbol commiteado
+(`feda7dca6`): **210 / 148 / 146 s**, con un presupuesto de 900 s y `tests=rewritten:1138`.
+Los 62 escenarios llevan una garantía comprobada —**398** comparaciones sobre **112** de
+ejecuciones— y el LOC queda en **20990** de verificación sobre **68000** de producto (0.309).
+
+**Lo que se verificó después de publicar.** La candidata `v0.80.0-rc1` se
+publicó y se comprobó **sobre los bytes publicados**, no sobre los locales: la
+descarga de los siete assets desde el remoto, `sha256sum -c` con las seis
+entradas de la autoridad de digest, el digest que el propio repositorio resuelve,
+la instalación limpia del ZIP descargado y un pipeline real con ese binario. El
+SDK descargado se consumió **fuera** del repositorio, por coordenadas y a través
+del BOM.
+
+**Lo que queda fuera, dicho con honestidad.**
+
+- **El ZIP no lleva sus dependencias de terceros.** El SDK publicado contiene los
+  cinco contratos y el BOM; `kotlin-stdlib`, `kotlinx-serialization` y
+  `kotlinx-coroutines` se resuelven del repositorio central. Es lo normal en
+  Maven, pero significa que el ZIP **no es autosuficiente**: un consumidor sin red
+  no construye nada con él. Meter las dependencias de terceros dentro del ZIP
+  cambiaría el contrato de resolución, y eso es una decisión de producto, no una
+  reparación.
+- **La caché de resolución de Gradle puede servir un artefacto que ya no está.**
+  La primera medición del «BOM ausente» salió **verde**: el build anidado estaba
+  al día y no volvió a resolver. Declarar el SDK publicado como **entrada** de las
+  construcciones lo arregla —un cambio vuelve a ejecutarlas—, pero la caché sigue
+  pudiendo servir un artefacto retirado si nada más cambió. En un entorno limpio
+  la resolución ocurre siempre.
+- **La promoción a estable sigue bloqueada**: no hay certificador externo en
+  este repositorio ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`,
+  no `PASS`. Lo que este ciclo publica es la **candidata**.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **Un artefacto que nadie consume no está verificado.** Comprobar byte a byte
+  que el SDK publicado es el que dice ser no dice que se pueda resolver: el
+  digest responde «los bytes son estos», y la pregunta del consumidor es «¿puedo
+  construir con esto?». La respuesta se mide consumiéndolo, y el que lo consume
+  tiene que ser alguien de fuera (§2.75).
+- **El artefacto publicado es la única SDK que los consumidores ven.** Un
+  directorio intermedio y un ZIP son el mismo contenido con dos caras, y dos
+  caras son dos autoridades. La que se publica es la que se resuelve (§2.75).
+- **Un instrumento que no vuelve a ejecutarse no es un instrumento.** La primera
+  medición del «BOM ausente» salió verde porque el build anidado estaba al día y
+  no volvió a resolver. Declarar el SDK publicado como **entrada** del consumidor
+  es lo que convierte la comprobación en una condición de salida (§2.75).
+- **La regla más pequeña es la que no se equivoca por el camino.** Elegir las
+  entradas del ZIP buscando la versión en el texto de la ruta seleccionaba
+  artefactos de otra versión según dónde estuviera el checkout. La regla es ahora
+  una función pura de las rutas relativas: la carpeta que contiene el fichero
+  es la versión (§2.75).
+
 - **Un comentario que afirma una verdad que el código ya no tiene es peor que
   no escribirlo.** Un lector no puede saber que un comentario miente, así que
   miente con la autoridad de la fuente. Por eso el bloque de comentarios no
@@ -9795,7 +9921,14 @@ propios bytes y no los de la otra.
   puerta y publica exactamente lo medido.
 - `scripts/release/build-release-manifest.sh` — el generador de la autoridad de
   digest de una release.
-- `v0.79.0-rc1` — la candidata que este ciclo publicó y verificó (prerelease;
+- `v0.80.0-rc1` — la candidata que este ciclo publicó y verificó (prerelease;
+  la promoción a estable sigue bloqueada por el certificador externo).
+- `pipeline-release/.../SdkZipBuilder.kt` — la regla que decide qué entradas
+  viajan en el ZIP publicado, y la función pura que la sostiene (§2.75).
+- `examples/example-uppercase-plugin/build.gradle.kts` — el consumidor externo
+  que resuelve el SDK **a través del BOM publicado**, sin versión propia en sus
+  coordenadas (§2.75).
+- `v0.79.0-rc1` — la candidata del bloque anterior (prerelease;
   la promoción a estable sigue bloqueada por el certificador externo).
 - `pipeline-step-sdk/runtime/.../TranscriptDrain.kt` — la regla y el bucle del
   drenaje de una transcripción, y las particiones que los cubren (§2.74).

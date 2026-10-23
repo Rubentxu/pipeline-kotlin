@@ -7188,6 +7188,8 @@ tres se midieron, y las tres eran del arnés:
    `pipeline-ssh-key-8038300921585619486-ssh-creds` contra
    `pipeline-ssh-key-2734788815458360786-ssh-creds`. Dos corridas no pueden
    comprometer los mismos bytes ahí, y esa diferencia no dice nada de la corrida.
+   La normalización quedó acotada a esa forma, y no a «todo número largo»: el
+   mutante C de más abajo es lo que impedía esa generalización.
 3. **Una corrida que se rechaza antes de empezar no imprime nada en la ruta
    durable.** El motivo: la consola durable es un documento que se renderiza al
    final, y el rechazo termina la corrida antes de que ese documento exista; la
@@ -7238,6 +7240,22 @@ El mutante B es el que importa, porque **ningún escenario declara el veredicto
 final de la corrida en stdout** —se comprobó: cero de 61—, de modo que la
 ejecución durable de esos escenarios pasó sus propias expectativas con el
 defecto dentro. Lo único que lo vio fue la comparación entre las dos rutas.
+
+**Un tercer mutante, y una normalización que era demasiado ancha.** La
+comparación de los bytes comprometidos todavía no se había visto en rojo, y una
+comprobación que no se ha visto en rojo no es evidencia. El mutante C no toca el
+producto: es un script **temporal** —retirado después del ensayo— cuyo paso
+imprime la hora en nanosegundos, de manera que las dos rutas comprometen bytes
+distintos. El resultado fue la fila que faltaba: `the two execution paths
+committed different bytes`, con el diff de los dos números.
+
+Y ese mutante encontró un defecto del **instrumento**, no del producto: la
+normalización de la identidad borraba *todo* número de seis o más dígitos, así
+que la marca de tiempo de un pipeline quedaba tapada. Normalizar todo lo que
+parece un identificador es tapar diferencias que la comparación existe para
+ver. La normalización quedó acotada a la forma que el producto usa para sus
+temporales (`pipeline-<tipo>-…-<número>`, con el número que la JDK añade), y con
+ella el mutante C se enciende y el escenario de credenciales sigue verde.
 
 **El control, que es la mitad de la prueba.** Con los dos mutantes vivos y la
 doble ejecución desactivada, la suite queda **61 de 61 en verde** (194

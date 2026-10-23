@@ -675,17 +675,19 @@ workspace_snapshot() {
 # divergence on every scenario, and a check that is always red is a check nobody
 # reads.
 #
-# The long numbers are the ones that make a temporary name unique: the product
-# materializes a credential into a file whose name carries a number no other
-# run would use, so two runs cannot produce the same bytes there and the
-# difference says nothing about the run.
+# The temporary names are normalized by their shape and not by their digits: the
+# product materializes a credential into a file whose name carries a number no
+# other run would use, so two runs cannot produce the same bytes there and the
+# difference says nothing about the run. Normalizing EVERY long number would do
+# it, and would also hide a number the pipeline printed on purpose -- a clock, a
+# size, a counter -- which is a difference the comparison is there to see.
 normalize_identity() {
     LC_ALL=C sed -E \
         -e 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g' \
         -e 's/"ownerId":"[^"]*"/"ownerId":"<owner>"/g' \
         -e 's/"startedAtMs":[0-9]+/"startedAtMs":<clock>/g' \
         -e 's/"controlDir":"[^"]*"/"controlDir":"<control>"/g' \
-        -e 's/[0-9]{6,}/<n>/g'
+        -e 's/pipeline-[a-z0-9<>-]*[0-9]{6,}/pipeline-<temp>/g'
 }
 
 # The id of the run that wrote a launch receipt.

@@ -7146,6 +7146,116 @@ de los escenarios donde no puede discriminar. Hoy no se sabe cuál de las dos
 cosas vale más, y decidirlo con el número delante es mejor que decidirlo con
 la intuición.
 
+### 2.65 Las dos rutas de ejecución, comparadas entre sí
+
+Este bloque cierra la pregunta que §2.64 dejó escrita y sin decidir: **la doble
+ejecución del arnés discrimina, o es peso muerto**. Se decide con una mutación,
+que es como se decide: una intuición sobre 61 escenarios no prueba nada.
+
+**La pregunta, con sus dos salidas.** El arnés corre cada escenario en las dos
+rutas de ejecución —con journal y sin journal— y las dos tienen que cumplir las
+mismas expectativas, pero **no se comparaban entre sí**: se parecían en lo que el
+escenario declara, no en todo lo que hicieron. Las dos salidas eran, entonces,
+comparar las rutas de verdad o retirar la ejecución volatile de los escenarios
+donde no puede discriminar.
+
+**Lo que se midió antes de tocar nada.** La comparación entre las dos rutas no
+se puede hacer con los bytes en crudo, y no por una razón del arnés: el mismo
+script, en las dos rutas, **cuenta la misma historia y compromete los mismos
+bytes**, una vez normalizados la identidad y el reloj. Lo que NO cuenta igual es
+el preámbulo, y la comparación lo dice así, con nombre:
+
+| | lo que cuenta | por qué difiere |
+|---|---|---|
+| la historia | desde «Run started:» hasta el final | no difiere: es la misma |
+| el diagnóstico (stderr) | el recibo, el descubrimiento, el veredicto | no difiere: es el mismo |
+| los bytes comprometidos | el Output Plane leído con el lector del producto | no difiere: son los mismos |
+| el preámbulo | la correlación y la compilación | el arnés compila una vez y deja que la segunda ruta reutilice esa compilación |
+
+**Las tres diferencias que la comparación encontró al construirse, y que eran
+del arnés, no del producto.** Una comparación que se pone en rojo por culpa
+propia no es un instrumento: es un falso positivo con forma de garantía. Las
+tres se midieron, y las tres eran del arnés:
+
+1. **La salida de un proceso sin salto de línea se pega a la narración.** Un
+   proceso que imprime sin newline deja la consola a media línea y la línea de
+   narración siguiente se le encima encima. Medido en `durable/31-stash-unstash`:
+   `lpr104-data[PipelineK] Run correlated: …`. En la ruta durable se pega a la
+   primera línea, y en la volatile a la que sigue al paso — porque la durable
+   imprime la narración al final y la volatile la imprime en vivo.
+2. **Las credenciales se materializan en temporales cuyo nombre lleva un número
+   que ninguna otra corrida usaría.** Medido en `security/14-credentials-bindings`:
+   `pipeline-ssh-key-8038300921585619486-ssh-creds` contra
+   `pipeline-ssh-key-2734788815458360786-ssh-creds`. Dos corridas no pueden
+   comprometer los mismos bytes ahí, y esa diferencia no dice nada de la corrida.
+3. **Una corrida que se rechaza antes de empezar no imprime nada en la ruta
+   durable.** El motivo: la consola durable es un documento que se renderiza al
+   final, y el rechazo termina la corrida antes de que ese documento exista; la
+   ruta volatile ya había narrado el preámbulo. Medido en las ocho categorías
+   `negative/plugin-*`, con la misma negativa y el mismo código de salida en las
+   dos rutas y una consola distinta.
+
+**El instrumento que queda.** Después de que cada ejecución se compruebe contra
+las expectativas declaradas, las dos ejecuciones se comparan **entre sí** sobre
+dos superficies: la historia que contaron (la narración desde el momento en que
+la corrida empieza, más los diagnósticos de stderr) y los bytes que
+comprometieron (el Output Plane, leído con el lector del producto). Se
+normalizan la identidad de la corrida (identificador, correlación, dueño,
+reloj, directorio de control y los números largos que hacen único un temporal),
+las dos raíces —cada mundo vive en su directorio— y el preámbulo, que es
+preparación y no historia. **No** se compara el sitio donde cae la salida de un
+proceso entre dos líneas de narración: el observador que la entrega sondea, así
+que ese sitio es una proyección y no una promesa, y una comparación que dependiera
+de él sería una moneda al aire.
+
+**La mutación, y el veredicto.** Dos defectos reales en el producto, uno por
+instrumento bajo prueba, y una ejecución de la suite contra los dos a la vez:
+
+| mutante | qué se rompió | qué lo detectó | filas |
+|---|---|---|---|
+| A | la ruta volatile deja de entregar al terminal lo que el proceso imprimió | la ejecución volatile | **8** |
+| B | la ruta durable deja de narrar el veredicto final de la corrida | la comparación entre las dos rutas | **28** |
+
+La suite con los dos mutantes queda en **61 escenarios: 25 pasan, 36 fallan**, y
+cada fila dice qué instrumento la vio. Las ocho del mutante A se leen así, y son
+verbatim:
+
+```
+control-flow/05-scripted-control-flow (volatile): stdout lacked: x is positive
+control-flow/11-workflow-control        (volatile): stdout lacked: step-A
+output/33-live-process-output           (volatile): stdout lacked: RAW_PROCESS_MARKER
+plugins/body-slots                      (volatile): stdout lacked: compensated
+plugins/lock-directive                  (volatile): stdout lacked: acquired
+plugins/repeat-block                    (volatile): stdout lacked: iteration
+steps/33-glob-ant-alternation           (volatile): stdout lacked: keep.txt
+steps/34-workspace-coherence            (volatile): stdout lacked: WROTE_HERE
+```
+
+Y las veintiocho del mutante B dicen, todas, `the two execution paths told
+different stories`.
+
+El mutante B es el que importa, porque **ningún escenario declara el veredicto
+final de la corrida en stdout** —se comprobó: cero de 61—, de modo que la
+ejecución durable de esos escenarios pasó sus propias expectativas con el
+defecto dentro. Lo único que lo vio fue la comparación entre las dos rutas.
+
+**El control, que es la mitad de la prueba.** Con los dos mutantes vivos y la
+doble ejecución desactivada, la suite queda **61 de 61 en verde** (194
+comparaciones sobre 66 ejecuciones): los dos defectos son invisibles para el
+arnés anterior. Con la doble ejecución, la misma suite con los mismos mutantes
+se pone roja con la atribución inequívoca de cada fila. Eso es la respuesta a la
+pregunta del bloque, y no es una opinión: **la doble ejecución discrimina**, y
+además hace algo que no hacía —comparar las dos rutas entre sí—, que es la clase
+de defecto que ninguna expectativa declarada puede ver.
+
+**Lo que este bloque deja medido y sin hacer.** El producto sigue narrando en
+vivo en la ruta volatile y al final en la ruta durable, y esa diferencia es
+visible en una consola de CI: el operador ve la salida del proceso mientras la
+corrida corre y la narración cuando termina. Arreglarlo es tocar el orden de
+la salida de la ruta que usa CI, y eso es una decisión de producto con su
+propia verificación; queda medido, con su mecanismo y con su síntoma, para el
+bloque que lo decida.
+
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un comentario que afirma una verdad que el código ya no tiene es peor que
@@ -8404,6 +8514,44 @@ la intuición.
   hace de verdad, con la normalización que exijan los identificadores y las
   marcas de tiempo, o la ejecución volatile sale de los escenarios donde no
   puede discriminar (§2.64).
+
+- **La doble ejecución discrimina, y ahora está demostrado con mutación.** Con
+  los dos mutantes vivos y la doble ejecución desactivada, la suite queda
+  **61 de 61 en verde**: los dos defectos eran invisibles. Con la doble
+  ejecución, la misma suite se pone roja y cada fila dice qué instrumento la
+  vio. Una doble ejecución que no encuentra nada no está probada; una que
+  encuentra dos defectos de dos clases distintas sí (§2.65).
+
+- **Comparar las dos rutas no es comparar sus bytes en crudo, y la diferencia
+  importa.** Lo que tiene que ser igual es la HISTORIA que contaron y los
+  BYTES que comprometieron; lo que tiene que ser distinto es la identidad, el
+  reloj y las raíces. La comparación normaliza eso y sólo eso, y por eso puede
+  ser una garantía en vez de un falso positivo (§2.65).
+
+- **Una comparación que se pone en rojo por culpa del arnés no es un
+  instrumento.** La primera versión de este bloque falló en 49 de 61
+  escenarios, y las 49 diferencias eran la misma línea: el número de
+  diagnósticos de compilación, que el arnés hace distinto a propósito porque
+  compila el script una vez y deja que la segunda ruta reutilice esa
+  compilación. Antes de comparar hay que distinguir lo que el arnés hace
+  distinto a propósito de lo que el producto hace distinto (§2.65).
+
+- **La historia de una corrida empieza cuando la corrida empieza.** La
+  correlación y la compilación son preparación: el arnés las hace distinto en
+  las dos rutas por decisión propia, y una corrida rechazada antes de empezar
+  no imprime nada en la ruta durable. Comparar desde «Run started:» es lo que
+  hace la comparación una garantía en vez de una pelea con el arnés (§2.65).
+
+- **Un defecto que ninguna expectativa puede ver es el que más cuesta ver.**
+  El veredicto final de la corrida no lo declara ningún escenario —cero de
+  61—, y por eso el camino durable podía dejar de narrarlo sin que nada se
+  pusiera rojo. Lo único que lo vio fue comparar las dos rutas entre sí
+  (§2.65).
+
+- **Un fallo de la puerta que no puede verse desde la puerta es un fallo de la
+  puerta.** Con los mutantes vivos, la suite anterior daba 61 de 61 en verde.
+  Eso no es una suite que no encuentra defectos: es una puerta que no tiene
+  con qué verlos (§2.65).
 
 ## 4. Referencias
 

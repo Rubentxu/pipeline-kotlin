@@ -667,6 +667,91 @@ workspace_snapshot() {
     ) 2>/dev/null || true
 }
 
+# The identity of a run, normalized away.
+#
+# Two runs of the same pipeline are two different runs: they have different ids,
+# different owners, different starting times and different temporary names. A
+# comparison that cannot tell an identifier from a difference reports a
+# divergence on every scenario, and a check that is always red is a check nobody
+# reads.
+#
+# The long numbers are the ones that make a temporary name unique: the product
+# materializes a credential into a file whose name carries a number no other
+# run would use, so two runs cannot produce the same bytes there and the
+# difference says nothing about the run.
+normalize_identity() {
+    LC_ALL=C sed -E \
+        -e 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g' \
+        -e 's/"ownerId":"[^"]*"/"ownerId":"<owner>"/g' \
+        -e 's/"startedAtMs":[0-9]+/"startedAtMs":<clock>/g' \
+        -e 's/"controlDir":"[^"]*"/"controlDir":"<control>"/g' \
+        -e 's/[0-9]{6,}/<n>/g'
+}
+
+# The id of the run that wrote a launch receipt.
+run_id_of() {
+    grep -ao '"schema":"pipelinek.launch/1","runId":"[^"]*"' "$1" 2>/dev/null \
+        | head -1 | sed 's/.*"runId":"//; s/"$//' || true
+}
+
+# The narration of a run, from the moment the run starts.
+#
+# A process that prints without a trailing newline leaves the console mid-line,
+# and the next narration line lands on top of it. The narration is read from the
+# marker, not from the beginning of the line, so a line that was glued to the
+# output of a process is still the narration it is.
+#
+# The story starts where the run starts. What came before is the PREPARATION --
+# the correlation and the compilation -- and the two worlds are deliberately
+# different there: the launcher compiles the script once and lets the second
+# world reuse that compilation, and a run that is refused before it starts
+# never prints the preamble at all in one of them. What the run DID is what has
+# to be the same in both worlds.
+narration_of() {
+    LC_ALL=C sed 's/\[PipelineK\] /\n[PipelineK] /g' "$1" 2>/dev/null \
+        | grep -a '^\[PipelineK\]' \
+        | awk '/^\[PipelineK\] Run started: / { story = 1 } story' || true
+}
+
+# What a run SAYS: the story it told and the diagnostics it wrote.
+#
+# The two worlds live in different directories, and the place a run lives is not
+# part of what it says, so the two roots are normalized away before the
+# comparison.
+#
+# The process output is NOT part of it. The observer that delivers those bytes
+# polls, so the place where they land between two console lines is a projection
+# and not a promise; the account is the run's own narration, in the order the
+# run produced it.
+world_account() {
+    local root="$3"
+    {
+        narration_of "$1"
+        grep -av '^[[:space:]]*$' "$2" 2>/dev/null || true
+    } | sed -e "s#${root}/cwd-volatile#<cwd>#g" \
+            -e "s#${root}/cwd#<cwd>#g" \
+            -e "s#${root}/control-volatile#<control>#g" \
+            -e "s#${root}/control#<control>#g" \
+          | normalize_identity
+}
+
+# What a run COMMITTED: the bytes of every output stream, read back with the
+# product's own reader.
+#
+# The reader is the product's, so this asks the run what a consumer would see
+# instead of guessing at the layout of the plane.
+world_committed() {
+    local control="$1" run_id="$2"
+    local stream_dir op_id
+    for stream_dir in "$control/output-plane/streams"/*_stdout; do
+        [[ -d "$stream_dir" ]] || continue
+        op_id="$(basename "$stream_dir")"
+        op_id="${op_id#${run_id}_}"
+        op_id="${op_id%_stdout}"
+        binary console --control-dir "$control" "$run_id" "$op_id" 2>/dev/null || true
+    done
+}
+
 # One scenario, under its clock.
 #
 # The body does the work and reaches a verdict of its own; this wrapper owns
@@ -2009,8 +2094,7 @@ run_scenario_body() {
         # run that died looks like. Only the successful side is a promise.
         if [[ -n "$ex_db" ]]; then
             local run_id=""
-            run_id="$(grep -ao '"schema":"pipelinek.launch/1","runId":"[^"]*"' "$ex_stderr" 2>/dev/null \
-                | head -1 | sed 's/.*"runId":"//; s/"$//' || true)"
+            run_id="$(run_id_of "$ex_stderr")"
             if [[ -n "$run_id" ]]; then
                 local verdict="" run_outcome="" run_steps=0
                 verdict="$(read_run_verdict "$ex_db" "$run_id" || true)"
@@ -2079,7 +2163,7 @@ run_scenario_body() {
         if (( ${#expect_transcript[@]} > 0 )); then
             local transcript="$root/transcript.$(basename "$ex_control").txt"
             local run_id
-            run_id="$(grep -ao '"runId":"[^"]*"' "$ex_stderr" | head -1 | cut -d'"' -f4)"
+            run_id="$(run_id_of "$ex_stderr")"
             if [[ -z "$run_id" ]]; then
                 printf 'FAIL %-52s the run published no run id, so its transcript cannot be read\n' \
                     "$ex_label"
@@ -2107,6 +2191,71 @@ run_scenario_body() {
                     return 1
                 fi
             done
+        fi
+        return 0
+    }
+
+    # The two worlds, compared with each other.
+    #
+    # The launcher held each execution to the scenario's expectations and never
+    # compared the executions with one another: the two worlds were two chances
+    # to fail, not one guarantee that they agree. A defect that lives in one
+    # world only, and that no expectation names, passed the suite twice.
+    #
+    # What is compared is what a run SAYS and what it COMMITS, because those are
+    # the two things that have to be true in every world:
+    #
+    #   - the account: the console the run printed and the diagnostics it wrote,
+    #     with the identity, the clock and the two roots normalized away. A run
+    #     that tells a different story in the two worlds is two different runs.
+    #   - the bytes: what the run committed to the Output Plane, read back with
+    #     the product's own reader. Two worlds that commit different bytes are
+    #     two different runs, whatever their console says.
+    #
+    # The place where the process output lands between two console lines is NOT
+    # compared, and that is deliberate: the observer that delivers it polls, so
+    # that place is a projection and not a promise, and a comparison that
+    # depended on it would be a coin toss.
+    compare_worlds() {
+        local cw_durable_out="$1" cw_durable_err="$2" cw_durable_control="$3"
+        local cw_volatile_out="$4" cw_volatile_err="$5" cw_volatile_control="$6"
+
+        local durable_run volatile_run
+        durable_run="$(run_id_of "$cw_durable_err")"
+        volatile_run="$(run_id_of "$cw_volatile_err")"
+
+        # The comparisons this scenario is owed, counted before any of them
+        # happens: a comparison that failed was still promised, and a census
+        # that shrank when something failed would report a smaller suite than
+        # the one that ran.
+        scenario_guarantees=$((scenario_guarantees + 1))
+        if [[ -n "$durable_run" && -n "$volatile_run" ]]; then
+            scenario_guarantees=$((scenario_guarantees + 1))
+        fi
+
+        local durable_account volatile_account
+        durable_account="$(world_account "$cw_durable_out" "$cw_durable_err" "$root")"
+        volatile_account="$(world_account "$cw_volatile_out" "$cw_volatile_err" "$root")"
+        if [[ "$durable_account" != "$volatile_account" ]]; then
+            printf 'FAIL %-52s the two execution paths told different stories\n' "$label"
+            diff <(printf '%s\n' "$durable_account") <(printf '%s\n' "$volatile_account") \
+                | head -12 | sed 's/^/       | /' || true
+            world_detail="the two execution paths told different stories"
+            return 1
+        fi
+
+        if [[ -n "$durable_run" && -n "$volatile_run" ]]; then
+            local durable_bytes="$root/world.durable.bytes" volatile_bytes="$root/world.volatile.bytes"
+            world_committed "$cw_durable_control" "$durable_run" | normalize_identity >"$durable_bytes"
+            world_committed "$cw_volatile_control" "$volatile_run" | normalize_identity >"$volatile_bytes"
+            if ! cmp -s "$durable_bytes" "$volatile_bytes"; then
+                printf 'FAIL %-52s the two execution paths committed different bytes\n' "$label"
+                printf '       | the durable path committed %s byte(s), the volatile path %s\n' \
+                    "$(wc -c <"$durable_bytes" | tr -d ' ')" "$(wc -c <"$volatile_bytes" | tr -d ' ')"
+                diff "$durable_bytes" "$volatile_bytes" 2>/dev/null | head -12 | sed 's/^/       | /' || true
+                world_detail="the two execution paths committed different bytes"
+                return 1
+            fi
         fi
         return 0
     }
@@ -2155,6 +2304,7 @@ run_scenario_body() {
     # scenario declares. For a resumed scenario it is the SECOND run: the
     # first one died before it could say anything.
     local check_detail=""
+    local world_detail=""
     if ! check_execution "$label" "$verdict_stdout" "$verdict_stderr" "$code" "$root/control" \
         "$root/events.db"; then
         failed=$((failed + 1))
@@ -2174,6 +2324,16 @@ run_scenario_body() {
             "$root/control-volatile" ""; then
             failed=$((failed + 1))
             failures+=("$label (volatile): $check_detail")
+            return
+        fi
+
+        # The two worlds, one against the other. Each one met the expectations
+        # on its own; this asks the question neither of them could answer alone:
+        # did they do the SAME thing?
+        if ! compare_worlds "$verdict_stdout" "$verdict_stderr" "$root/control" \
+            "$vstdout" "$vstderr" "$root/control-volatile"; then
+            failed=$((failed + 1))
+            failures+=("$label: $world_detail")
             return
         fi
     fi

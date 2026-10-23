@@ -141,6 +141,17 @@ preguntaba si lo que enviaba se podía usar. Ahora el artefacto publicado es
 el único SDK que los consumidores ven, y el ZIP incluye además un segundo
 camino de consumo —el BOM— que tampoco estaba probado (§2.75).
 
+**Lo que este ciclo midió por fuera: la identidad, leída por fin desde sus dos
+extremos.** El identificador de una operación es el segmento central **entero** de un
+id de stream, y ese segmento puede llevar separadores propios. Dos lectores lo
+interpretaban por texto —uno buscando el identificador pedido dentro del id, otro
+quedándose con su primer segmento— y cada uno contestaba sobre una operación que
+nadie preguntó: la del vecino cuyo identificador **contiene** el pedido, o la de una
+identidad compuesta **cortada** por la mitad. La dirección publicada del stream ya
+sabía leer esos dos extremos; ahora responde también a la pregunta inversa, y los tres
+lectores —la lectura por operación, su cola y el filtro de consola— consultan esa misma
+dirección. Ya no hay dos formas de leer una identidad: hay una (§2.77).
+
 **Lo que está abierto ahora mismo:**
 
 | # | Qué falta | Por qué sigue abierto |
@@ -158,26 +169,27 @@ se pudiera resolver detiene la construcción de la distribución. Queda fuera:
 el ZIP no lleva las dependencias de terceros, así que no es autosuficiente
 sin red |
 | 5 | El techo del drenaje | **cerrado** (§2.74): el rechazo era tipado pero **no accionable**, y el techo era un reloj que no distinguía una bomba **atascada** (esperando bytes que nadie va a escribir) de una bomba **lenta** (escribiendo porque la máquina está ocupada). Ahora la bomba declara su atención, el atascado se rechaza **al momento y nombrado**, el lento se espera, y los dos rechazos son **casos tipados distintos** (`STUCK_CHILD`, `OUT_OF_TIME`). Queda medir **cuánto** tarda un drenaje con la máquina saturada: reproducir la saturación en un banco de pruebas es una fixture que este repositorio no tiene |
+| 7 | Lectores que interpretaban la identidad de una operación por texto | **cerrado** (§2.77): el identificador de una operación es el segmento central **entero** de un id de stream, y ese segmento puede llevar separadores propios. La búsqueda por subcadena daba los frames de una operación cuyo identificador **contiene** el pedido, y el índice de segmento nombraba una operación compuesta **cortada** por la mitad. Ahora la dirección publicada responde a la pregunta inversa (`isOperationOf`) y los tres lectores —la lectura por operación, su cola y el filtro de consola— la consultan. Se elimina además un resolvedor textual sin consumidores, que era una segunda autoridad sobre la misma identidad. El defecto era **latente**: los identificadores que el motor produce hoy no llevan separadores, así que no se ve desde la línea de órdenes |
 
 ## 1. Estado medido
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `d4cb97010`, medido en los ensayos de este bloque. El bloque anterior hizo que **el SDK que el producto publica sea el SDK que sus consumidores usan** (§2.75). Este bloque cierra una colisión que estaba **caracterizada pero no reproducida**: dos identidades distintas que se pliegan al mismo directorio **compartían bytes**, y una identidad que llegaba al directorio de otra leía sus bytes sin decir nada. Ahora el directorio **recuerda a su dueño**, y el store rechaza al que no lo es (§2.76). La candidata `v0.81.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
+| SHA | `807353656`, medido en los ensayos de este bloque. El bloque anterior hizo que el directorio **recuerde a su dueño** (§2.76). Este cierra la **segunda lectura** de una identidad: los lectores que decidían por su cuenta dónde acababa el identificador de una operación, y que contestaban sobre operaciones que nadie había pedido. Ahora la dirección publicada responde a la pregunta inversa y los tres lectores la consultan (§2.77). La candidata `v0.82.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1131** (159 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1157** (165 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **62 de 62**: **398 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 396, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **21074 / 68073 = 0.310** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios con una garantía comprobada | **62 de 62**: **400 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 396, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **21291 / 68058 = 0.313** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **202 / 154 / 151** en los tres ensayos, los tres sobre `d4cb97010`, peor 202 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **213 / 194 / 163** en los tres ensayos, los tres sobre `807353656`, peor 213 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
-| Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
+| Deuda estática congelada | **879** entradas de baseline en 24 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
-| Candidato publicada | **`v0.81.0-rc1`** (prerelease), `candidate_id` `sha256:c701f471072b34ef2338354eb831116f7e67c046b406731152e474fec673e1b1`, tag en `d4cb97010`; verificada **sobre los bytes descargados del remoto** (§2.76) | `gh release view v0.81.0-rc1`, `sha256sum -c SHA256SUMS` |
+| Candidato publicada | **`v0.82.0-rc1`** (prerelease), `candidate_id` `sha256:d262396339fa0c9fff9ea4d2607e4f161e16e76c883d93ff7f498514fc0d7eac`, tag en `807353656`; verificada **sobre los bytes descargados del remoto** (§2.77) | `gh release view v0.82.0-rc1`, `sha256sum -c SHA256SUMS` |
 | Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -191,12 +203,12 @@ El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s, 182, 141 y 139 s,
 187, 139 y 140 s y 203, 139 y 141 s.
 Este mide
-**208, 150 y 151 s**:
+**213, 194 y 163 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 203 s, es menos de
+de este ciclo el presupuesto se cumplió con holgura —el peor, 213 s, es menos de
 la cuarta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
-la API pública, los 1131 tests y los 62 escenarios.
+la API pública, los 1157 tests y los 62 escenarios.
 
 **La etapa del E2E mide 100 y 98 s**, medidos en seco sobre el lanzador,
 contra los 92, 92 y 90 s del ciclo anterior (§2.72). Los **nueve segundos** de
@@ -8401,7 +8413,107 @@ producto (0.310).
   en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`. Lo que este ciclo publica
   es la **candidata**.
 
+### 2.77 Una identidad, un lector
+
+**El hueco.** El identificador de una operación es el segmento central **entero** de un id de
+stream, y el id tiene esta forma: `{runId}/{operationId}/{channel}`. Ese segmento central **puede
+llevar separadores propios**: el `pluginStepId` que va dentro de un `bodyPath` sólo tiene que ser
+no vacío, así que un identificador de operación legítimo puede ocupar varios segmentos.
+
+Dos lectores lo interpretaban **por texto**, y cada uno contestaba sobre una operación que nadie
+preguntó:
+
+- el lector por operación buscaba el texto `"/<opId>/"` dentro del id, así que una operación cuyo
+  id **contiene** el pedido (`other/foo` contiene `foo`) salía también con sus frames;
+- el filtro de consola se quedaba con el **primer** segmento del centro (`parts[1]`), así que una
+  operación compuesta (`stage/step/inner`) se cortaba por la mitad y se nombraba una operación
+  que no existe.
+
+Cada uno por su cuenta, y los dos juntos: **dos formas de leer la misma identidad**, y por lo
+tanto dos autoridades sobre ella.
+
+**Lo que el ADT ya sabía.** `OutputStreamAddress.parse` lee el id por sus dos extremos —el run
+primero, el canal último— y todo lo que queda en medio es la operación, con sus separadores. La
+pieza estaba publicada desde hacía tiempo y **los lectores no la usaban**: preferían decidir por su
+cuenta dónde acababa el identificador.
+
+**Lo que ahora es verdad.** La dirección responde también a la pregunta inversa —`isOperationOf`— y
+los **tres** lectores (la lectura por operación, su cola y el filtro de consola) consultan esa
+misma dirección. Ya no hay dos formas de leer una identidad: hay una, y es la que ya sabía.
+
+**La segunda autoridad desaparece.** El resolvedor textual de etapa/paso y de tipo llevaba **su
+propia** lectura del id (`split('/')` y `parts[1]`), su propia comparación de índices y su propio
+`kindOk = true`, y no tenía **un solo consumidor** desde que la selección por eventos lo
+sustituyó. Era el mismo problema de este ciclo, en forma de código muerto: una segunda lectura de
+la identidad que nadie usaba y que nadie vigilaba. Se eliminan sus 27 líneas de código y las que
+las explicaban.
+
+**El ABI.** La dirección publicada crece en **un** miembro, aditivo: `isOperationOf`. No se retira
+nada, no cambia ninguna firma, no aparece ningún caso de rechazo nuevo. `apiCheck` queda verde y
+el volcado ABI se actualiza con una línea.
+
+**La instrumentación.** Todo puro, y **el arnés no crece**:
+
+- **3** filas puras de la dirección publicada;
+- **4** filas del lector por operación, con el plano entero en memoria (índice, bytes y estado de
+  cola, los tres falsos);
+- **7** filas del filtro de consola.
+
+Ninguna toca disco, reloj, proceso ni red. El suite E2E sigue siendo **el mismo**: 62 escenarios,
+ninguno nuevo. Un escenario nuevo habría sido un instrumento que pasa antes y después: no habría
+medido nada.
+
+**Lo que se vio en rojo.**
+
+| Mutación | Filas rojas |
+|---|---|
+| el lector por operación vuelve a buscar el texto `"/<opId>/"` | **3** — `the frames of an operation are the frames of that operation and of no other`, `a piece of an operation id is not the operation` y `the tail of an operation does not carry the bytes of its neighbour` |
+| el filtro de consola vuelve a quedarse con el primer segmento | **5** — las cinco filas de dirección del filtro; sólo las dos anclas se quedan en verde |
+| la comparación deja de mirar el run | **1** — `an address is the operation it names, in the run it names` |
+| el parser se queda con el primer segmento del centro | **5** — la fila del viaje de ida y vuelta en el módulo publicado y las cuatro que dependen de que la operación se lea entera |
+
+Se comprobaron las **dos direcciones**: no sólo que el defecto se detecte, sino que una regla
+*demasiado estricta* tampoco pase por verde. Por eso la fila que no puede fallar —la del lector
+frente a otro run, que el índice ya acota por run— **se quitó**: un instrumento que no puede fallar
+no es un instrumento, y una garantía ya cubierta no necesita un segundo instrumento.
+
+**Lo que la puerta midió.** `PASS` tres veces sobre el árbol commiteado
+(`807353656`): **213 / 194 / 163 s**, con un presupuesto de 900 s y
+`tests=rewritten:1157`. Los 62 escenarios llevan una garantía comprobada —**400** comparaciones
+sobre **112** ejecuciones— y el LOC queda en **21291** de verificación sobre **68058** de
+producto (0.313).
+
+**Lo que queda fuera, dicho con honestidad.**
+
+- **El defecto era real, pero invisible desde la línea de órdenes.** Los identificadores de
+  operación que el motor produce hoy no llevan separadores: los `pluginStepId` del núcleo son
+  `core.sh` y `core.dir`, y los de los plugins de ejemplo tampoco. Una operación compuesta
+  aparece cuando un plugin aporta un paso cuyo identificador lleva `/`, y el contrato de plugins
+  lo permite —no hay ninguna regla que lo prohíba—, pero ningún ejemplo de hoy lo hace. El
+  defecto quedó **localizado y medido** con filas que se ponen rojas, y **no** con un fallo
+  visible en la línea de órdenes. Por eso no hay escenario nuevo.
+- **El formato del id de stream no cambia.** Cambia **quién** lo lee. El contrato de cable sigue
+  siendo `{runId}/{operationId}/{channel}`.
+- **El identificador plegado sigue plegado** (§2.76): este ciclo no toca el direccionamiento en
+  disco.
+- **La promoción a estable sigue bloqueada**: no hay certificador externo en este repositorio ni
+  en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`. Lo que este ciclo publica
+  es la **candidata**.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **Una identidad, un lector.** La identidad de una operación se lee desde los dos
+  extremos de su id, y quien la necesita pregunta a esa misma dirección. Dos formas de
+  leer la misma identidad son dos autoridades, y dos autoridades se contradicen (§2.77).
+- **Un lector que decide por su cuenta dónde acaba el identificador está respondiendo
+  por otro.** La búsqueda por subcadena da la operación vecina y el índice de segmento da
+  una operación cortada: las dos contestan con seguridad y con una atribución equivocada
+  (§2.77).
+- **Una segunda autoridad sobre la misma identidad no es un respaldo: es una
+  contradicción.** El resolvedor textual que se llevaba su propia lectura del id llevaba
+  meses sin un solo consumidor; se elimina en vez de documentarse (§2.77).
+- **Un instrumento que no puede fallar no es un instrumento.** La fila que la puerta dejó
+  en verde porque el índice ya acota por run se quitó: la garantía ya estaba cubierta y una
+  segunda fila para lo mismo sólo lee como una garantía más (§2.77).
 - **Un nombre plegado no es una identidad.** Un nombre que pierde información no puede
   ser la identidad de un directorio: dos identidades que se pliegan al mismo nombre son
   dos streams, y el que las confunde entrega a una los bytes de la otra (§2.76).

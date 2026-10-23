@@ -108,6 +108,18 @@ su texto es el renderizado de ese valor. La puerta del arnés también cambió:
 un escenario puede ahora preguntarle algo al producto, y la tercera puerta
 que eso abre lleva su reloj dentro, como las otras dos.
 
+**Lo que este ciclo midió por fuera: la identidad de un stream.** El indice
+del plano de salida **ya sabía** la identidad completa de cada stream —la
+escribía en sus propios ficheros—, pero esa verdad no tenía superficie: quien
+quisiera saber qué operaciones tuvo un run tenía que leer el listado de
+directorios, donde el nombre es una **proyección con pérdida**. El arnés
+comparaba proyecciones. Ahora el producto publica las operaciones de un run con
+su identidad completa, el arnés la consume en vez de deducirla, y dos
+operaciones que se pliegan igual son **dos filas** y no una (§2.73). La puerta,
+además, destapó un defecto propio: el registro de offset confirmado se escribía
+en el sitio y dejaba una ventana en la que el observador en vivo leía un
+registro vacío y moría con él, y el run seguía como si nada (§2.73).
+
 **Lo que está abierto ahora mismo:**
 
 | # | Qué falta | Por qué sigue abierto |
@@ -122,21 +134,21 @@ que eso abre lleva su reloj dentro, como las otras dos.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `a9c50780`, medido en los ensayos de este bloque. El bloque anterior **desatasca la vía de publicación** (§2.71). Este bloque **mide los verbos que hablan del producto**: el censo de los trece verbos de la CLI encontró que seis no los ejecutaba nadie, y dentro de esos seis estaban dos rotos —el informe de salud decidía su veredicto leyendo su propio texto, y el catálogo de capacidades publicaba un estado de su vocabulario en otro idioma—. Ahora el veredicto es un valor, el vocabulario se escribe en un solo idioma, y el arnés puede preguntarle al producto cosas sin abrirle una puerta sin reloj. Con el formato publicado movido a `pipelinek.capabilities/2`, la candidata `v0.77.0-rc1` queda **publicada y verificada byte a byte** (§2.72) | `git rev-parse HEAD` |
+| SHA | `a61fa98dc`, medido en los ensayos de este bloque. El bloque anterior **midió los verbos que hablan del producto** (§2.72). Este bloque **saca la identidad de un stream del nombre plegado**: el índice del plano ya sabía la identidad completa de cada stream, pero la superficie no existía y el arnés la deducía del listado de directorios, donde el nombre es una proyección con pérdida. Ahora el producto publica las operaciones de un run con su identidad completa, el arnés la consume en vez de deducirla, y la comparación de las dos rutas de ejecución se apoya en lo que el producto promete —el lugar de una etapa, sí; el orden dentro de una etapa, no—. La candidata `v0.78.0-rc1` queda **publicada y verificada byte a byte** (§2.73) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1113** (159 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1121** (159 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **62 de 62**: **396 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 394, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **20483 / 67723 = 0.302** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios con una garantía comprobada | **62 de 62**: **398 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 396, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **20724 / 67848 = 0.305** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **197 / 144 / 146** en los tres ensayos, los tres sobre `a9c50780`, peor 197 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **203 / 150 / 152** en los tres ensayos, los tres sobre `a61fa98dc`, peor 203 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
-| Candidato publicada | **`v0.77.0-rc1`** (prerelease), `candidate_id` `sha256:76dbaf73…71d4d`, tag en `a9c50780`; verificada **sobre los bytes descargados del remoto** (§2.72) | `gh release view v0.77.0-rc1`, `sha256sum -c SHA256SUMS` |
+| Candidato publicada | **`v0.78.0-rc1`** (prerelease), `candidate_id` `sha256:2b8b8236…ad34`, tag en `a61fa98dc`; verificada **sobre los bytes descargados del remoto** (§2.73) | `gh release view v0.78.0-rc1`, `sha256sum -c SHA256SUMS` |
 | Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -150,35 +162,32 @@ El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s, 182, 141 y 139 s,
 187, 139 y 140 s y 203, 139 y 141 s.
 Este mide
-**197, 144 y 146 s**:
+**203, 150 y 152 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 197 s, es menos de
+de este ciclo el presupuesto se cumplió con holgura —el peor, 203 s, es menos de
 la cuarta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
-la API pública, los 1113 tests y los 62 escenarios.
+la API pública, los 1121 tests y los 62 escenarios.
 
-**La etapa del E2E mide 92, 92 y 90 s**, contra los 93, 103 y 89 s del ciclo
-anterior (§2.71) y los 88, 86 y 88 s del anterior a ése (§2.70). Los **siete
-segundos** que cuesta leer, con el propio verbo `console` del producto, los bytes
-que las dos rutas comprometieron (§2.65) siguen ahí. Este ciclo **añade un
-escenario**: los 62 son los 61 de antes más uno, y el que llega es el que
-guarda la puerta de los verbos que hablan del producto (§2.72). Lo que este bloque arregla es la
-**vía de publicación** —el publicador subía la autoridad de digest de la
-candidata y escribía la suya sobre el mismo nombre— y su instrumento es **una
-decisión pura con cinco filas**, no un escenario: la garantía es de la regla que
-dice qué se publica, y esa regla se sostiene con un manifiesto dentro y un
-conjunto fuera (§2.71). El instrumento mayor de este bloque es otro: **publicar
-de verdad** y verificar los bytes publicados —descarga remota, `sha256sum -c`,
-instalación limpia y un pipeline real con los bytes publicados—, porque una vía
-de publicación que nadie ha ejecutado no es una vía, es una intención. Es el
-precio de una comparación que encuentra una clase de defecto que ninguna
-expectativa declarada puede ver, y está medido para que la decisión se pueda
-rehacer con el número delante. El resto del coste sigue siendo el mismo: los 61
-escenarios son los mismos y la caché de scripts compilados que el producto ya
-tenía apagada sigue siendo la que hace que el E2E no cueste 111 s (§2.63), y
-**la causa de que el arnés corra el producto dos veces por escenario sigue siendo
-la que es** —una ejecución por ruta, y ahora las dos comparadas entre sí
-(§2.64, §2.65).
+**La etapa del E2E mide 100 y 98 s**, medidos en seco sobre el lanzador,
+contra los 92, 92 y 90 s del ciclo anterior (§2.72). Los **nueve segundos** de
+más son el precio de una pregunta: el arnés ya no deduce las identidades del
+sistema de ficheros, **pregunta al producto**, y preguntar cuesta un arranque
+de proceso por mundo y por run. Ese precio compra algo que el filesystem no
+daba: **la identidad completa** de cada operacion, y con ella
+la posibilidad de que dos operaciones que se pliegan igual sean dos filas y no
+una (§2.73). El escenario **no crece**: los 62 son los mismos 62, y el que
+guarda la puerta de las operaciones se amplia **dentro** del que ya preguntaba
+por la salud, el catálogo y la versión del producto (§2.72). El instrumento
+mayor de este bloque es el que la puerta encontró sola: **una comparación entre
+las dos rutas de ejecución que destapó un defecto del producto** —el registro de
+offset confirmado se escribía en el sitio y dejaba una ventana en la que un
+lector leía un registro vacío, y el observador en vivo moría con él— (§2.73).
+El resto del coste sigue siendo el mismo: la caché de scripts compilados que el
+producto ya tenía apagada sigue siendo la que hace que el E2E no cueste 111 s
+(§2.63), y **la causa de que el arnés corra el producto dos veces por escenario
+sigue siendo la que es** —una ejecución por ruta, y ahora las dos comparadas
+entre sí (§2.64, §2.65).
 
 **Dos ensayos anteriores a estos tres se descartaron, y hay que decir por
 qué.** Sobre el mismo árbol, la puerta dio dos veredictos con rojos, y **todos
@@ -7946,6 +7955,145 @@ que esta puerta no puede cumplir sola.
 en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`. Lo que
 este ciclo publica es la **candidata**, y la candidata es exactamente eso.
 
+### 2.73 La identidad de un stream no puede vivir en un nombre plegado
+
+**La brecha, medida.** El indice del plano de salida **ya conocia** la identidad
+completa de cada stream: la escribe en sus propios ficheros y la lee de ahi. Lo
+que no existia era la **superficie**. Quien quisiera saber que operaciones tuvo
+un run tenia que leer el listado de directorios del plano, y ese nombre es una
+**proyeccion con perdida**: `safeStreamName` pliega todo lo que no sea
+`[A-Za-z0-9._-]` en `_`.
+
+Medido en este build, un run con `parallel` deja en disco
+
+```
+…_…-s0-0-bp2-b0-b0_branch-0_core.sh_stdout
+```
+
+mientras la identidad que el run acuno es
+
+```
+…-s0-0-bp2-b0:branch-0:core.sh
+```
+
+El `:` no sobrevive al viaje. Y lo que es peor: **dos identidades que se pliegan
+igual son un solo directorio**. El indice las guarda las dos — porque escribe la
+identidad entera — pero el disco solo tiene un sitio donde poner sus bytes.
+
+**El verbo nuevo.** `pipelinek operations <runId> --control-root <dir>` publica
+la identidad **completa** de cada operacion del run y los streams que cada una
+posee, en un documento que declara su propio esquema, `pipelinek.operations/1`.
+Un stream cuya identidad no tiene una operacion publicable **no se publica**:
+inventarle una atribucion seria atribuir bytes a una operacion que nunca corrio.
+
+**El arnes deja de deducir.** Pregunta al producto y cachea la respuesta por
+`(control, run)`, porque una ejecucion terminada no cambia y dos comparaciones
+del mismo run no pagan dos finales de proceso. Y una lista vacia para un run
+cuyo plano tiene streams ya no es "este run no escribio nada": es una respuesta
+que no nombra ninguno de los streams, y una **comparacion de bytes vacia es una
+comparacion que no comprueba nada**. Esa cruz-check es la que impide que el
+arnes se aplauda a si mismo comparando dos vacios.
+
+**La comparacion de narraciones comparaba un orden que nadie promete.** El
+arnes decia las cuentas de los dos mundos comparando la narracion como
+**secuencia**. Una etapa puede abrirse en ramas que corren a la vez, y el orden
+en que esas ramas terminan es una carrera. Medido en este build: el mismo
+pipeline, doce veces, cerro sus dos ramas en un orden **cuatro** veces y en el
+otro **siete**. La comparacion reportaba una diferencia entre dos runs que
+hicieron exactamente lo mismo — y un check que llora lobo es un check que nadie
+lee.
+
+Ahora la narracion se compara **como el producto la promete**: el **lugar** de una
+etapa en el run esta prometido y se conserva, y las lineas **dentro** de una
+etapa se comparan como conjunto, porque dentro de una etapa no se promete un
+orden. Un paso que falta, un paso que termino en otro veredicto y una etapa que
+corrio en otro sitio siguen distinguiendo las dos historias. El motor de etapas
+paralelas deja escrito lo que promete y lo que no: cada rama corre y cada rama
+llega a un veredicto, y el orden en que se oyen no esta prometido porque es una
+carrera, no un hecho.
+
+**El defecto que la puerta encontro.** La tercera pasada de la puerta fallo, y
+no fue por el arnes: fue por el **producto**. El hilo del observador aparecio
+muerto en la salida de error con
+
+```
+java.io.IOException: cur.cmt body is not a valid long offset: <>
+```
+
+El registro de offset confirmado de un stream es **un numero**, y ese numero es
+la autoridad de hasta donde llega lo comprometido. Se escribia **en el sitio**:
+el fichero se vaciaba primero y se llenaba despues. Un lector que llegaba
+dentro de esa ventana leia un registro **vacio** — y el store rehusa
+interpretar un registro ilegible, porque decidir lo que significa un registro
+danado es una decision de producto y este store no la toma en silencio.
+
+Medido en bucle cerrado, con el escritor antiguo: **85950 de 286879** lecturas
+vieron el registro vacio. Con el registro remplazado de una vez: **0 de
+279345**.
+
+En el producto la ventana es estrecha y el observador sondea cada 10 ms, asi
+que se ve de tarde en tarde. Se vio. Y lo que paso despues es lo que hace este
+defecto especialmente malo: **el run seguia y terminaba bien**. Nada decia "este
+run perdio su consola": la consola simplemente habia desaparecido, y todo lo que
+el run imprimio despues de ahi se perdio sin dejar rastro.
+
+El arreglo es el patron que ya usan los registros duraderos del repositorio: el
+registro se escribe en un temporal del mismo directorio y se mueve a su sitio de
+una vez, asi que un lector ve el registro anterior o el nuevo, y nunca un hueco.
+Y el formato del registro pasa a tener **una sola autoridad**: lo escribe
+`commitRecordBody` y lo lee `parseCommittedOffset`.
+
+El instrumento que lo sostiene ya existia: `examples/output/33-live-process-output`
+comprueba que la salida de un **proceso** llega al terminal, y eso solo lo
+consigue el observador. Un observador que muere se ve en rojo ahi.
+
+**Mutaciones vistas en rojo.** Cada una dejo exactamente las filas que tocaba,
+sin dano colateral:
+
+| Mutacion | Fila o garantia roja |
+|---|---|
+| el arnes vuelve a comparar la narracion como secuencia (arnes) | 1 garantia — `the two execution paths told different stories` |
+| el verbo publica la identidad **plegada** (filas puras) | 2 — `the published identity is the operation's own…` y `two operations whose names fold alike are two operations` |
+| el verbo publica una identidad **ajena** (filas puras y escenario) | 2 filas puras + 1 garantia — `OPERATIONS_ADDRESS_THEIR_OWN_BYTES` |
+| el verbo no nombra ninguna operacion (escenario y cruz-check del arnes) | 1 garantia — `LEG_operations_empty`, y la cruz-check del plano |
+| el cuerpo del registro de offset pasa a estar vacio (filas puras) | 2 — `the body the writer writes is never empty` y `… is the body this parser reads back` |
+
+**Lo que la puerta midio.** `PASS` tres veces sobre el arbol commiteado
+(203 / 150 / 152 s; el peor, de 900), `tests=rewritten:1121`, 62 de 62
+escenarios, 398 comprobaciones sobre 112 ejecuciones, y el LOC en 20724 de
+verificacion sobre 67848 de producto (0,305).
+
+**Lo que se verifico despues de publicar.** La candidata `v0.78.0-rc1` se
+publico y se comprobo **sobre los bytes publicados**, no sobre los locales:
+la descarga desde el remoto, `sha256sum -c` sobre el conjunto de assets, el
+digito que el propio repositorio resuelve, la instalacion limpia, y un pipeline
+real con el binario publicado.
+
+**Lo que queda fuera, dicho con honestidad.**
+
+- **El store sigue archivando los bytes bajo el nombre plegado.** Dos
+  operaciones que se pliegan igual siguen compartiendo el directorio: ahora la
+  identidad es **visible** (son dos filas publicadas, no una), pero sus bytes
+  todavia se mezclan. Cerrarlo es una ruptura versionada del plano, y queda
+  escrito como tal.
+- **`console` acepta hoy las dos identidades.** Medido: con la direccion
+  completa y con la plegada devuelve los mismos bytes, porque dobla la
+  direccion al archivarla. El verbo publica la **completa**, que es la que acuno
+  el run; el plegado sigue siendo una direccion que funciona, no una identidad.
+- **El escenario de E2E no distingue una identidad completa de una plegada**,
+  y se midi: `console` dobla la direccion, asi que las dos cumplen. Lo que
+  distingue una de otra son las filas puras del producto. El escenario asegura
+  lo que un consumidor asegura — que la identidad publicada direcciona sus
+  propios bytes.
+- **Dentro de una etapa, el arnes ya no compara el orden de los pasos.** Es el
+  precio de no depender de un orden que nadie promete; el orden de las etapas
+  si se compara, y ahi si hay una promesa.
+- **La promocion a estable sigue bloqueada**: no hay certificador externo en
+  este repositorio ni en el remoto, asi que el veredicto es `BLOCKED_EXTERNAL`,
+  no `PASS`. Lo que este ciclo publica es la **candidata**, y la candidata es
+  exactamente eso.
+
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un comentario que afirma una verdad que el código ya no tiene es peor que
   no escribirlo.** Un lector no puede saber que un comentario miente, así que
@@ -9462,6 +9610,43 @@ este ciclo publica es la **candidata**, y la candidata es exactamente eso.
   sistema no deja escribir, que es el mismo dato en todas las máquinas
   (§2.72).
 
+- **Una identidad es un valor, no una proyeccion con perdida.** El indice del
+  plano guardaba la identidad completa de cada stream y el nombre del
+  directorio guardaba una version plegada de ella. El arnés comparaba las
+  plegadas. Ahora el producto publica la completa y el arnés la consume: una
+  identidad que hay que deducir del sitio donde casualmente viven sus bytes es
+  una identidad que dos operaciones pueden compartir (§2.73).
+
+- **Un consumidor no puede deducir lo que el producto sabe.** La superficie
+  faltaba, no la verdad: el indice ya conocia cada identidad y la escribia en
+  sus propios ficheros. Publicarla no es una cortesia, es dejar de obligar a
+  todo el mundo a deducirla del sistema de ficheros, que es donde la proyeccion
+  se cuela (§2.73).
+
+- **Comparar es prometer un orden, y hay órdenes que no se prometen.** Una
+  etapa puede abrirse en ramas concurrentes, y el orden en que terminan es una
+  carrera: medido, el mismo pipeline la resolvia de dos maneras en doce
+  ejecuciones. Un check que llora lobo es un check que nadie lee, asi que el
+  arnés compara lo que el producto promete —el lugar de una etapa— y trata el
+  interior de una etapa como el conjunto que es (§2.73).
+
+- **Un registro que se escribe en el sitio deja un hueco que un lector puede
+  ver.** El registro de offset confirmado es la autoridad de hasta donde llega
+  lo comprometido, y se vaciaba antes de llenarse. Medido en bucle cerrado: una
+  de cada tres lecturas veia el registro vacio. Ahora se escribe en un
+  temporal y se mueve a su sitio de una vez, que es lo que ya hacen los
+  registros duraderos del repositorio (§2.73).
+
+- **Un fallo que se lleva por delante la consola del run no se ve.** El
+  observador en vivo murio con el fallo y el run siguio y termino bien: nada
+  decia "este run perdio su consola". Un fallo que se traga la mitad de lo que
+  el run dijo es peor que un fallo que para el run, porque no se nota (§2.73).
+
+- **Un instrumento que encuentra un defecto real se paga.** La comparacion
+  entre las dos rutas de ejecucion no es adorno: fue ella la que destapo el
+  defecto del registro de offset, y la que obliga a que el arnes compare
+  narraciones que no se pueden comparar en secuencia (§2.73).
+
 
 ## 4. Referencias
 
@@ -9473,11 +9658,15 @@ este ciclo publica es la **candidata**, y la candidata es exactamente eso.
   puerta y publica exactamente lo medido.
 - `scripts/release/build-release-manifest.sh` — el generador de la autoridad de
   digest de una release.
-- `v0.77.0-rc1` — la candidata que este ciclo publicó y verificó (prerelease;
+- `v0.78.0-rc1` — la candidata que este ciclo publicó y verificó (prerelease;
   la promoción a estable sigue bloqueada por el certificador externo).
 - `examples/smoke/11-cli-self-report.pipeline.kts` — el escenario que pregunta al
-  producto por su salud, su catálogo y su versión, y comprueba cada respuesta
-  contra lo que el producto imprimió (§2.72).
+  producto por su salud, su catálogo, su versión y **las operaciones de su propio
+  run**, y comprueba cada respuesta contra lo que el producto imprimió (§2.72,
+  §2.73).
+- `examples/output/33-live-process-output.pipeline.kts` — el escenario que
+  comprueba que la salida de un **proceso** llega al terminal, que es lo único
+  que el observador en vivo puede hacer (§2.73).
 - Historia anterior: tag `pre-testing-reset-20261018`. No se resucita en el árbol
   activo.
 

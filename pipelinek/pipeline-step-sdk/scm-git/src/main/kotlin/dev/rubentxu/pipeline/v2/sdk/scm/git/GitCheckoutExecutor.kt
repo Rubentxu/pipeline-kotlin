@@ -109,15 +109,22 @@ open class GitCheckoutExecutor(
         guardProcessBuilderArgs(listOf("git", "ls-remote", spec.url, spec.branch))
 
         // Emit GitCheckoutStarted
-        emitEvent(req, GitCheckoutStarted(
-            eventId = newEventId(),
-            runId = req.runId,
-            sequence = 0L,
-            occurredAt = Instant.now(clock),
-            url = spec.url,
-            branch = spec.branch,
-            credentialsRef = spec.credentialsId?.let { dev.rubentxu.pipeline.v2.domain.CredentialsRef(it) }
-        ))
+        try {
+            emitEvent(req, GitCheckoutStarted(
+                eventId = newEventId(),
+                runId = req.runId,
+                sequence = 0L,
+                occurredAt = Instant.now(clock),
+                url = spec.url,
+                branch = spec.branch,
+                credentialsRef = spec.credentialsId?.let { dev.rubentxu.pipeline.v2.domain.CredentialsRef(it) }
+            ))
+        } catch (refused: CheckoutRecordRefused) {
+            // The run's record cannot hold what the checkout is about to do, so the
+            // checkout does not do it. A checkout that cannot say what it did is a
+            // checkout the run can neither replay nor explain.
+            return Result.failure(refused)
+        }
 
         val startMs = System.currentTimeMillis()
 
@@ -177,17 +184,26 @@ open class GitCheckoutExecutor(
             // Scrub removes registered secret patterns (canaries + real credentials).
             val rawReason = e.message?.take(256) ?: "Unknown error"
             val scrubbedReason = secretPatternRegistry.scrub(rawReason)
-            emitEvent(req, GitCheckoutFailed(
-                eventId = newEventId(),
-                runId = req.runId,
-                sequence = 0L,
-                occurredAt = Instant.now(clock),
-                url = spec.url,
-                branch = spec.branch,
-                reason = scrubbedReason,
-                exitCode = -1
-            ))
-            Result.failure(e)
+            val failure = try {
+                emitEvent(req, GitCheckoutFailed(
+                    eventId = newEventId(),
+                    runId = req.runId,
+                    sequence = 0L,
+                    occurredAt = Instant.now(clock),
+                    url = spec.url,
+                    branch = spec.branch,
+                    reason = scrubbedReason,
+                    exitCode = -1
+                ))
+                e
+            } catch (refused: CheckoutRecordRefused) {
+                // The failure could not be recorded either. The refused record is the fact
+                // the run cannot prove, so it is the one that travels; what actually broke
+                // rides along inside it.
+                refused.addSuppressed(e)
+                refused
+            }
+            Result.failure(failure)
         }
     }
 
@@ -505,12 +521,18 @@ open class GitCheckoutExecutor(
      * path to the Output Plane, so a `git` transcript is not retrievable through a cursor today.
      * That is a capability gap, not a second authority, and it closes when the Output Plane is
      * published as a contract plugins can write to.
+     * ## A record that cannot be written is not a warning
+     * The sink is where the run's memory of the checkout lives, so a write it refuses takes the
+     * fact away. This used to print a warning on stderr and let the checkout carry on: the
+     * checkout went on to do work, reported success, and the run's record said nothing about any
+     * of it. The refusal now travels as [CheckoutRecordRefused] and the checkout ends in failure,
+     * which is the only honest outcome when the fact is gone.
 */
     private fun emitEvent(req: GitCheckoutRequest, event: dev.rubentxu.pipeline.v2.events.DomainEvent) {
         try {
             req.eventSink.append(event)
         } catch (e: Exception) {
-            System.err.println("Warning: failed to emit event ${event.kind}: ${e.message}")
+            throw CheckoutRecordRefused(event.kind, e)
         }
     }
 

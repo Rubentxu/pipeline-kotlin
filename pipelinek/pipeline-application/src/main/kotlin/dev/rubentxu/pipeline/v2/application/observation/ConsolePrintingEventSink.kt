@@ -21,6 +21,15 @@ import dev.rubentxu.pipeline.v2.events.EventSink
  * "redact before durable persistence or public presentation" rule — and stating
  * it here also states the limit: **this class is not a security boundary**.
  * Redaction happens upstream; this only presents what it is given.
+ * ## The record comes before the drawing
+ * Drawing is a presentation of a fact, and a presentation is allowed to fail: the renderer
+ * stops on purpose when the routing table and a family handler disagree, because a console
+ * that draws a plausible wrong line is worse than a console that stops. What must NOT happen
+ * is the console taking the fact with it. So the durable write happens FIRST and the drawing
+ * happens after: a rendering fault leaves the run's record intact and the failure visible,
+ * instead of deleting the event from the store and leaving a run that looks like it never
+ * happened. The drawing is a collaborator, so this order is a property of the class and not
+ * of the day the drawing happened to be written.
  * ## Scope of "live"
  * This streams the EVENT spine: stage and step lifecycle, `echo` messages,
  * failures, directives. It does NOT stream process stdout/stderr — the bytes a
@@ -51,19 +60,20 @@ class ConsolePrintingEventSink(
     private val view: ObservationView,
     private val query: CompiledObservationQuery,
     private val emit: (String) -> Unit,
+    private val render: (DomainEvent) -> String? = HumanConsoleRenderer.stream(view)::accept,
 ) : EventSink {
-
-    private val stream = HumanConsoleRenderer.stream(view)
 
     override fun append(event: DomainEvent) {
         // Fold the event into the stream UNCONDITIONALLY, then decide whether to print it. The
         // stream carries the stage-name scope that later lines resolve against, so skipping the
         // fold for a filtered-out `StageStarted` would degrade the rendering of events that ARE
         // selected — the filter would leak into the presentation of the survivors.
-        // Render BEFORE delegating so a rendering fault cannot swallow the event on its way to
-        // the durable store.
-        val line = stream.accept(event)
+        // The durable fact goes FIRST. The drawing is a presentation of that fact, and a
+        // presentation that fails must not take the fact with it: the renderer is allowed to
+        // stop — a console that draws a plausible wrong line is worse than a console that
+        // stops — and when it stops, the run's record of what happened stays intact.
         delegate.append(event)
+        val line = render(event)
         if (line != null && query.accepts(ObservationRecord.Event(event))) emit(line)
     }
 

@@ -33,19 +33,42 @@ class RedactorState internal constructor(
     internal lateinit var seamFirstBytes: ByteArray
 
     /**
-     * Output ring for SCRUB_MARKER bytes. Capacity MUST accommodate the worst
-     * case of a single [feed] call: a [feed] with `len` input bytes can emit
-     * up to `len` bytes (one per input byte, when the lookahead ring is full),
-     * plus the SCRUB_MARKER expansion. The agent's read buffer is `chunkSize`,
-     * so a single feed can emit up to `chunkSize` bytes plus one SCRUB_MARKER.
-     * Without this, a large `feed` call wraps the output ring and overwrites
-     * Bytes that the next [take] has not yet read — (b) / caught
-     * this as f04 "stdout garbled" (outputQueue=56, feed emits 8136 bytes,
-     * first 25 are clobbered before the take loop drains them).
-*/
-    internal val outputQueue = ByteArray(maxOf(maxLiteral, chunkSize) + SecretPatternRegistry.SCRUB_MARKER.length)
+     * The DECIDED bytes waiting for the caller to take them.
+     *
+     * A decided byte is one the redactor has already settled: plain text, or the
+     * SCRUB_MARKER standing for a secret. Decided bytes ARE the transcript, so
+     * **a decided byte is never written over**. The queue therefore grows to
+     * hold what was decided instead of relying on a capacity a later call could
+     * exceed: a fixed ring is only safe while every caller feeds no more than
+     * the ring was sized for, and that is a promise about callers living
+     * somewhere else in the tree. A queue that wraps eats the beginning of a
+     * transcript — the bytes the reader had not taken yet — so this one grows.
+     *
+     * What it holds is the decided bytes the caller has NOT taken. A caller that
+     * takes what it decided after every feed keeps it to one feed's worth.
+    */
+    internal var outputQueue = ByteArray(maxOf(maxLiteral, chunkSize))
     internal var outputHead = 0
     internal var outputCount = 0
+
+    /**
+     * Makes room for [needed] more decided bytes, growing the queue if it must.
+     *
+     * The bytes already decided are copied over in order, so growing changes
+     * where they live and never what they are. The old allocation is wiped
+     * before it is dropped: it held decided bytes, and a discarded buffer is one
+     * the collector keeps around for a while.
+    */
+    internal fun reserveOutput(needed: Int) {
+        if (outputQueue.size - outputCount >= needed) return
+        var capacity = outputQueue.size
+        while (capacity - outputCount < needed) capacity *= 2
+        val grown = ByteArray(capacity)
+        for (i in 0 until outputCount) grown[i] = outputQueue[(outputHead + i) % outputQueue.size]
+        java.util.Arrays.fill(outputQueue, 0.toByte())
+        outputQueue = grown
+        outputHead = 0
+    }
 
     /** True after [StreamingRedactor.finish] is called; no more bytes will be fed. */
     internal var sourceExhausted = false
@@ -70,7 +93,8 @@ class RedactorState internal constructor(
  * ## Memory Bound
  * Per wrapped stream: `O(maxLiteralByteLength + chunkSize + markerLength)`
  * - pending: at most maxLiteralByteLength bytes
- * - outputQueue: at most markerLength bytes (SCRUB_MARKER = "****" = 4 bytes)
+ * - outputQueue: the DECIDED bytes the caller has not taken yet. A caller that
+ *   takes what it decided after every feed keeps this to one feed's worth.
  * - inputBuffer: chunkSize bytes
  * Total: O(maxLiteral + chunk + marker)
  * ## Correctness Invariants
@@ -78,6 +102,9 @@ class RedactorState internal constructor(
  *   or -1; it NEVER returns 0 as an internal signal.
  * - A byte is NOT emitted from pending until enough lookahead exists to rule out
  *   every secret literal beginning at that byte.
+ * - A DECIDED byte is never written over. The decided bytes ARE the transcript,
+ *   and a transcript that loses bytes to its own buffer is worse than no
+ *   transcript at all.
  * - At EOF, the remaining pending buffer is drained by applying the same rule
  *   (but no match is possible since no more data will arrive).
  * ## Re-entrancy
@@ -206,6 +233,7 @@ class StreamingRedactor(
             // must be matched by the prefix that IS present rather than deferred forever.
             if (!drainOneHead(state, atEof = true)) {
                 // No seam literal starts with this byte; emit it as-is.
+                state.reserveOutput(1)
                 state.outputQueue[(state.outputHead + state.outputCount) % state.outputQueue.size] =
                     state.ring[state.ringHead]
                 state.outputHead = state.outputHead // unchanged
@@ -263,6 +291,7 @@ class StreamingRedactor(
 
     /** Move the ring head to the output queue verbatim, and make room in the ring. */
     private fun emitHeadAsPlain(state: RedactorState) {
+        state.reserveOutput(1)
         state.outputQueue[(state.outputHead + state.outputCount) % state.outputQueue.size] =
             state.ring[state.ringHead]
         state.outputCount++
@@ -310,7 +339,9 @@ class StreamingRedactor(
                     state.ringHead = (state.ringHead + 1) % state.ring.size
                     state.ringCount--
                 }
-                for (byte in SecretPatternRegistry.SCRUB_MARKER.toByteArray(StandardCharsets.UTF_8)) {
+                val marker = SecretPatternRegistry.SCRUB_MARKER.toByteArray(StandardCharsets.UTF_8)
+                state.reserveOutput(marker.size)
+                for (byte in marker) {
                     state.outputQueue[(state.outputHead + state.outputCount) % state.outputQueue.size] = byte
                     state.outputCount++
                 }

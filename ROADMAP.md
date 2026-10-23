@@ -99,17 +99,17 @@ composición se rechaza.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `4367cb702`, medido en los ensayos de este bloque. El ciclo anterior movió la versión del producto a `0.76.0` (§2.61), reparó 25 ficheros de comentarios que afirmaban cosas ya falsas (§2.62), auditó dieciséis escenarios del arnés por mutación (§2.63) y corrigió el conteo del informe del arnés (§2.64). Este bloque **tampoco cambia ni una línea de comportamiento del producto**: añade al arnés la comparación entre las dos rutas de ejecución y decide, con mutación, si la doble ejecución discrimina (§2.65) | `git rev-parse HEAD` |
+| SHA | `ffbc43d5f`, medido en los ensayos de este bloque. El ciclo anterior movió la versión del producto a `0.76.0` (§2.61), reparó 25 ficheros de comentarios que afirmaban cosas ya falsas (§2.62), auditó dieciséis escenarios del arnés por mutación (§2.63), corrigió el conteo del informe del arnés (§2.64) y comparó las dos rutas de ejecución entre sí (§2.65). Este bloque **cambia el orden de la salida de la consola en las dos rutas**: una sola autoridad compone la narración, la redacción va antes que ella, y la ruta con journal narra en vivo como la otra. De paso cierra una fuga medida: la ruta sin journal imprimía en el terminal un secreto que su propio almacén se negaba a guardar (§2.66) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1087** (153 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1089** (154 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **61 (61 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **61 de 61**: **373 comparaciones sobre 110 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 373, **88** son esas comparaciones nuevas: **44** de los 61 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **19586 / 67443 = 0.29** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **19654 / 67462 = 0.29** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **158 / 144 / 143** en los tres ensayos, los tres sobre `4367cb702`, peor 158 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **159 / 143 / 142** en los tres ensayos, los tres sobre `ffbc43d5f`, peor 159 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -123,17 +123,19 @@ sale mejor que la realidad.
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
 165 s en el bloque de las tres familias; el ciclo anterior a éste midió 197, 169
-y 376 s, y el anterior a ése 187, 130 y 133 s. Este mide **158, 144 y 143 s**:
+y 376 s, y el anterior a ése 187, 130 y 133 s. Este mide **159, 143 y 142 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
 de este ciclo el presupuesto se cumplió con holgura —el peor, 158 s, es menos de
 la sexta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
 la API pública, los 1087 tests y los 61 escenarios.
 
-**La etapa del E2E mide 88 s**, contra los 79-81 s del ciclo anterior (§2.63):
-la diferencia son los **siete segundos** que cuesta leer, con el propio verbo
-`console` del producto, los bytes que las dos rutas comprometieron (§2.65). Es
-el precio de una comparación que encuentra una clase de defecto que ninguna
+**La etapa del E2E mide 90, 90 y 89 s**, contra los 88 s del ciclo anterior
+(§2.65) y los 79-81 s del anterior a ése (§2.63). Los **siete segundos** que
+cuesta leer, con el propio verbo `console` del producto, los bytes que las dos
+rutas comprometieron (§2.65) siguen ahí, y se suman los **dos** que cuesta que
+la narración de la ruta con journal llegue en vivo en vez de al final (§2.66).
+Es el precio de una comparación que encuentra una clase de defecto que ninguna
 expectativa declarada puede ver, y está medido para que la decisión se pueda
 rehacer con el número delante. El resto del coste sigue siendo el mismo: los 61
 escenarios son los mismos y la caché de scripts compilados que el producto ya
@@ -7280,6 +7282,116 @@ propia verificación; queda medido, con su mecanismo y con su síntoma, para el
 bloque que lo decida.
 
 
+### 2.66 La consola que mentía: una sola autoridad de narración
+
+Este bloque cierra la divergencia que §2.65 dejó medida y sin decidir, y de
+camino encuentra una fuga que no estaba en el plan del bloque.
+
+**La divergencia que había.** El producto narraba en vivo en la ruta volatile y
+al final en la ruta durable. En una consola de CI eso se ve: el operador ve la
+salida del proceso mientras la corrida corre, y el relato de la corrida cuando
+termina. Arreglarlo era tocar el orden de la salida de la ruta que usa CI, y
+por eso exigía su propia verificación.
+
+**Lo que apareció al medirla: una fuga.** Antes de tocar el orden se midió de
+dónde salía la narración, y la respuesta tenía dos mitades. La ruta volatile
+componía el narrador de consola ENCIMA del redactor, de modo que renderizaba el
+evento antes de que la redacción lo limpiara. Medido contra la distribución, con
+una credencial atada y su literal en un `echo`:
+
+| | stdout | lo que queda en el almacén |
+|---|---|---|
+| ruta con journal (la de CI) | `the value is ****` | `the value is ****` |
+| ruta sin journal (la local) | `the value is e2e-fixture-secret` | `the value is ****` |
+
+La fila que importa es la segunda: **el almacén queda limpio y la consola no**.
+Un secreto que no se guarda es un secreto que se imprime, y lo que se imprime
+acaba en un log de CI, en un scrollback y en una captura. La ruta que se usa en
+local era la que se llevaba el secreto.
+
+**El mecanismo, en una frase.** Los eventos viajan hacia abajo por la cadena de
+decoradores, así que la redacción tiene que ir arriba: la composición que
+presenta lo que el almacén guarda es `redactor(narrador(almacén))`, y la que
+había era `narrador(redactor(almacén))`. El orden invertido es exactamente el
+que deja pasar el secreto.
+
+**La decisión: una sola autoridad.** La composición vive en un solo sitio y las
+dos rutas la llaman. Lo que las dos rutas tenían duplicado —leer el script y
+calcular su hash— ahora está en un solo sitio también, y por la misma razón:
+dos lecturas del mismo script podían dar dos hashes, y la diferencia sólo
+habría salido al reanudar una corrida, en otro mundo y mucho después.
+
+La ruta durable **narra en vivo**, como la volatile. Su volcado final desaparece
+para el formato de texto, porque una narración que llega al final, después de la
+salida del proceso que explica, es un relato desordenado; los formatos de
+máquina conservan su documento al final, porque un documento no se puede emitir
+a trozos.
+
+**El instrumento, y cómo se vio en rojo.** La garantía que se fija es de una
+línea: *la consola presenta los mismos bytes que el almacén guarda*. Es una
+composición pura —el almacén que envuelve, el formato, la vista, la consulta y
+el registro de secretos—, así que el instrumento más barato que puede fallar es
+una llamada, no una distribución. El test unitario afirma las dos mitades de la
+garantía, y se vio en rojo con dos mutaciones:
+
+| mutante | fila que encendió | otras filas |
+|---|---|---|
+| el narrador por encima del redactor (el defecto) | `the console presents exactly what the store keeps` | ninguna |
+| el narrador instalado también en los formatos de máquina | `a machine format leaves the console to the document` | ninguna |
+
+La primera encendió con el fallo exacto del defecto, y dice por qué el test no
+es decorativo:
+
+```
+expected: <the value is ****> but was: <the value is e2e-fixture-secret>
+```
+
+**Lo que mide el arnés después del cambio.** La suite entera, con la doble
+ejecución y la comparación entre las dos rutas encendidas: **61 escenarios, 61
+en verde**, con el mismo censo que antes del cambio (373 comprobaciones sobre
+110 ejecuciones). El arnés no se enteró del cambio, que es lo que se quería: la
+narración de la ruta durable es la misma historia que la de la volatile, y por
+eso las dos cuentas siguen dando igual.
+
+Y la sonda que encontró la fuga, repetida después del cambio, dice lo contrario:
+las dos rutas muestran `****`, tanto para el `echo` del DSL como para la salida
+de un proceso, y el secreto no aparece en ninguno de los cuatro flujos.
+
+**El comentario que mentía.** El KDoc del narrador de consola decía «encima
+del redactor, nunca debajo» —la recomendación contraria a la que hace la
+composición correcta— y afirmaba que la salida en vivo de un proceso era «un
+cambio posterior». Las dos frases eran falsas: la segunda llevaba mucho tiempo
+siendo falsa, porque la salida del proceso llega por el Output Plane. Un
+comentario que afirma lo contrario de lo que hace el código no es un comentario:
+es una fuente que miente con la autoridad de la fuente (§2.62).
+
+**Lo que este bloque deja medido y sin hacer.** El diario de operaciones —la
+otra autoridad que conserva lo que la corrida hizo— guarda los parámetros y el
+resultado del paso **en claro**, sin consultar el registro de secretos. Medido
+contra la distribución, el `--db` de una corrida que ata una credencial contiene
+el valor literal del secreto en la fila de la operación:
+
+```
+{"stepId":"core.echo","params":{"payload":"{\"kind\":\"echo\",\"text\":\"the value is e2e-fixture-secret\"}"},...}
+{"result":"the value is e2e-fixture-secret\n",...}
+```
+
+Y medido contra la distribución **sin** este bloque —la línea base, construida
+del árbol anterior—, los mismos bytes en el mismo sitio. Es decir: **el diario
+ya guardaba el secreto en claro, y este bloque no lo ha tocado.** La fuga que
+este bloque cierra es la de la consola; la del diario es otra, más profunda, y
+está fuera de lo que aquí se decidió.
+
+La pregunta que deja el diario es de otro orden que la de la consola. El diario
+existe para que una corrida se pueda repetir sin repetir sus efectos, así que
+**guardar el secreto en claro puede ser su función**: es el registro de lo que
+se le pidió a la máquina. Quitarlo de ahí no es un redactado más, es una
+decisión sobre qué significa un diario reproducible y qué es una corrida
+reproducible. Lo que sí es un defecto sin discusión es que **sea la segunda
+autoridad**: el almacén de eventos redacta, el diario no, y los dos viven en el
+mismo fichero.
+
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un comentario que afirma una verdad que el código ya no tiene es peor que
   no escribirlo.** Un lector no puede saber que un comentario miente, así que
@@ -8589,6 +8701,49 @@ bloque que lo decida.
   cuesta leer los bytes comprometidos con el verbo `console` del producto. Se
   publica junto a la cifra porque una garantía sin su coste es una promesa
   (§2.65).
+
+- **El orden de los decoradores ES la propiedad de seguridad.** Una consola
+  por encima de la redacción imprime lo que el almacén se niega a guardar. No
+  son dos opiniones sobre el mismo hecho: la consola está después de la
+  redacción, o es una fuga. Se comprobó contra la distribución: la ruta que
+  imprimía el secreto era la que lo compuso al revés (§2.66).
+
+- **La garantía se escribe como una igualdad, no como una ausencia.** «La
+  consola presenta los mismos bytes que el almacén guarda» se puede comprobar
+  con una llamada, y falla en las dos direcciones. «El secreto no aparece» es
+  una ausencia que sólo falla en una, y para comprobarla hace falta una
+  distribución entera. La forma de la garantiza decide el precio de
+  comprobarla (§2.66).
+
+- **Dos composición que parecen correctas son una composición y un defecto.**
+  Las dos rutas tenían su propia cadena de decoradores, y las dos parecían
+  razonables; una estaba mal en el orden que importaba. Una autoridad
+  compartida no sólo quita la duplicación: quita la clase de defecto, porque
+  ya no hay dos cosas que comparar (§2.66).
+
+- **El relato de una corrida llega cuando la corrida corre.** La ruta con
+  journal narraba al final, de modo que el operador veía la salida del proceso
+  mientras la corrida corría y la explicación cuando terminaba. Un relato que
+  llega tarde obliga a reconstruir lo que pasó (§2.66).
+
+- **Un secreto que no se guarda es un secreto que se imprime.** La fuga
+  encontrada midió exactamente eso: el almacén limpio y la consola con el
+  secreto. El almacén no es la frontera de la confidencialidad, la consola
+  también lo es (§2.66).
+
+- **Un defecto que parece nuevo se comprueba contra la línea base antes de
+  ser atribuido.** El diario de operaciones guardaba el secreto en claro, y
+  la reacción natural era atribuírselo al bloque. Se midió contra una
+  distribución construida del árbol **anterior**, y los mismos bytes estaban
+  en el mismo sitio: el defecto era anterior. Sin esa medición, el bloque
+  habría publicado una acusación falsa contra sí mismo (§2.66).
+
+- **Una garantía que es una composición se comprueba con una llamada.** El
+  instrumento más barato que puede fallar es el que encaja con la forma de lo
+  que se garantiza: una composición pura se compone, se llama y se lee. Una
+  distribución entera para comprobar una cadena de decoradores sería un
+  instrumento caro para una ley pequeña (§2.66).
+
 
 ## 4. Referencias
 

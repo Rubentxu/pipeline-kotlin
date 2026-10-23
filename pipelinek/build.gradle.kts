@@ -51,7 +51,14 @@ repositories {
 // work plus the whole integration, so the 0.76.0 train opens here
 // (ProductVersion 0.76.0) and the next candidate can be tagged v0.76.0-rc1
 // with PRODUCT IDENTITY LAW across all five surfaces.
-version = "0.76.0"
+// 2026-10-23: the 0.76.0 train closed at v0.76.0-rc1, and the same law that
+// kept 0.62.0 from being published applies here: a version that names two
+// different artifacts names nothing. The capability catalogue moved to the
+// pipelinek.capabilities/2 wire format, so the 0.76.0-rc1 artifact and this
+// one do NOT behave the same, and one version cannot carry both. The 0.77.0
+// train opens here (ProductVersion 0.77.0) and its first candidate can be
+// tagged v0.77.0-rc1.
+version = "0.77.0"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

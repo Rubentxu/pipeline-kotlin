@@ -99,17 +99,17 @@ composición se rechaza.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `aa43c5d09`, medido en los ensayos de este bloque. El bloque anterior **cubrió la capa que limpia el transcript que la corrida compromete** (§2.68). Este bloque arregla el **comparador de las dos rutas de ejecución**: podía declarar que estaban de acuerdo después de comparar menos de lo que debía —un paso que escribe sólo a stderr quedaba fuera— y después de no leer nada —un rechazo del lector se tragaba—. Tres mutaciones lo vieron en rojo, y una de ellas reproduce el falso verde (§2.69) | `git rev-parse HEAD` |
+| SHA | `a75342f27`, medido en los ensayos de este bloque. El bloque anterior **arregló el comparador de las dos rutas de ejecución** (§2.69). Este bloque arregla un defecto **vivo** del producto: un fichero sembrado desde un flujo se guardaba **un byte más corto**, porque el lector quitaba el newline final a todas las clases, incluidas las cuyo valor **son** los bytes. La regla pasa a ser una respuesta **de la propia clase**, y con ella sembrar por flujo y sembrar por ruta vuelven a dar la misma credencial (§2.70) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1097** (156 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1098** (156 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **61 (61 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **61 de 61**: **377 comparaciones sobre 110 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 375, **88** son esas comparaciones nuevas: **44** de los 61 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **20075 / 67536 = 0.297** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **20087 / 67551 = 0.297** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **187 / 139 / 140** en los tres ensayos, los tres sobre `aa43c5d09`, peor 187 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **203 / 139 / 141** en los tres ensayos, los tres sobre `a75342f27`, peor 203 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -122,24 +122,26 @@ sale mejor que la realidad.
 
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
-165 s en el bloque de las tres familias; los cuatro bloques anteriores a éste
-midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s y 182, 141 y 139 s.
+165 s en el bloque de las tres familias; los cinco bloques anteriores a éste
+midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s, 182, 141 y 139 s
+y 187, 139 y 140 s.
 Este mide
-**187, 139 y 140 s**:
+**203, 139 y 141 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 187 s, es menos de
+de este ciclo el presupuesto se cumplió con holgura —el peor, 203 s, es menos de
 la cuarta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
-la API pública, los 1097 tests y los 61 escenarios.
+la API pública, los 1098 tests y los 61 escenarios.
 
-**La etapa del E2E mide 88, 88 y 87 s**, contra los 85, 88 y 86 s del ciclo
-anterior (§2.68) y los 84, 86 y 86 s del anterior a ése (§2.67). Los **siete
+**La etapa del E2E mide 88, 86 y 88 s**, contra los 88, 88 y 87 s del ciclo
+anterior (§2.69) y los 85, 88 y 86 s del anterior a ése (§2.68). Los **siete
 segundos** que cuesta leer, con el propio verbo `console` del producto, los bytes
 que las dos rutas comprometieron (§2.65) siguen ahí, y este ciclo **tampoco añade
-ningún escenario**: los 61 son los mismos. Lo que este bloque arregla es el
-comparador que los lee —el que podía declarar que las dos rutas estaban de
-acuerdo sin haber leído— y lo hace con un paso más en un escenario que ya
-existía, no con otro escenario (§2.69). Es el precio de una comparación que encuentra una
+ningún escenario**: los 61 son los mismos. Lo que este bloque arregla es un
+defecto **del producto** —el fichero sembrado por flujo que se guardaba un byte
+más corto— y su instrumento es **una fila unitaria**, no un escenario: la
+garantía es del lector, y el lector se sostiene con bytes dentro y una
+credencial fuera (§2.70). Es el precio de una comparación que encuentra una
 clase de defecto que ninguna expectativa declarada puede ver, y está medido para
 que la decisión se pueda rehacer con el número delante. El resto del coste sigue siendo el mismo: los 61
 escenarios son los mismos y la caché de scripts compilados que el producto ya
@@ -7635,6 +7637,73 @@ deducirla del sistema de ficheros— es trabajo de producto y queda para el
 bloque siguiente.
 
 
+### 2.70 Un fichero sembrado por flujo se guardaba un byte más corto
+
+**La brecha, medida.** El lector que siembra una credencial desde un flujo
+quitaba el newline final del flujo **para todas las clases**, incluidas las
+cuyo valor **son** los bytes. Consecuencia medida: un fichero sembrado desde
+stdin que terminaba en `0x0A` se guardaba **sin ese byte**, y el almacén lo
+aceptaba sin decir nada. El paso recibía un fichero que nadie había dado, y el
+que sembraba no tenía forma de enterarse: el almacén no registra los valores,
+por diseño.
+
+Y la brecha no era sólo del lector. La terminal lee la misma clase desde una
+ruta, con `Files.readAllBytes`, y **nunca quitó nada**. Sembrar por flujo y
+sembrar por ruta producían credenciales distintas, que es exactamente lo que
+el KDoc del lector exige que no pase: *two callers asking the same question
+must get the same answer*.
+
+**Medido también lo que NO se rompía, porque una hipótesis Nice no es una
+medida.** Tres clases reciben bytes, y sólo una se rompía de verdad:
+
+| clase | qué vale | efecto medido |
+|---|---|---|
+| `secret-file` | los bytes | **se rompía, en silencio**: el fichero se guardaba un byte más corto |
+| `certificate` | los bytes del keystore | la regla se le aplicaba, pero un keystore PKCS#12 escrito por el JDK **termina siempre en `0x10`** —400 de 400, y 20 longitudes de alias distintas, porque el último byte es el relleno del MacData cifrado—, así que nunca se le quitaba nada. La hipótesis de un fallo en uno de cada 256 keystores quedó **medida y descartada** |
+| `zip` | las **entradas** del archivo | el último byte del archivo no es el valor; sembrado medido: aceptado, entradas intactas |
+
+La regla, sin embargo, era la misma para las tres, y por eso el arreglo no
+toca un brazo: **la mueve a donde pertenece**.
+
+**Un newline termina una línea, no un fichero.** La regla vivía en el lector,
+y por eso el lector de flujo y el de la terminal no estaban de acuerdo sobre
+la misma clase. Ahora el «cómo llega el valor» es una respuesta **de la propia
+clase** —`CredentialFraming`, dos casos: `TERMINATED` y `WHOLE`— y cada
+transporte pregunta lo mismo y obtiene lo mismo. Añadir una clase nueva obliga
+a decidir su marco, porque el `when` es exhaustivo: no se puede heredar el
+comportamiento por descuido.
+
+**El instrumento: una fila unitaria.** Bytes dentro, credencial fuera: ni reloj,
+ni fichero, ni proceso, ni almacén. La fila nueva dice que un fichero conserva
+todos sus bytes, el newline final incluido. **No es un test nuevo de una clase
+nueva**: es una fila más en el fichero que ya sostenía las seis anteriores.
+
+**Cómo se vio en rojo, dos veces.** Cada mutación se aplicó, se leyó de vuelta
+para comprobar que había aterrizado, y se revirtió.
+
+| mutante | qué encendió |
+|---|---|
+| el terminador se aplica a todas las clases —el defecto— | **una fila**: la del fichero. Las otras siete siguen verdes |
+| el terminador no se aplica a ninguna clase | **tres filas**: las del protocolo de línea —el newline de la shell, el username de la primera línea y la contraseña que termina en newline |
+
+Las dos direcciones importan: la primera dice que la fila nueva vigila el
+defecto, y la segunda que el arreglo no rompió el protocolo que las otras
+filas sostienen. Con una sola de las dos, la fila habría podido ser verde por
+casualidad.
+
+**Lo que el suite de extremo a extremo no podía ver, y por qué.** El arnés
+siembra un `secret-file` con un fixture que no termina en newline, y su
+escenario comprueba que la credencial **resuelve**, no qué bytes trae: es su
+principio declarado, porque el fixture no es un hecho del producto. Ese
+combinio hacía el defecto invisible a ese nivel. No se añade ningún escenario:
+la garantía es del **lector**, y el lector se sostiene con una fila pura.
+
+**Lo que la puerta midió.** `PASS` tres veces sobre el árbol commiteado
+(203 s / 139 s / 141 s; el peor, de 900), `tests=rewritten:1098`, 61 de 61
+escenarios, 377 comprobaciones sobre 110 ejecuciones, y el LOC en 20087 de
+verificación sobre 67551 de producto (0,297).
+
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un comentario que afirma una verdad que el código ya no tiene es peor que
   no escribirlo.** Un lector no puede saber que un comentario miente, así que
@@ -9063,6 +9132,27 @@ bloque siguiente.
 - **El falso verde se demuestra reproduciéndolo.** Con el rechazo tragado, el
   escenario pasa en verde sin haber leído nada. Sin ese ensayo, «el rechazo
   ahora falla» sería una afirmación; con él, es una diferencia medida (§2.69).
+
+- **Un newline termina una línea, no un fichero.** El lector de credenciales lo
+  quitaba a todas las clases, y una clase cuyo valor **son** los bytes perdía el
+  último en silencio. La regla estaba donde no le tocaba: ahora la responde la
+  propia clase, y cada transporte pregunta lo mismo. Una regla que pertenece al
+  valor se queda donde el valor vive (§2.70).
+
+- **Sembrar por flujo y sembrar por ruta tienen que dar la misma credencial.**
+  El KDoc del lector ya lo exigía y el código no lo cumplía: la terminal leía
+  el fichero entero y el flujo le quitaba un byte. Dos caminos hacia el mismo
+  almacen, la misma pregunta y dos respuestas distintas (§2.70).
+
+- **Una hipótesis buena no es una medida.** El keystore PKCS#12 parecía un
+  segundo caso vivo —uno de cada 256—buta el JDK **siempre** termina el
+  keystore en `0x10` (400 de 400, y veinte longitudes distintas), así que el
+  fallo no existía. Lo que se cuenta es lo que se midió: una clase rota, dos
+  intactas (§2.70).
+
+- **Un instrumento tiene que discriminar en las dos direcciones.** La fila
+  nueva se vio en rojo con el defecto y en verde con el protocolo roto, que es
+  lo que distingue a un guardián de una coincidencia (§2.70).
 
 
 ## 4. Referencias

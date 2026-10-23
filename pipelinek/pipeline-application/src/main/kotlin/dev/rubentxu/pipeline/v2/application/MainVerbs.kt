@@ -114,7 +114,7 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
     }
 
     // `capabilities` is a real subcommand.
-    // Emits `pipelinek.capabilities/1` JSON line on stdout; side-effect
+    // Emits `pipelinek.capabilities/2` JSON line on stdout; side-effect
     // free. Machine-verifiable surface for external consumers.
     if (args.firstOrNull() == "capabilities") {
         val exitCode = MainCapabilitiesCli.main(args.drop(1).toTypedArray())
@@ -131,28 +131,44 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
     }
 
     // `doctor` is a real subcommand. Local-only health
-    // diagnostics: JDK version, working directory writability probe. Exits
-    // 0 when the local runtime is healthy, 2 on an environment defect.
+    // diagnostics: JDK version, operating system, working directory
+    // writability probe. Exits 0 when the local runtime is healthy, 2 on an
+    // environment defect.
     if (args.firstOrNull() == "doctor") {
         // route host-environment reads through the canonical
         // RuntimeConfig adapter (single authority); direct System.getProperty
         // here would be a second runtime-value authority (WULpr402 property 6).
         val runtimeConfig = dev.rubentxu.pipeline.v2.application.SystemRuntimeConfig()
-        val checks = buildList {
-            add("jdk: ${runtimeConfig.property("java.version")} (${runtimeConfig.property("java.vendor")})")
-            add("os: ${runtimeConfig.osName()} ${runtimeConfig.property("os.version")}")
-            val cwd = Paths.get("").toAbsolutePath()
-            val writable = try {
-                val probe = Files.createTempFile(cwd, "pipelinek-doctor-", ".probe")
-                Files.deleteIfExists(probe)
-                true
-            } catch (_: java.io.IOException) {
-                false
-            }
-            add("workdir: $cwd (${if (writable) "writable" else "NOT WRITABLE"})")
+        val cwd = Paths.get("").toAbsolutePath()
+        // The probe answers a question about the filesystem, and every way it
+        // can fail to answer is the same answer: this directory cannot be
+        // written into. A diagnostic that crashes on the very defect it is
+        // meant to report would answer nothing at all.
+        val writable = try {
+            val probe = Files.createTempFile(cwd, "pipelinek-doctor-", ".probe")
+            Files.deleteIfExists(probe)
+            true
+        } catch (_: java.io.IOException) {
+            false
+        } catch (_: SecurityException) {
+            false
         }
-        checks.forEach(::println)
-        System.exit(if (checks.any { it.contains("NOT WRITABLE") }) 2 else 0)
+        val checks = listOf(
+            InstallationHealth.fact(
+                "jdk",
+                "${runtimeConfig.property("java.version")} (${runtimeConfig.property("java.vendor")})",
+            ),
+            InstallationHealth.fact(
+                "os",
+                "${runtimeConfig.osName()} ${runtimeConfig.property("os.version")}",
+            ),
+            InstallationHealth.workdir(cwd, writable),
+        )
+        checks.forEach { println(it.render()) }
+        // The exit code comes from the verdicts. It is not read off the text
+        // the report printed, because a report that reads its own sentences
+        // can contradict them.
+        System.exit(InstallationHealth.exitCode(checks))
         return true
     }
 

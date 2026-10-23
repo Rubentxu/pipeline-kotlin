@@ -53,6 +53,19 @@ object CandidateMaterializer {
         candidateSequence: Int,
         outDir: Path,
     ): MaterializationResult {
+        // The published asset set lives in one directory — the one that holds
+        // the distribution ZIP — and the publisher assembles it from there. An
+        // asset written anywhere else is a candidate the publisher cannot
+        // assemble, and the refusal belongs here, where the set is built, and
+        // not at the far end of the publication.
+        val placement = evaluateAssetPlacement(
+            zip,
+            listOfNotNull(sbom, sdk, bom, sha256sums),
+        )
+        if (placement is AssetPlacement.Stranded) {
+            return MaterializationResult.Refused(placement.render())
+        }
+
         val observations = buildList {
             add(IdentityObservation(IdentitySurface.PRODUCT_VERSION, productVersion.value))
             addAll(DistributionIdentityProbe.probeZip(zip))

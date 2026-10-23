@@ -97,6 +97,32 @@ tasks.register<JavaExec>("candidateAdmission") {
     // a task has started. Registering the directory here also gives the task a
     // real output, so it re-runs when the emitted material changes.
     outputs.dir(outDir)
+
+    // The digest authority is a published asset, and it is written by the
+    // admission itself, so this task has to declare it as an output of its
+    // own: without that, a build that starts from a clean distributions
+    // directory has nothing to fingerprint and the task would consider itself
+    // up to date without ever having written the file the publisher resolves.
+    // The name here is an up-to-date hint, not the contract: the contract is
+    // that every published asset lives in the distribution's directory, and
+    // the admission refuses a candidate that breaks it. The publisher
+    // resolves this asset by the name the manifest gives it, so the name
+    // itself is never written twice.
+    outputs.file(distDir.map { it.file("SHA256SUMS") })
+
+    // The assets the digest authority covers are inputs, not just arguments.
+    // A command line carries a PATH, not the bytes behind it, so a task whose
+    // only inputs were its arguments could consider itself up to date while
+    // the assets it digested had changed underneath: the receipt would name
+    // an identity that the bytes no longer have, and the digest authority
+    // would vouch for assets that are not the ones published. Declaring them
+    // as inputs is what makes the receipt and the digest authority describe
+    // the bytes that are on disk.
+    inputs.files(distDir.map { it.file("pipelinek-${project.version}.zip") })
+    inputs.files(distDir.map { it.file("pipelinek-${project.version}.sbom.json") })
+    inputs.files(distDir.map { it.file("pipelinek-${project.version}.sdk.zip") })
+    inputs.files(distDir.map { it.file("pipelinek-bom-${project.version}.json") })
+
     inputs.property("productVersion", project.version.toString())
     inputs.property("candidateSequence", candidateSequence)
 

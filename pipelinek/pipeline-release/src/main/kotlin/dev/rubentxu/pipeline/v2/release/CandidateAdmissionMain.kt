@@ -55,7 +55,11 @@ fun main(args: Array<String>) {
         sbom = args.getOrNull(6)?.takeIf { it.isNotBlank() && it != "-" }?.let { Paths.get(it) },
         sdk = args.getOrNull(7)?.takeIf { it.isNotBlank() && it != "-" }?.let { Paths.get(it) },
         bom = args.getOrNull(8)?.takeIf { it.isNotBlank() && it != "-" }?.let { Paths.get(it) },
-        sha256sums = outDir.resolve("SHA256SUMS"),
+        // The digest authority is a published asset, so it lives with the
+        // assets it digests — the ones in the distribution's directory. The
+        // receipt that describes the candidate is a different thing and lives
+        // in the candidate directory.
+        sha256sums = PublishedAssets.digestAuthorityFor(zip),
         covered = covered,
         candidateSequence = args.getOrNull(5)?.takeIf { it.isNotBlank() }?.toIntOrNull() ?: 1,
         outDir = outDir,

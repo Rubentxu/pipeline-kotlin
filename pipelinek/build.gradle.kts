@@ -63,7 +63,12 @@ repositories {
 // folded projection of it, so the two artifacts do NOT behave the same. The
 // 0.78.0 train opens here (ProductVersion 0.78.0) and its first candidate can
 // be tagged v0.78.0-rc1.
-version = "0.78.0"
+// 2026-10-23: the 0.78.0 train closed at v0.78.0-rc1, and the law holds: this
+// tree can now refuse a transcript for two different reasons, and the record of
+// the failure says which one, so the two artifacts do NOT behave the same. The
+// 0.79.0 train opens here (ProductVersion 0.79.0) and its first candidate can
+// be tagged v0.79.0-rc1.
+version = "0.79.0"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

@@ -158,7 +158,7 @@ tipados distintos** (§2.74).
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
-| Candidato publicada | **`v0.79.0-rc1`** (prerelease), `candidate_id` `sha256:***`, tag en `da479df68`; verificada **sobre los bytes descargados del remoto** (§2.74) | `gh release view v0.79.0-rc1`, `sha256sum -c SHA256SUMS` |
+| Candidato publicada | **`v0.79.0-rc1`** (prerelease), `candidate_id` `sha256:92082347021db1a7eecc3ad793c6097aa9e2d55f17ec8f4f63356f239abc678b`, tag en `fbca67427`; verificada **sobre los bytes descargados del remoto** (§2.74) | `gh release view v0.79.0-rc1`, `sha256sum -c SHA256SUMS` |
 | Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -8173,15 +8173,21 @@ fila exacta:
 | toda bomba cuenta como esperando al hijo (el drenaje ignora su atención) | **1** — `a pump that keeps moving is waited for…` |
 
 **Lo que la puerta midió.** `PASS` tres veces sobre el árbol commiteado
-(***/*** s; el peor, de 900), `tests=rewritten:***`, 62 de 62 escenarios,
-*** comprobaciones sobre 112 ejecuciones, y el LOC en *** de verificación sobre
-*** de producto (***).
+(`da479df68`): **208 s**, **150 s** y **148 s**, con un presupuesto de 900 s y
+`tests=rewritten:1131`. Los 62 escenarios llevan una garantía comprobada —
+**398 comparaciones sobre 112 ejecuciones**— y el LOC queda en **20891** de
+verificación sobre **67980** de producto: **0,307**, con un límite de 2.
 
 **Lo que se verificó después de publicar.** La candidata `v0.79.0-rc1` se
 publicó y se comprobó **sobre los bytes publicados**, no sobre los locales: la
-descarga desde el remoto, `sha256sum -c` sobre el conjunto de assets, el digito
-que el propio repositorio resuelve, la instalación limpia, y un pipeline real
-con el binario publicado.
+descarga de los siete assets desde el remoto, `sha256sum -c` con las seis
+entradas de la autoridad de digest, el digest que el propio repositorio
+resuelve —`92082347021db1a7eecc3ad793c6097aa9e2d55f17ec8f4f63356f239abc678b`,
+el mismo que declara el manifiesto—, la instalación limpia del ZIP descargado,
+que se presenta como `pipeline 0.79.0`, y un pipeline real con ese binario
+hasta `SUCCESS`. El verbo que publica las operaciones devolvió las dos
+identidades completas del run, con los `:` intactos, y cada una devolvió sus
+propios bytes y no los de la otra.
 
 **Lo que queda fuera, dicho con honestidad.**
 
@@ -8190,11 +8196,11 @@ con el binario publicado.
   la puerta descartados—, y el arreglo está medido por sus particiones. Lo que
   no hay es una medición de **cuánto** tarda un drenaje con la máquina
   saturada, porque reproducir la saturación en un banco de pruebas es una
- Fixture que este repositorio no tiene. La puerta sigue siendo el detector.
+ fixture que este repositorio no tiene. La puerta sigue siendo el detector.
 - **El caso del hermano**: una bomba atascada y otra lenta a la vez se
   rechaza por la lenta (el techo), no por la atascada. El diagnóstico es
-  menos preciso en ese caso raro, y no se haquerido añadir una segunda regla
-  para él: el Rechazo sigue siendo verdadero, y el caso mixto es raro porque
+  menos preciso en ese caso raro, y no se ha querido añadir una segunda regla
+  para él: el rechazo sigue siendo verdadero, y el caso mixto es raro porque
   exige un hijo atascado y una máquina ocupada al mismo tiempo.
 - **La promoción a estable sigue bloqueada**: no hay certificador externo en
   este repositorio ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`,

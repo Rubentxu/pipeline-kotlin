@@ -15,6 +15,11 @@ sealed interface OutputRefusal {
      * The cursor names [actual] but the read was addressed to [expected].
      * A cursor from stream A is not a valid position in stream B even at offset 0. The store
      * refuses instead of clamping, because a clamped read is a silent wrong answer.
+     *
+     * The same shape covers the other way of asking for somebody else's bytes: a read addressed
+     * to [expected] that lands on the directory holding [actual]'s bytes. The address a stream
+     * is filed under is folded, and the fold is lossy, so two identities can reach one directory;
+     * the read is refused rather than answered with the bytes next door.
 */
     data class ForeignStream(
         val expected: OutputStreamId,

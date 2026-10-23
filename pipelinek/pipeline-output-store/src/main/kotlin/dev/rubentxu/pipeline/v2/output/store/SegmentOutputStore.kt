@@ -127,6 +127,18 @@ class SegmentOutputStore(
          * heartbeat supplies without a clock and a staleness policy.
 */
         val ownershipFile: Path,
+        /**
+         * The identity that owns this directory.
+         *
+         * The directory's NAME is folded, and the fold loses information: two different identities
+         * can land in the same directory. This file holds the identity the bytes belong to, so the
+         * store can tell "these bytes are mine" from "these bytes are the ones next door" instead
+         * of answering both questions with the same directory.
+         *
+         * It is written ONCE, by the writer that creates the directory, and never rewritten: the
+         * owner of a directory does not change while it holds bytes.
+        */
+        val ownerRecord: Path,
     )
 
     private val recoveryLock = ReentrantLock()
@@ -141,9 +153,15 @@ class SegmentOutputStore(
      * keyed by the raw id could never share an entry with prune. The writer used to key on the raw
      * id and prune on the folded name, so releasing a run added a second, permanently retained lock
      * for a stream whose writer lock was already present (measured: `2N` locks after releasing `N`
-     * runs,/). Two ids that fold to the same name already share one on-disk directory, so
-     * they ARE one stream on disk and must share one lock; that is what makes this the correct
-     * canonical key and not merely a convenient one.
+     * runs,/). Two ids that fold to the same name share one on-disk directory, so they share one
+     * lock — the lock protects the DIRECTORY, and the directory is what both of them reach.
+     *
+     * They are NOT one stream, though, and this comment used to say they were. A folded name is a
+     * lossy address, and two identities that land in one directory are two streams whose bytes
+     * would end up interleaved: neither of them could be attributed afterwards. The store now
+     * refuses that (see `claimStreamDirectory`), so the lock is shared because the directory is
+     * shared, and the directory is shared because the NAME is folded — not because the ids are the
+     * same stream.
 */
     private val perStream = HashMap<String, ReentrantLock>()
 
@@ -263,7 +281,11 @@ class SegmentOutputStore(
         // than a guess. `ShExecution` declares both channels to the frame index before the first byte,
         // and a stream that is known to exist but holds nothing must answer the tail question
         // truthfully instead of looking like one this store has never heard of.
-        Files.createDirectories(layout(stream).streamDir)
+        val layout = layout(stream)
+        Files.createDirectories(layout.streamDir)
+        // The writer claims the directory it is about to fill. Only writers reach this method, so
+        // the claim cannot be stolen by a reader that happened to look first.
+        claimStreamDirectory(layout, stream)
         return Handle(stream)
     }
 
@@ -293,6 +315,7 @@ class SegmentOutputStore(
         if (!Files.isDirectory(layout.streamDir)) {
             return OutputReadResult.Refused(OutputRefusal.UnknownStream(stream))
         }
+        foreignOwnerRefusal(layout, stream)?.let { return OutputReadResult.Refused(it) }
         return withStreamLock(stream) {
             val extent = committedLocked(layout)
             if (cursor.committedOffset > extent) {
@@ -312,6 +335,7 @@ class SegmentOutputStore(
         if (!Files.isDirectory(layout.streamDir)) {
             return OutputReadResult.Refused(OutputRefusal.UnknownStream(stream))
         }
+        foreignOwnerRefusal(layout, stream)?.let { return OutputReadResult.Refused(it) }
         if (from < 0 || to <= from) {
             return OutputReadResult.Refused(OutputRefusal.InvalidRange(from, to))
         }
@@ -344,6 +368,7 @@ class SegmentOutputStore(
         if (!Files.isDirectory(layout.streamDir)) {
             return OutputReadDigestedResult.Refused(OutputRefusal.UnknownStream(stream))
         }
+        foreignOwnerRefusal(layout, stream)?.let { return OutputReadDigestedResult.Refused(it) }
         if (from < 0 || to <= from) {
             return OutputReadDigestedResult.Refused(OutputRefusal.InvalidRange(from, to))
         }
@@ -391,6 +416,7 @@ class SegmentOutputStore(
                     sealedDir = entry.resolve(SEALED_DIR),
                 streamSealMarker = entry.resolve(STREAM_SEAL_MARKER),
                     ownershipFile = entry.resolve(OWNERSHIP_FILE),
+                    ownerRecord = entry.resolve(OWNER_RECORD),
                 )
                 // Reconciliation is only safe on a stream nobody is writing right now
                 // and the ownership lock is what says so: it is held for the whole of a reservation and
@@ -658,10 +684,83 @@ class SegmentOutputStore(
         sealedDir = dir.resolve(SEALED_DIR),
         streamSealMarker = dir.resolve(STREAM_SEAL_MARKER),
         ownershipFile = dir.resolve(OWNERSHIP_FILE),
+        ownerRecord = dir.resolve(OWNER_RECORD),
     )
 
     private fun withStreamLock(stream: OutputStreamId, block: () -> OutputReadResult): OutputReadResult =
         withStreamLockFor(stream) { block() }
+
+    /**
+     * The identity that owns [layout]'s directory, or `null` when the directory names nobody.
+     *
+     * A directory written before this store recorded its owner names nobody, and its first writer
+     * claims it. A record that EXISTS and cannot be read is not an absent record: the store
+     * cannot know whose bytes those are, and a store that cannot know refuses instead of
+     * guessing — so the read failure travels to the caller rather than being swallowed here.
+     */
+    private fun recordedOwner(layout: Layout): String? {
+        val record = layout.ownerRecord
+        if (!Files.exists(record)) return null
+        return Files.readString(record)
+    }
+
+    /**
+     * Take the directory for [stream], or refuse it.
+     *
+     * The writer that creates the directory claims it, and the claim is written once. A writer
+     * whose identity is not the one on record is refused: two identities that fold to the same
+     * name are two streams, and a directory that holds both of their bytes cannot attribute
+     * either of them afterwards.
+     */
+    private fun claimStreamDirectory(layout: Layout, stream: OutputStreamId) {
+        when (val ownership = decideStreamDirectoryOwnership(recordedOwner(layout), stream.value)) {
+            StreamDirectoryOwnership.Owned -> Unit
+            StreamDirectoryOwnership.Unclaimed -> writeOwnerRecord(layout, stream.value)
+            is StreamDirectoryOwnership.Foreign ->
+                throw StreamDirectoryOwnedByAnotherIdentity(ownership.owner, ownership.claimer)
+        }
+    }
+
+    /**
+     * Write the owner record, atomically.
+     *
+     * The record is read by other processes, so a reader must never see half of it: it is written
+     * to a temporary file and moved into place, the same way the committed offset is.
+     */
+    private fun writeOwnerRecord(layout: Layout, owner: String) {
+        val temp = Files.createTempFile(layout.streamDir, "owner-", ".id")
+        try {
+            Files.writeString(temp, owner)
+            try {
+                Files.move(
+                    temp,
+                    layout.ownerRecord,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(temp, layout.ownerRecord, StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            Files.deleteIfExists(temp)
+        }
+    }
+
+    /**
+     * The refusal that says the bytes at this address belong to another stream, or `null` when
+     * the directory either holds this stream's bytes or names nobody at all.
+     */
+    private fun foreignOwnerRefusal(layout: Layout, stream: OutputStreamId): OutputRefusal? {
+        val owner = try {
+            recordedOwner(layout)
+        } catch (failure: IOException) {
+            return OutputRefusal.StorageError(
+                "the owner record of ${layout.streamDir.fileName} cannot be read: ${failure.message}",
+            )
+        }
+        if (owner == null || owner == stream.value) return null
+        return OutputRefusal.ForeignStream(expected = stream, actual = OutputStreamId(owner))
+    }
 
     private fun withStreamLockDigested(
         stream: OutputStreamId,
@@ -979,6 +1078,10 @@ class SegmentOutputStore(
 
         init {
             Files.createDirectories(layout.streamDir)
+            // Claimed again here, because a reservation can be taken on a handle that was opened
+            // before the directory existed. The claim is idempotent: the second call sees the
+            // record the first one wrote and does nothing.
+            claimStreamDirectory(layout, streamId)
             if (Files.exists(layout.reservationFile)) {
                 // A stale reservation must never be honoured — recovery owns that decision. Taking
                 // a new one over an unresolved one would strand the first range permanently.
@@ -1115,6 +1218,14 @@ class SegmentOutputStore(
          * Be LOCKED, and its bytes are meaningless. See
 */
         const val OWNERSHIP_FILE = "cur.own"
+
+        /**
+         * The file that names the identity a stream directory belongs to.
+         *
+         * Written once, by the writer that creates the directory, and read by every reader and
+         * writer that finds the directory. See `Layout.ownerRecord`.
+        */
+        const val OWNER_RECORD = "stream.id"
         const val DEFAULT_RESERVATION_BYTES = 64L * 1024L
         const val SEGMENT_MAX_BYTES = 8L * 1024L * 1024L
 

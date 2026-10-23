@@ -505,14 +505,14 @@ class DurableShellExecutor : DurableShellLaunching {
             "dev.rubentxu.pipeline.v2.application.durable.ingest.ObsPc2IngestAgent"
 
         /**
-         * How long a launch waits for its transcript pumps before refusing to claim a
-         * complete transcript.
-         * Bounded, because a pump stuck on a live child must not hold the step open forever. But the
-         * bound is worthless unless it is CHECKED — `join(timeout)` returns identically on both
-         * outcomes, so the check is [Thread.isAlive] afterwards and its failure is a refusal rather
-         * than a log line.
-*/
-        const val TRANSCRIPT_PUMP_DRAIN_BUDGET_MS: Long = 10_000
+         * How long ONE wait of the transcript drain lasts.
+         *
+         * The drain asks the pumps whether they are still MOVING, so it has to look more than once:
+         * a slice short enough to notice that a pump stopped, and long enough not to spend the
+         * wait asking. The budgets that decide are the drain's own, in [DurableShConfig], because
+         * they are the operator's levers and not the runtime's taste.
+         */
+        const val TRANSCRIPT_PUMP_DRAIN_SLICE_MS: Long = 250
 
         /**
          * Bounded wait for the agent's `readyMarker`. The agent's class
@@ -839,7 +839,7 @@ class DurableShellExecutor : DurableShellLaunching {
         transcriptRedactor: ((java.io.InputStream) -> java.io.InputStream)?,
         channelSinks: Map<ProcessOutputChannel, ProcessOutputSink>,
         fallbackLogFile: Path,
-    ): Pair<List<Thread>, List<ProcessOutputSink>> {
+    ): Pair<List<TranscriptPumpView>, List<ProcessOutputSink>> {
         val pumpedChannels: Map<ProcessOutputChannel, java.io.InputStream> =
             if (captureStdout) {
                 mapOf(ProcessOutputChannel.STDERR to process.errorStream)
@@ -850,7 +850,7 @@ class DurableShellExecutor : DurableShellLaunching {
                 )
             }
 
-        val pumps = mutableListOf<Thread>()
+        val pumps = mutableListOf<TranscriptPumpView>()
         val sinks = mutableListOf<ProcessOutputSink>()
 
         for ((channel, raw) in pumpedChannels) {
@@ -860,6 +860,12 @@ class DurableShellExecutor : DurableShellLaunching {
                     java.io.BufferedOutputStream(java.nio.file.Files.newOutputStream(fallbackLogFile, java.nio.file.StandardOpenOption.APPEND)),
                 )
             val guarded = GuardedProcessOutputSink(target)
+            // The flag is the pump's attention. A pump that is writing to the output plane is
+            // WORKING, even while the write is slow; a pump that is waiting for the child is
+            // waiting for bytes nobody is going to write. That difference is what the drain reads,
+            // and it is the difference between a verdict about the child and a verdict about the
+            // machine.
+            val waitingForInput = java.util.concurrent.atomic.AtomicBoolean(true)
             val pump = Thread {
                 val window = ByteArray(TRANSCRIPT_LIVE_WINDOW_BYTES)
                 try {
@@ -879,8 +885,10 @@ class DurableShellExecutor : DurableShellLaunching {
                         // the loop only ever consults `redacted.read`, which is the
                         // canonical "have at least one byte or block" primitive the
                         // `RedactingInputStream` already implements.
+                        waitingForInput.set(true)
                         val n = redacted.read(window, 0, window.size)
                         if (n < 0) break
+                        waitingForInput.set(false)
                         guarded.write(window, 0, n)
                     }
                 } catch (t: Throwable) {
@@ -897,7 +905,7 @@ class DurableShellExecutor : DurableShellLaunching {
             pump.isDaemon = true
             pump.name = "durable-sh-transcript-pump-$opId-${channel.name.lowercase()}"
             pump.start()
-            pumps += pump
+            pumps += ThreadTranscriptPump(pump, waitingForInput)
             sinks += guarded
         }
         return pumps to sinks
@@ -1527,7 +1535,7 @@ class DurableShellExecutor : DurableShellLaunching {
      * executeCore to drain the pump before projecting the persisted transcript.
 */
     @Volatile
-    private var lastTranscriptPumps: List<Thread> = emptyList()
+    private var lastTranscriptPumps: List<TranscriptPumpView> = emptyList()
 
     /**
      * The sinks the pumps wrote into, kept so the terminal projection can read their refusals.
@@ -1564,20 +1572,17 @@ class DurableShellExecutor : DurableShellLaunching {
      * So the check that actually means something is [Thread.isAlive] AFTER the join, and its
      * failure is a refusal rather than a log line, for the same reason [transcriptRefusal] is.
 */
-    private fun drainTranscriptPumps(pumps: List<Thread>): ProcessOutputRefusal? {
-        pumps.forEach { it.join(TRANSCRIPT_PUMP_DRAIN_BUDGET_MS) }
-        val stillDraining = pumps.filter { it.isAlive }
-        if (stillDraining.isEmpty()) return null
-        return ProcessOutputRefusal.DrainIncomplete(
-            detail = stillDraining.joinToString(
-                prefix = "transcript drain unfinished after ${TRANSCRIPT_PUMP_DRAIN_BUDGET_MS}ms: ",
-                separator = ", ",
-            ) { it.name },
-            waitedMs = TRANSCRIPT_PUMP_DRAIN_BUDGET_MS,
-        )
-    }
+    private fun drainTranscriptPumps(
+        pumps: List<TranscriptPumpView>,
+        config: DurableShConfig,
+    ): ProcessOutputRefusal? = drainTranscriptPumps(
+        pumps = pumps,
+        idleBudgetMs = config.transcriptDrainIdleBudgetMs,
+        ceilingMs = config.transcriptDrainCeilingMs,
+        sliceMs = TRANSCRIPT_PUMP_DRAIN_SLICE_MS,
+    )
 
-    private fun consumeLastTranscriptPumps(@Suppress("UNUSED_PARAMETER") handle: ProcessHandle): List<Thread> {
+    private fun consumeLastTranscriptPumps(@Suppress("UNUSED_PARAMETER") handle: ProcessHandle): List<TranscriptPumpView> {
         val pumps = lastTranscriptPumps
         lastTranscriptPumps = emptyList()
         return pumps
@@ -1602,7 +1607,7 @@ class DurableShellExecutor : DurableShellLaunching {
         // A LIST, because one launch pumps up to two channels. Joining only the first
         // would let the terminal be projected while stderr was still arriving — which is exactly
         // the "short, ordered, plausible transcript" failure this path exists to prevent.
-        var transcriptPumps: List<Thread> = emptyList()
+        var transcriptPumps: List<TranscriptPumpView> = emptyList()
 
         try {
             // Step 1: Launch
@@ -1715,7 +1720,7 @@ class DurableShellExecutor : DurableShellLaunching {
             // the wait succeeded, because a join that times out returns exactly like one that
             // completed and the difference between them is the whole difference between a complete
             // transcript and a plausible one.
-            val undrained = drainTranscriptPumps(transcriptPumps)
+            val undrained = drainTranscriptPumps(transcriptPumps, config)
 
             // A persistence or drain refusal is a step failure, not a warning. The bytes left the
             // pipe when the pump read them, so a transcript that is short, ordered and plausible is
@@ -1729,7 +1734,12 @@ class DurableShellExecutor : DurableShellLaunching {
                 // and no fabricated Throwable for the case that has no throwable.
                 val causeToken = when (refusal) {
                     is ProcessOutputRefusal.WriteFailed -> refusal.cause.javaClass.simpleName
-                    is ProcessOutputRefusal.DrainIncomplete -> "transcript-pump-still-alive"
+                    is ProcessOutputRefusal.DrainIncomplete -> when (refusal.cause) {
+                        // The token of a stuck child is the one that was already published; the
+                        // drain that ran out of time is a different fact and gets its own.
+                        TranscriptDrainCause.STUCK_CHILD -> "transcript-pump-still-alive"
+                        TranscriptDrainCause.OUT_OF_TIME -> "transcript-drain-out-of-time"
+                    }
                 }
                 return DurableTaskTerminal.LaunchFailed(
                     dev.rubentxu.pipeline.v2.domain.durable.FailureRecord(

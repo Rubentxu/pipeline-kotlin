@@ -98,6 +98,23 @@ data class DurableShConfig(
      * single opId per run.
 */
     val runId: String? = null,
+    /**
+     * How long a transcript pump may go without reading a byte before the drain declares it stuck.
+     *
+     * A pump that is writing to the output plane is MOVING even while it writes: it read those
+     * bytes already. A pump that is waiting for the child is not moving, and the bytes it waits
+     * for may never come. This budget is what tells those two apart, so it is the operator's lever
+     * on a machine so loaded that a pump legitimately pauses for longer than this.
+     */
+    val transcriptDrainIdleBudgetMs: Long = TRANSCRIPT_DRAIN_IDLE_BUDGET_DEFAULT,
+    /**
+     * The longest the drain of a transcript may wait, whatever happens.
+     *
+     * A pump that keeps moving is not refused for being slow: it is waited for. This ceiling is the
+     * backstop for the case that never ends — a child that dribbles a byte every few seconds and
+     * keeps the transcript open forever.
+     */
+    val transcriptDrainCeilingMs: Long = TRANSCRIPT_DRAIN_CEILING_DEFAULT,
 ) {
     init {
         require(!(pumpedViaAgent && (agentSecret == null || agentSecret.isEmpty()))) {
@@ -105,6 +122,14 @@ data class DurableShConfig(
         }
         require(!(pumpedViaAgent && runId == null)) {
             "runId must be set when pumpedViaAgent is true"
+        }
+        require(transcriptDrainIdleBudgetMs > 0) {
+            "transcriptDrainIdleBudgetMs must be positive (got $transcriptDrainIdleBudgetMs)"
+        }
+        require(transcriptDrainCeilingMs >= transcriptDrainIdleBudgetMs) {
+            "transcriptDrainCeilingMs ($transcriptDrainCeilingMs) must not be below the idle budget " +
+                "($transcriptDrainIdleBudgetMs): a ceiling below the idle budget would refuse every " +
+                "drain before it could tell a stuck pump from a slow one"
         }
     }
 
@@ -117,6 +142,8 @@ data class DurableShConfig(
         const val PUMPED_VIA_AGENT_PROPERTY = "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.PUMPED_VIA_AGENT"
         const val AGENT_SECRET_PROPERTY = "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.AGENT_SECRET"
         const val RUN_ID_PROPERTY = "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.RUN_ID"
+        const val TRANSCRIPT_DRAIN_IDLE_BUDGET_PROPERTY = "pipeline.durable.transcript.drain.idle.budget"
+        const val TRANSCRIPT_DRAIN_CEILING_PROPERTY = "pipeline.durable.transcript.drain.ceiling"
 
         /** Default: 300 seconds (5 minutes) */
         const val HEARTBEAT_CHECK_INTERVAL_DEFAULT = 300L
@@ -135,6 +162,12 @@ data class DurableShConfig(
 
         /** Default: false (ships the flag off; spike flips it on for the proof) */
         const val PUMPED_VIA_AGENT_DEFAULT = false
+
+        /** Default: 10 seconds without reading a byte is a stuck pump. */
+        const val TRANSCRIPT_DRAIN_IDLE_BUDGET_DEFAULT = 10_000L
+
+        /** Default: 60 seconds is the longest the drain waits, whatever happens. */
+        const val TRANSCRIPT_DRAIN_CEILING_DEFAULT = 60_000L
 
         /**
          * Loads configuration from system properties with defaults.
@@ -181,6 +214,16 @@ data class DurableShConfig(
                 agentSecret = System.getProperty(AGENT_SECRET_PROPERTY)?.takeIf { it.isNotEmpty() },
 
                 runId = System.getProperty(RUN_ID_PROPERTY)?.takeIf { it.isNotEmpty() },
+
+                transcriptDrainIdleBudgetMs = System.getProperty(
+                    TRANSCRIPT_DRAIN_IDLE_BUDGET_PROPERTY,
+                    TRANSCRIPT_DRAIN_IDLE_BUDGET_DEFAULT.toString(),
+                ).toLongOrNull() ?: TRANSCRIPT_DRAIN_IDLE_BUDGET_DEFAULT,
+
+                transcriptDrainCeilingMs = System.getProperty(
+                    TRANSCRIPT_DRAIN_CEILING_PROPERTY,
+                    TRANSCRIPT_DRAIN_CEILING_DEFAULT.toString(),
+                ).toLongOrNull() ?: TRANSCRIPT_DRAIN_CEILING_DEFAULT,
             )
         }
     }

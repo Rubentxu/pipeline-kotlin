@@ -85,15 +85,40 @@ sealed interface ProcessOutputRefusal {
      * This is not a sink failure: the sink may have accepted every byte it was given. It is the
      * *completion* claim that cannot be made — the drain is the thing that makes "the transcript is
      * complete" true, and a pump still holding the read end means the step must not be reported as
-     * finished with a transcript. [waitedMs] is the budget that elapsed, so the diagnostic says how
-     * long the runtime was willing to wait rather than implying an unbounded hang.
+     * finished with a transcript. [waitedMs] is how long the drain actually waited, so the
+     * diagnostic says how long the runtime was willing to wait rather than implying an unbounded
+     * hang. [cause] says WHICH of the two things went wrong, because the two call for different
+     * answers: a stuck child needs a child that lets go of the transcript, and a drain that ran out
+     * of time needs a machine that keeps up.
 */
     data class DrainIncomplete(
         override val detail: String,
         val waitedMs: Long,
+        val cause: TranscriptDrainCause,
     ) : ProcessOutputRefusal {
         override fun toString(): String = "ProcessOutputRefusal.DrainIncomplete($detail)"
     }
+}
+
+/**
+ * Why a transcript could not be completed.
+ *
+ * The two causes are different facts about different things, and the operator's next move differs:
+ * one is about the child, the other about the machine. A refusal that named neither would be a
+ * symptom.
+ */
+enum class TranscriptDrainCause {
+    /**
+     * A pump stopped reading. The child is holding the transcript open, so the bytes that are
+     * missing were never going to arrive: waiting longer cannot produce them.
+     */
+    STUCK_CHILD,
+
+    /**
+     * The pumps were still moving when the drain's ceiling arrived. The transcript is behind, not
+     * broken: the same child on a quieter machine would have finished.
+     */
+    OUT_OF_TIME,
 }
 
 /**

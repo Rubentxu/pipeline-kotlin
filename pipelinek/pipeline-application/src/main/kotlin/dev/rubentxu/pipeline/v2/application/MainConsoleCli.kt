@@ -709,10 +709,12 @@ internal const val CONSOLE_USAGE_TEXT: String =
         "\n" +
         "<opId> is \"<runId>-s<stageIndex>-<stepIndex>\" and nothing shorter. List the ones\n" +
         "this run can actually serve instead of composing one:\n" +
-        "    ls <path>/output-plane/streams/   # <runId>_<opId>_stdout, one per readable op\n" +
+        "    ls <path>/output-plane/streams/   # <runId>_<opId>_<channel>, one per stream\n" +
         "Measured: \"<runId>-s0\" is refused as unknown-stream while\n" +
         "\"<runId>-s0-0\" reads the transcript, and a step that printed nothing (echo) has\n" +
-        "no stream directory and is refused the same way — so the listing is the exact set."
+        "no stream directory and is refused the same way — so the listing is the exact set.\n" +
+        "Both channels are listed: a step that wrote only to stderr has a _stderr\n" +
+        "directory and no _stdout one, and it is served the same way."
 
 /** One stable line per refusal, so a script can branch on the reason. */
 fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal) {

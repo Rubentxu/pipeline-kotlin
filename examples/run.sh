@@ -737,21 +737,62 @@ world_account() {
           | normalize_identity
 }
 
-# What a run COMMITTED: the bytes of every output stream, read back with the
-# product's own reader.
+# The operations a run committed output for, named by what follows the run id.
+#
+# The plane creates a directory per stream that received bytes, and the
+# product's own help says that listing is the exact set of operations a
+# consumer can read. Both channels are read, because an operation that wrote
+# only to stderr is an operation: reading the stdout directories alone left it
+# out, and an operation nobody asked about is an operation whose bytes were
+# never compared. A comparison that skipped them could report two different
+# runs as equal.
+#
+# A control root can hold more than one run -- a resumed run keeps the first
+# one's streams beside the second's -- so the streams of another run are left
+# out. Reading them would be refused, and a refusal that is swallowed is a
+# comparison of nothing.
+#
+# The name that follows the run id is the operation's identity in both worlds:
+# two runs of the same pipeline give their operations the same names, and the
+# run id in front of them is what makes them two different operations.
+declared_operations() {
+    local control="$1" run_id="$2"
+    local stream_dir name op_id
+    for stream_dir in "$control/output-plane/streams"/*_stdout \
+                      "$control/output-plane/streams"/*_stderr; do
+        [[ -d "$stream_dir" ]] || continue
+        name="$(basename "$stream_dir")"
+        # The directory is <runId>_<opId>_<channel>.
+        case "$name" in
+            "${run_id}_"*) ;;
+            *) continue ;;
+        esac
+        op_id="${name#${run_id}_}"
+        case "$op_id" in
+            *_stdout) op_id="${op_id%_stdout}" ;;
+            *_stderr) op_id="${op_id%_stderr}" ;;
+        esac
+        printf '%s\n' "${op_id#${run_id}-}"
+    done | sort -u
+}
+
+# The bytes one operation committed, read back with the product's own reader.
 #
 # The reader is the product's, so this asks the run what a consumer would see
-# instead of guessing at the layout of the plane.
-world_committed() {
-    local control="$1" run_id="$2"
-    local stream_dir op_id
-    for stream_dir in "$control/output-plane/streams"/*_stdout; do
-        [[ -d "$stream_dir" ]] || continue
-        op_id="$(basename "$stream_dir")"
-        op_id="${op_id#${run_id}_}"
-        op_id="${op_id%_stdout}"
-        binary console --control-dir "$control" "$run_id" "$op_id" 2>/dev/null || true
-    done
+# instead of guessing at the layout of the plane. It merges the operation's
+# channels in a fixed order, so two runs of the same pipeline bring back the
+# same bytes however the observer happened to interleave them: the order the
+# bytes were OBSERVED in is a projection, and what is compared here is the
+# bytes.
+#
+# A read the reader REFUSES is not an empty read. It is the reader saying it
+# could not answer, and the launcher treats it as the failure it is: two
+# refused reads are not two runs that agree, they are two questions nobody
+# answered.
+world_bytes() {
+    local control="$1" run_id="$2" operation="$3" out_file="$4"
+    binary console --control-dir "$control" "$run_id" "${run_id}-${operation}" \
+        >"$out_file" 2>/dev/null
 }
 
 # One scenario, under its clock.
@@ -2158,10 +2199,15 @@ run_scenario_body() {
 
         # The committed transcript. The Output Plane holds every byte a step
         # printed, and the product's own `console` verb is the reader for it.
-        # The op ids are the stream directories the plane created, so the
+        # The operations are the stream directories the plane created, so the
         # launcher asks for each of them rather than composing one: a name it
-        # invented would be refused, and a refusal here would be a launcher
-        # bug wearing a scenario's clothes.
+        # invented would be refused. Every channel counts, so an operation
+        # that wrote only to stderr is in the transcript too.
+        #
+        # A refusal is a failure here and not a missing line: a transcript
+        # that could not be read is not a transcript that lacked the text,
+        # and reporting the second when the truth is the first would blame
+        # the pipeline for the reader's refusal.
         if (( ${#expect_transcript[@]} > 0 )); then
             local transcript="$root/transcript.$(basename "$ex_control").txt"
             local run_id
@@ -2173,16 +2219,16 @@ run_scenario_body() {
                 return 1
             fi
             : >"$transcript"
-            local stream_dir op_id
-            for stream_dir in "$ex_control/output-plane/streams"/*_stdout; do
-                [[ -d "$stream_dir" ]] || continue
-                op_id="$(basename "$stream_dir")"
-                # The directory is <runId>_<opId>_stdout.
-                op_id="${op_id#${run_id}_}"
-                op_id="${op_id%_stdout}"
-                binary console --control-dir "$ex_control" "$run_id" "$op_id" \
-                    >>"$transcript" 2>/dev/null || true
-            done
+            local operation
+            while IFS= read -r operation; do
+                [[ -n "$operation" ]] || continue
+                if ! world_bytes "$ex_control" "$run_id" "$operation" "$root/transcript.part"; then
+                    printf 'FAIL %-52s the committed transcript could not be read\n' "$ex_label"
+                    check_detail="the committed transcript could not be read"
+                    return 1
+                fi
+                cat "$root/transcript.part" >>"$transcript"
+            done <<<"$(declared_operations "$ex_control" "$run_id")"
 
             for wanted in ${expect_transcript[@]+"${expect_transcript[@]}"}; do
                 if ! grep -aqF -- "$wanted" "$transcript"; then
@@ -2247,17 +2293,53 @@ run_scenario_body() {
         fi
 
         if [[ -n "$durable_run" && -n "$volatile_run" ]]; then
-            local durable_bytes="$root/world.durable.bytes" volatile_bytes="$root/world.volatile.bytes"
-            world_committed "$cw_durable_control" "$durable_run" | normalize_identity >"$durable_bytes"
-            world_committed "$cw_volatile_control" "$volatile_run" | normalize_identity >"$volatile_bytes"
-            if ! cmp -s "$durable_bytes" "$volatile_bytes"; then
-                printf 'FAIL %-52s the two execution paths committed different bytes\n' "$label"
-                printf '       | the durable path committed %s byte(s), the volatile path %s\n' \
-                    "$(wc -c <"$durable_bytes" | tr -d ' ')" "$(wc -c <"$volatile_bytes" | tr -d ' ')"
-                diff "$durable_bytes" "$volatile_bytes" 2>/dev/null | head -12 | sed 's/^/       | /' || true
-                world_detail="the two execution paths committed different bytes"
+            # The operations each world committed output for. Two runs of the
+            # same pipeline commit the same operations; a world that committed
+            # an operation the other one did not is a difference, and it is
+            # named before the bytes are compared, because a byte comparison
+            # cannot say WHICH operation disagreed.
+            local durable_ops volatile_ops
+            durable_ops="$(declared_operations "$cw_durable_control" "$durable_run")"
+            volatile_ops="$(declared_operations "$cw_volatile_control" "$volatile_run")"
+            if [[ "$durable_ops" != "$volatile_ops" ]]; then
+                printf 'FAIL %-52s the two execution paths committed output for different operations\n' "$label"
+                diff <(printf '%s\n' "$durable_ops") <(printf '%s\n' "$volatile_ops") \
+                    | head -12 | sed 's/^/       | /' || true
+                world_detail="the two execution paths committed output for different operations"
                 return 1
             fi
+
+            local operation
+            while IFS= read -r operation; do
+                [[ -n "$operation" ]] || continue
+                if ! world_bytes "$cw_durable_control" "$durable_run" "$operation" \
+                        "$root/world.durable.bytes"; then
+                    printf 'FAIL %-52s the bytes the durable path committed for %s could not be read\n' \
+                        "$label" "$operation"
+                    world_detail="the bytes the durable path committed for $operation could not be read"
+                    return 1
+                fi
+                if ! world_bytes "$cw_volatile_control" "$volatile_run" "$operation" \
+                        "$root/world.volatile.bytes"; then
+                    printf 'FAIL %-52s the bytes the volatile path committed for %s could not be read\n' \
+                        "$label" "$operation"
+                    world_detail="the bytes the volatile path committed for $operation could not be read"
+                    return 1
+                fi
+                normalize_identity <"$root/world.durable.bytes" >"$root/world.durable.norm"
+                normalize_identity <"$root/world.volatile.bytes" >"$root/world.volatile.norm"
+                if ! cmp -s "$root/world.durable.norm" "$root/world.volatile.norm"; then
+                    printf 'FAIL %-52s the two execution paths committed different bytes for %s\n' \
+                        "$label" "$operation"
+                    printf '       | the durable path committed %s byte(s), the volatile path %s\n' \
+                        "$(wc -c <"$root/world.durable.norm" | tr -d ' ')" \
+                        "$(wc -c <"$root/world.volatile.norm" | tr -d ' ')"
+                    diff "$root/world.durable.norm" "$root/world.volatile.norm" 2>/dev/null \
+                        | head -12 | sed 's/^/       | /' || true
+                    world_detail="the two execution paths committed different bytes for $operation"
+                    return 1
+                fi
+            done <<<"$durable_ops"
         fi
         return 0
     }

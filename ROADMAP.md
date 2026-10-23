@@ -99,7 +99,7 @@ composición se rechaza.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `4750402b4`, medido en los ensayos de este bloque. El ciclo anterior movió la versión del producto a `0.76.0` (§2.61) y reparó 25 ficheros de comentarios que afirmaban cosas ya falsas (§2.62). Este bloque **no cambia ni una línea de comportamiento del producto**: audita dieciséis escenarios del arnés por mutación (§2.63) y toca dos cosas del arnés y un escenario —una afirmación que tenía dos caminos al verde, una línea verde que no decía qué había comparado, y la caché de scripts compilados que el arnés no usaba | `git rev-parse HEAD` |
+| SHA | `3b61e5331`, medido en los ensayos de este bloque. El ciclo anterior movió la versión del producto a `0.76.0` (§2.61), reparó 25 ficheros de comentarios que afirmaban cosas ya falsas (§2.62) y auditó dieciséis escenarios del arnés por mutación (§2.63). Este bloque **tampoco cambia ni una línea de comportamiento del producto**: deshace una afirmación propia que era falsa y arregla el conteo del informe del arnés (§2.64) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
@@ -109,7 +109,7 @@ composición se rechaza.
 | Escenarios con una garantía comprobada | **61 de 61**: **285 comparaciones sobre 110 ejecuciones** del producto (§2.64). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución. El informe anterior decía «170 garantías»: contaba las declaraciones una vez por escenario, así que se quedaba en el 60 % de su propio trabajo y no decía cuántas veces corría el producto | censo del arnés, sobre los 61 escenarios |
 | `VERIFY_LOC / PRODUCT_LOC` | **19387 / 67443 = 0.287** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **187 / 130 / 133** en los tres ensayos, los tres sobre `4750402b4`, peor 187 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **155 / 146 / 133** en los tres ensayos, los tres sobre `3b61e5331`, peor 155 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -123,12 +123,12 @@ sale mejor que la realidad.
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
 165 s en el bloque de las tres familias; el ciclo anterior a éste midió 197, 169
-y 376 s, y este mide **187, 130 y 133 s**: la distancia entre un ensayo y otro
-no la explica el código medido, que es idéntico dentro de cada ciclo, sino la
-carga de la máquina. En los tres ensayos de este ciclo el presupuesto se cumplió
-con holgura —el peor, 187 s, es menos de la cuarta parte de los 900 s—, y eso
-que el árbol medido incluye la distribución, la API pública, los 1087 tests y
-los 61 escenarios.
+y 376 s, y el anterior a ése 187, 130 y 133 s. Este mide **155, 146 y 133 s**:
+la distancia entre un ensayo y otro no la explica el código medido, que es
+idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
+de este ciclo el presupuesto se cumplió con holgura —el peor, 155 s, es menos de
+la sexta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
+la API pública, los 1087 tests y los 61 escenarios.
 
 **La etapa del E2E bajó de 111 s a 79-81 s**, y no por tocar los escenarios:
 por usar, dentro de su directorio de ciclo, la caché de scripts compilados que

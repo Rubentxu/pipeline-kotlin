@@ -34,6 +34,7 @@ internal val CLI_VERBS: List<Pair<String, String>> = listOf(
     "run" to "execute a script durably (--db, --resume|--rerun, --control-root)",
     "observe" to "read a finished run's events, console and output (--view, --format)",
     "console" to "read one step's output plane as frames or lines",
+    "operations" to "list a run's operations with their complete identity",
     "events" to "read one run's domain events as text or json",
     "inspect" to "read a run id's digests, steps and provenance",
     "saga" to "read what a run's saga still owes (saga inspect <runId> --db <path>)",

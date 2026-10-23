@@ -197,6 +197,20 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
         return true
     }
 
+    // Operations subcommand: the run's operations, with their complete identity.
+    //
+    // It is a verb of its own because the fact it publishes belongs to no other
+    // verb: `console` reads the bytes of an operation the caller already knows
+    // about, and `inspect` reads what a run DID. This one answers the question
+    // that comes first — WHICH operations are there — and it answers it with the
+    // identity as it was minted, not with a name derived from the Output
+    // Plane's directory layout, which folds every separator into an underscore.
+    if (args.firstOrNull() == "operations") {
+        val exitCode = MainOperationsCli.main(args.drop(1).toTypedArray())
+        System.exit(exitCode)
+        return true
+    }
+
     // Observe subcommand (the unified-verb observe work): one public verb over both durable authorities.
     //
     // NOT a third universe alongside `events` and `console` — it reads the same two planes and

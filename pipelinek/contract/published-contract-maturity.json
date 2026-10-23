@@ -95,7 +95,7 @@
       "compiled against it yet. EXPERIMENTAL is the honest classification: the surface is stable",
       "in shape (interfaces, sealed ADTs, refusal cases) and unstable in the sense that the next",
       "certified release may add FABRIC capability checks per port. The capability flips from",
-      "EXPERIMENTAL to PUBLICADA at the candidate boundary the publication plan §2.1 documents,",
+      "EXPERIMENTAL to PUBLISHED at the candidate boundary the publication plan §2.1 documents,",
       "and a deliberate breaking change would be recorded in the sibling",
       "published-contract-exceptions.json (per this file's own _comment, rule 3)."
     ]

@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test
 /**
  * The follow refusal vocabulary, observed where a refusal is translated.
  *
- * The follow contract is published (`events.follow.v1`, PUBLICADA), so its refusal
+ * The follow contract is published (`events.follow.v1`, PUBLISHED), so its refusal
  * vocabulary is a contract an external consumer reads. The read port underneath it already
  * distinguishes three facts — the run does not exist, the cursor is past the tail, the store
  * failed — and the translation between them used to fold all three into "the run does not

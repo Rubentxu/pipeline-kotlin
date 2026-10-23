@@ -24,7 +24,7 @@ package dev.rubentxu.pipeline.v2.events.shape
  * to write a typed event uses the event sink; this port is read-only.
  * ## Stability
  * The port ships as `EXPERIMENTAL` in `v0.54.0-rc1` (the candidate)
- * Promotion to `PUBLICADA` happens after the certifier's `CERTIFIED`
+ * Promotion to `PUBLISHED` happens after the certifier's `CERTIFIED`
  * verdict. The five-case `TypedEvent` ADT is closed; a sixth case would
  * be a breaking change requiring consumer recompile.
 */

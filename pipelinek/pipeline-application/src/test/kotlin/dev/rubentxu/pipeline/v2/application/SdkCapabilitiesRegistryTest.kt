@@ -1,5 +1,8 @@
 package dev.rubentxu.pipeline.v2.application
 
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
@@ -32,10 +35,10 @@ class SdkCapabilitiesRegistryTest {
     /** The catalogue as a consumer reads it: id, state, first publication. */
     private val expected = listOf(
         Triple("output.follow.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.49.0-rc1"),
-        Triple("output.follow.v2", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
+        Triple("output.follow.v2", SdkCapabilities.CapabilityStatus.PUBLISHED, "v0.62.0"),
         Triple("events.follow.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.49.0-rc1"),
         Triple("events.follow.v2", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.62.0"),
-        Triple("events.follow.v3", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
+        Triple("events.follow.v3", SdkCapabilities.CapabilityStatus.PUBLISHED, "v0.62.0"),
         Triple("runtime.inspect.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.50.0-rc1"),
         Triple("runtime.cancel.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.50.0-rc1"),
         Triple("runtime.recover.v1", SdkCapabilities.CapabilityStatus.EXPERIMENTAL, "v0.50.0-rc1"),
@@ -45,9 +48,9 @@ class SdkCapabilitiesRegistryTest {
         Triple("runtime.structure.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.53.0-rc1"),
         Triple("runtime.operation.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.53.0-rc1"),
         Triple("runtime.eventshape.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.54.0-rc1"),
-        Triple("runtime.eventshape.v2", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
-        Triple("events.stepoutcome.v1", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
-        Triple("events.failurestage.v1", SdkCapabilities.CapabilityStatus.PUBLICADA, "v0.62.0"),
+        Triple("runtime.eventshape.v2", SdkCapabilities.CapabilityStatus.PUBLISHED, "v0.62.0"),
+        Triple("events.stepoutcome.v1", SdkCapabilities.CapabilityStatus.PUBLISHED, "v0.62.0"),
+        Triple("events.failurestage.v1", SdkCapabilities.CapabilityStatus.PUBLISHED, "v0.62.0"),
     )
 
     @Test
@@ -121,7 +124,7 @@ class SdkCapabilitiesRegistryTest {
         )
         assertTrue(
             SdkCapabilities.ALL.none {
-                it.id.startsWith("events.stepoutcome.") && it.status == SdkCapabilities.CapabilityStatus.PUBLICADA &&
+                it.id.startsWith("events.stepoutcome.") && it.status == SdkCapabilities.CapabilityStatus.PUBLISHED &&
                     it.id != "events.stepoutcome.v1"
             },
             "only the id this build delivers may claim to be delivered; two ids for one " +
@@ -146,7 +149,7 @@ class SdkCapabilitiesRegistryTest {
         )
         assertTrue(
             SdkCapabilities.ALL.none {
-                it.id.startsWith("events.failurestage.") && it.status == SdkCapabilities.CapabilityStatus.PUBLICADA &&
+                it.id.startsWith("events.failurestage.") && it.status == SdkCapabilities.CapabilityStatus.PUBLISHED &&
                     it.id != "events.failurestage.v1"
             },
             "only the id this build delivers may claim to be delivered; two ids for one " +
@@ -177,12 +180,43 @@ class SdkCapabilitiesRegistryTest {
             assertTrue(
                 SdkCapabilities.ALL.none {
                     it.id.startsWith(family) &&
-                        it.status == SdkCapabilities.CapabilityStatus.PUBLICADA &&
+                        it.status == SdkCapabilities.CapabilityStatus.PUBLISHED &&
                         it.id != id
                 },
                 "only $id may claim to be delivered; two ids for one vocabulary leave the consumer " +
                     "choosing between them",
             )
         }
+    }
+
+    @Test
+    @DisplayName("the published status vocabulary is spelled in one language")
+    fun `the published status vocabulary is spelled in one language`() {
+        val published = MainCapabilitiesCli.document()["capabilities"]!!
+            .jsonArray
+            .map { it.jsonObject["status"]!!.jsonPrimitive.content }
+            .toSet()
+
+        assertEquals(
+            setOf("PUBLISHED", "EXPERIMENTAL", "DEPRECATED"),
+            published,
+            "the catalogue is a machine vocabulary: a consumer reads the status by VALUE, so every " +
+                "value of it is spelled the same way. A vocabulary with one value spelled in " +
+                "another language is read as a value the consumer does not know, and the ids " +
+                "spelled that way were exactly the ones the build delivers",
+        )
+    }
+
+    @Test
+    @DisplayName("the document announces the version of the vocabulary it publishes")
+    fun `the document announces the version of the vocabulary it publishes`() {
+        assertEquals(
+            "pipelinek.capabilities/2",
+            MainCapabilitiesCli.document()["schema"]!!.jsonPrimitive.content,
+            "the schema field is how a consumer learns that the vocabulary moved: a consumer " +
+                "pinned to the previous version has to be able to see that the value it reads " +
+                "changed, instead of silently failing to recognise the capabilities this build " +
+                "delivers",
+        )
     }
 }

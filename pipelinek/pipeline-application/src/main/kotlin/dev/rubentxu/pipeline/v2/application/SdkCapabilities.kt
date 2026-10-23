@@ -10,7 +10,7 @@ package dev.rubentxu.pipeline.v2.application
  *
  * ## What the status tells a consumer
  *
- * - [CapabilityStatus.PUBLICADA] — the build delivers it and its shape is
+ * - [CapabilityStatus.PUBLISHED] — the build delivers it and its shape is
  *   stable.
  * - [CapabilityStatus.EXPERIMENTAL] — the build delivers it and its shape
  *   may still change.
@@ -34,10 +34,10 @@ package dev.rubentxu.pipeline.v2.application
  * | Capability ID                 | Status     | First published |
  * |-------------------------------|------------|-----------------|
  * | `output.follow.v1`            | DEPRECATED | `v0.49.0-rc1`   |
- * | `output.follow.v2`            | PUBLICADA  | `v0.62.0`       |
+ * | `output.follow.v2`            | PUBLISHED  | `v0.62.0`       |
  * | `events.follow.v1`            | DEPRECATED | `v0.49.0-rc1`   |
  * | `events.follow.v2`            | DEPRECATED | `v0.62.0`       |
- * | `events.follow.v3`            | PUBLICADA  | `v0.62.0`       |
+ * | `events.follow.v3`            | PUBLISHED  | `v0.62.0`       |
  * | `runtime.inspect.v1`          | EXPERIMENTAL | `v0.50.0-rc1` |
  * | `runtime.cancel.v1`           | EXPERIMENTAL | `v0.50.0-rc1` |
  * | `runtime.recover.v1`          | EXPERIMENTAL | `v0.50.0-rc1` |
@@ -47,9 +47,9 @@ package dev.rubentxu.pipeline.v2.application
  * | `runtime.structure.v1`        | DEPRECATED | `v0.53.0-rc1`   |
  * | `runtime.operation.v1`        | DEPRECATED | `v0.53.0-rc1`   |
  * | `runtime.eventshape.v1`       | DEPRECATED | `v0.54.0-rc1`   |
- * | `runtime.eventshape.v2`       | PUBLICADA  | `v0.62.0`       |
- * | `events.stepoutcome.v1`       | PUBLICADA  | `v0.62.0`       |
- * | `events.failurestage.v1`      | PUBLICADA  | `v0.62.0`       |
+ * | `runtime.eventshape.v2`       | PUBLISHED  | `v0.62.0`       |
+ * | `events.stepoutcome.v1`       | PUBLISHED  | `v0.62.0`       |
+ * | `events.failurestage.v1`      | PUBLISHED  | `v0.62.0`       |
  *
  * The table used to live in a second file, inside the module that implements
  * the runtime ports, and that file claimed to be the canonical one. It was a
@@ -184,7 +184,7 @@ object SdkCapabilities {
         ),
         CapabilityEntry(
             id = "output.follow.v2",
-            status = CapabilityStatus.PUBLICADA,
+            status = CapabilityStatus.PUBLISHED,
             firstPublished = "v0.62.0",
         ),
         CapabilityEntry(
@@ -208,7 +208,7 @@ object SdkCapabilities {
         ),
         CapabilityEntry(
             id = "events.follow.v3",
-            status = CapabilityStatus.PUBLICADA,
+            status = CapabilityStatus.PUBLISHED,
             firstPublished = "v0.62.0",
         ),
         CapabilityEntry(
@@ -286,7 +286,7 @@ object SdkCapabilities {
             // field. A consumer that wants a step's result reads it; a consumer that wants the kind
             // of step reads that too.
             id = "runtime.eventshape.v2",
-            status = CapabilityStatus.PUBLICADA,
+            status = CapabilityStatus.PUBLISHED,
             firstPublished = "v0.62.0",
         ),
         CapabilityEntry(
@@ -295,7 +295,7 @@ object SdkCapabilities {
             // carried no result, and the only way to learn one was to join it with the failure event
             // — by a step index that does not say which stage the failure belongs to.
             id = "events.stepoutcome.v1",
-            status = CapabilityStatus.PUBLICADA,
+            status = CapabilityStatus.PUBLISHED,
             firstPublished = "v0.62.0",
         ),
         CapabilityEntry(
@@ -306,7 +306,7 @@ object SdkCapabilities {
             // event. A failure that names no stage is not a failure in the first stage, and a
             // consumer that cannot tell those apart is guessing.
             id = "events.failurestage.v1",
-            status = CapabilityStatus.PUBLICADA,
+            status = CapabilityStatus.PUBLISHED,
             firstPublished = "v0.62.0",
         ),
     )
@@ -321,12 +321,12 @@ object SdkCapabilities {
     /**
      * What the build delivers, per capability.
      *
-     * PUBLICADA and EXPERIMENTAL are delivered; DEPRECATED is announced and
+     * PUBLISHED and EXPERIMENTAL are delivered; DEPRECATED is announced and
      * not delivered. The distinction is what makes the catalogue usable by a
      * machine instead of decorative.
      */
     enum class CapabilityStatus {
-        PUBLICADA,
+        PUBLISHED,
         EXPERIMENTAL,
         DEPRECATED,
     }

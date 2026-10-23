@@ -99,6 +99,7 @@ fun main(args: Array<String>) {
             println("[release]   plugins: ${outcome.pluginCompatibilityVerdict.trim()}")
             println("[release]   manifest: ${outcome.manifestPath}")
             println("[release]   handoff:  ${outcome.handoffPath}")
+            println("[release]   published assets: ${outcome.publishedAssetsPath}")
             println(
                 "[release] The candidate is immutable. Hand it to pipelinek-release-harness " +
                     "and continue main without waiting for the verdict.",

@@ -7,7 +7,8 @@ import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 
 /**
  * The effectful half: measure real bytes and emit the candidate
- * material (distribution manifest + SHA256SUMS + handoff descriptor).
+ * material (distribution manifest + SHA256SUMS + handoff descriptor + the
+ * published asset set).
  * Everything here does I/O; the decisions it feeds stay pure in
  * [evaluateDistributionIdentity] and [evaluateCandidateHandoff]. This is the
  * "decide, then interpret" split from AGENTS.md: this class gathers facts and
@@ -182,6 +183,17 @@ object CandidateMaterializer {
             return MaterializationResult.Refused(verdict.render())
         }
 
+        // Which of the candidate's files a release publishes is decided here,
+        // where the manifest that describes them was built, and not at the far
+        // end of the publication. The publisher reads this receipt instead of
+        // assembling a set of its own, so the two ends cannot disagree about
+        // what a release carries.
+        val publishedVerdict = evaluatePublishedAssetSet(manifest)
+        if (publishedVerdict is PublishedAssetSetVerdict.Refused) {
+            return MaterializationResult.Refused(publishedVerdict.reason)
+        }
+        val publishedAssets = (publishedVerdict as PublishedAssetSetVerdict.Publishable).set
+
         Files.createDirectories(outDir)
         val manifestPath = outDir.resolve(MANIFEST_NAME)
         Files.writeString(manifestPath, manifestText)
@@ -197,9 +209,17 @@ object CandidateMaterializer {
         val handoffPath = outDir.resolve(HANDOFF_NAME)
         Files.writeString(handoffPath, CandidateHandoffCodec.encode(handoff))
 
+        // The receipt the publisher reads. Its bytes are decided before they
+        // reach disk, exactly like the manifest's: the set names the digests
+        // the gate measured, so the publisher can refuse any file that is not
+        // the one this candidate was admitted for.
+        val publishedAssetsPath = outDir.resolve(PUBLISHED_ASSETS_NAME)
+        Files.writeString(publishedAssetsPath, PublishedAssetSetCodec.encode(publishedAssets))
+
         return MaterializationResult.Materialized(
             manifestPath = manifestPath,
             handoffPath = handoffPath,
+            publishedAssetsPath = publishedAssetsPath,
             identity = identity,
             manifest = manifest,
         )
@@ -219,6 +239,7 @@ object CandidateMaterializer {
 
     private const val MANIFEST_NAME = "distribution-manifest.json"
     private const val HANDOFF_NAME = "candidate-handoff.json"
+    private const val PUBLISHED_ASSETS_NAME = "published-assets.json"
 }
 
 /** Outcome of materializing a candidate. */
@@ -228,6 +249,7 @@ sealed interface MaterializationResult {
     data class Materialized(
         val manifestPath: Path,
         val handoffPath: Path,
+        val publishedAssetsPath: Path,
         val identity: DistributionIdentityVerdict,
         val manifest: DistributionManifest,
     ) : MaterializationResult

@@ -284,7 +284,17 @@ tasks.register<JavaExec>("sdkZip") {
     // Declared at configuration time so the task is a real producer in
     // the dependency graph; `candidateAdmission` reads the artifacts
     // from `distDir` after this task has written them.
-    outputs.dir(distDir)
+    //
+    // The task owns the two files it writes, not the whole directory. The
+    // directory is a SHARED staging area — the distribution ZIP, the SBOM and
+    // the digest authority live there too — and a task that declares a
+    // directory it does not own collides with the tasks that own the other
+    // members of it: Gradle sees two producers of one output and refuses the
+    // build for a reason nobody can read.
+    outputs.files(
+        distDir.map { it.file("pipelinek-${project.version}.sdk.zip") },
+        distDir.map { it.file("pipelinek-bom-${project.version}.json") },
+    )
     inputs.property("productVersion", project.version.toString())
 
     // The list of `group:artifact` pairs the BOM pins. Mirrors

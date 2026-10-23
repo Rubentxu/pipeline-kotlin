@@ -316,7 +316,22 @@ subprojects {
 // Before this, the plugin consumed committed libs/*.jar snapshots (silent drift)
 // and its own jar had no producing task anywhere in the build, so:pipeline-application
 // could not compile from a clean checkout.
-val sdkRepoDir = layout.buildDirectory.dir("sdk-repo")
+//
+// TWO directories, and the difference between them is the point:
+//
+//   - `sdk-repo` is where the publication LANDS: the modules publish their
+//     artifacts there, and the release builder packages that directory into the
+//     SDK ZIP the product ships.
+//   - `sdk-repo-published` is what the external consumers RESOLVE from: the
+//     published ZIP, unpacked.
+//
+// The first is an intermediate step of the release and the second is the
+// artifact's own face. A consumer that resolved from the first would be
+// resolving from something the product never ships, and the published SDK
+// would go unconsumed by anything but the verifier.
+//
+// The landing directory is owned by `:pipeline-release`, which is where the
+// publication and the ZIP builder live.
 
 /**
  * The modules whose contract is PUBLISHED, as an explicit list.
@@ -382,21 +397,63 @@ val publishSdkForExternalPlugin by tasks.registering {
     dependsOn(sdkBomModules.map { ":$it:publishSdkPublicationToSdkRepository" })
 }
 
+// The SDK the external consumers resolve from: the PUBLISHED artifact.
+//
+// The four external plugins below are the only real consumers of the public
+// contracts in this tree, and they used to resolve from `build/sdk-repo` —
+// a directory on the way to the ZIP. That made the ZIP, which is what the
+// product PUBLISHES for the plugins that build against the contracts, an
+// artifact nobody ever resolved. A change to its layout, to the group path,
+// to the BOM or to the Gradle metadata would have been published, release
+// after release, with a green gate: the gate proved the tree was healthy and
+// never asked whether the thing it shipped could be used.
+//
+// The published artifact is now the only SDK these consumers see. The
+// guarantee is not a sentence in a comment: the external builds resolve from
+// the unpacked ZIP, so a ZIP that cannot be resolved stops the distribution
+// build, and the failure names the resolution that failed.
+//
+// The unpacked repository is a DIRECTORY again, because that is what a Maven
+// repository is to a resolver: the ZIP is the transport, the layout is the
+// contract, and the layout is what a consumer resolves against.
+val publishedSdkRepoDir = layout.buildDirectory.dir("sdk-repo-published")
+
+val unpackPublishedSdk by tasks.registering(Sync::class) {
+    group = "build"
+    description = "Unpacks the published SDK ZIP into the Maven repository the external consumers resolve from."
+
+    dependsOn(":pipeline-release:sdkZip")
+
+    val sdkZip = project(":pipeline-application").layout.buildDirectory
+        .file("distributions/pipelinek-${project.version}.sdk.zip")
+    from(zipTree(sdkZip))
+    into(publishedSdkRepoDir)
+}
+
 val buildExamplePlugin by tasks.registering(Exec::class) {
     group = "build"
     description = "Builds the independent external example plugin against this revision's SDK."
-    dependsOn(publishSdkForExternalPlugin)
+    dependsOn(unpackPublishedSdk)
 
     val pluginDir = file("../examples/example-uppercase-plugin")
     inputs.dir(pluginDir.resolve("src"))
     inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
-    // The plugin's output depends on the SDK jars of THIS revision, not on the
-    // repository's timestamped snapshot filenames.
-    // The plugin now contributes an event definition and
-    // emits it through the published emission seam, so it compiles against that contract too.
-    // Omitting it from these inputs would let the task consider its output after a
-    // change to the Event Plane — and the plugin would then be shipping against a stale seam.
-    inputs.files(":pipeline-domain:jar", ":pipeline-scripting-api:jar", ":pipeline-events:jar")
+    // The published SDK is this build's INPUT, and it is declared as one.
+    //
+    // The plugin's output depends on the SDK it compiles against, not on the
+    // repository's timestamped snapshot filenames. The plugin contributes an
+    // event definition and emits it through the published emission seam, so it
+    // compiles against that contract too, and omitting the SDK from these
+    // inputs would let the task consider its output after a change to the
+    // Event Plane — the plugin would then be shipping against a stale seam.
+    //
+    // What is declared is the PUBLISHED repository, not the modules' jars:
+    // the published artifact is what a consumer resolves from, and a change
+    // to it — a contract that moved, a BOM that lost a constraint — has to
+    // re-run this build. A build that skips the resolution because nothing
+    // it remembers changed would keep the plugin it compiled against the
+    // previous SDK, and the resolution would never happen again.
+    inputs.dir(publishedSdkRepoDir)
     // Declare rootProject.version as an explicit input. See
     // buildExampleBlockPlugin for the full story (apiRange goes stale when
     // the host version bumps but the SDK jar content does not).
@@ -408,7 +465,7 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
         rootDir.resolve("gradlew").absolutePath,
         "-p", pluginDir.absolutePath,
         "--console=plain",
-        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
+        "-PsdkRepo=" + publishedSdkRepoDir.get().asFile.absolutePath,
         // Pass the SDK version the external plugin must resolve. Without this the
         // plugin's default sdkVersion is 0.1.0-SNAPSHOT, which is not in the local
         // sdk-repo (it carries the root project version 0.39.0). The --rerun-tasks
@@ -453,12 +510,16 @@ val buildExamplePlugin by tasks.registering(Exec::class) {
 val buildExampleSagaPlugin by tasks.registering(Exec::class) {
     group = "build"
     description = "Builds the independent external Saga consumer against this revision's SDK."
-    dependsOn(publishSdkForExternalPlugin)
+    dependsOn(unpackPublishedSdk)
 
     val pluginDir = file("../examples/example-saga-plugin")
     inputs.dir(pluginDir.resolve("src"))
     inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
-    inputs.files(":pipeline-domain:jar", ":pipeline-scripting-api:jar")
+    // The published SDK is this build's input, and it is declared as one: a
+    // change to what the product publishes has to run this build again, or the
+    // consumer would keep the plugin it compiled against the previous SDK and
+    // the resolution would never happen again.
+    inputs.dir(publishedSdkRepoDir)
     inputs.property("rootProject.version", rootProject.version.toString())
     outputs.file(pluginDir.resolve("build/libs/example-saga-plugin-0.1.0.jar"))
 
@@ -467,7 +528,7 @@ val buildExampleSagaPlugin by tasks.registering(Exec::class) {
         rootDir.resolve("gradlew").absolutePath,
         "-p", pluginDir.absolutePath,
         "--console=plain",
-        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
+        "-PsdkRepo=" + publishedSdkRepoDir.get().asFile.absolutePath,
         "-PsdkVersion=" + rootProject.version.toString(),
         "jar",
     )
@@ -478,12 +539,16 @@ val buildExampleSagaPlugin by tasks.registering(Exec::class) {
 val buildExternalDirectivePlugin by tasks.registering(Exec::class) {
     group = "build"
     description = "Builds the independent external directive plugin against this revision's SDK."
-    dependsOn(publishSdkForExternalPlugin)
+    dependsOn(unpackPublishedSdk)
 
     val pluginDir = file("../examples/example-directive-plugin")
     inputs.dir(pluginDir.resolve("src"))
     inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
-    inputs.files(":pipeline-domain:jar")
+    // The published SDK is this build's input, and it is declared as one: a
+    // change to what the product publishes has to run this build again, or the
+    // consumer would keep the plugin it compiled against the previous SDK and
+    // the resolution would never happen again.
+    inputs.dir(publishedSdkRepoDir)
     // Declare rootProject.version as an explicit input. See
     // buildExampleBlockPlugin for the full story.
     inputs.property("rootProject.version", rootProject.version.toString())
@@ -494,7 +559,7 @@ val buildExternalDirectivePlugin by tasks.registering(Exec::class) {
         rootDir.resolve("gradlew").absolutePath,
         "-p", pluginDir.absolutePath,
         "--console=plain",
-        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
+        "-PsdkRepo=" + publishedSdkRepoDir.get().asFile.absolutePath,
         "-PsdkVersion=" + rootProject.version.toString(),
         "jar",
     )
@@ -508,12 +573,16 @@ val buildExternalDirectivePlugin by tasks.registering(Exec::class) {
 val buildExampleBlockPlugin by tasks.registering(Exec::class) {
     group = "build"
     description = "Builds the independent external body plugin against this revision's SDK."
-    dependsOn(publishSdkForExternalPlugin)
+    dependsOn(unpackPublishedSdk)
 
     val pluginDir = file("../examples/example-block-plugin")
     inputs.dir(pluginDir.resolve("src"))
     inputs.files(pluginDir.resolve("build.gradle.kts"), pluginDir.resolve("settings.gradle.kts"))
-    inputs.files(":pipeline-domain:jar")
+    // The published SDK is this build's input, and it is declared as one: a
+    // change to what the product publishes has to run this build again, or the
+    // consumer would keep the plugin it compiled against the previous SDK and
+    // the resolution would never happen again.
+    inputs.dir(publishedSdkRepoDir)
     // Declare rootProject.version as an explicit input. The
     // example plugin's Gradle property `-PsdkVersion=` is derived from this
     // value at commandLine time, but Gradle's default fingerprint for an
@@ -531,7 +600,7 @@ val buildExampleBlockPlugin by tasks.registering(Exec::class) {
         rootDir.resolve("gradlew").absolutePath,
         "-p", pluginDir.absolutePath,
         "--console=plain",
-        "-PsdkRepo=" + sdkRepoDir.get().asFile.absolutePath,
+        "-PsdkRepo=" + publishedSdkRepoDir.get().asFile.absolutePath,
         "-PsdkVersion=" + rootProject.version.toString(),
         "jar",
     )

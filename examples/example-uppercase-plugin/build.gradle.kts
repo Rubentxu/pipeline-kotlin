@@ -79,14 +79,22 @@ configurations.all {
 }
 
 dependencies {
-    compileOnly("dev.rubentxu.pipeline.v2:pipeline-domain:$sdkVersion")
-    compileOnly("dev.rubentxu.pipeline.v2:pipeline-scripting-api:$sdkVersion")
+    // The published BOM is the SDK's single resolution document: ONE platform
+    // declaration pins the version of every published contract, so the
+    // contracts below carry no version of their own. Writing the version in
+    // each coordinate would mean trusting three copies of the same fact and
+    // hoping they agree; this trusts the document the product publishes for
+    // exactly that purpose, and lets the product be the only place that
+    // decides which version of a contract a consumer gets.
+    compileOnly(platform("dev.rubentxu.pipeline.v2:pipeline-sdk-bom:$sdkVersion"))
+    compileOnly("dev.rubentxu.pipeline.v2:pipeline-domain")
+    compileOnly("dev.rubentxu.pipeline.v2:pipeline-scripting-api")
     // The Event Plane's published contract. Carrying the plugin's own event
     // definition and the emission seam as `compileOnly` is the point: the JAR ships only its
     // classes, and the host supplies the registry, the codec types and the capability at runtime.
     // A plugin that had to bundle the Event Plane would be able to run a SECOND registry beside
     // the host's, which is exactly the two-authorities split this seam exists to prevent.
-    compileOnly("dev.rubentxu.pipeline.v2:pipeline-events:$sdkVersion")
+    compileOnly("dev.rubentxu.pipeline.v2:pipeline-events")
     compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }
 

@@ -82,26 +82,56 @@ object SdkZipBuilder {
      * into the ZIP, which `unzip` strips to `dev/...` (the leading `/`
      * makes it an absolute path entry); the result is a ZIP that is
      * not directly usable as a local Maven repo.
+     *
+     * The selection is made on the RELATIVE path and by [selectVersionedEntries],
+     * so it cannot be swayed by where the build happened to run.
 */
     private fun collectVersionedEntries(sdkRepo: Path, version: String): List<EntryRef> {
         if (!Files.isDirectory(sdkRepo)) return emptyList()
-        val versionSegment = "/$version/"
         val sdkRepoReal = sdkRepo.toRealPath()
-        return Files.walk(sdkRepo).use { stream ->
-            val refs = stream
+        val candidates = Files.walk(sdkRepo).use { stream ->
+            stream
                 .filter { Files.isRegularFile(it) }
-                .filter { it.toString().contains(versionSegment) }
                 .map { absolute ->
-                    EntryRef(
-                        absolutePath = absolute,
-                        relativePath = sdkRepoReal.relativize(absolute.toRealPath()).toString()
-                            .replace(File.separatorChar, '/'),
-                    )
+                    val real = absolute.toRealPath()
+                    real to sdkRepoReal.relativize(real).toString()
+                        .replace(File.separatorChar, '/')
                 }
                 .toList()
-            refs.sortedBy { it.relativePath }
         }
+        val selected = selectVersionedEntries(candidates.map { it.second }, version).toSet()
+        return candidates
+            .filter { it.second in selected }
+            .map { (absolute, relative) -> EntryRef(absolutePath = absolute, relativePath = relative) }
+            .sortedBy { it.relativePath }
     }
+
+    /**
+     * The entries of an SDK repository that belong to [version].
+     *
+     * The rule is the folder that HOLDS the file: in the Maven layout
+     * `<group path>/<artifact>/<version>/<file>`, the version is the name of
+     * the file's own folder. A rule that looks for the version anywhere in
+     * the path also selects entries that merely MENTION it — a checkout under
+     * a directory named after the release, or a file whose own name carries
+     * the version — and the ZIP would then publish artifacts of versions it
+     * does not claim to publish.
+     *
+     * The rule is a function of the repository's RELATIVE paths, so it is
+     * pure: it can be exercised without a repository on disk, and it cannot
+     * be swayed by where the build happened to run.
+     *
+     * @param relativePaths the repository's paths, relative to its root.
+     * @param version the version to select, e.g. `0.80.0`.
+     * @return the selected paths, sorted, so the ZIP is byte-deterministic.
+*/
+    internal fun selectVersionedEntries(relativePaths: List<String>, version: String): List<String> =
+        relativePaths
+            .filter { path ->
+                val segments = path.split('/')
+                segments.size > 1 && segments[segments.size - 2] == version
+            }
+            .sorted()
 
     /**
      * Write the SDK ZIP at [target] and return the per-file inventory

@@ -99,17 +99,17 @@ composición se rechaza.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `3b61e5331`, medido en los ensayos de este bloque. El ciclo anterior movió la versión del producto a `0.76.0` (§2.61), reparó 25 ficheros de comentarios que afirmaban cosas ya falsas (§2.62) y auditó dieciséis escenarios del arnés por mutación (§2.63). Este bloque **tampoco cambia ni una línea de comportamiento del producto**: deshace una afirmación propia que era falsa y arregla el conteo del informe del arnés (§2.64) | `git rev-parse HEAD` |
+| SHA | `4367cb702`, medido en los ensayos de este bloque. El ciclo anterior movió la versión del producto a `0.76.0` (§2.61), reparó 25 ficheros de comentarios que afirmaban cosas ya falsas (§2.62), auditó dieciséis escenarios del arnés por mutación (§2.63) y corrigió el conteo del informe del arnés (§2.64). Este bloque **tampoco cambia ni una línea de comportamiento del producto**: añade al arnés la comparación entre las dos rutas de ejecución y decide, con mutación, si la doble ejecución discrimina (§2.65) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
 | Tests unitarios ejecutados | **1087** (153 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **61 (61 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **61 de 61**: **285 comparaciones sobre 110 ejecuciones** del producto (§2.64). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución. El informe anterior decía «170 garantías»: contaba las declaraciones una vez por escenario, así que se quedaba en el 60 % de su propio trabajo y no decía cuántas veces corría el producto | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **19435 / 67443 = 0.288** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios con una garantía comprobada | **61 de 61**: **373 comparaciones sobre 110 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 373, **88** son esas comparaciones nuevas: **44** de los 61 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **19586 / 67443 = 0.29** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **155 / 146 / 133** en los tres ensayos, los tres sobre `3b61e5331`, peor 155 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **158 / 144 / 143** en los tres ensayos, los tres sobre `4367cb702`, peor 158 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -123,19 +123,24 @@ sale mejor que la realidad.
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
 165 s en el bloque de las tres familias; el ciclo anterior a éste midió 197, 169
-y 376 s, y el anterior a ése 187, 130 y 133 s. Este mide **155, 146 y 133 s**:
+y 376 s, y el anterior a ése 187, 130 y 133 s. Este mide **158, 144 y 143 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 155 s, es menos de
+de este ciclo el presupuesto se cumplió con holgura —el peor, 158 s, es menos de
 la sexta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
 la API pública, los 1087 tests y los 61 escenarios.
 
-**La etapa del E2E bajó de 111 s a 79-81 s**, y no por tocar los escenarios:
-por usar, dentro de su directorio de ciclo, la caché de scripts compilados que
-el producto ya tenía apagada (§2.63). Los 61 escenarios son los mismos; lo que
-cambió es lo que cuesta comprobarlos, y **la causa se corrigió**: no era que
-el producto compilase dos veces, es que el arnés corre el producto DOS VECES
-por escenario, una en cada ruta de ejecución (§2.64).
+**La etapa del E2E mide 88 s**, contra los 79-81 s del ciclo anterior (§2.63):
+la diferencia son los **siete segundos** que cuesta leer, con el propio verbo
+`console` del producto, los bytes que las dos rutas comprometieron (§2.65). Es
+el precio de una comparación que encuentra una clase de defecto que ninguna
+expectativa declarada puede ver, y está medido para que la decisión se pueda
+rehacer con el número delante. El resto del coste sigue siendo el mismo: los 61
+escenarios son los mismos y la caché de scripts compilados que el producto ya
+tenía apagada sigue siendo la que hace que el E2E no cueste 111 s (§2.63), y
+**la causa de que el arnés corra el producto dos veces por escenario sigue siendo
+la que es** —una ejecución por ruta, y ahora las dos comparadas entre sí
+(§2.64, §2.65).
 
 **Dos ensayos anteriores a estos tres se descartaron, y hay que decir por
 qué.** Sobre el mismo árbol, la puerta dio dos veredictos con rojos, y **todos
@@ -8570,6 +8575,20 @@ bloque que lo decida.
   puerta.** Con los mutantes vivos, la suite anterior daba 61 de 61 en verde.
   Eso no es una suite que no encuentra defectos: es una puerta que no tiene
   con qué verlos (§2.65).
+
+- **Una garantía que no se ha visto en rojo no es una garantía.** La
+  comparación de los bytes comprometidos no se había puesto en rojo ni una vez,
+  y por eso se comprobó con un script temporal que imprime la hora en
+  nanosegundos. Ese mutante no sólo encendió la comprobación: encontró que la
+  normalización de la identidad era demasiado ancha y tapaba la marca de
+  tiempo. Un instrumento que nadie ha visto fallar no está probado, y probarlo
+  cuesta un script que se retira (§2.65).
+
+- **El precio de una garantía se publica con ella.** La comparación entre las
+  dos rutas cuesta **siete segundos** de E2E (79-81 s → 88 s), que es lo que
+  cuesta leer los bytes comprometidos con el verbo `console` del producto. Se
+  publica junto a la cifra porque una garantía sin su coste es una promesa
+  (§2.65).
 
 ## 4. Referencias
 

@@ -151,6 +151,55 @@ class StreamingRedactorTest {
     }
 
     @Test
+    @DisplayName("a feed that decides more than the queue holds keeps every decided byte")
+    fun `a feed larger than the queue keeps every decided byte`() {
+        val registry = registryOf(SECRET)
+        val redactor = StreamingRedactor(registry)
+        // The queue was sized for a feed of the CHUNK size, and a caller may hand
+        // over more than that in one call. The bytes such a feed decided ARE the
+        // transcript, so they cannot be written over before the reader takes them.
+        val state = redactor.initialState(chunkSize = 64)
+        val payload = ("x".repeat(2_048) + SECRET + "y".repeat(2_048)).toByteArray()
+
+        redactor.feed(state, payload, 0, payload.size)
+
+        val out = ByteArrayOutputStream()
+        takeAll(redactor, state, out)
+        out.write(redactor.finish(state))
+
+        assertEquals(
+            "x".repeat(2_048) + "****" + "y".repeat(2_048),
+            out.toString(Charsets.UTF_8.name()),
+            "a decided byte was written over before the reader took it",
+        )
+    }
+
+    @Test
+    @DisplayName("the end of the stream does not overwrite the bytes that were already decided")
+    fun `the final flush does not overwrite the bytes that were already decided`() {
+        // A secret short enough to leave a small window: what this row is about is
+        // the SIZE of what was decided, not the size of the secret. The payload's
+        // bytes are all DIFFERENT, so a byte written over shows up as a byte out of
+        // place instead of hiding behind an identical neighbour.
+        val registry = registryOf(SHORT_SECRET)
+        val redactor = StreamingRedactor(registry)
+        val state = redactor.initialState(chunkSize = 8)
+        val payload = DISTINCT_BYTES.toByteArray()
+
+        redactor.feed(state, payload, 0, payload.size)
+
+        // The caller has NOT taken the decided bytes yet, and that is exactly the
+        // moment the end of the stream arrives and the window is flushed.
+        val flushed = redactor.finish(state)
+
+        assertEquals(
+            DISTINCT_BYTES,
+            String(flushed, Charsets.UTF_8),
+            "the flush at the end of the stream wrote over the bytes that were already decided",
+        )
+    }
+
+    @Test
     @DisplayName("a finished transcript keeps no copy of the secret")
     fun `a finished transcript keeps no copy of the secret`() {
         val registry = registryOf(SECRET)
@@ -275,5 +324,11 @@ class StreamingRedactorTest {
     private companion object {
         /** Long enough to be maskable: the registry ignores anything shorter. */
         const val SECRET = "e2e-fixture-secret-value"
+
+        /** The shortest secret the registry accepts, for the smallest possible window. */
+        const val SHORT_SECRET = "e2efixt1"
+
+        /** Thirty different bytes, so a byte out of place cannot hide. */
+        const val DISTINCT_BYTES = "abcdefghijklmnopqrstuvwxyzABCD"
     }
 }

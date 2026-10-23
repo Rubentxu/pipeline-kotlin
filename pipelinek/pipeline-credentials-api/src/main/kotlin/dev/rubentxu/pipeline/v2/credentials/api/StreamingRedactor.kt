@@ -192,6 +192,8 @@ class StreamingRedactor(
      * partial literal), so [finish] drains them through the same matcher
      * used by [feed]. The returned byte array is the final flush; the
      * caller MUST persist it before discarding the state.
+     * The state's own buffers are erased before returning, so a state the
+     * caller is about to drop carries no bytes with it.
      * [finish] is idempotent: a second call returns an empty array.
 */
     fun finish(state: RedactorState): ByteArray {
@@ -216,12 +218,31 @@ class StreamingRedactor(
         for (i in 0 until state.outputCount) {
             out[i] = state.outputQueue[(state.outputHead + i) % state.outputQueue.size]
         }
-        // Zero the queue so the state is safe to discard; the secret-bearing
-        // bytes are no longer reachable from it.
+        // The state is terminal, so nothing else will read from it: every byte
+        // it still holds is erased here. The lookahead is the one that matters
+        // — it holds RAW bytes straight off the pipe, including the bytes of a
+        // secret that was just matched, and a matched secret is still a secret
+        // until the bytes are gone.
+        eraseBuffers(state)
+        return out
+    }
+
+    /**
+     * Erases every byte the [state] still holds.
+     *
+     * The lookahead holds raw bytes off the pipe and the output queue holds the
+     * bytes that were decided; both can carry the shape of a secret. A state
+     * that has been finished or closed is a state the caller is about to drop,
+     * and a dropped object is one the collector keeps for a while — so the
+     * bytes have to go before the object does.
+     */
+    private fun eraseBuffers(state: RedactorState) {
+        java.util.Arrays.fill(state.ring, 0.toByte())
+        state.ringHead = 0
+        state.ringCount = 0
+        java.util.Arrays.fill(state.outputQueue, 0.toByte())
         state.outputHead = 0
         state.outputCount = 0
-        java.util.Arrays.fill(state.outputQueue, 0.toByte())
-        return out
     }
 
     /**
@@ -519,9 +540,10 @@ class StreamingRedactor(
             if (finalFlush.isNotEmpty()) java.util.Arrays.fill(finalFlush, 0.toByte())
             finalFlush = ByteArray(0)
             finalFlushOffset = 0
-            java.util.Arrays.fill(state.ring, 0.toByte())
-            state.ringHead = 0
-            state.ringCount = 0
+            // The state carries the same kind of bytes as the buffers above,
+            // and it is erased by the same rule whether it was finished here
+            // or earlier.
+            this@StreamingRedactor.eraseBuffers(state)
             source.close()
         }
     }

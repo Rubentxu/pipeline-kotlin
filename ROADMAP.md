@@ -85,6 +85,18 @@ porque un rechazo detiene la composición entera. El texto ahora nombra al
 artefacto que reclamó la identidad primero y dice, sin rodeos, que la
 composición se rechaza.
 
+**B4 tiene su primera pieza medida: un artefacto publicado y verificado por
+fuera.** La vía de publicación estaba rota desde su última publicación con
+éxito, y su arreglo no fue «arreglar un script»: fue darle al publicador **un
+único lugar del que sacar el conjunto de ficheros**, la puerta, que ya medía
+el digest de cada uno (§2.71). La candidata `v0.76.0-rc1` está publicada en
+remoto, y sus bytes se comprobaron **desde fuera**: descarga de los siete
+assets, `sha256sum -c` sobre las seis entradas de la autoridad de digest,
+instalación limpia del ZIP descargado y un pipeline real ejecutado con ese
+binario. Lo que queda de B4 es el **consumidor externo del SDK** y la
+**economía de la instrumentación**; lo de la publicación, por fin, está
+medido.
+
 **Lo que está abierto ahora mismo:**
 
 | # | Qué falta | Por qué sigue abierto |
@@ -99,17 +111,17 @@ composición se rechaza.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `a75342f27`, medido en los ensayos de este bloque. El bloque anterior **arregló el comparador de las dos rutas de ejecución** (§2.69). Este bloque arregla un defecto **vivo** del producto: un fichero sembrado desde un flujo se guardaba **un byte más corto**, porque el lector quitaba el newline final a todas las clases, incluidas las cuyo valor **son** los bytes. La regla pasa a ser una respuesta **de la propia clase**, y con ella sembrar por flujo y sembrar por ruta vuelven a dar la misma credencial (§2.70) | `git rev-parse HEAD` |
+| SHA | `a7a6df7ba`, medido en los ensayos de este bloque. El bloque anterior **arregló un fichero sembrado por flujo que se guardaba un byte más corto** (§2.70). Este bloque **desatasca la vía de publicación**: el publicador subía la autoridad de digest de la candidata y escribía la suya sobre el mismo nombre, de modo que la release moría en su último paso sin llegar a subir nada. Ahora la puerta decide qué ficheros publica una release y lo deja escrito con el digest que midió de cada uno; el publicador sigue ese recibo, re-mide cada fichero y se niega si no es el que la puerta midió. Con la vía arreglada, la candidata `v0.76.0-rc1` queda **publicada y verificada byte a byte** (§2.71) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1098** (156 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1106** (158 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **61 (61 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **61 de 61**: **377 comparaciones sobre 110 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 375, **88** son esas comparaciones nuevas: **44** de los 61 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **20087 / 67551 = 0.297** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **20248 / 67688 = 0.299** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **203 / 139 / 141** en los tres ensayos, los tres sobre `a75342f27`, peor 203 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **163 / 157 / 149** en los tres ensayos, los tres sobre `a7a6df7ba`, peor 163 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -122,28 +134,33 @@ sale mejor que la realidad.
 
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
-165 s en el bloque de las tres familias; los cinco bloques anteriores a éste
-midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s, 182, 141 y 139 s
-y 187, 139 y 140 s.
+165 s en el bloque de las tres familias; los seis bloques anteriores a éste
+midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s, 182, 141 y 139 s,
+187, 139 y 140 s y 203, 139 y 141 s.
 Este mide
-**203, 139 y 141 s**:
+**163, 157 y 149 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 203 s, es menos de
-la cuarta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
-la API pública, los 1098 tests y los 61 escenarios.
+de este ciclo el presupuesto se cumplió con holgura —el peor, 163 s, es menos de
+la quinta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
+la API pública, los 1106 tests y los 61 escenarios.
 
-**La etapa del E2E mide 88, 86 y 88 s**, contra los 88, 88 y 87 s del ciclo
-anterior (§2.69) y los 85, 88 y 86 s del anterior a ése (§2.68). Los **siete
+**La etapa del E2E mide 93, 103 y 89 s**, contra los 88, 86 y 88 s del ciclo
+anterior (§2.70) y los 88, 88 y 87 s del anterior a ése (§2.69). Los **siete
 segundos** que cuesta leer, con el propio verbo `console` del producto, los bytes
 que las dos rutas comprometieron (§2.65) siguen ahí, y este ciclo **tampoco añade
-ningún escenario**: los 61 son los mismos. Lo que este bloque arregla es un
-defecto **del producto** —el fichero sembrado por flujo que se guardaba un byte
-más corto— y su instrumento es **una fila unitaria**, no un escenario: la
-garantía es del lector, y el lector se sostiene con bytes dentro y una
-credencial fuera (§2.70). Es el precio de una comparación que encuentra una
-clase de defecto que ninguna expectativa declarada puede ver, y está medido para
-que la decisión se pueda rehacer con el número delante. El resto del coste sigue siendo el mismo: los 61
+ningún escenario**: los 61 son los mismos. Lo que este bloque arregla es la
+**vía de publicación** —el publicador subía la autoridad de digest de la
+candidata y escribía la suya sobre el mismo nombre— y su instrumento es **una
+decisión pura con cinco filas**, no un escenario: la garantía es de la regla que
+dice qué se publica, y esa regla se sostiene con un manifiesto dentro y un
+conjunto fuera (§2.71). El instrumento mayor de este bloque es otro: **publicar
+de verdad** y verificar los bytes publicados —descarga remota, `sha256sum -c`,
+instalación limpia y un pipeline real con los bytes publicados—, porque una vía
+de publicación que nadie ha ejecutado no es una vía, es una intención. Es el
+precio de una comparación que encuentra una clase de defecto que ninguna
+expectativa declarada puede ver, y está medido para que la decisión se pueda
+rehacer con el número delante. El resto del coste sigue siendo el mismo: los 61
 escenarios son los mismos y la caché de scripts compilados que el producto ya
 tenía apagada sigue siendo la que hace que el E2E no cueste 111 s (§2.63), y
 **la causa de que el arnés corra el producto dos veces por escenario sigue siendo
@@ -7704,6 +7721,96 @@ escenarios, 377 comprobaciones sobre 110 ejecuciones, y el LOC en 20087 de
 verificación sobre 67551 de producto (0,297).
 
 
+### 2.71 Una release llevaba dos autoridades de digest con el mismo nombre
+
+**La brecha, medida.** La vía de publicación estaba rota desde su última
+publicación con éxito. El staging dirigido por el manifiesto y la ranura
+`sha256sums` de ese mismo manifiesto llegaron **después** de la release
+`v0.75.0-rc1`, y nadie lo ejecutó de verdad: leer el script no lo destapa,
+correrlo sí. Al correrlo aparecieron **dos fallos encadenados**, y los dos en
+la misma frontera: la que hay entre lo que la puerta mide y lo que el
+publicador sube.
+
+El primero: la puerta escribía la autoridad de digest de la candidata junto a
+los assets, y el publicador la buscaba junto a los assets; el recibo, en
+cambio, vive en el directorio de la candidata. La puerta decía `PASS` —había
+medido todo lo que se le pidió— y el fallo llegaba en el último paso, con un
+fichero que nadie iba a encontrar. Se arregló moviendo la regla al producto:
+una candidata cuyos assets no estén todos junto al ZIP se rechaza **al
+admitirla**, con el asset equivocado nombrado.
+
+El segundo es más silencioso, y por eso importa: el publicador stageaba la
+autoridad de digest de la candidata **y** escribía la suya en el mismo
+nombre. Dos ficheros llamados `SHA256SUMS`, con contenidos distintos y
+coberturas distintas —la de la candidata digiere los cuatro assets; la del
+publicador digiere todo lo publicado— en el mismo directorio. El publicador
+se negaba a sí mismo (`a manifest cannot carry its own digest`), pero no por
+el motivo que importaba: no por una contradicción de política, sino por una
+colisión de nombres que nadie había visto venir.
+
+**El contrato, medido en la release publicada de referencia.** La release
+`v0.75.0-rc1` lleva **siete** assets: los cuatro de payload, `manifest.json`,
+`git-head.txt` y un `SHA256SUMS` que cubre los otros seis. La autoridad de la
+candidata **no se publica**: es evidencia sobre la candidata, y sigue en el
+árbol de compilación.
+
+**La regla, y dónde vive.** Una release tiene **una** autoridad de digest: la
+que cubre todo lo publicado menos ella misma. La autoridad de la candidata
+cubre un subconjunto estricto de ésa, así que publicarla no aportaba nada que
+un consumidor pudiese comprobar y sólo añadía ambigüedad sobre cuál era «la»
+autoridad. La regla vive ahora en el **producto**: la puerta decide qué
+ficheros de la candidata publica una release y lo deja escrito en un recibo con
+el digest que midió de cada uno; el publicador sigue ese recibo, re-mide cada
+fichero y se niega si no es el que la puerta midió. El publicador deja de
+re-derivar el conjunto por su cuenta —que es como las dos mitades dejaron de
+estar de acuerdo— y el handoff pasa a generarse desde los ficheros realmente
+subidos, no desde la memoria.
+
+**El instrumento, y por qué dos direcciones.** Cinco filas puras sobre la
+decisión: qué se publica, con qué digest, y qué se rechaza (un asset ausente,
+dos nombres iguales, un asset que reclama el nombre reservado). La
+discriminación se midió en las dos direcciones, porque un instrumento que sólo
+detecta un sentido no es un instrumento:
+
+| Mutación | Fila(s) roja(s) |
+|---|---|
+| la autoridad de la candidata entra en el conjunto publicado | 2 (las que exigen que el conjunto sea publicable) |
+| el conjunto pierde un asset en silencio | 3 (membresía, nombres repetidos, nombre reservado) |
+
+En la primera mutación el rojo **nombra** el defecto: el modelo se niega con
+«a published asset would carry the name SHA256SUMS…». En la segunda, las filas
+que no vigilan la membresía siguen verdes: el daño colateral es cero.
+
+**Lo que se verificó después de publicar.** La candidata `v0.76.0-rc1` se
+publicó y se comprobó **sobre los bytes publicados**, no sobre los locales:
+descarga desde el remoto de los siete assets, `sha256sum -c SHA256SUMS`
+verifica las seis entradas, el consumidor del repo resuelve el digest del ZIP
+con su propio script, el ZIP descargado se instala en limpio y reports
+`pipeline 0.76.0`, y un pipeline real ejecutado con ese binario termina en
+`SUCCESS` con su efecto observable en disco. La publicación quedó en remoto
+como prerelease, con el tag apuntando al commit del que se construyeron los
+bytes.
+
+**Lo que este bloque deja dicho.** Una publicación no es un caso feliz del
+producto: es un **producto**, con la misma ley que el resto —una puerta
+mide, y lo que se publica es exactamente lo medido—. Cuando esa ley se partió
+en dos (la puerta por un lado, el publicador por otro), no salió ningún error
+de compilación ni ningún test rojo: salió una release que moría en su último
+paso. El arreglo no fue «arreglar el script»: fue **darle al script un único
+lugar del que sacar el conjunto**, y ese lugar es el que ya existía, la
+puerta.
+
+**Lo que la puerta midió.** `PASS` tres veces sobre el árbol commiteado
+(163 / 157 / 149 s; el peor, de 900), `tests=rewritten:1106`, 61 de 61
+escenarios, 377 comprobaciones sobre 110 ejecuciones, y el LOC en 20248 de
+verificación sobre 67688 de producto (0,299).
+
+**Lo que queda fuera, dicho con honestidad.** La promoción a estable de
+`0.76.0` sigue bloqueada: no hay certificador externo en este repositorio ni
+en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`. Lo que
+este ciclo publica es la **candidata**, y la candidata es exactamente eso.
+
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un comentario que afirma una verdad que el código ya no tiene es peor que
   no escribirlo.** Un lector no puede saber que un comentario miente, así que
@@ -9154,6 +9261,30 @@ verificación sobre 67551 de producto (0,297).
   nueva se vio en rojo con el defecto y en verde con el protocolo roto, que es
   lo que distingue a un guardián de una coincidencia (§2.70).
 
+- **Publicar es una función del producto, y por eso tiene una puerta.** La vía
+  de publicación estaba rota desde la última release publicada con éxito, y
+  ninguna señal del árbol lo decía: compilaba, los tests pasaban y la puerta
+  decía `PASS`. Lo que faltaba era **correrla**, y lo que faltaba después era
+  **que el conjunto publicado tuviera un único autor** (§2.71).
+
+- **Un conjunto publicado se decide en un solo sitio.** La puerta y el
+  publicador armaban la lista de ficheros por su cuenta, y por eso acabaron
+  disarmando el mismo fichero: uno subía la autoridad de digest de la
+  candidata y el otro escribía la suya encima. Ahora la lista —con el digest
+  de cada fichero— sale de la puerta, y el publicador la sigue y la
+  comprueba (§2.71).
+
+- **Una release tiene una autoridad de digest, no dos.** La de la candidata
+  cubre un subconjunto estricto de la que se publica; publicarla no aportaba
+  nada comprobable y sólo hacía ambiguo cuál era «la» autoridad. La evidencia
+  sobre la candidata se queda donde la candidata vive: en el árbol de
+  compilación (§2.71).
+
+- **Un artefacto se certifica sobre los bytes publicados.** Descargar de
+  nuevo, verificar el digest, instalar en limpio y ejecutar un pipeline real
+  con lo instalado: eso es lo que convierte «se subió» en «esto es lo que hay
+  publicado» (§2.71).
+
 
 ## 4. Referencias
 
@@ -9161,6 +9292,12 @@ verificación sobre 67551 de producto (0,297).
 - `scripts/verify-all.sh` — la única puerta local.
 - `scripts/check-budgets.py` — el único script de presupuestos.
 - `examples/run.sh` — el único lanzador E2E.
+- `scripts/release-pipelinek.sh` — la única vía de publicación: decide con la
+  puerta y publica exactamente lo medido.
+- `scripts/release/build-release-manifest.sh` — el generador de la autoridad de
+  digest de una release.
+- `v0.76.0-rc1` — la candidata que este ciclo publicó y verificó (prerelease;
+  la promoción a estable sigue bloqueada por el certificador externo).
 - Historia anterior: tag `pre-testing-reset-20261018`. No se resucita en el árbol
   activo.
 

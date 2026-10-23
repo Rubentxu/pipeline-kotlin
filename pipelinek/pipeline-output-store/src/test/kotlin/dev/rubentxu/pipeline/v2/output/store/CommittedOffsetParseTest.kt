@@ -95,4 +95,31 @@ class CommittedOffsetParseTest {
             "the message must say WHY a negative is refused: <${thrown.message}>",
         )
     }
+
+    // --- the writer and the reader speak ONE format -------------------------------------
+
+    @Test
+    fun `the body the writer writes is the body this parser reads back`() {
+        // The writer and the reader are the two ends of one format. The format used to be spelled
+        // on the way in twice and read on the way out once, with nothing tying the three together:
+        // a writer that spelled it differently would commit records its own reader refuses, and the
+        // store would answer "how far is this stream committed" with a refusal that looks like
+        // corruption and is really a typo.
+        assertEquals(0L, parseCommittedOffset(commitRecordBody(0L)))
+        assertEquals(1L, parseCommittedOffset(commitRecordBody(1L)))
+        assertEquals(4096L, parseCommittedOffset(commitRecordBody(4096L)))
+        assertEquals(1_048_576L, parseCommittedOffset(commitRecordBody(1_048_576L)))
+    }
+
+    @Test
+    fun `the body the writer writes is never empty`() {
+        // An empty body is what a reader sees when it looks at the record while it is being
+        // written in place, and this store refuses to interpret an empty record: deciding what an
+        // unreadable commit record means is a product decision and this store does not make it
+        // silently. A writer that could produce one would turn every concurrent read into a
+        // refusal, and the live observer of a running pipeline would die on it.
+        val body = commitRecordBody(4096L)
+        assertEquals(true, body.isNotBlank(), "the commit record body must carry the offset")
+        assertEquals(false, body.trim().isEmpty())
+    }
 }

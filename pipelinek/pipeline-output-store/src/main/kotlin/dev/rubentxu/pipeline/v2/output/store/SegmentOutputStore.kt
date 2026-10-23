@@ -30,8 +30,10 @@ import dev.rubentxu.pipeline.v2.output.PruneRefusal
 import java.io.IOException
 import java.io.InputStream
 import java.nio.channels.FileChannel
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -736,6 +738,46 @@ class SegmentOutputStore(
         } else 0L
 
     /**
+     * The committed offset, written so that a reader never sees a hole.
+     *
+     * The record is one number, and that number is the authority for how far a stream is
+     * committed. Writing it in place empties the file first and fills it afterwards, and a reader
+     * that arrives inside that window reads an EMPTY record — which this store refuses to
+     * interpret, because deciding what an unreadable commit record means is a product decision
+     * and this store does not make it silently.
+     *
+     * Measured on this build: the live observer of a running pipeline read an empty record, its
+     * read failed, and the observer's thread died with the failure, taking the live view of the
+     * run with it. The run itself carried on and finished, so nothing said "this run lost its
+     * console" — the console was simply gone.
+     *
+     * So the record is written to a temporary file in the same directory and moved into place: a
+     * reader sees the previous record or the new one, and never a hole. A record that is empty
+     * after this change means the file was damaged from outside, which is what the reader's
+     * refusal is for.
+     */
+    private fun writeCommitRecord(layout: Layout, committed: Long) {
+        val temp = Files.createTempFile(layout.commitFile.parent, "cur-", ".cmt")
+        try {
+            Files.writeString(temp, commitRecordBody(committed))
+            try {
+                Files.move(
+                    temp,
+                    layout.commitFile,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                // A filesystem that cannot move atomically still moves in one step, which is
+                // already better than emptying the record in place: the window is gone.
+                Files.move(temp, layout.commitFile, StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            Files.deleteIfExists(temp)
+        }
+    }
+
+    /**
      * One past the last sealed segment: the global base of the current segment.
      * Delegates instead of repeating the enumeration. A second copy of "which segments are sealed"
      * here would be a second authority for one decision, and two authorities for one decision drift.
@@ -856,7 +898,7 @@ class SegmentOutputStore(
         // would rewind the stream to the start of the new segment and silently discard every byte
         // already committed — which is what a segmented read-back mismatch looks like from the
         // outside, with no error anywhere.
-        Files.writeString(layout.commitFile, "$committed\n")
+        writeCommitRecord(layout, committed)
     }
 
     // ---------------------------------------------------------------- handles
@@ -1026,13 +1068,7 @@ class SegmentOutputStore(
             ensureOpen()
             open = false
             // This file is the committed offset, not the size of the segment.
-            Files.writeString(
-                layout.commitFile,
-                "$position\n",
-                StandardOpenOption.CREATE,
-                StandardOpenOption.WRITE,
-                StandardOpenOption.TRUNCATE_EXISTING,
-            )
+            writeCommitRecord(layout, position)
             Files.deleteIfExists(layout.reservationFile)
             // Released AFTER the commit record lands: releasing first would open a window in which a
             // recovery sees neither an owner nor the bytes, and reconciles a range that is about to be
@@ -1127,3 +1163,19 @@ internal fun parseCommittedOffset(content: String): Long {
     }
     return parsed
 }
+
+/**
+ * The body of a stream's commit record.
+ *
+ * The writer and the reader are the two ends of ONE format, so the format lives in one place
+ * rather than being spelled twice on the way in and once more on the way out. A writer that
+ * spelled it differently from its reader would commit records that cannot be read back, and the
+ * store would answer "how far is this stream committed" with a refusal — a failure that looks
+ * like corruption and is really a typo.
+ *
+ * The body is never empty. An empty body is what a reader sees when it looks at the file while
+ * it is being written in place, and this store refuses to interpret an empty record, because
+ * deciding what an unreadable commit record means is a product decision and this store does not
+ * make it silently.
+ */
+internal fun commitRecordBody(committed: Long): String = "$committed\n"

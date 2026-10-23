@@ -99,17 +99,17 @@ composición se rechaza.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `16e4efa7f`, medido en los ensayos de este bloque. El ciclo anterior unificó la narración de las dos rutas y cerró una fuga medida: la ruta sin journal imprimía en el terminal un secreto que su propio almacén se negaba a guardar (§2.66). Este bloque **completa la superficie de la redacción del registro de una corrida**: la lista cubría cinco tipos de evento y la taxonomía tiene treinta que llevan texto libre, así que veintiséis superficies por las que un secreto registrado podía llegar al registro, incluida la respuesta de una persona a una pregunta del pipeline. Además corrige el encuadre del bloque anterior, que TOMABA por defecto lo que la ley de separación de canales ya decidía (§2.67) | `git rev-parse HEAD` |
+| SHA | `b55b1b5a1`, medido en los ensayos de este bloque. El bloque anterior **completó la superficie de la redacción del registro de una corrida** (§2.67). Este bloque cubre la otra mitad de la redacción: la capa que limpia el **transcript** que la corrida compromete, que documentaba cinco defectos ya corregidos y **no tenía ni una sola fila de test** en todo el repositorio. Siete filas puras, un defecto vivo corregido —el estado que se descarta se llevaba el secreto dentro— y un quinto defecto, el que se cuelga, cubierto donde el producto puede detectarlo (§2.68) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1090** (155 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1097** (156 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **61 (61 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **61 de 61**: **373 comparaciones sobre 110 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 373, **88** son esas comparaciones nuevas: **44** de los 61 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **19825 / 67530 = 0.29** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios con una garantía comprobada | **61 de 61**: **375 comparaciones sobre 110 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 375, **88** son esas comparaciones nuevas: **44** de los 61 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **19994 / 67534 = 0.296** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **168 / 141 / 149** en los tres ensayos, los tres sobre `16e4efa7f`, peor 168 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **182 / 141 / 139** en los tres ensayos, los tres sobre `b55b1b5a1`, peor 182 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -122,22 +122,26 @@ sale mejor que la realidad.
 
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
-165 s en el bloque de las tres familias; el ciclo anterior a éste midió 197, 169
-y 376 s, y el anterior a ése 187, 130 y 133 s. Este mide **168, 141 y 149 s**:
+165 s en el bloque de las tres familias; los tres bloques anteriores a éste
+midieron 187, 130 y 133 s, 197, 169 y 376 s y 168, 141 y 149 s. Este mide
+**182, 141 y 139 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 158 s, es menos de
-la sexta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
-la API pública, los 1087 tests y los 61 escenarios.
+de este ciclo el presupuesto se cumplió con holgura —el peor, 182 s, es menos de
+la cuarta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
+la API pública, los 1097 tests y los 61 escenarios.
 
-**La etapa del E2E mide 84, 86 y 86 s**, contra los 90, 90 y 89 s del ciclo
-anterior (§2.66) y los 88 s del anterior a ése (§2.65). Los **siete segundos**
-que cuesta leer, con el propio verbo `console` del producto, los bytes que las
-dos rutas comprometieron (§2.65) siguen ahí, y este ciclo **no añade ningún
-escenario**: la aserción nueva es una línea dentro de un escenario que ya
-existía (§2.67). Es el precio de una comparación que encuentra una clase de
-defecto que ninguna expectativa declarada puede ver, y está medido para que la
-decisión se pueda rehacer con el número delante. El resto del coste sigue siendo el mismo: los 61
+**La etapa del E2E mide 85, 88 y 86 s**, contra los 84, 86 y 86 s del ciclo
+anterior (§2.67) y los 90, 90 y 89 s del anterior a ése (§2.66). Los **siete
+segundos** que cuesta leer, con el propio verbo `console` del producto, los bytes
+que las dos rutas comprometieron (§2.65) siguen ahí, y este ciclo **tampoco añade
+ningún escenario**: los 61 son los mismos. Lo que este bloque añade son siete
+filas unitarias sobre la capa que limpia el transcript, y la comprobación de que
+el quinto defecto documentado de esa capa —el que se cuelga en vez de devolver
+un valor equivocado— lo caza el suite de extremo a extremo, con el diagnóstico
+del propio producto (§2.68). Es el precio de una comparación que encuentra una
+clase de defecto que ninguna expectativa declarada puede ver, y está medido para
+que la decisión se pueda rehacer con el número delante. El resto del coste sigue siendo el mismo: los 61
 escenarios son los mismos y la caché de scripts compilados que el producto ya
 tenía apagada sigue siendo la que hace que el E2E no cueste 111 s (§2.63), y
 **la causa de que el arnés corra el producto dos veces por escenario sigue siendo
@@ -7488,6 +7492,75 @@ del diario cuando el texto del propio paso lo contiene. Medido, y es la ley:
 los dos canales responden a dos preguntas distintas.
 
 
+### 2.68 La clase que limpia el transcript no tenía ni un solo test
+
+**La brecha, medida.** La clase que limpia los bytes que una corrida
+**compromete** —el transcript— no tenía ni una sola fila que la sostuviera, en
+todo el repositorio. No era una clase poco cubierta: era una clase sin
+cobertura, en la capa que decide qué de una corrida se puede ver. Y no era una
+clase cualquiera: su propio KDoc documenta **cinco defectos reales ya
+corregidos** —un volcado final truncado por una lectura de un byte, un anillo
+de salida pisado por una alimentación grande, un bucle que quemaba la CPU con
+el anillo lleno, un guard inalcanzable que entregaba el transcript sólo al
+final, y la cola de un secreto largo escrita en claro cuando dos secretos
+comparten prefijo. Cinco defectos ya corregidos, cinco maneras de volver, y
+ni una fila que sostuviera a ninguna: la clase entera estaba sin cubrir.
+
+**El instrumento.** Siete filas, todas puras: ni reloj, ni fichero, ni proceso,
+ni red. La clase es una máquina de estados sobre bytes —un registro adentro,
+una decisión afuera—, así que lo más barato que puede fallar es una llamada
+directa. Un defecto que sólo aparece en una corrida de 200 MiB es un defecto
+que no debería necesitar una.
+
+| fila | la garantía que sostiene |
+|---|---|
+| el transcript es igual se parta donde se parta | la respuesta no depende de dónde se cortaron las lecturas |
+| dos secretos que comparten prefijo | la cola del más largo no se filtra |
+| un registro sin secretos | decide cada byte cuando llega; no retiene lo que no tiene que retener |
+| el volcado final | una lectura de un byte no trunca el transcript |
+| una alimentación grande | no pisa bytes que aún no se leyeron |
+| un transcript terminado | el estado que se descarta no se lleva una copia del secreto |
+| una lectura | devuelve lo decidido sin pedirle más al origen |
+
+**Cómo se vio en rojo, siete veces.** Cada mutación se aplicó, se leyó de
+vuelta para comprobar que había aterrizado, y se revirtió.
+
+| mutante | qué encendió |
+|---|---|
+| el olvido de lo que trajo la lectura anterior | **cuatro filas**: la que se parte, la del prefijo compartido, la del registro vacío y la del volcado final |
+| un literal más corto gana el|match | una fila: la del prefijo compartido — y el mensaje mostró el defecto exacto, `****CDEFGH;****;****`: la cola del secreto en claro |
+| el registro sin secretos conserva la ventana entera | una fila: la del registro vacío |
+| el final del flujo se trunca por lo que el llamador no cabía | una fila: la del volcado final — el transcript quedó en un solo byte |
+| la cola se dimensiona para la ventana y no para lo que decide una alimentación | una fila: la de la alimentación grande |
+| el estado terminado conserva los bytes del secreto | una fila: la del transcript terminado |
+| el lector espera al origen antes de devolver lo decidido | una fila: la de la lectura — el origen se pidió dos veces y se negó |
+
+**El defecto que encontró una fila.** La fila del transcript terminado
+comprobó lo que el KDoc de la clase ya decía y el código no cumplía: el
+volcado final borraba la cola de salida, pero **no el anillo de espera**, que
+guarda bytes en crudo. La ruta que envuelve el flujo lo borraba —su propio
+KDoc lo dice—; la ruta que usa la máquina de estados no, y esa ruta es la que
+**descarta el estado** al terminar. Un secreto recién enmascarado se quedaba
+dentro de un objeto que el recolector iba a tardar en llevarse. Ahora las dos
+rutas lo borran por la misma regla, y esa regla vive en un solo sitio.
+
+**El quinto defecto no cabe en un test unitario, y hay que decirlo.** El bucle
+que quemaba la CPU no falla con un valor equivocado: **se queda esperando**.
+Un test unitario de ese defecto no se pondría rojo, se quedaría colgado y se
+comería el presupuesto de la puerta, y un test que se cuelga es peor que no
+tener ninguno. El instrumento que sí lo caza es el suite de extremo a
+extremo, y lo cazaba sin que nadie lo hubiera escrito para eso: la salida de
+cualquier paso pasa por ese brazo. Con el brazo que libera el anillo lleno
+deshabilitado, el escenario de la salida en vivo **falla en 26,7 s** con el
+diagnóstico del propio producto —«transcript drain unfinished after 10000ms»—.
+Ningún escenario nuevo: los 61 siguen siendo 61.
+
+**Lo que la puerta midió.** `PASS` tres veces sobre el árbol commiteado
+(182 s / 141 s / 139 s; el peor, de 900), `tests=rewritten:1097`, 61 de 61
+escenarios, 375 comprobaciones sobre 110 ejecuciones, y el LOC en 19994 de
+verificación sobre 67534 de producto (0,296).
+
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un comentario que afirma una verdad que el código ya no tiene es peor que
   no escribirlo.** Un lector no puede saber que un comentario miente, así que
@@ -8873,6 +8946,26 @@ los dos canales responden a dos preguntas distintas.
   una afirmación equivocada sobre el diario y la corrigió en el mismo ciclo,
   con la medición que la desmintió. Un registro que se corrige a sí mismo vale
   más que un registro que nunca se equivoca (§2.67).
+
+- **Una clase sin cobertura permanente es una clase que ya pagó sus defectos
+  una vez.** El redactor del transcript documentaba cinco defectos reales ya
+  corregidos y no tenía ni una fila que sostuviera ninguno. La cobertura no
+  es un adorno: es lo que distingue un defecto que se corrigió de un defecto
+  que volvió (§2.68).
+
+- **Un defecto que se cuelga no cabe en un test unitario.** El bucle que quemaba
+  la CPU no devolvía un valor equivocado: se quedaba esperando. Un test
+  unitario de eso no se pondría rojo, se colgaría y se comería el presupuesto
+  de la puerta. Se cubre donde el producto puede detectarlo —el suite de
+  extremo a extremo, que lo cazó con el diagnóstico del propio producto— y se
+  dice en voz alta por qué (§2.68).
+
+- **El estado que se descarta no puede llevarse el secreto dentro.** El
+  volcado final borraba la cola de salida pero no el anillo de espera, que
+  guarda bytes en crudo: la ruta que envuelve el flujo lo borraba y la que
+  usa la máquina de estados no, y esa segunda ruta es la que tira el estado.
+  Las dos rutas borran por la misma regla, y la regla vive en un solo sitio
+  (§2.68).
 
 
 ## 4. Referencias

@@ -688,6 +688,7 @@ run_scenario() {
     # that never reaches its body reports no guarantees rather than the
     # previous scenario's. The marker writer reads them once the body is done.
     scenario_guarantees=0
+    scenario_executions=0
     scenario_steps=0
     scenario_outcome="none"
 
@@ -772,8 +773,8 @@ emit_scenario_markers() {
     fi
 
     printf '__VERDICT__ %s\n' "$verdict"
-    printf '__COUNTS__ observed=%s steps=%s outcome=%s durable=%s seeded=%s\n' \
-        "$scenario_guarantees" "$scenario_steps" "$scenario_outcome" \
+    printf '__COUNTS__ observed=%s executions=%s steps=%s outcome=%s durable=%s seeded=%s\n' \
+        "$scenario_guarantees" "$scenario_executions" "$scenario_steps" "$scenario_outcome" \
         "$(( durable_runs - before_durable ))" "$(( seeded - before_seeded ))"
     printf '__ELAPSED__ %s\n' "$(( $(now_ms) - started_ms ))"
     local reason
@@ -905,7 +906,24 @@ run_scenario_body() {
     # They are counted as promises, because a scenario that promised one and
     # failed to meet it still promised it, and a census that hid the failure
     # would report a smaller suite than the one that ran.
-    scenario_guarantees=$((scenario_guarantees + $(count_content_expectations "$name")))
+    #
+    # The count is kept aside and NOT added here. A scenario that runs on both
+    # execution paths has its expectations compared against EACH path's own
+    # output, so the same promise is compared twice, and a census that added it
+    # once per scenario reported half the comparisons the harness made. The
+    # promises are added once per execution instead, where the comparison
+    # happens.
+    local content_promises
+    content_promises="$(count_content_expectations "$name")"
+
+    # One run of the product. The census counts them because a scenario that
+    # runs on both execution paths is TWO runs of the product, and a report
+    # that says "one scenario" without saying how many times the product ran
+    # describes a suite that costs half of what it costs.
+    count_run() {
+        scenario_executions=$((scenario_executions + 1))
+        return 0
+    }
 
     # The result the scenario expects its RUN to conclude, in the product's own
     # vocabulary. The exit code cannot say it: a run that caught a failure and
@@ -1188,6 +1206,7 @@ run_scenario_body() {
         ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
         >"$stdout" 2>"$stderr" || code=$?
     cd "$caller_pwd"
+    count_run
 
     if [[ "$run_volatile" == 1 ]]; then
         # The volatile execution gets its OWN working directory and its OWN
@@ -1215,6 +1234,7 @@ run_scenario_body() {
             >"$vstdout" 2>"$vstderr" || vcode=$?
         cd "$caller_pwd"
         export PIPELINEK_E2E_HOME="$durable_home"
+        count_run
     fi
 
     if [[ "$durable" == 1 ]]; then
@@ -1230,6 +1250,7 @@ run_scenario_body() {
             ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
+        count_run
         if [[ "$second" != 0 ]]; then
             printf 'FAIL %-52s the resumed run exited %s, expected 0\n' "$name" "$second"
             show_printed "$root/stderr.rerun.txt"
@@ -1266,6 +1287,7 @@ run_scenario_body() {
             ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
+        count_run
         code="$second"
         # The verdict is the SECOND run's: the first one died before it could
         # say anything about the outcome of the run.
@@ -2110,6 +2132,25 @@ run_scenario_body() {
     if [[ "$durable" == 1 || "$resume" == 1 ]]; then projections=$((projections + 1)); fi
     scenario_guarantees=$((scenario_guarantees + projections))
 
+    # The promises of the executions that are about to be checked, counted
+    # before either one is: a scenario that promised a comparison and failed
+    # it still promised it, and a census that shrank when something failed
+    # would report a smaller suite than the one that ran.
+    #
+    # The verdict execution and the volatile one are counted apart, because
+    # they are two runs of the product and each one is compared against its
+    # OWN output: one promise, two runs, two comparisons.
+    scenario_guarantees=$((scenario_guarantees + content_promises))
+    if [[ "$expect_exit" != "0" ]]; then
+        scenario_guarantees=$((scenario_guarantees + 1))
+    fi
+    if [[ "$run_volatile" == 1 ]]; then
+        scenario_guarantees=$((scenario_guarantees + content_promises))
+        if [[ "$expect_exit" != "0" ]]; then
+            scenario_guarantees=$((scenario_guarantees + 1))
+        fi
+    fi
+
     # The execution that decides the verdict, against every expectation the
     # scenario declares. For a resumed scenario it is the SECOND run: the
     # first one died before it could say anything.
@@ -2178,9 +2219,9 @@ run_scenario_body() {
     # a scenario with five comparisons from one whose guarantee is a single
     # `sh` that failed the run.
     if (( scenario_guarantees == 0 )); then
-        printf 'ok   %-52s exit %s  guarantees=0 (the pipeline carries it)\n' "$label" "$code"
+        printf 'ok   %-52s exit %s  checks=0 (the pipeline carries it)\n' "$label" "$code"
     else
-        printf 'ok   %-52s exit %s  guarantees=%s\n' "$label" "$code" "$scenario_guarantees"
+        printf 'ok   %-52s exit %s  checks=%s\n' "$label" "$code" "$scenario_guarantees"
     fi
     passed=$((passed + 1))
 }
@@ -2307,6 +2348,7 @@ scenario_index="${#selected[@]}"
 passed=0; failed=0; blocked=0; seeded=0; durable_runs=0; failures=()
 observed_scenarios=0
 observed_expectations=0
+observed_executions=0
 finished_steps=0
 unstable_runs=0
 
@@ -2346,6 +2388,7 @@ for script in ${selected[@]+"${selected[@]}"}; do
 
     counts="$(grep -m 1 '^__COUNTS__ ' "$file" 2>/dev/null || true)"
     local_observed="$(sed -n 's/.*observed=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
+    local_executions="$(sed -n 's/.*executions=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
     local_steps="$(sed -n 's/.*steps=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
     local_outcome="$(sed -n 's/.*outcome=\([a-z]*\).*/\1/p' <<<"$counts")"
     local_durable="$(sed -n 's/.*durable=\([0-9][0-9]*\).*/\1/p' <<<"$counts")"
@@ -2353,6 +2396,7 @@ for script in ${selected[@]+"${selected[@]}"}; do
     # A counter that reads a corrupted value is a number nobody can trust, and
     # these counts are here to be trusted: they are ignored rather than added.
     [[ "$local_observed" =~ ^[0-9]+$ ]] && observed_expectations=$((observed_expectations + local_observed))
+    [[ "$local_executions" =~ ^[0-9]+$ ]] && observed_executions=$((observed_executions + local_executions))
     if [[ "$local_observed" =~ ^[0-9]+$ ]] && (( local_observed > 0 )); then
         observed_scenarios=$((observed_scenarios + 1))
     fi
@@ -2408,9 +2452,15 @@ printf '\n%d scenario(s), %d passed, %d failed, %d blocked, %d credential(s) see
 #
 # The steps are what the green actually exercised: every step the product
 # finished inside the run that decided the scenario's verdict.
-printf '%d of %d executed scenario(s) had a guarantee checked (%d guarantees, %d steps finished, %d ended unstable); %d asserted nothing\n' \
-    "$observed_scenarios" "$(( passed + failed ))" "$observed_expectations" "$finished_steps" \
-    "$unstable_runs" "$(( passed + failed - observed_scenarios ))"
+#
+# The executions are what the suite COST: a scenario that runs on both
+# execution paths is checked twice, and the number of checks it made is not
+# the number of guarantees it carries. One guarantee, compared on two paths,
+# is one guarantee and two checks, and a census that said "one guarantee"
+# for that scenario would be describing a suite that does half the work.
+printf '%d of %d executed scenario(s) had a guarantee checked (%d checks over %d executions, %d steps finished, %d ended unstable); %d asserted nothing\n' \
+    "$observed_scenarios" "$(( passed + failed ))" "$observed_expectations" "$observed_executions" \
+    "$finished_steps" "$unstable_runs" "$(( passed + failed - observed_scenarios ))"
 
 # The stage clock, as the fact it now is. Every scenario reported, so nothing is
 # hidden by this line: the stage was simply too slow for the budget it was given.

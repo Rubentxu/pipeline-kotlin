@@ -106,7 +106,7 @@ composición se rechaza.
 | Tests unitarios ejecutados | **1087** (153 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **61 (61 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **61 de 61**: **170 garantías** comprobadas —162 en los 60 anteriores y 8 en el nuevo de coherencia del workspace (§2.55). El censo anterior («19 sólo miran el código de salida») contaba el canal de la declaración, no la garantía, y era falso | censo del arnés, sobre los 61 escenarios |
+| Escenarios con una garantía comprobada | **61 de 61**: **285 comparaciones sobre 110 ejecuciones** del producto (§2.64). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución. El informe anterior decía «170 garantías»: contaba las declaraciones una vez por escenario, así que se quedaba en el 60 % de su propio trabajo y no decía cuántas veces corría el producto | censo del arnés, sobre los 61 escenarios |
 | `VERIFY_LOC / PRODUCT_LOC` | **19387 / 67443 = 0.287** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
 | `VERIFY_ALL_WALL_CLOCK` | **187 / 130 / 133** en los tres ensayos, los tres sobre `4750402b4`, peor 187 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
@@ -132,8 +132,10 @@ los 61 escenarios.
 
 **La etapa del E2E bajó de 111 s a 79-81 s**, y no por tocar los escenarios:
 por usar, dentro de su directorio de ciclo, la caché de scripts compilados que
-el producto ya tenía apagada (§2.63). Los 61 escenarios y las 170 garantías son
-los mismos; lo que cambió es lo que cuesta comprobarlos.
+el producto ya tenía apagada (§2.63). Los 61 escenarios son los mismos; lo que
+cambió es lo que cuesta comprobarlos, y **la causa se corrigió**: no era que
+el producto compilase dos veces, es que el arnés corre el producto DOS VECES
+por escenario, una en cada ruta de ejecución (§2.64).
 
 **Dos ensayos anteriores a estos tres se descartaron, y hay que decir por
 qué.** Sobre el mismo árbol, la puerta dio dos veredictos con rojos, y **todos
@@ -7013,11 +7015,22 @@ cambios, cada uno sostenido por una fila de la tabla.
    | un escenario — CPU | 27,7 s | 18,0 s | 8,4 s |
    | veredictos y garantías | 61 / 170 | 61 / 170 | 61 / 170 |
 
-   La lectura es que **una corrida compila el MISMO script dos veces**: con la
-   caché apagada el escenario cuesta 27,7 s de CPU, con la caché fría 18,0 s —
-   una compilación menos, que es lo que vale una compilación — y con la caché
-   caliente 8,4 s, que es la corrida sin compilar nada. El artefacto que queda
-   es UNO solo, así que las dos compilaciones son del mismo texto.
+   La lectura inicial era que «una corrida compila el MISMO script dos veces», y
+   **era falsa**: una corrida compila UNA vez, y el event lane del producto lo
+   registra — un `CompilationStarted` y un `CompilationFinished` por corrida,
+   medido sobre el evento de la propia corrida, no sobre una inferencia. Las
+   dos compilaciones eran del ARNÉS: el lanzador ejecuta cada escenario en las
+   DOS rutas de ejecución (con journal y sin journal), y son dos ejecuciones
+   del producto, cada una con su compilación. El artefacto que queda es uno
+   solo porque las dos compilan el mismo texto, y la caché hace que la segunda
+   sea gratis.
+
+   Las cifras de coste que se publicaron **siguen siendo las mismas**: 116,5 s
+   sin caché, 84,3 s con caché fría, 52,4 s con caché caliente, con los mismos
+   61 escenarios. Lo que cambia es la causa, y una causa equivocada apuntando
+   al sitio equivocado es como una afirmación caducada: mueve el trabajo al
+   sitio donde no está. La corrección está en §2.64, y allí está medido dónde
+   estaba el trabajo de verdad.
 
    El arnés usa la caché **dentro de su directorio de ciclo**, que la trampa
    borra con todo lo demás: la caché no sobrevive a la corrida, no se acumula en
@@ -7048,6 +7061,88 @@ lote 1 (§2.36 y §2.37) auditionó seis y este auditionó dieciséis. La cuenta
 La muestra que este lote **no** tocó incluye `smoke/`, `steps/` en su mayoría,
 `output/` en su mayoría y las categorías `negative/` de plugins que no son
 `plugin-trust`. El lote 3 sigue el mismo método sobre esa muestra.
+
+
+### 2.64 El censo contaba la mitad del trabajo, y la explicación que se había publicado era falsa
+
+Este bloque empieza por **deshacer una afirmación propia**. La propuesta de
+misión que quedó encadenada al cierre del ciclo anterior —«que una corrida de
+`pipelinek` compile el script UNA vez, reutilizando el artefacto, y no dos»—
+se apoyaba en una frase que se había publicado como medida: «una corrida
+compila el MISMO script dos veces». Esa frase era **falsa**, y una propuesta
+que se apoya en una medición falsa empuja el trabajo al sitio equivocado.
+
+**Lo que se midió, y cómo.** La verdad se midió por el event lane del propio
+producto, no por inferencia: una corrida deja **un** `CompilationStarted` y
+**un** `CompilationFinished` en su historia. El producto compila UNA vez.
+
+Las dos compilaciones eran **del arnés**. `examples/run.sh` ejecuta cada
+escenario en las **DOS rutas de ejecución** del producto —con journal, que es
+como lo corre un CI, y sin journal, que es el defecto de una corrida local— y
+las dos tienen que cumplir las mismas expectativas. Esa doble ejecución es una
+garantía deliberada: una divergencia entre las dos rutas es un defecto, y sólo
+correr las dos lo encuentra. Ya pasó: las dos rutas informaban de un pipeline
+fallido de forma distinta, y una suite que corría una sola no veía que había
+una elección que hacer.
+
+Con 61 escenarios, eso son **110 ejecuciones del producto**, no 61. Y con la
+caché apagada cada una compila el script; con la caché, la segunda compilación
+de cada escenario es gratis, porque las dos compilan el mismo texto. De ahí el
+116,5 s → 84,3 s. **Las cifras de coste que se publicaron siguen siendo las
+mismas; lo que cambia es la causa.**
+
+**El defecto que salió de verdad, y que es de otra clase.** El censo del arnés
+decía, en su propio comentario, que contaba «lo que el arnés COMPARÓ». No lo
+contaba: contaba **declaraciones**, una vez por escenario. Pero cada
+declaración se compara contra la salida de **cada** ejecución, así que el
+informe se quedaba en menos de la mitad de su propio trabajo:
+
+| | lo que el informe decía | lo que el arnés hizo |
+|---|---|---|
+| comparaciones | **170** | **285** |
+| ejecuciones del producto | no lo decía | **110** |
+
+Medido sobre la suite entera, con el mismo árbol y el mismo host. El informe
+no mentía en un número: **omitía el 40 % de su trabajo y no decía cuántas
+veces corría el producto.** Un informe que dice «170 garantías» cuando ha
+hecho 285 comparaciones describe una suite más pequeña de la que existe, y
+una suite más pequeña de la que existe se infravalora cuando se decide dónde
+invertir.
+
+**El arreglo.** Las promesas se cuentan donde ocurre la comparación —una vez
+por ejecución— y no una vez por escenario. El informe dice cuántas
+ejecuciones hubo. Una fila verde dice ahora `checks=5` donde antes decía
+`guarantees=3`, y el censo dice «285 checks sobre 110 ejecuciones». La
+diferencia entre 3 y 5 no es un cambio de counting: son las dos ejecuciones del
+escenario, cada una contra su propia salida, más la comprobación del veredicto
+publicado que sólo existe en la ruta con journal.
+
+**Lo que NO se hace, y por qué está escrito.**
+
+- **No se retira la ejecución volatile.** Es una garantía real y ya no cuesta
+  una compilación. Retirarla sería cambiar qué comprueba la suite para
+  ahorrar segundos.
+- **No se guarda la caché entre invocaciones.** Bajaría el E2E de 84,3 s a
+  52,4 s, pero haría los tres ensayos de la puerta heterogéneos —el primero
+  en frío, los otros dos en caliente— y dejaría un artefacto fuera del ciclo
+  que la puerta borra. Treinta y dos segundos contra un presupuesto de 900 s
+  no justifican comprar la medición con heterogeneidad. Queda escrito con
+  la cifra, para que la decisión se tome con el número delante.
+- **La primera compilación de cada escenario sigue costando ~10 s de CPU**, y
+  es el **44 %** del E2E. Es el trabajo que queda: quitarlo necesita la caché
+  entre invocaciones, que es justo lo que el punto anterior explica por qué no se
+  hace aquí.
+
+**Lo que este bloque deja medido y sin hacer.** La doble ejecución del arnés
+compara cada ejecución **contra las expectativas declaradas**, pero **no
+compara las dos ejecuciones entre sí**. Las dos rutas se tienen que parecer
+en lo que el escenario declara, no en todo lo que hicieron. Ese hueco es real,
+es medible, y es el bloque siguiente: o la comparación entre las dos rutas se
+hace de verdad —con la normalización que exijan los identificadores de
+corrida, las marcas de tiempo y las rutas—, o la ejecución volatile se retira
+de los escenarios donde no puede discriminar. Hoy no se sabe cuál de las dos
+cosas vale más, y decidirlo con el número delante es mejor que decidirlo con
+la intuición.
 
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
@@ -8266,6 +8361,47 @@ La muestra que este lote **no** tocó incluye `smoke/`, `steps/` en su mayoría,
   su directorio de ciclo es suyo y la trampa lo borra. La caché vive dentro
   de ese directorio, así que no sobrevive a la corrida, no se acumula en el
   HOME de nadie y dos invocaciones nunca comparten un artefacto (§2.63).
+
+
+- **Una medición equivocada, publicada, mueve el trabajo al sitio equivocado, y
+  por eso hay que deshacerla antes de construir nada encima.** La propuesta
+  encadenada al cierre del ciclo anterior se apoyaba en «una corrida compila
+  el mismo script dos veces», y era falsa: el producto compila una vez y el
+  ARNÉS corre el producto dos veces por escenario, una en cada ruta de
+  ejecución. La cifra de coste era correcta; la causa apuntaba al producto. Un
+  ciclo que empieza por corregir su propia explicación vale más que uno que
+  construye sobre ella (§2.64).
+
+- **Un informe que no dice cuántas veces corrió el producto no puede
+  valorarse.** El censo decía contar «lo que el arnés COMPARÓ» y contaba
+  declaraciones, una vez por escenario: el informe declaraba 170 garantías
+  donde hubo 285 comparaciones sobre 110 ejecuciones. Una suite que se
+  infravalora en un 40 % en su propio informe es una suite que recibe menos
+  inversión de la que merece, y el número que la infravalora es el que se
+  cita (§2.64).
+
+- **Las promesas se cuentan donde ocurre la comparación, no donde se
+  declaran.** Una declaración contrastada contra dos ejecuciones son dos
+  comparaciones, y contarlas una vez por escenario era contar la mitad del
+  trabajo. El sitio de la cuenta no es un detalle de estilo: decide lo que el
+  informe dice que la suite compró (§2.64).
+
+- **Reducir el coste de una suite no se compra con heterogeneidad.** Guardar
+  la caché de scripts entre invocaciones bajaría el E2E de 84,3 s a 52,4 s,
+  pero haría los tres ensayos de la puerta heterogéneos y dejaría un
+  artefacto fuera del ciclo que la puerta borra. Treinta y dos segundos contra
+  un presupuesto de 900 s no lo justifican; la cifra queda escrita y la
+  decisión, para quien la quiera tomar con el número delante (§2.64).
+
+- **Una doble ejecución se queda mientras discrimine, y hay que medir si
+  discrimina.** El arnés corre cada escenario en las dos rutas de ejecución y
+  las dos tienen que cumplir las mismas expectativas, pero **no se comparan
+  entre sí**: se parecen en lo que el escenario declara, no en todo lo que
+  hicieron. Ese hueco es el bloque siguiente, y se decide con una
+  mutación —no con una intuición—: o la comparación entre las dos rutas se
+  hace de verdad, con la normalización que exijan los identificadores y las
+  marcas de tiempo, o la ejecución volatile sale de los escenarios donde no
+  puede discriminar (§2.64).
 
 ## 4. Referencias
 

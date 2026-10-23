@@ -120,6 +120,16 @@ además, destapó un defecto propio: el registro de offset confirmado se escrib�
 en el sitio y dejaba una ventana en la que el observador en vivo leía un
 registro vacío y moría con él, y el run seguía como si nada (§2.73).
 
+**Lo que este ciclo midió por fuera: el techo del drenaje.** El runtime esperaba
+a las bombas de transcripción con un **reloj fijo**, y un reloj fijo no
+distingue una bomba **atascada** de una bomba **lenta**: a las dos las
+declaraba la misma cosa, un rechazo sin decir cuál. Con la máquina quieta el
+drenaje terminaba en milisegundos; saturada, el mismo techo se agotaba, y
+**dos ensayos de la puerta se descartaron** por ello. Ahora la bomba declara su
+atención —¿espera al hijo o trabaja en el plano?—, el atascado se rechaza al
+momento y nombrado, el lento se espera, y los dos rechazos son **casos
+tipados distintos** (§2.74).
+
 **Lo que está abierto ahora mismo:**
 
 | # | Qué falta | Por qué sigue abierto |
@@ -128,27 +138,27 @@ registro vacío y moría con él, y el run seguía como si nada (§2.73).
 | 2 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
 | 3 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | **caracterizada** (§2.57): por los caminos de producción **medidos** **dos streams no comparten bytes**, porque los segmentos dirigidos por posición no se pliegan; lo que **no** se ha demostrado es la propiedad general para todo identificador que el formato admite, y el veredicto lo dice así. Los dos defectos que sí lo eran están **cerrados**: el parser de op ids ya no descarta parte de la identidad **en silencio** (§2.59) —devuelve `null` antes que una identidad truncada, y la consola conserva su filtro por etapa y paso gracias a una lectura de índices— y la afirmación de que la colisión era inalcanzable en general está **matizada**. Queda con nombre una deuda: el formato del cuerpo **no es invertible** cuando un identificador lleva `-`, y cerrarlo es ruptura versionada que espera autorización |
 | 4 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
-| 5 | El techo del drenaje | **caracterizado** (§2.58): el rechazo ya es **tipado** (`DrainIncomplete`) y no se confunde con un fallo del script, que era lo que faltaba saber. Lo que falta es que sea **accionable** — reintentar en vez de subir el techo—, y eso es decisión de producto. Y una corrección de atribución: los temporales del driver SQLite que hay en el tmpdir compartido son de procesos que **no salen bien** —el driver extrae al cargarse y borra al salir—, y este producto, desde que fija `org.sqlite.tmpdir`, **no deja nada suelto**: su residuo va a un directorio con nombre |
+| 5 | El techo del drenaje | **cerrado** (§2.74): el rechazo era tipado pero **no accionable**, y el techo era un reloj que no distinguía una bomba **atascada** (esperando bytes que nadie va a escribir) de una bomba **lenta** (escribiendo porque la máquina está ocupada). Ahora la bomba declara su atención, el atascado se rechaza **al momento y nombrado**, el lento se espera, y los dos rechazos son **casos tipados distintos** (`STUCK_CHILD`, `OUT_OF_TIME`). Queda medir **cuánto** tarda un drenaje con la máquina saturada: reproducir la saturación en un banco de pruebas es una fixture que este repositorio no tiene |
 
 ## 1. Estado medido
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `a61fa98dc`, medido en los ensayos de este bloque. El bloque anterior **midió los verbos que hablan del producto** (§2.72). Este bloque **saca la identidad de un stream del nombre plegado**: el índice del plano ya sabía la identidad completa de cada stream, pero la superficie no existía y el arnés la deducía del listado de directorios, donde el nombre es una proyección con pérdida. Ahora el producto publica las operaciones de un run con su identidad completa, el arnés la consume en vez de deducirla, y la comparación de las dos rutas de ejecución se apoya en lo que el producto promete —el lugar de una etapa, sí; el orden dentro de una etapa, no—. La candidata `v0.78.0-rc1` queda **publicada y verificada byte a byte** (§2.73) | `git rev-parse HEAD` |
+| SHA | `da479df68`, medido en los ensayos de este bloque. El bloque anterior **sacó la identidad de un stream del nombre plegado** (§2.73). Este bloque **arregla el techo del drenaje**: el runtime esperaba a las bombas de transcripción con un reloj fijo, y un reloj fijo no distingue una bomba atascada de una bomba lenta —a las dos las declaraba un rechazo sin decir cuál, y dos ensayos de la puerta se descartaron por ello—. Ahora la bomba declara su atención, el atascado se rechaza al momento y nombrado, el lento se espera, y los dos rechazos son casos tipados distintos. La candidata `v0.79.0-rc1` queda **publicada y verificada byte a byte** (§2.74) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1121** (159 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1131** (159 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **62 de 62**: **398 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 396, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **20724 / 67848 = 0.305** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **20891 / 67980 = 0.307** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **203 / 150 / 152** en los tres ensayos, los tres sobre `a61fa98dc`, peor 203 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **208 / 150 / 148** en los tres ensayos, los tres sobre `da479df68`, peor 208 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
-| Candidato publicada | **`v0.78.0-rc1`** (prerelease), `candidate_id` `sha256:2b8b8236…ad34`, tag en `a61fa98dc`; verificada **sobre los bytes descargados del remoto** (§2.73) | `gh release view v0.78.0-rc1`, `sha256sum -c SHA256SUMS` |
+| Candidato publicada | **`v0.79.0-rc1`** (prerelease), `candidate_id` `sha256:***`, tag en `da479df68`; verificada **sobre los bytes descargados del remoto** (§2.74) | `gh release view v0.79.0-rc1`, `sha256sum -c SHA256SUMS` |
 | Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -162,12 +172,12 @@ El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s, 182, 141 y 139 s,
 187, 139 y 140 s y 203, 139 y 141 s.
 Este mide
-**203, 150 y 152 s**:
+**208, 150 y 151 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
 de este ciclo el presupuesto se cumplió con holgura —el peor, 203 s, es menos de
 la cuarta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
-la API pública, los 1121 tests y los 62 escenarios.
+la API pública, los 1131 tests y los 62 escenarios.
 
 **La etapa del E2E mide 100 y 98 s**, medidos en seco sobre el lanzador,
 contra los 92, 92 y 90 s del ciclo anterior (§2.72). Los **nueve segundos** de
@@ -8094,6 +8104,104 @@ real con el binario publicado.
   exactamente eso.
 
 
+### 2.74 El techo del drenaje era un reloj que no sabía nada de la carga
+
+**El defecto, y lo que la puerta pagó por él.** El runtime espera a que las
+bombas de transcripción terminen antes de declarar un step completo, y lo hacía
+con un **reloj absoluto**:
+
+```
+pumps.forEach { it.join(TRANSCRIPT_PUMP_DRAIN_BUDGET_MS) }   // 10 s
+```
+
+Un reloj fijo no distingue dos cosas que son **opuestas**:
+
+- una bomba **ATASCADA**, esperando bytes que nadie va a escribir porque el hijo
+  dejó algo vivo sosteniendo la transcripción;
+- una bomba **LENTA**, escribiendo en el plano de salida porque la máquina está
+  ocupada.
+
+A las dos las declaraba la misma cosa: un rechazo. Y el rechazo **no era
+accionable**, porque no decía cuál de las dos era. Con la máquina quieta el
+drenaje termina en milisegundos y el techo de 10 s es holgado de sobra;
+saturada, el mismo techo se agota. **Dos ensayos de la puerta se descartaron
+con `transcript drain unfinished after 10000ms`**, y ambos coincidieron con
+trabajo ajeno corriendo al lado.
+
+Lo que la puerta medía sin querer era lo importante: el defecto no era del
+arnés, era del **producto**, y su síntoma era un paso que falla sin motivo.
+
+**Lo que el arreglo hace.** Ahora la bomba **declara su atención**: si está
+**esperando** al hijo o si está **trabajando** en el plano. Y el drenaje usa
+esa declaración:
+
+- una bomba que **trabaja** se **espera**, porque los bytes que faltan van a
+  llegar: el refusal del techo dice que la transcripción va **tarde, no rota**;
+- una bomba que **espera** al hijo y no se mueve está **atascada**, y se rechaza
+  **al momento**, nombrándola.
+
+El techo global queda como la red de seguridad del caso que no termina nunca
+(una bomba que dribla un byte cada pocos segundos y sostiene la transcripción
+abierta para siempre), y su rechazo dice otra cosa: la máquina no pudo
+terminar a tiempo.
+
+**El rechazo, accionable y tipado.** Los dos casos son **casos distintos del
+vocabulario**, no dos frases del mismo texto: `TranscriptDrainCause.STUCK_CHILD`
+—el hijo sostiene la transcripción— y `TranscriptDrainCause.OUT_OF_TIME` —la
+máquina no pudo con el tamaño—. El registro del fallo lleva cada uno su token,
+y el que ya estaba publicado (`transcript-pump-still-alive`) se queda donde
+estaba: **añadir un caso no rompe lo que un consumidor ya leía**.
+
+**Las palancas son del operador.** El presupuesto de inactividad y el techo
+global se leen de propiedades del sistema, como las demás del módulo
+(`pipeline.durable.transcript.drain.idle.budget`,
+`pipeline.durable.transcript.drain.ceiling`). El producto ya no confunde una
+máquina lenta con un hijo atascado, y el operador que sabe que su máquina va
+lenta tiene una palanca: **subir el techo** ya no esconde la saturación detrás
+de un número más grande, porque el rechazo dice cuál de las dos cosas pasó.
+
+**El instrumento es puro, y por eso es barato.** La regla del drenaje y el bucle
+que la aplican se prueban sobre **bombas falsas**: sin hilo, sin reloj y sin
+proceso. Diez filas cubren las particiones —el que termina, el atascado, el
+lento, el que se queda sin tiempo, la precedencia entre atascado y techo, y el
+drenaje con dos bombas—. Dos mutaciones se vieron en rojo, cada una con su
+fila exacta:
+
+| Mutación | Fila roja |
+|---|---|
+| la regla vuelve al reloj solo (se pierde la comprobación de atascado) | **4** — `a pump that stopped moving is stuck…`, `a stuck pump is stuck even when the ceiling has not arrived`, `a pump that never moves is refused as a stuck child`, `the drain waits for every pump…` |
+| toda bomba cuenta como esperando al hijo (el drenaje ignora su atención) | **1** — `a pump that keeps moving is waited for…` |
+
+**Lo que la puerta midió.** `PASS` tres veces sobre el árbol commiteado
+(***/*** s; el peor, de 900), `tests=rewritten:***`, 62 de 62 escenarios,
+*** comprobaciones sobre 112 ejecuciones, y el LOC en *** de verificación sobre
+*** de producto (***).
+
+**Lo que se verificó después de publicar.** La candidata `v0.79.0-rc1` se
+publicó y se comprobó **sobre los bytes publicados**, no sobre los locales: la
+descarga desde el remoto, `sha256sum -c` sobre el conjunto de assets, el digito
+que el propio repositorio resuelve, la instalación limpia, y un pipeline real
+con el binario publicado.
+
+**Lo que queda fuera, dicho con honestidad.**
+
+- **La carga que hace que el drenaje se agote no está medida.** El defecto
+  está medido —la regla equivocada, el rechazo no accionable y dos ensayos de
+  la puerta descartados—, y el arreglo está medido por sus particiones. Lo que
+  no hay es una medición de **cuánto** tarda un drenaje con la máquina
+  saturada, porque reproducir la saturación en un banco de pruebas es una
+ Fixture que este repositorio no tiene. La puerta sigue siendo el detector.
+- **El caso del hermano**: una bomba atascada y otra lenta a la vez se
+  rechaza por la lenta (el techo), no por la atascada. El diagnóstico es
+  menos preciso en ese caso raro, y no se haquerido añadir una segunda regla
+  para él: el Rechazo sigue siendo verdadero, y el caso mixto es raro porque
+  exige un hijo atascado y una máquina ocupada al mismo tiempo.
+- **La promoción a estable sigue bloqueada**: no hay certificador externo en
+  este repositorio ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`,
+  no `PASS`. Lo que este ciclo publica es la **candidata**, y la candidata es
+  exactamente eso.
+
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un comentario que afirma una verdad que el código ya no tiene es peor que
   no escribirlo.** Un lector no puede saber que un comentario miente, así que
@@ -9642,6 +9750,29 @@ real con el binario publicado.
   decia "este run perdio su consola". Un fallo que se traga la mitad de lo que
   el run dijo es peor que un fallo que para el run, porque no se nota (§2.73).
 
+- **Un reloj no sabe lo que solo el que observa sabe.** El techo del drenaje
+  confundia una bomba atascada con una bomba lenta porque las dos se
+  manifestaban igual: un hilo que no habia terminado. La bomba si sabe si esta
+  esperando al hijo o trabajando en el plano, y decirlo cuesta un booleano
+  (§2.74).
+
+- **Un rechazo que no dice cual de las cosas paso no es accionable.** Los dos
+  casos del drenaje agotado son hechos distintos, sobre cosas distintas —el
+  hijo o la maquina— y con respuestas distintas, asi que son **casos tipados**,
+  no dos frases del mismo texto (§2.74).
+
+- **Un instrumento puro cuando el hilo y el reloj no hacen falta.** La regla y
+  el bucle del drenaje se prueban sobre bombas falsas: diez particiones, sin
+  proceso, sin pipe y sin segundo real. Un instrumento que necesita la
+  maquina saturada para poder fallar es un instrumento que no se puede usar
+  (§2.74).
+
+- **Subir un techo no arregla un defecto; cambiar lo que el techo significa si.**
+  El techo del drenaje no era un numero demasiado pequeno: era un numero que
+  no distinguia dos causas opuestas. Ahora la bomba declara su atencion, y el
+  techo queda siendo lo que era —la red de seguridad del caso que no
+  termina nunca— (§2.74).
+
 - **Un instrumento que encuentra un defecto real se paga.** La comparacion
   entre las dos rutas de ejecucion no es adorno: fue ella la que destapo el
   defecto del registro de offset, y la que obliga a que el arnes compare
@@ -9658,8 +9789,10 @@ real con el binario publicado.
   puerta y publica exactamente lo medido.
 - `scripts/release/build-release-manifest.sh` — el generador de la autoridad de
   digest de una release.
-- `v0.78.0-rc1` — la candidata que este ciclo publicó y verificó (prerelease;
+- `v0.79.0-rc1` — la candidata que este ciclo publicó y verificó (prerelease;
   la promoción a estable sigue bloqueada por el certificador externo).
+- `pipeline-step-sdk/runtime/.../TranscriptDrain.kt` — la regla y el bucle del
+  drenaje de una transcripción, y las particiones que los cubren (§2.74).
 - `examples/smoke/11-cli-self-report.pipeline.kts` — el escenario que pregunta al
   producto por su salud, su catálogo, su versión y **las operaciones de su propio
   run**, y comprueba cada respuesta contra lo que el producto imprimió (§2.72,

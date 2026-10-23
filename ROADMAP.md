@@ -7128,10 +7128,12 @@ publicado que sólo existe en la ruta con journal.
   que la puerta borra. Treinta y dos segundos contra un presupuesto de 900 s
   no justifican comprar la medición con heterogeneidad. Queda escrito con
   la cifra, para que la decisión se tome con el número delante.
-- **La primera compilación de cada escenario sigue costando ~10 s de CPU**, y
-  es el **44 %** del E2E. Es el trabajo que queda: quitarlo necesita la caché
-  entre invocaciones, que es justo lo que el punto anterior explica por qué no se
-  hace aquí.
+- **La primera compilación de cada escenario sigue costando el grueso del
+  E2E.** Medido sobre los dos extremos: la caché fría cuesta 1372 s de CPU y
+  la caliente 619 s, así que las compilaciones son **753 s de CPU (55 %)**; y en
+  reloj, 84,3 s contra 52,4 s, así que son **32 s (38 %)**. Es el trabajo que
+  queda: quitarlo necesita la caché entre invocaciones, que es justo lo que el
+  punto anterior explica por qué no se hace aquí.
 
 **Lo que este bloque deja medido y sin hacer.** La doble ejecución del arnés
 compara cada ejecución **contra las expectativas declaradas**, pero **no

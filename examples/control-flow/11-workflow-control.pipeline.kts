@@ -1,5 +1,21 @@
 //@ expect-stdout step-A
 //@ expect-outcome unstable
+
+// THE GUARANTEE UNDER TRIAL
+//
+// Three workflow controls, each observed through what it left behind.
+//
+//  - `dir` MOVES the working directory. The `pwd` the stage records has to
+//    name that directory, because "the shell started" is not "the path
+//    changed".
+//  - `deleteDir` REMOVES what was written under it. A destructive step's
+//    guarantee is an ABSENCE, so the absence is the witness: the files the
+//    stage wrote must not be there afterwards.
+//  - `catchError` CATCHES a failure, and the run then ends well AND is not a
+//    success: it concludes UNSTABLE. The exit code cannot say that, because a
+//    caught failure and a clean run both end the process well. The conclusion
+//    the run PUBLISHED is what the harness compares, and the caught failure is
+//    the only thing that makes this run unstable.
 pipeline {
     stages {
         stage("workspace-control") {
@@ -45,7 +61,6 @@ pipeline {
             catchError {
                 sh("exit 1")
             }
-            unstable("flaky")
         }
     }
 }

@@ -6896,6 +6896,152 @@ revés, y ambas se corrigen según lo medido.
 | Compilación | los **6** módulos tocados compilan |
 | Puerta | **PASS** en los tres ensayos sobre `636dadda5`: **197 / 169 / 376 s** de 900 s |
 
+### 2.63 Lote 2 de la auditoría de capacidad discriminante: dieciséis escenarios, veinte mutaciones, dieciocho encendidos
+
+§2.36 abrió la auditoría y §2.37 cerró su fila 6. Este bloque continuó con el
+lote 2, el que la propia §2.37 dejó escrito: «los cincuenta escenarios restantes
+siguen sin mutar».
+
+**La pregunta, sin cambiar.** ¿Puede encenderse la garantía que este escenario dice
+sostener? Un escenario que no puede encenderse no compra nada, y una suite que no
+distingue un guardián vivo de uno decorativo no puede decir qué compra; por tanto
+tampoco puede decir qué sobra.
+
+**Dos clases de mutación, y por qué este lote necesita las dos.** §2.36 atacó
+sólo la ENTRADA que el escenario entrega al paso bajo prueba, porque esa mutación
+responde a la pregunta que importa —«si el producto se comportara distinto, ¿este
+escenario lo notaría?»— sin tocar el producto. Pero buena parte de las garantías
+de este lote no viven en la entrada: viven en el LECTOR del event lane, en el
+cursor de la reanudación, en el veredicto del recover. Para ésas la entrada no
+alcanza la garantía, y la sonda honesta es romper el PRODUCTO y comprobar que el
+escenario se enciende contra el defecto real, no contra un texto distinto.
+
+- **K1, la entrada**: se cambia lo que el escenario entrega al paso bajo prueba.
+- **K2, el producto**: se introduce el defecto que la garantía nombra, se
+  recompila la distribución y se corre el escenario.
+
+Cada mutación se deshace —código y árbol— antes de la siguiente, y cada una va
+precedida de la lectura del diff que la aplicó: una mutación que no se aplicó no
+prueba nada.
+
+**La muestra.** Dieciséis escenarios, elegidos por variedad de categoría
+(control-flow, events, durable, output, security, plugins, negative) y por
+variedad de tipo de afirmación: `expect-stdout`, `expect-stderr`,
+`expect-transcript`, `expect-exit`, `expect-outcome`, `step-verdict`,
+`failure-stage`, `run-state`, `events-follow`, `events-resume`, `events-refusal`,
+`durable`, `resume`, `cancel`, `recover` y `plugin-trust`.
+
+**La tabla medida.** Cada fila es una mutación, con el escenario que la sostiene y
+la razón que encendió o no encendió.
+
+| # | Escenario | Afirmación | Mutación | Veredicto observado | Encendió |
+|---|---|---|---|---|---|
+| 1 | `control-flow/05-scripted-control-flow` | `expect-stdout` | `val x = 1` → `val x = -1`: la rama del script toma el otro brazo | RED: `stdout lacked: x is positive` | **✓** |
+| 2 | `control-flow/05-scripted-control-flow` | `expect-transcript` | sólo la expectativa del transcript; el stdout queda intacto | RED: `the committed transcript lacked: …`, y el stdout siguió verde | **✓** |
+| 3 | `control-flow/11-workflow-control` | `expect-outcome` | quitar el paso `unstable("flaky")` | **GREEN**: la corrida siguió concluciendo `unstable` | ✗ |
+| 4 | `control-flow/11-workflow-control` | `expect-outcome` | quitar a la vez el `catchError` y el `unstable` | RED: `concluded success, expected unstable` | **✓** |
+| 5 | `events/02-step-verdict` | `step-verdict` | invertir el veredicto de los dos pasos | RED: `could not read the step verdicts` | **✓** |
+| 6 | `events/03-failure-stage` | `failure-stage` | mover el fallo del segundo escenario al primero | RED: `could not attribute the failure to its stage` | **✓** |
+| 7 | `events/05-run-state` | `run-state` | el paso termina mal | RED: `the run state did not say: run-state terminal outcome=succeeded` | **✓** |
+| 8 | `output/33-live-process-output` | `expect-stdout` | `returnStdout = false` → `true`: la salida del proceso deja de llegar a la terminal | RED: `stdout lacked: RAW_PROCESS_MARKER` | **✓** |
+| 9 | `security/28-zip-slip-defense` | `expect-exit` + `expect-stderr` | nombre de entrada inocuo en el zip: el archivo ya no se escapa | RED: `exit 0, expected 1` | **✓** |
+| 10 | `plugins/uppercase` | `expect-stderr` | un nombre de plugin distinto en la expectativa | RED: `stderr lacked: Discovered external Step plugins: …` | **✓** |
+| 11 | `plugins/uppercase` | `expect-stdout` | un nombre de paso distinto en la expectativa | RED: `stdout lacked: registrystep-9 finished` | **✓** |
+| 12 | `negative/plugin-trust-digest-mismatch` | `plugin-trust` | `signed-then-tampered` → `signed`: el artefacto ya no está trocado | RED: `exit 0, expected 2` | **✓** |
+| 13 | `durable/32-durable-replay` | `durable` (dos corridas) | el efecto ocurre dos veces | RED: `the resumed run exited 1, expected 0` | **✓** |
+| 14 | `durable/35-saga-crash-effect` | `resume` (dos corridas) | el efecto ocurre dos veces, como si la reanudada lo repitiera | RED: el finalizador `post` cazó el efecto repetido | **✓** |
+| 15 | `durable/39-cancel-dead-run` | `cancel` | el escritor no muere: la corrida termina bien | RED: `the run was supposed to crash and finished cleanly` | **✓** |
+| 16 | `durable/40-recover-refuses-a-half-finished-run` | `recover` | el trabajo se completa antes de la muerte | **GREEN**: el paso muerto sigue en vuelo, así que el recover sigue negándose | ✗ |
+| 17 | `negative/events-unknown-run` — **K2** | `events-refusal` | la admisión de la lectura dice que todo run existe | RED: `exit 0, expected 2` — el defecto histórico exacto | **✓** |
+| 18 | `events/01-external-reader-resumes` — **K2** | `events-resume` | el cursor se pasa una fila del último hecho entregado | RED: `a page read exited 2` (`cursor 23 is past the tail`) | **✓** |
+| 19 | `events/04-follow-filtered` — **K2** | `events-follow` | el hecho terminal se busca entre los hechos que el filtro dejó pasar | RED: `the follow with a filter never ended` — lo cazó el reloj, 44 s | **✓** |
+| 20 | `durable/40-recover-refuses-a-half-finished-run` — **K2** | `recover` | un trabajo en vuelo deja de impedir que el run parezca terminado | RED: `the recover closed a run that had not finished its work` | **✓** |
+
+**Las dos que no encendieron, y por qué ninguna de las dos es un hueco del
+escenario.** Las dos verdes son mutaciones que NO ALCANZAN la garantía, y las dos
+lo dicen con una medición, no con una explicación.
+
+- La fila 3 quita el paso `unstable("flaky")` y la corrida sigue concluyendo
+  `unstable`: la conclusión la aporta el `catchError`, que es lo que la fila 4
+  quita también. El paso `unstable("flaky")` no era la garantía, era un segundo
+  camino al mismo verde.
+- La fila 16 deja el trabajo completo antes de la muerte, y el recover sigue
+  negándose: el paso que murió sigue con su fila en vuelo, y esa fila es la que
+  el recover lee. La fila 20 rompe esa regla en el producto y el escenario se
+  enciende. La fila 16 no probaba la garantía; la fila 20 sí.
+
+**Lo que la auditoría cambió en el código, y por qué no es cosmetics.** Tres
+cambios, cada uno sostenido por una fila de la tabla.
+
+1. **`control-flow/11` pierde el paso `unstable("flaky")`.** Con él, la afirmación
+   `expect-outcome unstable` tenía dos caminos al verde: el `catchError` y el
+   paso. Eso no la hace más robusta, la hace menos discriminating: el escenario
+   seguiría verde aunque el `catchError` dejara de marcar la corrida como
+   inestable, que es justo lo que la afirmación dice comprobar. Sin el paso, la
+   afirmación queda con un solo camino, y ese camino es el que el producto define.
+   El escenario gana además una cabecera que declara su garantía, que no tenía.
+
+2. **La fila verde del arnés dice qué comparó.** El lanzador ya contaba las
+   garantías por escenario —las publicaba en su marcador interno y las sumaba en
+   el censo final— y esa cifra no llegaba a la línea que una persona lee. Una
+   verde que no dice qué comprobó no se puede pesar contra lo que costó, y una
+   suite cuyo detalle se guarda en un fichero que nadie abre es una suite que
+   declara su propia utilidad. La fila dice ahora cuántas garantías comparó, y
+   cuando no comparó ninguna dice que la garantía vive en los pasos del propio
+   pipeline: son dos hechos distintos, y el código de salida que el arnés vigilaba
+   es el que lleva esa garantía.
+
+3. **La caché de scripts compilados, activada por el arnés.** El producto ya
+   tenía una caché de scripts compilados, apagada por defecto porque no hay una
+   convención de directorio de usuario que pueda ser «la correcta» en un HOME de
+   sólo lectura, en un CI encajonado o en un contenedor efímero. El arnés E2E no
+   tiene ese problema: su directorio de ciclo es suyo, se borra con la corrida, y
+   nadie depende de que el artefacto sobreviva.
+
+   **Medido, sobre este mismo árbol y este mismo host, corridas seguidas:**
+
+   | | sin caché | caché fría | caché caliente |
+   |---|---|---|---|
+   | E2E completo (61 escenarios) — reloj | **116,5 s** | **84,3 s** | **52,4 s** |
+   | E2E completo (61 escenarios) — CPU | 2115 s | 1372 s | 619 s |
+   | un escenario — reloj | 15,6 s | 12,0 s | 8,5 s |
+   | un escenario — CPU | 27,7 s | 18,0 s | 8,4 s |
+   | veredictos y garantías | 61 / 170 | 61 / 170 | 61 / 170 |
+
+   La lectura es que **una corrida compila el MISMO script dos veces**: con la
+   caché apagada el escenario cuesta 27,7 s de CPU, con la caché fría 18,0 s —
+   una compilación menos, que es lo que vale una compilación — y con la caché
+   caliente 8,4 s, que es la corrida sin compilar nada. El artefacto que queda
+   es UNO solo, así que las dos compilaciones son del mismo texto.
+
+   El arnés usa la caché **dentro de su directorio de ciclo**, que la trampa
+   borra con todo lo demás: la caché no sobrevive a la corrida, no se acumula en
+   el HOME de nadie y dos invocaciones del lanzador nunca comparten un
+   artefacto. La caché no cambia lo que se comprueba: la clave es el texto de
+   la fuente junto con el classpath y las versiones, así que un escenario
+   editado es otra clave y se compila otra vez.
+
+   **Lo que esto deja escrito como deuda, con nombre.** El producto compila dos
+   veces el mismo script en cada corrida, y un usuario que no active la caché
+   paga las dos. El arreglo de producto —compilar una vez y reutilizar el
+   artefacto— es un bloque con su propia verificación, y no cabe dentro de
+   una auditoría del arnés. Lo que sí cabe, y queda hecho, es que el arnés deje
+   de pagar dos veces.
+
+**Lo que la auditoría NO encontró, dicho con la misma claridad.** En estos
+dieciséis escenarios no hay ni uno que sea vacuo, ni una garantía duplicada por
+otra garantía, ni un escenario que se pueda retirar sin perder algo. La petición
+de reducir el número de escenarios E2E no tiene aquí un destino honesto: reducirlo
+significaría dejar de comprobar algo. Lo que sí se ha reducido es el COSTE de
+comprobarlo, y el detalle por fila que lo hace decidible por primera vez.
+
+Quedan treinta y cuatro escenarios sin mutar (los cincuenta que §2.37 dejó, menos
+los dieciséis de este lote), y la muestra que este lote no tocó incluye
+`smoke/`, `steps/` en su mayoría, `output/` en su mayoría y las categorías
+`negative/` de plugins que no son `plugin-trust`. El lote 3 sigue el mismo
+método sobre esa muestra.
+
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un comentario que afirma una verdad que el código ya no tiene es peor que
   no escribirlo.** Un lector no puede saber que un comentario miente, así que
@@ -8068,6 +8214,50 @@ revés, y ambas se corrigen según lo medido.
   identidad: eso es comportamiento observable, y cambiarlo rompería a los
   consumidores que hoy admiten un plugin y rechazan el otro. Se deja escrito, con
   nombre, y esperando la autorización que le corresponde.
+
+
+- **Una garantía que se puede alcanzar por dos caminos está vigilada por
+  ninguno.** El paso `unstable("flaky")` de un escenario repetía la conclusión
+  que el `catchError` ya producía, y esa duplicación no era robustez: hacía que
+  la afirmación siguiera en verde aunque el `catchError` dejara de marcar la
+  corrida como inestable, que es justo lo que la afirmación dice comprobar. La
+  redundancia se quita, y la afirmación queda con el único camino que el
+  producto define (§2.63).
+
+- **Un escenario que no puede encenderse no compra nada, y una suite que no
+  puede distinguir un guardián vivo de uno decorativo no puede decir qué
+  compra.** Por eso este lote mide, escenario por escenario, si la garantía
+  sobrevive a la mutación que la rompe. Y por eso las dos filas que NO
+  encendieron se explican con una medición y no con una excusa: eran mutaciones
+  que no alcanzaban la garantía, no guardianes muertos (§2.63).
+
+- **Para una garantía que vive en el lector, la entrada no basta: hay que
+  romper el producto.** Cinco de las garantías de este lote viven en el event
+  lane, en el cursor de la reanudación o en el veredicto del recover. Su sonda
+  honesta no es un texto distinto, es el defecto real, recompilado y corrido
+  contra el escenario (§2.63).
+
+- **Una verde que no dice qué comprobó no se puede pesar contra lo que costó.**
+  El arnés ya contaba las garantías por escenario —las publicaba en su marcador
+  y las sumaba en el censo— y esa cifra no llegaba a la línea que se lee. Ahora
+  la línea la dice, y cuando el arnés no comparó nada dice que la garantía
+  vive en los pasos del propio pipeline: son dos hechos distintos y confundirlos
+  es llamar «c-checkbox» a un escenario que no compara nada (§2.63).
+
+- **Reducir el coste de comprobar no es lo mismo que comprobar menos.** En los
+  dieciséis escenarios auditados no hay ni uno retirable: retirarlo sería
+  dejar de comprobar algo. Lo que sí se reduce es lo que cuesta comprobar, y
+  la vía medida es la caché de scripts compilados que el producto ya tenía y
+  que el arnés no usaba. La reducción es de coste, no de garantías, y por eso
+  es honesta (§2.63).
+
+- **Una caché que el producto no puede poner por defecto sí la puede poner
+  quien tiene un directorio que es suyo.** El producto la apaga porque no hay
+  un sitio de usuario que sea el correcto en un HOME de sólo lectura, en un CI
+  encajonado o en un contenedor efímero. El arnés E2E no tiene ese problema:
+  su directorio de ciclo es suyo y la trampa lo borra. La caché vive dentro
+  de ese directorio, así que no sobrevive a la corrida, no se acumula en el
+  HOME de nadie y dos invocaciones nunca comparten un artefacto (§2.63).
 
 ## 4. Referencias
 

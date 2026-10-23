@@ -146,6 +146,28 @@ cycle_root="$(mktemp -d "${TMPDIR:-/tmp}/pipelinek-e2e-XXXXXXXX")"
 cleanup() { rm -rf "$cycle_root"; }
 trap cleanup EXIT
 
+# The product compiles every script it runs, and that compilation is the
+# dominant cost of a scenario: a pipeline that takes a second to execute
+# spends several compiling. Measured on one scenario of this suite, a run
+# costs about 27 seconds of CPU without the compiled-script cache and about
+# 17 with it, because a run compiles the SAME source twice and the cache
+# serves the second one.
+#
+# The product keeps that cache off by default, and for a good reason: there
+# is no user-home directory that is the right place for it in a read-only
+# HOME, in a sandboxed CI or in an ephemeral container, and guessing one is a
+# product decision rather than a harness one. This launcher has no such
+# problem. The cycle directory above is its own, and the trap above deletes
+# it with everything else, so the cache is a directory the cycle OWNS: it
+# never outlives the run, it never accumulates in someone's home, and two
+# invocations of this script never share an artifact.
+#
+# The cache changes nothing about what is checked. The key is the source text
+# together with the classpath and the versions, so an edited scenario is a
+# different key and is compiled again; and a stored artifact that cannot be
+# used degrades to a miss inside the product, never to a wrong answer.
+export PIPELINEK_SCRIPT_CACHE_DIR="$cycle_root/script-cache"
+
 passed=0
 failed=0
 blocked=0
@@ -2144,7 +2166,22 @@ run_scenario_body() {
         return
     fi
 
-    printf 'ok   %-52s exit %s\n' "$label" "$code"
+    # What this row COMPARED, next to what it ran. A green that does not say
+    # what it checked cannot be weighed against what it cost, and the two
+    # numbers answer different questions: the row ran one scenario, and it
+    # compared some number of guarantees about it.
+    #
+    # A scenario whose guarantee lives in the pipeline's own steps compares
+    # nothing HERE and can still fail: the exit code the harness watched is
+    # carrying that guarantee, one step at a time, inside the run. The row has
+    # to tell those two apart, because a reader who sees only "ok" cannot tell
+    # a scenario with five comparisons from one whose guarantee is a single
+    # `sh` that failed the run.
+    if (( scenario_guarantees == 0 )); then
+        printf 'ok   %-52s exit %s  guarantees=0 (the pipeline carries it)\n' "$label" "$code"
+    else
+        printf 'ok   %-52s exit %s  guarantees=%s\n' "$label" "$code" "$scenario_guarantees"
+    fi
     passed=$((passed + 1))
 }
 

@@ -175,21 +175,21 @@ sin red |
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `807353656`, medido en los ensayos de este bloque. El bloque anterior hizo que el directorio **recuerde a su dueño** (§2.76). Este cierra la **segunda lectura** de una identidad: los lectores que decidían por su cuenta dónde acababa el identificador de una operación, y que contestaban sobre operaciones que nadie había pedido. Ahora la dirección publicada responde a la pregunta inversa y los tres lectores la consultan (§2.77). La candidata `v0.82.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
+| SHA | `10774b563`, medido en los ensayos de este bloque. El bloque anterior cerró la **segunda lectura** de una identidad (§2.77). Este cierra los tres sitios donde una avería se llevaba por delante una decisión ya tomada: la consola **dibujaba antes de escribir** y su comentario decía lo contrario, el redactor **podía pisar los bytes que ya había decidido**, y el checkout de git **avisaba por stderr y seguía** cuando el almacén rechazaba el registro (§2.78). La candidata `v0.83.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1157** (165 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1161** (166 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **62 de 62**: **400 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 396, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **21291 / 68058 = 0.313** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **21456 / 68087 = 0.315** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **213 / 194 / 163** en los tres ensayos, los tres sobre `807353656`, peor 213 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **204 / 154 / 155** en los tres ensayos, los tres sobre `10774b563`, peor 204 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 24 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
-| Candidato publicada | **`v0.82.0-rc1`** (prerelease), `candidate_id` `sha256:d262396339fa0c9fff9ea4d2607e4f161e16e76c883d93ff7f498514fc0d7eac`, tag en `807353656`; verificada **sobre los bytes descargados del remoto** (§2.77) | `gh release view v0.82.0-rc1`, `sha256sum -c SHA256SUMS` |
+| Candidato publicada | **`v0.83.0-rc1`** (prerelease), `candidate_id` `sha256:d4064388202e64024cdfe3aa23ff2dfb5b3704ed77ae8a5c6f9995b0664b02a9`, tag en `10774b563`; verificada **sobre los bytes descargados del remoto** (§2.78) | `gh release view v0.83.0-rc1`, `sha256sum -c SHA256SUMS` |
 | Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -203,12 +203,12 @@ El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s, 182, 141 y 139 s,
 187, 139 y 140 s y 203, 139 y 141 s.
 Este mide
-**213, 194 y 163 s**:
+**204, 154 y 155 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
 de este ciclo el presupuesto se cumplió con holgura —el peor, 213 s, es menos de
 la cuarta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
-la API pública, los 1157 tests y los 62 escenarios.
+la API pública, los 1161 tests y los 62 escenarios.
 
 **La etapa del E2E mide 100 y 98 s**, medidos en seco sobre el lanzador,
 contra los 92, 92 y 90 s del ciclo anterior (§2.72). Los **nueve segundos** de
@@ -8500,7 +8500,134 @@ producto (0.313).
   en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`. Lo que este ciclo publica
   es la **candidata**.
 
+### 2.78 Una avería no puede borrar, esconder ni corromper lo que ya se decidió
+
+**El hueco.** Tres sitios donde un fallo se llevaba por delante una decisión ya tomada. Los tres
+tenían la misma forma: **el fallo se tragaba el hecho y el run seguía como si nada**.
+
+1. **La consola dibujaba antes de escribir.** `ConsolePrintingEventSink` renderizaba la línea y
+   sólo después entregaba el evento al almacén. El comentario del código afirmaba lo contrario de
+   lo que hacía —"Render BEFORE delegating so a rendering fault cannot swallow the event on its way
+   to the durable store"—: un fallo de dibujo se tragaba el evento **antes** de que llegara al
+   almacén. Y el renderizador **se para a propósito** cuando su tabla de enrutamiento y una
+   familia no se ponen de acuerdo, porque una consola que dibuja una línea plausible equivocada
+   es peor que una consola que se para. O sea: el fallo estaba **diseñado** para ocurrir, y el
+   orden estaba al revés de lo que el comentario contaba.
+2. **El redactor podía pisar lo que ya había decidido.** La cola de bytes decididos era un anillo
+   de tamaño fijo, y su KDoc prometía —"Capacity MUST accommodate the worst case of a single
+   `feed` call"— sin que ninguna regla lo hiciera cierto: `feed` acepta cualquier `len` y el
+   tamaño no lo cubría. Cuando el anillo se enrollaba, **se comía el principio de la
+   transcripción**: los bytes que el lector todavía no había tomado. Medido: con un feed de 4120
+   bytes la transcripción salía `uvwxyzABCD…` en lugar de `abcdefghij…`.
+3. **El checkout de git se tragaba un fallo de escritura durable.** `emitEvent` envolvía la
+   escritura del evento en un `catch` que imprimía `Warning: failed to emit event …` por stderr y
+   **seguía adelante**. El hecho se perdía, el checkout llegaba a reportar éxito, y lo que el
+   operador acababa viendo era el error de git —no el registro perdido—.
+
+**Lo que se midió antes de tocar nada.** Un censo de los sumideros de eventos del árbol y una
+auditoría programática de qué eventos llegan a la rama que el renderizador se niega a dibujar:
+**56 eventos enrutados, 0 sin familia**. Los tres defectos eran, por tanto, **latentes**: el código
+que los activa estaba escrito y se había ejecutado en otras ramas del producto, pero ningún camino
+vivo de los de hoy los activaba. Eso cambia lo que había que prometer, y por eso este ciclo **no**
+añade escenarios: un escenario que pasara antes y después no mide nada.
+
+**Lo que ahora es verdad.**
+
+- **La consola escribe antes de dibujar.** El hecho durable entra primero y el dibujo va después,
+  así que un fallo de dibujo deja el registro del run intacto y el fallo a la vista. El dibujo pasa
+  a ser un **colaborador** (`render`), de modo que el orden es una propiedad de la clase y no del
+  día en que se escribió el dibujante. El comentario dejó de mentir.
+- **El redactor no puede pisar lo que ya decidió.** La cola de lo decidido **crece** en vez de
+  enrollarse: no hay capacidad que una llamada posterior pueda exceder, así que el invariante —*un
+  byte decidido nunca se escribe sobre*— deja de ser una aritmética y pasa a ser imposible. La
+  fórmula de tamaño, que prometía una cosa que no era cierta, desaparece.
+- **Un registro que el almacén rechaza es el fallo del checkout.** El rechazo viaja como un tipo
+  propio (`CheckoutRecordRefused`) que nombra el evento perdido, y el checkout termina en fallo.
+  Un aviso por stderr no era un aviso: era la pérdida de un hecho.
+
+**El ABI.** No cambia. El volcado de `:pipeline-credentials-api` sale **idéntico** y `apiCheck`
+queda verde en los seis módulos con volcado: la cola y su reserva son miembros `internal`. La
+consola vive en `:pipeline-application` y el checkout en `:pipeline-step-sdk/scm-git`, y ninguno de
+los dos se publica.
+
+**La instrumentación.** **4** filas puras y **cero** escenarios nuevos:
+
+- **1** fila de la consola: el registro se escribe antes de que se dibuje, y un dibujo roto no se
+  lleva el registro por delante;
+- **2** filas del redactor: un feed que decide más de lo que la cola esperaba, y el final de la
+  transcripción, que no pisa lo que ya estaba decidido;
+- **1** fila del checkout: un registro rechazado hace fallar el checkout y dice qué registro se
+  perdió.
+
+Las tres primeras no tocan disco, reloj, proceso ni red. La del checkout necesita un directorio
+temporal porque el aplicador de credenciales exige poseer uno; el rechazo ocurre en el primer
+registro, **antes** de que arranque cualquier proceso de `git`, así que la fila no toca la red ni
+un repositorio.
+
+**Lo que se vio en rojo.**
+
+| Mutación | Filas rojas |
+|---|---|
+| la consola vuelve a dibujar antes de escribir | **1** — `the decision is written before it is drawn, and a broken drawing does not take it with it` |
+| el redactor vuelve a un anillo de tamaño fijo | **2** — `a feed that decides more than the queue holds keeps every decided byte` y `the end of the stream does not overwrite the bytes that were already decided` |
+| el checkout vuelve a avisar por stderr y seguir | **1** — `a checkout whose record is refused fails instead of carrying on` |
+
+Las tres mutaciones se aplicaron **a la vez** y se ejecutaron las **suites completas** de los tres
+módulos: **18** pruebas del módulo de credenciales con **2** rojas, **204** del de aplicación con
+**1** roja y **11** del de git con **1** roja. Exactamente las cuatro filas nuevas, y ninguna otra.
+
+Una de esas filas se corrigió **dos veces** antes de valer: la primera versión del final de la
+transcripción usaba una carga uniforme, y con bytes iguales la corrupción **no se ve** —el
+resultado coincidía con el esperado por casualidad—. La fila usa ahora treinta bytes distintos, y
+el rojo que produce lo dice: esperaba `abcdefghij…` y recibió `uvwxyzABCD…`. Un instrumento que no
+puede fallar no es un instrumento.
+
+**Lo que la puerta midió.** `PASS` tres veces sobre el árbol commiteado (`10774b563`): **204 / 154
+/ 155 s**, con un presupuesto de 900 s y `tests=rewritten:1161`. Los 62 escenarios llevan una
+garantía comprobada —**400** comparaciones sobre **112** ejecuciones— y el LOC queda en **21456**
+de verificación sobre **68087** de producto (0.315).
+
+**Lo que queda fuera, dicho con honestidad.**
+
+- **Los tres defectos eran latentes**, y se dice por qué: la rama que el renderizador se niega a
+  dibujar no la recorre hoy ningún evento (56 enrutados, 0 sin familia); el anillo del redactor
+  sólo se enrolla si el llamante entrega más bytes de los que el anillo esperaba, y los dos
+  llamantes de hoy entregan como mucho `chunkSize`; y el almacén de eventos no rechazó ninguna
+  escritura. Por eso **no hay escenario E2E nuevo**: habría pasado antes y después.
+- **El comparador del arnés es ciego al orden**, y queda **medido**, no corregido a medias. La
+  canonicalización ordena alfabéticamente las líneas dentro de cada etapa, así que la narración real
+  y la narración con el `finished` de un paso antes del `start` producen **la misma**
+  canonicalización. El arreglo sound exige un **orden parcial**, o que el producto publique la
+  genealogía, y eso es demasiado pesado para un lanzador fino, con riesgo de intermitencia. La
+  medida que acompaña al hueco: **10** ejecuciones del escenario de ramas en paralelo dieron **3**
+  formas distintas de narración (5/4/1); el **solapamiento** de las ramas fue **10/10** —las dos
+  empiezan antes de que ninguna termine— y sólo variaba el orden de cierre. Sólo **2** de los 62
+  escenarios usan ramas en paralelo. Queda **armado** como bloque siguiente.
+- La degradación de `ATOMIC_MOVE` al escribir el registro de commit,
+  `SqliteNativeLibraryHomeTest` fuera de la política de unitarios puros, y la economía del arnés y
+  del ROADMAP siguen abiertos.
+- **La promoción a estable sigue bloqueada**: no hay certificador externo en este repositorio ni en
+  el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`. Lo que este ciclo publica es la
+  **candidata**.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **Una presentación no puede llevarse el hecho que presenta.** La consola dibuja después de
+  escribir: un fallo de dibujo deja el registro intacto y el fallo a la vista (§2.78).
+- **Un byte decidido es un byte que ya no se puede escribir.** La cola de lo decidido crece en
+  lugar de enrollarse, y el invariante deja de ser una aritmética para pasar a ser imposible
+  (§2.78).
+- **Un aviso no es un fallo.** Un registro que el almacén rechaza es la pérdida de un hecho, no una
+  molestia: el checkout falla y nombra el registro perdido (§2.78).
+- **Un comentario que afirma lo contrario de lo que hace el código es un defecto, no un estilo.**
+  La consola renderizaba antes de escribir, y su comentario defendía ese orden (§2.78).
+- **Un defecto que ningún camino vivo activa se corrige con filas, no con escenarios.** Un
+  escenario que pasara antes y después no mide nada (§2.78).
+- **Un instrumento que no puede fallar no es un instrumento.** La fila del final de la
+  transcripción usaba una carga uniforme, con la que la corrupción no se ve; se rehízo con bytes
+  distintos, y el rojo que produce lo dice (§2.78).
+- **Un comparador que ordena líneas no puede comprobar un orden.** La canonicalización del arnés
+  ordena dentro de la etapa, así que dos narraciones distintas dan la misma canonicalización: el
+  bloque siguiente queda medido y armado (§2.78).
 - **Una identidad, un lector.** La identidad de una operación se lee desde los dos
   extremos de su id, y quien la necesita pregunta a esa misma dirección. Dos formas de
   leer la misma identidad son dos autoridades, y dos autoridades se contradicen (§2.77).

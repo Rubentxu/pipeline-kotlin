@@ -512,6 +512,7 @@ public final class dev/rubentxu/pipeline/v2/output/OutputStreamAddress {
 	public final fun getRunId ()Ljava/lang/String;
 	public final fun getStream-_Q_Q91I ()Ljava/lang/String;
 	public fun hashCode ()I
+	public final fun isOperationOf (Ljava/lang/String;Ljava/lang/String;)Z
 	public fun toString ()Ljava/lang/String;
 }
 

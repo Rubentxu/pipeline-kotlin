@@ -991,8 +991,8 @@ object MainConsoleCli {
      * Emit the filtered per-frame result.
      * The filter is applied HERE, at emit time, against the [ConsoleFrameFilters.Active] ADT
      * the parser admitted. The predicate runs on each frame's stream id
-     * (`<runId>/<opId>/<channel>`) by extracting the opId segment and asking the
-     * [StageStepKindResolver] whether that opId matches. The closed-format dispatch mirrors
+     * (`<runId>/<opId>/<channel>`): the id is read from its two ends and the operation it
+     * names is asked of the selection. The closed-format dispatch mirrors
      * [emitFrames]: `TEXT` writes the merged bytes of the surviving frames, `JSONL` writes
      * one record per surviving frame, and the continuation token rides on the last surviving
      * record's ordinal so a `--follow` consumer resumes from the right place even when the
@@ -1011,10 +1011,9 @@ object MainConsoleCli {
         }
 
         is dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead.Page -> {
-            // The SAME [OperationSelection] the follow loop consults. The rc1
-            // predicate (`StageStepKindResolver`) matched the user's `--stage build` against the
-            // stringified index `"0"`, and treated `--kind` as a true conjunct; both are gone,
-            // and one selection now answers "which frames?" for every frame path.
+            // The SAME [OperationSelection] the follow loop consults, so the single read and
+            // the follow loop cannot drift apart. One selection now answers "which frames?"
+            // for every frame path.
             val filtered = result.page.records.filter { record -> selectionSelects(selection, record.frame.stream.value) }
             val lastOrdinal = filtered.lastOrNull()?.frame?.ordinal ?: result.page.lastOrdinal
             // `moreFrames` is the index's "did the unfiltered walk cut a window short?" claim.
@@ -1181,18 +1180,19 @@ object MainConsoleCli {
 
     /**
      * Does [selection] admit this frame?
-     * The stream id is `<runId>/<opId>/<channel>`, and a selection is over the opId SEGMENT.
-     * Splitting on `/` and taking index 1 is what makes this a segment comparison: a substring
-     * test would let `run-1-s0-0` match a selection containing `run-1-s0-01`, which on a run
-     * with ten or more steps per stage leaks every neighbouring operation into a filtered read.
-     * A malformed stream id — fewer than three segments, or a foreign run — is NOT selected.
+     * The frame's stream id is `<runId>/<opId>/<channel>`, and the operation is the WHOLE
+     * middle of it: it may carry separators of its own, so the middle is not a segment but a
+     * range. The id is read from its two ends — the run first, the channel last — and what is
+     * left is the operation, whole. Comparing that against the selection is what stops a
+     * selection from admitting an operation that merely CONTAINS the selected one, and what
+     * stops a composite operation from being cut in the wrong place and named as an operation
+     * that does not exist.
      * Refusing to interpret it is the fail-closed direction: a frame whose operation cannot be
      * named is one no selection can honestly claim.
 */
     internal fun selectionSelects(selection: OperationSelection, streamId: String): Boolean {
-        val parts = streamId.split('/')
-        if (parts.size < 3) return false
-        return selection.includes(parts[1])
+        val address = OutputStreamAddress.parse(OutputStreamId(streamId)) ?: return false
+        return selection.includes(address.operationId)
     }
 
     fun runFollowFrames(
@@ -1534,51 +1534,4 @@ object MainConsoleCli {
         OutputPlaneProvider.streamId(runId, opId, channel)
 
     internal fun utf8(bytes: ByteArray): String = String(bytes, StandardCharsets.UTF_8)
-}
-
-/**
- * Predicate that maps a frame's stream id to a stage/step/kind decision.
- * The stream id carries the operation id in its middle segment
- * (`<runId>/<opId>/<channel>`), and the opId is shaped
- * `<runId>-s<stageIndex>-<stepIndex>[-b<branchIndex>][-bp<...>]` — see
- * [dev.rubentxu.pipeline.v2.application.durable.OpId]. From the stream id alone the verb main
- * can name the **indexes**, not the user-supplied stage and step names; that mapping lives in
- * the events journal, which the verb main does not (yet) open. To keep the filter contract
- * honest without coupling this verb to the events store, the resolver matches the user-supplied
- * `stage` / `step` against the **stringified index** that opId already carries, so a caller that
- * writes `--stage 0 --step 0` against a `runId-s0-0` opId gets a hit and a caller that writes
- * `--stage build` against the same opId gets a miss with the same answer.
- * The `kind` axis is not derivable from the stream id, so it is currently treated as a
- * pass-through: a non-empty `kinds` set is admitted (the user said the request was
- * `FramesFiltered`) and contributes a true conjunct. Wiring `kind` to the events journal is the
- * Next slice's job (/ event-→-opId resolution); the contract this resolver exposes
- * "an empty axis is a no-op, a non-empty axis is a conjunct" — is what the next slice will
- * extend without breaking today's matches.
-*/
-internal class StageStepKindResolver private constructor(private val runId: String) {
-    /**
-     * Match a frame's stream id against [filters]. The contract is
-     * "every non-empty axis must be satisfied; an empty axis is a no-op".
-*/
-    fun matches(streamId: String, filters: ConsoleFrameFilters.Active): Boolean {
-        val parts = streamId.split('/')
-        if (parts.size < 3) return false
-        if (parts[0] != runId) return false
-        val opIdStr = parts[1]
-        val indices = dev.rubentxu.pipeline.v2.application.durable.OpId.parseIndices(opIdStr) ?: return false
-        val stageIndex = indices.stageIndex.toString()
-        val stepIndex = indices.stepIndex.toString()
-        val stageOk = filters.stages.isEmpty() || stageIndex in filters.stages
-        val stepOk = filters.steps.isEmpty() || stepIndex in filters.steps
-        // The kind axis is a pass-through until events-→-opId resolution lands; see the
-        // class KDoc for the explicit "next slice" promise.
-        val kindOk = true
-        return stageOk && stepOk && kindOk
-    }
-
-    companion object {
-        /** Build a resolver scoped to [runId]. The runId is part of the stream id's prefix. */
-        @Suppress("UNUSED_PARAMETER")
-        fun forRun(root: Path, runId: String): StageStepKindResolver = StageStepKindResolver(runId)
-    }
 }

@@ -67,6 +67,11 @@ enum class OutputChannel(val token: String) {
  * Everything between them is the operation id, separators and all. That is what makes
  * `{runId}/{operationId}/{channel}` injective rather than merely plausible, and it is what lets
  * [parse] round-trip an operation id it did not mint.
+ * ## A reader that has to answer "is this stream that operation?" comes to the same place
+ * The same rule governs the question in the other direction. [isOperationOf] compares the two
+ * fields the address carries, so a reader never has to decide where the operation id ends inside
+ * the text of a stream id — and a reader that decides for itself is answering about an operation
+ * it invented.
  * ## Why the channel rides on the stream rather than beside the bytes
  * A frame of metadata beside each range would be a second thing to keep in step with the bytes,
  * and keeping it in step is exactly what a crash interrupts. Making the channel part of the
@@ -96,6 +101,26 @@ data class OutputStreamAddress(
     /** The id this address denotes. */
     val stream: OutputStreamId
         get() = OutputStreamId("$runId/$operationId/${channel.token}")
+
+    /**
+     * Whether this address is the address of the operation [operationId] of the run [runId].
+     * ## Why the comparison is over two fields and never over the text of the id
+     * The operation id is the WHOLE middle of a stream id, and that middle may carry separators
+     * of its own. So "does this stream belong to that operation" has no answer over the text of
+     * the id, and the two wrong answers are both easy to reach:
+     *  - a **substring** test also matches an operation whose id merely CONTAINS the asked one,
+     *    so asking for `foo` answers with the frames of `other/foo`;
+     *  - a **segment index** keeps only the first piece of a composite id, so it names an
+     *    operation that does not exist and silently answers about a different one.
+     * Comparing the two fields this address carries is the only comparison that answers the
+     * question that was asked, and it is the reason the middle is read whole.
+     * @param runId the run the operation belongs to. An operation id states its own run, but the
+     *   run is compared as a run: a stream of another run is not this run's operation, whatever
+     *   its id says.
+     * @param operationId the operation, in full. Separators and all.
+    */
+    fun isOperationOf(runId: String, operationId: String): Boolean =
+        this.runId == runId && this.operationId == operationId
 
     companion object {
 

@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.output.OutputFrameIndex
 import dev.rubentxu.pipeline.v2.output.OutputReadPort
 import dev.rubentxu.pipeline.v2.output.OutputReadResult
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
+import dev.rubentxu.pipeline.v2.output.OutputStreamAddress
 import dev.rubentxu.pipeline.v2.output.OutputTailPort
 import dev.rubentxu.pipeline.v2.output.OutputTailState
 
@@ -58,9 +59,9 @@ interface ObservationOutputReader {
      * the user asked for `--opId main/echo-0` and the answer must be that operation's frames
      * only, not a slice of every operation in the run.
      * The filter is applied at the read boundary (not the emit boundary), so the durable
-     * authority is the source of truth: only frames whose stream id carries [opId] as a
-     * middle segment (`<runId>/<opId>/<channel>`) are materialised. Same window semantics as
-     * the opId-less overload: at most [frameLimit] frames after [afterOrdinal], strict
+     * authority is the source of truth: only frames whose stream IS the asked operation's are
+     * materialised. Same window semantics as the opId-less overload: at most [frameLimit]
+     * frames after [afterOrdinal], strict
      * `ordinal > afterOrdinal`, and `moreFrames` reflects the index's bounded window.
      * An opId with no frames (e.g., a step that emitted no console output) yields an empty
      * page with `lastOrdinal = -1L` and `moreFrames = false`. That is distinct from a
@@ -117,12 +118,12 @@ interface ObservationOutputReader {
      * stream-id prefix. Where [readTail] returns the trailing bytes of the WHOLE run, this
      * overload returns the trailing bytes of one operation, so an inspect consumer can
      * Attach a step's tail to that step's `StepFailed` record (.x)
-     * Frames whose [OutputFrame.stream] does NOT carry [opId] as a segment are skipped.
+     * Frames whose [OutputFrame.stream] is not the asked operation's are skipped.
      * The stream id format is `<runId>/<operationId>/<channel>` (see [OutputStreamAddress]),
-     * so the opId appears as a literal segment between run and channel. Frames with
-     * stream ids from BEFORE the durable-task v1 minting shape (
-     * `<runId>/<opId>/transcript` exception) carry the same shape; this is honest about
-     * the indexing it can prove.
+     * and the operation id is the whole middle of it, separators included. A frame is kept
+     * when the address it parses to names the asked operation of the asked run, and only then:
+     * the frame index records channel-addressed streams and refuses any other shape, so every
+     * frame this reader can see says which run and which operation it belongs to.
      * The semantics match [readTail]: oldest frame included is narrowed, never dropped,
      * never invented. A frame that straddles the byte budget keeps its ordinal and is
      * re-issued with `from` moved forward. A future slice can re-derive opId from a
@@ -219,9 +220,12 @@ class FrameIndexedObservationOutputReader(
 
     /**
      * Per-operation [readOutput].
-     * The opId filter is `streamId.contains("/<opId>/")` — the stream id is shaped
-     * `<runId>/<opId>/<channel>` (see [OutputStreamAddress]), so the opId is the middle
-     * segment. Frames whose stream id does not carry [opId] are skipped at the read
+     * The opId filter reads the identity of each frame's stream and keeps the frames whose
+     * operation IS the asked one. The identity is read from the two ends of the stream id, so
+     * the operation is known whole: an operation whose id carries separators is one operation,
+     * not several, and an operation whose id merely CONTAINS the asked one is a different
+     * operation.
+     * Frames whose stream does not carry the asked operation are skipped at the read
      * boundary, never materialised, and the resulting page contains ONLY frames that
      * match the opId.
      * The opId-less [readOutput] is preserved unchanged for callers that legitimately
@@ -252,7 +256,7 @@ class FrameIndexedObservationOutputReader(
             if (window.isEmpty()) break
             cursor = window.last().ordinal
             for (frame in window) {
-                if (frame.stream.value.contains("/$opId/")) {
+                if (belongsTo(runId, opId, frame)) {
                     opFrames += frame
                     if (opFrames.size == frameLimit) break
                 }
@@ -314,10 +318,9 @@ class FrameIndexedObservationOutputReader(
 
     /**
      * Per-operation readTail overload.
-     * Filters the run's frames to those whose stream id carries [opId] as a middle segment
-     * (`<runId>/<opId>/<channel>`), then applies the same tail-budget walk as the
-     * run-wide [readTail]. The shape of the returned page is identical; only the input
-     * scope differs.
+     * Keeps the run's frames whose stream is the asked operation's, then applies the same
+     * tail-budget walk as the run-wide [readTail]. The shape of the returned page is
+     * identical; only the input scope differs.
      * An opId that has no frames (e.g., a step that emitted no console output) yields an
      * empty page with `lastOrdinal = -1L` and `moreFrames = false`. This is distinct from
      * a refusal: the opId is real, the run is real, the page is just empty. A caller that
@@ -331,7 +334,7 @@ class FrameIndexedObservationOutputReader(
         if (allFrames.isEmpty()) {
             return ObservationOutputRead.Page(ObservationOutputPage(emptyList(), -1L, moreFrames = false))
         }
-        val opFrames = allFrames.filter { frame -> frame.stream.value.contains("/$opId/") }
+        val opFrames = allFrames.filter { frame -> belongsTo(runId, opId, frame) }
         if (opFrames.isEmpty()) {
             return ObservationOutputRead.Page(ObservationOutputPage(emptyList(), -1L, moreFrames = false))
         }
@@ -354,6 +357,20 @@ class FrameIndexedObservationOutputReader(
             ),
         )
     }
+
+    /**
+     * Whether [frame]'s stream is the stream of [operationId] within [runId].
+     * ## Why this is a question about the IDENTITY and not about the text
+     * The stream id is `{runId}/{operationId}/{channel}` and the operation id is the WHOLE
+     * middle: it may carry separators of its own, so the middle is not a segment but a range.
+     * Reading it as text — asking whether the id CONTAINS the operation, or which piece of the
+     * middle comes first — answers about an operation nobody asked for: one whose id merely
+     * contains the asked one, or one that does not exist because it was cut in the wrong place.
+     * The address carries the run and the operation separately, and comparing them is the only
+     * way to ask the question as it was asked.
+    */
+    private fun belongsTo(runId: String, operationId: String, frame: OutputFrame): Boolean =
+        OutputStreamAddress.parse(frame.stream)?.isOperationOf(runId, operationId) == true
 
     /** All frames of [runId], newest first, filtered to known ordinals via [index.lastOrdinal]. */
     private fun runFramesNewestFirst(runId: String): List<OutputFrame> {

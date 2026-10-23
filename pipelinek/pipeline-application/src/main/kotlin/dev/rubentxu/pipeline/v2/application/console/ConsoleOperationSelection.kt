@@ -14,9 +14,8 @@ import dev.rubentxu.pipeline.v2.events.durable.EventStoreRefusal
  *  - `--follow` was dispatched BEFORE the filter branch in `CliParser.consoleValidate`, so
  *    `console --frames --follow --stage build` admitted a plain `FollowFrames` and **silently
  * Dropped the filter**. That is the audit's
- *  - `StageStepKindResolver` matched the user's `--stage`/`--step` against the **stringified
- *    index** the opId carries, so `--stage 0` hit and `--stage build` missed against the very
- *    same operation.
+ *  - The stage and the step were matched against the **stringified index** the opId carries, so
+ *    `--stage 0` hit and `--stage build` missed against the very same operation.
  *  - `--kind` was `val kindOk = true` — a non-empty kind set contributed a *true* conjunct. Any
  *    `--kind nonsense` matched every frame in the run. That is the "semantic drop" the Semantic
  *    Constitution forbids outright: a flag accepted, never interpreted.

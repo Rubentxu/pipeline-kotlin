@@ -97,6 +97,17 @@
 #                                    whole run being paralyzed by it.
 # The distribution must already exist:
 #     cd pipelinek &&./gradlew:pipeline-application:installDist
+# What a scenario can reach. Besides its own private directories
+# (PIPELINEK_E2E_HOME, PIPELINEK_E2E_ROOT, PIPELINEK_E2E_PID_FILE), a scenario
+# can reach the PRODUCT itself, through PIPELINEK_E2E_PRODUCT: the entry point
+# this launcher writes for it, carrying the product's own path and the
+# scenario's own clock. A scenario that needs to ASK the product something --
+# whether the installation is healthy, what it can do, which version it is --
+# calls that entry point, and the question is answered by the real binary under
+# the ceiling that bounds the rest of the scenario. There is no other way in:
+# the product's path is not in the environment, so a scenario cannot reach a
+# product without the clock, and cannot reach a product other than the one it
+# is running against.
 # Why `//@` and not `#!`. An earlier revision read directives from `#!` comment
 # lines, on the assumption that the product supported them. It does not: no
 # source under any `src/main` reads `#!`. The convention only ever worked by
@@ -122,7 +133,7 @@ repo_root="$(cd -- "$here/.." && pwd)"
 # a door: a later edit could invoke the product through it and escape the
 # clock, and a hung scenario that escapes the clock is the one failure this
 # whole mechanism exists to prevent. As a function, the only ways to reach
-# the product are the two below, and BOTH of them apply a clock.
+# the product are the three below, and ALL of them apply a clock.
 product_path() {
     # A scenario that runs against its OWN distribution says so here, and only
     # here. The clock is applied to whatever this function returns, so an
@@ -280,6 +291,41 @@ binary_within() {
         touch "$clock_marker"
     fi
     return "$rc"
+}
+
+# The product, reachable from INSIDE a scenario, with the scenario's clock on it.
+#
+# A scenario sometimes has to ASK the product something: whether the installation
+# is healthy, what it is able to do, which version it is. Those questions are
+# answered by the binary and not by the pipeline, so the only way to ask them is
+# to run the binary from within the scenario.
+#
+# This is the third door to the product, and it is a door with the clock still
+# on it. The entry point is written with the product's own path, with this
+# scenario's own deadline and with this scenario's own clock marker baked in,
+# so a scenario that calls it reaches the product it is running against, and
+# reaches it under the ceiling that bounds everything else in the scenario. The
+# code it reports when that ceiling fires is the same 124 the launcher reads as
+# a clock event, and it leaves the same marker behind, so a nested run that
+# hangs is reported as a clock event and not as a product verdict.
+write_product_entry_point() {
+    local target="$1" product="$2"
+    {
+        printf '#!/usr/bin/env bash\n'
+        printf 'set -Eeuo pipefail\n'
+        printf 'left=$(( %q - $(date +%%s) ))\n' "$scenario_deadline"
+        printf 'if (( left <= 0 )); then\n'
+        printf '    touch %q\n' "$clock_marker"
+        printf '    exit 124\n'
+        printf 'fi\n'
+        printf 'rc=0\n'
+        printf 'timeout --kill-after=5s "$left" %q "$@" || rc=$?\n' "$product"
+        printf 'if (( rc == 124 )); then\n'
+        printf '    touch %q\n' "$clock_marker"
+        printf 'fi\n'
+        printf 'exit "$rc"\n'
+    } >"$target"
+    chmod +x "$target"
 }
 
 # Fixtures a seeded credential can be built from. Built once per invocation and
@@ -1197,6 +1243,14 @@ run_scenario_body() {
                 ;;
         esac
     fi
+
+    # The product, reachable from inside this scenario, with this scenario's own
+    # clock on it. The entry point is written BEFORE the run so that a scenario
+    # can ask the product questions while it runs, and it points at the product
+    # this scenario runs against -- the repository's installation, or the copy
+    # with one JAR replaced when the scenario asked for its own.
+    write_product_entry_point "$root/product" "$(product_path)"
+    export PIPELINEK_E2E_PRODUCT="$root/product"
 
     # The operator's trust material, when the scenario asks for a trust policy. The launcher owns
     # it: a key pair generated for this scenario, the publisher's detached signature over the

@@ -89,13 +89,24 @@ composición se rechaza.
 fuera.** La vía de publicación estaba rota desde su última publicación con
 éxito, y su arreglo no fue «arreglar un script»: fue darle al publicador **un
 único lugar del que sacar el conjunto de ficheros**, la puerta, que ya medía
-el digest de cada uno (§2.71). La candidata `v0.76.0-rc1` está publicada en
+el digest de cada uno (§2.71). La candidata `v0.77.0-rc1` está publicada en
 remoto, y sus bytes se comprobaron **desde fuera**: descarga de los siete
 assets, `sha256sum -c` sobre las seis entradas de la autoridad de digest,
 instalación limpia del ZIP descargado y un pipeline real ejecutado con ese
-binario. Lo que queda de B4 es el **consumidor externo del SDK** y la
+binario (§2.72). Lo que queda de B4 es el **consumidor externo del SDK** y la
 **economía de la instrumentación**; lo de la publicación, por fin, está
 medido.
+
+**Lo que este ciclo midió por dentro: los verbos que hablan del producto.** El
+censo de los trece verbos de la CLI encontró que **seis** no los ejecutaba
+ningún instrumento, y eran los que el producto usa para hablar de sí mismo.
+Dentro de ellos había **dos** rotos: el informe de salud decidía su veredicto
+leyendo su propio texto impreso, y el catálogo de capacidades publicaba un
+valor de su vocabulario en otro idioma (§2.72). Los dos fallos eran del mismo
+tipo, y por eso el arreglo es del mismo tipo: **una respuesta es un valor**, y
+su texto es el renderizado de ese valor. La puerta del arnés también cambió:
+un escenario puede ahora preguntarle algo al producto, y la tercera puerta
+que eso abre lleva su reloj dentro, como las otras dos.
 
 **Lo que está abierto ahora mismo:**
 
@@ -111,20 +122,21 @@ medido.
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `a7a6df7ba`, medido en los ensayos de este bloque. El bloque anterior **arregló un fichero sembrado por flujo que se guardaba un byte más corto** (§2.70). Este bloque **desatasca la vía de publicación**: el publicador subía la autoridad de digest de la candidata y escribía la suya sobre el mismo nombre, de modo que la release moría en su último paso sin llegar a subir nada. Ahora la puerta decide qué ficheros publica una release y lo deja escrito con el digest que midió de cada uno; el publicador sigue ese recibo, re-mide cada fichero y se niega si no es el que la puerta midió. Con la vía arreglada, la candidata `v0.76.0-rc1` queda **publicada y verificada byte a byte** (§2.71) | `git rev-parse HEAD` |
+| SHA | `a9c50780`, medido en los ensayos de este bloque. El bloque anterior **desatasca la vía de publicación** (§2.71). Este bloque **mide los verbos que hablan del producto**: el censo de los trece verbos de la CLI encontró que seis no los ejecutaba nadie, y dentro de esos seis estaban dos rotos —el informe de salud decidía su veredicto leyendo su propio texto, y el catálogo de capacidades publicaba un estado de su vocabulario en otro idioma—. Ahora el veredicto es un valor, el vocabulario se escribe en un solo idioma, y el arnés puede preguntarle al producto cosas sin abrirle una puerta sin reloj. Con el formato publicado movido a `pipelinek.capabilities/2`, la candidata `v0.77.0-rc1` queda **publicada y verificada byte a byte** (§2.72) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1106** (158 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1113** (159 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
-| Escenarios E2E | **61 (61 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **61 de 61**: **377 comparaciones sobre 110 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 375, **88** son esas comparaciones nuevas: **44** de los 61 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **20248 / 67688 = 0.299** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios con una garantía comprobada | **62 de 62**: **396 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 394, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **20483 / 67723 = 0.302** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **163 / 157 / 149** en los tres ensayos, los tres sobre `a7a6df7ba`, peor 163 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **197 / 144 / 146** en los tres ensayos, los tres sobre `a9c50780`, peor 197 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
+| Candidato publicada | **`v0.77.0-rc1`** (prerelease), `candidate_id` `sha256:76dbaf73…71d4d`, tag en `a9c50780`; verificada **sobre los bytes descargados del remoto** (§2.72) | `gh release view v0.77.0-rc1`, `sha256sum -c SHA256SUMS` |
 | Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -138,18 +150,19 @@ El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s, 182, 141 y 139 s,
 187, 139 y 140 s y 203, 139 y 141 s.
 Este mide
-**163, 157 y 149 s**:
+**197, 144 y 146 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 163 s, es menos de
-la quinta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
-la API pública, los 1106 tests y los 61 escenarios.
+de este ciclo el presupuesto se cumplió con holgura —el peor, 197 s, es menos de
+la cuarta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
+la API pública, los 1113 tests y los 62 escenarios.
 
-**La etapa del E2E mide 93, 103 y 89 s**, contra los 88, 86 y 88 s del ciclo
-anterior (§2.70) y los 88, 88 y 87 s del anterior a ése (§2.69). Los **siete
+**La etapa del E2E mide 92, 92 y 90 s**, contra los 93, 103 y 89 s del ciclo
+anterior (§2.71) y los 88, 86 y 88 s del anterior a ése (§2.70). Los **siete
 segundos** que cuesta leer, con el propio verbo `console` del producto, los bytes
-que las dos rutas comprometieron (§2.65) siguen ahí, y este ciclo **tampoco añade
-ningún escenario**: los 61 son los mismos. Lo que este bloque arregla es la
+que las dos rutas comprometieron (§2.65) siguen ahí. Este ciclo **añade un
+escenario**: los 62 son los 61 de antes más uno, y el que llega es el que
+guarda la puerta de los verbos que hablan del producto (§2.72). Lo que este bloque arregla es la
 **vía de publicación** —el publicador subía la autoridad de digest de la
 candidata y escribía la suya sobre el mismo nombre— y su instrumento es **una
 decisión pura con cinco filas**, no un escenario: la garantía es de la regla que
@@ -7811,6 +7824,128 @@ en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`. Lo que
 este ciclo publica es la **candidata**, y la candidata es exactamente eso.
 
 
+### 2.72 Los verbos que hablan del producto no estaban medidos
+
+**La brecha, medida.** La CLI declara **trece** verbos. El arnés de E2E
+invocaba **siete**. Los **seis** que nadie ejecutaba de verdad eran
+precisamente los que el producto usa para hablar de sí mismo: `validate`,
+`observe`, `doctor`, `version`, `capabilities` y `sdk-info`. Un verbo que
+habla del producto es un verbo cuya respuesta la lee un consumidor, y un
+consumidor que no está medido no tiene contrato: el producto puede
+publicar cualquier cosa y no hay nada que lo note.
+
+El hueco no era sólo de cobertura. Al mirar dentro de esos verbos
+aparecieron **dos** que estaban **rotos**, y rotos de una manera que
+ningún test podía ver: el código que producía la respuesta era el mismo
+código que la leía después.
+
+**El primer defecto: un informe que decide su veredicto leyendo su propio
+texto.** `doctor` imprimía sus comprobaciones y luego las releía para
+decidir si la instalación estaba sana: buscaba la palabra `NOT WRITABLE`
+en las líneas que acababa de imprimir. **Reproducido**: en un directorio
+**escribible** llamado `NOT WRITABLE` el informe imprimía `workdir: …
+(writable)` —es decir, lo que había medido— y **salía con el código 2**, el
+del «roto». Un veredicto leído de una frase es un veredicto que puede
+contradecir a la frase que lo produjo, y se contradecía.
+
+El arreglo es que **el veredicto es un valor y la frase es su
+renderizado**. `InstallationHealth` modela el informe como una lista de
+comprobaciones, cada una con su lectura y su veredicto, y el código de
+salida sale de los veredictos y de nada más. El sondeo de escritura
+cubre además `SecurityException`: un diagnóstico que revienta con el
+defecto que debería informar no informa de nada.
+
+**El segundo defecto: un vocabulario publicado en dos idiomas.** El
+catálogo que `capabilities` publica tiene tres estados —`EXPERIMENTAL`,
+`DEPRECATED` y `PUBLICADA`—, y **cinco** de sus diecisiete valores
+usaban el tercero. Un consumidor lee el estado **por valor**, así que un
+valor de un vocabulario de tres escrito en otro idioma es un valor que el
+consumidor no reconoce. Y los cinco valores escritos así eran **justo
+las capacidades que la build entrega**: las únicas que nadie podía leer.
+
+El vocabulario se escribe ahora en un solo idioma, y el movimiento se
+**anuncia**: el esquema del documento pasa de `pipelinek.capabilities/1` a
+`pipelinek.capabilities/2`, de modo que un consumidor fijado a la versión
+anterior ve en el campo `schema` que el vocabulario se movió, en lugar de
+no reconocer en silencio las capacidades que la build entrega.
+
+**El documento publicado se puede leer.** `MainCapabilitiesCli.document()` es
+una función pura, y el test lee **ese documento**, no el modelo: lo que un
+consumidor recibe es lo que el test sostiene.
+
+**El instrumento, y por qué dos direcciones.** Cinco filas puras sobre el
+informe de salud y dos sobre el documento publicado, más un escenario que
+hace ocho preguntas al producto y comprueba cada respuesta contra lo que
+el producto **imprimió**. Las cuatro mutaciones se midieron en las dos
+direcciones, y cada una dejó **exactamente** una fila roja, sin daño
+colateral:
+
+| Mutación | Fila o garantía roja |
+|---|---|
+| el veredicto vuelve a leerse del texto impreso (fila pura) | 1 — `the verdict is never read off the reading` |
+| el documento publicado vuelve a hablar en dos idiomas (fila pura) | 1 — `the published status vocabulary is spelled in one language` |
+| el veredicto vuelve a decidirse por la palabra del texto (escenario) | 1 garantía — `DOCTOR_HEALTHY_EXIT` |
+| el catálogo vuelve a publicar el estado en otro idioma (escenario) | 1 garantía — `CAPABILITIES_ONE_VOCABULARY` |
+
+**El arnés: la tercera puerta al producto, con el reloj puesto.** Para
+preguntarle algo al producto desde un escenario, el lanzador escribe ahora
+una entrada por escenario, con el camino del producto y el reloj de ese
+escenario dentro. Es una puerta **con reloj**: un escenario que la llama
+alcanza el producto contra el que corre, y lo alcanza con el techo que
+acota todo lo demás del escenario; una pregunta que se cuelga para con el
+escenario y se reporta como evento de reloj, no como veredicto del
+producto. **No hay otra entrada**: el camino del producto no está en el
+entorno, de modo que un escenario no puede alcanzar un producto sin reloj,
+ni un producto distinto del suyo. Es la misma ley que ya gobernaba las
+otras dos puertas, aplicada a la tercera.
+
+**El tren se movió con el formato.** El documento publicado cambió de
+esquema, así que el artefacto `v0.76.0-rc1` y este no se comportan igual.
+La misma ley que impidió publicar el `0.62.0` porque colisionaba con un
+`v0.62.0` ya publicado se aplica aquí: una versión que nombra dos
+artefactos distintos no nombra nada. El tren pasa a **0.77.0**.
+
+**Lo que este bloque deja dicho.** Un producto que habla de sí mismo tiene
+que ser verdad dos veces: lo que **imprime** tiene que ser lo que
+**midió**, y lo que **publica** tiene que ser un vocabulario que un
+consumidor pueda leer por valor. Ninguno de los dos fallos se veía desde
+dentro, porque en los dos el código que producía la respuesta era el
+mismo que la leía después. El defecto de fondo no era un `if` mal
+escrito: era que **la respuesta no era un valor**. Un veredicto es un
+valor; una frase es su renderizado; y un catálogo es un documento que se
+puede leer. Cuando eso es cierto, el consumidor deja de depender de que
+nadie mire dos veces.
+
+**Lo que la puerta midió.** `PASS` tres veces sobre el árbol commiteado
+(197 / 144 / 146 s; el peor, de 900), `tests=rewritten:1113`, 62 de 62
+escenarios, 396 comprobaciones sobre 112 ejecuciones, y el LOC en 20483 de
+verificación sobre 67723 de producto (0,302).
+
+**Lo que se verificó después de publicar.** La candidata `v0.77.0-rc1` se
+publicó y se comprobó **sobre los bytes publicados**, no sobre los locales:
+descarga desde el remoto de los siete assets, `sha256sum -c SHA256SUMS`
+verifica las seis entradas, el consumidor del repo resuelve el digest del ZIP
+con su propio script, y el ZIP descargado se instala en limpio. El binario
+instalado reporta `pipeline 0.77.0`, su `sdk-info` dice `0.77.0`, su
+catálogo anuncia `pipelinek.capabilities/2` y publica un vocabulario de un
+solo idioma, y el informe de salud contesta **0** en un directorio escribible
+llamado `NOT WRITABLE` y **2** en un directorio en el que nadie puede
+escribir. Un pipeline real ejecutado con ese binario termina en `SUCCESS`
+con su efecto observable en disco. La publicación quedó en remoto como
+prerelease, con el tag apuntando al commit del que se construyeron los
+bytes.
+
+Lo que la admisión de candidata deja **a propósito** sin observar es la
+superficie `RUNTIME_VERSION`: exige ejecutar el binario instalado, que es
+trabajo de la vía pesada y no de la puerta. Por eso la verificación
+anterior no es un adorno del recibo, es la parte de la ley de identidad
+que esta puerta no puede cumplir sola.
+
+**Lo que queda fuera, dicho con honestidad.** La promoción a estable de
+`0.77.0` sigue bloqueada: no hay certificador externo en este repositorio ni
+en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`. Lo que
+este ciclo publica es la **candidata**, y la candidata es exactamente eso.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un comentario que afirma una verdad que el código ya no tiene es peor que
   no escribirlo.** Un lector no puede saber que un comentario miente, así que
@@ -9285,6 +9420,48 @@ este ciclo publica es la **candidata**, y la candidata es exactamente eso.
   con lo instalado: eso es lo que convierte «se subió» en «esto es lo que hay
   publicado» (§2.71).
 
+- **Un veredicto es un valor, y una frase es su renderizado.** El informe de
+  salud decidía si la instalación estaba sana buscando una palabra en el texto
+  que acababa de imprimir, de modo que podía contradecirlo: una instalación
+  sana en un directorio llamado `NOT WRITABLE` contestaba «roto». La frase es
+  lo que el operador lee; el veredicto es lo que el producto decide. Cuando el
+  veredicto es un valor, la frase se deriva de él y no puede contradecirlo
+  (§2.72).
+
+- **Un vocabulario publicado se dice en un solo idioma, y moverse se
+  anuncia.** El catálogo publicaba `PUBLICADA` junto a `EXPERIMENTAL` y
+  `DEPRECATED`, y el valor que un consumidor no reconocía era justo el de las
+  capacidades entregadas. Renombrar un valor publicado es una ruptura, y una
+  ruptura se anuncia: el esquema del documento se mueve a
+  `pipelinek.capabilities/2`, de modo que un consumidor fijado a la versión
+  anterior **ve** que el vocabulario se movió, en vez de no reconocer en
+  silencio lo que la build entrega (§2.72).
+
+- **Lo que un consumidor lee es un documento, no un modelo.** El test que
+  vigila el catálogo lee el documento publicado —el mismo texto que sale por
+  la stdout— y no la estructura interna que lo produjo. Un test sobre el modelo
+  no ve un documento mal serializado; uno sobre el documento sí (§2.72).
+
+- **Una puerta nueva al producto llega con su reloj, o no llega.** El arnés
+  tenía dos formas de alcanzar el producto y las dos llevaban su techo de
+  tiempo. Una tercera —preguntarle al producto qué tal está— podía llegar
+  sin él, y entonces un escenario colgado colgaría la suite. La entrada por
+  escenario lleva el reloj dentro, y el camino del producto no está en el
+  entorno: no hay puerta sin techo (§2.72).
+
+- **Un instrumento que no puede fallar no es un instrumento: hay que
+  romperlo.** Las cuatro mutaciones de este bloque se aplicaron y se leyeron de
+  vuelta en el disco antes de dar por buena ninguna fila: dos filas puras y
+  dos garantías de escenario, cada una con exactamente un rojo y sin daño
+  colateral (§2.72).
+
+- **Un directorio que nadie puede escribir se busca donde el sistema lo
+  garantiza.** Los bits de permiso no detienen al superusuario, y un
+  escenario que depende de quién lo ejecuta no es un escenario. El segundo
+  sentido del informe de salud se comprueba contra un directorio que el propio
+  sistema no deja escribir, que es el mismo dato en todas las máquinas
+  (§2.72).
+
 
 ## 4. Referencias
 
@@ -9296,8 +9473,11 @@ este ciclo publica es la **candidata**, y la candidata es exactamente eso.
   puerta y publica exactamente lo medido.
 - `scripts/release/build-release-manifest.sh` — el generador de la autoridad de
   digest de una release.
-- `v0.76.0-rc1` — la candidata que este ciclo publicó y verificó (prerelease;
+- `v0.77.0-rc1` — la candidata que este ciclo publicó y verificó (prerelease;
   la promoción a estable sigue bloqueada por el certificador externo).
+- `examples/smoke/11-cli-self-report.pipeline.kts` — el escenario que pregunta al
+  producto por su salud, su catálogo y su versión, y comprueba cada respuesta
+  contra lo que el producto imprimió (§2.72).
 - Historia anterior: tag `pre-testing-reset-20261018`. No se resucita en el árbol
   activo.
 

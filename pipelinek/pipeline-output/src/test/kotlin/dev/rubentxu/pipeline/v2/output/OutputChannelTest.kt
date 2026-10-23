@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.output
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -95,6 +96,40 @@ class OutputChannelTest {
         assertNull(OutputChannel.fromToken("STDOUT"))
         assertNull(OutputChannel.fromToken(""))
         assertNull(OutputChannel.fromToken("transcript"))
+    }
+
+    // --- which operation an address names -----------------------------------
+
+    @Test
+    fun `an address is the operation it names, in the run it names`() {
+        val address = OutputStreamAddress.of("run-7", "run-7-s0-0", OutputChannel.STDOUT)
+
+        assertTrue(address.isOperationOf("run-7", "run-7-s0-0"), "the operation it names")
+        assertFalse(address.isOperationOf("run-7", "run-7-s0-1"), "another operation of the same run")
+        assertFalse(address.isOperationOf("run-8", "run-7-s0-0"), "the same operation id in another run")
+    }
+
+    @Test
+    fun `an operation whose id merely contains another is not that other`() {
+        // The trap a text comparison walks into: `foo` is a piece of `other/foo`, so a reader
+        // that asks whether the id CONTAINS `foo` answers with the frames of a different
+        // operation. Two operations, one of them named by a fragment of the other's name.
+        val neighbour = OutputStreamAddress.of("run-7", "other/foo", OutputChannel.STDOUT)
+
+        assertFalse(neighbour.isOperationOf("run-7", "foo"), "a fragment of the id is not the operation")
+        assertTrue(neighbour.isOperationOf("run-7", "other/foo"), "the whole id is the operation")
+    }
+
+    @Test
+    fun `an operation whose id carries separators is compared whole`() {
+        // The operation id is the whole middle of the stream id, so it may span several
+        // segments. A comparison that keeps one piece of it names an operation that does not
+        // exist, and a reader that asks for the whole operation must find it.
+        val address = OutputStreamAddress.of("run-7", "stage/step/inner", OutputChannel.STDERR)
+
+        assertTrue(address.isOperationOf("run-7", "stage/step/inner"), "the whole operation")
+        assertFalse(address.isOperationOf("run-7", "stage"), "the first piece is not the operation")
+        assertFalse(address.isOperationOf("run-7", "step/inner"), "the last pieces are not the operation")
     }
 
     // --- the pair an operation writes ---------------------------------------

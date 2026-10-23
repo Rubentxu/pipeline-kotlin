@@ -147,7 +147,7 @@ camino de consumo —el BOM— que tampoco estaba probado (§2.75).
 |---|---|---|
 | 1 | **La política** de la identidad duplicada, si algún día hace falta cambiarla | el **diagnóstico** ya nombra los dos artefactos (§2.51) y dice que la composición entera se rehúsa, así que el operador sabe cuál es cuál y sabe que nada se está ejecutando. Lo que queda **no es un defecto pendiente**: el sistema **ya rechaza la composición** cuando ve el duplicado. Cambiar *qué* artefacto conserva la identidad es un cambio de comportamiento observable y por tanto una ruptura versionada, que sólo se hace con una **necesidad de producto concreta**, no porque el modelo sea más bonito |
 | 2 | Dos autoridades de identidad: digest declarado, digest medido e identidad de confianza | el vocabulario de rechazos está **publicado**: añadir un caso rompe el ABI de los consumidores, así que separar los tres nombres necesita su propio bloque (§2.45) |
-| 3 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | **caracterizada** (§2.57): por los caminos de producción **medidos** **dos streams no comparten bytes**, porque los segmentos dirigidos por posición no se pliegan; lo que **no** se ha demostrado es la propiedad general para todo identificador que el formato admite, y el veredicto lo dice así. Los dos defectos que sí lo eran están **cerrados**: el parser de op ids ya no descarta parte de la identidad **en silencio** (§2.59) —devuelve `null` antes que una identidad truncada, y la consola conserva su filtro por etapa y paso gracias a una lectura de índices— y la afirmación de que la colisión era inalcanzable en general está **matizada**. Queda con nombre una deuda: el formato del cuerpo **no es invertible** cuando un identificador lleva `-`, y cerrarlo es ruptura versionada que espera autorización |
+| 3 | Colisión de identificadores de stream: el nombre en disco dobla identificadores distintos | **cerrada en su parte de no mezclar** (§2.76): la colisión **está reproducida con el producto real** —una identidad que se pliega al mismo directorio que otra leía los bytes de su vecina sin decir nada—, y ahora el directorio **recuerda a su dueño**: el que escribe reclama, el que lee comprueba, y el que no es el dueño es **rechazado** con un diagnóstico que nombra a las dos identidades. Queda con nombre una deuda: el **nombre plegado sigue siendo plegado**, y un esquema inyectivo cambia el layout en disco, con su migración y su versión; también queda el formato del cuerpo **no invertible** cuando un identificador lleva `-`, que es ruptura versionada que espera autorización |
 | 4 | Certificación externa | **`BLOCKED_EXTERNAL`**: no hay certificador en este repositorio ni en remoto (§2.45) |
 | 6 | El consumidor externo del SDK | **cerrado** (§2.75): el SDK publicado se
 publicaba y se comprobaba byte a byte, pero **nada lo resolvía**: los plugins
@@ -163,7 +163,7 @@ sin red |
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `feda7dca6`, medido en los ensayos de este bloque. El bloque anterior **arregló el techo del drenaje**, que no distinguía una bomba atascada de una bomba lenta (§2.74). Este bloque hace que **el SDK que el producto publica sea el SDK que sus consumidores usan**: el ZIP publicado pasó a ser el único repositorio Maven que resuelven los plugins externos —uno de ellos **a través del BOM**—, de modo que un SDK publicado que no se pudiera resolver detuviese la construcción de la distribución. La candidata `v0.80.0-rc1` queda **publicada y verificada byte a byte**, y el SDK descargado se consumió **desde fuera** (§2.75) | `git rev-parse HEAD` |
+| SHA | `d4cb97010`, medido en los ensayos de este bloque. El bloque anterior hizo que **el SDK que el producto publica sea el SDK que sus consumidores usan** (§2.75). Este bloque cierra una colisión que estaba **caracterizada pero no reproducida**: dos identidades distintas que se pliegan al mismo directorio **compartían bytes**, y una identidad que llegaba al directorio de otra leía sus bytes sin decir nada. Ahora el directorio **recuerda a su dueño**, y el store rechaza al que no lo es (§2.76). La candidata `v0.81.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
@@ -171,13 +171,13 @@ sin red |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **62 de 62**: **398 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 396, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **20990 / 68000 = 0.309** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **21074 / 68073 = 0.310** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **210 / 148 / 146** en los tres ensayos, los tres sobre `feda7dca6`, peor 210 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **202 / 154 / 151** en los tres ensayos, los tres sobre `d4cb97010`, peor 202 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 19 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
-| Candidato publicada | **`v0.80.0-rc1`** (prerelease), `candidate_id` `sha256:6ad871a2167de90649bbbcc83d7a5a6001f916a66fb27ae9a60dba2e79d30c4f`, tag en `feda7dca6`; verificada **sobre los bytes descargados del remoto** (§2.75) | `gh release view v0.80.0-rc1`, `sha256sum -c SHA256SUMS` |
+| Candidato publicada | **`v0.81.0-rc1`** (prerelease), `candidate_id` `sha256:c701f471072b34ef2338354eb831116f7e67c046b406731152e474fec673e1b1`, tag en `d4cb97010`; verificada **sobre los bytes descargados del remoto** (§2.76) | `gh release view v0.81.0-rc1`, `sha256sum -c SHA256SUMS` |
 | Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -8316,7 +8316,111 @@ del BOM.
   este repositorio ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`,
   no `PASS`. Lo que este ciclo publica es la **candidata**.
 
+### 2.76 Un nombre plegado no puede ser la identidad de un directorio
+
+**El hueco.** El plano de salida guarda los bytes de un stream bajo un nombre **plegado**: todo
+carácter fuera de `[A-Za-z0-9._-]` se convierte en `_`. El plegamiento **pierde información**, y
+dos identidades distintas pueden plegarse al mismo nombre. El store lo tenía por una verdad, y la
+decía en su propio KDoc: dos ids que se pliegan al mismo nombre **son** el mismo stream en disco.
+
+No lo son. Son dos streams que el direccionamiento no sabe distinguir — y el que lo distinguía
+era el índice de frames, que guarda la identidad entera en otro sitio.
+
+**Medido con el producto real, no con un ejemplo inventado.** La identidad de una operación se
+publica como `<runId>-<opId>:<rama>:<paso>`. Sustituyendo `:` por `_` se obtiene **otra
+identidad** —la que se pliega al mismo directorio— y la pregunta es qué responde el producto:
+
+```
+$ pipelinek console --control-dir … <runId> <identidad real>      → BRANCH_A_MARKER
+$ pipelinek console --control-dir … <runId> <identidad plegada>   → BRANCH_A_MARKER
+```
+
+La misma salida, el mismo código de salida y ninguna advertencia. **El producto leía los bytes de
+una operación y se los entregaba a otra.** Un informe externo había señalado el defecto como
+estructural, sin reproducirlo; aquí está reproducido con el binario y con un cambio de un solo
+carácter en la identidad.
+
+**Lo que ahora es verdad.** El directorio **recuerda** la identidad que lo posee: un fichero
+`stream.id` al lado de los bytes, escrito una vez por el escritor que crea el directorio y nunca
+reescrito. A partir de ahí:
+
+- el que **escribe** reclama el directorio; si el registro nombra otra identidad, la escritura se
+  **rechaza**, con un error que nombra a las dos;
+- el que **lee** comprueba el registro antes de servir; si nombra otra identidad, la lectura se
+  **rechaza** con `ForeignStream`, que dice qué se pidió y qué hay allí.
+
+La consecuencia es la que importa: **dos identidades no comparten bytes**, y una identidad que
+llega al directorio de otra no recibe una respuesta silenciosa.
+
+**Por qué el rechazo es un caso del vocabulario ya publicado.** El vocabulario de rechazos del
+plano de salida está publicado, y añadir un caso rompe el ABI de los consumidores. `ForeignStream`
+ya dice lo que hace falta —«pediste esto, y lo que hay allí es aquello otro»—, y su razón de
+ser —«una lectura que se recorta es una respuesta silenciosamente equivocada»— es exactamente la
+de este caso. Lo que se amplía es su KDoc, no su firma: el ABI no cambia.
+
+**La instrumentación.** Dos instrumentos, y ninguno nuevo:
+
+- una regla **pura** (`decideStreamDirectoryOwnership`) con sus particiones —sin registro, con el
+  registro propio, con el registro de otro, con un registro vacío— probada sin disco;
+- el **escenario que ya existía**, que comprueba que cada identidad publicada lleva sus propios
+  bytes, gana una comprobación: una identidad **distinta** que se pliega al mismo directorio **no**
+  puede leerlos. No se creó ningún escenario nuevo: el suite sigue siendo el mismo.
+
+**Lo que se vio en rojo.**
+
+| Mutación | Fila roja |
+|---|---|
+| la regla acepta una identidad que sólo empieza por la registrada | **2** — `identities are compared whole, not by prefix` y `an empty record refuses the claim` |
+| el store deja de comprobar al leer | el escenario: `LEG_folded_identity_neighbour_bytes` — «an identity that folds onto another one's directory read its bytes» |
+| el store deja de reclamar al escribir | la UAT efímera: el segundo escritor **no** es rechazado |
+
+**Lo que se midió con una UAT efímera, y por qué no queda.** La rama de escritura necesita dos
+escritores que colisionen, y el motor actual no los produce: la medición del defecto (§2.57) y la
+de este ciclo dicen que dos operaciones del motor nunca se pliegan al mismo directorio. La rama se
+comprobó con un programa **temporal** contra el almacén real —escribe dos identidades que
+colisionan y comprueba que la segunda es rechazada y que los bytes del dueño siguen intactos—,
+**eliminado al cerrar el ciclo**: tocaría el sistema de ficheros, y un test permanente que lo
+hace no cabe en la regla de unitarios puros.
+
+**Lo que la puerta midió.** `PASS` tres veces sobre el árbol commiteado
+(`d4cb97010`): **202 / 154 / 151 s**, con un presupuesto de 900 s y
+`tests=rewritten:1143`. Los 62 escenarios llevan una garantía comprobada —**400** comparaciones
+sobre **112** ejecuciones— y el LOC queda en **21074** de verificación sobre **68073** de
+producto (0.310).
+
+**Lo que queda fuera, dicho con honestidad.**
+
+- **El nombre plegado sigue siendo plegado.** Lo que se ha cerrado es que dos identidades
+  **compartan** bytes; lo que no se ha hecho es que el nombre sea **inyectivo**. Un esquema
+  inyectivo cambiaría el layout en disco y necesita una migración y una versión, y eso no se
+  decide aquí.
+- **Un directorio escrito antes de esta versión no tiene registro.** Su primer escritor lo
+  reclama, y a partir de ahí queda protegido. Si ese directorio ya mezclaba dos operaciones, el
+  store no puede deshacerlo: puede dejar de empeorarlo, y eso es lo que dice.
+- **La promoción a estable sigue bloqueada**: no hay certificador externo en este repositorio ni
+  en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`. Lo que este ciclo publica
+  es la **candidata**.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **Un nombre plegado no es una identidad.** Un nombre que pierde información no puede
+  ser la identidad de un directorio: dos identidades que se pliegan al mismo nombre son
+  dos streams, y el que las confunde entrega a una los bytes de la otra (§2.76).
+- **El dueño se escribe donde están los bytes.** Un directorio que nombra a su dueño
+  convierte una direccion ambigua en un hecho comprobable, y el comprobante no necesita
+  un índice aparte: vive al lado de lo que describe (§2.76).
+- **Un rechazo que no nombra a las dos identidades no es accionable.** El error dice quién
+  posee el directorio y quién fue rechazado, y el rechazo de lectura dice qué se pidió y
+  qué hay allí (§2.76).
+- **Un caso de rechazo publicado se puede ampliar sin romper el ABI.** El vocabulario del
+  plano de salida está publicado y no admite casos nuevos, pero `ForeignStream` ya dice
+  lo que este caso necesita decir, y su razón de ser es la misma. Lo que se amplía es su
+  KDoc; la firma no cambia (§2.76).
+- **Lo que no se puede observar de forma permanente, se observa de forma efímera y se
+  dice.** La rama de escritura necesita dos escritores que colisionen, y el motor no los
+  produce: se comprobó con un programa temporal contra el almacén real y se eliminó al
+  cerrar el ciclo, porque un test permanente que toca el sistema de ficheros no cabe en
+  la regla de unitarios puros (§2.76).
+
 - **Un artefacto que nadie consume no está verificado.** Comprobar byte a byte
   que el SDK publicado es el que dice ser no dice que se pueda resolver: el
   digest responde «los bytes son estos», y la pregunta del consumidor es «¿puedo
@@ -9921,7 +10025,13 @@ del BOM.
   puerta y publica exactamente lo medido.
 - `scripts/release/build-release-manifest.sh` — el generador de la autoridad de
   digest de una release.
-- `v0.80.0-rc1` — la candidata que este ciclo publicó y verificó (prerelease;
+- `v0.81.0-rc1` — la candidata que este ciclo publicó y verificó (prerelease;
+  la promoción a estable sigue bloqueada por el certificador externo).
+- `pipeline-output-store/.../StreamDirectoryOwnership.kt` — la regla pura que decide si un
+  directorio de stream puede ser reclamado por una identidad (§2.76).
+- `pipeline-output-store/.../SegmentOutputStore.kt` — el `stream.id` que nombra al dueño
+  de cada directorio de stream, y el rechazo de lectura y de escritura (§2.76).
+- `v0.80.0-rc1` — la candidata del bloque anterior (prerelease;
   la promoción a estable sigue bloqueada por el certificador externo).
 - `pipeline-release/.../SdkZipBuilder.kt` — la regla que decide qué entradas
   viajan en el ZIP publicado, y la función pura que la sostiene (§2.75).

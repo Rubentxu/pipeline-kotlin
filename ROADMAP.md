@@ -7040,11 +7040,14 @@ de reducir el número de escenarios E2E no tiene aquí un destino honesto: reduc
 significaría dejar de comprobar algo. Lo que sí se ha reducido es el COSTE de
 comprobarlo, y el detalle por fila que lo hace decidible por primera vez.
 
-Quedan treinta y cuatro escenarios sin mutar (los cincuenta que §2.37 dejó, menos
-los dieciséis de este lote), y la muestra que este lote no tocó incluye
-`smoke/`, `steps/` en su mayoría, `output/` en su mayoría y las categorías
-`negative/` de plugins que no son `plugin-trust`. El lote 3 sigue el mismo
-método sobre esa muestra.
+Quedan **treinta y nueve** escenarios sin mutar: la puerta ejecuta 61, y el
+lote 1 (§2.36 y §2.37) auditionó seis y este auditionó dieciséis. La cuenta que
+§2.37 dejó escrita —«los cincuenta escenarios restantes»— era de una suite de
+56; hoy son 61, y la diferencia son escenarios añadidos después.
+
+La muestra que este lote **no** tocó incluye `smoke/`, `steps/` en su mayoría,
+`output/` en su mayoría y las categorías `negative/` de plugins que no son
+`plugin-trust`. El lote 3 sigue el mismo método sobre esa muestra.
 
 
 ## 3. Decisiones tomadas en este ciclo, con su porque

@@ -134,6 +134,33 @@ val sdkForManifestEmission by configurations.creating {
     extendsFrom(configurations.compileOnly.get())
 }
 
+/**
+ * The SDK this plugin compiles against is an INPUT of the compile task, declared here.
+ *
+ * ## What was measured
+ * The compile task did not track the resolved SDK on its own. In the SAME tree, pointing
+ * `-PsdkRepo`/`-PsdkVersion` at another published SDK left `compileKotlin` UP-TO-DATE, while the
+ * release properties and the manifest WERE recomputed -- they declare `sdkVersion` as an input.
+ * The artifact then declared a compatibility range for an SDK whose classes it had not been
+ * compiled against: a claim the bytes could not back. Measured, not predicted: the resolved
+ * compile classpath was printed, its jar digest confirmed to be the modified one, and the task
+ * still reported UP-TO-DATE.
+ *
+ * ## Why nothing noticed
+ * Every observation that reads the artifact's DECLARATION agreed with itself: the manifest, the
+ * range and the provenance all moved together. Only the BINARY disagreed, and nothing in the
+ * build compared the binary with the SDK it claims to be compiled against.
+ *
+ * ## The fix
+ * The resolved SDK is declared as an input, normalized by CONTENT, so a change in the SDK's API
+ * re-runs the compilation. The classes and the declaration then come from the same SDK, which is
+ * the only way the declared range means anything.
+ */
+tasks.named("compileKotlin") {
+    inputs.files(configurations.named("sdkForManifestEmission"))
+        .withNormalizer(ClasspathNormalizer::class)
+}
+
 val computeBlockRelease = tasks.register("computeBlockRelease") {
     group = "block"
     description = "Compute the external block plugin's provenance SHA-256 and write its release properties."

@@ -217,7 +217,7 @@ sin red |
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `0973c382e`, medido en los ensayos de este bloque. El bloque anterior cerró el **camino más corto al primer pipeline**: una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81). Este cierra la **puerta de las credenciales**: la frase de paso es la autorización para tocar el almacén, y una frase de paso que no encaja ya no borra una credencial y dice que sí (§2.82). La candidata `v0.87.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
+| SHA | `5f4e193d4`, medido en los ensayos de este bloque. El bloque anterior cerró el **camino más corto al primer pipeline**: una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81). Este cierra la **puerta de las credenciales**: la frase de paso es la autorización para tocar el almacén, y una frase de paso que no encaja ya no borra una credencial y dice que sí (§2.82). La candidata `v0.87.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
@@ -225,9 +225,9 @@ sin red |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas; el escenario de credenciales pasa de 14 a 22 comprobaciones, y el número de escenarios **no crece** | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **62 de 62**: **566 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 396, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **21971 / 68257 = 0.322** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **21971 / 68228 = 0.322** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **229 / 148 / 149** en los tres ensayos, los tres sobre `0973c382e`, peor 229 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **192 / 144 / 154** en los tres ensayos, los tres sobre `5f4e193d4`, peor 192 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 24 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -9085,6 +9085,98 @@ comprobación más en el escenario de credenciales.
   en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`.
 - La economía del arnés por **coste** sigue abierta: la caché de compilación vive dentro del
   ciclo y se borra con él (§2.79).
+### 2.83 El runtime no carga una sonda que escribe en el hogar
+
+**El hueco.** El ejecutor de shell durable llevaba dentro una sonda que copiaba los permisos de
+sus FIFOs a un fichero del directorio personal del usuario:
+
+```
+~/obsPc2diag/fifo-perms-<opId>.txt
+```
+
+La invocación estaba en `materialiseFifos()`, en el camino de todo paso durable, sin ninguna
+opción de depuración que la apagara. Una ejecución normal creaba un fichero nuevo fuera de la
+raíz de control autorizada, y el `runCatching` que la envolvía se tragaba cualquier error de
+escritura: si el disco estaba lleno o el home no existía, el paso seguía como si nada.
+
+**Lo que se midió antes de tocar nada.** En la máquina de trabajo, el directorio llevaba
+**175 ficheros** acumulados de ejecuciones anteriores, repartidos entre trazas de otros ciclos
+y **3** de esta sonda:
+
+```
+$ ls ~/obsPc2diag | wc -l
+175
+$ ls ~/obsPc2diag/fifo-perms-* | wc -l
+3
+```
+
+El contenido de uno de ellos dice exactamente lo que el producto cree:
+
+```
+stdout.fifo=true,OWNER_READ|OWNER_WRITE
+stderr.fifo=true,OWNER_READ|OWNER_WRITE
+```
+
+**Lo que ahora es verdad.** La sonda no está. La comprobación de que el FIFO es un FIFO de
+dueño único se hace **donde se decide** —en el momento de crearlo, que es el único momento en
+que el permiso es de nadie más— y no en una escritura posterior a un directorio ajeno.
+
+El permiso se sigue fijando al crear el FIFO, y sigue siendo exactamente `0600`: propietario
+lee y escribe, nadie más. Medido sobre el producto real, en una corrida durable, desde dentro
+del paso:
+
+```
+fifo=…/control/<runId>-s0-0/fifos/stdout.fifo type=`fifo' octal=600
+FIFO-PERMS-OK
+```
+
+**Dónde vive ahora la inspección.** En un escenario **efímero** que es dueño de sus ficheros: el
+lanzador le entrega la raíz de control de esa misma ejecución, y los FIFOs viven debajo, en
+`{controlRoot}/{opId}/fifos`. Leerlos desde dentro del paso es leer su propio directorio. La
+inspección se hace **mientras el FIFO existe**, porque el runtime borra la raíz de control
+cuando el paso termina: un escenario que mirara después no encontraría nada y no concluiría
+nada.
+
+**La comprobación puede ponerse roja.** Un verde que nunca se ha visto rojo no es evidencia, así
+que la comprobación se falseó a propósito, sobre copias de la sonda, sin tocar el producto:
+
+| caso | sonda sin mutar | con la mitad correspondiente desactivada | qué demuestra |
+|---|---|---|---|
+| FIFO real con `0600` | **verde** | — | la línea de base es correcta |
+| FIFO real con `0644` | **roja** | **verde** | la mitad de permisos carga el peso: rechaza un FIFO legible por todos |
+| fichero regular con `0600` | **roja** | **verde** | la mitad de tipo carga el peso: rechaza un spool en claro |
+
+El tercer caso tiene dos defensas, y las dos se midieron: aflojar solo la *selección* (que
+buscaba el FIFO con `-p`) seguía en rojo, porque la *afirmación* de tipo que viene después lo
+vuelve a rechazar; aflojar las dos lo volvía verde. Un fichero regular en el sitio del
+rendezvous es exactamente el spool en claro que la garantía prohíbe, y la comprobación lo
+dice.
+
+**El efecto lateral también se comprobó, no se_affirmó.** La corrida anterior a este ciclo
+creaba un `fifo-perms-<runId>-s0-0.txt` nuevo en `~/obsPc2diag` en cada ejecución durable. Con
+la sonda fuera, la cuenta no se mueve:
+
+```
+=== HOME side effects: obsPc2diag dirs 1 -> 1, files 176 -> 176 ===
+PASS: FIFO is a named pipe with owner-only perms, and the run left $HOME untouched
+```
+
+**Lo que queda fuera, dicho con honestidad.**
+
+- La comprobación es **efímera y se retira con su ciclo**: es la evidencia de que este defecto
+  está cerrado, no un contrato permanente del producto. Vive bajo
+  `${XDG_STATE_HOME:-$HOME/.local/state}/pipelinek/verification-cycles/`, no en `examples/`, y
+  el escenario **no crece**: los 62 escenarios del conjunto versionado siguen siendo 62.
+- El modo que llegaba a la sonda —el bombeo del transcripto por un agente externo— **no lo
+  conduce nada del árbol salvo por una propiedad del sistema**, y por eso la sonda era código
+  muerto. La medición de arriba lo activa a propósito para poder observar el FIFO; el producto
+  en su configuración por defecto no entra por ahí.
+- Los **175 ficheros** que la sonda dejó acumulados en `~/obsPc2diag` **siguen ahí**: este ciclo
+  quita la causa, no limpia el pasado. Borrarlos es una operación sobre el home del operador, y
+  por eso no se ha hecho a escondidas.
+- La promoción a estable sigue bloqueada: no hay certificador externo en este repositorio ni
+  en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite
   no crea directorios, así que un nombre que todavía no está es una instrucción que el producto

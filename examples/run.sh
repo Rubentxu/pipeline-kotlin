@@ -895,10 +895,74 @@ normalize_identity() {
         -e 's/pipeline-[a-z0-9<>-]*[0-9]{6,}/pipeline-<temp>/g'
 }
 
-# The id of the run that wrote a launch receipt.
-run_id_of() {
-    grep -ao '"schema":"pipelinek.launch/1","runId":"[^"]*"' "$1" 2>/dev/null \
-        | head -1 | sed 's/.*"runId":"//; s/"$//' || true
+# The launch receipt the product published, read as the document it is.
+#
+# The receipt is a JSON document on the run's stderr, among lines that are not
+# JSON at all. Reading it as a document -- asking it for its fields -- is what
+# makes the launcher a CONSUMER of what the product publishes. The grep this
+# replaces matched '"schema":"pipelinek.launch/1","runId":"', which is a bet on
+# two keys being ADJACENT in the writer's output: the day the writer emits them
+# apart, the reader goes quiet, and every check that depended on it is skipped
+# without saying so. A reader that goes quiet is a suite that quietly checks
+# less, and the census is the only place that shows it.
+#
+# It is python3 because the verification path already needs it -- the budget
+# census and the release script are python3 -- so reading a JSON document this
+# way adds no dependency, while sed and grep cannot read a JSON document.
+#
+# Three states, and they are three different facts:
+#   0  the run id was read, and it is what is on stdout
+#   1  a receipt IS there and could not be read; the reason is on stdout
+#   2  there is no run to read: no receipt at all, or a launch that was refused
+launch_receipt_run_id() {
+    python3 - "$1" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], "rb") as handle:
+        lines = handle.readlines()
+except OSError as error:
+    print("the launch receipt could not be read: " + str(error))
+    sys.exit(1)
+
+receipt = None
+for raw in lines:
+    line = raw.strip()
+    if not line.startswith(b"{"):
+        continue
+    try:
+        document = json.loads(line)
+    except ValueError:
+        continue
+    if not isinstance(document, dict):
+        continue
+    schema = document.get("schema")
+    if isinstance(schema, str) and schema.startswith("pipelinek.launch/"):
+        receipt = document
+        break
+
+if receipt is None:
+    print("the run published no launch receipt")
+    sys.exit(2)
+
+status = receipt.get("status")
+if not isinstance(status, str) or not status:
+    print("the launch receipt carries no status")
+    sys.exit(1)
+if status == "Launched":
+    run_id = receipt.get("runId")
+    if not isinstance(run_id, str) or not run_id:
+        print("the launch receipt says Launched and carries no run id")
+        sys.exit(1)
+    print(run_id)
+    sys.exit(0)
+if not status.startswith("Refused"):
+    print("the launch receipt carries the status '" + status + "', which the launcher does not know")
+    sys.exit(1)
+print("the launch was refused: " + status)
+sys.exit(2)
+PY
 }
 
 # The narration of a run, from the moment the run starts.
@@ -1378,15 +1442,37 @@ read_run_verdict() {
     local db="$1" run_id="$2"
     local events=""
     events="$(binary events "$run_id" --db "$db" --typed 2>/dev/null)" || return 1
-    local bookend=""
-    bookend="$(grep -m1 '"kind":"RunFinished"' <<<"$events" || true)"
-    [[ -n "$bookend" ]] || return 1
-    local outcome=""
-    outcome="$(sed -n 's/.*"outcome":"\([a-z]*\)".*/\1/p' <<<"$bookend")"
-    [[ -n "$outcome" ]] || return 1
-    local steps=0
-    steps="$(grep -c '"kind":"StepFinished"' <<<"$events" || true)"
-    printf 'outcome=%s steps=%s\n' "$outcome" "$steps"
+    # The typed events are documents, one per line, and the run's conclusion is
+    # one of them. Asking the documents for their fields is what keeps the
+    # question "what did this run conclude" a question ABOUT the product's
+    # record, and not a question about where the writer put its keys.
+    printf '%s\n' "$events" | python3 -c '
+import json
+import sys
+
+outcome = None
+steps = 0
+for raw in sys.stdin.buffer:
+    line = raw.strip()
+    if not line.startswith(b"{"):
+        continue
+    try:
+        document = json.loads(line)
+    except ValueError:
+        continue
+    if not isinstance(document, dict):
+        continue
+    kind = document.get("kind")
+    if kind == "RunFinished":
+        value = document.get("outcome")
+        if isinstance(value, str) and value:
+            outcome = value
+    elif kind == "StepFinished":
+        steps += 1
+if outcome is None:
+    sys.exit(1)
+print("outcome=" + outcome + " steps=" + str(steps))
+'
 }
 
 # One scenario, fully isolated. Nothing is read from the developer's HOME and
@@ -1773,6 +1859,12 @@ run_scenario_body() {
     local stdout="$root/stdout.txt" stderr="$root/stderr.txt" code=0
     local vstdout="$root/stdout.volatile.txt" vstderr="$root/stderr.volatile.txt" vcode=0
     local verdict_stdout="$stdout" verdict_stderr="$stderr"
+    # Whether the execution under test WAS a run. Most of the time it is: the
+    # scenario's own pipeline. But a scenario whose verdict is a CONTROL command
+    # -- a cancel, a recover, a read of a refused run -- is holding a command
+    # under test, and a command is not a run and publishes no launch receipt.
+    # The rule "a run that ended well published a receipt" belongs to the runs.
+    local verdict_is_run=1
     local before_snapshot="" after_snapshot=""
 
     # The scenario's own private directory, absolute, and unique per scenario.
@@ -2037,6 +2129,7 @@ run_scenario_body() {
         verdict_stdout="$root/stdout.recover.txt"
         verdict_stderr="$root/stderr.recover.txt"
         code=0
+        verdict_is_run=0
     fi
 
     if [[ "$run_state" != "" ]]; then
@@ -2189,6 +2282,7 @@ run_scenario_body() {
         verdict_stdout="$root/stdout.cancel.txt"
         verdict_stderr="$root/stderr.cancel.txt"
         code=0
+        verdict_is_run=0
     fi
 
     if [[ "$events_refusal" != "" ]]; then
@@ -2265,6 +2359,7 @@ run_scenario_body() {
         verdict_stdout="$root/stdout.events-refusal.txt"
         verdict_stderr="$root/stderr.events-refusal.txt"
         code="$refusal_code"
+        verdict_is_run=0
     fi
 
     if [[ "$events_resume" != "" ]]; then
@@ -2637,11 +2732,14 @@ run_scenario_body() {
     #
     # $1 label, $2 stdout file, $3 stderr file, $4 exit code, $5 control root,
     # $6 journal database, or empty when the execution had no journal to read.
+    # $7 1 when the execution under test WAS a run, 0 when it was a control
+    #    command. A run publishes a launch receipt; a command does not, and the
+    #    rule that a run that ended well published one belongs to the runs.
     # Returns non-zero when an expectation did not hold, and leaves the reason
     # in $check_detail for the caller to report.
     check_execution() {
         local ex_label="$1" ex_stdout="$2" ex_stderr="$3" ex_code="$4" ex_control="$5"
-        local ex_db="$6"
+        local ex_db="$6" ex_is_run="${7:-1}"
         local wanted
         local acceptable=""
 
@@ -2674,8 +2772,33 @@ run_scenario_body() {
         # A run that FAILED may legitimately leave no verdict: that is what a
         # run that died looks like. Only the successful side is a promise.
         if [[ -n "$ex_db" ]]; then
-            local run_id=""
-            run_id="$(run_id_of "$ex_stderr")"
+            local run_id="" receipt_state=0
+            local receipt=""
+            receipt="$(launch_receipt_run_id "$ex_stderr")" || receipt_state=$?
+            case "$receipt_state" in
+                0) run_id="$receipt" ;;
+                1)
+                    # A receipt IS there and could not be read. Saying nothing
+                    # here would make the launcher look like it had nothing to
+                    # check, and the check it skipped is one the run promised.
+                    printf 'FAIL %-52s %s\n' "$ex_label" "$receipt"
+                    check_detail="$receipt"
+                    return 1
+                    ;;
+                2)
+                    # No run to read. A run that ENDED WELL published a
+                    # receipt and a verdict: the receipt comes first in the
+                    # launch sequence, so a run that ended well and left no
+                    # receipt is a run that said nothing about itself. A run
+                    # that FAILED may legitimately leave none, and a control
+                    # command is not a run and publishes none.
+                    if [[ "$ex_code" == "0" && "$ex_is_run" == "1" ]]; then
+                        printf 'FAIL %-52s the run ended well but %s\n' "$ex_label" "$receipt"
+                        check_detail="the run ended well but $receipt"
+                        return 1
+                    fi
+                    ;;
+            esac
             if [[ -n "$run_id" ]]; then
                 local verdict="" run_outcome="" run_steps=0
                 verdict="$(read_run_verdict "$ex_db" "$run_id" || true)"
@@ -2748,14 +2871,21 @@ run_scenario_body() {
         # the pipeline for the reader's refusal.
         if (( ${#expect_transcript[@]} > 0 )); then
             local transcript="$root/transcript.$(basename "$ex_control").txt"
-            local run_id
-            run_id="$(run_id_of "$ex_stderr")"
-            if [[ -z "$run_id" ]]; then
+            local run_id="" receipt_state=0
+            local receipt=""
+            receipt="$(launch_receipt_run_id "$ex_stderr")" || receipt_state=$?
+            if [[ "$receipt_state" == "1" ]]; then
+                printf 'FAIL %-52s %s\n' "$ex_label" "$receipt"
+                check_detail="$receipt"
+                return 1
+            fi
+            if [[ "$receipt_state" != "0" ]]; then
                 printf 'FAIL %-52s the run published no run id, so its transcript cannot be read\n' \
                     "$ex_label"
                 check_detail="no run id in the launch receipt"
                 return 1
             fi
+            run_id="$receipt"
             : >"$transcript"
             local operations
             if ! operations="$(declared_operations "$ex_control" "$run_id")"; then
@@ -2813,8 +2943,31 @@ run_scenario_body() {
         local cw_volatile_out="$4" cw_volatile_err="$5" cw_volatile_control="$6"
 
         local durable_run volatile_run
-        durable_run="$(run_id_of "$cw_durable_err")"
-        volatile_run="$(run_id_of "$cw_volatile_err")"
+        local durable_state=0 volatile_state=0
+        local durable_receipt="" volatile_receipt=""
+        durable_receipt="$(launch_receipt_run_id "$cw_durable_err")" || durable_state=$?
+        volatile_receipt="$(launch_receipt_run_id "$cw_volatile_err")" || volatile_state=$?
+        if [[ "$durable_state" == "1" || "$volatile_state" == "1" ]]; then
+            printf 'FAIL %-52s %s\n' "$label" \
+                "$([[ "$durable_state" == "1" ]] && printf '%s' "$durable_receipt" || printf '%s' "$volatile_receipt")"
+            world_detail="a launch receipt could not be read"
+            return 1
+        fi
+        if [[ "$durable_state" == "2" || "$volatile_state" == "2" ]]; then
+            # One of the two paths published no run to read. A run that ENDED
+            # WELL published a receipt, so on that side the launcher is being
+            # told nothing about a run that promised something.
+            if [[ "$expect_exit" == "0" && "$verdict_is_run" == "1" ]]; then
+                printf 'FAIL %-52s the two execution paths did not both publish a run to read\n' "$label"
+                world_detail="one of the two execution paths published no run id"
+                return 1
+            fi
+            durable_run=""
+            volatile_run=""
+        else
+            durable_run="$durable_receipt"
+            volatile_run="$volatile_receipt"
+        fi
 
         # The comparisons this scenario is owed, counted before any of them
         # happens: a comparison that failed was still promised, and a census
@@ -2942,7 +3095,7 @@ run_scenario_body() {
     local check_detail=""
     local world_detail=""
     if ! check_execution "$label" "$verdict_stdout" "$verdict_stderr" "$code" "$root/control" \
-        "$root/events.db"; then
+        "$root/events.db" "$verdict_is_run"; then
         failed=$((failed + 1))
         failures+=("$label: $check_detail")
         return
@@ -2957,7 +3110,7 @@ run_scenario_body() {
     # what it is.
     if [[ "$run_volatile" == 1 ]]; then
         if ! check_execution "$label (volatile)" "$vstdout" "$vstderr" "$vcode" \
-            "$root/control-volatile" ""; then
+            "$root/control-volatile" "" "1"; then
             failed=$((failed + 1))
             failures+=("$label (volatile): $check_detail")
             return

@@ -163,6 +163,24 @@ legible, cuando lo que faltaba era el directorio. La decisión pasa a ser una re
 y el arnés nombra ahora, en cada escenario, un sitio que no crea: el producto tiene que hacerlo, y
 la corrida es la observación (§2.80).
 
+**Lo que este ciclo midió por fuera: el camino más corto al primer pipeline.** El README dice
+cómo se ejecuta el primer pipeline, y el primer pipeline **no arrancaba**: en una máquina con un
+almacén de credenciales en disco —casi cualquier máquina donde alguien haya guardado un secreto
+alguna vez—, **toda** corrida pedía la frase de paso, y el comando de ejemplo del README moría
+con salida 3 antes de su primer paso. La causa no era el almacén: era **la pregunta**. La
+costura miraba si el fichero del almacén **existe**, que es una pregunta sobre la **máquina**,
+cuando lo que hace falta es saber si la **corrida** liga una credencial. La pregunta se hace
+ahora a la declaración, con un recorrido exhaustivo que el compilador obliga a mantener
+completo, y el arnés —que daba una llave a todo el mundo para tapar el defecto— ha pasado a
+dar una máquina **con** almacén y **sin** llave a quien no liga nada (§2.81).
+
+Y el README, que es el documento que promete ese camino, dejó de llevar cifras que alguien
+tiene que recordar actualizar —la versión, el digest, el número de escenarios— y de prometer un
+bloque de instalación que estaba roto: tomaba el bundle del SDK en vez de la distribución y
+componía mal la ruta del binario. Ahora el manifiesto del release es la autoridad que dice qué
+asset es el programa, y el README en español, que describía otro producto, es una guía breve y
+fiel (§2.81).
+
 **Lo que está abierto ahora mismo:**
 
 | # | Qué falta | Por qué sigue abierto |
@@ -181,26 +199,27 @@ el ZIP no lleva las dependencias de terceros, así que no es autosuficiente
 sin red |
 | 5 | El techo del drenaje | **cerrado** (§2.74): el rechazo era tipado pero **no accionable**, y el techo era un reloj que no distinguía una bomba **atascada** (esperando bytes que nadie va a escribir) de una bomba **lenta** (escribiendo porque la máquina está ocupada). Ahora la bomba declara su atención, el atascado se rechaza **al momento y nombrado**, el lento se espera, y los dos rechazos son **casos tipados distintos** (`STUCK_CHILD`, `OUT_OF_TIME`). Queda medir **cuánto** tarda un drenaje con la máquina saturada: reproducir la saturación en un banco de pruebas es una fixture que este repositorio no tiene |
 | 7 | Lectores que interpretaban la identidad de una operación por texto | **cerrado** (§2.77): el identificador de una operación es el segmento central **entero** de un id de stream, y ese segmento puede llevar separadores propios. La búsqueda por subcadena daba los frames de una operación cuyo identificador **contiene** el pedido, y el índice de segmento nombraba una operación compuesta **cortada** por la mitad. Ahora la dirección publicada responde a la pregunta inversa (`isOperationOf`) y los tres lectores —la lectura por operación, su cola y el filtro de consola— la consultan. Se elimina además un resolvedor textual sin consumidores, que era una segunda autoridad sobre la misma identidad. El defecto era **latente**: los identificadores que el motor produce hoy no llevan separadores, así que no se ve desde la línea de órdenes |
+| 8 | El instalador multi-versión no puede instalar ninguna versión reciente | **medido**: `install 0.85.0-rc1` lo rechaza la comprobación de semver estricto, e `install 0.85.0` da **404**, porque el tag de una candidata lleva sufijo (`v0.85.0-rc1`) y su asset no lo lleva (`pipelinek-0.85.0.zip`); el único tag plano que existe es `v0.75.0`. **No es un descuido**: instalar una candidata bajo el nombre de una versión estable es lo que la ley de identidad prohíbe, así que el arreglo tiene que decidir **dónde** vive una candidata —un directorio con su sufijo— antes de tocar el resolutor. El README lo dice con esas palabras (§2.81) |
 
 ## 1. Estado medido
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `e968fd79`, medido en los ensayos de este bloque. El bloque anterior cerró el **orden de la historia** que el arnés no veía (§2.79). Este cierra los tres sitios donde una avería se llevaba por delante una decisión ya tomada (§2.78), el **orden** que el arnés no comparaba (§2.79) y la **decisión** sobre dónde vive la biblioteca nativa del driver de SQLite: una propiedad en blanco la mandaba al directorio de trabajo, y un nombre que no existía todavía mataba la corrida diciendo que la base de datos no era legible (§2.80). La candidata `v0.85.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
+| SHA | `d4c406be8`, medido en los ensayos de este bloque. El bloque anterior cerró la **decisión** sobre dónde vive la biblioteca nativa del driver de SQLite (§2.80). Este cierra el **camino más corto al primer pipeline**: una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81). La candidata `v0.86.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1165** (167 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1170** (168 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **62 de 62**: **566 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 396, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **21693 / 68122 = 0.318** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **21855 / 68174 = 0.321** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **201 / 166 / 150** en los tres ensayos, los tres sobre `e968fd79`, peor 201 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **162 / 145 / 151** en los tres ensayos, los tres sobre `d4c406be8`, peor 162 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 24 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
-| Candidato publicada | **`v0.83.0-rc1`** (prerelease), `candidate_id` `sha256:d4064388202e64024cdfe3aa23ff2dfb5b3704ed77ae8a5c6f9995b0664b02a9`, tag en `10774b563`; verificada **sobre los bytes descargados del remoto** (§2.78) | `gh release view v0.83.0-rc1`, `sha256sum -c SHA256SUMS` |
+| Candidato publicada | **`v0.86.0-rc1`** (prerelease), `candidate_id` `sha256:1923cc80e2643dd1759d501d4ad1bc764ec68aa333b9eb606aad52e758c43ade`, tag en `d4c406be8`; verificada **sobre los bytes descargados del remoto** (§2.81) | `gh release view v0.86.0-rc1`, `sha256sum -c SHA256SUMS` |
 | Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -214,19 +233,21 @@ El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s, 182, 141 y 139 s,
 187, 139 y 140 s y 203, 139 y 141 s.
 Este mide
-**204, 154 y 155 s**:
+**162, 145 y 151 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 213 s, es menos de
-la cuarta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
-la API pública, los 1161 tests y los 62 escenarios.
+de este ciclo el presupuesto se cumplió con holgura —el peor, 162 s, es menos de
+la sexta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
+la API pública, los 1170 tests y los 62 escenarios.
 
-**La etapa del E2E mide 100 y 98 s**, medidos en seco sobre el lanzador,
-contra los 92, 92 y 90 s del ciclo anterior (§2.72). Los **nueve segundos** de
-más son el precio de una pregunta: el arnés ya no deduce las identidades del
-sistema de ficheros, **pregunta al producto**, y preguntar cuesta un arranque
-de proceso por mundo y por run. Ese precio compra algo que el filesystem no
-daba: **la identidad completa** de cada operacion, y con ella
+**La etapa del E2E mide 91, 92 y 95 s**, medidos en seco sobre el lanzador,
+contra los 100 y 98 s del ciclo anterior (§2.80). **Esta vez la etapa bajó**, y
+la diferencia **no está medida**: no se aisló su causa, y la carga de la máquina
+—que en otros ciclos decidió un rojo o un verde— explica parte. Lo que sigue
+explica el **resto** del coste, que es el de siempre: el arnés ya no deduce las
+identidades del sistema de ficheros, **pregunta al producto**, y preguntar
+cuesta un arranque de proceso por mundo y por run. Ese precio compra algo que el
+filesystem no daba: **la identidad completa** de cada operacion, y con ella
 la posibilidad de que dos operaciones que se pliegan igual sean dos filas y no
 una (§2.73). El escenario **no crece**: los 62 son los mismos 62, y el que
 guarda la puerta de las operaciones se amplia **dentro** del que ya preguntaba
@@ -235,11 +256,10 @@ mayor de este bloque es el que la puerta encontró sola: **una comparación entr
 las dos rutas de ejecución que destapó un defecto del producto** —el registro de
 offset confirmado se escribía en el sitio y dejaba una ventana en la que un
 lector leía un registro vacío, y el observador en vivo moría con él— (§2.73).
-El resto del coste sigue siendo el mismo: la caché de scripts compilados que el
-producto ya tenía apagada sigue siendo la que hace que el E2E no cueste 111 s
-(§2.63), y **la causa de que el arnés corra el producto dos veces por escenario
-sigue siendo la que es** —una ejecución por ruta, y ahora las dos comparadas
-entre sí (§2.64, §2.65).
+La caché de scripts compilados que el producto ya tenía apagada sigue siendo la
+que hace que el E2E no cueste 111 s (§2.63), y **la causa de que el arnés corra el
+producto dos veces por escenario sigue siendo la que es** —una ejecución por ruta,
+y ahora las dos comparadas entre sí (§2.64, §2.65).
 
 **Dos ensayos anteriores a estos tres se descartaron, y hay que decir por
 qué.** Sobre el mismo árbol, la puerta dio dos veredictos con rojos, y **todos
@@ -8815,8 +8835,166 @@ garantía comprobada —**566** comparaciones sobre **112** ejecuciones— y el 
 - La promoción a estable sigue bloqueada: no hay certificador externo en este repositorio ni en
   el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`.
 
+### 2.81 El camino más corto al primer pipeline tiene que funcionar
+
+**El hueco.** El README dice cómo se ejecuta el primer pipeline, y el primer pipeline no
+arrancaba. En una máquina que tuviera un almacén de credenciales en disco —casi
+cualquier máquina donde alguien haya guardado un secreto alguna vez—, **toda** corrida
+pedía la frase de paso de ese almacén, y el comando de ejemplo del README moría con
+`Error: Passphrase required` y salida **3** antes de ejecutar un solo paso. La causa no
+era el almacén: era **la pregunta**. La costura de credenciales se componía mirando si el
+fichero del almacén **existe**, y esa es una pregunta sobre la **máquina**. La necesidad
+del almacén es una pregunta sobre la **corrida**.
+
+**Lo que se midió antes de tocar nada.**
+
+- Sobre los **bytes publicados** —la candidata anterior, `v0.85.0-rc1`—, el comando de
+  ejemplo del README falla: `Error: Passphrase required: set PIPELINE_STORE_PASSPHRASE or
+  run interactively in a TTY`, salida **3**, en una máquina con `~/.pipeline/credentials.bin`
+  presente.
+- El **mismo** comando, en una máquina sin almacén, funciona. El defecto no estaba en la
+  corrida: estaba en la pregunta.
+- El almacén de esta máquina existe desde el 22 de septiembre. Es decir que la máquina
+  llevaba un mes pidiendo una llave que la mayoría de las corridas no necesitaba.
+- La puerta de credenciales se negaba **antes de cualquier paso**. El efecto no era un
+  paso que fallaba: era un pipeline entero que no empezaba.
+
+**Lo que ahora es verdad.** La pregunta se hace a la **declaración** de la corrida, no a
+la máquina: un `PipelineSpec` dice si liga una credencial. Y la regla es un `when`
+**exhaustivo sobre el `StepSpec` sellado**, de modo que un tipo de step nuevo **no
+compila** hasta que alguien diga si puede ligar credenciales. Un binding escrito dentro de
+un cuerpo —`withEnv`, `retry`, `timeout`, una rama de `parallel`, un `slot`— sigue siendo
+un binding de la corrida, y el recorrido lo tiene en cuenta.
+
+Las **tres** vías que consumen el almacén quedaron cubiertas, y la tercera ya toleraba un
+proveedor nulo: `WithCredentialsBlock`, `Checkout` con `credentialsId`, y el contribuidor
+de capacidades —que expone `NoBasicCredentialSource` cuando no hay store, precisamente
+para que un plugin sin credenciales no se lea como «no cableado»—. El fallo **sigue siendo
+fail-closed**: una corrida que liga una credencial y no tiene frase de paso se niega
+igual, con salida **3**.
+
+**Lo que el arnés hace ahora.** El arnés daba una frase de paso a **todos** los
+escenarios, porque la puerta de credenciales se negaba antes de cualquier paso. Eso
+tapaba justo la pregunta que importa: *¿pide una frase de paso una corrida que no liga
+ninguna credencial en una máquina que **sí** tiene almacén?* La respuesta era sí, y el
+arnés la había cubierto con cinta.
+
+Ahora la máquina del escenario **tiene** un almacén: uno real, con un secreto real
+dentro, sembrado una vez por la etapa a través del escritor de la propia distribución y
+copiado en la raíz privada de cada escenario. Los escenarios que **no** ligan nada
+reciben esa copia y **no** reciben la llave; los que ligan algo reciben la llave y
+conservan sus propias credenciales sembradas. La garantía es **universal** y no la
+declara ningún escenario: si el producto pidiera la frase de paso, **60 de 62**
+escenarios se caerían.
+
+**El README dejó de llevar cifras que alguien tiene que recordar actualizar.** Fijaba una
+versión —`0.75.0`, diez versiones y diez tags atrás—, un digest, el número de escenarios
+—50, cuando hay 62— y dos enlaces rotos en su tabla de documentación. El README nuevo no
+fija ninguna: la versión y el digest salen del **propio release** —el manifiesto dice
+cómo se llama su asset y `SHA256SUMS` dice cuál es su digest—, la lista de directivas
+apunta a la cabecera del lanzador que las mantiene ciertas, y los enlaces se comprobaron
+uno a uno.
+
+**El bloque de instalación que proponía el README estaba roto, y se midió.** Tomaba el
+**bundle del SDK** en vez de la distribución —el `awk` del primer bloque encuadraba los
+dos ZIP y se quedaba con el primero por orden alfabético— y componía mal la ruta del
+binario (`pipelinek-pipelinek-0.85.0` en vez de `pipelinek-0.85.0`). Ejecutado desde el
+README, de verdad: descarga, verifica el digest, extrae y el binario responde. Ahora el
+**manifiesto** es la autoridad que dice qué asset es el programa, el **feed del release**
+dice qué versión es la más reciente —sin el límite de tasa de la API—, y el digest se
+comprueba contra `SHA256SUMS`.
+
+**`README.es.md` describía otro producto.** Sus 386 líneas hablaban de un motor con
+sandbox de GraalVM Isolates, contenedores para las tareas y corrutinas de Kotlin: la
+primera no aparece **ni una vez** en el código, la segunda sólo como una declaración
+tipada de qué execution target exige una directiva, y la tercera no existe. Sus
+prerrequisitos —Docker, GraalVM, Gradle 8.4— no son los del producto, y su sección de
+pruebas describía un régimen que el RESET borró. Ahora es una guía breve en español,
+fiel y **sin cifras que roten**, que apunta al README en inglés.
+
+**Lo que se vio en rojo.**
+
+| Mutación | Qué se puso rojo | Motivo |
+|---|---|---|
+| la costura vuelve a preguntar a la máquina | **60 de 62 escenarios** | **55** nombrando `Passphrase required`; los otros cinco muestran su consecuencia: un pipeline que ni siquiera empezó, así que no hay hechos que leer ni sustrato que observar |
+| la regla dice que **nada** liga una credencial | **3 de 5 filas puras** | las tres que afirman que un binding es un binding |
+| la regla dice que **todo** liga una credencial | **3 de 5 filas puras** | las tres que afirman que un cuerpo sin secretos no liga nada |
+
+Las cinco filas puras discriminan **en las dos direcciones**: ninguna es un adorno, y
+ninguna se queda verde por accidente.
+
+Los dos escenarios que sobreviven son los que **no tienen ese sujeto**: uno liga una
+credencial —y recibe la llave—, y el otro verifica una cancelación, que no compone la
+costura. El dato que importa es el motivo: **55 de 60 nombran la misma frase**, y el
+motivo es el producto, no el escenario.
+
+**El análisis estático también habló, y se le hizo caso.** Al preguntar en el llamador,
+la función de la corrida durable se pasó de 117 a 123 líneas, y su tope son 120. En vez
+de relajar la regla, la decisión bajó a donde pertenece: la costura recibe la
+**declaración** y responde sola, y el llamador dejó de repetir la regla. El
+comportamiento no cambió; cambió que ahora hay **un** sitio donde preguntar.
+
+**El coste no subió.** Los mismos **62** escenarios —ninguno nuevo— y las mismas **112**
+ejecuciones, con **566** comparaciones.
+
+**Lo que la puerta midió.** `PASS` tres veces sobre el árbol commiteado (`d4c406be8`):
+****162 / 145 / 151 s**** con un presupuesto de **900 s** y `tests=rewritten:1170 read:0`. Los
+62 escenarios llevan una garantía comprobada —**566** comparaciones sobre **112**
+ejecuciones— y el LOC queda en **21 855** de verificación sobre **68 174** de producto
+(**0,321**).
+
+**La candidata.** `v0.86.0-rc1`, publicada sobre el commit `d4c406be8`, con el artefacto
+`pipelinek-0.86.0.zip` en `sha256:1923cc80e2643dd1759d501d4ad1bc764ec68aa333b9eb606aad52e758c43ade` y los **7** activos con su digest en
+`SHA256SUMS`. Es una **candidata**, no una certificación.
+
+**La garantía, comprobada por fuera.** Sobre los **bytes descargados del remoto** —no sobre
+el árbol local— el comando de ejemplo del README se ejecutó en esta misma máquina, **con el
+almacén presente** y **sin frase de paso**: `Pipeline finished with SUCCESS`, salida **0**.
+La candidata anterior, con los mismos bytes y la misma máquina, moría con salida **3**. La
+misma descarga deja ver el otro lado de la puerta: una corrida que **liga** una credencial y
+no tiene frase de paso se sigue negando con salida **3**, el almacén sembrado está **cifrado**
+—cabecera `PKCR`, ni un byte del secreto en claro— y el secreto **no aparece en ningún
+fichero** de la corrida.
+
+**Lo que queda fuera, dicho con honestidad.**
+
+- El **instalador multi-versión** no puede instalar ninguna versión reciente, y se midió:
+  `install 0.85.0-rc1` lo rechaza la comprobación de semver estricto, e `install 0.85.0`
+  da **404**, porque el tag de una candidata lleva sufijo (`v0.85.0-rc1`) mientras que su
+  asset no lo lleva (`pipelinek-0.85.0.zip`). El único tag plano que existe es `v0.75.0`.
+  **No se ha corregido en este ciclo**, y no por descuido: instalar una candidata bajo el
+  nombre de una versión estable es exactamente lo que la ley de identidad prohíbe, así que
+  el arreglo tiene que decidir **dónde** vive una candidata —un directorio que lleve su
+  sufijo— antes de tocar el resolutor. El README lo dice con esas palabras.
+- La promoción a estable sigue bloqueada: no hay certificador externo en este repositorio
+  ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`.
+- La economía del arnés por **coste** sigue abierta: la caché de compilación vive dentro
+  del ciclo y se borra con él, así que cada ejecución paga su compilación (§2.79).
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
-- **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite
+- **Un sitio que el operador nombra es un sitio que hay que dejar existir.**- **La presencia del almacén es un hecho de la máquina; la necesidad de él es un hecho de la corrida.**
+  Preguntar a la máquina hacía que toda corrida de una máquina que hubiera guardado un secreto
+  pidiera la frase de paso, y el operador la encontraba antes de su primer pipeline (§2.81).
+- **La pregunta se le hace a la declaración, no a la máquina.** Un `PipelineSpec` dice si liga una
+  credencial, y el recorrido es un `when` exhaustivo sobre el `StepSpec` sellado: un tipo de step
+  nuevo no compila hasta que se diga si puede ligar credenciales (§2.81).
+- **El fallo se queda fail-closed.** Una corrida que liga una credencial y no tiene frase de paso
+  se niega igual, con salida 3: lo que se arregla es que la puerta no se interponga donde no hay
+  nada detrás (§2.81).
+- **Un instrumento que tapa el defecto es peor que no tener instrumento.** El arnés daba una llave a
+  todos los escenarios porque la puerta se negaba antes de cualquier paso; con la llave, la
+  pregunta nunca se hacía. Ahora la máquina tiene almacén y quien no liga nada no recibe la llave
+  (§2.81).
+- **Un README que lleva cifras que roten, lleva una promesa que se rompe.** La versión, el digest y
+  el número de escenarios los dice aquello que cambia: el release, el manifiesto y el lanzador
+  (§2.81).
+- **Un documento que describe otro producto es peor que un documento que no existe.**
+  `README.es.md` hablaba de GraalVM Isolates, contenedores y corrutinas que no existen en el
+  código; ahora es una guía breve, fiel y sin cifras que roten (§2.81).
+- **La ley de la identidad no se negocia con la comodidad del instalador.** Una candidata no se
+  instala bajo el nombre de una versión estable: el instalador tiene que resolver **dónde** vive
+  una candidata, y ese es su propio bloque (§2.81).
+ El driver de SQLite
   no crea directorios, así que un nombre que todavía no está es una instrucción que el producto
   tiene que hacer cumplir, no una afirmación que puede creer. La regla es pura y tipada, con tres
   respuestas: lo que ya está se usa tal cual, lo que no está se hace, y lo que no nombra nada es
@@ -10486,6 +10664,17 @@ garantía comprobada —**566** comparaciones sobre **112** ejecuciones— y el 
 
 ## 4. Referencias
 
+- `pipeline-application/.../CredentialBindingDeclaration.kt` — la regla pura que decide si una
+  corrida liga una credencial, con un recorrido exhaustivo sobre el `StepSpec` sellado (§2.81).
+- `pipeline-application/.../CredentialBindingDeclarationTest.kt` — las filas puras de esa regla, sin
+  disco y sin reloj (§2.81).
+- `pipeline-application/.../MainCredentialsSupport.kt` — la costura que decide sola si la corrida
+  necesita el almacén, a partir de la declaración (§2.81).
+- `README.md` — el camino más corto al primer pipeline: versión y digest derivados del release,
+  y el manifiesto como autoridad del asset (§2.81).
+- `README.es.md` — la guía breve en español, fiel y sin cifras que roten (§2.81).
+- `v0.86.0-rc1` — la candidata que este ciclo publicó y verificó (prerelease;
+  la promoción a estable sigue bloqueada por el certificador externo).
 - `pipeline-application/.../SqliteNativeLibraryHome.kt` — la regla pura que decide dónde vive la
   biblioteca nativa del driver de SQLite, con sus tres respuestas (§2.80).
 - `pipeline-application/.../SqliteNativeLibraryHomeTest.kt` — las filas puras de esa regla, sin

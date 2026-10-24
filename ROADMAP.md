@@ -227,6 +227,8 @@ sin red |
 | 14 | La clave de la caché de scripts del producto no cubre los **bytes** de la distribución | **medido** (§2.86): la clave cubre el fuente, la versión del compilador, las opciones y el **ruta** de los jars del classpath, pero no su **contenido** — dos construcciones de la misma versión en el mismo directorio comparten clave. El producto lo declara: su KDoc dice que dos de sus siete dimensiones no se pueden leer. Este bloque lo rodea desde el lanzador (espacio de nombres por digest + marcador), pero un usuario que ponga su propio `PIPELINEK_SCRIPT_CACHE_DIR` sigue expuesto. Corregirlo es un cambio de producto, con su tren y su candidata |
 | 15 | El contrato completo del evento sigue siendo **tres superficies**: el catálogo de tipos, el `when` del escritor y el `when` del decodificador | **medido** (§2.87): lo que se ha cerrado es el **nombre** de los campos opcionales, que ahora tienen una autoridad cerrada y una prueba que recorre el conjunto entero. Lo que queda es el **evento** en sí: un tipo nuevo hay que escribirlo en tres sitios, y una definición tipada del evento —un codec por familia, como el de las compensaciones— reduciría esos tres a uno. Es un cambio de layout del módulo de eventos, y no cabe en una rebanada |
 | 16 | El ejecutor durable sigue concentrando **procesos, FIFO, watchdog, output y ciclo de vida** en un solo fichero | **medido** (§2.87): lo que se ha cerrado es el **estado del lanzamiento** —que ahora viaja con el lanzamiento en vez de quedar en tres campos `@Volatile` que otro paso leía—, y con él cae una costura muerta de 153 líneas. Quedan las responsabilidades: separarlas detrás de puertos concretos es el refactor grande que la propia auditoría **no** recomienda de una vez, y es lo que queda para una rebanada vertical por responsabilidad |
+| 17 | Dentro de una línea menor, el **número de versión** declara la compatibilidad, no el contrato | **medido** (§2.88): dos candidatas de la misma línea publican el mismo SDK y declaran el mismo rango `[0.90.0, 0.91.0)`, y el `apiCheck` compara contra el baseline del repositorio, no contra el SDK publicado anterior. Lo que hoy cubre ese hueco es una **prueba de comportamiento** —un plugin construido contra el SDK publicado anterior se admite y ejecuta—, no una comparación de contratos entre dos publicaciones. Comparar el ABI publicado con el del release anterior es un trabajo con su propio tren |
+| 18 | La comprobación de consumo externo **no está en la puerta local** | **medido** (§2.88): `verify-all.sh` no la ejecuta, porque necesita los SDK ya publicados y red. Es una puerta de publicación, con su latencia propia, y su veredicto viaja en el handoff del release. Un clon sin red no puede ejecutarla: la puerta local sigue siendo la autoridad de lo local, y esta es la autoridad de lo publicado |
 
 ## 1. Estado medido
 
@@ -9723,6 +9725,155 @@ límite de 2.
 - La promoción a estable sigue bloqueada: no hay certificador externo en
   este repositorio ni en el remoto, así que el veredicto es
   `BLOCKED_EXTERNAL`, no `PASS`.
+
+### 2.88 Compatibilidad externa: un consumidor de verdad, contra lo publicado
+
+**Lo que se pedía, y lo que no había.** «Validar artefactos publicados con un
+consumidor externo real... SDK y CLI consumidos desde el release descargado, sin
+depender del checkout». No había ninguna comprobación que lo hiciera. La suite
+E2E corre contra la distribución de desarrollo que construye `installDist`, y
+los plugins de ejemplo que consume se construyen en el mismo árbol y contra el
+SDK que genera esa misma revisión. Entre «el checkout» y «lo publicado» no
+había ni un dato, así que la compatibilidad externa era una afirmación y no
+una medición.
+
+**La forma, decidida antes de escribir nada.** El consumidor es el plugin del
+repositorio, construido por su propio build de Gradle, que es un límite de
+build independiente: resuelve el SDK como coordenadas públicas y no puede ver
+el interior del producto. El SDK se consume desde el release publicado. Y la
+comprobación corre en la vía de publicación, antes de cortar el tag, porque un
+tag que existe no se puede deshacer.
+
+De ahí una consecuencia que conviene decir de entrada: **no es un escenario de
+`examples/`** —esos corren contra la distribución de desarrollo— **ni un test
+unitario** —un test unitario no puede lanzar Gradle, la CLI y una JVM—. Es una
+puerta de publicación, con su latencia propia, y por eso no forma parte de la
+puerta local de 900 s: esa sigue siendo la autoridad de lo local, y esta la de
+lo publicado.
+
+#### El defecto que encontró el trabajo: el consumidor declaraba un rango que no había compilado
+
+**Medido.** En el mismo árbol, apuntar `-PsdkRepo` y `-PsdkVersion` a otro SDK
+publicado dejó `compileKotlin` en `UP-TO-DATE`, mientras las propiedades de
+lanzamiento y el manifiesto **sí** se recalculaban, porque declaran
+`sdkVersion` como entrada. El artefacto podía acabar declarando un rango de
+compatibilidad para un SDK cuyas clases no había compilado: una promesa que los
+bytes no respaldaban.
+
+Para que el fallo fuera visible hubo que **imprimir el classpath resuelto** y
+comprobar que su jar era el modificado: el digest del artefacto resuelto cambió
+y la tarea siguió diciendo `UP-TO-DATE`. No es una regla del plugin, es que la
+tarea de compilación no declara el classpath como entrada en este build.
+
+El arreglo es una entrada por plugin: el SDK resuelto se declara como entrada
+de `compileKotlin`, normalizada por **contenido**, en los cuatro plugins de
+ejemplo. Así un cambio en la API del SDK vuelve a compilar, y las clases y la
+declaración provienen del mismo SDK, que es lo único que hace que el rango
+declarado signifique algo. **Los bytes del plugin no cambian**: el arreglo toca
+la declaración de entradas del build, no el contenido del artefacto.
+
+#### Lo que se midió, con lo que sale
+
+- **El SDK publicado es un repositorio Maven resoluble.**
+  `pipelinek-0.90.0.sdk.zip` descomprime a
+  `dev/rubentxu/pipeline/v2/<artefacto>/<versión>/`, y un build externo resuelve
+  `pipeline-sdk-bom:0.90.0` sin tocar el checkout.
+- **El plugin construido contra el SDK publicado reproduce byte a byte el que
+  empaqueta el producto** (mismo `sha256`). El SDK publicado es reproducible.
+- **La línea menor es la unidad de compatibilidad.** El techo del rango es el
+  siguiente *minor*, exclusivo: un plugin construido contra 0.89.0 declara
+  `[0.89.0, 0.90.0)` y un host 0.90.0 lo rechaza con `IncompatibleApiRange`.
+  Eso no es un defecto, es el contrato que el producto publica; por eso la
+  comprobación lo afirma en vez de esquivarlo.
+- **Dentro de la línea, lo publicado antes sigue cargando.** El plugin
+  construido contra el SDK de `v0.90.0-rc1` se admite y ejecuta en el host de
+  la candidata.
+- **Dos artefactos con la misma identidad no conviven.** El plugin empaquetado
+  y el que trae el operador declaran la misma identidad, y el runtime rechaza
+  la composición. Por eso el instrumento retira el empaquetado de `lib/` antes
+  de cada corrida, y **comprueba** que lo retiró: sin esa retirada, la
+  comprobación mediría el empaquetado y llamaría «consumidor» a lo que es el
+  producto.
+
+#### Las tres filas, y qué prueba cada una
+
+| fila | SDK | host | qué tiene que pasar |
+|---|---|---|---|
+| A | el de la propia candidata | la candidata | admitido, y el paso se ejecuta |
+| B | el publicado antes, en la misma línea | la candidata | admitido, y el paso se ejecuta |
+| C | el de una línea anterior | la candidata | rechazo tipado y salida 2 |
+
+La fila B es la que responde a la pregunta que importa —«¿sigue funcionando lo
+que ya se publicó?»— y por hoy es la que más puede pesar: las dos candidatas
+publican el mismo SDK, así que lo que demuestra hoy es que **el consumidor
+externo funciona**, no que el contrato haya derivado. La deriva dentro de la
+línea la vería esa misma fila, porque el plugin construido contra el SDK
+anterior dejaría de encajar en el host nuevo; y lo que no vería es una deriva
+que las dos mitades firmaran a la vez.
+
+El plugin se construye en una **copia aislada** de sus fuentes, nunca en el
+árbol, para no dejar el artefacto del producto construido contra otro SDK, y
+para que lo medido sea un plugin compilado contra el SDK que la fila nombra.
+
+#### Lo que se falsificó
+
+Cada mutación se aplicó, se leyó el diff de vuelta y se comprobó que
+ennegrece **exactamente** las filas que debe y ninguna más:
+
+| mutación | filas rojas | filas verdes | qué demuestra |
+|---|---|---|---|
+| M1 · el rango deja de rechazar | C | A, B | la fila negativa no es decorativa |
+| M2 · el suelo del rango pasa a ser exclusivo | A, B, C | — | un host que se cierra de más no publica; el mutante rompe también los plugins empaquetados, y por eso C se pone roja por otro artefacto |
+| M2′ · el plugin declara un rango que no cubre al host | A, B | C | el artefacto que se admite es el externo, no el empaquetado |
+| M3 · el programa deja de llamar al paso | A, B | C | que el paso se ejecutó **se observa**, no se supone |
+| M4 · el plugin empaquetado no se retira | la comprobación se niega a correr | — | sin la retirada, la comprobación mediría el artefacto equivocado |
+
+M2 es la única con colateral, y la colateral está explicada: un suelo exclusivo
+rechaza **todo** plugin cuyo rango empieza en la versión que corre, el
+empaquetado incluido, así que la fila C observa el rechazo de otro artefacto.
+M2′ es la que aísla lo que M2 mezclaba.
+
+#### La puerta
+
+Tres ensayos sobre el SHA de la candidata (`3e0f14d86`): **169**, **122** y
+**124** s, con `tests=rewritten:1234 read:0` y **62** de **62** escenarios. El
+primer ensayo de la serie pagaba una caché de compilación fría —la de las
+mutaciones, no la del producto— y un cuarto ensayo, con la caché caliente, bajó
+a **119** s: el estado estable es el de los ensayos segundo y tercero. El LOC,
+con el script de consumo externo contado como lo que es —verificación, no
+producto—, queda en VERIFY_LOC **23003** / PRODUCT_LOC **68460** = **0,336**,
+muy por debajo del límite de 2.
+
+#### La candidata
+
+`v0.90.0-rc2`, con `candidate_id sha256:694604a5c64afcadba7e41647bbd8765fe5a7b2e3503d1d508b33f797cd9bcd2`
+y los **7** assets de siempre. El producto **no** cambia de comportamiento
+observable —el arreglo es de build, y los bytes del plugin son los mismos—, así
+que la ley de versión **no** abre un tren nuevo: el tren 0.90.0 sigue abierto y
+esta es su segunda candidata. Por eso también se corrigió el ordinal: el script
+de publicación pasaba siempre `candidate.sequence=1`, lo que escribía un
+ordinal falso en el handoff de una segunda candidata del mismo tren.
+
+La comprobación de consumo externo se ejecutó **dentro** de la vía de
+publicación, antes de que existiera el tag: `rows=A:PASS B:PASS C:PASS` en
+**61** s, y su veredicto viaja en el handoff publicado.
+
+#### Lo que queda fuera, dicho con honestidad
+
+- **Dentro de una línea menor, el número de versión es el que declara la
+  compatibilidad, no el contrato.** El `apiCheck` compara contra el baseline
+  del repositorio, no contra el SDK publicado anterior, así que una deriva del
+  ABI entre dos candidatas de la misma línea no la ve ninguna comparación
+  estática. Queda como fila 17 de §1.
+- **La comprobación de consumo externo no está en la puerta local**, porque
+  necesita los SDK ya publicados y red. Queda como fila 18 de §1.
+- **La fila B solo ve la deriva que el comportamiento delata.** Un contrato que
+  cambia y que el plugin no exercise es invisible para ella: no es una
+  comparación de contratos, es una prueba de que lo publicado sigue
+  funcionando.
+- La promoción a estable sigue bloqueada: no hay certificador externo en este
+  repositorio ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no
+  `PASS`.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite

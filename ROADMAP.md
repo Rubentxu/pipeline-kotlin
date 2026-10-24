@@ -14,6 +14,30 @@ una medición.
 
 ---
 
+<!-- BEGIN PIPELINEK RSO 2026-10-24 -->
+## Programa RSO — rendimiento, seguridad y observabilidad (propuesta aditiva)
+
+**Base revisada:** `main` SHA `094acfdb1b9be58fbc26e2a33e7c35d17abed69f` (24-10-2026). Esta propuesta no reabre bloques B1..B4, no hereda afirmaciones del apéndice histórico y no declara ningún hito implementado. `AGENTS.md` y los contratos del código actual prevalecen. Antes de implementar, verificar HEAD, ramas, instalación, políticas, tests y CLI actuales.
+
+| Orden | Hito | Capacidad terminada | Condición crítica |
+|---|---|---|---|
+| RSO-01 | Perfil de ejecución | Timings diagnósticos tipados y baseline de coste | Nunca fingir muestras ni timings ausentes |
+| RSO-02 | Caché segura de compilación | Reutilización de scripts compilados con clave v3 | Digest real de JAR, SDK y plugins; sin reusar efectos |
+| RSO-03 | Inspect explicativo | Diagnóstico de solo lectura con evidencias y desconocidos | No crear DB ni fundir eventos y bytes |
+| RSO-04 | Confianza y admisión | Rechazo pre-evaluación Kotlin cuando falta aislamiento | `LOCAL` no es sandbox multi-tenant |
+| RSO-05 | Procedencia de distribución | Dependencias verificadas y artefactos con procedencia | Preservar `SHA256SUMS`, tag GPG y SDK A/B/C |
+| RSO-06 | Follow eficiente | Wakeups optativos y polling de seguridad | Notificación ≠ registro; cursores sin pérdida |
+| RSO-07 | OTel opt-in | Traces/metrics acotadas y redaccionadas | No bloquear runtime ni filtrar secretos |
+| RSO-08 | Proveedor aislado opt-in | Compilación/evaluación y steps bajo límites comprobados | Rechazo si backend no garantiza TODO el perfil |
+| RSO-09 | Caché de operaciones puras | Primera transformación real reutilizable y sin efectos | Solo si es viable y mejora demostrada; nunca `sh` genérico |
+
+**Hito completo = capacidad consumible + tests discriminantes + UAT/AAT efímeros retirados + `scripts/verify-all.sh` sin filtros y bajo los presupuestos + integración remota del SHA definitivo + release RC GPG publicada por `scripts/release-pipelinek.sh` + descarga, manifest y consumidor SDK verificados.** Si falta un gate se anota `BLOCKED`, no `DELIVERED`; stable requiere certificador externo cuando aplique. No se añaden tests Kotlin E2E ni QA frameworks; tests permanentes exclusivamente unitarios en su módulo y `.pipeline.kts` de producto en `examples/` solo para garantía pública irreemplazable.
+
+**Paralelismo:** equipos independientes de rendimiento (RSO-01→02→06), observabilidad (03→07), seguridad (04→08) y supply chain (05), con un único integrador exclusivo de ABI/wire, `ROADMAP.md`, merge, gate full, tag y publicación. RSO-09 se decide después de medir su valor. Implementación guiada por `delivery-first-testing` (`change-impact`, `ephemeral-uat`, `regression-promotion`, `merge-assurance`, `integration-assurance`, `release-assurance`, `failure-triage`, `harness-economics`), sin segunda puerta de verificación.
+
+Los diseños completos de trabajo, especificaciones, ADR, dependencias, tests y handoffs están en el paquete externo de planificación `pipelinek-rso-plan/` **fuera del repositorio**, conforme a `AGENTS.md` §§0,6. Cada decisión normativa implementada debe quedar en el código/KDoc público y su cierre en esta sección del roadmap, sin nueva jerarquía `docs/`.
+<!-- END PIPELINEK RSO 2026-10-24 -->
+
 ## 0. Vista operativa: qué falta, y dónde está escrito
 
 Esta tabla es lo primero que hay que leer. Debajo está la evidencia de cada punto, y

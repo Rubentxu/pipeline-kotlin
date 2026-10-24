@@ -52,9 +52,9 @@ curl -fL -o install-pipelinek.sh \
   "https://raw.githubusercontent.com/Rubentxu/pipeline-kotlin/main/scripts/install-pipelinek.sh"
 chmod +x install-pipelinek.sh
 
-./install-pipelinek.sh install <version>   # download + verify + install
-./install-pipelinek.sh use <version>       # switch the active version
-./install-pipelinek.sh list                # installed versions + active
+./install-pipelinek.sh install <release>   # download + verify + install
+./install-pipelinek.sh use <release>       # switch the active release
+./install-pipelinek.sh list                # installed releases + active
 
 export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
 ```
@@ -63,17 +63,17 @@ Install is **transactional**: download, digest, extraction and identity
 verification all happen in a temporary directory, and the final directory is
 created by a single rename only after every check has passed. A failed
 install leaves nothing behind, and the previously active version is never
-disturbed. The installer also requires **exact runtime identity**: the
-installed binary must report exactly the requested version, and a digest
-mismatch, an archive root that disagrees with the version, or a
-candidate-suffixed binary under a final filename all fail closed instead of
-installing something mislabelled.
+disturbed.
 
-The installer resolves a release whose **tag is exactly the version you
-asked for**. Every release published since `v0.75.0` is a candidate, and a
-candidate's tag carries a suffix (`v0.85.0-rc1`) while its asset carries the
-plain version (`pipelinek-0.85.0.zip`), so the installer does not resolve a
-candidate yet — use the download above for one.
+A `<release>` is a **stable version** (`0.88.0`) or a **candidate**
+(`0.88.0-rc1`). The slot names the release; the artifact name and the
+product version inside the bytes are read from the `manifest.json` the
+release publishes, so a candidate installs from its own tag and under its
+own directory, and asking for a stable version never silently yields a
+candidate's bytes. The installed binary must report exactly the product
+version the manifest names, and a digest mismatch, a manifest that does
+not describe the requested release, or an archive root that disagrees with
+the artifact all fail closed instead of installing something mislabelled.
 
 ## Your first pipeline
 

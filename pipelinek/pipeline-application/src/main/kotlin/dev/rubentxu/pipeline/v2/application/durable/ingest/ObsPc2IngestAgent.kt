@@ -80,7 +80,7 @@ object ObsPc2IngestAgent {
     /**
      * Entry point for the launched JVM. The argv order is fixed by
      * [argv] so the launcher's wiring in
-     * `DurableShellLaunching.launch` and this agent cannot drift.
+     * `DurableShellExecutor.launch` and this agent cannot drift.
      * @param args `controlDirRoot`, `runId`, `opIdString`, `fifoDir`,
      *   `readyMarker`, `secret`
 */
@@ -319,7 +319,7 @@ object ObsPc2IngestAgent {
 
     /**
      * The argument order both sides agree on, so the launcher's
-     * `DurableShellLaunching.launch` and this agent cannot drift on it.
+     * `DurableShellExecutor.launch` and this agent cannot drift on it.
      * Nothing in this tree drives the agent through it, so the shape below
      * is stated, not checked.
 */

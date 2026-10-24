@@ -204,3 +204,39 @@ internal fun drainTranscriptPumps(
         }
     }
 }
+
+/**
+ * How long ONE wait of the transcript drain lasts.
+ *
+ * The drain asks the pumps whether they are still MOVING, so it has to look more than once:
+ * a slice short enough to notice that a pump stopped, and long enough not to spend the
+ * wait asking. The budgets that decide are the drain's own, in [DurableShConfig], because
+ * they are the operator's levers and not the runtime's taste.
+ */
+const val TRANSCRIPT_PUMP_DRAIN_SLICE_MS: Long = 250
+
+/**
+ * The verdict on ONE launch's transcript: the refusal that stops the step from being
+ * reported on a transcript the runtime cannot vouch for, or `null` when it can.
+ *
+ * ## Why the launch is the argument
+ *
+ * The verdict is about the transcript of ONE child. It is computed from the pumps that
+ * child started and from the sinks those pumps wrote into — and from nothing else. That
+ * is the whole answer to "can two executions swap their drain objects": there is no
+ * ambient state left in the runtime for them to swap, because the state IS the argument.
+ *
+ * The drain is checked FIRST: if a pump was still alive, nothing downstream of it can
+ * claim the transcript is complete, so that refusal subsumes whatever the sinks recorded
+ * in the meantime.
+ */
+internal fun transcriptVerdict(
+    shell: LaunchedShell,
+    config: DurableShConfig,
+): ProcessOutputRefusal? =
+    drainTranscriptPumps(
+        pumps = shell.transcriptPumps,
+        idleBudgetMs = config.transcriptDrainIdleBudgetMs,
+        ceilingMs = config.transcriptDrainCeilingMs,
+        sliceMs = TRANSCRIPT_PUMP_DRAIN_SLICE_MS,
+    ) ?: shell.transcriptRefusal()

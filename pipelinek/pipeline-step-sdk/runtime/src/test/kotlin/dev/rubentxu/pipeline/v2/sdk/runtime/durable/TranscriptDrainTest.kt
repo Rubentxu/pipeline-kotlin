@@ -17,7 +17,10 @@ private class FakePump(
     override val name: String = "fake-pump",
 ) : TranscriptPumpView {
     private var alive = true
-    private var waits = 0
+
+    /** How many times the drain waited on this pump. */
+    var waits = 0
+        private set
 
     /** The wait on which the pump finishes. `null` means it never finishes. */
     var finishesOnWait: Int? = null
@@ -209,5 +212,121 @@ class TranscriptDrainTest {
                 sliceMs = 250,
             ),
         )
+    }
+
+    // --- the verdict, over launches the test owns --------------------------------------
+
+    /**
+     * A sink that answers with the refusal the test decides, and remembers being asked.
+     */
+    private class RefusingSink(
+        private val answer: ProcessOutputRefusal?,
+    ) : ProcessOutputSink {
+        var consulted = false
+            private set
+
+        override fun write(bytes: ByteArray, offset: Int, length: Int) = Unit
+
+        override fun refusal(): ProcessOutputRefusal? {
+            consulted = true
+            return answer
+        }
+
+        override fun close() = Unit
+    }
+
+    /**
+     * The drain's budgets, small enough that a stuck pump is refused in a few rounds.
+     */
+    private fun config() = DurableShConfig(
+        transcriptDrainIdleBudgetMs = 1_000,
+        transcriptDrainCeilingMs = 60_000,
+    )
+
+    /**
+     * A launch with the state the test gives it.
+     *
+     * The handle is the CURRENT JVM's: the verdict never looks at the child, and a test must
+     * not fork a process to prove a rule about bookkeeping.
+     */
+    private fun launch(
+        pumps: List<TranscriptPumpView>,
+        sinks: List<ProcessOutputSink>,
+    ) = LaunchedShell(
+        handle = ProcessHandle.current(),
+        transcriptPumps = pumps,
+        transcriptSinks = sinks,
+        agentWarmup = emptyList(),
+    )
+
+    @Test
+    fun `two launches do not exchange their drain objects`() {
+        // Two executions, two launches. The first is healthy: its pump finishes and its sink has
+        // nothing to refuse. The second is not: its pump never finishes.
+        //
+        // If the runtime kept the drain state somewhere both executions could reach it, the first
+        // verdict would inherit the second's stuck pump, and the first execution would be reported
+        // on a transcript that is not its own — the "short, ordered, plausible" transcript that
+        // this codebase refuses to accept anywhere else.
+        val healthyPump = FakePump("healthy-pump").apply { finishesOnWait = 1 }
+        val stuckPump = FakePump("stuck-pump")
+
+        val healthy = launch(listOf(healthyPump), emptyList())
+        val failing = launch(listOf(stuckPump), emptyList())
+
+        assertNull(
+            transcriptVerdict(healthy, config()),
+            "a healthy launch must not inherit the other launch's stuck pump",
+        )
+        assertEquals(1, healthyPump.waits, "the launch's own pump was drained")
+        assertEquals(0, stuckPump.waits, "the other launch's pump was never touched")
+
+        val refusal = transcriptVerdict(failing, config())
+        val drain = assertInstanceOf(
+            ProcessOutputRefusal.DrainIncomplete::class.java,
+            refusal,
+            "the launch whose pump never finishes is refused as a stuck child",
+        )
+        assertEquals(TranscriptDrainCause.STUCK_CHILD, drain.cause)
+        assertTrue(
+            drain.detail.contains("stuck-pump"),
+            "the refusal must name ITS OWN pump: <${drain.detail}>",
+        )
+        assertTrue(
+            !drain.detail.contains("healthy-pump"),
+            "the refusal must not name the other launch's pump: <${drain.detail}>",
+        )
+    }
+
+    @Test
+    fun `a refusal belongs to the launch that produced it`() {
+        // The same isolation for the sinks: a launch with no pumps at all, so the verdict can
+        // only come from its own sink.
+        val healthySink = RefusingSink(null)
+        val refusingSink = RefusingSink(
+            ProcessOutputRefusal.WriteFailed(
+                detail = "the plane refused the bytes",
+                cause = IllegalStateException("the store said no"),
+            ),
+        )
+
+        val healthy = launch(emptyList(), listOf(healthySink))
+        val failing = launch(emptyList(), listOf(refusingSink))
+
+        assertNull(
+            transcriptVerdict(healthy, config()),
+            "a launch with nothing to refuse must not inherit the other launch's refusal",
+        )
+        assertTrue(healthySink.consulted, "the launch's own sink was consulted")
+        assertTrue(!refusingSink.consulted, "the other launch's sink was never consulted")
+
+        val refusal = transcriptVerdict(failing, config())
+        val write = assertInstanceOf(
+            ProcessOutputRefusal.WriteFailed::class.java,
+            refusal,
+            "the launch whose sink refused is refused with what the sink said",
+        )
+        assertEquals("the plane refused the bytes", write.detail)
+        assertTrue(refusingSink.consulted, "the refusing launch's own sink was consulted")
     }
 }

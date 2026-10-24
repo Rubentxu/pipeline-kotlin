@@ -80,7 +80,14 @@ data class DurableShellResult(
 )
 
 /**
- * Implementation of [DurableShellLaunching] using ProcessBuilder + setsid.
+ * The durable shell, using ProcessBuilder + setsid.
+ *
+ * It used to implement a `DurableShellLaunching` interface that promised fake
+ * implementations for unit testing. There were none, and there was no other
+ * implementation and no other caller: the interface was a seam with one side
+ * of it missing. The executor is now the seam, and a launch returns what it
+ * produced ([LaunchedShell]) instead of leaving it in fields for a later,
+ * separate step to read back.
  * ## State Machine
  * LAUNCHING → RUNNING → COMPLETE | LOST | LAUNCH_FAILED | TIMED_OUT
  * ## Control Directory Layout
@@ -115,7 +122,7 @@ data class DurableShellResult(
  * @see <a href=""> - nohup+setsid detachment</a>
  * @see <a href=""> - Text-File-Busy workaround</a>
 */
-class DurableShellExecutor : DurableShellLaunching {
+class DurableShellExecutor {
 
     /** Polling interval for result.txt checks (100ms) */
     private val pollIntervalMs = 100L
@@ -149,15 +156,6 @@ class DurableShellExecutor : DurableShellLaunching {
         } catch (_: Exception) {
             null
         }
-    }
-
-    override fun launch(
-        controlDir: Path,
-        scriptContent: String,
-        opId: String,
-        config: DurableShConfig,
-    ): ProcessHandle {
-        return launch(controlDir, scriptContent, opId, config, captureStdout = false)
     }
 
     /**
@@ -464,16 +462,6 @@ class DurableShellExecutor : DurableShellLaunching {
             "dev.rubentxu.pipeline.v2.application.durable.ingest.ObsPc2IngestAgent"
 
         /**
-         * How long ONE wait of the transcript drain lasts.
-         *
-         * The drain asks the pumps whether they are still MOVING, so it has to look more than once:
-         * a slice short enough to notice that a pump stopped, and long enough not to spend the
-         * wait asking. The budgets that decide are the drain's own, in [DurableShConfig], because
-         * they are the operator's levers and not the runtime's taste.
-         */
-        const val TRANSCRIPT_PUMP_DRAIN_SLICE_MS: Long = 250
-
-        /**
          * Bounded wait for the agent's `readyMarker`. The agent's class
          * init + `mkfifo` + `Files.writeString(readyMarker, "ready\n")` is
          * sub-second in practice; 10s is a generous upper bound that
@@ -564,19 +552,17 @@ class DurableShellExecutor : DurableShellLaunching {
      * @param scriptContent The user's shell script.
      * @param opId The operation ID.
      * @param config The durable shell configuration.
-     * @param captureStdout If true, capture stdout to output.txt via tee wrapper.
-     * @param env Environment variables to inject via pb.environment.putAll (env via env map, NOT argv)
-     * @return The process handle.
+     * @param request What the execution asked for: the environment, the sandbox, the workspace
+     *   root and whether stdout is captured. The launch takes the REQUEST and not its pieces, so
+     *   it cannot be called with an environment from one execution and a sandbox from another.
+     * @return The launch: the child AND the transcript state that belongs to it.
 */
-    fun launch(
+    private fun launch(
         controlDir: Path,
         scriptContent: String,
         opId: String,
         config: DurableShConfig,
-        captureStdout: Boolean,
-        env: Map<String, SecretHandle> = emptyMap(),
-        workspaceRoot: Path? = null,
-        sandbox: SandboxConfig = SandboxConfig.NONE,
+        request: DurableShellExecutionRequest,
         // Wrap factory applied to EACH child's
         // stream BEFORE any byte reaches its sink. The factory must return a
         // chunk-boundary-safe redacting stream (StreamingRedactor).
@@ -586,7 +572,7 @@ class DurableShellExecutor : DurableShellLaunching {
         // for that channel", which the launch treats as "pump it to the control-dir file" rather
         // than as a request to discard it — a missing sink must never become a dropped byte.
         channelSinks: Map<ProcessOutputChannel, ProcessOutputSink> = emptyMap(),
-    ): ProcessHandle {
+    ): LaunchedShell {
         checkLinuxOrThrow()
 
         // Script content is written to filesystem (script.sh), NOT passed as argv.
@@ -609,7 +595,7 @@ class DurableShellExecutor : DurableShellLaunching {
             controlDir = controlDir,
             scriptContent = scriptContent,
             config = config,
-            captureStdout = captureStdout,
+            captureStdout = request.captureStdout,
             opId = opId,
             pumpedThroughJvm = pumpedThroughJvm,
             pumpedViaAgent = config.pumpedViaAgent,
@@ -627,9 +613,9 @@ class DurableShellExecutor : DurableShellLaunching {
         // The ProcessHandle points to the setsid parent (exits quickly).
         // The real target (bash/wrapper) is found via cookie-scan.
         val pb = ProcessBuilder("setsid", "bash", wrapperFile.toString())
-        pb.directory((workspaceRoot ?: controlDir).toFile())
+        pb.directory((request.workspaceRoot ?: controlDir).toFile())
 
-        composeChildEnvironment(pb, opId, sandbox, env)
+        composeChildEnvironment(pb, opId, request.sandbox, request.env)
 
         // Redirect stdin to /dev/null to prevent blocking on input
         // The durable file separation depends on the invocation mode.
@@ -648,7 +634,7 @@ class DurableShellExecutor : DurableShellLaunching {
         // values are never scrubbed).
         pb.redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
         // (pumpedThroughJvm was resolved above, before the wrapper content was built.)
-        if (captureStdout) {
+        if (request.captureStdout) {
             val stdoutCapture = controlDir.resolve("output.txt")
             pb.redirectOutput(ProcessBuilder.Redirect.to(stdoutCapture.toFile()))
             if (pumpedThroughJvm) {
@@ -672,7 +658,7 @@ class DurableShellExecutor : DurableShellLaunching {
         // the transcript file, and so a fallback sink owns the ONLY writer handle from the first
         // byte. When a composed sink exists this file is not written at all, and creating it would
         // only leave an empty second copy of a transcript that lives somewhere else.
-        if (!pumpedThroughJvm && !captureStdout) {
+        if (!pumpedThroughJvm && !request.captureStdout) {
             Files.newOutputStream(logFile).use { /* create/truncate */ }
         }
 
@@ -718,7 +704,6 @@ class DurableShellExecutor : DurableShellLaunching {
             )
             launchIngestAgent(controlDir, opId, config, handles)
             awaitAgentReady(handles)
-            lastAgentHandles = handles
             handles
         } else {
             null
@@ -735,22 +720,24 @@ class DurableShellExecutor : DurableShellLaunching {
             // attributed before it is persisted. It also means both pipes are drained concurrently,
             // so neither child stream can block on a full pipe while the other is being read — which
             // is the deadlock that made the old "wait, then read the other channel" shape unsafe.
+            var transcriptPumps: List<TranscriptPumpView> = emptyList()
+            var transcriptSinks: List<ProcessOutputSink> = emptyList()
             if (pumpedThroughJvm && !config.pumpedViaAgent) {
                 // In capture mode stdout is an exact redirect to the typed-value file, so the only
                 // piped channel is stderr. In plain mode both are piped and each gets its own pump.
                 // When the agent path is active, the runtime does NOT start
                 // its per-channel pump threads; the agent JVM owns the FIFO read ends and is the
                 // single durable authority.
-                val (pumps, sinks) = startTranscriptPumps(
+                val (startedPumps, startedSinks) = startTranscriptPumps(
                     process = process,
                     opId = opId,
-                    captureStdout = captureStdout,
+                    captureStdout = request.captureStdout,
                     transcriptRedactor = transcriptRedactor,
                     channelSinks = channelSinks,
                     fallbackLogFile = logFile,
                 )
-                lastTranscriptPumps = pumps
-                lastTranscriptSinks = sinks
+                transcriptPumps = startedPumps
+                transcriptSinks = startedSinks
             }
             // The agent was launched BEFORE `pb.start()` (see the
             // `agentHandles` block above) and the runtime waited on its `readyMarker`
@@ -773,8 +760,18 @@ class DurableShellExecutor : DurableShellLaunching {
             // still surfaced as typed results below; only the noise was
             // removed.
 
-            handle
+            LaunchedShell(
+                handle = handle,
+                transcriptPumps = transcriptPumps,
+                transcriptSinks = transcriptSinks,
+                agentWarmup = agentHandles?.warmup.orEmpty(),
+            )
         } catch (e: Exception) {
+            // The agent's FIFOs were opened BEFORE the child started, and their warm-up
+            // descriptors are the only writers on them. If the child never started, nobody
+            // else will close them: the caller never receives a launch, so it cannot close
+            // them either, and the agent would wait for an EOF that never comes.
+            agentHandles?.warmup?.forEach { runCatching { it.close() } }
             throw IllegalStateException("Failed to launch durable shell for $opId", e)
         }
     }
@@ -903,7 +900,7 @@ class DurableShellExecutor : DurableShellLaunching {
         }
     }
 
-    override fun detach(process: ProcessHandle, controlDir: Path) {
+    fun detach(process: ProcessHandle, controlDir: Path) {
         checkLinuxOrThrow()
 
         val cookieFile = controlDir.resolve(".cookie")
@@ -936,7 +933,7 @@ class DurableShellExecutor : DurableShellLaunching {
         }
     }
 
-    override fun pollResult(controlDir: Path, timeoutMs: Long): Int? {
+    fun pollResult(controlDir: Path, timeoutMs: Long): Int? {
         val resultFile = controlDir.resolve("result.txt")
         val deadline = if (timeoutMs > 0) System.currentTimeMillis() + timeoutMs else Long.MAX_VALUE
 
@@ -953,7 +950,7 @@ class DurableShellExecutor : DurableShellLaunching {
         return null
     }
 
-    override fun isAlive(controlDir: Path, process: ProcessHandle): Boolean {
+    fun isAlive(controlDir: Path, process: ProcessHandle): Boolean {
         val cookieFile = controlDir.resolve(".cookie")
 
         // Check 1: cookie file exists
@@ -969,7 +966,7 @@ class DurableShellExecutor : DurableShellLaunching {
         }
     }
 
-    override fun kill(process: ProcessHandle, controlDir: Path) {
+    fun kill(process: ProcessHandle, controlDir: Path) {
         val cookieFile = controlDir.resolve(".cookie")
 
         // SIGKILL the process tree using negative PID (process group)
@@ -989,7 +986,7 @@ class DurableShellExecutor : DurableShellLaunching {
         }
     }
 
-    override fun cleanup(controlDir: Path, exitCode: Int) {
+    fun cleanup(controlDir: Path, exitCode: Int) {
         cleanup(controlDir, exitCode, keepTranscriptLog = false)
     }
 
@@ -1151,7 +1148,7 @@ class DurableShellExecutor : DurableShellLaunching {
      * Legacy wrapper builder for compatibility (used by tests).
      * @deprecated Use buildWrapperContent instead for Jenkins-faithful pattern.
 */
-    override fun buildWrapper(controlDir: Path, scriptPath: Path, config: DurableShConfig): String {
+    fun buildWrapper(controlDir: Path, scriptPath: Path, config: DurableShConfig): String {
         return buildWrapperContent(controlDir, scriptPath, config, captureStdout = false, opId = "legacy")
     }
 
@@ -1488,65 +1485,6 @@ class DurableShellExecutor : DurableShellLaunching {
         ),
     ).toLegacyShellResult(controlDir)
 
-    /**
-     * The transcript pump created by the most recent [launch] call
-     * (single-threaded launch discipline: one launch per executeCore). Used by
-     * executeCore to drain the pump before projecting the persisted transcript.
-*/
-    @Volatile
-    private var lastTranscriptPumps: List<TranscriptPumpView> = emptyList()
-
-    /**
-     * The sinks the pumps wrote into, kept so the terminal projection can read their refusals.
-     * The pumps cannot propagate a persistence failure to the caller by throwing — they run on
-     * daemon threads whose whole purpose is to survive the child. So a failure is recorded on the
-     * sink and read here, after the pumps have been joined, which is the first point at which the
-     * Answer is stable. That is why this is a list: one launch now pumps up to two channels
-     * and a refusal on stderr must not be hidden behind a healthy stdout.
-*/
-    @Volatile
-    private var lastTranscriptSinks: List<ProcessOutputSink> = emptyList()
-
-    /**
-     * The [AgentHandles] created by the most recent [launch] call
-     * when the agent path is active. Used by [executeCore] to release the warmup
-     * fds in its `finally` block, after the child has finished — at which point
-     * the warmup is the only writer on the FIFO and closing it lets the agent
-     * see EOF and exit cleanly.
-     * `null` in non-agent paths and after a `consume` call.
-*/
-    @Volatile
-    private var lastAgentHandles: AgentHandles? = null
-
-    /** The first refusal any channel's sink accepted responsibility for and could not fulfil. */
-    private fun transcriptRefusal(): ProcessOutputRefusal? =
-        lastTranscriptSinks.firstNotNullOfOrNull { it.refusal() }
-
-    /**
-     * Waits for every channel's pump, then refuses if any of them was still running.
-     * `join(timeout)` returns when the thread finishes **or** when the timeout elapses, so the
-     * return value of a join proves nothing at all on its own. The runtime then projected a
-     * transcript it had no evidence was complete and classified the step — which is the same
-     * "short, ordered, plausible" outcome a write failure produces, reached by the opposite route.
-     * So the check that actually means something is [Thread.isAlive] AFTER the join, and its
-     * failure is a refusal rather than a log line, for the same reason [transcriptRefusal] is.
-*/
-    private fun drainTranscriptPumps(
-        pumps: List<TranscriptPumpView>,
-        config: DurableShConfig,
-    ): ProcessOutputRefusal? = drainTranscriptPumps(
-        pumps = pumps,
-        idleBudgetMs = config.transcriptDrainIdleBudgetMs,
-        ceilingMs = config.transcriptDrainCeilingMs,
-        sliceMs = TRANSCRIPT_PUMP_DRAIN_SLICE_MS,
-    )
-
-    private fun consumeLastTranscriptPumps(@Suppress("UNUSED_PARAMETER") handle: ProcessHandle): List<TranscriptPumpView> {
-        val pumps = lastTranscriptPumps
-        lastTranscriptPumps = emptyList()
-        return pumps
-    }
-
     private fun executeCore(
         controlDir: Path,
         scriptContent: String,
@@ -1560,31 +1498,25 @@ class DurableShellExecutor : DurableShellLaunching {
         var process: ProcessHandle? = null
         var launched = false
         val timeoutTriggered = AtomicBoolean(false)
-        // Reference to the transcript pumps so the terminal projection can drain them
-        // BEFORE reading any durable transcript (redaction-before-persistence means the bytes are
-        // only complete once the pumps reach EOF).
-        // A LIST, because one launch pumps up to two channels. Joining only the first
-        // would let the terminal be projected while stderr was still arriving — which is exactly
-        // the "short, ordered, plausible transcript" failure this path exists to prevent.
-        var transcriptPumps: List<TranscriptPumpView> = emptyList()
+        // The launch: the child AND the transcript state that belongs to it. The verdict on the
+        // transcript is computed from THIS launch's pumps and sinks, so there is no ambient state
+        // left for two executions to exchange.
+        var launchedShell: LaunchedShell? = null
 
         try {
             // Step 1: Launch
             // Environment is injected via pb.environment.putAll in launch
-            process = launch(
+            val shell = launch(
                 controlDir,
                 scriptContent,
                 opId,
                 config,
-                request.captureStdout,
-                request.env,
-                request.workspaceRoot,
-                request.sandbox,
+                request,
                 transcriptRedactor,
                 channelSinks,
-            ).also { handle ->
-                transcriptPumps = consumeLastTranscriptPumps(handle)
-            }
+            )
+            launchedShell = shell
+            process = shell.handle
             launched = true
 
             // Step 2: Detach
@@ -1679,15 +1611,12 @@ class DurableShellExecutor : DurableShellLaunching {
             // the wait succeeded, because a join that times out returns exactly like one that
             // completed and the difference between them is the whole difference between a complete
             // transcript and a plausible one.
-            val undrained = drainTranscriptPumps(transcriptPumps, config)
-
             // A persistence or drain refusal is a step failure, not a warning. The bytes left the
             // pipe when the pump read them, so a transcript that is short, ordered and plausible is
             // the worst possible outcome; it has to be reported rather than returned.
-            // The drain is checked FIRST: if a pump was still alive, nothing downstream of it can
-            // claim the transcript is complete, so that refusal subsumes whatever the sinks recorded
-            // in the meantime.
-            (undrained ?: transcriptRefusal())?.let { refusal ->
+            // The verdict is computed from THIS launch: its pumps are drained first, and a refusal
+            // from them subsumes whatever its sinks recorded in the meantime.
+            transcriptVerdict(shell, config)?.let { refusal ->
                 // Exhaustive over the closed set: a write that threw and a pump that never finished
                 // are different facts, and the record says which one occurred. There is no `else`
                 // and no fabricated Throwable for the case that has no throwable.
@@ -1781,11 +1710,7 @@ class DurableShellExecutor : DurableShellLaunching {
             // child is alive (the test holds GO until after the kill), the
             // child becomes the only writer, and the agent's read continues
             // until the child exits and the kernel closes its O_WRONLY.
-            val agentHandles = lastAgentHandles
-            lastAgentHandles = null
-            if (agentHandles != null) {
-                agentHandles.warmup.forEach { runCatching { it.close() } }
-            }
+            launchedShell?.agentWarmup?.forEach { runCatching { it.close() } }
             // Cleanup based on final state. A watchdog timeout is a failure, not a
             // success: the surviving wrapper can publish exit code 0 after its child
             // was SIGKILLed, so cleanup MUST NOT read that code as success and

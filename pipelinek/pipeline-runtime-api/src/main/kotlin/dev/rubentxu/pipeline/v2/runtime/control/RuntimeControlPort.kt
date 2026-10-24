@@ -7,7 +7,7 @@ package dev.rubentxu.pipeline.v2.runtime.control
  * reboots — and it then says two things at once: its journal says an
  * operation was still running, and its event lane says the run never
  * finished. The closest surfaces do not close that gap:
- *  - `DurableShellLaunching.kill` — kills ONE subprocess of the writer; no
+ *  - `DurableShellExecutor.kill` — kills ONE subprocess of the writer; no
  *    journal write, no terminality guarantee, no fencing. Calling it from
  *    outside the writer's JVM would corrupt the journal.
  *  - `OutputSealPort.seal` — terminal marker for a stream; refuses appends

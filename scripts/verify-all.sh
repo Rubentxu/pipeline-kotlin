@@ -696,6 +696,35 @@ if [[ -n "$e2e_census" ]]; then
     e2e_executed="$(sed -nE 's/^[0-9]+ of ([0-9]+) executed scenario.*/\1/p' <<<"$e2e_census")"
     printf '    %s\n' "$e2e_census"
 fi
+# What the E2E stage COMPILED and what it REUSED. The launcher measures it and
+# prints it; the gate is the report a person reads. A reuse that stops working
+# has to be visible here, or the gate would keep reporting the same number of
+# seconds and nobody would know the saving had gone.
+stage3_cache="$(grep -aE '^script cache: ' "$log_dir/stage3.log" || true)"
+if [[ -n "$stage3_cache" ]]; then
+    printf '    %s\n' "$stage3_cache"
+fi
+
+# What the E2E stage COST, per scenario. The launcher measures every scenario
+# and prints the number; the gate is the report a person actually reads, and a
+# cost that is measured and then dropped on the floor is a cost nobody can
+# act on. The slowest are named because a suite's cost is not spread evenly:
+# a handful of scenarios carry most of it, and that is where a change to the
+# harness pays.
+stage3_cost="$(grep -aE '^ {5}[^ ]+ +[0-9]+\.[0-9]s$' "$log_dir/stage3.log" || true)"
+if [[ -n "$stage3_cost" ]]; then
+    stage3_cost_n="$(printf '%s\n' "$stage3_cost" | wc -l | tr -d ' ')"
+    stage3_cost_total="$(printf '%s\n' "$stage3_cost" \
+        | awk '{ t=$NF; gsub(/s$/,"",t); s+=t } END { printf "%.1f", s }')"
+    printf '    %s scenario(s) measured, %s s in total (the stage runs them in parallel); the slowest:\n' \
+        "$stage3_cost_n" "$stage3_cost_total"
+    printf '%s\n' "$stage3_cost" \
+        | sed 's/^ *//' \
+        | awk '{ t=$NF; gsub(/s$/,"",t); printf "%8.1fs  %s\n", t, $1 }' \
+        | sort -rn \
+        | head -5 \
+        | sed 's/^/      /'
+fi
 # The gap is derived, not read from a field. The launcher publishes three
 # independently produced counters -- selected, passed, failed -- and a scenario
 # that was selected but reached neither verdict was skipped. Deriving the gap

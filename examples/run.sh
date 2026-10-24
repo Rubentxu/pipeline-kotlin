@@ -177,16 +177,144 @@ trap cleanup EXIT
 # is no user-home directory that is the right place for it in a read-only
 # HOME, in a sandboxed CI or in an ephemeral container, and guessing one is a
 # product decision rather than a harness one. This launcher has no such
-# problem. The cycle directory above is its own, and the trap above deletes
-# it with everything else, so the cache is a directory the cycle OWNS: it
-# never outlives the run, it never accumulates in someone's home, and two
-# invocations of this script never share an artifact.
+# problem -- but it does have a directory that is right for a CACHE, which is
+# not the same thing as a directory that is right for a workspace.
 #
-# The cache changes nothing about what is checked. The key is the source text
-# together with the classpath and the versions, so an edited scenario is a
-# different key and is compiled again; and a stored artifact that cannot be
-# used degrades to a miss inside the product, never to a wrong answer.
-export PIPELINEK_SCRIPT_CACHE_DIR="$cycle_root/script-cache"
+# WHY THE CACHE OUTLIVES THE CYCLE
+#
+# The cache used to live inside the cycle directory and died with it. That
+# made it safe -- a cycle could never outlive its own artifacts -- and it
+# also made every cycle pay the compilation again. Measured on this tree:
+# compiling one scenario's script costs about 4.1 s (4.9 s cold against the
+# clock, 0.8 s when the artifact is reused), and the suite compiles 62
+# scripts per cycle, so a cycle that cannot reuse pays about 254 s of CPU
+# for artifacts it could have had.
+#
+# A cache that outlives the cycle needs one thing the cycle-local one did
+# not: it must NEVER serve an artifact compiled against a different product.
+# The product's own cache key covers the script source, the Kotlin compiler
+# version, the compiler options and the PATH of the classpath jars -- but not
+# their CONTENT, and not the product's own bytes. Measured: two builds of
+# the same version in the same directory share one key, so a cache that
+# outlived the build would serve an artifact compiled against a product that
+# no longer exists. That gap is the product's own, and it is written down
+# there: the key declares two dimensions it cannot read.
+#
+# So the cache lives under a namespace named by the DIGEST of the
+# distribution that is going to run, by content. The same bytes reuse, and
+# any change to the bytes is another namespace and a cold compile. The
+# dimension the product's key lacks is supplied here, by the only party that
+# knows which distribution it just built.
+#
+# A cache is not evidence and not a workspace: it holds compiled copies of
+# scripts, keyed by content, and deleting it costs time and nothing else.
+# That is why it lives in the cache directory and not in the cycle -- the
+# cycle is deleted after every run, and a cache deleted after every run is a
+# cache that never serves anyone.
+#
+# And the cache changes nothing about what is checked. An edited scenario is a
+# different key and is compiled again; a stored artifact that cannot be used
+# degrades to a miss inside the product, never to a wrong answer.
+
+cache_root_default="${XDG_CACHE_HOME:-$HOME/.cache}/pipelinek/e2e-script-cache"
+
+# The digest of the distribution's jars, BY CONTENT, with their names: a
+# rebuild with different bytes is a different digest, and so is a rename.
+# A distribution that cannot be read has no digest, and the name it gets
+# says so instead of pretending to be one.
+distribution_digest() {
+    local lib f
+    lib="$(cd -- "$(dirname -- "$(product_path)")/../lib" 2>/dev/null && pwd)" || lib=""
+    if [[ -z "$lib" || ! -d "$lib" ]]; then
+        printf 'sin-distribucion'
+        return 0
+    fi
+    for f in "$lib"/*.jar; do
+        [[ -f "$f" ]] || continue
+        printf '%s %s\n' "$(basename -- "$f")" "$(sha256sum -- "$f" | cut -d' ' -f1)"
+    done | LC_ALL=C sort | sha256sum | cut -d' ' -f1
+}
+
+# The namespace this run's artifacts live in. It is persistent when the
+# machine has a place to put it, and cycle-local when it does not: a
+# read-only HOME, a sandboxed CI, an ephemeral container. The run loses the
+# reuse in that case and loses nothing else, because a cache is a
+# performance concern and never a correctness one.
+script_cache_dir=""
+script_cache_persistent=0
+resolve_script_cache() {
+    local digest root ns marker recorded
+    digest="$(distribution_digest)"
+    root="${PIPELINEK_E2E_SCRIPT_CACHE_DIR:-$cache_root_default}"
+    ns="$root/$digest"
+    marker="$ns/.distribution-digest"
+
+    # The namespace's NAME is the guarantee, but a name can be wrong -- and the
+    # obvious simplification of that name ("one directory for the suite") is
+    # exactly the edit that would let a product reuse another product's
+    # artifacts. So the namespace also carries a MARKER: the digest of the
+    # distribution whose artifacts live in it. A run that finds a marker
+    # naming another distribution does not use that directory at all. The
+    # check costs nothing and it does not depend on the reader remembering
+    # why the directory is named the way it is.
+    if [[ -f "$marker" ]]; then
+        recorded="$(cat -- "$marker" 2>/dev/null || true)"
+        if [[ "$recorded" != "$digest" ]]; then
+            printf 'run.sh: the script cache at %s belongs to another distribution (%s); it is not used\n' \
+                "$ns" "${recorded:0:12}" >&2
+            ns=""
+        fi
+    fi
+
+    if [[ -n "$ns" ]] && mkdir -p "$ns" 2>/dev/null && [[ -w "$ns" ]]; then
+        printf '%s\n' "$digest" > "$marker" 2>/dev/null || true
+        script_cache_dir="$ns"
+        script_cache_persistent=1
+        export PIPELINEK_SCRIPT_CACHE_DIR="$ns"
+        return 0
+    fi
+    script_cache_dir="$cycle_root/script-cache"
+    if mkdir -p "$script_cache_dir" 2>/dev/null && [[ -w "$script_cache_dir" ]]; then
+        export PIPELINEK_SCRIPT_CACHE_DIR="$script_cache_dir"
+    else
+        script_cache_dir=""
+        unset PIPELINEK_SCRIPT_CACHE_DIR
+    fi
+}
+
+# What the cache holds, by name and content, so a cycle can say what it
+# compiled and what it reused. A cache that silently did nothing is
+# indistinguishable from a cold cache, and that is the difference between
+# "the reuse works" and "the reuse is not happening and nobody said so".
+cache_snapshot() {
+    local dir="$1" f
+    [[ -n "$dir" && -d "$dir" ]] || return 0
+    for f in "$dir"/*.jar; do
+        [[ -f "$f" ]] || continue
+        printf '%s %s\n' "$(basename -- "$f")" "$(sha256sum -- "$f" | cut -d' ' -f1)"
+    done | LC_ALL=C sort
+}
+
+# The cache root keeps one namespace per distribution that has ever run
+# against it, and a distribution that no longer exists has no reason to keep
+# its compiled scripts: they cost disk and they can never be served again,
+# because the namespace they live in names bytes that are not on this
+# machine any more. Pruned by AGE rather than by count, so a busy machine
+# keeps what it is using and a forgotten one does not accumulate. The
+# namespace this run used is never a candidate.
+prune_script_cache() {
+    local root="$1" d
+    [[ -n "$root" && -d "$root" ]] || return 0
+    for d in "$root"/*/; do
+        [[ -d "$d" ]] || continue
+        [[ "$d" == "$script_cache_dir/" ]] && continue
+        if [[ -z "$(find "$d" -maxdepth 0 -mtime -14 2>/dev/null)" ]]; then
+            rm -rf -- "$d" 2>/dev/null || true
+        fi
+    done
+}
+
+resolve_script_cache
 
 # The hardest environment an operator can express, for every scenario.
 #
@@ -1512,6 +1640,21 @@ run_scenario_body() {
                 return
                 ;;
         esac
+    fi
+
+    # A scenario that names its OWN plugin, or its OWN copy of the
+    # distribution, puts a path INSIDE THE CYCLE into its compilation
+    # classpath. The product's cache key includes that path, and the path is
+    # different in every cycle, so those artifacts can never be reused -- and
+    # reusing them would be unsafe besides, because a key built on a path
+    # cannot see that the file behind it changed.
+    #
+    # So their cache is the cycle-local one: it dies with the cycle, and the
+    # namespace the rest of the suite uses stays free of entries that could
+    # never be served again. The export is local to this scenario's own
+    # subshell, so no other scenario inherits it.
+    if [[ -n "$plugin_jar" || -n "$distribution" ]]; then
+        export PIPELINEK_SCRIPT_CACHE_DIR="$cycle_root/script-cache"
     fi
 
     # The product, reachable from inside this scenario, with this scenario's own
@@ -3003,6 +3146,11 @@ if ! printf '%s' 'a secret the machine keeps and this run does not ask for' \
     exit 2
 fi
 
+# What the cache held before this cycle started. The difference between this
+# and what it holds afterwards is what the cycle compiled; the rest is what
+# it reused.
+cache_snapshot "$script_cache_dir" > "$cycle_root/cache-before.txt"
+
 running=0
 for script in ${selected[@]+"${selected[@]}"}; do
     slug="$(scenario_slug "$script")"
@@ -3019,6 +3167,15 @@ for script in ${selected[@]+"${selected[@]}"}; do
 done
 # Same reason for the last one.
 wait || true
+
+cache_snapshot "$script_cache_dir" > "$cycle_root/cache-after.txt"
+cache_present=0
+cache_written=0
+if [[ -s "$cycle_root/cache-after.txt" ]]; then
+    cache_present="$(wc -l < "$cycle_root/cache-after.txt" | tr -d ' ')"
+    cache_written="$(comm -13 "$cycle_root/cache-before.txt" "$cycle_root/cache-after.txt" \
+        | wc -l | tr -d ' ')"
+fi
 
 scenario_index="${#selected[@]}"
 passed=0; failed=0; blocked=0; seeded=0; durable_runs=0; failures=()
@@ -3137,6 +3294,24 @@ printf '\n%d scenario(s), %d passed, %d failed, %d blocked, %d credential(s) see
 printf '%d of %d executed scenario(s) had a guarantee checked (%d checks over %d executions, %d steps finished, %d ended unstable); %d asserted nothing\n' \
     "$observed_scenarios" "$(( passed + failed ))" "$observed_expectations" "$observed_executions" \
     "$finished_steps" "$unstable_runs" "$(( passed + failed - observed_scenarios ))"
+
+# What the cycle COMPILED and what it REUSED. A cache that quietly stopped
+# working looks exactly like a cache that never existed, and the difference
+# is a few minutes of CPU per cycle that nobody could account for. The
+# numbers are the difference between the cache's contents before the cycle
+# and after it.
+#
+# The scenarios that run against their OWN copy of the distribution are not
+# counted here: their artifacts belong to a namespace of their own, and they
+# are the cycle-local ones by design.
+if (( script_cache_persistent )); then
+    printf 'script cache: %d artifact(s) written, %d present -- this distribution reuses them across cycles\n' \
+        "$cache_written" "$cache_present"
+    prune_script_cache "$(dirname -- "$script_cache_dir")"
+else
+    printf 'script cache: %d artifact(s) written, %d present -- cycle-local: this cycle could not reuse them\n' \
+        "$cache_written" "$cache_present"
+fi
 
 # The stage clock, as the fact it now is. Every scenario reported, so nothing is
 # hidden by this line: the stage was simply too slow for the budget it was given.

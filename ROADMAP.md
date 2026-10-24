@@ -225,6 +225,8 @@ sin red |
 | 12 | El verbo que escribe en una run terminada (`cancel`, `recover`) deja un fichero de base de datos **vacío** como efecto lateral de su propio rechazo | **medido** (§2.85): la puerta **se niega** a escribir en una run terminada —es lo correcto—, pero el verbo llega al almacén lo bastante lejos como para dejar el fichero ya creado. No lo introduce este bloque —es anterior— y no se toca aquí: el almacén y su fichero de datos se crean en sitios distintos, y separarlos es un cambio de layout, no un arreglo de una línea |
 | 13 | Una excepción en el hilo principal deja el proceso **en pie** en vez de salir | **medido** (§2.85): se vio en vivo con el `NullPointerException` que un `--db` relativo alcanzaba —el hilo principal muere y los hilos del ejecutor durable no lo sueltan—. Se ha corregido **la causa** de esa excepción concreta, no el defecto de fondo: una excepción en el hilo principal debería terminar el proceso. Corregirlo toca el ciclo de vida del runtime y queda **fuera** de este bloque |
 | 14 | La clave de la caché de scripts del producto no cubre los **bytes** de la distribución | **medido** (§2.86): la clave cubre el fuente, la versión del compilador, las opciones y el **ruta** de los jars del classpath, pero no su **contenido** — dos construcciones de la misma versión en el mismo directorio comparten clave. El producto lo declara: su KDoc dice que dos de sus siete dimensiones no se pueden leer. Este bloque lo rodea desde el lanzador (espacio de nombres por digest + marcador), pero un usuario que ponga su propio `PIPELINEK_SCRIPT_CACHE_DIR` sigue expuesto. Corregirlo es un cambio de producto, con su tren y su candidata |
+| 15 | El contrato completo del evento sigue siendo **tres superficies**: el catálogo de tipos, el `when` del escritor y el `when` del decodificador | **medido** (§2.87): lo que se ha cerrado es el **nombre** de los campos opcionales, que ahora tienen una autoridad cerrada y una prueba que recorre el conjunto entero. Lo que queda es el **evento** en sí: un tipo nuevo hay que escribirlo en tres sitios, y una definición tipada del evento —un codec por familia, como el de las compensaciones— reduciría esos tres a uno. Es un cambio de layout del módulo de eventos, y no cabe en una rebanada |
+| 16 | El ejecutor durable sigue concentrando **procesos, FIFO, watchdog, output y ciclo de vida** en un solo fichero | **medido** (§2.87): lo que se ha cerrado es el **estado del lanzamiento** —que ahora viaja con el lanzamiento en vez de quedar en tres campos `@Volatile` que otro paso leía—, y con él cae una costura muerta de 153 líneas. Quedan las responsabilidades: separarlas detrás de puertos concretos es el refactor grande que la propia auditoría **no** recomienda de una vez, y es lo que queda para una rebanada vertical por responsabilidad |
 
 ## 1. Estado medido
 
@@ -9568,6 +9570,156 @@ roto. Corregido antes de dar por buena la falsificación.
 - **No se publica candidata nueva.** El producto no cambia de comportamiento:
   lo que cambia es el arnés, que no viaja en la release. La candidata
   publicada sigue siendo `v0.89.0-rc1`, con los mismos bytes.
+- La promoción a estable sigue bloqueada: no hay certificador externo en
+  este repositorio ni en el remoto, así que el veredicto es
+  `BLOCKED_EXTERNAL`, no `PASS`.
+
+### 2.87 Mantenibilidad durable: dos rebanadas verticales
+
+**Lo que la auditoría pedía, y cómo se parte.** La auditoría pide dos cosas
+concretas: «revisar el estado compartido `lastTranscriptPumps` para demostrar
+que dos ejecuciones simultáneas no pueden intercambiar los objetos de
+drenaje» y «una única definición tipada del contrato del evento». Y dice, con
+la honestidad que hay que atribuirle: «No recomiendo una refactorización
+masiva: hacerlo por vertical slices cuando una modificación funcional
+requiera atravesar varias de estas piezas».
+
+Este bloque son **dos** rebanadas verticales, no una refactorización, y las dos
+cosas que **no** se han hecho se declaran al final.
+
+#### Rebanada A — el contrato del evento: un nombre, un sitio
+
+**Medido antes de tocar.** El catálogo de eventos tiene **11** nombres de
+campo opcional, repartidos en **16** sitios de escritura y **16** de lectura.
+El escritor y el decodificador los deletreaban **por separado** —un literal
+`,"detail":` en un lado y un literal `"detail"` en el otro—, sin nada que
+dijera que los dos tuvieran que coincidir. Un campo añadido en un solo lado
+compilaba, se ejecutaba y se decodificaba mal: el valor desaparecía al
+volver. Y un registro durable que vuelve sin su carga es **indistinguible**
+de uno que nunca la tuvo.
+
+**Lo que estaba fijado: 3 de 11.** `outcome`, `detail` y el `reason` de
+`SagaTerminal`, por dos pruebas escritas para otros motivos. Los otros
+**ocho** —`remoteUri`, `stepName`, `stepType`, `buildResult`, `message`,
+`label`, el `reason` del bloqueo, `submitter`, `id`— no los fijaba nadie. El
+KDoc de `EventJsonFields` prometía una prueba de fitness que «afirmase que
+las dos mitades cubren el mismo conjunto de campos». **No existía.**
+
+**Lo que se hizo.** Los nombres viven ahora en un conjunto **cerrado**
+(`OptionalEventField`, un enum) y las dos mitades los leen de ahí. Cerrado a
+propósito: un campo opcional que no sea un caso del enum **no se puede
+escribir ni leer**, de modo que «las dos mitades cubren el mismo conjunto de
+campos» es una propiedad del **tipo**, y no una promesa en un comentario.
+
+**Los bytes del cable NO cambian.** El mismo nombre, la misma codificación
+del valor ausente (`""`), la misma lectura de vuelta. Lo que cambia es que
+ahora hay **un** sitio donde el nombre vive, y que no se puede escribir un
+campo opcional sin nombrarlo.
+
+**La prueba que faltaba.** La nueva recorre el conjunto entero por **tres**
+particiones —ausente, presente, y una fila anterior a la existencia del
+campo— y comprueba **el nombre en el cable**, no solo el viaje de ida y
+vuelta: un viaje de ida y vuelta no ve un campo que las dos mitades
+deletrean igual de mal. Son **49** filas: 16 pares (tipo, campo) × 3
+particiones, más una que comprueba que **todo** caso del enum tiene fila.
+
+**Un defecto del propio instrumento, encontrado por la falsificación.** La
+primera versión de la prueba derivaba el nombre esperado del propio enum —el
+código que tenía que comprobar—, y un renombre **simétrico** de un campo la
+pasaba sin despeinarse mientras cada registro histórico en disco dejaba de
+poder leerse. Corregido antes de dar por buena ninguna falsificación: el
+nombre esperado es ahora un **literal**, que es la especificación de un
+formato público, y el enum es su implementación.
+
+#### Rebanada B — el estado del lanzamiento: lo que produce, lo devuelve
+
+**Medido antes de tocar.** El ejecutor durable guardaba en **tres** campos
+`@Volatile` lo que su último lanzamiento había producido: las bombas de
+transcripción, los sumideros donde esas bombas escribieron y los descriptores
+de calentamiento del agente. El lanzamiento los escribía y un paso posterior,
+**separado**, los leía. El KDoc de aquel campo lo llamaba «disciplina de
+lanzamiento de un solo hilo: un lanzamiento por `executeCore`», y eso era
+exactamente: una **disciplina**, no una invariante.
+
+**El intercambio NO es alcanzable hoy**, y hay que decirlo: todos los
+llamantes construyen su propio ejecutor (`DurableShellExecutor().execute…`),
+así que no hay dos ejecuciones que compartan una instancia. Lo que había era
+un defecto **latente**, a un refactor de distancia, sujeto solo por una
+disciplina. Por eso queda como hallazgo medido y no como urgencia.
+
+**Lo que se hizo.** Un lanzamiento devuelve **lo que produjo**
+(`LaunchedShell`): el hijo, sus bombas, sus sumideros y los descriptores de
+calentamiento que hay que cerrar. Los tres `@Volatile`, el `consume` y la
+lectura por campo desaparecen. El veredicto sobre la transcripción se calcula
+desde el lanzamiento, con una función pura que recibe el valor
+(`transcriptVerdict(shell, config)`), y esa es la respuesta a la pregunta de
+la auditoría: no queda **estado ambiental** al que dos ejecuciones puedan
+intercambiarse, porque el estado **es** el argumento.
+
+**De paso, una costura muerta.** `DurableShellLaunching` era una interfaz con
+**una** implementación, **ningún** consumidor y **ningún** fake, y su KDoc
+prometía «implementaciones fake para testear sin bifurcar procesos reales»
+que no existían. Una costura con un solo lado no es un puerto. Se ha
+eliminado (**153** líneas), con sus referencias y con la entrada que la
+baseline de detekt tenía por su supertipo.
+
+**Y un detalle que el refactor casi pierde.** Los descriptores de
+calentamiento del agente se abren **antes** de que el hijo arranque. Si el
+hijo nunca arranca, el llamante no recibe ningún lanzamiento y no puede
+cerrarlos: se cierran en el fallo del lanzamiento, que es donde estaban antes.
+
+#### Lo que se falsificó
+
+Ocho mutaciones dirigidas, cuatro por rebanada. Cada una se aplicó, se leyó
+el diff de vuelta, y se comprobó que ennegrece **exactamente** las filas que
+debe y ninguna más:
+
+| rebanada | mutación | filas rojas | filas verdes |
+|---|---|---|---|
+| A | el contrato renombra un campo **en las dos mitades** | 3 | 46 |
+| A | el decodificador deriva **solo** de un lado | 1 | 48 |
+| A | el lector deja de mapear la ausencia | 36 | 13 |
+| A | la autoridad gana un campo **sin fila** en la prueba | 1 | 48 |
+| B | el veredicto ignora **las bombas** de su lanzamiento | 1 | 11 |
+| B | el veredicto ignora **los sumideros** de su lanzamiento | 1 | 11 |
+| B | el estado vuelve a ser **compartido** (bombas) | 1 | 11 |
+| B | el defecto original **completo** (bombas y sumideros) | 2 | 10 |
+
+Las tres primeras de A se leen así: un renombre simétrico es un **cambio de
+formato público** que la prueba tiene que ver; una deriva de un solo lado es
+la forma que tenía el hueco; y el lector que deja de mapear la ausencia
+ennegrece **todo lo que toca un valor ausente**, que son 36 filas y no todas
+—las 13 que quedan verdes son las de los eventos con un único campo
+opcional, donde la ausencia ya no está en juego.
+
+#### La puerta
+
+Tres ensayos sobre el mismo SHA: **182**, **131** y **127** s, con
+`tests=rewritten:1234 read:0` y **62** de **62** escenarios (**578**
+comprobaciones sobre **112** ejecuciones, el mismo censo de antes). El LOC:
+VERIFY_LOC **22508** / PRODUCT_LOC **68424** = **0,329**, muy por debajo del
+límite de 2.
+
+#### Lo que queda fuera, dicho con honestidad
+
+- **El contrato completo del evento sigue siendo tres superficies.** Lo que
+  aquí se cierra es el **nombre** de los campos opcionales. El catálogo de
+  tipos, el `when` del escritor y el `when` del decodificador siguen siendo
+  tres sitios donde un evento nuevo hay que escribir tres veces, y eso es una
+  definición tipada del **evento**, no de sus campos. Queda como fila 15 de
+  §1.
+- **El ejecutor durable sigue concentrando responsabilidades.** Lo que aquí se
+  cierra es el **estado del lanzamiento**. Los procesos, el FIFO, el watchdog,
+  la proyección de salida y el ciclo de vida siguen en el mismo fichero, y la
+  auditoría pide puertos concretos detrás. Queda como fila 16 de §1.
+- **`CliParser.kt` (1.898), `MainConsoleCli.kt` (1.538),
+  `SegmentOutputStore.kt` (1.293) y `StepDispatchEngine.kt` (1.185)** no se
+  han tocado: la auditoría los señala como deuda de la misma familia.
+- **Se publica candidata nueva** (`v0.90.0-rc1`): el producto cambia de
+  comportamiento observable —el contrato del evento tiene una autoridad, y el
+  lanzamiento devuelve su estado—, así que la ley de versión abre un tren
+  nuevo (0.90.0) en vez de reutilizar el 0.89.0, que quedó cerrado en
+  `v0.89.0-rc1`.
 - La promoción a estable sigue bloqueada: no hay certificador externo en
   este repositorio ni en el remoto, así que el veredicto es
   `BLOCKED_EXTERNAL`, no `PASS`.

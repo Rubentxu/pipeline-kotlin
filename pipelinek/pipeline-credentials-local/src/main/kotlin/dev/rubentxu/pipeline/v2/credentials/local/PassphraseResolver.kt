@@ -24,6 +24,12 @@ object PassphraseResolver {
 
     /**
      * Resolves the passphrase.
+     *
+     * A passphrase that is set but empty is still a passphrase: it is a
+     * legitimate key for a store sealed with an empty one, and a job that sets
+     * the variable to empty says so on purpose. Only a variable that is not
+     * there at all means "I have no passphrase".
+     *
      * @param env The environment map (default: System.getenv)
      * @param ttyReader Lambda that reads password from TTY, or null if unavailable
      * @return CharArray containing the passphrase (must be zeroed by caller)

@@ -56,6 +56,44 @@ class LocalSecretStore(
 ) : SecretStore {
     private val secureRandom = SecureRandom()
 
+    /**
+     * The key that opens this store, once the passphrase that wraps it has been
+     * accepted. Kept so that the passphrase is checked once per store and not
+     * once per operation.
+     */
+    private var openedDek: ByteArray? = null
+
+    /**
+     * Checks that this passphrase is the one that opens this store.
+     *
+     * A store that holds something is sealed with a key that only the right
+     * passphrase can unwrap, and unwrapping it is the only way to know that the
+     * passphrase is right. A store that holds nothing has nothing to check.
+     *
+     * @throws SecretStorePassphraseMismatchException if the passphrase does not
+     *   match the store
+     */
+    fun verifyPassphrase() {
+        if (!Files.exists(file) || Files.size(file) == 0L) return
+        open(Files.readAllBytes(file))
+    }
+
+    /**
+     * Unwraps the key that opens the store and remembers it.
+     *
+     * Every operation that reads or changes what the store holds goes through
+     * here first, so a passphrase that does not match is refused before
+     * anything is read out or written back.
+     */
+    private fun open(fileBytes: ByteArray): ByteArray {
+        openedDek?.let { return it }
+        val hdr = readHeader(fileBytes)
+        val kek = CredentialCrypto.deriveKek(passphrase, hdr.kdfSalt)
+        val dek = CredentialCrypto.unwrapDek(kek, hdr.wrappedDek)
+        openedDek = dek
+        return dek
+    }
+
     /** Shared wire types of the store file format. */
     /**
      * Header data for the store.
@@ -224,10 +262,13 @@ class LocalSecretStore(
 
     /**
      * Exception thrown when the passphrase is incorrect.
+     *
+     * The message says what happened, because "a passphrase is required" would
+     * send the operator looking for a variable they already set.
 */
     class SecretStorePassphraseMismatchException :
         dev.rubentxu.pipeline.v2.credentials.api.SecretStorePassphraseMismatchException(
-            "Passphrase required: set PIPELINE_STORE_PASSPHRASE or run interactively in a TTY"
+            "the passphrase does not match the store"
         )
 
     /**
@@ -823,10 +864,14 @@ class LocalSecretStore(
     /**
      * Lists all credential IDs in the store.
      * @return List of credential IDs (never returns values)
+     * @throws SecretStorePassphraseMismatchException if the passphrase does not
+     *   match the store: asking what a store holds is asking it to open, and a
+     *   passphrase that does not match gets an answer, not a list
 */
     override fun list(): List<CredentialsId> {
         if (!Files.exists(file) || Files.size(file) == 0L) return emptyList()
         val fileBytes = Files.readAllBytes(file)
+        open(fileBytes)
         val hdr = readHeader(fileBytes)
         // Route based on header version
         val entries = if (hdr.version == VERSION_V1.toShort()) {
@@ -840,11 +885,16 @@ class LocalSecretStore(
     /**
      * Removes a credential.
      * @param id The credential ID to remove
+     * @throws SecretStorePassphraseMismatchException if the passphrase does not
+     *   match the store. The key is the authorization to change what is inside,
+     *   so it is checked before anything is written: a passphrase that does not
+     *   match leaves the store exactly as it was.
 */
     override fun remove(id: CredentialsId) {
         withExclusiveLock {
-            if (!Files.exists(file)) return
+            if (!Files.exists(file) || Files.size(file) == 0L) return
             val fileBytes = Files.readAllBytes(file)
+            open(fileBytes)
             val hdr = readHeader(fileBytes)
 
             // Route based on header version

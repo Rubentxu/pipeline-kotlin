@@ -79,7 +79,7 @@ internal fun composeCredentialSeam(
         error("unreachable")
     } catch (e: LocalSecretStore.SecretStorePassphraseMismatchException) {
         System.err.println("Error: $e.message")
-        System.err.println("Hint: the passphrase does not match. Check PIPELINE_STORE_PASSPHRASE.")
+        System.err.println("Hint: check PIPELINE_STORE_PASSPHRASE.")
         System.exit(3)
         error("unreachable")
     } catch (e: LocalSecretStore.SecretStoreTamperException) {

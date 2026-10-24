@@ -7,11 +7,11 @@ import java.nio.file.Path
 /**
  * Main credentials CLI — subcommand dispatcher for credential store operations.
  * ## Exit Codes
- * - 0: Success
- * - 1: Usage error
- * - 2: Missing store
- * - 3: Wrong passphrase
- * - 4: Tamper detected
+ * - 0: the request was answered, or there was nothing to answer
+ * - 1: the request could not be carried out (no such credential, bad arguments)
+ * - 2: no passphrase is available to open the store
+ * - 3: the passphrase does not match the store
+ * - 4: the store is tampered
  * ## Subcommands
  * - `add [--kind <kind>] [--from-stdin] <id>` — stores a credential. Without
  *   `--from-stdin` the value is asked for at the terminal; with it, the value
@@ -20,6 +20,13 @@ import java.nio.file.Path
  * - `remove <id>` — removes a credential
  * - `rotate [--kind <kind>] [--from-stdin] <id>` — replaces a stored credential
  *   with a new value, read the same way `add` reads it.
+ * ## The passphrase is the authorization
+ * The passphrase is what opens the store, so the verbs that read or change
+ * what is inside need it — and a passphrase that does not match changes
+ * nothing and says so. A store that is not there has nothing to open, so
+ * asking for a passphrase there would be asking for the key to a door that
+ * does not exist. The rule lives in [CredentialsVerb] and [CredentialsOutcome],
+ * where it can be stated once and checked.
  * ## Seeding without a terminal
  * `--from-stdin` exists so a store can be prepared by a script. The passphrase
  * already arrives through the environment, but the value itself used to have
@@ -113,37 +120,52 @@ object MainCredentialsCli {
                 println("List:   pipeline credentials list")
                 println("Remove: pipeline credentials remove <id>")
                 println("Rotate: pipeline credentials rotate [--kind <kind>] [--from-stdin] <id>")
-                1
+                CredentialsOutcome.NOT_CARRIED_OUT.exitCode
             }
         }
     }
 
     private fun add(args: List<String>): Int {
-        val parsed = parseWriteArguments(args) ?: return 1
+        val parsed = parseWriteArguments(args) ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         return try {
             val store = openStore()
+            // The key is checked before the operator is asked for a secret: a
+            // passphrase that does not match should not cost them the typing.
+            store.verifyPassphrase()
             store.add(CredentialsId.from(parsed.id), readCredential(parsed.kind, parsed.fromStdin))
             println("Credential '${parsed.id}' stored successfully.")
-            0
-        } catch (e: LocalSecretStore.CredentialsStorePassphraseUnavailableException) {
+            CredentialsOutcome.ANSWERED.exitCode
+        } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
             println("Error: ${e.message}")
-            2
+            CredentialsOutcome.NO_PASSPHRASE.exitCode
+        } catch (e: LocalSecretStore.SecretStorePassphraseMismatchException) {
+            println("Error: ${e.message}")
+            CredentialsOutcome.WRONG_PASSPHRASE.exitCode
+        } catch (e: LocalSecretStore.SecretStoreTamperException) {
+            println("Error: store tampered: ${e.message}")
+            CredentialsOutcome.TAMPERED.exitCode
         } catch (e: LocalSecretStore.CredentialsStoreEmptySecretException) {
             println("Error: empty secret not allowed")
-            1
+            CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         } catch (e: IllegalArgumentException) {
             println("Error: ${e.message}")
-            1
+            CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         } catch (e: Exception) {
             println("Error: ${e.message}")
-            1
+            CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
     }
 
     private fun list(): Int {
+        // Nothing to list means nothing to unlock: a store that is not there
+        // does not need a key, and asking for one would be asking for the key
+        // to a door that does not exist.
+        if (!storeHoldsAnything()) {
+            println("No credentials stored.")
+            return CredentialsOutcome.ANSWERED.exitCode
+        }
         return try {
-            val passphrase = PassphraseResolver.resolve()
-            val store = LocalSecretStore(STORE_FILE, passphrase)
+            val store = openStore()
             val ids = store.list()
             if (ids.isEmpty()) {
                 println("No credentials stored.")
@@ -162,61 +184,95 @@ object MainCredentialsCli {
                     }
                 }
             }
-            0
-        } catch (e: LocalSecretStore.CredentialsStorePassphraseUnavailableException) {
+            CredentialsOutcome.ANSWERED.exitCode
+        } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
             println("Error: ${e.message}")
-            2
+            CredentialsOutcome.NO_PASSPHRASE.exitCode
+        } catch (e: LocalSecretStore.SecretStorePassphraseMismatchException) {
+            println("Error: ${e.message}")
+            CredentialsOutcome.WRONG_PASSPHRASE.exitCode
+        } catch (e: LocalSecretStore.SecretStoreTamperException) {
+            println("Error: store tampered: ${e.message}")
+            CredentialsOutcome.TAMPERED.exitCode
         } catch (e: Exception) {
             println("Error listing credentials: ${e.message}")
-            1
+            CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
     }
 
     private fun remove(args: List<String>): Int {
         val id = args.firstOrNull() ?: run {
             println("Usage: pipeline credentials remove <id>")
-            return 1
+            return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
+        }
+        if (!storeHoldsAnything()) {
+            println("No credentials stored.")
+            return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
         return try {
-            val passphrase = PassphraseResolver.resolve()
-            val store = LocalSecretStore(STORE_FILE, passphrase)
-            store.remove(CredentialsId.from(id))
+            val store = openStore()
+            val credentialsId = CredentialsId.from(id)
+            // Listing is also how the passphrase gets checked, so a key that
+            // does not match is refused here, before anything is removed.
+            if (credentialsId !in store.list()) {
+                println("No credential named '$id'.")
+                return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
+            }
+            store.remove(credentialsId)
             println("Credential '$id' removed.")
-            0
-        } catch (e: LocalSecretStore.CredentialsStorePassphraseUnavailableException) {
+            CredentialsOutcome.ANSWERED.exitCode
+        } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
             println("Error: ${e.message}")
-            2
+            CredentialsOutcome.NO_PASSPHRASE.exitCode
+        } catch (e: LocalSecretStore.SecretStorePassphraseMismatchException) {
+            println("Error: ${e.message}")
+            CredentialsOutcome.WRONG_PASSPHRASE.exitCode
         } catch (e: LocalSecretStore.SecretStoreTamperException) {
             println("Error: store tampered: ${e.message}")
-            4
+            CredentialsOutcome.TAMPERED.exitCode
         } catch (e: Exception) {
             println("Error: ${e.message}")
-            1
+            CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
     }
 
     private fun rotate(args: List<String>): Int {
-        val parsed = parseWriteArguments(args) ?: return 1
+        val parsed = parseWriteArguments(args) ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
+        if (!storeHoldsAnything()) {
+            println("No credentials stored.")
+            return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
+        }
         return try {
             val store = openStore()
-            store.rotate(CredentialsId.from(parsed.id), readCredential(parsed.kind, parsed.fromStdin))
+            // The key is checked before the operator is asked for a secret: a
+            // passphrase that does not match should not cost them the typing.
+            store.verifyPassphrase()
+            val credentialsId = CredentialsId.from(parsed.id)
+            if (credentialsId !in store.list()) {
+                println("No credential named '${parsed.id}'.")
+                return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
+            }
+            store.rotate(credentialsId, readCredential(parsed.kind, parsed.fromStdin))
             println("Credential '${parsed.id}' rotated successfully.")
-            0
-        } catch (e: LocalSecretStore.CredentialsStorePassphraseUnavailableException) {
+            CredentialsOutcome.ANSWERED.exitCode
+        } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
             println("Error: ${e.message}")
-            2
+            CredentialsOutcome.NO_PASSPHRASE.exitCode
+        } catch (e: LocalSecretStore.SecretStorePassphraseMismatchException) {
+            println("Error: ${e.message}")
+            CredentialsOutcome.WRONG_PASSPHRASE.exitCode
         } catch (e: LocalSecretStore.SecretStoreTamperException) {
             println("Error: store tampered: ${e.message}")
-            4
+            CredentialsOutcome.TAMPERED.exitCode
         } catch (e: LocalSecretStore.CredentialsStoreEmptySecretException) {
             println("Error: empty secret not allowed")
-            1
+            CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         } catch (e: IllegalArgumentException) {
             println("Error: ${e.message}")
-            1
+            CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         } catch (e: Exception) {
             println("Error: ${e.message}")
-            1
+            CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
     }
 
@@ -271,6 +327,18 @@ object MainCredentialsCli {
 
     private fun openStore(): LocalSecretStore =
         LocalSecretStore(STORE_FILE, PassphraseResolver.resolve())
+
+    /**
+     * Whether there is a store with something in it.
+     *
+     * A store that is not there, or that is there and empty, has nothing to
+     * unlock and nothing to change: the verbs that read or change it have
+     * nothing to do, and asking for a passphrase would be asking for the key to
+     * a door that does not exist. It also keeps those verbs from bringing a
+     * store file into existence just by looking.
+     */
+    private fun storeHoldsAnything(): Boolean =
+        java.nio.file.Files.exists(STORE_FILE) && java.nio.file.Files.size(STORE_FILE) > 0L
 
     private fun readCredential(kind: CredentialKind, fromStdin: Boolean): Credential =
         if (fromStdin) StreamCredentialPrompts.read(kind, System.`in`)

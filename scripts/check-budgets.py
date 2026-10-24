@@ -55,6 +55,7 @@ RULES: list[tuple[str, str, str]] = [
     # make the ratio look better than the truth, so it is named here before
     # the catch-all rule for the rest of scripts/.
     ("verify", "external consumer check", "scripts/release/verify-external-compatibility.sh"),
+    ("verify", "tag signature check", "scripts/release/verify-tag-signature.sh"),
     # Permanent unit tests. Two module depths: pipelinek/<m> and pipelinek/<g>/<m>.
     ("verify", "unit tests", "pipelinek/*/src/test/*"),
     ("verify", "unit tests", "pipelinek/*/*/src/test/*"),

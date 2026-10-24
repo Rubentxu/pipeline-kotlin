@@ -3,7 +3,7 @@
 # corrective: a release MUST NOT be published unless the
 # releaseGate produced a PASS receipt bound to the SHA of the ZIP the script
 # then uploads. This script is the only path that calls `gh release create`;
-# it refuses to advance without the four signals:
+# it refuses to advance without the five signals:
 #   1. Gradle:pipeline-release:releaseGate exits 0 (admission passed)
 #   2. The candidateAdmission receipt (build/candidate/distribution-manifest.json)
 #      names a candidate_id whose sha256 matches the distZip artifact the
@@ -11,6 +11,10 @@
 #   3. The local sha256 of the distZip artifact equals the sha256 in the receipt.
 #   4. The tag name is fresh (does not collide with an existing remote tag)
 #      and points at HEAD on a clean working tree.
+#   5. The tag is SIGNED with the key the repository declares
+#      (scripts/release/signing-key.conf), and that signature VERIFIES before
+#      the tag is pushed. There is no unsigned fallback: the digest authority
+#      proves the bytes are the bytes, not who published them.
 # Usage:
 #   PIPELINEK_RELEASE_TAG=v0.56.0-rc5 PIPELINEK_RELEASE_TRAIN=0.56.0 \
 #./scripts/release-pipelinek.sh
@@ -97,6 +101,75 @@ if git ls-remote --tags origin "refs/tags/${PIPELINEK_RELEASE_TAG}" | grep -q .;
     echo "release-pipelinek: tag ${PIPELINEK_RELEASE_TAG} already exists on origin." >&2
     exit 1
 fi
+
+# ----------------------------------------------------------------------------
+# 2b. The signing key.
+#     The tag this script cuts is SIGNED. The key is declared in the REPOSITORY
+#     (scripts/release/signing-key.conf) and not in a local git config, for the
+#     same reason the asset set comes from the gate's receipt: a value that
+#     lives on one machine is a value no reviewer can see. Rotating the key is
+#     a reviewed change to that file.
+#
+#     This runs BEFORE the gate on purpose. A missing key is a PREREQUISITE,
+#     not a verdict, and finding it out after a fifteen-minute build would
+#     have wasted the build. The publication path refuses to fall back to an
+#     unsigned tag: an unsigned tag is exactly what this change exists to
+#     stop shipping.
+# ----------------------------------------------------------------------------
+
+SIGNING_KEY_CONF="scripts/release/signing-key.conf"
+
+if [ ! -f "$SIGNING_KEY_CONF" ]; then
+    echo "release-pipelinek: the signing key declaration is missing at ${SIGNING_KEY_CONF}." >&2
+    echo "    Without it there is no way to know WHICH key a release tag must carry." >&2
+    exit 2
+fi
+
+SIGNING_FINGERPRINT="$(sed -n 's/^fingerprint=//p' "$SIGNING_KEY_CONF" | head -1 | tr -d '[:space:]')"
+SIGNING_UID="$(sed -n 's/^uid=//p' "$SIGNING_KEY_CONF" | head -1 | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+
+if ! printf '%s' "$SIGNING_FINGERPRINT" | grep -Eq '^[0-9A-Fa-f]{40}$'; then
+    echo "release-pipelinek: ${SIGNING_KEY_CONF} does not declare a 40-hex fingerprint." >&2
+    exit 2
+fi
+
+if [ -z "$SIGNING_UID" ]; then
+    echo "release-pipelinek: ${SIGNING_KEY_CONF} does not declare the uid of the key." >&2
+    exit 2
+fi
+
+if ! gpg --batch --list-secret-keys --with-colons "$SIGNING_FINGERPRINT" 2>/dev/null | grep -q '^sec:'; then
+    echo "release-pipelinek: the declared signing key is not available in this keyring." >&2
+    echo "    declared: ${SIGNING_FINGERPRINT} (${SIGNING_UID})" >&2
+    echo "    The tag cannot be signed, and an unsigned tag is what this publication" >&2
+    echo "    path exists to stop shipping. No tag was created and nothing was pushed." >&2
+    exit 1
+fi
+
+# The public key travels with the release, so the handoff can be checked by
+# somebody who has never seen this machine. It is exported from the keyring
+# and then read BACK and matched against the declared fingerprint: exporting
+# the wrong key would put a public key in front of every consumer that does
+# not match the one the signature was made with, and the consumer would
+# verify against a key that proves nothing.
+SIGNING_PUBLIC_KEY="$(gpg --batch --armor --export "$SIGNING_FINGERPRINT" 2>/dev/null || true)"
+
+if [ -z "$SIGNING_PUBLIC_KEY" ]; then
+    echo "release-pipelinek: the declared signing key could not be exported." >&2
+    exit 1
+fi
+
+EXPORTED_FINGERPRINT="$(printf '%s\n' "$SIGNING_PUBLIC_KEY" \
+    | gpg --batch --with-colons --import-options show-only --import 2>/dev/null \
+    | awk -F: '/^fpr:/{print $10; exit}')"
+
+if [ "$EXPORTED_FINGERPRINT" != "$SIGNING_FINGERPRINT" ]; then
+    echo "release-pipelinek: the exported public key is ${EXPORTED_FINGERPRINT}," >&2
+    echo "    but the declared fingerprint is ${SIGNING_FINGERPRINT}. Refusing before the tag." >&2
+    exit 1
+fi
+
+echo "release-pipelinek: signing key resolved: ${SIGNING_FINGERPRINT} (${SIGNING_UID})"
 
 # ----------------------------------------------------------------------------
 # 3. Run the release gate. It runs distZip, cyclonedxBom, candidateAdmission,
@@ -544,17 +617,84 @@ cat >> "${EVIDENCE_DIR}/HANDOFF.md" <<HANDOFF_EOF
 4. Re-run \`scripts/release/verify-external-compatibility.sh\` against the
    downloaded assets and confirm the rows above are reproduced. The SDK archives
    it consumes are verified against the \`SHA256SUMS\` published with them.
+5. Import the public key in the \`Tag signature\` section above and check the
+   tag yourself:
+
+   \`\`\`
+   gpg --import <public key block>
+   git fetch origin tag ${PIPELINEK_RELEASE_TAG}
+   git tag -v ${PIPELINEK_RELEASE_TAG}
+   \`\`\`
+
+   The fingerprint must be \`${SIGNING_FINGERPRINT}\` and the uid \`${SIGNING_UID}\`.
+   A signature that verifies proves possession of the key; the attribution of
+   that key to a person is a separate fact, established outside this release.
 HANDOFF_EOF
 
 # ----------------------------------------------------------------------------
-# 6. Tag, then confirm the tag landed where the handoff says it would.
+# 6. Sign the tag, VERIFY the signature, and only then push it.
 #    Everything above ran without touching the tag, so a failure here is still
 #    recoverable: delete the tag and re-run. The reverse was not true.
+#
+#    The order is the point. A tag that exists is a tag that cannot be taken
+#    back, so the signature is checked BEFORE the tag reaches the remote: a
+#    tag that cannot be verified never becomes a tag somebody else can see.
+#    There is no unsigned fallback. If the key is missing, the tag is not
+#    created; if the signature does not verify, the tag is deleted and the
+#    publication stops.
+#
+#    The three steps live in scripts/release/publish-tag.sh so the ORDER can be
+#    observed rather than read: that script can be pointed at a local bare
+#    repository, and the question "does the remote end up holding a tag whose
+#    signature does not verify?" is asked of the shipping code.
 # ----------------------------------------------------------------------------
 
-git tag -a "${PIPELINEK_RELEASE_TAG}" -m "PipelineK ${PIPELINEK_RELEASE_TAG} (candidate_id sha256:${LOCAL_SHA})"
-git push origin "${PIPELINEK_RELEASE_TAG}"
+if ! "${REPO_ROOT}/scripts/release/publish-tag.sh" \
+    --tag "${PIPELINEK_RELEASE_TAG}" \
+    --candidate-id "sha256:${LOCAL_SHA}" \
+    --expect-commit "${PROSPECTIVE_TAG_COMMIT}" \
+    --fingerprint "${SIGNING_FINGERPRINT}" \
+    --uid "${SIGNING_UID}" \
+    --out "${EVIDENCE_DIR}/tag-signature.txt"; then
+    echo "release-pipelinek: refusing to publish — the release tag was not published." >&2
+    echo "    The verdict is at ${EVIDENCE_DIR}/tag-signature.txt" >&2
+    exit 1
+fi
 
+# The handoff is the release notes body: it is what a consumer reads to decide
+# what to check, so the signature facts belong in it. The public key travels
+# with it, because a consumer who has never seen the machine that cut the
+# release still needs the key to check the signature at all.
+{
+    printf '\n## Tag signature\n\n'
+    printf '| Field | Value |\n'
+    printf '|---|---|\n'
+    printf '| Signature | the tag is signed, and the signature verifies |\n'
+    printf '| Signing key (fingerprint) | `%s` |\n' "$SIGNING_FINGERPRINT"
+    printf '| Key uid | `%s` |\n' "$SIGNING_UID"
+    printf '| Signed commit | `%s` |\n' "$PROSPECTIVE_TAG_COMMIT"
+    printf '| Check | `scripts/release/verify-tag-signature.sh` |\n\n'
+    printf 'What this proves, and what it does not:\n\n'
+    printf -- '- It proves POSSESSION of the private key: the tag was signed by whoever\n'
+    printf -- '  holds it, and the tag cannot be altered without breaking the signature.\n'
+    printf -- '- It does NOT prove that the holder of that key owns this repository. Until\n'
+    printf -- '  the fingerprint is published on a channel the publisher controls, a\n'
+    printf -- '  consumer must treat the publisher as UNATTRIBUTED. The hosting platform\n'
+    printf -- '  shows the tag as unverified for the same reason: this key is not\n'
+    printf -- '  registered on a hosting account.\n\n'
+    printf 'The public key is embedded below, so this check needs nothing from the\n'
+    printf 'machine that cut the release:\n\n'
+    printf '```\n'
+    printf '%s\n' "$SIGNING_PUBLIC_KEY"
+    printf '```\n\n'
+    printf 'The verdict the release path recorded when it checked the signature:\n\n'
+    printf '```\n'
+    cat "${EVIDENCE_DIR}/tag-signature.txt"
+    printf '```\n'
+} >> "${EVIDENCE_DIR}/HANDOFF.md"
+
+# The tag was signed, verified and pushed by publish-tag.sh above. What is
+# checked here is the claim the handoff makes about it, not the push itself.
 TAG_COMMIT="$(git rev-parse "${PIPELINEK_RELEASE_TAG}^{commit}")"
 
 if [ "$TAG_COMMIT" != "$PROSPECTIVE_TAG_COMMIT" ]; then

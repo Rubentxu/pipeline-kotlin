@@ -222,26 +222,28 @@ sin red |
 | 9 | La consola del producto intercala su propio progreso dentro de la salida del paso | **medido**: una marca de 26 bytes puede llegar partida en dos, con la línea de progreso en medio (`WRONG_K` + progreso + `EY_CHANGES_NOTHING`). Las comprobaciones nuevas del arnés miran el **transcripto** —los bytes que el paso escribió— y no la consola; las que ya existían siguen mirando la consola, así que una de ellas puede partirse sin que nadie lo note. Es una deuda con nombre, no un defecto del ciclo (§2.82) |
 | 10 | La puerta de una **corrida** no falla en la puerta | **medido**: una frase de paso que **no encaja** se descubre en el primer uso de la credencial, y la corrida termina con el código de un paso fallido; solo la que **no está** se niega en la puerta. El mensaje es cierto y el fallo es cerrado, pero el KDoc de la costura promete «fail fast» para los dos casos. Corregirlo cambia el código de salida de un modo de fallo ya publicado —una ruptura versionada— y no se ha hecho en este ciclo (§2.82) |
 | 11 | El runtime llevaba una sonda que escribía en el directorio personal del operador | **cerrado** (§2.83): la sonda no la alcanza nadie en la configuración por defecto, y cuando el modo que la alcanza se activa a mano, escribe un fichero fuera de la raíz autorizada sin forma de apagarla. Se ha quitado, y el permiso de los FIFOs se sigue fijando donde se decide |
+| 12 | El verbo que escribe en una run terminada (`cancel`, `recover`) deja un fichero de base de datos **vacío** como efecto lateral de su propio rechazo | **medido** (§2.85): la puerta **se niega** a escribir en una run terminada —es lo correcto—, pero el verbo llega al almacén lo bastante lejos como para dejar el fichero ya creado. No lo introduce este bloque —es anterior— y no se toca aquí: el almacén y su fichero de datos se crean en sitios distintos, y separarlos es un cambio de layout, no un arreglo de una línea |
+| 13 | Una excepción en el hilo principal deja el proceso **en pie** en vez de salir | **medido** (§2.85): se vio en vivo con el `NullPointerException` que un `--db` relativo alcanzaba —el hilo principal muere y los hilos del ejecutor durable no lo sueltan—. Se ha corregido **la causa** de esa excepción concreta, no el defecto de fondo: una excepción en el hilo principal debería terminar el proceso. Corregirlo toca el ciclo de vida del runtime y queda **fuera** de este bloque |
 
 ## 1. Estado medido
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `a1ced1828`, medido en los ensayos de este bloque. El bloque anterior cerró el **camino más corto al primer pipeline**: una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81). Este cierra la **puerta de las credenciales**: la frase de paso es la autorización para tocar el almacén, y una frase de paso que no encaja ya no borra una credencial y dice que sí (§2.82). Este bloque cierra el **efecto lateral del runtime**: el ejecutor durable ya no escribe una sonda de permisos en el hogar del operador, y la comprobación del FIFO se mudó a un escenario efímero que es dueño de sus ficheros (§2.83). Este bloque cierra el **instalador**: una release ya no se resuelve construyendo su nombre, sino leyéndolo del manifiesto que la release publica (§2.84). La candidata `v0.88.0-rc1` queda **publicada y verificada byte a byte**, y este bloque **no publica otra** porque el producto no cambia de comportamiento (§2.84) | `git rev-parse HEAD` |
+| SHA | `9e2cb034e`, medido en los ensayos de este bloque. Los bloques anteriores cerraron, cada uno, su puerta: el **camino más corto al primer pipeline** —una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81)—, la **puerta de las credenciales** —la frase de paso es la autorización para tocar el almacén, y una que no encaja ya no borra una credencial y dice que sí (§2.82)—, el **efecto lateral del runtime** —el ejecutor durable ya no escribe una sonda de permisos en el hogar del operador, y la comprobación del FIFO se mudó a un escenario efímero que es dueño de sus ficheros (§2.83)— y el **instalador** —una release ya no se resuelve construyendo su nombre, sino leyéndolo del manifiesto que la release publica (§2.84)—. Este bloque cierra la **puerta del almacén**: el productor crea el directorio que sostiene su propio almacén, y los lectores dejan de negarse por un motivo falso (§2.85). La candidata `v0.89.0-rc1` queda **publicada y verificada byte a byte**: aquí el producto **sí cambia de comportamiento**, así que abre tren nuevo en vez de abrir otra candidata del anterior (§2.85) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1175** (169 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1183** (169 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas; el escenario de credenciales pasa de 14 a 22 comprobaciones, y el número de escenarios **no crece** | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **62 de 62**: **578 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. Las comparaciones entre las dos ejecuciones van dentro de esas 578, y el total es el que se lee aquí | censo del arnés, sobre los 62 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **21971 / 68421 = 0.321** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **22022 / 68455 = 0.322** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **186 / 172 / 176** en los tres ensayos, los tres sobre `a1ced1828`, peor 186 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **196 / 159 / 148** en los tres ensayos, los tres sobre `9e2cb034e`, peor 196 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 24 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
-| Candidato publicada | **`v0.88.0-rc1`** (prerelease), `candidate_id` `sha256:8d9360a3a5331325bbd13090ccbcb817a4d088319f3af839992c3703065681a0`, tag en `7fe881db4`; verificada **sobre los bytes descargados del remoto** (§2.83). **Sin candidata nueva en este bloque**: el producto no cambia de comportamiento y el tren sigue cerrado en `rc1` (§2.84) | `gh release view v0.88.0-rc1`, `sha256sum -c SHA256SUMS` |
+| Candidato publicada | **`v0.89.0-rc1`** (prerelease), `candidate_id` `sha256:9da1c7b44eb4cd3b803457bbedcd72164d96ee1ccd05d451d0c49f8d8323d70d`, tag en `9e2cb034e`; verificada **sobre los bytes descargados del remoto**, con las **6** sumas de `SHA256SUMS` coincidiendo una a una (§2.85). El bloque anterior **no publicó candidata** porque el producto no cambiaba de comportamiento (§2.84) | `gh release view v0.89.0-rc1`, `sha256sum -c SHA256SUMS` |
 | Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -251,22 +253,23 @@ sale mejor que la realidad.
 
 El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
-165 s en el bloque de las tres familias; los seis bloques anteriores a éste
+165 s en el bloque de las tres familias; los siete bloques anteriores a éste
 midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s, 182, 141 y 139 s,
-187, 139 y 140 s y 203, 139 y 141 s.
+187, 139 y 140 s, 203, 139 y 141 s y 186, 172 y 176 s.
 Este mide
-**186, 172 y 176 s**:
+**196, 159 y 148 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 186 s, es menos de
+de este ciclo el presupuesto se cumplió con holgura —el peor, 196 s, es menos de
 un quinto de los 900 s—, y eso que el árbol medido incluye la distribución,
-la API pública, los 1175 tests y los 62 escenarios.
+la API pública, los 1183 tests y los 62 escenarios.
 
-**La etapa del E2E mide 107 s**, medidos en seco sobre el lanzador, contra los
-91, 92 y 95 s del ciclo anterior (§2.80). Los **doce segundos** de más son el
-precio de la puerta: cada comprobación nueva es una invocación del producto, y
-el producto es un proceso que arranca. Lo que sigue explica el **resto** del
-coste, que es el de siempre: el arnés ya no deduce las identidades del sistema
+**La etapa del E2E mide 97 s**, medidos en seco sobre el lanzador, contra los
+107 s del ciclo anterior (§2.80) y los 91, 92 y 95 s del anterior a ese. Este bloque
+**no añade ni un escenario** —los **62** son los mismos **62**—: los **diez
+segundos** menos son el precio de no crecer el arnés. La comprobación nueva de este
+bloque **no es un escenario**: es efímera y vive fuera del árbol (§2.85).
+Lo que sigue explica el **resto** del coste, que es el de siempre: el arnés ya no deduce las identidades del sistema
 de ficheros, **pregunta al producto**, y preguntar cuesta un arranque de proceso
 por mundo y por run. Ese precio compra algo que el
 filesystem no daba: **la identidad completa** de cada operacion, y con ella
@@ -9321,6 +9324,123 @@ resultado: PASS   comprobaciones: 36   ok: 36   ko: 0
   repositorio ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no
   `PASS`.
 
+### 2.85 El productor crea el directorio de su almacén
+
+**El hueco, medido contra el producto real.** Tres hechos, no tres opiniones:
+
+| invocación | respuesta | efecto lateral |
+|---|---|---|
+| `run --db <dir>/events.db` con `<dir>` inexistente | **exit 2**, `Error: no directory for db: <path>` | ninguno: no crea nada |
+| `run --control-root <dir>/durable-shell` con `<dir>` inexistente | **exit 0** | **crea** `<dir>` y sus hijos |
+| `run --db events.db` (ruta relativa; el directorio de trabajo existe) | **exit 2**, `Error: no directory for db: events.db` | ninguno |
+
+Dos directorios del mismo tipo con dos comportamientos, y un rechazo **falso**
+en el caso relativo: `events.db` vive en el directorio de trabajo, que existe.
+
+**La causa.** La puerta de admisión (`EventStoreAdmission`) observaba el camino y
+colapsaba tres estados distintos en uno solo: «el directorio que lo sostendría no
+existe», «ahí no hay un directorio» y «no hay componente de directorio». Los tres
+se rechazaban, y se rechazaban igual para los tres verbos. La regla pura era
+total sobre dos ADTs cerrados, así que la confusión no era un descuido de un
+`if`: era una decisión, escrita entera, que acababa en un rechazo para todo.
+
+**Lo que ahora es verdad.** La regla tiene **tres** finalidades, y cada una
+declara qué sitio es suyo:
+
+| finalidad | qué es | qué puede faltar | qué hace con el sitio |
+|---|---|---|---|
+| `Read` | leer una run terminada | nada | se niega |
+| `Write` | escribir en una run terminada (`cancel`, `recover`) | nada | se niega |
+| `Produce` | **empezar** una run | el fichero **y** su directorio | **los crea** |
+
+Y la observación se desdobla, porque «falta el directorio» —que el productor
+puede crear— y «ahí no hay un directorio» —que nadie puede— no son la misma
+ausencia: el primero se puede crear, el segundo se puede nombrar y nada más.
+La matriz de la regla pura pasa de **3×2 = 6** filas a **4×3 = 12**, y cada
+combinación está escrita; añadir una finalidad obliga a revisitarla, que es
+justo lo que una regla total hace bien.
+
+El rechazo que ve el operador **no cambia**: sigue siendo `no directory for db`,
+con la ruta. Lo que cambia es quién lo recibe: ya no lo recibe el productor.
+
+**Un segundo defecto, alcanzado por el primero.** La raíz de control de una run
+se derivaba del almacén con `Paths.get(dbPath).parent.resolve(...)`, y un `--db`
+relativo no tiene componente de directorio: `getParent()` devolvía `null` y la
+run moría con una NullPointerException. Era **código muerto** hasta ahora,
+porque la puerta rechazaba el camino relativo antes de llegar ahí. Al poder el
+productor su directorio, ese camino llega, y la excepción deja el proceso **en
+pie sin terminar** —el hilo principal muere y los hilos del ejecutor durable no
+lo sueltan— en vez de salir con un diagnóstico. Ahora la ruta del almacén se
+hace absoluta antes de pedirle su directorio: el directorio de trabajo es el
+que sostiene un `--db` relativo. Para un `--db` absoluto nada cambia.
+
+**El cambio se plantó en la puerta correcta, y no por casualidad.** La PR #91,
+que quedó abierta desde la línea anterior, llevaba el arreglo al sitio donde se
+crea el fichero de SQLite. Ese sitio es correcto para un motor, pero **alcanzable
+solo**: la puerta de admisión se negaba **antes**, y un arreglo en el motor, con
+la puerta como está, no se ejecuta nunca. Replantado en la puerta, el efecto
+aparece; replantado en el motor, habría parecido funcionar sin haberlo hecho.
+Por eso el cambio vive en `EventStoreAdmission` y no en la fábrica de conexiones.
+
+**La comprobación es efímera y está fuera del árbol.** Vive bajo
+`${XDG_STATE_HOME:-$HOME/.local/state}/pipelinek/verification-cycles/`, no en
+`examples/`, y **el número de escenarios versionados no crece**: siguen siendo
+**62**. Hay dos instrumentos, porque hay dos garantías:
+
+- La **regla pura** la vigila un test unitario en
+  `pipeline-events-store/src/test/kotlin`, que es su sitio natural: la matriz de
+  doce filas, con guardas que rechazan omisiones y duplicados antes de generar
+  los casos.
+- El **efecto** —que el directorio se crea de verdad, y que los lectores no lo
+  crean— lo vigila un UAT efímero con la **distribución real**: **17**
+  comprobaciones en cinco grupos (el productor crea; el lector no crea y se
+  niega; el verbo que escribe en una run terminada tampoco crea; una ruta
+  relativa arranca y no dice que no hay directorio; un sitio que no es un
+  directorio se rechaza y no se toca lo que había).
+
+**La comprobación puede ponerse roja.** Se falseó con **dos** mutaciones, y cada
+una puso en rojo exactamente lo que le toca:
+
+| mutación | qué se puso rojo | qué se quedó en verde |
+|---|---|---|
+| la regla pura deja de admitir (producir, directorio ausente) | las **2** filas del test unitario que la vigilan | las otras 12 |
+| el Caparazón deja de llamar a `createDirectories` | las **6** comprobaciones del productor | las **11** de lectores, ruta relativa y sitio que no es directorio |
+
+Que la segunda no tocara nada más es la prueba de que el instrumento discrimina:
+un verde que no depende de lo que se está midiendo no está midiendo.
+
+**Lo que se publicó.** El producto **sí cambia de comportamiento**, así que este
+bloque abre **tren nuevo** (`0.89.0`) y no otra candidata del anterior: la
+candidata `v0.89.0-rc1` queda publicada, con `candidate_id`
+`sha256:9da1c7b44eb4cd3b803457bbedcd72164d96ee1ccd05d451d0c49f8d8323d70d` y el
+tag en `9e2cb034e`. Los **7** assets se descargaron del remoto y las **6** sumas
+de `SHA256SUMS` coincidieron **una a una** contra los bytes publicados. La puerta
+completa dio `PASS` en **tres** ensayos sobre ese mismo SHA —**196**, **159** y
+**148** s, con `tests=rewritten:1183 read:0` y **62** de **62** escenarios— y la
+ratio de LOC quedó en **22022 / 68455 = 0.322**, con el módulo más alto en
+**1.633**. La deuda estática congelada sigue en **879** entradas: este bloque no
+toca ninguna baseline.
+
+En el remoto, la PR #91 quedó **cerrada** con una referencia al reemplazo y su
+rama **borrada**; las incidencias **#145**, **#106**, **#104** y **#103** se
+comentaron con la evidencia medida y se cerraron. Quedan **0** incidencias
+abiertas y **0** PRs abiertas.
+
+**Lo que queda fuera, dicho con honestidad.**
+
+- El **verbo que escribe en una run terminada** (`cancel`, `recover`) sigue
+  creando un fichero de base de datos vacío como efecto lateral de su propio
+  rechazo. Es un comportamiento anterior a este bloque, no lo introduce este, y
+  no se toca aquí.
+- Una excepción en el hilo principal **deja el proceso en pie** en vez de
+  salir. Se ha visto en vivo con el defecto anterior. Es una falta de
+  robustez del runtime que este bloque no arregla: la mide y la deja escrita.
+- El verbo `runs recover` existe y funciona, pero **no aparece** en la lista de
+  verbos que el producto publica. Se ha reportado; no se ha cambiado, porque
+  tocar esa lista es tocar un contrato publicado.
+- La promoción a estable sigue bloqueada: no hay certificador externo en este
+  repositorio ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no
+  `PASS`.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite

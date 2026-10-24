@@ -124,11 +124,7 @@ internal fun runVolatilePipeline(
     // does have one does not need the provider on the in-memory path.
     // The same question, the same answer: a run that declares no credential binding
     // does not open the store, so it is never asked for a passphrase.
-    val credentialSeam = composeCredentialSeam(
-        secretPatternRegistry,
-        clock,
-        storeNeeded = compilation.pipelineSpec?.declaresCredentialBinding() == true,
-    )
+    val credentialSeam = composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec)
     // the workspace decision rule / the workspace origin rule clause 3.1 + the typed-owner decision: the workspace origin is decided
     // ONCE, here at the boundary. Both facts cross into the runtime — the shared
     // directory and its owner — because a runtime that receives only the root

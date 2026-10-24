@@ -12,6 +12,7 @@ import dev.rubentxu.pipeline.v2.credentials.multipart.LocalFileMaterialization
 import dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization
 import dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
+import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import java.nio.file.Path
 
 /**
@@ -41,16 +42,17 @@ import java.nio.file.Path
  * - The run declares a binding, the store file exists and the passphrase is
  *   wrong/missing -> fail fast with actionable error
  *
- * @param storeNeeded whether this run declares a credential binding. The need
- *   is a fact about the RUN, and asking the machine whether its store file
- *   exists answered a different question: it made every run on a machine that
- *   had ever stored a secret ask for a passphrase, including the runs that bind
- *   nothing.
+ * @param pipelineSpec the declaration of the run, which says whether it binds a
+ *   credential. The need for the store is a fact about the RUN, and asking the
+ *   machine whether its store file exists answered a different question: it made
+ *   every run on a machine that had ever stored a secret ask for a passphrase,
+ *   including the runs that bind nothing. The caller therefore hands over the
+ *   declaration and lets this function decide.
  */
 internal fun composeCredentialSeam(
     redactionRegistry: SecretPatternRegistry?,
     clock: Clock,
-    storeNeeded: Boolean,
+    pipelineSpec: PipelineSpec?,
 ): CredentialSeam {
     // [controlDirRoot] is deliberately NOT a parameter of this function. It used to
     // be (`controlDirRoot.parent.resolve("credentials.bin")`), which meant the
@@ -59,6 +61,7 @@ internal fun composeCredentialSeam(
     // to reintroduce by accident; see CredentialsStorePath's KDoc.
     val credentialsStorePath: Path = CredentialsStorePath.fromEnvironment(System.getenv())
 
+    val storeNeeded = pipelineSpec?.declaresCredentialBinding() == true
     if (!storeNeeded || !credentialsStorePath.toFile().exists()) {
         return CredentialSeam(provider = null, executor = null)
     }

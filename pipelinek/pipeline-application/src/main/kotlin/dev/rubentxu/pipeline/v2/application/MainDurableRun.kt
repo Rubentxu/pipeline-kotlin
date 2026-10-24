@@ -129,13 +129,10 @@ internal fun runDurablePipeline(
     )
     val cursorStore: ReplayCursorStore = SqliteReplayCursorStoreImpl(store.factory, clock)
     val effectPolicy: EffectReplayPolicy = DefaultEffectReplayPolicy()
-    // The need for the secret store is a fact about this RUN, and the run knows it:
-    // the compiled script says, in its own declaration, whether it binds a credential.
-    val credentials = composeCredentialSeam(
-        secretPatternRegistry,
-        clock,
-        storeNeeded = compilation.pipelineSpec?.declaresCredentialBinding() == true,
-    )
+    // The need for the secret store is a fact about this RUN, and the run knows
+    // it: the compiled script says, in its own declaration, whether it binds a
+    // credential.
+    val credentials = composeCredentialSeam(secretPatternRegistry, clock, compilation.pipelineSpec)
 
     // The legacy PipelineOrchestrator was constructed here but
     // never invoked. The CLI reaches the durable runtime ONLY through the canonical

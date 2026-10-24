@@ -34,6 +34,15 @@
 #                                     # scenario that wants to assert on what a
 #                                     # step PRINTED asserts it where the print
 #                                     # is committed. Repeatable.
+#   //@ storage-agnostic             the capability this scenario exercises must
+#                                     not need a durable store: the scenario has
+#                                     to run on BOTH paths, with a journal and
+#                                     without one, and both runs have to meet
+#                                     the expectations. A directive that names a
+#                                     promise the launcher does not keep is a
+#                                     promise nobody is watching, so the launcher
+#                                     REFUSES a scenario that asks for this and
+#                                     would only run it on the journal path.
 #   //@ durable                       run twice against one control root and
 #                                     require the second run not to repeat the
 #                                     effect; the pipeline itself asserts the
@@ -793,6 +802,120 @@ canonical_narration() {
     '
 }
 
+# The order a run's story promised, read back from the story.
+#
+# A run's narration is the order in which the run told its story, and the console
+# writes it in the order the events were appended, so the narration IS the order
+# of the record. A story that says a step ended before it began says the opposite
+# of what happened, and nobody reading the record afterwards can tell.
+#
+# The order a run PROMISES is a PARTIAL order, not a total one. A stage's steps
+# may run at the same time, and which of two concurrent steps closes first is a
+# race, not a story -- so a comparison that read the narration as a sequence
+# would report a difference between two runs that did exactly the same thing.
+# The promise is therefore the smallest one that is still a promise:
+#
+#   - a step that finished began first, and
+#   - a stage is closed by the stage that opened it.
+#
+# Nothing else about the order is promised, so nothing else is checked. A
+# comparison between two runs that sorts the lines of a stage cannot see these
+# two facts, because sorting puts a step's beginning and its end wherever the
+# alphabet says: the same two runs, one of them told backwards, produce the
+# same sorted text. THIS is what the comparison cannot see, and it is checked
+# here instead -- on every run, for every scenario, with no directive to
+# declare and no scenario to forget.
+#
+# The output is the first fault, and nothing at all when the story is legal.
+story_order_fault() {
+    local file="$1"
+    narration_of "$file" | LC_ALL=C awk '
+        function blame(at, text) {
+            if (fault_at == 0 || at < fault_at) { fault_at = at; fault_text = text }
+        }
+        /^\[PipelineK\] \[stage: / {
+            inner = $0
+            sub(/^\[PipelineK\] \[stage: /, "", inner)
+            name = inner
+            sub(/\].*$/, "", name)
+            rest = inner
+            sub(/^[^\]]*\] ?/, "", rest)
+            if (rest == "") {
+                # A stage BEGINS.
+                if (open != "") blame(NR, "the stage " open " began and was never closed")
+                open = name
+            } else if (rest ~ /^skipped:/) {
+                # A stage that did not run: it opens nothing and closes nothing.
+            } else {
+                # A stage CLOSES, and it closes the stage it opened.
+                if (open == "") blame(NR, "the stage " name " closed and never began")
+                else if (open != name) blame(NR, "the stage " open " was closed by the stage " name)
+                open = ""
+            }
+            next
+        }
+        /^\[PipelineK\] \[step: / {
+            identity = $0
+            sub(/^\[PipelineK\] \[step: [^\]]*\] /, "", identity)
+            if (identity ~ / finished -> /) {
+                sub(/ finished -> .*$/, "", identity)
+                kind = "finish"
+            } else if (identity ~ / finished$/) {
+                sub(/ finished$/, "", identity)
+                kind = "finish"
+            } else {
+                kind = "start"
+            }
+            if (kind == "finish") {
+                if (!(identity in first_finish)) first_finish[identity] = NR
+            } else {
+                if (!(identity in first_start)) first_start[identity] = NR
+            }
+            next
+        }
+        END {
+            for (id in first_finish) {
+                if (id in first_start) {
+                    if (first_finish[id] < first_start[id])
+                        blame(first_finish[id], "the step " id " finished before it began")
+                } else {
+                    blame(first_finish[id], "the step " id " finished without ever beginning")
+                }
+            }
+            if (fault_text != "") { print fault_text; exit 1 }
+        }
+    '
+}
+
+# The order a run's story promised, held against the story it told.
+#
+# Every run the launcher makes is held to it, and not only the ones a scenario
+# asked about: the order is a promise the PRODUCT makes, so it belongs to the
+# launcher, and a promise each scenario has to declare is a promise only the
+# scenarios that declare it are protected by. The scenario does not choose
+# whether its run told the truth about the order of its own steps.
+#
+# The check names the run it is about, because a scenario can make more than
+# one and they are not the same run: the first run and the resumed one tell
+# different stories, and only one of them is the scenario's verdict.
+check_story_order() {
+    local label="$1" file="$2" fault
+    # Counted before it is checked: a comparison that failed was still made,
+    # and a census that shrank when something failed would report a smaller
+    # suite than the one that ran.
+    scenario_guarantees=$((scenario_guarantees + 1))
+    fault="$(story_order_fault "$file")"
+    if [[ -z "$fault" ]]; then
+        return 0
+    fi
+    printf 'FAIL %-52s the run told its story in an order it did not promise\n' "$label"
+    printf '       | %s\n' "$fault"
+    show_printed "$file"
+    failed=$((failed + 1))
+    failures+=("$label: $fault")
+    return 1
+}
+
 # What a run SAYS: the story it told and the diagnostics it wrote.
 #
 # The two worlds live in different directories, and the place a run lives is not
@@ -1122,6 +1245,8 @@ run_scenario_body() {
     local events_follow=""
     local run_state=""
     local recover=0
+    local storage_agnostic=0
+    local unknown_directive=""
     local directive
     while IFS= read -r directive; do
         case "$directive" in
@@ -1145,8 +1270,29 @@ run_scenario_body() {
             '//@ events-follow '*)  events_follow="${directive#//@ events-follow }" ;;
             '//@ run-state '*)      run_state="${directive#//@ run-state }" ;;
             '//@ expect-outcome '*) expect_outcome="${directive#//@ expect-outcome }" ;;
+            '//@ storage-agnostic')  storage_agnostic=1 ;;
+            # The clock is read by the wrapper, which owns the scenario's time.
+            '//@ timeout '*)        ;;
+            *)                     unknown_directive="$directive" ;;
         esac
     done < <(grep -m 20 '^//@ ' "$script" || true)
+
+    # A directive the launcher does not know is a promise nobody is keeping.
+    #
+    # It used to be a silence: the parser had no other case, so a directive
+    # that named a guarantee the launcher never read -- a misspelling, a
+    # guarantee that was planned and never implemented -- cost the scenario
+    # nothing and bought it nothing. The scenario still passed, and the
+    # promise was gone. A promise that disappears when it is misspelled is not
+    # a promise, so an unknown directive now fails the scenario that carries
+    # it, and the failure names it.
+    if [[ -n "$unknown_directive" ]]; then
+        printf 'FAIL %-52s the scenario declares a directive the launcher does not know: %s\n' \
+            "$name" "${unknown_directive#//@ }"
+        failed=$((failed + 1))
+        failures+=("$name: unknown directive: ${unknown_directive#//@ }")
+        return
+    fi
 
     # The guarantees this scenario PROMISED, before any of them is checked:
     # the text it must produce, the refusal it must contain, the bytes it must
@@ -1452,6 +1598,23 @@ run_scenario_body() {
         run_volatile=0
     fi
 
+    # A scenario that says its capability must not need a store has to RUN
+    # without one. The other promises it makes can put it on the journal path
+    # only, and then the promise it made about the store is not kept: the
+    # scenario would pass, and the guarantee it was written for would never
+    # have been observed.
+    #
+    # The two promises contradict each other, and the launcher says so instead
+    # of quietly keeping one of them. A scenario that cannot be run both ways
+    # is a scenario that has to say which of the two it means.
+    if [[ "$storage_agnostic" == 1 && "$run_volatile" == 0 ]]; then
+        printf 'FAIL %-52s the scenario promises its capability does not need a store, and would only run with one\n' \
+            "$name"
+        failed=$((failed + 1))
+        failures+=("$name: the scenario promises it does not need a store and would only run with one")
+        return
+    fi
+
     # `cd` in this shell, not a subshell: a subshell would discard the exit
     # code the verdict is built from, and every scenario would read as ok.
     #
@@ -1469,6 +1632,9 @@ run_scenario_body() {
         >"$stdout" 2>"$stderr" || code=$?
     cd "$caller_pwd"
     count_run
+    if ! check_story_order "$name" "$stdout"; then
+        return
+    fi
 
     if [[ "$run_volatile" == 1 ]]; then
         # The volatile execution gets its OWN working directory and its OWN
@@ -1500,6 +1666,9 @@ run_scenario_body() {
         export PIPELINEK_E2E_HOME="$durable_home"
         export PIPELINEK_E2E_CONTROL="$durable_control"
         count_run
+        if ! check_story_order "$name (volatile)" "$vstdout"; then
+            return
+        fi
     fi
 
     if [[ "$durable" == 1 ]]; then
@@ -1516,6 +1685,9 @@ run_scenario_body() {
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
         count_run
+        if ! check_story_order "$name (rerun)" "$root/stdout.rerun.txt"; then
+            return
+        fi
         if [[ "$second" != 0 ]]; then
             printf 'FAIL %-52s the resumed run exited %s, expected 0\n' "$name" "$second"
             show_printed "$root/stderr.rerun.txt"
@@ -1553,6 +1725,9 @@ run_scenario_body() {
             >"$root/stdout.rerun.txt" 2>"$root/stderr.rerun.txt" || second=$?
         cd "$caller_pwd"
         count_run
+        if ! check_story_order "$name (resumed)" "$root/stdout.rerun.txt"; then
+            return
+        fi
         code="$second"
         # The verdict is the SECOND run's: the first one died before it could
         # say anything about the outcome of the run.

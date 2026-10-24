@@ -310,48 +310,7 @@ class DurableShellExecutor : DurableShellLaunching {
                 ),
             )
         }
-        // Record the FIFO type + perms to a file the
-        // test can read AFTER the runtime cleanup has
-        // deleted the control dir. Without this, the test would race the
-        // cleanup and miss the assertion.
-        recordFifoPerms(fifoDir)
         return fifoDir
-    }
-
-    /**
-     * Write the FIFO perms to a probe file in the
-     * user's home so the f06 test can verify them post-cleanup. Format:
-     * one line per FIFO, `name=isFifo,perms`, e.g. `stdout.fifo=true,OWNER_READ|OWNER_WRITE`.
-*/
-    private fun recordFifoPerms(fifoDir: Path) {
-        runCatching {
-            val reportDir = java.nio.file.Files.createDirectories(
-                java.nio.file.Path.of(System.getProperty("user.home"), "obsPc2diag"),
-            )
-            val report = StringBuilder()
-            for (fifoName in listOf("stdout.fifo", "stderr.fifo")) {
-                val fifo = fifoDir.resolve(fifoName)
-                val attrs = Files.readAttributes(
-                    fifo,
-                    java.nio.file.attribute.PosixFileAttributes::class.java,
-                )
-                report.append(fifoName).append('=')
-                    .append(attrs.isOther).append(',')
-                    .append(
-                        attrs.permissions().joinToString("|") { perm ->
-                            perm.toString()
-                        },
-                    )
-                    .append('\n')
-            }
-            // Stamp the opId into the filename so concurrent ops don't
-            // overwrite each other's probes.
-            val opId = fifoDir.parent.fileName.toString()
-            java.nio.file.Files.writeString(
-                reportDir.resolve("fifo-perms-$opId.txt"),
-                report.toString(),
-            )
-        }
     }
 
     /**

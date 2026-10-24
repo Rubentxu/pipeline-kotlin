@@ -188,6 +188,28 @@ trap cleanup EXIT
 # used degrades to a miss inside the product, never to a wrong answer.
 export PIPELINEK_SCRIPT_CACHE_DIR="$cycle_root/script-cache"
 
+# The hardest environment an operator can express, for every scenario.
+#
+# The SQLite driver extracts its native library into the directory named by
+# `org.sqlite.tmpdir`, and the driver creates no directories of its own: the
+# place has to be there before the library arrives. The product used to read
+# the property and believe it: an operator who named a place that did not
+# exist got a run that died saying the DATABASE was not readable, when the
+# thing that was missing was the library's directory.
+#
+# The harness names a place of its own, per scenario, that it does NOT create.
+# The product's job is then to make it, and the run is the observation: a
+# product that believes the operator instead of serving them fails every
+# scenario of the suite, loudly, with a message about the wrong thing.
+#
+# What the machine running the harness had configured is kept, and the harness
+# option goes last, because the last `-D` is the one the JVM takes.
+machine_java_opts="${JAVA_OPTS:-}"
+
+native_library_home_option() {
+    printf -- '-Dorg.sqlite.tmpdir=%s' "$1"
+}
+
 passed=0
 failed=0
 blocked=0
@@ -916,6 +938,34 @@ check_story_order() {
     return 1
 }
 
+# The place the operator named for the native library, and whether it is there.
+#
+# The SQLite driver creates no directories of its own, so the place has to
+# exist before the library arrives. The product's answer is to make it, because
+# the operator named it and an instruction that is not served is not served.
+#
+# A run that never started never opened the store, so it never asked for the
+# library and there is nothing to hold it to. A run that DID start opened it,
+# and the place it was given has to be there: a product that quietly used
+# somewhere else would be serving a different instruction than the one it was
+# given, and the run would look perfect.
+check_native_library_home() {
+    local label="$1" file="$2" directory="$3"
+    if ! grep -aq '^\[PipelineK\] Run started: ' "$file" 2>/dev/null; then
+        return 0
+    fi
+    scenario_guarantees=$((scenario_guarantees + 1))
+    if [[ -d "$directory" ]]; then
+        return 0
+    fi
+    printf 'FAIL %-52s the place named for the native library is not there\n' "$label"
+    printf '       | %s\n' "$directory"
+    show_printed "$file"
+    failed=$((failed + 1))
+    failures+=("$label: the place named for the native library is not there")
+    return 1
+}
+
 # What a run SAYS: the story it told and the diagnostics it wrote.
 #
 # The two worlds live in different directories, and the place a run lives is not
@@ -1626,6 +1676,9 @@ run_scenario_body() {
     # failing pipeline differently, and a suite that ran only one of them
     # could not see that there was a choice to make.
     local caller_pwd="$PWD"
+    # The place the operator names for the native library of the SQLite driver,
+    # per scenario and NOT created by the harness. The product has to make it.
+    export JAVA_OPTS="$machine_java_opts $(native_library_home_option "$root/native-library")"
     cd "$root/cwd"
     binary run --isolated --db "$root/events.db" --control-root "$root/control" \
         ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
@@ -1633,6 +1686,9 @@ run_scenario_body() {
     cd "$caller_pwd"
     count_run
     if ! check_story_order "$name" "$stdout"; then
+        return
+    fi
+    if ! check_native_library_home "$name" "$stdout" "$root/native-library"; then
         return
     fi
 

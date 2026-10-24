@@ -49,6 +49,12 @@ RULES: list[tuple[str, str, str]] = [
     ("verify", "budget script", "scripts/check-budgets.py"),
     ("verify", "verification entrypoint", "scripts/verify-all.sh"),
     ("verify", "E2E launcher", "examples/run.sh"),
+    # The external-consumer check verifies the published artifacts against a
+    # consumer outside this repository. It does not ship them: it runs on the
+    # publisher's machine during publication. Counting it as production would
+    # make the ratio look better than the truth, so it is named here before
+    # the catch-all rule for the rest of scripts/.
+    ("verify", "external consumer check", "scripts/release/verify-external-compatibility.sh"),
     # Permanent unit tests. Two module depths: pipelinek/<m> and pipelinek/<g>/<m>.
     ("verify", "unit tests", "pipelinek/*/src/test/*"),
     ("verify", "unit tests", "pipelinek/*/*/src/test/*"),

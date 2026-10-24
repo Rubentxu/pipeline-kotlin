@@ -31,14 +31,26 @@ import java.nio.file.Path
  * function, one clock, one store.
  *
  * Behavior:
- * - Store file does not exist -> null (user runs `pipeline credentials add`
- *   first; no error at startup)
- * - Store file exists + passphrase available -> provider and executor
- * - Store file exists + passphrase wrong/missing -> fail fast with actionable error
+ * - The run declares no credential binding -> null (no store is opened, and no
+ *   passphrase is asked for: a run that wants no secret does not have to unlock
+ *   the place where secrets live)
+ * - The run declares a binding and the store file does not exist -> null (the
+ *   user runs `pipeline credentials add` first; no error at startup)
+ * - The run declares a binding, the store file exists and the passphrase is
+ *   available -> provider and executor
+ * - The run declares a binding, the store file exists and the passphrase is
+ *   wrong/missing -> fail fast with actionable error
+ *
+ * @param storeNeeded whether this run declares a credential binding. The need
+ *   is a fact about the RUN, and asking the machine whether its store file
+ *   exists answered a different question: it made every run on a machine that
+ *   had ever stored a secret ask for a passphrase, including the runs that bind
+ *   nothing.
  */
 internal fun composeCredentialSeam(
     redactionRegistry: SecretPatternRegistry?,
     clock: Clock,
+    storeNeeded: Boolean,
 ): CredentialSeam {
     // [controlDirRoot] is deliberately NOT a parameter of this function. It used to
     // be (`controlDirRoot.parent.resolve("credentials.bin")`), which meant the
@@ -47,7 +59,7 @@ internal fun composeCredentialSeam(
     // to reintroduce by accident; see CredentialsStorePath's KDoc.
     val credentialsStorePath: Path = CredentialsStorePath.fromEnvironment(System.getenv())
 
-    if (!credentialsStorePath.toFile().exists()) {
+    if (!storeNeeded || !credentialsStorePath.toFile().exists()) {
         return CredentialSeam(provider = null, executor = null)
     }
 

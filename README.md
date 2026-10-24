@@ -8,22 +8,76 @@ PipelineK runs pipelines locally with durable execution, real typed
 events, and structured failures — without a controller, agent, or
 remote state.
 
+## Install
+
+The release says what its asset is called and what its digest is, so nothing
+on this page has to be edited when a new release is published:
+
 ```bash
-VERSION=0.75.0
+# The release feed names the newest release, candidates included.
+TAG=$(curl -fsSL https://github.com/Rubentxu/pipeline-kotlin/releases.atom \
+  | sed -n 's#.*releases/tag/\(v[^"]*\)".*#\1#p' | head -1)
+BASE="https://github.com/Rubentxu/pipeline-kotlin/releases/download/${TAG}"
 
-curl -fL -o "pipelinek-${VERSION}.zip" \
-  "https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
+# The manifest names the release's one distribution; the SDK bundle has
+# another name and is not the program.
+curl -fL -o manifest.json "$BASE/manifest.json"
+ASSET=$(grep -o '"pipelinek-[^"]*\.zip"' manifest.json | grep -v sdk | head -1 | tr -d '"')
 
-echo "e24abea8ed0ef01f8f70f8a2fcfbe8efce52b33d7d4b73acfd5c54cd1b4973fa  pipelinek-${VERSION}.zip" \
-  | sha256sum -c -
+curl -fL -o "$ASSET" "$BASE/$ASSET"
+curl -fL -o SHA256SUMS "$BASE/SHA256SUMS"
+grep " ${ASSET}$" SHA256SUMS | sha256sum -c -
 
-unzip "pipelinek-${VERSION}.zip"
+unzip -q "$ASSET"
+PIPELINEK="./$(basename "$ASSET" .zip)/bin/pipelinek"
 
-./pipelinek-${VERSION}/bin/pipelinek version          # → pipeline 0.75.0
-./pipelinek-${VERSION}/bin/pipelinek doctor           # jdk / os / workdir / writable
+"$PIPELINEK" version          # → pipeline <version>
+"$PIPELINEK" doctor           # jdk / os / workdir / writable
 ```
 
-Then run your first pipeline. Write this file next to your terminal:
+Java 21 or newer is required on the `PATH`. The ZIP ships `bin/pipelinek`
+(UNIX) and `bin/pipelinek.bat` (Windows); Linux, macOS and Windows (WSL) are
+supported. The snippet leaves you with a `pipelinek-<version>/` directory
+beside you: use it from there, or put its `bin/` on your `PATH`. Nothing
+needs `sudo` and nothing starts a daemon.
+
+### Several versions side by side
+
+[`scripts/install-pipelinek.sh`](scripts/install-pipelinek.sh) downloads the
+same canonical ZIP, verifies it against the `SHA256SUMS` manifest published
+with the release, and unpacks it under `~/.local/share/pipelinek/versions/`:
+
+```bash
+curl -fL -o install-pipelinek.sh \
+  "https://raw.githubusercontent.com/Rubentxu/pipeline-kotlin/main/scripts/install-pipelinek.sh"
+chmod +x install-pipelinek.sh
+
+./install-pipelinek.sh install <version>   # download + verify + install
+./install-pipelinek.sh use <version>       # switch the active version
+./install-pipelinek.sh list                # installed versions + active
+
+export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
+```
+
+Install is **transactional**: download, digest, extraction and identity
+verification all happen in a temporary directory, and the final directory is
+created by a single rename only after every check has passed. A failed
+install leaves nothing behind, and the previously active version is never
+disturbed. The installer also requires **exact runtime identity**: the
+installed binary must report exactly the requested version, and a digest
+mismatch, an archive root that disagrees with the version, or a
+candidate-suffixed binary under a final filename all fail closed instead of
+installing something mislabelled.
+
+The installer resolves a release whose **tag is exactly the version you
+asked for**. Every release published since `v0.75.0` is a candidate, and a
+candidate's tag carries a suffix (`v0.85.0-rc1`) while its asset carries the
+plain version (`pipelinek-0.85.0.zip`), so the installer does not resolve a
+candidate yet — use the download above for one.
+
+## Your first pipeline
+
+Write this next to your terminal:
 
 ```kotlin
 // hello.pipeline.kts
@@ -37,10 +91,14 @@ pipeline {
 ```
 
 ```bash
-./pipelinek-${VERSION}/bin/pipelinek run hello.pipeline.kts
+"$PIPELINEK" run hello.pipeline.kts
 ```
 
-## What is PipelineK
+A pipeline that asks for no secret needs no secret: the run above opens no
+credential store and asks for no passphrase. A pipeline that binds a
+credential does, and says so plainly if the passphrase is missing.
+
+## What PipelineK is
 
 PipelineK is a single-binary pipeline runner. You write `.pipeline.kts`
 files in a typed Kotlin DSL that resembles Jenkins' Groovy syntax, and
@@ -54,85 +112,7 @@ schedule remotely, and does not need a controller.
 
 ## Quickstart
 
-### 1. Install
-
-Download the canonical ZIP from
-[GitHub Releases](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.75.0),
-verify its SHA-256, and unzip it:
-
-```bash
-VERSION=0.75.0
-
-curl -fL -o "pipelinek-${VERSION}.zip" \
-  "https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
-
-echo "e24abea8ed0ef01f8f70f8a2fcfbe8efce52b33d7d4b73acfd5c54cd1b4973fa  pipelinek-${VERSION}.zip" \
-  | sha256sum -c -
-
-unzip "pipelinek-${VERSION}.zip"
-
-./pipelinek-${VERSION}/bin/pipelinek version
-./pipelinek-${VERSION}/bin/pipelinek doctor
-```
-
-Linux, macOS and Windows (WSL) are supported. The ZIP ships both
-`bin/pipelinek` (UNIX) and `bin/pipelinek.bat` (Windows). Java 21 or
-newer is required on the `PATH`. The snippet above assumes you run it
-from a directory where you want `pipelinek-${VERSION}/` to live
-(`./pipelinek-0.75.0/bin/pipelinek` works without touching your `PATH`
-or needing `sudo`).
-
-> **SDKMAN is not yet available.** `sdk install pipelinek 0.75.0` is the
-> canonical long-term install command but the candidate is still in
-> vendor onboarding; running it today may fail. Until SDKMAN goes live,
-> install from GitHub Releases as shown above. See
-> [Distribution channels](#distribution-channels) for the full picture.
-
-### 1.1 Install with the script (multi-version manager)
-
-If you want multiple versions side-by-side and easy rollback, fetch
-and run the in-tree installer. It downloads the same canonical ZIP,
-verifies its SHA-256 against the `SHA256SUMS` manifest published with
-the release, and unpacks under `~/.local/share/pipelinek/versions/`:
-
-```bash
-VERSION=0.75.0
-
-curl -fL -o "install-pipelinek.sh" \
-  "https://raw.githubusercontent.com/Rubentxu/pipeline-kotlin/main/scripts/install-pipelinek.sh"
-
-chmod +x install-pipelinek.sh
-./install-pipelinek.sh install "${VERSION}"   # download + verify + install
-./install-pipelinek.sh use "${VERSION}"       # switch the active version
-./install-pipelinek.sh list                  # installed versions + active
-./install-pipelinek.sh doctor                # run pipelinek doctor (active)
-
-# Activate in your shell:
-export PATH="$HOME/.local/share/pipelinek/current/bin:${PATH}"
-pipelinek version                            # → pipeline 0.75.0
-```
-
-Available subcommands: `install`, `use`, `list`, `uninstall`, `doctor`,
-`help`. The script has a fail-closed URL allowlist
-(`github.com`, `objects.githubusercontent.com`, plus loopback hosts for
-local or air-gapped mirrors).
-
-Install is **transactional**: download, digest, extraction and identity
-verification all happen in a temporary directory, and the final version
-directory is created by a single rename only after every check has
-passed. A failed install leaves nothing behind, and the previously
-active version is never disturbed.
-
-The installer also requires **exact runtime identity**: the installed
-binary must report exactly the requested version. A mismatch, a digest
-mismatch, an archive root that disagrees with the version, or a
-candidate-suffixed binary under a final filename all fail closed
-instead of installing something mislabelled.
-
-It never uses `sudo` and never spawns a daemon. Source:
-[`scripts/install-pipelinek.sh`](scripts/install-pipelinek.sh).
-
-### 2. Write a pipeline
+### Write a pipeline
 
 Create `pipeline.kts`:
 
@@ -148,11 +128,11 @@ pipeline {
 }
 ```
 
-### 3. Validate and run
+### Validate and run
 
 ```bash
-pipelinek validate pipeline.kts
-pipelinek run --workspace . pipeline.kts
+"$PIPELINEK" validate pipeline.kts
+"$PIPELINEK" run --workspace . pipeline.kts
 ```
 
 A run whose writer was killed — the CI agent reaped, the machine rebooted —
@@ -161,7 +141,7 @@ history says it never finished. `runs cancel` closes it, and refuses to close
 one that a live process is still working on:
 
 ```bash
-pipelinek runs cancel <runId> --db <db> --control-root <dir>
+"$PIPELINEK" runs cancel <runId> --db <db> --control-root <dir>
 ```
 
 For the walk-through of workspaces, `--db`, secret redaction and run
@@ -169,26 +149,26 @@ inspection, use the CLI's own help, which is generated from the code
 that implements each flag:
 
 ```bash
-pipelinek --help
-pipelinek run --help
+"$PIPELINEK" --help
+"$PIPELINEK" run --help
 ```
 
 ## Examples
 
-The [`examples/`](examples/) directory holds 50 runnable
-pipelines that exercise the real CLI, grouped by what they cover:
+The [`examples/`](examples/) directory holds runnable pipelines that exercise
+the real CLI, grouped by what they cover:
 
-| Category | Scenarios | What it covers |
-|---|---|---|
-| `smoke/` | 3 | The shortest path through the DSL: the environment, `sh` then `echo`, and a checkout → build → archive round trip |
-| `steps/` | 6 | One scenario per step: `withEnv`, the workspace helpers, `sleep`, `writeFile`, `cleanWs`, `findFiles` |
-| `control-flow/` | 2 | Kotlin control flow inside a compiled script, and workflow control |
-| `durable/` | 12 | Durable execution over the journal: platform queries, milestones, `waitUntil`, `stash`/`unstash`, the replay guarantee, closing a run whose writer was killed, and six Saga scenarios — compensation, intervention, a crash mid-effect and its reconciliation |
-| `security/` | 2 | Credential bindings, and a ZIP-slip path-traversal defence |
-| `output/` | 7 | The output plane: file reads, a utilities round trip, ZIP/unzip, mixed utilities, cross-step artifact queries, HTML publishing, and the live output of a process |
-| `events/` | 4 | The event lane read by an external client: it reads by cursor, disconnects, and resumes without skipping or repeating a fact; it reads a step's **verdict** out of the event that ends the step; it reads the **stage** a failure belongs to out of the failure event itself — never joining two events; and it **follows** a finished run with a filter and is released when the run ends, because the filter says what the client is handed, not whether the run is over |
-| `negative/` | 9 | Deliberate failures that must fail closed: error handling, the typed error step, a command that exits non-zero, a workspace symlink escape, an unregistered directive key, a plugin artifact whose bytes cannot be read, a plugin whose bytes are not the ones the operator approved, and two reads of the event lane that must say **why** they cannot be served — an unknown run and a cursor past the tail |
-| `plugins/` | 5 | The four external example plugins, discovered from the distribution classpath: `uppercase`, `repeat`, a contributed directive, and the Saga consumer — plus a plugin admitted under the operator's trust policy |
+| Category | What it covers |
+|---|---|
+| `smoke/` | The shortest path through the DSL: the environment, `sh` then `echo`, and a checkout → build → archive round trip |
+| `steps/` | One scenario per step: `withEnv`, the workspace helpers, `sleep`, `writeFile`, `cleanWs`, `findFiles` |
+| `control-flow/` | Kotlin control flow inside a compiled script, and workflow control |
+| `durable/` | Durable execution over the journal: platform queries, milestones, `waitUntil`, `stash`/`unstash`, the replay guarantee, closing a run whose writer was killed, and the Saga scenarios — compensation, intervention, a crash mid-effect and its reconciliation |
+| `security/` | Credential bindings, and a ZIP-slip path-traversal defence |
+| `output/` | The output plane: file reads, a utilities round trip, ZIP/unzip, cross-step artifact queries, HTML publishing, and the live output of a process |
+| `events/` | The event lane read by an external client: it reads by cursor, disconnects, and resumes without skipping or repeating a fact; it reads a step's **verdict** out of the event that ends the step; it reads the **stage** a failure belongs to out of the failure event itself — never joining two events; and it **follows** a finished run with a filter and is released when the run ends, because the filter says what the client is handed, not whether the run is over |
+| `negative/` | Deliberate failures that must fail closed: error handling, the typed error step, a command that exits non-zero, a workspace symlink escape, an unregistered directive key, a plugin artifact whose bytes cannot be read, a plugin whose bytes are not the ones the operator approved, and two reads of the event lane that must say **why** they cannot be served — an unknown run and a cursor past the tail |
+| `plugins/` | The external example plugins, discovered from the distribution classpath: `uppercase`, `repeat`, a contributed directive, and the Saga consumer — plus a plugin admitted under the operator's trust policy |
 
 Each scenario runs **twice** — once with a private journal database, which is
 how a CI runs a pipeline, and once without one, which is the default for a
@@ -204,73 +184,19 @@ the second execution and read as a repeat.
 The scenarios live in this repository, not in the released ZIP: the ZIP ships
 the distribution alone. From an installed distribution you run your own
 `.pipeline.kts`; from a clone, build the local distribution once and let
-[`examples/run.sh`](examples/run.sh) run the whole set. The
-launcher discovers every scenario, gives each one a private control root, a
-private working directory and a generated passphrase, runs it on both execution
-paths, and judges each execution on its exit code and on the text the scenario
-asked for:
+[`examples/run.sh`](examples/run.sh) run the whole set:
 
 ```bash
 cd pipelinek && ./gradlew :pipeline-application:installDist
 cd .. && examples/run.sh
 ```
 
-A scenario may carry these directives as `//@` comments near its top,
-and nothing else about a scenario is interpreted:
-
-```kotlin
-//@ expect-exit 1              // the default is 0
-//@ expect-stdout <substring>  // the run must PRODUCE this, not merely exit 0
-//@ expect-stderr <substring>  // the refusal must be this specific, not
-                              // merely a nonzero exit
-//@ expect-transcript <text>   // the bytes the run COMMITTED must contain it
-//@ durable                    // run twice over one control root; the
-                              // pipeline itself asserts the effect did
-                              // not repeat, this only makes it happen
-//@ durable-once               // run only on the journalled path: the
-                              // scenario is about the journal, and without
-                              // one there is nothing to resume
-//@ resume                     // the scenario drives a resume itself
-//@ cancel                     // the scenario drives a cancellation itself
-//@ credentials <id> <kind>    // seed a credential into this scenario's store
-//@ plugin-jar <name>          // run against an external example plugin
-//@ plugin-trust <policy>      // run under the operator's plugin trust policy
-//@ events-refusal <fixture>   // the run is the FIXTURE and the verdict is
-                              // the read's refusal: `unknown-run` or
-                              // `cursor-beyond-tail`
-//@ events-resume <kind> <n>   // the run is the FIXTURE and the verdict is
-                              // the reader's: the launcher reads the history
-                              // by cursor in pages of n facts, disconnecting
-                              // between them, and asserts that it ends up
-                              // having seen every fact exactly once
-//@ step-verdict <step>=<v>... // the run is the FIXTURE and the verdict is
-                              // the reader's: the launcher reads ONLY the
-                              // events that end a step, never the failure
-                              // event, and asserts that each of them says
-                              // what the step did
-//@ failure-stage <step>=<n>... // the run is the FIXTURE and the attribution
-                              // is the reader's: the launcher reads ONLY the
-                              // failure events and asserts that each of them
-                              // says which stage the failure belongs to. A
-                              // failure that names no stage is not a failure
-                              // in the first stage
-//@ events-follow <kind> <s>  // the run is the FIXTURE and the verdict is the
-                              // follower's: the launcher follows it WITH a
-                              // filter and under a wall clock, and asserts
-                              // that the follow ENDS (a filter decides what the
-                              // client is handed, not whether the run is over),
-                              // that it does not deliver a fact the filter
-                              // excludes, and that it does deliver the filtered
-                              // one
-```
-
-Every directive except `expect-exit` may appear more than once, and each
-occurrence must be satisfied. The launcher also takes one optional argument, a
-glob over the scenario paths relative to `examples/`, so
-`examples/run.sh 'control-flow/*'` runs one slice of the set. A glob that
-matches nothing is an error rather than a run of zero scenarios.
-
-That is the entire vocabulary. The launcher is not a framework: it has
+The launcher gives each scenario a private control root, a private working
+directory and a private credential store, runs it on both execution paths,
+and judges each execution on its exit code and on the text the scenario asked
+for. What a scenario may ask for is a short vocabulary of `//@` directives,
+and it is written down where it is kept true: in the header of
+[`examples/run.sh`](examples/run.sh). The launcher is not a framework: it has
 no registry, no fixtures and no assertions of its own.
 
 `//@` is an ordinary Kotlin comment rather than a `#!` line, and that
@@ -283,11 +209,7 @@ prose, since real scenarios already carry comments like
 
 ## Capabilities
 
-PipelineK `0.76.0` ships with:
-
-> This is the version **this tree** builds. The published release is
-> [`v0.75.0`](#releases), which predates the integration carried by this tree,
-> and therefore ships the older capability catalogue.
+This build ships with:
 
 - Compile, validate, and inspect `.pipeline.kts` pipelines.
 - Durable local execution with a SQLite journal (`--db`) and a
@@ -321,7 +243,9 @@ PipelineK `0.76.0` ships with:
   bytes) and it carries a detached Ed25519 signature that verifies under the
   publisher key the operator keeps. Without the flag, plugins are admitted on
   their manifest and API range, as before.
-- Local credentials, with secret redaction at the durable shell seam.
+- Local credentials, with secret redaction at the durable shell seam. A run
+  that binds no credential never opens the store, so it never asks for a
+  passphrase.
 - Local `artifacts`, `stash`, `unstash`, `archiveArtifacts`,
   `publishHTML`, `writeFile`, `pwd`, `isUnix`, `load`, `milestone`,
   `cleanWs`, `deleteDir`, `waitUntil`, `unstable`, `warnError`.
@@ -345,10 +269,11 @@ code that implements each surface:
 
 | For | Read |
 |---|---|
-| Install on Linux/macOS/Windows (WSL) | The Releases ZIP below, and `scripts/install-pipelinek.sh`'s own `--help` |
+| Install on Linux/macOS/Windows (WSL) | The download above, and `scripts/install-pipelinek.sh`'s own `--help` |
+| The same, in Spanish | `README.es.md`, a short guide to the same product |
 | Every CLI flag and exit code | `pipelinek --help`, `pipelinek run --help`, and the flag table in `Main.kt` |
 | The certified DSL surface | The KDoc on `StageScope.kt` and `PipelineDsl.kt` in `:pipeline-scripting-api`, which is where the DSL is declared |
-| `--workspace`, `--db`, `--control-root` | The KDoc on `WorkspaceResolver.kt` in `:pipeline-application` |
+| `--workspace`, `--db`, `--control-root` | The KDoc on `durable/WorkspaceResolver.kt` in `:pipeline-application` |
 | Secret redaction and credentials | Redaction: the KDoc on `SecretPatternRegistry.kt` in `:pipeline-credentials-api`, which also states that a bound secret of fewer than `MIN_MASKABLE_LENGTH` (8) characters runs normally but is **not** masked, so it reaches the transcript in the clear. Store access: `PassphraseResolver.kt` and `CredentialsStorePath.kt` in `:pipeline-credentials-local` |
 | Typed events, transcripts, recovery | The KDoc on `JsonEventLog.kt` in `:pipeline-events-store` |
 | How the build is verified, and what is out of bounds | `AGENTS.md` in the repository root |
@@ -357,20 +282,18 @@ The reason to prefer this over a prose tree is not preference: a KDoc block
 and a Markdown file drift apart, and only the first one fails to compile when
 it does.
 
-## Releases
+## Releases and distribution channels
 
-The current published release is
-[`pipelinek 0.75.0`](https://github.com/Rubentxu/pipeline-kotlin/releases/tag/v0.75.0).
-
-## Distribution channels
+The releases, with the digest of every published asset, are on
+[GitHub Releases](https://github.com/Rubentxu/pipeline-kotlin/releases).
 
 PipelineK publishes **one canonical ZIP** per release. Every other
 channel consumes the same bytes; nothing is rebuilt per installer.
 
-| Channel | Status (2026-09-24) | Notes |
+| Channel | Status | Notes |
 |---|---|---|
 | **GitHub Releases ZIP** | **Available** | Canonical artifact. ZIP + SHA-256 + CycloneDX SBOM + release manifest. |
-| **Multi-version installer** (`scripts/install-pipelinek.sh`) | **Available** | Bash installer in this repo: `install <v>` / `use <v>` / `list` / `uninstall <v>` / `doctor`. URL allowlist fail-closed; SHA-256-verified; no `sudo`. See [§1.1](#11-install-with-the-script-multi-version-manager). |
+| **Multi-version installer** (`scripts/install-pipelinek.sh`) | **Available, with a gap** | Bash installer in this repo: `install <v>` / `use <v>` / `list` / `uninstall <v>` / `doctor`. URL allowlist fail-closed; SHA-256-verified; no `sudo`. It resolves a release whose tag is exactly the version asked for, so it does not yet resolve a candidate. See [Install](#several-versions-side-by-side). |
 | **Direct download** | **Available** | Same ZIP from the release page; no extra hop. |
 | **SDKMAN** (`pipelinek` candidate) | **Pending** | Vendor onboarding in progress; the publish script (`scripts/release/sdkman-publish.sh`) is ready but blocked on `SDKMAN_CONSUMER_KEY` / `SDKMAN_CONSUMER_TOKEN`. It resolves digests from the release `SHA256SUMS` manifest via `scripts/release/resolve-release-digest.sh` (the old `<asset>.sha256` sidecar is not published and 404s). Its former contract tests were deleted by the testing RESET and no replacement covers digest resolution, so that behaviour is currently unverified by automated tests and rests on the manual release-page check before a publish. The SDKMAN artifact authority is decided in the publish script and in `CandidateTagProvenance` (`:pipeline-release`). |
 | **Homebrew** (`rubentxu/tap/pipeline`) | **Future** | Project tap not started. Formulas will reuse the same ZIP. |
@@ -384,46 +307,3 @@ above (when implemented) will download or reference the same canonical
 artifact and verify its SHA-256. The one-artifact rule is enforced in
 the release scripts under `scripts/release/` and, for provenance, in
 `CandidateTagProvenance` (`:pipeline-release`).
-
-The `v0.75.0` ZIP is the public artifact authority today. SDKMAN becomes
-the recommended channel only once its digest resolution has been exercised
-end to end against a clean runner. It has not been: the install contract
-tests that used to cover it were deleted by the testing RESET and
-AGENTS.md section 2 forbids the subprocess-based replacements that would have
-taken their place, so that coverage gap is open by decision rather than by
-oversight. Until it is closed, the canonical path remains the ZIP download.
-
-### Verified against the published artifact
-
-The digests below were measured on the official `pipelinek-0.75.0.zip`
-downloaded from GitHub Releases on 2026-10-23:
-
-- **ZIP SHA-256**: `e24abea8ed0ef01f8f70f8a2fcfbe8efce52b33d7d4b73acfd5c54cd1b4973fa`
-  — the same value the release publishes in its own `SHA256SUMS`.
-- **Binary SHA-256**: `ccbbad405b8ae886d40954ef70a7418b7c484fb75a9a37437c369943d7c0d233`
-- **Certified commit**: `3079b2603594ee92666929317f66224e42b308b4d`
-- **Identity**: the archive root is `pipelinek-0.75.0`, and the binary reports
-  `pipeline 0.75.0`.
-- **`pipelinek doctor`**: jdk 25.0.4.1 (Eclipse Adoptium), os Linux,
-  workdir writable.
-
-The capability catalogue and the scenario counts above describe **this tree**,
-not that ZIP: the published release predates the integration carried by this
-tree. The gate runs the scenarios against the distribution built from this
-tree, and publishes the counts it measured there.
-
-Reproduce locally:
-
-```bash
-VERSION=0.75.0
-
-curl -fL -o "pipelinek-${VERSION}.zip" \
-  "https://github.com/Rubentxu/pipeline-kotlin/releases/download/v${VERSION}/pipelinek-${VERSION}.zip"
-
-echo "e24abea8ed0ef01f8f70f8a2fcfbe8efce52b33d7d4b73acfd5c54cd1b4973fa  pipelinek-${VERSION}.zip" \
-  | sha256sum -c -
-
-unzip "pipelinek-${VERSION}.zip"
-
-./pipelinek-${VERSION}/bin/pipelinek doctor
-```

@@ -68,7 +68,7 @@ repositories {
 // the failure says which one, so the two artifacts do NOT behave the same. The
 // 0.79.0 train opens here (ProductVersion 0.79.0) and its first candidate can
 // be tagged v0.79.0-rc1.
-version = "0.86.0"
+version = "0.87.0"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

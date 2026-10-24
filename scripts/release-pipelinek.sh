@@ -102,10 +102,31 @@ fi
 # 3. Run the release gate. It runs distZip, cyclonedxBom, candidateAdmission,
 #    and the mandatory-plugin test, all bound to the just-built ZIP. The
 #    receipt is the JSON file the gate writes to build/candidate/.
+#
+#    The candidate sequence is 1-based WITHIN the release train, and it used to
+#    be hardcoded to 1. That was true for the first candidate of a train and
+#    false for every candidate after it: the sequence travels in the published
+#    handoff, and a handoff that states the wrong ordinal is a document a
+#    reader cannot trust. It is derived from the tag, which names the
+#    candidate inside its train, and it can be overridden for a train whose
+#    candidates are not numbered that way.
 # ----------------------------------------------------------------------------
 
+CANDIDATE_SEQUENCE="${PIPELINEK_RELEASE_SEQUENCE:-}"
+if [ -z "$CANDIDATE_SEQUENCE" ]; then
+    case "${PIPELINEK_RELEASE_TAG}" in
+        *-rc[0-9]*) CANDIDATE_SEQUENCE="${PIPELINEK_RELEASE_TAG##*-rc}" ;;
+        *)          CANDIDATE_SEQUENCE=1 ;;
+    esac
+fi
+if ! printf '%s' "$CANDIDATE_SEQUENCE" | grep -Eq '^[0-9]+$' || [ "$CANDIDATE_SEQUENCE" -lt 1 ]; then
+    echo "release-pipelinek: the candidate sequence must be a positive integer" >&2
+    echo "    (got '$CANDIDATE_SEQUENCE')." >&2
+    exit 2
+fi
+
 echo "release-pipelinek: running releaseGate (distZip + cyclonedxBom + candidateAdmission + test)"
-./pipelinek/gradlew --no-daemon -p pipelinek :pipeline-release:releaseGate -Pcandidate.tag="${PIPELINEK_RELEASE_TAG}" -Pcandidate.sequence=1 "$@"
+./pipelinek/gradlew --no-daemon -p pipelinek :pipeline-release:releaseGate -Pcandidate.tag="${PIPELINEK_RELEASE_TAG}" -Pcandidate.sequence="${CANDIDATE_SEQUENCE}" "$@"
 
 # ----------------------------------------------------------------------------
 # 4. Verify the receipt names THIS ZIP, not a stale one.

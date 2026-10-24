@@ -743,6 +743,7 @@ object CliParser {
         var dbPath: String? = null
         var state = false
         var profile = false
+        var explain = false
 
         var i = 0
         while (i < args.size) {
@@ -751,6 +752,7 @@ object CliParser {
                 "--failed" -> failed = true
                 "--state" -> state = true
                 "--profile" -> profile = true
+                "--explain" -> explain = true
                 "--kind" -> {
                     kind = args.getOrNull(++i) ?: return rejectInspect("--kind requires a value")
                 }
@@ -806,10 +808,16 @@ object CliParser {
             i++
         }
 
-        // Two whole-run reports in one query would have to be rendered in some
-        // order the caller never chose; one query, one report.
-        if (state && profile) {
-            return rejectInspect("--state and --profile are two different reports; ask for one")
+        // Whole-run reports are modes, and a query carries one: two reports
+        // in one invocation would have to be ordered in an order the caller
+        // never chose.
+        val modes = buildList {
+            if (state) add("--state")
+            if (profile) add("--profile")
+            if (explain) add("--explain")
+        }
+        if (modes.size > 1) {
+            return rejectInspect("a query carries one whole-run report; got ${modes.joinToString(" + ")}")
         }
 
         return InspectParseResult.Parsed(
@@ -827,6 +835,7 @@ object CliParser {
                 dbPath = dbPath,
                 state = state,
                 profile = profile,
+                explain = explain,
             ),
         )
     }

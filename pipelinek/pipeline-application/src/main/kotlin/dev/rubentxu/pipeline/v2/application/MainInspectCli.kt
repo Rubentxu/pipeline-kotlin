@@ -64,7 +64,7 @@ object MainInspectCli {
             "[--context N] [--log-tail N] " +
             "[--fields STAGE,STEP,OUTCOME,MESSAGE,CONSOLETAIL] " +
             "[--format text|json] " +
-            "[--state] [--profile]"
+            "[--state] [--profile] [--explain]"
 
     /**
      * The five dimensional columns a caller can request from the inspection document.
@@ -171,6 +171,11 @@ object MainInspectCli {
         // reads only the event plane, so it does not demand a control root.
         if (compiled.profile) {
             return reportRunProfile(runId, compiled)
+        }
+        // The diagnosis is a MODE too: what did this run come to, with each
+        // claim tied to the record that supports it. Also event-plane only.
+        if (compiled.explain) {
+            return reportRunExplain(runId, compiled)
         }
         if (compiled.controlRoot == null) {
             System.err.println("inspect: --control-root <path> is required to read the Output Plane")
@@ -612,6 +617,45 @@ object MainInspectCli {
         return 0
     }
 
+    /**
+     * Report the RUN's diagnosis: what it came to, which step broke first,
+     * what is still open — each finding labeled as observed fact or inference
+     * and carrying the event that grounds it. A run whose terminal event is
+     * absent is explained as open; it is never explained into a success.
+     */
+    private fun reportRunExplain(runId: String, query: CompiledInspectionQuery): Int {
+        val dbPath = query.dbPath
+            ?: return 2.also { System.err.println("inspect: --db <path> is required to explain the run") }
+
+        // Read-only admission: a missing store is refused and no file is
+        // created, so explaining a mistyped run id cannot fabricate a database.
+        val admission = admitEventStore(dbPath, EventStorePurpose.Read)
+        if (admission is EventStoreAdmission.Refused) {
+            System.err.println(admission.refusal.render())
+            return 2
+        }
+        val events: List<DomainEvent> = try {
+            (admission as EventStoreAdmission.Admitted).store.use { store ->
+                store.eventsFor(runId).toList()
+            }
+        } catch (e: java.io.IOException) {
+            System.err.println("inspect: cannot read event store at $dbPath: ${e.message}")
+            return 2
+        }
+        if (events.isEmpty()) {
+            System.err.println("inspect: this event store holds no events for run '$runId'.")
+            return 2
+        }
+
+        val diagnosis = RunExplainProjection.project(events)
+        val lines = when (query.format) {
+            MainInspectCli.InspectFormat.JSON -> RunExplainReport.jsonLines(runId, diagnosis)
+            MainInspectCli.InspectFormat.TEXT -> RunExplainReport.textLines(runId, diagnosis)
+        }
+        lines.forEach(::println)
+        return 0
+    }
+
     /** The one line the state surface prints. */
     private fun renderRunState(observation: RuntimeObservation): String = when (observation) {
         is RuntimeObservation.Running -> "run-state running"
@@ -696,6 +740,11 @@ data class CompiledInspectionQuery(
      * query that asks for both reports at once.
      */
     val profile: Boolean = false,
+    /**
+     * Report the RUN's diagnosis instead of its records: typed findings with
+     * evidence references, one whole-run report like [state] and [profile].
+     */
+    val explain: Boolean = false,
 )
 
 /** Result of [MainInspectCli.parseInspect]. */

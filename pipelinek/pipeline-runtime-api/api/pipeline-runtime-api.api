@@ -141,6 +141,181 @@ public abstract interface class dev/rubentxu/pipeline/v2/runtime/control/Runtime
 	public abstract fun cancel (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/control/CancelReason;)Ldev/rubentxu/pipeline/v2/runtime/control/CancelOutcome;
 }
 
+public final class dev/rubentxu/pipeline/v2/runtime/explain/Completeness {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/runtime/explain/Completeness$Companion;
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;)Ldev/rubentxu/pipeline/v2/runtime/explain/Completeness;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/explain/Completeness;Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/explain/Completeness;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEventLane ()Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;
+	public final fun getLeaseLane ()Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;
+	public final fun getOutputLane ()Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/explain/Completeness$Companion {
+	public final fun getEventsOnly ()Ldev/rubentxu/pipeline/v2/runtime/explain/Completeness;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/explain/Diagnosis {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/explain/Diagnosis$Explained : dev/rubentxu/pipeline/v2/runtime/explain/Diagnosis {
+	public fun <init> (Ljava/lang/String;Ljava/util/List;Ldev/rubentxu/pipeline/v2/runtime/explain/Completeness;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/runtime/explain/Completeness;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;Ldev/rubentxu/pipeline/v2/runtime/explain/Completeness;)Ldev/rubentxu/pipeline/v2/runtime/explain/Diagnosis$Explained;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/explain/Diagnosis$Explained;Ljava/lang/String;Ljava/util/List;Ldev/rubentxu/pipeline/v2/runtime/explain/Completeness;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/explain/Diagnosis$Explained;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCompleteness ()Ldev/rubentxu/pipeline/v2/runtime/explain/Completeness;
+	public final fun getFindings ()Ljava/util/List;
+	public final fun getStatus ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/explain/Diagnosis$Refused : dev/rubentxu/pipeline/v2/runtime/explain/Diagnosis {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/explain/Diagnosis$Refused;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/explain/Diagnosis$Refused;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/explain/Diagnosis$Refused;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCode ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/explain/DiagnosisFacts {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$RunEnded;Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$StepBroke;Ldev/rubentxu/pipeline/v2/runtime/explain/Inference$StepNeverClosed;JJ)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$RunEnded;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$StepBroke;
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/runtime/explain/Inference$StepNeverClosed;
+	public final fun component4 ()J
+	public final fun component5 ()J
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$RunEnded;Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$StepBroke;Ldev/rubentxu/pipeline/v2/runtime/explain/Inference$StepNeverClosed;JJ)Ldev/rubentxu/pipeline/v2/runtime/explain/DiagnosisFacts;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/explain/DiagnosisFacts;Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$RunEnded;Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$StepBroke;Ldev/rubentxu/pipeline/v2/runtime/explain/Inference$StepNeverClosed;JJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/explain/DiagnosisFacts;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFirstFailure ()Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$StepBroke;
+	public final fun getLastObservedAtMs ()J
+	public final fun getLastSequence ()J
+	public final fun getNeverClosedStep ()Ldev/rubentxu/pipeline/v2/runtime/explain/Inference$StepNeverClosed;
+	public final fun getRunEnded ()Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$RunEnded;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef {
+	public fun <init> (Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun copy (Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLane ()Ljava/lang/String;
+	public final fun getSequence ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/explain/Fact : dev/rubentxu/pipeline/v2/runtime/explain/Finding {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/explain/Fact$RunEnded : dev/rubentxu/pipeline/v2/runtime/explain/Fact {
+	public fun <init> (Ljava/lang/String;JLdev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun component3 ()Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;
+	public final fun copy (Ljava/lang/String;JLdev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;)Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$RunEnded;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$RunEnded;Ljava/lang/String;JLdev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$RunEnded;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAtMs ()J
+	public fun getCode ()Ljava/lang/String;
+	public fun getEvidence ()Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;
+	public final fun getOutcome ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/explain/Fact$StepBroke : dev/rubentxu/pipeline/v2/runtime/explain/Fact {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;)Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$StepBroke;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$StepBroke;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/explain/Fact$StepBroke;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCode ()Ljava/lang/String;
+	public fun getEvidence ()Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;
+	public final fun getFailureKind ()Ljava/lang/String;
+	public final fun getMessage ()Ljava/lang/String;
+	public final fun getStepName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/explain/Finding {
+	public abstract fun getCode ()Ljava/lang/String;
+	public abstract fun getEvidence ()Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/explain/Inference : dev/rubentxu/pipeline/v2/runtime/explain/Finding {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/explain/Inference$RunStillOpen : dev/rubentxu/pipeline/v2/runtime/explain/Inference {
+	public fun <init> (JLdev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;)V
+	public final fun component1 ()J
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;
+	public final fun copy (JLdev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;)Ldev/rubentxu/pipeline/v2/runtime/explain/Inference$RunStillOpen;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/explain/Inference$RunStillOpen;JLdev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/explain/Inference$RunStillOpen;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCode ()Ljava/lang/String;
+	public fun getEvidence ()Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;
+	public final fun getLastObservedAtMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/explain/Inference$StepNeverClosed : dev/rubentxu/pipeline/v2/runtime/explain/Inference {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;)Ldev/rubentxu/pipeline/v2/runtime/explain/Inference$StepNeverClosed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/explain/Inference$StepNeverClosed;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/explain/Inference$StepNeverClosed;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCode ()Ljava/lang/String;
+	public fun getEvidence ()Ldev/rubentxu/pipeline/v2/runtime/explain/EvidenceRef;
+	public final fun getStepName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/explain/LaneState {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/explain/LaneState$NotConsulted : dev/rubentxu/pipeline/v2/runtime/explain/LaneState {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState$NotConsulted;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/explain/LaneState$Read : dev/rubentxu/pipeline/v2/runtime/explain/LaneState {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/explain/LaneState$Read;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/explain/RunDiagnosisKt {
+	public static final fun classify (Ldev/rubentxu/pipeline/v2/runtime/explain/DiagnosisFacts;Ldev/rubentxu/pipeline/v2/runtime/explain/Completeness;)Ldev/rubentxu/pipeline/v2/runtime/explain/Diagnosis;
+}
+
 public abstract interface class dev/rubentxu/pipeline/v2/runtime/inspect/IntrospectionFailure {
 }
 

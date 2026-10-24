@@ -1548,20 +1548,47 @@ run_scenario_body() {
         esac
     fi
 
-    # A per-scenario passphrase. The credentials gate refuses before any step
-    # runs, even for a pipeline that never binds a credential, so a scenario
-    # that did not set one would fail on a door rather than on its subject.
-    # This value is generated for this scenario and never leaves the process.
-    export PIPELINE_STORE_PASSPHRASE="e2e-${slug}-$$"
+    # The passphrase is handed to the scenarios that BIND a credential, and to
+    # them alone.
+    #
+    # The harness used to hand it to everybody, because the credentials gate
+    # refused before any step ran -- even for a pipeline that never binds a
+    # credential -- and a scenario that did not set one would have failed on a
+    # door rather than on its subject. Handing it to everybody meant the harness
+    # never asked the product the question that matters: does a run that binds
+    # no credential ask for a passphrase when the machine HAS one? It did ask,
+    # and the answer was yes, and the harness had papered over it.
+    #
+    # The scenarios that bind nothing now run on a machine that has a store and
+    # are NOT given the key. The scenarios that bind something are given the key
+    # and keep their own seeded credentials.
+    if [[ ${#seeds[@]} -gt 0 ]]; then
+        export PIPELINE_STORE_PASSPHRASE="$store_passphrase"
+    else
+        unset PIPELINE_STORE_PASSPHRASE
+    fi
 
     # Pin the credentials store inside this scenario's own root. Without this,
     # `CredentialsStorePath.fromEnvironment` falls back to the real
     # ~/.pipeline/credentials.bin, so a scenario silently reads the
     # developer's own credential store: the run is then neither reproducible
     # nor hermetic, and its verdict depends on the machine. Pinned, the store
-    # does not exist, the credential executor is not composed, and any scenario
-    # that actually needs one says so instead of borrowing a stranger's.
+    # belongs to the scenario, and any scenario that actually needs a
+    # credential says so instead of borrowing a stranger's.
     export PIPELINE_CREDENTIALS_STORE="$root/creds.bin"
+
+    # A scenario that binds nothing still runs on a machine that HAS a store:
+    # the store of the stage, copied here. The store is real and it holds a
+    # real secret; the scenario simply never asks for it, and a product that
+    # asked anyway would be asking for something nobody wanted.
+    if [[ ${#seeds[@]} -eq 0 ]]; then
+        cp "$stage_store" "$root/creds.bin" || {
+            printf 'FAIL %-52s the stage credential store could not be copied\n' "$name"
+            failed=$((failed + 1))
+            failures+=("$name: the stage credential store could not be copied")
+            return
+        }
+    fi
 
     # Seed the credentials this scenario binds, through the distribution's own
     # writer. The store is encrypted, so building it any other way would test
@@ -2952,6 +2979,29 @@ fi
 # it no longer decides what counts as covered.
 verdict_dir="$cycle_root/verdicts"
 mkdir -p "$verdict_dir"
+
+# The store this stage's machine has.
+#
+# A store that exists on the machine is a fact about the MACHINE; the need for
+# one is a fact about the RUN. The harness gave every scenario a passphrase so
+# that the machine's store -- which did not exist -- would not ask for one, and
+# so the question was never put to the product: does a run that binds no
+# credential ask for a passphrase when the machine HAS one?
+#
+# So the machine HAS one: a real store, with a real secret in it, seeded once
+# through the distribution's own writer and copied into each scenario's own
+# root. The passphrase is a property of this stage and never leaves the process.
+store_passphrase="e2e-stage-$$"
+stage_store="$cycle_root/stage-store.bin"
+export PIPELINE_STORE_PASSPHRASE="$store_passphrase"
+export PIPELINE_CREDENTIALS_STORE="$stage_store"
+if ! printf '%s' 'a secret the machine keeps and this run does not ask for' \
+    | "$(product_path)" credentials add --kind secret-text --from-stdin stage-fixture \
+        >"$cycle_root/stage-store.txt" 2>&1; then
+    printf 'run.sh: the stage credential store could not be seeded\n' >&2
+    sed 's/^/  /' "$cycle_root/stage-store.txt" >&2 2>/dev/null || true
+    exit 2
+fi
 
 running=0
 for script in ${selected[@]+"${selected[@]}"}; do

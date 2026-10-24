@@ -135,7 +135,7 @@ internal object EventJsonWriter {
         return sb.toString()
     }
     /**
-     * The write half of the optional-field convention.
+     * The write half of the optional-field convention: `,"name":"value"`.
      * Pairs with [EventJsonFields.optionalStringField], which maps the same encoding back to
      * `null`. Both existed as independent literals before: thirteen `?: ""` here and thirteen
      * `takeIf { it.isNotEmpty() }` there, with nothing asserting that the two sets of fields
@@ -143,8 +143,12 @@ internal object EventJsonWriter {
      * The encoding is the empty string because that is what every historical record already
      * carries; what changes is that the convention now has one name and a fitness test that
      * pins the two sides to the same field set.
+     *
+     * The name travels WITH the value and comes from [OptionalEventField], so a call site
+     * cannot write a value under a name the decoder does not read.
 */
-    fun optionalJsonString(value: String?): String = jsonString(value ?: EventJsonFields.ABSENT_ON_WIRE)
+    fun optionalJsonField(field: OptionalEventField, value: String?): String =
+        ",\"" + field.wireName + "\":" + jsonString(value ?: EventJsonFields.ABSENT_ON_WIRE)
 
     fun jsonString(s: String): String {
         val sb = StringBuilder()
@@ -274,14 +278,12 @@ internal object EventJsonWriter {
                 sb.append(EventJsonWriter.jsonString(event.stepType))
                 // The verdict travels with the event. An absent verdict is written as the wire
                 // convention for absence, so a reader can tell "no verdict" from "an empty verdict".
-                sb.append(",\"outcome\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.outcome))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.OUTCOME, event.outcome))
             }
             is AgentResolved -> {
                 sb.append(",\"agentLabel\":")
                 sb.append(EventJsonWriter.jsonString(event.agentLabel))
-                sb.append(",\"remoteUri\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.remoteUri))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.REMOTE_URI, event.remoteUri))
             }
             is ExecutionTargetResolved -> {
                 sb.append(",\"stageIndex\":")
@@ -348,10 +350,8 @@ internal object EventJsonWriter {
                 sb.append(event.timeoutSeconds)
                 sb.append(",\"timeoutAction\":")
                 sb.append(EventJsonWriter.jsonString(event.timeoutAction))
-                sb.append(",\"stepName\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.stepName))
-                sb.append(",\"stepType\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.stepType))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.STEP_NAME, event.stepName))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.STEP_TYPE, event.stepType))
                 sb.append(",\"stageIndex\":")
                 sb.append(event.stageIndex ?: -1)
                 sb.append(",\"stepIndex\":")
@@ -638,12 +638,10 @@ internal object EventJsonWriter {
             is CatchErrorTriggered -> {
                 sb.append(",\"stageName\":")
                 sb.append(EventJsonWriter.jsonString(event.stageName))
-                sb.append(",\"buildResult\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.buildResult?.wireToken))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.BUILD_RESULT, event.buildResult?.wireToken))
                 sb.append(",\"stageResult\":")
                 sb.append(EventJsonWriter.jsonString(event.stageResult.wireToken))
-                sb.append(",\"message\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.message))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.MESSAGE, event.message))
             }
             is StageMarkedUnstable -> {
                 sb.append(",\"stageName\":")
@@ -694,8 +692,7 @@ internal object EventJsonWriter {
             is MilestoneReached -> {
                 sb.append(",\"ordinal\":")
                 sb.append(event.ordinal)
-                sb.append(",\"label\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.label))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.LABEL, event.label))
             }
             is MilestoneAborted -> {
                 sb.append(",\"ordinal\":")
@@ -707,8 +704,7 @@ internal object EventJsonWriter {
             is LockRequested -> {
                 sb.append(",\"resource\":")
                 sb.append(EventJsonWriter.jsonString(event.resource))
-                sb.append(",\"reason\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.reason))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.REASON, event.reason))
                 sb.append(",\"skipIfLocked\":")
                 sb.append(event.skipIfLocked)
             }
@@ -768,22 +764,16 @@ internal object EventJsonWriter {
             is InputRequested -> {
                 sb.append(",\"message\":")
                 sb.append(EventJsonWriter.jsonString(event.message))
-                sb.append(",\"submitter\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.submitter))
-                sb.append(",\"id\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.id))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.SUBMITTER, event.submitter))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.ID, event.id))
             }
             is InputProceed -> {
-                sb.append(",\"submitter\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.submitter))
-                sb.append(",\"message\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.message))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.SUBMITTER, event.submitter))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.MESSAGE, event.message))
             }
             is InputAborted -> {
-                sb.append(",\"submitter\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.submitter))
-                sb.append(",\"message\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.message))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.SUBMITTER, event.submitter))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.MESSAGE, event.message))
             }
             is InputDenied -> {
                 sb.append(",\"reason\":")
@@ -865,16 +855,14 @@ internal object EventJsonWriter {
                 sb.append(EventJsonWriter.jsonString(event.slot))
                 sb.append(",\"outcome\":")
                 sb.append(EventJsonWriter.jsonString(event.outcome))
-                sb.append(",\"detail\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.detail))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.DETAIL, event.detail))
             }
             is SagaTerminal -> {
                 sb.append(",\"sagaId\":")
                 sb.append(EventJsonWriter.jsonString(event.sagaId))
                 sb.append(",\"state\":")
                 sb.append(EventJsonWriter.jsonString(event.state))
-                sb.append(",\"reason\":")
-                sb.append(EventJsonWriter.optionalJsonString(event.reason))
+                sb.append(EventJsonWriter.optionalJsonField(OptionalEventField.REASON, event.reason))
                 sb.append(",\"compensatedActions\":")
                 sb.append(EventJsonWriter.jsonStringList(event.compensatedActions))
             }

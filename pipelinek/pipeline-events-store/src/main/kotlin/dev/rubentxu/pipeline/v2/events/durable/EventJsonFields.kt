@@ -10,6 +10,65 @@ import dev.rubentxu.pipeline.v2.scripting.CacheKey
  * that applies to classes. These readers were private there and are shared
  * by every event constructor in [EventJsonDecoder].
 */
+/**
+ * The OPTIONAL string fields of the event contract, by the name they travel under.
+ *
+ * ## Why this set is closed
+ *
+ * The writer and the decoder used to spell every optional field independently: a
+ * literal `,"detail":` on one side and a literal `"detail"` on the other, with
+ * nothing saying they had to agree. A field added on one side only compiled, ran,
+ * and silently decoded wrong — the value simply vanished on the way back, and a
+ * durable record that reads back without its payload looks exactly like a record
+ * that never carried one.
+ *
+ * So the names live here, in ONE place, and both sides read them from here. The
+ * set is an enum on purpose: it is CLOSED. An optional field that is not a case
+ * of this enum cannot be written or read at all, which is what makes "the two
+ * sides cover the same field set" a property of the type rather than a promise
+ * in a comment.
+ *
+ * ## Why the prefix says OPTIONAL
+ *
+ * The same wire name can be optional on one event and required on another:
+ * `message` is optional on `InputProceed` and required on `InputRequested`.
+ * Those are two different contracts, and this enum keeps them apart.
+ */
+internal enum class OptionalEventField(val wireName: String) {
+    /** The verdict of a step. Absent means "no verdict", not "an empty verdict". */
+    OUTCOME("outcome"),
+
+    /** The remote URI of a resolved agent. */
+    REMOTE_URI("remoteUri"),
+
+    /** The name of the step a timeout was scheduled for. */
+    STEP_NAME("stepName"),
+
+    /** The type of the step a timeout was scheduled for. */
+    STEP_TYPE("stepType"),
+
+    /** The build result a catchError scope declared. */
+    BUILD_RESULT("buildResult"),
+
+    /** The message a catchError scope or an input answer carries. */
+    MESSAGE("message"),
+
+    /** The label of a milestone. */
+    LABEL("label"),
+
+    /** The reason a lock was requested, or the reason a Saga ended. */
+    REASON("reason"),
+
+    /** Who answered an input. Attribution, never authorization. */
+    SUBMITTER("submitter"),
+
+    /** The identifier of the question that was asked. */
+    ID("id"),
+
+    /** The detail of a compensation. A confirmation has nothing to add. */
+    DETAIL("detail"),
+}
+
 internal object EventJsonFields {
 
     /**
@@ -25,8 +84,9 @@ internal object EventJsonFields {
      * and neither is noticed until a consumer distinguishes "" from "not declared".
      * The empty string is kept rather than a JSON `null` because it is the encoding every
      * historical record already uses, and wire/history compatibility outranks elegance. What
-     * changes is that the convention now has a name, one implementation, and a fitness test
-     * asserting that the two sides cover the same field set.
+     * changed is that the convention now has a name, ONE implementation on each side, and a
+     * permanent test that walks every optional field of the contract and asserts that the two
+     * sides cover the same field set.
 */
     const val ABSENT_ON_WIRE = ""
 
@@ -34,9 +94,12 @@ internal object EventJsonFields {
      * Reads an OPTIONAL string field, mapping the wire encoding of absence back to `null`.
      * Use [stringField] for a field that is required: for those, absence is corruption and must
      * fail closed rather than be invented into a value.
+     *
+     * The field is an [OptionalEventField] and not a `String`: an optional field is read by the
+     * name the contract declares, or not at all.
 */
-    fun optionalStringField(json: String, name: String): String? =
-        stringField(json, name)?.takeIf { it != ABSENT_ON_WIRE }
+    fun optionalStringField(json: String, field: OptionalEventField): String? =
+        stringField(json, field.wireName)?.takeIf { it != ABSENT_ON_WIRE }
 
     /**
      * Extracts a string field value from JSON by finding the field name

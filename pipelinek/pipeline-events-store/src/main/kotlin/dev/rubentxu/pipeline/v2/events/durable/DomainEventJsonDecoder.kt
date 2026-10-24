@@ -348,7 +348,7 @@ internal object DomainEventJsonDecoder {
                 // A row written before the verdict was published has no such field, and it decodes
                 // to no verdict: that build said nothing about the step's result, and this reader
                 // must not invent one.
-                outcome = EventJsonFields.optionalStringField(s, "outcome"),
+                outcome = EventJsonFields.optionalStringField(s, OptionalEventField.OUTCOME),
             )
             "AgentResolved" -> AgentResolved(
                 eventId = eventId,
@@ -356,7 +356,7 @@ internal object DomainEventJsonDecoder {
                 sequence = sequence,
                 occurredAt = occurredAt,
                 agentLabel = EventJsonFields.stringField(s, "agentLabel") ?: "",
-                remoteUri = EventJsonFields.optionalStringField(s, "remoteUri"),
+                remoteUri = EventJsonFields.optionalStringField(s, OptionalEventField.REMOTE_URI),
             )
             "ExecutionTargetResolved" -> ExecutionTargetResolved(
                 eventId = eventId,
@@ -420,8 +420,8 @@ internal object DomainEventJsonDecoder {
                 occurredAt = occurredAt,
                 timeoutSeconds = EventJsonFields.longField(s, "timeoutSeconds") ?: 0L,
                 timeoutAction = EventJsonFields.stringField(s, "timeoutAction") ?: "FAIL",
-                stepName = EventJsonFields.optionalStringField(s, "stepName"),
-                stepType = EventJsonFields.optionalStringField(s, "stepType"),
+                stepName = EventJsonFields.optionalStringField(s, OptionalEventField.STEP_NAME),
+                stepType = EventJsonFields.optionalStringField(s, OptionalEventField.STEP_TYPE),
                 stageIndex = EventJsonFields.intField(s, "stageIndex")?.takeIf { it != -1 },
                 stepIndex = EventJsonFields.intField(s, "stepIndex")?.takeIf { it != -1 },
             )
@@ -894,7 +894,7 @@ internal object DomainEventJsonDecoder {
                 // `buildResult` stays nullable (a declared absence is legitimate: the DSL's
                 // default), but a PRESENT token outside the vocabulary is corruption and is
                 // refused, exactly like the absent-and-required `stageResult` below.
-                val buildResult = EventJsonFields.optionalStringField(s, "buildResult")
+                val buildResult = EventJsonFields.optionalStringField(s, OptionalEventField.BUILD_RESULT)
                     ?.let { CatchErrorBuildResult.parse(it) ?: return unreadable("buildResult", it) }
                 // Was `?: "UNSTABLE"`. That default turned a MISSING field into a
                 // semantic claim, and the claim was not neutral: UNSTABLE means the run
@@ -912,7 +912,7 @@ internal object DomainEventJsonDecoder {
                 val stageResult = EventJsonFields.stringField(s, "stageResult")
                     ?.let { CatchErrorBuildResult.parse(it) ?: return unreadable("stageResult", it) }
                     ?: return absent("stageResult")
-                val message = EventJsonFields.optionalStringField(s, "message")
+                val message = EventJsonFields.optionalStringField(s, OptionalEventField.MESSAGE)
                 CatchErrorTriggered(
                     eventId = eventId,
                     runId = runId,
@@ -1017,7 +1017,7 @@ internal object DomainEventJsonDecoder {
             }
             "MilestoneReached" -> {
                 val ordinal = EventJsonFields.intField(s, "ordinal") ?: 0
-                val label = EventJsonFields.optionalStringField(s, "label")
+                val label = EventJsonFields.optionalStringField(s, OptionalEventField.LABEL)
                 MilestoneReached(
                     eventId = eventId,
                     runId = runId,
@@ -1042,7 +1042,7 @@ internal object DomainEventJsonDecoder {
             // / lock events
             "LockRequested" -> {
                 val resource = EventJsonFields.stringField(s, "resource") ?: ""
-                val reason = EventJsonFields.optionalStringField(s, "reason")
+                val reason = EventJsonFields.optionalStringField(s, OptionalEventField.REASON)
                 val skipIfLocked = EventJsonFields.boolField(s, "skipIfLocked") ?: false
                 LockRequested(
                     eventId = eventId,
@@ -1139,8 +1139,8 @@ internal object DomainEventJsonDecoder {
             // / input events
             "InputRequested" -> {
                 val message = EventJsonFields.stringField(s, "message") ?: ""
-                val submitter = EventJsonFields.optionalStringField(s, "submitter")
-                val id = EventJsonFields.optionalStringField(s, "id")
+                val submitter = EventJsonFields.optionalStringField(s, OptionalEventField.SUBMITTER)
+                val id = EventJsonFields.optionalStringField(s, OptionalEventField.ID)
                 InputRequested(
                     eventId = eventId,
                     runId = runId,
@@ -1152,8 +1152,8 @@ internal object DomainEventJsonDecoder {
                 )
             }
             "InputProceed" -> {
-                val submitter = EventJsonFields.optionalStringField(s, "submitter")
-                val message = EventJsonFields.optionalStringField(s, "message")
+                val submitter = EventJsonFields.optionalStringField(s, OptionalEventField.SUBMITTER)
+                val message = EventJsonFields.optionalStringField(s, OptionalEventField.MESSAGE)
                 InputProceed(
                     eventId = eventId,
                     runId = runId,
@@ -1164,8 +1164,8 @@ internal object DomainEventJsonDecoder {
                 )
             }
             "InputAborted" -> {
-                val submitter = EventJsonFields.optionalStringField(s, "submitter")
-                val message = EventJsonFields.optionalStringField(s, "message")
+                val submitter = EventJsonFields.optionalStringField(s, OptionalEventField.SUBMITTER)
+                val message = EventJsonFields.optionalStringField(s, OptionalEventField.MESSAGE)
                 InputAborted(
                     eventId = eventId,
                     runId = runId,

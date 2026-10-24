@@ -68,13 +68,20 @@ repositories {
 // the failure says which one, so the two artifacts do NOT behave the same. The
 // 0.79.0 train opens here (ProductVersion 0.79.0) and its first candidate can
 // be tagged v0.79.0-rc1.
-// 2026-10-24: the 0.88.0 train closed at v0.88.0-rc1, and the law holds: this
+// 2026-10-24: the 0.89.0 train closed at v0.89.0-rc1, and the law holds: this
 // tree creates the directory that holds a run's event store instead of refusing
 // it, and answers a relative store path with the directory it lives in instead
 // of claiming it has none, so the two artifacts do NOT behave the same. The
 // 0.89.0 train opens here (ProductVersion 0.89.0) and its first candidate can
 // be tagged v0.89.0-rc1.
-version = "0.89.0"
+// 2026-10-24: the 0.89.0 train closed at v0.89.0-rc1, and the law holds here
+// too: the optional fields of the event contract now have ONE authority that the
+// writer and the decoder both read, so a field cannot be written under one name
+// and read under another; and the durable launch returns the transcript state it
+// produced instead of leaving it in fields that a later, separate step reads
+// back. The two artifacts do NOT behave the same. The 0.90.0 train opens here
+// (ProductVersion 0.90.0) and its first candidate can be tagged v0.90.0-rc1.
+version = "0.90.0"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

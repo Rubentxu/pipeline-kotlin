@@ -125,7 +125,7 @@ object SagaLoopCodec {
             outcome = outcome,
             // The detail is optional on purpose: a confirmation has nothing to add, and the
             // empty string is how this wire format says "absent".
-            detail = EventJsonFields.optionalStringField(s, "detail"),
+            detail = EventJsonFields.optionalStringField(s, OptionalEventField.DETAIL),
         )
     }
 
@@ -149,7 +149,7 @@ object SagaLoopCodec {
             occurredAt = occurredAt,
             sagaId = sagaId,
             state = state,
-            reason = EventJsonFields.optionalStringField(s, "reason"),
+            reason = EventJsonFields.optionalStringField(s, OptionalEventField.REASON),
             compensatedActions = compensatedActions,
         )
     }

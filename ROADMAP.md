@@ -229,12 +229,13 @@ sin red |
 | 16 | El ejecutor durable sigue concentrando **procesos, FIFO, watchdog, output y ciclo de vida** en un solo fichero | **medido** (§2.87): lo que se ha cerrado es el **estado del lanzamiento** —que ahora viaja con el lanzamiento en vez de quedar en tres campos `@Volatile` que otro paso leía—, y con él cae una costura muerta de 153 líneas. Quedan las responsabilidades: separarlas detrás de puertos concretos es el refactor grande que la propia auditoría **no** recomienda de una vez, y es lo que queda para una rebanada vertical por responsabilidad |
 | 17 | Dentro de una línea menor, el **número de versión** declara la compatibilidad, no el contrato | **medido** (§2.88): dos candidatas de la misma línea publican el mismo SDK y declaran el mismo rango `[0.90.0, 0.91.0)`, y el `apiCheck` compara contra el baseline del repositorio, no contra el SDK publicado anterior. Lo que hoy cubre ese hueco es una **prueba de comportamiento** —un plugin construido contra el SDK publicado anterior se admite y ejecuta—, no una comparación de contratos entre dos publicaciones. Comparar el ABI publicado con el del release anterior es un trabajo con su propio tren |
 | 18 | La comprobación de consumo externo **no está en la puerta local** | **medido** (§2.88): `verify-all.sh` no la ejecuta, porque necesita los SDK ya publicados y red. Es una puerta de publicación, con su latencia propia, y su veredicto viaja en el handoff del release. Un clon sin red no puede ejecutarla: la puerta local sigue siendo la autoridad de lo local, y esta es la autoridad de lo publicado |
+| 19 | El **instalador** no verifica la firma del tag que resuelve | **medido** (§2.89): `scripts/install-pipelinek.sh` resuelve la release por su manifiesto y comprueba el digest, pero no mira la firma: el tag firmado que ahora publica la vía de publicación no lo consulta nadie. La capacidad ya existe y es pública (`scripts/release/verify-tag-signature.sh`); lo que falta es que el consumidor la use, y el consumidor natural es el instalador |
 
 ## 1. Estado medido
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `18a551d6a`, medido en los ensayos de este bloque; el `HEAD` avanza al commit que actualiza esta tabla. Los bloques anteriores cerraron, cada uno, su puerta: el **camino más corto al primer pipeline** —una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81)—, la **puerta de las credenciales** —la frase de paso es la autorización para tocar el almacén, y una que no encaja ya no borra una credencial y dice que sí (§2.82)—, el **efecto lateral del runtime** —el ejecutor durable ya no escribe una sonda de permisos en el hogar del operador, y la comprobación del FIFO se mudó a un escenario efímero que es dueño de sus ficheros (§2.83)— y el **instalador** —una release ya no se resuelve construyendo su nombre, sino leyéndolo del manifiesto que la release publica (§2.84)—. Ese bloque cerró la **puerta del almacén**: el productor crea el directorio que sostiene su propio almacén, y los lectores dejan de negarse por un motivo falso (§2.85). Este bloque baja el **coste de la puerta**: la compilación de los scripts se reutiliza entre ciclos, con un espacio de nombres que es el digest de la distribución, y el gate publica el coste por escenario en vez de medirlo y tirarlo (§2.86). Después vinieron la **mantenibilidad durable** —el contrato del evento tiene una sola autoridad y el estado del lanzamiento viaja con el lanzamiento (§2.87)— y la **compatibilidad externa**: un consumidor de fuera construye un plugin contra el SDK publicado y lo carga en la distribución, y esa comprobación corre **dentro** de la vía de publicación, antes de cortar el tag (§2.88). La candidata publicada es ahora `v0.90.0-rc2`: el producto **no** cambia de comportamiento observable, así que la ley de versión no abre un tren nuevo y el tren 0.90.0 sigue abierto (§2.88) | `git rev-parse HEAD` |
+| SHA | `1bf97c0c9`, medido en los ensayos de este bloque; el `HEAD` avanza al commit que actualiza esta tabla. Los bloques anteriores cerraron, cada uno, su puerta: el **camino más corto al primer pipeline** —una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81)—, la **puerta de las credenciales** —la frase de paso es la autorización para tocar el almacén, y una que no encaja ya no borra una credencial y dice que sí (§2.82)—, el **efecto lateral del runtime** —el ejecutor durable ya no escribe una sonda de permisos en el hogar del operador, y la comprobación del FIFO se mudó a un escenario efímero que es dueño de sus ficheros (§2.83)— y el **instalador** —una release ya no se resuelve construyendo su nombre, sino leyéndolo del manifiesto que la release publica (§2.84)—. Ese bloque cerró la **puerta del almacén**: el productor crea el directorio que sostiene su propio almacén, y los lectores dejan de negarse por un motivo falso (§2.85). Este bloque baja el **coste de la puerta**: la compilación de los scripts se reutiliza entre ciclos, con un espacio de nombres que es el digest de la distribución, y el gate publica el coste por escenario en vez de medirlo y tirarlo (§2.86). Después vinieron la **mantenibilidad durable** —el contrato del evento tiene una sola autoridad y el estado del lanzamiento viaja con el lanzamiento (§2.87)— y la **compatibilidad externa**: un consumidor de fuera construye un plugin contra el SDK publicado y lo carga en la distribución, y esa comprobación corre **dentro** de la vía de publicación, antes de cortar el tag (§2.88). Después vino la **firma de procedencia**: el tag se firma con la clave que declara el repositorio, la firma se comprueba **antes** de subirlo, y la clave pública viaja en el handoff para que un consumidor pueda verificarla sin la máquina que publicó (§2.89). La candidata publicada es ahora `v0.90.0-rc3`: el producto **no** cambia de comportamiento observable, así que la ley de versión no abre un tren nuevo y el tren 0.90.0 sigue abierto (§2.89) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
@@ -242,13 +243,13 @@ sin red |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas; el escenario de credenciales pasa de 14 a 22 comprobaciones, y el número de escenarios **no crece** | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **62 de 62**: **578 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. Las comparaciones entre las dos ejecuciones van dentro de esas 578, y el total es el que se lee aquí | censo del arnés, sobre los 62 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **23003 / 68460 = 0.336** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **23216 / 68660 = 0.338** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **184 / 153 / 131** en los tres ensayos, los tres sobre `18a551d6a`, peor 184 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **175 / 121 / 186** en los tres ensayos, los tres sobre `1bf97c0c9`, peor 186 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 24 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
-| Candidato publicada | **`v0.90.0-rc2`** (prerelease), `candidate_id` `sha256:694604a5c64afcadba7e41647bbd8765fe5a7b2e3503d1d508b33f797cd9bcd2`, tag en `3e0f14d86`; verificada **sobre los bytes descargados del remoto**, con las **6** sumas de `SHA256SUMS` coincidiendo una a una (§2.85). Antes **`v0.90.0-rc1`** (§2.87). El tren **0.90.0** sigue abierto: esta es su segunda candidata, y la comprobación de consumo externo se ejecutó **dentro** de la vía de publicación, antes de que existiera el tag (§2.88) | `gh release view v0.90.0-rc2`, `sha256sum -c SHA256SUMS` |
+| Candidato publicada | **`v0.90.0-rc3`** (prerelease), `candidate_id` `sha256:13310c4ff2f3249377ad93d38e12aa81a1a0bdb9a3417277e390869329131e8d`, tag en `1bf97c0c9`; verificada **sobre los bytes descargados del remoto**, con las **6** sumas de `SHA256SUMS` coincidiendo una a una (§2.85), y con la **firma del tag verificada desde fuera**: un consumidor con el llavero vacío importa la clave pública que viaja en el handoff y la comprobación da `VALIDSIG` (§2.89). Antes **`v0.90.0-rc2`** (§2.88). El tren **0.90.0** sigue abierto: esta es su tercera candidata, y tanto la comprobación de consumo externo como la de la firma se ejecutaron **dentro** de la vía de publicación, antes de que existiera el tag (§2.88, §2.89) | `gh release view v0.90.0-rc3`, `sha256sum -c SHA256SUMS`, `git verify-tag v0.90.0-rc3` |
 | Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -9872,6 +9873,191 @@ publicación, antes de que existiera el tag: `rows=A:PASS B:PASS C:PASS` en
   comparación de contratos, es una prueba de que lo publicado sigue
   funcionando.
 - La promoción a estable sigue bloqueada: no hay certificador externo en este
+  repositorio ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no
+  `PASS`.
+
+### 2.89 La firma de procedencia: el tag se firma, y se comprueba antes de subirlo
+
+**Lo que se pedía, y lo que había.** «Reducir el riesgo de la publicación. El tag
+de `v0.86.0-rc1` es anotado pero aparece sin firma criptográfica verificada. El
+control SHA-256 demuestra integridad respecto al manifiesto obtenido, no autentica
+por sí solo al publicador.» Medido: los tres tags publicados —`v0.89.0-rc1`,
+`v0.90.0-rc1` y `v0.90.0-rc2`— eran **anotados y sin firmar**: `git cat-file -p`
+no mostraba bloque `BEGIN PGP SIGNATURE` y `git tag -v` no verificaba nada.
+
+La distancia entre lo que la cifra demostraba y lo que se leería de ella es
+justo el hueco. `SHA256SUMS` prueba que los bytes son los que el manifiesto
+nombra, y un consumidor puede pasarlo sin saber **quién** los publicó. La
+integridad no es la procedencia.
+
+**La forma, decidida antes de escribir nada.** La clave se declara en el
+repositorio —`scripts/release/signing-key.conf`— y no en un `git config` local:
+un valor que vive en una máquina es un valor que ningún revisor ve, y una firma
+que verifica contra la clave que la máquina tenga no dice nada del publicador.
+Rotarla pasa a ser un cambio revisado. Y la firma se comprueba **antes** de
+subir el tag, porque un tag que ya está en el remoto no se puede deshacer.
+
+Tres decisiones que conviene decir de entrada:
+
+- **No hay camino sin firmar.** Si la clave no está, el tag no se crea; si la
+  firma no verifica, el tag se borra y la publicación se detiene. El camino sin
+  firmar es exactamente lo que este trabajo existe para no publicar.
+- **La clave ausente se detecta antes del gate**, no después: una clave ausente
+  es un *prerrequisito*, no un veredicto, y gastarse quince minutos de
+  compilación para descubrirlo al final no es una forma de ser económico.
+- **La firma no es una atestación.** La atestación keyless de GitHub exige un
+  OIDC de CI, que este repositorio no tiene: `gh attestation` ofrece `download`,
+  `trusted-root` y `verify`, y no ofrece `generate`. La firma con clave es lo
+  que se puede hacer aquí; lo que se declara es lo que se puede demostrar.
+
+#### El instrumento, y por qué es una puerta de publicación
+
+`scripts/release/verify-tag-signature.sh` comprueba tres cosas, y las tres son
+filas con nombre:
+
+| fila | qué tiene que ser cierto |
+|---|---|
+| A | el tag es anotado, lleva firma, y esa firma **verifica** |
+| B | la firma viene de la **huella declarada**, y el uid es el declarado |
+| C | el tag apunta al **commit esperado** |
+
+La fila B es la que hace que la comprobación valga algo. Sin ella, «la firma
+verifica» solo significaría «gpg está contento con la clave que encontró», y una
+máquina con otra clave en su llavero firmaría, verificaría y pasaría. La huella
+que la firma debe llevar está declarada en el repositorio, así que la vía de
+publicación no se puede redirigir en silencio hacia otra clave.
+
+El instrumento lee la firma por el **protocolo de GnuPG** (`VALIDSIG`, `BADSIG`,
+`NO_PUBKEY`), no por el texto que gpg escribe: ese texto cambia con el idioma y
+con la versión, y una comprobación que depende de él se rompe sin que nadie lo
+note. Distingue además cuatro negativas: la firma **no verifica**, la clave **no
+está disponible** para comprobarla, el tag **no lleva firma**, y la firma es
+**de otra clave**. No son la misma fila, y no se pueden fundir en un «error
+genérico» sin perder el motivo.
+
+Como el instrumento necesita `git` y `gpg`, y porque lo que protege es un tag —un
+artefacto que la distribución de desarrollo no produce—, no es un escenario de
+`examples/` ni un test unitario. Es una puerta de publicación, con su latencia
+propia, y su veredicto viaja en el handoff.
+
+#### El orden, que es la garantía
+
+La garantía que de verdad se cierra aquí no es «el tag lleva firma», es **«el
+remoto no acaba nunca con un tag cuya firma no verifica»**. Un orden no se
+demuestra leyéndolo: se demuestra empujando el remoto y mirándolo. Por eso los
+tres pasos —firmar, verificar, subir— viven en
+`scripts/release/publish-tag.sh`, que se puede apuntar a un repositorio remoto
+local, y la pregunta se le hace **al código que publica**, no a una copia de él.
+
+#### Las ocho garantías
+
+| fila | garantía |
+|---|---|
+| R1 | un tag bien firmado se acepta, y la huella que se lee es la declarada |
+| R2 | un tag **manipulado** se rechaza, y la fila A dice que la firma no verifica |
+| R3 | un tag firmado con **otra clave** se rechaza por la fila B, no por un fallo genérico |
+| R4 | un tag que apunta a otro commit se rechaza por la fila C |
+| R5 | un tag **sin firma** se rechaza |
+| R6 | el camino feliz deja en el remoto un tag que verifica contra la clave declarada |
+| R7 | un tag manipulado **no llega al remoto**: la vía se niega y el remoto queda sin tags |
+| R8 | sin la clave declarada no se publica nada: la vía se niega y el remoto queda sin tags |
+
+La inyección del fallo es lo que convierte R7 en una prueba y no en una lectura
+de código: un shim de `git` altera el payload del tag **después** de firmarlo,
+que es exactamente la amenaza que la comprobación existe para detectar. Sin esa
+alteración, R7 probaría que el camino feliz funciona.
+
+La clave ajena de R3 es una clave **real**, generada en el banco para que «la
+firma viene de otra clave» sea un hecho y no una palabra; el verificador la
+tiene junto con la declarada, para que la fila B sea la que decide y no la
+ausencia de la clave.
+
+#### Lo que se falsificó
+
+Cada mutación se aplicó, se leyó el diff de vuelta y se comprobó que ennegrecía
+**exactamente** la fila esperada y ninguna más:
+
+| mutación | filas rojas | qué demuestra |
+|---|---|---|
+| M1 · el instrumento deja de comparar la huella | R3 | la fila negativa no es decorativa: una firma de otra clave se acepta |
+| M2 · el instrumento deja de exigir que la firma verifique | R2 | el «no verifica» se distingue del «no hay firma»: R5 **no se movió** |
+| M3 · la vía empuja **antes** de verificar | R7 | el orden es la garantía, y el orden se observa en el remoto |
+| M4 · la vía publica sin firmar cuando no hay clave | R8 | el camino sin firmar no existe, ni siquiera como degradación |
+
+M2 y M4 son las dos que más información dan, y por razones opuestas. M2 enseña
+que el instrumento distingue tres cosas y no dos: al dejar de exigir que la
+firma *verifique*, R2 se enciende pero R5 no, porque un tag **sin** firma sigue
+siendo rechazado por su propia causa. M4 enseña que el camino sin firmar no
+era decorativo: era la degradación natural de «que la publicación funcione en
+una máquina sin clave», y sin la fila R8 nadie lo habría visto.
+
+#### El límite honesto: la firma prueba posesión, no identidad
+
+La clave disponible en esta máquina es una clave de prueba: su uid es
+`test@example.com`, que no es la identidad del publicador y no está registrada en
+ninguna cuenta de hosting. Por eso lo que la firma demuestra es **posesión de la
+clave privada**: el tag lo firmó quien tiene la clave, y el tag no se puede
+alterar sin romper la firma. Lo que **no** demuestra es que quien tiene esa clave
+sea el dueño de este repositorio. Esa atribución se establece fuera del
+repositorio, y hasta que se establezca, quien lea la firma debe tratar al
+publicador como **sin atribuir**.
+
+El handoff lo dice con palabras, para que nadie lea una firma válida como una
+identidad confirmada, y lleva la **clave pública incrustada** para que la
+comprobación no dependa de la máquina que publicó. La plataforma de hosting
+mostrará el tag como no verificado por la misma razón: la clave no está
+registrada en una cuenta.
+
+Esto es una limitación de la clave elegida, no del mecanismo. El mecanismo —
+declarar la clave en el repositorio, firmarla, comprobarla antes de subirla y
+publicarla con el handoff— es exactamente el que hace falta, y con una clave
+registrada en la cuenta del publicador daría además la atribución.
+
+#### La puerta
+
+Tres ensayos sobre el SHA de la candidata (`1bf97c0c9`): **175**, **121** y
+**186** s, con `tests=rewritten:1234 read:0` y **62** de **62** escenarios. El
+LOC, con el instrumento de firma contado como lo que es —verificación, no
+producto— y con el publicador del tag como lo que es —publicación, producto—,
+queda en VERIFY_LOC **23216** / PRODUCT_LOC **68660** = **0,338**, muy por debajo
+del límite de 2.
+
+#### La candidata
+
+`v0.90.0-rc3`, con `candidate_id sha256:13310c4ff2f3249377ad93d38e12aa81a1a0bdb9a3417277e390869329131e8d`
+y los **7** assets de siempre. El producto **no** cambia de comportamiento
+observable —el cambio es de la vía de publicación—, así que la ley de versión
+**no** abre un tren nuevo: el tren 0.90.0 sigue abierto y esta es su tercera
+candidata.
+
+La firma se hizo **dentro** de la vía de publicación, antes de que el tag
+existiera en el remoto: `tag-signature: PASS rows=A:PASS B:PASS C:PASS`, con la
+huella `9600F7D49B9C966E3BB04E6A17E44CA7C5288281`. La comprobación de consumo
+externo corrió también dentro, en **82** s, con `rows=A:PASS B:PASS C:PASS`. Y
+su veredicto viaja en el handoff publicado.
+
+Comprobado **desde fuera**, que es donde se demuestra una firma:
+
+- El tag remoto lleva su bloque `BEGIN PGP SIGNATURE`, y `git verify-tag` da
+  `VALIDSIG 9600F7D4…`.
+- Un consumidor con el **llavero vacío** importa la clave pública que viaja en
+  el handoff, descarga el tag y lo verifica: la firma valida y el tag apunta al
+  commit que el handoff declara. El consumidor no necesita nada de la máquina
+  que publicó.
+- Los **6** `SHA256SUMS` coinciden una a una sobre los bytes descargados del
+  remoto, y `git-head.txt` coincide con el commit del tag.
+
+#### Lo que queda fuera, dicho con honestidad
+
+- **El instalador no verifica la firma.** `scripts/install-pipelinek.sh` resuelve
+  la release por su manifiesto y comprueba el digest, pero no la firma del tag:
+  un consumidor que instala desde el release sigue confiando en el digest. Es el
+  siguiente consumidor natural de esta capacidad, y queda como fila 19 de §1.
+- **La atribución sigue pendiente**, por lo dicho arriba: la clave no está
+  registrada en ninguna cuenta y su uid no es la identidad del publicador.
+- **La atestación keyless sigue siendo `BLOCKED_EXTERNAL`**: requiere un OIDC de
+  CI que este repositorio no tiene. `gh attestation` no tiene `generate`.
+- **La promoción a estable sigue bloqueada**: no hay certificador externo en este
   repositorio ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no
   `PASS`.
 

@@ -13,14 +13,21 @@ import org.junit.jupiter.api.DynamicTest.dynamicTest
  * means "the pipeline FAILED", for a file that was never open and so executed nothing.
  *
  * [refusalFor] is the whole rule set, and it is deliberately total over two closed ADTs and free of
- * I/O. That is what lets every combination be stated here without a disk: three observations by
- * two purposes is six rows, and each one is a rule rather than a coincidence of a filesystem.
+ * I/O. That is what lets every combination be stated here without a disk: four observations by
+ * three purposes is twelve rows, and each one is a rule rather than a coincidence of a filesystem.
  *
- * The rule that separates the two purposes is worth stating plainly, because it is the whole reason
+ * The rules that separate the purposes are worth stating plainly, because they are the whole reason
  * [EventStorePurpose] exists. A verb that READS a finished run is being pointed at a file that must
- * already be there; a verb that STARTS a run is creating that file, so its absence is the normal
- * case and only its DIRECTORY has to exist. One `if (!Files.exists(...))` cannot express both
- * without a boolean flag repeated at every call site.
+ * already be there; a verb that WRITES INTO a finished run adds a fact to a store that must
+ * already be there; a verb that STARTS a run is creating that store, so both its absence and the
+ * absence of the directory that would hold it are the normal case. One `if (!Files.exists(...))`
+ * cannot express those three without a boolean flag repeated at every call site.
+ *
+ * The two absences are also different, and the difference is load-bearing. A directory that is
+ * missing can be created by the producer that owns it; a place that is not a directory cannot be
+ * made into one by anybody, and a relative name that has no parent component lives in the working
+ * directory, which is a directory like any other. Collapsing those three states into one would
+ * make the rule answer "no directory" for a path whose directory is right there.
  *
  * `admitEventStore` and `observePath` are the effectful shells around this decision and are NOT
  * covered here: they touch the filesystem and open a database, which is not what a unit test in this
@@ -31,7 +38,7 @@ class EventStoreAdmissionTest {
     private val path = "/runs/run-42/events.db"
 
     /**
-     * Table-driven contract: 3 observations x 2 purposes = six independent cases.
+     * Table-driven contract: 4 observations x 3 purposes = twelve independent cases.
      * Both acceptance and refusal are necessary; a reject-all or allow-all
      * mutation must turn at least one row red. No I/O, no duplicate E2E.
      */
@@ -43,16 +50,36 @@ class EventStoreAdmissionTest {
                 PathObservation.NoFile, EventStorePurpose.Read, EventStoreRefusal.Absent(path),
             ),
             Case(
-                "missing file / write may create",
+                "missing file / write may create the file",
                 PathObservation.NoFile, EventStorePurpose.Write, null,
             ),
             Case(
+                "missing file / produce may create the file",
+                PathObservation.NoFile, EventStorePurpose.Produce, null,
+            ),
+            Case(
                 "missing directory / read refuses",
-                PathObservation.NoDirectory, EventStorePurpose.Read, EventStoreRefusal.NoDirectory(path),
+                PathObservation.MissingDirectory, EventStorePurpose.Read, EventStoreRefusal.NoDirectory(path),
             ),
             Case(
                 "missing directory / write refuses",
-                PathObservation.NoDirectory, EventStorePurpose.Write, EventStoreRefusal.NoDirectory(path),
+                PathObservation.MissingDirectory, EventStorePurpose.Write, EventStoreRefusal.NoDirectory(path),
+            ),
+            Case(
+                "missing directory / produce creates it",
+                PathObservation.MissingDirectory, EventStorePurpose.Produce, null,
+            ),
+            Case(
+                "place is not a directory / read refuses",
+                PathObservation.NotADirectory, EventStorePurpose.Read, EventStoreRefusal.NoDirectory(path),
+            ),
+            Case(
+                "place is not a directory / write refuses",
+                PathObservation.NotADirectory, EventStorePurpose.Write, EventStoreRefusal.NoDirectory(path),
+            ),
+            Case(
+                "place is not a directory / produce refuses too",
+                PathObservation.NotADirectory, EventStorePurpose.Produce, EventStoreRefusal.NoDirectory(path),
             ),
             Case(
                 "present path / read proceeds",
@@ -62,15 +89,20 @@ class EventStoreAdmissionTest {
                 "present path / write proceeds",
                 PathObservation.Present, EventStorePurpose.Write, null,
             ),
+            Case(
+                "present path / produce proceeds",
+                PathObservation.Present, EventStorePurpose.Produce, null,
+            ),
         )
-        // A factory returning five green rows is not a green test of a 3x2
+        // A factory returning eleven green rows is not a green test of a 4x3
         // matrix. Reject omissions and duplicates before generating cases.
         val expectedPairs = listOf(
             PathObservation.NoFile,
-            PathObservation.NoDirectory,
+            PathObservation.MissingDirectory,
+            PathObservation.NotADirectory,
             PathObservation.Present,
         ).flatMap { observation ->
-            listOf(EventStorePurpose.Read, EventStorePurpose.Write).map { purpose ->
+            listOf(EventStorePurpose.Read, EventStorePurpose.Write, EventStorePurpose.Produce).map { purpose ->
                 observation to purpose
             }
         }
@@ -110,8 +142,9 @@ class EventStoreAdmissionTest {
         // states the consequence rather than working around it.
         val refusals = listOfNotNull(
             refusalFor(PathObservation.NoFile, path, EventStorePurpose.Read),
-            refusalFor(PathObservation.NoDirectory, path, EventStorePurpose.Read),
-            refusalFor(PathObservation.NoDirectory, path, EventStorePurpose.Write),
+            refusalFor(PathObservation.MissingDirectory, path, EventStorePurpose.Read),
+            refusalFor(PathObservation.MissingDirectory, path, EventStorePurpose.Write),
+            refusalFor(PathObservation.NotADirectory, path, EventStorePurpose.Produce),
             // The pure rule cannot see INSIDE the file, so it cannot produce this one: a
             // database that opens but holds no events at all is decided by the store itself
             // when it opens read-only. It belongs to the same closed set and owes the
@@ -128,7 +161,34 @@ class EventStoreAdmissionTest {
             }
         }
 
-        assertEquals(4, named.size)
-        assertEquals(List(4) { path }, named, "a refusal that loses the path is not actionable")
+        assertEquals(5, named.size)
+        assertEquals(List(5) { path }, named, "a refusal that loses the path is not actionable")
+    }
+
+    // --- the producer is the only lane that creates its place ------------------
+
+    @Test
+    fun `only the producer may create the directory that holds the store`() {
+        // The guarantee is about WHO creates the place, not about whether a
+        // directory happens to be missing. A verb that writes into a run that
+        // already happened is pointing at a store somebody else produced, and
+        // the place that store lives in is not that verb's to make.
+        val missing = PathObservation.MissingDirectory
+
+        assertEquals(
+            null,
+            refusalFor(missing, path, EventStorePurpose.Produce),
+            "the producer starts the run and owns the directory it writes into",
+        )
+        assertEquals(
+            EventStoreRefusal.NoDirectory(path),
+            refusalFor(missing, path, EventStorePurpose.Write),
+            "a writer of a finished run must find the place, not make it",
+        )
+        assertEquals(
+            EventStoreRefusal.NoDirectory(path),
+            refusalFor(missing, path, EventStorePurpose.Read),
+            "a reader must find the place, not make it",
+        )
     }
 }

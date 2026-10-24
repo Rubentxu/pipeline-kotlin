@@ -438,11 +438,16 @@ private fun establishDurableIdentity(
 /**
  * The stores of a durable run, admitted once.
  *
- * D3 — a run CREATES its event store, so the file is legitimately absent; only the DIRECTORY
- * has to exist. That is why the purpose is part of the admission and not a flag at each site:
- * `run` used to reach the same constructor as the read verbs and inherited neither the refusal
- * nor the exit code, so a `--db` under a missing directory escaped as a raw SQLException with
- * exit 1 — the code this CLI reserves for a pipeline that ran and failed.
+ * D3 — a run CREATES its event store, so the file is legitimately absent. That is why the purpose
+ * is part of the admission and not a flag at each site: `run` used to reach the same constructor
+ * as the read verbs and inherited neither the refusal nor the exit code, so a `--db` under a
+ * missing directory escaped as a raw SQLException with exit 1 — the code this CLI reserves for a
+ * pipeline that ran and failed.
+ *
+ * The run is admitted as [EventStorePurpose.Produce] because it is also the owner of the place it
+ * writes into: a run creates the control root it works in, and the directory that holds its store
+ * is the same kind of thing. A verb that writes into a run that already happened keeps the other
+ * lane, where the place has to be there already.
  */
 private data class DurableEventStores(
     val rawEventStore: dev.rubentxu.pipeline.v2.events.durable.SqliteEventStore,
@@ -451,7 +456,7 @@ private data class DurableEventStores(
 )
 
 private fun admitDurableEventStore(dbPath: String): DurableEventStores {
-    val dbAdmission = admitEventStore(dbPath, EventStorePurpose.Write)
+    val dbAdmission = admitEventStore(dbPath, EventStorePurpose.Produce)
     if (dbAdmission is EventStoreAdmission.Refused) {
         System.err.println(dbAdmission.refusal.render())
         // `main` returns Unit and this is the depth at which every other refusal ends, so the

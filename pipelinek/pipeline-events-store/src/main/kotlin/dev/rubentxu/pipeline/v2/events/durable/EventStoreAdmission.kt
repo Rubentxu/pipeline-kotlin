@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
@@ -27,14 +28,26 @@ import java.nio.file.Path
  * ## The axis that decides the rules
  * [EventStorePurpose] exists because the rule genuinely differs by caller and the difference is
  * data, not a branch to be repeated per verb. A verb that READS a finished run is being pointed at
- * a file that must already exist; a verb that STARTS a run is creating that file, so its absence is
- * the normal case and only its DIRECTORY has to exist. A single `if (!Files.exists(...))` cannot
- * express both without a boolean flag at each call site.
+ * a file that must already exist; a verb that WRITES INTO a finished run is adding a fact to a
+ * store that must already exist; a verb that STARTS a run is creating that store, and therefore
+ * owns the place it is about to write into. A single `if (!Files.exists(...))` cannot express
+ * those three without a boolean flag at each call site.
+ * ## What the producer owns
+ * The third purpose is the one that was missing, and it was missing in a way that made two
+ * directories of the same kind behave differently. This product creates the directory it writes
+ * into when that directory does not exist: the control root of a run is created on demand, and so
+ * is the directory the SQLite driver extracts its native library into. The store's own directory
+ * was the exception, and it refused instead — so `--db` under a directory that was not there yet
+ * was answered with a refusal, while `--control-root` under the very same directory was created.
+ * The refusal was also wrong for a relative name: `--db events.db` names a file in the working
+ * directory, which exists, and it was refused for having "no directory" at all.
+ * So the producer now creates the directory that holds its store, the same way it creates the
+ * others, and a reader is still refused because a reader may not create the place it reads from.
  * ## Pure decision, effectful admission
  * [refusalFor] is a total function over two closed ADTs and touches no filesystem, so the whole
  * rule set is exercisable without a disk ([PathObservation] carries the observation as a value
- * rather than as two booleans, which would admit states that cannot occur). [admitEventStore] is the
- * effectful shell around it: probe, decide, then open.
+ * rather than as two booleans, which would admit states that cannot occur). [admitEventStore] is
+ * the effectful shell around it: probe, decide, make the place ready, then open.
  * ## The boundary of the conversion
  * `java.sql.SQLException` is an operational outcome here — SQLite refusing a path is a thing that
  * happens to operators — and all four measured conditions raise it (missing directory, not a
@@ -69,8 +82,21 @@ public sealed interface EventStorePurpose {
     /** Read a run that already happened: the file must exist. */
     public data object Read : EventStorePurpose
 
-    /** Start writing a run: the file may be absent, but the directory holding it may not. */
+    /**
+     * Write into the store of a run that already happened: the file must exist.
+     *
+     * This is the lane of `cancel` and `recover`, which add a fact to a run's journal. They are
+     * not starting that run, so the place they write into is not theirs to create.
+     */
     public data object Write : EventStorePurpose
+
+    /**
+     * Start a run: the store, and the directory that holds it, may not exist yet.
+     *
+     * This is the producer's lane. It is the only one that may create the directory it is about
+     * to write into, because it is the one that is bringing the run into existence.
+     */
+    public data object Produce : EventStorePurpose
 }
 
 /**
@@ -85,6 +111,7 @@ public sealed interface EventStorePurpose {
 public fun EventStorePurpose.storeMode(): EventStoreMode = when (this) {
     EventStorePurpose.Read -> EventStoreMode.ReadOnly
     EventStorePurpose.Write -> EventStoreMode.Writable
+    EventStorePurpose.Produce -> EventStoreMode.Writable
 }
 
 /** The outcome of asking for a store: the real store, or the reason there is none. */
@@ -95,19 +122,31 @@ public sealed interface EventStoreAdmission {
 
 /** What the filesystem says about a path, before anything tries to open it. */
 public sealed interface PathObservation {
-    /** Some ancestor of the path is not a directory. */
-    public data object NoDirectory : PathObservation
-
-    /** The directory exists and the file does not. */
-    public data object NoFile : PathObservation
 
     /** The path exists and is not obviously unusable. */
     public data object Present : PathObservation
+
+    /** The directory that would hold the file exists, and the file does not. */
+    public data object NoFile : PathObservation
+
+    /**
+     * The directory that would hold the file does not exist.
+     *
+     * This is the one absence a producer can answer by acting: the directory it is about to
+     * write into is its own to create.
+     */
+    public data object MissingDirectory : PathObservation
+
+    /**
+     * Nothing can hold the file there: what is at that place is not a directory, or the path
+     * cannot be parsed at all. No caller can fix this by creating anything.
+     */
+    public data object NotADirectory : PathObservation
 }
 
 /**
  * The refusal rule, as a total pure function.
- * Returns `null` when the store may be opened. Three inputs, no I/O, no default branch: every
+ * Returns `null` when the store may be opened. Four inputs, no I/O, no default branch: every
  * combination of a closed observation and a closed purpose is stated, so adding a purpose forces
  * this function to be revisited rather than silently reusing another purpose's rule.
 */
@@ -116,14 +155,36 @@ public fun refusalFor(
     path: String,
     purpose: EventStorePurpose,
 ): EventStoreRefusal? = when (observation) {
-    PathObservation.NoDirectory -> EventStoreRefusal.NoDirectory(path)
+    PathObservation.Present -> null
     PathObservation.NoFile -> when (purpose) {
         // A run that is about to be written creates its own file; refusing here would break every
         // first run, which is the most common run there is.
         EventStorePurpose.Write -> null
+        EventStorePurpose.Produce -> null
         EventStorePurpose.Read -> EventStoreRefusal.Absent(path)
     }
-    PathObservation.Present -> null
+    PathObservation.MissingDirectory -> when (purpose) {
+        // The producer owns the place it writes into, and creates it. A reader and a writer of a
+        // finished run are pointing at a store that has to be there already.
+        EventStorePurpose.Produce -> null
+        EventStorePurpose.Write -> EventStoreRefusal.NoDirectory(path)
+        EventStorePurpose.Read -> EventStoreRefusal.NoDirectory(path)
+    }
+    PathObservation.NotADirectory -> EventStoreRefusal.NoDirectory(path)
+}
+
+/**
+ * The directory that would hold the file at [path], or `null` when there is none to name.
+ *
+ * A relative name has no parent component, and it lands in the working directory, which is a
+ * directory like any other. Resolving it here is what stops a perfectly usable name from being
+ * reported as having no directory at all.
+ */
+private fun holdingDirectory(path: String): Path? = try {
+    val parsed = Path.of(path)
+    parsed.parent ?: parsed.toAbsolutePath().parent
+} catch (_: InvalidPathException) {
+    null
 }
 
 /** Probes the filesystem for the observation the pure rule consumes. */
@@ -132,14 +193,15 @@ public fun observePath(path: String): PathObservation {
         Path.of(path)
     } catch (_: InvalidPathException) {
         // An unparseable path has no directory that could hold it and no file that could be read.
-        return PathObservation.NoDirectory
+        return PathObservation.NotADirectory
     }
     if (Files.isDirectory(parsed)) return PathObservation.Present
     if (Files.exists(parsed)) return PathObservation.Present
-    // A file nested under a missing parent is absent for BOTH purposes, but naming the directory is
-    // what SQLite names, and it is the actionable half for an operator who has to create it.
-    val parent = parsed.parent ?: return PathObservation.NoDirectory
-    return if (Files.isDirectory(parent)) PathObservation.NoFile else PathObservation.NoDirectory
+    val parent = holdingDirectory(path) ?: return PathObservation.NotADirectory
+    if (Files.isDirectory(parent)) return PathObservation.NoFile
+    // A parent that is there but is not a directory is not a missing directory: creating
+    // anything there is impossible, and the two answers are not the same to the operator.
+    return if (Files.exists(parent)) PathObservation.NotADirectory else PathObservation.MissingDirectory
 }
 
 /**
@@ -151,7 +213,24 @@ public fun observePath(path: String): PathObservation {
  * opens the file read-only, so it cannot change the producer's journal, and a writer owns it.
 */
 public fun admitEventStore(path: String, purpose: EventStorePurpose): EventStoreAdmission {
-    refusalFor(observePath(path), path, purpose)?.let { return EventStoreAdmission.Refused(it) }
+    val observation = observePath(path)
+    refusalFor(observation, path, purpose)?.let { return EventStoreAdmission.Refused(it) }
+    // The producer's place. This product creates the directories it writes into — the control
+    // root of a run, the directory the SQLite driver extracts its library into — and the store's
+    // directory is the same kind of thing, so it is created here too rather than refused.
+    if (purpose == EventStorePurpose.Produce && observation == PathObservation.MissingDirectory) {
+        val parent = holdingDirectory(path)
+            ?: return EventStoreAdmission.Refused(EventStoreRefusal.NoDirectory(path))
+        try {
+            Files.createDirectories(parent)
+        } catch (e: IOException) {
+            // The directory could not be made. Saying so is more useful than letting SQLite
+            // fail later with the same fact in a different wording.
+            return EventStoreAdmission.Refused(
+                EventStoreRefusal.NotReadable(path, e.message ?: e.javaClass.simpleName),
+            )
+        }
+    }
     return try {
         val store = SqliteEventStore(path, purpose.storeMode())
         if (!store.holdsEventHistory) {

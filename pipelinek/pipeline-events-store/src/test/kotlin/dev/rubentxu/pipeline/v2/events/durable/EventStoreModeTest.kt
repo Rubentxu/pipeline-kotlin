@@ -42,12 +42,21 @@ class EventStoreModeTest {
     }
 
     @Test
+    @DisplayName("the producer that starts a run owns the file and may write it")
+    fun theProducerThatStartsARunOwnsTheFile() {
+        // Starting a run is the one caller that brings the store into existence, so it works in
+        // the producer's lane like any other writer of that file.
+        assertEquals(EventStoreMode.Writable, EventStorePurpose.Produce.storeMode())
+        assertTrue(EventStoreMode.Writable.mayWrite())
+    }
+
+    @Test
     @DisplayName("every purpose lands in one of the two lanes")
     fun everyPurposeLandsInOneOfTheTwoLanes() {
         // The mapping is TOTAL over the closed set of purposes: the compiler refuses a new
         // purpose that nobody decided a lane for, and this states the reachable lanes so that a
         // third one cannot appear unnoticed.
-        val purposes = listOf(EventStorePurpose.Read, EventStorePurpose.Write)
+        val purposes = listOf(EventStorePurpose.Read, EventStorePurpose.Write, EventStorePurpose.Produce)
         val lanes = purposes.map { it.storeMode() }.toSet()
 
         assertEquals(setOf(EventStoreMode.ReadOnly, EventStoreMode.Writable), lanes)

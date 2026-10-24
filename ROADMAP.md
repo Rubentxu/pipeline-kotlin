@@ -152,6 +152,17 @@ sabía leer esos dos extremos; ahora responde también a la pregunta inversa, y 
 lectores —la lectura por operación, su cola y el filtro de consola— consultan esa misma
 dirección. Ya no hay dos formas de leer una identidad: hay una (§2.77).
 
+**Lo que este ciclo midió por dentro: dónde vive la biblioteca que el producto descarga.** El
+driver de SQLite extrae su biblioteca nativa en el directorio que nombra una propiedad del
+sistema, y **no crea directorios**: el sitio tiene que estar allí antes de que llegue. El
+producto decidía eso con una comprobación de nulo, y de ahí salían dos fallos medidos contra el
+producto real: una propiedad **vacía** contaba como «el operador eligió esto» —y una propiedad
+vacía no nombra ningún directorio, así que la biblioteca aterrizaba en el directorio de trabajo— y
+un nombre que **no existía todavía** mataba la corrida diciendo que la **base de datos** no era
+legible, cuando lo que faltaba era el directorio. La decisión pasa a ser una regla pura y tipada,
+y el arnés nombra ahora, en cada escenario, un sitio que no crea: el producto tiene que hacerlo, y
+la corrida es la observación (§2.80).
+
 **Lo que está abierto ahora mismo:**
 
 | # | Qué falta | Por qué sigue abierto |
@@ -175,17 +186,17 @@ sin red |
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `10774b563`, medido en los ensayos de este bloque. El bloque anterior cerró la **segunda lectura** de una identidad (§2.77). Este cierra los tres sitios donde una avería se llevaba por delante una decisión ya tomada: la consola **dibujaba antes de escribir** y su comentario decía lo contrario, el redactor **podía pisar los bytes que ya había decidido**, y el checkout de git **avisaba por stderr y seguía** cuando el almacén rechazaba el registro (§2.78). La candidata `v0.83.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
+| SHA | `e968fd79`, medido en los ensayos de este bloque. El bloque anterior cerró el **orden de la historia** que el arnés no veía (§2.79). Este cierra los tres sitios donde una avería se llevaba por delante una decisión ya tomada (§2.78), el **orden** que el arnés no comparaba (§2.79) y la **decisión** sobre dónde vive la biblioteca nativa del driver de SQLite: una propiedad en blanco la mandaba al directorio de trabajo, y un nombre que no existía todavía mataba la corrida diciendo que la base de datos no era legible (§2.80). La candidata `v0.85.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1161** (166 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1165** (167 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **62 de 62**: **400 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 396, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **21456 / 68087 = 0.315** (límite 2) | `scripts/check-budgets.py --json` |
+| Escenarios con una garantía comprobada | **62 de 62**: **566 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 396, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
+| `VERIFY_LOC / PRODUCT_LOC` | **21693 / 68122 = 0.318** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **204 / 154 / 155** en los tres ensayos, los tres sobre `10774b563`, peor 204 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **201 / 166 / 150** en los tres ensayos, los tres sobre `e968fd79`, peor 201 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 24 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -8715,7 +8726,109 @@ certificación.
 - **La promoción a estable sigue bloqueada**: no hay certificador externo en este
   repositorio ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`.
 
+### 2.80 La biblioteca nativa tiene un dueño, y vive donde el operador dijo
+
+**El hueco.** El producto decide dónde aterriza la biblioteca nativa del driver de SQLite, y esa
+decisión era una **comprobación de nulo**: si la propiedad `org.sqlite.tmpdir` estaba puesta, el
+operador había elegido, y no se tocaba nada. El driver, sin embargo, **no crea directorios**: el
+sitio tiene que estar allí antes de que llegue la biblioteca. De esa comprobación salían dos
+fallos, los dos medidos contra el producto real y no contra una idea.
+
+**Lo que se midió antes de tocar nada.**
+
+- Una propiedad **vacía** (`-Dorg.sqlite.tmpdir=`) contaba como «el operador eligió esto» — y una
+  propiedad vacía no nombra ningún directorio. El driver la resolvía contra el directorio de
+  trabajo. Medido en vivo, con la corrida en marcha: en el directorio donde corría el pipeline
+  aparecían `sqlite-3.46.1.3-<uuid>-libsqlitejdbc.so` (1 056 352 bytes) y su `.lck`.
+- Un nombre que **no existía todavía** no lo creaba nadie. La extracción fallaba con
+  `NoSuchFileException` sobre el `.lck`, y el producto decía otra cosa: `db is not readable:
+  <ruta> (Error opening connection)`, salida 2. El operador iba a mirar una base de datos
+  perfectamente sana, porque lo que faltaba era el directorio de la biblioteca.
+- El censo del temporal compartido: **423** bibliotecas sueltas en la raíz, **todas anteriores** al
+  mecanismo del directorio con dueño, y **693** directorios `pipelinek-sqlite-…` con **699 MB**.
+  Los 693 son de procesos **asesinados**: una salida normal limpia el suyo (medido: 693 antes,
+  693 después). El defecto no era la limpieza, era el sitio.
+
+**Lo que ahora es verdad.** La decisión es una **regla pura y tipada**, con tres respuestas a una
+sola pregunta: *el valor del operador nombra un directorio donde el driver puede extraer?*
+
+- Si nombra uno que **ya está**, se usa tal cual y no se toca nada de él: `Borrowed`.
+- Si nombra uno que **aún no está**, se crea —el nombre es del operador— y se deja allí:
+  `Created`.
+- Y si no hay nombre utilizable, el producto crea uno suyo y lo retira al terminar: `Owned`, el
+  único directorio que retira.
+
+**El valor del operador nunca se reescribe.** La propiedad se toca sólo cuando nadie nombró nada.
+Un valor en blanco, un valor de espacios y un nombre que el sistema de ficheros no sabe escribir
+—uno con un NUL dentro— son la **ausencia** de una instrucción, y el producto los trata como tal.
+
+**Lo que el arnés hace ahora.** Cada escenario recibe **un sitio para la biblioteca que el arnés
+no crea**: un directorio por escenario, con nombre propio, dentro de la raíz privada de ese
+escenario. El producto tiene que hacerlo, y **la corrida es la observación**: un producto que
+cree al operador en vez de servirle deja los **62** escenarios en rojo. Y hay una comprobación
+**universal**, que ningún escenario declara: si una corrida **arrancó** —es decir, si abrió el
+almacén— el sitio nombrado tiene que **estar ahí**. Una corrida que nunca arrancó nunca abrió el
+almacén, y no hay nada que exigirle.
+
+**La fila pura dejó de tocar el disco.** La decisión es una función de dos hechos, así que se lee
+y se comprueba sin temporal del sistema, sin reloj y **sin una propiedad global que otra fila
+puede pisar**. La prueba anterior creaba **tres directorios de verdad** en el temporal del sistema
+y borraba la propiedad del JVM antes y después de cada fila — lo que la política veta — y además
+no podía ver ninguno de los dos fallos: sólo probaba que no había propiedad y que había una con
+nombre.
+
+**Lo que se vio en rojo.**
+
+| Mutación | Qué se puso rojo | Motivo |
+|---|---|---|
+| el producto cree al operador en vez de servirle | **62 de 62 escenarios** | **62 de 62**, el mismo: el driver no pudo extraer porque el directorio no estaba |
+| la fila pura que decide qué hacer con un nombre que no está | **1 fila** | la que dice que un sitio que no existe se hace |
+| la fila pura que lee el valor del operador | **2 filas** | las dos que dicen que un valor en blanco no nombra nada |
+
+El primer dato es el que importa: **los 62 tienen el mismo motivo**, y el motivo no es el
+escenario sino el producto. Antes de este ciclo, un producto que creía al operador en vez de
+servirlo era **indistinguible** de uno que lo servía, porque la comparación entre las dos rutas
+mira lo que se dijo y no dónde se puso una biblioteca que desaparece al terminar el proceso.
+
+**El coste no subió.** Los mismos **62** escenarios —ninguno nuevo— y las mismas **112**
+ejecuciones. Lo que subió son las comprobaciones: de **512** a **566**, porque ahora cada corrida
+comprueba también que el sitio nombrado existe.
+
+**Lo que la puerta midió.** `PASS` tres veces sobre el árbol commiteado (`e968fd79`): **201 / 166 / 150 s**
+con un presupuesto de **900 s** y `tests=rewritten:1165 read:0`. Los 62 escenarios llevan una
+garantía comprobada —**566** comparaciones sobre **112** ejecuciones— y el LOC queda en
+**21 693** de verificación sobre **68 122** de producto (**0,318**).
+
+**La candidata.** `v0.85.0-rc1`, publicada sobre el commit `e968fd79`, con el artefacto
+`pipelinek-0.85.0.zip` en `sha256:e74f1aa95ad7435d031ee0718ba6883e6fc082f92c1615d893770d840395bbb1` y los **7** activos con su digest en
+`SHA256SUMS`. Es una **candidata**, no una certificación.
+
+**Lo que queda fuera, dicho con honestidad.**
+
+- El arnés ahora nombra un sitio para cada escenario, así que el caso de «nadie nombró nada» —el
+  defecto de fábrica— lo cubren las filas puras y la verificación de la candidata publicada, que
+  corre el producto en su entorno de verdad. No lo cubre una corrida del arnés.
+- El caso de un operador que nombra un sitio que existe lo cubren las filas puras, y la segunda
+  corrida de los escenarios durables lo encuentra ya hecho: el mismo nombre, ahora existente.
+- La economía del arnés por **coste** sigue abierta: la caché de compilación vive dentro del
+  ciclo y se borra con él, así que cada ejecución paga su compilación (§2.79).
+- La promoción a estable sigue bloqueada: no hay certificador externo en este repositorio ni en
+  el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
+- **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite
+  no crea directorios, así que un nombre que todavía no está es una instrucción que el producto
+  tiene que hacer cumplir, no una afirmación que puede creer. La regla es pura y tipada, con tres
+  respuestas: lo que ya está se usa tal cual, lo que no está se hace, y lo que no nombra nada es
+  del producto (§2.80).
+- **Una propiedad vacía no es una elección.** Es la ausencia de una instrucción, y tratarla como
+  una era lo que mandaba la biblioteca nativa al directorio de trabajo. Un valor en blanco y un
+  nombre que el sistema de ficheros no sabe escribir son las dos formas de no haber dicho nada
+  (§2.80).
+- **Una fila pura que toca el disco está midiendo otra cosa.** La prueba anterior creaba
+  directorios de verdad y borraba una propiedad global del JVM; además, no podía ver ninguno de
+  los dos fallos que el producto tenía. La decisión, al ser pura, se comprueba sin disco y sin
+  reloj (§2.80).
 - **Una presentación no puede llevarse el hecho que presenta.** La consola dibuja después de
   escribir: un fallo de dibujo deja el registro intacto y el fallo a la vista (§2.78).
 - **Un byte decidido es un byte que ya no se puede escribir.** La cola de lo decidido crece en
@@ -10373,6 +10486,10 @@ certificación.
 
 ## 4. Referencias
 
+- `pipeline-application/.../SqliteNativeLibraryHome.kt` — la regla pura que decide dónde vive la
+  biblioteca nativa del driver de SQLite, con sus tres respuestas (§2.80).
+- `pipeline-application/.../SqliteNativeLibraryHomeTest.kt` — las filas puras de esa regla, sin
+  disco y sin reloj (§2.80).
 - `AGENTS.md` — política vigente; manda sobre cualquier documento histórico.
 - `scripts/verify-all.sh` — la única puerta local.
 - `scripts/check-budgets.py` — el único script de presupuestos.

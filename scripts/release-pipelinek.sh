@@ -413,6 +413,38 @@ fi
 STAGED_PATHS+=("$SUMS")
 
 # ----------------------------------------------------------------------------
+# 5c. The external-consumer check.
+#     It runs BEFORE the tag, because a tag that exists is a tag that cannot be
+#     taken back: the script refuses an existing tag, so a failure after the
+#     push would leave a published tag and no release.
+#     What it measures: a consumer OUTSIDE this repository builds a plugin
+#     against the SDK this release publishes (and against the SDK the previous
+#     release published) and loads it into the distribution this release
+#     publishes. The candidate's own bytes are the ones it runs: the staged
+#     copies, whose digests the gate measured and this script re-measured.
+#     A red row stops the publication, and the reason is written into the
+#     evidence directory rather than into a log nobody reads.
+# ----------------------------------------------------------------------------
+
+EXT_COMPAT_VERDICT="${EVIDENCE_DIR}/external-compatibility.txt"
+EXT_COMPAT_TIMEOUT_SECONDS="${PIPELINEK_EXTERNAL_COMPAT_TIMEOUT_SECONDS:-600}"
+
+echo "release-pipelinek: running the external-consumer check (timeout ${EXT_COMPAT_TIMEOUT_SECONDS}s)"
+
+if ! timeout "${EXT_COMPAT_TIMEOUT_SECONDS}" \
+    "${REPO_ROOT}/scripts/release/verify-external-compatibility.sh" \
+    --candidate-zip "${EVIDENCE_DIR}/${DIST_NAME}" \
+    --candidate-sdk-zip "${EVIDENCE_DIR}/pipelinek-${PIPELINEK_RELEASE_TRAIN}.sdk.zip" \
+    --candidate-train "${PIPELINEK_RELEASE_TRAIN}" \
+    --out "$EXT_COMPAT_VERDICT"; then
+    echo "release-pipelinek: refusing to publish — the external consumer check did not pass." >&2
+    echo "    the distribution this release publishes could not be verified against a" >&2
+    echo "    consumer that built its plugin from a published SDK. No tag was created." >&2
+    rm -rf "$EVIDENCE_DIR"
+    exit 1
+fi
+
+# ----------------------------------------------------------------------------
 # 5d. The handoff.
 #     It lists what the release carries, generated from the files that were
 #     actually staged. A handoff that names an asset the release does not
@@ -468,6 +500,16 @@ for staged in "${STAGED_PATHS[@]}"; do
         >> "${EVIDENCE_DIR}/HANDOFF.md"
 done
 
+{
+    printf '\n## External consumer\n\n'
+    printf 'A consumer outside this repository built a plugin against the SDK this release\n'
+    printf 'publishes and against the SDK the previous release published, and loaded both into\n'
+    printf 'this release'"'"'s own distribution. The rows below are what that run observed.\n\n'
+    printf '```\n'
+    cat "$EXT_COMPAT_VERDICT"
+    printf '```\n'
+} >> "${EVIDENCE_DIR}/HANDOFF.md"
+
 cat >> "${EVIDENCE_DIR}/HANDOFF.md" <<HANDOFF_EOF
 
 ## What the certifier must do
@@ -478,6 +520,9 @@ cat >> "${EVIDENCE_DIR}/HANDOFF.md" <<HANDOFF_EOF
    about. A \`DIVERGENT\` verdict is a hard stop.
 3. Re-run \`./pipelinek/gradlew -p pipelinek :pipeline-release:releaseGate\` at
    \`${ARTIFACT_BUILD_COMMIT}\` and confirm it admits these same bytes.
+4. Re-run \`scripts/release/verify-external-compatibility.sh\` against the
+   downloaded assets and confirm the rows above are reproduced. The SDK archives
+   it consumes are verified against the \`SHA256SUMS\` published with them.
 HANDOFF_EOF
 
 # ----------------------------------------------------------------------------

@@ -181,6 +181,16 @@ componía mal la ruta del binario. Ahora el manifiesto del release es la autorid
 asset es el programa, y el README en español, que describía otro producto, es una guía breve y
 fiel (§2.81).
 
+**Lo que este ciclo midió por fuera: la llave de las credenciales.** La frase de paso es lo
+que abre el almacén de credenciales, y el almacén no la comprobaba: una frase de paso
+**incorrecta** borraba una credencial y lo anunciaba como un éxito, y una frase de paso
+**correcta** no era necesaria para mirar un almacén que no estaba —que además se quedaba
+creado y vacío en el disco—. El comando documentaba sus códigos de salida y dos de ellos no
+los producía nunca, porque capturaba una excepción que nadie lanza. Ahora la regla es una y
+está escrita en un sitio —*la frase de paso es la autorización para tocar el almacén*—, el
+almacén la comprueba antes de leer o de escribir nada, y los verbos que no tienen nada que
+abrir no piden llave (§2.82).
+
 **Lo que está abierto ahora mismo:**
 
 | # | Qué falta | Por qué sigue abierto |
@@ -200,26 +210,28 @@ sin red |
 | 5 | El techo del drenaje | **cerrado** (§2.74): el rechazo era tipado pero **no accionable**, y el techo era un reloj que no distinguía una bomba **atascada** (esperando bytes que nadie va a escribir) de una bomba **lenta** (escribiendo porque la máquina está ocupada). Ahora la bomba declara su atención, el atascado se rechaza **al momento y nombrado**, el lento se espera, y los dos rechazos son **casos tipados distintos** (`STUCK_CHILD`, `OUT_OF_TIME`). Queda medir **cuánto** tarda un drenaje con la máquina saturada: reproducir la saturación en un banco de pruebas es una fixture que este repositorio no tiene |
 | 7 | Lectores que interpretaban la identidad de una operación por texto | **cerrado** (§2.77): el identificador de una operación es el segmento central **entero** de un id de stream, y ese segmento puede llevar separadores propios. La búsqueda por subcadena daba los frames de una operación cuyo identificador **contiene** el pedido, y el índice de segmento nombraba una operación compuesta **cortada** por la mitad. Ahora la dirección publicada responde a la pregunta inversa (`isOperationOf`) y los tres lectores —la lectura por operación, su cola y el filtro de consola— la consultan. Se elimina además un resolvedor textual sin consumidores, que era una segunda autoridad sobre la misma identidad. El defecto era **latente**: los identificadores que el motor produce hoy no llevan separadores, así que no se ve desde la línea de órdenes |
 | 8 | El instalador multi-versión no puede instalar ninguna versión reciente | **medido**: `install 0.85.0-rc1` lo rechaza la comprobación de semver estricto, e `install 0.85.0` da **404**, porque el tag de una candidata lleva sufijo (`v0.85.0-rc1`) y su asset no lo lleva (`pipelinek-0.85.0.zip`); el único tag plano que existe es `v0.75.0`. **No es un descuido**: instalar una candidata bajo el nombre de una versión estable es lo que la ley de identidad prohíbe, así que el arreglo tiene que decidir **dónde** vive una candidata —un directorio con su sufijo— antes de tocar el resolutor. El README lo dice con esas palabras (§2.81) |
+| 9 | La consola del producto intercala su propio progreso dentro de la salida del paso | **medido**: una marca de 26 bytes puede llegar partida en dos, con la línea de progreso en medio (`WRONG_K` + progreso + `EY_CHANGES_NOTHING`). Las comprobaciones nuevas del arnés miran el **transcripto** —los bytes que el paso escribió— y no la consola; las que ya existían siguen mirando la consola, así que una de ellas puede partirse sin que nadie lo note. Es una deuda con nombre, no un defecto del ciclo (§2.82) |
+| 10 | La puerta de una **corrida** no falla en la puerta | **medido**: una frase de paso que **no encaja** se descubre en el primer uso de la credencial, y la corrida termina con el código de un paso fallido; solo la que **no está** se niega en la puerta. El mensaje es cierto y el fallo es cerrado, pero el KDoc de la costura promete «fail fast» para los dos casos. Corregirlo cambia el código de salida de un modo de fallo ya publicado —una ruptura versionada— y no se ha hecho en este ciclo (§2.82) |
 
 ## 1. Estado medido
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `d4c406be8`, medido en los ensayos de este bloque. El bloque anterior cerró la **decisión** sobre dónde vive la biblioteca nativa del driver de SQLite (§2.80). Este cierra el **camino más corto al primer pipeline**: una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81). La candidata `v0.86.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
+| SHA | `0973c382e`, medido en los ensayos de este bloque. El bloque anterior cerró el **camino más corto al primer pipeline**: una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81). Este cierra la **puerta de las credenciales**: la frase de paso es la autorización para tocar el almacén, y una frase de paso que no encaja ya no borra una credencial y dice que sí (§2.82). La candidata `v0.87.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
-| Tests unitarios ejecutados | **1170** (168 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
+| Tests unitarios ejecutados | **1175** (169 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
-| Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas | etapa 3 del gate |
+| Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas; el escenario de credenciales pasa de 14 a 22 comprobaciones, y el número de escenarios **no crece** | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **62 de 62**: **566 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 396, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **21855 / 68174 = 0.321** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **21971 / 68257 = 0.322** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **162 / 145 / 151** en los tres ensayos, los tres sobre `d4c406be8`, peor 162 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **229 / 148 / 149** en los tres ensayos, los tres sobre `0973c382e`, peor 229 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 24 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
-| Candidato publicada | **`v0.86.0-rc1`** (prerelease), `candidate_id` `sha256:1923cc80e2643dd1759d501d4ad1bc764ec68aa333b9eb606aad52e758c43ade`, tag en `d4c406be8`; verificada **sobre los bytes descargados del remoto** (§2.81) | `gh release view v0.86.0-rc1`, `sha256sum -c SHA256SUMS` |
+| Candidato publicada | **`v0.87.0-rc1`** (prerelease), `candidate_id` `sha256:e0803c045f15875c51093c2145118865f06ab8a9f922448e3e1070629ffd232d`, tag en `0973c382e`; verificada **sobre los bytes descargados del remoto** (§2.82) | `gh release view v0.87.0-rc1`, `sha256sum -c SHA256SUMS` |
 | Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -233,20 +245,20 @@ El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s, 182, 141 y 139 s,
 187, 139 y 140 s y 203, 139 y 141 s.
 Este mide
-**162, 145 y 151 s**:
+**229, 148 y 149 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 162 s, es menos de
-la sexta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
-la API pública, los 1170 tests y los 62 escenarios.
+de este ciclo el presupuesto se cumplió con holgura —el peor, 229 s, es menos de
+la cuarta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
+la API pública, los 1175 tests y los 62 escenarios.
 
-**La etapa del E2E mide 91, 92 y 95 s**, medidos en seco sobre el lanzador,
-contra los 100 y 98 s del ciclo anterior (§2.80). **Esta vez la etapa bajó**, y
-la diferencia **no está medida**: no se aisló su causa, y la carga de la máquina
-—que en otros ciclos decidió un rojo o un verde— explica parte. Lo que sigue
-explica el **resto** del coste, que es el de siempre: el arnés ya no deduce las
-identidades del sistema de ficheros, **pregunta al producto**, y preguntar
-cuesta un arranque de proceso por mundo y por run. Ese precio compra algo que el
+**La etapa del E2E mide 107 s**, medidos en seco sobre el lanzador, contra los
+91, 92 y 95 s del ciclo anterior (§2.80). Los **doce segundos** de más son el
+precio de la puerta: cada comprobación nueva es una invocación del producto, y
+el producto es un proceso que arranca. Lo que sigue explica el **resto** del
+coste, que es el de siempre: el arnés ya no deduce las identidades del sistema
+de ficheros, **pregunta al producto**, y preguntar cuesta un arranque de proceso
+por mundo y por run. Ese precio compra algo que el
 filesystem no daba: **la identidad completa** de cada operacion, y con ella
 la posibilidad de que dos operaciones que se pliegan igual sean dos filas y no
 una (§2.73). El escenario **no crece**: los 62 son los mismos 62, y el que
@@ -8971,8 +8983,115 @@ fichero** de la corrida.
 - La economía del arnés por **coste** sigue abierta: la caché de compilación vive dentro
   del ciclo y se borra con él, así que cada ejecución paga su compilación (§2.79).
 
+### 2.82 La llave de las credenciales se comprueba
+
+**El hueco.** La frase de paso es lo que abre el almacén de credenciales, y el almacén no
+comprobaba la llave. Medido, sobre el producto real, con un almacén sembrado y una credencial
+dentro:
+
+```
+$ PIPELINE_STORE_PASSPHRASE=mala pipelinek credentials remove cred-1
+Credential 'cred-1' removed.          salida 0
+el almacén pasó de 204 a 137 bytes y la credencial desapareció
+```
+
+Una frase de paso que **no** es la correcta borró una credencial y lo announced como si hubiera
+funcionado. El almacén no comprobaba nada al quitar: leía las entradas, quitaba una y
+reescribía el fichero, **sin tocar jamás la llave que lo sella**. La credencial no se
+corrompió: se borró, y el operador se quedó sin ella.
+
+**Lo que se midió antes de tocar nada.** La matriz completa —cada verbo, cada situación, cada
+caso con su almacén limpio— está medida en el recibo del ciclo. Lo que salió:
+
+| verbo | almacén | llave | salida | qué pasó |
+|---|---|---|---|---|
+| `list` | no está | ninguna | **1** | pidió la llave para no poder abrir nada |
+| `list` | no está | hay | 0 | dijo que no hay nada, **pero creó un fichero de 0 bytes** |
+| `remove` | no está | hay | 1 | **`Error: null`**, y creó un fichero de 0 bytes |
+| `list` | está | ninguna | **1** | la excepción específica nunca se lanzaba: caía en la genérica |
+| `list` | está | **mala** | **0** | listó las credenciales con el tipo `Unknown` y salió 0 |
+| `remove` | está | **mala** | **0** | **borró la credencial** y lo dijo como un éxito |
+| `remove` | está | buena, id inexistente | **0** | **`Credential 'no-existe' removed.`** |
+
+Y una cosa más, que no salió de la matriz sino del código: el comando **documentaba** sus
+códigos de salida —`2: Missing store`, `3: Wrong passphrase`— y **ninguno de los dos lo
+producía nunca**. La causa era que el `catch` nombraba `LocalSecretStore.CredentialsStorePassphraseUnavailableException`
+cuando la excepción que se lanza es `PassphraseResolver.CredentialsStorePassphraseUnavailableException`:
+dos clases distintas para la misma pregunta, y la que se capturaba no la lanzaba nadie.
+
+**Lo que ahora es verdad.** Una sola regla, dicha en un sitio: **la frase de paso es la
+autorización para tocar el almacén**.
+
+- El almacén **desenvuelve la clave que lo sella antes de leer o de escribir nada**. Una
+  llave que no encaja no cambia un byte, y lo dice con sus propias palabras: *the passphrase
+  does not match the store*. Antes una llave equivocada decía «Passphrase required», que
+  manda al operador a buscar una variable que ya ha puesto.
+- Un almacén **que no está no tiene nada que abrir**: los verbos que solo leen o solo cambian
+  lo que hay dentro no piden la llave, y **no dejan un fichero detrás por mirar**. Antes
+  `credentials list` sobre una máquina sin almacén dejaba un almacén vacío en el disco.
+- **Quitar lo que nunca existió** lo dice: `No credential named 'no-existe'.`, salida 1. Antes
+  anunciaba una baja que no ocurrió.
+- El comando **pide la llave antes de pedir el valor**, para que una llave equivocada no
+  cueste al operador teclear un secreto que no se va a guardar.
+- Los **códigos de salida son los que el comando documenta**, y cada uno lo produce el
+  desenlace que le corresponde: `0` respondido, `1` no se pudo hacer, `2` no hay llave, `3` la
+  llave no encaja, `4` el almacén está manipulado.
+
+**El contrato es puro y está en un sitio.** `CredentialsVerb` dice qué verbo necesita la
+llave —`ADD` siempre, los otros solo cuando hay algo que abrir— y `CredentialsOutcome` dice
+qué cuesta cada desenlace. Las dos decisiones se pueden comprobar sin disco, sin reloj y sin
+frase de paso, y el comando las ejecuta en vez de repetirlas en prosa.
+
+**Lo que el arnés hace ahora.** Las comprobaciones de la puerta caben en el escenario de
+credenciales **que ya existía**: el número de escenarios **no crece** (siguen siendo 62) y ese
+escenario pasa de 14 a **22** comprobaciones. Cada comprobación imprime su propia marca, y el
+lanzador nombra la que no llegó.
+
+**Y las marcas se comprueban contra el _transcripto_, no contra la consola.** Medido: la
+consola del producto **intercala sus propias líneas de progreso dentro de la salida del
+paso**, y una marca puede llegar partida en dos —la primera vez, `WRONG_KEY_CHANGES_NOTHING`
+llegó como `WRONG_K` + la línea de progreso + `EY_CHANGES_NOTHING`—. El transcripto son los
+bytes que el paso escribió, y ahí no se cuela nada.
+
+**Lo que se vio en rojo.**
+
+| Mutación | Qué se puso rojo | Por qué |
+|---|---|---|
+| el almacén deja de comprobar la llave | `WRONG_KEY_CHANGES_NOTHING` | la llave equivocada volvió a borrar la credencial: el almacén pasó de 204 a 137 bytes |
+| la puerta vuelve a pedir llave donde no hay nada que abrir | `NO_STORE_NEEDS_NO_KEY` | y el transcripto mostró la respuesta equivocada: *listing an absent store answered 2 instead of 0* |
+| ningún verbo necesita la llave | **2 de 5 filas puras** | las que afirman que un verbo que lee o cambia lo que hay dentro sí la necesita |
+| todos los desenlaces cuestan 0 | **2 de 5 filas puras** | las que afirman que cada desenlace cuesta su código |
+
+La primera y la segunda exigen romper **las dos capas** del mismo hecho: el comando lista
+antes de quitar (y ese listado es lo que comprueba la llave), y el almacén comprueba por su
+propio cuenta. Son la misma regla vista desde dos lados, y por eso una sola no basta para
+quebrantarla.
+
+**El coste no subió.** Los mismos **62** escenarios, las mismas **112** ejecuciones, y una
+comprobación más en el escenario de credenciales.
+
+**Lo que queda fuera, dicho con honestidad.**
+
+- La consola del producto **intercala su progreso dentro de la salida del paso**, así que una
+  comprobación que mire la consola puede partirse. Las comprobaciones nuevas miran el
+  transcripto; las que miran la consola siguen mirándola, y esa es una deuda con nombre (§2.82).
+- La puerta de una **corrida** no falla en la puerta: una frase de paso que no encaja se
+  descubre en el primer uso de la credencial, y la corrida termina con el código de un paso
+  fallido. El mensaje es cierto y el fallo es cerrado, pero el KDoc de la costura promete «fail
+  fast» para los dos casos, y solo el de «no hay llave» lo cumple. Corregirlo cambia el código
+  de salida de un modo de fallo ya publicado —una ruptura versionada— y **no se ha hecho en
+  este ciclo**: la mejora real es que el mensaje dice la verdad (§2.82).
+- La promoción a estable sigue bloqueada: no hay certificador externo en este repositorio ni
+  en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`.
+- La economía del arnés por **coste** sigue abierta: la caché de compilación vive dentro del
+  ciclo y se borra con él (§2.79).
 ## 3. Decisiones tomadas en este ciclo, con su porque
-- **Un sitio que el operador nombra es un sitio que hay que dejar existir.**- **La presencia del almacén es un hecho de la máquina; la necesidad de él es un hecho de la corrida.**
+- **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite
+  no crea directorios, así que un nombre que todavía no está es una instrucción que el producto
+  tiene que hacer cumplir, no una afirmación que puede creer. La regla es pura y tipada, con tres
+  respuestas: lo que ya está se usa tal cual, lo que no está se hace, y lo que no nombra nada es
+  del producto (§2.80).
+- **La presencia del almacén es un hecho de la máquina; la necesidad de él es un hecho de la corrida.**
   Preguntar a la máquina hacía que toda corrida de una máquina que hubiera guardado un secreto
   pidiera la frase de paso, y el operador la encontraba antes de su primer pipeline (§2.81).
 - **La pregunta se le hace a la declaración, no a la máquina.** Un `PipelineSpec` dice si liga una
@@ -8994,11 +9113,23 @@ fichero** de la corrida.
 - **La ley de la identidad no se negocia con la comodidad del instalador.** Una candidata no se
   instala bajo el nombre de una versión estable: el instalador tiene que resolver **dónde** vive
   una candidata, y ese es su propio bloque (§2.81).
- El driver de SQLite
-  no crea directorios, así que un nombre que todavía no está es una instrucción que el producto
-  tiene que hacer cumplir, no una afirmación que puede creer. La regla es pura y tipada, con tres
-  respuestas: lo que ya está se usa tal cual, lo que no está se hace, y lo que no nombra nada es
-  del producto (§2.80).
+- **La frase de paso es la autorización para tocar el almacén, y se comprueba.** Una llave
+  que no encaja no cambia un byte y lo dice; el almacén deja de poder quitar nada sin haber
+  desenvuelto antes la clave que lo sella (§2.82).
+- **Un almacén que no está no tiene nada que abrir.** Pedir la llave ahí es pedir la llave de
+  una puerta que no existe, y mirar no deja un almacén vacío detrás (§2.82).
+- **Un código de salida que nadie produce es un código inventado.** El comando documentaba
+  `2` y `3` y no los producía, porque capturaba una excepción que nadie lanza; ahora cada
+  desenlace cuesta su código y el comando dice cuál es (§2.82).
+- **La garantía se comprueba donde el lector la encuentra.** Las comprobaciones nuevas del
+  arnés miran el transcripto y no la consola, porque la consola intercala el progreso del
+  producto dentro de la salida del paso y una marca puede llegar partida (§2.82).
+- **Un contrato que se puede escribir en dos frases se puede comprobar en dos frases.** Qué
+  verbo necesita la llave y qué cuesta cada desenlace son dos decisiones puras, y por eso
+  tienen filas propias (§2.82).
+- **Un valor vacío es una llave válida, no la ausencia de una instrucción.** Se comprobó que
+  ya había una decisión deliberada y probada que lo dice, y no se tocó: la regla de «lo en
+  blanco no es una instrucción» es de las rutas y los directorios, no de las claves (§2.82).
 - **Una propiedad vacía no es una elección.** Es la ausencia de una instrucción, y tratarla como
   una era lo que mandaba la biblioteca nativa al directorio de trabajo. Un valor en blanco y un
   nombre que el sistema de ficheros no sabe escribir son las dos formas de no haber dicho nada
@@ -10664,6 +10795,18 @@ fichero** de la corrida.
 
 ## 4. Referencias
 
+- `pipeline-credentials-local/.../CredentialsContract.kt` — el contrato puro: qué verbo
+  necesita la llave y qué cuesta cada desenlace (§2.82).
+- `pipeline-credentials-local/.../CredentialsContractTest.kt` — las cinco filas puras de ese
+  contrato, sin disco y sin reloj (§2.82).
+- `pipeline-credentials-local/.../LocalSecretStore.kt` — el almacén desenvuelve la clave que
+  lo sella antes de leer o de escribir nada (§2.82).
+- `pipeline-credentials-local/.../MainCredentialsCli.kt` — los verbos preguntan lo que
+  necesitan y los códigos de salida son los que el comando documenta (§2.82).
+- `examples/security/14-credentials-bindings.pipeline.kts` — la puerta comprobada desde fuera,
+  en el escenario que ya existía (§2.82).
+- `v0.87.0-rc1` — la candidata que este ciclo publicó y verificó (prerelease; la promoción a
+  estable sigue bloqueada por el certificador externo).
 - `pipeline-application/.../CredentialBindingDeclaration.kt` — la regla pura que decide si una
   corrida liga una credencial, con un recorrido exhaustivo sobre el `StepSpec` sellado (§2.81).
 - `pipeline-application/.../CredentialBindingDeclarationTest.kt` — las filas puras de esa regla, sin

@@ -489,7 +489,15 @@ private fun resolveDurableControlRoot(config: CliFlags, dbPath: String): Path =
             throw e // unreachable
         }
     } else {
-        Paths.get(dbPath).parent.resolve("durable-shell")
+        // The store's directory, made absolute. A relative `--db` has no parent component, and
+        // the working directory is the directory that holds it; asking the path for its parent
+        // without that step is a null dereference waiting for the first relative store path.
+        val storeDirectory = Paths.get(dbPath).toAbsolutePath().parent
+        if (storeDirectory == null) {
+            System.err.println("Error: the store path has no directory to hold it: ${dbPath}")
+            System.exit(2)
+        }
+        storeDirectory.resolve("durable-shell")
     }
 
 /**

@@ -808,6 +808,399 @@ public final class dev/rubentxu/pipeline/v2/runtime/inspect/TerminalObservation$
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/rubentxu/pipeline/v2/runtime/profile/CostInput {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence;Ljava/util/Map;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence;
+	public final fun component2 ()Ljava/util/Map;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence;Ljava/util/Map;)Ldev/rubentxu/pipeline/v2/runtime/profile/CostInput;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/CostInput;Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence;Ljava/util/Map;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/CostInput;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCosts ()Ljava/util/Map;
+	public final fun getRun ()Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/profile/CostSamples {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/CostSamples$Estimate : dev/rubentxu/pipeline/v2/runtime/profile/CostSamples {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;)Ldev/rubentxu/pipeline/v2/runtime/profile/CostSamples$Estimate;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/CostSamples$Estimate;Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/CostSamples$Estimate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEstimate ()Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/CostSamples$Intervals : dev/rubentxu/pipeline/v2/runtime/profile/CostSamples {
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Ldev/rubentxu/pipeline/v2/runtime/profile/CostSamples$Intervals;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/CostSamples$Intervals;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/CostSamples$Intervals;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIntervals ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/CostSamples$None : dev/rubentxu/pipeline/v2/runtime/profile/CostSamples {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/profile/CostSamples$None;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate {
+	public fun <init> (JJLjava/lang/String;)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (JJLjava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;JJLjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getInverted ()Z
+	public final fun getLowerAtMs ()J
+	public final fun getSource ()Ljava/lang/String;
+	public final fun getUpperAtMs ()J
+	public final fun getWindowMillis ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/MeasuredDuration {
+	public fun <init> (JJLjava/lang/String;)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (JJLjava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/profile/MeasuredDuration;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/MeasuredDuration;JJLjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/MeasuredDuration;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getClockDomain ()Ljava/lang/String;
+	public final fun getEndAtMs ()J
+	public final fun getInverted ()Z
+	public final fun getMillis ()J
+	public final fun getStartAtMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/profile/PartialReason {
+	public abstract fun getId ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/PartialReason$ClockIncompatible : dev/rubentxu/pipeline/v2/runtime/profile/PartialReason {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;Ljava/util/Set;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;
+	public final fun component2 ()Ljava/util/Set;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;Ljava/util/Set;)Ldev/rubentxu/pipeline/v2/runtime/profile/PartialReason$ClockIncompatible;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/PartialReason$ClockIncompatible;Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;Ljava/util/Set;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/PartialReason$ClockIncompatible;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCost ()Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;
+	public final fun getDomains ()Ljava/util/Set;
+	public fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/PartialReason$DanglingInterval : dev/rubentxu/pipeline/v2/runtime/profile/PartialReason {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;)Ldev/rubentxu/pipeline/v2/runtime/profile/PartialReason$DanglingInterval;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/PartialReason$DanglingInterval;Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/PartialReason$DanglingInterval;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCost ()Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;
+	public fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/PartialReason$NoRunBounds : dev/rubentxu/pipeline/v2/runtime/profile/PartialReason {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/profile/PartialReason$NoRunBounds;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/PartialReason$RefusedInvertedInterval : dev/rubentxu/pipeline/v2/runtime/profile/PartialReason {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;)Ldev/rubentxu/pipeline/v2/runtime/profile/PartialReason$RefusedInvertedInterval;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/PartialReason$RefusedInvertedInterval;Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/PartialReason$RefusedInvertedInterval;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCost ()Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;
+	public fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/PartialReason$RunDidNotSucceed : dev/rubentxu/pipeline/v2/runtime/profile/PartialReason {
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/profile/PartialReason$RunDidNotSucceed;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/PartialReason$RunDidNotSucceed;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/PartialReason$RunDidNotSucceed;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public final fun getOutcome ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/PartialReason$RunNotFinished : dev/rubentxu/pipeline/v2/runtime/profile/PartialReason {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/profile/PartialReason$RunNotFinished;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/profile/ProfileOutcome {
+	public abstract fun getCosts ()Ljava/util/List;
+	public abstract fun getRun ()Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/ProfileOutcome$Complete : dev/rubentxu/pipeline/v2/runtime/profile/ProfileOutcome {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$Finished;Ljava/util/List;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$Finished;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$Finished;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/runtime/profile/ProfileOutcome$Complete;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/ProfileOutcome$Complete;Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$Finished;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/ProfileOutcome$Complete;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCosts ()Ljava/util/List;
+	public fun getRun ()Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$Finished;
+	public synthetic fun getRun ()Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/ProfileOutcome$Partial : dev/rubentxu/pipeline/v2/runtime/profile/ProfileOutcome {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence;Ljava/util/List;Ljava/util/List;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence;Ljava/util/List;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/runtime/profile/ProfileOutcome$Partial;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/ProfileOutcome$Partial;Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/ProfileOutcome$Partial;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getCosts ()Ljava/util/List;
+	public final fun getReasons ()Ljava/util/List;
+	public fun getRun ()Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/ResolvedCost {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence;)Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedCost;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedCost;Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedCost;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCost ()Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost;
+	public final fun getEvidence ()Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Estimated : dev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;)Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Estimated;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Estimated;Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Estimated;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEstimate ()Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Measured : dev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/profile/MeasuredDuration;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/profile/MeasuredDuration;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/profile/MeasuredDuration;)Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Measured;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Measured;Ldev/rubentxu/pipeline/v2/runtime/profile/MeasuredDuration;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Measured;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDuration ()Ldev/rubentxu/pipeline/v2/runtime/profile/MeasuredDuration;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Series : dev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence {
+	public fun <init> (IJJLjava/lang/String;)V
+	public final fun component1 ()I
+	public final fun component2 ()J
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (IJJLjava/lang/String;)Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Series;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Series;IJJLjava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Series;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getClockDomain ()Ljava/lang/String;
+	public final fun getCount ()I
+	public final fun getMedianMs ()J
+	public final fun getTotalMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Unavailable : dev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason;)Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Unavailable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Unavailable;Ldev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/ResolvedEvidence$Unavailable;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getReason ()Ldev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/profile/RunEvidence {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$Finished : dev/rubentxu/pipeline/v2/runtime/profile/RunEvidence {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/profile/MeasuredDuration;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/runtime/profile/MeasuredDuration;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/profile/MeasuredDuration;)Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$Finished;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$Finished;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/runtime/profile/MeasuredDuration;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$Finished;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getOutcome ()Ljava/lang/String;
+	public final fun getWindow ()Ldev/rubentxu/pipeline/v2/runtime/profile/MeasuredDuration;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$NoRunBounds : dev/rubentxu/pipeline/v2/runtime/profile/RunEvidence {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$NoRunBounds;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$Open : dev/rubentxu/pipeline/v2/runtime/profile/RunEvidence {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;)Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$Open;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$Open;Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/RunEvidence$Open;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getWindow ()Ldev/rubentxu/pipeline/v2/runtime/profile/IntervalEstimate;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost {
+	public static final field Companion Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$Companion;
+	public abstract fun getId ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$Companion {
+	public final fun getAll ()Ljava/util/List;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$Compile : dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$Compile;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$EventCommit : dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$EventCommit;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$FollowDelay : dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$FollowDelay;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$OutputCommit : dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$OutputCommit;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$Plan : dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$Plan;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$Recovery : dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$Recovery;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$StepDispatch : dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/profile/RuntimeCost$StepDispatch;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/RuntimeCostProfileKt {
+	public static final fun summarize (Ldev/rubentxu/pipeline/v2/runtime/profile/CostInput;)Ldev/rubentxu/pipeline/v2/runtime/profile/ProfileOutcome;
+}
+
+public abstract interface class dev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason {
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason$ClockIncompatible : dev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason {
+	public fun <init> (Ljava/util/Set;)V
+	public final fun component1 ()Ljava/util/Set;
+	public final fun copy (Ljava/util/Set;)Ldev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason$ClockIncompatible;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason$ClockIncompatible;Ljava/util/Set;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason$ClockIncompatible;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDomains ()Ljava/util/Set;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason$InvertedInterval : dev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason {
+	public fun <init> (JJ)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun copy (JJ)Ldev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason$InvertedInterval;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason$InvertedInterval;JJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason$InvertedInterval;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEndAtMs ()J
+	public final fun getStartAtMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason$NoDurationEvidence : dev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason$NoDurationEvidence;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason$NotCapturedInThisBuild : dev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/runtime/profile/UnavailableReason$NotCapturedInThisBuild;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/runtime/recover/PerOperationDecision {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;

@@ -21,6 +21,7 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.IntrospectionRefusal
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
+import dev.rubentxu.pipeline.v2.runtime.profile.summarize
 import java.nio.file.Paths
 
 /**
@@ -63,7 +64,7 @@ object MainInspectCli {
             "[--context N] [--log-tail N] " +
             "[--fields STAGE,STEP,OUTCOME,MESSAGE,CONSOLETAIL] " +
             "[--format text|json] " +
-            "[--state]"
+            "[--state] [--profile]"
 
     /**
      * The five dimensional columns a caller can request from the inspection document.
@@ -164,6 +165,12 @@ object MainInspectCli {
         if (compiled.dbPath == null) {
             System.err.println("inspect: --db <path> is required to read the durable event store")
             return 2
+        }
+        // The cost profile is a MODE, like --state, and answers a different
+        // question than the record table: where did this run's time go. It
+        // reads only the event plane, so it does not demand a control root.
+        if (compiled.profile) {
+            return reportRunProfile(runId, compiled)
         }
         if (compiled.controlRoot == null) {
             System.err.println("inspect: --control-root <path> is required to read the Output Plane")
@@ -565,6 +572,46 @@ object MainInspectCli {
         }
     }
 
+    /**
+     * Report the RUN's cost profile: where its time went, measured from the
+     * timestamps the run's own events already recorded. The report names what
+     * was measured, what is only bounded, and what carries no evidence — a
+     * run that failed or never finished yields a partial profile, never a
+     * success-shaped silence.
+     */
+    private fun reportRunProfile(runId: String, query: CompiledInspectionQuery): Int {
+        val dbPath = query.dbPath
+            ?: return 2.also { System.err.println("inspect: --db <path> is required to profile the run") }
+
+        // Read-only admission: a missing store is refused here and no file is
+        // created, so profiling a mistyped run id cannot fabricate a database.
+        val admission = admitEventStore(dbPath, EventStorePurpose.Read)
+        if (admission is EventStoreAdmission.Refused) {
+            System.err.println(admission.refusal.render())
+            return 2
+        }
+        val events: List<DomainEvent> = try {
+            (admission as EventStoreAdmission.Admitted).store.use { store ->
+                store.eventsFor(runId).toList()
+            }
+        } catch (e: java.io.IOException) {
+            System.err.println("inspect: cannot read event store at $dbPath: ${e.message}")
+            return 2
+        }
+        if (events.isEmpty()) {
+            System.err.println("inspect: this event store holds no events for run '$runId'.")
+            return 2
+        }
+
+        val outcome = summarize(RunCostProjection.project(events))
+        val lines = when (query.format) {
+            MainInspectCli.InspectFormat.JSON -> RunCostReport.jsonLines(runId, outcome)
+            MainInspectCli.InspectFormat.TEXT -> RunCostReport.textLines(runId, outcome)
+        }
+        lines.forEach(::println)
+        return 0
+    }
+
     /** The one line the state surface prints. */
     private fun renderRunState(observation: RuntimeObservation): String = when (observation) {
         is RuntimeObservation.Running -> "run-state running"
@@ -643,6 +690,12 @@ data class CompiledInspectionQuery(
      * honest answer, so the two are not combined.
      */
     val state: Boolean = false,
+    /**
+     * Report the RUN's cost profile instead of its records. A mode like
+     * [state]: both answer about the run as a whole, so the parser refuses a
+     * query that asks for both reports at once.
+     */
+    val profile: Boolean = false,
 )
 
 /** Result of [MainInspectCli.parseInspect]. */

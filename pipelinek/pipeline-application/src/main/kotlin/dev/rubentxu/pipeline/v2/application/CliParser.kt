@@ -742,6 +742,7 @@ object CliParser {
         var controlRoot: String? = null
         var dbPath: String? = null
         var state = false
+        var profile = false
 
         var i = 0
         while (i < args.size) {
@@ -749,6 +750,7 @@ object CliParser {
             when (a) {
                 "--failed" -> failed = true
                 "--state" -> state = true
+                "--profile" -> profile = true
                 "--kind" -> {
                     kind = args.getOrNull(++i) ?: return rejectInspect("--kind requires a value")
                 }
@@ -804,6 +806,12 @@ object CliParser {
             i++
         }
 
+        // Two whole-run reports in one query would have to be rendered in some
+        // order the caller never chose; one query, one report.
+        if (state && profile) {
+            return rejectInspect("--state and --profile are two different reports; ask for one")
+        }
+
         return InspectParseResult.Parsed(
             CompiledInspectionQuery(
                 failed = failed,
@@ -818,6 +826,7 @@ object CliParser {
                 controlRoot = controlRoot,
                 dbPath = dbPath,
                 state = state,
+                profile = profile,
             ),
         )
     }

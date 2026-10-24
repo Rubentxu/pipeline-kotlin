@@ -191,6 +191,15 @@ está escrita en un sitio —*la frase de paso es la autorización para tocar el
 almacén la comprueba antes de leer o de escribir nada, y los verbos que no tienen nada que
 abrir no piden llave (§2.82).
 
+**Y una sonda que escribía en el directorio personal del operador.** El runtime durable
+llevaba dentro una sonda que copiaba los permisos de sus FIFOs a un fichero del **directorio
+personal del usuario**, para que una comprobación que ya no existe pudiera leerlos. El modo
+que llegaba hasta ella se activa con tres propiedades del sistema, y **nada en el árbol las
+pone**: en la configuración por defecto el producto nunca la alcanzaba. Cuando se activa, la
+corrida termina bien y **crea un fichero nuevo en el hogar**, fuera de la raíz de control
+autorizada, sin ninguna opción que lo apague. Medido en los dos brazos: con la sonda, el
+directorio del hogar pasó de 176 a 177 ficheros; sin ella, no se movió (§2.83).
+
 **Lo que está abierto ahora mismo:**
 
 | # | Qué falta | Por qué sigue abierto |
@@ -212,22 +221,23 @@ sin red |
 | 8 | El instalador multi-versión no puede instalar ninguna versión reciente | **medido**: `install 0.85.0-rc1` lo rechaza la comprobación de semver estricto, e `install 0.85.0` da **404**, porque el tag de una candidata lleva sufijo (`v0.85.0-rc1`) y su asset no lo lleva (`pipelinek-0.85.0.zip`); el único tag plano que existe es `v0.75.0`. **No es un descuido**: instalar una candidata bajo el nombre de una versión estable es lo que la ley de identidad prohíbe, así que el arreglo tiene que decidir **dónde** vive una candidata —un directorio con su sufijo— antes de tocar el resolutor. El README lo dice con esas palabras (§2.81) |
 | 9 | La consola del producto intercala su propio progreso dentro de la salida del paso | **medido**: una marca de 26 bytes puede llegar partida en dos, con la línea de progreso en medio (`WRONG_K` + progreso + `EY_CHANGES_NOTHING`). Las comprobaciones nuevas del arnés miran el **transcripto** —los bytes que el paso escribió— y no la consola; las que ya existían siguen mirando la consola, así que una de ellas puede partirse sin que nadie lo note. Es una deuda con nombre, no un defecto del ciclo (§2.82) |
 | 10 | La puerta de una **corrida** no falla en la puerta | **medido**: una frase de paso que **no encaja** se descubre en el primer uso de la credencial, y la corrida termina con el código de un paso fallido; solo la que **no está** se niega en la puerta. El mensaje es cierto y el fallo es cerrado, pero el KDoc de la costura promete «fail fast» para los dos casos. Corregirlo cambia el código de salida de un modo de fallo ya publicado —una ruptura versionada— y no se ha hecho en este ciclo (§2.82) |
+| 11 | El runtime llevaba una sonda que escribía en el directorio personal del operador | **cerrado** (§2.83): la sonda no la alcanza nadie en la configuración por defecto, y cuando el modo que la alcanza se activa a mano, escribe un fichero fuera de la raíz autorizada sin forma de apagarla. Se ha quitado, y el permiso de los FIFOs se sigue fijando donde se decide |
 
 ## 1. Estado medido
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `5f4e193d4`, medido en los ensayos de este bloque. El bloque anterior cerró el **camino más corto al primer pipeline**: una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81). Este cierra la **puerta de las credenciales**: la frase de paso es la autorización para tocar el almacén, y una frase de paso que no encaja ya no borra una credencial y dice que sí (§2.82). Este bloque cierra el **efecto lateral del runtime**: el ejecutor durable ya no escribe una sonda de permisos en el hogar del operador, y la comprobación del FIFO se mudó a un escenario efímero que es dueño de sus ficheros (§2.83). La candidata `v0.88.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
+| SHA | `261d7a682`, medido en los ensayos de este bloque. El bloque anterior cerró el **camino más corto al primer pipeline**: una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81). Este cierra la **puerta de las credenciales**: la frase de paso es la autorización para tocar el almacén, y una frase de paso que no encaja ya no borra una credencial y dice que sí (§2.82). Este bloque cierra el **efecto lateral del runtime**: el ejecutor durable ya no escribe una sonda de permisos en el hogar del operador, y la comprobación del FIFO se mudó a un escenario efímero que es dueño de sus ficheros (§2.83). La candidata `v0.88.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
 | Tests unitarios ejecutados | **1175** (169 informes en disco, 0 fallos, 0 errores, 0 skips) | etapa 2 del gate, confirmado con un censo independiente de los XML |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas; el escenario de credenciales pasa de 14 a 22 comprobaciones, y el número de escenarios **no crece** | etapa 3 del gate |
-| Escenarios con una garantía comprobada | **62 de 62**: **566 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. De las 396, **88** son esas comparaciones nuevas: **45** de los 62 escenarios corren en las dos rutas, y cada uno añade dos (la narración y los bytes comprometidos) | censo del arnés, sobre los 61 escenarios |
+| Escenarios con una garantía comprobada | **62 de 62**: **578 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. Las comparaciones entre las dos ejecuciones van dentro de esas 578, y el total es el que se lee aquí | censo del arnés, sobre los 62 escenarios |
 | `VERIFY_LOC / PRODUCT_LOC` | **21971 / 68228 = 0.322** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **192 / 144 / 154** en los tres ensayos, los tres sobre `5f4e193d4`, peor 192 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **177 / 148 / 151** en los tres ensayos, los tres sobre `261d7a682`, peor 177 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 24 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
@@ -9161,6 +9171,15 @@ la sonda fuera, la cuenta no se mueve:
 PASS: FIFO is a named pipe with owner-only perms, and the run left $HOME untouched
 ```
 
+**Y el otro brazo, medido con el producto real.** La ruta que llegaba a la sonda —el bombeo
+del transcripto por un agente externo— se activa con tres propiedades del sistema, y nada en
+el árbol las pone. Con la sonda presente y esas propiedades puestas, una corrida durable
+termina **con éxito** y **crea un fichero nuevo en el directorio personal**: la cuenta pasó de
+**176** a **177**. Con la sonda fuera y las mismas propiedades, la corrida también termina con
+éxito y la cuenta **no se mueve**. La diferencia entre los dos brazos es exactamente la sonda,
+y el producto se comporta igual en todo lo demás: el permiso del FIFO se sigue decidiendo
+cuando se crea.
+
 **Lo que queda fuera, dicho con honestidad.**
 
 - La comprobación es **efímera y se retira con su ciclo**: es la evidencia de que este defecto
@@ -9206,6 +9225,7 @@ PASS: FIFO is a named pipe with owner-only perms, and the run left $HOME untouch
   instala bajo el nombre de una versión estable: el instalador tiene que resolver **dónde** vive
   una candidata, y ese es su propio bloque (§2.81).
 - **La frase de paso es la autorización para tocar el almacén, y se comprueba.** Una llave
+- **Un diagnóstico que nadie puede alcanzar no es una garantía: es código muerto que apunta fuera de la raíz.** La sonda del runtime escribía en el directorio personal del operador para una comprobación que ya no existe, por un camino que sólo se abre con propiedades del sistema que nada pone. Quitarla no cambia lo que el producto hace, y sí deja de cargar una manera de escribir fuera de la raíz autorizada (§2.83).
   que no encaja no cambia un byte y lo dice; el almacén deja de poder quitar nada sin haber
   desenvuelto antes la clave que lo sella (§2.82).
 - **Un almacén que no está no tiene nada que abrir.** Pedir la llave ahí es pedir la llave de
@@ -10887,6 +10907,8 @@ PASS: FIFO is a named pipe with owner-only perms, and the run left $HOME untouch
 
 ## 4. Referencias
 
+- `pipeline-step-sdk/runtime/.../DurableShellExecutor.kt` — el runtime sin la sonda que
+  escribía en el directorio personal del operador (§2.83).
 - `pipeline-credentials-local/.../CredentialsContract.kt` — el contrato puro: qué verbo
   necesita la llave y qué cuesta cada desenlace (§2.82).
 - `pipeline-credentials-local/.../CredentialsContractTest.kt` — las cinco filas puras de ese

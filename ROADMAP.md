@@ -2478,10 +2478,12 @@ murió», de modo que un error de compilación (1) era indistinguible de un
 `SIGKILL` (137). Cerrado: la directiva desconocida es un fallo que nombra las
 directivas válidas, cero escenarios ejecutados es un fallo, `expect-exit` se
 respeta en todos los modos, y `resume` exige una muerte real (128+señal). El
-contrato del lanzador queda protegido por `run.sh --self-test`, que el propio
-lanzador ejecuta y que la puerta invoca **antes** de fiarse de él: una
-garantía que sólo vive en una mutación que alguien corrió una vez es una
-garantía que un refactor puede perder sin que nadie lo note.
+contrato del lanzador queda protegido por su propia forma de fallar: una
+directiva que no conoce es un fallo que la nombra, un filtro que no casa con
+nada es un error, y cero escenarios ejecutados es un fallo. No hay un
+instrumento permanente que lo compruebe, y no lo habrá: una meta-prueba del
+arnés sería un segundo arnés, que es justo lo que la política no admite. La
+evidencia es la mutación, y se vuelve a hacer cada vez que el contrato cambia.
 
 **p) 34 de los 44 escenarios E2E sólo comprueban el código de salida.** Diez
 escenarios declaran `expect-stderr` o llevan un bloque `post { }`; los otros 34
@@ -8610,6 +8612,109 @@ de verificación sobre **68087** de producto (0.315).
   el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`. Lo que este ciclo publica es la
   **candidata**.
 
+### 2.79 Una historia no puede contarse al revés
+
+**El hueco.** §2.78 dejó armado, y medido, un punto ciego del arnés: el comparador de las
+dos rutas de ejecución ordenaba alfabéticamente las líneas dentro de cada etapa, así que una
+narración contada al revés —el fin de un paso antes de su arranque— producía **el mismo
+texto** que una contada bien. El comparador no podía verlo. Y ningún otro check del arnés
+lo miraba tampoco: la palabra de un escenario dice **qué** se produjo, nunca **en qué
+orden** se produjo.
+
+**Lo que se midió antes de tocar nada.** No se tocó el producto hasta saber qué promete
+el producto de verdad, y no lo que el arnés imaginaba:
+
+- Las **124** narraciones que había dejado el ciclo anterior: **402** líneas de arranque de
+  paso, **394** de fin, y **0** de fin sin veredicto. Toda línea de fin dice su resultado
+  (`success`, `failure` o `unstable`).
+- **0** inversiones: no hay ni un fin de paso antes de su arranque.
+- **0** etapas cerradas por otra etapa, **0** etapas dentro de otra y **0** etapas saltadas.
+- **22** etapas sin cerrar, y son exactamente las corridas que fallaron: una etapa que
+  falla no se cierra, porque el run se acabó ahí.
+
+**Lo que ahora es verdad.** El lanzador comprueba el **orden** de **cada** corrida, de los
+**62** escenarios y de las dos rutas, sin que el escenario lo declare. La promesa es un
+**orden parcial**, que es lo que el producto promete y no más:
+
+- un paso que terminó, empezó antes; y
+- una etapa la cierra la etapa que abrió.
+
+La comparación entre las dos rutas **sigue igual**, y por el mismo motivo de siempre: dentro
+de una etapa el orden de cierre de dos ramas concurrentes es una carrera, no una historia, y
+ordenarlas es lo correcto. Lo que la comparación no puede —la inversión— lo comprueba
+ahora el invariante, en cada corrida. Un paso que se cuenta al revés es una historia que
+contradice el registro, y el registro es la memoria del run: nadie que lo lea después puede
+saber que miente.
+
+**La directiva que se retiró.** La propuesta que estaba a medio hacer era una directiva por
+escenario que declaraba el orden de dos textos. Se retiró, y la razón es la que importa:
+una promesa que declara un escenario protege **a ese** escenario. El invariante protege a los
+62, y no cuesta una palabra en ningún archivo de ejemplo. La comparación de las dos rutas
+sigue siendo la que era, y ahora hay un segundo instrumento que ve lo que ella no ve.
+
+**Lo que se vio en rojo.** La mutación se hizo en el producto, no en el arnés: la consola
+dibuja el arranque de un paso **después** de su fin. El registro del run no se toca —la
+mentira es sólo de la consola—, así que todo lo demás sigue siendo verdad.
+
+| Mutación | Escenarios rojos | Motivo |
+|---|---|---|
+| la consola dibuja el arranque de un paso después de su fin | **48 de 62** | **48 de 48**, el mismo: *el run contó su historia en un orden que no prometió* |
+
+El dato que importa no es el número de rojos: es que **los 48 tienen el mismo motivo** y que
+**los 401 checks anteriores no dijeron nada**. El defecto era invisible para todo el arnés
+anterior, que es exactamente lo que §2.78 medía y no corregía. Los **14** que siguen
+verdes son los que no narran ningún paso —las admisiones rechazadas— y los que narran un
+paso que falló, donde la línea de error se intercala y el orden legal se conserva.
+
+**La economía del arnés, medida antes de cortar.** Se reconstruyó el índice de garantías
+sobre los **62** escenarios —qué garantiza cada uno, quién lo observa, cuánto cuesta y qué
+defecto discrimina— y la respuesta es que **ningún escenario es retirable**:
+
+- La única subordinación estricta que aparece es `events/05-run-state` dentro de
+  `events/06-observer-death…`, y es un mal trueque: el primero es un testigo **barato y
+  dedicado** de la superficie de introspección, y el segundo la usa **de pasada** mientras
+  prueba otra cosa. Retirar el barato para quedarse con el caro no ahorra nada.
+- Las cuatro retiradas que este mismo documento registra **no se reflejan en el árbol**, y al
+  volver a mirarlas el testigo que queda **no** es estrictamente más fuerte:
+  `output/23-readfile` comprueba el contenido escrito como subcadena, mientras que
+  `steps/17-writeFile` lo comprueba línea a línea. Retirarlo perdería la exactitud.
+
+Lo que sí se redujo fue el **arnés**, que es donde estaba la duplicación: una directiva menos
+y un helper menos, y tres promesas que se cumplían por casualidad y ahora no pueden
+cumplirse por casualidad:
+
+- Una directiva que el lanzador **no conoce** es un fallo que la nombra. Antes el parser no
+  tenía otro caso: una `//@` mal escrita pasaba desapercibida, y una garantía que desaparece
+  al escribirla mal no es una garantía.
+- `storage-agnostic` **se cumple o el lanzador se niega**: un escenario que promete que su
+  capacidad no necesita almacén y que sus propias directivas dejarían sólo con almacén es un
+  fallo, no un verde.
+
+**El coste no subió.** Los mismos **62** escenarios, las mismas **112** ejecuciones y el
+mismo reloj (~**95 s** contra un presupuesto de **900 s**). Lo que subió son las
+comprobaciones: de **401** a **512**, porque cada corrida comprueba ahora también el orden
+de su propia historia.
+
+**Lo que la puerta midió.** `PASS` tres veces sobre el árbol commiteado (`2cbcf821`):
+**201 / 166 / 154 s**, con un presupuesto de **900 s** y `tests=rewritten:1161`. Los 62
+escenarios llevan una garantía comprobada —**512** comparaciones sobre **112** ejecuciones— y
+el LOC queda en **21 627** de verificación sobre **68 087** de producto (**0,318**).
+
+**La candidata.** `v0.84.0-rc1`, publicada sobre el commit `2cbcf821`, con el artefacto
+`pipelinek-0.84.0.zip` en `sha256:21cbd4e34df72cbaf8afbad8f9270c16a9dde1fa5e5db072229eb5ae70404c74`
+y los **7** activos con su digest en `SHA256SUMS`. El producto no cambia de comportamiento en
+este ciclo —lo que cambia es el arnés que lo verifica—, así que el tren sube para que el
+nombre del artefacto no se repita entre candidatas. Es una **candidata**, no una
+certificación.
+
+**Lo que queda fuera, dicho con honestidad.**
+
+- La economía del arnés por **coste** sigue abierta: la caché de compilación vive dentro
+  del ciclo y se borra con él, así que cada ejecución paga su compilación. Compilar una vez
+  exigiría un verbo público nuevo en el producto, y eso es otro ciclo.
+- **La promoción a estable sigue bloqueada**: no hay certificador externo en este
+  repositorio ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Una presentación no puede llevarse el hecho que presenta.** La consola dibuja después de
   escribir: un fallo de dibujo deja el registro intacto y el fallo a la vista (§2.78).
@@ -8628,6 +8733,18 @@ de verificación sobre **68087** de producto (0.315).
 - **Un comparador que ordena líneas no puede comprobar un orden.** La canonicalización del arnés
   ordena dentro de la etapa, así que dos narraciones distintas dan la misma canonicalización: el
   bloque siguiente queda medido y armado (§2.78).
+- **Una historia no puede contarse al revés.** Un paso que termina antes de empezar es un
+  registro que dice lo contrario de lo que pasó, y la comparación que ordenaba las líneas no
+  podía verlo: el orden se comprueba aparte, como el orden parcial que el producto promete
+  (§2.79).
+- **Una promesa que declara un escenario protege a ese escenario.** El invariante del orden
+  protege a los 62, y la directiva por escenario que lo sustituyó protegía a uno (§2.79).
+- **Una garantía que desaparece al escribirla mal no es una garantía.** Una directiva que el
+  lanzador no conoce es un fallo que la nombra, y una promesa que el lanzador no puede cumplir
+  en la única ruta donde se ejecutaría es un fallo del escenario, no un verde (§2.79).
+- **Un instrumento que comprueba el arnés sería un segundo arnés.** La evidencia del contrato
+  del lanzador es la mutación, que se repite cada vez que el contrato cambia, y no un
+  `--self-test` permanente que la política no admite (§2.79).
 - **Una identidad, un lector.** La identidad de una operación se lee desde los dos
   extremos de su id, y quien la necesita pregunta a esa misma dirección. Dos formas de
   leer la misma identidad son dos autoridades, y dos autoridades se contradicen (§2.77).
@@ -11340,10 +11457,12 @@ murió», de modo que un error de compilación (1) era indistinguible de un
 `SIGKILL` (137). Cerrado: la directiva desconocida es un fallo que nombra las
 directivas válidas, cero escenarios ejecutados es un fallo, `expect-exit` se
 respeta en todos los modos, y `resume` exige una muerte real (128+señal). El
-contrato del lanzador queda protegido por `run.sh --self-test`, que el propio
-lanzador ejecuta y que la puerta invoca **antes** de fiarse de él: una
-garantía que sólo vive en una mutación que alguien corrió una vez es una
-garantía que un refactor puede perder sin que nadie lo note.
+contrato del lanzador queda protegido por su propia forma de fallar: una
+directiva que no conoce es un fallo que la nombra, un filtro que no casa con
+nada es un error, y cero escenarios ejecutados es un fallo. No hay un
+instrumento permanente que lo compruebe, y no lo habrá: una meta-prueba del
+arnés sería un segundo arnés, que es justo lo que la política no admite. La
+evidencia es la mutación, y se vuelve a hacer cada vez que el contrato cambia.
 
 **p) 34 de los 44 escenarios E2E sólo comprueban el código de salida.** Diez
 escenarios declaran `expect-stderr` o llevan un bloque `post { }`; los otros 34
@@ -11409,8 +11528,7 @@ corto a propósito: no es un framework y no puede convertirse en uno.
 | `//@ durable` | dos runs sobre el mismo almacén y el mismo control root; el efecto no se repite |
 | `//@ durable-once` | un run contra un almacén durable de verdad |
 | `//@ resume` | el primer run muere donde el escenario decide; el segundo lo reanuda |
-| `//@ storage-agnostic` | las mismas expectativas se cumplen con y sin almacén durable |
-| `//@ requires-seeded-credentials` | el escenario necesita estado externo que este lanzador no fabrica: se reporta NOT_RUN, que no es un verde ni un rojo |
+| `//@ storage-agnostic` | las mismas expectativas se cumplen con y sin almacén durable; si las demás directivas del escenario lo dejarían sólo con almacén, el lanzador se niega |
 
 Un escenario se retiró **sólo** cuando otro cubre la misma garantía con la
 misma evidencia. Nada se retiró por ser lento, ni por ser incómodo.
@@ -11638,8 +11756,9 @@ el lanzador ejecute el escenario **dos veces** —con `--db` y sin él, cada uno
 de trabajo y su almacén— y exige que **ambas** corridas cumplan las mismas expectativas (el
 código de salida y cada línea de stderr declarada). El escenario 38 (el Saga que **termina
 bien**) pasó a declararse así: no es un test nuevo, es el mismo test probado en los dos
-mundos. Y el arnés se autocomprueba: `run.sh --self-test` verifica que la directiva se lee y
-que no se confunde con `resume`.
+mundos. Y el lanzador cumple la promesa o se niega: un escenario que declara `storage-agnostic` y
+que sus propias directivas dejarían sólo en la ruta con almacén es un **fallo**, no un
+verde, porque la garantía que escribió no se habría observado.
 
 **Mutación vista en rojo**: con el enlace del Saga retirado, la corrida en memoria del escenario
 38 falla con el diagnóstico de arriba; con el enlace, las dos corridas pasan. El mismo script, el
@@ -12123,13 +12242,13 @@ rematarlo, y 137 es exactamente lo que produce el SIGKILL que un escenario de
 `resume` se aplica a sí mismo. Un escenario que se cuelga y uno que muere a
 propósito no pueden acabar pareciendo lo mismo.
 
-**El instrumento permanente es el `--self-test` del lanzador**, que ya protege su
-propio contrato: ahora comprueba también que la perilla se lee, que una perilla
-que no es un número se rechaza, que una corrida que llega al techo **es** un
-timeout y que una que falla dentro del techo **no** lo es. El self-test encontró
-dos fallos reales durante el desarrollo —`timeout` no admite el sufijo `ms`, y una
-expectativa del propio self-test estaba invertida—, que es justo para lo que un
-self-test debe existir.
+**El contrato del lanzador lo protege su propia forma de fallar**: una perilla que no es
+un número se rechaza, una corrida que llega al techo **es** un timeout y una que falla
+dentro del techo **no** lo es, y una directiva que el lanzador no conoce es un fallo que
+la nombra. Los dos fallos que se encontraron durante el desarrollo —`timeout` no admitía
+el sufijo `ms`, y la expectativa invertida— se encontraron leyendo el contrato, no
+ejecutando un instrumento que lo comprobara: un `--self-test` permanente habría sido un
+segundo arnés, y la política no admite dos.
 
 **El valor por defecto deja pasar los 46 escenarios.** Medido sobre el árbol de
 este bloque, el escenario más lento es `durable/37-saga-reconcile` con **17 s**

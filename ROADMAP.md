@@ -224,12 +224,13 @@ sin red |
 | 11 | El runtime llevaba una sonda que escribía en el directorio personal del operador | **cerrado** (§2.83): la sonda no la alcanza nadie en la configuración por defecto, y cuando el modo que la alcanza se activa a mano, escribe un fichero fuera de la raíz autorizada sin forma de apagarla. Se ha quitado, y el permiso de los FIFOs se sigue fijando donde se decide |
 | 12 | El verbo que escribe en una run terminada (`cancel`, `recover`) deja un fichero de base de datos **vacío** como efecto lateral de su propio rechazo | **medido** (§2.85): la puerta **se niega** a escribir en una run terminada —es lo correcto—, pero el verbo llega al almacén lo bastante lejos como para dejar el fichero ya creado. No lo introduce este bloque —es anterior— y no se toca aquí: el almacén y su fichero de datos se crean en sitios distintos, y separarlos es un cambio de layout, no un arreglo de una línea |
 | 13 | Una excepción en el hilo principal deja el proceso **en pie** en vez de salir | **medido** (§2.85): se vio en vivo con el `NullPointerException` que un `--db` relativo alcanzaba —el hilo principal muere y los hilos del ejecutor durable no lo sueltan—. Se ha corregido **la causa** de esa excepción concreta, no el defecto de fondo: una excepción en el hilo principal debería terminar el proceso. Corregirlo toca el ciclo de vida del runtime y queda **fuera** de este bloque |
+| 14 | La clave de la caché de scripts del producto no cubre los **bytes** de la distribución | **medido** (§2.86): la clave cubre el fuente, la versión del compilador, las opciones y el **ruta** de los jars del classpath, pero no su **contenido** — dos construcciones de la misma versión en el mismo directorio comparten clave. El producto lo declara: su KDoc dice que dos de sus siete dimensiones no se pueden leer. Este bloque lo rodea desde el lanzador (espacio de nombres por digest + marcador), pero un usuario que ponga su propio `PIPELINEK_SCRIPT_CACHE_DIR` sigue expuesto. Corregirlo es un cambio de producto, con su tren y su candidata |
 
 ## 1. Estado medido
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `9e2cb034e`, medido en los ensayos de este bloque. Los bloques anteriores cerraron, cada uno, su puerta: el **camino más corto al primer pipeline** —una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81)—, la **puerta de las credenciales** —la frase de paso es la autorización para tocar el almacén, y una que no encaja ya no borra una credencial y dice que sí (§2.82)—, el **efecto lateral del runtime** —el ejecutor durable ya no escribe una sonda de permisos en el hogar del operador, y la comprobación del FIFO se mudó a un escenario efímero que es dueño de sus ficheros (§2.83)— y el **instalador** —una release ya no se resuelve construyendo su nombre, sino leyéndolo del manifiesto que la release publica (§2.84)—. Este bloque cierra la **puerta del almacén**: el productor crea el directorio que sostiene su propio almacén, y los lectores dejan de negarse por un motivo falso (§2.85). La candidata `v0.89.0-rc1` queda **publicada y verificada byte a byte**: aquí el producto **sí cambia de comportamiento**, así que abre tren nuevo en vez de abrir otra candidata del anterior (§2.85) | `git rev-parse HEAD` |
+| SHA | `50c04319`, medido en los ensayos de este bloque. Los bloques anteriores cerraron, cada uno, su puerta: el **camino más corto al primer pipeline** —una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81)—, la **puerta de las credenciales** —la frase de paso es la autorización para tocar el almacén, y una que no encaja ya no borra una credencial y dice que sí (§2.82)—, el **efecto lateral del runtime** —el ejecutor durable ya no escribe una sonda de permisos en el hogar del operador, y la comprobación del FIFO se mudó a un escenario efímero que es dueño de sus ficheros (§2.83)— y el **instalador** —una release ya no se resuelve construyendo su nombre, sino leyéndolo del manifiesto que la release publica (§2.84)—. Ese bloque cerró la **puerta del almacén**: el productor crea el directorio que sostiene su propio almacén, y los lectores dejan de negarse por un motivo falso (§2.85). Este bloque baja el **coste de la puerta**: la compilación de los scripts se reutiliza entre ciclos, con un espacio de nombres que es el digest de la distribución, y el gate publica el coste por escenario en vez de medirlo y tirarlo (§2.86). La candidata `v0.89.0-rc1` sigue siendo la publicada: aquí el producto **no cambia de comportamiento**, así que no hay candidata nueva (§2.86) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
@@ -237,13 +238,13 @@ sin red |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas; el escenario de credenciales pasa de 14 a 22 comprobaciones, y el número de escenarios **no crece** | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **62 de 62**: **578 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. Las comparaciones entre las dos ejecuciones van dentro de esas 578, y el total es el que se lee aquí | censo del arnés, sobre los 62 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **22022 / 68455 = 0.322** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **22213 / 68455 = 0.324** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **196 / 159 / 148** en los tres ensayos, los tres sobre `9e2cb034e`, peor 196 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **165 / 116 / 116** en los tres ensayos, los tres sobre `50c04319`, peor 165 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 24 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
-| Candidato publicada | **`v0.89.0-rc1`** (prerelease), `candidate_id` `sha256:9da1c7b44eb4cd3b803457bbedcd72164d96ee1ccd05d451d0c49f8d8323d70d`, tag en `9e2cb034e`; verificada **sobre los bytes descargados del remoto**, con las **6** sumas de `SHA256SUMS` coincidiendo una a una (§2.85). El bloque anterior **no publicó candidata** porque el producto no cambiaba de comportamiento (§2.84) | `gh release view v0.89.0-rc1`, `sha256sum -c SHA256SUMS` |
+| Candidato publicada | **`v0.89.0-rc1`** (prerelease), `candidate_id` `sha256:9da1c7b44eb4cd3b803457bbedcd72164d96ee1ccd05d451d0c49f8d8323d70d`, tag en `9e2cb034e`; verificada **sobre los bytes descargados del remoto**, con las **6** sumas de `SHA256SUMS` coincidiendo una a una (§2.85). **Sin candidata nueva en este bloque**: lo que cambia es el arnés, que no viaja en la release, así que los bytes publicados son los mismos (§2.86) | `gh release view v0.89.0-rc1`, `sha256sum -c SHA256SUMS` |
 | Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -255,20 +256,21 @@ El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 699, 682 y 803 s con la máquina compartida con otro workspace, y 194, 172 y
 165 s en el bloque de las tres familias; los siete bloques anteriores a éste
 midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s, 182, 141 y 139 s,
-187, 139 y 140 s, 203, 139 y 141 s y 186, 172 y 176 s.
+187, 139 y 140 s, 203, 139 y 141 s, 186, 172 y 176 s y 196, 159 y 148 s.
 Este mide
-**196, 159 y 148 s**:
+**165, 116 y 116 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 196 s, es menos de
+de este ciclo el presupuesto se cumplió con holgura —el peor, 165 s, es menos de
 un quinto de los 900 s—, y eso que el árbol medido incluye la distribución,
 la API pública, los 1183 tests y los 62 escenarios.
 
-**La etapa del E2E mide 97 s**, medidos en seco sobre el lanzador, contra los
-107 s del ciclo anterior (§2.80) y los 91, 92 y 95 s del anterior a ese. Este bloque
-**no añade ni un escenario** —los **62** son los mismos **62**—: los **diez
-segundos** menos son el precio de no crecer el arnés. La comprobación nueva de este
-bloque **no es un escenario**: es efímera y vive fuera del árbol (§2.85).
+**La etapa del E2E mide 92 s en frío y 64 s en caliente**, medidos en seco sobre el
+lanzador, contra los 97 s del ciclo anterior (§2.80) y los 91, 92 y 95 s del anterior a
+ese. Este bloque **no añade ni un escenario** —los **62** son los mismos **62**—, y sin
+embargo la etapa es **más barata**: la compilación de los scripts se reutiliza entre
+ciclos (§2.86). La comprobación nueva de este bloque **no es un escenario**: es efímera
+y vive fuera del árbol (§2.85).
 Lo que sigue explica el **resto** del coste, que es el de siempre: el arnés ya no deduce las identidades del sistema
 de ficheros, **pregunta al producto**, y preguntar cuesta un arranque de proceso
 por mundo y por run. Ese precio compra algo que el
@@ -9441,6 +9443,134 @@ abiertas y **0** PRs abiertas.
 - La promoción a estable sigue bloqueada: no hay certificador externo en este
   repositorio ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no
   `PASS`.
+
+### 2.86 El coste de la puerta: medir antes de optimizar
+
+**Lo que la auditoría pedía, y lo que ya estaba.** La auditoría propone tres
+niveles de validación con un objetivo cada uno. Medidos sobre este árbol,
+**los tres ya cumplen**:
+
+| nivel | objetivo | medido | veredicto |
+|---|---|---|---|
+| edición cotidiana | 5–20 s | **14–17 s** (`--stage 2 --module ':pipeline-events-store' --test '*EventStoreAdmissionTest'`) | cumple |
+| integración del bloque | < 60 s | **35 s** (dos módulos) / **44 s** (dos módulos + `events/*`) | cumple |
+| antes de release | — | **148–196 s** sobre un presupuesto de 900 | cumple |
+
+Y el coste por escenario es **casi plano**: 62 escenarios, mediana **11,2 s**,
+media 11,9 s, mínimo 7,4 s, máximo 29,2 s. El número de comprobaciones casi
+no cuenta: los escenarios con **≤ 8** comprobaciones tardan 11,6 s de media y
+los de **> 8**, 12,5 s. El suelo no es lo que el escenario comprueba: es lo
+que cuesta **arrancar**.
+
+**El suelo era la compilación.** El producto compila cada script que ejecuta.
+Medido sobre un escenario: **4,9 s** sin artefacto y **0,8 s** con el
+artefacto reutilizado, o sea **4,1 s** por compilación. La suite compila
+**62** scripts por ciclo: unos **254 s** de CPU que se volvían a pagar
+enteros en cada ciclo, porque la caché vivía **dentro del directorio del
+ciclo** y moría con él.
+
+**Lo que la auditoría daba por cierto, y no lo era.** Su propuesta dice
+«mantendría la caché por hash de fuente, classpath y versión, que ya
+existe». La caché existe, pero **no sobrevive al ciclo**, y no puede
+sobrevivir tal como está: la clave del producto cubre el fuente, la versión
+del compilador, las opciones y el **ruta** de los jars del classpath — pero
+no su **contenido**. Medido: **dos construcciones de la misma versión en el
+mismo directorio comparten clave**. Una caché que sobreviviera a la
+construcción serviría un artefacto compilado contra un producto que ya no
+existe.
+
+Ese hueco no es de este bloque: es del producto, y el propio producto lo
+declara — la clave dice, en su KDoc, que dos de sus siete dimensiones
+(`dslApiVersion`, `pluginLockDigest`) **no se pueden leer**.
+
+**Lo que se hizo, en el sitio que puede.** El lanzador sabe qué
+distribución acaba de construir, y el producto no. Así que la dimensión que
+falta la aporta el lanzador: la caché vive en el directorio de caché, bajo
+un **espacio de nombres que es el digest del contenido** de la distribución
+—mismos bytes, reutiliza; bytes distintos, otro espacio de nombres y
+compilación en frío. Y el espacio de nombres lleva además un **marcador**
+con el digest: un ciclo que encuentre un marcador de otra distribución no
+usa ese directorio, y lo dice en una línea. El guard es permanente y no
+depende de que este ciclo exista.
+
+Los **9** escenarios cuyo classpath lleva una ruta **dentro del ciclo** —5
+que corren contra su propia copia de la distribución y 4 que nombran su
+propio plugin— siguen con la caché **local del ciclo**: su clave cambiaría
+en cada ciclo, así que no podrían reutilizarse nunca, y un espacio de
+nombres compartido acumularía entradas que no se pueden volver a servir.
+
+**Y el gate publica el coste.** El lanzador medía el coste por escenario y
+el estado de la caché, y el gate lo leía y lo tiraba. Una medición que se
+descarta no es una medición: es un número que nadie puede usar para decidir
+nada. Ahora el gate dice cuántos escenarios midió, cuánto suman, cuáles son
+los más caros, y cuántos artefactos escribió y cuántos reutilizó. Una
+reutilización que dejara de funcionar se vería en la línea de la caché antes
+de que nadie notara que la puerta tarda más.
+
+**Lo medido, antes y después.** La etapa de E2E, con el mismo censo
+(**578** comprobaciones sobre **112** ejecuciones, **62** de **62**
+escenarios, **218** pasos terminados):
+
+| | artefactos escritos | suma por escenario | etapa de E2E |
+|---|---|---|---|
+| caché de ciclo (antes) | 62 en frío, cada ciclo | 740 s | **94–97 s** |
+| caché persistente, en frío | 53 | 626 s | **92 s** |
+| caché persistente, caliente | **0** | 400 s | **64 s** |
+
+**28–33 s menos** en la etapa, y la suma del coste por escenario baja de
+**740 s** a **400 s**: el suelo de cada escenario era la compilación, y el
+suelo ya no lo es. El escenario más caro pasa de **29,2 s** a **20,0 s**, y
+la diferencia se la lleva el que más compilaba. El precio de saber que se
+puede reutilizar es **0,5 s** por ciclo: el digest de los 47 jars de la
+distribución.
+
+**La puerta completa, en tres ensayos sobre el mismo SHA:** **165**, **116**
+y **116** s, con `tests=rewritten:1183 read:0` y **62** de **62** escenarios.
+El primero es **en frío** y los otros dos **en caliente**, y no es casualidad:
+la distribución lleva dentro el `buildCommit`, así que **un commit nuevo es
+un producto nuevo** y tiene su propio espacio de nombres. El ahorro se
+materializa sobre el mismo árbol, que es exactamente el bucle de trabajo de
+quien cambia el producto — y el primer ensayo paga la compilación de los 53
+scripts, como debe.
+
+**La comprobación puede ponerse roja.** El UAT efímero tiene **16**
+comprobaciones, y se falseó con **dos** mutaciones, cada una en una capa
+distinta:
+
+| mutación | qué ocurrió | qué se puso rojo |
+|---|---|---|
+| **A**: el nombre del espacio de nombres deja de llevar el digest | el **guard permanente** del lanzador dispara y **no hay reutilización indebida** | las filas del ciclo 3 |
+| **B**: el nombre **y** el marcador se rompen | la reutilización indebida **ocurre de verdad** —el producto con otros bytes se sirve el artefacto del anterior— y el UAT la ve | las filas del ciclo 3 |
+
+En las dos, las filas rojas son **las de la regla de antigüedad y solo
+esas**: ninguna de los ciclos 1 o 2 se puso roja. Una mutación que lo pone
+todo rojo no demuestra que el instrumento mida lo que dice medir.
+
+El falsificador encontró además un defecto **en el instrumento**: bajo
+`set -e`, un `grep` que no encuentra nada aborta el UAT, y las filas que
+no se ejecutaron se contaban como un instrumento más pequeño y no como uno
+roto. Corregido antes de dar por buena la falsificación.
+
+**Lo que queda fuera, dicho con honestidad.**
+
+- La **clave del producto** sigue sin cubrir sus bytes. Lo que este bloque
+  hace es rodear el hueco desde el lanzador; un usuario que ponga su propio
+  `PIPELINEK_SCRIPT_CACHE_DIR` sigue expuesto al mismo riesgo. Corregirlo
+  es un cambio de producto, con su tren y su candidata, y no se ha hecho
+  aquí.
+- Los **9** escenarios de arriba no se benefician, y no pueden.
+- La **selección por garantía** que la auditoría propone —mapear los
+  cambios a capacidades observables— **ya existe**, y no como un catálogo
+  nuevo: el árbol de `examples/` **es** el mapa (`durable/`, `events/`,
+  `security/`, `steps/`, `plugins/`, `output/`), y `--scenario` selecciona
+  por él. Un inventario aparte sería una segunda autoridad sobre la misma
+  cosa, que es exactamente lo que la política prohíbe.
+- **No se publica candidata nueva.** El producto no cambia de comportamiento:
+  lo que cambia es el arnés, que no viaja en la release. La candidata
+  publicada sigue siendo `v0.89.0-rc1`, con los mismos bytes.
+- La promoción a estable sigue bloqueada: no hay certificador externo en
+  este repositorio ni en el remoto, así que el veredicto es
+  `BLOCKED_EXTERNAL`, no `PASS`.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite

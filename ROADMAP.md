@@ -218,7 +218,7 @@ el ZIP no lleva las dependencias de terceros, así que no es autosuficiente
 sin red |
 | 5 | El techo del drenaje | **cerrado** (§2.74): el rechazo era tipado pero **no accionable**, y el techo era un reloj que no distinguía una bomba **atascada** (esperando bytes que nadie va a escribir) de una bomba **lenta** (escribiendo porque la máquina está ocupada). Ahora la bomba declara su atención, el atascado se rechaza **al momento y nombrado**, el lento se espera, y los dos rechazos son **casos tipados distintos** (`STUCK_CHILD`, `OUT_OF_TIME`). Queda medir **cuánto** tarda un drenaje con la máquina saturada: reproducir la saturación en un banco de pruebas es una fixture que este repositorio no tiene |
 | 7 | Lectores que interpretaban la identidad de una operación por texto | **cerrado** (§2.77): el identificador de una operación es el segmento central **entero** de un id de stream, y ese segmento puede llevar separadores propios. La búsqueda por subcadena daba los frames de una operación cuyo identificador **contiene** el pedido, y el índice de segmento nombraba una operación compuesta **cortada** por la mitad. Ahora la dirección publicada responde a la pregunta inversa (`isOperationOf`) y los tres lectores —la lectura por operación, su cola y el filtro de consola— la consultan. Se elimina además un resolvedor textual sin consumidores, que era una segunda autoridad sobre la misma identidad. El defecto era **latente**: los identificadores que el motor produce hoy no llevan separadores, así que no se ve desde la línea de órdenes |
-| 8 | El instalador multi-versión no puede instalar ninguna versión reciente | **medido**: `install 0.85.0-rc1` lo rechaza la comprobación de semver estricto, e `install 0.85.0` da **404**, porque el tag de una candidata lleva sufijo (`v0.85.0-rc1`) y su asset no lo lleva (`pipelinek-0.85.0.zip`); el único tag plano que existe es `v0.75.0`. **No es un descuido**: instalar una candidata bajo el nombre de una versión estable es lo que la ley de identidad prohíbe, así que el arreglo tiene que decidir **dónde** vive una candidata —un directorio con su sufijo— antes de tocar el resolutor. El README lo dice con esas palabras (§2.81) |
+| 8 | El instalador multi-versión no puede instalar ninguna versión reciente | **cerrado** (§2.84): el instalador ya no construye las cuatro identidades de un release a partir de una sola cadena. Lee el manifiesto que el release publica —etiqueta, versión de producto y artefacto—, lo cruza con `SHA256SUMS` y descarga el artefacto **por el nombre que el manifiesto dice**. Una candidata se instala desde su tag y en su directorio (`versions/0.88.0-rc1`), y un slot estable que no existe se rechaza **señalando** la candidata que sí existe. La ley de identidad se cumple por construcción: la candidata jamás se instala bajo el nombre de la estable |
 | 9 | La consola del producto intercala su propio progreso dentro de la salida del paso | **medido**: una marca de 26 bytes puede llegar partida en dos, con la línea de progreso en medio (`WRONG_K` + progreso + `EY_CHANGES_NOTHING`). Las comprobaciones nuevas del arnés miran el **transcripto** —los bytes que el paso escribió— y no la consola; las que ya existían siguen mirando la consola, así que una de ellas puede partirse sin que nadie lo note. Es una deuda con nombre, no un defecto del ciclo (§2.82) |
 | 10 | La puerta de una **corrida** no falla en la puerta | **medido**: una frase de paso que **no encaja** se descubre en el primer uso de la credencial, y la corrida termina con el código de un paso fallido; solo la que **no está** se niega en la puerta. El mensaje es cierto y el fallo es cerrado, pero el KDoc de la costura promete «fail fast» para los dos casos. Corregirlo cambia el código de salida de un modo de fallo ya publicado —una ruptura versionada— y no se ha hecho en este ciclo (§2.82) |
 | 11 | El runtime llevaba una sonda que escribía en el directorio personal del operador | **cerrado** (§2.83): la sonda no la alcanza nadie en la configuración por defecto, y cuando el modo que la alcanza se activa a mano, escribe un fichero fuera de la raíz autorizada sin forma de apagarla. Se ha quitado, y el permiso de los FIFOs se sigue fijando donde se decide |
@@ -227,7 +227,7 @@ sin red |
 
 | Métrica | Valor | Fuente |
 |---|---|---|
-| SHA | `261d7a682`, medido en los ensayos de este bloque. El bloque anterior cerró el **camino más corto al primer pipeline**: una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81). Este cierra la **puerta de las credenciales**: la frase de paso es la autorización para tocar el almacén, y una frase de paso que no encaja ya no borra una credencial y dice que sí (§2.82). Este bloque cierra el **efecto lateral del runtime**: el ejecutor durable ya no escribe una sonda de permisos en el hogar del operador, y la comprobación del FIFO se mudó a un escenario efímero que es dueño de sus ficheros (§2.83). La candidata `v0.88.0-rc1` queda **publicada y verificada byte a byte** | `git rev-parse HEAD` |
+| SHA | `a1ced1828`, medido en los ensayos de este bloque. El bloque anterior cerró el **camino más corto al primer pipeline**: una corrida que no liga ninguna credencial ya no pide la frase de paso del almacén, y el README que promete ese camino dejó de llevar cifras que roten (§2.81). Este cierra la **puerta de las credenciales**: la frase de paso es la autorización para tocar el almacén, y una frase de paso que no encaja ya no borra una credencial y dice que sí (§2.82). Este bloque cierra el **efecto lateral del runtime**: el ejecutor durable ya no escribe una sonda de permisos en el hogar del operador, y la comprobación del FIFO se mudó a un escenario efímero que es dueño de sus ficheros (§2.83). Este bloque cierra el **instalador**: una release ya no se resuelve construyendo su nombre, sino leyéndolo del manifiesto que la release publica (§2.84). La candidata `v0.88.0-rc1` queda **publicada y verificada byte a byte**, y este bloque **no publica otra** porque el producto no cambia de comportamiento (§2.84) | `git rev-parse HEAD` |
 | Módulos declarados | 27 | bloque `include(` de `pipelinek/settings.gradle.kts` |
 | Módulos con test unitario permanente | **26** | etapa 2 del gate, que imprime cada módulo por nombre |
 | Módulos sin test | 1 (`:pipeline-sdk-bom`, que no tiene código) | ídem |
@@ -235,13 +235,13 @@ sin red |
 | Casos de un vocabulario de rechazos publicado que el producto no puede producir | **0**, medido en el árbol del ciclo anterior (§2.35); **este ciclo no lo re-medió**, y su instrumento es un censo ad-hoc, no un script del repo | censo por construcción de §2.35 |
 | Escenarios E2E | **62 (62 pasan, 0 fallan, 0 bloqueados)**, 2 reruns durables, 7 credenciales sembradas; el escenario de credenciales pasa de 14 a 22 comprobaciones, y el número de escenarios **no crece** | etapa 3 del gate |
 | Escenarios con una garantía comprobada | **62 de 62**: **578 comparaciones sobre 112 ejecuciones** del producto (§2.65). El arnés ejecuta cada escenario en las dos rutas de ejecución —con journal y sin journal— y cada declaración se contrasta contra la salida de cada ejecución; además, **las dos ejecuciones se comparan entre sí** sobre la historia que contaron y los bytes que comprometieron. Las comparaciones entre las dos ejecuciones van dentro de esas 578, y el total es el que se lee aquí | censo del arnés, sobre los 62 escenarios |
-| `VERIFY_LOC / PRODUCT_LOC` | **21971 / 68228 = 0.322** (límite 2) | `scripts/check-budgets.py --json` |
+| `VERIFY_LOC / PRODUCT_LOC` | **21971 / 68421 = 0.321** (límite 2) | `scripts/check-budgets.py --json` |
 | Ratio máximo por módulo | **1.633** (`pipeline-step-sdk:workflow-control`) | ídem |
-| `VERIFY_ALL_WALL_CLOCK` | **177 / 148 / 151** en los tres ensayos, los tres sobre `261d7a682`, peor 177 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
+| `VERIFY_ALL_WALL_CLOCK` | **186 / 172 / 176** en los tres ensayos, los tres sobre `a1ced1828`, peor 186 s, límite 900 s | etapa 5 del gate, `§4` de `AGENTS.md` |
 | Veredicto del gate | **`PASS`** en los tres ensayos, sin `NOT_RUN` | línea final de `verify-all.sh` |
 | Deuda estática congelada | **879** entradas de baseline en 24 ficheros: **sin cambio en este bloque**, y el diff del bloque no lista ninguna baseline. La cifra de **802** que se venía anotando no se reproduce con ningún instrumento del árbol: el censo de entradas `<ID>` sobre las baselines versionadas da **770** antes de la unión de las dos líneas y **879** después | censo sobre `git ls-files '*detekt-baseline-main.xml'` |
 | Certificador externo | **`BLOCKED_EXTERNAL`** | no existe en este repositorio ni en remoto |
-| Candidato publicada | **`v0.88.0-rc1`** (prerelease), `candidate_id` `sha256:8d9360a3a5331325bbd13090ccbcb817a4d088319f3af839992c3703065681a0`, tag en `7fe881db4`; verificada **sobre los bytes descargados del remoto** (§2.83) | `gh release view v0.88.0-rc1`, `sha256sum -c SHA256SUMS` |
+| Candidato publicada | **`v0.88.0-rc1`** (prerelease), `candidate_id` `sha256:8d9360a3a5331325bbd13090ccbcb817a4d088319f3af839992c3703065681a0`, tag en `7fe881db4`; verificada **sobre los bytes descargados del remoto** (§2.83). **Sin candidata nueva en este bloque**: el producto no cambia de comportamiento y el tren sigue cerrado en `rc1` (§2.84) | `gh release view v0.88.0-rc1`, `sha256sum -c SHA256SUMS` |
 | Destino de `:pipeline-runtime` | **se queda y está cableado**, y **re-verificado en este bloque**: sus tres adaptadores implementan los puertos publicados de `:pipeline-runtime-api`, y `:pipeline-application` los compone y los invoca por verbo de CLI. **5** clases de test, **28** filas (§2.52). La puerta lo compila **por su nombre**, y los **27** módulos del árbol quedan dentro de ella: los 26 con código los pide la etapa 2 por tener test, y el 27º (`:pipeline-sdk-bom`) no tiene código que compilar | `CompositionRoot.kt:222,280,330`, `MainRunsCli.kt:132,222`, `MainInspectCli.kt:544`, `scripts/verify-all.sh:382` |
 
 Los tres ensayos corrieron sobre el mismo SHA y sobre el árbol **commiteado**, que
@@ -255,11 +255,11 @@ El reloj de la puerta lo marca también el host. Los ciclos anteriores midieron
 midieron 187, 130 y 133 s, 197, 169 y 376 s, 168, 141 y 149 s, 182, 141 y 139 s,
 187, 139 y 140 s y 203, 139 y 141 s.
 Este mide
-**229, 148 y 149 s**:
+**186, 172 y 176 s**:
 la distancia entre un ensayo y otro no la explica el código medido, que es
 idéntico dentro de cada ciclo, sino la carga de la máquina. En los tres ensayos
-de este ciclo el presupuesto se cumplió con holgura —el peor, 229 s, es menos de
-la cuarta parte de los 900 s—, y eso que el árbol medido incluye la distribución,
+de este ciclo el presupuesto se cumplió con holgura —el peor, 186 s, es menos de
+un quinto de los 900 s—, y eso que el árbol medido incluye la distribución,
 la API pública, los 1175 tests y los 62 escenarios.
 
 **La etapa del E2E mide 107 s**, medidos en seco sobre el lanzador, contra los
@@ -9195,6 +9195,132 @@ cuando se crea.
   por eso no se ha hecho a escondidas.
 - La promoción a estable sigue bloqueada: no hay certificador externo en este repositorio ni
   en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no `PASS`.
+### 2.84 El instalador resuelve una release por su manifiesto, no por su nombre
+
+**El hueco.** `scripts/install-pipelinek.sh` construía las cuatro identidades de una
+release a partir de una sola cadena —el *slot* que escribe el operador— y las
+hacía coincidir:
+
+| identidad | cómo la calculaba el instalador | lo que es en la release publicada |
+|---|---|---|
+| etiqueta del release | `v${version}` | `v0.88.0-rc1` |
+| artefacto | `pipelinek-${version}.zip` | `pipelinek-0.88.0.zip` |
+| raíz del ZIP | `pipelinek-${version}` | `pipelinek-0.88.0` |
+| versión que reporta el binario | la que se pidió | `0.88.0` |
+
+En el mundo real esas cuatro cosas no son la misma. La candidata `v0.88.0-rc1`
+publica el artefacto `pipelinek-0.88.0.zip`, y el binario que lleva dentro
+reporta `pipeline 0.88.0`. La comprobación de semver estricto
+(`^[0-9]+\.[0-9]+\.[0-9]+$`) rechazaba `0.88.0-rc1` antes de mirar nada, y
+`install 0.88.0` señalaba `/v0.88.0/`, un directorio de release que no existe
+cuando lo único publicado es la candidata. El README lo declaraba sin
+rodeos: «no resuelve una candidata». La fila 8 de §1 ya medía el hueco.
+
+**Lo que ahora es verdad.** Un release tiene cuatro nombres y **no son
+intercambiables**, y el manifiesto que se publica con el release
+(`pipelinek-release-manifest-1`) es la autoridad que los ata: dice qué etiqueta
+es, qué versión de producto lleva y qué artefacto la contiene, con su digest.
+El instalador hace, en este orden:
+
+1. **Lee** el manifiesto de `${base}/${tag}/manifest.json` y **comprueba** que
+   nombra ese tag, esa versión de producto y **exactamente un** artefacto.
+2. **Cruza** el digest del manifiesto con el de `SHA256SUMS`, la autoridad de
+   digest del release. Si los dos no coinciden, no instala: un release que se
+   contradice a sí mismo sobre su propio artefacto no tiene un ganador
+   creíble.
+3. **Descarga** el artefacto **por el nombre que dice el manifiesto**, no por
+   uno construido: `pipelinek-${version}.zip` ya no se inventa, se descubre.
+4. **Verifica** que la raíz del ZIP sea la del artefacto, y que el binario
+   reporte **exactamente** la versión de producto del manifiesto.
+
+El *slot* es el nombre del release y el nombre del directorio donde se
+instala: `0.88.0-rc1` instala en `versions/0.88.0-rc1` y `0.88.0` instala en
+`versions/0.88.0`. Los dos pueden convivir —son dos releases— y la candidata
+**jamás** se instala bajo el nombre de la estable. Un slot estable que no
+existe se rechaza con un mensaje que dice qué etiqueta no se encontró y
+**señala la candidata que sí existe**, porque un refusal veraz ahorra más
+tiempo que un 404 mudo.
+
+**La comprobación es efímera y está fuera del árbol.** Vive bajo
+`${XDG_STATE_HOME:-$HOME/.local/state}/pipelinek/verification-cycles/`, no en
+`examples/`, y **el número de escenarios versionados no crece**: siguen siendo
+**62**. El instrumento es el propio instalador —la frontera real del
+consumidor— contra los **bytes publicados** de `v0.88.0-rc1`, descargados del
+remoto: manifiesto, `SHA256SUMS` y el ZIP de 92 MB. Se midieron **36**
+comprobaciones:
+
+| grupo | qué mide |
+|---|---|
+| G1 | la candidata se instala desde su tag, en su directorio, y su binario reporta `0.88.0` |
+| G2 | el slot estable `0.88.0` **no** resuelve la candidata, contra el remoto real, y no deja directorio |
+| G3–G5 | activar, listar y desinstalar; dos releases conviven sin mezclarse; el activo no se borra |
+| G6–G7 | bytes alterados, manifiesto ajeno y manifiesto en desacuerdo con la autoridad: se rechazan y no dejan rastro |
+| G8 | la instalación funciona **contra el remoto real**, no solo contra el espejo |
+
+**La comprobación puede ponerse roja.** Un verde que nunca se ha visto rojo no
+es evidencia, así que se falseó a propósito, sobre **copias** del instalador
+—nunca sobre el fichero del repositorio—, comprobando que cada comprobación
+carga con el peso que dice cargar:
+
+| mutación sobre la copia | qué tiene que ponerse rojo | qué demuestra |
+|---|---|---|
+| resolver **todos** los slots con el tag de la candidata | G2a, G2b, G2c | la separación entre release y candidata es la que impide la confusión |
+| no comparar el digest de los bytes | G6a, G6b, G6c | la autoridad de digest es lo que impide instalar bytes ajenos |
+| no comprobar el tag que dice el manifiesto | G7a, G7b, G7c | el manifiesto tiene que **describir** el release que se pide |
+| construir el nombre del artefacto desde el slot | G1a, G1e | el artefacto se **descubre**, no se inventa |
+| rehusar sin señalar la candidata | G2d | el refusal tiene que decir qué release existe |
+
+Las **18** filas de la falsificación quedaron en verde, y el control —el
+mismo UAT sin mutar— también.
+
+**La puerta también pasó.** El árbol commiteado (`a1ced1828`) dio `PASS` en los
+tres ensayos de `scripts/verify-all.sh` —**186**, **172** y **176** s contra el
+límite de 900—, con los **1175** tests reescritos, los **62** escenarios
+ejecutados y **578** comparaciones sobre **112** ejecuciones del producto. La
+ratio de LOC bajó, porque el instalador cuenta como producto: `21971 / 68421
+= 0.321`, y el ratio máximo por módulo sigue siendo **1.633**
+(`pipeline-step-sdk:workflow-control`). El README, que declaraba el hueco
+—«no resuelve una candidata»—, deja de hacerlo.
+
+**La publicación de un script se verifica como se verifica un artefacto.** El
+instalador no viaja dentro del release: el README lo sirve desde `main`. Su
+publicación tiene, por tanto, su propio canal, y ese canal se comprobó: se
+descargó de `raw.githubusercontent` **en el SHA publicado**, se comparó **byte
+a byte** con el fichero medido, y se le pasó **el UAT entero** contra la
+release real.
+
+```
+$ sha256sum scripts/install-pipelinek.sh desde-remoto/install-pipelinek.sh
+e0d1b6e758911e600aca2639f99b8875a1711c7b7244ad766a5101146b262443  scripts/install-pipelinek.sh
+e0d1b6e758911e600aca2639f99b8875a1711c7b7244ad766a5101146b262443  desde-remoto/install-pipelinek.sh
+resultado: PASS   comprobaciones: 36   ok: 36   ko: 0
+```
+
+**Lo que queda fuera, dicho con honestidad.**
+
+- La comprobación **no es permanente**: la política prohíbe las pruebas por
+  subproceso que la harían permanente, y el instalador no es un módulo con
+  `src/test`. Lo que hay es un UAT efímero por ciclo y un `doctor` manual
+  contra una instalación real. Esa deuda ya estaba anotada en el propio
+  script y en la fila 8 de §1.
+- El release **estable no existe en este repositorio**: la línea publica
+  candidatas. El camino del slot estable se midió contra un espejo que sirve
+  los **mismos bytes** bajo una etiqueta estable —un sustituto, no un release
+  publicado— y el camino del rechazo se midió contra el **remoto real**, donde
+  la estable no existe. No se ha publicado un estable para poder probarlo.
+- **No se ha publicado una candidata nueva.** El producto de esta hito no
+  cambia: el cambio está en un script que el README sirve desde `main`, no en
+  la distribución, y su publicación se verificó por ese canal. Se **midió** que una reconstrucción de la distribución
+  difiere de la publicada en **un solo** campo —`buildCommit`, la procedencia
+  embebida— y en **un byte**; el comportamiento es idéntico. Publicar un
+  `rc2` habría puesto dos artefactos del mismo tren en la página de releases
+  sin que el producto se comportara distinto, que es exactamente la
+  confusión que este hito quita. El precedente del remoto lo dice: de
+  `v0.63.0-rc1` a `v0.88.0-rc1`, **un release por tren**, todos `rc1`.
+- La promoción a estable sigue bloqueada: no hay certificador externo en este
+  repositorio ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no
+  `PASS`.
+
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite

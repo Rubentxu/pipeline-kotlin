@@ -264,22 +264,28 @@ La auditoría nombra sus bloques `B1..B5`; aquí se escriben `AUD-B1..AUD-B5` po
 
 | bloque | qué pide | estado medido | dónde |
 |---|---|---|---|
-| **AUD-B1** | publicación con procedencia, y una limpieza de caché que no borre lo ajeno | **cerrado en sus dos mitades.** La poda de caché ya está en el árbol, con las seis guardas que la auditoría pedía —marca de propiedad en la raíz, raíz canonicalizada y candidata sólo hija directa, enlaces simbólicos que nunca llegan a `rm`, namespace acreditado por un marcador con digest, edad, y el namespace en uso como excluido— y las seis se han visto en rojo, una por una (commit `dfba3342e`). La mitad de publicación se midió en este ciclo: 17 filas y 10 mutaciones (§2.90) | §2.90 |
+| **AUD-B1** | publicación con procedencia, y una limpieza de caché que no borre lo ajeno | **cerrado en sus dos mitades.** La poda de caché ya está en el árbol, con las seis guardas que la auditoría pedía —marca de propiedad en la raíz, raíz canonicalizada y candidata sólo hija directa, enlaces simbólicos que nunca llegan a `rm`, namespace acreditado por un marcador con digest, edad, y el namespace en uso como excluido— y las seis se han visto en rojo, una por una (commit `dfba3342e`). La mitad de publicación se midió en este ciclo: 17 filas y 10 mutaciones (§2.90), y la puerta completa sobre el árbol que se entrega dio `PASS` (166 s, 1298 tests, 61 escenarios, ratio de LOC 0.346) | §2.90 |
 | **AUD-B2** | una **decisión pura de atribución** compartida por perfil, `explain` y telemetría; y una caché que cae por **origen y tipo** y no por el texto literal de un mensaje | **abierto, sin tocar.** Hoy hay tres resolvimientos distintos del mismo «a qué paso pertenece esto», y el de la telemetría sigue siendo `indexOfFirst` (`RunTelemetryProjection.closeStep()`); el fallback de la caché se decide por la cadena `CachingJvmScriptingHost.UNLOADED_ARTIFACT_MESSAGE`, que es un **texto** y no un **tipo**. La clave de caché v3 por contenido ya está en el producto (§2.86) y su efectividad está medida, pero eso es otra pregunta de la de este bloque | §2 (deuda) |
 | **AUD-B3** | observabilidad de verdad: `traceId` como **campo**, `spanId` robusto, intervalos validados sin duraciones negativas, límites de cardinalidad por dimensión, y un adaptador OTLP opcional | **abierto, sin tocar.** `RSO-07` es su nombre en la propuesta de arriba | §0 RSO-07 |
 | **AUD-B4** | economía de la verificación —y **sólo** después de pasar por `delivery-first-testing` | **abierto, y con precondición declarada.** La lente que aplica se nombra antes de escribir una línea: `references/navigation.md`. El router ofrece un portafolio de auditoría que **no existe en disco** (hay 8 playbooks y ninguno es ese), así que esa ruta no se puede seguir tal cual; el coste de la puerta ya está medido (§2.86) y es lo que este bloque tiene que reducir | §0 RSO-01..02 |
 | **AUD-B5** | proveedor de aislamiento | **abierto, sin tocar.** `RSO-08` es su nombre en la propuesta de arriba; `RSO-04` es su precondición (que `LOCAL` no es un sandbox multi-tenant) | §0 RSO-08 |
 
-**Lo que este ciclo NO ha ejecutado, y por eso no es un `PASS`.** Sobre el SHA
-`dfba3342e` **no** se ha ejecutado la puerta de verificación: ni Gradle, ni los tests
-unitarios, ni los escenarios de `examples/`. El instrumento del bloque de publicación
-es un script de shell —no compila Kotlin, no arranca la distribución y no toca el
-producto—, así que mide lo que mide y nada más. El veredicto de este bloque es
-**`NOT_RUN`** en todo lo que es Gradle, y `PASS` sólo en las 17 filas del
-instrumento, con su duración y su recuento de mutaciones. El §6b de
-`scripts/release-pipelinek.sh` —la puerta que audita el remoto antes de publicar—
-no lo ha ejercido ninguna corrida real: se ejecutaría en una publicación, y esa
-publicación no se ha hecho.
+**La puerta de verificación, ejecutada después, sobre el árbol que se entrega.**
+Sobre `dfba3342e` la puerta **no** se había ejecutado, y por eso todo lo que es
+Gradle figuraba como `NOT_RUN`. Con el bloque de publicación ya comiteado
+(`3db8f951f`) la puerta se ejecutó **entera y sin filtros**:
+`PASS sha=3db8f951f… elapsed=166s budget=900s tests=rewritten:1298 read:0
+scenarios=observed:61 executed:61`. Los 1298 tests unitarios los escribió **esta**
+corrida (`rewritten:1298`, `read:0`: ninguno leído de una anterior), y los 61
+escenarios de `examples/` se ejecutaron y se observaron los 61. El censo de LOC,
+sobre el mismo árbol comiteado, da `VERIFY_LOC = 24464` y `PRODUCT_LOC = 70676`,
+ratio **0.346** (límite 2).
+
+**Lo que sigue sin ejecutarse.** El §6b de `scripts/release-pipelinek.sh` —la puerta
+que audita el remoto antes de publicar— **no** lo ha ejercido ninguna corrida real:
+se ejecutaría en una publicación, y esa publicación no se ha hecho. Ese veredicto
+sigue siendo **`NOT_RUN`**, y no se disfraza de `PASS` porque el resto de la puerta
+sí haya corrido.
 
 ## 1. Estado medido
 
@@ -10282,9 +10288,15 @@ rompió» habría medido menos de lo que hay.
 - **Los otros cinco estables *lightweight* siguen igual**, por la misma razón.
 - **La promoción a estable sigue `BLOCKED_EXTERNAL`**: no hay certificador
   externo en este repositorio ni en el remoto (§2.45).
-- **La puerta completa no se ha ejecutado** sobre `dfba3342e`: ni Gradle, ni
-  los tests unitarios, ni los escenarios de `examples/`. El veredicto de este
-  bloque es `PASS` en lo que su instrumento midió y `NOT_RUN` en todo lo demás.
+- **La puerta completa se ejecutó después**, sobre `3db8f951f` —el árbol que
+  entrega este bloque, ya comiteado— y dio `PASS sha=3db8f951f… elapsed=166s
+  budget=900s tests=rewritten:1298 read:0 scenarios=observed:61 executed:61`, con
+  el censo de LOC en `VERIFY_LOC = 24464` / `PRODUCT_LOC = 70676` (ratio **0.346**).
+  Sobre `dfba3342e` —la base sin este bloque— sigue siendo cierto que no se
+  ejecutó, y por eso el instrumento del §2.90 se midió aparte y no se reusa esa
+  cifra como si fuera la de la puerta.
+- **El §6b —la auditoría del remoto antes de publicar— sigue `NOT_RUN`**: no
+  aparece hasta una publicación real, y no se ha hecho ninguna.
 - **La bandera `--prerelease` la elige quien publica, y la puerta no la
   contrasta con el nombre del tag.** Una release de una candidata marcada como
   estable —o al revés— saldría con la forma equivocada en la página de

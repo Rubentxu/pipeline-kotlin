@@ -191,20 +191,41 @@ sealed interface ResolvedEvidence {
  */
 data class CostInput(val run: RunEvidence, val costs: Map<RuntimeCost, CostSamples>)
 
+/**
+ * How much of the profile is actually measured. A run that ended cleanly
+ * and a profile whose costs were observed are two different facts: a
+ * finished run can leave most costs with no evidence, and calling that
+ * profile "complete" tells the reader the measurements are whole when only
+ * the run is. Bounded costs are counted apart from measured ones — an
+ * estimate is honest, but it is not a measurement.
+ */
+data class MeasurementCoverage(
+    val measured: List<RuntimeCost>,
+    val bounded: List<RuntimeCost>,
+    val withoutEvidence: List<RuntimeCost>,
+) {
+    val total: Int get() = measured.size + bounded.size + withoutEvidence.size
+}
+
 /** The report: every declared cost appears exactly once, measured or not. */
 sealed interface ProfileOutcome {
     val run: RunEvidence
     val costs: List<ResolvedCost>
+    val coverage: MeasurementCoverage
 
+    /** The run ended successfully with no refused evidence; the coverage says how much was measured. */
     data class Complete(
         override val run: RunEvidence.Finished,
         override val costs: List<ResolvedCost>,
+        override val coverage: MeasurementCoverage,
     ) : ProfileOutcome
 
+    /** Something about the run or the evidence is incomplete; the reasons name what. */
     data class Partial(
         override val run: RunEvidence,
         override val costs: List<ResolvedCost>,
         val reasons: List<PartialReason>,
+        override val coverage: MeasurementCoverage,
     ) : ProfileOutcome
 }
 
@@ -225,6 +246,12 @@ fun summarize(input: CostInput): ProfileOutcome {
     val costs = RuntimeCost.all.map { cost ->
         ResolvedCost(cost, resolve(input.costs[cost] ?: CostSamples.None, cost, reasons))
     }
+    val coverage = MeasurementCoverage(
+        measured = costs.filter { it.evidence is ResolvedEvidence.Measured || it.evidence is ResolvedEvidence.Series }
+            .map { it.cost },
+        bounded = costs.filter { it.evidence is ResolvedEvidence.Estimated }.map { it.cost },
+        withoutEvidence = costs.filter { it.evidence is ResolvedEvidence.Unavailable }.map { it.cost },
+    )
     when (val run = input.run) {
         is RunEvidence.Finished ->
             if (run.outcome != "success") reasons.add(PartialReason.RunDidNotSucceed(run.outcome))
@@ -232,14 +259,13 @@ fun summarize(input: CostInput): ProfileOutcome {
         is RunEvidence.Open -> reasons.add(PartialReason.RunNotFinished)
         RunEvidence.NoRunBounds -> reasons.add(PartialReason.NoRunBounds)
     }
-    val outcome: ProfileOutcome = if (input.run is RunEvidence.Finished &&
+    return if (input.run is RunEvidence.Finished &&
         reasons.isEmpty()
     ) {
-        ProfileOutcome.Complete(input.run, costs)
+        ProfileOutcome.Complete(input.run, costs, coverage)
     } else {
-        ProfileOutcome.Partial(input.run, costs, reasons.toList())
+        ProfileOutcome.Partial(input.run, costs, reasons.toList(), coverage)
     }
-    return outcome
 }
 
 private fun resolve(samples: CostSamples, cost: RuntimeCost, reasons: MutableList<PartialReason>): ResolvedEvidence = when (samples) {

@@ -124,6 +124,21 @@ class RuntimeCostProfileTest {
     }
 
     @Test
+    fun `a completed run states how much of the profile was actually measured`() {
+        val outcome = summarize(
+            CostInput(
+                successfulRun(),
+                mapOf(RuntimeCost.Compile to CostSamples.Intervals(listOf(measured(0, 30)))),
+            ),
+        )
+
+        val completed = outcome as ProfileOutcome.Complete
+        assertEquals(listOf(RuntimeCost.Compile), completed.coverage.measured)
+        assertEquals(6, completed.coverage.withoutEvidence.size)
+        assertEquals(7, completed.coverage.total)
+    }
+
+    @Test
     fun `a run that never finished is partial with the run still open`() {
         val outcome = summarize(
             CostInput(

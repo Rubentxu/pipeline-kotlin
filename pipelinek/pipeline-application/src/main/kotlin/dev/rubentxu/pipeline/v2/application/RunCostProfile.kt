@@ -174,7 +174,7 @@ object RunCostReport {
                 val reasons = outcome.reasons.joinToString(",") { it.id }
                 "profile run=$runId outcome=partial reasons=$reasons"
             }
-        }
+        } + " measured=${outcome.coverage.measured.size}/${outcome.coverage.total}"
         return listOf(head) + outcome.costs.map { cost -> "  ${row(cost)}" }
     }
 
@@ -198,7 +198,7 @@ object RunCostReport {
             is ProfileOutcome.Complete -> "\"complete\""
             is ProfileOutcome.Partial ->
                 "\"partial\",\"reasons\":[${outcome.reasons.joinToString(",") { "\"${it.id}\"" }}]"
-        }
+        } + ",\"measured\":${outcome.coverage.measured.size},\"total\":${outcome.coverage.total}"
         return listOf(
             "{\"schema\":\"runtime.profile.v1\",\"runId\":\"$runId\",\"outcome\":$result,",
             " \"costs\":[",

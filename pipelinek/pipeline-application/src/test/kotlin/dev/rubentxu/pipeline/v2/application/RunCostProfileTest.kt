@@ -136,6 +136,9 @@ class RunCostProfileTest {
         assertTrue(!rendered.contains("secret"))
         assertTrue(!rendered.contains("deployProductionKey"))
         assertTrue(rendered.contains("outcome=complete"))
+        // The run completed; the measurements did not, and the header says
+        // so instead of letting "complete" stand for both facts.
+        assertTrue(rendered.contains("measured=1/7"))
         assertTrue(rendered.contains("\"schema\":\"runtime.profile.v1\""))
     }
 

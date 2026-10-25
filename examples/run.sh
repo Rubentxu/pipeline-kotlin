@@ -218,6 +218,19 @@ trap cleanup EXIT
 
 cache_root_default="${XDG_CACHE_HOME:-$HOME/.cache}/pipelinek/e2e-script-cache"
 
+# Two markers, and they say two different things.
+#
+# The namespace marker names the DISTRIBUTION whose compiled scripts live in
+# a namespace: it is the digest, and a run that finds another digest there
+# does not use the directory.
+#
+# The root marker says the root is a place where the harness keeps
+# namespaces and not something else. Without it a root is a directory full
+# of things whose owner is unknown, and a cleanup that cannot name its
+# owner cleans nothing.
+cache_root_marker=".pipelinek-e2e-cache-root"
+namespace_marker=".distribution-digest"
+
 # The digest of the distribution's jars, BY CONTENT, with their names: a
 # rebuild with different bytes is a different digest, and so is a rename.
 # A distribution that cannot be read has no digest, and the name it gets
@@ -247,7 +260,7 @@ resolve_script_cache() {
     digest="$(distribution_digest)"
     root="${PIPELINEK_E2E_SCRIPT_CACHE_DIR:-$cache_root_default}"
     ns="$root/$digest"
-    marker="$ns/.distribution-digest"
+    marker="$ns/$namespace_marker"
 
     # The namespace's NAME is the guarantee, but a name can be wrong -- and the
     # obvious simplification of that name ("one directory for the suite") is
@@ -268,6 +281,10 @@ resolve_script_cache() {
 
     if [[ -n "$ns" ]] && mkdir -p "$ns" 2>/dev/null && [[ -w "$ns" ]]; then
         printf '%s\n' "$digest" > "$marker" 2>/dev/null || true
+        # The root is marked as a place where namespaces live, so a cleanup
+        # later can tell that root from a directory full of things the
+        # harness never put there.
+        printf 'pipelinek-e2e-script-cache v1\n' > "$root/$cache_root_marker" 2>/dev/null || true
         script_cache_dir="$ns"
         script_cache_persistent=1
         export PIPELINEK_SCRIPT_CACHE_DIR="$ns"
@@ -300,18 +317,171 @@ cache_snapshot() {
 # its compiled scripts: they cost disk and they can never be served again,
 # because the namespace they live in names bytes that are not on this
 # machine any more. Pruned by AGE rather than by count, so a busy machine
-# keeps what it is using and a forgotten one does not accumulate. The
-# namespace this run used is never a candidate.
+# keeps what it is using and a forgotten one does not accumulate.
+#
+# This is the one place in the harness where something that is NOT the
+# harness's own can be destroyed, so what may be deleted is decided by
+# facts that can be checked and not by the shape of a name:
+#
+#   - the root must carry the root marker. A root the harness never marked
+#     is a directory whose contents are of unknown ownership, and nothing
+#     is cleaned there;
+#   - the root is canonicalised once, and a candidate is only a DIRECT
+#     child of that canonical root;
+#   - a candidate is only a namespace: a real directory, not a link, and one
+#     carrying the namespace marker with a digest in it;
+#   - a link is never a candidate, and never reaches `rm`. `rm -rf` on a
+#     link written with a trailing slash empties the directory the link
+#     points at, which is how a cache of compiled scripts would have
+#     deleted somebody's data;
+#   - the namespace this run used is never a candidate.
 prune_script_cache() {
-    local root="$1" d
+    local root="$1" d marker recorded canonical active=""
     [[ -n "$root" && -d "$root" ]] || return 0
-    for d in "$root"/*/; do
+    [[ -f "$root/$cache_root_marker" ]] || return 0
+    canonical="$(cd -- "$root" 2>/dev/null && pwd -P)" || return 0
+    [[ -n "$canonical" ]] || return 0
+    if [[ -n "$script_cache_dir" ]]; then
+        active="$(cd -- "$script_cache_dir" 2>/dev/null && pwd -P)"
+    fi
+    for d in "$canonical"/*; do
+        # The link test comes FIRST: `[[ -d ]]` follows a link, and a link
+        # that points at a directory is exactly the case that must never
+        # reach `rm`.
+        [[ -L "$d" ]] && continue
         [[ -d "$d" ]] || continue
-        [[ "$d" == "$script_cache_dir/" ]] && continue
-        if [[ -z "$(find "$d" -maxdepth 0 -mtime -14 2>/dev/null)" ]]; then
+        marker="$d/$namespace_marker"
+        [[ -f "$marker" ]] || continue
+        recorded="$(cat -- "$marker" 2>/dev/null || true)"
+        [[ "$recorded" =~ ^[0-9a-f]{64}$ ]] || continue
+        [[ -n "$active" && "$d" == "$active" ]] && continue
+        if [[ -z "$(find "$d" -maxdepth 0 -mtime -14 -print -quit 2>/dev/null)" ]]; then
             rm -rf -- "$d" 2>/dev/null || true
         fi
     done
+}
+
+# The names the fixture below uses. They are spelled out so a fixture entry
+# cannot be mistaken for a namespace the real cycle is using.
+prune_stale_namespace="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+prune_fresh_namespace="fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+prune_active_namespace="aaaabbbbccccddddeeeeffff0000111122223333444455556666777788889999"
+prune_foreign_directory="not-a-namespace"
+prune_bogus_marker="a-namespace-with-a-lying-marker"
+prune_link="a-link"
+
+prune_checks=0
+prune_failures=0
+
+prune_expect_absent() {
+    local path="$1" reason="$2"
+    prune_checks=$((prune_checks + 1))
+    if [[ -e "$path" || -L "$path" ]]; then
+        prune_failures=$((prune_failures + 1))
+        failures+=("cache-prune: $reason")
+    fi
+}
+
+prune_expect_present() {
+    local path="$1" reason="$2"
+    prune_checks=$((prune_checks + 1))
+    if [[ ! -e "$path" && ! -L "$path" ]]; then
+        prune_failures=$((prune_failures + 1))
+        failures+=("cache-prune: $reason")
+    fi
+}
+
+# The prune above is the only destructive step in the harness, so its rule is
+# checked where it runs, on every cycle, against a fixture the cycle owns.
+#
+# The fixture is a root the harness owns, holding one entry of every kind
+# the rule has to tell apart: a namespace that is old enough and carries the
+# marker (it goes), a namespace that is new (it stays), the namespace the
+# cycle is using (it stays), a directory that is not a namespace (it stays),
+# a directory whose marker does not hold a digest (it stays), a link to a
+# directory outside the root (it stays, and so does what it points at), and
+# a second root the harness never marked (nothing in it goes).
+#
+# The expectations are written with plain existence checks and not by asking
+# the prune what it thinks, so the check does not agree with the rule by
+# construction: the rule can only pass here by having deleted exactly what
+# it was allowed to delete.
+check_script_cache_prune_ownership() {
+    local fixture="$cycle_root/prune-fixture" unmarked="$cycle_root/prune-unmarked"
+    local outside="$cycle_root/prune-outside" saved_cache_dir="$script_cache_dir"
+    rm -rf -- "$fixture" "$unmarked" "$outside" 2>/dev/null || true
+    mkdir -p -- "$fixture" "$unmarked" "$outside" 2>/dev/null || return 0
+    printf 'data that belongs to somebody else\n' > "$outside/data.txt" 2>/dev/null || true
+    # The directory the link points at carries the marker, so the link is a
+    # namespace as far as any rule that looks at names and markers can tell.
+    # A guard that only protects a link nobody would mistake for a namespace
+    # is a guard that has never been asked a question.
+    printf '%064d\n' 0 > "$outside/$namespace_marker" 2>/dev/null || true
+    touch -d '30 days ago' -- "$outside" 2>/dev/null || true
+
+    # A root the harness marked: a place where its namespaces live.
+    printf 'pipelinek-e2e-script-cache v1\n' > "$fixture/$cache_root_marker" 2>/dev/null || true
+
+    # An old namespace with the marker: the one entry the rule allows to go.
+    mkdir -p -- "$fixture/$prune_stale_namespace" 2>/dev/null || true
+    printf '%064d\n' 0 > "$fixture/$prune_stale_namespace/$namespace_marker" 2>/dev/null || true
+    touch -d '30 days ago' -- "$fixture/$prune_stale_namespace" 2>/dev/null || true
+
+    # A new namespace with the marker: it is in use, so it stays.
+    mkdir -p -- "$fixture/$prune_fresh_namespace" 2>/dev/null || true
+    printf '%064d\n' 0 > "$fixture/$prune_fresh_namespace/$namespace_marker" 2>/dev/null || true
+
+    # An old namespace that is the one in use: it stays for that reason.
+    mkdir -p -- "$fixture/$prune_active_namespace" 2>/dev/null || true
+    printf '%064d\n' 0 > "$fixture/$prune_active_namespace/$namespace_marker" 2>/dev/null || true
+    touch -d '30 days ago' -- "$fixture/$prune_active_namespace" 2>/dev/null || true
+
+    # An old directory that is not a namespace: it is not the harness's.
+    mkdir -p -- "$fixture/$prune_foreign_directory" 2>/dev/null || true
+    touch -d '30 days ago' -- "$fixture/$prune_foreign_directory" 2>/dev/null || true
+
+    # An old directory whose marker does not hold a digest: the marker is
+    # only proof when it says something.
+    mkdir -p -- "$fixture/$prune_bogus_marker" 2>/dev/null || true
+    printf 'not-a-digest\n' > "$fixture/$prune_bogus_marker/$namespace_marker" 2>/dev/null || true
+    touch -d '30 days ago' -- "$fixture/$prune_bogus_marker" 2>/dev/null || true
+
+    # An old link to a directory outside the root: it stays, and so does
+    # what it points at.
+    ln -s -- "$outside" "$fixture/$prune_link" 2>/dev/null || true
+    touch -h -d '30 days ago' -- "$fixture/$prune_link" 2>/dev/null || true
+
+    # A root the harness never marked: nothing in it is cleaned.
+    mkdir -p -- "$unmarked/$prune_stale_namespace" 2>/dev/null || true
+    printf '%064d\n' 0 > "$unmarked/$prune_stale_namespace/$namespace_marker" 2>/dev/null || true
+    touch -d '30 days ago' -- "$unmarked/$prune_stale_namespace" 2>/dev/null || true
+
+    # For the length of this check the namespace in use is one of the
+    # fixture's, so the rule about the namespace in use is exercised here
+    # instead of being asserted about code nobody called.
+    script_cache_dir="$fixture/$prune_active_namespace"
+    prune_script_cache "$fixture"
+    prune_script_cache "$unmarked"
+    script_cache_dir="$saved_cache_dir"
+
+    prune_expect_absent "$fixture/$prune_stale_namespace" \
+        "the cache prune kept an old namespace that carries the marker"
+    prune_expect_present "$fixture/$prune_fresh_namespace" \
+        "the cache prune deleted a namespace that is still in use"
+    prune_expect_present "$fixture/$prune_active_namespace" \
+        "the cache prune deleted the namespace the cycle is using"
+    prune_expect_present "$fixture/$prune_foreign_directory" \
+        "the cache prune deleted a directory that is not a namespace"
+    prune_expect_present "$fixture/$prune_bogus_marker" \
+        "the cache prune deleted a directory whose marker holds no digest"
+    prune_expect_present "$fixture/$prune_link" \
+        "the cache prune deleted a link inside the cache root"
+    prune_expect_present "$outside/data.txt" \
+        "the cache prune emptied the directory a link pointed at"
+    prune_expect_present "$unmarked/$prune_stale_namespace" \
+        "the cache prune cleaned a root the harness does not own"
+
+    rm -rf -- "$fixture" "$unmarked" "$outside" 2>/dev/null || true
 }
 
 resolve_script_cache
@@ -3457,6 +3627,12 @@ printf '%d of %d executed scenario(s) had a guarantee checked (%d checks over %d
 # The scenarios that run against their OWN copy of the distribution are not
 # counted here: their artifacts belong to a namespace of their own, and they
 # are the cycle-local ones by design.
+# The harness's own destructive rule, checked in the place where it runs.
+# The numbers are published because a check nobody can see is not a check.
+check_script_cache_prune_ownership
+printf 'cache prune rule: %d expectation(s) checked, %d failed\n' \
+    "$prune_checks" "$prune_failures"
+
 if (( script_cache_persistent )); then
     printf 'script cache: %d artifact(s) written, %d present -- this distribution reuses them across cycles\n' \
         "$cache_written" "$cache_present"
@@ -3502,7 +3678,7 @@ if (( passed + failed == 0 )); then
     exit 2
 fi
 
-if (( failed > 0 || blocked > 0 )); then
+if (( failed > 0 || blocked > 0 || prune_failures > 0 )); then
     printf 'failures:\n'
     printf '  - %s\n' "${failures[@]}"
     exit 1

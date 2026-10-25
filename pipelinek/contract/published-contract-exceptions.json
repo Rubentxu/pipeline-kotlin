@@ -490,15 +490,7 @@
     },
     {
       "module": "pipeline-domain",
-<<<<<<< HEAD:pipelinek/contract/published-contract-exceptions.json
-<<<<<<< HEAD:pipelinek/contract/published-contract-exceptions.json
       "sha": "5d410ecaf",
-=======
-      "sha": "6c2f5530f",
->>>>>>> fe035c86 (docs(contract): el cuerpo prometido queda atado a la promesa, y sus cuatro rupturas registradas):v2/contract/published-contract-exceptions.json
-=======
-      "sha": "5d410ecaf",
->>>>>>> 508680de7 (docs(contract): las cuatro rupturas citan el SHA que quedo publicado):v2/contract/published-contract-exceptions.json
       "surface": "CompensationDeclaration",
       "change": "added the property `compensateSlot: PluginStepId?` (default `null`) to the data class CompensationDeclaration; the class keeps its name and every property it had",
       "permitting_maturity": "EXPERIMENTAL",
@@ -518,15 +510,7 @@
     },
     {
       "module": "pipeline-domain",
-<<<<<<< HEAD:pipelinek/contract/published-contract-exceptions.json
-<<<<<<< HEAD:pipelinek/contract/published-contract-exceptions.json
       "sha": "5d410ecaf",
-=======
-      "sha": "6c2f5530f",
->>>>>>> fe035c86 (docs(contract): el cuerpo prometido queda atado a la promesa, y sus cuatro rupturas registradas):v2/contract/published-contract-exceptions.json
-=======
-      "sha": "5d410ecaf",
->>>>>>> 508680de7 (docs(contract): las cuatro rupturas citan el SHA que quedo publicado):v2/contract/published-contract-exceptions.json
       "surface": "ArmRejection",
       "change": "added a case `UnknownCompensationBody(PluginStepId slot)` to the sealed interface ArmRejection; the interface itself is unchanged and the new class is additive in the ABI dump",
       "permitting_maturity": "EXPERIMENTAL",
@@ -546,15 +530,7 @@
     },
     {
       "module": "pipeline-domain",
-<<<<<<< HEAD:pipelinek/contract/published-contract-exceptions.json
-<<<<<<< HEAD:pipelinek/contract/published-contract-exceptions.json
       "sha": "5d410ecaf",
-=======
-      "sha": "6c2f5530f",
->>>>>>> fe035c86 (docs(contract): el cuerpo prometido queda atado a la promesa, y sus cuatro rupturas registradas):v2/contract/published-contract-exceptions.json
-=======
-      "sha": "5d410ecaf",
->>>>>>> 508680de7 (docs(contract): las cuatro rupturas citan el SHA que quedo publicado):v2/contract/published-contract-exceptions.json
       "surface": "InterventionReason",
       "change": "added the constant `COMPENSATION_BODY_DIVERGED` to the enum InterventionReason; every existing constant is unchanged and the enum's own members are untouched",
       "permitting_maturity": "EXPERIMENTAL",
@@ -572,15 +548,7 @@
     },
     {
       "module": "pipeline-domain",
-<<<<<<< HEAD:pipelinek/contract/published-contract-exceptions.json
-<<<<<<< HEAD:pipelinek/contract/published-contract-exceptions.json
       "sha": "5d410ecaf",
-=======
-      "sha": "6c2f5530f",
->>>>>>> fe035c86 (docs(contract): el cuerpo prometido queda atado a la promesa, y sus cuatro rupturas registradas):v2/contract/published-contract-exceptions.json
-=======
-      "sha": "5d410ecaf",
->>>>>>> 508680de7 (docs(contract): las cuatro rupturas citan el SHA que quedo publicado):v2/contract/published-contract-exceptions.json
       "surface": "CompensationDirective.NeedsIntervention",
       "change": "added the property `divergence: SagaBodyVerdict.Diverged?` (default `null`) to the data class CompensationDirective.NeedsIntervention; the class keeps its name and every property it had",
       "permitting_maturity": "EXPERIMENTAL",

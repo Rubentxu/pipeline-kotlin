@@ -265,7 +265,7 @@ La auditoría nombra sus bloques `B1..B5`; aquí se escriben `AUD-B1..AUD-B5` po
 | bloque | qué pide | estado medido | dónde |
 |---|---|---|---|
 | **AUD-B1** | publicación con procedencia, y una limpieza de caché que no borre lo ajeno | **cerrado en sus dos mitades.** La poda de caché ya está en el árbol, con las seis guardas que la auditoría pedía —marca de propiedad en la raíz, raíz canonicalizada y candidata sólo hija directa, enlaces simbólicos que nunca llegan a `rm`, namespace acreditado por un marcador con digest, edad, y el namespace en uso como excluido— y las seis se han visto en rojo, una por una (commit `dfba3342e`). La mitad de publicación se midió en este ciclo: 17 filas y 10 mutaciones (§2.90), y la puerta completa sobre el árbol que se entrega dio `PASS` (166 s, 1298 tests, 61 escenarios, ratio de LOC 0.346) | §2.90 |
-| **AUD-B2** | una **decisión pura de atribución** compartida por perfil, `explain` y telemetría; y una caché que cae por **origen y tipo** y no por el texto literal de un mensaje | **abierto, sin tocar.** Hoy hay tres resolvimientos distintos del mismo «a qué paso pertenece esto», y el de la telemetría sigue siendo `indexOfFirst` (`RunTelemetryProjection.closeStep()`); el fallback de la caché se decide por la cadena `CachingJvmScriptingHost.UNLOADED_ARTIFACT_MESSAGE`, que es un **texto** y no un **tipo**. La clave de caché v3 por contenido ya está en el producto (§2.86) y su efectividad está medida, pero eso es otra pregunta de la de este bloque | §2 (deuda) |
+| **AUD-B2** | una **decisión pura de atribución** compartida por perfil, `explain` y telemetría; y una caché que cae por **origen y tipo** y no por el texto literal de un mensaje | **la mitad de la atribución está cerrada y medida (§2.91).** Las tres proyecciones llaman ya a **una** decisión pura (`StepAttribution`), y el defecto —la telemetría atribuía la duración al **primer** candidato— se ha visto en rojo con tres mutaciones (7, 4 y 1 filas rojas, sin daño colateral). La medición en el CLI de una etapa **paralela** mostró lo que la regla vieja decía al operador: que una rama «nunca cerró» cuando sí cerró, y que tres terminales no pudieron nombrar su paso. **Quedan abiertos**: el fallback de la caché, que hoy se decide por la cadena `CachingJvmScriptingHost.UNLOADED_ARTIFACT_MESSAGE` —un **texto** y no un **tipo**— y la prueba de que la clave v3 por contenido es consumible desde un test unitario | §2.91 |
 | **AUD-B3** | observabilidad de verdad: `traceId` como **campo**, `spanId` robusto, intervalos validados sin duraciones negativas, límites de cardinalidad por dimensión, y un adaptador OTLP opcional | **abierto, sin tocar.** `RSO-07` es su nombre en la propuesta de arriba | §0 RSO-07 |
 | **AUD-B4** | economía de la verificación —y **sólo** después de pasar por `delivery-first-testing` | **abierto, y con precondición declarada.** La lente que aplica se nombra antes de escribir una línea: `references/navigation.md`. El router ofrece un portafolio de auditoría que **no existe en disco** (hay 8 playbooks y ninguno es ese), así que esa ruta no se puede seguir tal cual; el coste de la puerta ya está medido (§2.86) y es lo que este bloque tiene que reducir | §0 RSO-01..02 |
 | **AUD-B5** | proveedor de aislamiento | **abierto, sin tocar.** `RSO-08` es su nombre en la propuesta de arriba; `RSO-04` es su precondición (que `LOCAL` no es un sandbox multi-tenant) | §0 RSO-08 |
@@ -10309,6 +10309,175 @@ rompió» habría medido menos de lo que hay.
   acreditados— sí está en el árbol y ya fue medida por su propio ciclo
   (commit `dfba3342e`, seis guardas y seis mutaciones); aquí no se vuelve a
   medir porque es otro bloque con otro instrumento.
+
+### 2.91 La atribución de un terminal a su paso: una decisión sola, y el hecho que la hacía imposible
+
+**El defecto, contado tres veces.** Una ejecución escribe en su journal un
+terminal por cada paso que termina. Ese terminal **nombra** un paso —por su
+ordinal dentro de su etapa— y tres proyecciones del mismo repositorio
+preguntaban cuál de los pasos abiertos era ese, y cada una contestaba por su
+cuenta:
+
+| proyección | qué preguntaba | qué contestaba | qué decidía |
+|---|---|---|---|
+| perfil de coste (`RunCostProfile.kt`) | ¿qué paso abierto cerró este terminal? | se negaba a responder si había más de un candidato | el paso quedaba **abierto**: su coste salía como **cota**, no como medición |
+| explicación (`RunExplain.kt`) | ¿qué paso abierto cerró este terminal? | se negaba a responder si había más de un candidato | el paso quedaba **colgado** y el informe decía `attribution-ambiguous` |
+| telemetría (`RunTelemetry.kt`) | ¿qué paso abierto cerró este terminal? | `indexOfFirst`: el **primero** que encontraba | el paso quedaba cerrado y la **duración** se atribuía a un candidato que podía no ser el |
+
+La fila de la telemetría es el defecto: un número que sale del export y que el
+journal no dice. Las dos primeras filas no eran errores —eran respuestas
+conservadoras—, pero las tres **no eran la misma respuesta**, y un operador que
+comparase el perfil y el `explain` de la misma ejecución leería dos historias
+distintas sobre el mismo paso, sin que ninguna se pudiese llamar equivocada en
+sus propios términos. El bloque `AUD-B2` pedía exactamente esto: *una decisión
+pura de atribución compartida por perfil, `explain` y telemetría*.
+
+**El hecho que el código no podía enseñar, medido en el CLI.** La identidad de
+un paso no es `(stageIndex, stepIndex)`. En una etapa **paralela**, las ramas
+corren a la vez y cada una enumera sus propios pasos, así que varias filas
+`StepStarted` comparten el par `(stageIndex, stepIndex)` y lo único que las
+distingue es el **nombre**, que es path-qualified
+(`parallel-branches/branch-a/echo-0`). Medido sobre un escenario efímero de tres
+ramas, cada una con un paso:
+
+```
+9  StepStarted {'stageIndex': 0, 'stepIndex': 0, 'stepName': 'parallel-branches/branch-b/echo-0', 'stepType': 'echo'}
+10 StepStarted {'stageIndex': 0, 'stepIndex': 0, 'stepName': 'parallel-branches/branch-a/echo-0', 'stepType': 'echo'}
+11 StepStarted {'stageIndex': 0, 'stepIndex': 0, 'stepName': 'parallel-branches/branch-c/echo-0', 'stepType': 'echo'}
+```
+
+Un resolver que usara el par como identidad habría encontrado **tres**
+candidatos para cada terminal, y el nombre —que sí distingue— se habría
+descartado por no ser «parte de la identidad». La identidad de un paso abierto
+es la **tripleta** `(stage, ordinal, nombre)`, y el nombre se usa sólo para lo
+que puede usarse sin peligro: **desambiguar** entre los candidatos que el
+ordinal y la etapa ya seleccionaron. Un nombre que **no selecciona** ninguno se
+ignora, porque hay terminales que no nombran ningún paso: el fallo de `sh`
+lleva `"sh"` (`ShExecution.kt`) y el error del SDK lleva `"error"`
+(`StepExecutors.error()`); obedecerlos convertiría un terminal decidible en
+indecidable.
+
+**Los terminales que ni siquiera nombran su etapa.** El `stageIndex` es
+`Int?` a propósito, y dos productores lo dejan en `null`:
+`DomainEventJsonDecoder.kt:435` (una fila escrita por una build anterior) y
+`StepExecutors.error()` del `pipeline-step-sdk` (sin llamadas dentro de este
+repositorio, pero público). Un terminal así se resuelve **por ordinal**, y con
+varios candidatos no se puede decidir: por eso la respuesta es `Ambiguous` y no
+una adivinanza.
+
+**La decisión, una sola.** `StepAttribution` (`pipeline-application`,
+`attribution/StepAttribution.kt`) es pura: lee la lista de pasos abiertos y el
+terminal, y devuelve `Matched(openIndex)`, `Ambiguous(candidateCount)` o
+`None`. No hace E/S, no guarda estado, no consulta reloj. Las tres
+proyecciones la llaman con su propio tipo de paso abierto —cada una guarda el
+suyo— y por eso la firma lleva `identityOf: (T) -> OpenStepIdentity`.
+
+**La ruta de la lente, antes de escribir la primera línea.** El GATE de
+`AGENTS.md` §2 pasa por `delivery-first-testing`, y el router
+(`references/navigation.md`) se consultó antes que los playbooks:
+
+```
+intent=feature  inventory=ready  impact=known  basis=current
+changed=domain  risk=routine  affected=passed  uat=passed  regression=decided
+```
+
+Las lentes que el router anuncia para esa entrada se leyeron en su orden:
+`change-impact` → `ephemeral-uat` → `regression-promotion`. En el orden que
+la lente impone —**garantía → capacidad → instrumento**—:
+
+- **Garantía** (de qué depende el consumidor): *un informe de coste, una
+  explicación y una telemetría de la MISMA ejecución no pueden contar tres
+  historias sobre qué paso terminó; y un terminal que no puede nombrar
+  exactamente un paso abierto no atribuye duración ni veredicto a ningún
+  candidato*.
+- **Capacidad observable** (a qué sirve): las tres proyecciones que leen el
+  journal de una ejecución y el `inspect --profile|--explain|--telemetry` que
+  las entrega al operador.
+- **Instrumento más barato que puede fallar**: filas unitarias de las tres
+  proyecciones más una fila del resolutor puro. Sin CLI, sin ficheros, sin
+  reloj, sin proceso: la garantía es una decisión sobre una lista de
+  eventos, y esa es la forma más barata de comprobar una decisión.
+
+El UAT efímero **sí** se ejecutó, y midió lo único que un UAT puede medir: un
+**hecho**. El escenario de tres ramas vivió en el directorio del ciclo
+(`$XDG_STATE_HOME/pipelinek/verification-cycles/b2-parallel-telemetry-2026-10-25/`),
+produjo el journal que se analiza arriba y se **descartó** al cerrar el ciclo. No
+sustituye a la garantía: un UAT no comprueba una decisión pura, comprueba
+que la máquina produce el caso. La decisión de regresión es **PROMOTE** —la
+protección permanente son las filas unitarias, que son más baratas y más
+precisas que un escenario de CLI— y el cierre de `regression-promotion` queda
+así:
+
+| garantía | original | sustituto o justificación | evidencia | decisión | coste | riesgo |
+|---|---|---|---|---|---|---|
+| una atribución, tres respuestas | tres proyecciones con tres reglas | filas unitarias de perfil, `explain`, telemetría y del resolutor | 3 mutaciones, 7, 4 y 1 filas rojas (§ abajo) | **PROMOTE** | 38 tests, 16 s | ninguno: la garantía es pura y el instrumento la cubre entera |
+
+**Las tres mutaciones, vistas en rojo.** Un verde que nunca se ha visto rojo no
+es evidencia, así que el resolver se rompió tres veces —en las dos direcciones
+posibles de la desambiguación, y una vez en el consumidor que quedaba
+asimétrico— y se leyó el fichero de vuelta para probar que la mutación estaba
+aplicada:
+
+| mutación | qué rompe | filas que se puso en rojo |
+|---|---|---|
+| **M-A** — el primer candidato gana (el defecto de la telemetría) | el nombre deja de desambiguar y la ambigüedad se resuelve por orden de lista | **7**: `StepAttributionTest` ×2 (las ramas en paralelo; un nombre que no selecciona nada), `RunTelemetryTest` ×2 (ambigüedad; ramas en paralelo), `RunCostProfileTest` ×2 (ambigüedad; ramas en paralelo), `RunExplainTest` ×1 (ambigüedad) |
+| **M-B** — el nombre nunca desambigua (la sobre-corrección) | la desambiguación por nombre desaparece | **4**: `StepAttributionTest` ×1, `RunTelemetryTest` ×1, `RunCostProfileTest` ×1, `RunExplainTest` ×1 —todas las de las ramas en paralelo |
+| **M-C** — el `explain` confiesa sólo la exclusión del fallo | un `StepFinished` ambiguo vuelve a reportar como «nunca cerrado» un paso que sí cerró | **1**: `RunExplainTest` ×1 (`an ambiguous finish leaves no candidate reported as never closed`) |
+
+En ninguna de las tres hubo daño colateral: 38 tests, 7 rojos con M-A, 4 con
+M-B y 1 con M-C, y los demás en verde. Una fila que **no** se puso roja con M-A
+y sí con M-B es lo que hace que no sea vacía: la fila del `explain` sobre las
+ramas en paralelo.
+
+**La asimetría que M-C encontró.** El resolver compartido era correcto, pero
+su consumidor del `explain` no lo era del todo: la exclusión del ordinal —«un
+terminal que no nombró exactamente un paso no permite decir que ese paso nunca
+cerró»— **sólo estaba en la rama del fallo**, no en la del `StepFinished`. Un
+terminal de fin ambiguo —una etapa paralela cuyo terminal trae el nombre
+genérico `"sh"`, que es lo que lleva un fallo de `sh`— podía seguir
+produciendo un `step-never-closed` **falso** sobre una rama que sí había
+cerrado. Es la misma forma de mentira que la tabla de abajo ya señalaba en el
+`explain` viejo, y por eso la fila que la vigila es una etapa paralela con un
+terminal de nombre genérico: sin nombre que desambigüe, el terminal **no
+pertenece a ninguna** de las ramas, y ninguna puede reportarse como no cerrada.
+
+**La diferencia, medida en el CLI sobre el mismo journal.** La misma ejecución
+—run `56e04587-98df-4f8b-81d1-159003285595`, el escenario de tres ramas— leída
+con la distribución **vieja** (`7476bbc10`, construida en un worktree descartado)
+y con la **nueva**:
+
+| informe | `7476bbc10` (tres reglas) | el resolutor único |
+|---|---|---|
+| perfil | `outcome=partial reasons=dangling-interval measured=1/7` — `step-dispatch bounded >=16 ms (bounded-by-last-observed-event)` | `outcome=complete measured=2/7` — `step-dispatch series n=3 total=14 ms median=5 ms` |
+| `explain` | `inference step-never-closed step=parallel-branches/branch-b/echo-0 (#9)` + `inference attribution-ambiguous count=3 (#22)` | sólo `fact run-ended outcome=success` — ninguna inferencia |
+| telemetría | tres duraciones `5, 5, 4` ms: la primera rama abierta se llevó el primer terminal | tres duraciones `4, 5, 5` ms: cada terminal midió **su** rama |
+
+La fila del `explain` es la que duele: el informe viejo decía al operador que
+una rama **nunca cerró** —y sí cerró— y que tres terminales **no pudieron
+nombrar** su paso, en una ejecución donde cada terminal nombraba el suyo. Eso
+no es una diferencia de forma: es una afirmación falsa sobre la ejecución.
+
+**Lo que queda abierto, dicho con honestidad.**
+
+- **La mitad de `AUD-B2` que no es esto.** Quedan el **fallback de caché por
+  origen y tipo** —hoy se decide por la cadena
+  `CachingJvmScriptingHost.UNLOADED_ARTIFACT_MESSAGE`, que es un texto— y la
+  **prueba de que la clave v3 por contenido es consumible** desde un test
+  unitario. Ninguna de las dos se ha tocado.
+- **El `spanId` de una etapa paralela sigue siendo el mismo para sus ramas.**
+  `spanId = Sha256.ofText("span/$traceId/step/$stage/$step")` no lleva el
+  nombre, así que las tres ramas de un stage paralelo exportan **tres** fines
+  de span con el **mismo** identificador: un export que dice «un paso, tres
+  duraciones». Eso pertenece a `AUD-B3` (`spanId` robusto) y **no** se ha
+  tocado aquí; se anota porque esta medición lo ha dejado a la vista.
+- **La puerta completa no se ha ejecutado sobre este árbol.** Lo que se ha
+  ejecutado son: la compilación con `detekt`, `detektTest` y `apiCheck`
+  (`60 s`), y las 38 filas de las cuatro clases tocadas (`16 s`, 0 fallos,
+  `tests=rewritten:38 read:0`). Ambas son **corridas de subconjunto** y su
+  línea de veredicto lo dice (`PASS (subset)`); la puerta sin filtros —con
+  `installDist`, los tests de todos los módulos y los escenarios de `examples/`—
+  sigue siendo `NOT_RUN` sobre este árbol, y su cifra no se reusa de ningún
+  otro árbol.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite

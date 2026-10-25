@@ -10643,6 +10643,63 @@ más precisas que un escenario de CLI.
   evidencia de la puerta, y su reloj no se compara contra los 900 s.
 
 
+### 2.93 La puerta completa, ejecutada entera y sin filtros, sobre el árbol de la caché por su origen
+
+La puerta se ejecutó **una vez, entera y sin filtros**, sobre el árbol ya
+comiteado —el que lleva la caché cayendo por su origen (§2.92)— con
+`timeout 900 ./scripts/verify-all.sh` desde la raíz del repositorio. Su línea
+de veredicto, copiada tal cual:
+
+```
+PASS  sha=91ddaddb1a880baa428f43d0e810911f65f1d0c1  elapsed=176s  budget=900s  tests=rewritten:1316 read:0  scenarios=observed:61 executed:61
+```
+
+Lo que dice esa línea, campo por campo, para que no se lea de más:
+
+| campo | valor | qué afirma |
+|---|---|---|
+| `sha` | `91ddaddb1` | el árbol medido es el comiteado: `91ddaddb1` es el commit que documenta la §2.92, sobre `5826a4d22` (el cambio de la caché) |
+| `elapsed` | **176 s** | contra un presupuesto de 900 s |
+| `tests=rewritten:1316 read:0` | 1316 | los 1316 tests los **escribió esta corrida** (`read:0`: ninguno leído de una anterior) |
+| `scenarios=observed:61 executed:61` | 61 | los 61 escenarios se ejecutaron **y** se observaron los 61: 61 de 61 comprobaron una garantía |
+| `read:0` | 0 | ninguna cifra de esta línea viene de un resultado cacheado de otra invocación |
+
+**El censo de LOC, sobre el mismo árbol** (`VERIFY_LOC` se cuenta sobre ficheros
+**trackeados**, así que mide un árbol comiteado y no uno sucio):
+
+```
+  VERIFY_LOC   = 24753
+  PRODUCT_LOC  = 70740
+  ratio        = 0.350 (limit 2)
+```
+
+El desglose que el censo imprime deja ver de dónde sale cada número: 718
+ficheros de producción, 162 de tests unitarios, 61 pipelines E2E, 1 lanzador,
+1 script de presupuesto, 1 punto de entrada, 1 comprobación de consumidor
+externo, 1 de firma de etiqueta, 30 ficheros de script de build y 37 de
+plugins de ejemplo. El módulo con tests permanentes es
+`pipeline-application` (4856 / 25419 = 0.191). El presupuesto es 2; el
+resultado es 0.350.
+
+**Lo que la puerta cubrió, etapa por etapa.** La preparación (limpieza de
+salidas de build) tardó 14 s; la etapa 1 —compilación, `detekt`, `detektTest`,
+`apiCheck` e `installDist`— 37 s; la etapa 2 —los tests unitarios permanentes
+de los 25 módulos con test— 23 s y 182 informes JUnit; la etapa 3 —los 61
+escenarios de `examples/`— 98 s (668,4 s de tiempo de escenario, medidos en
+paralelo; el más lento, `security/14-credentials-bindings.pipeline.kts`, tardó
+26,6 s); la etapa 4 —el censo de LOC— y la 4b —la procedencia de los
+comentarios— 4 s. La etapa 5 cerró en **176 s** contra los 900 s.
+
+**Lo que esta puerta no dice.** No certifica nada externo: no hay
+certificador independiente, ni publicación, ni firma de etiqueta, ni instalación
+desde un artefacto publicado. La etapa 1 ejecutó `apiCheck`, que compara la
+superficie publicada contra su base de referencia **dentro del repositorio** —
+eso es compatibilidad de ABI interna, no una garantía de release. Y las
+cifras de esta puerta son **locales**: un certificador externo, si algún día
+lo hay, tiene su propia latencia y se informará por separado, nunca
+disfrazado como parte de este `PASS`.
+
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite
   no crea directorios, así que un nombre que todavía no está es una instrucción que el producto

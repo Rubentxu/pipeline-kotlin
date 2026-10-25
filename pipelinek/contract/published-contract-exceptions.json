@@ -565,6 +565,26 @@
       ],
       "removal_boundary": "the property may be deprecated once every refusal that needs it carries the facts some other way; until then a diverged body has to be able to say which two bodies diverged",
       "supersedes": null
+    },
+    {
+      "module": "pipeline-runtime-api",
+      "sha": "4458436bfb9bb60d5b9238ee21a4324fd418c77f",
+      "surface": "TelemetryPolicy, TelemetryTrace, RunTelemetryKt.DIMENSION_OVERFLOW and the redactAndLimit(TelemetryTrace, TelemetryPolicy) overload",
+      "change": "added the third integer to the TelemetryPolicy constructor — (Set, Set, Int, Int) became (Set, Set, Int, Int, Int) — together with component5 and getMaxDistinctValuesPerDimension; added the data class TelemetryTrace (runId, traceId, signals) with its companion traceIdOf, added the overload redactAndLimit(TelemetryTrace, TelemetryPolicy), and added the constant DIMENSION_OVERFLOW",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "A SOURCE break for destructuring and a BINARY break for compiled consumers: the four-argument TelemetryPolicy constructor disappears from the ABI dump, so an artifact compiled against the previous SHA that constructs or copies a TelemetryPolicy receives a NoSuchMethodError. Rebuilding fixes it.",
+        "",
+        "Why the third integer and not a constant: the cardinality cap is a POLICY, and a policy written as a constant can only be changed by changing the code that reads it. The alternative considered and rejected — capping the distinct values of a dimension inside the single-signal reducer — was the cheaper change, and the wrong one: it would have made the cap a convention of the implementation instead of a decision the caller makes, names and tightens.",
+        "",
+        "Why TelemetryTrace is a NEW public type and not a change to an existing one: the export is not a list of signals, it is a list of signals that BELONG to a trace. Without a carrier the trace id had to travel beside the signals as a separate argument, and every consumer that forgot it produced an export whose lines could not be attributed to a run — which is exactly the hole AUD-B3 measured.",
+        "",
+        "The overload redactAndLimit(TelemetryTrace, TelemetryPolicy) exists for the same reason: the cardinality cap is a property of the export as a WHOLE — the values of a dimension are counted across every signal of the trace — and a per-signal reducer cannot count them. The single-signal overload is untouched, so a consumer that only ever had signals keeps compiling.",
+        "",
+        "Nothing about the DURABLE WIRE changed: the telemetry export is a projection of the persisted events and not a format any consumer resolves from the artifact. What broke is the compiled call, not a recorded row."
+      ],
+      "removal_boundary": "the added integer may be given a default only when every caller that has to widen the cap can be recompiled; until then a consumer that constructs a TelemetryPolicy has to say what its cardinality budget is",
+      "supersedes": null
     }
   ]
 }

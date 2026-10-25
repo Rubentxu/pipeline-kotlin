@@ -14,6 +14,42 @@ data class CacheKey(
     companion object {
         const val V1 = "v1"
         const val V2 = "v2"
+        const val V3 = "v3"
+
+        /**
+         * The `v3` algorithm: an identity over verified content.
+         *
+         * Where `v2` hashed a joined string of classpath paths, `v3` hashes
+         * each classpath entry's actual bytes through the manifest the caller
+         * verified, so the same path holding different bytes is a different
+         * compilation. The pre-image names its algorithm domain first, then
+         * frames every dimension; flags and artifacts are one part each, in
+         * order, for the same reason `v2` frames them: a join would
+         * reintroduce the ambiguity framing exists to remove.
+         * A `v2` value is never read as a `v3`: the labels differ, the
+         * pre-images differ, and a cache holding `v2` entries simply misses.
+         */
+        object v3 {
+            private const val DOMAIN = "pipelinek-compilation-identity/sha256/framed"
+
+            fun compute(manifest: CompilationInputManifest): CacheKey = CacheKey(
+                framedDigest(
+                    buildList {
+                        add(DOMAIN)
+                        add(manifest.sourceDigest)
+                        add(manifest.compilerIdentity)
+                        add(manifest.adapterIdentity)
+                        addAll(manifest.compilerFlags)
+                        manifest.orderedClasspath.forEach { artifact ->
+                            add(artifact.sha256)
+                            add(artifact.sizeBytes.toString())
+                        }
+                    },
+                ),
+                V3,
+            )
+        }
+
 
         /**
          * Joins parts with `|`, then SHA-256s bytes

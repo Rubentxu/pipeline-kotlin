@@ -967,10 +967,41 @@ public final class dev/rubentxu/pipeline/v2/dsl/WhenGateDslKt {
 	public static final fun whenNot (Ldev/rubentxu/pipeline/v2/dsl/StageScope;Ldev/rubentxu/pipeline/v2/domain/directive/WhenPredicate;)V
 }
 
+public abstract interface class dev/rubentxu/pipeline/v2/scripting/CacheIdentity {
+	public abstract fun getKey ()Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/CacheIdentity$Unavailable : dev/rubentxu/pipeline/v2/scripting/CacheIdentity {
+	public fun <init> (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+	public final fun copy (Ljava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;)Ldev/rubentxu/pipeline/v2/scripting/CacheIdentity$Unavailable;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/CacheIdentity$Unavailable;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/CacheIdentity$Unavailable;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKey ()Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+	public final fun getReason ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/CacheIdentity$Verified : dev/rubentxu/pipeline/v2/scripting/CacheIdentity {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/scripting/CompilationInputManifest;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/scripting/CompilationInputManifest;
+	public final fun component2 ()Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/scripting/CompilationInputManifest;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;)Ldev/rubentxu/pipeline/v2/scripting/CacheIdentity$Verified;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/CacheIdentity$Verified;Ldev/rubentxu/pipeline/v2/scripting/CompilationInputManifest;Ldev/rubentxu/pipeline/v2/scripting/CacheKey;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/CacheIdentity$Verified;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getKey ()Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+	public final fun getManifest ()Ldev/rubentxu/pipeline/v2/scripting/CompilationInputManifest;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/scripting/CacheKey {
 	public static final field Companion Ldev/rubentxu/pipeline/v2/scripting/CacheKey$Companion;
 	public static final field V1 Ljava/lang/String;
 	public static final field V2 Ljava/lang/String;
+	public static final field V3 Ljava/lang/String;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
@@ -997,6 +1028,39 @@ public final class dev/rubentxu/pipeline/v2/scripting/CacheKey$Companion$v2 {
 	public final fun compute (Ldev/rubentxu/pipeline/v2/scripting/CompilationIdentity;)Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
 }
 
+public final class dev/rubentxu/pipeline/v2/scripting/CacheKey$Companion$v3 {
+	public static final field INSTANCE Ldev/rubentxu/pipeline/v2/scripting/CacheKey$Companion$v3;
+	public final fun compute (Ldev/rubentxu/pipeline/v2/scripting/CompilationInputManifest;)Ldev/rubentxu/pipeline/v2/scripting/CacheKey;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ClasspathArtifact {
+	public fun <init> (Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun copy (Ljava/lang/String;J)Ldev/rubentxu/pipeline/v2/scripting/ClasspathArtifact;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ClasspathArtifact;Ljava/lang/String;JILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ClasspathArtifact;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSha256 ()Ljava/lang/String;
+	public final fun getSizeBytes ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/ClasspathEntry {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/Long;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;)Ldev/rubentxu/pipeline/v2/scripting/ClasspathEntry;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/ClasspathEntry;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Long;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/ClasspathEntry;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCanonicalPath ()Ljava/lang/String;
+	public final fun getSha256 ()Ljava/lang/String;
+	public final fun getSizeBytes ()Ljava/lang/Long;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/scripting/CompilationIdentity {
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
 	public final fun component1 ()Ljava/lang/String;
@@ -1012,6 +1076,25 @@ public final class dev/rubentxu/pipeline/v2/scripting/CompilationIdentity {
 	public final fun getHostVersion ()Ljava/lang/String;
 	public final fun getKotlinVersion ()Ljava/lang/String;
 	public final fun getPipelineSource ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/CompilationInputManifest {
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/util/List;
+	public final fun component5 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/scripting/CompilationInputManifest;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/scripting/CompilationInputManifest;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/scripting/CompilationInputManifest;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAdapterIdentity ()Ljava/lang/String;
+	public final fun getCompilerFlags ()Ljava/util/List;
+	public final fun getCompilerIdentity ()Ljava/lang/String;
+	public final fun getOrderedClasspath ()Ljava/util/List;
+	public final fun getSourceDigest ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -1498,5 +1581,9 @@ public final class dev/rubentxu/pipeline/v2/scripting/ScriptingDiagnostic {
 
 public abstract interface class dev/rubentxu/pipeline/v2/scripting/ScriptingHost {
 	public abstract fun compile (Ldev/rubentxu/pipeline/v2/scripting/ScriptDefinition;)Ldev/rubentxu/pipeline/v2/scripting/ScriptCompilationResult;
+}
+
+public final class dev/rubentxu/pipeline/v2/scripting/VerifiedCompilationIdentityKt {
+	public static final fun verifyCompilationIdentity (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/scripting/CacheIdentity;
 }
 

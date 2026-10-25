@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
+import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.events.NullEventSink
 import java.io.File
 import java.time.Instant
@@ -135,7 +136,6 @@ class Kotlin24ScriptingHost(
         // We resolve to absolute canonical paths so the cache key stays stable
         // across relative/absolute invocations of the same logical script.
         val classpathFiles = definition.classpath.map { File(it).canonicalFile }
-        val sortedClasspath = classpathFiles.map { it.canonicalPath }.sorted().joinToString(",")
 
         // (Pure Builder Consumption Gate)
         // WHY `evalWithTemplate` AND NOT A CONFIGURATION
@@ -171,11 +171,18 @@ class Kotlin24ScriptingHost(
         // handed to the cache (as the store key) and to the emitted event. A key
         // derived inside the caching host instead would be a second derivation
         // of one fact, and the two could disagree without any visible symptom.
-        val cacheKey = cacheKeyFor(scriptText, sortedClasspath)
+        // The identity is content-verified: each classpath entry contributes
+        // its digest, not its path. When an entry's content cannot be read,
+        // there is no verified identity, and the compilation runs with the
+        // cache disabled rather than reuse an artifact it cannot vouch for.
+        val identity = cacheIdentityFor(scriptText, classpathFiles)
+        val cacheKey = identity.key
+        val cacheForThisCompilation =
+            if (identity is CacheIdentity.Verified) cache else CompiledScriptCache.Disabled
 
         // A fresh host per compilation: the cache key is fixed data for this one
         // compilation, so this object carries no mutable state across compiles.
-        val host = CachingJvmScriptingHost(cache, cacheKey)
+        val host = CachingJvmScriptingHost(cacheForThisCompilation, cacheKey)
 
         val rwd: ResultWithDiagnostics<*> = try {
             host.evalWithTemplate<Any>(
@@ -222,7 +229,7 @@ class Kotlin24ScriptingHost(
             {},
         )
         } catch (t: Throwable) {
-            return compilationFailure(t, effectiveRunId, scriptText, sortedClasspath, definition)
+            return compilationFailure(t, effectiveRunId, identity, definition)
         }
 
         val compilationFinishedAt = Instant.now()
@@ -302,8 +309,7 @@ class Kotlin24ScriptingHost(
     private fun compilationFailure(
         t: Throwable,
         effectiveRunId: String,
-        scriptText: String,
-        sortedClasspath: String,
+        identity: CacheIdentity,
         definition: ScriptDefinition,
     ): ScriptCompilationResult.Failure {
         val diag = ScriptingDiagnostic(
@@ -313,10 +319,10 @@ class Kotlin24ScriptingHost(
             column = 0,
             path = definition.sourcePath?.toString() ?: "<inline>",
         )
-        // One key, used by BOTH the event and the result. These were two independent
-        // hand-written constructions of the same expression; nothing forced them to agree, so
-        // a future edit to one could report a compilation identity the other denied.
-        val cacheKey = cacheKeyFor(scriptText, sortedClasspath)
+        // One key, computed once before the compilation and used by BOTH the
+        // event and the result. Re-deriving it here would be a second
+        // construction of the same fact, free to disagree with the first.
+        val cacheKey = identity.key
         eventSink.append(
             CompilationFinished(
                 eventId = UUID.randomUUID().toString(),
@@ -334,25 +340,32 @@ class Kotlin24ScriptingHost(
     }
 
     /**
-     * The one place this host derives a compilation identity.
-     * It was three hand-written constructions of the same expression — in [compile] and twice in
-     * [compilationFailure] — and each one had to remember the same four dimensions. That is the
-     * Duplication `Sha256` was created to remove for digesting, one layer up: a divergence
-     * between two spellings is a divergence nobody notices until the keys disagree.
+     * The one place this host establishes a compilation identity.
      * Reading [compilerFlags] from here rather than from the caller is what makes the option
      * dimension unskippable. It used to be covered only by the [hostVersion] bump discipline,
      * which is a comment asking every future author to remember something.
-*/
-    private fun cacheKeyFor(scriptText: String, sortedClasspath: String): CacheKey =
-        CacheKey.Companion.v2.compute(
-            CompilationIdentity(
-                pipelineSource = scriptText,
-                kotlinVersion = kotlinVersion,
-                hostVersion = hostVersion,
-                approvedClasspath = sortedClasspath,
-                compilerOptions = compilerFlags,
-            )
+     * The file reads are the adapter's one effect here: an entry whose bytes
+     * cannot be read yields no digest, which the verifier turns into an
+     * unavailable identity. The digest is the authority and the byte count a
+     * companion fact; both are read before any compilation begins.
+     */
+    private fun cacheIdentityFor(scriptText: String, classpathFiles: List<File>): CacheIdentity {
+        val entries = classpathFiles.map { file ->
+            val digest = try {
+                Sha256.ofFile(file.toPath())
+            } catch (_: java.io.IOException) {
+                null
+            }
+            ClasspathEntry(file.canonicalPath, digest, digest?.let { file.length() })
+        }
+        return verifyCompilationIdentity(
+            sourceDigest = Sha256.ofText(scriptText),
+            compilerIdentity = kotlinVersion,
+            adapterIdentity = hostVersion,
+            compilerFlags = compilerFlags,
+            entries = entries,
         )
+    }
 
     private fun mapDiagnostic(diag: ScriptDiagnostic): ScriptingDiagnostic {
         val severity = when (diag.severity) {

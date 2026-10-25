@@ -340,16 +340,6 @@ class Kotlin24ScriptingHost(
     }
 
     /**
-     * The one place this host establishes a compilation identity.
-     * Reading [compilerFlags] from here rather than from the caller is what makes the option
-     * dimension unskippable. It used to be covered only by the [hostVersion] bump discipline,
-     * which is a comment asking every future author to remember something.
-     * The file reads are the adapter's one effect here: an entry whose bytes
-     * cannot be read yields no digest, which the verifier turns into an
-     * unavailable identity. The digest is the authority and the byte count a
-     * companion fact; both are read before any compilation begins.
-     */
-    /**
      * The JVM's own classpath as canonical files, resolved once per host:
      * the process lives and dies with one classpath, and re-reading a
      * constant per compilation would be pure cost. Only regular files are
@@ -363,7 +353,23 @@ class Kotlin24ScriptingHost(
             .map { File(it).canonicalFile }
             .filter { it.isFile }
 
-    private fun cacheIdentityFor(scriptText: String, classpathFiles: List<File>): CacheIdentity {
+    /**
+     * The one place this host establishes a compilation identity.
+     * Reading [compilerFlags] from here rather than from the caller is what makes the option
+     * dimension unskippable. It used to be covered only by the [hostVersion] bump discipline,
+     * which is a comment asking every future author to remember something.
+     * The file reads are the adapter's one effect here: an entry whose bytes
+     * cannot be read yields no digest, which the verifier turns into an
+     * unavailable identity. The digest is the authority and the byte count a
+     * companion fact; both are read before any compilation begins.
+     *
+     * The visibility is `internal` and not `private` for one reason: the cache's
+     * promise is about this value — the same key must mean the same compilation —
+     * and a promise that no check can read is a promise that no check can keep.
+     * The production path calls this very function, so what a check reads here
+     * is the decision the product makes and not a second derivation of it.
+     */
+    internal fun cacheIdentityFor(scriptText: String, classpathFiles: List<File>): CacheIdentity {
         // The compilation classpath is the JVM's own context PLUS the
         // per-call entries, in that resolution order — so the identity is
         // built over exactly the same list, and a swapped jar anywhere in

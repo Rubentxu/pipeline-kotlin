@@ -179,7 +179,7 @@ object RunCostReport {
     }
 
     fun jsonLines(runId: String, outcome: ProfileOutcome): List<String> {
-        val rows = outcome.costs.joinToString(",\n") { cost ->
+        val rows = outcome.costs.map { cost ->
             val evidence = when (val e = cost.evidence) {
                 is ResolvedEvidence.Measured ->
                     """{"state":"measured","startMs":${e.duration.startAtMs},"endMs":${e.duration.endAtMs}}"""
@@ -192,19 +192,25 @@ object RunCostReport {
 
                 is ResolvedEvidence.Unavailable -> """{"state":"unavailable","reason":"${reason(e.reason)}"}"""
             }
-            """    {"cost":"${cost.cost.id}","evidence":$evidence}"""
+            """{"cost":"${cost.cost.id}","evidence":$evidence}"""
         }
-        val result = when (outcome) {
-            is ProfileOutcome.Complete -> "\"complete\""
-            is ProfileOutcome.Partial ->
-                "\"partial\",\"reasons\":[${outcome.reasons.joinToString(",") { "\"${it.id}\"" }}]"
-        } + ",\"measured\":${outcome.coverage.measured.size},\"total\":${outcome.coverage.total}"
-        return listOf(
-            "{\"schema\":\"runtime.profile.v1\",\"runId\":\"$runId\",\"outcome\":$result,",
-            " \"costs\":[",
-            rows,
-            " ]}",
-        )
+        // One JSON object per line, the shape every report of this surface
+        // uses: a consumer tails the stream and parses it line by line, and a
+        // document split across lines forces it to know each mode's personal
+        // layout. The first line names the report; each following line is one
+        // cost, with the evidence that resolved it.
+        val header = when (outcome) {
+            is ProfileOutcome.Complete ->
+                """{"schema":"runtime.profile.v1","runId":"${escapeJsonText(runId)}","outcome":"complete",""" +
+                    """"measured":${outcome.coverage.measured.size},"total":${outcome.coverage.total}}"""
+
+            is ProfileOutcome.Partial -> {
+                val reasons = outcome.reasons.joinToString(",") { "\"${it.id}\"" }
+                """{"schema":"runtime.profile.v1","runId":"${escapeJsonText(runId)}","outcome":"partial",""" +
+                    """"reasons":[$reasons],"measured":${outcome.coverage.measured.size},"total":${outcome.coverage.total}}"""
+            }
+        }
+        return listOf(header) + rows
     }
 
     private fun row(cost: ResolvedCost): String {

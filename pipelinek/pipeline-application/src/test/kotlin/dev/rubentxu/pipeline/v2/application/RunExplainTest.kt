@@ -9,6 +9,10 @@ import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.runtime.explain.Diagnosis
 import dev.rubentxu.pipeline.v2.runtime.explain.Fact
 import dev.rubentxu.pipeline.v2.runtime.explain.Inference
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -184,6 +188,61 @@ class RunExplainTest {
         assertTrue(line.contains("line one\\tline two\\rfinished\\u0001"))
         assertTrue(!line.contains("\t"))
         assertTrue(!line.contains("\r"))
+    }
+
+    @Test
+    fun `the JSON report is line-delimited and every line is a JSON object`() {
+        val events = listOf(
+            start(at = 0),
+            stepStart(at = 10, name = "deploy"),
+            stepFail(at = 20, name = "deploy", message = "exit 1"),
+            finished("failure", at = 30),
+        )
+        val diagnosis = RunExplainProjection.project(events) as Diagnosis.Explained
+
+        val lines = RunExplainReport.jsonLines("run-1", diagnosis)
+
+        // Every line parses ON ITS OWN. A consumer tails this stream and
+        // never has to know that a document was split across lines.
+        val parsed = lines.map { line -> Json.parseToJsonElement(line) }
+        assertTrue(parsed.all { it is JsonObject })
+        val header = parsed.first().jsonObject
+        assertEquals("runtime.explain.v1", header["schema"]?.jsonPrimitive?.content)
+        assertEquals("run-1", header["runId"]?.jsonPrimitive?.content)
+        assertEquals("ended-failure", header["status"]?.jsonPrimitive?.content)
+        // One line per finding, each saying whether it is a fact or an
+        // inference, and carrying the evidence that grounds it.
+        val findingLines = parsed.drop(1).map { it.jsonObject }
+        assertEquals(diagnosis.findings.size, findingLines.size)
+        assertTrue(findingLines.all { "kind" in it && "code" in it && "evidence" in it })
+        assertTrue(findingLines.any { it["kind"]?.jsonPrimitive?.content == "fact" })
+    }
+
+    @Test
+    fun `a run id carrying quotes and control characters does not break the JSON`() {
+        val events = listOf(start(at = 0), stepStart(at = 10), stepFail(at = 20), finished("failure", at = 30))
+        val diagnosis = RunExplainProjection.project(events)
+
+        val lines = RunExplainReport.jsonLines("run \"one\"\n\ttwo", diagnosis)
+
+        // A parser that throws IS the assertion.
+        lines.forEach { line -> Json.parseToJsonElement(line) }
+        val header = Json.parseToJsonElement(lines.first()).jsonObject
+        assertEquals("run \"one\"\n\ttwo", header["runId"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `an outcome word carrying quotes and control characters does not break the JSON`() {
+        val events = listOf(start(at = 0), stepStart(at = 10), stepFail(at = 20), finished("suc\"cess\t1", at = 30))
+        val diagnosis = RunExplainProjection.project(events)
+
+        val lines = RunExplainReport.jsonLines("run-1", diagnosis)
+
+        lines.forEach { line -> Json.parseToJsonElement(line) }
+        val ended = lines.map { Json.parseToJsonElement(it).jsonObject }
+            .mapNotNull { it["evidence"]?.jsonObject }
+            .first { "outcome" in it }
+        assertEquals("suc\"cess\t1", ended["outcome"]?.jsonPrimitive?.content)
     }
 
     @Test

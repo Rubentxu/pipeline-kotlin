@@ -133,22 +133,30 @@ object RunExplainReport {
         }
     }
 
+    /**
+     * The report as JSON Lines: the first line names the report, each
+     * following line is one finding. Every line is a complete JSON object,
+     * the same shape every report of this surface uses, so a consumer tails
+     * the stream and parses it line by line.
+     *
+     * Every text that reaches the output is escaped. The run id and the
+     * outcome word come from outside the report, and a raw quote or control
+     * character in either of them turns a line that looks like JSON into a
+     * line that stops being it.
+     */
     fun jsonLines(runId: String, diagnosis: Diagnosis): List<String> = when (diagnosis) {
         is Diagnosis.Refused -> listOf(
-            "{\"schema\":\"runtime.explain.v1\",\"runId\":\"$runId\",\"refused\":\"${diagnosis.code}\"}",
+            "{\"schema\":\"runtime.explain.v1\",\"runId\":\"${escapeJsonText(runId)}\",\"refused\":\"${escapeJsonText(diagnosis.code)}\"}",
         )
 
         is Diagnosis.Explained -> {
-            val findings = diagnosis.findings.joinToString(",\n") { f ->
+            val header =
+                "{\"schema\":\"runtime.explain.v1\",\"runId\":\"${escapeJsonText(runId)}\",\"status\":\"${escapeJsonText(diagnosis.status)}\"}"
+            val findings = diagnosis.findings.map { f ->
                 val kind = if (f is Fact) "fact" else "inference"
-                """    {"kind":"$kind","code":"${f.code}","evidence":{"lane":"${f.evidence.lane}","sequence":${f.evidence.sequence}}${payload(f)}}"""
+                """{"kind":"$kind","code":"${f.code}","evidence":{"lane":"${f.evidence.lane}","sequence":${f.evidence.sequence}${payload(f)}}}"""
             }
-            listOf(
-                "{\"schema\":\"runtime.explain.v1\",\"runId\":\"$runId\",\"status\":\"${diagnosis.status}\",",
-                " \"findings\":[",
-                findings,
-                " ]}",
-            )
+            listOf(header) + findings
         }
     }
 
@@ -177,8 +185,8 @@ object RunExplainReport {
     }
 
     private fun payload(f: Finding): String = when (f) {
-        is Fact.RunEnded -> ",\"outcome\":\"${f.outcome}\",\"atMs\":${f.atMs}"
-        is Fact.StepBroke -> ",\"failureKind\":\"${f.failureKind}\",\"step\":\"${escape(f.stepName)}\",\"message\":\"${escape(f.message)}\""
+        is Fact.RunEnded -> ",\"outcome\":\"${escape(f.outcome)}\",\"atMs\":${f.atMs}"
+        is Fact.StepBroke -> ",\"failureKind\":\"${escape(f.failureKind)}\",\"step\":\"${escape(f.stepName)}\",\"message\":\"${escape(f.message)}\""
         is Inference.RunStillOpen -> ",\"lastObservedAtMs\":${f.lastObservedAtMs}"
         is Inference.StepNeverClosed -> ",\"step\":\"${escape(f.stepName)}\""
         is Inference.AttributionAmbiguous -> ",\"count\":${f.count}"

@@ -16,6 +16,10 @@ import dev.rubentxu.pipeline.v2.runtime.profile.RunEvidence
 import dev.rubentxu.pipeline.v2.runtime.profile.RuntimeCost
 import dev.rubentxu.pipeline.v2.runtime.profile.summarize
 import dev.rubentxu.pipeline.v2.scripting.CacheKey
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -140,6 +144,49 @@ class RunCostProfileTest {
         // so instead of letting "complete" stand for both facts.
         assertTrue(rendered.contains("measured=1/7"))
         assertTrue(rendered.contains("\"schema\":\"runtime.profile.v1\""))
+    }
+
+    @Test
+    fun `the JSON report is line-delimited and every line is a JSON object`() {
+        val events = listOf(
+            run(at = 0),
+            compileStart(at = 10),
+            compileFinish(at = 210),
+            stepStart(at = 300),
+            stepFinish(at = 400),
+            finished("success", at = 600),
+        )
+        val outcome = summarize(RunCostProjection.project(events))
+
+        val lines = RunCostReport.jsonLines("run-1", outcome)
+
+        // Every line parses ON ITS OWN. A consumer tails this stream and
+        // never has to know that a document was split across lines.
+        val parsed = lines.map { line -> Json.parseToJsonElement(line) }
+        assertTrue(parsed.all { it is JsonObject })
+        val header = parsed.first().jsonObject
+        assertEquals("runtime.profile.v1", header["schema"]?.jsonPrimitive?.content)
+        assertEquals("run-1", header["runId"]?.jsonPrimitive?.content)
+        assertEquals("complete", header["outcome"]?.jsonPrimitive?.content)
+        // One line per cost, each naming its own cost and its evidence.
+        val costLines = parsed.drop(1).map { it.jsonObject }
+        assertEquals(outcome.costs.size, costLines.size)
+        assertTrue(costLines.all { "cost" in it && "evidence" in it })
+    }
+
+    @Test
+    fun `a run id carrying quotes and control characters does not break the JSON`() {
+        val events = listOf(run(at = 0), stepStart(at = 10), stepFinish(at = 20), finished("success", at = 30))
+        val outcome = summarize(RunCostProjection.project(events))
+
+        val lines = RunCostReport.jsonLines("run \"one\"\n\ttwo", outcome)
+
+        // A parser that throws IS the assertion: a raw quote or control
+        // character turns a line that looks like JSON into a line that
+        // stops being it.
+        lines.forEach { line -> Json.parseToJsonElement(line) }
+        val header = Json.parseToJsonElement(lines.first()).jsonObject
+        assertEquals("run \"one\"\n\ttwo", header["runId"]?.jsonPrimitive?.content)
     }
 
     @Test

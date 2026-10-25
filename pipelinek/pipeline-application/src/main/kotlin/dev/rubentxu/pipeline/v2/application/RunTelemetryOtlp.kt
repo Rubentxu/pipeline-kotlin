@@ -38,6 +38,12 @@ import kotlinx.serialization.json.putJsonObject
  * The resource carries the run's identity, so a collector that receives
  * the document can tell which run it describes without the caller having
  * to say so.
+ *
+ * The **shape** and the **encoding** are two concerns and live in two
+ * places: this object says what the document contains, and [OtlpValue]
+ * says how a value is written in the format's own types. The split is not
+ * decoration — it is what keeps the adapter's two halves readable, and it
+ * keeps the public surface at exactly one entry point.
  */
 object RunTelemetryOtlp {
 
@@ -50,10 +56,6 @@ object RunTelemetryOtlp {
     private val DURATION_BOUNDS_MS: List<Long> = listOf(1L, 5L, 10L, 50L, 100L, 500L, 1_000L, 5_000L, 30_000L)
 
     private const val SCOPE_NAME: String = "dev.rubentxu.pipeline.v2"
-
-    /** The OpenTelemetry status codes the export's statuses map onto. */
-    private const val STATUS_OK: Int = 1
-    private const val STATUS_ERROR: Int = 2
 
     /**
      * The document, as one line of JSON.
@@ -107,9 +109,9 @@ object RunTelemetryOtlp {
      */
     private fun resource(trace: TelemetryTrace): JsonObject = buildJsonObject {
         putJsonArray("attributes") {
-            add(attribute("service.name", stringValue("pipelinek")))
-            add(attribute("service.instance.id", stringValue(trace.runId)))
-            add(attribute("telemetry.schema", stringValue(TELEMETRY_SCHEMA)))
+            add(OtlpValue.attribute("service.name", OtlpValue.stringValue("pipelinek")))
+            add(OtlpValue.attribute("service.instance.id", OtlpValue.stringValue(trace.runId)))
+            add(OtlpValue.attribute("telemetry.schema", OtlpValue.stringValue(TELEMETRY_SCHEMA)))
         }
     }
 
@@ -134,14 +136,14 @@ object RunTelemetryOtlp {
                     put("spanId", start.spanId)
                     start.parentSpanId?.let { put("parentSpanId", it) }
                     put("name", start.name)
-                    put("startTimeUnixNano", nanos(start.startedAtMs))
-                    end?.let { put("endTimeUnixNano", nanos(it.endedAtMs)) }
+                    put("startTimeUnixNano", OtlpValue.nanos(start.startedAtMs))
+                    end?.let { put("endTimeUnixNano", OtlpValue.nanos(it.endedAtMs)) }
                     putJsonArray("attributes") {
-                        start.attributes.forEach { add(otlpAttribute(it)) }
+                        start.attributes.forEach { add(OtlpValue.of(it)) }
                     }
                     end?.let {
                         putJsonObject("status") {
-                            put("code", statusCode(it.status))
+                            put("code", OtlpValue.statusCode(it.status))
                             put("message", it.status)
                         }
                     }
@@ -187,7 +189,7 @@ object RunTelemetryOtlp {
                     buildJsonObject {
                         putJsonArray("attributes") {
                             dimensions.forEach { (key, dimension) ->
-                                add(attribute(key, stringValue(dimension)))
+                                add(OtlpValue.attribute(key, OtlpValue.stringValue(dimension)))
                             }
                         }
                         put("startTimeUnixNano", window.first)
@@ -214,7 +216,7 @@ object RunTelemetryOtlp {
                     buildJsonObject {
                         putJsonArray("attributes") {
                             dimensions.forEach { (key, dimension) ->
-                                add(attribute(key, stringValue(dimension)))
+                                add(OtlpValue.attribute(key, OtlpValue.stringValue(dimension)))
                             }
                         }
                         put("startTimeUnixNano", window.first)
@@ -262,10 +264,30 @@ object RunTelemetryOtlp {
         }
         val first = timestamps.minOrNull() ?: 0L
         val last = timestamps.maxOrNull() ?: 0L
-        return nanos(first) to nanos(last)
+        return OtlpValue.nanos(first) to OtlpValue.nanos(last)
     }
+}
 
-    private fun otlpAttribute(attribute: TelemetryAttribute): JsonObject = buildJsonObject {
+/**
+ * The encoders of the format's own value types.
+ *
+ * OpenTelemetry writes a value as a **union with exactly one arm** — a
+ * string, an integer, a boolean — and a number that is not a string loses
+ * precision on the way. These are the only places that know how each arm
+ * is spelled, and they are private to the adapter: the document they
+ * belong to is the product's whole public surface here.
+ */
+private object OtlpValue {
+
+    /** The OpenTelemetry status codes the export's statuses map onto. */
+    private const val STATUS_OK: Int = 1
+    private const val STATUS_ERROR: Int = 2
+
+    /**
+     * One attribute of a span, in the shape the format gives it: a key and
+     * the union with the value's own arm.
+     */
+    fun of(attribute: TelemetryAttribute): JsonObject = buildJsonObject {
         put("key", attribute.key)
         put(
             "value",
@@ -277,16 +299,17 @@ object RunTelemetryOtlp {
         )
     }
 
-    private fun attribute(key: String, value: JsonObject): JsonObject = buildJsonObject {
+    /** A key and an already-encoded value: the shape of a resource attribute. */
+    fun attribute(key: String, value: JsonObject): JsonObject = buildJsonObject {
         put("key", key)
         put("value", value)
     }
 
-    private fun stringValue(value: String): JsonObject = buildJsonObject { put("stringValue", value) }
+    fun stringValue(value: String): JsonObject = buildJsonObject { put("stringValue", value) }
 
-    private fun intValue(value: Long): JsonObject = buildJsonObject { put("intValue", value.toString()) }
+    fun intValue(value: Long): JsonObject = buildJsonObject { put("intValue", value.toString()) }
 
-    private fun boolValue(value: Boolean): JsonObject = buildJsonObject { put("boolValue", value) }
+    fun boolValue(value: Boolean): JsonObject = buildJsonObject { put("boolValue", value) }
 
     /**
      * A status word mapped onto the two codes the format has: a run that
@@ -294,12 +317,12 @@ object RunTelemetryOtlp {
      * unstable— is an error. The word itself travels in the message, so
      * the coarse code never hides the difference.
      */
-    private fun statusCode(status: String): Int = if (status == "success") STATUS_OK else STATUS_ERROR
+    fun statusCode(status: String): Int = if (status == "success") STATUS_OK else STATUS_ERROR
 
     /**
      * Milliseconds as the nanoseconds the format asks for, as a string: the
      * format encodes its 64-bit integers as strings, and a number would be
      * read as a double and lose precision in the last digits.
      */
-    private fun nanos(millis: Long): String = (millis * 1_000_000L).toString()
+    fun nanos(millis: Long): String = (millis * 1_000_000L).toString()
 }

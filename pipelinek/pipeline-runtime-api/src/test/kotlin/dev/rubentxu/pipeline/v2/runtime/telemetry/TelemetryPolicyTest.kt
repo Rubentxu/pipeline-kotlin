@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.runtime.telemetry
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.fail
 import org.junit.jupiter.api.Test
 
 /**
@@ -77,7 +78,11 @@ class TelemetryPolicyTest {
 
         val redacted = redactAndLimit(signal, policy) as TelemetrySignal.Counter
 
-        assertEquals(policy.maxTextLength, redacted.dimensions["status"]!!.length)
+        // The dimension has to travel AND be shortened: a missing value is
+        // not a shortened one, and the failure says which of the two
+        // happened.
+        val shortened = redacted.dimensions["status"] ?: fail("the dimension did not travel at all")
+        assertEquals(policy.maxTextLength, shortened.length)
     }
 
     @Test

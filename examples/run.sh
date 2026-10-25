@@ -541,7 +541,7 @@ scenario_index=0
 # whole STAGE may take.
 #
 # The scenario clock defaults to 120 s. Measured over the whole suite, the
-# slowest scenario takes 21 s and the median 11 s, so the default is roughly
+# slowest scenario takes 21 s and the median 7,5 s, so the default is roughly
 # six times the worst case observed: it never fires on a healthy run, and it
 # fires long before the gate's own ceiling. A scenario that needs longer says
 # so with `//@ timeout <seconds>`.
@@ -1915,16 +1915,28 @@ run_scenario_body() {
     fi
 
     # A scenario that names its OWN plugin, or its OWN copy of the
-    # distribution, puts a path INSIDE THE CYCLE into its compilation
-    # classpath. The product's cache key includes that path, and the path is
-    # different in every cycle, so those artifacts can never be reused -- and
-    # reusing them would be unsafe besides, because a key built on a path
-    # cannot see that the file behind it changed.
+    # distribution, puts an artifact INSIDE THE CYCLE into its compilation
+    # classpath.
+    #
+    # The reason their cache is the cycle-local one is NOT the path. The
+    # product's cache key is by CONTENT -- the classpath enters it as digest
+    # and size, not as a path -- and that was measured: the same bytes in
+    # another path give the same key (section 2.94 of the ROADMAP).
+    #
+    # The reason is the BYTES: of the nine scenarios that name their own
+    # artifact, six rebuild it in every cycle, so its digest -- and with it
+    # the key -- changes every cycle, and an entry for them could never be
+    # served again. The other three are one that names a jar that does not
+    # exist, and two whose bytes do not move.
     #
     # So their cache is the cycle-local one: it dies with the cycle, and the
     # namespace the rest of the suite uses stays free of entries that could
     # never be served again. The export is local to this scenario's own
-    # subshell, so no other scenario inherits it.
+    # subshell, so no other scenario inherits it. What this forgoes is at
+    # most the compilation of those two scenarios -- measured, and left as a
+    # DEFER (section 2.96 of the ROADMAP), because moving per-cycle artifacts
+    # into a shared namespace is a cache-safety question, and those two run
+    # in parallel with the rest.
     if [[ -n "$plugin_jar" || -n "$distribution" ]]; then
         export PIPELINEK_SCRIPT_CACHE_DIR="$cycle_root/script-cache"
     fi
@@ -3397,8 +3409,22 @@ scenario_slug() {
 #
 # The serial run was measured, and it does not fit: 56 scenarios at a median of
 # about 7 s each reached scenario 49 of 56 when the stage clock of 780 s
-# expired, and a stage that stops is a gate that reports gaps. Eight workers
-# brings the same suite inside the stage clock on the same machine.
+# expired, and a stage that stops is a gate that reports gaps.
+#
+# The ceiling was then MEASURED on the reference host (64 cores, 94 GB), with
+# the whole suite of 62 scenarios, and with the same verdict every time -- 62 of
+# 62, 588 checks, and none of them asserting nothing:
+#
+#   workers   wall   the scenarios' own sum   what the contention does
+#        8    70 s                454,4 s        the ceiling that was in force
+#       16    50 s                524,0 s        two samples, 50 s both times
+#       32    64 s                765,3 s        every scenario 68% slower
+#
+# Sixteen is the knee: past it the scenarios start fighting for the machine and
+# the wall clock grows again. The peak RSS of the product's own processes at
+# sixteen workers was 3777 MB with 68 GB still free, so this ceiling is a
+# wall-clock choice and not a memory one. Eight workers was kept until this
+# measurement; it fit, and it was a guess nobody had checked.
 jobs_limit="${PIPELINEK_E2E_JOBS:-0}"
 if [[ ! "$jobs_limit" =~ ^[0-9]+$ ]]; then
     printf 'run.sh: PIPELINEK_E2E_JOBS needs a number, got: %s\n' "$jobs_limit" >&2
@@ -3406,7 +3432,7 @@ if [[ ! "$jobs_limit" =~ ^[0-9]+$ ]]; then
 fi
 if [[ "$jobs_limit" -eq 0 ]]; then
     cores="$(nproc 2>/dev/null || echo 4)"
-    (( cores > 8 )) && cores=8
+    (( cores > 16 )) && cores=16
     jobs_limit="$cores"
 fi
 

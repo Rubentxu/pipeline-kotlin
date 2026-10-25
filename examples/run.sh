@@ -192,19 +192,35 @@ trap cleanup EXIT
 #
 # A cache that outlives the cycle needs one thing the cycle-local one did
 # not: it must NEVER serve an artifact compiled against a different product.
-# The product's own cache key covers the script source, the Kotlin compiler
-# version, the compiler options and the PATH of the classpath jars -- but not
-# their CONTENT, and not the product's own bytes. Measured: two builds of
-# the same version in the same directory share one key, so a cache that
-# outlived the build would serve an artifact compiled against a product that
-# no longer exists. That gap is the product's own, and it is written down
-# there: the key declares two dimensions it cannot read.
+#
+# The product's own key covers that, and it covers it BY CONTENT. The key is
+# v3 (CacheKey.v3.compute), computed from a CompilationInputManifest whose
+# classpath entries are the JVM's own context classpath plus the per-call
+# entries, each hashed to its own digest and size, in order and with
+# multiplicity kept. The script's source, the compiler, the scripting adapter
+# and the compiler flags are dimensions of that same key. So for a
+# distribution run -- where the distribution's own jars ARE the JVM's context
+# classpath -- the product's own bytes are inside the key: two builds of the
+# same version in the same directory do NOT share a key when their bytes
+# differ. (Measured on this machine, because it is the premise the sentence
+# rests on: the distribution's start script puts every jar of lib/ on the
+# classpath explicitly, one entry per jar, so the host's own context
+# classpath really does contain all of them.)
+#
+# This paragraph used to claim the opposite -- that the key covered the PATH
+# of the classpath jars but not their CONTENT, and that it declared two
+# dimensions it could not read. That was v2, and it stopped being true when
+# the key moved to v3. A comment that outlives its subject is a comment that
+# lies.
 #
 # So the cache lives under a namespace named by the DIGEST of the
 # distribution that is going to run, by content. The same bytes reuse, and
 # any change to the bytes is another namespace and a cold compile. The
-# dimension the product's key lacks is supplied here, by the only party that
-# knows which distribution it just built.
+# namespace is now the harness's own belt rather than its only belt: it is
+# COARSER than the product's key (it ignores the order of the jars), so a
+# namespace that says "same distribution" cannot make the product reuse
+# something the product's own key would have refused. It can only cost a
+# cold compile; it cannot produce a wrong hit.
 #
 # A cache is not evidence and not a workspace: it holds compiled copies of
 # scripts, keyed by content, and deleting it costs time and nothing else.

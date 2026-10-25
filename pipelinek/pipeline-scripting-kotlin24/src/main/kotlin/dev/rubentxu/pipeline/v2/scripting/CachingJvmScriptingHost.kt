@@ -37,12 +37,16 @@ import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
  * usable. Measured on the installed CLI : a jar truncated to a
  * quarter of its bytes still loads — the entry the loader reads is at the front
  * of the file — and it fails at evaluation, not at load. The failure arrives as
- * a `RuntimeException("Compiled script is not loaded yet")` thrown by
+ * a `RuntimeException` thrown by
  * `KJvmCompiledScriptLazilyLoadedFromClasspath.getScriptOrError()`, which is why
  * the recovery below catches an exception rather than inspecting the result.
  * Because a hit never stored anything, the damaged entry then served that same
  * failure on every subsequent run — the exact opposite of the interface's
  * contract that every failure degrades to a miss.
+ * That failure is recognised by its **origin**, not by its text: the decision
+ * reads the frame the exception was raised from, and compares it with the
+ * loader's own class and method. The text of the message is upstream's, and a
+ * decision that reads it is a decision about a string this project does not own.
  * A throwable from this call is infrastructure, not the author's script: a script
  * whose body throws is reported by the evaluator as a `ResultValue.Error`, so it
  * arrives as a result rather than an exception. The catch is therefore narrowed
@@ -74,21 +78,55 @@ sealed interface EvaluationFailure {
     data object ScriptBody : EvaluationFailure
 }
 
-/** The lazy loader's own refusal, measured on truncated artifacts. */
-private const val UNLOADED_ARTIFACT_MESSAGE = "Compiled script is not loaded yet"
+/**
+ * The class that owns the refusal, named as a string because the scripting
+ * runtime declares it package-private: this project cannot reference the type,
+ * only the name it appears under in a stack frame.
+ *
+ * The name is a **contract observed, not a string owned**: the permanent test
+ * resolves it against the scripting runtime actually on the classpath, so an
+ * upstream move or rename turns the test red instead of leaving a rule that
+ * quietly stopped matching.
+ */
+internal const val UNLOADED_ARTIFACT_CLASS: String =
+    "kotlin.script.experimental.jvmhost.KJvmCompiledScriptLazilyLoadedFromClasspath"
+
+/** The method of [UNLOADED_ARTIFACT_CLASS] that raises the refusal. */
+internal const val UNLOADED_ARTIFACT_METHOD: String = "getScriptOrError"
 
 /**
- * Classify a throwable from evaluating a cache-loaded artifact. Pure: the
- * signature is compared, nothing is read, and anything unrecognized is the
- * script's own failure — the safe direction, because an unknown failure
- * mode is treated as "effects may have happened", never as "cache is stale".
+ * Classify a throwable from evaluating a cache-loaded artifact.
+ *
+ * The decision reads two things and nothing else: the **type** of the
+ * throwable and the **origin** it was raised from. The origin is the frame the
+ * exception was constructed in — the top of its stack trace — and the refusal
+ * that means "this artifact is damaged" is raised by exactly one method of
+ * exactly one class of the scripting runtime.
+ *
+ * It used to read the exception's *message* instead. That was a decision about
+ * a string this project does not own: the text is the runtime's, it could
+ * change without notice, and the test that guarded the rule asserted the very
+ * same literal — so the rule and its guard could have been wrong together and
+ * still green. Reading the origin removes the shared literal: the same message
+ * raised anywhere else is now somebody else's failure, and the failure of the
+ * real origin is recognised whatever the message says.
+ *
+ * Pure: nothing is read, nothing is loaded, and anything unrecognized is the
+ * script's own failure — the safe direction, because an unknown failure mode is
+ * treated as "effects may have happened", never as "cache is stale". An
+ * [Error] is never retriable, whatever frame it carries: an exhausted heap or
+ * a linkage failure is not a damaged cache, and recompiling would only ask for
+ * more of the same.
  */
-fun classifyEvaluationFailure(throwable: Throwable): EvaluationFailure =
-    if (throwable.message == UNLOADED_ARTIFACT_MESSAGE) {
+fun classifyEvaluationFailure(throwable: Throwable): EvaluationFailure {
+    if (throwable !is RuntimeException) return EvaluationFailure.ScriptBody
+    val origin = throwable.stackTrace.firstOrNull() ?: return EvaluationFailure.ScriptBody
+    return if (origin.className == UNLOADED_ARTIFACT_CLASS && origin.methodName == UNLOADED_ARTIFACT_METHOD) {
         EvaluationFailure.UnloadedArtifact
     } else {
         EvaluationFailure.ScriptBody
     }
+}
 
 class CachingJvmScriptingHost(
     private val cache: CompiledScriptCache,

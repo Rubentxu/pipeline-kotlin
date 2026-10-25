@@ -745,6 +745,7 @@ object CliParser {
         var profile = false
         var explain = false
         var telemetry = false
+        var otlp = false
 
         var i = 0
         while (i < args.size) {
@@ -755,6 +756,7 @@ object CliParser {
                 "--profile" -> profile = true
                 "--explain" -> explain = true
                 "--telemetry" -> telemetry = true
+                "--otlp" -> otlp = true
                 "--kind" -> {
                     kind = args.getOrNull(++i) ?: return rejectInspect("--kind requires a value")
                 }
@@ -823,6 +825,13 @@ object CliParser {
             return rejectInspect("a query carries one whole-run report; got ${modes.joinToString(" + ")}")
         }
 
+        // The OpenTelemetry shape is not a report of its own: it is another
+        // rendering of the telemetry report. Asked for alone, it would have
+        // no run to render.
+        if (otlp && !telemetry) {
+            return rejectInspect("--otlp renders the telemetry export; it requires --telemetry")
+        }
+
         return InspectParseResult.Parsed(
             CompiledInspectionQuery(
                 failed = failed,
@@ -840,6 +849,7 @@ object CliParser {
                 profile = profile,
                 explain = explain,
                 telemetry = telemetry,
+                otlp = otlp,
             ),
         )
     }

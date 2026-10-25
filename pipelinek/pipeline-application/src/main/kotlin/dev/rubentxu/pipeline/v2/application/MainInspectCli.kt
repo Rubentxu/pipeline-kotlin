@@ -64,7 +64,7 @@ object MainInspectCli {
             "[--context N] [--log-tail N] " +
             "[--fields STAGE,STEP,OUTCOME,MESSAGE,CONSOLETAIL] " +
             "[--format text|json] " +
-            "[--state] [--profile] [--explain] [--telemetry]"
+            "[--state] [--profile] [--explain] [--telemetry [--otlp]]"
 
     /**
      * The five dimensional columns a caller can request from the inspection document.
@@ -667,6 +667,11 @@ object MainInspectCli {
      * counters, all reduced to what the redaction policy allows. The output
      * is line-delimited JSON a collector can tail; reading it is optional
      * and the run that produced it neither knows nor cares.
+     *
+     * With `--otlp` the same export is rendered in the OpenTelemetry shape
+     * instead: one document, with the spans and the metrics a collector
+     * expects. It is the same export, not another one — the policy ran
+     * once, and the shape is the only thing that changed.
      */
     private fun reportRunTelemetry(runId: String, query: CompiledInspectionQuery): Int {
         val dbPath = query.dbPath
@@ -690,8 +695,12 @@ object MainInspectCli {
             return 2
         }
 
-        RunTelemetryReport.jsonLines(runId, RunTelemetryProjection.fromEvents(runId, events))
-            .forEach(::println)
+        val trace = RunTelemetryProjection.fromEvents(runId, events)
+        if (query.otlp) {
+            println(RunTelemetryOtlp.document(trace))
+            return 0
+        }
+        RunTelemetryReport.jsonLines(trace).forEach(::println)
         return 0
     }
 
@@ -789,6 +798,12 @@ data class CompiledInspectionQuery(
      * records: the fourth whole-run report mode.
      */
     val telemetry: Boolean = false,
+    /**
+     * Render the telemetry export in the OpenTelemetry shape instead of the
+     * line-delimited one. Not a mode of its own: it is another rendering of
+     * the telemetry export, so the parser refuses it without `--telemetry`.
+     */
+    val otlp: Boolean = false,
 )
 
 /** Result of [MainInspectCli.parseInspect]. */

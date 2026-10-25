@@ -69,4 +69,51 @@ class TelemetryPolicyTest {
         assertEquals(setOf("operation_kind", "status", "failure_class"), policy.allowedDimensionKeys)
         assertTrue(!policy.allowedAttributeKeys.contains("script.path"))
     }
+
+    @Test
+    fun `a dimension value longer than the budget is shortened`() {
+        val long = "x".repeat(200)
+        val signal = TelemetrySignal.Counter("pipelinek.run_outcome_total", 1, mapOf("status" to long))
+
+        val redacted = redactAndLimit(signal, policy) as TelemetrySignal.Counter
+
+        assertEquals(policy.maxTextLength, redacted.dimensions["status"]!!.length)
+    }
+
+    @Test
+    fun `a dimension whose values exceed the budget collapses into the overflow marker`() {
+        val tight = policy.copy(maxDistinctValuesPerDimension = 2)
+        val trace = TelemetryTrace(
+            runId = "run-1",
+            traceId = TelemetryTrace.traceIdOf("run-1"),
+            signals = (1..5).map { index ->
+                TelemetrySignal.Counter("pipelinek.run_outcome_total", 1, mapOf("status" to "status-$index"))
+            },
+        )
+
+        val redacted = redactAndLimit(trace, tight)
+
+        val values = redacted.signals.map { (it as TelemetrySignal.Counter).dimensions["status"] }
+        // The budget counts the marker among the values it admits: two
+        // distinct values travel, one of which is the marker. The first
+        // value is the one that was seen first, and the four that came
+        // after it say so rather than pretending to be distinct.
+        assertEquals(setOf("status-1", DIMENSION_OVERFLOW), values.toSet())
+        assertEquals(4, values.count { it == DIMENSION_OVERFLOW })
+        // The signals themselves still travel: a collapsed value is not a
+        // missing signal.
+        assertEquals(5, redacted.signals.size)
+        assertTrue(redacted.signals.all { (it as TelemetrySignal.Counter).value == 1L })
+    }
+
+    @Test
+    fun `the export keeps the run and the trace it describes`() {
+        val trace = TelemetryTrace("run-1", TelemetryTrace.traceIdOf("run-1"), listOf(span()))
+
+        val redacted = redactAndLimit(trace, policy)
+
+        assertEquals("run-1", redacted.runId)
+        assertEquals(trace.traceId, redacted.traceId)
+        assertEquals(1, redacted.signals.size)
+    }
 }

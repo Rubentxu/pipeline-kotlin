@@ -55,7 +55,10 @@ EXPECT_UID=""
 OUT_FILE=""
 
 usage() {
-    sed -n '2,45p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    # The header is printed as it is written, up to the first line that is
+    # not a comment. A hardcoded line range goes stale the moment the text
+    # grows, and a stale range truncates the instructions in silence.
+    awk 'NR > 1 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "${BASH_SOURCE[0]}"
     exit 2
 }
 

@@ -24,7 +24,14 @@
 # Usage:
 #   publish-tag.sh --tag <name> --candidate-id <sha256:...> \
 #       --expect-commit <sha> --fingerprint <FPR> --uid <uid> \
-#       --out <file> [--remote <name>]
+#       --out <file> [--remote <name>] [--at <commit>] [--promotes <tag>]
+#
+# --at <commit> places the tag on that commit instead of on HEAD. It is what
+# a STABLE promotion needs: the stable tag must point at the commit the
+# candidate was built from, and the release may be cut from a different HEAD.
+# --promotes <tag> names the tag this one promotes, and the name goes into
+# the tag's own message, so the tag says what it promotes instead of leaving
+# a reader to guess.
 #
 # Exit codes: 0 = the tag was signed, verified and pushed; 1 = refused;
 # 2 = usage error.
@@ -40,9 +47,14 @@ FINGERPRINT=""
 UID_VALUE=""
 OUT_FILE=""
 REMOTE="origin"
+AT_COMMIT=""
+PROMOTES=""
 
 usage() {
-    sed -n '2,28p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    # The header is printed as it is written, up to the first line that is
+    # not a comment. A hardcoded line range goes stale the moment the text
+    # grows, and a stale range truncates the instructions in silence.
+    awk 'NR > 1 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "${BASH_SOURCE[0]}"
     exit 2
 }
 
@@ -55,6 +67,8 @@ while [[ $# -gt 0 ]]; do
         --uid)           UID_VALUE="${2:-}"; shift 2 ;;
         --out)           OUT_FILE="${2:-}"; shift 2 ;;
         --remote)        REMOTE="${2:-}"; shift 2 ;;
+        --at)            AT_COMMIT="${2:-}"; shift 2 ;;
+        --promotes)      PROMOTES="${2:-}"; shift 2 ;;
         -h|--help)       usage ;;
         *) printf 'publish-tag: unknown argument %s\n' "$1" >&2; usage ;;
     esac
@@ -77,12 +91,33 @@ if ! git rev-parse --verify --quiet "${EXPECT_COMMIT}^{commit}" >/dev/null 2>&1;
     exit 2
 fi
 
+# The commit the tag is placed on, when the caller names one. It is resolved
+# HERE, before anything is signed, so a typo is a usage error and not a tag
+# that points somewhere surprising.
+if [[ -n "$AT_COMMIT" ]]; then
+    at_named="$AT_COMMIT"
+    if ! AT_COMMIT="$(git rev-parse --verify --quiet "${at_named}^{commit}" 2>/dev/null)"; then
+        printf 'publish-tag: the commit %s to tag is not in this repository\n' "$at_named" >&2
+        exit 2
+    fi
+    if [[ "$AT_COMMIT" != "$EXPECT_COMMIT" ]]; then
+        printf 'publish-tag: the commit to tag (%s) is not the expected commit (%s)\n' \
+            "$AT_COMMIT" "$EXPECT_COMMIT" >&2
+        printf '           a tag that points somewhere other than the expected commit is a\n' >&2
+        printf '           tag that says one thing and means another\n' >&2
+        exit 2
+    fi
+fi
+
 # ----------------------------------------------------------------------------
 # 1. Sign. If the key is not usable there is no fallback: the tag is not
 #    created at all, and the caller stops.
 # ----------------------------------------------------------------------------
 
 TAG_MESSAGE="PipelineK ${TAG} (candidate_id ${CANDIDATE_ID})"
+if [[ -n "$PROMOTES" ]]; then
+    TAG_MESSAGE="${TAG_MESSAGE} (promotes ${PROMOTES})"
+fi
 
 # The tagger is the repository's own identity, stated explicitly so the tag
 # does not inherit whatever identity the machine happens to be configured with.
@@ -93,8 +128,16 @@ if [[ -n "$tagger_name" && -n "$tagger_email" ]]; then
     tagger_args=(-c "user.name=${tagger_name}" -c "user.email=${tagger_email}")
 fi
 
-if ! git "${tagger_args[@]}" -c "user.signingkey=${FINGERPRINT}" \
-    tag -s "$TAG" -m "$TAG_MESSAGE"; then
+SIGN_RC=0
+if [[ -n "$AT_COMMIT" ]]; then
+    git "${tagger_args[@]}" -c "user.signingkey=${FINGERPRINT}" \
+        tag -s "$TAG" -m "$TAG_MESSAGE" "$AT_COMMIT" || SIGN_RC=$?
+else
+    git "${tagger_args[@]}" -c "user.signingkey=${FINGERPRINT}" \
+        tag -s "$TAG" -m "$TAG_MESSAGE" || SIGN_RC=$?
+fi
+
+if [[ "$SIGN_RC" != "0" ]]; then
     printf 'publish-tag: refusing — the tag could not be signed.\n' >&2
     printf '           An unsigned tag is what this path exists to stop shipping.\n' >&2
     printf '           No tag was created and nothing was pushed.\n' >&2

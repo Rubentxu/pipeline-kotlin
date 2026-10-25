@@ -17,7 +17,9 @@ una medición.
 <!-- BEGIN PIPELINEK RSO 2026-10-24 -->
 ## Programa RSO — rendimiento, seguridad y observabilidad (propuesta aditiva)
 
-**Base revisada:** `main` SHA `094acfdb1b9be58fbc26e2a33e7c35d17abed69f` (24-10-2026). Esta propuesta no reabre bloques B1..B4, no hereda afirmaciones del apéndice histórico y no declara ningún hito implementado. `AGENTS.md` y los contratos del código actual prevalecen. Antes de implementar, verificar HEAD, ramas, instalación, políticas, tests y CLI actuales.
+**Base revisada:** `main` SHA `dfba3342eab7732ee706c365db63960394886229` (25-10-2026). Esta propuesta no reabre bloques B1..B4, no hereda afirmaciones del apéndice histórico y no declara ningún hito implementado. `AGENTS.md` y los contratos del código actual prevalecen. Antes de implementar, verificar HEAD, ramas, instalación, políticas, tests y CLI actuales.
+
+**Los bloques de dos auditorías con nombres que chocan.** La auditoría técnica del 25-10-2026 nombra sus propios bloques `B1..B5`, y en este documento `B1..B4` ya significan otra cosa (§0, «Vista operativa»). Desde aquí los bloques de esa auditoría se escriben **`AUD-B1..AUD-B5`**, y los de este documento siguen siendo `B1..B4`: ningún bloque se renumera y ninguna referencia queda ambigua. El estado medido de los cinco está en §0; la parte de publicación de `AUD-B1`, con el incidente que la motivó, está en §2.90.
 
 | Orden | Hito | Capacidad terminada | Condición crítica |
 |---|---|---|---|
@@ -254,6 +256,30 @@ sin red |
 | 17 | Dentro de una línea menor, el **número de versión** declara la compatibilidad, no el contrato | **medido** (§2.88): dos candidatas de la misma línea publican el mismo SDK y declaran el mismo rango `[0.90.0, 0.91.0)`, y el `apiCheck` compara contra el baseline del repositorio, no contra el SDK publicado anterior. Lo que hoy cubre ese hueco es una **prueba de comportamiento** —un plugin construido contra el SDK publicado anterior se admite y ejecuta—, no una comparación de contratos entre dos publicaciones. Comparar el ABI publicado con el del release anterior es un trabajo con su propio tren |
 | 18 | La comprobación de consumo externo **no está en la puerta local** | **medido** (§2.88): `verify-all.sh` no la ejecuta, porque necesita los SDK ya publicados y red. Es una puerta de publicación, con su latencia propia, y su veredicto viaja en el handoff del release. Un clon sin red no puede ejecutarla: la puerta local sigue siendo la autoridad de lo local, y esta es la autoridad de lo publicado |
 | 19 | El **instalador** no verifica la firma del tag que resuelve | **medido** (§2.89): `scripts/install-pipelinek.sh` resuelve la release por su manifiesto y comprueba el digest, pero no mira la firma: el tag firmado que ahora publica la vía de publicación no lo consulta nadie. La capacidad ya existe y es pública (`scripts/release/verify-tag-signature.sh`); lo que falta es que el consumidor la use, y el consumidor natural es el instalador |
+| 20 | Un **tag estable publicado sin procedencia**, y seis en total | **medido** (§2.90): el `v0.90.0` publicado es un tag *lightweight* —sin tagger, sin mensaje y sin firma—, lo creó `gh release create` porque el tag no existía en el remoto, y sus assets son byte a byte los de `v0.90.0-rc3`: el defecto era la **procedencia**, no el contenido. El censo del remoto da **6** tags estables *lightweight* de **63** (`0.75.0`, `v0.1.0`, `v0.56.0`, `v0.61.0`, `v0.75.0`, `v0.90.0`), así que no es un tropiezo aislado sino un patrón. La vía de publicación ya tiene las tres puertas que lo cierran —`--verify-tag` añadido por el script, auditoría del remoto, promoción firmada— y una etiqueta estable publicada **no se mueve ni se reemplaza**: los seis históricos se quedan como están, y la política dice por qué |
+
+### La auditoría del 25-10-2026 y sus cinco bloques (AUD-B1..AUD-B5)
+
+La auditoría nombra sus bloques `B1..B5`; aquí se escriben `AUD-B1..AUD-B5` porque `B1..B4` ya significan otra cosa en §0. El estado de cada uno, con lo medido y lo que **no** se ha medido:
+
+| bloque | qué pide | estado medido | dónde |
+|---|---|---|---|
+| **AUD-B1** | publicación con procedencia, y una limpieza de caché que no borre lo ajeno | **cerrado en sus dos mitades.** La poda de caché ya está en el árbol, con las seis guardas que la auditoría pedía —marca de propiedad en la raíz, raíz canonicalizada y candidata sólo hija directa, enlaces simbólicos que nunca llegan a `rm`, namespace acreditado por un marcador con digest, edad, y el namespace en uso como excluido— y las seis se han visto en rojo, una por una (commit `dfba3342e`). La mitad de publicación se midió en este ciclo: 17 filas y 10 mutaciones (§2.90) | §2.90 |
+| **AUD-B2** | una **decisión pura de atribución** compartida por perfil, `explain` y telemetría; y una caché que cae por **origen y tipo** y no por el texto literal de un mensaje | **abierto, sin tocar.** Hoy hay tres resolvimientos distintos del mismo «a qué paso pertenece esto», y el de la telemetría sigue siendo `indexOfFirst` (`RunTelemetryProjection.closeStep()`); el fallback de la caché se decide por la cadena `CachingJvmScriptingHost.UNLOADED_ARTIFACT_MESSAGE`, que es un **texto** y no un **tipo**. La clave de caché v3 por contenido ya está en el producto (§2.86) y su efectividad está medida, pero eso es otra pregunta de la de este bloque | §2 (deuda) |
+| **AUD-B3** | observabilidad de verdad: `traceId` como **campo**, `spanId` robusto, intervalos validados sin duraciones negativas, límites de cardinalidad por dimensión, y un adaptador OTLP opcional | **abierto, sin tocar.** `RSO-07` es su nombre en la propuesta de arriba | §0 RSO-07 |
+| **AUD-B4** | economía de la verificación —y **sólo** después de pasar por `delivery-first-testing` | **abierto, y con precondición declarada.** La lente que aplica se nombra antes de escribir una línea: `references/navigation.md`. El router ofrece un portafolio de auditoría que **no existe en disco** (hay 8 playbooks y ninguno es ese), así que esa ruta no se puede seguir tal cual; el coste de la puerta ya está medido (§2.86) y es lo que este bloque tiene que reducir | §0 RSO-01..02 |
+| **AUD-B5** | proveedor de aislamiento | **abierto, sin tocar.** `RSO-08` es su nombre en la propuesta de arriba; `RSO-04` es su precondición (que `LOCAL` no es un sandbox multi-tenant) | §0 RSO-08 |
+
+**Lo que este ciclo NO ha ejecutado, y por eso no es un `PASS`.** Sobre el SHA
+`dfba3342e` **no** se ha ejecutado la puerta de verificación: ni Gradle, ni los tests
+unitarios, ni los escenarios de `examples/`. El instrumento del bloque de publicación
+es un script de shell —no compila Kotlin, no arranca la distribución y no toca el
+producto—, así que mide lo que mide y nada más. El veredicto de este bloque es
+**`NOT_RUN`** en todo lo que es Gradle, y `PASS` sólo en las 17 filas del
+instrumento, con su duración y su recuento de mutaciones. El §6b de
+`scripts/release-pipelinek.sh` —la puerta que audita el remoto antes de publicar—
+no lo ha ejercido ninguna corrida real: se ejecutaría en una publicación, y esa
+publicación no se ha hecho.
 
 ## 1. Estado medido
 
@@ -10085,6 +10111,193 @@ Comprobado **desde fuera**, que es donde se demuestra una firma:
   repositorio ni en el remoto, así que el veredicto es `BLOCKED_EXTERNAL`, no
   `PASS`.
 
+### 2.90 Un tag estable publicado sin procedencia: el incidente de `v0.90.0` y la política de corrección
+
+**El hecho, medido sobre el remoto y no sobre el recuerdo.** Todo lo de esta
+tabla sale de `git ls-remote --tags origin` y de `gh release view`, el **25-10-2026**,
+sobre el remoto real:
+
+| qué se pregunta | qué contesta el remoto |
+|---|---|
+| ¿el `v0.90.0` publicado es anotado? | **no**: `git ls-remote` imprime `1bf97c0c9d194cfe1510303430855ac22aad8258  refs/tags/v0.90.0` y **no** imprime la línea pelada `refs/tags/v0.90.0^{}`. Un tag anotado la publica siempre; su ausencia **es** el hecho, y se lee sin traer un solo objeto |
+| ¿a qué apunta? | a `1bf97c0c9d…`, que es **exactamente** el commit al que apunta el tag anotado `v0.90.0-rc3` (`99d0a23f2…  refs/tags/v0.90.0-rc3` y `1bf97c0c9…  refs/tags/v0.90.0-rc3^{}`) |
+| ¿existe aquí? | **no**: `git rev-parse refs/tags/v0.90.0` no lo encuentra, y el repositorio local tiene 199 tags. Un tag que sólo existe en el remoto es un tag que **alguien creó en el remoto** |
+| ¿y las candidatas? | `v0.90.0-rc1` y `v0.90.0-rc2` son **anotadas y sin firma** (`git cat-file -p` no encuentra `BEGIN PGP SIGNATURE`); `v0.90.0-rc3` es **anotada y firmada** |
+| ¿y los bytes? | los **7** assets de `v0.90.0` y los **7** de `v0.90.0-rc3` tienen **los mismos digest**, uno a uno (`13310c4ff2f3249377ad93d38e12aa81a1a0bdb9a3417277e390869329131e8d` para el ZIP, `086316f9c4…` para la autoridad de digest, los otros cinco igual). La diferencia entre las dos releases es `pre:false` contra `pre:true` |
+
+La conclusión que se sigue de la última fila: **el contenido no estaba mal**. El
+ZIP publicado por la estable es byte a byte el de la candidata, y la autoridad de
+digest que viaja con él es la misma. Lo que faltaba era la **procedencia** del
+tag: sin tagger, sin mensaje y sin firma, el `v0.90.0` no lo había firmado nadie,
+y el SHA-256 del manifiesto demostraba integridad sin autenticar al publicador
+—que es exactamente la distancia que §2.89 ya había nombrado.
+
+**La cronología, medida también.** `v0.90.0` se creó como release el
+`2026-10-24T18:27:02Z` y se publicó el `2026-10-25T11:26:35Z`; `v0.90.0-rc3` se
+creó el `18:50:37Z` y se publicó el `18:58:41Z`. Y el commit `1bf97c0c9…` —el
+que los dos tags apuntan— está fechado en `2026-10-24T20:27:02+02:00`, que es el
+mismo instante que la creación de la release estable. La secuencia que explica
+el resultado es una sola: **la release estable se creó sobre el commit, sin que
+existiera un tag estable que empujar**, y `gh release create` creó el tag él
+mismo desde el estado de la rama por defecto. Es el comportamiento documentado de
+ese comando —«If a matching git tag does not yet exist, one will automatically get
+created from the latest state of the default branch»— y `--verify-tag` es
+precisamente la bandera que lo impide («Abort in case the git tag doesn't already
+exist in the remote repository»). La vía de publicación de este repositorio lo
+llamaba **sin** esa bandera: la línea histórica era `gh release create
+"${PIPELINEK_RELEASE_TAG}" \` (`scripts/release-pipelinek.sh` en `HEAD`, línea 714),
+sin `--verify-tag` en ninguna parte.
+
+**Y la causa de fondo no era una bandera: era que no había puerta para las
+estables.** El único `gh release create` del repositorio estaba en
+`scripts/release-pipelinek.sh`, y ese script **siempre** pasa `--prerelease`: la
+vía del repositorio era la vía de las **candidatas**. Una release **estable**
+no tenía ninguna puerta, y por eso se publicó **a mano** —creada el
+`2026-10-24T18:27:02Z`, el mismo instante que el commit `1bf97c0c9…`, y
+publicada el `2026-10-25T11:26:35Z`, diecisiete horas después. Las tres
+candidatas tienen la misma forma de dos fases (se crean y se suben los assets,
+y luego se publican, con ocho minutos entre medias); la estable tardó
+diecisiete horas. Que el tag **naciera sin que nadie lo empujara** no es un
+detalle de una llamada: es la firma de un proceso que no tenía puerta, y una
+puerta que no existe no se puede añadir una bandera.
+
+La corrección es por tanto la de dar a la estable **la misma puerta que a la
+candidata, con la misma autoridad**: `promote-stable.sh` corta el tag estable
+firmado desde una RC verificada, y `publish-github-release.sh` publica la
+release —con la bandera `--prerelease` **optativa**, de modo que una estable se
+publica como estable— exigiendo el tag firmado, la autoridad de digest y el
+conjunto de assets completo.
+
+**No es un tropiezo aislado: es un patrón.** Censo del remoto, **25-10-2026**,
+**198** tags: **165** anotados y **33** *lightweight*. Y de los tags **estables**
+(`v?X.Y.Z`), **63** en total: **57** anotados y **6** *lightweight* —
+`0.75.0`, `v0.1.0`, `v0.56.0`, `v0.61.0`, `v0.75.0` y `v0.90.0`. El `v0.90.0` es
+**el sexto**, no el primero: la vía que lo produjo llevaba seis releases publicando
+tags sin procedencia, y ninguno se notó porque nadie miraba lo que el remoto
+tenía después de publicar. Ese es el hueco exacto: **la publicación comprobaba
+lo que iba a subir, y no comprobaba lo que había quedado arriba**.
+
+#### La política de corrección: una etiqueta estable publicada no se mueve
+
+La regla que se aplica, y que no es una preferencia de estilo:
+
+1. **Un tag estable publicado no se mueve, no se reemplaza y no se reescribe.**
+   Un tag es un **nombre público**: quien lo resolvió ya tiene apuntando a esos
+   bytes, y moverlo cambia lo que ese nombre significa para un tercero que no
+   puede enterarse. Por eso los **6** tags estables *lightweight* se **quedan**
+   como están, incluido el `v0.90.0`: no hay reescritura de historia, no hay
+   borrado de releases, y no hay un tag «correcto» publicado encima. Lo que se
+   arregla es que **no vuelva a pasar**.
+2. **La corrección es hacia delante, no hacia atrás.** El remoto se
+   **audita** y el resultado se declara: un tag *lightweight* en el remoto es un
+   hecho que se nombra, no un fallo silencioso. La auditoría
+   (`scripts/release/verify-published-tags.sh`) no repara nada porque no puede:
+   **no puede** reparar un tag ya publicado, y no lo intenta.
+3. **Un hueco no es un verde.** Si la auditoría no ha podido medir un tag —porque
+   el objeto no está en este repositorio—, el veredicto de ese tag es `GAP`, y un
+   `GAP` hace que la auditoría **falle**. Una auditoría que imprimiera «PASS»
+   sobre un tag que nadie miró sería la misma mentira que este bloque existe
+   para terminar.
+4. **La promoción de una estable es una operación con nombre, y sólo hay una.**
+   `scripts/release/promote-stable.sh` es la única vía: exige que la RC esté
+   **publicada**, que sea **anotada**, que su **firma verifique**, que el objeto
+   local sea **idéntico** al que publica el remoto, y que el nombre estable **no
+   esté ocupado** ni en local ni en el remoto. Corta el tag con
+   `publish-tag.sh --at <commit de la RC> --promotes <RC>`, de modo que el tag
+   estable **declara** de qué candidata viene.
+5. **La publicación pide siempre `--verify-tag`, y lo pide el script.** En
+   `scripts/release/publish-github-release.sh` la bandera la añade **el script**,
+   no quien lo llama: no hay modo «release sin tag», ni bandera de escape, ni
+   rama de degradación. El mismo script exige una **autoridad de digest**
+   (`--expect-sums`) y re-mide cada byte que sube contra ella: una release sin
+   autoridad nombrada se niega, y una release a la que le falte una parte de la
+   autoridad se niega.
+
+#### La puerta que queda en la vía, y por qué está antes de publicar
+
+Las tres piezas anteriores son herramientas; lo que las ata al camino real es
+**§6b de `scripts/release-pipelinek.sh`**: entre subir el tag firmado (§6) y
+publicar la release (§7) se ejecuta la auditoría del remoto, y si el remoto no
+tiene un tag verificable la vía **se niega a publicar** y dice, en sus palabras,
+que *el tag se empujó y firmó; lo que falló es el listado del remoto*. Ese
+§6b **no lo ha ejercido ninguna publicación real**: se ejecutaría en una
+publicación, y no se ha hecho ninguna. Su estado es `NOT_RUN`, y aquí se dice con
+esa palabra.
+
+#### El instrumento que midió el bloque, y por qué se borró
+
+El bloque se midió con un instrumento **efímero** —17 filas y 10 mutaciones—
+porque la garantía es de **publicación**: consume el remoto, ejecuta `git` y
+`gpg`, y no produce un artefacto que un test unitario pueda inspeccionar sin
+mentir (§2.89 explica por qué esta clase de comprobación es una puerta de
+publicación y no un test). Sus resultados, medidos sobre el árbol que se entrega:
+
+| qué | resultado |
+|---|---|
+| baseline | **17/17** filas `PASS`, **0** `FAIL` |
+| mutaciones aplicadas | **10/10**, cada una leída de vuelta (`cmp -s` contra la copia) antes de leer el color, y **0** filas que pasaron de `FAIL` a `PASS` |
+| duración | **242 s** por corrida (la segunda, contra los bytes que se entregan) |
+| árbol medido | el **árbol de trabajo** sobre la base `dfba3342eab7732ee706c365db63960394886229`: el bloque todavía **no estaba comiteado** cuando el instrumento corrió, y eso hay que decirlo. Los ficheros que el instrumento lee —`scripts/release-pipelinek.sh` y `scripts/release/*.sh`— son **byte a byte los mismos** que entrega el commit de este bloque, que no reescribe ni uno de ellos; y el instrumento no lee ni `ROADMAP.md` ni `examples/run.sh`, así que el resto del árbol no le afecta |
+| destino del ciclo | `~/.local/state/pipelinek/verification-cycles/b1a-release-provenance-2026-10-25/`, **borrado** tras evaluar, conservando aquí sólo estos recuentos |
+
+La corrida final es la que vale, y vale por una razón concreta: la primera
+corrida se medió sobre un árbol al que después se le corrigió el `usage()` de los
+seis scripts de release —los rangos `sed` de la cabecera habían quedado
+desfasados al crecer el texto, y un `--help` que recorta en silencio las
+instrucciones es un defecto—, y la corrección **se revirtió sola** cuando el
+instrumento restauró la copia de seguridad que había tomado antes de una
+mutación. Un instrumento que restaura ficheros del árbol que mide no puede
+medir un árbol que se mueve debajo de él: por eso la segunda corrida es la que
+sostiene la cifra, y por eso el `usage()` se sustituyó por una extracción que se
+autodetermina (la cabecera comentada hasta la primera línea que no es
+comentario) en lugar de un rango de líneas que hay que volver a contar cada vez
+que se escribe un párrafo.
+
+Las diez mutaciones, con la fila que cada una encendió y sólo esa:
+
+| mutación | qué se rompió | fila roja |
+|---|---|---|
+| M1 · `publish-github-release.sh` deja de añadir `--verify-tag` | el publicador vuelve a poder crear el tag | `row_release_publishes_with_verify_tag` |
+| M2 · la comparación de digest pasa a `__never__` | los bytes manipulados pasan | `row_release_refuses_tampered_asset` |
+| M3 · la condición de «la autoridad está completa» se anula | una release puede omitir bytes que la autoridad nombra | `row_release_refuses_incomplete_authority` |
+| M4 · la guarda de «el nombre estable ya está tomado en local» se anula | se puede reusar un nombre estable local | `row_promote_refuses_taken_local_name` |
+| M5 · `--at` se pasa vacío | el tag estable se corta en otro sitio | `row_promote_publishes_signed_stable` |
+| M6 · la verificación de la firma de la RC se salta | se promueve una RC sin firma | `row_promote_refuses_unsigned_rc` |
+| M7 · el veredicto pasa a depender sólo de `FAILED` | un `GAP` se lee como un verde | `row_audit_reports_gap_not_pass` |
+| M8 · el contador de `FAILED` desaparece de la rama *lightweight* | el tag sin procedencia deja de contarse como fallo | `row_audit_names_lightweight_tag` |
+| M9 · el detector de *lightweight* desaparece | el tag sin procedencia deja de nombrarse | `row_audit_names_lightweight_tag` |
+| M10 · el detector se invierte | la auditoría confunde anotado y *lightweight* | **4** filas: `row_audit_names_lightweight_tag`, `row_audit_reports_gap_not_pass`, `row_audit_passes_signed_tag`, `row_promote_publishes_signed_stable` |
+
+M9 y M10 rompen cosas distintas y por eso son dos: M9 quita el detector y deja
+de **nombrarse** el tag sin procedencia (una fila); M10 lo invierte y hace que
+la auditoría **mienta** sobre lo que es (cuatro). Un solo «el detector se
+rompió» habría medido menos de lo que hay.
+
+#### Lo que queda fuera, dicho con honestidad
+
+- **El `v0.90.0` publicado sigue siendo un tag sin procedencia.** No se puede
+  arreglar sin reescribir un nombre público, y la política dice que no se hace.
+  Lo que sí queda es **nombrado** —por la auditoría y por este apartado— y
+  **documentado** para el que lo lea.
+- **Los otros cinco estables *lightweight* siguen igual**, por la misma razón.
+- **La promoción a estable sigue `BLOCKED_EXTERNAL`**: no hay certificador
+  externo en este repositorio ni en el remoto (§2.45).
+- **La puerta completa no se ha ejecutado** sobre `dfba3342e`: ni Gradle, ni
+  los tests unitarios, ni los escenarios de `examples/`. El veredicto de este
+  bloque es `PASS` en lo que su instrumento midió y `NOT_RUN` en todo lo demás.
+- **La bandera `--prerelease` la elige quien publica, y la puerta no la
+  contrasta con el nombre del tag.** Una release de una candidata marcada como
+  estable —o al revés— saldría con la forma equivocada en la página de
+  releases, y la puerta no lo detecta: ella comprueba la **procedencia** (tag
+  firmado, ya publicado) y los **bytes** (autoridad de digest), que es lo que
+  era el defecto del incidente. Es una incoherencia de forma, no de
+  procedencia, y no hay medida de que haya ocurrido; queda como deuda
+  declarada, no como hueco tapado.
+- **La mitad de caché de `AUD-B1`** —la poda que sólo borra namespaces
+  acreditados— sí está en el árbol y ya fue medida por su propio ciclo
+  (commit `dfba3342e`, seis guardas y seis mutaciones); aquí no se vuelve a
+  medir porque es otro bloque con otro instrumento.
+
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite
   no crea directorios, así que un nombre que todavía no está es una instrucción que el producto
@@ -11793,6 +12006,31 @@ Comprobado **desde fuera**, que es donde se demuestra una firma:
   defecto del registro de offset, y la que obliga a que el arnes compare
   narraciones que no se pueden comparar en secuencia (§2.73).
 
+
+- **Un tag estable publicado no se mueve, no se reemplaza y no se reescribe.**
+  Un tag es un nombre público: moverlo cambia lo que ese nombre significa para
+  un tercero que ya lo resolvió y que no puede enterarse. Los seis estables
+  *lightweight* del remoto se quedan como están, y la corrección es hacia
+  delante: que no vuelva a pasar (§2.90).
+- **La procedencia se comprueba donde se publica, no donde se pide.** El
+  `--verify-tag` lo añade **el script** que publica, no quien lo llama: un
+  llamador que puede olvidarse de una bandera no es una puerta. No hay modo
+  «release sin tag» ni rama de degradación (§2.90).
+- **Lo que no se ha medido no es un verde.** La auditoría del remoto declara
+  `GAP` para el tag que no ha podido mirar, y un `GAP` hace que la auditoría
+  falle. Un instrumento que imprimiera «PASS» sobre lo que nadie comprobó sería
+  la misma mentira que este bloque cierra (§2.90).
+- **El error se nombra, no se borra.** Un tag *lightweight* en el remoto es un
+  hecho que la auditoría dice en voz alta y que este roadmap nombra con su
+  número: `v0.90.0` es el sexto estable sin procedencia de 63, no un tropiezo
+  aislado (§2.90).
+- **Una etiqueta estable declara de qué candidata viene.** El tag que se corta
+  para promover se crea con `--promotes <RC>`, y la promoción exige que la RC
+  esté publicada, anotada y firmada, y que su objeto local sea idéntico al que
+  publica el remoto (§2.90).
+- **Una release sin autoridad de digest nombrada no se publica.** El mismo script
+  que exige `--verify-tag` exige `--expect-sums` y re-mide cada byte contra
+  ella: una release a la que le falte una parte de la autoridad se niega (§2.90).
 
 ## 4. Referencias
 

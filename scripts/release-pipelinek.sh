@@ -3,7 +3,7 @@
 # corrective: a release MUST NOT be published unless the
 # releaseGate produced a PASS receipt bound to the SHA of the ZIP the script
 # then uploads. This script is the only path that calls `gh release create`;
-# it refuses to advance without the five signals:
+# it refuses to advance without the six signals:
 #   1. Gradle:pipeline-release:releaseGate exits 0 (admission passed)
 #   2. The candidateAdmission receipt (build/candidate/distribution-manifest.json)
 #      names a candidate_id whose sha256 matches the distZip artifact the
@@ -15,6 +15,11 @@
 #      (scripts/release/signing-key.conf), and that signature VERIFIES before
 #      the tag is pushed. There is no unsigned fallback: the digest authority
 #      proves the bytes are the bytes, not who published them.
+#   6. The REMOTE's own listing shows that tag as an ANNOTATED tag whose
+#      signature verifies (section 6b). A local check cannot see a tag the
+#      remote published on its own: the published stable tag v0.90.0 was
+#      created by the publishing command itself, and every local check was
+#      green while the release page showed an unsigned tag.
 # Usage:
 #   PIPELINEK_RELEASE_TAG=v0.56.0-rc5 PIPELINEK_RELEASE_TRAIN=0.56.0 \
 #./scripts/release-pipelinek.sh
@@ -705,33 +710,68 @@ if [ "$TAG_COMMIT" != "$PROSPECTIVE_TAG_COMMIT" ]; then
 fi
 
 # ----------------------------------------------------------------------------
+# 6b. Ask the REMOTE what it holds, before the release exists.
+#
+#     Everything above checked what THIS repository believes: the tag was
+#     signed here, the signature verified here, the commit matched here. The
+#     incident this closes was not a mistake in those checks — it was that
+#     nothing ever asked the remote. The published stable tag v0.90.0 was
+#     created BY the publishing command, because that command creates a tag
+#     when the tag does not exist yet, and a tag created that way carries no
+#     tagger, no message and no signature. Every local check was green.
+#
+#     So the remote is asked directly, and the release is refused unless the
+#     remote's own listing shows an annotated tag whose signature verifies.
+#     The audit is scripts/release/verify-published-tags.sh, the same checker
+#     the promotion path uses: one authority, not two.
+# ----------------------------------------------------------------------------
+
+if ! "${REPO_ROOT}/scripts/release/verify-published-tags.sh" \
+    --tag "${PIPELINEK_RELEASE_TAG}" \
+    --expect-fingerprint "${SIGNING_FINGERPRINT}" \
+    --expect-uid "${SIGNING_UID}" \
+    --remote origin \
+    --out "${EVIDENCE_DIR}/published-tag-audit.txt"; then
+    echo "release-pipelinek: refusing to publish — the remote does not hold a verifiable tag" >&2
+    echo "    for ${PIPELINEK_RELEASE_TAG}. The verdict is at ${EVIDENCE_DIR}/published-tag-audit.txt" >&2
+    echo "    The tag was pushed and signed; what failed is the REMOTE's own listing." >&2
+    exit 1
+fi
+
+# ----------------------------------------------------------------------------
 # 7. Publish. The Prerelease URL is the receipt's permanent address.
 #: the ZIP is uploaded to the GitHub release asset store
 #    (NOT copied into the git tree). The git tree carries only the small
 #    text artefacts (manifest, handoff, git-head).
+#
+#    The publication goes through scripts/release/publish-github-release.sh,
+#    which is the ONE door every release passes through. That script adds
+#    `--verify-tag` ITSELF, so gh is never asked to create a tag: the tag
+#    above was signed, verified and pushed before this point, and gh is
+#    asked to publish a release FOR it. It also re-measures every staged
+#    asset against the SHA256SUMS authority built in section 5b, and it
+#    checks the published asset set afterwards. Those checks used to live
+#    here, in the release script, where the stable-promotion path could not
+#    reach them.
 # ----------------------------------------------------------------------------
 
-gh release create "${PIPELINEK_RELEASE_TAG}" \
-    --prerelease \
-    --title "PipelineK ${PIPELINEK_RELEASE_TAG} (release-gate PASS sha256:${LOCAL_SHA})" \
-    --notes-file "${EVIDENCE_DIR}/HANDOFF.md" \
-    "${STAGED_PATHS[@]}"
-
-# Fail closed if the release did not end up carrying the whole manifest-driven
-# set. `gh` exits 0 on a partial upload in some failure modes, and a release
-# missing its digest authority is the defect this script was changed to close.
-# The required list is the BASENAME of each staged path, since `gh release
-# view --json assets` returns asset names without directory components.
-PUBLISHED=$(gh release view "${PIPELINEK_RELEASE_TAG}" --json assets --jq '.assets[].name')
+GH_RELEASE_ARGS=(
+    --tag "${PIPELINEK_RELEASE_TAG}"
+    --title "PipelineK ${PIPELINEK_RELEASE_TAG} (release-gate PASS sha256:${LOCAL_SHA})"
+    --notes-file "${EVIDENCE_DIR}/HANDOFF.md"
+    --expect-sums "${SUMS}"
+    --prerelease
+    --out "${EVIDENCE_DIR}/github-release.txt"
+)
 for staged in "${STAGED_PATHS[@]}"; do
-    required=$(basename "$staged")
-    if ! printf '%s\n' "$PUBLISHED" | grep -Fxq "$required"; then
-        echo "release-pipelinek: published release is missing required asset '${required}'." >&2
-        echo "    the published asset set is fixed. Published:" >&2
-        printf '      %s\n' "$PUBLISHED" >&2
-        exit 1
-    fi
+    GH_RELEASE_ARGS+=(--asset "$staged")
 done
+
+if ! "${REPO_ROOT}/scripts/release/publish-github-release.sh" "${GH_RELEASE_ARGS[@]}"; then
+    echo "release-pipelinek: refusing to publish — the release was not created." >&2
+    echo "    The tag is published and signed. The verdict is at ${EVIDENCE_DIR}/github-release.txt" >&2
+    exit 1
+fi
 echo "release-pipelinek: published asset set verified complete (${#STAGED_PATHS[@]} assets, manifest-driven)."
 
 # Nothing is committed here. The four text artefacts were already delivered:

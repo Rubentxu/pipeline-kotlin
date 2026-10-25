@@ -265,7 +265,7 @@ La auditoría nombra sus bloques `B1..B5`; aquí se escriben `AUD-B1..AUD-B5` po
 | bloque | qué pide | estado medido | dónde |
 |---|---|---|---|
 | **AUD-B1** | publicación con procedencia, y una limpieza de caché que no borre lo ajeno | **cerrado en sus dos mitades.** La poda de caché ya está en el árbol, con las seis guardas que la auditoría pedía —marca de propiedad en la raíz, raíz canonicalizada y candidata sólo hija directa, enlaces simbólicos que nunca llegan a `rm`, namespace acreditado por un marcador con digest, edad, y el namespace en uso como excluido— y las seis se han visto en rojo, una por una (commit `dfba3342e`). La mitad de publicación se midió en este ciclo: 17 filas y 10 mutaciones (§2.90), y la puerta completa sobre el árbol que se entrega dio `PASS` (166 s, 1311 tests, 61 escenarios, ratio de LOC 0.348) | §2.90 |
-| **AUD-B2** | una **decisión pura de atribución** compartida por perfil, `explain` y telemetría; y una caché que cae por **origen y tipo** y no por el texto literal de un mensaje | **la mitad de la atribución está cerrada y medida (§2.91).** Las tres proyecciones llaman ya a **una** decisión pura (`StepAttribution`), y el defecto —la telemetría atribuía la duración al **primer** candidato— se ha visto en rojo con tres mutaciones (7, 4 y 1 filas rojas, sin daño colateral). La medición en el CLI de una etapa **paralela** mostró lo que la regla vieja decía al operador: que una rama «nunca cerró» cuando sí cerró, y que tres terminales no pudieron nombrar su paso. **Las dos mitades de la caché están cerradas y medidas (§2.92).** El fallback ya no se decide por la cadena `CachingJvmScriptingHost.UNLOADED_ARTIFACT_MESSAGE` —un **texto** y no un **tipo**— sino por el **origen** y el **tipo** del fallo: el rechazo del cargador se reconoce por la clase y el método que lo levantan, leídos del frame superior de la traza. La regla vieja y su guardia compartían el mismo literal, así que podían estar equivocadas **juntas**; ahora la guardia pide la excepción **real** a la clase real del runtime. Se ha visto en rojo con cinco mutaciones (3, 3, 1, 3 y 2 filas rojas, sin daño colateral) y con un UAT efímero contra tres distribuciones —la nueva recupera, la vieja **también** recupera (el cambio quita una dependencia, no arregla un defecto alcanzable) y la regla rota **falla**—. **Queda abierto**: la prueba de que la clave v3 por contenido es consumible desde un test unitario | §2.91, §2.92 |
+| **AUD-B2** | una **decisión pura de atribución** compartida por perfil, `explain` y telemetría; y una caché que cae por **origen y tipo** y no por el texto literal de un mensaje | **la mitad de la atribución está cerrada y medida (§2.91).** Las tres proyecciones llaman ya a **una** decisión pura (`StepAttribution`), y el defecto —la telemetría atribuía la duración al **primer** candidato— se ha visto en rojo con tres mutaciones (7, 4 y 1 filas rojas, sin daño colateral). La medición en el CLI de una etapa **paralela** mostró lo que la regla vieja decía al operador: que una rama «nunca cerró» cuando sí cerró, y que tres terminales no pudieron nombrar su paso. **Las dos mitades de la caché están cerradas y medidas (§2.92).** El fallback ya no se decide por la cadena `CachingJvmScriptingHost.UNLOADED_ARTIFACT_MESSAGE` —un **texto** y no un **tipo**— sino por el **origen** y el **tipo** del fallo: el rechazo del cargador se reconoce por la clase y el método que lo levantan, leídos del frame superior de la traza. La regla vieja y su guardia compartían el mismo literal, así que podían estar equivocadas **juntas**; ahora la guardia pide la excepción **real** a la clase real del runtime. Se ha visto en rojo con cinco mutaciones (3, 3, 1, 3 y 2 filas rojas, sin daño colateral) y con un UAT efímero contra tres distribuciones —la nueva recupera, la vieja **también** recupera (el cambio quita una dependencia, no arregla un defecto alcanzable) y la regla rota **falla**—. **La tercera mitad también queda cerrada y medida (§2.94).** La clave v3 por contenido ya es **consumible desde un test unitario**: `Kotlin24ScriptingHost.cacheIdentityFor` pasa de `private` a `internal` —sin cambio de comportamiento, la misma función llamada por el mismo camino— y cinco filas la leen: tres de la identidad directamente y dos del **cableado**, que miran con qué clave se direccionó la caché y qué ocurre sin identidad verificada. Se ha visto en rojo con seis mutaciones (4, 1, 2, 1, 1 y 1 filas rojas, sin daño colateral) y con un UAT efímero contra tres distribuciones con una caché compartida: mismas bytes en otra ruta → la **misma** clave; bytes distintas → **otra** clave; y con la mutación que saca el classpath de la JVM de la clave, las tres comparten clave y artefacto, que es como el UAT dice que está roto. La puerta completa sobre el árbol comiteado dio `PASS` (187 s, 1321 tests, 61 escenarios, ratio de LOC 0.351). **AUD-B2 queda cerrado en sus tres puntos.** | §2.91, §2.92, §2.94 |
 | **AUD-B3** | observabilidad de verdad: `traceId` como **campo**, `spanId` robusto, intervalos validados sin duraciones negativas, límites de cardinalidad por dimensión, y un adaptador OTLP opcional | **abierto, sin tocar.** `RSO-07` es su nombre en la propuesta de arriba | §0 RSO-07 |
 | **AUD-B4** | economía de la verificación —y **sólo** después de pasar por `delivery-first-testing` | **abierto, y con precondición declarada.** La lente que aplica se nombra antes de escribir una línea: `references/navigation.md`. El router ofrece un portafolio de auditoría que **no existe en disco** (hay 8 playbooks y ninguno es ese), así que esa ruta no se puede seguir tal cual; el coste de la puerta ya está medido (§2.86) y es lo que este bloque tiene que reducir | §0 RSO-01..02 |
 | **AUD-B5** | proveedor de aislamiento | **abierto, sin tocar.** `RSO-08` es su nombre en la propuesta de arriba; `RSO-04` es su precondición (que `LOCAL` no es un sandbox multi-tenant) | §0 RSO-08 |
@@ -10698,6 +10698,177 @@ eso es compatibilidad de ABI interna, no una garantía de release. Y las
 cifras de esta puerta son **locales**: un certificador externo, si algún día
 lo hay, tiene su propia latencia y se informará por separado, nunca
 disfrazado como parte de este `PASS`.
+
+
+### 2.94 La clave v3 por contenido, consumible desde una prueba: el seam, las cinco filas y el UAT que puede decir «BROKEN»
+
+La última mitad de `AUD-B2` pedía una cosa muy concreta: que la clave `v3` por
+contenido —la que la caché usa para direccionar sus artefactos— fuera
+**consumible desde un test unitario**. La razón por la que no lo era no era
+que la propiedad fuera indecible, sino que **la función que la decide no se
+podía alcanzar**: `Kotlin24ScriptingHost.cacheIdentityFor` era `private`.
+La propiedad que la caché promete —«el mismo contenido produce la misma
+clave, y un contenido distinto produce una clave distinta»— no estaba
+guardada por ninguna fila, porque ninguna fila podía mirar el valor.
+
+**El recorrido, y el orden es la regla.** `delivery-first-testing`, con la
+ruta de feature (`change-impact` → `ephemeral-uat` → `regression-promotion`).
+El orden que impone es **garantía → capacidad → el instrumento más barato que
+puede fallar**, y ese orden cambiaría el resultado si se invirtiera:
+
+- **La garantía** que el consumidor apoya no es «el hash está bien», sino
+  *«la caché sirve el artefacto de la compilación que se pidió»*. Sin eso, un
+  artefacto compilado contra unos jars puede servirse para una compilación
+  contra otros, y no hay síntoma: el script corre.
+- **La capacidad** que la garantía sirve es *«cambiar un jar de la
+  classpath invalida el artefacto, y mover un jar no lo invalida»*. Es
+  observable desde fuera —el producto decide qué artefacto se guarda y bajo
+  qué nombre— pero no necesita el CLI para observarse.
+- **El instrumento más barato que puede fallar** resultó ser **la función de
+  producción, leída directamente**, y no una compilación entera. La medición
+  que lo decidió: una compilación real del host en el JVM de pruebas cuesta
+  **4566 ms en frío** y **655 ms en caliente**; la identidad, en cambio, se
+  calcula en milisegundos porque su trabajo es leer bytes, no compilar. La
+  fila que necesita el camino lento es la que mira **la decisión** —con qué
+  clave se direccionó la caché— y esa son dos filas, no cinco.
+
+**El seam: la función de producción, no una copia.** `cacheIdentityFor` pasa
+de `private` a `internal`, y el KDoc que la describía —que hasta ahora
+adhería a la propiedad de arriba, sindueño a nada— baja a su sitio. **No
+cambia el comportamiento**: la misma función, la misma llamada, el mismo
+resultado. Lo que cambia es que la promesa de la caché **deja de ser una
+afirmación que ninguna comprobación puede leer**. Una promesa que nadie
+puede leer es una promesa que nadie puede mantener, y el punto de esta fila
+no era escribir un test sino **cambiar quién puede leer el valor**. Como el
+módulo es unpublished, `internal` no ensancha la ABI publicada: no hay
+fichero `api/` que genere y `apiCheck` no lo mira.
+
+**Las cinco filas, y qué guarda cada una.** `CompilationIdentityTest` es un
+fichero nuevo junto al paquete de producción; ninguna fila reimplementa el
+cálculo:
+
+| fila | qué guarda |
+|---|---|
+| `the identity covers the JVM's own classpath and then the per-call entries` | el classpath de la JVM entra en la identidad **y** va **antes** de las entradas por llamada; el manifiesto dice qué bytes entraron y en qué orden, cosa que un digest solo no puede decir |
+| `the key follows the bytes of the classpath and not its path` | mismas bytes en otra ruta → **la misma** clave; bytes distintas → **otra** clave. Esta es la promesa de la caché, en las dos direcciones |
+| `a classpath entry whose bytes cannot be read leaves the identity unverified` | una entrada ilegible **no** produce una identidad a medias: produce una identidad **no disponible**, y el motivo nombra la entrada que no se pudo leer |
+| `the cache is addressed by the key the identity computed` | la caché se direccionó con **la** clave; el resultado y el evento declaran **la misma**. Una segunda derivación de la clave se vería aquí |
+| `a classpath whose bytes cannot be read never consults the cache` | sin identidad verificada la caché **no se consulta** y **no se escribe** — y la compilación **no falla** por eso, porque la caché es una preocupación de rendimiento y nunca una de corrección |
+
+**Las seis mutaciones, vistas en rojo.** Un verde que nunca se ha visto rojo
+no es evidencia. La unidad de la medición es **el módulo entero** (21 filas:
+las 5 nuevas y las 16 preexistentes), para que el daño colateral también se
+midiera. Cada mutación se aplicó con una precondición que aborta si el ancla
+no es única, y el `diff` se leyó de vuelta antes de cada corrida:
+
+| mutación | qué rompe | filas que se pusieron en rojo |
+|---|---|---|
+| **BASE** | — | **0**: las 21 verdes |
+| **M-1** — se drota el classpath por llamada | la identidad ya no ve los jars que la llamada añadió | **4** |
+| **M-2** — se drota el classpath de la JVM | la identidad ya no ve los jars del propio proceso | **1** |
+| **M-3** — la clave se calcula por **ruta** y no por contenido | la misma ruta con otros bytes —o el mismo jar en otra ruta— deja de distinguir compilaciones | **2** |
+| **M-4** — se usa la caché aunque la identidad no esté verificada | un artefacto sin veta serviría una compilación que nadie puede acotar | **1** |
+| **M-5** — las entradas por llamada van **antes** del classpath de la JVM | el orden de resolución deja de ser el orden de la clave | **1** |
+| **M-6** — `compile()` deriva la clave por su cuenta | aparecen **dos** claves para una compilación: la del evento y la de la caché | **1** |
+
+Ninguna hubo daño colateral: las 16 filas preexistentes no se pusieron rojas
+ni una vez. Y **ninguna fila es vacía**: cada una de las 5 se puso roja en
+al menos una mutación. La superposición es coherente con el diseño: la fila
+de «la caché se direccionó con la clave» es de **autoconsistencia del
+cableado**, y por eso sigue verde bajo M-1, M-2 y M-3 —las tres la rompen en
+la *identidad*, no en la *dirección*— mientras que M-6 la pone roja porque
+introduce exactamente la segunda derivación que esa fila vigila.
+
+**El UAT efímero, y la mitad que prueba que el instrumento puede fallar.** El
+UAT midió una sola cosa de extremo a extremo —*la clave sigue a los bytes de
+la classpath y no a su ruta*— y se ejecutó en el directorio del ciclo contra
+**tres distribuciones**, cada una con su `db` y su `control-root` privados, y
+con **una caché compartida** (lo único que se compartía era justo lo que la
+medición necesitaba):
+
+| distribución | qué lleva dentro | clave observada | artefactos en la caché |
+|---|---|---|---|
+| **la nueva** | el build de este ciclo | `5717bea1…` | **1** |
+| **la copia idéntica** | las **mismas bytes**, en otra ruta | `5717bea1…` — **la misma** | **1**: el segundo run **reusó** el artefacto del primero, no creó otro |
+| **la de bytes distintas** | los **mismos nombres** de jar, con **un jar** cuyo contenido cambió | `306dd733…` — **distinta** | **2**: un artefacto nuevo, con nombre nuevo |
+
+La segunda fila es la que mide la **independencia del camino**, y la tercera
+la **sensibilidad al contenido**. La cuarta fila es la que prueba que el
+instrumento **puede fallar**: la misma UAT, contra una distribución
+reconstruida con **M-2** (el classpath de la JVM fuera de la clave), dio
+**BROKEN** — las tres distribuciones produjeron **la misma clave**
+(`880faf3c…`) y **un solo artefacto**, de modo que la de bytes distintas
+**reusó** el artefacto compilado contra las suyas. Un UAT que saliese verde
+con la regla rota no mediría nada.
+
+**Lo que el UAT demostró y lo que no demostró, con honestidad.** Esta UAT **no
+revela ningún defecto de comportamiento nuevo**: la clave v3 por contenido ya
+funcionaba, y lo que se ha guardado es su **garantía**. Lo que el UAT sí
+muestra es que la propiedad es **observable desde fuera** (el nombre del
+artefacto y la clave que el evento declara) y que **cambia** cuando los bytes
+cambian, que es la mitad que una prueba unitaria no puede ver sola: la
+unitaria mira la función, la UAT mira el producto publicado. La UAT **se
+descarta**; la garantía permanente son las cinco filas, que son más baratas
+(21 s el módulo entero, 5 filas nuevas) y más precisas.
+
+| garantía | original | sustituto o justificación | evidencia | decisión | coste | riesgo |
+|---|---|---|---|---|---|---|
+| la caché sirve el artefacto de la compilación que se pidió: mismo contenido → misma clave, contenido distinto → clave distinta | el UAT efímero del ciclo (tres distribuciones, una caché compartida) | 5 filas unitarias: 3 de la identidad leída directamente y 2 del **cableado** (con qué clave se direccionó la caché, y qué pasa sin identidad verificada) | 6 mutaciones (4, 1, 2, 1, 1 y 1 filas rojas, sin daño colateral) + UAT contra tres distribuciones, con su mitad rota diciendo BROKEN | **PROMOTE** | 5 tests, 21 s el módulo | ninguno conocido: la garantía es una identidad y su direccionamiento, y los dos están cubiertos por separado |
+
+**La puerta completa, ejecutada entera y sin filtros, sobre el árbol
+comiteado.** `timeout 900 ./scripts/verify-all.sh` desde la raíz, sobre
+`74444fcbd`. Su línea de veredicto, copiada tal cual:
+
+```
+PASS  sha=72444fcbdc8503a5c6e9320287e454216aaffef1  elapsed=187s  budget=900s  tests=rewritten:1321 read:0  scenarios=observed:61 executed:61
+```
+
+| campo | valor | qué afirma |
+|---|---|---|
+| `sha` | `74444fcbd` | el árbol medido es el comiteado: el commit de la identidad alcanzable |
+| `elapsed` | **187 s** | contra un presupuesto de 900 s |
+| `tests=rewritten:1321 read:0` | 1321 | los 1321 los **escribió esta corrida**; los 5 más que en §2.93 son las 5 filas nuevas |
+| `scenarios=observed:61 executed:61` | 61 | los 61 escenarios se ejecutaron y los 61 comprobaron una garantía |
+| `read:0` | 0 | ninguna cifra viene de un resultado cacheado de otra invocación |
+
+El **censo de LOC**, sobre el mismo árbol comiteado (el censo lee
+`git ls-files`, así que mide ficheros **trackeados**):
+
+```
+  VERIFY_LOC   = 24860
+  PRODUCT_LOC  = 70740
+  ratio        = 0.351 (limit 2)
+```
+
+El módulo tocado queda en `pipeline-scripting-kotlin24: 310 / 1119 = 0.277`
+(antes 203 / 1119 = 0.181: las 107 líneas de la fila nueva). El presupuesto
+es 2; el resultado global es 0.351. Las etapas: preparación 13 s; etapa 1
+(compilación, `detekt`, `detektTest`, `apiCheck` e `installDist`) 53 s; etapa
+2 (los tests unitarios permanentes de los 25 módulos con test) 21 s y **183
+informes JUnit**, todos reescritos por esta corrida; etapa 3 (los 61
+escenarios de `examples/`) 96 s (656,9 s de tiempo de escenario, medidos en
+paralelo; el más lento, `security/14-credentials-bindings.pipeline.kts`,
+24,6 s); etapa 4 (censo) 1 s y 4b (procedencia de comentarios) 3 s. La etapa
+5 cerró en **187 s**.
+
+**Lo que esta puerta no dice.** No certifica nada externo: no hay
+certificador independiente, ni publicación, ni firma de etiqueta, ni
+instalación desde un artefacto publicado. `apiCheck` compara la superficie
+publicada contra su base de referencia **dentro del repositorio** — eso es
+compatibilidad de ABI interna, no una garantía de release. Y las cifras son
+**locales**: un certificador externo, si algún día lo hay, tiene su propia
+latencia y se informará por separado, nunca disfrazado como parte de este
+`PASS`.
+
+**Lo que queda abierto, dicho con honestidad.** `AUD-B2` queda **cerrado en
+sus tres puntos**: la decisión de atribución (§2.91), el fallback de la caché
+por origen y tipo (§2.92) y la clave v3 por contenido consumible desde una
+prueba (esta). Quedan abiertos, y sin tocar, `AUD-B3` (la consolidación de la
+telemetría: `traceId` como campo, un `spanId` robusto para ramas paralelas,
+intervalos validados, límites de cardinalidad y un adaptador OTLP opcional),
+`AUD-B4` (la economía de la verificación, que pasa por
+`delivery-first-testing` antes de tocar nada) y `AUD-B5` (el proveedor de
+aislamiento).
 
 
 ## 3. Decisiones tomadas en este ciclo, con su porque

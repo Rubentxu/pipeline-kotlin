@@ -34,6 +34,11 @@ object RunExplainProjection {
         var runEnded: Fact.RunEnded? = null
         var firstFailure: Fact.StepBroke? = null
         var neverClosed: Inference.StepNeverClosed? = null
+        var ambiguousClosures = 0
+        // Ordinals a terminal failed to name: their steps are NOT reported
+        // as never closed, because "never closed" claims a fact the
+        // ambiguous terminal may contradict.
+        val ambiguouslyClosedOrdinals = mutableSetOf<Int>()
         var lastAtMs = 0L
         var lastSequence = -1L
         val openSteps = ArrayDeque<StepStarted>()
@@ -55,12 +60,17 @@ object RunExplainProjection {
                             evidence = EvidenceRef(EVENT_LANE, event.sequence),
                         )
                     }
-                    closeOpenStep(event.stageIndex, event.stepIndex, openSteps)
+                    closeOpenStep(event.stageIndex, event.stepIndex, openSteps) {
+                        ambiguousClosures++
+                        ambiguouslyClosedOrdinals += event.stepIndex
+                    }
                 }
 
                 is StepStarted -> openSteps.addLast(event)
                 is dev.rubentxu.pipeline.v2.events.StepFinished ->
-                    closeOpenStep(event.stageIndex, event.stepIndex, openSteps)
+                    closeOpenStep(event.stageIndex, event.stepIndex, openSteps) {
+                        ambiguousClosures++
+                    }
 
                 else -> {}
             }
@@ -69,19 +79,36 @@ object RunExplainProjection {
         // A step that opened and was never terminated: the evidence is its
         // own start event, because the absence that makes it dangling is not
         // something a sequence can point at.
-        val open = openSteps.firstOrNull()
+        val open = openSteps.firstOrNull { it.stepIndex !in ambiguouslyClosedOrdinals }
         if (open != null) {
             neverClosed = Inference.StepNeverClosed(open.stepName, EvidenceRef(EVENT_LANE, open.sequence))
         }
-        return DiagnosisFacts(runEnded, firstFailure, neverClosed, lastAtMs, lastSequence)
+        return DiagnosisFacts(runEnded, firstFailure, neverClosed, lastAtMs, lastSequence, ambiguousClosures)
     }
 
-    /** A terminal step event may carry no stage index; ordinal alone then decides. */
-    private fun closeOpenStep(stageIndex: Int?, stepIndex: Int, openSteps: ArrayDeque<StepStarted>) {
-        val index = openSteps.indexOfFirst { open ->
+    /**
+     * Close the open step a terminal event belongs to — only when the event
+     * names one step unambiguously. A terminal event that carries no stage
+     * index matches by ordinal alone; with a single open candidate that is
+     * still unambiguous, and with several it decides nothing, so no step is
+     * closed and the ambiguity is reported instead of resolved by the order
+     * of a list. Picking the first match would attribute a duration, or a
+     * dangling verdict, to a step that may not be the one that ended.
+     */
+    private fun closeOpenStep(
+        stageIndex: Int?,
+        stepIndex: Int,
+        openSteps: ArrayDeque<StepStarted>,
+        onAmbiguous: () -> Unit,
+    ) {
+        val candidates = openSteps.withIndex().filter { (_, open) ->
             open.stepIndex == stepIndex && (stageIndex == null || open.stageIndex == stageIndex)
         }
-        if (index >= 0) openSteps.removeAt(index)
+        when {
+            candidates.isEmpty() -> {}
+            candidates.size == 1 -> openSteps.removeAt(candidates.single().index)
+            else -> onAmbiguous()
+        }
     }
 }
 
@@ -135,6 +162,9 @@ object RunExplainReport {
 
         is Inference.StepNeverClosed ->
             "inference step-never-closed step=${f.stepName} (#${f.evidence.sequence})"
+
+        is Inference.AttributionAmbiguous ->
+            "inference attribution-ambiguous count=${f.count} (#${f.evidence.sequence})"
     }
 
     private fun remedy(f: Finding): String = when (f) {
@@ -142,6 +172,8 @@ object RunExplainReport {
         is Fact.StepBroke -> "inspect --failed lists this step's transcript; the failure kind names the owner"
         is Inference.RunStillOpen -> "an open run has no verdict yet; re-ask once it ends, or recover it deliberately"
         is Inference.StepNeverClosed -> "the step's start has no terminal event; treat its effects as undecided"
+        is Inference.AttributionAmbiguous ->
+            "a terminal could not name its step; no duration or dangling verdict was invented for any candidate"
     }
 
     private fun payload(f: Finding): String = when (f) {
@@ -149,6 +181,7 @@ object RunExplainReport {
         is Fact.StepBroke -> ",\"failureKind\":\"${f.failureKind}\",\"step\":\"${escape(f.stepName)}\",\"message\":\"${escape(f.message)}\""
         is Inference.RunStillOpen -> ",\"lastObservedAtMs\":${f.lastObservedAtMs}"
         is Inference.StepNeverClosed -> ",\"step\":\"${escape(f.stepName)}\""
+        is Inference.AttributionAmbiguous -> ",\"count\":${f.count}"
     }
 
     private fun word(state: LaneState): String = when (state) {

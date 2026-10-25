@@ -150,6 +150,26 @@ class RunCostProfileTest {
     }
 
     @Test
+    fun `an ambiguous terminal attributes a duration to no candidate`() {
+        val events = listOf(
+            run(at = 0),
+            dev.rubentxu.pipeline.v2.events.StageStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(10), 0, "build"),
+            stepStart(at = 15, step = 1),
+            dev.rubentxu.pipeline.v2.events.StageStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(20), 1, "test"),
+            StepStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(25), 1, 1, "deploy", "sh"),
+            // Two open steps share ordinal 1 across stages; a terminal
+            // without a stage index names neither, and neither is measured.
+            StepFailed("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(50), null, 1, "deploy", "sh", FailureKind.SCRIPT, "exit 1"),
+            finished("failure", at = 60),
+        )
+
+        val input = RunCostProjection.project(events)
+
+        val samples = input.costs[dev.rubentxu.pipeline.v2.runtime.profile.RuntimeCost.StepDispatch]
+        assertTrue(samples is dev.rubentxu.pipeline.v2.runtime.profile.CostSamples.Estimate)
+    }
+
+    @Test
     fun `events with no run boundaries still report their costs honestly`() {
         val events = listOf(compileStart(at = 5), compileFinish(at = 45))
 

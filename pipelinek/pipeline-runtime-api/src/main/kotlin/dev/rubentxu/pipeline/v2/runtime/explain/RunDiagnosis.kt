@@ -59,6 +59,18 @@ sealed interface Inference : Finding {
     ) : Inference {
         override val code: String get() = "step-never-closed"
     }
+
+    /**
+     * A terminal event could not name the step it belonged to: it carried
+     * no stage index and several open steps shared its ordinal. No duration
+     * and no dangling verdict was attributed to any of them.
+     */
+    data class AttributionAmbiguous(
+        val count: Int,
+        override val evidence: EvidenceRef,
+    ) : Inference {
+        override val code: String get() = "attribution-ambiguous"
+    }
 }
 
 /** How much of each lane the diagnosis actually consulted. */
@@ -94,6 +106,8 @@ data class DiagnosisFacts(
     val neverClosedStep: Inference.StepNeverClosed?,
     val lastObservedAtMs: Long,
     val lastSequence: Long,
+    /** Terminals that matched several open steps and therefore closed none. */
+    val ambiguousClosures: Int = 0,
 )
 
 /** The diagnosis: an explained set of findings, or a typed refusal. */
@@ -139,6 +153,14 @@ fun classify(facts: DiagnosisFacts, completeness: Completeness): Diagnosis {
             )
         }
         facts.neverClosedStep?.let { add(it) }
+        if (facts.ambiguousClosures > 0) {
+            add(
+                Inference.AttributionAmbiguous(
+                    facts.ambiguousClosures,
+                    EvidenceRef("event-journal", facts.lastSequence),
+                ),
+            )
+        }
     }
     return Diagnosis.Explained(status, findings, completeness)
 }

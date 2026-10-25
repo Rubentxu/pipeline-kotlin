@@ -90,17 +90,23 @@ object RunCostProjection {
         }
 
         /**
-         * Close the open step the terminal event belongs to. A terminal step
-         * event may carry no stage index; it is then matched by step ordinal
-         * alone, the same tolerance the attribution fold applies elsewhere.
+         * Close the open step the terminal event belongs to — only when the
+         * event names one step unambiguously. A terminal without a stage
+         * index matches by ordinal alone; with several open candidates that
+         * decides nothing, so nothing is closed and the steps remain open:
+         * their intervals surface as bounded estimates, which stay true, and
+         * no measured duration is attributed to a step that may not be the
+         * one that ended.
          */
         private fun closeStep(stageIndex: Int?, stepIndex: Int, endedAtMs: Long) {
-            val index = openSteps.indexOfFirst { open ->
+            val candidates = openSteps.withIndex().filter { (_, open) ->
                 open.stepIndex == stepIndex && (stageIndex == null || open.stageIndex == stageIndex)
             }
-            if (index >= 0) {
-                val open = openSteps.removeAt(index)
-                stepIntervals.add(measured(open.startedAtMs, endedAtMs))
+            when {
+                candidates.size == 1 -> {
+                    val open = openSteps.removeAt(candidates.single().index)
+                    stepIntervals.add(measured(open.startedAtMs, endedAtMs))
+                }
             }
         }
     }

@@ -118,6 +118,57 @@ class RunExplainTest {
     }
 
     @Test
+    fun `a terminal that matches several open steps closes none and says so`() {
+        val events = listOf(
+            start(at = 0),
+            stageEvent(at = 10, stage = 0),
+            stageStep(at = 15, stage = 0, step = 1),
+            stageEvent(at = 20, stage = 1),
+            stageStep(at = 25, stage = 1, step = 1),
+            // No stage index: two open steps share ordinal 1, so this
+            // terminal names neither of them and both stay open.
+            StepFailed(
+                "e${seq++}", "run-1", seq++, Instant.ofEpochMilli(50),
+                null, 1, "deploy", "sh", FailureKind.SCRIPT, "exit 1",
+            ),
+            finished("failure", at = 60),
+        )
+
+        val diagnosis = RunExplainProjection.project(events) as Diagnosis.Explained
+
+        val ambiguous = diagnosis.findings.filterIsInstance<Inference.AttributionAmbiguous>()
+        assertEquals(1, ambiguous.size)
+        assertEquals(1, ambiguous.single().count)
+        assertTrue(diagnosis.findings.none { it is Inference.StepNeverClosed })
+    }
+
+    @Test
+    fun `a terminal without stage index still closes a unique candidate`() {
+        val events = listOf(
+            start(at = 0),
+            stageEvent(at = 10, stage = 0),
+            stageStep(at = 15, stage = 0, step = 1),
+            StepFailed(
+                "e${seq++}", "run-1", seq++, Instant.ofEpochMilli(40),
+                null, 1, "deploy", "sh", FailureKind.SCRIPT, "exit 1",
+            ),
+            finished("failure", at = 50),
+        )
+
+        val diagnosis = RunExplainProjection.project(events) as Diagnosis.Explained
+
+        // The ordinal named exactly one open step, so it closed; only the
+        // two observed facts remain, with no inference at all.
+        assertTrue(diagnosis.findings.none { it is Inference })
+    }
+
+    private fun stageEvent(at: Long, stage: Int) =
+        dev.rubentxu.pipeline.v2.events.StageStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, "build")
+
+    private fun stageStep(at: Long, stage: Int, step: Int) =
+        StepStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, "deploy", "sh")
+
+    @Test
     fun `control characters in a failure message render as valid JSON escapes`() {
         val events = listOf(
             start(at = 0),

@@ -41,6 +41,7 @@ class LiveOutputDrain(
     private val reader: ObservationOutputReader,
     private val frameLimit: Int,
     private val pollIntervalMs: Long,
+    private val park: (Long) -> Boolean = ::parkUntilDeadline,
 ) {
 
     init {
@@ -80,6 +81,7 @@ class LiveOutputDrain(
             //   Exit there — and silently drop the output of every LATER step. pins that
             // Reading before asking means the bytes committed up to the moment the owner stopped are
             // emitted, and asking before reading would drop the last poll's worth.
+            var recordsInPage = 0
             when (val read = reader.readOutput(runId, ordinal, frameLimit)) {
                 is ObservationOutputRead.Refused -> return LiveOutputDrainResult.Refused(read.reason)
                 is ObservationOutputRead.Page -> {
@@ -88,6 +90,7 @@ class LiveOutputDrain(
                         // The position advances per RECORD, not per page. Advancing per page would
                         // skip any record an emitter rejected and lose it for good.
                         ordinal = record.frame.ordinal
+                        recordsInPage++
                     }
                 }
             }
@@ -105,16 +108,29 @@ class LiveOutputDrain(
                 }
             }
 
-            if (!sleep(pollIntervalMs)) return LiveOutputDrainResult.Stopped
+            // A page that carried records is followed immediately by the next
+            // read: parking there would add the poll interval to the latency
+            // of every chunk of a producing build. A quiet page parks until
+            // the deadline — never forever, so a follower without hints still
+            // converges like a poller.
+            when (wakePlan(recordsInPage, pollIntervalMs)) {
+                is WakeDecision.ReadFromCursor -> Unit
+                is WakeDecision.AwaitHintOrDeadline ->
+                    if (!park(pollIntervalMs)) return LiveOutputDrainResult.Stopped
+            }
         }
     }
 
-    private fun sleep(millis: Long): Boolean = try {
-        Thread.sleep(millis)
-        true
-    } catch (_: InterruptedException) {
-        Thread.currentThread().interrupt()
-        false
+    private companion object {
+
+        /** The production park: sleep the deadline away, and yield to an interruption. */
+        fun parkUntilDeadline(millis: Long): Boolean = try {
+            Thread.sleep(millis)
+            true
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
     }
 }
 

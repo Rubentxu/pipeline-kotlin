@@ -94,6 +94,45 @@ class LiveOutputDrainTest {
         assertInstanceOf(LiveOutputDrainResult.Stopped::class.java, result)
     }
 
+    @Test
+    fun `flowing pages are read back to back and only a quiet page parks`() {
+        // Two full pages and then a quiet one. A drain that parked between the
+        // full pages would add the poll interval to the latency of every
+        // chunk of a producing build — the park count is the whole assertion.
+        val reader = ScriptedReader(
+            pages = listOf(
+                page(records(0, 1)),
+                page(records(2)),
+                page(),
+            ),
+        )
+        val parks = mutableListOf<Long>()
+
+        val result = LiveOutputDrain(reader, frameLimit = 64, pollIntervalMs = 25) { millis ->
+            parks += millis
+            true
+        }.drain(
+            runId = RUN,
+            shouldStop = { reader.reads >= 4 },
+        ) { }
+
+        assertInstanceOf(LiveOutputDrainResult.Drained::class.java, result)
+        // Exactly one park: after the first QUIET read. The two producing
+        // reads before it never parked, whatever the interval is.
+        assertEquals(listOf(25L), parks)
+    }
+
+    @Test
+    fun `a park that yields to interruption stops the drain instead of looping`() {
+        val reader = ScriptedReader(pages = listOf(page()))
+        val result = LiveOutputDrain(reader, frameLimit = 64, pollIntervalMs = 25) { false }.drain(
+            runId = RUN,
+            shouldStop = { false },
+        ) { }
+
+        assertInstanceOf(LiveOutputDrainResult.Stopped::class.java, result)
+    }
+
     private fun records(vararg ordinals: Long): List<ObservationRecord.Output> =
         ordinals.map { ordinal ->
             val bytes = "chunk-$ordinal".toByteArray()

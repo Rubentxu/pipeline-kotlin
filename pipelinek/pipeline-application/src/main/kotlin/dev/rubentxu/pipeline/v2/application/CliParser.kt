@@ -744,6 +744,7 @@ object CliParser {
         var state = false
         var profile = false
         var explain = false
+        var telemetry = false
 
         var i = 0
         while (i < args.size) {
@@ -753,6 +754,7 @@ object CliParser {
                 "--state" -> state = true
                 "--profile" -> profile = true
                 "--explain" -> explain = true
+                "--telemetry" -> telemetry = true
                 "--kind" -> {
                     kind = args.getOrNull(++i) ?: return rejectInspect("--kind requires a value")
                 }
@@ -815,6 +817,7 @@ object CliParser {
             if (state) add("--state")
             if (profile) add("--profile")
             if (explain) add("--explain")
+            if (telemetry) add("--telemetry")
         }
         if (modes.size > 1) {
             return rejectInspect("a query carries one whole-run report; got ${modes.joinToString(" + ")}")
@@ -836,6 +839,7 @@ object CliParser {
                 state = state,
                 profile = profile,
                 explain = explain,
+                telemetry = telemetry,
             ),
         )
     }

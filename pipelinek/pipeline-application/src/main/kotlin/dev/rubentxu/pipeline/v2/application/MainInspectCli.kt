@@ -64,7 +64,7 @@ object MainInspectCli {
             "[--context N] [--log-tail N] " +
             "[--fields STAGE,STEP,OUTCOME,MESSAGE,CONSOLETAIL] " +
             "[--format text|json] " +
-            "[--state] [--profile] [--explain]"
+            "[--state] [--profile] [--explain] [--telemetry]"
 
     /**
      * The five dimensional columns a caller can request from the inspection document.
@@ -176,6 +176,12 @@ object MainInspectCli {
         // claim tied to the record that supports it. Also event-plane only.
         if (compiled.explain) {
             return reportRunExplain(runId, compiled)
+        }
+        // The telemetry export is a MODE as well: the run's facts as
+        // redacted, versioned signals, one JSON object per line for a
+        // collector or a file. Nothing about the run changes with or without it.
+        if (compiled.telemetry) {
+            return reportRunTelemetry(runId, compiled)
         }
         if (compiled.controlRoot == null) {
             System.err.println("inspect: --control-root <path> is required to read the Output Plane")
@@ -656,6 +662,40 @@ object MainInspectCli {
         return 0
     }
 
+    /**
+     * Report the RUN's facts as telemetry signals: spans for the run, its
+     * compilation and its steps, plus duration histograms and outcome
+     * counters, all reduced to what the redaction policy allows. The output
+     * is line-delimited JSON a collector can tail; reading it is optional
+     * and the run that produced it neither knows nor cares.
+     */
+    private fun reportRunTelemetry(runId: String, query: CompiledInspectionQuery): Int {
+        val dbPath = query.dbPath
+            ?: return 2.also { System.err.println("inspect: --db <path> is required to export the run's telemetry") }
+
+        val admission = admitEventStore(dbPath, EventStorePurpose.Read)
+        if (admission is EventStoreAdmission.Refused) {
+            System.err.println(admission.refusal.render())
+            return 2
+        }
+        val events: List<DomainEvent> = try {
+            (admission as EventStoreAdmission.Admitted).store.use { store ->
+                store.eventsFor(runId).toList()
+            }
+        } catch (e: java.io.IOException) {
+            System.err.println("inspect: cannot read event store at $dbPath: ${e.message}")
+            return 2
+        }
+        if (events.isEmpty()) {
+            System.err.println("inspect: this event store holds no events for run '$runId'.")
+            return 2
+        }
+
+        RunTelemetryReport.jsonLines(runId, RunTelemetryProjection.fromEvents(runId, events))
+            .forEach(::println)
+        return 0
+    }
+
     /** The one line the state surface prints. */
     private fun renderRunState(observation: RuntimeObservation): String = when (observation) {
         is RuntimeObservation.Running -> "run-state running"
@@ -745,6 +785,11 @@ data class CompiledInspectionQuery(
      * evidence references, one whole-run report like [state] and [profile].
      */
     val explain: Boolean = false,
+    /**
+     * Export the RUN's facts as redacted telemetry signals instead of its
+     * records: the fourth whole-run report mode.
+     */
+    val telemetry: Boolean = false,
 )
 
 /** Result of [MainInspectCli.parseInspect]. */

@@ -229,6 +229,5 @@ object RunTelemetryReport {
             "\"${escape(key)}\":\"${escape(value)}\""
         }
 
-    private fun escape(s: String): String =
-        s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+    private fun escape(s: String): String = escapeJsonText(s)
 }

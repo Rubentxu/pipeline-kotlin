@@ -118,6 +118,24 @@ class RunExplainTest {
     }
 
     @Test
+    fun `control characters in a failure message render as valid JSON escapes`() {
+        val events = listOf(
+            start(at = 0),
+            stepStart(at = 10),
+            stepFail(at = 20, message = "line one\tline two\rfinished\u0001"),
+            finished("failure", at = 30),
+        )
+        val diagnosis = RunExplainProjection.project(events)
+
+        val line = RunExplainReport.jsonLines("run-1", diagnosis)
+            .first { it.contains("message") }
+
+        assertTrue(line.contains("line one\\tline two\\rfinished\\u0001"))
+        assertTrue(!line.contains("\t"))
+        assertTrue(!line.contains("\r"))
+    }
+
+    @Test
     fun `the explain mode parses alone and refuses to share a query with the other reports`() {
         val parsed = MainInspectCli.parseInspect(arrayOf("--explain", "--db", "/tmp/x.db"))
         assertTrue(parsed is InspectParseResult.Parsed)

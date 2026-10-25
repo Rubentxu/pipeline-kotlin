@@ -156,6 +156,5 @@ object RunExplainReport {
         LaneState.NotConsulted -> "not-consulted"
     }
 
-    private fun escape(s: String): String =
-        s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+    private fun escape(s: String): String = escapeJsonText(s)
 }

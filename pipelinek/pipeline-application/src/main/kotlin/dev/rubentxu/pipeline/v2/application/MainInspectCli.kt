@@ -468,8 +468,7 @@ object MainInspectCli {
         }
     }
 
-    private fun escapeJson(s: String): String =
-        s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+    private fun escapeJson(s: String): String = escapeJsonText(s)
 
     private fun defaultColumns(): List<InspectField> = listOf(
         InspectField.Stage, InspectField.Step, InspectField.Outcome, InspectField.Message,

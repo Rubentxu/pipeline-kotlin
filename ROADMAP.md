@@ -266,7 +266,7 @@ La auditoría nombra sus bloques `B1..B5`; aquí se escriben `AUD-B1..AUD-B5` po
 |---|---|---|---|
 | **AUD-B1** | publicación con procedencia, y una limpieza de caché que no borre lo ajeno | **cerrado en sus dos mitades.** La poda de caché ya está en el árbol, con las seis guardas que la auditoría pedía —marca de propiedad en la raíz, raíz canonicalizada y candidata sólo hija directa, enlaces simbólicos que nunca llegan a `rm`, namespace acreditado por un marcador con digest, edad, y el namespace en uso como excluido— y las seis se han visto en rojo, una por una (commit `dfba3342e`). La mitad de publicación se midió en este ciclo: 17 filas y 10 mutaciones (§2.90), y la puerta completa sobre el árbol que se entrega dio `PASS` (166 s, 1311 tests, 61 escenarios, ratio de LOC 0.348) | §2.90 |
 | **AUD-B2** | una **decisión pura de atribución** compartida por perfil, `explain` y telemetría; y una caché que cae por **origen y tipo** y no por el texto literal de un mensaje | **la mitad de la atribución está cerrada y medida (§2.91).** Las tres proyecciones llaman ya a **una** decisión pura (`StepAttribution`), y el defecto —la telemetría atribuía la duración al **primer** candidato— se ha visto en rojo con tres mutaciones (7, 4 y 1 filas rojas, sin daño colateral). La medición en el CLI de una etapa **paralela** mostró lo que la regla vieja decía al operador: que una rama «nunca cerró» cuando sí cerró, y que tres terminales no pudieron nombrar su paso. **Las dos mitades de la caché están cerradas y medidas (§2.92).** El fallback ya no se decide por la cadena `CachingJvmScriptingHost.UNLOADED_ARTIFACT_MESSAGE` —un **texto** y no un **tipo**— sino por el **origen** y el **tipo** del fallo: el rechazo del cargador se reconoce por la clase y el método que lo levantan, leídos del frame superior de la traza. La regla vieja y su guardia compartían el mismo literal, así que podían estar equivocadas **juntas**; ahora la guardia pide la excepción **real** a la clase real del runtime. Se ha visto en rojo con cinco mutaciones (3, 3, 1, 3 y 2 filas rojas, sin daño colateral) y con un UAT efímero contra tres distribuciones —la nueva recupera, la vieja **también** recupera (el cambio quita una dependencia, no arregla un defecto alcanzable) y la regla rota **falla**—. **La tercera mitad también queda cerrada y medida (§2.94).** La clave v3 por contenido ya es **consumible desde un test unitario**: `Kotlin24ScriptingHost.cacheIdentityFor` pasa de `private` a `internal` —sin cambio de comportamiento, la misma función llamada por el mismo camino— y cinco filas la leen: tres de la identidad directamente y dos del **cableado**, que miran con qué clave se direccionó la caché y qué ocurre sin identidad verificada. Se ha visto en rojo con seis mutaciones (4, 1, 2, 1, 1 y 1 filas rojas, sin daño colateral) y con un UAT efímero contra tres distribuciones con una caché compartida: mismas bytes en otra ruta → la **misma** clave; bytes distintas → **otra** clave; y con la mutación que saca el classpath de la JVM de la clave, las tres comparten clave y artefacto, que es como el UAT dice que está roto. La puerta completa sobre el árbol comiteado dio `PASS` (187 s, 1321 tests, 61 escenarios, ratio de LOC 0.351). **AUD-B2 queda cerrado en sus tres puntos.** | §2.91, §2.92, §2.94 |
-| **AUD-B3** | observabilidad de verdad: `traceId` como **campo**, `spanId` robusto, intervalos validados sin duraciones negativas, límites de cardinalidad por dimensión, y un adaptador OTLP opcional | **abierto, sin tocar.** `RSO-07` es su nombre en la propuesta de arriba | §0 RSO-07 |
+| **AUD-B3** | observabilidad de verdad: `traceId` como **campo**, `spanId` robusto, intervalos validados sin duraciones negativas, límites de cardinalidad por dimensión, y un adaptador OTLP opcional | **cerrado en sus cinco puntos, y medido (§2.95).** El `traceId` es ahora un **campo** de cada línea del export —una línea suelta sabe a qué run pertenece sin consultar la cabecera que la precedió—, el `spanId` se deriva de `(traza, ámbito, ocurrencia)` y distingue las ramas de una etapa paralela, un intervalo invertido deja de medir duración y su contradicción se cuenta en `pipelinek.invalid_interval_total`, cada dimensión tiene su tope de cardinalidad en **política** y lo que la pasa dice que pasó (`__overflow__`), y `inspect --telemetry --otlp` renderiza la **misma** exportación en la forma de OpenTelemetry mientras que `--otlp` sin `--telemetry` se rechaza. Se ha visto en rojo con **diez** mutaciones focales (10/10 `DISCRIMINATED`, una fila roja cada una, sin daño colateral) y con la mitad roja del escenario promovido, medida **sobre el árbol que se entrega**: con M-1 el lanzador nombra `TELEMETRY_EVERY_LINE_NAMES_THE_TRACE`, y con M-6 nombra `TELEMETRY_OTLP_CARRIES_THE_TRACE`. La puerta completa sobre el árbol comiteado dio `PASS` (182 s, 1335 tests, 62 escenarios, ratio de LOC 0.355; sha `995772a5c`), después de que la **primera** ejecución de esa puerta **fallara en la etapa 1** con dos hallazgos de detekt, resueltos con una extracción y no con un umbral más alto | §2.95 |
 | **AUD-B4** | economía de la verificación —y **sólo** después de pasar por `delivery-first-testing` | **abierto, y con precondición declarada.** La lente que aplica se nombra antes de escribir una línea: `references/navigation.md`. El router ofrece un portafolio de auditoría que **no existe en disco** (hay 8 playbooks y ninguno es ese), así que esa ruta no se puede seguir tal cual; el coste de la puerta ya está medido (§2.86) y es lo que este bloque tiene que reducir | §0 RSO-01..02 |
 | **AUD-B5** | proveedor de aislamiento | **abierto, sin tocar.** `RSO-08` es su nombre en la propuesta de arriba; `RSO-04` es su precondición (que `LOCAL` no es un sandbox multi-tenant) | §0 RSO-08 |
 
@@ -10870,6 +10870,233 @@ intervalos validados, límites de cardinalidad y un adaptador OTLP opcional),
 `delivery-first-testing` antes de tocar nada) y `AUD-B5` (el proveedor de
 aislamiento).
 
+
+### 2.95 La consolidación de la telemetría: el trace como campo, el span que nombra lo que abarca y el adaptador que se puede no usar
+
+La auditoría pide cinco cosas de la telemetría, y antes de este bloque las cinco
+eran huecos medidos: el `traceId` se calculaba y no se emitía, tres ramas de una
+etapa paralela compartían un `spanId`, un intervalo invertido viajaba con
+duración negativa, ninguna dimensión tenía límite de cardinalidad, y el
+adaptador OTLP no existía.
+
+| lo que la auditoría pide | lo que era | lo que es ahora |
+|---|---|---|
+| `traceId` como **campo** | la traza se derivaba en el consumidor, línea a línea | **cada** línea del export lleva su `traceId`, así que una línea suelta —la última, una línea filtrada de un flujo— sabe a qué run pertenece sin consultar la cabecera que la precedió |
+| `spanId` **robusto** para ramas paralelas | tres ramas de una etapa paralela producían un solo id | el ámbito del span es la terna `(etapa, ordinal, nombre)` más el número de veces que ese ámbito se abrió, y todo eso entra en el **digest**: el nombre nunca sale del proceso |
+| intervalos **validados** | un terminal anterior a su propio inicio cerraba el span con duración negativa | el span viaja **sin su fin** —la forma de un span que sigue corriendo—, la duración se retiene, y la contradicción se cuenta en `pipelinek.invalid_interval_total` |
+| límites de **cardinalidad** por dimensión | una dimensión podía traer un valor distinto por run, sin techo | el presupuesto es **política** (`maxDistinctValuesPerDimension`), y lo que se pasa dice que se pasó: el valor se colapsa en `__overflow__` |
+| adaptador **OTLP opcional** | no existía | `inspect --telemetry --otlp` renderiza la **misma** exportación en la forma de OpenTelemetry, y `--otlp` **sin** `--telemetry` se rechaza, porque esa forma no es un informe propio: es otra representación del que ya existe |
+
+**La ruta y el orden son la regla.** `delivery-first-testing`, con la ruta de
+feature (`change-impact` → `ephemeral-uat` → `regression-promotion`). El orden
+que impone es **garantía → capacidad → el instrumento más barato que puede
+fallar**, y aquí cambió la respuesta:
+
+- **La garantía** que el consumidor apoya no es «el export es JSON», sino
+  *«quien recibe una línea sabe a qué run pertenece, y quien recibe los spans
+  puede distinguir las ramas de una etapa paralela»*. Sin eso, un consumidor
+  que correlaciona trazas mezcla dos runs o cuenta una rama como tres: no hay
+  síntoma, el script corre igual.
+- **La capacidad** que la garantía sirve es *«exportar la telemetría de un run ya
+  terminado, en JSON líneas o en la forma de OpenTelemetry, sin que el export
+  tenga que adivinar qué run es»*. Es observable desde fuera —el producto decide
+  qué escribe— y no necesita el CLI para observarse.
+- **El instrumento más barato que puede fallar** resultó ser **la proyección y
+  la política, leídas directamente**: son funciones puras sobre una lista de
+  eventos, y una fila que las lee cuesta milisegundos. Lo que **no** llega es
+  la costura entre la proyección y el binario: una fila unitaria puede ver que
+  el `spanId` de dos ramas difiere, pero no que el archivo que sale del
+  `inspect` lo lleva. Esa costura necesita su propio instrumento, y por eso
+  hay un escenario promovido y no sólo filas.
+
+**El código, y dónde vive cada cosa.** Cinco ficheros, en tres módulos:
+
+| fichero | qué trae |
+|---|---|
+| `pipeline-application/…/RunTelemetry.kt` | la proyección: el `spanId` se deriva de `(trace, ámbito, ocurrencia)`, el intervalo que se contradice no cierra su span, y el `traceId` es un campo de cada línea |
+| `pipeline-application/…/RunTelemetryOtlp.kt` | el adaptador: la **forma** del documento (recursos, spans, sumas, histogramas) y, aparte, la **codificación** de los tipos propios del formato |
+| `pipeline-application/…/CliParser.kt`, `MainInspectCli.kt` | la bandera `--otlp` y la negativa que la acompaña |
+| `pipeline-runtime-api/…/telemetry/RunTelemetry.kt` | `TelemetryTrace` con su `traceIdOf`, el tercer entero de `TelemetryPolicy` y el colapso `__overflow__` |
+
+El tercer entero de `TelemetryPolicy` es una **decisión del que llama**, no una
+constante de la implementación: un tope escrito como constante sólo se cambia
+cambiando el código que lo lee. Y `TelemetryTrace` es un tipo **nuevo** y no un
+cambio en uno viejo, porque el export no es una lista de señales: es una lista
+de señales que **pertenecen** a una traza.
+
+**Las 26 filas, y qué guarda cada una.** `RunTelemetryTest` (17) y
+`TelemetryPolicyTest` (9). De ellas, **14 son nuevas** en este bloque (11 y 3):
+las que existían ya vigilaban la proyección y la política; las nuevas vigilan
+los cinco puntos de la auditoría.
+
+| fila | qué guarda |
+|---|---|
+| `every exported line names the trace it belongs to` | **cada** línea lleva la traza, no sólo la cabecera |
+| `the span of a branch does not depend on the order the branches opened` | dos ramas con el mismo stage y ordinal se distinguen **por su nombre**, no por el orden en que se abrieron |
+| `a stage that runs twice does not reuse its first span` | la **ocurrencia** entra en el digest: un ámbito repetido no reutiliza el id de su antecesora |
+| `an interval that ends before it starts travels no duration and is counted` | el intervalo invertido **no** mide duración, y la contradicción se cuenta |
+| `the OTLP document carries the trace and the spans` | la forma de OpenTelemetry lleva la traza y **distingue** los spans |
+| `the OTLP document carries the run's metrics` | el documento lleva las métricas del run, no un documento vacío |
+| `the otlp shape is refused without the telemetry export` | `--otlp` sin `--telemetry` se rechaza, con su mensaje |
+| `a dimension value longer than the budget is shortened` | un valor de dimensión largo **se acorta**, no viaja entero |
+| `a dimension whose values exceed the budget collapses into the overflow marker` | lo que pasa del presupuesto dice que pasó, en vez de fingir ser un valor más |
+| `an attribute key outside the allowlist does not travel` | la política sigue siendo el límite de lo que sale |
+
+**Las diez mutaciones, vistas en rojo.** Un verde que nunca se ha visto rojo no
+es evidencia. Cada mutación se aplicó con una precondición que aborta si el
+ancla no es única, y el `diff` se leyó de vuelta antes de cada corrida; los
+informes se borraban antes de correr, para que un informe de otra invocación no
+se pudiera leer como el de esta. La unidad de la medición es **el módulo
+entero** —las 26 filas—, para que el daño colateral también se midiera.
+
+| mutación | qué rompe | fila que se puso en rojo |
+|---|---|---|
+| **M-1** — el trace sale de la línea | una línea suelta deja de saber a qué run pertenece | `every exported line names the trace it belongs to` |
+| **M-2** — el nombre sale del ámbito | dos ramas vuelven a compartir id | `the span of a branch does not depend on the order the branches opened` |
+| **M-3** — se quita el guardia del intervalo | una duración negativa vuelve a viajar | `an interval that ends before it starts travels no duration and is counted` |
+| **M-4** — no se aplica el tope de cardinalidad | una dimensión vuelve a traer un valor por run | `a dimension whose values exceed the budget collapses into the overflow marker` |
+| **M-5** — el valor de una dimensión no se acorta | un valor largo viaja entero | `a dimension value longer than the budget is shortened` |
+| **M-6** — el OTLP pierde el trace | el documento deja de poder atribuirse a un run | `the OTLP document carries the trace and the spans` |
+| **M-7** — `--otlp` sin `--telemetry` deja de rechazarse | se imprime un documento vacío en vez de una negativa | `the otlp shape is refused without the telemetry export` |
+| **M-8** — la ocurrencia sale del digest | un ámbito repetido reutiliza el id de su antecesora | `a stage that runs twice does not reuse its first span` |
+| **M-9** — la compilación no suelta su reloj | una compilación mide contra el reloj de otra | `a compilation that never started does not borrow the previous one's clock` |
+| **M-10** — la compilación no trae su propio inicio | una compilación se mide desde un arranque ajeno | `a compilation that starts again before it ends is measured from the last start` |
+
+**10 de 10 `DISCRIMINATED`**, una fila roja cada una, **sin daño colateral** y
+sin ninguna `INVALID` (una mutación que no compila no es una superviviente: es
+una instrumentación rota, y aquí ninguna lo fue). Medidos por los finales de
+los logs de cada mutación, las diez tardaron **59 s** en total, de 6 a 7 s cada
+una, y la comprobación posterior a restaurar, otros 5 s. El **baseline**
+previo —la corrida que compila el módulo en frío— queda fuera de esa cuenta,
+porque su reloj no quedó registrado.
+
+**M-5 y M-6 se midieron otra vez, y por qué.** La extracción del adaptador (§
+abajo) tocó el fichero que contiene el ancla de M-6, y una corrección de detekt
+tocó la fila que M-5 vigila. Un ancla que se movió y una fila que se reescribió
+son las dos maneras de que una mutación sobreviva sin que nadie lo note, así
+que las diez se volvieron a correr **sobre los bytes finales**: las diez siguen
+saliendo `DISCRIMINATED`, y M-5 y M-6 entre ellas.
+
+**El UAT efímero, contra la distribución real.** Un run real, un almacén real, el
+binario instalado y el código de salida real. Lo observado:
+
+| lo que se midió | lo que salió |
+|---|---|
+| líneas del export JSON | **15**, y las **15** llevan su `traceId` |
+| trazas distintas entre esas líneas | **1** (`1cbdbc2f8bce4b9559a5f283d403a1be`) |
+| señales de paso / ids distintos | **6 / 3** — tres ramas, cada una con su apertura y su cierre |
+| OTLP: spans / ids distintos / traza | **5 / 5 / la misma** |
+| OTLP: métricas | **2** (`pipelinek.run_outcome_total`, `pipelinek.step_duration_ms`) |
+| `--otlp` sin `--telemetry` | exit distinto de cero, y el stderr nombra la bandera: `inspect: --otlp renders the telemetry export; it requires --telemetry` |
+
+La mitad que prueba que el instrumento **puede fallar**: la misma UAT, contra
+una distribución reconstruida con **M-1** (el trace fuera de la línea), dice
+**BROKEN**. Un UAT que saliese verde con la regla rota no mediría nada.
+
+**El escenario promovido, y por qué se promovió.** `examples/events/02-telemetry-export`
+es un `.pipeline.kts` más, con cinco marcadores, y existe porque la costura que
+las filas unitarias no alcanzan —un run real, un almacén real, el binario real,
+el código de salida real— necesita un testigo. Es un escenario **promovido**:
+antes era un UAT efímero, y la decisión de promoverlo se tomó con su mitad roja
+medida, no con su mitad verde.
+
+Su mitad roja se midió **sobre el árbol que se entrega**, porque dos de sus
+cinco marcadores nunca se habían visto en rojo en él: el del trace en cada
+línea y el del trace en la forma de OpenTelemetry — y el ancla de M-6 vive en
+el fichero que la extracción de la etapa 1 movió. Se aplicó cada mutación con
+una precondición que aborta si el ancla no es única, se leyó el `diff` de vuelta
+antes de cada corrida, se reconstruyó la distribución, y se ejecutó el
+escenario:
+
+| mutación | veredicto del lanzador | lo que el stdout del pipeline dijo | los otros cuatro marcadores |
+|---|---|---|---|
+| **M-1** — el trace sale de la línea | `FAIL … stdout lacked: TELEMETRY_EVERY_LINE_NAMES_THE_TRACE` | `1 of 15 lines name the trace 1e69f60a…` — la traza sólo aparece en la cabecera | presentes |
+| **M-6** — el OTLP pierde el trace | `FAIL … stdout lacked: TELEMETRY_OTLP_CARRIES_THE_TRACE` | `the OTLP document does not carry the trace 227455aa…` | presentes |
+
+Los dos rojos son **veredictos nombrados**, no códigos de salida: el lanzador
+dice qué garantía se perdió, y el stdout del pipeline dice por qué. Los otros
+cuatro marcadores siguen en el stdout en las dos corridas: la mutación rompe
+**una** garantía, no todas. Restaurado, el escenario vuelve a verde —1
+escenario, 1 pasado, 0 fallidos, 0 que no comprobaron nada— y el árbol queda
+limpio: `git status --short` no imprime nada.
+
+**La ruptura de ABI, y dónde está escrita.** `pipeline-runtime-api` es
+`EXPERIMENTAL` en `published-contract-maturity.json`, y este bloque le añade el
+tercer entero al constructor de `TelemetryPolicy` y el tipo `TelemetryTrace`.
+Eso es una ruptura de ABI —de fuente y de binario— y está en el registro de
+excepciones (`published-contract-exceptions.json`, entrada 20), **nombrando el
+SHA que la introduce**: `4458436bfb9bb60d5b9238ee21a4324fd418c77f`. El registro
+lo escribe el commit siguiente al que rompe, porque es el único que puede citar
+ese SHA. Nada del formato durable cambió: el export de telemetría es una
+proyección de los eventos persistidos, no un formato que ningún consumidor
+resuelva desde el artefacto.
+
+**La puerta que estuvo en rojo antes de estar en verde.** La puerta completa se
+ejecutó por primera vez sobre este bloque y **falló en la etapa 1**, con dos
+hallazgos de detekt: el adaptador OTLP acumulaba 16 funciones en un solo
+`object` (la regla admite 12) y una fila de test usaba `map.get()!!`. Los dos
+se resolvieron **sin tocar el umbral**: el primero con una **extracción** —la
+forma del documento y la codificación de sus valores son dos concerns y ahora
+son dos objetos, con la superficie pública todavía en una sola función—, y el
+segundo reescribiendo la fila para que la negativa **nombre** la dimensión
+ausente en vez de reventar con un `!!`. El número que la regla admite sigue
+siendo 12. Un `PASS` que no se ha visto en rojo no es evidencia, y esta puerta
+sí se vio en rojo: se ve en rojo en su propio log.
+
+**La puerta completa, ejecutada entera y sin filtros, sobre el árbol
+comiteado.** `timeout 900 ./scripts/verify-all.sh` desde la raíz, sobre
+`995772a5c`. Su línea de veredicto, copiada tal cual:
+
+```
+PASS  sha=995772a5ca21d4c5a4b26e938bef7d181460d66a  elapsed=182s  budget=900s  tests=rewritten:1335 read:0  scenarios=observed:62 executed:62
+```
+
+| campo | valor | qué afirma |
+|---|---|---|
+| `sha` | `995772a5c` | el árbol medido es el comiteado: la extracción y la fila corregida |
+| `elapsed` | **182 s** | contra un presupuesto de 900 s |
+| `tests=rewritten:1335 read:0` | 1335 | los 1335 los **escribió esta corrida**; los 14 de más que en §2.94 son las 14 filas nuevas de este bloque |
+| `scenarios=observed:62 executed:62` | 62 | los 62 escenarios se ejecutaron y los 62 comprobaron una garantía: el nuevo es el que sube de 61 a 62 |
+| `read:0` | 0 | ninguna cifra viene de un resultado cacheado de otra invocación |
+
+El **censo de LOC**, sobre el mismo árbol comiteado (el censo lee `git ls-files`,
+así que mide ficheros **trackeados**):
+
+```
+  VERIFY_LOC   = 25235
+  PRODUCT_LOC  = 71072
+  ratio        = 0.355 (limit 2)
+```
+
+Los módulos tocados: `pipeline-application: 5077 / 25689 = 0.198` y
+`pipeline-runtime-api: 505 / 1012 = 0.499`. El presupuesto es 2, y también
+aplica **por módulo**: la ratio más alta del árbol es
+`pipeline-step-sdk:workflow-control`, 80 / 49 = **1.633**, y ningún módulo lo
+pasa. El resultado global es 0.355. Las etapas: preparación 12 s; etapa 1 (compilación, `detekt`,
+`detektTest`, `apiCheck` e `installDist`) 49 s; etapa 2 (los tests unitarios
+permanentes de los 26 módulos con test) 21 s y **183 informes JUnit**, todos
+reescritos por esta corrida; etapa 3 (los 62 escenarios de `examples/`) 96 s
+—**588** comprobaciones sobre **112** ejecuciones, **219** pasos terminados, 2
+escenarios cerrados como inestables, **0** que no comprobaron nada, y la caché
+de scripts con 54 artefactos escritos y 54 presentes—; la suma del coste por
+escenario fue de 657,2 s, medidos en paralelo, y el más caro fue este mismo
+escenario nuevo, `events/02-telemetry-export`, con 24,3 s; etapa 4 (censo) 1 s y
+4b (procedencia de comentarios) 3 s. La etapa 5 cerró en **182 s**.
+
+**Lo que esta puerta no dice.** No certifica nada externo: no hay certificador
+independiente, ni publicación, ni firma de etiqueta, ni instalación desde un
+artefacto publicado. `apiCheck` compara la superficie publicada contra su base
+de referencia **dentro del repositorio** — eso es compatibilidad de ABI
+interna, no una garantía de release. Y las cifras son **locales**: un
+certificador externo, si algún día lo hay, tiene su propia latencia y se
+informará por separado, nunca disfrazado como parte de este `PASS`.
+
+**Lo que queda abierto, dicho con honestidad.** `AUD-B3` queda **cerrado en sus
+cinco puntos**: el `traceId` como campo, el `spanId` que nombra lo que
+abarca, los intervalos validados, los límites de cardinalidad por dimensión y
+el adaptador OTLP opcional. Quedan abiertos, y sin tocar, `AUD-B4` (la
+economía de la verificación, que pasa por `delivery-first-testing` antes de
+tocar nada) y `AUD-B5` (el proveedor de aislamiento).
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite

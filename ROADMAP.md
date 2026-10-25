@@ -265,7 +265,7 @@ La auditoría nombra sus bloques `B1..B5`; aquí se escriben `AUD-B1..AUD-B5` po
 | bloque | qué pide | estado medido | dónde |
 |---|---|---|---|
 | **AUD-B1** | publicación con procedencia, y una limpieza de caché que no borre lo ajeno | **cerrado en sus dos mitades.** La poda de caché ya está en el árbol, con las seis guardas que la auditoría pedía —marca de propiedad en la raíz, raíz canonicalizada y candidata sólo hija directa, enlaces simbólicos que nunca llegan a `rm`, namespace acreditado por un marcador con digest, edad, y el namespace en uso como excluido— y las seis se han visto en rojo, una por una (commit `dfba3342e`). La mitad de publicación se midió en este ciclo: 17 filas y 10 mutaciones (§2.90), y la puerta completa sobre el árbol que se entrega dio `PASS` (166 s, 1311 tests, 61 escenarios, ratio de LOC 0.348) | §2.90 |
-| **AUD-B2** | una **decisión pura de atribución** compartida por perfil, `explain` y telemetría; y una caché que cae por **origen y tipo** y no por el texto literal de un mensaje | **la mitad de la atribución está cerrada y medida (§2.91).** Las tres proyecciones llaman ya a **una** decisión pura (`StepAttribution`), y el defecto —la telemetría atribuía la duración al **primer** candidato— se ha visto en rojo con tres mutaciones (7, 4 y 1 filas rojas, sin daño colateral). La medición en el CLI de una etapa **paralela** mostró lo que la regla vieja decía al operador: que una rama «nunca cerró» cuando sí cerró, y que tres terminales no pudieron nombrar su paso. **Quedan abiertos**: el fallback de la caché, que hoy se decide por la cadena `CachingJvmScriptingHost.UNLOADED_ARTIFACT_MESSAGE` —un **texto** y no un **tipo**— y la prueba de que la clave v3 por contenido es consumible desde un test unitario | §2.91 |
+| **AUD-B2** | una **decisión pura de atribución** compartida por perfil, `explain` y telemetría; y una caché que cae por **origen y tipo** y no por el texto literal de un mensaje | **la mitad de la atribución está cerrada y medida (§2.91).** Las tres proyecciones llaman ya a **una** decisión pura (`StepAttribution`), y el defecto —la telemetría atribuía la duración al **primer** candidato— se ha visto en rojo con tres mutaciones (7, 4 y 1 filas rojas, sin daño colateral). La medición en el CLI de una etapa **paralela** mostró lo que la regla vieja decía al operador: que una rama «nunca cerró» cuando sí cerró, y que tres terminales no pudieron nombrar su paso. **Las dos mitades de la caché están cerradas y medidas (§2.92).** El fallback ya no se decide por la cadena `CachingJvmScriptingHost.UNLOADED_ARTIFACT_MESSAGE` —un **texto** y no un **tipo**— sino por el **origen** y el **tipo** del fallo: el rechazo del cargador se reconoce por la clase y el método que lo levantan, leídos del frame superior de la traza. La regla vieja y su guardia compartían el mismo literal, así que podían estar equivocadas **juntas**; ahora la guardia pide la excepción **real** a la clase real del runtime. Se ha visto en rojo con cinco mutaciones (3, 3, 1, 3 y 2 filas rojas, sin daño colateral) y con un UAT efímero contra tres distribuciones —la nueva recupera, la vieja **también** recupera (el cambio quita una dependencia, no arregla un defecto alcanzable) y la regla rota **falla**—. **Queda abierto**: la prueba de que la clave v3 por contenido es consumible desde un test unitario | §2.91, §2.92 |
 | **AUD-B3** | observabilidad de verdad: `traceId` como **campo**, `spanId` robusto, intervalos validados sin duraciones negativas, límites de cardinalidad por dimensión, y un adaptador OTLP opcional | **abierto, sin tocar.** `RSO-07` es su nombre en la propuesta de arriba | §0 RSO-07 |
 | **AUD-B4** | economía de la verificación —y **sólo** después de pasar por `delivery-first-testing` | **abierto, y con precondición declarada.** La lente que aplica se nombra antes de escribir una línea: `references/navigation.md`. El router ofrece un portafolio de auditoría que **no existe en disco** (hay 8 playbooks y ninguno es ese), así que esa ruta no se puede seguir tal cual; el coste de la puerta ya está medido (§2.86) y es lo que este bloque tiene que reducir | §0 RSO-01..02 |
 | **AUD-B5** | proveedor de aislamiento | **abierto, sin tocar.** `RSO-08` es su nombre en la propuesta de arriba; `RSO-04` es su precondición (que `LOCAL` no es un sandbox multi-tenant) | §0 RSO-08 |
@@ -10471,7 +10471,8 @@ no es una diferencia de forma: es una afirmación falsa sobre la ejecución.
   origen y tipo** —hoy se decide por la cadena
   `CachingJvmScriptingHost.UNLOADED_ARTIFACT_MESSAGE`, que es un texto— y la
   **prueba de que la clave v3 por contenido es consumible** desde un test
-  unitario. Ninguna de las dos se ha tocado.
+  unitario. Ninguna de las dos se ha tocado. *(El **fallback** quedó cerrado y
+  medido después, en §2.92; la **prueba de la clave v3** sigue abierta.)*
 - **El `spanId` de una etapa paralela sigue siendo el mismo para sus ramas.**
   `spanId = Sha256.ofText("span/$traceId/step/$stage/$step")` no lleva el
   nombre, así que las tres ramas de un stage paralelo exportan **tres** fines
@@ -10492,6 +10493,155 @@ no es una diferencia de forma: es una afirmación falsa sobre la ejecución.
   módulo entero (`260 tests`, `17 s`)— y su línea de veredicto lo decía
   (`PASS (subset)`): ninguna de ellas es evidencia de la puerta, y su reloj no
   se compara contra los 900 s.
+
+### 2.92 La caché que cae por su origen, no por su texto: la decisión, su consumidor, y los hechos que los midieron
+
+**El defecto, contado.** La caché de scripts compilados sabe degradar un
+artefacto ilegible a «no hay artefacto» y recompilar. Pero hay un **segundo**
+modo de daño, medido en el CLI: un jar truncado a la cuarta parte de sus bytes
+**carga** —la entrada que lee el cargador está al principio del fichero— y
+falla al **evaluar**. Ese fallo llegaba como una `RuntimeException` con un
+texto, y la decisión de «¿esto es una caché dañada o un fallo del script?»
+leía **ese texto**: `CachingJvmScriptingHost.UNLOADED_ARTIFACT_MESSAGE =
+"Compiled script is not loaded yet"`.
+
+El texto es del runtime de scripting, no de este proyecto. Tres consecuencias,
+las tres medidas:
+
+1. **La decisión era una afirmación sobre una cadena que este proyecto no
+   posee.** Si upstream la reformulaba, la recuperación —el recompilar y
+   reponer el artefacto— **dejaba de funcionar**, y nada en el repositorio lo
+   diría: no hay ninguna fila que mire lo que el runtime hace hoy.
+2. **La regla y su guardia compartían el mismo literal.** `EvaluationFailureTest`
+   afirmaba `RuntimeException("Compiled script is not loaded yet")` →
+   `UnloadedArtifact`: alimentaba al clasificador **con la misma cadena que el
+   clasificador comparaba**. Una regla y su prueba podían estar equivocadas
+   **juntas** y seguir en verde — un verde que no puede ver al sujeto.
+3. **Un fallo del cuerpo del script con esas palabras habría sido reintentado.**
+   La decisión no miraba de dónde venía la excepción, así que un
+   `RuntimeException("Compiled script is not loaded yet")` lanzado por el
+   propio cuerpo del script habría provoked un recompilado y una **segunda**
+   ejecución de un cuerpo que puede ya haber hecho efectos.
+
+**Los dos hechos que la regla necesitaba, medidos con la JVM** (ciclo
+`b2-cache-origin-2026-10-25`, instrumento temporal ya borrado; su traza se
+guardó en el ciclo y se borró con él):
+
+- **M-1 — de dónde viene el rechazo.** El rechazo escapa de `evaluator.invoke`
+  como `java.lang.RuntimeException`, con **94 frames**, y su frame superior es
+  `kotlin.script.experimental.jvmhost.KJvmCompiledScriptLazilyLoadedFromClasspath.getScriptOrError(jvmScriptSaving.kt:143)`
+  —el segundo es `getSourceLocationId(jvmScriptSaving.kt:163)` y el tercero
+  `BasicJvmScriptEvaluator.invoke$suspendImpl(BasicJvmScriptEvaluator.kt:67)`—,
+  con `CAUSE=null`. La recuperación de trazas de kotlinx.coroutines **no**
+  reescribió la traza, así que la regla del «frame superior» es sólida en el
+  camino real.
+- **M-2 — qué más llega al clasificador.** Un cuerpo de script que lanza
+  `RuntimeException("Compiled script is not loaded yet")` **no escapa** del
+  evaluador: el evaluador lo devuelve como `ResultValue.Error`
+  (`RETURN-VALUE=kotlin.script.experimental.api.ResultValue$Error`). O sea: el
+  clasificador sólo ve **infraestructura**, y el rechazo del cargador siempre
+  es anterior al cuerpo.
+
+**La decisión, una sola y sin texto.** `classifyEvaluationFailure` lee **dos**
+cosas y nada más: el **tipo** del `Throwable` y el **origen** desde el que se
+lanzó (el frame superior de su traza). El rechazo que significa «este
+artefacto está dañado» lo levanta **un** método de **una** clase del runtime de
+scripting; un `Error` nunca es reintentable (un heap agotado o un fallo de
+enlace no son una caché dañada: recompilar pediría más de lo mismo), y lo que
+no se reconoce se trata como fallo del script —la dirección segura, porque un
+modo de fallo desconocido significa «puede que ya haya habido efectos».
+
+El nombre de esa clase y de ese método son **constantes internas**
+(`UNLOADED_ARTIFACT_CLASS`, `UNLOADED_ARTIFACT_METHOD`) porque el runtime los
+declara *package-private*: este proyecto no puede referenciar el tipo, sólo el
+nombre con el que aparece en un frame. Y el nombre es **un contrato observado,
+no una cadena poseída**: la prueba permanente lo resuelve contra el runtime que
+está de verdad en el classpath, así que un cambio de upstream lo pone en rojo
+en vez de dejar una regla que dejó de coincidir en silencio.
+
+**Las cinco mutaciones, vistas en rojo.** Un verde que nunca se ha visto rojo no
+es evidencia, así que la regla se rompió cinco veces —cada mitad por separado,
+y la decisión entera por dos caminos distintos— y el diff se leyó de vuelta
+antes de cada corrida para probar que la mutación estaba aplicada. La unidad de
+la medición es **el módulo entero** (16 filas: las 7 nuevas y las 9 de
+`ScriptTextEscaperTest`), para que el daño colateral también se midiera:
+
+| mutación | qué rompe | filas que se pusieron en rojo |
+|---|---|---|
+| **BASE** | — | **0**: las 16 verdes |
+| **M-A** — se restaura la regla vieja, la que leía el **texto** | la decisión vuelve a ser una afirmación sobre una cadena ajena | **3**: `CachingJvmScriptingHostTest` ×1 (el fallo ajeno al cargador se reintenta), `EvaluationFailureTest` ×2 (las mismas palabras de otro sitio; un `Error` con el frame del cargador) |
+| **M-B** — se conserva el tipo y se **drota** la comprobación del origen | toda `RuntimeException` pasa a ser «caché dañada» | **3**: `CachingJvmScriptingHostTest` ×1, `EvaluationFailureTest` ×2 (un `RuntimeException` cualquiera; las mismas palabras de otro sitio) |
+| **M-C** — se conserva el origen y se **drota** la comprobación del tipo | un `Error` con el frame del cargador se vuelve reintentable | **1**: `EvaluationFailureTest` ×1 (el `Error`) |
+| **M-D** — el constante nombra una clase que el runtime **no trae** | la regla ya no reconoce la realidad | **3**: `CachingJvmScriptingHostTest` ×1 (el artefacto no se recompila), `EvaluationFailureTest` ×2 (el rechazo real no se reconoce; el origen nombrado no existe) |
+| **M-E** — el método nombrado **no es** el que levanta el rechazo | ídem, por la otra mitad de la comparación | **2**: `CachingJvmScriptingHostTest` ×1, `EvaluationFailureTest` ×1 (el rechazo real no se reconoce) |
+
+En ninguna de las cinco hubo daño colateral: las 9 filas de
+`ScriptTextEscaperTest` no se pusieron rojas ni una vez. Y **ninguna fila es
+vacía**: cada una de las 7 se puso roja en al menos una mutación, y las que se
+solapan no son la misma fila (M-D y M-E rompen el reconocimiento de la realidad
+por caminos distintos; M-A y M-B, la lectura del texto y la del origen).
+
+**El UAT efímero: el hecho, y la prueba de que el instrumento puede fallar.** El
+UAT midió una sola cosa —un artefacto de caché dañado **no rompe** el pipeline—
+y se ejecutó en el directorio del ciclo
+(`$XDG_STATE_HOME/pipelinek/verification-cycles/b2-cache-origin-2026-10-25/`),
+contra tres distribuciones distintas, cada una con su `db` y su `control-root`
+privados (lo único que se compartía era la caché, que es lo que la medición
+necesitaba):
+
+| distribución | qué llevaba dentro | resultado medido |
+|---|---|---|
+| **la nueva** (origen y tipo) | la regla de este ciclo | **RECOVERED**: `run1 rc=0 out=yes`; el jar de 4044 bytes truncado a 1011; `run2 rc=0 out=yes` y el jar **vuelve a 4044** —el artefacto dañado fue repuesto— |
+| **la vieja** (`566bafbbf`, construida en un worktree descartado; su `.class` lleva el literal `Compiled script is not loaded yet`) | la regla del texto | **RECOVERED**: 4166 → 1041 → 4166. **La vieja también recupera** |
+| **la rota** (M-E: el método nombrado no es el que levanta el rechazo) | la regla, con una mitad cambiada | **BROKEN**: el segundo run **falló** con `cause [SCHEMA]: Compiled script is not loaded yet` y `Pipeline finished with FAILURE`, y el jar **se quedó en 1013 bytes** —dañado— |
+
+La tercera fila es la que prueba que el instrumento **puede fallar**: un UAT
+que sale verde con la regla rota no mediría nada. Y la tercera fila midió algo
+más, sin pedirlo: el rechazo llegó **en la evaluación**, no en la carga —si
+hubiera llegado en la carga, la caché habría contestado «no hay artefacto» y
+el run habría compilado y salido bien—. Así que el modo de daño que la regla
+atiende es exactamente el que el producto produce.
+
+**Lo que el UAT demostró y lo que no demostró, dicho con honestidad.** La
+distribución **vieja** y la **nueva** coinciden en todos los casos alcanzables:
+las dos recuperan. Este cambio, por tanto, **no arregla un defecto de
+comportamiento alcanzable** —la regla vieja hacía su trabajo mientras el texto
+no cambiara— y no debe venderse como eso. Lo que arregla es **la dependencia**:
+la decisión ya no afirma nada sobre una cadena que otro proyecto posee, y su
+guardia ya no puede estar equivocada **junto con** ella, porque la guardia
+observa la excepción **real** —la que levanta la clase real del runtime real—
+en vez de copiar el literal del producto. La fila que lo dice de forma más
+directa es la del consumidor: un fallo que lleva **las palabras** del cargador
+pero viene de otro sitio **no se reintenta**, y bajo la regla vieja sí se
+reintentaba.
+
+**El cierre de la regresión.** La garantía —«un artefacto dañado se recompila, y
+sólo él: un fallo que no sea el rechazo del cargador no se reintenta nunca
+detrás de la caché»— la cubren **dos** instrumentos, cada uno el más barato
+que puede fallar en su nivel: la **decisión** (pura) con filas unitarias, y el
+**consumidor** (la rama que recompila o propaga) con un caché en memoria y el
+cargador real del runtime. El UAT efímero midió el hecho de extremo a extremo y
+**se descarta**: la garantía permanente son las 7 filas, que son más baratas y
+más precisas que un escenario de CLI.
+
+| garantía | original | sustituto o justificación | evidencia | decisión | coste | riesgo |
+|---|---|---|---|---|---|---|
+| un artefacto dañado se recompila, y sólo él | el UAT efímero del ciclo (un jar truncado) | 7 filas unitarias: 5 de la decisión pura y 2 de su consumidor | 5 mutaciones (3, 3, 1, 3 y 2 filas rojas, sin daño colateral) + UAT contra tres distribuciones | **PROMOTE** | 7 tests, 20 s | ninguno: la garantía es una decisión y su consumidor, y los dos están cubiertos por separado |
+
+**Lo que queda abierto, dicho con honestidad.**
+
+- **La otra mitad de `AUD-B2` sigue abierta**: la prueba de que la clave v3 por
+  contenido es **consumible desde un test unitario** —hoy
+  `Kotlin24ScriptingHost.cacheIdentityFor` no es alcanzable desde una prueba,
+  así que la propiedad que la caché promete (mismo contenido, misma clave;
+  contenido distinto, clave distinta) no está guardada por ninguna fila.
+  **No se ha tocado aquí.**
+- **La puerta completa no se ha ejecutado sobre este árbol.** Lo que se ha
+  ejecutado son corridas de **subconjunto** —la compilación con `detekt`,
+  `detektTest` y `apiCheck` más las 16 filas del módulo de scripting (61 s)— y
+  su línea de veredicto lo dice (`PASS (subset)`): ninguna de ellas es
+  evidencia de la puerta, y su reloj no se compara contra los 900 s.
+
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite

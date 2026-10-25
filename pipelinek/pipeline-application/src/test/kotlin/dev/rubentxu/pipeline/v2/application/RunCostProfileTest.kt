@@ -51,8 +51,8 @@ class RunCostProfileTest {
     private fun stepStart(at: Long, stage: Int = 0, step: Int = 0, name: String = "deploy") =
         StepStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, name, "sh")
 
-    private fun stepFinish(at: Long, stage: Int = 0, step: Int = 0) =
-        StepFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, "deploy", "sh", "success")
+    private fun stepFinish(at: Long, stage: Int = 0, step: Int = 0, name: String = "deploy") =
+        StepFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, name, "sh", "success")
 
     private fun stepFail(at: Long, stage: Int? = 0, step: Int = 0) =
         StepFailed("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, "deploy", "sh", FailureKind.SCRIPT, "exit 1")
@@ -210,6 +210,13 @@ class RunCostProfileTest {
             // Two open steps share ordinal 1 across stages; a terminal
             // without a stage index names neither, and neither is measured.
             StepFailed("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(50), null, 1, "deploy", "sh", FailureKind.SCRIPT, "exit 1"),
+            // A LATER terminal does name its stage, and it closes one of the
+            // two — only one. The other stays open, so the cost of the step
+            // dispatch is a bound and not a measurement. A terminal that had
+            // closed the first candidate instead would leave both steps
+            // closed, and the cost would come out MEASURED: a duration
+            // invented for a step that no terminal ever named.
+            stepFinish(at = 55, stage = 1, step = 1),
             finished("failure", at = 60),
         )
 
@@ -217,6 +224,45 @@ class RunCostProfileTest {
 
         val samples = input.costs[dev.rubentxu.pipeline.v2.runtime.profile.RuntimeCost.StepDispatch]
         assertTrue(samples is dev.rubentxu.pipeline.v2.runtime.profile.CostSamples.Estimate)
+        // The step that opened first is still open — the ambiguous terminal
+        // did not close it — and the bound starts where that step started.
+        assertEquals(
+            15L,
+            (samples as dev.rubentxu.pipeline.v2.runtime.profile.CostSamples.Estimate).estimate.lowerAtMs,
+        )
+    }
+
+    @Test
+    fun `the branches of a parallel stage are measured with their own intervals`() {
+        val events = listOf(
+            run(at = 0),
+            stepStart(at = 15, name = "parallel/branch-a/echo-0"),
+            stepStart(at = 16, name = "parallel/branch-b/echo-0"),
+            stepStart(at = 17, name = "parallel/branch-c/echo-0"),
+            // The branches END in another order than they opened, and each
+            // terminal names the branch it belongs to.
+            stepFinish(at = 60, name = "parallel/branch-c/echo-0"),
+            stepFinish(at = 50, name = "parallel/branch-a/echo-0"),
+            stepFinish(at = 40, name = "parallel/branch-b/echo-0"),
+            finished("success", at = 80),
+        )
+
+        val input = RunCostProjection.project(events)
+
+        val samples = input.costs[RuntimeCost.StepDispatch]
+        assertTrue(samples is CostSamples.Intervals)
+        // Each interval is the branch's own: c ran from 17 to 60, a from 15
+        // to 50 and b from 16 to 40. A terminal paired with the first open
+        // candidate would have measured 15-60, 16-50 and 17-40 — intervals
+        // that no branch ever lived.
+        assertEquals(
+            listOf(
+                dev.rubentxu.pipeline.v2.runtime.profile.MeasuredDuration(17, 60, RunCostProjection.CLOCK_DOMAIN),
+                dev.rubentxu.pipeline.v2.runtime.profile.MeasuredDuration(15, 50, RunCostProjection.CLOCK_DOMAIN),
+                dev.rubentxu.pipeline.v2.runtime.profile.MeasuredDuration(16, 40, RunCostProjection.CLOCK_DOMAIN),
+            ),
+            (samples as CostSamples.Intervals).intervals,
+        )
     }
 
     @Test

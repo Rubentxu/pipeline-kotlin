@@ -45,14 +45,22 @@ class RunTelemetryTest {
     private fun stageFinish(at: Long, index: Int) =
         StageFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), index, "build", "success")
 
-    private fun stepStart(at: Long, stage: Int, step: Int) =
-        StepStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, "deploy", "sh")
+    private fun stepStart(at: Long, stage: Int, step: Int, name: String = "deploy") =
+        StepStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, name, "sh")
 
-    private fun stepFinish(at: Long, stage: Int, step: Int) =
-        StepFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, "deploy", "sh", "success")
+    private fun stepFinish(at: Long, stage: Int, step: Int, name: String = "deploy") =
+        StepFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, name, "sh", "success")
 
     private fun stepFail(at: Long, stage: Int, step: Int) =
         StepFailed("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), stage, step, "deploy", "sh", FailureKind.SCRIPT, "exit 1")
+
+    /**
+     * A terminal that does not name its stage. That is what a row written by
+     * an older build decodes to, and it is the only shape in which a terminal
+     * can belong to more than one open step.
+     */
+    private fun stepFailWithoutStage(at: Long, step: Int) =
+        StepFailed("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), null, step, "deploy", "sh", FailureKind.SCRIPT, "exit 1")
 
     @Test
     fun `the run, compile and step spans nest under their parents and pair their ends`() {
@@ -133,6 +141,60 @@ class RunTelemetryTest {
         assertTrue(rendered.contains("run-1"))
         assertTrue(!rendered.contains("secret"))
         assertTrue(!rendered.contains("deploy"))
+    }
+
+    @Test
+    fun `an ambiguous terminal attributes a duration to no candidate`() {
+        val signals = RunTelemetryProjection.fromEvents(
+            "run-1",
+            listOf(
+                runStart(at = 0),
+                stageStart(at = 10, index = 0),
+                stepStart(at = 15, stage = 0, step = 1),
+                stageStart(at = 20, index = 1),
+                stepStart(at = 25, stage = 1, step = 1),
+                // Two open steps share ordinal 1 across stages, and this
+                // terminal names no stage: it belongs to neither of them, so
+                // no span ends and no duration is measured.
+                stepFailWithoutStage(at = 50, step = 1),
+                runFinish("failure", at = 60),
+            ),
+        )
+
+        assertTrue(signals.none { it is TelemetrySignal.SpanEnded && it.name == "pipelinek.step" })
+        assertTrue(signals.none { it is TelemetrySignal.Histogram && it.name == "pipelinek.step_duration_ms" })
+    }
+
+    @Test
+    fun `the branches of a parallel stage are measured one by one, not paired in order`() {
+        val signals = RunTelemetryProjection.fromEvents(
+            "run-1",
+            listOf(
+                runStart(at = 0),
+                stageStart(at = 10, index = 0),
+                // Three branches of one parallel stage: same stage, same
+                // ordinal, and only the name tells them apart.
+                stepStart(at = 15, stage = 0, step = 0, name = "parallel/branch-a/echo-0"),
+                stepStart(at = 16, stage = 0, step = 0, name = "parallel/branch-b/echo-0"),
+                stepStart(at = 17, stage = 0, step = 0, name = "parallel/branch-c/echo-0"),
+                // The branches END in another order than they opened.
+                stepFinish(at = 60, stage = 0, step = 0, name = "parallel/branch-c/echo-0"),
+                stepFinish(at = 50, stage = 0, step = 0, name = "parallel/branch-a/echo-0"),
+                stepFinish(at = 40, stage = 0, step = 0, name = "parallel/branch-b/echo-0"),
+                stageFinish(at = 70, index = 0),
+                runFinish("success", at = 80),
+            ),
+        )
+
+        val durations = signals.filterIsInstance<TelemetrySignal.Histogram>()
+            .filter { it.name == "pipelinek.step_duration_ms" }
+            .map { it.milliseconds }
+        // Each duration is the branch's own: c ran 43 ms, a 35 ms, b 24 ms.
+        // A terminal paired with the first open candidate would have produced
+        // 45, 34 and 23 — three numbers, none of them belonging to the branch
+        // they were attributed to.
+        assertEquals(listOf(43L, 35L, 24L), durations)
+        assertEquals(3, signals.count { it is TelemetrySignal.SpanEnded && it.name == "pipelinek.step" })
     }
 
     @Test

@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.attribution.OpenStepIdentity
+import dev.rubentxu.pipeline.v2.application.attribution.StepAttribution
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.StepFailed
@@ -60,7 +62,7 @@ object RunExplainProjection {
                             evidence = EvidenceRef(EVENT_LANE, event.sequence),
                         )
                     }
-                    closeOpenStep(event.stageIndex, event.stepIndex, openSteps) {
+                    closeOpenStep(event.stageIndex, event.stepIndex, event.stepName, openSteps) {
                         ambiguousClosures++
                         ambiguouslyClosedOrdinals += event.stepIndex
                     }
@@ -68,8 +70,12 @@ object RunExplainProjection {
 
                 is StepStarted -> openSteps.addLast(event)
                 is dev.rubentxu.pipeline.v2.events.StepFinished ->
-                    closeOpenStep(event.stageIndex, event.stepIndex, openSteps) {
+                    closeOpenStep(event.stageIndex, event.stepIndex, event.stepName, openSteps) {
                         ambiguousClosures++
+                        // Same as a failure: the ambiguous terminal may be
+                        // the one that closed a candidate, so no candidate of
+                        // that ordinal may be reported as never closed.
+                        ambiguouslyClosedOrdinals += event.stepIndex
                     }
 
                 else -> {}
@@ -88,26 +94,32 @@ object RunExplainProjection {
 
     /**
      * Close the open step a terminal event belongs to — only when the event
-     * names one step unambiguously. A terminal event that carries no stage
-     * index matches by ordinal alone; with a single open candidate that is
-     * still unambiguous, and with several it decides nothing, so no step is
-     * closed and the ambiguity is reported instead of resolved by the order
-     * of a list. Picking the first match would attribute a duration, or a
-     * dangling verdict, to a step that may not be the one that ended.
+     * names one step unambiguously. The decision is the shared one
+     * ([StepAttribution]): a terminal event that carries no stage index
+     * matches by ordinal alone; with a single open candidate that is still
+     * unambiguous, and with several it decides nothing, so no step is closed
+     * and the ambiguity is reported instead of resolved by the order of a
+     * list. Picking the first match would attribute a duration, or a dangling
+     * verdict, to a step that may not be the one that ended.
+     *
+     * The name the terminal carries breaks the tie when the branches of a
+     * parallel stage are open at the same time: they share the stage and
+     * the ordinal, and only their names tell them apart.
      */
     private fun closeOpenStep(
         stageIndex: Int?,
         stepIndex: Int,
+        stepName: String,
         openSteps: ArrayDeque<StepStarted>,
         onAmbiguous: () -> Unit,
     ) {
-        val candidates = openSteps.withIndex().filter { (_, open) ->
-            open.stepIndex == stepIndex && (stageIndex == null || open.stageIndex == stageIndex)
+        val attribution = StepAttribution.resolve(openSteps, stageIndex, stepIndex, stepName) {
+            OpenStepIdentity(it.stageIndex, it.stepIndex, it.stepName)
         }
-        when {
-            candidates.isEmpty() -> {}
-            candidates.size == 1 -> openSteps.removeAt(candidates.single().index)
-            else -> onAmbiguous()
+        when (attribution) {
+            is StepAttribution.Matched -> openSteps.removeAt(attribution.openIndex)
+            is StepAttribution.Ambiguous -> onAmbiguous()
+            StepAttribution.None -> {}
         }
     }
 }

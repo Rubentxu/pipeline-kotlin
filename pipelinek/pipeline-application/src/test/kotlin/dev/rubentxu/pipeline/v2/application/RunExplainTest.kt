@@ -38,8 +38,8 @@ class RunExplainTest {
     private fun stepStart(at: Long, step: Int = 0, name: String = "deploy") =
         StepStarted("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), 0, step, name, "sh")
 
-    private fun stepFinish(at: Long, step: Int = 0) =
-        StepFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), 0, step, "deploy", "sh", "success")
+    private fun stepFinish(at: Long, step: Int = 0, name: String = "deploy") =
+        StepFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), 0, step, name, "sh", "success")
 
     private fun stepFail(at: Long, step: Int = 0, name: String = "deploy", message: String = "exit 1") =
         StepFailed("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(at), 0, step, name, "sh", FailureKind.SCRIPT, message)
@@ -164,6 +164,51 @@ class RunExplainTest {
         // The ordinal named exactly one open step, so it closed; only the
         // two observed facts remain, with no inference at all.
         assertTrue(diagnosis.findings.none { it is Inference })
+    }
+
+    @Test
+    fun `the branches of a parallel stage close the step each terminal names`() {
+        val events = listOf(
+            start(at = 0),
+            stageEvent(at = 10, stage = 0),
+            // Three branches of one parallel stage: same stage, same
+            // ordinal, and only the name tells them apart.
+            stepStart(at = 15, step = 0, name = "parallel/branch-a/echo-0"),
+            stepStart(at = 16, step = 0, name = "parallel/branch-b/echo-0"),
+            stepStart(at = 17, step = 0, name = "parallel/branch-c/echo-0"),
+            stepFinish(at = 60, step = 0, name = "parallel/branch-c/echo-0"),
+            stepFinish(at = 50, step = 0, name = "parallel/branch-a/echo-0"),
+            stepFinish(at = 40, step = 0, name = "parallel/branch-b/echo-0"),
+            finished("success", at = 70),
+        )
+
+        val diagnosis = RunExplainProjection.project(events) as Diagnosis.Explained
+
+        // Every terminal named exactly one open step, so every step closed:
+        // no ambiguity to report and no step left dangling.
+        assertTrue(diagnosis.findings.none { it is Inference })
+    }
+
+    @Test
+    fun `an ambiguous finish leaves no candidate reported as never closed`() {
+        val events = listOf(
+            start(at = 0),
+            stageEvent(at = 10, stage = 0),
+            // Two branches of one parallel stage: same stage, same ordinal.
+            stepStart(at = 15, step = 0, name = "parallel/branch-a/echo-0"),
+            stepStart(at = 16, step = 0, name = "parallel/branch-b/echo-0"),
+            // A terminal that names the stage and the ordinal but a name
+            // that belongs to no step — what a shell failure carries ("sh").
+            // It belongs to neither branch, so NEITHER may be reported as
+            // never closed: the terminal may be the one that closed it.
+            StepFinished("e${seq++}", "run-1", seq++, Instant.ofEpochMilli(50), 0, 0, "sh", "sh", "success"),
+            finished("success", at = 60),
+        )
+
+        val diagnosis = RunExplainProjection.project(events) as Diagnosis.Explained
+
+        assertTrue(diagnosis.findings.none { it is Inference.StepNeverClosed })
+        assertEquals(1, diagnosis.findings.filterIsInstance<Inference.AttributionAmbiguous>().size)
     }
 
     private fun stageEvent(at: Long, stage: Int) =

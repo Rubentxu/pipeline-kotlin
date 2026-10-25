@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.attribution.OpenStepIdentity
+import dev.rubentxu.pipeline.v2.application.attribution.StepAttribution
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
 import dev.rubentxu.pipeline.v2.events.DomainEvent
@@ -81,9 +83,9 @@ object RunCostProjection {
                     }
                 }
 
-                is StepStarted -> openSteps.addLast(OpenStep(event.stageIndex, event.stepIndex, at))
-                is StepFinished -> closeStep(event.stageIndex, event.stepIndex, at)
-                is StepFailed -> closeStep(event.stageIndex, event.stepIndex, at)
+                is StepStarted -> openSteps.addLast(OpenStep(event.stageIndex, event.stepIndex, event.stepName, at))
+                is StepFinished -> closeStep(event.stageIndex, event.stepIndex, event.stepName, at)
+                is StepFailed -> closeStep(event.stageIndex, event.stepIndex, event.stepName, at)
 
                 else -> {}
             }
@@ -91,27 +93,34 @@ object RunCostProjection {
 
         /**
          * Close the open step the terminal event belongs to — only when the
-         * event names one step unambiguously. A terminal without a stage
-         * index matches by ordinal alone; with several open candidates that
-         * decides nothing, so nothing is closed and the steps remain open:
-         * their intervals surface as bounded estimates, which stay true, and
-         * no measured duration is attributed to a step that may not be the
-         * one that ended.
+         * event names one step unambiguously. The decision is the shared one
+         * ([StepAttribution]): a terminal without a stage index matches by
+         * ordinal alone; with several open candidates that decides nothing,
+         * so nothing is closed and the steps remain open: their intervals
+         * surface as bounded estimates, which stay true, and no measured
+         * duration is attributed to a step that may not be the one that ended.
+         *
+         * The name the terminal carries breaks the tie when the branches of a
+         * parallel stage are open at the same time: they share the stage and
+         * the ordinal, and only their names tell them apart.
          */
-        private fun closeStep(stageIndex: Int?, stepIndex: Int, endedAtMs: Long) {
-            val candidates = openSteps.withIndex().filter { (_, open) ->
-                open.stepIndex == stepIndex && (stageIndex == null || open.stageIndex == stageIndex)
+        private fun closeStep(stageIndex: Int?, stepIndex: Int, stepName: String, endedAtMs: Long) {
+            val attribution = StepAttribution.resolve(openSteps, stageIndex, stepIndex, stepName) {
+                OpenStepIdentity(it.stageIndex, it.stepIndex, it.stepName)
             }
-            when {
-                candidates.size == 1 -> {
-                    val open = openSteps.removeAt(candidates.single().index)
-                    stepIntervals.add(measured(open.startedAtMs, endedAtMs))
-                }
+            if (attribution is StepAttribution.Matched) {
+                val open = openSteps.removeAt(attribution.openIndex)
+                stepIntervals.add(measured(open.startedAtMs, endedAtMs))
             }
         }
     }
 
-    private data class OpenStep(val stageIndex: Int, val stepIndex: Int, val startedAtMs: Long)
+    private data class OpenStep(
+        val stageIndex: Int,
+        val stepIndex: Int,
+        val stepName: String,
+        val startedAtMs: Long,
+    )
 
     /** Completed intervals when every one closed; a bound when one is still open. */
     private fun completedOrBounded(intervals: List<MeasuredDuration>, openStartedAt: Long?, last: Long?): CostSamples = when {

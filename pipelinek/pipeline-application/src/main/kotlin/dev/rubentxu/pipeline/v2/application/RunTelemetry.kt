@@ -1,5 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
+import dev.rubentxu.pipeline.v2.application.attribution.OpenStepIdentity
+import dev.rubentxu.pipeline.v2.application.attribution.StepAttribution
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
@@ -102,7 +104,7 @@ object RunTelemetryProjection {
                     val parent = stageSpans[event.stageIndex]
                     if (parent != null) {
                         val span = spanId(traceId, "$SPAN_STEP/${event.stageIndex}/${event.stepIndex}")
-                        stepSpans.addLast(OpenStepSpan(event.stageIndex, event.stepIndex, span, at))
+                        stepSpans.addLast(OpenStepSpan(event.stageIndex, event.stepIndex, event.stepName, span, at))
                         signals.add(
                             started(
                                 "pipelinek.step",
@@ -118,8 +120,11 @@ object RunTelemetryProjection {
                     }
                 }
 
-                is StepFinished -> closeStep(stepSpans, event.stageIndex, event.stepIndex, at, event.outcome ?: "unknown", signals)
-                is StepFailed -> closeStep(stepSpans, event.stageIndex, event.stepIndex, at, "failure", signals, event.failureKind.name)
+                is StepFinished ->
+                    closeStep(stepSpans, event.stageIndex, event.stepIndex, event.stepName, at, event.outcome ?: "unknown", signals)
+
+                is StepFailed ->
+                    closeStep(stepSpans, event.stageIndex, event.stepIndex, event.stepName, at, "failure", signals, event.failureKind.name)
 
                 else -> {}
             }
@@ -127,20 +132,42 @@ object RunTelemetryProjection {
         return signals
     }
 
-    private data class OpenStepSpan(val stageIndex: Int, val stepIndex: Int, val spanId: String, val startedAtMs: Long)
+    private data class OpenStepSpan(
+        val stageIndex: Int,
+        val stepIndex: Int,
+        val stepName: String,
+        val spanId: String,
+        val startedAtMs: Long,
+    )
 
+    /**
+     * Close the open step the terminal event belongs to, and report its
+     * duration — only when the event names one step unambiguously. The
+     * decision is the shared one ([StepAttribution]): a terminal without a
+     * stage index may match several open steps, and then it belongs to none
+     * of them, so no span ends and no duration is measured. Attributing the
+     * duration to the first candidate would put a number in the export that
+     * the journal does not say.
+     *
+     * The name the terminal carries breaks the tie when the branches of a
+     * parallel stage are open at the same time: they share the stage and
+     * the ordinal, and only their names tell them apart.
+     */
     private fun closeStep(
         open: ArrayDeque<OpenStepSpan>,
         stageIndex: Int?,
         stepIndex: Int,
+        stepName: String,
         endedAtMs: Long,
         status: String,
         signals: MutableList<TelemetrySignal>,
         failureClass: String? = null,
     ) {
-        val index = open.indexOfFirst { it.stepIndex == stepIndex && (stageIndex == null || it.stageIndex == stageIndex) }
-        if (index < 0) return
-        val step = open.removeAt(index)
+        val attribution = StepAttribution.resolve(open, stageIndex, stepIndex, stepName) {
+            OpenStepIdentity(it.stageIndex, it.stepIndex, it.stepName)
+        }
+        if (attribution !is StepAttribution.Matched) return
+        val step = open.removeAt(attribution.openIndex)
         signals.add(ended("pipelinek.step", step.spanId, endedAtMs, status))
         val dimensions = buildMap(2) {
             put("operation_kind", "step")

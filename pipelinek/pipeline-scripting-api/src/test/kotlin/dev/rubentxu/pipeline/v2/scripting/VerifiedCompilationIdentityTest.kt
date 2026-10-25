@@ -64,14 +64,14 @@ class VerifiedCompilationIdentityTest {
     }
 
     @Test
-    fun `exact duplicate entries collapse instead of forking the identity`() {
+    fun `a repeated entry is a fact about resolution, not noise to collapse`() {
         val once = listOf(entry(path = "/jars/lib.jar", sha = digestA, size = 10L))
         val twice = listOf(
             entry(path = "/jars/lib.jar", sha = digestA, size = 10L),
             entry(path = "/other/lib.jar", sha = digestA, size = 10L),
         )
 
-        assertEquals(keyOf(once), keyOf(twice))
+        assertNotEquals(keyOf(once), keyOf(twice))
     }
 
     @Test

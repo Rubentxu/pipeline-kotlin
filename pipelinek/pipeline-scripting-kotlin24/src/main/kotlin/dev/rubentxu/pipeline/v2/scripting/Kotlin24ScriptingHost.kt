@@ -349,8 +349,27 @@ class Kotlin24ScriptingHost(
      * unavailable identity. The digest is the authority and the byte count a
      * companion fact; both are read before any compilation begins.
      */
+    /**
+     * The JVM's own classpath as canonical files, resolved once per host:
+     * the process lives and dies with one classpath, and re-reading a
+     * constant per compilation would be pure cost. Only regular files are
+     * kept; anything else on the path cannot be content-verified and its
+     * presence makes the identity unavailable rather than guessed.
+     */
+    private val contextClasspathFiles: List<File> =
+        (System.getProperty("java.class.path") ?: "")
+            .split(File.pathSeparatorChar)
+            .filter { it.isNotBlank() }
+            .map { File(it).canonicalFile }
+            .filter { it.isFile }
+
     private fun cacheIdentityFor(scriptText: String, classpathFiles: List<File>): CacheIdentity {
-        val entries = classpathFiles.map { file ->
+        // The compilation classpath is the JVM's own context PLUS the
+        // per-call entries, in that resolution order — so the identity is
+        // built over exactly the same list, and a swapped jar anywhere in
+        // the chain changes the key instead of surviving it.
+        val effectiveClasspath = contextClasspathFiles + classpathFiles
+        val entries = effectiveClasspath.map { file ->
             val digest = try {
                 Sha256.ofFile(file.toPath())
             } catch (_: java.io.IOException) {

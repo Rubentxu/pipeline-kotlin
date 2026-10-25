@@ -76,10 +76,9 @@ sealed interface CacheIdentity {
  *    dimensions that were observable plus an explicit incompleteness mark
  *    and the path that could not be read, so no two different failures
  *    share a key and no incomplete key can collide with a verified one;
- *  - exact duplicate entries (same digest, same size) collapse to their
- *    first occurrence, so a redundant classpath does not fork the identity;
- *  - order is preserved where it stands: classpath order can decide which
- *    of two same-named classes wins, so it is part of the identity.
+ *  - order and multiplicity are preserved: classpath order can decide
+ *    which of two same-named classes wins, and a repeated entry is a fact
+ *    about resolution until proven otherwise, not noise to collapse.
  */
 fun verifyCompilationIdentity(
     sourceDigest: String,
@@ -104,7 +103,10 @@ fun verifyCompilationIdentity(
         compilerIdentity = compilerIdentity,
         adapterIdentity = adapterIdentity,
         compilerFlags = compilerFlags,
-        orderedClasspath = artifacts.distinctBy { it.sha256 to it.sizeBytes },
+        // Multiplicity is preserved on purpose: a repeated jar can still
+        // decide class and resource resolution for a loader that scans in
+        // order, and no measurement here proves a duplicate is irrelevant.
+        orderedClasspath = artifacts,
     )
     return CacheIdentity.Verified(manifest, CacheKey.Companion.v3.compute(manifest))
 }

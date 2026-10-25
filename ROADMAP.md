@@ -264,22 +264,30 @@ La auditoría nombra sus bloques `B1..B5`; aquí se escriben `AUD-B1..AUD-B5` po
 
 | bloque | qué pide | estado medido | dónde |
 |---|---|---|---|
-| **AUD-B1** | publicación con procedencia, y una limpieza de caché que no borre lo ajeno | **cerrado en sus dos mitades.** La poda de caché ya está en el árbol, con las seis guardas que la auditoría pedía —marca de propiedad en la raíz, raíz canonicalizada y candidata sólo hija directa, enlaces simbólicos que nunca llegan a `rm`, namespace acreditado por un marcador con digest, edad, y el namespace en uso como excluido— y las seis se han visto en rojo, una por una (commit `dfba3342e`). La mitad de publicación se midió en este ciclo: 17 filas y 10 mutaciones (§2.90), y la puerta completa sobre el árbol que se entrega dio `PASS` (166 s, 1298 tests, 61 escenarios, ratio de LOC 0.346) | §2.90 |
+| **AUD-B1** | publicación con procedencia, y una limpieza de caché que no borre lo ajeno | **cerrado en sus dos mitades.** La poda de caché ya está en el árbol, con las seis guardas que la auditoría pedía —marca de propiedad en la raíz, raíz canonicalizada y candidata sólo hija directa, enlaces simbólicos que nunca llegan a `rm`, namespace acreditado por un marcador con digest, edad, y el namespace en uso como excluido— y las seis se han visto en rojo, una por una (commit `dfba3342e`). La mitad de publicación se midió en este ciclo: 17 filas y 10 mutaciones (§2.90), y la puerta completa sobre el árbol que se entrega dio `PASS` (166 s, 1311 tests, 61 escenarios, ratio de LOC 0.348) | §2.90 |
 | **AUD-B2** | una **decisión pura de atribución** compartida por perfil, `explain` y telemetría; y una caché que cae por **origen y tipo** y no por el texto literal de un mensaje | **la mitad de la atribución está cerrada y medida (§2.91).** Las tres proyecciones llaman ya a **una** decisión pura (`StepAttribution`), y el defecto —la telemetría atribuía la duración al **primer** candidato— se ha visto en rojo con tres mutaciones (7, 4 y 1 filas rojas, sin daño colateral). La medición en el CLI de una etapa **paralela** mostró lo que la regla vieja decía al operador: que una rama «nunca cerró» cuando sí cerró, y que tres terminales no pudieron nombrar su paso. **Quedan abiertos**: el fallback de la caché, que hoy se decide por la cadena `CachingJvmScriptingHost.UNLOADED_ARTIFACT_MESSAGE` —un **texto** y no un **tipo**— y la prueba de que la clave v3 por contenido es consumible desde un test unitario | §2.91 |
 | **AUD-B3** | observabilidad de verdad: `traceId` como **campo**, `spanId` robusto, intervalos validados sin duraciones negativas, límites de cardinalidad por dimensión, y un adaptador OTLP opcional | **abierto, sin tocar.** `RSO-07` es su nombre en la propuesta de arriba | §0 RSO-07 |
 | **AUD-B4** | economía de la verificación —y **sólo** después de pasar por `delivery-first-testing` | **abierto, y con precondición declarada.** La lente que aplica se nombra antes de escribir una línea: `references/navigation.md`. El router ofrece un portafolio de auditoría que **no existe en disco** (hay 8 playbooks y ninguno es ese), así que esa ruta no se puede seguir tal cual; el coste de la puerta ya está medido (§2.86) y es lo que este bloque tiene que reducir | §0 RSO-01..02 |
 | **AUD-B5** | proveedor de aislamiento | **abierto, sin tocar.** `RSO-08` es su nombre en la propuesta de arriba; `RSO-04` es su precondición (que `LOCAL` no es un sandbox multi-tenant) | §0 RSO-08 |
 
-**La puerta de verificación, ejecutada después, sobre el árbol que se entrega.**
-Sobre `dfba3342e` la puerta **no** se había ejecutado, y por eso todo lo que es
-Gradle figuraba como `NOT_RUN`. Con el bloque de publicación ya comiteado
-(`3db8f951f`) la puerta se ejecutó **entera y sin filtros**:
-`PASS sha=3db8f951f… elapsed=166s budget=900s tests=rewritten:1298 read:0
-scenarios=observed:61 executed:61`. Los 1298 tests unitarios los escribió **esta**
-corrida (`rewritten:1298`, `read:0`: ninguno leído de una anterior), y los 61
-escenarios de `examples/` se ejecutaron y se observaron los 61. El censo de LOC,
-sobre el mismo árbol comiteado, da `VERIFY_LOC = 24464` y `PRODUCT_LOC = 70676`,
-ratio **0.346** (límite 2).
+**La puerta de verificación, ejecutada entera y sin filtros, sobre el árbol que
+se entrega.** Sobre `dfba3342e` la puerta **no** se había ejecutado, y por eso
+todo lo que es Gradle figuraba como `NOT_RUN`. Con el bloque de publicación ya
+comiteado (`3db8f951f`) dio `PASS … tests=rewritten:1298 read:0
+scenarios=observed:61 executed:61`, y con la atribución unificada ya comiteada
+(`cd35212c5`) se ha ejecutado **otra vez, entera y sin filtros**:
+
+```
+PASS sha=cd35212c57468d1afaa7762c6d6f52e8fd091f33 elapsed=166s budget=900s
+     tests=rewritten:1311 read:0 scenarios=observed:61 executed:61
+```
+
+Los 1311 tests unitarios los escribió **esta** corrida (`rewritten:1311`,
+`read:0`: ninguno leído de una anterior), y los 61 escenarios de `examples/` se
+ejecutaron y se observaron los 61; de esos 61, **61** comprobaron una garantía
+—572 comprobaciones sobre 110 ejecuciones— y ninguno afirmó nada. El censo de
+LOC, sobre el mismo árbol comiteado, da `VERIFY_LOC = 24637` y
+`PRODUCT_LOC = 70735`, ratio **0.348** (límite 2).
 
 **Lo que sigue sin ejecutarse.** El §6b de `scripts/release-pipelinek.sh` —la puerta
 que audita el remoto antes de publicar— **no** lo ha ejercido ninguna corrida real:
@@ -10470,14 +10478,20 @@ no es una diferencia de forma: es una afirmación falsa sobre la ejecución.
   de span con el **mismo** identificador: un export que dice «un paso, tres
   duraciones». Eso pertenece a `AUD-B3` (`spanId` robusto) y **no** se ha
   tocado aquí; se anota porque esta medición lo ha dejado a la vista.
-- **La puerta completa no se ha ejecutado sobre este árbol.** Lo que se ha
-  ejecutado son: la compilación con `detekt`, `detektTest` y `apiCheck`
-  (`60 s`), y las 38 filas de las cuatro clases tocadas (`16 s`, 0 fallos,
-  `tests=rewritten:38 read:0`). Ambas son **corridas de subconjunto** y su
-  línea de veredicto lo dice (`PASS (subset)`); la puerta sin filtros —con
-  `installDist`, los tests de todos los módulos y los escenarios de `examples/`—
-  sigue siendo `NOT_RUN` sobre este árbol, y su cifra no se reusa de ningún
-  otro árbol.
+- **La puerta completa se ejecutó después, entera y sin filtros, sobre
+  `cd35212c5`** —el árbol con la atribución unificada ya comiteado—:
+  `PASS sha=cd35212c57468d1afaa7762c6d6f52e8fd091f33 elapsed=166s
+  budget=900s tests=rewritten:1311 read:0 scenarios=observed:61 executed:61`.
+  Los 1311 tests los escribió esa corrida (`read:0`: ninguno leído de una
+  anterior), los 61 escenarios se ejecutaron y se observaron los 61 —61 de 61
+  comprobaron una garantía— y el censo de LOC sobre el mismo árbol da
+  `VERIFY_LOC = 24637` / `PRODUCT_LOC = 70735`, ratio **0.348** (límite 2).
+  Durante el trabajo, antes del commit, lo que se había medido eran corridas de
+  **subconjunto** —la compilación con `detekt`, `detektTest` y `apiCheck`
+  (`50 s`), las 38 filas de las cuatro clases tocadas (`16 s`, 0 fallos) y el
+  módulo entero (`260 tests`, `17 s`)— y su línea de veredicto lo decía
+  (`PASS (subset)`): ninguna de ellas es evidencia de la puerta, y su reloj no
+  se compara contra los 900 s.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite

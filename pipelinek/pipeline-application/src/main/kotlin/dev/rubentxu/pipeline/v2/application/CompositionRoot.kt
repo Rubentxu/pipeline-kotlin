@@ -71,6 +71,7 @@ internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlockin
         // side and on the read-back side. Resolved in PluginComposition, before this
         // function was called, and already cross-checked against what the plugins emit.
         eventRegistry = request.composition.events,
+        wakeups = state.outputWakeups,
         // ONE composite, consulted by both admission and execution.
         //
         // The plugin side comes from the composition, resolved under the same classloader

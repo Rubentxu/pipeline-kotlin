@@ -71,6 +71,11 @@ class CanonicalDurableRunCoordinator(
     /** Optional project-workspace override (--workspace <dir>). */
     private val workspaceBase: Path? = null,
     private val shOptions: ShOptions = ShOptions.EMPTY,
+    // The run's output-wake signal, forwarded to dispatch so the shell path
+    // can announce committed chunks to the run's live observer. Null for
+    // compositions without an observer; the observer's poll deadline covers
+    // the silence either way.
+    wakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
     // Active secret registry threaded to the
     // runtime context so the durable console transcript is redacted at the
     // transcript seam before reaching the observable event plane.
@@ -330,6 +335,7 @@ class CanonicalDurableRunCoordinator(
         runLifecycle = runLifecycle,
         // The dispatch engine composes the emitter from this registry, sink and clock.
         eventRegistry = eventRegistry,
+        outputWakeups = wakeups,
         cursorStore = cursorStore,
         stepRegistry = stepRegistry,
         bodyInvokerAdapter = bodyInvokerAdapter,

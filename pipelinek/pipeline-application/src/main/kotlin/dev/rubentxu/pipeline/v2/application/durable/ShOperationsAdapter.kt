@@ -44,6 +44,9 @@ class ShOperationsAdapter(
     // Registry threaded from the runtime
     // context. Null = no transcript redaction (legacy/test composition).
     private val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
+    // The run's output-wake signal, threaded from the same context. Null =
+    // no live observer announced interest (legacy/test composition).
+    private val outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
 ) : ShellOperations {
 
     override suspend fun invoke(
@@ -61,6 +64,7 @@ class ShOperationsAdapter(
             controlDirRoot = controlDirRoot,
             eventSink = eventSink,
             secretPatternRegistry = secretPatternRegistry,
+            outputWakeups = outputWakeups,
         )
     }
 }

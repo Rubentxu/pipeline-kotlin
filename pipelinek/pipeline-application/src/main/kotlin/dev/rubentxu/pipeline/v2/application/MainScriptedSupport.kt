@@ -30,6 +30,7 @@ internal fun runScriptedFrontend(
     clock: Clock,
     controlDirRoot: Path,
     sandboxProfile: SandboxProfile,
+    outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
 ): RunOutcome? {
     // Frontend runs on the SAME durable authority: identical journal instance,
     // identical composed registry, identical event sink and control root.
@@ -56,6 +57,7 @@ internal fun runScriptedFrontend(
                 workspaceOwnership = WorkspaceOwnership.PIPELINEK,
             ),
             controlDirRoot = controlDirRoot,
+            outputWakeups = outputWakeups,
         )
     }
     return when (outcome) {

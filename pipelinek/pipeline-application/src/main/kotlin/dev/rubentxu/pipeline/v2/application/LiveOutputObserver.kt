@@ -44,15 +44,29 @@ internal fun startLiveOutputObserver(
     runId: String,
     controlDirRoot: java.nio.file.Path,
     format: ObservationFormat,
-): AutoCloseable {
+): LiveOutputObserverHandle {
+    // The signal the run's own writes will announce on. For a document
+    // format nothing parks on it, and announcing to nobody is a no-op.
+    val wakeups = dev.rubentxu.pipeline.v2.application.observation.WakeupSignal()
     if (format == ObservationFormat.JSON) {
-        return AutoCloseable { }
+        return LiveOutputObserverHandle(wakeups) { }
     }
 
     val presentation = LiveOutputPresentation(format, System.out, System.err)
     val store = OutputPlaneProvider.storeForReading(controlDirRoot)
     val reader = FrameIndexedObservationOutputReader(store.frameIndex(), store, store)
-    val drain = LiveOutputDrain(reader, frameLimit = 64, pollIntervalMs = 10)
+    // The drain parks on the signal when a page was quiet: a chunk committed
+    // by this run wakes it at once, and the poll deadline — always armed —
+    // covers every signal that was dropped, coalesced or never sent.
+    val drain = LiveOutputDrain(
+        reader,
+        frameLimit = 64,
+        pollIntervalMs = 10,
+        park = { millis ->
+            wakeups.await(millis) !=
+                dev.rubentxu.pipeline.v2.application.observation.ParkOutcome.Interrupted
+        },
+    )
     val runFinished = java.util.concurrent.atomic.AtomicBoolean(false)
 
     val thread = Thread(
@@ -74,7 +88,7 @@ internal fun startLiveOutputObserver(
     }
     thread.start()
 
-    return AutoCloseable {
+    return LiveOutputObserverHandle(wakeups) {
         runFinished.set(true)
         // Bounded, because a run that has ended must not be held hostage by a reader that is wedged.
         // The bytes stay committed either way: this is an observer, not the authority.
@@ -91,3 +105,16 @@ internal fun startLiveOutputObserver(
  */
 
 private const val OBSERVER_JOIN_TIMEOUT_MS = 5_000L
+
+/**
+ * What starting the observer hands back: the close handle, plus the wake
+ * signal the run's writes should announce on so the observer reads sooner
+ * than its poll deadline. The signal exists even when no thread parks on
+ * it, so the run's announce path never has to ask whether anyone listens.
+ */
+internal class LiveOutputObserverHandle(
+    val wakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal,
+    private val onClose: () -> Unit,
+) : AutoCloseable {
+    override fun close() = onClose()
+}

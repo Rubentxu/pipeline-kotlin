@@ -60,6 +60,28 @@ import java.nio.file.Paths
  * turns that crash into an admission decision, and its epoch is what fences a
  * writer that lost the run to a takeover.
  */
+/**
+ * The per-run state bundle the canonical coordinator runs with: the
+ * authorities this run owns, plus the wake signal its live observer parks
+ * on and the shell path announces to.
+ */
+private fun durableRunState(
+    journal: OperationJournal,
+    cursorStore: ReplayCursorStore,
+    eventSink: dev.rubentxu.pipeline.v2.events.EventSink,
+    sagaObligationStore: SqliteSagaObligationStore,
+    lease: DurableLease,
+    outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal,
+): CanonicalRunState = CanonicalRunState(
+    outputWakeups = outputWakeups,
+    journal = journal,
+    cursorStore = cursorStore,
+    eventSink = eventSink,
+    // The run's Saga seam: the durable store plus the lease epoch that
+    // fences a writer that lost this run to a takeover.
+    sagaBinding = SagaCompensationBinding(sagaObligationStore, lease.leaseEpoch),
+)
+
 internal fun runDurablePipeline(
     config: CliFlags,
     dbPath: String,
@@ -183,6 +205,7 @@ internal fun runDurablePipeline(
                 clock = clock,
                 controlDirRoot = controlDirRoot,
                 sandboxProfile = config.sandboxProfile,
+                outputWakeups = outputObserver.wakeups,
             )
             compiledPipeline != null -> {
                 if (compiledPipeline.supportsCanonicalDurableExecution(composedStepRegistry)) {
@@ -190,14 +213,7 @@ internal fun runDurablePipeline(
                         CanonicalRunRequest(
                             pipeline = compiledPipeline,
                             runId = RunId(runId),
-                            state = CanonicalRunState(
-                                journal = journal,
-                                cursorStore = cursorStore,
-                                eventSink = eventStore,
-                                // SAGA / durable run: the run's Saga seam — the durable store plus the lease epoch that
-                                // fences a writer that lost this run to a takeover.
-                                sagaBinding = SagaCompensationBinding(sagaObligationStore, lease.leaseEpoch),
-                            ),
+                            state = durableRunState(journal, cursorStore, eventStore, sagaObligationStore, lease, outputObserver.wakeups),
                             policy = CanonicalRunPolicy(
                                 clock = clock,
                                 effectReplayPolicy = effectPolicy,

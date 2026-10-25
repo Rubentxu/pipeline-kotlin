@@ -70,6 +70,11 @@ object ScriptedFrontendRunner {
         shOptions: ShOptions,
         controlDirRoot: java.nio.file.Path,
         structure: ScriptedStructuralAddress = ScriptedStructuralAddress.WholeProgram,
+        // The run's output-wake signal, so the scripted surface announces
+        // committed chunks to the same live observer the canonical one does.
+        // Null (and every pre-existing call site) announces nothing and the
+        // observer converges on its poll deadline.
+        outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
     ): Outcome {
         // Fail-closed artifact compatibility: never silently replay an old artifact.
         if (entryPoint.artifact.fingerprintMaterial() != expectedArtifact.fingerprintMaterial()) {
@@ -127,6 +132,7 @@ object ScriptedFrontendRunner {
                     shOptions = shOptions,
                     controlDirRoot = controlDirRoot,
                     eventSink = eventSink,
+                    outputWakeups = outputWakeups,
                 )
             },
         )

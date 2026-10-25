@@ -43,13 +43,20 @@ data class CanonicalRuntimeContext(
     // fail-closed admission honest: a handler that declares the capability never
     // runs when the engine did not bind it.
     val bodyContinuation: dev.rubentxu.pipeline.v2.domain.step.BodyContinuation? = null,
-    // The active secret pattern registry,
+    // The secret pattern registry,
     // threaded to the shell-operations adapter so the console transcript is
     // redacted chunk-boundary-safe BEFORE it reaches the observable plane.
     // Optional (null → no transcript redaction) so legacy callers/tests that
     // construct the context directly keep compiling; the production wire-up
     // in CanonicalDurableRunCoordinator always supplies it.
     val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
+    // The run's output-wake signal, shared with the run's live observer.
+    // The shell adapter announces on it after each committed output chunk;
+    // the observer parks on it instead of sleeping its full poll interval.
+    // Null (and every pre-existing construction site) means no observer
+    // announced interest, and the announce is skipped — an observer without
+    // a signal still converges on its poll deadline.
+    val outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
     // Optional project-workspace override (--workspace <dir>). When set,
     // stage workspaces resolve under <dir> instead of <controlRoot>/workspace, so real
     // project fixtures (Gradle/Maven/Node) execute against the actual project files.

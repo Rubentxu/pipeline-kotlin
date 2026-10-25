@@ -45,6 +45,10 @@ internal class RedactingOutputIngress(
     private val openStream: () -> OutputStreamHandle,
     private val frameIndex: OutputFrameIndex,
     private val address: OutputStreamAddress,
+    // Announced after each chunk is committed and framed. It must be cheap
+    // and non-blocking: it runs on the run's output path, and the observer it
+    // wakes is a consumer that must never reach back into execution.
+    private val afterChunkCommitted: () -> Unit = {},
 ) : ProcessOutputSink {
 
     private var refusal: ProcessOutputRefusal? = null
@@ -90,6 +94,9 @@ internal class RedactingOutputIngress(
             // channel is not passed here: it rides in the stream's own identity, so a crash cannot
             // separate attribution from the bytes it describes.
             frameIndex.append(address.stream, address.channel, committedEnd - length, committedEnd)
+            // Only after the chunk is durable AND framed: waking an observer
+            // on bytes it cannot read yet would be a hint that lies.
+            afterChunkCommitted()
         } catch (t: Throwable) {
             refusal = ProcessOutputRefusal.WriteFailed(
                 detail = "the transcript could not be persisted to stream ${handle.stream.value}",

@@ -217,6 +217,10 @@ object ShExecution {
         controlDirRoot: java.nio.file.Path?,
         eventSink: EventSink,
         secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
+        // The run's output-wake signal. Each committed chunk announces on it
+        // so the run's own live observer can read sooner than its poll
+        // deadline. Null = nobody is listening; the announce is a no-op.
+        outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
     ): ShellInvocationResult {
         // Use explicit controlDirRoot if provided; null means non-durable fallback
         // (preserves base behavior: when PipelineOrchestrator has no controlDirRoot,
@@ -268,6 +272,11 @@ object ShExecution {
             // channels eagerly made every `sh` look like it produced console output, and in capture
             // mode it declared a STDOUT stream for a channel that is the typed value and must never
             // be part of the transcript.
+            // The safe call is necessary: controlDirRoot is nullable and the
+            // durable sinks exist only when it is set. The static rule that
+            // reads the chained let as redundant is wrong here, and the
+            // suppression is local to this expression on purpose.
+            @Suppress("UnnecessarySafeCall")
             val ingressSinks: Map<ProcessOutputChannel, ProcessOutputSink> = controlDirRoot?.let { root ->
                 val store = OutputPlaneProvider.storeForWriting(root)
                 val streams = OutputPlaneProvider.streamsOf(runId, opId.format())
@@ -283,11 +292,12 @@ object ShExecution {
                                 { store.open(address.stream) },
                                 store.frameIndex(),
                                 address,
+                                afterChunkCommitted = { outputWakeups?.signal() },
                             ) as ProcessOutputSink,
                         )
                     }
                 }
-            } ?: emptyMap()
+            }.orEmpty()
 
             // Execute with tee-gated wrapper if captureStdout is enabled
             // Env injected via pb.environment.putAll (not argv) in DurableShellExecutor.launch

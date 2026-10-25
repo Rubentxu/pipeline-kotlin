@@ -109,6 +109,11 @@ internal class StepDispatchEngine(
     // reaches for the emission seam is refused at admission instead of reaching a dead handler.
     private val eventRegistry: dev.rubentxu.pipeline.v2.events.registry.EventRegistry =
         dev.rubentxu.pipeline.v2.events.registry.EventRegistry.create(),
+    // The run's output-wake signal, handed to every runtime context so the
+    // shell adapter can announce committed chunks to the live observer.
+    // Optional so pre-existing construction sites compile; null skips the
+    // announce and the observer converges on its poll deadline.
+    private val outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
     /**
      * the replay cursor is traversal state, so it lives here and nowhere
      * else. `ReplayCursor(runId, lastOpId, stageIndex, savedAt)` models where the canonical
@@ -229,6 +234,7 @@ internal class StepDispatchEngine(
         shOptions = stageShOptions,
         controlDirRoot = controlDirRoot,
         eventSink = eventSink,
+        outputWakeups = outputWakeups,
         // B11 / W2: surface the per-run body-reentry adapter under
         // BODY_INVOKER_CAPABILITY for any block-step handler that declares it.
         // Fail-closed admission (null bodyInvoker → no capability) is preserved

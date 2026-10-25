@@ -48,6 +48,10 @@ internal data class CanonicalRunState(
     val journal: OperationJournal,
     val cursorStore: ReplayCursorStore,
     val eventSink: EventSink,
+    // The run's output-wake signal, shared between the live observer (which
+    // parks on it) and the shell path (which announces committed chunks on
+    // it). Null for the volatile world and for callers with no observer.
+    val outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
     val sagaBinding: SagaCompensationBinding,
 )
 

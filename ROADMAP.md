@@ -267,7 +267,7 @@ La auditoría nombra sus bloques `B1..B5`; aquí se escriben `AUD-B1..AUD-B5` po
 | **AUD-B1** | publicación con procedencia, y una limpieza de caché que no borre lo ajeno | **cerrado en sus dos mitades.** La poda de caché ya está en el árbol, con las seis guardas que la auditoría pedía —marca de propiedad en la raíz, raíz canonicalizada y candidata sólo hija directa, enlaces simbólicos que nunca llegan a `rm`, namespace acreditado por un marcador con digest, edad, y el namespace en uso como excluido— y las seis se han visto en rojo, una por una (commit `dfba3342e`). La mitad de publicación se midió en este ciclo: 17 filas y 10 mutaciones (§2.90), y la puerta completa sobre el árbol que se entrega dio `PASS` (166 s, 1311 tests, 61 escenarios, ratio de LOC 0.348) | §2.90 |
 | **AUD-B2** | una **decisión pura de atribución** compartida por perfil, `explain` y telemetría; y una caché que cae por **origen y tipo** y no por el texto literal de un mensaje | **la mitad de la atribución está cerrada y medida (§2.91).** Las tres proyecciones llaman ya a **una** decisión pura (`StepAttribution`), y el defecto —la telemetría atribuía la duración al **primer** candidato— se ha visto en rojo con tres mutaciones (7, 4 y 1 filas rojas, sin daño colateral). La medición en el CLI de una etapa **paralela** mostró lo que la regla vieja decía al operador: que una rama «nunca cerró» cuando sí cerró, y que tres terminales no pudieron nombrar su paso. **Las dos mitades de la caché están cerradas y medidas (§2.92).** El fallback ya no se decide por la cadena `CachingJvmScriptingHost.UNLOADED_ARTIFACT_MESSAGE` —un **texto** y no un **tipo**— sino por el **origen** y el **tipo** del fallo: el rechazo del cargador se reconoce por la clase y el método que lo levantan, leídos del frame superior de la traza. La regla vieja y su guardia compartían el mismo literal, así que podían estar equivocadas **juntas**; ahora la guardia pide la excepción **real** a la clase real del runtime. Se ha visto en rojo con cinco mutaciones (3, 3, 1, 3 y 2 filas rojas, sin daño colateral) y con un UAT efímero contra tres distribuciones —la nueva recupera, la vieja **también** recupera (el cambio quita una dependencia, no arregla un defecto alcanzable) y la regla rota **falla**—. **La tercera mitad también queda cerrada y medida (§2.94).** La clave v3 por contenido ya es **consumible desde un test unitario**: `Kotlin24ScriptingHost.cacheIdentityFor` pasa de `private` a `internal` —sin cambio de comportamiento, la misma función llamada por el mismo camino— y cinco filas la leen: tres de la identidad directamente y dos del **cableado**, que miran con qué clave se direccionó la caché y qué ocurre sin identidad verificada. Se ha visto en rojo con seis mutaciones (4, 1, 2, 1, 1 y 1 filas rojas, sin daño colateral) y con un UAT efímero contra tres distribuciones con una caché compartida: mismas bytes en otra ruta → la **misma** clave; bytes distintas → **otra** clave; y con la mutación que saca el classpath de la JVM de la clave, las tres comparten clave y artefacto, que es como el UAT dice que está roto. La puerta completa sobre el árbol comiteado dio `PASS` (187 s, 1321 tests, 61 escenarios, ratio de LOC 0.351). **AUD-B2 queda cerrado en sus tres puntos.** | §2.91, §2.92, §2.94 |
 | **AUD-B3** | observabilidad de verdad: `traceId` como **campo**, `spanId` robusto, intervalos validados sin duraciones negativas, límites de cardinalidad por dimensión, y un adaptador OTLP opcional | **cerrado en sus cinco puntos, y medido (§2.95).** El `traceId` es ahora un **campo** de cada línea del export —una línea suelta sabe a qué run pertenece sin consultar la cabecera que la precedió—, el `spanId` se deriva de `(traza, ámbito, ocurrencia)` y distingue las ramas de una etapa paralela, un intervalo invertido deja de medir duración y su contradicción se cuenta en `pipelinek.invalid_interval_total`, cada dimensión tiene su tope de cardinalidad en **política** y lo que la pasa dice que pasó (`__overflow__`), y `inspect --telemetry --otlp` renderiza la **misma** exportación en la forma de OpenTelemetry mientras que `--otlp` sin `--telemetry` se rechaza. Se ha visto en rojo con **diez** mutaciones focales (10/10 `DISCRIMINATED`, una fila roja cada una, sin daño colateral) y con la mitad roja del escenario promovido, medida **sobre el árbol que se entrega**: con M-1 el lanzador nombra `TELEMETRY_EVERY_LINE_NAMES_THE_TRACE`, y con M-6 nombra `TELEMETRY_OTLP_CARRIES_THE_TRACE`. La puerta completa sobre el árbol comiteado dio `PASS` (182 s, 1335 tests, 62 escenarios, ratio de LOC 0.355; sha `995772a5c`), después de que la **primera** ejecución de esa puerta **fallara en la etapa 1** con dos hallazgos de detekt, resueltos con una extracción y no con un umbral más alto | §2.95 |
-| **AUD-B4** | economía de la verificación —y **sólo** después de pasar por `delivery-first-testing` | **abierto, y con precondición declarada.** La lente que aplica se nombra antes de escribir una línea: `references/navigation.md`. El router ofrece un portafolio de auditoría que **no existe en disco** (hay 8 playbooks y ninguno es ese), así que esa ruta no se puede seguir tal cual; el coste de la puerta ya está medido (§2.86) y es lo que este bloque tiene que reducir | §0 RSO-01..02 |
+| **AUD-B4** | economía de la verificación —y **sólo** después de pasar por `delivery-first-testing` | **cerrado y medido (§2.96).** Se invocó la skill y se leyeron el router (`references/navigation.md`) y **sólo** el playbook de la lente que aplica (`references/lenses/harness-economics.md`); el portafolio de auditoría que el router ofrece **no existe en disco** (hay 8 playbooks y ninguno es ese), así que esa ruta no se puede seguir tal cual. El inventario medido: **62 escenarios** E2E (526,6 s de trabajo, 50 s de reloj, mediana 7,5 s, p95 18,0 s) y **1335 tests** unitarios en 20 s, con `skipped=0`, **0** escenarios que no comprueben nada —el mínimo son **4** comprobaciones por escenario— y **0** falsos rojos en 7 corridas. El índice `garantía → escenarios → capa → duración → fallo que discrimina` cubre las 62 en 11 familias, y **no hay dos escenarios que afirmen lo mismo**. La clasificación es `KEEP \| PARAMETERIZE \| REPLACE \| RETIRE \| DEFER`: no se retira ninguna garantía y no hay duplicados; lo único aplazado es la caché de ciclo de los 9 escenarios con artefacto propio, con su número encima (el ahorro máximo son ~8 s de CPU y ~0 s de reloj). **El cambio aplicado es el techo de concurrencia del lanzador, de 8 a 16**, medido con un A/B de tres puntos (8 → 70 s, 16 → 50 s, 32 → 64 s) y **el mismo veredicto en los tres**. Las dos comprobaciones que el censo daba por incapaces de fallar se han visto en rojo con **dos mutaciones focales**: una sobre la garantía que vive dentro del pipeline y otra sobre la comprobación universal que comparten los 62. La puerta completa sobre el árbol comiteado dio `PASS` (138 s, 1335 tests, 62 escenarios, ratio de LOC 0.355; sha `92eaf8ce7`) | §2.96 |
 | **AUD-B5** | proveedor de aislamiento | **abierto, sin tocar.** `RSO-08` es su nombre en la propuesta de arriba; `RSO-04` es su precondición (que `LOCAL` no es un sandbox multi-tenant) | §0 RSO-08 |
 
 **La puerta de verificación, ejecutada entera y sin filtros, sobre el árbol que
@@ -10868,7 +10868,8 @@ telemetría: `traceId` como campo, un `spanId` robusto para ramas paralelas,
 intervalos validados, límites de cardinalidad y un adaptador OTLP opcional),
 `AUD-B4` (la economía de la verificación, que pasa por
 `delivery-first-testing` antes de tocar nada) y `AUD-B5` (el proveedor de
-aislamiento).
+aislamiento). De esos dos, `AUD-B3` se cerró en §2.95 y `AUD-B4` en §2.96;
+`AUD-B5` sigue abierto.
 
 
 ### 2.95 La consolidación de la telemetría: el trace como campo, el span que nombra lo que abarca y el adaptador que se puede no usar
@@ -11096,7 +11097,295 @@ cinco puntos**: el `traceId` como campo, el `spanId` que nombra lo que
 abarca, los intervalos validados, los límites de cardinalidad por dimensión y
 el adaptador OTLP opcional. Quedan abiertos, y sin tocar, `AUD-B4` (la
 economía de la verificación, que pasa por `delivery-first-testing` antes de
-tocar nada) y `AUD-B5` (el proveedor de aislamiento).
+tocar nada) y `AUD-B5` (el proveedor de aislamiento). `AUD-B4` se cerró después,
+en §2.96; `AUD-B5` sigue abierto.
+
+### 2.96 La economía de la verificación: el coste medido, el índice por garantía y un cambio aplicado
+
+**La lente, y la precondición que el bloque pedía.** `AUD-B4` exigía pasar por
+`delivery-first-testing` **antes** de tocar nada. Se invocó la skill y se leyeron
+las dos piezas que su regla manda: el router (`references/navigation.md`) y
+**sólo** el playbook de la lente que aplica
+(`references/lenses/harness-economics.md`). El router ofrece un portafolio de
+auditoría que **no existe en disco** —hay 8 playbooks y ninguno es ese—, así que
+esa ruta no se puede seguir tal cual; la lente se nombra antes de escribir una
+línea y es la de economía. Sus preguntas son las que quedan contestadas aquí:
+qué garantías cubre realmente el arnés, cuánto se paga en ejecución, en
+mantenimiento y en falsos rojos, qué comprobaciones **no pueden fallar**, qué
+se repite entre capas, y qué se retira, parametriza, sustituye o aplaza.
+
+**Esto no crea un registro nuevo.** El registro que ya existe es el §0 de este
+documento, y las cifras nuevas se apoyan en las dos secciones que ya estaban
+medidas: §2.86 (el coste de la puerta) y §2.94 (la clave por contenido del
+producto). Lo que faltaba era el **índice por garantía** y una decisión, y eso
+es lo que esta sección añade.
+
+#### El inventario, por capa
+
+| capa | qué observa | cuántos | cuánto |
+|---|---|---|---|
+| unitaria | reglas puras del dominio y decisiones de aplicación | 163 ficheros bajo `src/test` (160 de ellos Kotlin/Java) en 26 módulos | 1335 tests en 20 s |
+| E2E (`examples/`) | la distribución **instalada**, el proceso real, el almacén real, el disco real | 62 escenarios | 50 s de reloj, 526,6 s de trabajo |
+
+Las dos capas miran cosas distintas y por eso **no se sustituyen**: la
+unitaria mira el **valor de retorno** de una regla, y la E2E mira lo que sale
+del proceso cuando la regla se equivoca —el código de salida, el texto que sale
+por `stderr`, la fila que queda en el almacén—. Ninguna de las 62 escenarios
+E2E afirma lo mismo que otro: se compararon los conjuntos de expectaciones de
+los 62 (directivas `expect-*` y literales) y **no hay dos iguales**. La familia
+de sagas, que es la que más se parece entre sí, se distingue por el **token de
+estado** que exige (`SETTLED`, `NEEDS_INTERVENTION (UNKNOWN_EFFECT)`,
+`NEEDS_INTERVENTION (COMPENSATION_UNCERTAIN)`) y por la directiva
+(`durable-once` o `resume`), no por el mecanismo.
+
+#### El índice `garantía → escenarios → capa → duración → fallo que discriminan`
+
+Duraciones medidas con **16 trabajadores** (la configuración que queda por
+defecto), sobre la suite de 62 escenarios. Las 62 están clasificadas y ninguna
+queda fuera: la suma son **526,6 s**.
+
+| garantía | n | escenarios | duración | máximo | capa que además la observa en unidad | el fallo que discrimina |
+|---|---|---|---|---|---|---|
+| un rechazo sale con su motivo y sin ejecutar el efecto | 8 | `negative/{12,15,29,30}`, `negative/events-*`, `negative/unknown-directive-key` | 46,1 s | 7,5 s | `EventStoreRefusalRenderingTest`, `RecoverJournalVocabularyTest`, `DiagnosticTextTest` | un rechazo mudo, o un rechazo que ejecuta lo que debía negar (`escapes workspace`, `Error: unknown run`) |
+| un plugin que miente en su manifiesto, su firma o su identidad es rechazado | 13 | `negative/34`, `negative/plugin-*`, `plugins/*` | 131,7 s | 15,4 s | `PluginArtifactIntegrityTest`, `PluginContributionCrossCheckTest`, `PluginTrustDecisionTest`, `BodySlotsTest` | un manifiesto que declara un paso o una capacidad que el plugin no tiene, una firma que no casa con los bytes |
+| el replay no repite un efecto ya pagado | 7 | `durable/{19,21,22,31,32,40}`, `events/01` | 49,3 s | 10,0 s | `DefaultEffectReplayPolicyTest`, `RunExecutionLeaseTest`, `DurableControlEnginePolicyTest` | `effects=1` que sale `effects=2` |
+| una saga compensa, o declara que no puede | 7 | `durable/33..38`, `durable/39-saga-two-same-kind` | 43,6 s | 7,6 s | `SagaDeciderTest`, `SagaVerdictTest`, `SagaCompensationInterpreterTest`, `RealSagaPlaneLawTest` | una saga que se declara `SETTLED` sin estarlo, o que compensa lo que no debía |
+| un cancel no toca un run que ya terminó vivo | 1 | `durable/39-cancel-dead-run` | 6,0 s | 6,0 s | `RunCancellationDecisionTest`, `TaskTerminalDecisionTest` | un cancel que cancela un run muerto, o que no cancela uno vivo |
+| los eventos tienen orden, cursor y cola | 6 | `events/{02..06}` | 52,0 s | 18,8 s | `EventCursorTest`, `EventPageDrainTest`, `EventRegistryTest`, `SegmentReaderTest`, `StepTerminalVerdictTest` | un cursor más allá de la cola, un run desconocido, una historia vacía |
+| una operación no sale del workspace autorizado | 11 | `output/*`, `steps/{13,17,18,26,33,34}` | 89,3 s | 12,0 s | `AntGlobPatternTest`, `FindFilesGlobMatcherTest`, `WorkspacePathResolverTest`, `UnaccreditedWorkspaceOwnershipTest` | un `rm` que se lleva lo que no era suyo, una ruta que escapa de la raíz |
+| el producto se describe con su verdad | 3 | `smoke/*` | 35,3 s | 18,1 s | `InstallationHealthTest`, `ProductVersionIdentityTest`, `SdkCapabilitiesRegistryTest` | un `doctor` que dice `0` sobre una instalación que no está sana, un catálogo que habla de otra versión |
+| una credencial no se filtra y un zip no se sale de su raíz | 2 | `security/*` | 28,9 s | 20,9 s | `CredentialCryptoTest`, `KdfParamsTest`, `CredentialsStorePosixTest`, `SecretPatternRegistryUrlEncodingTest`, `ZipTest` | un secreto en el transcript, un `zip slip` |
+| el control de flujo decide lo que el script pidió | 2 | `control-flow/*` | 28,0 s | 18,9 s | `WhenPredicateCodecTest`, `WakePlanTest`, `WakeupSignalTest`, `OperationSelectionTest` | un `when` que toma la rama contraria, un outcome `unstable` donde el script pidió `ok` |
+| un paso hace lo que su nombre dice | 2 | `steps/{08,16}` | 16,4 s | 9,0 s | `EnvModelPathPrependTest`, `CreateDirectoriesFromTest`, `ScriptTextEscaperTest` | un `withEnv` que no prepende, un `sleep` que no espera |
+
+El reparto del reloj de la suite: mínimo **3,5 s**, mediana **7,5 s**, p75
+**10,2 s**, p90 **11,1 s**, p95 **18,0 s**, máximo **20,9 s**. El 90 % de los
+escenarios cabe por debajo de los 12 s; los cinco que se salen son
+`events/02-telemetry-export` (18,8 s), `security/14` (20,9 s),
+`control-flow/11` (18,9 s), `smoke/11` (18,1 s) y `negative/34` (15,4 s).
+
+#### Lo que no puede fallar: 0, y está comprobado con dos mutaciones
+
+El lanzador cuenta las **garantías comprobadas** por escenario y publica las
+que no comprobaron nada: en las **siete** corridas de esta sección, **0** en las
+62, con **588** comprobaciones sobre **112** ejecuciones y **219** pasos
+terminados.
+
+El recuento del lanzador no es el único testigo, y aquí es donde la cifra
+merece explicación, porque el número que se lee ("0 que no comprobaron nada")
+sale de una regla que se cuenta a sí misma. La regla es: una comprobación es
+un `expect-stdout`, un `expect-stderr`, un `expect-transcript` o un
+`expect-exit` distinto de cero. Aplicada a los 62 escenarios, deja **16** sin
+ninguna comprobación de contenido:
+
+- **cinco** tienen una directiva que el propio lanzador compara —`durable`,
+  `events-resume`, `events-follow` y `run-state` (dos escenarios)— y por eso
+  su garantía la sostiene el lanzador, no una cadena de texto;
+- **once** no declaran ninguna directiva: su garantía vive **dentro** del
+  pipeline, en un `sh(...)` cuyo código de salida falla el paso
+  (`grep -qx hello out.txt`, `test -f src/lpr104.txt`,
+  `diff -u snapshot.before snapshot.after`).
+
+Ninguno de esos once es un escenario que mira el código de salida y no afirma
+nada. Y hay un suelo por debajo: el lanzador aplica a **todos** los escenarios
+dos comprobaciones propias —el **orden** en que el run contó su historia y el
+**lugar** que el operador nombró para la biblioteca nativa—, así que el mínimo
+por escenario es **4** comprobaciones y **ninguno** llega a cero. El reparto de
+las comprobaciones por escenario: mínimo 4, máximo 26, media 9,5.
+
+**Dos mutaciones focales, porque un número que no se ha visto en rojo no es
+evidencia.** Las dos se aplicaron, se leyó el `diff` de vuelta, se reconstruyó
+la distribución cuando tocaba el producto, y se restauró después:
+
+| mutación | qué rompe | veredicto del lanzador | restaurado |
+|---|---|---|---|
+| `examples/steps/17-writeFile.pipeline.kts` escribe `helo` en vez de `hello` | la garantía que vive **dentro** del pipeline | `FAIL steps/17-writeFile.pipeline.kts — exit 1, expected 0` | `ok … checks=6` |
+| `SqliteNativeLibraryHome.createDirectory` deja de crear el lugar nombrado | la comprobación **universal** que el lanzador aplica a los 62 | `FAIL steps/17-writeFile.pipeline.kts — the place named for the native library is not there` | `ok … checks=6` |
+
+La primera demuestra que la garantía de un escenario sin directivas **falla el
+run** cuando el producto se equivoca, y que el lanzador lo ve aunque no la
+haya declarado. La segunda demuestra que la comprobación que **comparten los
+62 escenarios** no es una constante: se la puede romper desde el producto y se
+pone roja. En las dos, la fila affected fue la esperada y no hubo daño
+colateral —el filtro corrió un solo escenario—, y el árbol quedó limpio
+(`git status --short` sin salida).
+
+#### Falsos rojos, skips, reruns, caché y procesos residuales
+
+- **Falsos rojos: ninguno observado en 7 corridas** (8, 8, 16, 16, 32
+  trabajadores, el barrido A/B y la corrida con el techo nuevo): las 7 dieron
+  62 de 62, 588 comprobaciones, 219 pasos, 2 escenarios cerrados como
+  inestables —los de saga, y es lo que se espera— y 0 que afirmaran nada.
+- **Skips: 0.** En la capa unitaria, los 183 informes JUnit de la etapa 2
+  dieron `skipped=0`.
+- **Reruns: 2**, los que piden los escenarios durables (`durable x2`), que son
+  la comprobación de que un efecto no se repite y no un parche.
+- **Caché:** en las corridas templadas, **0** artefactos escritos y **54**
+  presentes; en la primera, 54 escritos y 54 presentes. La caché existe y
+  sirve.
+- **Procesos residuales:** ninguno del árbol de `pipelinek` sobrevive a una
+  corrida. El daemon de Gradle que aparece vivo lleva 4128 s de vida y viene
+  de un `./gradlew` interactivo, no de la puerta, que usa `--no-daemon`.
+
+#### La clasificación
+
+| veredicto | qué cae en él | por qué |
+|---|---|---|
+| **KEEP** | los 62 escenarios E2E | cada uno discrimina un fallo distinto, ninguno afirma lo mismo que otro, y la suite E2E es la **única** capa que ve la distribución instalada, el proceso, el almacén y el disco |
+| **KEEP** | los 163 ficheros de test unitarios | 1335 tests en 20 s, `skipped=0`, y cada clase mira la regla que le toca |
+| **PARAMETERIZE** | — | nada que parametrizar sin perder el nombre del escenario: la familia de sagas se parece, pero cada una exige un token de estado distinto, y unificar sus ficheros tocaría 7 garantías para no cambiar ni una ejecución |
+| **REPLACE** | — | ninguna sustitución hace falta: no hay un E2E que repita a un unitario |
+| **RETIRE** | — | nada retirable: no hay duplicados, y las garantías de secretos, persistencia, recuperación, aislamiento, integridad y concurrencia no se tocan |
+| **DEFER** | la caché de ciclo de los 9 escenarios con artefacto propio | medido abajo: el ahorro máximo son ~8 s de CPU y ~0 s de reloj, contra una pregunta de seguridad de caché |
+
+#### El cambio aplicado: el techo de trabajadores, de 8 a 16
+
+El lanzador limitaba por defecto a **8** escenarios concurrentes. El número
+venía de una cuenta que nadie midió. Medido en la máquina de referencia (64
+núcleos, 94 GB), con la suite entera y **el mismo veredicto en cada corrida**
+—62 de 62, 588 comprobaciones, ninguna que afirmara nada—:
+
+| trabajadores | reloj de la suite | suma del trabajo de los escenarios | qué hace la contención |
+|---|---|---|---|
+| 8 | 70 s (71 s y 70 s en dos muestras) | 454,4 s | el techo que estaba en fuerza |
+| **16** | **50 s** (50 s, 50 s y 51 s en tres muestras) | 526,6 s | cada escenario ~16 % más lento |
+| 32 | 64 s | 765,3 s | cada escenario ~68 % más lento |
+
+**Dieciséis es la rodilla**: más allá los escenarios empiezan a pelear por la
+máquina y el reloj vuelve a crecer. El pico de RSS de los procesos del producto
+con 16 trabajadores fue de **3777 MB**, con 65 GB de `MemAvailable` en el peor
+momento y 34 procesos vivos, sobre una máquina de 64 núcleos y 94 GB: el techo
+es una decisión de **reloj**, no de memoria.
+
+El ahorro medido en el sitio es de **20 s** en la etapa 3 (71 s → 51 s en el
+A/B aislado) y de **27 s** en las dos puertas completas (96 s → 69 s), y **no
+cambia ninguna garantía**: el mismo 62 de 62, las mismas 588 comprobaciones, los
+mismos 2 inestables y la misma caché con 0 escritos y 54 presentes. El techo
+sigue siendo un knob (`PIPELINEK_E2E_JOBS=1` devuelve el comportamiento serial
+exacto), y el comentario del lanzador que lo explicaba —"ocho trabajadores
+traen la suite dentro del reloj de etapa"— se sustituyó por la medida.
+
+De paso se corrigieron dos comentarios que **decían cosas que ya no eran
+ciertas**: la mediana del reloj de escenario (7,5 s, no 11 s) y la premisa de la
+caché de ciclo (abajo).
+
+#### El DEFER, con su número: la caché de ciclo de los nueve escenarios con artefacto propio
+
+Nueve escenarios nombran su **propio** plugin o su **propia** copia de la
+distribución, y por eso usan una caché que muere con el ciclo. La razón que el
+lanzador daba estaba **equivocada**: decía que la clave del producto incluye la
+ruta, y desde la v3 **no** —el classpath entra en la clave como digest y tamaño,
+no como ruta, y §2.94 lo midió con tres distribuciones: las mismas bytes en
+otra ruta dan la **misma** clave.
+
+La razón verdadera son **las bytes**. De los nueve:
+
+- **seis** reconstruyen su artefacto en cada ciclo, así que su digest —y con él
+  su clave— cambia en cada ciclo y una entrada nunca podría volver a servirse.
+  Medido: el plugin "mentiroso" reescribe su manifiesto y lo vuelve a empaquetar
+  con `zip`, que guarda la **fecha** de la entrada; dos construcciones
+  separadas en el tiempo dan digests distintos (`fec8deb4…` frente a
+  `cf17ed5f…`). El artefacto firmado y luego alterado cambia sus bytes por
+  definición.
+- **uno** nombra un jar que no existe (`plugin-jar missing`), así que no aporta
+  ninguna entrada al classpath.
+- **dos** tienen bytes que **no** se mueven: el plugin reempaquetado (el
+  lanzador le fija a todos sus archivos la fecha `202001010000`) y el plugin
+  firmado sin alterar (la firma vive fuera del classpath).
+
+O sea: **el ahorro máximo de quitar el ciclo-local son 2 escenarios**, unos
+**4 s de CPU cada uno** (la compilación en frío cuesta 4,9 s y en templado
+0,8 s, medido en §2.86) y **~0 s de reloj**, porque esos dos corren en paralelo
+con el resto. Los nueve, juntos, suman 99,9 s de los 526,6 s de la suite:
+quitarlos del ciclo-local no tocaría ni el reloj ni el presupuesto. Y el
+precio no es cero: meter artefactos de ciclo en un namespace compartido es una
+pregunta de **seguridad de caché** que nadie ha medido aquí. Queda **aplazado**,
+con el número encima, y el comentario del lanzador dice ahora la verdad —las
+bytes, no la ruta—.
+
+#### El coste de la puerta, con el cambio dentro
+
+La puerta completa, sin filtros, sobre el árbol comiteado `92eaf8ce7`. Su línea
+de veredicto, copiada tal cual:
+
+```
+PASS  sha=92eaf8ce7ef380f0cb2eab01d956982dcca0eae9  elapsed=138s  budget=900s  tests=rewritten:1335 read:0  scenarios=observed:62 executed:62
+```
+
+| etapa | puerta anterior (`995772a5c`, 8 trabajadores) | esta puerta (`92eaf8ce7`, 16) |
+|---|---|---|
+| preparación | 12 s | 12 s |
+| 1 (compilación, `detekt`, `detektTest`, `apiCheck`, `installDist`) | 49 s | 34 s |
+| 2 (tests unitarios, 26 módulos) | 21 s | 20 s |
+| 3 (los 62 escenarios) | 96 s | 69 s |
+| 4 (censo de LOC) | 1 s | 0 s |
+| 4b (procedencia de comentarios) | 3 s | 3 s |
+| **total** | **182 s** | **138 s** |
+
+El ahorro **atribuible** al cambio es el de la etapa 3: **27 s** en la puerta
+(96 s → 69 s), y **20 s** en el A/B aislado que mueve sólo ese knob (71 s →
+51 s). Los 44 s restantes son de las etapas 1, 2 y 4, y **no** son del cambio:
+son el estado de caché de una compilación distinta, y la puerta anterior
+compiló en frío porque su preparación borró las salidas. Decir que el cambio
+ahorró 44 s sería medir otra cosa.
+
+Contra un presupuesto de 900 s, la puerta completa queda en el **15 %** de su
+presupuesto. El objetivo de la lente —"inner loop ~30–120 s, merge ~2–5 min"—
+se cumple: el bucle interno filtrado es la etapa 2 (20 s) y la puerta entera es
+un merge (138 s).
+
+**El censo de LOC**, sobre el mismo árbol comiteado (el censo lee `git ls-files`,
+así que mide ficheros **trackeados**):
+
+```
+  VERIFY_LOC   = 25261
+  PRODUCT_LOC  = 71072
+  ratio        = 0.355 (limit 2)
+```
+
+`VERIFY_LOC` subió 26 líneas respecto de §2.95 (25235 → 25261): son los
+comentarios que este bloque añadió al lanzador. `PRODUCT_LOC` no se movió. La
+ratio global es **0.355**, y el presupuesto de 2 aplica **por módulo** también:
+las tres ratios más altas del árbol son `pipeline-step-sdk:workflow-control`
+80 / 49 = **1.633**, `pipeline-output` 710 / 694 = **1.023** y
+`pipeline-credentials-executor` 349 / 346 = **1.009**, y ninguna lo pasa.
+
+#### El cierre, en los campos que la lente pide
+
+- **Oportunidad:** la puerta consumía 182 s de un presupuesto de 900 s, y la
+  etapa 3 era el 53 % de ese tiempo, con un techo de concurrencia que nadie
+  había medido.
+- **Garantía:** ninguna se retira. La garantía que el cambio protege es la
+  misma que había —las 62 escenarios, las 588 comprobaciones, las 1335 filas
+  unitarias— y su prueba es la puerta completa, que se ejecutó entera.
+- **Prueba original y sustituta:** no hay sustituta. La puerta completa sigue
+  siendo la prueba; lo que cambió es cuánto cuesta.
+- **Evidencia de discriminación:** dos mutaciones focales, cada una con su fila
+  roja leída (`FAIL … exit 1, expected 0` y `FAIL … the place named for the
+  native library is not there`), sin daño colateral, restauradas y en verde
+  después, con el árbol limpio.
+- **Ahorro medido:** **27 s** en la etapa 3 de la puerta (96 s → 69 s) y **20 s**
+  en el A/B aislado (71 s → 51 s). El ahorro de la caché de ciclo **no** se
+  cuenta: es una hipótesis, y la hipótesis dice ~8 s de CPU y ~0 s de reloj.
+- **Riesgo residual:** un techo de concurrencia mayor comparte más máquina
+  entre escenarios, así que un escenario que dependa del estado de otro podría
+  volverse más sensible al orden de la máquina. No se observó en 7 corridas
+  (62 de 62 en todas), y el knob sigue ahí para bajarlo. Y la medición es de
+  esta máquina y de este árbol: con otra máquina, otro techo puede ser el
+  correcto.
+
+#### Lo que esta sección NO dice
+
+- **No se ha retirado ninguna garantía.** No hay duplicados que retirar, y las
+  protecciones de secretos, persistencia, recuperación, aislamiento, integridad
+  y concurrencia siguen intactas y en su sitio.
+- **No hay certificador externo.** La puerta es local; un certificador
+  independiente, si algún día lo hay, tiene su propia latencia y se informará
+  aparte.
+- **La regla de los tres ensayos** (el peor de tres, sin incidencias externas,
+  no debe pasar de 900 s) no está comprobada con tres puertas completas: lo que
+  hay son **tres** corridas de la etapa 3 con el techo nuevo y **una** puerta
+  completa. La puerta completa es la que manda, y su veredicto está arriba.
 
 ## 3. Decisiones tomadas en este ciclo, con su porque
 - **Un sitio que el operador nombra es un sitio que hay que dejar existir.** El driver de SQLite

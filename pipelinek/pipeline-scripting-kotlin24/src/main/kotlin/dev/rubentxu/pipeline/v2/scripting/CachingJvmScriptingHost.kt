@@ -58,6 +58,38 @@ import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
  *   keep the uncached behaviour.
  * @param cacheKey the identity of the one compilation this host exists to run.
 */
+/**
+ * Why an evaluation of a cache-loaded artifact threw.
+ *
+ * The distinction is the whole safety rule. [UnloadedArtifact] is the one
+ * measured damage mode — a lazily loaded artifact whose backing jar is
+ * truncated fails BEFORE any script code runs, fetching its compiled entry,
+ * so compiling again cannot repeat an effect the script never started.
+ * Every other throwable from evaluation means the script's own body ran and
+ * threw, and a body that ran may already have produced effects; evaluating
+ * it again would repeat them. That case propagates, always.
+ */
+sealed interface EvaluationFailure {
+    data object UnloadedArtifact : EvaluationFailure
+    data object ScriptBody : EvaluationFailure
+}
+
+/** The lazy loader's own refusal, measured on truncated artifacts. */
+private const val UNLOADED_ARTIFACT_MESSAGE = "Compiled script is not loaded yet"
+
+/**
+ * Classify a throwable from evaluating a cache-loaded artifact. Pure: the
+ * signature is compared, nothing is read, and anything unrecognized is the
+ * script's own failure — the safe direction, because an unknown failure
+ * mode is treated as "effects may have happened", never as "cache is stale".
+ */
+fun classifyEvaluationFailure(throwable: Throwable): EvaluationFailure =
+    if (throwable.message == UNLOADED_ARTIFACT_MESSAGE) {
+        EvaluationFailure.UnloadedArtifact
+    } else {
+        EvaluationFailure.ScriptBody
+    }
+
 class CachingJvmScriptingHost(
     private val cache: CompiledScriptCache,
     private val cacheKey: CacheKey,
@@ -75,11 +107,20 @@ class CachingJvmScriptingHost(
         return when (val lookup = cache.load(cacheKey)) {
             is CacheLookup.Hit -> try {
                 runInCoroutineContext { evaluator.invoke(lookup.script, evaluationConfig) }
-            } catch (unusable: RuntimeException) {
-                // The artifact loaded and is still not usable, so treat it as a miss:
-                // recompile, and let the store overwrite the damaged entry so the
-                // next run starts healthy.
-                compileAndEvaluate(script, compilationConfiguration, evaluationConfig)
+            } catch (failure: RuntimeException) {
+                when (classifyEvaluationFailure(failure)) {
+                    // The artifact never reached script code: recompile, and
+                    // let the store overwrite the damaged entry so the next
+                    // run starts healthy.
+                    EvaluationFailure.UnloadedArtifact ->
+                        compileAndEvaluate(script, compilationConfiguration, evaluationConfig)
+
+                    // The script's own body threw. It may already have
+                    // produced effects, and running it again would repeat
+                    // them — so the failure propagates instead of being
+                    // retried behind a cache-shaped mask.
+                    EvaluationFailure.ScriptBody -> throw failure
+                }
             }
 
             is CacheLookup.Miss -> compileAndEvaluate(script, compilationConfiguration, evaluationConfig)

@@ -3,12 +3,9 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskOutput
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
-import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
-import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.withLock
 
 /**
@@ -268,26 +265,6 @@ class DurableShellExecutor {
         }
     }
 
-    fun kill(process: ProcessHandle, controlDir: Path) {
-        val cookieFile = ShellProtocolLayout(controlDir).cookieFile
-
-        // SIGKILL the process tree using negative PID (process group)
-        try {
-            val pid = process.pid()
-            ProcessBuilder("kill", "-9", "-$pid").start().waitFor()
-        } catch (_: Exception) {
-            // Fallback: just destroy the process
-            process.destroyForcibly()
-        }
-
-        // Remove cookie immediately to signal death
-        try {
-            Files.deleteIfExists(cookieFile)
-        } catch (_: Exception) {
-            // Ignore
-        }
-    }
-
     fun cleanup(controlDir: Path, exitCode: Int) {
         cleanup(controlDir, exitCode, keepTranscriptLog = false)
     }
@@ -384,173 +361,6 @@ class DurableShellExecutor {
         }
     }
 
-    /**
-     * Jenkins-faithful cookie-scan kill.
-     * Scans /proc/<pid>/environ for processes matching PIPELINE_OP_COOKIE=<real>
-     * (same UID; excludes the JVM itself), sends SIGTERM to each via ProcessHandle.destroy,
-     * waits up to 5000ms (SoftKillWaitSeconds parity), then escalates to
-     * `kill -9 -<sid>` (sid = session ID, stable).
-     * DEVIATION from Jenkins core: Jenkins has no SIGKILL escalation (no determinism
-     * requirement); our FAILED_TIMEOUT state requires definitive process-tree kill.
-     * @param process The process handle (may be dead parent sh; the real process is found via cookie scan).
-     * @param opId The operation ID (real cookie value).
-     * @return true if kill was triggered (always returns true if called).
-*/
-    internal fun killWithCookieScan(process: ProcessHandle, opId: String): Boolean {
-        val jvmPid = ProcessHandle.current().pid()
-
-        // Step 1: Find all processes with the matching cookie
-        val matchingPids = findCookieProcesses(opId, jvmPid)
-        if (matchingPids.isEmpty()) {
-            return false
-        }
-
-        // Get the SID from any matching process's session
-        // kill -TERM -<sid> sends SIGTERM to all processes in the session
-        var targetSid: Long? = null
-        for (pid in matchingPids) {
-            try {
-                val stat = java.io.File("/proc/$pid/stat").readText()
-                val lastParen = stat.lastIndexOf(')')
-                if (lastParen < 0) continue
-                val afterComm = stat.substring(lastParen + 1).trim()
-                val fields = afterComm.split(Regex("\\s+"))
-                if (fields.size < 4) continue
-                val sid = fields[3].toLongOrNull() ?: continue
-                targetSid = sid
-                break
-            } catch (_: Exception) {
-                continue
-            }
-        }
-        if (targetSid == null) targetSid = matchingPids.first()
-
-        // Step 2: SIGTERM to the session (all processes in the session)
-        try {
-            ProcessBuilder("kill", "-TERM", "-$targetSid").start().waitFor()
-        } catch (_: Exception) {
-            try {
-                ProcessBuilder("kill", "-KILL", "-$targetSid").start().waitFor()
-            } catch (_: Exception) {}
-        }
-
-        // Step 3: Grace poll up to 5000ms
-        var allGone = matchingPids.all { pid ->
-            try {
-                ProcessHandle.of(pid).map { !it.isAlive }.orElse(true)
-            } catch (_: Exception) { true }
-        }
-
-        if (!allGone) {
-            Thread.sleep(500)
-        }
-
-        allGone = matchingPids.all { pid ->
-            try {
-                ProcessHandle.of(pid).map { !it.isAlive }.orElse(true)
-            } catch (_: Exception) { true }
-        }
-
-        // Step 4: SIGKILL escalation if still alive
-        if (!allGone) {
-            try {
-                ProcessBuilder("kill", "-9", "-$targetSid").start().waitFor()
-            } catch (_: Exception) {
-                for (pid in matchingPids) {
-                    try {
-                        ProcessHandle.of(pid).ifPresent { it.destroyForcibly() }
-                    } catch (_: Exception) {}
-                }
-            }
-
-            try {
-                val deadline = System.currentTimeMillis() + 3000L
-                while (matchingPids.any { pid ->
-                    try { ProcessHandle.of(pid).map { it.isAlive }.orElse(false) } catch (_: Exception) { false }
-                } && System.currentTimeMillis() < deadline) {
-                    Thread.sleep(100)
-                }
-            } catch (_: Exception) {}
-
-            try {
-                val check = ProcessBuilder("kill", "-0", "-$targetSid").start().waitFor()
-                if (check == 0) {
-                    val survivors = findCookieProcesses(opId, jvmPid)
-                    for (pid in survivors) {
-                        try {
-                            ProcessHandle.of(pid).ifPresent { it.destroyForcibly() }
-                        } catch (_: Exception) {}
-                    }
-                }
-            } catch (_: Exception) {}
-        }
-
-        return true
-    }
-
-    /**
-     * Finds PIDs of processes whose /proc/<pid>/environ contains PIPELINE_OP_COOKIE=<real>.
-     * @param realCookie The real cookie value (opId) to match.
-     * @param jvmPid The JVM's own PID to exclude from the scan.
-     * @return List of matching PIDs.
-*/
-    private fun findCookieProcesses(realCookie: String, jvmPid: Long): List<Long> {
-        val matching = mutableListOf<Long>()
-        val procDir = java.io.File("/proc")
-
-        try {
-            // Get our own UID from /proc/self/status (format: "Uid:\t<uid>\t<euid>\t<suid>\t<fsuid>")
-            val selfUid = java.io.File("/proc/self/status").readText().lines()
-                .mapNotNull { line -> if (line.startsWith("Uid:")) line.split("\t")[1].toLongOrNull() else null }
-                .firstOrNull() ?: return matching
-
-            val entries = procDir.listFiles() ?: return matching
-            for (entry in entries) {
-                if (!entry.isDirectory) continue
-                val pidStr = entry.name
-                val pid = pidStr.toLongOrNull() ?: continue
-
-                // Exclude the JVM itself
-                if (pid == jvmPid) continue
-
-                // Only scan processes of the same UID (from /proc/<pid>/status)
-                val targetUid = try {
-                    java.io.File("/proc/$pidStr/status").readText().lines()
-                        .mapNotNull { line -> if (line.startsWith("Uid:")) line.split("\t")[1].toLongOrNull() else null }
-                        .firstOrNull()
-                } catch (_: Exception) {
-                    continue
-                }
-                if (targetUid != selfUid) continue
-
-                // Read /proc/<pid>/environ and scan for the cookie
-                try {
-                    val environFile = java.io.File("/proc/$pidStr/environ")
-                    if (!environFile.exists() || !environFile.canRead()) continue
-                    val environBytes = environFile.readBytes()
-                    val environContent = String(environBytes, java.nio.charset.StandardCharsets.UTF_8)
-                    // /proc/<pid>/environ is null-separated
-                    val envPairs = environContent.split('\u0000')
-                    for (pair in envPairs) {
-                        if (pair.startsWith("PIPELINE_OP_COOKIE=")) {
-                            val value = pair.substring("PIPELINE_OP_COOKIE=".length)
-                            if (value == realCookie) {
-                                matching.add(pid)
-                                break
-                            }
-                        }
-                    }
-                } catch (_: Exception) {
-                    continue
-                }
-            }
-        } catch (_: Exception) {
-            // Fallback: return empty
-        }
-
-        return matching
-    }
-
     private fun deleteRecursively(path: Path) {
         Files.walk(path).use { walk ->
             walk.sorted(Comparator.reverseOrder())
@@ -562,32 +372,6 @@ class DurableShellExecutor {
                     }
                 }
         }
-    }
-
-    /**
-     * Writes the timeout.flag file to signal that the watchdog triggered.
-     * Per: timeout.flag MUST be written BEFORE kill to ensure
-     * the reconciler can distinguish TIMED_OUT from LOST.
-     * @param controlDir The control directory path.
-*/
-    private fun writeTimeoutFlag(controlDir: Path) {
-        try {
-            Files.writeString(
-                ShellProtocolLayout(controlDir).timeoutFlag,
-                System.currentTimeMillis().toString(),
-            )
-        } catch (_: Exception) {
-            // The watchdog must still attempt process cleanup if its marker cannot be persisted.
-        }
-    }
-
-    /**
-     * Checks if the timeout.flag exists in the control directory.
-     * @param controlDir The control directory path.
-     * @return true if timeout.flag exists.
-*/
-    fun hasTimeoutFlag(controlDir: Path): Boolean {
-        return Files.exists(ShellProtocolLayout(controlDir).timeoutFlag)
     }
 
     /**
@@ -692,7 +476,15 @@ class DurableShellExecutor {
         var exitCode = -1
         var process: ProcessHandle? = null
         var launched = false
-        val timeoutTriggered = AtomicBoolean(false)
+        // The watch: the deadline of this execution and the request to stop it. It owns the two
+        // marks of an expired execution — the latch it publishes and the flag it persists — and
+        // the consequences of an expiry.
+        val watchdog = ShellWatchdog(
+            controlDir = controlDir,
+            opId = opId,
+            timeoutMs = request.timeoutMs,
+            completion = request.timeoutCompletion,
+        )
         // The launch: the child AND the transcript state that belongs to it. The verdict on the
         // transcript is computed from THIS launch's pumps and sinks, so there is no ambient state
         // left for two executions to exchange.
@@ -717,42 +509,15 @@ class DurableShellExecutor {
             // Step 2: Detach
             detach(process, controlDir)
 
-            // Step 3: Poll for result with optional timeout
-            // If timeoutMs > 0, schedule watchdog thread
-            val watchdogThread = if (request.timeoutMs > 0) {
-                Thread {
-                    try {
-                        Thread.sleep(request.timeoutMs)
-                        // Timeout triggered - write flag BEFORE kill
-                        writeTimeoutFlag(controlDir)
-                        // Jenkins-faithful cookie scan kill
-                        // DEVIATION: Jenkins core has no SIGKILL escalation; our FAILED_TIMEOUT
-                        // Determinism requires it per spec (process-tree kill, no zombies)
-                        val killResult = killWithCookieScan(process!!, opId)
-                        timeoutTriggered.set(
-                            when (request.timeoutCompletion) {
-                                DurableShellTimeoutCompletion.KILL_RESULT -> killResult
-                                DurableShellTimeoutCompletion.WATCHDOG_ATTEMPT -> true
-                            },
-                        )
-                    } catch (_: InterruptedException) {
-                        // Normal interruption - timeout was cancelled
-                    } catch (_: Exception) {
-                        // Fallback to destroyForcibly if cookie scan fails
-                        try { process?.destroyForcibly() } catch (_: Exception) {}
-                        timeoutTriggered.set(true)
-                    }
-                }.apply { start() }
-            } else null
+            // Step 3: Arm the watch and poll for the result.
+            // The watch is armed AFTER the detach: it asks for the child's death, and the child
+            // must already be detached for that to mean anything.
+            watchdog.arm(process)
 
             // Poll in one interval slices so a watchdog kill does not leave us
             // waiting for a result.txt that the killed wrapper cannot publish.
-            val pollDeadline = System.currentTimeMillis() + if (request.timeoutMs > 0) {
-                request.timeoutMs + 30_000
-            } else {
-                3600_000
-            }
-            while (System.currentTimeMillis() < pollDeadline && !timeoutTriggered.get()) {
+            val pollDeadline = System.currentTimeMillis() + watchdog.pollDeadlineMs()
+            while (System.currentTimeMillis() < pollDeadline && !watchdog.fired()) {
                 val result = pollResult(controlDir, pollIntervalMs)
                 if (result != null) {
                     exitCode = result
@@ -760,38 +525,28 @@ class DurableShellExecutor {
                 }
             }
 
-            // TMO race guard: under CPU load the
-            // watchdog's kill lands AFTER pollResult already read a (misleading)
-            // wrapper exit code — the killed script's bash continued, echoed `done`
-            // and wrote result.txt 0 just before the SIGKILL, while the watchdog
-            // thread had not yet published timeoutTriggered. Without this bounded
-            // settle the terminal is classified Exited(0) → success, defeating
-            // FAILED_TIMEOUT. Give the watchdog a bounded window to
-            // publish its flag before classifying.
-            if (!timeoutTriggered.get() && watchdogThread != null && request.timeoutMs > 0) {
-                val settleDeadline = System.currentTimeMillis() + 2_000
-                while (!timeoutTriggered.get() && System.currentTimeMillis() < settleDeadline) {
-                    Thread.sleep(50)
-                }
-            }
+            // TMO race guard: under CPU load the watch's kill lands AFTER pollResult already
+            // read a (misleading) wrapper exit code — the killed script's bash continued, echoed
+            // `done` and wrote result.txt 0 just before the SIGKILL, while the watch had not yet
+            // published. Without this bounded settle the terminal is classified Exited(0) →
+            // success, defeating FAILED_TIMEOUT. The watch is given a bounded window to publish
+            // its latch before classifying.
+            watchdog.settle()
 
-            // The persisted flag file is the AUTHORITATIVE timeout marker
-            // (written BEFORE the kill,). The in-memory flag depends on
-            // watchdog-thread scheduling AND kill completion (KILL_RESULT), so on a
-            // loaded 2-core runner it can lose the race against a wrapper that
-            // writes result.txt after its child was killed. If the flag file
+            // The persisted flag file is the AUTHORITATIVE timeout marker (written BEFORE the
+            // kill). The latch depends on the watch thread's scheduling AND on the kill's
+            // completion (KILL_RESULT), so on a loaded 2-core runner it can lose the race against
+            // a wrapper that writes result.txt after its child was killed. If the flag file
             // exists, the run timed out regardless of the exit code.
-            if (!timeoutTriggered.get() && hasTimeoutFlag(controlDir)) {
-                timeoutTriggered.set(true)
-            }
+            val timedOut = watchdog.timedOut()
 
-            // Cancel watchdog if still running
-            watchdogThread?.interrupt()
+            // Cancel the watch if it is still running
+            watchdog.stop()
 
             // If we exited due to timeout
-            if (timeoutTriggered.get()) {
+            if (timedOut) {
                 // One grace poll cycle - late exit wins
-                val graceExitCode = pollResult(controlDir, 1000)
+                val graceExitCode = pollResult(controlDir, watchdog.graceWindowMs())
                 if (graceExitCode != null) {
                     exitCode = graceExitCode
                 }
@@ -857,15 +612,8 @@ class DurableShellExecutor {
             // success-path cleanup deleted the control dir (removing the
             // authoritative timeout.flag). A wrapper exit code published after its
             // child was killed is not a legitimate completion; timeout abort wins.
-            return if (timeoutTriggered.get()) {
-                DurableTaskTerminal.Cancelled(
-                    InterruptionRecord(
-                        kind = InterruptionKind.TIMEOUT,
-                        message = "durable shell timed out",
-                        operationId = opId,
-                        details = mapOf("controlDir" to controlDir.toString()),
-                    ),
-                )
+            return if (timedOut) {
+                watchdog.timeoutTerminal()
             } else {
                 DurableTaskTerminal.Exited(
                     exitCode = exitCode,
@@ -880,14 +628,10 @@ class DurableShellExecutor {
         } catch (e: Exception) {
             return when {
                 !launched -> DurableTaskTerminal.LaunchFailed(e.launchFailureRecord(opId, controlDir))
-                timeoutTriggered.get() -> DurableTaskTerminal.Cancelled(
-                    InterruptionRecord(
-                        kind = InterruptionKind.TIMEOUT,
-                        message = "durable shell timed out",
-                        operationId = opId,
-                        details = mapOf("controlDir" to controlDir.toString()),
-                    ),
-                )
+                // The same authority the terminal uses: an execution that expired and then failed
+                // is a timeout, not a lost task. The reconciler reads the same flag, so the
+                // terminal agrees with it instead of contradicting it.
+                watchdog.timedOut() -> watchdog.timeoutTerminal()
                 else -> DurableTaskTerminal.Lost(
                     lostFailureRecord(opId, controlDir, e.message ?: "durable task could not be reconciled"),
                 )
@@ -910,12 +654,12 @@ class DurableShellExecutor {
             // success: the surviving wrapper can publish exit code 0 after its child
             // was SIGKILLed, so cleanup MUST NOT read that code as success and
             // delete the control dir (which would erase the authoritative
-            // timeout.flag).
+            // timeout.flag). The decision is the watch's, and it follows the same
+            // authority the terminal followed.
             cleanup(
                 controlDir,
-                if (timeoutTriggered.get()) -1 else exitCode,
-                keepTranscriptLog = !timeoutTriggered.get() && exitCode == 0 &&
-                    request.outputProjection == DurableShellOutputProjection.JENKINS_LOG,
+                watchdog.cleanupExitCode(exitCode),
+                keepTranscriptLog = watchdog.keepsTranscriptLog(exitCode, request.outputProjection),
             )
         }
     }

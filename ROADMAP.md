@@ -149,7 +149,7 @@ No habrá dos motores shell. `executeCore()` debe convertirse en un coordinador 
 
 Entrega verificable: ejecutar, terminar, cancelar y recuperar `sh` con las mismas salidas, efectos y protocolos persistentes.
 
-### Estado de H2 — en curso; los tres primeros componentes están cerrados
+### Estado de H2 — en curso; los cuatro primeros componentes están cerrados
 
 Antes de crear cada componente se comprobó qué abstracción existente ya es la dueña de cada responsabilidad. El resultado, medido sobre `DurableShellExecutor.kt` (1.802 líneas):
 
@@ -307,7 +307,82 @@ PASS  sha=d06e2202697ed4076867d79da3c38c915494a641  elapsed=189s  budget=900s  t
 - 189 s de reloj de pared frente al presupuesto de 900 s.
 - `VERIFY_LOC = 25750`, `PRODUCT_LOC = 71111`, ratio `0.362` (límite 2); el módulo del corte, `pipeline-step-sdk:runtime`, queda en `913 / 2187 = 0.417`. El censo cuenta 166 ficheros de tests unitarios y 62 pipelines E2E como verificación, y 722 ficheros de código de producción como producto.
 
-**Lo que queda de H2.** Los otros cuatro componentes se extraen conservando `DurableShellExecutor` como fachada compatible y sin crear un segundo motor de shell: `executeCore()` debe quedar como un coordinador legible, no como una copia de la implementación actual.
+#### El corte: `AgentRendezvous`
+
+El ejecutor coordinaba FIFOs y agente dentro de `launch`, y el agente leía su argv **por posición**, en su propio `main`. El acuerdo entre los dos —qué valores viajan, en qué orden, con qué nombre de variable viaja el secreto— era una lista en un módulo y una lectura posicional en otro: dos cosas que se pueden separar sin que nada se rompa a la vista. `AgentRendezvous` (374 líneas) recoge el rendezvous completo: materializar los FIFOs, abrir el calentamiento, lanzar el agente y esperar su marca de listo. `DurableShellExecutor` queda como coordinador y `executeCore()` sigue siendo el único motor de shell.
+
+**La comprobación previa, por responsabilidad.** Antes de crear el componente se comprobó si otra abstracción ya era la dueña de esa responsabilidad:
+
+|Responsabilidad|¿Existe ya?|Consecuencia|
+|---|---|---|
+|Los nombres y las rutas del protocolo persistente|`ShellProtocolLayout` (primer corte)|No toca esta responsabilidad; se conserva intacto|
+|Preparar scripts, wrapper y entorno|`ShellLaunchPreparation` (segundo corte)|No toca esta responsabilidad; se conserva intacto|
+|Lanzar el hijo y enrutar sus dos descriptores|`ShellProcessLauncher` (tercer corte)|No toca esta responsabilidad; se conserva intacto|
+|La identidad de un lanzamiento: hijo, bombas, sumideros|`LaunchedShell`|Es la FORMA de retorno del lanzador; se conserva intacta|
+|El nombre del transcripto de consola|`DurableShellFiles`|No toca esta responsabilidad; se conserva intacta|
+|Las bombas de transcripción y el drenaje|`TranscriptDrain.kt`|Ya está fuera del ejecutor; no se toca|
+|Cuando ocurre el rendezvous (después de configurar el proceso, antes de arrancarlo)|El lanzador, que decide el CUÁNDO|El rendezvous sigue llegando como callback: el lanzador no sabe QUÉ es el agente|
+|Coordinar los FIFOs y el agente ya existente|Dentro del ejecutor, en `launch`|Es lo que se extrae|
+
+El resultado de la comprobación es que **no existía ningún componente que coordinara**: `LaunchedShell` es la identidad que el lanzamiento devuelve, `ShellProtocolLayout` es la autoridad de los nombres, y ninguno de los dos coordina a nadie. Se crea, y el lanzador lo invoca exactamente en el mismo punto en que lo invocaba antes.
+
+**La duplicación tenía una causa, y la causa tiene dirección.** Medido sobre el árbol anterior al corte (`38ec2204c`), el acuerdo entre el runtime y el agente estaba escrito DOS veces, y el motivo estaba escrito en el propio código: el KDoc de `buildAgentArgv` decía *"Duplicated locally so the runtime does not import the agent's `argv` helper (the import would pull `pipeline-application` into `pipeline-step-sdk:runtime`, which is a cycle)"*. La duplicación no era descuido: era el precio de poner el contrato en el módulo equivocado. La dependencia real va al revés —`pipeline-application` ya depende de `pipeline-step-sdk:runtime`—, así que el contrato puede y debe vivir en el runtime, y el agente leerlo allí. La otra dirección habría sido el ciclo. Por eso `AgentRendezvous` es público en el runtime y su constructor es `internal`: el contrato es de dos procesos y necesita ser visible; el mecanismo no.
+
+**Cuatro autoridades que colgaban, medidas antes de tocar nada.** Todas sobre `38ec2204c`:
+
+|Autoridad colgante|Medición|
+|---|---|
+|`ObsPc2IngestAgent.argv` — el helper que el runtime "no podía" importar| cero lectores en todo el árbol: las apariciones de `ObsPc2IngestAgent` son un comentario de `StreamingRedactor` y cinco en el runtime (cuatro en KDoc y la constante del nombre de clase), y NINGUNA es una llamada al helper. Su KDoc afirmaba que el lanzador lo usaba; no lo usaba|
+|Dos copias del predicado de tipo del FIFO|`isFifo` declarado dos veces, una por módulo, con el mismo cuerpo. La invariante de seguridad del FIFO tenía dos dueñas|
+|`READY_CONTENT` — la constante del texto de la marca de listo| cero lectores; el agente escribía el literal `"ready\n"` en línea, en la otra copia del mismo hecho|
+|`utf8` — el helper de codificación del agente| cero lectores: sólo su propia declaración|
+
+Y en el runtime, `AgentHandles` declaraba tres campos sin ningún lector: `stdoutFifo` y `stderrFifo` (las apariciones homónimas del fichero eran `protocol.stdoutFifo`, otra cosa) y `warmup` (el valor devuelto era la variable local, no el campo). Se borraron con la clase.
+
+**El secreto deja de viajar en el argv.** Antes, `buildAgentArgv` ponía el secreto en la sexta posición del argv. Medido en el host de referencia: `/proc/self/cmdline` tiene modo **444** y `/proc` está montado **sin `hidepid`**, así que un argumento de línea de órdenes lo lee *cualquier usuario de la máquina*; `/proc/self/environ` tiene modo **400**, y lo lee su propietario solo. El secreto viaja ahora en el entorno del agente, bajo `PIPELINEK_AGENT_SECRET`, y el argv lleva identificadores y rutas y nada que deba permanecer secreto. El argv pasa de seis valores a cinco, y el número se comprueba ANTES de leer las posiciones. Antes no se comprobaba: el agente leía `args[0]`..`args[4]` por posición y aceptaba en silencio un argv de más valores —la forma antigua, con el secreto en sexta posición— mientras que uno más corto lo hacía fallar con un `IndexOutOfBounds` en vez de con un motivo dicho. Hoy la forma antigua se rechaza por su cuenta.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que el escritor y el lector del argv se encuentran —los valores que el runtime escribe son los que el agente lee, posición por posición— y que el secreto que el agente existe para redactar no viaja donde todo el host puede leerlo. La capacidad que esa garantía sostiene es que un paso `sh` durable bombeado por el agente entrega al Output Plane bytes saneados, y que un paso así no publica por el camino el mismo secreto que debería ocultar: los dos fallos son silenciosos, porque el agente drenaría en vacío o no redactaría nada y la transcripción saldría limpia. El instrumento es un test puro de 9 filas de JUnit 5 —sin proceso, sin hilo, sin reloj, sin sistema de ficheros— porque el contrato es un valor con un escritor y un lector: el instrumento más barato que puede fallar es escribirlo y leerlo de vuelta. Un FIFO real, un agente real y un hijo real ejercitarían el conjunto, y el camino del agente no tiene ningún escenario ejecutable; un test unitario es el único instrumento disponible aquí, y es el que nombra QUÉ mitad se rompió. El predicado de tipo del FIFO **no** se afirma aquí: su comportamiento no cambia con este corte —se mudó al contrato compartido con el mismo cuerpo— y afirmar que una ruta es o no una tubería con nombre necesita un fichero real, que un test unitario no debe crear.
+
+**Visto en rojo seis veces.** Cada mutación se leyó en el diff antes que en el resultado, el árbol se restauró antes de la siguiente (una mutación apilada sobre la anterior hace el conjunto rojo acumulativo, y un conjunto acumulativo no prueba nada de una fila sola), y cada ejecución se comprobó contra el XML de JUnit autoritativo —no contra la salida del build, que también dice "BUILD FAILED"— con la condición de que corrieron las 9 filas:
+
+|Mutación|Filas que se encendieron|
+|---|---|
+|El argv escribe el run id donde va el operation id|2 — `the argv carries the five values the agent reads`, `the argv the runtime writes is the argv the agent reads`|
+|El argv lleva el secreto|3 — `the secret travels in the environment and not in the argv`, `the argv the runtime writes is the argv the agent reads`, `the argv carries the five values the agent reads`|
+|El argv no comprueba su número de valores|1 — `an argv with the wrong number of values is refused`|
+|La raíz del directorio de control sube un nivel de más|1 — `the control dir's root is the level above the control dir`|
+|El secreto viaja bajo otro nombre de variable|2 — `the secret travels in the environment and not in the argv`, `the agent reads the secret back from the environment`|
+|Un secreto ausente se responde con uno vacío|2 — `an environment without the secret is refused`, `an environment with an empty secret is refused`|
+
+La segunda mutación enciende tres filas y no una, y la razón es parte del resultado: llevar el secreto al argv cambia también el número de valores, así que el argv deja de ser el argv y las filas que comparan el argv con lo que el agente lee se encienden con ella. La tercera y la sexta son ortogonales a propósito —una quita la COMPROBACIÓN y la otra la RESPUESTA— y sus conjuntos rojos no se tocan: la aridad y la respuesta ante un secreto ausente son hechos distintos, y el instrumento los distingue.
+
+**Lo que el corte no arregla, y a quién pertenece.** El camino del agente no tiene ningún escenario ejecutable en `examples/`: nada en este árbol conduce al agente de extremo a extremo, así que las garantías de arriba quedan declaradas por construcción —el tipo del FIFO se comprueba, la redacción ocurre en memoria antes del commit— y no presenciadas por un escenario. Siguen siendo las que son.
+
+**El diagnóstico de detekt, que no era del código.** `detektMain` se puso en rojo con un `SpreadOperator` en `DurableShellExecutor.kt`: `ProcessBuilder("setsid", javaBin, "-cp", classpath, AGENT_MAIN_CLASS, *argv)`. La causa era el constructor variádico, no la política: `ProcessBuilder` tiene un constructor que recibe la lista entera. El corte retira además del baseline la entrada `SpreadOperator` de esa línea, cuya supresión ya no tenía sujeto.
+
+Medido sobre el árbol del corte con `scripts/verify-all.sh` sin filtros y con la build cache de Gradle **desactivada** (`GRADLE_OPTS=-Dorg.gradle.caching=false`), para que la línea de veredicto describa una ejecución y no una restauración:
+
+```
+PASS  sha=4dfdd812f4e4102c3aa65493fdf4ddaead5abd97  elapsed=164s  budget=900s  tests=rewritten:1378 read:0  scenarios=observed:62 executed:62
+```
+
+- 187 informes JUnit reescritos por esta ejecución —**todos** con su marca de tiempo dentro del MISMO minuto (13:31 UTC), lo que prueba que los 1378 tests se EJECUTARON y no fueron repuestos de la cache—, 1378 tests, 0 fallos, 0 errores, 0 omitidos.
+- 62 de 62 escenarios E2E ejecutados y en verde; 588 comprobaciones sobre 112 ejecuciones, 219 pasos terminados, 2 terminados inestables; ninguno sin comprobar; 7 credenciales sembradas y 2 reruns durables.
+- 164 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 25854`, `PRODUCT_LOC = 71100`, ratio `0.364` (límite 2); el módulo del corte, `pipeline-step-sdk:runtime`, queda en `1017 / 2197 = 0.463`. El censo cuenta 167 ficheros de tests unitarios y 62 pipelines E2E como verificación, y 723 ficheros de código de producción como producto.
+
+**El instrumento del gate, que no era del corte: `rewritten` no significa "ejecutado".** `pipelinek/gradle.properties` fija `org.gradle.caching=true` y el gate no lo desactiva. Una tarea `test` cuyas entradas no cambian es servida `FROM-CACHE`: Gradle repone sus ficheros de salida —los XML de JUnit— con el contenido viejo y un `mtime` fresco. El criterio de frescura del gate es exactamente el `mtime` del fichero (`stat -c %Y`), así que cuenta como "reescrito por esta ejecución" un informe que nadie ejecutó.
+
+Medido: una segunda corrida completa del gate sobre el árbol sin cambios ejecutó **CERO** tests —los 1378 los sirvió la cache— y su línea siguió diciendo `rewritten:1378 read:0`; el reloj bajó de 137 s a 105 s, y la guarda que el gate tiene para el caso "árbol totalmente cacheado ⇒ esto no es una medición ⇒ fallar" **no puede dispararse**, porque la cache deja todos los informes con `mtime` fresco. Experimento controlado, con la única variable cambiada (antes de cada invocación se borran los outputs; las entradas son las mismas):
+
+|Invocación|Estado de `:pipeline-domain:test`|
+|---|---|
+|sin `-Dorg.gradle.caching=false`|`FROM-CACHE`|
+|con `-Dorg.gradle.caching=false`|`executed`|
+
+El arreglo es de **H6**, que es donde vive el gate: el censo debe leer la marca de tiempo PROPIA del XML (`timestamp`), no el `mtime` del fichero, y distinguir tres estados —ejecutado ahora, servido de la cache, leído de disco— en vez de dos. No se toca el gate aquí: cambiar el instrumento de medición en mitad de un corte cambiaría la contabilidad del presupuesto que este corte está midiendo. Este corte se midió, por tanto, con la cache desactivada, y por eso su línea de veredicto dice lo que dice. En los tres cortes anteriores, cuyo código cambió, la cache sólo pudo servir los módulos cuyas entradas no cambiaron —sus hallazgos (detekt, LOC, escenarios) no dependen de ello—, pero su cifra de `rewritten` es la del gate, y el gate no distingue lo ejecutado de lo repuesto.
+
+**Lo que queda de H2.** Los otros tres componentes se extraen conservando `DurableShellExecutor` como fachada compatible y sin crear un segundo motor de shell: `executeCore()` debe quedar como un coordinador legible, no como una copia de la implementación actual. Quedan `ShellWatchdog`, `ShellTerminalDecision` y `ShellResourceCleanup`.
 
 ## H3 — Vertical slice completo `core.sh`
 

@@ -1058,6 +1058,50 @@ workspace_snapshot() {
     ) 2>/dev/null || true
 }
 
+# The DURABLE bytes of a run, as one picture.
+#
+# A dry run PROMISES that it writes nothing, and the only way to know whether
+# it kept the promise is to look at the bytes before and after. The picture
+# covers the database, the WAL that still holds its transactions, and every
+# file under the control root.
+#
+# The `-shm` file is deliberately NOT in the picture. It is SQLite's wal-index:
+# a DERIVED file the engine rebuilds from the WAL, carrying no durable content
+# of its own, whose read marks a read-only connection moves. Including it would
+# measure the engine's own bookkeeping and report it as a write by the product.
+durable_digest() {
+    local root="$1" file
+    {
+        for file in "$root/events.db" "$root/events.db-wal"; do
+            if [[ -f "$file" ]]; then sha256sum "$file"; fi
+        done
+        if [[ -d "$root/control" ]]; then
+            find "$root/control" -type f -print0 \
+                | LC_ALL=C sort -z \
+                | xargs -0 -r sha256sum
+        fi
+    } 2>/dev/null || true
+}
+
+# The DECISION a recover answered, as one word.
+#
+# The answer is a sentence, and the sentence carries an instant ("retry by
+# 2026-10-26T21:57:36.164Z") that differs between two invocations of the SAME
+# decision. Comparing the sentences would report a divergence where there is
+# none, so what is compared is the decision the sentence names.
+recover_decision() {
+    local stream="$1"
+    if grep -aqF -- "still in flight" "$stream"; then
+        printf 'reattach'
+    elif grep -aqF -- "already recovered" "$stream"; then
+        printf 'already-recovered'
+    elif grep -aqE -- 'would recover|recovered run' "$stream"; then
+        printf 'reuse-terminal'
+    else
+        printf 'unknown'
+    fi
+}
+
 # The identity of a run, normalized away.
 #
 # Two runs of the same pipeline are two different runs: they have different ids,
@@ -2276,6 +2320,40 @@ run_scenario_body() {
             return
         fi
 
+        # The dry run and the recovery are TWO INVOCATIONS OF ONE VERB, and an
+        # operator who asked "what would you do?" deserves the answer the
+        # operator who asked "do it" gets. If they disagree, one of them is
+        # reading facts the other cannot see -- which is not a difference of
+        # opinion but a difference of STORE, and the operator has no way to
+        # tell which one was telling the truth.
+        #
+        # The dry run goes FIRST, because it is the one that promises to write
+        # nothing: the durable bytes are compared around it, and the recovery
+        # (which does write) comes after.
+        local durable_before durable_after
+        durable_before="$(durable_digest "$root")"
+        local dryrun_code=0
+        binary runs recover "$recover_run_id" --db "$root/events.db" \
+            --control-root "$root/control" --dry-run \
+            >"$root/stdout.dryrun.txt" 2>"$root/stderr.dryrun.txt" || dryrun_code=$?
+        if [[ "$dryrun_code" != 0 ]]; then
+            printf 'FAIL %-52s the dry run of the half-finished run exited %s, expected 0\n' \
+                "$name" "$dryrun_code"
+            show_printed "$root/stderr.dryrun.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the dry run of the half-finished run exited $dryrun_code")
+            return
+        fi
+        durable_after="$(durable_digest "$root")"
+        if [[ "$durable_before" != "$durable_after" ]]; then
+            printf 'FAIL %-52s the dry run changed the durable bytes of the run\n' "$name"
+            diff <(printf '%s\n' "$durable_before") <(printf '%s\n' "$durable_after") \
+                | head -20 | sed 's/^/       | /'
+            failed=$((failed + 1))
+            failures+=("$name: the dry run changed the durable bytes of the run")
+            return
+        fi
+
         # The recover of a run that did NOT finish its work must not close it.
         # The run's first step finished, so its journal HAS a terminal
         # operation row; only the RUN's own terminal fact may end a run, and
@@ -2297,6 +2375,20 @@ run_scenario_body() {
             show_printed "$root/stdout.recover.txt"
             failed=$((failed + 1))
             failures+=("$name: the recover closed a run that had not finished its work")
+            return
+        fi
+
+        # And the dry run said the SAME thing. One decision, said twice.
+        local dryrun_decision recovery_decision
+        dryrun_decision="$(recover_decision "$root/stdout.dryrun.txt")"
+        recovery_decision="$(recover_decision "$root/stdout.recover.txt")"
+        if [[ "$dryrun_decision" != "$recovery_decision" ]]; then
+            printf "FAIL %-52s the dry run decided '%s' and the recovery decided '%s'\n" \
+                "$name" "$dryrun_decision" "$recovery_decision"
+            show_printed "$root/stdout.dryrun.txt"
+            show_printed "$root/stdout.recover.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the dry run decided '$dryrun_decision' and the recovery decided '$recovery_decision'")
             return
         fi
 

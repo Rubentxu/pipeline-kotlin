@@ -8,11 +8,9 @@
     <ID>CyclomaticComplexMethod:DurableShellExecutor.kt:DurableShellExecutor$private fun findCookieProcesses: List&lt;Long&gt;</ID>
     <ID>InjectDispatcher:ProcessDurableTaskRuntime.kt:ProcessDurableTaskRuntime$IO</ID>
     <ID>LongMethod:DurableShellExecutor.kt:DurableShellExecutor$private fun executeCore: DurableTaskTerminal</ID>
-    <ID>LongParameterList:DurableShellExecutor.kt:DurableShellExecutor$fun launch: ProcessHandle</ID>
     <ID>MaxLineLength:DurableShellExecutor.kt:"DurableShellExecutor().executeTerminal(controlDir, scriptContent, opId, ShOptions(timeoutMs = timeoutMs, env = env, sandbox = sandbox, workspaceRoot = workspaceRoot ?: controlDir))"</ID>
     <ID>RedundantSuspendModifier:StepReconcilerL1.kt:StepReconcilerL1$suspend</ID>
     <ID>SpreadOperator:DurableShellExecutor.kt:DurableShellExecutor$("setsid", javaBin, "-cp", classpath, AGENT_MAIN_CLASS, *argv)</ID>
-    <ID>TooManyFunctions:DurableShellExecutor.kt:DurableShellExecutor</ID>
     <ID>UnnecessaryNotNullOperator:DurableShellExecutor.kt:DurableShellExecutor$process!!</ID>
     <ID>UnnecessarySafeCall:DurableShellExecutor.kt:DurableShellExecutor$process?.destroyForcibly()</ID>
     <ID>UnusedImport:DurableShellExecutor.kt:import java.io.ByteArrayOutputStream</ID>
@@ -23,13 +21,8 @@
     <ID>UnusedParameter:StepExecutors.kt:sink: EventSink</ID>
     <ID>UnusedParameter:StepExecutors.kt:stepIndex: Int</ID>
     <ID>UnusedPrivateFunction:DurableShellExecutor.kt:DurableShellExecutor$private fun isSessionLeader: Boolean</ID>
-    <ID>UnusedPrivateProperty:DurableShellExecutor.kt:DurableShellExecutor$/** Path to bash (resolved once at startup). */ private val bashPath: String by lazy { resolveCommandPath("bash") ?: throw IllegalStateException("bash not found on PATH") }</ID>
-    <ID>UnusedPrivateProperty:DurableShellExecutor.kt:DurableShellExecutor$/** Path to setsid (resolved once at startup). */ private val setsidPath: String by lazy { resolveCommandPath("setsid") ?: throw IllegalStateException("setsid not found on PATH") }</ID>
-    <ID>UnusedVariable:DurableShellExecutor.kt:DurableShellExecutor$val agentHandles: AgentHandles? = if (config.pumpedViaAgent &amp;&amp; pumpedThroughJvm) { val fifoDir = materialiseFifos(controlDir) val stdoutFifo = fifoDir.resolve("stdout.fifo") val stderrFifo = fifoDir.resolve("stderr.fifo") val readyMarker = fifoDir.resolve("agent.ready") pb.redirectOutput(ProcessBuilder.Redirect.to(stdoutFifo.toFile())) pb.redirectError(ProcessBuilder.Redirect.to(stderrFifo.toFile())) val warmup = listOf( java.nio.channels.FileChannel.open( stdoutFifo, java.nio.file.StandardOpenOption.READ, java.nio.file.StandardOpenOption.WRITE, ), java.nio.channels.FileChannel.open( stderrFifo, java.nio.file.StandardOpenOption.READ, java.nio.file.StandardOpenOption.WRITE, ), ) val handles = AgentHandles( fifoDir = fifoDir, stdoutFifo = stdoutFifo, stderrFifo = stderrFifo, readyMarker = readyMarker, warmup = warmup, process = null, ) launchIngestAgent(controlDir, opId, config, handles) awaitAgentReady(handles) lastAgentHandles = handles handles } else { null }</ID>
     <ID>UnusedVariable:DurableShellExecutor.kt:DurableShellExecutor$val ppid = fields[1].toLong()</ID>
     <ID>UseCheckOrError:DurableShellExecutor.kt:DurableShellExecutor$throw IllegalStateException("Cookie file not created; wrapper may have failed to start")</ID>
-    <ID>UseCheckOrError:DurableShellExecutor.kt:DurableShellExecutor$throw IllegalStateException("bash not found on PATH")</ID>
-    <ID>UseCheckOrError:DurableShellExecutor.kt:DurableShellExecutor$throw IllegalStateException("setsid not found on PATH")</ID>
     <ID>UseCheckOrError:DurableTaskTerminalAdapter.kt:throw IllegalStateException("A legacy non-terminal result cannot be adapted as terminal: $state")</ID>
     <ID>UseIsNullOrEmpty:DurableShConfig.kt:DurableShConfig$agentSecret == null || agentSecret.isEmpty()</ID>
     <ID>UseOrEmpty:EnvModel.kt:this["PATH"] ?: ""</ID>

@@ -233,3 +233,19 @@ data class DurableShConfig(
 class LinuxRequiredException(
     message: String = "Durable shell requires Linux. Non-Linux platforms are not supported in ML-R1."
 ) : RuntimeException(message)
+
+/**
+ * The durable shell is a Linux-only contract, and this is its single check.
+ *
+ * It lives beside the exception it raises, so the two cannot drift apart, and it is shared by
+ * the launch and by the detach step: a host that is not Linux cannot run a durable shell, and
+ * the two places that need the child to exist must not disagree about it.
+ *
+ * @throws LinuxRequiredException When the host is not Linux.
+ */
+internal fun requireLinuxHost() {
+    val osName = System.getProperty("os.name", "").lowercase()
+    if (!osName.contains("linux")) {
+        throw LinuxRequiredException()
+    }
+}

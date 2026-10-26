@@ -6,7 +6,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
 import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
@@ -120,34 +119,6 @@ class DurableShellExecutor {
 
     /** Polling interval for result.txt checks (100ms) */
     private val pollIntervalMs = 100L
-
-    /** Path to setsid (resolved once at startup). */
-    private val setsidPath: String by lazy {
-        resolveCommandPath("setsid") ?: throw IllegalStateException("setsid not found on PATH")
-    }
-
-    /** Path to bash (resolved once at startup). */
-    private val bashPath: String by lazy {
-        resolveCommandPath("bash") ?: throw IllegalStateException("bash not found on PATH")
-    }
-
-    /**
-     * Resolves the absolute path of a command using `command -v`.
-     * Returns null if the command is not found.
-*/
-    private fun resolveCommandPath(command: String): String? {
-        return try {
-            val pb = ProcessBuilder("command", "-v", command)
-            pb.redirectError(ProcessBuilder.Redirect.DISCARD)
-            pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
-            val process = pb.start()
-            val output = process.inputStream.bufferedReader().readText().trim()
-            val exitCode = process.waitFor()
-            if (exitCode == 0 && output.isNotEmpty()) output else null
-        } catch (_: Exception) {
-            null
-        }
-    }
 
     /**
      * The rendezvous between the child process and the
@@ -404,13 +375,14 @@ class DurableShellExecutor {
 
     /**
      * Launches a durable shell step with optional stdout capture.
-     * ## Jenkins-Faithful Launch Pattern
-     * argv = [setsid, bash, wrapper.sh] — no -c, no -f, no -w.
-     * setsid execs bash in place → JVM child PID == PGID == SID.
-     * The wrapper.sh file embeds the real cookie value (opId).
-     * PIPELINE_OP_COOKIE=__pipeline_protected__ sentinel is set in pb.environment
-     * and inherited by the wrapper + heartbeat processes. The sentinel protects
-     * wrapper machinery from the cookie-scan kill.
+     *
+     * The launch itself belongs to [ShellProcessLauncher]: the argv, the environment and the
+     * routing of the child's two output descriptors are that component's work. This method is the
+     * façade's seam onto it, and it keeps ONE thing here that the launcher must not know: the
+     * agent's rendezvous. The rendezvous is not a component yet, so it arrives as a callback, and
+     * the launcher decides WHEN it runs — between the builder's configuration and the child's
+     * start, because opening a FIFO for write blocks until a reader appears.
+     *
      * @param controlDir The control directory path.
      * @param scriptContent The user's shell script.
      * @param opId The operation ID.
@@ -435,305 +407,56 @@ class DurableShellExecutor {
         // for that channel", which the launch treats as "pump it to the control-dir file" rather
         // than as a request to discard it — a missing sink must never become a dropped byte.
         channelSinks: Map<ProcessOutputChannel, ProcessOutputSink> = emptyMap(),
-    ): LaunchedShell {
-        checkLinuxOrThrow()
-
-        // Script content is written to filesystem (script.sh), NOT passed as argv.
-        // This is guaranteed by construction:
-        // 1. scriptContent -> Files.writeString(scriptFile)
-        // 2. wrapper.sh references script by path only, never embeds content
-        // 3. argv = [setsid, bash, wrapper.sh] — script content never in argv
-
-        // Create control directory structure
-        Files.createDirectories(controlDir)
-
-        // The wrapper must not open a console.log handle whenever the bytes are piped to
-        // the JVM, whether or not they are redacted on the way. Keying this on redaction alone
-        // meant a piped-but-unredacted composition had two writers of the same file.
-        // "pumped" now means "has a per-channel destination", which is the condition
-        // that makes one-pump-per-channel possible at all.
-        val pumpedThroughJvm = transcriptRedactor != null || channelSinks.isNotEmpty()
-
-        val protocol = ShellProtocolLayout(controlDir)
-        val preparation = ShellLaunchPreparation(
-            protocol = protocol,
-            opId = opId,
-            heartbeatCheckInterval = config.heartbeatCheckInterval,
-            pumpedViaAgent = config.pumpedViaAgent,
-        )
-        preparation.materialise(scriptContent)
-        val logFile = protocol.consoleLog
-        val wrapperFile = protocol.wrapperFile
-
-        // Jenkins-faithful launch: setsid creates new session+process group.
-        // argv = [setsid, bash, wrapper.sh] — no -c, no inline content in argv.
-        // setsid forks; parent exits immediately; child (bash) becomes session leader.
-        // The ProcessHandle points to the setsid parent (exits quickly).
-        // The real target (bash/wrapper) is found via cookie-scan.
-        val pb = ProcessBuilder("setsid", "bash", wrapperFile.toString())
-        pb.directory((request.workspaceRoot ?: controlDir).toFile())
-
-        // The child's environment is composed by the preparation, from a snapshot of the
-        // launcher's own environment. The launcher then adopts the composed map wholesale, so
-        // the child sees exactly what the preparation decided and nothing else.
-        val ambient = pb.environment().toMap()
-        pb.environment().clear()
-        pb.environment().putAll(
-            preparation.composeEnvironment(
-                ambient = ambient,
-                sandbox = request.sandbox,
-                userEnv = request.env,
-            ),
-        )
-
-        // Redirect stdin to /dev/null to prevent blocking on input
-        // The durable file separation depends on the invocation mode.
-        //   plain (captureStdout=false): BOTH channels are PIPEs when pumped, so each channel is
-        //     Observed before it is persisted and each lands in its own sink. That design removed the
-        //     `redirectErrorStream(true)` that used to be here: it fused the two channels inside one
-        //     kernel descriptor, so `--channel stderr` was unrecoverable at every boundary after it.
-        //   captureStdout=true: stdout goes to the separate stdout value file (output.txt) and
-        //     stderr to the transcript sink. No fusion: the typed value must never be polluted by
-        //     stderr.
-        // When a transcript redactor is active, the
-        // redirected streams are NOT ProcessBuilder redirect targets. Each piped stream is pumped
-        // through the redactor by a runtime-owned pump thread so ONLY already-redacted bytes reach
-        // the sinks — redaction happens BEFORE persistence, not during cleanup. The typed value
-        // channel (output.txt) is unaffected: capture-mode stdout remains an exact redirect (typed
-        // values are never scrubbed).
-        pb.redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
-        // (pumpedThroughJvm was resolved above, before the wrapper content was built.)
-        if (request.captureStdout) {
-            val stdoutCapture = protocol.outputFile
-            pb.redirectOutput(ProcessBuilder.Redirect.to(stdoutCapture.toFile()))
-            if (pumpedThroughJvm) {
-                pb.redirectError(ProcessBuilder.Redirect.PIPE)
-            } else {
-                pb.redirectError(ProcessBuilder.Redirect.to(logFile.toFile()))
-            }
-        } else if (pumpedThroughJvm) {
-            // Two independent pipes. Fusing them here would make the channel distinction
-            // unrecoverable at the kernel boundary, which is precisely what made `--channel stderr`
-            // unanswerable for a fused stream.
-            pb.redirectOutput(ProcessBuilder.Redirect.PIPE)
-            pb.redirectError(ProcessBuilder.Redirect.PIPE)
-        } else {
-            // Not pumped: nothing can attribute the channels, so a single file is honest about the
-            // fact that this composition does not separate them.
-            pb.redirectOutput(ProcessBuilder.Redirect.to(logFile.toFile()))
-            pb.redirectError(ProcessBuilder.Redirect.to(logFile.toFile()))
-        }
-        // Pre-create console.log so the wrapper heartbeat `touch` and external observers always see
-        // the transcript file, and so a fallback sink owns the ONLY writer handle from the first
-        // byte. When a composed sink exists this file is not written at all, and creating it would
-        // only leave an empty second copy of a transcript that lives somewhere else.
-        if (!pumpedThroughJvm && !request.captureStdout) {
-            Files.newOutputStream(logFile).use { /* create/truncate */ }
-        }
-
-        // When `pumpedViaAgent` is true, create the FIFO rendezvous,
-        // launch the agent JVM, and wait for the agent to attach BEFORE starting the
-        // child. Opening a FIFO for write blocks until a reader appears, so a child
-        // started before the agent attaches would deadlock on its first write; the
-        // agent's `readyMarker` is the cross-process event the runtime uses to know
-        // "the read ends are open, the child is safe to start".
-        // The agent opens the FIFOs O_RDONLY (see ObsPc2IngestAgent
-        // openRendezvous), so the open BLOCKS until a writer appears. The
-        // runtime pre-opens the FIFOs in O_RDWR (a "warmup") so the agent's
-        // open succeeds immediately. The warmup is held open until the child
-        // has finished, then closed in executeCore's finally block. The
-        // sequence of writers is therefore: warmup only → warmup + child →
-        // child only (after warmup close) → 0 (after child exit) → agent EOF.
-        val agentHandles: AgentHandles? = if (config.pumpedViaAgent && pumpedThroughJvm) {
-            val fifoDir = materialiseFifos(protocol)
-            val stdoutFifo = protocol.stdoutFifo
-            val stderrFifo = protocol.stderrFifo
-            val readyMarker = protocol.agentReadyMarker
-            pb.redirectOutput(ProcessBuilder.Redirect.to(stdoutFifo.toFile()))
-            pb.redirectError(ProcessBuilder.Redirect.to(stderrFifo.toFile()))
-            val warmup = listOf(
-                java.nio.channels.FileChannel.open(
-                    stdoutFifo,
-                    java.nio.file.StandardOpenOption.READ,
-                    java.nio.file.StandardOpenOption.WRITE,
-                ),
-                java.nio.channels.FileChannel.open(
-                    stderrFifo,
-                    java.nio.file.StandardOpenOption.READ,
-                    java.nio.file.StandardOpenOption.WRITE,
-                ),
-            )
-            val handles = AgentHandles(
-                fifoDir = fifoDir,
-                stdoutFifo = stdoutFifo,
-                stderrFifo = stderrFifo,
-                readyMarker = readyMarker,
-                warmup = warmup,
-                process = null,
-            )
-            launchIngestAgent(protocol, opId, config, handles)
-            awaitAgentReady(handles)
-            handles
-        } else {
-            null
-        }
-
-            return try {
-            val process = pb.start()
-            // Drain the redirected streams through the redactor into the composed
-            // sinks on daemon pumps. Redaction happens BEFORE persistence: at any instant the durable
-            // authority contains only sanitized bytes, and a JVM crash can leave at most a partial
-            // SANITIZED transcript. The typed value channel (output.txt) is unaffected: capture-mode
-            // stdout remains an exact redirect (typed values are never scrubbed).
-            // ONE PUMP PER CHANNEL. Two pumps on two threads is what lets each channel be
-            // attributed before it is persisted. It also means both pipes are drained concurrently,
-            // so neither child stream can block on a full pipe while the other is being read — which
-            // is the deadlock that made the old "wait, then read the other channel" shape unsafe.
-            var transcriptPumps: List<TranscriptPumpView> = emptyList()
-            var transcriptSinks: List<ProcessOutputSink> = emptyList()
-            if (pumpedThroughJvm && !config.pumpedViaAgent) {
-                // In capture mode stdout is an exact redirect to the typed-value file, so the only
-                // piped channel is stderr. In plain mode both are piped and each gets its own pump.
-                // When the agent path is active, the runtime does NOT start
-                // its per-channel pump threads; the agent JVM owns the FIFO read ends and is the
-                // single durable authority.
-                val (startedPumps, startedSinks) = startTranscriptPumps(
-                    process = process,
-                    opId = opId,
-                    captureStdout = request.captureStdout,
-                    transcriptRedactor = transcriptRedactor,
-                    channelSinks = channelSinks,
-                    fallbackLogFile = logFile,
-                )
-                transcriptPumps = startedPumps
-                transcriptSinks = startedSinks
-            }
-            // The agent was launched BEFORE `pb.start()` (see the
-            // `agentHandles` block above) and the runtime waited on its `readyMarker`
-            // to know the read ends are open. The agent now owns the FIFO read ends
-            // and is the durable authority for the transcript under SIGKILL of the
-            // runtime. No per-channel pump threads run in this path.
-
-            val handle = process.toHandle()
-            // PID X is not a session leader" to stderr every time `setsid` had
-            // forked before the JVM grabbed the ProcessHandle — which is the
-            // expected behaviour of the `setsid` argv pattern (argv = [setsid,
-            // bash, wrapper.sh]; setsid exits quickly after forking bash as a
-            // new session leader). The cookie-scan kill that follows this
-            // point does not care which process was the launcher: it scans
-            // /proc/<pid>/environ for PIPELINE_OP_COOKIE=<real>, then SIGTERMs
-            // and SIGKILLs the session that owns it. The warning was a
-            // diagnostic about implementation choice dressed up as a fault,
-            // and a healthy `pipelinek run` produced one per `sh` step.
-            // Real failures (signal delivery, fork failure, timeout) are
-            // still surfaced as typed results below; only the noise was
-            // removed.
-
-            LaunchedShell(
-                handle = handle,
-                transcriptPumps = transcriptPumps,
-                transcriptSinks = transcriptSinks,
-                agentWarmup = agentHandles?.warmup.orEmpty(),
-            )
-        } catch (e: Exception) {
-            // The agent's FIFOs were opened BEFORE the child started, and their warm-up
-            // descriptors are the only writers on them. If the child never started, nobody
-            // else will close them: the caller never receives a launch, so it cannot close
-            // them either, and the agent would wait for an EOF that never comes.
-            agentHandles?.warmup?.forEach { runCatching { it.close() } }
-            throw IllegalStateException("Failed to launch durable shell for $opId", e)
-        }
-    }
+    ): LaunchedShell = ShellProcessLauncher(opId = opId, config = config).launch(
+        controlDir = controlDir,
+        scriptContent = scriptContent,
+        request = request,
+        transcriptRedactor = transcriptRedactor,
+        channelSinks = channelSinks,
+        attachRendezvous = { protocol -> attachAgentRendezvous(protocol, opId, config) },
+    )
 
     /**
-     * Starts the per-channel transcript pumps for [process] and returns them alongside their
-     * [GuardedProcessOutputSink]s.
-     * Extracted from [launch] so the launch body itself only resolves a configuration: this is the
-     * Pump-by-pump thread loop, kept as a single function so a future channel addition
-     * (or a future test that exercises one channel in isolation) has ONE place to look.
-     * The shape of the loop is.3: one thread per channel, writing through the
-     * [GuardedProcessOutputSink] so every `Throwable` becomes a [ProcessOutputRefusal] on the same
-     * channel. The capture-mode case pipes only stderr because stdout is an exact redirect to the
-     * typed-value file; the plain-mode case pipes both. The `pumpedViaAgent` case never reaches
-     * here because the agent JVM owns the FIFO read ends.
-*/
-    private fun startTranscriptPumps(
-        process: Process,
+     * The rendezvous between the child and the ingest agent, and the descriptors the runtime
+     * holds open until the child has finished.
+     *
+     * The sequence is the agent's own: the FIFOs are created, the runtime opens a "warmup" pair
+     * of read-write descriptors so the agent's read-only open does not block, the agent JVM is
+     * launched, and the runtime waits for the agent's ready marker. Only then is the child safe
+     * to start.
+     *
+     * @return The warm-up descriptors, which are the only writers on the FIFOs until the child
+     *   writes to them.
+     */
+    private fun attachAgentRendezvous(
+        protocol: ShellProtocolLayout,
         opId: String,
-        captureStdout: Boolean,
-        transcriptRedactor: ((java.io.InputStream) -> java.io.InputStream)?,
-        channelSinks: Map<ProcessOutputChannel, ProcessOutputSink>,
-        fallbackLogFile: Path,
-    ): Pair<List<TranscriptPumpView>, List<ProcessOutputSink>> {
-        val pumpedChannels: Map<ProcessOutputChannel, java.io.InputStream> =
-            if (captureStdout) {
-                mapOf(ProcessOutputChannel.STDERR to process.errorStream)
-            } else {
-                mapOf(
-                    ProcessOutputChannel.STDOUT to process.inputStream,
-                    ProcessOutputChannel.STDERR to process.errorStream,
-                )
-            }
-
-        val pumps = mutableListOf<TranscriptPumpView>()
-        val sinks = mutableListOf<ProcessOutputSink>()
-
-        for ((channel, raw) in pumpedChannels) {
-            val redacted = transcriptRedactor?.invoke(raw) ?: raw
-            val target: ProcessOutputSink = channelSinks[channel]
-                ?: StreamProcessOutputSink(
-                    java.io.BufferedOutputStream(java.nio.file.Files.newOutputStream(fallbackLogFile, java.nio.file.StandardOpenOption.APPEND)),
-                )
-            val guarded = GuardedProcessOutputSink(target)
-            // The flag is the pump's attention. A pump that is writing to the output plane is
-            // WORKING, even while the write is slow; a pump that is waiting for the child is
-            // waiting for bytes nobody is going to write. That difference is what the drain reads,
-            // and it is the difference between a verdict about the child and a verdict about the
-            // machine.
-            val waitingForInput = java.util.concurrent.atomic.AtomicBoolean(true)
-            val pump = Thread {
-                val window = ByteArray(TRANSCRIPT_LIVE_WINDOW_BYTES)
-                try {
-                    while (true) {
-                        // The pump's read sizing, after the operator's note.
-                        // The previous shape was
-                        //   `ready = maxOf(1, minOf(window.size, redacted.available()))`
-                        // which is a busy-loop with `available() == 0` and a forced one-byte
-                        // read the rest of the time, producing 1..N small frames per window
-                        // on an empty-registry redactor ring (262 frames for 1024 bytes is
-                        // measured; the operator's "median 1 byte per frame" is the same
-                        // shape, just with a larger sample).
-                        // The fix is structural: read directly from the redacting stream
-                        // with the whole window, and let it block until at least one byte
-                        // is available, then return as many as the source can give. That
-                        // removes the `available()` call as the loop's progress signal —
-                        // the loop only ever consults `redacted.read`, which is the
-                        // canonical "have at least one byte or block" primitive the
-                        // `RedactingInputStream` already implements.
-                        waitingForInput.set(true)
-                        val n = redacted.read(window, 0, window.size)
-                        if (n < 0) break
-                        waitingForInput.set(false)
-                        guarded.write(window, 0, n)
-                    }
-                } catch (t: Throwable) {
-                    guarded.recordPumpFailure("read", t)
-                } finally {
-                    try {
-                        redacted.close()
-                    } catch (t: Throwable) {
-                        guarded.recordPumpFailure("redaction-close", t)
-                    }
-                    guarded.close()
-                }
-            }
-            pump.isDaemon = true
-            pump.name = "durable-sh-transcript-pump-$opId-${channel.name.lowercase()}"
-            pump.start()
-            pumps += ThreadTranscriptPump(pump, waitingForInput)
-            sinks += guarded
-        }
-        return pumps to sinks
+        config: DurableShConfig,
+    ): List<java.io.Closeable> {
+        val fifoDir = materialiseFifos(protocol)
+        val warmup = listOf(
+            java.nio.channels.FileChannel.open(
+                protocol.stdoutFifo,
+                java.nio.file.StandardOpenOption.READ,
+                java.nio.file.StandardOpenOption.WRITE,
+            ),
+            java.nio.channels.FileChannel.open(
+                protocol.stderrFifo,
+                java.nio.file.StandardOpenOption.READ,
+                java.nio.file.StandardOpenOption.WRITE,
+            ),
+        )
+        val handles = AgentHandles(
+            fifoDir = fifoDir,
+            stdoutFifo = protocol.stdoutFifo,
+            stderrFifo = protocol.stderrFifo,
+            readyMarker = protocol.agentReadyMarker,
+            warmup = warmup,
+            process = null,
+        )
+        launchIngestAgent(protocol, opId, config, handles)
+        awaitAgentReady(handles)
+        return warmup
     }
 
     /**
@@ -770,7 +493,7 @@ class DurableShellExecutor {
     }
 
     fun detach(process: ProcessHandle, controlDir: Path) {
-        checkLinuxOrThrow()
+        requireLinuxHost()
 
         val protocol = ShellProtocolLayout(controlDir)
         val cookieFile = protocol.cookieFile
@@ -1117,13 +840,6 @@ class DurableShellExecutor {
         }
 
         return matching
-    }
-
-    private fun checkLinuxOrThrow() {
-        val osName = System.getProperty("os.name", "").lowercase()
-        if (!osName.contains("linux")) {
-            throw LinuxRequiredException()
-        }
     }
 
     private fun deleteRecursively(path: Path) {
@@ -1495,26 +1211,6 @@ class DurableShellExecutor {
         }
     }
 
-}
-
-private data class DurableShellExecutionRequest(
-    val timeoutMs: Long,
-    val env: Map<String, SecretHandle>,
-    val sandbox: SandboxConfig,
-    val workspaceRoot: Path?,
-    val captureStdout: Boolean,
-    val outputProjection: DurableShellOutputProjection,
-    val timeoutCompletion: DurableShellTimeoutCompletion,
-)
-
-private enum class DurableShellOutputProjection {
-    CAPTURE_FILE,
-    JENKINS_LOG,
-}
-
-private enum class DurableShellTimeoutCompletion {
-    KILL_RESULT,
-    WATCHDOG_ATTEMPT,
 }
 
 /**

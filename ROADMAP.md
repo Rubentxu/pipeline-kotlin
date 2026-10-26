@@ -621,6 +621,40 @@ Se revisarán especialmente los dos recorridos de ejecución de shell existentes
 
 Entrega verificable: un `sh` completo con stdout, stderr, redacción, captura tipada y reanudación conserva la misma semántica pública.
 
+#### El corte: el modelo de entorno se aplica una vez por recorrido
+
+`EnvModel.apply` no es idempotente: antepone el directorio del toolchain a `PATH` en cada llamada. El recorrido durable de `sh` la aplicaba DOS veces —una en `ShExecution` y otra en `ShellLaunchPreparation.composeEnvironment`, que es la autoridad que compone el entorno del hijo—, de modo que el hijo de un `sh` durable veía `/opt/jdk/bin` dos veces en su `PATH` mientras el hijo del recorrido no durable lo veía una vez, para el mismo entorno declarado. Los dos recorridos discrepaban.
+
+La divergencia era invisible bajo el perfil `LOCAL`, que reconstruye el `PATH` desde el keep-set, y visible bajo el perfil por defecto (`NONE`), que no lo hace. Por eso sobrevivió a las pruebas que sí observan el `PATH`.
+
+El corte quita la aplicación de `ShExecution` en el recorrido durable y NO la quita del runtime: la autoridad del runtime (`ShellLaunchPreparation.composeEnvironment`) es la que compone el entorno del hijo y la que aplica el perfil de sandbox. El recorrido no durable conserva la suya, porque su sustrato (`ProcessDurableTaskRuntime`) materializa las variables declaradas pero no las compone. Una aplicación por recorrido, la misma función sobre el mismo entorno declarado.
+
+El delta es exactamente una duplicación. Lo demás no cambia: el consumo de las claves `PATH+=`, la propagación de un `PATH` enmascarado, el entorno vacío, los valores de `JAVA_HOME` y `M2_HOME` y la ausencia de persistencia del entorno son los mismos antes y después. El entorno declarado se entrega intacto y la composición ocurre una sola vez, en la frontera donde el hijo arranca de verdad.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que el entorno que ve el hijo es el entorno declarado, compuesto una sola vez. La capacidad que sostiene es que un paso `sh` durable y un paso `sh` no durable lanzan el mismo entorno para la misma declaración, que es lo que permite razonar sobre el `PATH` del hijo sin tener que saber por qué recorrido pasó. El instrumento es un escenario E2E (`examples/steps/35-env-model-applied-once.pipeline.kts`), porque ninguna fila unitaria puede observar esta costura: un test de `composeEnvironment` no ve la aplicación previa de la aplicación, y un test de `ShExecution` no ve el `PATH` del hijo sin lanzar un proceso, que un test unitario no puede hacer. La alternativa más barata —una fila unitaria sobre `composeEnvironment`— no habría detectado el defecto, porque la duplicación no está en `composeEnvironment` sino en quién lo llama.
+
+**Visto en rojo antes del corte.** El escenario se escribió primero y se ejecutó contra la distribución sin el corte. Falló con el valor duplicado a la vista:
+
+```
+FAIL steps/35-env-model-applied-once.pipeline.kts  exit 1, expected 0
+OBSERVED_PATH=/opt/jdk/bin:/opt/jdk/bin:/usr/bin:/bin
+```
+
+La aserción compara el `PATH` EXACTO y no "contiene el directorio": un elemento perdido y uno duplicado se detectan los dos, y una fila que sólo comprobara la presencia del directorio habría pasado en verde con el defecto delante.
+
+Medido sobre `eaafbb2a6` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=eaafbb2a63b4a9b4112886c1b2f22455f99d76a6  elapsed=163s  budget=900s  tests=rewritten:1416 read:0  scenarios=observed:63 executed:63
+```
+
+- 190 informes JUnit reescritos por esta ejecución, 1416 tests, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E ejecutados y en verde, 594 comprobaciones sobre 114 ejecuciones y 220 pasos terminados. Los dos pasos "inestables" son los de los dos escenarios que declaran `expect-outcome unstable` (`control-flow/11-workflow-control` y `negative/12-error-handling`): declarado, no una inestabilidad nueva.
+- 163 s de reloj de pared frente al presupuesto de 900 s.
+- `VERIFY_LOC = 26421`, `PRODUCT_LOC = 71195`, ratio `0.371` (límite 2). El censo cuenta 63 programas E2E —los 62 de antes más este— y 170 ficheros de tests unitarios.
+
+Lo que este corte NO arregla, y se dice: el recorrido no durable ignora el perfil de sandbox entero —no aplica la lista de rechazo ni normaliza el `PATH`—, que es una divergencia mayor y distinta de la que aquí se corrige. Y la mitad "los dos recorridos coinciden" de la garantía se argumenta por construcción, no se observa de extremo a extremo: el recorrido no durable es inalcanzable desde el CLI, porque `CanonicalRunRequest.controlDirRoot` no es nulo y el lanzador de escenarios pasa siempre `--control-root`.
+
 ## H4 — Refactorizar los casos de uso de `pipeline-application`
 
 Foco principal: ejecución durable, composition y despacho.

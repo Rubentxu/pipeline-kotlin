@@ -149,7 +149,7 @@ No habrá dos motores shell. `executeCore()` debe convertirse en un coordinador 
 
 Entrega verificable: ejecutar, terminar, cancelar y recuperar `sh` con las mismas salidas, efectos y protocolos persistentes.
 
-### Estado de H2 — en curso; los cinco primeros componentes están cerrados
+### Estado de H2 — en curso; los seis primeros componentes están cerrados
 
 Antes de crear cada componente se comprobó qué abstracción existente ya es la dueña de cada responsabilidad. El resultado, medido sobre `DurableShellExecutor.kt` (1.802 líneas):
 
@@ -441,7 +441,69 @@ PASS  sha=d42e2d749108ef8314e09513bd30d8da881ca22c  elapsed=193s  budget=900s  t
 
 **Lo que este corte no arregla.** La muerte con barrido de cookies sigue siendo la mitad imperativa del reloj, y esa mitad —el hilo, el `SIGKILL` sobre la sesión, el barrido de `/proc`— no la cubre ningún test unitario: un test unitario no puede crear un árbol de procesos ni leer `/proc`. Y ningún escenario E2E expira una ejecución: el único `timeout(...)` de `examples/` (en `control-flow/11-workflow-control`) envuelve un `sh` que termina de inmediato, así que el plazo nunca vence. Las garantías de arriba quedan declaradas por construcción y por el veredicto de sus decisiones, no presenciadas por un escenario. Siguen siendo las que son.
 
-**Lo que queda de H2.** Los otros dos componentes se extraen conservando `DurableShellExecutor` como fachada compatible y sin crear un segundo motor de shell: `executeCore()` debe quedar como un coordinador legible, no como una copia de la implementación actual. Quedan `ShellTerminalDecision` y `ShellResourceCleanup`.
+**Lo que queda de H2.** El otro componente se extrae conservando `DurableShellExecutor` como fachada compatible y sin crear un segundo motor de shell: `executeCore()` debe quedar como un coordinador legible, no como una copia de la implementación actual. Queda `ShellResourceCleanup`.
+
+#### El corte: `ShellTerminalDecision`
+
+El ejecutor decidía en línea, en tres sitios distintos, tres preguntas distintas, y un cuarto sitio —el reloj— construía el terminal de la expiración:
+
+- al final del camino normal: «¿salió o expiró?», con el código de salida de un hijo al que mataron mientras lo publicaba;
+- en el rehuso de la salida: «los bytes se fueron, ¿qué dice el paso?»;
+- en el `catch`: «¿falló antes del lanzamiento, después de una expiración, o de una forma que nadie puede reconciliar?».
+
+Cada sitio tenía su propia regla, y ninguno tenía un instrumento que la observara: la única forma de verlas era lanzar un hijo y hacerlo fallar del modo correcto, y ese instrumento dice QUE se rompió la regla, nunca cuál.
+
+`ShellTerminalDecision` (173 líneas, en `pipeline-step-sdk:runtime`) es ahora la única dueña del veredicto: dados los hechos de cómo terminó una ejecución, publica el terminal —`Exited`, `LaunchFailed`, `Lost` o `Cancelled`— y el ejecutor sólo pregunta. Las reglas son funciones puras de hechos, así que un hecho que no se conoce no se inventa. `DurableShellExecutor` baja de 721 a 693 líneas y sigue siendo la fachada: `executeCore()` es un coordinador legible —lanzar, desvincular, armar el reloj, sondear, asentar, decidir, limpiar— y no se creó un segundo motor de shell.
+
+**La comprobación previa, por responsabilidad.** Antes de crear el componente se comprobó si otra abstracción ya era la dueña de esa responsabilidad:
+
+|Responsabilidad|¿Existe ya?|Consecuencia|
+|---|---|---|
+|La clasificación de un terminal durable|No: tres decisiones en línea en el ejecutor y una cuarta en el reloj|Es lo que se extrae|
+|`TaskTerminalDecision` (dominio)|Proyecta el resultado de una TAREA de proceso a tres formas planas, para otro protocolo, con otro directorio de control y otro `result.txt`|No es la misma materia: se conserva intacto|
+|El terminal del reconcilizador (`terminalFromReconciliation`)|Reconstruye un terminal desde lo que el directorio de control contiene, para una ejecución que nadie vio|Sigue siendo suyo: su interrupción dice «durable task timed out»|
+|Los nombres y las rutas del protocolo persistente|`ShellProtocolLayout` (primer corte)|Se conserva intacto y sólo se usa|
+|Las bombas de transcripción y el drenaje|`TranscriptDrain.kt`|Ya está fuera del ejecutor; no se toca|
+|La identidad de un lanzamiento y el nombre del transcripto|`LaunchedShell`, `DurableShellFiles`|Ya están fuera del ejecutor; no se tocan|
+
+**La precedencia ES la regla.** En `forFailure` el orden de las ramas no es decorativo: un fallo **antes** del lanzamiento es un fallo de lanzamiento, porque nada corrió y no hay nada que reconciliar ni que reintentar; un fallo **después** de una expiración es la expiración, porque el reconcilizador lee la misma marca y un terminal que dijera «perdida» lo contradiría; cualquier otro fallo es **perdida**, y `Lost` nunca implica éxito. En `forExitCode` la expiración manda sobre el código de salida por la misma razón: un envoltorio que publica un 0 después de que su hijo murió no decide si la ejecución tuvo éxito.
+
+**El `timeoutTerminal()` se mudó, no se copió.** El reloj conserva «expiró o no»; la decisión, «qué terminal es eso». Con la mudanza, `ShellWatchdog` ya no necesita el directorio de control como propiedad —lo usa para construir el layout del protocolo y nada más— y `ShellWatchdogTest` ya no necesita construir un reloj para comprobar el terminal. El terminal de una ejecución expirada era una fila de `ShellWatchdogTest` y ahora es una de `ShellTerminalDecisionTest`: la garantía se MUDÓ, no se duplicó.
+
+**Lo que NO se unificó, y por qué.** El reconcilizador sigue construyendo su terminal, con el mensaje «durable task timed out», y el shell sigue publicando el suyo, con «durable shell timed out». Esa diferencia es del **formato durable**, no un descuido: unificarla cambiaría lo que un lector de una ejecución reconciliada encuentra en disco, y un cambio de formato sin autorización no es un refactor. Hay además un tercer constructor de terminales, el de `core.sh` en `pipeline-application` (`ShExecution.kt`), que clasifica desde el `TaskTerminalDecision` del dominio: es **otra ejecución**, con otro directorio de control y otro protocolo, y es la materia de H3, no de este corte.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que el terminal que publica una ejecución de shell durable nombra lo que pasó: una ejecución a la que se le acabó el tiempo es un TIMEOUT diga lo que diga el código de salida que publicó el envoltorio; un fallo anterior al lanzamiento es un fallo de lanzamiento porque nada corrió; un fallo que no se puede reconciliar es **perdida** y nunca un éxito; y una ejecución cuya salida no se pudo persistir lo dice —con el token que distingue un hijo atascado de un drenaje sin tiempo— en vez de publicar un transcripto plausible y corto. La capacidad que sostiene es que un lector de una ejecución durable puede distinguir una que expiró de una que falló de una que se perdió, y que el terminal coincide con el reconcilizador en vez de contradecirlo. El instrumento es un test puro de 13 filas de JUnit 5 —ni proceso, ni hilo, ni reloj, ni sistema de ficheros— porque la clasificación es una función pura de hechos: un código de salida, una marca de expiración, si el hijo llegó a lanzarse, un rehuso. Un test que lanzara un hijo real para que expirara o para que fallara antes del lanzamiento costaría más, probaría menos y añadiría un proceso y un reloj que un test unitario no puede usar. Lo que el test NO congela, y se dice: que el ejecutor reúna los hechos correctos, que el reconcilizador lea la misma marca y que un hijo que expira deje la marca de verdad —eso se observa donde ocurre, no aquí.
+
+**Visto en rojo nueve veces.** Cada mutación se aplicó y se leyó en el diff antes que en el resultado, el árbol se restauró antes de la siguiente (una mutación apilada sobre la anterior hace el conjunto rojo acumulativo, y un conjunto acumulativo no prueba nada de una fila sola) y cada ejecución se comprobó contra el XML de JUnit autoritativo.
+
+|Mutación|Filas que se encendieron|
+|---|---|
+|La expiración ya no gana al código de salida|1 — `an expired execution is a timeout whatever the exit code says`|
+|La precedencia entre expiración y lanzamiento se invierte|1 — `a failure before the launch stays a launch failure even if it expired`|
+|El predicado de lanzamiento se invierte|5 — las cinco filas de `forFailure`|
+|Los dos tokens del desague se intercambian|2 — `a stuck child is not a drain that ran out of time` y `a drain that ran out of time is not a stuck child`|
+|El valor capturado se pierde|1 — `the captured value reaches the exit terminal`|
+|El rehuso de la salida se vuelve reintentable|1 — `a refusal of the output says the output could not be persisted`|
+|El mensaje de la tarea perdida cambia|1 — `a failure that says nothing says it could not be reconciled`|
+|El shell dice las palabras del reconcilizador|1 — `an expired execution is a timeout whatever the exit code says`|
+|La interrupción pierde el directorio de control|1 — `an expired execution is a timeout whatever the exit code says`|
+
+Las nueve son **discriminantes** y cada una enciende exactamente la fila esperada, sin colateral. Tres de ellas caen sobre la misma fila del terminal expirado porque esa fila es la que afirma las tres cosas que ese terminal dice: el tipo, el mensaje y el directorio de control. Las dos del desague son ortogonales a propósito —una cambia QUÉ se publica y la otra QUÉ se conserva— y sus conjuntos rojos no se tocan.
+
+**El diagnóstico de detekt, que era del código movido y no del código nuevo.** `detektMain` se puso en rojo con `UnusedPrivateProperty` en `ShellWatchdog.kt`: `controlDir` era propiedad de la clase sólo porque `timeoutTerminal()` la usaba, y al mudarse esa función la propiedad quedó sin lector. `detektTest` se puso en rojo con `UnusedPrivateFunction` (`watch()`) y `UnusedImport` (`java.nio.file.Path`) en `ShellWatchdogTest.kt`, por la misma razón: el helper construía un reloj para una fila que ya no vive ahí. Los tres se QUITARON —la propiedad, el helper y el import— en vez de registrarse como supresión: un hallazgo que nace de una mudanza se resuelve retirando lo que la mudanza dejó sin uso, no silenciándolo. Y el gate del análisis estático se comprobó contra su propio sujeto: los tres fallos nombraron su fichero, su línea y su regla, y desaparecieron al quitar lo que señalaban. El baseline del módulo no cambia: ninguna de sus entradas apuntaba a lo que este corte movió ni a lo que este corte añadió.
+
+Medido sobre el árbol del corte con `scripts/verify-all.sh` sin filtros y con la build cache de Gradle **desactivada** (`GRADLE_OPTS=-Dorg.gradle.caching=false`), para que la línea de veredicto describa una ejecución y no una restauración:
+
+```
+PASS  sha=78d8305414fe5112b168a10c6bdfc5a1fe7596e9  elapsed=180s  budget=900s  tests=rewritten:1405 read:0  scenarios=observed:62 executed:62
+```
+
+- 189 informes JUnit reescritos por esta ejecución —comprobado aparte, los 189 llevan su marca de tiempo en el MISMO minuto (15:10 UTC), lo que prueba que los 1405 tests se EJECUTARON y no fueron repuestos de la cache—, 1405 tests, 0 fallos, 0 errores, 0 omitidos.
+- 62 de 62 escenarios E2E ejecutados y en verde; 588 comprobaciones sobre 112 ejecuciones, 219 pasos terminados, 2 terminados inestables; ninguno sin comprobar; 7 credenciales sembradas y 2 reruns durables.
+- 180 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 26282`, `PRODUCT_LOC = 71184`, ratio `0.369` (límite 2); el módulo del corte, `pipeline-step-sdk:runtime`, queda en `1445 / 2281 = 0.633`. El censo cuenta 169 ficheros de tests unitarios y 62 pipelines E2E como verificación, y 725 ficheros de código de producción como producto; 53 ficheros quedan sin contar en ninguna parte (README, `AGENTS.md`, `ROADMAP.md`, ficheros de contrato `.api`, bases de detekt y el `gradle-wrapper.jar`) y 2 se excluyen como generados.
+
+**Lo que este corte no arregla.** La clasificación ya no está repartida, pero sus hechos siguen viniendo de donde vienen: que el ejecutor reúna el código de salida correcto, que la marca de la expiración se lea en el momento correcto y que un hijo que expira deje la marca de verdad, sigue sin estar presenciado por un test unitario —un test unitario no puede crear un árbol de procesos ni escribir una bandera en un directorio de control—. Y ningún escenario E2E hace expirar una ejecución: el único `timeout(...)` de `examples/` (en `control-flow/11-workflow-control`) envuelve un `sh` que termina de inmediato, así que el plazo nunca vence. Las garantías de este corte quedan declaradas por construcción y por el veredicto de sus decisiones, no presenciadas por un escenario. Siguen siendo las que son.
 
 ## H3 — Vertical slice completo `core.sh`
 

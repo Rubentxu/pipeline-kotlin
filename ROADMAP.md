@@ -149,7 +149,7 @@ No habrá dos motores shell. `executeCore()` debe convertirse en un coordinador 
 
 Entrega verificable: ejecutar, terminar, cancelar y recuperar `sh` con las mismas salidas, efectos y protocolos persistentes.
 
-### Estado de H2 — en curso; los cuatro primeros componentes están cerrados
+### Estado de H2 — en curso; los cinco primeros componentes están cerrados
 
 Antes de crear cada componente se comprobó qué abstracción existente ya es la dueña de cada responsabilidad. El resultado, medido sobre `DurableShellExecutor.kt` (1.802 líneas):
 
@@ -382,7 +382,66 @@ Medido: una segunda corrida completa del gate sobre el árbol sin cambios ejecut
 
 El arreglo es de **H6**, que es donde vive el gate: el censo debe leer la marca de tiempo PROPIA del XML (`timestamp`), no el `mtime` del fichero, y distinguir tres estados —ejecutado ahora, servido de la cache, leído de disco— en vez de dos. No se toca el gate aquí: cambiar el instrumento de medición en mitad de un corte cambiaría la contabilidad del presupuesto que este corte está midiendo. Este corte se midió, por tanto, con la cache desactivada, y por eso su línea de veredicto dice lo que dice. En los tres cortes anteriores, cuyo código cambió, la cache sólo pudo servir los módulos cuyas entradas no cambiaron —sus hallazgos (detekt, LOC, escenarios) no dependen de ello—, pero su cifra de `rewritten` es la del gate, y el gate no distingue lo ejecutado de lo repuesto.
 
-**Lo que queda de H2.** Los otros tres componentes se extraen conservando `DurableShellExecutor` como fachada compatible y sin crear un segundo motor de shell: `executeCore()` debe quedar como un coordinador legible, no como una copia de la implementación actual. Quedan `ShellWatchdog`, `ShellTerminalDecision` y `ShellResourceCleanup`.
+#### El corte: `ShellWatchdog`
+
+El ejecutor llevaba dentro el reloj: el hilo del temporizador, la escritura de la marca de expiración, el barrido de cookies sobre `/proc`, la escalada a `SIGKILL` y las cuatro consecuencias de una expiración (el código de salida de la limpieza, la decisión del transcripto, el terminal y la rama de excepción). `ShellWatchdog` (494 líneas, en `pipeline-step-sdk:runtime`) los recoge. `DurableShellExecutor` queda como fachada y `executeCore()` sigue siendo el único motor de shell.
+
+**La comprobación previa, por responsabilidad.** Antes de crear el componente se comprobó si otra abstracción ya era la dueña de esa responsabilidad:
+
+|Responsabilidad|¿Existe ya?|Consecuencia|
+|---|---|---|
+|Los nombres y las rutas del protocolo persistente|`ShellProtocolLayout` (primer corte)|Es la dueña del nombre `timeout.flag`; se conserva intacto y sólo se usa|
+|Preparar scripts, wrapper y entorno|`ShellLaunchPreparation` (segundo corte)|No toca esta responsabilidad; se conserva intacto|
+|Lanzar el hijo y enrutar sus dos descriptores|`ShellProcessLauncher` (tercer corte)|No toca esta responsabilidad; se conserva intacto|
+|Coordinar los FIFOs y el agente|`AgentRendezvous` (cuarto corte)|No toca esta responsabilidad; se conserva intacto|
+|La identidad de un lanzamiento: hijo, bombas, sumideros|`LaunchedShell`|Es la forma de retorno del lanzador; se conserva intacta|
+|El nombre del transcripto de consola|`DurableShellFiles`|No toca esta responsabilidad; se conserva intacta|
+|Las bombas de transcripción y el drenaje|`TranscriptDrain.kt`|Ya está fuera del ejecutor; no se toca|
+|La marca de una expiración|`timeout.flag`, escrita por el ejecutor y leída por `StepReconcilerL1`, `RunningSubprocessRecovery` y `RecoveredExecutionMaterializer`|Los lectores son consumidores de la marca, no su dueña; quien la ESCRIBE es el reloj, y por eso el reloj la escribe|
+|Vigilar el tiempo y pedir la terminación|Dentro del ejecutor|Es lo que se extrae|
+
+El resultado de la comprobación es que **no existía ninguna clase con esa responsabilidad**: sobre el árbol anterior al corte (`6332da306`), `git grep -E "(class|object|interface) [A-Za-z]*Watchdog"` sobre `*.kt` devuelve **cero** filas, y las 43 menciones de la palabra `watchdog` fuera del ejecutor son todas prosa —KDoc y comentarios que nombran el mecanismo—, ninguna una declaración. `hasTimeoutFlag` —público— y `killWithCookieScan` —`internal`— eran los dos únicos lectores de la marca y del barrido, y ambos estaban dentro del propio ejecutor: se movieron con él, sin dejar lector.
+
+**Los dos hechos de una expiración, y por qué no son uno.** El reloj produce dos marcas, y no son la misma:
+
+- el **LATCH** (`fired`): el reloj publicó que disparó. Depende de que el hilo se planifique Y de que la muerte haya terminado, así que puede perder la carrera contra un envoltorio que publica su código de salida después de que su hijo muera.
+- la **BANDERA** (`timeout.flag`): se escribe **ANTES** de la muerte. Es la autoridad, porque sobrevive a esa carrera: una bandera que existe significa que la ejecución expiró, diga lo que diga el código de salida.
+
+El executor pregunta al latch **mientras sondea** —una marca que todavía no es durable no debe cortar el sondeo— y a la bandera **cuando el sondeo acaba**. Y leer la bandera la *latchea*: leerla resuelve el hecho para el resto de la ejecución.
+
+**Lo que cambia de verdad, y por qué no es un detalle.** Antes del corte los dos hechos vivían en una sola variable, `timeoutTriggered`, y se fundían en **un** punto del camino normal: allí se consultaba la bandera y se volcaba en la variable. Los otros tres lectores —el terminal de la rama de excepción, el código de salida de la limpieza y la decisión del transcripto— leían la variable sin volver a mirar la bandera. Medido sobre `6332da306` (el árbol anterior al corte), en la ventana en que el reloj había escrito la bandera pero todavía no había publicado y el hilo principal lanzaba una excepción **antes** de ese punto de fusión, las dos consecuencias de leer el latch donde hacía falta la autoridad eran: el `catch` declaraba `LOST` —mientras el reconcilizador leía la bandera y declaraba `TIMED_OUT`—, y el `finally` limpiaba con el código de salida que hubiera publicado el envoltorio: si ese código era 0, la limpieza de éxito borraba el directorio de control y, con él, la bandera autoritativa. Ahora el terminal dice `TIMEOUT` y la limpieza conserva el directorio: el terminal coincide con el reconcilizador en vez de contradecirlo, y la evidencia de la expiración sobrevive. Es un cambio de comportamiento, y por eso se dice aquí y no sólo en el KDoc.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que una ejecución a la que se le acaba el tiempo nunca se reporta como un éxito, y que la evidencia de la expiración nunca se borra. La capacidad que sostiene es que un paso `sh` durable con plazo devuelve un terminal `TIMEOUT` y no `Exited(0)`, y que un paso así se puede reconciliar después en vez de parecer perdido. El instrumento es un test puro de 15 filas de JUnit 5 —ni proceso, ni hilo, ni reloj, ni sistema de ficheros— porque la mitad imperativa del reloj (el hilo, el hijo real, `/proc`) no puede usarla un test unitario, pero las DECISIONES que el reloj aplica son funciones puras de hechos: un plazo, un latch, una bandera, un código de salida, una proyección. Un test que falseara el temporizador costaría más, probaría menos y añadiría un segundo reloj que mantener en sincronía con el de verdad. Lo que el test NO congela, y se dice: que el hilo llegue a dispararse, que la muerte alcance todo el árbol de procesos y que la bandera se escriba antes de la muerte — eso se observa donde ocurre, no aquí.
+
+**Visto en rojo seis veces.** Cada mutación se leyó en el diff antes que en el resultado —el fichero es nuevo en este corte, así que el diff se leyó contra una copia previa y no contra `git diff`—, el árbol se restauró antes de la siguiente (una mutación apilada sobre la anterior hace el conjunto rojo acumulativo, y un conjunto acumulativo no prueba nada de una fila sola), y cada ejecución se comprobó contra el XML de JUnit autoritativo: si la mutación no compilaba no hay informe, y el informe de la corrida anterior se borró antes de cada una para que no pudiera leerse como verde.
+
+|Mutación|Filas que se encendieron|
+|---|---|
+|El sondeo ya no sobrevive a la muerte|1 — `the poll outlasts the kill`|
+|La bandera ya no gana al latch que no ha publicado|1 — `the flag wins over the latch that has not been published`|
+|Un kill que no encontró nada cuenta como timeout|1 — `a kill that found nothing is not a timeout`|
+|La rama de expiración de la limpieza desaparece|1 — `an expired execution is a failure whatever the wrapper published`|
+|La expiración ya no retiene el transcripto|1 — `an expired execution keeps nothing`|
+|El terminal de una ejecución expirada es otra interrupción|1 — `the terminal of an expired execution is a timeout`|
+
+Las seis son **discriminantes** y cada una enciende exactamente la fila esperada, sin colateral. La tercera y la quinta son ortogonales a propósito —una cambia QUÉ se publica y la otra QUÉ se conserva— y sus conjuntos rojos no se tocan.
+
+**El diagnóstico de detekt, que era del código, y el del instrumento, que era del gate.** `detektMain` se puso en rojo con dos hallazgos nuevos en el fichero movido: `killWithCookieScan` (complejidad 30) y `findCookieProcesses` (26). La causa no era la política sino la forma: el código movido no hereda la supresión del baseline, porque el baseline suprime por RUTA y la ruta nueva no es la vieja. La respuesta fue reescribir sin la forma suprimida —la sesión, la terminación, la comprobación, la escalada, el uid y la cookie son pasos con una forma cada uno— y no volver a registrar la supresión. El baseline pierde diez entradas: seis de este corte y cuatro cuya materia ya no existe, y se comprobó que esos cuatro sujetos no producen ya hallazgo. Y el gate del análisis estático se comprobó contra su propio sujeto: un import muerto temporal en `ShellWatchdogTest.kt` hizo fallar `detektTest` nombrando ese fichero, esa línea y esa regla (`The import 'java.util.concurrent.TimeUnit' is unused. [UnusedImport]`), y el fallo desapareció al quitarlo. Un gate que no puede ver a su sujeto no es un gate.
+
+Medido sobre el árbol del corte con `scripts/verify-all.sh` sin filtros y con la build cache de Gradle **desactivada** (`GRADLE_OPTS=-Dorg.gradle.caching=false`), para que la línea de veredicto describa una ejecución y no una restauración:
+
+```
+PASS  sha=d42e2d749108ef8314e09513bd30d8da881ca22c  elapsed=193s  budget=900s  tests=rewritten:1393 read:0  scenarios=observed:62 executed:62
+```
+
+- 188 informes JUnit reescritos por esta ejecución —**todos** con su marca de tiempo dentro del MISMO minuto (14:38 UTC), lo que prueba que los 1393 tests se EJECUTARON y no fueron repuestos de la cache—, 1393 tests, 0 fallos, 0 errores, 0 omitidos.
+- 62 de 62 escenarios E2E ejecutados y en verde; 588 comprobaciones sobre 112 ejecuciones, 219 pasos terminados, 2 terminados inestables; ninguno sin comprobar; 7 credenciales sembradas y 2 reruns durables.
+- 193 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 26010`, `PRODUCT_LOC = 71148`, ratio `0.366` (límite 2); el módulo del corte, `pipeline-step-sdk:runtime`, queda en `1173 / 2245 = 0.522`. El censo cuenta 168 ficheros de tests unitarios y 62 pipelines E2E como verificación, y 724 ficheros de código de producción como producto; 53 ficheros quedan sin contar en ninguna parte (README, `AGENTS.md`, `ROADMAP.md`, ficheros de contrato `.api`, bases de detekt y el `gradle-wrapper.jar`) y 2 se excluyen como generados.
+
+**Lo que este corte no arregla.** La muerte con barrido de cookies sigue siendo la mitad imperativa del reloj, y esa mitad —el hilo, el `SIGKILL` sobre la sesión, el barrido de `/proc`— no la cubre ningún test unitario: un test unitario no puede crear un árbol de procesos ni leer `/proc`. Y ningún escenario E2E expira una ejecución: el único `timeout(...)` de `examples/` (en `control-flow/11-workflow-control`) envuelve un `sh` que termina de inmediato, así que el plazo nunca vence. Las garantías de arriba quedan declaradas por construcción y por el veredicto de sus decisiones, no presenciadas por un escenario. Siguen siendo las que son.
+
+**Lo que queda de H2.** Los otros dos componentes se extraen conservando `DurableShellExecutor` como fachada compatible y sin crear un segundo motor de shell: `executeCore()` debe quedar como un coordinador legible, no como una copia de la implementación actual. Quedan `ShellTerminalDecision` y `ShellResourceCleanup`.
 
 ## H3 — Vertical slice completo `core.sh`
 

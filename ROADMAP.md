@@ -149,7 +149,7 @@ No habrá dos motores shell. `executeCore()` debe convertirse en un coordinador 
 
 Entrega verificable: ejecutar, terminar, cancelar y recuperar `sh` con las mismas salidas, efectos y protocolos persistentes.
 
-### Estado de H2 — en curso; el primer componente está cerrado
+### Estado de H2 — en curso; los dos primeros componentes están cerrados
 
 Antes de crear cada componente se comprobó qué abstracción existente ya es la dueña de cada responsabilidad. El resultado, medido sobre `DurableShellExecutor.kt` (1.802 líneas):
 
@@ -190,7 +190,69 @@ PASS  sha=f5968af756cf2faa943ea9af85828fd48f52694a  elapsed=141s  budget=900s  t
 - 141 s de reloj de pared frente al presupuesto de 900 s.
 - `VERIFY_LOC = 25449`, `PRODUCT_LOC = 71128`, ratio `0.358` (límite 2). El censo excluye 2 ficheros como generados (los dos Java de `buildSrc`, cuya ruta de paquete contiene `/build/`) y deja 53 sin contar en ninguna parte (README, `AGENTS.md`, `ROADMAP.md`, ficheros de contrato `.api`, bases de detekt y el `gradle-wrapper.jar`).
 
-**Lo que queda de H2.** Los otros seis componentes se extraen conservando `DurableShellExecutor` como fachada compatible y sin crear un segundo motor de shell: `executeCore()` debe quedar como un coordinador legible, no como una copia de la implementación actual.
+La release candidata de este corte se publicó desde `c868ec136`, y la publicación se comprobó sobre el remoto y no sobre el árbol local:
+
+```
+release-pipelinek: PUBLISHED v0.91.0-rc2 with candidate_id sha256:5ae24f3f8392d19ab5cdacea24cb2c8c011e641aaebe7bf6add5d9d5b25cbff5
+```
+
+- `git ls-remote --tags origin 'v0.91.0-rc2*'` devuelve DOS líneas: el objeto de tag ANOTADO `cff7fe44bebc07bc0e611dbcb844cbff9b61b3f2` y el peel `refs/tags/v0.91.0-rc2^{}` al commit `c868ec136baa96e4ce7d9d21bd258adff0546ae2`. Un tag ligero no tendría esa segunda línea.
+- El objeto de tag descargado FRESCO del remoto es de tipo `tag` y lleva un bloque PGP. La firma verifica contra la clave declarada `9600F7D49B9C966E3BB04E6A17E44CA7C5288281` (uid `test@example.com`) mediante `scripts/release/verify-tag-signature.sh`, con las tres filas en PASS: A, el objeto está anotado y la firma verifica; B, la huella y el uid son los de la clave declarada; C, el tag apunta al commit esperado.
+- La prerelease de GitHub existe con `draft=false`, `prerelease=true` y el conjunto EXACTO de 7 assets. Los seis digests de `SHA256SUMS` coinciden con los assets descargados, y el digest de `pipelinek-0.91.0.zip` es exactamente el `candidate_id` anunciado.
+- `git-head.txt` y `manifest.json` nombran `c868ec136…`, el mismo commit al que apunta el tag.
+
+#### El corte: `ShellLaunchPreparation`
+
+El ejecutor escribía los ficheros del protocolo y componía el entorno del hijo dentro de `launch`, entre las decisiones de descriptores. La composición era una política de cuatro reglas que sólo se podía leer en línea y que no se podía comprobar sin lanzar un proceso. `ShellLaunchPreparation` (222 líneas) la recoge: materializa el script, su copia y el wrapper, y compone el entorno. `DurableShellExecutor` queda como coordinador —lanza, vigila y decide el desenlace— y `executeCore()` sigue siendo el único motor de shell.
+
+**La comprobación previa, por responsabilidad.** Antes de crear el componente se comprobó si otra abstracción ya era la dueña de esa responsabilidad:
+
+|Responsabilidad|¿Existe ya?|Consecuencia|
+|---|---|---|
+|Preparar scripts, wrapper y entorno|Dentro del ejecutor, en `launch`|Es lo que se extrae|
+|Orden de precedencia del entorno|`GateEnvironmentPrecedence` (dominio, `pipeline-domain`, creado en `e0e32abae`)|Ya es la dueña de la regla "declarado gana"; no se crea otra|
+|Componer el entorno del hijo|`EnvironmentComposer` (155 líneas)|Parecía la dueña y no lo era: cero llamadas y no gobernaba nada — se elimina|
+|Transcripto de consola: nombre canónico|`DurableShellFiles`|No toca esta responsabilidad; se conserva intacto|
+|Identidad de un lanzamiento: hijo, bombas, sumideros|`LaunchedShell`|Es la forma de retorno del lanzador, no una segunda política; se conserva intacta|
+
+`EnvironmentComposer` merecía una comprobación aparte, porque su nombre prometía exactamente la responsabilidad del corte. Medido: `grep` sobre el árbol devuelve **cero** referencias en código Kotlin y **cero** en los ficheros de contrato `.api`; no estaba publicada ni formaba parte de ningún contrato de compatibilidad. Sus 155 líneas eran un segundo sitio donde la política del entorno podía vivir, y nadie lo llamaba. Se borró, y el comentario de `CompositionRoot` que la nombraba pasó a nombrar la autoridad real, `GateEnvironmentPrecedence.DEFAULT` (`DeclarationWins`).
+
+**El entorno como función.** Antes, `composeChildEnvironment(pb, …)` mutaba el `ProcessBuilder` del lanzador. Ahora la composición es una función de entorno a entorno: `composeEnvironment(ambient, sandbox, userEnv): Map<String, String>` devuelve el entorno del hijo, y el lanzador toma una foto del ambiente (`pb.environment().toMap()`), lo vacía y adopta el mapa compuesto entero (`DurableShellExecutor.kt:479-482`). La política —sentinelas de identidad, lista denegada y normalización del PATH bajo el perfil local, variables del llamante por último, y normalización de nuevo si el llamante nombra un PATH— se lee ahora como una política y se comprueba como una política: sin proceso, sin hilo, sin reloj.
+
+**Un `outerRedirect` que se calculaba y no se usaba.** El wrapper construía una redirección (`"> fichero"`, `2>&1`, …) dentro de un `when` y **nunca la interpolaba** en su contenido: el wrapper no abre el transcripto, el lanzador redirige los descriptores. Su comentario afirmaba una propiedad que el cableado no tiene. Se eliminó. El cambio es inocuo porque la cadena nunca llegó al contenido del wrapper: las cuatro variantes de redirección por los dos modos de bombeo producen exactamente el mismo resultado.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que el hijo recibe un entorno cuyo alcance no depende de quién pregunta: la identidad de la operación viaja, la lista denegada no alcanza al hijo bajo el perfil local, el PATH sólo conserva prefijos autorizados y un llamante no puede ampliar ese alcance por la puerta de atrás. La capacidad que esa garantía sostiene es que un paso `sh` durable se ejecuta con el entorno que su autor declaró, y no con el que hereda la máquina. El instrumento es un test puro de la política —13 tests de JUnit, sin proceso, hilo, reloj ni sistema de ficheros— porque una garantía de entorno se puede observar sin lanzar nada; lo que sólo aparece al ejecutar sigue cubierto por los escenarios E2E, y un segundo instrumento para lo mismo sería duplicación, no evidencia.
+
+**Visto en rojo tres veces.** Cada mutación se leyó en el diff antes que en el resultado, y después de cada una el árbol se restauró y se comprobó limpio:
+
+|Mutación|Filas que se encendieron|
+|---|---|
+|Quitar la aplicación de la lista denegada|1 — `the deny-listed variables do not reach the child under the local profile`|
+|Quitar la segunda normalización del PATH del llamante|3 — `a prefix named in the keep set survives the filter`, `a caller's path cannot smuggle an entry past the filter`, `the path keeps only the sanctioned prefixes under the local profile`|
+|Vaciar la identidad de la operación|1 — `the child's environment carries the operation's identity`|
+
+Ninguna encendió filas ajenas a la regla quitada: cada mutación encendió exactamente las que la describen, y ninguna más.
+
+**Una fuga que el propio test podía producir.** El primer borrador comparaba el entorno entero, y su mensaje de fallo volcaba el mapa completo —el mapa completo del entorno de quien ejecuta los tests puede llevar dentro un token real— dentro del XML de JUnit, que se queda en disco. Un test de entorno no puede imprimir el entorno: se cambió por aserciones sobre nombres concretos. Comprobado después sobre los XML que escribió la ejecución del gate: ninguna coincidencia de `ANTHROPIC_AUTH_TOKEN`, `sk-cp-` ni `sk-ant-`, ni en los informes, ni en el árbol versionado, ni en el repositorio entero.
+
+**Un hallazgo preexistente que este corte no arregla.** `EnvModel.apply` se aplica dos veces sobre las variables del llamante: una en la capa de aplicación (`ShExecution.kt:234`, `:256`, `:400`) y otra en el runtime (antes en `DurableShellExecutor.kt:493`, ahora en `ShellLaunchPreparation.kt:185`). El corte movió el sitio; no lo creó. Se reporta y no se arregla aquí: decidir cuál de las dos capas es la dueña de la coerción del PATH es una pregunta de la costura entre `ShExecution` y el runtime, y esa costura es de H3.
+
+**El diagnóstico de detekt, que no era del código.** El gate de este corte se puso rojo en `detektMain` —la tarea que sí analiza el *source set*, a diferencia del `detekt` agregado, que no analiza ningún fichero y reporta verde— con dos `UseOrEmpty` en `ShellLaunchPreparation.kt:192-193`. La causa no era el código: el baseline suprime POR RUTA, y el código se había mudado de `DurableShellExecutor.kt` a su propio fichero, de modo que la supresión dejó de alcanzar a su sujeto. Se corrigió con `.orEmpty()` y retirando del baseline las entradas que ya no tenían sujeto (`7e3cf6d94`).
+
+Lo mismo se repitió con cinco entradas más. Cuatro (`val cookieFile`, `val resultFile`, `val resultTmp` y `val scriptFile`, todas `= shellFiles.*`) quedaron huérfanas en el primer corte, que ya usaba `protocol.*`; la quinta, `val outerRedirect`, quedó huérfana en este. Que el texto de una entrada del baseline no aparezca en el código NO prueba que la entrada esté inerte: dentro de la ruta la entrada casa de forma laxa —hay una entrada viva cuyo texto ya no coincide con el código actual—, y sólo la ruta tiene que coincidir. La prueba es la inversa, quitar la supresión y ver qué hace el detector, y se hizo: `detektMain` siguió en verde tras retirar las cinco, así que ninguna tapaba un hallazgo real. Se retiraron (`0a7a7e7b4`). Una supresión sin sujeto no es una garantía: es deuda que finge ser política.
+
+Medido sobre el árbol del corte con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=0a7a7e7b40e103828306747239cec78860c741bc  elapsed=143s  budget=900s  tests=rewritten:1357 read:0  scenarios=observed:62 executed:62
+```
+
+- 185 informes JUnit reescritos por esta ejecución —todos con su marca de tiempo dentro de una ventana de 4 segundos—, 1357 tests, 0 fallos, 0 errores, 0 omitidos.
+- 62 de 62 escenarios E2E ejecutados y en verde; 588 comprobaciones sobre 112 ejecuciones; ninguno sin comprobar.
+- 143 s de reloj de pared frente al presupuesto de 900 s.
+- `VERIFY_LOC = 25602`, `PRODUCT_LOC = 71061`, ratio `0.360` (límite 2). El censo cuenta 165 ficheros de tests unitarios y 62 pipelines E2E como verificación, y 720 ficheros de código de producción como producto.
+
+**Lo que queda de H2.** Los otros cinco componentes se extraen conservando `DurableShellExecutor` como fachada compatible y sin crear un segundo motor de shell: `executeCore()` debe quedar como un coordinador legible, no como una copia de la implementación actual.
 
 ## H3 — Vertical slice completo `core.sh`
 

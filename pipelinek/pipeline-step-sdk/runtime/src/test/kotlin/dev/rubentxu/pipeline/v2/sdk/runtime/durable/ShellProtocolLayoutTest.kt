@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test
 import java.nio.file.Path
 
 /**
- * The durable shell's control directory is a CROSS-PROCESS contract.
+ * The durable shell's control directory is a contract between processes.
  *
  * **The guarantee.** The names inside a control directory are stable: the wrapper writes the
  * exit code where the executor polls for it, and where a later process — the reconciler, or an

@@ -5,16 +5,14 @@ import dev.rubentxu.pipeline.v2.application.durable.RedactingOutputIngress
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.AgentRendezvous
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputChannel
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShellProtocolLayout
 import java.nio.ByteBuffer
 import java.nio.channels.SeekableByteChannel
-import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
 import java.nio.file.StandardOpenOption
-import java.nio.file.attribute.PosixFileAttributes
 
 /**
  * The production ingest agent.
@@ -26,8 +24,12 @@ import java.nio.file.attribute.PosixFileAttributes
  * is what keeps it from being a second runtime.
  * ## The launch contract
  * This `main(args)` is what the Runtime launches via `ProcessBuilder` +
- * `setsid`. The argv order is fixed by [argv] so the launcher and the
- * agent cannot drift. One agent per run, supervised by PipelineK.
+ * `setsid`. The argv's shape is fixed by [AgentRendezvous.Args], which the
+ * runtime writes and this agent reads, so the two cannot drift on it. The
+ * secret does NOT travel in the argv: a command-line argument is readable
+ * through `/proc/<pid>/cmdline` by every user on the host, so the secret
+ * comes from the environment under [AgentRendezvous.AGENT_SECRET_ENV].
+ * One agent per run, supervised by PipelineK.
  * ## Why FIFOs and not inherited pipe descriptors
  * Passing a pipe's read end to another process needs `SCM_RIGHTS`,
  * which the JVM does not expose. A FIFO in the control directory is
@@ -79,20 +81,22 @@ import java.nio.file.attribute.PosixFileAttributes
 object ObsPc2IngestAgent {
 
     /**
-     * Entry point for the launched JVM. The argv order is fixed by
-     * [argv] so the launcher's wiring in
-     * `DurableShellExecutor.launch` and this agent cannot drift.
+     * Entry point for the launched JVM. The argv is read through
+     * [AgentRendezvous.Args], the same value the runtime writes, so the two
+     * sides cannot drift on the argument order. The secret is read from the
+     * environment, not from the argv.
      * @param args `controlDirRoot`, `runId`, `opIdString`, `fifoDir`,
-     *   `readyMarker`, `secret`
+     *   `readyMarker`
 */
     @JvmStatic
     fun main(args: Array<String>) {
-        val controlDirRoot = Paths.get(args[0])
-        val runId = args[1]
-        val opId = args[2]
-        val fifoDir = Paths.get(args[3])
-        val readyMarker = Paths.get(args[4])
-        val secret = args[5]
+        val rendezvous = AgentRendezvous.Args.fromArgv(args)
+        val controlDirRoot = rendezvous.controlDirRoot
+        val runId = rendezvous.runId
+        val opId = rendezvous.opId
+        val fifoDir = rendezvous.fifoDir
+        val readyMarker = rendezvous.readyMarker
+        val secret = AgentRendezvous.secretFromEnvironment(System.getenv())
 
         val registry = SecretPatternRegistry().apply { addSecret(SecretHandle.plain(secret)) }
         val store = OutputPlaneProvider.storeForWriting(controlDirRoot)
@@ -157,7 +161,7 @@ object ObsPc2IngestAgent {
 
         // Both descriptors are open. From here this process can
         // outlive the one that launched it.
-        Files.writeString(readyMarker, "ready\n")
+        Files.writeString(readyMarker, AgentRendezvous.READY_CONTENT)
         System.err.println("pc2-agent-ready-marker-written pid=$agentPid")
 
         val threads = ProcessOutputChannel.all.map { channel ->
@@ -289,7 +293,7 @@ object ObsPc2IngestAgent {
      * rather than assumed.
 */
     private fun openRendezvous(path: Path): SeekableByteChannel {
-        require(isFifo(path)) {
+        require(AgentRendezvous.isFifo(path)) {
             "$path is not a FIFO. Draining it would accept a plaintext spool on disk, " +
                 "which the raw_secret_on_disk == 0 invariant is meant to catch."
         }
@@ -312,46 +316,4 @@ object ObsPc2IngestAgent {
         return Files.newByteChannel(path, StandardOpenOption.READ)
     }
 
-    /**
-     * Whether [path] is a named pipe.
-     * `java.nio.file` cannot create one and exposes no direct type
-     * test, but [PosixFileAttributes.isOther] answers it exactly: a
-     * FIFO is neither a regular file nor a directory, which is
-     * precisely what `isOther` means. Asking the JDK keeps this
-     * check in the same trust domain as the read that follows it,
-     * instead of spawning `test -p` and parsing its exit code.
-*/
-    fun isFifo(path: Path): Boolean = runCatching {
-        Files.readAttributes(path, PosixFileAttributes::class.java).isOther
-    }.getOrDefault(false)
-
-    /**
-     * The argument order both sides agree on, so the launcher's
-     * `DurableShellExecutor.launch` and this agent cannot drift on it.
-     * Nothing in this tree drives the agent through it, so the shape below
-     * is stated, not checked.
-*/
-    fun argv(
-        controlDirRoot: Path,
-        runId: String,
-        opId: String,
-        fifoDir: Path,
-        readyMarker: Path,
-        secret: String,
-    ): Array<String> = arrayOf(
-        controlDirRoot.toString(),
-        runId,
-        opId,
-        fifoDir.toString(),
-        readyMarker.toString(),
-        secret,
-    )
-
-    /** Marker text the launcher/test waits for, so "the agent is
-     *  attached" is an event and not a sleep. */
-    const val READY_CONTENT: String = "ready\n"
-
-    /** Bytes of a string, for harnesses that need to size
-     *  expectations without reading the plane. */
-    fun utf8(text: String): ByteArray = text.toByteArray(StandardCharsets.UTF_8)
 }

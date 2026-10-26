@@ -10,7 +10,6 @@
     <ID>LongMethod:DurableShellExecutor.kt:DurableShellExecutor$private fun executeCore: DurableTaskTerminal</ID>
     <ID>MaxLineLength:DurableShellExecutor.kt:"DurableShellExecutor().executeTerminal(controlDir, scriptContent, opId, ShOptions(timeoutMs = timeoutMs, env = env, sandbox = sandbox, workspaceRoot = workspaceRoot ?: controlDir))"</ID>
     <ID>RedundantSuspendModifier:StepReconcilerL1.kt:StepReconcilerL1$suspend</ID>
-    <ID>SpreadOperator:DurableShellExecutor.kt:DurableShellExecutor$("setsid", javaBin, "-cp", classpath, AGENT_MAIN_CLASS, *argv)</ID>
     <ID>UnnecessaryNotNullOperator:DurableShellExecutor.kt:DurableShellExecutor$process!!</ID>
     <ID>UnnecessarySafeCall:DurableShellExecutor.kt:DurableShellExecutor$process?.destroyForcibly()</ID>
     <ID>UnusedImport:DurableShellExecutor.kt:import java.io.ByteArrayOutputStream</ID>

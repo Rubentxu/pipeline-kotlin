@@ -187,7 +187,7 @@ internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlockin
         // to it. Reading `System.getenv()` inline and merging here was a real
         // defect: `declared + host` let a host variable overwrite the value the
         // author wrote in the stage, contradicting both the comment above and
-        // the established `EnvironmentComposer` base-then-stage ordering.
+        // the declared-wins rule that [GateEnvironmentPrecedence] states.
         gateContext = { stageEnvironment ->
             dev.rubentxu.pipeline.v2.domain.directive.GateEnvironmentPrecedence.DEFAULT.resolve(
                 declared = stageEnvironment.values,

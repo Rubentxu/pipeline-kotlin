@@ -104,13 +104,12 @@ class ShellProtocolLayoutTest {
 
     @Test
     fun `the wrapper binds the protocol's paths and publishes the exit code through them`() {
-        val wrapper = DurableShellExecutor().buildWrapperContent(
+        val wrapper = ShellLaunchPreparation(
             protocol = protocol,
-            scriptPath = protocol.scriptFile,
-            heartbeatCheckInterval = 300L,
-            captureStdout = false,
             opId = "op-42",
-        )
+            heartbeatCheckInterval = 300L,
+            pumpedViaAgent = false,
+        ).wrapperContent(protocol.scriptFile)
 
         // The wrapper is the WRITER of the protocol, so its bindings are checked against the
         // authority rather than against a second copy of the names.

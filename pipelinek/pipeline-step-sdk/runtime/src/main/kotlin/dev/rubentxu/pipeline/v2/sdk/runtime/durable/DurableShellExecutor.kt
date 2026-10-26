@@ -121,9 +121,6 @@ class DurableShellExecutor {
     /** Polling interval for result.txt checks (100ms) */
     private val pollIntervalMs = 100L
 
-    /** Sentinel cookie value — inherited by wrapper + heartbeat, distinguishes wrapper machinery. */
-    private val SENTINEL_COOKIE = "__pipeline_protected__"
-
     /** Path to setsid (resolved once at startup). */
     private val setsidPath: String by lazy {
         resolveCommandPath("setsid") ?: throw IllegalStateException("setsid not found on PATH")
@@ -180,52 +177,6 @@ class DurableShellExecutor {
         val warmup: List<java.io.Closeable>,
         var process: Process?,
     )
-
-    /**
-     * Writes the user's script, its Jenkins-70874 copy, and the wrapper, and makes the script and
-     * the wrapper executable. The copy exists because Jenkins itself keeps one, so dropping it
-     * would be a compatibility difference nobody asked for; the wrapper embeds only the *cookie*,
-     * never the script text, which is what keeps the user's script out of argv.
-     *
-     * The paths are not spelled here: they come from [ShellProtocolLayout], which is the single
-     * authority for the protocol's names, and the same layout is handed to the wrapper builder so
-     * the file that is written and the file the wrapper refers to cannot drift apart.
-*/
-    private fun materialiseShellFiles(
-        controlDir: Path,
-        scriptContent: String,
-        heartbeatCheckInterval: Long,
-        captureStdout: Boolean,
-        opId: String,
-        pumpedThroughJvm: Boolean,
-        pumpedViaAgent: Boolean = false,
-    ): ShellProtocolLayout {
-        val executable = java.util.EnumSet.of(
-            java.nio.file.attribute.PosixFilePermission.OWNER_READ,
-            java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
-            java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE,
-        )
-        val protocol = ShellProtocolLayout(controlDir)
-        Files.writeString(protocol.scriptFile, scriptContent)
-        Files.writeString(protocol.scriptCopyFile, scriptContent) // workaround
-        Files.setPosixFilePermissions(protocol.scriptFile, executable)
-
-        Files.writeString(
-            protocol.wrapperFile,
-            buildWrapperContent(
-                protocol = protocol,
-                scriptPath = protocol.scriptFile,
-                heartbeatCheckInterval = heartbeatCheckInterval,
-                captureStdout = captureStdout,
-                opId = opId,
-                transcriptPipedThroughJvm = pumpedThroughJvm,
-                pumpedViaAgent = pumpedViaAgent,
-            ),
-        )
-        Files.setPosixFilePermissions(protocol.wrapperFile, executable)
-
-        return protocol
-    }
 
     /**
      * Create the FIFO rendezvous under
@@ -452,74 +403,6 @@ class DurableShellExecutor {
     }
 
     /**
-     * Composes the child's environment in the order the guarantees were decided in: durable
-     * sentinels first, then the sandbox profile, then the caller's variables, with PATH
-     * re-normalised after the merge because a user-supplied PATH would otherwise smuggle entries
-     * past the sandbox keep-set.
-     * Extracted from [launch] because that ordering is a policy with four interacting rules, and
-     * reading it inline among the descriptor decisions made the whole launch opaque.
-*/
-    private fun composeChildEnvironment(
-        pb: ProcessBuilder,
-        opId: String,
-        sandbox: SandboxConfig,
-        env: Map<String, SecretHandle>,
-    ) {
-        // PIPELINE_OP_COOKIE=sentinel inherited by wrapper + heartbeat (protects wrapper machinery)
-        val pbEnv = pb.environment()
-        pbEnv["PIPELINE_OP_COOKIE"] = SENTINEL_COOKIE
-        // Internal durable vars
-        pbEnv["DURABLE_SH_COOKIE"] = "please-do-not-kill-me-$opId"
-        pbEnv["DURABLE_SH_OPID"] = opId
-
-        // Sandbox profile integration ( cwd + deny-list + PATH normalize)
-        // Profile branch: LOCAL applies deny-list + PATH normalize; NONE is pass-through.
-        // OS would throw at factory (CLI rejects it), so reaching here means NONE or LOCAL.
-        if (sandbox.profile == SandboxProfile.LOCAL) {
-            val pbEnvFiltered = pbEnv.applyDenyList(sandbox.allowExtra)
-            val javaHome = pbEnvFiltered["JAVA_HOME"]
-            val m2Home = pbEnvFiltered["M2_HOME"]
-            pbEnv.clear()
-            pbEnv.putAll(pbEnvFiltered.normalizePath(sandbox.pathKeep, javaHome, m2Home))
-        }
-
-        // User-provided env injected here (env via pb.environment ONLY)
-        // Coerce SecretHandle to String at pb.environment putAll
-        if (env.isEmpty()) return
-
-        // Apply EnvModel transformations (PATH prepend, PATH+= handling) before materialization.
-        // This ensures JAVA_HOME/bin and_HOME/bin are prepended to PATH, and PATH+=
-        // entries are properly handled. Without this call, the PATH manipulation is skipped.
-        val transformedEnv = EnvModel.apply(env)
-        // Coerce SecretHandle to String at the single choke point
-        val coercedEnv: Map<String, String> = transformedEnv.mapValues { entry -> entry.value.materialize() }
-        pbEnv.putAll(coercedEnv)
-
-        // Re-normalize PATH after user env merge.
-        // User-provided PATH overrides the sandbox-normalized PATH if it contains
-        // entries outside the keep-set. Re-apply normalization to ensure sandbox
-        // filtering is enforced on user-provided PATH values.
-        if (coercedEnv.containsKey("PATH") && sandbox.profile == SandboxProfile.LOCAL) {
-            val userPath = coercedEnv["PATH"] ?: ""
-            val normalizedUserPath = mapOf("PATH" to userPath).normalizePath(
-                sandbox.pathKeep,
-                pbEnv["JAVA_HOME"],
-                pbEnv["M2_HOME"],
-            )["PATH"] ?: ""
-            if (normalizedUserPath != userPath) {
-                pbEnv["PATH"] = normalizedUserPath
-            }
-        }
-
-        // Wipe handles after putAll
-        // Wipe failure addsSuppressed but does NOT prevent step completion
-        // Wipe intentionally OMITTED. WithCredentialsExecutor shares the
-        // env map across multiple inner sh invocations (outer sh → nested
-        // withCredentials → restored sh). Wiping here would corrupt the bytes for
-        // the third sh. The wipe is performed by BoundCredentials.close instead.
-    }
-
-    /**
      * Launches a durable shell step with optional stdout capture.
      * ## Jenkins-Faithful Launch Pattern
      * argv = [setsid, bash, wrapper.sh] — no -c, no -f, no -w.
@@ -571,15 +454,14 @@ class DurableShellExecutor {
         // that makes one-pump-per-channel possible at all.
         val pumpedThroughJvm = transcriptRedactor != null || channelSinks.isNotEmpty()
 
-        val protocol = materialiseShellFiles(
-            controlDir = controlDir,
-            scriptContent = scriptContent,
-            heartbeatCheckInterval = config.heartbeatCheckInterval,
-            captureStdout = request.captureStdout,
+        val protocol = ShellProtocolLayout(controlDir)
+        val preparation = ShellLaunchPreparation(
+            protocol = protocol,
             opId = opId,
-            pumpedThroughJvm = pumpedThroughJvm,
+            heartbeatCheckInterval = config.heartbeatCheckInterval,
             pumpedViaAgent = config.pumpedViaAgent,
         )
+        preparation.materialise(scriptContent)
         val logFile = protocol.consoleLog
         val wrapperFile = protocol.wrapperFile
 
@@ -591,7 +473,18 @@ class DurableShellExecutor {
         val pb = ProcessBuilder("setsid", "bash", wrapperFile.toString())
         pb.directory((request.workspaceRoot ?: controlDir).toFile())
 
-        composeChildEnvironment(pb, opId, request.sandbox, request.env)
+        // The child's environment is composed by the preparation, from a snapshot of the
+        // launcher's own environment. The launcher then adopts the composed map wholesale, so
+        // the child sees exactly what the preparation decided and nothing else.
+        val ambient = pb.environment().toMap()
+        pb.environment().clear()
+        pb.environment().putAll(
+            preparation.composeEnvironment(
+                ambient = ambient,
+                sandbox = request.sandbox,
+                userEnv = request.env,
+            ),
+        )
 
         // Redirect stdin to /dev/null to prevent blocking on input
         // The durable file separation depends on the invocation mode.
@@ -1014,115 +907,6 @@ class DurableShellExecutor {
     }
 
     /**
-     * Builds the wrapper script content that is written to wrapper.sh.
-     * ## Jenkins-Faithful Wrapper
-     * The real cookie value (opId) is embedded in the file content as:
-     * `PIPELINE_OP_COOKIE=<opId>`
-     * This allows the watchdog to identify victim processes by scanning
-     * /proc/<pid>/environ for PIPELINE_OP_COOKIE=<real>, while the sentinel
-     * PIPELINE_OP_COOKIE=__pipeline_protected__ protects the wrapper machinery
-     * (heartbeat + result-writer) from being killed.
-     * @param protocol The control directory's layout: the authority for every path this wrapper
-     *   binds.
-     * @param scriptPath The path to the script file.
-     * @param heartbeatCheckInterval The heartbeat period the wrapper writes into itself.
-     * @param captureStdout If true, tee stdout to output.txt (returnStdout mode).
-     * @param opId The operation ID (embedded as the real cookie value).
-     * @return The shell wrapper script content.
-*/
-    internal fun buildWrapperContent(
-        protocol: ShellProtocolLayout,
-        scriptPath: Path,
-        heartbeatCheckInterval: Long,
-        captureStdout: Boolean,
-        opId: String,
-        transcriptPipedThroughJvm: Boolean = false,
-        pumpedViaAgent: Boolean = false,
-    ): String {
-        val cookieFileEscaped = escapeForShell(protocol.cookieFile.toString())
-        val logFileEscaped = escapeForShell(protocol.consoleLog.toString())
-        val resultFileEscaped = escapeForShell(protocol.resultFile.toString())
-        val resultTmpEscaped = escapeForShell(protocol.resultTmpFile.toString())
-        val scriptPathEscaped = escapeForShell(scriptPath.toString())
-        val outputFileEscaped = escapeForShell(protocol.outputFile.toString())
-
-        // Wrapper: VERBATIM, single-quoted paths, script NEVER in argv
-        // Key properties:
-        // 1. PIPELINE_OP_COOKIE=<real> (embedded in file, NOT argv) identifies victims
-        // 2. COOKIE_FILE protects wrapper machinery from cookie-scan kill
-        // 3. Single-quoted script path prevents any expansion
-        // 4. Heartbeat loop touches log file (independent of stdout)
-        // 5. Exit code written atomically
-        // When captureStdout=true:
-        // - stdout is tee'd to output.txt via '> '$OUT' 2> '$LOG'
-        // - stderr goes to the console transcript as usual
-        // - Heartbeat (inner while) still touches the console transcript only
-
-        // Outer redirect: tee to output.txt if captureStdout, otherwise just log
-        // When the child's bytes are piped to the JVM, the wrapper MUST NOT open its own
-        // console.log handle. It inherits the PIPE, and the composed sink is the single writer of
-        // only sanitized bytes. Keeping the file write here as well is what would make the same
-        // bytes durable in two places. For capture mode, stdout still tee's to output.txt (the
-        // typed VALUE channel); stderr inherits the pipe.
-        // When `pumpedViaAgent` is true the wrapper gains `trap '' PIPE`.
-        // The child's stdout/stderr are redirected to FIFOs owned by the ingest agent; if the
-        // agent dies, the next write returns `EPIPE` rather than killing the user's process.
-        // The `SIG_IGN` disposition is inherited across `exec`, so the user's script — and
-        // everything it spawns — runs with `SIGPIPE` ignored. The trade is accepted; see
-        // the config KDoc on `pumpedViaAgent`.
-        val outerRedirect = when {
-            transcriptPipedThroughJvm && captureStdout -> "> '$outputFileEscaped'"
-            transcriptPipedThroughJvm -> ""
-            captureStdout -> "> '$outputFileEscaped' 2> '$logFileEscaped'"
-            else -> "> '$logFileEscaped' 2>&1"
-        }
-
-        // The real cookie value is embedded in the file (not argv)
-        // This is the value the watchdog looks for when scanning /proc/<pid>/environ
-        return buildString {
-            append("#!/bin/bash\n")
-            if (pumpedViaAgent) {
-                // Ignore SIGPIPE in the wrapper so the user's process
-                // survives when the ingest agent dies. The trap is the first non-comment line so
-                // it is in effect for every subsequent fork.
-                append("trap '' PIPE\n")
-            }
-            // Embed the real cookie — watchdog scans /proc/PID/environ for this value
-            append("export PIPELINE_OP_COOKIE='$opId'\n")
-            append("COOKIE_FILE='$cookieFileEscaped'; ")
-            append("LOG_FILE='$logFileEscaped'; ")
-            append("RESULT_FILE='$resultFileEscaped'; ")
-            append("RESULT_TMP='$resultTmpEscaped'; ")
-            append("CHECK_INTERVAL=$heartbeatCheckInterval; ")
-            // Create cookie file with PID - this is the heartbeat mechanism
-            append("echo \$\$ > \"\$COOKIE_FILE\"; ")
-            // Heartbeat: touch log file periodically to show process is alive
-            // Capture the heartbeat PID. When the transcript is pumped
-            // through the redaction pipe, the heartbeat subshell holds the pipe's write
-            // end; if left running it delays EOF (and thus the final redactor drain)
-            // by up to CHECK_INTERVAL. The wrapper kills it explicitly at exit.
-            append("HB_PID=\$!; ")
-            // Run the actual script
-            append("'$scriptPathEscaped'; ")
-            append("EXIT_CODE=\$?; ")
-            // Write exit code atomically: temp file then rename
-            append("echo \$EXIT_CODE > \"\$RESULT_TMP\"; ")
-            append("mv \"\$RESULT_TMP\" \"\$RESULT_FILE\"; ")
-            // Remove cookie file to signal completion.
-            //: stdout and stderr are REDIRECTED AWAY. The cookie is our
-            // control-plane bookkeeping, not the user's output, so it must never
-            // write into the data channel that becomes `capturedStdout` and the
-            // console transcript. An unredirected `rm` leaks whenever the host's
-            // rm is verbose, wrapped, or shimmed — that is how a deletion notice
-            // ended up appended to `canonical-output` in the past. Silence is the correct contract for
-            // control-plane housekeeping regardless of what `rm` resolves to.
-            append("rm -f \"\$COOKIE_FILE\" >/dev/null 2>&1; ")
-            append("kill \$HB_PID 2>/dev/null; ")
-            append("exit \$EXIT_CODE")
-        }
-    }
-
-    /**
      * The legacy wrapper builder, kept as this executor's compatible façade.
      *
      * It renders the same wrapper the launch does, and it binds the protocol's paths through
@@ -1131,13 +915,13 @@ class DurableShellExecutor {
      * caller's own protocol may place the script elsewhere.
 */
     fun buildWrapper(controlDir: Path, scriptPath: Path, config: DurableShConfig): String {
-        return buildWrapperContent(
-            protocol = ShellProtocolLayout(controlDir),
-            scriptPath = scriptPath,
-            heartbeatCheckInterval = config.heartbeatCheckInterval,
-            captureStdout = false,
+        val protocol = ShellProtocolLayout(controlDir)
+        return ShellLaunchPreparation(
+            protocol = protocol,
             opId = "legacy",
-        )
+            heartbeatCheckInterval = config.heartbeatCheckInterval,
+            pumpedViaAgent = false,
+        ).wrapperContent(scriptPath)
     }
 
     /**
@@ -1166,11 +950,6 @@ class DurableShellExecutor {
             // (never throws, never blocks)
             ""
         }
-    }
-
-    private fun escapeForShell(path: String): String {
-        // Escape single quotes for shell
-        return path.replace("'", "'\\''")
     }
 
     /**

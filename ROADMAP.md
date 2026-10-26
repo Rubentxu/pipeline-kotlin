@@ -149,7 +149,7 @@ No habrá dos motores shell. `executeCore()` debe convertirse en un coordinador 
 
 Entrega verificable: ejecutar, terminar, cancelar y recuperar `sh` con las mismas salidas, efectos y protocolos persistentes.
 
-### Estado de H2 — en curso; los seis primeros componentes están cerrados
+### Estado de H2 — los siete componentes están cerrados
 
 Antes de crear cada componente se comprobó qué abstracción existente ya es la dueña de cada responsabilidad. El resultado, medido sobre `DurableShellExecutor.kt` (1.802 líneas):
 
@@ -441,7 +441,7 @@ PASS  sha=d42e2d749108ef8314e09513bd30d8da881ca22c  elapsed=193s  budget=900s  t
 
 **Lo que este corte no arregla.** La muerte con barrido de cookies sigue siendo la mitad imperativa del reloj, y esa mitad —el hilo, el `SIGKILL` sobre la sesión, el barrido de `/proc`— no la cubre ningún test unitario: un test unitario no puede crear un árbol de procesos ni leer `/proc`. Y ningún escenario E2E expira una ejecución: el único `timeout(...)` de `examples/` (en `control-flow/11-workflow-control`) envuelve un `sh` que termina de inmediato, así que el plazo nunca vence. Las garantías de arriba quedan declaradas por construcción y por el veredicto de sus decisiones, no presenciadas por un escenario. Siguen siendo las que son.
 
-**Lo que queda de H2.** El otro componente se extrae conservando `DurableShellExecutor` como fachada compatible y sin crear un segundo motor de shell: `executeCore()` debe quedar como un coordinador legible, no como una copia de la implementación actual. Queda `ShellResourceCleanup`.
+**Lo que queda de H2.** El otro componente se extrae conservando `DurableShellExecutor` como fachada compatible y sin crear un segundo motor de shell: `executeCore()` debe quedar como un coordinador legible, no como una copia de la implementación actual. Queda `ShellResourceCleanup` — y es el último: con él queda cerrado el hito.
 
 #### El corte: `ShellTerminalDecision`
 
@@ -504,6 +504,61 @@ PASS  sha=78d8305414fe5112b168a10c6bdfc5a1fe7596e9  elapsed=180s  budget=900s  t
 - `VERIFY_LOC = 26282`, `PRODUCT_LOC = 71184`, ratio `0.369` (límite 2); el módulo del corte, `pipeline-step-sdk:runtime`, queda en `1445 / 2281 = 0.633`. El censo cuenta 169 ficheros de tests unitarios y 62 pipelines E2E como verificación, y 725 ficheros de código de producción como producto; 53 ficheros quedan sin contar en ninguna parte (README, `AGENTS.md`, `ROADMAP.md`, ficheros de contrato `.api`, bases de detekt y el `gradle-wrapper.jar`) y 2 se excluyen como generados.
 
 **Lo que este corte no arregla.** La clasificación ya no está repartida, pero sus hechos siguen viniendo de donde vienen: que el ejecutor reúna el código de salida correcto, que la marca de la expiración se lea en el momento correcto y que un hijo que expira deje la marca de verdad, sigue sin estar presenciado por un test unitario —un test unitario no puede crear un árbol de procesos ni escribir una bandera en un directorio de control—. Y ningún escenario E2E hace expirar una ejecución: el único `timeout(...)` de `examples/` (en `control-flow/11-workflow-control`) envuelve un `sh` que termina de inmediato, así que el plazo nunca vence. Las garantías de este corte quedan declaradas por construcción y por el veredicto de sus decisiones, no presenciadas por un escenario. Siguen siendo las que son.
+
+#### El corte: `ShellResourceCleanup`
+
+El ejecutor cerraba el lanzamiento con dos recorridos casi idénticos y una configuración que no decidía nada. `cleanup(controlDir, exitCode, keepTranscriptLog)` leía `DurableShConfig.fromSystemProperties()` y consultaba `cleanupRetainOnFailure`:
+
+- con la bandera activa (el valor por defecto), el método caía en una rama que sólo borra cuando el código de salida es cero, así que una ejecución fallida conservaba su directorio;
+- con la bandera apagada, el método salía antes de borrar: la misma conservación.
+
+Las dos posiciones dan lo mismo. La bandera era **inerte**: no podía cambiar el resultado en ninguna de las dos. Y la regla que de verdad se aplicaba —«una ejecución fallida conserva su directorio»— estaba escrita como una configuración que no se podía honrar. Honrarla habría destruido la evidencia de la que depende el protocolo: el código de salida, la marca de expiración y el latido son lo que `StepReconcilerL1` lee para distinguir una ejecución expirada de una perdida. Así que la bandera se **retira** y la regla queda escrita donde se lee.
+
+`ShellResourceCleanup` (161 líneas, en `pipeline-step-sdk:runtime`) es ahora la única dueña: decide el destino del directorio con un ADT cerrado (`Retained` | `Disposed(consoleLogSurvives)`), decide qué paths sobreviven comparando **rutas** y no nombres, y suelta los descriptores del lanzamiento de uno en uno. `DurableShellExecutor` baja de 693 a 658 líneas y sigue siendo la fachada: `cleanup(...)` delega y el `finally` de `executeCore()` pregunta.
+
+**La comprobación previa, por responsabilidad.**
+
+|Responsabilidad|¿Existe ya?|Consecuencia|
+|---|---|---|
+|La liberación de los descriptores y el destino del directorio de control|Dentro del ejecutor: un `deleteRecursively` propio y un `Files.walk` casi gemelo en el `finally`|Es lo que se extrae|
+|La identidad de un lanzamiento (`handle`, bombas, sumideros, `agentWarmup`)|`LaunchedShell`|Ya es la forma de retorno del lanzador; no se crea otra: el componente la consume, no la duplica|
+|Los nombres y las rutas del protocolo persistente|`ShellProtocolLayout` (primer corte)|Se conserva intacto y sólo se usa; el nombre del transcripto sigue siendo de `DurableShellFiles`|
+|Las bombas de transcripción y el drenaje|`TranscriptDrain.kt`|Ya está fuera del ejecutor; no se toca: las bombas se unen y se drenan antes de que este componente suelte nada|
+|El veredicto de la ejecución|`ShellTerminalDecision` (sexto corte)|Se conserva intacto: aquí se decide qué se libera, no qué se publica|
+|La expiración y el código de salida de la limpieza|`ShellWatchdog`|Se conserva intacto: el ejecutor le entrega los hechos que ya tiene|
+
+**Lo que la bandera retirada no rompe.** `cleanupRetainOnFailure` no tenía ni un consumidor fuera de su propio fichero —`git grep` sobre el repositorio entero devuelve cero referencias tras el corte— y el módulo `pipeline-step-sdk:runtime` no está en `bcvModules` ni en `publishedContractModules` ni aplica `maven-publish`: sus miembros públicos son internos de la construcción y se pueden mover. El comportamiento es **idéntico** antes y después en las cuatro combinaciones de (bandera, código de salida), porque las dos posiciones de la bandera convergen en la misma conservación.
+
+**Dos diferencias deliberadas, y no son accidentales.** La comparación del transcripto pasó de **nombre** a **ruta**: antes sobrevivía cualquier fichero llamado `console.log` a cualquier profundidad del árbol, y ahora sobrevive sólo el transcripto de ESE directorio de control. En la disposición real el transcripto está en la raíz del directorio de control, así que el cambio no altera nada en producción; lo que altera es una regla que era falsa. Y el recorrido que borra ya no puede lanzar: antes, un directorio de control ausente hacía que `Files.walk` escapara del `finally` del ejecutor, y una excepción que escapa de ahí reemplaza el terminal que la ejecución se ganó por un fallo de limpieza. Ahora la limpieza no puede cambiar el veredicto de la ejecución que está limpiando.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que una ejecución fallida conserva su directorio de control **entero**, porque ese directorio es la evidencia que el reconcilizador lee, y que una ejecución exitosa lo suelta sin llevarse por delante el transcripto que el consumidor de producción lee después. La capacidad que sostiene es que un paso `sh` durable pueda reconciliarse más tarde —distinguiendo una ejecución expirada de una perdida— sin que la limpieza haya borrado la prueba. El instrumento es un test puro de 11 filas de JUnit 5 —ni proceso, ni hilo, ni reloj, ni sistema de ficheros— porque las reglas son funciones puras de hechos: un código de salida, la petición del llamante, una ruta. La liberación de los descriptores se observa con un doble en memoria. Un test que creara un directorio de control real y mirara qué sobrevivió tocaría el sistema de ficheros, que un test unitario no puede hacer, y diría lo mismo a más coste. Lo que el test NO congela, y se dice: que el recorrido que borra borre lo que la regla dice, que el sistema de ficheros coopere y que el ejecutor reúna los hechos correctos —eso se observa donde ocurre, no aquí.
+
+**Visto en rojo seis veces.** Cada mutación se aplicó, se leyó en el diff antes que en el resultado, se restauró antes de la siguiente —RESTORED OK: True en las seis— y cada ejecución se comprobó contra el XML de JUnit autoritativo: el leedor es un parser de XML real, no una expresión regular, porque una expresión regular empareja un `<testcase/>` autocerrado con un `</testcase>` posterior y atribuye la fila roja a la fila equivocada.
+
+|Mutación|Filas que se encendieron|
+|---|---|
+|La comparación del código de salida pasa a ser «mayor que cero»|1 — `an expired execution keeps its control directory`|
+|La petición de conservar el transcripto se invierte|2 — `a successful execution keeps the transcript when the caller asks for it` y `a successful execution disposes its control directory`|
+|La comparación del transcripto pasa de ruta a nombre|1 — `a file with the same name deeper in the tree does not survive`|
+|Una ejecución fallida se declara liberada|3 — `a failed execution keeps the transcript with the directory`, `a failed execution keeps its control directory` y `an expired execution keeps its control directory`|
+|El fallo de un descriptor ya no se contiene|1 — `a descriptor that refuses to close does not keep the others`|
+|Sólo se libera el primer descriptor|2 — `a descriptor that refuses to close does not keep the others` y `every descriptor of the launch is released`|
+
+Las seis son **discriminantes** y cada una enciende exactamente las filas esperadas, sin colateral. Las tres de la cuarta mutación caen sobre las tres filas que afirman la conservación, y son tres porque son tres hechos distintos: el fallo, la expiración y la irrelevancia de la petición del transcripto cuando el directorio entero se conserva. La última mutación enciende la fila del descriptor que se niega y la de todos los descriptores, porque su fila afirma las dos cosas: que se sueltan todos y que uno que falla no retiene a los demás.
+
+Medido sobre el árbol del corte con `scripts/verify-all.sh` sin filtros y con la build cache de Gradle **desactivada** (`GRADLE_OPTS=-Dorg.gradle.caching=false`), para que la línea de veredicto describa una ejecución y no una restauración:
+
+```
+PASS  sha=55d19917ac3813b8d5e8a564edf9910321a2b7da  elapsed=159s  budget=900s  tests=rewritten:1416 read:0  scenarios=observed:62 executed:62
+```
+
+- 190 informes JUnit reescritos por esta ejecución —comprobado aparte con un lector de XML real: los 190 llevan su marca de tiempo dentro de la misma ventana (16:12 UTC del 26 de octubre), lo que prueba que los 1416 tests se EJECUTARON y no fueron repuestos de la cache—, 1416 tests, 0 fallos, 0 errores, 0 omitidos.
+- 62 de 62 escenarios E2E ejecutados y en verde; 588 comprobaciones sobre 112 ejecuciones, 219 pasos terminados, 2 terminados inestables; ninguno sin comprobar; 7 credenciales sembradas y 2 reruns durables.
+- 159 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- El gate completo se ejecutó **dos veces** sobre el mismo árbol y las dos veces en verde (181 s y 159 s). La segunda ejecución no es un redundante: la primera había dejado en disco el informe JUnit de la última mutación —en rojo, y con la mutación aplicada—, así que los informes que quedan en el árbol tienen que pertenecer a una corrida coherente del código commiteado. El registro cita la segunda.
+- `VERIFY_LOC = 26410`, `PRODUCT_LOC = 71196`, ratio `0.371` (límite 2); el módulo del corte, `pipeline-step-sdk:runtime`, queda en `1573 / 2293 = 0.686`. El censo cuenta 170 ficheros de tests unitarios y 62 pipelines E2E como verificación, y 726 ficheros de código de producción como producto; 53 ficheros quedan sin contar en ninguna parte (README, `AGENTS.md`, `ROADMAP.md`, ficheros de contrato `.api`, bases de detekt y el `gradle-wrapper.jar`) y 2 se excluyen como generados.
+
+**Lo que este corte no arregla.** La mitad imperativa de la limpieza —el recorrido que borra y el sistema de ficheros que coopera o no— no la cubre ningún test unitario: un test unitario no puede crear un árbol de ficheros ni borrarlo. Y ningún escenario E2E observa el destino del directorio de control: el único `timeout(...)` de `examples/` (en `control-flow/11-workflow-control`) envuelve un `sh` que termina de inmediato, así que el plazo nunca vence y ninguna ejecución llega a fallar por expiración. Las garantías de este corte quedan declaradas por construcción y por el veredicto de sus decisiones, no presenciadas por un escenario. El remedio —una directiva nueva de `examples/run.sh` que observe el directorio de control de una ejecución fallida— pertenece al hito que es dueño del vocabulario del lanzador (H6) y no a este corte: este no introduce comportamiento nuevo, y ampliar el vocabulario de una herramienta compartida para un caso que el corte no produce sería cambiar más de lo que el corte toca.
 
 ## H3 — Vertical slice completo `core.sh`
 

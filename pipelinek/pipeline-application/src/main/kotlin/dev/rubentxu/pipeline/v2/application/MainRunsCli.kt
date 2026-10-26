@@ -232,7 +232,12 @@ Exit codes: 0 closed (or already closed), 2 refused."""
 
         return when (outcome) {
             is RecoverOutcome.RecoveredTerminal -> {
-                println("recovered run $runId as ${outcome.terminal.render()} at ${outcome.terminalAtMs}")
+                // A dry run recovered NOTHING: it said what the recovery WOULD
+                // do. Printing "recovered" for a run that is still in flight is
+                // a lie the operator can act on — they would walk away from a
+                // run that is still broken.
+                val verb = if (options.dryRun) "would recover" else "recovered"
+                println("$verb run $runId as ${outcome.terminal.render()} at ${outcome.terminalAtMs}")
                 0
             }
 
@@ -243,7 +248,7 @@ Exit codes: 0 closed (or already closed), 2 refused."""
 
             is RecoverOutcome.ReattachPending -> {
                 println(
-                    "run $runId is still in flight (deadline ${outcome.deadlineMs}); " +
+                    "run $runId is still in flight (retry by ${outcome.deadlineMs.asInstant()}); " +
                         "nothing was recovered",
                 )
                 0
@@ -287,6 +292,15 @@ Exit codes: 0 closed (or already closed), 2 refused."""
         is TerminalObservation.Cancelled -> "cancelled"
         is TerminalObservation.Other -> rawOutcome
     }
+
+    /**
+     * An instant the operator can read.
+     *
+     * Epoch millis are a wire format, not a text: "1793016030000" says
+     * nothing about WHEN to come back. The deadline is a wall-clock instant,
+     * so it is printed as one.
+     */
+    private fun Long.asInstant(): String = java.time.Instant.ofEpochMilli(this).toString()
 
     /** The refusal, in the operator's words. */
     private fun RecoverRefusal.render(runId: String): String = when (this) {

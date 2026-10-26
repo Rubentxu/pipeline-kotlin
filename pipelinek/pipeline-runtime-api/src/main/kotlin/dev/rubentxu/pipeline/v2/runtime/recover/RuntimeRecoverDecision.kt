@@ -190,31 +190,27 @@ object RuntimeRecoverDecision {
         }
 
         // Running with a live lease holder AND at least one RUNNING op in the
-        // journal → reattach. The deadline is a 30 s offset that the recover
-        // adapter may finalise at the call site.
+        // journal → reattach.
+        //
+        // The decider does not compute a TIME. A `fencingToken` is an
+        // authority counter — it says how recent a holder is, not when
+        // anything happened — and adding a window to one produced an instant
+        // in 1970. The instant belongs to the only owner of a clock, which is
+        // the adapter on the other side of this boundary.
         if (observation is RuntimeObservation.Running &&
             observation.leaseHolder != null &&
             observation.leaseHolder.alive != false
         ) {
             val anyRunning = journal.operations.any { it.outcome is OperationOutcome.Running }
             if (anyRunning) {
-                return RecoveryChoice.Reattach(
-                    attempt = observation.attempt,
-                    deadlineMs = observation.leaseHolder.fencingToken + 30_000L,
-                )
+                return RecoveryChoice.Reattach(attempt = observation.attempt)
             }
         }
 
         // Running with the lease holder marked dead (`alive == false`) → the
-        // owner is gone but no terminal yet; treat as reattach with the standard
-        // 30 s deadline. The decider is data-only and cannot call `clock.now()`,
-        // so the deadline is the run-attempt-relative `fencingToken + 30_000L`
-        // placeholder that the recover adapter finalises at the call site.
+        // owner is gone but no terminal yet; treat as reattach.
         if (observation is RuntimeObservation.Running && observation.leaseHolder?.alive == false) {
-            return RecoveryChoice.Reattach(
-                attempt = observation.attempt,
-                deadlineMs = observation.leaseHolder.fencingToken + 30_000L,
-            )
+            return RecoveryChoice.Reattach(attempt = observation.attempt)
         }
 
         // Nothing else matches → fail closed.
@@ -271,12 +267,11 @@ sealed interface RecoveryChoice {
 
     /**
      * The substrate is still reattachable and no terminal has been observed.
-     * The recover port returns [RecoverOutcome.ReattachPending] with the
-     * deadline.
+     * The recover port returns [RecoverOutcome.ReattachPending] with a
+     * wall-clock deadline it reads from its own clock.
 */
     data class Reattach(
         val attempt: AttemptId,
-        val deadlineMs: Long,
     ) : RecoveryChoice
 
     /**

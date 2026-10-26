@@ -256,7 +256,10 @@ class RuntimeRecoverDecisionTest {
 
         val reattach = choice as RecoveryChoice.Reattach
         assertEquals(AttemptId(2), reattach.attempt)
-        assertEquals(100L + 30_000L, reattach.deadlineMs, "the deadline is the lease token offset, and the adapter finalises it")
+        // The decider says WHEN TO COME BACK never: a fencing token is an
+        // authority counter, not an instant, and the deadline belongs to the
+        // adapter that owns a clock. `RuntimeRecoverPortStoreAdapterTest`
+        // pins the instant the adapter derives from its clock.
     }
 
     @Test
@@ -281,7 +284,7 @@ class RuntimeRecoverDecisionTest {
 
         val reattach = decide(running(lease = dead), proof()) as RecoveryChoice.Reattach
 
-        assertEquals(42L + 30_000L, reattach.deadlineMs)
+        assertEquals(AttemptId(1), reattach.attempt)
     }
 
     // Nothing matched ---------------------------------------------------

@@ -5,15 +5,20 @@ import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
+import dev.rubentxu.pipeline.v2.domain.durable.ParallelFrame
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
+import dev.rubentxu.pipeline.v2.events.durable.BranchExecutionResult
 import dev.rubentxu.pipeline.v2.events.durable.FencingToken
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
 import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRecord
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
+import dev.rubentxu.pipeline.v2.events.durable.ReplayCursor
+import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.events.durable.RunLeasePort
 import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
+import dev.rubentxu.pipeline.v2.events.durable.StageIndex
 import dev.rubentxu.pipeline.v2.output.OutputChannel
 import dev.rubentxu.pipeline.v2.output.OutputFrame
 import dev.rubentxu.pipeline.v2.output.OutputFrameIndex
@@ -318,6 +323,140 @@ class RuntimeRecoverPortStoreAdapterTest {
     /**
      * The adapter under trial, with the authorities it composes.
      */
+    // ---------------------------------------------------------------------
+    // The dry run: a decision without a write
+    // ---------------------------------------------------------------------
+
+    /**
+     * A dry run takes no lease and writes nothing.
+     *
+     * The lease is the one thing the recover WRITES before it decides: taking
+     * it locks the run and stamps a durable ownership record, and giving it
+     * back stamps another. A dry run asked "what would happen?" must not leave
+     * a trace, and it must not take the exclusivity either — a dry run that
+     * held the lease would make a live writer look busy.
+     */
+    @Test
+    fun `un dry-run no toma la lease ni escribe`() {
+        val lease = FakeLease()
+        val fixture = fixture(
+            ops = listOf(op("op-1", OperationStatus.SUCCEEDED)),
+            lease = lease,
+            observation = runningWithDeadWriter(),
+        )
+
+        fixture.adapter.recover(runId, RecoverOptions(dryRun = true))
+
+        assertEquals(
+            emptyList<LeaseRequest>(),
+            lease.acquisitions,
+            "the dry run took the run's lease: taking it is a write, and it also makes a live " +
+                "writer look busy for as long as it lasts",
+        )
+        assertEquals(
+            emptyList<RunOwnerId>(),
+            lease.releases,
+            "the dry run gave a lease back that it never took",
+        )
+        assertEquals(
+            1,
+            fixture.journal.size(),
+            "the dry run wrote a row to the journal: a decision that writes is not a decision",
+        )
+    }
+
+    /**
+     * A dry run answers about the RUN, not about the lease.
+     *
+     * The lease record is not the authority on "is anybody publishing this
+     * run" — the OS lock is, and the lock cannot be asked without taking it,
+     * which is the write the dry run must not do. So the dry run DECLARES the
+     * acquisition it would perform and decides on the state that acquisition
+     * would produce: the holder is us, and we are alive.
+     *
+     * Without that, a run whose writer gave the lease back cleanly — the
+     * commonest shape of a crashed run — was reported as unrecoverable, while
+     * the real recovery (which takes the lease and then sees itself as the
+     * holder) offers the re-attach. The dry run and the recovery have to
+     * answer the same question with the same answer.
+     */
+    @Test
+    fun `un dry-run de un run en vuelo sin dueno de lease ofrece reenganche`() {
+        val fixture = fixture(
+            ops = listOf(op("op-1", OperationStatus.RUNNING)),
+            observation = runningWithoutHolder(),
+        )
+
+        val outcome = fixture.adapter.recover(runId, RecoverOptions(dryRun = true))
+
+        assertInstanceOf(
+            RecoverOutcome.ReattachPending::class.java,
+            outcome,
+            "the run still has work in flight, so the dry run must offer the re-attach the " +
+                "real recovery offers; a run that is in flight is not an unrecoverable substrate",
+        )
+    }
+
+    /**
+     * The re-attach deadline is a wall-clock instant.
+     *
+     * It used to be the lease's fencing token plus thirty seconds — and a
+     * fencing token is an authority counter, not an instant. A run whose token
+     * was 100 produced a deadline of 1970-01-01T00:00:30Z, and the operator
+     * was told to come back before the epoch.
+     *
+     * The decider no longer computes a time at all: it says "re-attach" and
+     * leaves the instant to the one authority that owns a clock. So the
+     * deadline is the clock's now plus the re-attach window.
+     */
+    @Test
+    fun `el plazo de reenganche es un instante y no un token`() {
+        val now = Instant.parse("2026-10-26T12:00:00Z")
+        val fixture = fixture(
+            ops = listOf(op("op-1", OperationStatus.RUNNING)),
+            observation = runningWithDeadWriter(),
+            clock = FixedClock(now),
+        )
+
+        val outcome = fixture.adapter.recover(runId, RecoverOptions(dryRun = true))
+
+        val pending = assertInstanceOf(RecoverOutcome.ReattachPending::class.java, outcome)
+        assertEquals(
+            now.toEpochMilli() + 30_000L,
+            pending.deadlineMs,
+            "the deadline must be an instant the operator can read, taken from the clock — not a " +
+                "fencing token dressed up as one",
+        )
+    }
+
+    /**
+     * A cursor that cannot be read is a storage failure, not an absent cursor.
+     *
+     * The two are opposites and the difference decides the run's fate: an
+     * absent cursor means the run never got there, and the recover refuses for
+     * that reason; a cursor that could not be READ means the substrate is
+     * broken, and the recover must say so with the typed refusal for storage
+     * errors. Reading the failure as "there is no cursor" turned a broken
+     * substrate into a confident verdict about the run.
+     */
+    @Test
+    fun `un error de lectura del cursor se niega con su propia negativa`() {
+        val fixture = fixture(
+            ops = listOf(op("op-1", OperationStatus.SUCCEEDED)),
+            cursors = FailingCursorStore(),
+        )
+
+        val outcome = fixture.adapter.recover(runId, RecoverOptions.Default)
+
+        val failed = assertInstanceOf(RecoverOutcome.FailClosed::class.java, outcome)
+        assertInstanceOf(
+            RecoverRefusal.StorageError::class.java,
+            failed.reason,
+            "a cursor that could not be read is a storage failure; reporting it as an absent " +
+                "cursor invents a verdict about the run that nobody observed",
+        )
+    }
+
     private class Fixture(
         val adapter: RuntimeRecoverPortStoreAdapter,
         val journal: InMemoryOperationJournal,
@@ -341,14 +480,44 @@ class RuntimeRecoverPortStoreAdapterTest {
         override fun now(): Instant = Instant.parse("2026-10-21T10:00:00Z").plusSeconds(ticks++)
     }
 
+    /**
+     * A clock that never moves, for the rows whose exact instant is the claim.
+     */
+    private class FixedClock(private val instant: Instant) : Clock {
+        override fun now(): Instant = instant
+    }
+
+    /**
+     * A cursor store whose READ fails and whose writes work.
+     *
+     * The failure sits on the read because that is where the two opposites
+     * live: a cursor that is absent, and a cursor that could not be read.
+     */
+    private class FailingCursorStore : ReplayCursorStore {
+        private val inner = InMemoryReplayCursorStore(SteppingClock())
+
+        override fun load(runId: String): ReplayCursor? =
+            throw IllegalStateException("the cursor store is unavailable")
+
+        override fun advance(runId: String, opId: String, stageIndex: Int) =
+            inner.advance(runId, opId, stageIndex)
+
+        override fun advancePastParallelFrame(
+            runId: String,
+            frame: ParallelFrame,
+            branchResults: List<BranchExecutionResult>,
+            explicitMaxStageIndex: Int?,
+        ): StageIndex = inner.advancePastParallelFrame(runId, frame, branchResults, explicitMaxStageIndex)
+    }
+
     private fun fixture(
         ops: List<RerunOperation>,
         lease: RunLeasePort = FakeLease(),
         observation: RuntimeObservation = runningWithDeadWriter(),
+        clock: Clock = SteppingClock(),
+        cursors: ReplayCursorStore = InMemoryReplayCursorStore(clock),
     ): Fixture {
-        val clock = SteppingClock()
         val journal = InMemoryOperationJournal(clock)
-        val cursors = InMemoryReplayCursorStore(clock)
         val frames = QuietFrameIndex()
         ops.forEach { op -> journal.append(op, deadlineMs = null) }
         // A run that got this far has a cursor: the writer advanced it.

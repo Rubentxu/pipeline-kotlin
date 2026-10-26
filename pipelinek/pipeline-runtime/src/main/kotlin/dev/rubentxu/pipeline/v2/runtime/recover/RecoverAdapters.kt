@@ -15,6 +15,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
+import dev.rubentxu.pipeline.v2.events.durable.ReplayCursor
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.events.durable.RunLeasePort
 import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
@@ -27,9 +28,41 @@ import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.runtime.control.CancelReceipt
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
+import dev.rubentxu.pipeline.v2.runtime.inspect.LeaseHolder
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
+
+/**
+ * How long a re-attach is offered for, measured from the moment the recover
+ * answers.
+ *
+ * It is a WINDOW, not an instant: the caller may come back until then.
+ */
+private const val REATTACH_WINDOW_MS = 30_000L
+
+/**
+ * What the substrate says about a run — or the refusal that stops us from
+ * knowing.
+ *
+ * The distinction is the point. "The run has no cursor" and "the cursor could
+ * not be read" are opposites, and the recover decides the run's fate on the
+ * difference. Collapsing them into one nullable cursor turned a broken
+ * substrate into a confident verdict.
+ */
+private sealed interface RecoverEvidence {
+
+    /** The facts, all of them read. */
+    data class Ready(
+        val observation: RuntimeObservation,
+        val proof: RuntimeRecoverDecision.JournalProof,
+        val journalOperations: List<DurableOperation>,
+        val cursor: ReplayCursor?,
+    ) : RecoverEvidence
+
+    /** The substrate could not be read, and says why in a closed vocabulary. */
+    data class Refused(val reason: RecoverRefusal) : RecoverEvidence
+}
 
 /**
  * The narrow port the recover adapter uses to ask "what does this run look
@@ -97,10 +130,17 @@ class RuntimeRecoverPortStoreAdapter(
     // cycle would require re-deriving the same ordering inside extracted helpers
     // without gaining isolation. The complexity and length are intrinsic to the
     // four-stage contract.
-    @Suppress("LongMethod", "CyclomaticComplexMethod")
     override fun recover(runId: String, options: RecoverOptions): RecoverOutcome {
         val owner: RunOwnerId = RunOwnerId.of(syntheticObserverId)
             ?: error("invalid syntheticObserverId $syntheticObserverId")
+
+        // A dry run computes the decision and writes NOTHING — and the lease
+        // is not an exception to that. Taking it IS a write: it locks the run
+        // and stamps a durable ownership record. A dry run that held the lease
+        // would also make a live writer look busy for as long as it lasted.
+        if (options.dryRun) {
+            return decideWithoutWriting(runId)
+        }
 
         // 1. TAKE the run's lease. The lock behind it is the only authority on
         //    "is a live process publishing this run".
@@ -141,31 +181,83 @@ class RuntimeRecoverPortStoreAdapter(
         }
 
         try {
-        // 2. Introspect (existing).
+        // 2. Read the substrate and build the journal proof. Both are reads,
+        //    and each has exactly two answers: the facts, or a typed refusal.
+        val evidence = evidenceFor(runId)
+        if (evidence is RecoverEvidence.Refused) {
+            return RecoverOutcome.FailClosed(evidence.reason)
+        }
+        val ready = evidence as RecoverEvidence.Ready
+        val observation: RuntimeObservation = ready.observation
+
+        // 3. Decide.
+        val decision = RuntimeRecoverDecision.decideRecovery(observation, ready.proof)
+
+        // 4. Dispatch.
+        return applyDecision(runId, decision, ready, writesToSubstrate = true)
+        } finally {
+            lease.release(owner)
+        }
+    }
+
+    /**
+     * The dry run: the decision the recovery would take, without any of its
+     * writes.
+     *
+     * The dry run asks "what would happen?", so it must leave nothing behind
+     * AND it must answer what the recovery answers. Taking the lease is a
+     * write, so the dry run does not take it — but then the record it reads
+     * belongs to the LAST holder, and the recovery, which takes the lease
+     * first, reads a record that names itself.
+     *
+     * That is why the dry run DECLARES the acquisition it would perform: the
+     * holder becomes us, and we are alive. Without it, a run whose writer gave
+     * the lease back cleanly — the commonest shape of a crashed run — was
+     * reported as unrecoverable while the real recovery offered the
+     * re-attach.
+     */
+    private fun decideWithoutWriting(runId: String): RecoverOutcome {
+        val evidence = evidenceFor(runId)
+        if (evidence is RecoverEvidence.Refused) {
+            return RecoverOutcome.FailClosed(evidence.reason)
+        }
+        val ready = evidence as RecoverEvidence.Ready
+        val decision = RuntimeRecoverDecision.decideRecovery(
+            ready.observation.asIfTheLeaseWereOurs(),
+            ready.proof,
+        )
+        return applyDecision(runId, decision, ready, writesToSubstrate = false)
+    }
+
+    /**
+     * What the substrate says about a run — or the refusal that stops us from
+     * knowing.
+     *
+     * Every read below has exactly two answers: the facts, or a typed
+     * refusal. Nothing here decides anything: the decision belongs to the
+     * published decider, and it happens on the other side of this boundary.
+     */
+    private fun evidenceFor(runId: String): RecoverEvidence {
         val observationResult = try {
             introspect.inspect(runId)
         } catch (e: Exception) {
-            return RecoverOutcome.FailClosed(
-                RecoverRefusal.StorageError(e.shortDiagnostic()),
-            )
+            return RecoverEvidence.Refused(RecoverRefusal.StorageError(e.shortDiagnostic()))
         }
         val observation: RuntimeObservation = when (observationResult) {
             is RuntimeIntrospectionResult.Observation -> observationResult.observation
             is RuntimeIntrospectionResult.Refused -> {
-                return RecoverOutcome.FailClosed(
+                return RecoverEvidence.Refused(
                     RecoverRefusal.SubstrateUnavailable(observationResult.refusal.toString()),
                 )
             }
         }
 
-        // 3. Build the journal proof.
         val journalOps: List<DurableOperation> = try {
             journal.listForRun(runId)
         } catch (e: Exception) {
-            return RecoverOutcome.FailClosed(
-                RecoverRefusal.StorageError(e.shortDiagnostic()),
-            )
+            return RecoverEvidence.Refused(RecoverRefusal.StorageError(e.shortDiagnostic()))
         }
+
         // THE RUN'S TERMINAL OUTCOME, not an operation's.
         //
         // It used to be the FIRST operation row whose status is terminal, and
@@ -180,11 +272,19 @@ class RuntimeRecoverPortStoreAdapter(
         // operation is still running, the run has no terminal outcome, and the
         // proof says so instead of inventing one.
         val terminalRow: RuntimeRecoverDecision.TerminalRow? = runTerminalRowOf(runId, journalOps)
+
+        // A cursor that cannot be READ is a storage failure. Only a cursor
+        // that does not exist is an absent cursor, and the two decide the
+        // run's fate in opposite ways: an absent cursor means the run never
+        // got there, and a cursor that could not be read means nobody can say
+        // what it did. Reading the failure as "there is no cursor" turned a
+        // broken substrate into a confident verdict about the run.
         val cursor = try {
             cursors.load(runId)
-        } catch (_: Exception) {
-            null
+        } catch (e: Exception) {
+            return RecoverEvidence.Refused(RecoverRefusal.StorageError(e.shortDiagnostic()))
         }
+
         val proof = RuntimeRecoverDecision.JournalProof(
             terminalRow = terminalRow,
             replayCursor = cursor?.let {
@@ -205,198 +305,227 @@ class RuntimeRecoverPortStoreAdapter(
                 )
             },
         )
+        return RecoverEvidence.Ready(
+            observation = observation,
+            proof = proof,
+            journalOperations = journalOps,
+            cursor = cursor,
+        )
+    }
 
-        // 4. Decide.
-        val decision = RuntimeRecoverDecision.decideRecovery(observation, proof)
-
-        // 5. dryRun early-return.
-        if (options.dryRun) {
-            return when (decision) {
-                is RecoveryChoice.ReuseTerminal -> RecoverOutcome.RecoveredTerminal(
-                    attempt = AttemptId(1),
-                    terminal = decision.receipt.terminal,
-                    terminalAtMs = terminalAtMsOf(decision.receipt.terminal),
-                    report = RecoverReport.Empty,
-                )
-                is RecoveryChoice.Reattach -> RecoverOutcome.ReattachPending(
-                    attempt = decision.attempt,
-                    deadlineMs = decision.deadlineMs,
-                )
-                is RecoveryChoice.FailClosed -> RecoverOutcome.FailClosed(decision.cause)
-                is RecoveryChoice.AlreadyRecovered -> RecoverOutcome.AlreadyRecovered(
-                    attempt = decision.attempt,
-                    terminalAtMs = decision.terminalAtMs,
-                )
-            }
-        }
-
-        // 6. Dispatch.
-        return when (decision) {
-            is RecoveryChoice.AlreadyRecovered -> {
-                // Also consult the pin port in the AlreadyRecovered
-                // path. A run that was already recovered on a previous call
-                // and now has a new pin must STILL fail closed; otherwise
-                // re-attaching under a recovered-terminal contract would
-                // silently release bytes the consumer holds.
-                if (pinPort != null) {
-                    val streams = try {
-                        frames.streamsOfRun(runId)
-                    } catch (e: Exception) {
-                        return RecoverOutcome.FailClosed(
-                            RecoverRefusal.StorageError(e.shortDiagnostic()),
-                        )
-                    }
-                    for (stream in streams) {
-                        val pins = try {
-                            pinPort.pinsOf(stream)
-                        } catch (e: Exception) {
-                            return RecoverOutcome.FailClosed(
-                                RecoverRefusal.StorageError(e.shortDiagnostic()),
-                            )
-                        }
-                        if (pins.isNotEmpty()) {
-                            val firstRange = pins.first().range
-                            return RecoverOutcome.FailClosed(
-                                RecoverRefusal.PinnedBytesOutsideRecoveredRegion(
-                                    stream = stream,
-                                    range = firstRange,
-                                    pins = pins,
-                                ),
-                            )
-                        }
-                    }
-                }
+    /**
+     * The outcome of a decision.
+     *
+     * The dry run and the recovery differ in exactly ONE thing: whether the
+     * decision is applied to the substrate. Everything else — the decision
+     * itself, the deadline, the pins that block a recover — is the same code
+     * for both, so the two cannot drift apart.
+     */
+    private fun applyDecision(
+        runId: String,
+        decision: RecoveryChoice,
+        ready: RecoverEvidence.Ready,
+        writesToSubstrate: Boolean,
+    ): RecoverOutcome = when (decision) {
+        is RecoveryChoice.AlreadyRecovered -> {
+            // Also consult the pin port in the AlreadyRecovered
+            // path. A run that was already recovered on a previous call
+            // and now has a new pin must STILL fail closed; otherwise
+            // re-attaching under a recovered-terminal contract would
+            // silently release bytes the consumer holds.
+            val refusal = pinRefusal(runId)
+            if (refusal != null) {
+                RecoverOutcome.FailClosed(refusal)
+            } else {
                 RecoverOutcome.AlreadyRecovered(
                     attempt = decision.attempt,
                     terminalAtMs = decision.terminalAtMs,
                 )
             }
-            is RecoveryChoice.Reattach -> RecoverOutcome.ReattachPending(
-                attempt = decision.attempt,
-                deadlineMs = decision.deadlineMs,
-            )
-            is RecoveryChoice.FailClosed -> RecoverOutcome.FailClosed(decision.cause)
-            is RecoveryChoice.ReuseTerminal -> {
-                val receipt = decision.receipt
-
-                // Consult the pin port BEFORE we commit the recover.
-                // Any active pin on the run's streams blocks the recover
-                // with `PinnedBytesOutsideRecoveredRegion`; expired pins
-                // are not pins and the recover proceeds.
-                if (pinPort != null) {
-                    val streams = try {
-                        frames.streamsOfRun(runId)
-                    } catch (e: Exception) {
-                        return RecoverOutcome.FailClosed(
-                            RecoverRefusal.StorageError(e.shortDiagnostic()),
-                        )
-                    }
-                    for (stream in streams) {
-                        val pins = try {
-                            pinPort.pinsOf(stream)
-                        } catch (e: Exception) {
-                            return RecoverOutcome.FailClosed(
-                                RecoverRefusal.StorageError(e.shortDiagnostic()),
-                            )
-                        }
-                        if (pins.isNotEmpty()) {
-                            val firstRange = pins.first().range
-                            return RecoverOutcome.FailClosed(
-                                RecoverRefusal.PinnedBytesOutsideRecoveredRegion(
-                                    stream = stream,
-                                    range = firstRange,
-                                    pins = pins,
-                                ),
-                            )
-                        }
-                    }
-                }
-
-                // a) Append one terminal journal row (idempotent via the
-                //    journal's ON CONFLICT path).
-                val now = clock.now().toEpochMilli()
-                val outcomeName = outcomeNameOf(receipt.terminal)
-                val opId = "recovered-$outcomeName-$runId"
-                val input = OperationInput(
-                    stepId = "recover",
-                    params = mapOf(
-                        "kind" to JsonPrimitive("recovered-terminal"),
-                        "runId" to JsonPrimitive(runId),
-                        "outcome" to JsonPrimitive(outcomeName),
-                        "terminalAtMs" to JsonPrimitive(now),
-                    ),
-                    runId = runId,
-                    attempt = 1,
-                )
-                val fingerprintHex = Sha256.ofText("$opId|${json.encodeToString(input)}")
-                val recoveredStatus = recoveredStatusOf(receipt.terminal)
-                val recoveredOp = RerunOperation(
-                    id = opId,
-                    fingerprint = Fingerprint(fingerprintHex),
-                    input = input,
-                    output = null,
-                    status = recoveredStatus,
-                    attempt = 1,
-                )
-                val rowsBefore = journalOps.size
-                try {
-                    journal.append(recoveredOp)
-                } catch (e: Exception) {
-                    return RecoverOutcome.FailClosed(
-                        RecoverRefusal.StorageError(e.shortDiagnostic()),
-                    )
-                }
-                val rowsAfter = try {
-                    journal.listForRun(runId).size
-                } catch (_: Exception) {
-                    rowsBefore
-                }
-                val journalRowsCommitted = maxOf(0, rowsAfter - rowsBefore)
-
-                // b) Advance cursor (idempotent CAS).
-                try {
-                    cursors.advance(runId, opId, stageIndex = 0)
-                } catch (_: Exception) {
-                    // Cursor advance is non-blocking; failure surfaces in the
-                    // report rather than as a refusal — the terminal fact is
-                    // already in the journal.
-                }
-
-                // c) Reconcile output store (existing, idempotent).
-                val recoveryReport = try {
-                    outputRecovery.recover()
-                } catch (e: Exception) {
-                    return RecoverOutcome.FailClosed(
-                        RecoverRefusal.StorageError(e.shortDiagnostic()),
-                    )
-                }
-                val framesAppended = try {
-                    frames.recoverUnframedBytes().size
-                } catch (e: Exception) {
-                    return RecoverOutcome.FailClosed(
-                        RecoverRefusal.StorageError(e.shortDiagnostic()),
-                    )
-                }
-
-                val report = RecoverReport(
-                    journalRowsCommitted = journalRowsCommitted,
-                    framesAppended = framesAppended,
-                    streamsReconciled = recoveryReport.streamsReconciled,
-                    cursorAdvanced = cursor != null,
-                    replayDecisions = receipt.perOperationDecisions.map { it.replayDecision },
-                )
-
-                RecoverOutcome.RecoveredTerminal(
+        }
+        is RecoveryChoice.Reattach -> RecoverOutcome.ReattachPending(
+            attempt = decision.attempt,
+            deadlineMs = reattachDeadlineMs(),
+        )
+        is RecoveryChoice.FailClosed -> RecoverOutcome.FailClosed(decision.cause)
+        is RecoveryChoice.ReuseTerminal -> {
+            // A pin blocks the recover exactly as it blocks the recovery that
+            // would follow it, so the dry run reads it too.
+            val refusal = pinRefusal(runId)
+            when {
+                refusal != null -> RecoverOutcome.FailClosed(refusal)
+                writesToSubstrate -> dispatchReuseTerminal(runId, decision.receipt, ready)
+                else -> RecoverOutcome.RecoveredTerminal(
                     attempt = AttemptId(1),
-                    terminal = receipt.terminal,
-                    terminalAtMs = terminalAtMsOf(receipt.terminal),
-                    report = report,
+                    terminal = decision.receipt.terminal,
+                    terminalAtMs = terminalAtMsOf(decision.receipt.terminal),
+                    report = RecoverReport.Empty,
                 )
             }
-        }        } finally {
-            lease.release(owner)
         }
     }
+
+    /**
+     * The refusal a pin on this run's streams creates, or `null` when nothing
+     * is pinned.
+     */
+    private fun pinRefusal(runId: String): RecoverRefusal? {
+        val port = pinPort ?: return null
+        val streams = try {
+            frames.streamsOfRun(runId)
+        } catch (e: Exception) {
+            return RecoverRefusal.StorageError(e.shortDiagnostic())
+        }
+        for (stream in streams) {
+            val pins = try {
+                port.pinsOf(stream)
+            } catch (e: Exception) {
+                return RecoverRefusal.StorageError(e.shortDiagnostic())
+            }
+            if (pins.isNotEmpty()) {
+                return RecoverRefusal.PinnedBytesOutsideRecoveredRegion(
+                    stream = stream,
+                    range = pins.first().range,
+                    pins = pins,
+                )
+            }
+        }
+        return null
+    }
+
+    /**
+     * Apply a terminal receipt to the substrate: the journal row, the cursor
+     * and the output plane. This is the only part of a recover that WRITES.
+     */
+    private fun dispatchReuseTerminal(
+        runId: String,
+        receipt: TerminalReceipt,
+        ready: RecoverEvidence.Ready,
+    ): RecoverOutcome {
+        val cursor = ready.cursor
+        val journalOps = ready.journalOperations
+
+        // a) Append one terminal journal row (idempotent via the
+        //    journal's ON CONFLICT path).
+        val now = clock.now().toEpochMilli()
+        val outcomeName = outcomeNameOf(receipt.terminal)
+        val opId = "recovered-$outcomeName-$runId"
+        val input = OperationInput(
+            stepId = "recover",
+            params = mapOf(
+                "kind" to JsonPrimitive("recovered-terminal"),
+                "runId" to JsonPrimitive(runId),
+                "outcome" to JsonPrimitive(outcomeName),
+                "terminalAtMs" to JsonPrimitive(now),
+            ),
+            runId = runId,
+            attempt = 1,
+        )
+        val fingerprintHex = Sha256.ofText("$opId|${json.encodeToString(input)}")
+        val recoveredStatus = recoveredStatusOf(receipt.terminal)
+        val recoveredOp = RerunOperation(
+            id = opId,
+            fingerprint = Fingerprint(fingerprintHex),
+            input = input,
+            output = null,
+            status = recoveredStatus,
+            attempt = 1,
+        )
+        val rowsBefore = journalOps.size
+        try {
+            journal.append(recoveredOp)
+        } catch (e: Exception) {
+            return RecoverOutcome.FailClosed(
+                RecoverRefusal.StorageError(e.shortDiagnostic()),
+            )
+        }
+        val rowsAfter = try {
+            journal.listForRun(runId).size
+        } catch (_: Exception) {
+            rowsBefore
+        }
+        val journalRowsCommitted = maxOf(0, rowsAfter - rowsBefore)
+
+        // b) Advance cursor (idempotent CAS).
+        try {
+            cursors.advance(runId, opId, stageIndex = 0)
+        } catch (_: Exception) {
+            // Cursor advance is non-blocking; failure surfaces in the
+            // report rather than as a refusal — the terminal fact is
+            // already in the journal.
+        }
+
+        // c) Reconcile output store (existing, idempotent).
+        val recoveryReport = try {
+            outputRecovery.recover()
+        } catch (e: Exception) {
+            return RecoverOutcome.FailClosed(
+                RecoverRefusal.StorageError(e.shortDiagnostic()),
+            )
+        }
+        val framesAppended = try {
+            frames.recoverUnframedBytes().size
+        } catch (e: Exception) {
+            return RecoverOutcome.FailClosed(
+                RecoverRefusal.StorageError(e.shortDiagnostic()),
+            )
+        }
+
+        val report = RecoverReport(
+            journalRowsCommitted = journalRowsCommitted,
+            framesAppended = framesAppended,
+            streamsReconciled = recoveryReport.streamsReconciled,
+            cursorAdvanced = cursor != null,
+            replayDecisions = receipt.perOperationDecisions.map { it.replayDecision },
+        )
+
+        return RecoverOutcome.RecoveredTerminal(
+            attempt = AttemptId(1),
+            terminal = receipt.terminal,
+            terminalAtMs = terminalAtMsOf(receipt.terminal),
+            report = report,
+        )
+    }
+
+    /**
+     * The instant a re-attach is due.
+     *
+     * A fencing token is an authority counter, not an instant: it says HOW
+     * RECENT a holder is, not WHEN anything happened. Adding thirty seconds
+     * to one produced an instant in 1970, and the operator was told to come
+     * back before the epoch. The only owner of a clock is this adapter, so
+     * the only place a real instant can come from is here.
+     */
+    private fun reattachDeadlineMs(): Long = clock.now().toEpochMilli() + REATTACH_WINDOW_MS
+
+    /**
+     * The observation a dry run must decide on.
+     *
+     * The recovery TAKES the lease before it reads the substrate, so the
+     * record it reads names itself, alive. A dry run does not take the lease
+     * — taking it is a write — so it reads whatever the last holder left
+     * behind: a crashed writer's record, which still says "alive", or no
+     * holder at all.
+     *
+     * Left as observed, the dry run would refuse or re-attach differently
+     * from the recovery it simulates. Replacing the holder with "us, alive"
+     * is what makes the two coherent.
+     *
+     * The one divergence this cannot remove: another LIVE process holding the
+     * lock. The recovery would answer `LeaseHeldByAnother`, and asking the
+     * lock means taking it, which is the write the dry run must not do.
+     */
+    private fun RuntimeObservation.asIfTheLeaseWereOurs(): RuntimeObservation =
+        when (this) {
+            is RuntimeObservation.Running -> copy(
+                leaseHolder = LeaseHolder(
+                    ownerId = syntheticObserverId,
+                    fencingToken = fencingToken,
+                    alive = true,
+                ),
+            )
+            else -> this
+        }
 
     /**
      * The run's own terminal row: the outcome the JOURNAL observes for the

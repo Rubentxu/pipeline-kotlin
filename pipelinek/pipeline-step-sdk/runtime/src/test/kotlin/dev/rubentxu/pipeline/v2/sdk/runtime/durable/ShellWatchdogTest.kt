@@ -1,22 +1,20 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
-import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import java.nio.file.Path
 
 /**
  * The watch's rules about time and termination are decisions over facts, and the decisions are
  * where this can be wrong without anybody noticing.
  *
  * **The guarantee.** An execution that ran out of time is never reported as a success, and the
- * evidence of the expiry is never erased. A durable `sh` step with a deadline that passes returns
- * a TIMEOUT terminal, not `Exited(0)`, even when the killed script's surviving shell published
- * `result.txt=0` right before the SIGKILL; and the cleanup that follows reads the expiry, not
- * that exit code, so the control directory — and with it the `timeout.flag` the reconciler reads
- * to tell TIMED_OUT from LOST — survives.
+ * evidence of the expiry is never erased. The watch publishes the mark of the expiry even when the
+ * killed script's surviving shell published `result.txt=0` right before the SIGKILL; and the
+ * cleanup that follows reads the expiry, not that exit code, so the control directory — and with
+ * it the `timeout.flag` the reconciler reads to tell TIMED_OUT from LOST — survives. The terminal
+ * the expiry becomes is [ShellTerminalDecision]'s, and is checked there.
  *
  * **The observable capacity it serves.** A reader of a durable run can tell an execution that
  * expired from one that finished, and a run that expired can be reconciled afterwards instead of
@@ -38,18 +36,6 @@ import java.nio.file.Path
  * succeeds.
  */
 class ShellWatchdogTest {
-
-    private val controlDir: Path = Path.of("/tmp/pipelinek-shell-watchdog/op-42")
-
-    private fun watch(
-        timeoutMs: Long = 1_000L,
-        completion: DurableShellTimeoutCompletion = DurableShellTimeoutCompletion.WATCHDOG_ATTEMPT,
-    ): ShellWatchdog = ShellWatchdog(
-        controlDir = controlDir,
-        opId = "op-42",
-        timeoutMs = timeoutMs,
-        completion = completion,
-    )
 
     @Test
     fun `an execution without a deadline has no watch`() {
@@ -204,19 +190,4 @@ class ShellWatchdogTest {
         )
     }
 
-    @Test
-    fun `the terminal of an expired execution is a timeout`() {
-        val terminal = watch().timeoutTerminal()
-
-        assertEquals(
-            InterruptionKind.TIMEOUT,
-            terminal.interruption.kind,
-            "the terminal of an expired execution is not a timeout",
-        )
-        assertEquals(
-            "op-42",
-            terminal.interruption.operationId,
-            "the terminal of an expired execution does not name its operation",
-        )
-    }
 }

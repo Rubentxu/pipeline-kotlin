@@ -1,6 +1,6 @@
 # Roadmap de refactorización y correcciones — PipelineKotlin
 
-Base: `main` · commit `bd5edb8de` · v0.91.0
+Base: `main` · commit `bd5edb8de` (medido) · publicación `1ac1afe7` · v0.91.0
 
 La propuesta es reorganizar `pipeline-application` y simplificar `pipeline-step-sdk` mediante vertical slices, separación de responsabilidades y reducción de connascencia, aprovechando las abstracciones existentes.
 
@@ -109,6 +109,21 @@ PASS  sha=bd5edb8de33a89e6b9f56d80c5ea09bc3c1acfe4  elapsed=170s  budget=900s  t
 - 183 informes JUnit reescritos por esta ejecución, 1339 tests, 0 fallos, 0 omitidos.
 - 62 de 62 escenarios E2E ejecutados y en verde, 588 comprobaciones sobre 112 ejecuciones.
 - 170 s de reloj de pared frente al presupuesto de 900 s.
+
+### Publicación de `v0.91.0-rc1` — verificada sobre el remoto
+
+La candidata se publicó desde `1ac1afe7` y la publicación se comprobó sobre el remoto, no sobre el árbol local:
+
+```
+release-pipelinek: PUBLISHED v0.91.0-rc1 with candidate_id sha256:b847f81d80c85d431fb552290dc2dc3926106d31c64d317b3333dfae2f7732b7
+```
+
+- El tag remoto es **anotado**: `git ls-remote --tags origin v0.91.0-rc1` devuelve el objeto de tag `c00cbbc6` y, con él, el peel `refs/tags/v0.91.0-rc1^{}` al commit `1ac1afe7`. Un tag ligero no tendría esa segunda línea.
+- La firma **verifica** contra la clave declarada `9600F7D49B9C966E3BB04E6A17E44CA7C5288281` (uid `test@example.com`), comprobada sobre el objeto descargado del remoto y no sólo sobre la copia local.
+- La prerelease de GitHub existe (`draft=false`, `prerelease=true`) con 7 assets. Los seis digests de `SHA256SUMS` coinciden con los assets descargados, y el digest de `pipelinek-0.91.0.zip` es exactamente el `candidate_id` anunciado.
+- `git-head.txt` y `manifest.json` nombran el commit `1ac1afe7`, que es el mismo commit al que apunta el tag.
+
+No queda ninguna publicación pendiente de H1.
 
 ## H2 — Refactor del núcleo durable del SDK
 

@@ -28,7 +28,6 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import dev.rubentxu.pipeline.v2.output.PruneAuthorisation
 import dev.rubentxu.pipeline.v2.output.PruneRefusal
 import java.io.IOException
-import java.io.InputStream
 import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -469,9 +468,11 @@ class SegmentOutputStore(
      * [SegmentFrameIndex.declareStream] refuses an id whose last segment is not a channel token, by
      * design: streams written before the channels were separated carry no channel and must not be
      * given a guessed one. But they are still written:
-     * `ShExecution.ingestTranscriptIntoOutputPlane` opens `OutputPlaneProvider.streamId(runId, opId)`
-     * — the `.../transcript` shape — on every `sh` step. Selecting by declaration alone made that
-     * production transcript permanently unprunable, which is the failure a retention port exists to
+     * `ShExecution.ingestTranscriptIntoOutputPlane` opened `OutputPlaneProvider.streamId(runId, opId)`
+     * — the `.../transcript` shape — on every `sh` step. That producer is gone: the durable route
+     * writes channel-addressed streams (`OutputPlaneProvider.streamsOf`), and the `.../transcript`
+     * shape is no longer produced by anything. Selecting by declaration alone made that production
+     * transcript permanently unprunable, which is the failure a retention port exists to
      * prevent, and it fails silently: nothing is deleted and no caller is told.
      * So ownership has three answers, not two:
      * ```text
@@ -1019,40 +1020,6 @@ class SegmentOutputStore(
                 Reserve(streamId, layout, minBytes)
             }
         }
-
-        /**
-         * Reserve → write → commit, once per window, until the source is exhausted.
-         * Each window is a complete cycle rather than one growing reservation, so the committed
-         * offset advances as the transcript is produced. A reader tailing with a cursor therefore
-         * sees bytes appear during execution instead of only at the end — which is the whole point
-         * of a resumable output cursor, and is why this is not one `reserve(hugeNumber)` call.
-*/
-        override fun appendFrom(source: InputStream, windowBytes: Int): Long {
-            require(windowBytes > 0) { "windowBytes must be positive, got $windowBytes" }
-            var committed = 0L
-            source.use { input ->
-                val window = ByteArray(windowBytes)
-                while (true) {
-                    // Fill the window before reserving, so an empty trailing read does not leave an
-                    // empty reservation behind for recovery to release.
-                    var read = 0
-                    while (read < window.size) {
-                        val n = input.read(window, read, window.size - read)
-                        if (n < 0) break
-                        read += n
-                    }
-                    if (read == 0) break
-                    val reservation = reserve(windowBytes)
-                    // No try/catch around this: if the write or the commit fails, the reservation
-                    // is already durable and is deliberately left on disk for recover to release.
-                    // Swallowing it here would strand it; catching it just to rethrow would be a
-                    // no-op with a comment attached.
-                    reservation.write(window.copyOf(read))
-                    committed = reservation.commit()
-                }
-            }
-            return committed
-        }
     }
 
     private inner class Reserve(
@@ -1147,24 +1114,6 @@ class SegmentOutputStore(
             )
             position += bytes.size
             writtenInternal += bytes.size
-        }
-
-        /**
-         * Copy [source] in bounded windows so an unbounded producer is never materialised.
-         * The bytes arriving here are expected to be **already redacted**: redaction is a write-side
-         * obligation, and a store that redacted on read would have already persisted the secret.
-*/
-        override fun copyFrom(source: InputStream) {
-            ensureOpen()
-            val headroom = (limitInternal - position).toInt()
-            val window = ByteArray(minOf(DEFAULT_RESERVATION_BYTES.toInt(), headroom.coerceAtLeast(1)))
-            source.use { input ->
-                while (true) {
-                    val read = input.read(window)
-                    if (read <= 0) break
-                    write(window.copyOf(read))
-                }
-            }
         }
 
         override fun commit(): Long {

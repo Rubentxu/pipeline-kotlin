@@ -105,7 +105,7 @@ interface OutputFollowHandle : AutoCloseable {
 /**
  * Knobs for [OutputFollower.open]. The defaults match the existing
  * in-tree `pipeline observe` follow loop: 64 KiB pages
- * (`OutputStreamHandle.DEFAULT_APPEND_WINDOW`), 25 ms poll interval
+ * (`pageMaxBytes`), 25 ms poll interval
  * (`FOLLOW_IDLE_MILLIS`), 256 records per poll (`ObservationReplayLimit.DEFAULT`).
 */
 data class OutputFollowOptions(

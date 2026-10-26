@@ -13,10 +13,9 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputSink
  * [ProcessOutputSink] and nothing more. This class is where the application says *which* durable
  * authority the bytes belong to. The dependency points inward, from the adapter to the port.
  * ## Why one chunk is one reservation
- * `OutputStreamHandle.appendFrom` is the pull-shaped operation for an unbounded producer: it takes
- * as many reservations as it needs and returns the new committed offset. This is the push-shaped
- * equivalent, for a producer that already has its own windowing — the redaction pump. Each chunk
- * is a complete `reserve -> write -> commit` cycle, so a reader tailing the stream sees the
+ * This is the push-shaped way to write an unbounded producer, for a producer that already has its
+ * own windowing — the redaction pump. Each chunk is a complete `reserve -> write -> commit` cycle,
+ * so a reader tailing the stream sees the
  * transcript as it is produced rather than at the end of the step. That property is the whole
  * reason this class exists.
  * ## Redaction is not this class's job, and must never become it

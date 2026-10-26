@@ -4,14 +4,13 @@ import dev.rubentxu.pipeline.v2.output.OutputAdoption
 import dev.rubentxu.pipeline.v2.output.OutputReadPort
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
-import java.io.InputStream
 
 // The write side and the recovery entry point of the Output Plane.
 // The read side lives in `:pipeline-output` ([OutputReadPort]) and is the whole of the published
 // plane. This file is not published: a consumer that can append, commit, recover or prune is a
-// Second potential authority over the bytes, which is exactly what removed. Fabric reads
-// committed bytes; the runtime owns writing them. The split is enforced by the module graph, and
-// the package boundary (`output` published / `output.store` not) is what the fitness checks.
+// Second potential authority over the bytes, which is exactly what this split removes. Fabric
+// reads committed bytes; the runtime owns writing them. The split is enforced by the module graph,
+// and the package boundary (`output` published / `output.store` not) is what the fitness checks.
 
 /**
  * The **append** side of the Output Plane: a writer takes a durable reservation, writes bytes into
@@ -24,13 +23,13 @@ import java.io.InputStream
  * the caller is the reservation itself. A writer that dies between reserve and commit leaves a range
  * that no reader can see and that recovery releases — it does not leave a hole and it does not leave
  * bytes stranded behind a commit record that never landed.
- * This is the obligation set of [ ]; it is a conjunction, so a writer that cannot honour all
- * Three (reserve-before-write, resume-from-committed, recover-before-serve) is not
- * conformant, and [OutputAdoption] is what makes that checkable.
+ * This is the obligation set of [OutputAdoptionObligation]; it is a conjunction, so a writer that
+ * cannot honour all three (reserve-before-write, resume-from-committed, recover-before-serve) is
+ * not conformant, and [OutputAdoption] is what makes that checkable.
  * ## Single authority
  * Everything a reader will ever see passes through here. No event, no report and no second renderer
- * Re-fabricates these bytes. [ ]
- * @see,
+ * re-fabricates these bytes. [OutputAppendPort]
+ * @see OutputStreamHandle
 */
 interface OutputAppendPort {
 
@@ -60,23 +59,7 @@ interface OutputStreamHandle {
      * that must not exceed its own bound has to check [OutputReservation.limit], not [minBytes].
 */
     fun reserve(minBytes: Int): OutputReservation
-
-    /**
-     * Appends everything [source] produces, taking as many reservations as it needs, and returns the
-     * stream's new committed offset.
-     * This is the operation a process transcript actually needs, because its length is not known in
-     * advance: a single reservation is bounded, so an unbounded producer cannot be served by one.
-     * Each iteration is a full reserve → write → commit cycle, which means a reader tailing the
-     * stream sees the transcript in order as it is produced rather than only at the end.
-     * The bytes arriving here are expected to be **already redacted**. Redaction is a write-side
-     * obligation; a store that redacted on read would have already persisted the secret.
-     * @param windowBytes bytes to take per reservation; bounds the resident memory
-*/
-    fun appendFrom(source: InputStream, windowBytes: Int = DEFAULT_APPEND_WINDOW): Long
 }
-
-/** Default bytes taken per reservation by [OutputStreamHandle.appendFrom]. */
-const val DEFAULT_APPEND_WINDOW: Int = 64 * 1024
 
 /**
  * A durable, not-yet-visible byte range inside a stream.
@@ -97,17 +80,6 @@ interface OutputReservation {
      *   not a hint: exceeding it would make the committed extent ambiguous.
 */
     fun write(bytes: ByteArray)
-
-    /**
-     * Copies [source] into this reservation in bounded windows, so an unbounded producer never has
-     * to be materialised.
-     * Refuses with [OutputReservationExceeded] if the source has more bytes than this reservation
-     * can hold. Use [OutputStreamHandle.appendFrom] for a producer of unknown length — this method
-     * is the single-reservation operation underneath it, and truncating silently would lose bytes.
-     * The bytes are expected to be already redacted: redaction is a write-side obligation, and a
-     * store that redacted on read would have already persisted the secret.
-*/
-    fun copyFrom(source: InputStream)
 
     /**
      * Publishes everything written so far and returns the stream's new committed offset.
@@ -139,7 +111,7 @@ class OutputReservationExceeded(
  * unreconciled state. Recovery is therefore an explicit call that must complete before any
  * [OutputReadPort] call is honoured, and a store that has not completed it refuses reads with
  * [OutputRefusal.RecoveryNotCompleted] rather than guessing.
- * @see
+ * @see OutputAdoption
 */
 interface OutputRecoveryPort {
 

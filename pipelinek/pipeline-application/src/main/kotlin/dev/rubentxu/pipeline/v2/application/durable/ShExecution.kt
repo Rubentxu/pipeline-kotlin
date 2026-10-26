@@ -33,7 +33,6 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShConfig
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import dev.rubentxu.pipeline.v2.output.store.SealOutcome
-import java.io.InputStream
 import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
@@ -79,57 +78,6 @@ object ShExecution {
     ): String = if (secretPatternRegistry == null) content else {
         dev.rubentxu.pipeline.v2.credentials.api.TranscriptRedactor(secretPatternRegistry)
             .redactStream(content.byteInputStream())
-    }
-
-    /**
-     * Stream a process transcript into the Output Plane, redacting on the way in.
-     * RESTORED VERBATIM FROM `origin/main` during the reconciliation. It is NOT new code:
-     * `ShExecution.kt` auto-merged, and the automatic merge silently dropped this function while
-     * `main`'s own tests still called it. A clean
-     * textual merge is not a safe merge, and the compile is what caught it.
-     * **This is not on the production path on this branch.** `main` reaches this function from
-     * `invokeShell`; this branch reaches the Output Plane through the composed sink instead —
-     * `RedactingOutputIngress` handed to the executor as `channelSinks`, which drains the redacted
-     * stream in bounded windows and commits each chunk. That is the successor to the pull-shaped
-     * `appendFrom` below, and it is what.3 and the live-window work delivered
-     * MEASURED (H3, third cut): it has NO caller at all — neither production nor test; the only
-     * mention outside this file is a prose reference in `SegmentOutputStore.kt:472`. So the
-     * characterisation test this KDoc used to name as the reason for keeping it does NOT exist,
-     * and the stated reason was void. It is kept HERE ONLY because this cut's criterion is the
-     * control directory root, and this function's root was already non-nullable: removing it is
-     * a separate decision, recorded as a residual rather than taken silently.
-     * This replaces the pair of emitters that used to exist here, and the replacement is not
-     * a refactor: those emitters were the **second** rendering of the same bytes. The wrapper
-     * writes `console.log`, and then the JVM re-rendered its content into an
-     * `EchoOutputCaptured` event built from in-memory buffers. Two sources, one redactor in two
-     * overloads, and no property saying they agreed — so a parity test built on this path would
-     * have compared two implementations rather than one writer against what it wrote. The event is
-     * Gone; the store is the authority. See
-     * Redaction happens **here**, on the way to persistence, not on the way out. A store that
-     * redacted at read time would already have written the secret to disk, and the byte count a
-     * reader sees would depend on how many secrets happened to be in the stream.
-     * Streaming, never materialised: the producer is consumed in bounded windows by
-     * [dev.rubentxu.pipeline.v2.output.store.OutputStreamHandle.appendFrom], so the resident set is one
-     * window plus redactor lookahead regardless of transcript size.
-*/
-    internal fun ingestTranscriptIntoOutputPlane(
-        controlDirRoot: Path,
-        runId: String,
-        opId: String,
-        source: () -> InputStream?,
-        secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
-    ) {
-        val input = source() ?: return
-        val redacted = if (secretPatternRegistry != null) {
-            // Each StreamingRedactor carries independent boundary state, so a secret split across
-            // window edges is still scrubbed.
-            dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor(secretPatternRegistry).wrap(input)
-        } else {
-            input
-        }
-        val store = OutputPlaneProvider.storeFor(controlDirRoot)
-        store.open(OutputPlaneProvider.streamId(runId, opId))
-            .appendFrom(redacted)
     }
 
     /**
@@ -408,19 +356,6 @@ object ShExecution {
     }
 
     /**
-     * No-op event sink for shell execution where events are not persisted.
-*/
-    private object NoOpEventSink : EventSink {
-        override fun append(event: dev.rubentxu.pipeline.v2.events.DomainEvent) {
-            // no-op
-        }
-
-        override fun eventsFor(runId: String): Sequence<dev.rubentxu.pipeline.v2.events.DomainEvent> {
-            return emptySequence()
-        }
-    }
-
-    /**
      * Executes a shell step via the generic process task runtime, on a host
      * where the durable-shell substrate cannot run.
      *
@@ -460,8 +395,8 @@ object ShExecution {
         secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
     ): ShellInvocationResult {
         // The caller's budget must reach the runtime. `0` means "no
-        // Timeout" on BOTH routes (, DurableShellExecutor: `timeoutMs > 0`
-        // arms the watchdog); a negative budget is not a mode this route can
+        // Timeout" on BOTH routes (the durable route, DurableShellExecutor:
+        // `timeoutMs > 0` arms the watchdog); a negative budget is not a mode this route can
         // honour, so it is refused explicitly instead of being silently dropped.
         val effectiveTimeoutMs = when {
             timeoutMs == null || timeoutMs == 0L -> null
@@ -535,8 +470,13 @@ object ShExecution {
         }
 
         // The fallback, and the one place where a console event is still correct
-        // This path runs when there is no controlDirRoot at all — no filesystem privileges, or a
-        // Non-Linux host — so there is no Output Plane to write into. The Output Plane forbids a SECOND
+        // This path runs when the durable-shell substrate cannot run — it requires a Linux host —
+        // and NOT because the control directory root is missing: the root exists here exactly as it
+        // does on the durable route, and the runtime's own control directory is a per-operation
+        // subdirectory of it. What this route does NOT have is an Output Plane sink: the durable
+        // route hands the redactor to the executor, which streams the transcript into the store
+        // while the step runs, whereas here the runtime's chunks are accumulated and published as
+        // one event. The Output Plane forbids a SECOND
         // authority over the same bytes; it does not require one to exist where none can. Here the
         // event is the only rendering, so it is not a second anything.
         // The law is therefore per-execution, not per-type: "for any

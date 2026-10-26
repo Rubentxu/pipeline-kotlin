@@ -91,21 +91,15 @@ data class DurableShellResult(
  * ## State Machine
  * LAUNCHING → RUNNING → COMPLETE | LOST | LAUNCH_FAILED | TIMED_OUT
  * ## Control Directory Layout
- * ```
- * controlDir/
- *   script.sh              # User script verbatim
- *   script.sh.copy         # Copy for
- *   wrapper.sh             # Generated; embeds real cookie value (never in argv)
- *   jenkins-log.txt        # stdout+stderr
- *   result.txt             # Exit code (atomic write)
- *   result.txt.tmp         # Temp for atomic write
- * Output.txt # Reserved for returnStdout (: never read)
- *   .cookie                # PID file; existence = process alive
- * ```
+ * The names and paths of the control directory belong to
+ * [ShellProtocolLayout]. They are not spelled out here on purpose: a layout
+ * written twice — once in prose and once in code — is a layout that can
+ * disagree with the code, and the disagreement is silent.
  *  Invariant (CRITICAL)
- * User script content NEVER appears in argv. This is verified by the
- * self-test [verifyScriptNotInArgv]. If the script somehow appears in argv,
- * the executor will detect it and refuse to launch.
+ * User script content NEVER appears in argv. This holds by construction: the
+ * script is written to its own file, the wrapper refers to that file by path
+ * only and never embeds its content, and the launch's argv is
+ * `[setsid, bash, wrapper.sh]`.
  * ## Jenkins-Faithful Cookie Kill (DEVIATION from old nohup pattern)
  * The kill mechanism mirrors Jenkins (BourneShellScript.java + FileMonitoringTask.stop
  * + ProcessTree):
@@ -159,21 +153,6 @@ class DurableShellExecutor {
     }
 
     /**
-     * The files a durable shell materialises in the control directory before the child can run.
-     * A holder rather than a pile of locals so that adding a file is a change here rather than a
-     * reason for [launch] to keep growing: the redirect and cookie-scan logic that follows is the
-     * part that has to stay readable, because that is where the descriptor decisions live.
-*/
-    private data class ShellFiles(
-        val scriptFile: Path,
-        val wrapperFile: Path,
-        val logFile: Path,
-        val resultFile: Path,
-        val resultTmp: Path,
-        val cookieFile: Path,
-    )
-
-    /**
      * The rendezvous between the child process and the
      * ingest agent, plus the agent's own [Process] handle once launched.
      * The child writes to [stdoutFifo] and [stderrFifo]; the agent opens
@@ -203,53 +182,49 @@ class DurableShellExecutor {
     )
 
     /**
-     * Writes `script.sh`, its Jenkins-70874 copy, and `wrapper.sh`, and makes both executable.
-     * The copy exists because Jenkins itself keeps one, so dropping it would be a compatibility
-     * difference nobody asked for; the wrapper embeds only the *cookie*, never the script text,
-     * which is what keeps the user's script out of argv.
+     * Writes the user's script, its Jenkins-70874 copy, and the wrapper, and makes the script and
+     * the wrapper executable. The copy exists because Jenkins itself keeps one, so dropping it
+     * would be a compatibility difference nobody asked for; the wrapper embeds only the *cookie*,
+     * never the script text, which is what keeps the user's script out of argv.
+     *
+     * The paths are not spelled here: they come from [ShellProtocolLayout], which is the single
+     * authority for the protocol's names, and the same layout is handed to the wrapper builder so
+     * the file that is written and the file the wrapper refers to cannot drift apart.
 */
     private fun materialiseShellFiles(
         controlDir: Path,
         scriptContent: String,
-        config: DurableShConfig,
+        heartbeatCheckInterval: Long,
         captureStdout: Boolean,
         opId: String,
         pumpedThroughJvm: Boolean,
         pumpedViaAgent: Boolean = false,
-    ): ShellFiles {
+    ): ShellProtocolLayout {
         val executable = java.util.EnumSet.of(
             java.nio.file.attribute.PosixFilePermission.OWNER_READ,
             java.nio.file.attribute.PosixFilePermission.OWNER_WRITE,
             java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE,
         )
-        val scriptFile = controlDir.resolve("script.sh")
-        Files.writeString(scriptFile, scriptContent)
-        Files.writeString(controlDir.resolve("script.sh.copy"), scriptContent) // workaround
-        Files.setPosixFilePermissions(scriptFile, executable)
+        val protocol = ShellProtocolLayout(controlDir)
+        Files.writeString(protocol.scriptFile, scriptContent)
+        Files.writeString(protocol.scriptCopyFile, scriptContent) // workaround
+        Files.setPosixFilePermissions(protocol.scriptFile, executable)
 
-        val wrapperFile = controlDir.resolve("wrapper.sh")
         Files.writeString(
-            wrapperFile,
+            protocol.wrapperFile,
             buildWrapperContent(
-                controlDir = controlDir,
-                scriptPath = scriptFile,
-                config = config,
+                protocol = protocol,
+                scriptPath = protocol.scriptFile,
+                heartbeatCheckInterval = heartbeatCheckInterval,
                 captureStdout = captureStdout,
                 opId = opId,
                 transcriptPipedThroughJvm = pumpedThroughJvm,
                 pumpedViaAgent = pumpedViaAgent,
             ),
         )
-        Files.setPosixFilePermissions(wrapperFile, executable)
+        Files.setPosixFilePermissions(protocol.wrapperFile, executable)
 
-        return ShellFiles(
-            scriptFile = scriptFile,
-            wrapperFile = wrapperFile,
-            logFile = DurableShellFiles.consoleLog(controlDir),
-            resultFile = controlDir.resolve("result.txt"),
-            resultTmp = controlDir.resolve("result.txt.tmp"),
-            cookieFile = controlDir.resolve(".cookie"),
-        )
+        return protocol
     }
 
     /**
@@ -269,8 +244,8 @@ class DurableShellExecutor {
      * regular file or symlink at the path is rejected rather than
      * silently accepted as a spool.
 */
-    private fun materialiseFifos(controlDir: Path): Path {
-        val fifoDir = controlDir.resolve("fifos")
+    private fun materialiseFifos(protocol: ShellProtocolLayout): Path {
+        val fifoDir = protocol.fifoDir
         Files.createDirectories(fifoDir)
         // Lock down the dir too — only the owner may
         // traverse it, so even if the FIFO perms were wider, the path
@@ -283,13 +258,17 @@ class DurableShellExecutor {
                 java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE,
             ),
         )
-        val mkfifo = ProcessBuilder("mkfifo", "stdout.fifo", "stderr.fifo")
+        val mkfifo = ProcessBuilder(
+            "mkfifo",
+            ShellProtocolLayout.STDOUT_FIFO,
+            ShellProtocolLayout.STDERR_FIFO,
+        )
             .directory(fifoDir.toFile())
             .redirectErrorStream(true)
             .start()
         val exit = mkfifo.waitFor()
         check(exit == 0) { "mkfifo failed with exit $exit in $fifoDir" }
-        for (name in listOf("stdout.fifo", "stderr.fifo")) {
+        for (name in listOf(ShellProtocolLayout.STDOUT_FIFO, ShellProtocolLayout.STDERR_FIFO)) {
             val fifo = fifoDir.resolve(name)
             // Refuse anything that is not a named pipe.
             // A symlink or regular file pre-placed by another process
@@ -373,12 +352,13 @@ class DurableShellExecutor {
     }
 
     private fun launchIngestAgent(
-        controlDir: Path,
+        protocol: ShellProtocolLayout,
         opId: String,
         config: DurableShConfig,
         handles: AgentHandles,
     ) {
         val runId = config.runId ?: error("runId must be set when pumpedViaAgent is true")
+        val controlDir = protocol.controlDir
         // The control dir is `<root>/<opId>`, NOT `<root>/<runId>/<opId>`.
         // ShExecution.kt:246 does `controlDirRoot.resolve(opId.format())`, so the
         // hierarchy the agent needs to recover is exactly one level above the
@@ -412,7 +392,7 @@ class DurableShellExecutor {
         // agent emits on its catch block) is captured to a log file in the control
         // dir so the spike test can read it when the assertion fails. The runtime
         // itself does not depend on this log; the FIFO is the contract.
-        val agentLog = controlDir.resolve("agent.log")
+        val agentLog = protocol.agentLog
         val agentProcess = ProcessBuilder("setsid", javaBin, "-cp", classpath, AGENT_MAIN_CLASS, *argv)
             .directory(controlDir.toFile())
             .redirectErrorStream(true)
@@ -591,21 +571,17 @@ class DurableShellExecutor {
         // that makes one-pump-per-channel possible at all.
         val pumpedThroughJvm = transcriptRedactor != null || channelSinks.isNotEmpty()
 
-        val shellFiles = materialiseShellFiles(
+        val protocol = materialiseShellFiles(
             controlDir = controlDir,
             scriptContent = scriptContent,
-            config = config,
+            heartbeatCheckInterval = config.heartbeatCheckInterval,
             captureStdout = request.captureStdout,
             opId = opId,
             pumpedThroughJvm = pumpedThroughJvm,
             pumpedViaAgent = config.pumpedViaAgent,
         )
-        val scriptFile = shellFiles.scriptFile
-        val logFile = shellFiles.logFile
-        val resultFile = shellFiles.resultFile
-        val resultTmp = shellFiles.resultTmp
-        val cookieFile = shellFiles.cookieFile
-        val wrapperFile = shellFiles.wrapperFile
+        val logFile = protocol.consoleLog
+        val wrapperFile = protocol.wrapperFile
 
         // Jenkins-faithful launch: setsid creates new session+process group.
         // argv = [setsid, bash, wrapper.sh] — no -c, no inline content in argv.
@@ -635,7 +611,7 @@ class DurableShellExecutor {
         pb.redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
         // (pumpedThroughJvm was resolved above, before the wrapper content was built.)
         if (request.captureStdout) {
-            val stdoutCapture = controlDir.resolve("output.txt")
+            val stdoutCapture = protocol.outputFile
             pb.redirectOutput(ProcessBuilder.Redirect.to(stdoutCapture.toFile()))
             if (pumpedThroughJvm) {
                 pb.redirectError(ProcessBuilder.Redirect.PIPE)
@@ -676,10 +652,10 @@ class DurableShellExecutor {
         // sequence of writers is therefore: warmup only → warmup + child →
         // child only (after warmup close) → 0 (after child exit) → agent EOF.
         val agentHandles: AgentHandles? = if (config.pumpedViaAgent && pumpedThroughJvm) {
-            val fifoDir = materialiseFifos(controlDir)
-            val stdoutFifo = fifoDir.resolve("stdout.fifo")
-            val stderrFifo = fifoDir.resolve("stderr.fifo")
-            val readyMarker = fifoDir.resolve("agent.ready")
+            val fifoDir = materialiseFifos(protocol)
+            val stdoutFifo = protocol.stdoutFifo
+            val stderrFifo = protocol.stderrFifo
+            val readyMarker = protocol.agentReadyMarker
             pb.redirectOutput(ProcessBuilder.Redirect.to(stdoutFifo.toFile()))
             pb.redirectError(ProcessBuilder.Redirect.to(stderrFifo.toFile()))
             val warmup = listOf(
@@ -702,7 +678,7 @@ class DurableShellExecutor {
                 warmup = warmup,
                 process = null,
             )
-            launchIngestAgent(controlDir, opId, config, handles)
+            launchIngestAgent(protocol, opId, config, handles)
             awaitAgentReady(handles)
             handles
         } else {
@@ -903,8 +879,9 @@ class DurableShellExecutor {
     fun detach(process: ProcessHandle, controlDir: Path) {
         checkLinuxOrThrow()
 
-        val cookieFile = controlDir.resolve(".cookie")
-        val resultFile = controlDir.resolve("result.txt")
+        val protocol = ShellProtocolLayout(controlDir)
+        val cookieFile = protocol.cookieFile
+        val resultFile = protocol.resultFile
 
         // The wrapper handles setsid internally via:
         // `nohup /bin/sh -c '...' >&- 2>&- &`
@@ -934,7 +911,7 @@ class DurableShellExecutor {
     }
 
     fun pollResult(controlDir: Path, timeoutMs: Long): Int? {
-        val resultFile = controlDir.resolve("result.txt")
+        val resultFile = ShellProtocolLayout(controlDir).resultFile
         val deadline = if (timeoutMs > 0) System.currentTimeMillis() + timeoutMs else Long.MAX_VALUE
 
         while (System.currentTimeMillis() < deadline) {
@@ -951,7 +928,7 @@ class DurableShellExecutor {
     }
 
     fun isAlive(controlDir: Path, process: ProcessHandle): Boolean {
-        val cookieFile = controlDir.resolve(".cookie")
+        val cookieFile = ShellProtocolLayout(controlDir).cookieFile
 
         // Check 1: cookie file exists
         if (!Files.exists(cookieFile)) {
@@ -967,7 +944,7 @@ class DurableShellExecutor {
     }
 
     fun kill(process: ProcessHandle, controlDir: Path) {
-        val cookieFile = controlDir.resolve(".cookie")
+        val cookieFile = ShellProtocolLayout(controlDir).cookieFile
 
         // SIGKILL the process tree using negative PID (process group)
         try {
@@ -1045,28 +1022,29 @@ class DurableShellExecutor {
      * /proc/<pid>/environ for PIPELINE_OP_COOKIE=<real>, while the sentinel
      * PIPELINE_OP_COOKIE=__pipeline_protected__ protects the wrapper machinery
      * (heartbeat + result-writer) from being killed.
-     * @param controlDir The control directory path.
+     * @param protocol The control directory's layout: the authority for every path this wrapper
+     *   binds.
      * @param scriptPath The path to the script file.
-     * @param config The durable shell configuration.
+     * @param heartbeatCheckInterval The heartbeat period the wrapper writes into itself.
      * @param captureStdout If true, tee stdout to output.txt (returnStdout mode).
      * @param opId The operation ID (embedded as the real cookie value).
      * @return The shell wrapper script content.
 */
-    private fun buildWrapperContent(
-        controlDir: Path,
+    internal fun buildWrapperContent(
+        protocol: ShellProtocolLayout,
         scriptPath: Path,
-        config: DurableShConfig,
+        heartbeatCheckInterval: Long,
         captureStdout: Boolean,
         opId: String,
         transcriptPipedThroughJvm: Boolean = false,
         pumpedViaAgent: Boolean = false,
     ): String {
-        val cookieFileEscaped = escapeForShell(controlDir.resolve(".cookie").toString())
-        val logFileEscaped = escapeForShell(DurableShellFiles.consoleLog(controlDir).toString())
-        val resultFileEscaped = escapeForShell(controlDir.resolve("result.txt").toString())
-        val resultTmpEscaped = escapeForShell(controlDir.resolve("result.txt.tmp").toString())
+        val cookieFileEscaped = escapeForShell(protocol.cookieFile.toString())
+        val logFileEscaped = escapeForShell(protocol.consoleLog.toString())
+        val resultFileEscaped = escapeForShell(protocol.resultFile.toString())
+        val resultTmpEscaped = escapeForShell(protocol.resultTmpFile.toString())
         val scriptPathEscaped = escapeForShell(scriptPath.toString())
-        val outputFileEscaped = escapeForShell(controlDir.resolve("output.txt").toString())
+        val outputFileEscaped = escapeForShell(protocol.outputFile.toString())
 
         // Wrapper: VERBATIM, single-quoted paths, script NEVER in argv
         // Key properties:
@@ -1077,8 +1055,8 @@ class DurableShellExecutor {
         // 5. Exit code written atomically
         // When captureStdout=true:
         // - stdout is tee'd to output.txt via '> '$OUT' 2> '$LOG'
-        // - stderr goes to jenkins-log.txt as usual
-        // - Heartbeat (inner while) still touches jenkins-log.txt only
+        // - stderr goes to the console transcript as usual
+        // - Heartbeat (inner while) still touches the console transcript only
 
         // Outer redirect: tee to output.txt if captureStdout, otherwise just log
         // When the child's bytes are piped to the JVM, the wrapper MUST NOT open its own
@@ -1115,7 +1093,7 @@ class DurableShellExecutor {
             append("LOG_FILE='$logFileEscaped'; ")
             append("RESULT_FILE='$resultFileEscaped'; ")
             append("RESULT_TMP='$resultTmpEscaped'; ")
-            append("CHECK_INTERVAL=${config.heartbeatCheckInterval}; ")
+            append("CHECK_INTERVAL=$heartbeatCheckInterval; ")
             // Create cookie file with PID - this is the heartbeat mechanism
             append("echo \$\$ > \"\$COOKIE_FILE\"; ")
             // Heartbeat: touch log file periodically to show process is alive
@@ -1145,11 +1123,21 @@ class DurableShellExecutor {
     }
 
     /**
-     * Legacy wrapper builder for compatibility (used by tests).
-     * @deprecated Use buildWrapperContent instead for Jenkins-faithful pattern.
+     * The legacy wrapper builder, kept as this executor's compatible façade.
+     *
+     * It renders the same wrapper the launch does, and it binds the protocol's paths through
+     * [ShellProtocolLayout] just like the launch, so it cannot publish the exit code anywhere
+     * the executor does not poll for it. It takes the script path as an argument because the
+     * caller's own protocol may place the script elsewhere.
 */
     fun buildWrapper(controlDir: Path, scriptPath: Path, config: DurableShConfig): String {
-        return buildWrapperContent(controlDir, scriptPath, config, captureStdout = false, opId = "legacy")
+        return buildWrapperContent(
+            protocol = ShellProtocolLayout(controlDir),
+            scriptPath = scriptPath,
+            heartbeatCheckInterval = config.heartbeatCheckInterval,
+            captureStdout = false,
+            opId = "legacy",
+        )
     }
 
     /**
@@ -1162,7 +1150,7 @@ class DurableShellExecutor {
      * @return The captured stdout content, or null if output.txt doesn't exist.
 */
     fun readOutputText(controlDir: Path, captureRetainPolicy: CaptureRetainPolicy = CaptureRetainPolicy.READ_THEN_DELETE): String? {
-        val outputFile = controlDir.resolve("output.txt")
+        val outputFile = ShellProtocolLayout(controlDir).outputFile
         if (!Files.exists(outputFile)) {
             return null
         }
@@ -1380,7 +1368,10 @@ class DurableShellExecutor {
 */
     private fun writeTimeoutFlag(controlDir: Path) {
         try {
-            Files.writeString(controlDir.resolve("timeout.flag"), System.currentTimeMillis().toString())
+            Files.writeString(
+                ShellProtocolLayout(controlDir).timeoutFlag,
+                System.currentTimeMillis().toString(),
+            )
         } catch (_: Exception) {
             // The watchdog must still attempt process cleanup if its marker cannot be persisted.
         }
@@ -1392,7 +1383,7 @@ class DurableShellExecutor {
      * @return true if timeout.flag exists.
 */
     fun hasTimeoutFlag(controlDir: Path): Boolean {
-        return Files.exists(controlDir.resolve("timeout.flag"))
+        return Files.exists(ShellProtocolLayout(controlDir).timeoutFlag)
     }
 
     /**

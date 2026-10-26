@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
 import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
 import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShellProtocolLayout
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
 import java.nio.file.Files
 import java.nio.file.Path
@@ -269,8 +270,11 @@ internal class ExternalSubprocessRecovery(
      * saying otherwise is the fabrication this whole slice exists to prevent.
 */
     private fun observedTerminal(controlDir: Path, exitCode: Int): RunningSubprocessObservation {
-        val captured = if (Files.exists(OUTPUT_FILE(controlDir))) {
-            Files.readString(OUTPUT_FILE(controlDir))
+        // The captured-stdout channel. Read only to learn whether it EXISTS, and what it holds.
+        // Its name comes from the protocol's single authority, not from a local copy of it.
+        val outputFile = ShellProtocolLayout(controlDir).outputFile
+        val captured = if (Files.exists(outputFile)) {
+            Files.readString(outputFile)
         } else {
             null
         }
@@ -288,8 +292,5 @@ internal class ExternalSubprocessRecovery(
     private companion object {
         // Preserved from CanonicalDurableRunCoordinator companion (behaviour-equivalence law).
         private const val REATTACH_TIMEOUT_MS = 60_000L
-
-        /** The captured-stdout channel. Read only to learn whether it EXISTS, and what it holds. */
-        private fun OUTPUT_FILE(controlDir: Path): Path = controlDir.resolve("output.txt")
     }
 }

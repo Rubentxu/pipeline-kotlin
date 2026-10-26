@@ -115,9 +115,10 @@ class StepReconcilerL1(
      * @return The classification of this step's current state.
 */
     fun classifyControlDir(controlDir: Path): Classification {
-        val resultFile = controlDir.resolve("result.txt")
+        val protocol = ShellProtocolLayout(controlDir)
+        val resultFile = protocol.resultFile
         val logFile = DurableShellFiles.resolveConsoleLog(controlDir)
-        val timeoutFlag = controlDir.resolve("timeout.flag")
+        val timeoutFlag = protocol.timeoutFlag
 
         // Check 0: Is timeout.flag present? (check BEFORE heartbeat)
         if (Files.exists(timeoutFlag)) {

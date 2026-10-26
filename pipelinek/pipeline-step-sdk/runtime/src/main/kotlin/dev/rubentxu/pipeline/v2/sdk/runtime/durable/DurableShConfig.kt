@@ -6,21 +6,14 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  * ## Heartbeat Constants
  * | Property | Default | Description |
  * |---|---|---|
- * | `HEARTBEAT_CHECK_INTERVAL` | 300 | How often the wrapper touches jenkins-log.txt (seconds) |
+ * | `HEARTBEAT_CHECK_INTERVAL` | 300 | How often the wrapper touches the console transcript (seconds) |
  * | `HEARTBEAT_MINIMUM_DELTA` | 2 | Minimum age of log file to consider it stale (seconds) |
  * | `CLEANUP_RETAIN_ON_FAILURE` | true | If true, retain control dir on failure for debugging |
  * ## Control Directory Layout
- * Each `sh` step gets a control directory `$controlDirRoot/$opId/`:
- * | File | Role |
- * |---|---|
- * | `script.sh` | User script, written verbatim before launch |
- * | `script.sh.copy` | Copy of script.sh ( Text-File-Busy workaround) |
- * | `jenkins-log.txt` | stdout+stderr of script; touched by heartbeat |
- * | `result.txt` | Exit code written atomically: `echo $? > tmp && mv tmp result.txt` |
- * | `result.txt.tmp` | Temp file for atomic result.txt write |
- * | `output.txt` | Captured stdout when returnStdout=true (tee-gated wrapper) |
- * | `timeout.flag` | Written by watchdog before SIGKILL |
- * | `.cookie` | Cookie file created by wrapper; existence means process is alive |
+ * Each `sh` step gets a control directory `$controlDirRoot/$opId/`. The names
+ * and paths inside it belong to [ShellProtocolLayout], which is their single
+ * authority; they are not listed here, because a second copy of a layout is a
+ * copy that can drift.
  * ## Linux-Only
  * Durable shell relies on Linux-specific primitives (nohup, setsid, /proc).
  * On non-Linux platforms, [LinuxRequiredException] is thrown.
@@ -28,7 +21,7 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  * FAILED_TIMEOUT Terminal State</a>
 */
 data class DurableShConfig(
-    /** Heartbeat interval: how often the wrapper touches jenkins-log.txt (seconds). */
+    /** Heartbeat interval: how often the wrapper touches the console transcript (seconds). */
     val heartbeatCheckInterval: Long = HEARTBEAT_CHECK_INTERVAL_DEFAULT,
 
     /** Minimum delta: minimum age of log file to consider it stale (seconds). */

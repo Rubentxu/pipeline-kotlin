@@ -6,6 +6,7 @@ import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ProcessOutputChannel
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShellProtocolLayout
 import java.nio.ByteBuffer
 import java.nio.channels.SeekableByteChannel
 import java.nio.charset.StandardCharsets
@@ -129,9 +130,16 @@ object ObsPc2IngestAgent {
             RedactingOutputIngress({ store.open(address.stream) }, frameIndex, address)
         }
 
+        // The FIFO names come from the protocol's single authority. The agent was handed the
+        // FIFO DIRECTORY in its argv, so it joins the names itself instead of being handed the
+        // two paths as well: a second copy of the names here would be a copy that can drift
+        // from the writer's, and the symptom would be a channel that never opens.
+        val stdoutFifo = fifoDir.resolve(ShellProtocolLayout.STDOUT_FIFO)
+        val stderrFifo = fifoDir.resolve(ShellProtocolLayout.STDERR_FIFO)
+
         System.err.println(
             "pc2-agent-start pid=$agentPid runId=$runId opId=$opId fifoDir=$fifoDir " +
-                "stdoutFifo=${fifoDir.resolve("stdout.fifo")} stderrFifo=${fifoDir.resolve("stderr.fifo")}",
+                "stdoutFifo=$stdoutFifo stderrFifo=$stderrFifo",
         )
 
         // The channels are opened O_RDONLY, which BLOCKS until a writer
@@ -142,8 +150,8 @@ object ObsPc2IngestAgent {
         // reaching a zero-writers state, so the redactor waited forever
         // for an EOF that could not arrive.
         val channels = mapOf(
-            ProcessOutputChannel.STDOUT to openRendezvous(fifoDir.resolve("stdout.fifo")),
-            ProcessOutputChannel.STDERR to openRendezvous(fifoDir.resolve("stderr.fifo")),
+            ProcessOutputChannel.STDOUT to openRendezvous(stdoutFifo),
+            ProcessOutputChannel.STDERR to openRendezvous(stderrFifo),
         )
         System.err.println("pc2-agent-fifos-opened pid=$agentPid")
 

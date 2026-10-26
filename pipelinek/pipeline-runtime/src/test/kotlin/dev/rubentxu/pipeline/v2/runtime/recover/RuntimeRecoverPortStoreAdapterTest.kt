@@ -497,7 +497,7 @@ class RuntimeRecoverPortStoreAdapterTest {
         private val inner = InMemoryReplayCursorStore(SteppingClock())
 
         override fun load(runId: String): ReplayCursor? =
-            throw IllegalStateException("the cursor store is unavailable")
+            error("the cursor store is unavailable")
 
         override fun advance(runId: String, opId: String, stageIndex: Int) =
             inner.advance(runId, opId, stageIndex)

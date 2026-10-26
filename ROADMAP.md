@@ -98,6 +98,8 @@ Los tres invariantes están corregidos y la puerta completa está en verde.
 |El plazo se calculaba desde `fencingToken`|El decider no calcula tiempo; el plazo lo lee el adaptador de su propio reloj|`eb9a22723`|
 |La lectura fallida del marcador se leía como ausencia|Una lectura que falla es `StorageError`; solo la ausencia es ausencia|`eb9a22723`|
 
+**Corrección de una fila de esta tabla (2026-10-26).** La fila de `--dry-run` afirmaba que «el dry run no escribe». Era falsa en dos puntos: el dry run ABRÍA el carril de escritura —que fija `PRAGMA journal_mode = WAL`, una escritura de cabecera— y contestaba una decisión distinta de la de la recuperación real. La afirmación se retira aquí; el corte que la corrige y la evidencia que lo sostiene están en «El corte: el dry run y la recuperación dicen lo mismo», más abajo en este mismo hito.
+
 La ruptura de ABI que implica el plazo —`RecoveryChoice.Reattach` pierde `deadlineMs`— está autorizada por el maturity `EXPERIMENTAL` de `pipeline-runtime-api` y recibida en `published-contract-exceptions.json` (entrada 21, con el SHA que la introduce). El tren 0.90.0 quedó cerrado en `v0.90.0`; como el árbol ya no producía los mismos bytes, la 0.91.0 se abre aquí (`ed22ff91f`) y su candidata es `v0.91.0-rc1`.
 
 Medido sobre `bd5edb8de` con `scripts/verify-all.sh` sin filtros:
@@ -124,6 +126,94 @@ release-pipelinek: PUBLISHED v0.91.0-rc1 with candidate_id sha256:b847f81d80c85d
 - `git-head.txt` y `manifest.json` nombran el commit `1ac1afe7`, que es el mismo commit al que apunta el tag.
 
 No queda ninguna publicación pendiente de H1.
+
+#### El corte: el dry run y la recuperación dicen lo mismo
+
+**Qué hace.** Un `runs recover --dry-run` contesta «qué haría la recuperación» sin escribir nada. La tabla de H1 afirma, desde `eb9a22723`, que «el dry run no escribe». La afirmación era falsa en dos puntos distintos, y este corte los corrige a los dos y retira la afirmación vieja.
+
+**La primera falsedad: el dry run escribía.** Cumplió a medias. Dejó de TOMAR la lease —eso sí era cierto desde `eb9a22723`— pero ABRÍA el carril de escritura del event store (`MainRunsCli.kt:220`). Ese carril no es una puerta sin cerradura: `SqliteConnectionFactory.open` fija `PRAGMA journal_mode = WAL`, que es una escritura de cabecera, y el cierre de una conexión escribible hace checkpoint del WAL. El dry run abre ahora el carril de LECTURA (`MainRunsCli.kt:220`), la puerta por la que el motor se niega a escribir.
+
+**La segunda falsedad, más honda: el dry run contestaba una cosa distinta.** Y aquí la culpa no era del dry run sino del JOURNAL. La fila RUNNING se escribía SIN la atribución del run, y `listForRun` filtraba por esa atribución: la fila que dice «esta operación sigue en curso» era una fila INVISIBLE hasta que la operación terminaba. Un run que moría a mitad de una operación dejaba una fila que no nombraba ningún run, así que todo lector que no pudiera reparar la columna lo veía TERMINADO.
+
+Y la respuesta DEPENDÍA DE QUÉ CARRIL PREGUNTABA: el carril de escritura repara la columna al abrir (`SqliteEventStore.kt:263`, `backfillRunId`) y el de lectura no puede escribir, porque abre la base por una puerta que el motor no deja escribir. Medido, sobre el mismo run y el mismo journal:
+
+|Carril|Filas que ve|Fila terminal del run|Decisión|Lo que dice|
+|---|---|---|---|---|
+|lectura|`[SUCCEEDED]`|`succeeded`|`reuse-terminal`|«would recover … as succeeded»|
+|escritura|`[SUCCEEDED, RUNNING]`|`null`|`reattach`|«still in flight; nothing was recovered»|
+
+El dry run leía por el carril de lectura y la recuperación real por el de escritura. Dos respuestas para el mismo run, y el operador no tenía forma de saber cuál era la verdadera.
+
+**La corrección son dos mitades, y ninguna basta sola.**
+
+- `LeaseLiveness` (nuevo) separa DOS preguntas que estaban confundidas: «¿quién tiene la lease?» —el registro durable lo responde, y sobrevive a la muerte de su dueño, así que dice «vivo» de un proceso asesinado hace una hora— y «¿hay ALGUIEN VIVO publicando este run?» —que sólo responde el cerrojo del sistema operativo. `FileBackedRunExecutionLeaseStore.liveness` (`FileBackedRunExecutionLeaseStore.kt:231`) pregunta al núcleo, y sus tres respuestas son `Held`, `Free` y `Unverifiable`. `Unverifiable` NUNCA se colapsa en `Free`: «no lo sé» y «nadie la tiene» son opuestos, y el segundo autoriza a escribir.
+- El dry run pregunta al kernel y se niega con la misma negativa que la recuperación (`RecoverAdapters.kt:229`): `RecoverRefusal.LeaseHeldByAnother` para una lease viva de otro, `RecoverRefusal.StorageError` para una pregunta que el kernel no pudo contestar. Un dry run que dijera «reattach» para un run que otro proceso está trabajando mandaría al operador a un plan que la recuperación real se negaría a ejecutar.
+- `LeaseAsAcquired` (nuevo) presenta el registro que la adquisición HABRÍA dejado, con los tres casos que el decidor puro produce. Con eso, dry run y recuperación deciden sobre los MISMOS hechos, sin que ninguno tenga que adivinar. La reescritura `asIfTheLeaseWereOurs` —que vivía dentro del adaptador— desaparece: no podía arreglar el defecto, porque la introspección RECHAZA antes de que el adaptador tenga una observación que reescribir.
+- La fila RUNNING nace atribuida a su run: `beginOperation` lee el run id del propio input de la operación (`OperationJournal.kt:285`, `InMemoryOperationJournal.kt:123`) y lo escribe con la fila. Un input mal formado falla ahí, en voz alta, en vez de producir una fila que no pertenece a nadie.
+- Y la lectura no depende de una reparación: `listForRun` lee también la atribución que falta en las filas que escribió una build anterior (`OperationJournal.kt:407`). Un lector no puede repararlas, luego tiene que leerlas a través del input; si creyera sólo en la columna, un run con la fila huérfana seguiría pareciendo finished después de la corrección.
+
+`backfillRunId` sigue existiendo, pero ya no es lo que hace correcta a la lectura: es una NORMALIZACIÓN de lo que escribió una build anterior, y su KDoc lo dice. La lectura es correcta con o sin ella.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que el dry run y la recuperación dicen lo mismo, y que el dry run no escribe. La capacidad que sostiene es que un operador puede preguntar «¿qué harías?» antes de ordenar «hazlo» y obtener una respuesta que el producto va a cumplir: sin esta garantía, el dry run es un adorno que puede anunciar un éxito que la recuperación real se negará a producir. El instrumento es DOBLE, y cada uno cubre una mitad distinta de la garantía:
+
+- El escenario E2E `durable/40-recover-refuses-a-half-finished-run` (`examples/run.sh`): compara los BYTES durables —base, WAL y todo el árbol del directorio de control— antes y después del dry run, y compara la DECISIÓN de los dos como una palabra. La decisión se compara como palabra y no como frase porque la respuesta lleva consigo un instante («retry by 2026-10-26T21:57:36.164Z») que difiere entre dos invocaciones de la MISMA decisión: comparar las frases reportaría una divergencia donde no la hay. El fichero `-shm` queda fuera de la comparación a propósito: es el índice WAL de SQLite, un fichero DERIVADO que el motor reconstruye desde el WAL, cuya lectura mueve una conexión de solo lectura; incluirlo mediría la contabilidad del motor y la reportaría como una escritura del producto.
+- La fila unitaria `OperationJournalRunAttributionTest` (nueva, `pipeline-events-store`): el journal en memoria y el SQLite, uno por implementación, porque el producto los declara espejos y el defecto estaba en los dos. La tercera fila reproduce la fila que una build anterior dejó sin atribución —la borra con un `UPDATE`— y comprueba que un lector la sigue viendo.
+
+**Visto en rojo antes del corte.** Los dos instrumentos se vieron rojos contra el árbol sin corregir, y las mutaciones se leyeron de vuelta antes de afirmar nada.
+
+El E2E, contra el binario sin corregir:
+
+```
+FAIL durable/40-recover-refuses-a-half-finished-run.pipeline.kts the dry run decided 'reuse-terminal' and the recovery decided 'reattach'
+```
+
+El unitario, con el código de producción revertido a su forma previa —el `INSERT` sin la columna `run_id`, el `listForRun` sin la lectura a través del input, y el journal en memoria con `runId = null`— y esa mutación leída de vuelta antes de ejecutar:
+
+```
+INSERT INTO operation_journal
+    (op_id, fingerprint, status, kind, attempt, input, output, started_at, created_at, updated_at, deadline_ms)
+WHERE j.run_id = ?
+```
+
+y el resultado, leído del XML de JUnit y no del texto del build:
+
+```
+tests=3 failures=3 errors=0 skipped=0
+RED  el journal en memoria lista la operacion que sigue en curso
+RED  el journal sqlite lista la operacion que sigue en curso
+RED  una fila sin atribucion sigue siendo del run que la escribio
+```
+
+Las TRES filas del instrumento se pusieron rojas —son exactamente las tres que guardan el defecto— y ninguna otra. La fila que se ve en el detalle es la tercera: `expected: <1> but was: <0>` en `OperationJournalRunAttributionTest.kt:152`. La mutación se revirtió, se leyó de vuelta y las tres volvieron a verde.
+
+**Medido sobre `ec21fa17a` con `scripts/verify-all.sh` sin filtros:**
+
+```
+PASS  sha=ec21fa17a184df713d0f51cbdab434c5b3411899  elapsed=139s  budget=900s  tests=rewritten:1440 read:0  scenarios=observed:63 executed:63
+```
+
+- 1440 tests reescritos por esta ejecución, 0 fallos, 0 errores, 0 omitidos.
+- 63 de 63 escenarios E2E ejecutados y en verde.
+- 139 s de reloj de pared frente al presupuesto de 900 s.
+- `VERIFY_LOC = 26902`, `PRODUCT_LOC = 70973`, ratio `0.379` (límite 2). El censo cuenta 174 ficheros de tests unitarios y 63 programas E2E, sobre el árbol VERSIONADO: una medición sobre árbol sucio leería un test nuevo como cero, y el ratio mentiría a favor.
+- El corte, en líneas brutas sobre 16 ficheros: +843 / −79.
+
+**Lo que este corte NO arregla, y se dice.** No arregla el informe falso del avance del cursor: `RecoverAdapters.kt:500` sigue diciendo `cursorAdvanced = cursor != null`, que afirma un avance que una lectura fallida no puede sostener. No arregla la expiración falsa de «sin timeout»: `ShellWatchdog.pollDeadlineFor` (`ShellWatchdog.kt:429`) devuelve `NO_TIMEOUT_POLL_MS` —una hora— cuando `timeoutMs` es 0, luego un paso sin plazo expira igual a la hora; la fila de `ShellWatchdogTest` que fija esa regla queda pendiente de sustituir. No arregla la ayuda de `runs recover` ni la inconsistencia de `CLI_VERBS`, que pertenecen a H5.
+
+Declara además tres consecuencias de este corte que no son defectos:
+
+- `ParallelStageEngine` y `ParallelReconciler` ven ahora la hija en curso de una rama: una rama con una hermana SUCCEEDED y otra RUNNING pasa a ser INCOMPLETA (se reanuda) en vez de reutilizarse como SUCCEEDED. Es la CORRECCIÓN de un defecto latente de la misma causa, y falla cerrada.
+- `listForRun` llama a `json_extract` sobre el input de las filas sin atribución, y SQLite lanza «malformed JSON» si ese input no lo es. Ninguna build de este producto produce un input que no sea JSON serializado, luego la condición no es producible; se deja FALLA ALTA en vez de excluir la fila en silencio, porque una fila que no se puede atribuir no debe desaparecer de un recuento.
+- El snapshot de detekt no se toca: los dos hallazgos que este corte introducía —`UnsafeCallOnNullableType` por un `!!` y `UnusedImport`— se corrigieron EN EL CÓDIGO, no se congelaron.
+
+|Garantía|Original|Sustituto o justificación|Evidencia|Decisión|Coste|Riesgo|
+|---|---|---|---|---|---|---|
+|El dry run y la recuperación dicen lo mismo|Ninguno: la fila de H1 afirmaba que el dry run no escribía, y nadie lo contrastó contra la recuperación real|Los dos se ejecutan sobre el MISMO run y se comparan sus DECISIONES; el escenario E2E `durable/40` los invoca en ese orden|Visto en rojo antes del corte: `the dry run decided 'reuse-terminal' and the recovery decided 'reattach'`; verde después sobre `ec21fa17a`, 63 de 63 escenarios|Replace (la afirmación vieja)|16 ficheros, +843 / −79 líneas brutas|Bajo: el dry run ahora se niega con la misma negativa que la recuperación, y no ofrece un plan que la recuperación real rechazaría|
+|El dry run no escribe|Ninguno: la puerta medía que el carril de escritura se abría, no que el dry run no escribiera|Comparación de los BYTES durables —base, WAL y árbol del control— antes y después del dry run, dentro del mismo escenario|Mismo escenario; el digest es idéntico antes y después sobre `ec21fa17a`|Add (una comprobación que faltaba)|92 líneas en `examples/run.sh`|Bajo: si el dry run volviera a escribir, la fila lo diría por digest y no por opinión|
+|La fila en curso del journal pertenece a su run|Ninguno: `listForRun` filtraba por una columna que la propia fila tardaba en rellenar|La fila se atribuye al nacer, y la lectura atraviesa la atribución que falta en las filas de una build anterior|`OperationJournalRunAttributionTest`: 3 filas, vistas en rojo con la mutación aplicada y leída de vuelta, y en verde tras revertirla|Add (3 filas unitarias)|177 líneas de test, 0 de infraestructura|Bajo: el formato durable no cambia; la columna `run_id` ya existía y ya estaba indexada|
+|La pregunta de «quién publica este run» tiene una sola autoridad|Ninguno: el registro durable respondía «vivo» de un proceso muerto|Una pregunta nueva al kernel, con tres respuestas que no se confunden entre sí|`LeaseLiveness` y su `Unverifiable`, que no colapsa en `Free`; fila del E2E y del unitario del adaptador de recuperación|Add (el puerto nuevo) sin quitar el registro, que sigue siendo la atribución|45 líneas de producto|Bajo: el registro durable no se borra; sólo deja de ser la autoridad sobre la LIVENESS|
+|La semántica pública de la recuperación no cambia|Los 63 escenarios E2E y las 1440 pruebas unitarias de la puerta completa|Los mismos, sin cambio: lo que cambia es qué hechos ve el dry run y qué dice|La puerta completa sin filtros sobre `ec21fa17a`: 1440 tests, 0 fallos, 0 omitidos, 63 de 63 escenarios en verde|Retain|0|Bajo: los tipos publicados de `pipeline-runtime-api` no se tocan; `RecoverReport`, `RecoverOutcome`, `RecoverOptions` y `RecoverRefusal` conservan su forma|
+|Una rama con una hija en curso se reanuda en vez de reutilizarse|Los consumidores de `listForRun`, que no veían la hija en curso|Corrección de la misma causa: ahora la ven, y la rama pasa a ser INCOMPLETA|Medido por lectura del camino: `ParallelStageEngine` y `ParallelReconciler` dejan de reutilizar como SUCCEEDED una rama con una hermana RUNNING|Replace (un defecto latente corregido)|0|Bajo, y falla cerrada: reanudar es más caro que reutilizar, nunca al revés|
 
 ## H2 — Refactor del núcleo durable del SDK
 

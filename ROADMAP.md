@@ -655,6 +655,50 @@ PASS  sha=eaafbb2a63b4a9b4112886c1b2f22455f99d76a6  elapsed=163s  budget=900s  t
 
 Lo que este corte NO arregla, y se dice: el recorrido no durable ignora el perfil de sandbox entero —no aplica la lista de rechazo ni normaliza el `PATH`—, que es una divergencia mayor y distinta de la que aquí se corrige. Y la mitad "los dos recorridos coinciden" de la garantía se argumenta por construcción, no se observa de extremo a extremo: el recorrido no durable es inalcanzable desde el CLI, porque `CanonicalRunRequest.controlDirRoot` no es nulo y el lanzador de escenarios pasa siempre `--control-root`.
 
+#### El corte: el stdout capturado tiene una sola regla
+
+El `stdout` capturado —el canal de VALOR tipado de un paso `sh` con `returnStdout`— lo leían dos componentes, en dos procesos y en dos módulos: el ejecutor, cuando el proceso termina y publica el valor, y el observador de recuperación, cuando un proceso posterior lee el directorio de control de una operación cuyo worker murió. Los dos leían el mismo fichero —`output.txt`, cuyo nombre pertenece a `ShellProtocolLayout`— pero cada uno bajo una regla propia: el ejecutor recortaba el texto y el observador no.
+
+La consecuencia era un valor público distinto para el mismo programa: un `sh` que imprimía `hello\n` publicaba `"hello"` en una ejecución fresca y `"hello\n"` en una reanudada. No era un detalle interno. El valor recuperado llega al consumidor por el camino tipado —`CoreShellStep.recoveredProjection` → `classifyShellTerminal(terminal, STDOUT)` → `Stdout(capturedStdout.orEmpty())`—, así que la divergencia se publicaba como el valor del paso, no se quedaba en un canal lateral.
+
+El corte converge el camino RECUPERADO sobre la regla del camino FRESCO, y no al revés. El valor fresco es la semántica pública de la que hoy dependen todos los consumidores de un `sh` que se ejecuta; cambiarla sería un cambio de semántica pública no autorizado, mientras que el camino reanudado es el que tiene que alcanzarla. La autoridad nueva —`ShellCapturedStdout`, en `pipeline-step-sdk:runtime`, junto a `ShellProtocolLayout`, que es la autoridad de los NOMBRES del protocolo— posee la REGLA DEL VALOR. Lo que queda en cada llamante es la RETENCIÓN: el ejecutor sigue descartando el fichero leído bajo `CaptureRetainPolicy.READ_THEN_DELETE`, y el observador no lo descarta, porque ese fichero es la evidencia que lee el reconciliador. Descartar es un efecto secundario que posee cada llamante, no parte del valor.
+
+El delta es exactamente una duplicación de la regla de lectura. Lo demás no cambia: el nombre del canal sigue siendo el del protocolo, la ausencia (`null`) sigue siendo un hecho distinto de la vacuidad (`""`), el ejecutor sigue sin lanzar nunca, el reconciliador sigue construyendo el mismo `DurableTaskTerminal.Exited` y la proyección del Step sigue siendo la misma. Medido sobre el árbol del corte, `Files.readString(outputFile)` aparece en un solo fichero de código de producción —la autoridad— y ninguna otra fuente lee el canal.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que el `stdout` capturado publica el mismo VALOR lo publique la ejecución que lo leyó ahora o la que lo leyó después de la muerte del worker. La capacidad que esa garantía sostiene es que un `sh` durable con `returnStdout` sobrevive a la muerte de quien lo ejecutaba y sigue reportando el valor que el programa imprimió. El instrumento es un test unitario (`CapturedStdoutSingleRuleTest`), no un escenario E2E, por una razón concreta: la ventana entre «el proceso publicó `result.txt`» y «el ejecutor borró `output.txt`» es de microsegundos, así que un escenario que intentara matar a un worker dentro de ella sería flaky por construcción. La costura, en cambio, es enteramente observable en proceso: el observador toma un directorio de control y devuelve un terminal, y el lector del ejecutor toma un directorio de control y devuelve un texto.
+
+Las filas comparan el valor recuperado con el valor fresco y, además, con el texto absoluto: comparar sólo los dos lectores también pasaría si los dos estuvieran mal del mismo modo, así que el texto se fija aparte y la igualdad de los caminos se afirma por separado. Una cuarta fila afirma que el observador no se deshace de la evidencia que lee.
+
+**Visto en rojo antes del corte.** El instrumento nuevo se ejecutó contra el observador de antes del corte —el fichero `RunningSubprocessRecovery.kt` restaurado desde `6f32b33bd` sobre el árbol commiteado— y falló con el valor duplicado a la vista:
+
+```
+CapturedStdoutSingleRuleTest > a resumed execution publishes the value a fresh execution publishes() FAILED
+    org.opentest4j.AssertionFailedError: expected: <hello> but was: <hello\n>
+4 tests completed, 1 failed
+```
+
+Las otras tres filas —vacuidad, ausencia y no-disposición— quedaron en verde: la fila que se enrojece es exactamente la que guarda la garantía, y ninguna otra se movió. El poder discriminante se comprobó además con dos mutaciones focales sobre el código nuevo: quitar el `trim` de la autoridad, y devolverle al observador una lectura propia. Cada una puso en rojo esa misma fila y sólo esa.
+
+Medido sobre `b0a78904b` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=b0a78904b21fb81353ff632d3b1aa1b4e270b342  elapsed=139s  budget=900s  tests=rewritten:1420 read:0  scenarios=observed:63 executed:63
+```
+
+- 191 informes JUnit reescritos por esta ejecución, 1420 tests, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E ejecutados y en verde, 594 comprobaciones sobre 114 ejecuciones y 220 pasos terminados. Los dos pasos «inestables» son los de los dos escenarios que declaran `expect-outcome unstable` (`control-flow/11-workflow-control` y `negative/12-error-handling`): declarado, no una inestabilidad nueva.
+- 139 s de reloj de pared frente al presupuesto de 900 s.
+- `VERIFY_LOC = 26492`, `PRODUCT_LOC = 71201`, ratio `0.372` (límite 2). El censo cuenta 63 programas E2E —los mismos 63 que antes, porque este corte no añade escenario— y 171 ficheros de tests unitarios: uno más, el de la garantía nueva.
+
+Lo que este corte NO arregla, y se dice: la garantía que se protege aquí es la del VALOR, y no la de la RETENCIÓN ni la de la EXCLUSIVIDAD. Nada impide que un segundo lector del mismo fichero aparezca mañana con su propia regla, porque un test unitario no puede afirmar que no existe un lector que no está en la clase que prueba: esa propiedad se sostiene por la medición de arriba —una sola ocurrencia de `Files.readString(outputFile)` en el código de producción— y por la revisión, no por una aserción. Y el paso RECUPERADO conserva un comportamiento que este corte no toca: cuando el fichero `output.txt` no existe, la proyección devuelve `InsufficientEvidence` en vez de un valor, y eso no cambia aquí.
+
+|Garantía|Original|Sustituto o justificación|Evidencia|Decisión|Coste|Riesgo|
+|---|---|---|---|---|---|---|
+|El `stdout` capturado publica el mismo valor lo publiquen la ejecución fresca y la reanudada|Ninguno: no había instrumento, y el defecto era invisible porque los dos valores sólo se comparan cuando un consumidor los ve|Test unitario `CapturedStdoutSingleRuleTest`: valor, vacuidad, ausencia y no-disposición|Rojo reproducido contra el observador de `6f32b33bd` (`expected: <hello> but was: <hello\n>`), dos mutaciones focales con el mismo discriminante, verde en `b0a78904b`, puerta completa en verde|Promote (regresión permanente)|131 líneas en el fichero de test, 71 efectivas para el censo; ratio `VERIFY_LOC`/`PRODUCT_LOC` 0,372|Bajo: converge sobre la semántica que el camino fresco ya publica, así que ningún valor público cambia de forma|
+|La ausencia del canal y su vacuidad son hechos distintos y no se colapsan|Ninguno: la diferencia estaba codificada en dos sitios, cada uno con su propia forma de expresarla|Las dos filas de ausencia y vacuidad del mismo instrumento, no un segundo test|Verde en `b0a78904b`|Replace (no hay segundo instrumento)|0 líneas adicionales|Bajo: la ausencia la publica `capturedStdout = null` y la vacuidad `""`|
+|La evidencia que el reconciliador lee no se descarta en la observación|Ninguno: el observador podía leer y borrar el mismo fichero|Fila `the observer reads the captured stdout without disposing of it`|Verde en `b0a78904b`|Promote|Incluido en el mismo fichero, sin coste adicional|Bajo: la retención sigue siendo del ejecutor, bajo `CaptureRetainPolicy`|
+|El canal no tiene un segundo lector con regla propia|Ninguno|No hay instrumento admisible: un test unitario no puede afirmar la ausencia de un lector sin examinar el texto de producción, y AGENTS.md prohíbe la forma de aptitud por texto de fuente|Censo sobre `b0a78904b`: una sola ocurrencia de `Files.readString(outputFile)` en el código de producción|Retain (declarada, no aserción)|0|Un lector futuro con regla propia no lo detectaría el test; lo vería la revisión|
+
 ## H4 — Refactorizar los casos de uso de `pipeline-application`
 
 Foco principal: ejecución durable, composition y despacho.

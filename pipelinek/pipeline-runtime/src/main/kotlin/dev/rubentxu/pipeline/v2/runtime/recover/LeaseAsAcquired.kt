@@ -31,7 +31,7 @@ import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
  *  - a record naming somebody else: the previous owner is stamped gone (the
  *    lock was free, so it is gone) and the token ADVANCES, which is what makes
  *    the predecessor detectable as stale;
- *  - a record naming US: the acquisition is a RE-ENTRY and does not advance the
+ *  - a record naming US: the acquisition is a re-entry and does not advance the
  *    token, because an owner that fenced itself out of its own run would be
  *    nonsense.
  *

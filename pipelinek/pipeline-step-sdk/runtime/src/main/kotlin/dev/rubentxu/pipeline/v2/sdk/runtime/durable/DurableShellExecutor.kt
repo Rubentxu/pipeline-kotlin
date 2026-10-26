@@ -1,7 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
-import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskOutput
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
@@ -489,6 +488,9 @@ class DurableShellExecutor {
         // transcript is computed from THIS launch's pumps and sinks, so there is no ambient state
         // left for two executions to exchange.
         var launchedShell: LaunchedShell? = null
+        // The classification: which terminal this execution publishes, given what is known about
+        // how it ended. The executor gathers the facts; the decision owns the rules.
+        val decision = ShellTerminalDecision(opId = opId, controlDir = controlDir)
 
         try {
             // Step 1: Launch
@@ -567,32 +569,9 @@ class DurableShellExecutor {
             // The verdict is computed from THIS launch: its pumps are drained first, and a refusal
             // from them subsumes whatever its sinks recorded in the meantime.
             transcriptVerdict(shell, config)?.let { refusal ->
-                // Exhaustive over the closed set: a write that threw and a pump that never finished
-                // are different facts, and the record says which one occurred. There is no `else`
-                // and no fabricated Throwable for the case that has no throwable.
-                val causeToken = when (refusal) {
-                    is ProcessOutputRefusal.WriteFailed -> refusal.cause.javaClass.simpleName
-                    is ProcessOutputRefusal.DrainIncomplete -> when (refusal.cause) {
-                        // The token of a stuck child is the one that was already published; the
-                        // drain that ran out of time is a different fact and gets its own.
-                        TranscriptDrainCause.STUCK_CHILD -> "transcript-pump-still-alive"
-                        TranscriptDrainCause.OUT_OF_TIME -> "transcript-drain-out-of-time"
-                    }
-                }
-                return DurableTaskTerminal.LaunchFailed(
-                    dev.rubentxu.pipeline.v2.domain.durable.FailureRecord(
-                        code = OUTPUT_PERSISTENCE_REFUSED,
-                        kind = dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
-                        message = "process output could not be persisted: ${refusal.detail}",
-                        origin = dev.rubentxu.pipeline.v2.domain.durable.FailureOrigin.DURABLE_TASK,
-                        // Not retryable: the bytes are gone from the pipe, so a retry would have to
-                        // re-run the child to produce a transcript that is complete rather than
-                        // short. That is the step's call, not this seam's.
-                        retryable = false,
-                        operationId = opId,
-                        details = mapOf("cause" to causeToken),
-                    ),
-                )
+                // The classification owns the rule: a refusal of the output is a step failure and
+                // says WHICH of the two things went wrong.
+                return decision.forOutputRefusal(refusal)
             }
 
             // The terminal carries NO console transcript. The bytes belong to the Output
@@ -612,30 +591,23 @@ class DurableShellExecutor {
             // success-path cleanup deleted the control dir (removing the
             // authoritative timeout.flag). A wrapper exit code published after its
             // child was killed is not a legitimate completion; timeout abort wins.
-            return if (timedOut) {
-                watchdog.timeoutTerminal()
-            } else {
-                DurableTaskTerminal.Exited(
-                    exitCode = exitCode,
-                    output = DurableTaskOutput(
-                        controlDir = controlDir.toString(),
-                        capturedStdout = capturedStdout,
-                    ),
-                )
-            }
+            // The rule belongs to the classification, not to this call site.
+            return decision.forExitCode(
+                exitCode = exitCode,
+                timedOut = timedOut,
+                capturedStdout = capturedStdout,
+            )
         } catch (e: LinuxRequiredException) {
             throw e
         } catch (e: Exception) {
-            return when {
-                !launched -> DurableTaskTerminal.LaunchFailed(e.launchFailureRecord(opId, controlDir))
-                // The same authority the terminal uses: an execution that expired and then failed
-                // is a timeout, not a lost task. The reconciler reads the same flag, so the
-                // terminal agrees with it instead of contradicting it.
-                watchdog.timedOut() -> watchdog.timeoutTerminal()
-                else -> DurableTaskTerminal.Lost(
-                    lostFailureRecord(opId, controlDir, e.message ?: "durable task could not be reconciled"),
-                )
-            }
+            // The same authority the terminal uses: an execution that expired and then failed
+            // is a timeout, not a lost task. The reconciler reads the same flag, so the
+            // terminal agrees with it instead of contradicting it.
+            return decision.forFailure(
+                launched = launched,
+                timedOut = watchdog.timedOut(),
+                cause = e,
+            )
         } finally {
             // Release the warmup fds so the agent can
             // see EOF. The child has already exited (pollResult returned

@@ -1,8 +1,5 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
-import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
-import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
-import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
@@ -12,10 +9,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * ## What this owns
  *
- * The DEADLINE and the TERMINATION: when the execution's time is up, the mark that says so, the
- * request that the child stops, and the verdict that an expired execution is a timeout and not a
- * success. Nothing else. The result of the execution belongs to the executor, the transcript to
- * [TranscriptDrain], and the names of the protocol to [ShellProtocolLayout].
+ * The DEADLINE and the TERMINATION: when the execution's time is up, the mark that says so and the
+ * request that the child stops. Nothing else. The verdict that an expired execution expired at
+ * all is [timedOut]'s; the terminal that verdict becomes belongs to [ShellTerminalDecision], the
+ * result of the execution to the executor, the transcript to [TranscriptDrain], and the names of
+ * the protocol to [ShellProtocolLayout].
  *
  * ## The two facts, and why they are not one
  *
@@ -39,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * means; it does not decide which terminal to publish, and it does not delete anything.
  */
 internal class ShellWatchdog(
-    private val controlDir: Path,
+    controlDir: Path,
     private val opId: String,
     private val timeoutMs: Long,
     private val completion: DurableShellTimeoutCompletion,
@@ -152,16 +150,6 @@ internal class ShellWatchdog(
 
     /** The window in which a late exit still counts as the execution's exit code. */
     fun graceWindowMs(): Long = GRACE_WINDOW_MS
-
-    /** The terminal of an expired execution. */
-    fun timeoutTerminal(): DurableTaskTerminal.Cancelled = DurableTaskTerminal.Cancelled(
-        InterruptionRecord(
-            kind = InterruptionKind.TIMEOUT,
-            message = "durable shell timed out",
-            operationId = opId,
-            details = mapOf("controlDir" to controlDir.toString()),
-        ),
-    )
 
     /**
      * The exit code the cleanup receives.

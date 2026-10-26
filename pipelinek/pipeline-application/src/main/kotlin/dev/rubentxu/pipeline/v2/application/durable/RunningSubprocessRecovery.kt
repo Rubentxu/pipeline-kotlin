@@ -9,9 +9,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
 import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
 import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShellProtocolLayout
+import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShellCapturedStdout
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
-import java.nio.file.Files
 import java.nio.file.Path
 
 /**
@@ -268,16 +267,17 @@ internal class ExternalSubprocessRecovery(
      * substituting one for the other would make a `returnStdout` value out of text the contract
      * never promised as the value. So this observer leaves it `null`: it has not observed it, and
      * saying otherwise is the fabrication this whole slice exists to prevent.
+     *
+     * The VALUE is read through [ShellCapturedStdout], the authority the fresh execution reads
+     * too. Before it existed, this observer read the same file under a rule of its own and
+     * published a different text than the fresh path published for the same program: the same
+     * step, resumed after a crash, with a different value.
 */
     private fun observedTerminal(controlDir: Path, exitCode: Int): RunningSubprocessObservation {
         // The captured-stdout channel. Read only to learn whether it EXISTS, and what it holds.
-        // Its name comes from the protocol's single authority, not from a local copy of it.
-        val outputFile = ShellProtocolLayout(controlDir).outputFile
-        val captured = if (Files.exists(outputFile)) {
-            Files.readString(outputFile)
-        } else {
-            null
-        }
+        // Its name comes from the protocol's single authority, not from a local copy of it, and
+        // its value comes from the single reader that the fresh path reads through too.
+        val captured = ShellCapturedStdout.read(controlDir)
         return RunningSubprocessObservation.Observed(
             DurableTaskTerminal.Exited(
                 exitCode = exitCode,

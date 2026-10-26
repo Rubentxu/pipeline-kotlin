@@ -308,6 +308,12 @@ class DurableShellExecutor {
 
     /**
      * Reads the captured stdout from output.txt.
+     *
+     * The VALUE comes from [ShellCapturedStdout], the authority the resumed path reads too, so
+     * a fresh execution and a resumed one publish the same text for the same file. What stays
+     * HERE is the RETENTION, which is this executor's to own: under
+     * [CaptureRetainPolicy.READ_THEN_DELETE] the file is disposed of here and nowhere else.
+     *
      * Per: read AFTER result.txt (poll result.txt first)
      * Per: single-flight read-then-delete (when captureRetainPolicy == READ_THEN_DELETE)
      * Per: on timeout/kill/non-zero, returns "" (never throws, never blocks)
@@ -317,11 +323,11 @@ class DurableShellExecutor {
 */
     fun readOutputText(controlDir: Path, captureRetainPolicy: CaptureRetainPolicy = CaptureRetainPolicy.READ_THEN_DELETE): String? {
         val outputFile = ShellProtocolLayout(controlDir).outputFile
-        if (!Files.exists(outputFile)) {
-            return null
-        }
         return try {
-            val content = Files.readString(outputFile).trim()
+            val content = ShellCapturedStdout.read(controlDir)
+            if (content == null) {
+                return null
+            }
             // Single-flight delete on success when policy is READ_THEN_DELETE
             if (captureRetainPolicy == CaptureRetainPolicy.READ_THEN_DELETE) {
                 Files.deleteIfExists(outputFile)

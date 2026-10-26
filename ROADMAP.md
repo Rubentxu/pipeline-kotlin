@@ -149,7 +149,7 @@ No habrá dos motores shell. `executeCore()` debe convertirse en un coordinador 
 
 Entrega verificable: ejecutar, terminar, cancelar y recuperar `sh` con las mismas salidas, efectos y protocolos persistentes.
 
-### Estado de H2 — en curso; los dos primeros componentes están cerrados
+### Estado de H2 — en curso; los tres primeros componentes están cerrados
 
 Antes de crear cada componente se comprobó qué abstracción existente ya es la dueña de cada responsabilidad. El resultado, medido sobre `DurableShellExecutor.kt` (1.802 líneas):
 
@@ -252,7 +252,62 @@ PASS  sha=0a7a7e7b40e103828306747239cec78860c741bc  elapsed=143s  budget=900s  t
 - 143 s de reloj de pared frente al presupuesto de 900 s.
 - `VERIFY_LOC = 25602`, `PRODUCT_LOC = 71061`, ratio `0.360` (límite 2). El censo cuenta 165 ficheros de tests unitarios y 62 pipelines E2E como verificación, y 720 ficheros de código de producción como producto.
 
-**Lo que queda de H2.** Los otros cinco componentes se extraen conservando `DurableShellExecutor` como fachada compatible y sin crear un segundo motor de shell: `executeCore()` debe quedar como un coordinador legible, no como una copia de la implementación actual.
+#### El corte: `ShellProcessLauncher`
+
+El ejecutor lanzaba el hijo dentro de `launch`, entre la preparación del entorno y la decisión de qué hacer con su desenlace. El lanzamiento era un bloque de decisiones —el argv, el directorio de trabajo, el entorno, la redirección de la entrada, y una matriz de cuatro ramas que decidía dónde iban el stdout y el stderr— que sólo se podía leer en línea y que sólo se podía comprobar arrancando un hijo y mirando los ficheros que dejaba. `ShellProcessLauncher` (382 líneas) las recoge; `DurableShellExecutor` queda como coordinador y `executeCore()` sigue siendo el único motor de shell.
+
+**La comprobación previa, por responsabilidad.** Antes de crear el componente se comprobó si otra abstracción ya era la dueña de esa responsabilidad:
+
+|Responsabilidad|¿Existe ya?|Consecuencia|
+|---|---|---|
+|Identidad de un lanzamiento: hijo, bombas, sumideros, descriptores de calentamiento|`LaunchedShell`|Es la FORMA de retorno del lanzador, no el lanzador; se conserva intacta y se sigue devolviendo sin cambios|
+|Preparar scripts, wrapper y entorno|`ShellLaunchPreparation` (corte anterior)|No toca esta responsabilidad; se conserva intacta|
+|Nombres y rutas del protocolo persistente|`ShellProtocolLayout` (primer corte)|No toca esta responsabilidad; se conserva intacta|
+|Transcripto de consola: nombre canónico|`DurableShellFiles`|No toca esta responsabilidad; se conserva intacta|
+|Bombas de transcripción, drenaje y veredicto de persistencia|`TranscriptDrain.kt`|Ya está fuera del ejecutor; no se toca|
+|Lanzar el hijo y enrutizar sus dos descriptores|Dentro del ejecutor, en `launch`|Es lo que se extrae|
+
+El resultado de la comprobación es que no existía ningún componente que lanzara: `LaunchedShell` es la identidad que el lanzamiento devuelve, no el acto de lanzar. Se crea, y se sigue devolviendo.
+
+**El enrutado pasa a ser un valor.** Dónde van el stdout y el stderr del hijo depende de dos hechos —si el stdout se captura y si los bytes se bombean por la JVM— y esa decisión era una matriz de ramas dentro del cuerpo del lanzamiento. Ahora es una función pura sobre el protocolo (`planChildDescriptors`), así que se puede leer como una regla y se puede comprobar como una regla, sin proceso, sin hilo, sin reloj y sin sistema de ficheros. Cada caso nombra el FICHERO al que apunta, no un enum: "dónde va el stderr" sólo tiene respuesta con una ruta, y una transcripción con dos escritores es un defecto distinto de un valor tipado contaminado por el stderr.
+
+**La propiedad del agente se decide antes, y por qué.** El rendezvous del agente llega al lanzador como un callback (`attachRendezvous`) y no como un componente, porque el lanzador sabe CUÁNDO ocurre —entre configurar el proceso y arrancarlo: abrir una FIFO para escribir bloquea hasta que haya un lector— y no qué es el agente. El corte del agente (`AgentRendezvous`) es otro corte, y este no lo adelanta. El callback se invoca FUERA del `try`, para que un fallo al acoplarse salga como el error del agente y no como un fallo de lanzamiento envuelto: son dos hechos distintos y el llamante los lee distinto. Los descriptores de calentamiento se cierran en el `catch` si el hijo nunca arrancó, porque son los únicos escritores de las FIFOs y nadie más los cerrará.
+
+**Qué se quita por medida, y no por forma.** `setsidPath`, `bashPath` y `resolveCommandPath` se midieron sobre el árbol anterior al corte (`0a7a7e7b4`): `setsidPath` y `bashPath` tienen **una** aparición cada una —su propia declaración— y cero lectores; `resolveCommandPath` tiene tres —su declaración y las dos que sólo se alcanzan desde esos `by lazy`—. Los dos eran `by lazy` y nunca se leyeron, así que su inicializador nunca corrió y ningún `command -v` llegó a ejecutarse: quitarlos no cambia el comportamiento observable, y era lo único que su lectura habría cambiado. `checkLinuxOrThrow` tenía dos lectores —el lanzamiento y el desprendimiento— y ahora es `requireLinuxHost()`, junto a la excepción que lanza, para que las dos puertas no puedan discrepar sobre la plataforma.
+
+**La petición de ejecución sale del fichero del ejecutor.** `DurableShellExecutionRequest` y sus dos proyecciones (dónde acaba la transcripción y qué significa un timeout) salen de `DurableShellExecutor.kt`, donde eran `private` de fichero, a un fichero propio: el lanzador y el ejecutor son DOS colaboradores de la misma petición, y ninguno la posee. Declararla junto a la fachada obligaría al lanzador a depender del fichero de la fachada para la forma de su propio trabajo.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que los bytes del hijo llegan donde el modo de la ejecución exige: un stdout capturado es el valor tipado y NADA más llega a él —ni el stderr, ni los bytes de la transcripción—, el stderr es un canal distinto hasta el descriptor del núcleo, la transcripción tiene UN solo escritor, y cuando el agente de ingesta es el que bombea, los dos canales son sus FIFOs. La capacidad que esa garantía sostiene es que un paso `sh` durable devuelve un valor tipado que no está contaminado por los diagnósticos del propio paso, y que un lector puede seguir la transcripción y saber si mira el stdout o el stderr. El instrumento es un test puro de 12 filas de JUnit 5 —sin proceso, sin hilo, sin reloj, sin sistema de ficheros— porque el enrutado es una función pura de cuatro hechos: el instrumento más barato que puede fallar es una llamada a ella, y los escenarios E2E ya lanzan hijos reales y dicen si los bytes llegaron; esto dice QUÉ regla los envió.
+
+**Visto en rojo seis veces.** Cada mutación se leyó en el diff antes que en el resultado, el árbol se restauró después, y cada ejecución se comprobó contra el XML de JUnit autoritativo —no contra la salida del build, que también dice "BUILD FAILED"—, con la condición de que corrieron las 12 filas:
+
+|Mutación|Filas que se encendieron|
+|---|---|
+|El stdout y el stderr intercambian su destino|1 — `the captured stdout goes to the value file and the stderr to a pipe`|
+|La rama de captura envía el stderr al fichero de valor|1 — `the captured stdout goes to the value file and the stderr to the transcript`|
+|La rama del agente desaparece|1 — `the agent owns both channels when it is the one pumping`|
+|`||` por `&&` en la regla de bombeo|2 — `the composition pumps the child's bytes when it has a redactor`, `the composition pumps the child's bytes when it has a channel destination`|
+|El argv gana un `-c`|1 — `the argv is the wrapper and nothing else`|
+|Los dos canales van a la transcripción|1 — `both channels go to the transcript when nothing is pumped`|
+
+Cada mutación encendió exactamente las filas que la describen y ninguna más. La cuarta es la que importa más: al cambiar `||` por `&&` se encendieron las dos filas que afirman el bombeo, y la que afirma que NO se bombea siguió en verde —porque afirma lo contrario—, y ésa es la prueba de que las tres filas miran hechos distintos y no una sola regla repetida.
+
+**El diagnóstico de detekt, que no era del código.** `detektMain` —la tarea que sí analiza el *source set*— se puso en rojo con un `SpreadOperator` en `ShellProcessLauncher.kt:123`: `ProcessBuilder(*shellLaunchArgv(…).toTypedArray())`. La causa era el constructor variádico, no la política: `ProcessBuilder` tiene un constructor que recibe la lista entera, y usarlo quita el `*` sin cambiar el argv. Además, el corte retira siete entradas del baseline cuyo sujeto había desaparecido; la prueba de que eran inertes es quitarlas y ver que `detektMain` y `detektTest` siguen en verde, no que su texto no aparezca en el código.
+
+**Que `detektTest` no sea un verde vacío.** La tarea `detekt` agregada no analiza ningún fichero y reporta verde: un gate que nunca miró no puede estar en rojo. Eso se comprobó con una sonda —un import sin usar en el fichero de test— que hizo aparecer el `UnusedImport` nombrando el fichero de test y su línea, y se revirtió. `detektTest` analiza de verdad `src/test/kotlin`.
+
+Medido sobre el árbol del corte con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=d06e2202697ed4076867d79da3c38c915494a641  elapsed=189s  budget=900s  tests=rewritten:1369 read:0  scenarios=observed:62 executed:62
+```
+
+- 186 informes JUnit reescritos por esta ejecución —todos con su marca de tiempo dentro de una ventana de 9 segundos—, 1369 tests, 0 fallos, 0 errores, 0 omitidos. Las cifras se leyeron de los XML de la ejecución, no del resumen del gate: 1369 son los 1357 del corte anterior más las 12 filas nuevas.
+- 62 de 62 escenarios E2E ejecutados y en verde; 588 comprobaciones sobre 112 ejecuciones, 219 pasos terminados, 2 terminados inestables; ninguno sin comprobar; 7 credenciales sembradas y 2 reruns durables.
+- 189 s de reloj de pared frente al presupuesto de 900 s.
+- `VERIFY_LOC = 25750`, `PRODUCT_LOC = 71111`, ratio `0.362` (límite 2); el módulo del corte, `pipeline-step-sdk:runtime`, queda en `913 / 2187 = 0.417`. El censo cuenta 166 ficheros de tests unitarios y 62 pipelines E2E como verificación, y 722 ficheros de código de producción como producto.
+
+**Lo que queda de H2.** Los otros cuatro componentes se extraen conservando `DurableShellExecutor` como fachada compatible y sin crear un segundo motor de shell: `executeCore()` debe quedar como un coordinador legible, no como una copia de la implementación actual.
 
 ## H3 — Vertical slice completo `core.sh`
 

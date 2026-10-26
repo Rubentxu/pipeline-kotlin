@@ -34,6 +34,23 @@ interface RunLeasePort : RunLeaseObservationPort {
     fun acquire(request: LeaseRequest): LeaseAcquisition
 
     /**
+     * Whether a LIVE process holds this run's lease right now.
+     *
+     * ## Why this is a question of its own
+     * [RunLeaseObservationPort.observe] answers what the durable RECORD says, and
+     * a record is not a liveness fact: a writer that was killed leaves its record
+     * behind, still saying its owner is alive. [acquire] answers the live question
+     * too, but only by TAKING the lease — which writes a durable ownership record
+     * and locks the run. A caller that must not write cannot ask it.
+     *
+     * So the live question gets its own door, and it does not write: it asks the
+     * kernel whether the lock is free and gives it straight back. The answer is
+     * about the present, exactly like the lock [acquire] consults, and the
+     * difference is that nothing was taken.
+     */
+    fun liveness(runId: String): LeaseLiveness
+
+    /**
      * Give the lease back: release the lock and mark the owner as gone.
      *
      * Releasing a lease nobody holds is a no-op, not a failure.

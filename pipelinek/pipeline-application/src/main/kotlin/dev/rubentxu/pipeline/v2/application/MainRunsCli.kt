@@ -210,7 +210,15 @@ Exit codes: 0 closed (or already closed), 2 refused."""
         // the output store's reconciliation. The event store itself is only
         // read, but it shares the database with the journal, so the admission
         // is the write one.
-        val admission = admitEventStore(options.dbPath, EventStorePurpose.Write)
+        //
+        // A dry run writes NOTHING, so it must not even OPEN the write lane:
+        // the write lane's journal_mode=WAL is a header write, and a writable
+        // close checkpoints the WAL and removes the -wal and -shm files. The
+        // read lane is the door the engine refuses to write through.
+        val admission = admitEventStore(
+            options.dbPath,
+            if (options.dryRun) EventStorePurpose.Read else EventStorePurpose.Write,
+        )
         if (admission is EventStoreAdmission.Refused) {
             System.err.println(admission.refusal.render())
             return 2
@@ -223,6 +231,7 @@ Exit codes: 0 closed (or already closed), 2 refused."""
                     eventStore = eventStore,
                     controlRoot = controlRoot,
                     clock = SystemClock(),
+                    dryRun = options.dryRun,
                 ).recover(runId, RecoverOptions(dryRun = options.dryRun))
             }
         } catch (failure: Exception) {

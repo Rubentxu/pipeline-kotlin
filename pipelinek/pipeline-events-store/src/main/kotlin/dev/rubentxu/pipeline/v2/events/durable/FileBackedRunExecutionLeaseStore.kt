@@ -201,6 +201,65 @@ class FileBackedRunExecutionLeaseStore(
     override fun observe(runId: String): LeaseRecord? =
         readRecord(leaseDir.resolve(recordFileName(runId)))
 
+    /**
+     * Whether a LIVE process holds this run's lease right now.
+     *
+     * ## How it asks, and what it refuses to do
+     * The lock is the only authority on "is somebody publishing this run", and
+     * the kernel is the only authority on the lock. So the question is asked of
+     * the kernel: the lock file is opened and `tryLock`ed, and the answer is
+     * what the kernel said. The lock is given straight back — this probe
+     * observes, it does not own.
+     *
+     * Three deliberate choices:
+     *
+     *  - **The file is opened WITHOUT `CREATE`.** A probe that creates the file
+     *    it is probing has written, and a caller that promised to write nothing
+     *    would have broken its promise on a run that never held a lease.
+     *  - **The channel is opened for READ and WRITE**, so the lock taken is the
+     *    same EXCLUSIVE kind the acquirer takes. A shared lock would answer a
+     *    different question, and a read-only file makes the question
+     *    unanswerable: the honest answer there is [LeaseLiveness.Unverifiable],
+     *    never a free lease.
+     *  - **The record is never written.** The probe reads the record to
+     *    attribute the holder and touches nothing else.
+     *
+     * A `OverlappingFileLockException` means THIS JVM already holds the lock,
+     * which is a real ownership conflict and not an infrastructure failure — the
+     * same distinction [acquire] draws.
+     */
+    override fun liveness(runId: String): LeaseLiveness {
+        val lockFile = leaseDir.resolve(lockFileName(runId))
+        if (!Files.isRegularFile(lockFile)) {
+            // No lock file: no lock was ever taken, so nobody holds it. The
+            // probe must not create the file to find this out.
+            return LeaseLiveness.Free
+        }
+        return try {
+            FileChannel.open(
+                lockFile,
+                java.nio.file.StandardOpenOption.READ,
+                java.nio.file.StandardOpenOption.WRITE,
+            ).use { channel ->
+                val lock: FileLock? = try {
+                    channel.tryLock()
+                } catch (_: OverlappingFileLockException) {
+                    null
+                }
+                if (lock == null) {
+                    LeaseLiveness.Held(
+                        readRecord(leaseDir.resolve(recordFileName(runId)))?.ownerId ?: UNKNOWN_OWNER,
+                    )
+                } else {
+                    runCatching { lock.release() }
+                    LeaseLiveness.Free
+                }
+            }
+        } catch (e: Exception) {
+            LeaseLiveness.Unverifiable(e.shortDiagnostic())
+        }
+    }
+
     override fun close() {
         val lock = held
         val channel = this.channel
@@ -278,5 +337,12 @@ class FileBackedRunExecutionLeaseStore(
 
     private companion object {
         val UNKNOWN_OWNER: RunOwnerId = RunOwnerId.of("unknown-owner")!!
+    }
+
+    /** A short, one-line diagnostic for a failure that must not become a stack trace. */
+    private fun Throwable.shortDiagnostic(): String {
+        val cls = this::class.simpleName ?: this.javaClass.name
+        val msg = message?.take(120)?.replace('\n', ' ')
+        return if (msg.isNullOrBlank()) cls else "$cls: $msg"
     }
 }

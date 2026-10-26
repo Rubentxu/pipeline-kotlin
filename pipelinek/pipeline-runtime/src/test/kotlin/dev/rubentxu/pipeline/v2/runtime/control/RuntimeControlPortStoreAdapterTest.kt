@@ -9,6 +9,7 @@ import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.durable.FencingToken
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
+import dev.rubentxu.pipeline.v2.events.durable.LeaseLiveness
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRecord
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
 import dev.rubentxu.pipeline.v2.events.durable.RunLeasePort
@@ -369,6 +370,8 @@ class RuntimeControlPortStoreAdapterTest {
         override fun isKnown(runId: String): Boolean = true
 
         override fun observe(runId: String): LeaseRecord? = null
+
+        override fun liveness(runId: String): LeaseLiveness = LeaseLiveness.Free
     }
 
     /**

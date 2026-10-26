@@ -13,6 +13,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
+import dev.rubentxu.pipeline.v2.events.durable.LeaseLiveness
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursor
@@ -28,7 +29,6 @@ import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.runtime.control.CancelReceipt
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionResult
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeObservation
-import dev.rubentxu.pipeline.v2.runtime.inspect.LeaseHolder
 import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
@@ -205,27 +205,49 @@ class RuntimeRecoverPortStoreAdapter(
      * writes.
      *
      * The dry run asks "what would happen?", so it must leave nothing behind
-     * AND it must answer what the recovery answers. Taking the lease is a
-     * write, so the dry run does not take it — but then the record it reads
-     * belongs to the LAST holder, and the recovery, which takes the lease
-     * first, reads a record that names itself.
+     * AND it must answer what the recovery answers.
      *
-     * That is why the dry run DECLARES the acquisition it would perform: the
-     * holder becomes us, and we are alive. Without it, a run whose writer gave
-     * the lease back cleanly — the commonest shape of a crashed run — was
-     * reported as unrecoverable while the real recovery offered the
-     * re-attach.
+     * ## The live question comes first
+     * The recovery's first act is to take the lease, and taking it is what
+     * proves that no live process is publishing the run. A dry run cannot take
+     * it — that is a write — so it ASKS the same question of the kernel
+     * through [RunLeasePort.liveness], which holds the lock for a moment and
+     * gives it straight back.
+     *
+     * The answer is the recovery's answer: a run a live process is publishing
+     * is refused with [RecoverRefusal.LeaseHeldByAnother], and a question the
+     * kernel could not answer is refused as a storage error. A dry run that
+     * answered "reattach" for a run another process is working on would send
+     * the operator to a plan the recovery would refuse to execute.
+     *
+     * ## The lease the dry run reads
+     * The recovery reads a lease that names ITSELF, alive, because it took it.
+     * The dry run reads the same view through [LeaseAsAcquired], which
+     * presents the record the acquisition WOULD have left — so both decide on
+     * the same facts, and neither has to guess what the other would have seen.
      */
     private fun decideWithoutWriting(runId: String): RecoverOutcome {
+        when (val liveness = lease.liveness(runId)) {
+            is LeaseLiveness.Held -> return RecoverOutcome.FailClosed(
+                RecoverRefusal.LeaseHeldByAnother(
+                    "run $runId is held by ${liveness.heldBy.value}",
+                ),
+            )
+
+            is LeaseLiveness.Unverifiable -> return RecoverOutcome.FailClosed(
+                RecoverRefusal.StorageError(liveness.reason),
+            )
+
+            LeaseLiveness.Free -> { /* Nobody is publishing this run. */
+            }
+        }
+
         val evidence = evidenceFor(runId)
         if (evidence is RecoverEvidence.Refused) {
             return RecoverOutcome.FailClosed(evidence.reason)
         }
         val ready = evidence as RecoverEvidence.Ready
-        val decision = RuntimeRecoverDecision.decideRecovery(
-            ready.observation.asIfTheLeaseWereOurs(),
-            ready.proof,
-        )
+        val decision = RuntimeRecoverDecision.decideRecovery(ready.observation, ready.proof)
         return applyDecision(runId, decision, ready, writesToSubstrate = false)
     }
 
@@ -497,35 +519,6 @@ class RuntimeRecoverPortStoreAdapter(
      * the only place a real instant can come from is here.
      */
     private fun reattachDeadlineMs(): Long = clock.now().toEpochMilli() + REATTACH_WINDOW_MS
-
-    /**
-     * The observation a dry run must decide on.
-     *
-     * The recovery TAKES the lease before it reads the substrate, so the
-     * record it reads names itself, alive. A dry run does not take the lease
-     * — taking it is a write — so it reads whatever the last holder left
-     * behind: a crashed writer's record, which still says "alive", or no
-     * holder at all.
-     *
-     * Left as observed, the dry run would refuse or re-attach differently
-     * from the recovery it simulates. Replacing the holder with "us, alive"
-     * is what makes the two coherent.
-     *
-     * The one divergence this cannot remove: another LIVE process holding the
-     * lock. The recovery would answer `LeaseHeldByAnother`, and asking the
-     * lock means taking it, which is the write the dry run must not do.
-     */
-    private fun RuntimeObservation.asIfTheLeaseWereOurs(): RuntimeObservation =
-        when (this) {
-            is RuntimeObservation.Running -> copy(
-                leaseHolder = LeaseHolder(
-                    ownerId = syntheticObserverId,
-                    fencingToken = fencingToken,
-                    alive = true,
-                ),
-            )
-            else -> this
-        }
 
     /**
      * The run's own terminal row: the outcome the JOURNAL observes for the

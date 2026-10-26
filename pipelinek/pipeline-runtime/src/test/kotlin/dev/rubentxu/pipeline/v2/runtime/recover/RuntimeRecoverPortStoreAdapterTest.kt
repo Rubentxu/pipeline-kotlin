@@ -12,6 +12,7 @@ import dev.rubentxu.pipeline.v2.events.durable.FencingToken
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryOperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryReplayCursorStore
 import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
+import dev.rubentxu.pipeline.v2.events.durable.LeaseLiveness
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRecord
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursor
@@ -316,6 +317,37 @@ class RuntimeRecoverPortStoreAdapterTest {
         )
     }
 
+    /**
+     * Un dry-run con la lease viva de otro se niega con su propia negativa.
+     *
+     * El dry-run no puede TOMAR la lease — tomarla es una escritura — pero
+     * sí puede PREGUNTAR al núcleo quién la tiene. La respuesta es la misma
+     * que da la recuperación: un run que otro proceso está publicando se
+     * niega con [RecoverRefusal.LeaseHeldByAnother].
+     *
+     * La alternativa sería peor que incorrecta: un dry-run que dijera
+     * "reattach" para un run que otro está trabajando mandaría al operador
+     * a un plan que la recuperación real se negaría a ejecutar.
+     */
+    @Test
+    fun `un dry-run con la lease viva de otro se niega con su propia negativa`() {
+        val fixture = fixture(
+            ops = listOf(op("op-1", OperationStatus.SUCCEEDED)),
+            lease = HeldLease(),
+            observation = runningWithDeadWriter(),
+        )
+
+        val outcome = fixture.adapter.recover(runId, RecoverOptions(dryRun = true))
+
+        val failed = assertInstanceOf(RecoverOutcome.FailClosed::class.java, outcome)
+        assertInstanceOf(
+            RecoverRefusal.LeaseHeldByAnother::class.java,
+            failed.reason,
+            "a live process is publishing this run right now, and the dry run must say so " +
+                "instead of offering a plan the recovery would refuse to execute",
+        )
+    }
+
     // ---------------------------------------------------------------------
     // Fixtures
     // ---------------------------------------------------------------------
@@ -366,34 +398,43 @@ class RuntimeRecoverPortStoreAdapterTest {
     }
 
     /**
-     * A dry run answers about the RUN, not about the lease.
+     * Un dry-run y una recuperación deciden lo MISMO sobre los MISMOS hechos.
      *
-     * The lease record is not the authority on "is anybody publishing this
-     * run" — the OS lock is, and the lock cannot be asked without taking it,
-     * which is the write the dry run must not do. So the dry run DECLARES the
-     * acquisition it would perform and decides on the state that acquisition
-     * would produce: the holder is us, and we are alive.
+     * El dry-run pregunta "¿qué pasaría?", y la única respuesta honesta es la
+     * que da la recuperación. Los dos deciden sobre la observación que deja la
+     * adquisición — la que nombra a la propia recuperación como titular,
+     * viva — y esta fila fija que el camino del dry-run no se desvía del
+     * camino de la recuperación.
      *
-     * Without that, a run whose writer gave the lease back cleanly — the
-     * commonest shape of a crashed run — was reported as unrecoverable, while
-     * the real recovery (which takes the lease and then sees itself as the
-     * holder) offers the re-attach. The dry run and the recovery have to
-     * answer the same question with the same answer.
+     * Antes era cierto por una reescritura DENTRO del adaptador: el dry-run
+     * sustituía el titular de la observación por el suyo. Esa reescritura
+     * desapareció, y tenía que desaparecer: no podía arreglar el defecto,
+     * porque la introspección RECHAZA antes de que el adaptador tenga una
+     * observación que reescribir. La coherencia vive ahora donde nacen los
+     * hechos — la composición, que lee la lease a través de la vista que deja
+     * la adquisición — y lo que queda aquí es la aportación del adaptador:
+     * que decida igual.
      */
     @Test
-    fun `un dry-run de un run en vuelo sin dueno de lease ofrece reenganche`() {
-        val fixture = fixture(
-            ops = listOf(op("op-1", OperationStatus.RUNNING)),
-            observation = runningWithoutHolder(),
-        )
+    fun `un dry-run y una recuperacion deciden lo mismo sobre los mismos hechos`() {
+        val facts = runningUnderTheRecoverersLease()
+        val dryRun = fixture(ops = listOf(op("op-1", OperationStatus.RUNNING)), observation = facts)
+        val recovery = fixture(ops = listOf(op("op-1", OperationStatus.RUNNING)), observation = facts)
 
-        val outcome = fixture.adapter.recover(runId, RecoverOptions(dryRun = true))
+        val dryRunOutcome = dryRun.adapter.recover(runId, RecoverOptions(dryRun = true))
+        val recoveryOutcome = recovery.adapter.recover(runId, RecoverOptions.Default)
 
         assertInstanceOf(
             RecoverOutcome.ReattachPending::class.java,
-            outcome,
+            dryRunOutcome,
             "the run still has work in flight, so the dry run must offer the re-attach the " +
                 "real recovery offers; a run that is in flight is not an unrecoverable substrate",
+        )
+        assertEquals(
+            recoveryOutcome::class,
+            dryRunOutcome::class,
+            "the dry run answered differently from the recovery about the same facts; an " +
+                "operator who reads the dry run is reading a plan the recovery would refuse",
         )
     }
 
@@ -574,6 +615,21 @@ class RuntimeRecoverPortStoreAdapterTest {
         outputTails = emptyList(),
     )
 
+    /**
+     * The run as the RECOVERY sees it once it has taken the lease.
+     *
+     * This is the shape the composition hands to both paths: the holder is
+     * the recovery's own synthetic observer, alive, and the token is the one
+     * the acquisition issued — the previous holder's token, advanced.
+     */
+    private fun runningUnderTheRecoverersLease(): RuntimeObservation.Running = RuntimeObservation.Running(
+        attempt = AttemptId(1),
+        leaseHolder = LeaseHolder(ownerId = "m2-observer", fencingToken = 8L, alive = true),
+        fencingToken = 8L,
+        journalPosition = JournalPosition(operations = 1, latestOpId = "op-1", latestTerminalAtMs = null),
+        outputTails = emptyList(),
+    )
+
     // ---------------------------------------------------------------------
     // Fakes
     // ---------------------------------------------------------------------
@@ -605,6 +661,9 @@ class RuntimeRecoverPortStoreAdapterTest {
         override fun isKnown(runId: String): Boolean = true
 
         override fun observe(runId: String): LeaseRecord? = null
+
+        /** Nobody holds it: the lock is free. */
+        override fun liveness(runId: String): LeaseLiveness = LeaseLiveness.Free
     }
 
     /**
@@ -629,6 +688,9 @@ class RuntimeRecoverPortStoreAdapterTest {
         override fun isKnown(runId: String): Boolean = true
 
         override fun observe(runId: String): LeaseRecord? = null
+
+        /** The lock is held: this process would not be told to touch the run. */
+        override fun liveness(runId: String): LeaseLiveness = LeaseLiveness.Held(holder)
     }
 
     /**

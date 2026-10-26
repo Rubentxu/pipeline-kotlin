@@ -26,6 +26,7 @@ import dev.rubentxu.pipeline.v2.runtime.control.RuntimeControlPort
 import dev.rubentxu.pipeline.v2.runtime.control.RuntimeControlPortStoreAdapter
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPort
 import dev.rubentxu.pipeline.v2.runtime.inspect.RuntimeIntrospectionPortStoreAdapter
+import dev.rubentxu.pipeline.v2.runtime.recover.LeaseAsAcquired
 import dev.rubentxu.pipeline.v2.runtime.recover.RuntimeRecoverPort
 import dev.rubentxu.pipeline.v2.runtime.recover.RuntimeRecoverPortStoreAdapter
 import dev.rubentxu.pipeline.v2.credentials.api.RedactingEventSink
@@ -322,16 +323,40 @@ internal fun composeRuntimeIntrospectionPort(
  * lease is mine", which is a re-entry, and describes the run instead of
  * refusing to.
  *
+ * ## The lease the introspection reads
+ * The introspection does not read the raw lease record: it reads the lease as
+ * the recovery that has taken it sees it ([LeaseAsAcquired]). In the recovery
+ * that is the record the acquisition just wrote, and in the dry run it is the
+ * record the acquisition WOULD write — the same three cases either way, so
+ * the two decide on the same facts and cannot drift apart. The raw store is
+ * still what the recover TAKES and what the dry run PROBES; only the view is
+ * shared.
+ *
  * ## Why the output plane is opened for WRITING
  * A recover reconciles the output store: it truncates the uncommitted tail a
  * dead writer left behind. A reader must never do that — a reader truncating
  * a live writer's bytes is the defect the output plane's recovery split
  * exists to prevent — and this is not a reader: it holds the run's lease.
+ *
+ * ## Why a dry run opens the READ side of both planes
+ * A dry run writes nothing, so it must not open a plane that writes. The
+ * output plane's writing store RECOVERS as it is constructed, and a
+ * recovery truncates an uncommitted tail — a write, under a verb that
+ * promised none. The event store's write lane opens the database in a mode
+ * that writes its header and checkpoints the WAL on close; the read lane is
+ * the door the engine refuses to write through.
+ *
+ * @param dryRun Whether this composition answers WITHOUT writing. The caller
+ *   and the [dev.rubentxu.pipeline.v2.runtime.recover.RecoverOptions] it builds
+ *   must agree: the flag here chooses the LANES, and the option chooses
+ *   whether the adapter writes. A composition that opened the writing lanes
+ *   for a dry run would write before the adapter was ever asked.
  */
 internal fun composeRuntimeRecoverPort(
     eventStore: SqliteEventStore,
     controlRoot: Path,
     clock: Clock,
+    dryRun: Boolean = false,
 ): RuntimeRecoverPort {
     val journal = SqliteOperationJournalImpl(
         connectionFactory = eventStore.underlyingConnectionFactory(),
@@ -341,23 +366,31 @@ internal fun composeRuntimeRecoverPort(
     )
     val cursors = SqliteReplayCursorStoreImpl(eventStore.underlyingConnectionFactory(), clock)
     val lease = FileBackedRunExecutionLeaseStore(controlRoot.resolve("leases"))
-    val output = OutputPlaneProvider.storeForWriting(controlRoot)
-    val eventReader = EventRecordReadPortStoreAdapter(
-        store = eventStore,
-        runExists = { runId -> lease.isKnown(runId) || eventStore.hasRun(runId) },
-        tailSequence = { runId -> eventStore.tailSequence(runId) },
-    )
+    val output = if (dryRun) {
+        OutputPlaneProvider.storeForReading(controlRoot)
+    } else {
+        OutputPlaneProvider.storeForWriting(controlRoot)
+    }
     // One identity for both planes: the recover holds the lease, and the
     // introspection it asks has to recognise that holder as itself.
     val owner = "cli-recover-" + ProcessHandle.current().pid() + "-" +
         java.util.UUID.randomUUID().toString().take(8)
+    val leaseView = LeaseAsAcquired(
+        lease,
+        requireNotNull(RunOwnerId.of(owner)) { "the recover owner id is always well formed" },
+    )
+    val eventReader = EventRecordReadPortStoreAdapter(
+        store = eventStore,
+        runExists = { runId -> leaseView.isKnown(runId) || eventStore.hasRun(runId) },
+        tailSequence = { runId -> eventStore.tailSequence(runId) },
+    )
     val introspect = RuntimeIntrospectionPortStoreAdapter(
         eventReads = eventReader,
         tails = output,
         frames = output.frameIndex(),
         journal = journal,
         cursors = cursors,
-        lease = lease,
+        lease = leaseView,
         syntheticObserverId = owner,
     )
     return RuntimeRecoverPortStoreAdapter(
@@ -371,3 +404,4 @@ internal fun composeRuntimeRecoverPort(
         syntheticObserverId = owner,
     )
 }
+

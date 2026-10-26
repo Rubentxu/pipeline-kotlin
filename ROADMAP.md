@@ -188,7 +188,7 @@ PASS  sha=f5968af756cf2faa943ea9af85828fd48f52694a  elapsed=141s  budget=900s  t
 - 184 informes JUnit reescritos por esta ejecución, 1344 tests, 0 fallos, 0 omitidos.
 - 62 de 62 escenarios E2E ejecutados y en verde, 588 comprobaciones sobre 112 ejecuciones.
 - 141 s de reloj de pared frente al presupuesto de 900 s.
-- `VERIFY_LOC = 25449`, `PRODUCT_LOC = 71128`, ratio `0.358` (límite 2).
+- `VERIFY_LOC = 25449`, `PRODUCT_LOC = 71128`, ratio `0.358` (límite 2). El censo excluye 2 ficheros como generados (los dos Java de `buildSrc`, cuya ruta de paquete contiene `/build/`) y deja 53 sin contar en ninguna parte (README, `AGENTS.md`, `ROADMAP.md`, ficheros de contrato `.api`, bases de detekt y el `gradle-wrapper.jar`).
 
 **Lo que queda de H2.** Los otros seis componentes se extraen conservando `DurableShellExecutor` como fachada compatible y sin crear un segundo motor de shell: `executeCore()` debe quedar como un coordinador legible, no como una copia de la implementación actual.
 

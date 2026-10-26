@@ -37,10 +37,7 @@
     <ID>UseCheckOrError:DurableShellExecutor.kt:DurableShellExecutor$throw IllegalStateException("setsid not found on PATH")</ID>
     <ID>UseCheckOrError:DurableTaskTerminalAdapter.kt:throw IllegalStateException("A legacy non-terminal result cannot be adapted as terminal: $state")</ID>
     <ID>UseIsNullOrEmpty:DurableShConfig.kt:DurableShConfig$agentSecret == null || agentSecret.isEmpty()</ID>
-    <ID>UseOrEmpty:DurableShellExecutor.kt:DurableShellExecutor$coercedEnv["PATH"] ?: ""</ID>
-    <ID>UseOrEmpty:DurableShellExecutor.kt:DurableShellExecutor$mapOf("PATH" to userPath).normalizePath( sandbox.pathKeep, pbEnv["JAVA_HOME"], pbEnv["M2_HOME"], )["PATH"] ?: ""</ID>
     <ID>UseOrEmpty:EnvModel.kt:this["PATH"] ?: ""</ID>
-    <ID>VariableNaming:DurableShellExecutor.kt:DurableShellExecutor$/** Sentinel cookie value — inherited by wrapper + heartbeat, distinguishes wrapper machinery. */ private val SENTINEL_COOKIE = "__pipeline_protected__"</ID>
     <ID>MaxLineLength:DurableShellExecutor.kt:message = "Compatibility projection for PipelineRun's legacy String status flow. Migrate to DurableShellExecutor.executeTerminal with ShOptions and consume the typed terminal result; removal is scheduled for EM-10."</ID>
     <ID>UseCheckOrError:PluginCompatibilityResource.kt:PluginCompatibilityResource$throw IllegalStateException( "$RESOURCE_PATH declares apiRange='$rawRange', which is not a '[X.Y.Z, A.B.C)' literal. " + "The policy must produce a well-formed range; check buildSrc.", )</ID>
     <ID>UseCheckOrError:PluginCompatibilityResource.kt:PluginCompatibilityResource$throw IllegalStateException( "$RESOURCE_PATH does not contain a parseable \"apiRange\" field. The plugin was built " + "from a malformed policy; rebuild via Gradle so the policy re-emits the resource.", )</ID>

@@ -189,12 +189,12 @@ internal class ShellLaunchPreparation(
         // A caller-supplied path would otherwise smuggle entries past the keep-set, so the
         // normalisation is applied again after the merge.
         if (coerced.containsKey("PATH") && sandbox.profile == SandboxProfile.LOCAL) {
-            val callerPath = coerced["PATH"] ?: ""
+            val callerPath = coerced["PATH"].orEmpty()
             val normalised = mapOf("PATH" to callerPath).normalizePath(
                 sandbox.pathKeep,
                 child["JAVA_HOME"],
                 child["M2_HOME"],
-            )["PATH"] ?: ""
+            )["PATH"].orEmpty()
             if (normalised != callerPath) {
                 child["PATH"] = normalised
             }

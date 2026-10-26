@@ -23,11 +23,13 @@ import kotlinx.serialization.json.Json
  * ## Mirrored SQLite semantics (intentional fidelity)
  * - [beginOperation] writes a RUNNING row (kind `RERUN`, raw input JSON,
  *   `startedAt` = `createdAt` = now) and throws
- *   [IllegalStateException] on a duplicate `(opId, attempt)`. Like the
- *   SQLite implementation, it does NOT populate the run id — RUNNING
- *   rows are invisible to [listForRun] until [append] fills it. This
- *   quirk is mirrored deliberately so store choice cannot change
- *   reconciliation behaviour.
+ *   [IllegalStateException] on a duplicate `(opId, attempt)`. The row is
+ *   attributed to its run AT BIRTH, exactly like the SQLite implementation:
+ *   the run id comes from the operation's own input, so a RUNNING row is
+ *   visible to [listForRun] while the operation is still running. An
+ *   unattributed RUNNING row made a run that died mid-operation look
+ *   finished to any reader, and made the answer depend on which store lane
+ *   was asking — a difference no store choice is allowed to introduce.
  * - [append] upserts on `(opId, attempt)`: on conflict ONLY `status`,
  *   `output`, `updatedAt`, `endedAt`, and run id are updated;
  *   `startedAt`/`createdAt`/fingerprint/input/deadline are preserved.
@@ -114,6 +116,11 @@ class InMemoryOperationJournal(
             if (rows.containsKey(key(opId, attempt))) {
                 throw IllegalStateException("Operation $opId attempt $attempt already journaled")
             }
+            // The attribution comes from the operation's own input, which is
+            // where the run id was written down in the first place. A
+            // malformed input fails here, loudly, instead of producing a row
+            // that belongs to no run.
+            val runId = json.decodeFromString(OperationInput.serializer(), inputJson).runId
             val now = clock.now().toEpochMilli()
             rows[key(opId, attempt)] = Row(
                 opId = opId,
@@ -128,7 +135,7 @@ class InMemoryOperationJournal(
                 updatedAt = now,
                 endedAt = null,
                 deadlineMs = deadlineMs,
-                runId = null,
+                runId = runId,
             )
         }
     }

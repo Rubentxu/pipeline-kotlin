@@ -98,6 +98,16 @@ interface OperationJournal {
      * on restart: if a RUNNING row exists with no terminal status, the subprocess
      * was killed mid-execution and must not be silently trusted.
      *
+     * ## The row is attributed to its run AT BIRTH
+     *
+     * The run id is read from [OperationInput.runId] and written with the row,
+     * because the RUNNING row is exactly the row a reader needs in order to
+     * know that a run is still in flight. An unattributed RUNNING row is
+     * invisible to [listForRun] until the operation terminates, which made a
+     * run that died mid-operation look FINISHED to every reader that could
+     * not repair the column -- and made the answer depend on which store lane
+     * was asking.
+     *
      * ## Caller MUST pre-format opId
      *
      * The caller is responsible for formatting the opId with any branch index using
@@ -234,6 +244,13 @@ class SqliteOperationJournalImpl(
      * The journal uses [opId] exactly as provided — no derivation, no suffix appending.
      * This ensures the journal is never responsible for formatting operation IDs.
      *
+     * ## The row carries its run from the start
+     *
+     * The run id is taken from the operation's input and written with the row,
+     * so the row that says "this operation is RUNNING" is a row that says
+     * WHICH RUN is still in flight. See [OperationJournal.beginOperation] for
+     * why that attribution cannot wait for the operation to terminate.
+     *
      * @throws IllegalStateException if a row already exists for (opId, attempt).
      */
     override fun beginOperation(
@@ -261,12 +278,18 @@ class SqliteOperationJournalImpl(
                     }
                 }
 
+                // The attribution comes from the operation's own input, which
+                // is where the run id was written down in the first place.
+                // A malformed input fails here, loudly, instead of producing a
+                // row that belongs to no run.
+                val runId = json.decodeFromString(OperationInput.serializer(), inputJson).runId
+
                 val now = clock.now().toEpochMilli()
                 conn.prepareStatement(
                     """
                     INSERT INTO operation_journal
-                        (op_id, fingerprint, status, kind, attempt, input, output, started_at, created_at, updated_at, deadline_ms)
-                    VALUES (?, ?, 'RUNNING', 'RERUN', ?, ?, NULL, ?, ?, ?, ?)
+                        (op_id, fingerprint, status, kind, attempt, input, output, started_at, created_at, updated_at, deadline_ms, run_id)
+                    VALUES (?, ?, 'RUNNING', 'RERUN', ?, ?, NULL, ?, ?, ?, ?, ?)
                     """.trimIndent()
                 ).use { ps ->
                     ps.setString(1, opId)
@@ -281,6 +304,7 @@ class SqliteOperationJournalImpl(
                     } else {
                         ps.setNull(8, java.sql.Types.BIGINT)
                     }
+                    ps.setString(9, runId)
                     ps.executeUpdate()
                 }
             } finally {
@@ -351,6 +375,23 @@ class SqliteOperationJournalImpl(
     /**
      * Lists all journaled operations for a given [runId], ordered by [created_at] ascending.
      *
+     * ## The read does not depend on a repair
+     *
+     * The run id is read from the column when the column has it, and from the
+     * operation's own input when it does not. The second form exists for the
+     * rows an OLDER build wrote: that build left the RUNNING row unattributed
+     * and only filled the column when the operation terminated, so a run that
+     * died mid-operation left a row with no attribution at all.
+     *
+     * A reader cannot repair those rows — the read lane opens the database
+     * through an engine that refuses every write — so a read that only
+     * believed the column would report a half-finished run as FINISHED, and
+     * the answer would depend on which lane asked. Reading through the
+     * attribution that is missing makes the answer the same for both.
+     *
+     * The indexed column still serves the query; the second term only adds the
+     * unattributed rows to it.
+     *
      * @param runId The run identifier.
      * @return A [List] of [DurableOperation] in execution order.
      */
@@ -363,11 +404,12 @@ class SqliteOperationJournalImpl(
                 SELECT j.op_id, j.fingerprint, j.status, j.kind, j.attempt, j.input, j.output
                 FROM operation_journal j
                 WHERE j.run_id = ?
+                   OR (j.run_id IS NULL AND json_extract(j.input, '$.runId') = ?)
                 ORDER BY j.created_at ASC
                 """.trimIndent()
             ).use { ps ->
-                // Use indexed run_id column instead of LIKE on JSON blob
                 ps.setString(1, runId)
+                ps.setString(2, runId)
                 ps.executeQuery().use { rs ->
                     while (rs.next()) {
                         val opId = rs.getString(1)

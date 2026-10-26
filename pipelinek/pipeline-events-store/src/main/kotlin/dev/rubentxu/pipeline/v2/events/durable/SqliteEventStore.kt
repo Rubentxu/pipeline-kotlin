@@ -354,9 +354,25 @@ class SqliteEventStore(
     }
 
     /**
-     * Backfills run_id from the input JSON.1 rows
+     * Backfills run_id from the input JSON.
+     *
      * Idempotent: only updates rows where run_id IS NULL.
      * Uses json_extract to pull $.runId from the input JSON blob.
+     *
+     * ## What this is for, and what it is NOT for
+     *
+     * This is a NORMALISATION of the rows an older build wrote: that build
+     * left a RUNNING row unattributed, so a run that died mid-operation left
+     * a row that named no run. Filling the column puts those rows on the
+     * index and makes the write lane's own reads cheap.
+     *
+     * It is NOT what makes the read lane correct. A reader cannot run this
+     * — the read lane opens the database through an engine that refuses every
+     * write — so the read reads through the attribution that is missing
+     * instead (see [SqliteOperationJournalImpl.listForRun]). Before that, the
+     * journal's answer about a run's operations depended on WHICH LANE was
+     * asking, and a half-finished run looked finished to the lane that could
+     * not repair the column.
 */
     private fun backfillRunId(conn: java.sql.Connection) {
         conn.createStatement().use { stmt ->

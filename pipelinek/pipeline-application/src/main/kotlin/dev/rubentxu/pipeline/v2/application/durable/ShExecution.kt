@@ -229,6 +229,13 @@ object ShExecution {
             // Non-durable fallback: script written to temp file; argv = [bash, <path>]
             // Env injected via pb.environment.putAll
             // JAVA_HOME/_HOME prepend applied via EnvModel.apply
+            //
+            // The model is applied HERE, and only here, on this journey: the substrate that
+            // launches this child (`ProcessDurableTaskRuntime`) materialises the declared
+            // variables and injects them, but does not compose them. The durable journey
+            // below does not apply it, because its substrate (`ShellLaunchPreparation`)
+            // does. One application per journey, the same function on the same declared
+            // environment, so both children get the same PATH.
             return executeNonDurableInvocation(
                 command = command,
                 env = EnvModel.apply(shOptions.env),
@@ -251,9 +258,25 @@ object ShExecution {
         val controlDir = controlDirRoot.resolve(opId.format())
 
         return try {
-            // Apply EnvModel transformations (JAVA_HOME/_HOME prepend to PATH)
+            // The environment is composed ONCE, and by the substrate that launches the
+            // child: `ShellLaunchPreparation.composeEnvironment` applies the environment
+            // model and merges the result with the ambient environment under the active
+            // sandbox profile.
+            //
+            // Applying the model HERE as well applied it twice, and the model is not
+            // idempotent: it prepends the toolchain directory to PATH on every call, so
+            // the child of this journey saw `/opt/jdk/bin` TWICE in its PATH while the
+            // child of the non-durable journey above saw it once, for the same declared
+            // environment. The duplicate was invisible under the local profile -- which
+            // rebuilds the path from the keep-set -- and visible under the default one,
+            // which does not.
+            //
+            // What the model does NOT change is what reaches the child: the PATH+= entries
+            // are consumed by the same call either way, a masked PATH is propagated as-is
+            // either way, and an empty environment stays empty either way. The declared
+            // environment is therefore handed over untouched, and the composition happens
+            // once, at the boundary where the child is actually launched.
             val envOptions = effectiveOptions.copy(
-                env = EnvModel.apply(effectiveOptions.env),
                 captureStdout = command.returnMode == ShellReturnMode.STDOUT,
             )
 

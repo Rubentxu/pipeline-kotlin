@@ -149,7 +149,9 @@ No habrá dos motores shell. `executeCore()` debe convertirse en un coordinador 
 
 Entrega verificable: ejecutar, terminar, cancelar y recuperar `sh` con las mismas salidas, efectos y protocolos persistentes.
 
-### Estado de H2 — los siete componentes están cerrados
+### Estado de H2 — cerrado
+
+Los siete componentes están extraídos, la puerta completa está en verde sobre el árbol publicado y la candidata de fin de hito `v0.91.0-rc3` está publicada y verificada sobre el remoto. La evidencia de esa publicación está al final de este hito.
 
 Antes de crear cada componente se comprobó qué abstracción existente ya es la dueña de cada responsabilidad. El resultado, medido sobre `DurableShellExecutor.kt` (1.802 líneas):
 
@@ -559,6 +561,37 @@ PASS  sha=55d19917ac3813b8d5e8a564edf9910321a2b7da  elapsed=159s  budget=900s  t
 - `VERIFY_LOC = 26410`, `PRODUCT_LOC = 71196`, ratio `0.371` (límite 2); el módulo del corte, `pipeline-step-sdk:runtime`, queda en `1573 / 2293 = 0.686`. El censo cuenta 170 ficheros de tests unitarios y 62 pipelines E2E como verificación, y 726 ficheros de código de producción como producto; 53 ficheros quedan sin contar en ninguna parte (README, `AGENTS.md`, `ROADMAP.md`, ficheros de contrato `.api`, bases de detekt y el `gradle-wrapper.jar`) y 2 se excluyen como generados.
 
 **Lo que este corte no arregla.** La mitad imperativa de la limpieza —el recorrido que borra y el sistema de ficheros que coopera o no— no la cubre ningún test unitario: un test unitario no puede crear un árbol de ficheros ni borrarlo. Y ningún escenario E2E observa el destino del directorio de control: el único `timeout(...)` de `examples/` (en `control-flow/11-workflow-control`) envuelve un `sh` que termina de inmediato, así que el plazo nunca vence y ninguna ejecución llega a fallar por expiración. Las garantías de este corte quedan declaradas por construcción y por el veredicto de sus decisiones, no presenciadas por un escenario. El remedio —una directiva nueva de `examples/run.sh` que observe el directorio de control de una ejecución fallida— pertenece al hito que es dueño del vocabulario del lanzador (H6) y no a este corte: este no introduce comportamiento nuevo, y ampliar el vocabulario de una herramienta compartida para un caso que el corte no produce sería cambiar más de lo que el corte toca.
+
+### Publicación de `v0.91.0-rc3` — verificada sobre el remoto
+
+Con los siete componentes cerrados, H2 entrega su candidata. La publicación se hizo desde `967563d0e` y la comprobación es sobre el remoto, no sobre el árbol local:
+
+```
+release-pipelinek: PUBLISHED v0.91.0-rc3 with candidate_id sha256:febc866cfcdada0b16ec33f5c4225cf093e088b22e8d9ac9b32b5a82ae49affa
+```
+
+- El tag remoto es **anotado**: `git ls-remote --tags origin 'v0.91.0-rc3*'` devuelve **dos** líneas — el objeto de tag `b714c939` y el peel `refs/tags/v0.91.0-rc3^{}` al commit `967563d0eea23ee91ddf0334a2a93cf04d0b4e41`. Un tag ligero no tendría esa segunda línea.
+- La firma **verifica** contra la clave declarada `9600F7D49B9C966E3BB04E6A17E44CA7C5288281` (uid `test@example.com`), comprobada sobre el objeto **descargado del remoto** —`git fetch origin refs/tags/v0.91.0-rc3` y `git verify-tag` sobre ese objeto—, no sobre la copia local: `GOODSIG` y `VALIDSIG` con la clave declarada.
+- La prerelease de GitHub existe (`isDraft=false`, `isPrerelease=true`, publicada el `2026-10-26T16:29:15Z`) con **7 assets**. Los seis digests de `SHA256SUMS` —descargado del remoto, no del staging local— coinciden uno a uno con los que el propio GitHub calcula sobre los assets subidos, y el digest de `pipelinek-0.91.0.zip` es exactamente el `candidate_id` anunciado.
+- Los bytes publicados se descargaron y se hashearon aquí: `sha256(pipelinek-0.91.0.zip) = febc866c…` = `candidate_id`. El ZIP son 52 entradas con el lanzador `pipelinek-0.91.0/bin/pipelinek`, y ejecutado desde una extracción limpia responde `pipeline 0.91.0`. El SDK publicado son 85 entradas en coordenadas Maven (`dev/rubentxu/pipeline/v2/…/0.91.0/`) con sus sumas, y su digest coincide con el de `SHA256SUMS`.
+- `git-head.txt` y `manifest.json` —descargados del remoto— nombran el commit `967563d0eea23ee91ddf0334a2a93cf04d0b4e41` y el `release_tag` `v0.91.0-rc3`, con esquema `pipelinek-release-manifest-1`.
+- La puerta de la propia publicación: `releaseGate` en verde y `external-compat` en `PASS rows=A:PASS B:PASS C:PASS` —la fila C rechaza el artefacto de la API antigua con `IncompatibleApiRange([0.90.0, 0.91.0))`, que es el refusal que debe ocurrir y no un fallo— y `verify-tag-signature` en `PASS rows=A:PASS B:PASS C:PASS` **antes** de que nada se publicara.
+
+**Lo que la puerta de la publicación NO corre.** `releaseGate` es `distZip + cyclonedxBom + candidateAdmission + LaunchReceipt + alineación del BOM del SDK`; por diseño propio **no** depende de `check`, así que la suite de tests unitarios no corre dentro de la publicación (en la ejecución que publicó, las 20 tareas ejecutadas fueron generación de POM, publicación del SDK, `publishSdkForExternalPlugin`, `candidateAdmission` y `releaseGate`, y ninguna tarea `:test`). La suite completa se midió aparte, con `scripts/verify-all.sh` sin filtros, sobre el árbol publicado:
+
+```
+PASS  sha=967563d0eea23ee91ddf0334a2a93cf04d0b4e41  elapsed=178s  budget=900s  tests=rewritten:1416 read:0  scenarios=observed:62 executed:62
+```
+
+La diferencia entre `55d19917a` —el árbol del séptimo corte, sobre el que se midió el gate de 159 s— y `967563d0e` —el árbol publicado— son 57 líneas de `ROADMAP.md`: un fichero que ninguna tarea de construcción lee y que el censo de LOC cuenta en ninguna de las dos partes.
+
+**Los dos intentos produjeron el mismo `candidate_id`, y eso NO prueba reproducibilidad.** Los dos builds vinieron de la misma condición de árbol, y la segunda ejecución de Gradle declaró `20 executed, 78 up-to-date`: reutilizó las salidas de la primera. Es la misma observación que en rc2 —el `distZip` reproduce byte a byte cuando el build sale de la misma condición— y no una prueba de que un árbol independiente reconstruya los mismos bytes. Esa medición sigue sin hacerse, y por eso no se afirma.
+
+**Un intento que se perdió, y por qué.** El primer intento (`/tmp/h2-rc3/release.attempt1.log`) llegó hasta el push del tag y ahí se quedó. `scripts/release/publish-tag.sh:169` invoca `git push` a secas, el `PATH` lo resuelve al wrapper `~/.local/bin/git`, y ese wrapper se auto-invoca durante su propio escaneo de identidad. La cadena quedó con tres niveles anidados, y el más interno tenía el `stdin` tomado por la salida de `git log --branches --not --remotes`: cuando esa tubería se llenó, el nivel que debía vaciarla estaba ocupado, y el push nunca llegó a la red. `git ls-remote` lo confirmó —el tag no estaba en el remoto—, así que **nada se publicó** y no había nada que deshacer: el tag local se borró y la publicación se relanzó **una** vez, con el escape que el propio wrapper documenta (`RANDOM_GIT_COMMITTER_DISABLED=1`), que delega en el git real sin tocar la identidad del tagger —`publish-tag.sh` la lee de `git config` y la pasa explícita con `-c user.name=… -c user.email=…`—. El guardián de identidad (`~/.git-hooks/pre-push`) siguió ejecutándose, porque es un hook de git y no depende del wrapper. La evidencia del intento perdido queda en `~/.local/state/pipelinek/release-evidence/v0.91.0-rc3.attempt1/`.
+
+**Lo que este cierre no arregla.** El bloqueo estaba en el *tooling* de publicación, no en el producto: `scripts/release/publish-tag.sh` sigue llamando a `git` sin ruta absoluta, así que vuelve a depender del `PATH` de la máquina y a heredar el fallo del wrapper. Arreglarlo —que los scripts de release usen el git real por ruta absoluta, o que el wrapper deje de ser un factor para publicar— pertenece a H6, que es el hito dueño de los scripts de release. Sigue pendiente también la directiva de `examples/run.sh` que observe el destino del directorio de control, ya anotada en el séptimo corte.
+
+Con esta candidata, H2 queda cerrado: los siete componentes extraídos, la puerta completa en verde sobre el árbol publicado, y un artefacto que un consumidor puede descargar, hashear y ejecutar.
 
 ## H3 — Vertical slice completo `core.sh`
 

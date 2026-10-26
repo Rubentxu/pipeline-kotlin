@@ -87,7 +87,6 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ReplayDecision
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile

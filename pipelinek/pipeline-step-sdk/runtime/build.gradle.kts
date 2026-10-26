@@ -33,12 +33,11 @@ dependencies {
     implementation(project(":pipeline-domain"))
     implementation(project(":pipeline-step-sdk:api"))
     implementation(project(":pipeline-events"))
-    // This module's main sources name `events.durable.OperationJournal` directly
-    // (StepReconcilerL1). That is a real coupling and it is registered as an input rather than
-    // papered over here — an SDK runtime module depending on a durable journal is the coupling the
-    // unified plugin SDK dissolves, and pretending otherwise by inventing a port now would create
-    // a second name for one thing.
-    implementation(project(":pipeline-events-store"))
+    // `:pipeline-events-store` was here because `StepReconcilerL1` named `events.durable.OperationJournal`
+    // to query RUNNING rows during resume. That query was a projection nobody called: the resume path
+    // asks the control directory directly, through `RunningSubprocessRecovery`. With the projection
+    // gone, the coupling is gone with it — and it goes rather than being wrapped in a port, because a
+    // port here would be a second name for the reconciliation the SDK runtime already owns.
     implementation(project(":pipeline-scripting-api"))
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit.jupiter)

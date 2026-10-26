@@ -1,44 +1,11 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 import dev.rubentxu.pipeline.v2.domain.FailureKind
-import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskOutput
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.FailureOrigin
 import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
-import dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind
-import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles
 import java.nio.file.Path
-
-/**
- * Converts a reconciliation observation to a terminal only when the
- * reconciler has established one. A fresh heartbeat remains non-terminal and
- * therefore produces `null`, never a fake terminal result.
-*/
-fun StepReconcilerL1.terminalFromReconciliation(
-    opId: String,
-    controlDir: Path,
-): DurableTaskTerminal? = when (val classification = classifyControlDir(controlDir)) {
-    is StepReconcilerL1.Classification.Complete -> DurableTaskTerminal.Exited(
-        exitCode = classification.exitCode,
-        output = DurableTaskOutput(controlDir.toString()),
-    )
-
-    is StepReconcilerL1.Classification.TimedOut -> DurableTaskTerminal.Cancelled(
-        InterruptionRecord(
-            kind = InterruptionKind.TIMEOUT,
-            message = "durable task timed out",
-            operationId = opId,
-            details = mapOf("controlDir" to controlDir.toString()),
-        ),
-    )
-
-    StepReconcilerL1.Classification.Lost -> DurableTaskTerminal.Lost(
-        lostFailureRecord(opId, controlDir, "heartbeat is stale or durable result is unavailable"),
-    )
-
-    is StepReconcilerL1.Classification.Reattach -> null
-}
 
 /** Transitional adapter retained for PipelineRun's projection; remove */
 @Deprecated(
@@ -86,63 +53,6 @@ fun DurableTaskTerminal.toLegacyShellResult(controlDir: Path): DurableShellResul
         controlDir = controlDir,
     )
 }
-
-/**
- * Adapts the legacy mixed result only after it is terminal. This is kept for
- * the two legacy entry points while their callers migrate to
- * [DurableShellExecutor.executeTerminal].
-*/
-@Deprecated(
-    message = "Legacy durable-shell adapter. Produce DurableTaskTerminal at the executor seam; this projection is on its way out.",
-)
-fun DurableShellResult.toDurableTaskTerminal(opId: String): DurableTaskTerminal = when (state) {
-    DurableShellState.COMPLETE -> DurableTaskTerminal.Exited(
-        exitCode = exitCode,
-        output = DurableTaskOutput(controlDir.toString(), capturedStdout),
-    )
-
-    DurableShellState.LAUNCH_FAILED -> DurableTaskTerminal.LaunchFailed(
-        FailureRecord(
-            code = "DURABLE_LAUNCH_FAILED",
-            kind = FailureKind.INFRASTRUCTURE,
-            message = "legacy durable shell launch failed",
-            origin = FailureOrigin.LAUNCHER,
-            retryable = false,
-            operationId = opId,
-            workerId = "local",
-            taskId = "durable-shell",
-            details = mapOf("controlDir" to controlDir.toString()),
-        ),
-    )
-
-    DurableShellState.LOST -> DurableTaskTerminal.Lost(
-        lostFailureRecord(opId, controlDir, "legacy durable shell result was lost"),
-    )
-
-    DurableShellState.TIMED_OUT -> DurableTaskTerminal.Cancelled(
-        InterruptionRecord(
-            kind = InterruptionKind.TIMEOUT,
-            message = "legacy durable shell timed out",
-            operationId = opId,
-            details = mapOf("controlDir" to controlDir.toString()),
-        ),
-    )
-
-    DurableShellState.LAUNCHING,
-    DurableShellState.RUNNING,
-    -> throw IllegalStateException("A legacy non-terminal result cannot be adapted as terminal: $state")
-}
-
-/**
- * Compatibility bridge used by the previous entry points. It makes the
- * terminal conversion explicit while preserving their existing result shape.
-*/
-@Suppress("DEPRECATION")
-@Deprecated(
-    message = "Legacy durable-shell compatibility bridge. Consume DurableTaskTerminal directly; this projection is on its way out.",
-)
-fun DurableShellResult.throughTerminalAdapter(opId: String): DurableShellResult =
-    toDurableTaskTerminal(opId).toLegacyShellResult(controlDir)
 
 internal fun Exception.launchFailureRecord(opId: String, controlDir: Path): FailureRecord = FailureRecord(
     code = "DURABLE_LAUNCH_FAILED",

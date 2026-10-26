@@ -5,7 +5,6 @@
     <ID>AbstractClassCanBeInterface:StepReconcilerL1.kt:StepReconcilerL1.Classification$Classification</ID>
     <ID>InjectDispatcher:ProcessDurableTaskRuntime.kt:ProcessDurableTaskRuntime$IO</ID>
     <ID>MaxLineLength:DurableShellExecutor.kt:"DurableShellExecutor().executeTerminal(controlDir, scriptContent, opId, ShOptions(timeoutMs = timeoutMs, env = env, sandbox = sandbox, workspaceRoot = workspaceRoot ?: controlDir))"</ID>
-    <ID>RedundantSuspendModifier:StepReconcilerL1.kt:StepReconcilerL1$suspend</ID>
     <ID>UnusedImport:DurableShellExecutor.kt:import java.io.ByteArrayOutputStream</ID>
     <ID>UnusedImport:DurableShellExecutor.kt:import kotlin.concurrent.withLock</ID>
     <ID>UnusedImport:DurableTaskTerminalAdapter.kt:import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles</ID>
@@ -16,7 +15,6 @@
     <ID>UnusedPrivateFunction:DurableShellExecutor.kt:DurableShellExecutor$private fun isSessionLeader: Boolean</ID>
     <ID>UnusedVariable:DurableShellExecutor.kt:DurableShellExecutor$val ppid = fields[1].toLong()</ID>
     <ID>UseCheckOrError:DurableShellExecutor.kt:DurableShellExecutor$throw IllegalStateException("Cookie file not created; wrapper may have failed to start")</ID>
-    <ID>UseCheckOrError:DurableTaskTerminalAdapter.kt:throw IllegalStateException("A legacy non-terminal result cannot be adapted as terminal: $state")</ID>
     <ID>UseIsNullOrEmpty:DurableShConfig.kt:DurableShConfig$agentSecret == null || agentSecret.isEmpty()</ID>
     <ID>UseOrEmpty:EnvModel.kt:this["PATH"] ?: ""</ID>
   </CurrentIssues>

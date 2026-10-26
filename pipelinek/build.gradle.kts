@@ -81,7 +81,18 @@ repositories {
 // produced instead of leaving it in fields that a later, separate step reads
 // back. The two artifacts do NOT behave the same. The 0.90.0 train opens here
 // (ProductVersion 0.90.0) and its first candidate can be tagged v0.90.0-rc1.
-version = "0.90.0"
+// 2026-10-26: the 0.90.0 train closed at v0.90.0, published from the bytes of
+// v0.90.0-rc3, and the law holds here: this tree has moved since that
+// candidate — the telemetry and the script-identity work that followed it, and
+// now the three recovery invariants of the first milestone: the recover no
+// longer takes the run's lease on a dry run, the re-attach deadline is an
+// instant read from the adapter's own clock instead of one computed from a
+// fencing token, and a replay cursor that cannot be READ is refused as a
+// storage failure instead of read as an absent one. The two artifacts do NOT
+// behave the same, so one version cannot carry both. The 0.91.0 train opens
+// here (ProductVersion 0.91.0) and its first candidate can be tagged
+// v0.91.0-rc1.
+version = "0.91.0"
 
 // Single-version provider. The root project.version is the SOLE authority
 // for every subproject's publication version and for the jar manifest Implementation-Version

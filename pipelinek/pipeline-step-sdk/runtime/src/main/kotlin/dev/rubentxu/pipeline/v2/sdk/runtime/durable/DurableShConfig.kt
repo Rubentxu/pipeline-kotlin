@@ -8,12 +8,18 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
  * |---|---|---|
  * | `HEARTBEAT_CHECK_INTERVAL` | 300 | How often the wrapper touches the console transcript (seconds) |
  * | `HEARTBEAT_MINIMUM_DELTA` | 2 | Minimum age of log file to consider it stale (seconds) |
- * | `CLEANUP_RETAIN_ON_FAILURE` | true | If true, retain control dir on failure for debugging |
  * ## Control Directory Layout
  * Each `sh` step gets a control directory `$controlDirRoot/$opId/`. The names
  * and paths inside it belong to [ShellProtocolLayout], which is their single
  * authority; they are not listed here, because a second copy of a layout is a
  * copy that can drift.
+ * ## The fate of the control directory
+ * Whether the control directory survives an execution is not a configuration:
+ * it is [ShellResourceCleanup]'s rule. The flag that used to decide it was
+ * inert — it could not change the outcome in either position — and it was
+ * retired rather than honoured, because a failed execution's directory holds
+ * the evidence the reconciler reads to tell an expired execution from a lost
+ * one.
  * ## Linux-Only
  * Durable shell relies on Linux-specific primitives (nohup, setsid, /proc).
  * On non-Linux platforms, [LinuxRequiredException] is thrown.
@@ -26,9 +32,6 @@ data class DurableShConfig(
 
     /** Minimum delta: minimum age of log file to consider it stale (seconds). */
     val heartbeatMinimumDelta: Long = HEARTBEAT_MINIMUM_DELTA_DEFAULT,
-
-    /** If true, retain control dir on failure for debugging. */
-    val cleanupRetainOnFailure: Boolean = CLEANUP_RETAIN_ON_FAILURE_DEFAULT,
 
     /**
      * If true, capture stdout to output.txt via tee-gated wrapper.
@@ -129,7 +132,6 @@ data class DurableShConfig(
     companion object {
         const val HEARTBEAT_CHECK_INTERVAL_PROPERTY = "pipeline.durable.heartbeat.check.interval"
         const val HEARTBEAT_MINIMUM_DELTA_PROPERTY = "pipeline.durable.heartbeat.minimum.delta"
-        const val CLEANUP_RETAIN_ON_FAILURE_PROPERTY = "pipeline.durable.cleanup.retain.on.failure"
         const val RETURN_STDOUT_PROPERTY = "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.CAPTURE_STDOUT"
         const val CAPTURE_RETAIN_POLICY_PROPERTY = "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.CAPTURE_RETAIN_POLICY"
         const val PUMPED_VIA_AGENT_PROPERTY = "dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor.PUMPED_VIA_AGENT"
@@ -143,9 +145,6 @@ data class DurableShConfig(
 
         /** Default: 2 seconds */
         const val HEARTBEAT_MINIMUM_DELTA_DEFAULT = 2L
-
-        /** Default: true */
-        const val CLEANUP_RETAIN_ON_FAILURE_DEFAULT = true
 
         /** Default: false (guard - output.txt written but never read) */
         const val RETURN_STDOUT_DEFAULT = false
@@ -177,11 +176,6 @@ data class DurableShConfig(
                     HEARTBEAT_MINIMUM_DELTA_PROPERTY,
                     HEARTBEAT_MINIMUM_DELTA_DEFAULT.toString()
                 ).toLongOrNull() ?: HEARTBEAT_MINIMUM_DELTA_DEFAULT,
-
-                cleanupRetainOnFailure = System.getProperty(
-                    CLEANUP_RETAIN_ON_FAILURE_PROPERTY,
-                    CLEANUP_RETAIN_ON_FAILURE_DEFAULT.toString()
-                ).toBooleanStrictOrNull() ?: CLEANUP_RETAIN_ON_FAILURE_DEFAULT,
 
                 returnStdout = System.getProperty(
                     RETURN_STDOUT_PROPERTY,

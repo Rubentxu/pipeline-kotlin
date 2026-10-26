@@ -264,6 +264,12 @@ class DurableShellExecutor {
         }
     }
 
+    /**
+     * Gives up the control directory of an execution that ended.
+     *
+     * The RULE that says what survives is [ShellResourceCleanup]'s; this method is the executor's
+     * compatible façade over it.
+    */
     fun cleanup(controlDir: Path, exitCode: Int) {
         cleanup(controlDir, exitCode, keepTranscriptLog = false)
     }
@@ -273,45 +279,13 @@ class DurableShellExecutor {
      * projection), a successful cleanup deletes everything in the control dir
      * EXCEPT console.log, which the production consumer streams lazily and then
      * deletes itself. Capture-mode callers keep the default (full delete).
-*/
+     *
+     * A failed execution keeps its directory WHOLE: the exit code, the timeout marker and the
+     * heartbeat are the protocol's evidence, and the reconciler reads them to tell an expired
+     * execution from a lost one.
+    */
     fun cleanup(controlDir: Path, exitCode: Int, keepTranscriptLog: Boolean) {
-        val config = DurableShConfig.fromSystemProperties()
-
-        // Retain on failure if configured
-        if (!config.cleanupRetainOnFailure && exitCode != 0) {
-            return // Don't delete on failure
-        }
-
-        // Always delete on success
-        if (exitCode == 0) {
-            // In plain (JENKINS_LOG) projection the
-            // terminal does not materialise the transcript, so the production
-            // consumer (ShExecution.ingestTranscriptIntoOutputPlane) streams it
-            // from console.log AFTER this method returns. Deleting console.log here
-            // would race the consumer and silently drop observability. The
-            // consumer deletes it in its finally once streaming completes.
-            // The method used to be named `emitTranscriptStreaming` here, which
-            // never existed: a grep for it found only this comment, so the
-            // rationale for keeping console.log pointed at a phantom consumer.
-            if (keepTranscriptLog) {
-                // `use` closes the walk's directory handle. This runs once per shell step, so
-                // a bare chain leaks a descriptor per step for the life of the JVM.
-                Files.walk(controlDir).use { walk ->
-                    walk.sorted(Comparator.reverseOrder())
-                        .forEach { p ->
-                            try {
-                                if (p.fileName?.toString() != DurableShellFiles.CONSOLE_LOG) {
-                                    Files.deleteIfExists(p)
-                                }
-                            } catch (_: Exception) {
-                                // Ignore
-                            }
-                        }
-                }
-            } else {
-                deleteRecursively(controlDir)
-            }
-        }
+        ShellResourceCleanup(controlDir).dispose(exitCode = exitCode, keepTranscriptLog = keepTranscriptLog)
     }
 
     /**
@@ -357,19 +331,6 @@ class DurableShellExecutor {
             // On any error reading/deleting, return empty string
             // (never throws, never blocks)
             ""
-        }
-    }
-
-    private fun deleteRecursively(path: Path) {
-        Files.walk(path).use { walk ->
-            walk.sorted(Comparator.reverseOrder())
-                .forEach { p ->
-                    try {
-                        Files.deleteIfExists(p)
-                    } catch (_: Exception) {
-                        // Ignore
-                    }
-                }
         }
     }
 
@@ -609,6 +570,10 @@ class DurableShellExecutor {
                 cause = e,
             )
         } finally {
+            // The release of the launch's resources and the disposal of the control
+            // directory are [ShellResourceCleanup]'s; the executor hands it the facts it
+            // already holds.
+            //
             // Release the warmup fds so the agent can
             // see EOF. The child has already exited (pollResult returned
             // before we got here, or the failure path took over), so the
@@ -621,16 +586,16 @@ class DurableShellExecutor {
             // child is alive (the test holds GO until after the kill), the
             // child becomes the only writer, and the agent's read continues
             // until the child exits and the kernel closes its O_WRONLY.
-            launchedShell?.agentWarmup?.forEach { runCatching { it.close() } }
+            val cleanup = ShellResourceCleanup(controlDir)
+            cleanup.release(launchedShell)
             // Cleanup based on final state. A watchdog timeout is a failure, not a
             // success: the surviving wrapper can publish exit code 0 after its child
             // was SIGKILLed, so cleanup MUST NOT read that code as success and
             // delete the control dir (which would erase the authoritative
             // timeout.flag). The decision is the watch's, and it follows the same
             // authority the terminal followed.
-            cleanup(
-                controlDir,
-                watchdog.cleanupExitCode(exitCode),
+            cleanup.dispose(
+                exitCode = watchdog.cleanupExitCode(exitCode),
                 keepTranscriptLog = watchdog.keepsTranscriptLog(exitCode, request.outputProjection),
             )
         }

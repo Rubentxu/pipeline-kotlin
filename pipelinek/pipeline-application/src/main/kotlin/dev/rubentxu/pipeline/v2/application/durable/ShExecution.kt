@@ -8,7 +8,6 @@ import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
-import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.classifyShellTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskOutput
@@ -22,10 +21,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.InterruptionRecord
 import dev.rubentxu.pipeline.v2.domain.durable.TaskExecutionRequest
 import dev.rubentxu.pipeline.v2.domain.durable.TaskSpec
 import dev.rubentxu.pipeline.v2.domain.durable.TaskStream
-import dev.rubentxu.pipeline.v2.dsl.StepSpec
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.events.StepFailed
 import dev.rubentxu.pipeline.v2.sdk.StepContext
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellExecutor
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EnvModel
@@ -37,7 +34,6 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime
 import dev.rubentxu.pipeline.v2.output.store.SealOutcome
 import java.io.InputStream
-import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
@@ -48,8 +44,7 @@ import java.util.UUID
  * Provides a single canonical implementation for shell step execution
  * that threads workspace and env options.
  * ## Responsibilities
- * - `runShStep`: Executes a shell step with durable semantics
- * `executeBranchStep`: Executes shell steps within parallel branches (fold)
+ * - `invokeShell`: the ONE entry that runs a shell step, with durable semantics
  *  Invariant
  * User script content NEVER appears in any argv. The wrapper script is constructed
  * with single-quoted path variables only (no script content in argv).
@@ -97,10 +92,12 @@ object ShExecution {
      * `RedactingOutputIngress` handed to the executor as `channelSinks`, which drains the redacted
      * stream in bounded windows and commits each chunk. That is the successor to the pull-shaped
      * `appendFrom` below, and it is what.3 and the live-window work delivered
-     * It is kept because a characterisation test that exercised it is still in the tree and
-     * deleting the subject to make the test compile would certify a path that no longer exists.
-     * Whether that test should instead be repointed at the composed sink is an open decision for
-     * the owner, recorded as such rather than decided here.
+     * MEASURED (H3, third cut): it has NO caller at all — neither production nor test; the only
+     * mention outside this file is a prose reference in `SegmentOutputStore.kt:472`. So the
+     * characterisation test this KDoc used to name as the reason for keeping it does NOT exist,
+     * and the stated reason was void. It is kept HERE ONLY because this cut's criterion is the
+     * control directory root, and this function's root was already non-nullable: removing it is
+     * a separate decision, recorded as a residual rather than taken silently.
      * This replaces the pair of emitters that used to exist here, and the replacement is not
      * a refactor: those emitters were the **second** rendering of the same bytes. The wrapper
      * writes `console.log`, and then the JVM re-rendered its content into an
@@ -136,76 +133,10 @@ object ShExecution {
     }
 
     /**
-     * Executes a shell step with durable semantics.
-     * @param step The shell step specification.
-     * @param opId The operation ID for this step.
-     * @param runId The run identifier.
-     * @param stageIndex The stage index for workspace naming.
-     * @param stepIndex The step index for event sequencing.
-     * @param shOptions Shell execution options (workspaceRoot, captureStdout, timeoutMs, env).
-     * @param controlDirRoot The explicit control directory root (null = non-durable fallback).
-     * @param eventSink The event sink for emitting EchoOutputCaptured events.
-     * @return the closed shell invocation result. Lifecycle callers decide how
-     * terminal failure and interruption affect their own run state.
-*/
-    suspend fun runShStep(
-        step: StepSpec.Shell,
-        opId: OpId,
-        runId: String,
-        stageIndex: Int,
-        stepIndex: Int,
-        shOptions: ShOptions,
-        controlDirRoot: java.nio.file.Path?,
-        eventSink: EventSink,
-    ): ShellInvocationResult = invokeShell(
-        command = ShellCommand(
-            script = step.command,
-            returnMode = if (step.returnStdout) ShellReturnMode.STDOUT else ShellReturnMode.NONE,
-        ),
-        opId = opId,
-        runId = runId,
-        stageIndex = stageIndex,
-        stepIndex = stepIndex,
-        shOptions = shOptions,
-        controlDirRoot = controlDirRoot,
-        eventSink = eventSink,
-    )
-
-    /**
-     * Executes a typed shell command without requiring a DSL step object.
-     * DEPRECATED: projects the typed result through a
-     * lossy legacy [String] status. Callers must classify from
-     * [invokeShell]'s closed semantic result instead; removal is scheduled
-     * For once no compatibility caller remains
-*/
-    @Deprecated(
-        message = "Legacy String status projection; use invokeShell() and classify the typed result",
-        replaceWith = ReplaceWith("invokeShell(command, opId, runId, stageIndex, stepIndex, shOptions, controlDirRoot, eventSink)"),
-    )
-    suspend fun runShellCommand(
-        command: ShellCommand,
-        opId: OpId,
-        runId: String,
-        stageIndex: Int,
-        stepIndex: Int,
-        shOptions: ShOptions,
-        controlDirRoot: java.nio.file.Path?,
-        eventSink: EventSink,
-    ): String = invokeShell(
-        command = command,
-        opId = opId,
-        runId = runId,
-        stageIndex = stageIndex,
-        stepIndex = stepIndex,
-        shOptions = shOptions,
-        controlDirRoot = controlDirRoot,
-        eventSink = eventSink,
-    ).toLegacyStatus(eventSink, runId, stageIndex, stepIndex)
-
-    /**
      * Invokes the durable shell substrate and returns its closed semantic result.
-     * Compatibility callers may project this result through [runShellCommand],
-     * but canonical callers must classify from this value rather than a string.
+     * This is the ONE entry that runs a shell step: the control directory root is
+     * not optional, so there is no second journey to choose between, and the caller
+     * classifies from this value rather than from a projected string.
 */
     suspend fun invokeShell(
         command: ShellCommand,
@@ -214,7 +145,7 @@ object ShExecution {
         stageIndex: Int,
         stepIndex: Int,
         shOptions: ShOptions,
-        controlDirRoot: java.nio.file.Path?,
+        controlDirRoot: java.nio.file.Path,
         eventSink: EventSink,
         secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
         // The run's output-wake signal. Each committed chunk announces on it
@@ -222,33 +153,10 @@ object ShExecution {
         // deadline. Null = nobody is listening; the announce is a no-op.
         outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
     ): ShellInvocationResult {
-        // Use explicit controlDirRoot if provided; null means non-durable fallback
-        // (preserves base behavior: when PipelineOrchestrator has no controlDirRoot,
-        // we fall back to direct bash -c which works without filesystem privileges)
-        if (controlDirRoot == null) {
-            // Non-durable fallback: script written to temp file; argv = [bash, <path>]
-            // Env injected via pb.environment.putAll
-            // JAVA_HOME/_HOME prepend applied via EnvModel.apply
-            //
-            // The model is applied HERE, and only here, on this journey: the substrate that
-            // launches this child (`ProcessDurableTaskRuntime`) materialises the declared
-            // variables and injects them, but does not compose them. The durable journey
-            // below does not apply it, because its substrate (`ShellLaunchPreparation`)
-            // does. One application per journey, the same function on the same declared
-            // environment, so both children get the same PATH.
-            return executeNonDurableInvocation(
-                command = command,
-                env = EnvModel.apply(shOptions.env),
-                eventSink = eventSink,
-                stepIndex = stepIndex,
-                runId = runId,
-                opId = opId.format(),
-                controlDirRoot = controlDirRoot,
-                timeoutMs = shOptions.timeoutMs,
-                secretPatternRegistry = secretPatternRegistry,
-            )
-        }
-
+        // The control directory root is NOT optional: the run always has one, so there is
+        // no journey to choose here and no branch that could silently pick a different
+        // substrate for the same step.
+        //
         // workspaceRoot from shOptions is set by PipelineRun.kt with the correct stageName → stageIndex mapping.
         // ShExecution just passes it through; no recomputation needed.
         // The SDK launch seam takes workspaceRoot as its process CWD. Preserve the
@@ -265,8 +173,7 @@ object ShExecution {
             //
             // Applying the model HERE as well applied it twice, and the model is not
             // idempotent: it prepends the toolchain directory to PATH on every call, so
-            // the child of this journey saw `/opt/jdk/bin` TWICE in its PATH while the
-            // child of the non-durable journey above saw it once, for the same declared
+            // the child saw `/opt/jdk/bin` TWICE in its PATH for the same declared
             // environment. The duplicate was invisible under the local profile -- which
             // rebuilds the path from the keep-set -- and visible under the default one,
             // which does not.
@@ -295,13 +202,11 @@ object ShExecution {
             // channels eagerly made every `sh` look like it produced console output, and in capture
             // mode it declared a STDOUT stream for a channel that is the typed value and must never
             // be part of the transcript.
-            // The safe call is necessary: controlDirRoot is nullable and the
-            // durable sinks exist only when it is set. The static rule that
-            // reads the chained let as redundant is wrong here, and the
-            // suppression is local to this expression on purpose.
-            @Suppress("UnnecessarySafeCall")
-            val ingressSinks: Map<ProcessOutputChannel, ProcessOutputSink> = controlDirRoot?.let { root ->
-                val store = OutputPlaneProvider.storeForWriting(root)
+            // The control directory root always exists, so the durable sinks
+            // always exist too: there is no conditional admission left to
+            // describe.
+            val ingressSinks: Map<ProcessOutputChannel, ProcessOutputSink> = run {
+                val store = OutputPlaneProvider.storeForWriting(controlDirRoot)
                 val streams = OutputPlaneProvider.streamsOf(runId, opId.format())
                 buildMap {
                     ProcessOutputChannel.all.forEach { channel ->
@@ -320,7 +225,7 @@ object ShExecution {
                         )
                     }
                 }
-            }.orEmpty()
+            }
 
             // Execute with tee-gated wrapper if captureStdout is enabled
             // Env injected via pb.environment.putAll (not argv) in DurableShellExecutor.launch
@@ -353,8 +258,8 @@ object ShExecution {
                 transcriptRedactor = secretPatternRegistry?.let { registry ->
                     { raw -> dev.rubentxu.pipeline.v2.credentials.api.StreamingRedactor(registry).wrap(raw) }
                 },
-                // Live destination, one per channel. Empty only when there is no control-dir root,
-                // which is the non-durable fallback handled above.
+                // Live destination, one per channel. The control directory root
+                // always exists, so these sinks always exist too.
                 channelSinks = ingressSinks,
             )
 
@@ -397,8 +302,8 @@ object ShExecution {
             // explicit, and the per-channel loop below is the place that decides
             // which of them surfaces to the user.
             val terminalResult = classifyShellTerminal(terminal, command.returnMode)
-            // controlDirRoot is non-null from this point: the function
-            // checked it at the top and returned early otherwise.
+            // The control directory root always exists, so the operation tail
+            // always has a place to be sealed in.
             // A seal is the durable statement "this operation's output is complete", and it is
             // the statement `console --follow` terminates on. So it MUST NOT be made for a
             // transcript the runtime has just declared it could not complete: a sink that lost a
@@ -415,10 +320,15 @@ object ShExecution {
             }
             terminalResult
         } catch (e: dev.rubentxu.pipeline.v2.sdk.runtime.durable.LinuxRequiredException) {
-            // Non-durable fallback for non-Linux platforms
+            // The only route left is the platform one: the durable-shell
+            // substrate requires a Linux host, and this host is not Linux.
+            // It is a DIFFERENT SUBSTRATE (the generic process runtime), not
+            // a second choice for the same step, and it is the ONLY way
+            // `core.sh` runs on a non-Linux host — macOS is a supported
+            // platform, so this route is live, not a legacy leftover.
             // Script via temp file; env via pb.environment.putAll
             // JAVA_HOME/_HOME prepend applied via EnvModel.apply
-            return executeNonDurableInvocation(
+            return executeNonLinuxInvocation(
                 command = command,
                 env = EnvModel.apply(shOptions.env),
                 eventSink = eventSink,
@@ -442,27 +352,6 @@ object ShExecution {
             )
         }
     }
-
-    /** Maps the closed shell result to the lifecycle-only outcome contract. */
-    suspend fun runShellCommandTyped(
-        command: ShellCommand,
-        opId: OpId,
-        runId: String,
-        stageIndex: Int,
-        stepIndex: Int,
-        shOptions: ShOptions,
-        controlDirRoot: java.nio.file.Path?,
-        eventSink: EventSink,
-    ): StepOutcome = invokeShell(
-        command = command,
-        opId = opId,
-        runId = runId,
-        stageIndex = stageIndex,
-        stepIndex = stepIndex,
-        shOptions = shOptions,
-        controlDirRoot = controlDirRoot,
-        eventSink = eventSink,
-    ).toStepOutcome()
 
     /**
      * Whether the terminal itself says the transcript could not be completed.
@@ -519,65 +408,6 @@ object ShExecution {
     }
 
     /**
-     * Executes a shell step within a parallel branch (fold)
-     * This method replaces the 3-line bash -c block in walkBranchDurable.
-     * Routes parallel Shell steps through the same durable execution path.
-     * @param stageIndex The stage index for workspace naming.
-     * @param stepIndex The step index for event sequencing.
-     * @param branchOpId The operation ID for this branch step.
-     * @param runId The run identifier.
-     * @param command The canonical shell command to execute.
-     * @param shOptions Shell execution options.
-     * @param controlDirRoot The control directory root (explicit, not derived).
-     * @param eventSink The event sink for emitting EchoOutputCaptured events.
-     * @return the closed shell invocation result. This preserves a timeout or
-     * cancellation as [ShellInvocationResult.Interrupted] instead of
-     * collapsing it into a failure string.
-*/
-    suspend fun executeBranchStep(
-        stageIndex: Int,
-        stepIndex: Int,
-        branchOpId: OpId,
-        runId: String,
-        command: ShellCommand,
-        shOptions: ShOptions,
-        controlDirRoot: java.nio.file.Path?,
-        eventSink: EventSink,
-        workspaceBase: java.nio.file.Path? = null,
-    ): ShellInvocationResult {
-        if (controlDirRoot == null) {
-            return invokeShell(
-                command = command,
-                opId = branchOpId,
-                runId = runId,
-                stageIndex = stageIndex,
-                stepIndex = stepIndex,
-                shOptions = shOptions,
-                controlDirRoot = null,
-                eventSink = eventSink,
-            )
-        }
-
-        val workspaceResolver = WorkspaceResolver(controlDirRoot, workspaceBase)
-        val stageName = "stage-$stageIndex-branch"
-        val workspacePath = workspaceResolver.ensureCreated(
-            workspaceResolver.resolve(stageName, stageIndex)
-        )
-
-        val effectiveOptions = shOptions.copy(workspaceRoot = workspacePath)
-        return invokeShell(
-            command = command,
-            opId = branchOpId,
-            runId = runId,
-            stageIndex = stageIndex,
-            stepIndex = stepIndex,
-            shOptions = effectiveOptions,
-            controlDirRoot = controlDirRoot,
-            eventSink = eventSink,
-        )
-    }
-
-    /**
      * No-op event sink for shell execution where events are not persisted.
 */
     private object NoOpEventSink : EventSink {
@@ -591,33 +421,41 @@ object ShExecution {
     }
 
     /**
-     * Executes a shell step via the task runtime (non-durable fallback)
-     * Replaces the legacy direct `ProcessBuilder("bash", scriptPath)` path with
-     * [ProcessDurableTaskRuntime] + [TaskSpec.ShellScriptTask]. The runtime owns
-     * the script-file lifecycle (write, executable perms, delete), the process
-     * tree, the chunked stdout/stderr streams, and the durable result — leaving
-     * this method responsible only for opaque env coercion and event emission.
-     * Used when the durable-shell sandbox refuses to launch (e.g. non-Linux) or
-     * when no [controlDirRoot] is provided. Behaviour parity with the legacy
-     * Path: (env injected via env map, NOT argv), best-effort fail-closed
-     * one [EchoOutputCaptured] per step with the full script output.
-     * @param scriptContent The shell script content.
+     * Executes a shell step via the generic process task runtime, on a host
+     * where the durable-shell substrate cannot run.
+     *
+     * The durable-shell substrate requires Linux (`requireLinuxHost`); on a
+     * non-Linux host this is the ONLY way `core.sh` executes, and macOS is a
+     * supported platform of this product. So this is not a legacy leftover
+     * and it is not a second choice for the same step: it is a different
+     * SUBSTRATE for a different PLATFORM.
+     *
+     * It owns the script-file lifecycle (write, executable perms, delete), the
+     * process tree, the chunked stdout/stderr streams, and the durable result
+     * — leaving this method responsible only for opaque env coercion and event
+     * emission. Behaviour parity with the legacy path: (env injected via env
+     * map, NOT argv), best-effort fail-closed one [EchoOutputCaptured] per step
+     * with the full script output.
+     * @param command The canonical shell command to execute.
      * @param env Environment variables (SecretHandle values coerced at the runtime boundary).
-     * @param eventSink Event sink for EchoOutputCaptured and StepFailed emission.
+     * @param eventSink Event sink for EchoOutputCaptured emission.
      * @param stepIndex The step index for event sequencing.
      * @param runId The run identifier (string form — typed RunId built at the request boundary).
      * @param opId Operation ID used for the runtime control dir and the task request.
-     * @param controlDirRoot Optional stable control dir root; null = best-effort temp dir.
+     * @param controlDirRoot The control directory root of the run. It always
+     *   exists: the runtime's own control directory is a per-operation
+     *   subdirectory of it, exactly as on the durable route, so no scratch
+     *   directory is created and none has to be deleted.
      * @return "success" if exit code is 0, "failure" otherwise.
 */
-    private suspend fun executeNonDurableInvocation(
+    private suspend fun executeNonLinuxInvocation(
         command: ShellCommand,
         env: Map<String, SecretHandle>,
         eventSink: EventSink,
         stepIndex: Int,
         runId: String,
         opId: String,
-        controlDirRoot: Path?,
+        controlDirRoot: Path,
         timeoutMs: Long?,
         secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry? = null,
     ): ShellInvocationResult {
@@ -641,164 +479,105 @@ object ShExecution {
         // at the moment it hands them to the OS env block, and never persists
         // them. The legacy code coerced eagerly at pb.environment.putAll —
         // the runtime collapses that responsibility into one place.
-        // When the caller owns the root, it is theirs and is left
-        // alone; when this route had to create its own scratch directory under
-        // java.io.tmpdir, this route owns its full lifecycle and deletes it on
-        // success, failure, timeout AND cancellation (deterministic cleanup; the
-        // historical leak of one `pipeline-sh-non-durable*` per invocation).
-        val ownsControlDir = controlDirRoot == null
+        // The control directory root always exists, so the runtime's own
+        // control directory is a per-operation subdirectory of the run's root,
+        // exactly as on the durable route. This route creates nothing outside
+        // that root and therefore deletes nothing.
         val controlDir: Path = try {
-            controlDirRoot?.resolve(opId) ?: Files.createTempDirectory("pipeline-sh-non-durable")
+            controlDirRoot.resolve(opId)
         } catch (_: Exception) {
             return ShellInvocationResult.Failed(
                 PipelineFailure(FailureKind.INFRASTRUCTURE, "core.sh could not create its control directory"),
             )
         }
 
-        try {
-            val runtime = ProcessDurableTaskRuntime(
-                controlDir,
-                object : Clock {
-                    override fun now(): Instant = Instant.now()
-                },
-            )
-            val request = TaskExecutionRequest(
-                task = TaskSpec.ShellScriptTask(
-                    script = command.script,
-                    interpreter = InterpreterPolicy.BASH,
-                ),
-                runId = RunId(runId),
-                opId = opId,
-                timeoutMs = effectiveTimeoutMs,
-                env = env,
-            )
+        val runtime = ProcessDurableTaskRuntime(
+            controlDir,
+            object : Clock {
+                override fun now(): Instant = Instant.now()
+            },
+        )
+        val request = TaskExecutionRequest(
+            task = TaskSpec.ShellScriptTask(
+                script = command.script,
+                interpreter = InterpreterPolicy.BASH,
+            ),
+            runId = RunId(runId),
+            opId = opId,
+            timeoutMs = effectiveTimeoutMs,
+            env = env,
+        )
 
-            // Accumulate chunks into one EchoOutputCaptured (matches legacy behaviour
-            // — one event per step, full script output). O(chunk) memory at the sink.
-            val stdoutBuilder = StringBuilder()
-            val stderrBuilder = StringBuilder()
-            val sink = ExecutionOutputSink { chunk ->
-                when (chunk.stream) {
-                    TaskStream.STDOUT -> stdoutBuilder.append(String(chunk.data, Charsets.UTF_8))
-                    TaskStream.STDERR -> stderrBuilder.append(String(chunk.data, Charsets.UTF_8))
-                }
-            }
-
-            val result = try {
-                runtime.execute(request, sink)
-            } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
-                // A cancellation is an execution mechanism, not a failure. The
-                // runtime already recorded its own durable CANCELLED terminal; mapping
-                // it to a Failed(INFRASTRUCTURE) value is the forbidden conversion.
-                throw ce
-            } catch (failure: EngineInvariantViolation) {
-                throw failure
-            } catch (failure: Exception) {
-                return ShellInvocationResult.Failed(
-                    PipelineFailure(FailureKind.INFRASTRUCTURE, failure.message ?: "core.sh could not execute"),
-                )
-            }
-
-            // The fallback, and the one place where a console event is still correct
-            // This path runs when there is no controlDirRoot at all — no filesystem privileges, or a
-            // Non-Linux host — so there is no Output Plane to write into. The Output Plane forbids a SECOND
-            // authority over the same bytes; it does not require one to exist where none can. Here the
-            // event is the only rendering, so it is not a second anything.
-            // The law is therefore per-execution, not per-type: "for any
-            // one execution, the transcript bytes exist in exactly one place." A guard written as
-            // "EchoOutputCaptured is never emitted" would have been wrong here and would have pushed
-            // someone into deleting the only observable console this path has.
-            // The observable content is redacted with the chunk-boundary-safe redactor
-            // before emission, exactly as on the durable path.
-            val output = stdoutBuilder.toString() + stderrBuilder.toString()
-            val observableContent = redactTranscript(output, secretPatternRegistry)
-            eventSink.append(
-                EchoOutputCaptured(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = runId,
-                    sequence = 0L,
-                    occurredAt = Instant.now(),
-                    stepIndex = stepIndex,
-                    content = observableContent,
-                ),
-            )
-
-            val terminal = when (val decision = decideTaskTerminal(result)) {
-                is TaskTerminalDecision.TimedOut -> DurableTaskTerminal.Cancelled(
-                    InterruptionRecord(
-                        kind = InterruptionKind.TIMEOUT,
-                        message = "core.sh timed out",
-                        operationId = opId,
-                    ),
-                )
-                is TaskTerminalDecision.Cancelled -> DurableTaskTerminal.Cancelled(
-                    InterruptionRecord(
-                        kind = InterruptionKind.PARENT_CANCELLED,
-                        message = "core.sh was cancelled",
-                        operationId = opId,
-                    ),
-                )
-                is TaskTerminalDecision.Exited -> DurableTaskTerminal.Exited(
-                    exitCode = decision.exitCode,
-                    output = DurableTaskOutput(controlDir.toString(), output),
-                )
-            }
-            return classifyShellTerminal(terminal, command.returnMode)
-        } finally {
-            // Single deletion point: runs for success, typed failure, timeout and the
-            // cancellation rethrow above. Only a scratch dir this route created is
-            // removed; a caller-provided control root is never touched here.
-            if (ownsControlDir) {
-                deleteRecursively(controlDir)
+        // Accumulate chunks into one EchoOutputCaptured (matches legacy behaviour
+        // — one event per step, full script output). O(chunk) memory at the sink.
+        val stdoutBuilder = StringBuilder()
+        val stderrBuilder = StringBuilder()
+        val sink = ExecutionOutputSink { chunk ->
+            when (chunk.stream) {
+                TaskStream.STDOUT -> stdoutBuilder.append(String(chunk.data, Charsets.UTF_8))
+                TaskStream.STDERR -> stderrBuilder.append(String(chunk.data, Charsets.UTF_8))
             }
         }
-    }
 
-    /** Best-effort, deterministic removal of a scratch control directory this route owns. */
-    private fun deleteRecursively(root: Path) {
-        kotlin.runCatching {
-            Files.walk(root).use { paths ->
-                paths.sorted(java.util.Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
-            }
+        val result = try {
+            runtime.execute(request, sink)
+        } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+            // A cancellation is an execution mechanism, not a failure. The
+            // runtime already recorded its own durable CANCELLED terminal; mapping
+            // it to a Failed(INFRASTRUCTURE) value is the forbidden conversion.
+            throw ce
+        } catch (failure: EngineInvariantViolation) {
+            throw failure
+        } catch (failure: Exception) {
+            return ShellInvocationResult.Failed(
+                PipelineFailure(FailureKind.INFRASTRUCTURE, failure.message ?: "core.sh could not execute"),
+            )
         }
-    }
 
-    private fun ShellInvocationResult.toLegacyStatus(
-        eventSink: EventSink,
-        runId: String,
-        stageIndex: Int,
-        stepIndex: Int,
-    ): String = when (this) {
-        ShellInvocationResult.UnitValue,
-        is ShellInvocationResult.Stdout,
-        is ShellInvocationResult.Status,
-        -> "success"
+        // The fallback, and the one place where a console event is still correct
+        // This path runs when there is no controlDirRoot at all — no filesystem privileges, or a
+        // Non-Linux host — so there is no Output Plane to write into. The Output Plane forbids a SECOND
+        // authority over the same bytes; it does not require one to exist where none can. Here the
+        // event is the only rendering, so it is not a second anything.
+        // The law is therefore per-execution, not per-type: "for any
+        // one execution, the transcript bytes exist in exactly one place." A guard written as
+        // "EchoOutputCaptured is never emitted" would have been wrong here and would have pushed
+        // someone into deleting the only observable console this path has.
+        // The observable content is redacted with the chunk-boundary-safe redactor
+        // before emission, exactly as on the durable path.
+        val output = stdoutBuilder.toString() + stderrBuilder.toString()
+        val observableContent = redactTranscript(output, secretPatternRegistry)
+        eventSink.append(
+            EchoOutputCaptured(
+                eventId = UUID.randomUUID().toString(),
+                runId = runId,
+                sequence = 0L,
+                occurredAt = Instant.now(),
+                stepIndex = stepIndex,
+                content = observableContent,
+            ),
+        )
 
-        is ShellInvocationResult.Failed -> {
-            eventSink.append(
-                StepFailed(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = runId,
-                    sequence = 0L,
-                    occurredAt = Instant.now(),
-                    // The stage the failed shell belongs to. The shell knows it, so the failure
-                    // says it: a consumer that attributes the failure to a stage must not have to
-                    // join this event with another one to find out.
-                    stageIndex = stageIndex,
-                    stepIndex = stepIndex,
-                    stepName = "sh",
-                    stepType = "sh",
-                    failureKind = failure.kind,
-                    message = failure.message,
+        val terminal = when (val decision = decideTaskTerminal(result)) {
+            is TaskTerminalDecision.TimedOut -> DurableTaskTerminal.Cancelled(
+                InterruptionRecord(
+                    kind = InterruptionKind.TIMEOUT,
+                    message = "core.sh timed out",
+                    operationId = opId,
                 ),
             )
-            "failure"
+            is TaskTerminalDecision.Cancelled -> DurableTaskTerminal.Cancelled(
+                InterruptionRecord(
+                    kind = InterruptionKind.PARENT_CANCELLED,
+                    message = "core.sh was cancelled",
+                    operationId = opId,
+                ),
+            )
+            is TaskTerminalDecision.Exited -> DurableTaskTerminal.Exited(
+                exitCode = decision.exitCode,
+                output = DurableTaskOutput(controlDir.toString(), output),
+            )
         }
-
-        is ShellInvocationResult.Interrupted -> if (interruption.kind == InterruptionKind.TIMEOUT) {
-            "timeout"
-        } else {
-            "failure"
-        }
+        return classifyShellTerminal(terminal, command.returnMode)
     }
 }

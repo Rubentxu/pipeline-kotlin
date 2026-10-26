@@ -128,7 +128,7 @@ internal class StepDispatchEngine(
     private val cursorStore: dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore,
     private val stepRegistry: StepRegistry?,
     private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter,
-    private val controlDirRoot: Path?,
+    private val controlDirRoot: Path,
     private val workspaceBase: Path?,
     private val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
     // H2b: handed to PREPARE so admission and execution observe the same set.

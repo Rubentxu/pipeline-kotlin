@@ -30,7 +30,7 @@ data class CanonicalRuntimeContext(
     val stageIndex: Int,
     val stepIndex: Int,
     val shOptions: ShOptions,
-    val controlDirRoot: Path?,
+    val controlDirRoot: Path,
     val eventSink: EventSink,
     val bodyInvoker: CanonicalBodyInvokerAdapter? = null,
     // The body-ALREADY-BOUND continuation of a Step that declared

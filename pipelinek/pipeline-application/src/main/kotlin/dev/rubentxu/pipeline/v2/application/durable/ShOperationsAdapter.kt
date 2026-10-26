@@ -39,7 +39,7 @@ class ShOperationsAdapter(
     private val runIdString: String,
     private val opId: OpId,
     private val shOptions: dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions,
-    private val controlDirRoot: java.nio.file.Path?,
+    private val controlDirRoot: java.nio.file.Path,
     private val eventSink: EventSink,
     // Registry threaded from the runtime
     // context. Null = no transcript redaction (legacy/test composition).

@@ -72,12 +72,12 @@ object CoreStepRegistryFactory {
         // deterministic temp path from the canonical OpId.format string -- no
         // timestamp, no random. Same OpId => same path; distinct OpId => distinct path.
         CorePwdTmpStep.registerInto(this)
-        // `core.deleteDir`: capability DELETE_DIR_OPERATIONS_CAPABILITY, exposed only when
-        // controlDirRoot != null (fail-closed admission if absent).
+        // `core.deleteDir`: capability DELETE_DIR_OPERATIONS_CAPABILITY. The control
+        // directory root always exists, so the capability is always exposed.
         // Effects: WRITES_WORKSPACE. ReplayPolicy: MEMOIZED (idempotent.deleted marker).
         CoreDeleteDirStep.registerInto(this)
-        // `core.cleanWs`: capability CLEAN_WS_OPERATIONS_CAPABILITY, exposed only when
-        // controlDirRoot != null (fail-closed admission if absent). The adapter is the
+        // `core.cleanWs`: capability CLEAN_WS_OPERATIONS_CAPABILITY. The control
+        // directory root always exists, so the capability is always exposed. The adapter is the
         // single WsCleaned emission authority over the existing CleanWsExecutor SDK
         // substrate.
         // Effects: WRITES_WORKSPACE. ReplayPolicy: MEMOIZED (idempotent.cleaned marker).

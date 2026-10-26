@@ -70,12 +70,10 @@ data class DeleteDirOutput(
  * [DELETE_DIR_OPERATIONS_CAPABILITY] is the ONLY declared capability. The handler
  * does NOT consume `EVENT_SINK_CAPABILITY` or `STAGE_IDENTITY_CAPABILITY` directly —
  * those are bound by [dev.rubentxu.pipeline.v2.application.durable.DeleteDirOperationsAdapter].
- * ## Conditional exposure
- * The capability is only registered into the runtime capability table when
- * `controlDirRoot != null` (eager null-check at capability-access construction).
- * If `controlDirRoot` is absent, capability admission fails closed for
- * `core.deleteDir` and the step is never dispatched — the rest of the registry
- * is unaffected.
+ * ## Exposure
+ * The control directory root always exists, so the capability is always
+ * registered into the runtime capability table and the step is always
+ * dispatched.
  * ## Re-entry (→)
  * Registered the candidate with three capabilities, following the
  * single-capability pattern.

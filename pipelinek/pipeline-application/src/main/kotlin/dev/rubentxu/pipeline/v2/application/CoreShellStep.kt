@@ -448,11 +448,14 @@ object CoreShellStep {
      *   computed by the single authority
      *   [dev.rubentxu.pipeline.v2.application.durable.toStepOutcome].
      *   No string parsing; no event emission; the [ShExecution] substrate is
-     *   the single authority for `EchoOutputCaptured` — on the NON-durable path.
-     *   Measured in an earlier build: with a `controlRoot` the same bytes are sealed in the Output
-     *   Plane and NO `EchoOutputCaptured` is emitted, so `run`'s console — which renders
-     *   events — shows a successful `sh` with no transcript. Reading it as "the substrate
-     * Emits it" is what makes that gap look like a caller bug. Tracked as
+     *   the single authority for the transcript.
+     *   Measured in an earlier build, and still true: with a `controlRoot` the
+     *   same bytes are sealed in the Output Plane and NO `EchoOutputCaptured`
+     *   is emitted, so `run`'s console — which renders events — shows a
+     *   successful `sh` with no transcript. Reading it as "the substrate emits
+     *   it" is what makes that gap look like a caller bug. The exception is the
+     *   non-Linux route, where there is no Output Plane to seal into and the
+     *   event is the only rendering of those bytes.
      * It MUST NOT:
      * - reach `CanonicalRuntimeContext`,
      * - reach the journal,
@@ -460,7 +463,7 @@ object CoreShellStep {
      * - reach the durable-shell substrate (that is the adapter's authority),
      * - read or write filesystem state.
      * - re-implement the outcome classifier (it MUST call
-     *   `toStepOutcome()` so legacy and registry paths share one authority).
+     *   `toStepOutcome()`, the single classifier authority).
 */
     private val capabilityRoutedHandler: StepHandler<CoreShellInput, CoreShellOutput> =
         StepHandler { input, ctx ->

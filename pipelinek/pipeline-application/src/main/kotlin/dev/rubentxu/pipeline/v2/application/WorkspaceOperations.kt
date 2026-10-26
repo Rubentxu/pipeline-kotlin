@@ -71,7 +71,7 @@ interface WorkspaceOperations {
 class WorkspaceOperationsAdapter(
     private val stageName: String,
     private val stageIndex: Int,
-    private val controlDirRoot: Path?,
+    private val controlDirRoot: Path,
     private val eventSink: EventSink,
     private val runId: String = "",
     /** Optional project-workspace override (--workspace). */
@@ -103,11 +103,9 @@ class WorkspaceOperationsAdapter(
     }
 
     override fun writeFile(file: String, text: String, encoding: String): FileWriteResult {
-        val root = controlDirRoot
-            ?: throw IllegalStateException("controlDirRoot is required for workspace file operations")
         // Resolve against the shared execution location so a `dir`
         // scope applies to file Steps exactly as it does to `sh`.
-        val base = effectiveWorkspaceRoot(root)
+        val base = effectiveWorkspaceRoot(controlDirRoot)
         Files.createDirectories(base)
         val executor = FileWriteExecutor(
             workspaceResolver = { _, _ -> base },
@@ -139,9 +137,7 @@ class WorkspaceOperationsAdapter(
     }
 
     override fun readFile(file: String, encoding: String): FileReadResult {
-        val root = controlDirRoot
-            ?: throw IllegalStateException("controlDirRoot is required for workspace file operations")
-        val base = effectiveWorkspaceRoot(root)
+        val base = effectiveWorkspaceRoot(controlDirRoot)
         val result = FileReadExecutor(
             workspaceResolver = { _, _ -> base },
         ).execute(stageName, stageIndex, 0, StepSpec.ReadFile(file = file, encoding = encoding))
@@ -162,9 +158,7 @@ class WorkspaceOperationsAdapter(
     }
 
     override fun fileExists(file: String): FileExistsResult {
-        val root = controlDirRoot
-            ?: throw IllegalStateException("controlDirRoot is required for workspace file operations")
-        val base = effectiveWorkspaceRoot(root)
+        val base = effectiveWorkspaceRoot(controlDirRoot)
         val result = FileExistsExecutor(
             workspaceResolver = { _, _ -> base },
         ).execute(stageName, stageIndex, 0, StepSpec.FileExists(file = file))

@@ -79,12 +79,10 @@ data class CleanWsOutput(
  * does NOT consume `EVENT_SINK_CAPABILITY` or `STAGE_IDENTITY_CAPABILITY`
  * directly — those are bound by the adapter, which is the single `WsCleaned`
  * emission authority (no duplicate events; console/transcript rule analogue).
- * ## Conditional exposure
- * The capability is only registered into the runtime capability table when
- * `controlDirRoot != null` (eager null-check at capability-access construction).
- * If `controlDirRoot` is absent, capability admission fails closed for
- * `core.cleanWs` and the step is never dispatched — the rest of the registry
- * is unaffected.
+ * ## Exposure
+ * The control directory root always exists, so the capability is always
+ * registered into the runtime capability table and the step is always
+ * dispatched.
  * ## Classification
  * Effectful (workspace-mutating, WRITES_WORKSPACE), non-recoverable
  * (RecoveryPolicy.None). ReplayPolicy MEMOIZED matches the legacy metadata row

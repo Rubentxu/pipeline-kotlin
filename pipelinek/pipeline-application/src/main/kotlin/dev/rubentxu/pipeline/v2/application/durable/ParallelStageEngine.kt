@@ -49,7 +49,7 @@ internal class ParallelStageEngine(
     private val eventSink: EventSink,
     private val clock: Clock,
     private val runLifecycle: RunLifecycleEngine,
-    private val controlDirRoot: Path?,
+    private val controlDirRoot: Path,
     private val workspaceBase: Path?,
 ) {
 
@@ -442,7 +442,7 @@ internal class ParallelStageEngine(
         // the branch's immutable ShOptions copy — no coordinator state is mutated and
         // no branch can observe a sibling's working directory. With --workspace
         // (workspaceBase set) the shared project workspace wins
-        val branchShOptions = if (controlDirRoot != null && workspaceBase == null) {
+        val branchShOptions = if (workspaceBase == null) {
             val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
             val branchWorkspace = resolver.ensureCreated(
                 resolver.resolve("stage-$stageIndex-b$branchIndex", 0)

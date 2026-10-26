@@ -67,7 +67,7 @@ class CanonicalDurableRunCoordinator(
     private val eventRegistry: dev.rubentxu.pipeline.v2.events.registry.EventRegistry =
         dev.rubentxu.pipeline.v2.events.registry.EventRegistry.create(),
     private val credentialScopePort: CredentialScopePort,
-    private val controlDirRoot: Path? = null,
+    private val controlDirRoot: Path,
     /** Optional project-workspace override (--workspace <dir>). */
     private val workspaceBase: Path? = null,
     private val shOptions: ShOptions = ShOptions.EMPTY,
@@ -425,24 +425,23 @@ class CanonicalDurableRunCoordinator(
                     "Scope stack leaked into stage '${stage.name}' at index $stageIndex: ${ambient.overlays.size} frame(s) remaining"
                 }
                 val steps = (stage.body as? StageBody.Steps)?.steps
-                var stageWorkspace: Path? = null
-                if (controlDirRoot != null) {
-                    val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
-                    val workspacePath = resolver.resolve(stage.name, stageIndex)
-                    try {
-                        resolver.ensureCreated(workspacePath)
-                        stageWorkspace = workspacePath
-                    } catch (e: java.io.IOException) {
-                        runLifecycle.fold(RunOutcome.Failure(
-                            PipelineFailure(
-                                dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
-                                "Failed to create stage workspace '${workspacePath}': ${e.message}"
-                            ),
-                        ))
-                        return@run runLifecycle.outcome()
-                    }
+                // The control directory root always exists, so the stage
+                // workspace always does too: there is no stage that runs
+                // without one.
+                val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
+                val workspacePath = resolver.resolve(stage.name, stageIndex)
+                try {
+                    resolver.ensureCreated(workspacePath)
+                } catch (e: java.io.IOException) {
+                    runLifecycle.fold(RunOutcome.Failure(
+                        PipelineFailure(
+                            dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
+                            "Failed to create stage workspace '${workspacePath}': ${e.message}"
+                        ),
+                    ))
+                    return@run runLifecycle.outcome()
                 }
-                val stageBaseOptions = if (stageWorkspace != null) shOptions.copy(workspaceRoot = stageWorkspace) else shOptions
+                val stageBaseOptions = shOptions.copy(workspaceRoot = workspacePath)
                 val stageShOptions = stage.projectShellOptions(stageBaseOptions)
                 // Parallel stages re-enter the SAME dispatch spine —
                 // each branch is dispatched as a bodyPath-rooted branch with its

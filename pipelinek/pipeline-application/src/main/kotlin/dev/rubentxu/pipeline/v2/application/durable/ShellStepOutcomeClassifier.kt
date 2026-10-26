@@ -8,9 +8,9 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 /**
  * Public classifier from the closed [ShellInvocationResult] ADT
  * into the canonical [StepOutcome].
- * This is the SAME table that the legacy `ShExecution.runShellCommandTyped` path uses
- * (extracted from the private `ShExecution.toStepOutcome` extension so the registry-routed
- * `core.sh` handler can call it without depending on `ShExecution` directly).
+ * This is the ONE table that classifies the result of a shell step: it used to
+ * be duplicated as a `when` inside `ShExecution`, and the copy that lived
+ * beside the execution code is gone with the rest of the legacy projections.
  * Mapping:
  *  - [ShellInvocationResult.UnitValue] / [ShellInvocationResult.Stdout] / [ShellInvocationResult.Status]
  *    -> [StepOutcome.Success]
@@ -20,8 +20,7 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
  *    -> [StepOutcome.Failure] with `FailureKind.TIMEOUT` and the interruption message.
  *    The full typed `InterruptionRecord` (including the original [dev.rubentxu.pipeline.v2.domain.durable.InterruptionKind])
  *    is preserved on the typed `ShellOutput` so a Step consumer can recover it.
- * This function is the SINGLE classifier authority for `core.sh`. It MUST stay aligned with
- * the `when` previously defined inside `ShExecution.runShellCommandTyped`; do not duplicate
+ * This function is the SINGLE classifier authority for `core.sh`. Do not duplicate
  * or branch on `ShellInvocationResult` shape anywhere else.
 */
 fun ShellInvocationResult.toStepOutcome(): StepOutcome = when (this) {

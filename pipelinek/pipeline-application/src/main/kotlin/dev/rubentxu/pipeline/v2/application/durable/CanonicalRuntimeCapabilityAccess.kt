@@ -142,9 +142,9 @@ open class CanonicalRuntimeCapabilityAccess(
      * [SHELL_OPERATIONS_CAPABILITY] is exposed ONLY when the runtime context can produce a
      * working [ShellOperations] (i.e. when the adapter can be constructed). The adapter binds
      * the runtime's [runId], [ShOptions], [controlDirRoot] and [EventSink] — exactly the
-     * four inputs the existing durable shell substrate expects. If any of those are absent,
-     * the adapter still constructs (controlDirRoot=null is the documented non-durable fallback
-     * path) but the capability stays exposed so `core.sh` retain its declared require-set.
+     * four inputs the existing durable shell substrate expects. The control directory root
+     * always exists, so the adapter always constructs and the capability is always exposed,
+     * so `core.sh` retains its declared require-set.
 */
     // protected (not private) so test harnesses can substitute a synthetic platform
     // observation without touching production logic; production always uses this impl.
@@ -250,15 +250,14 @@ open class CanonicalRuntimeCapabilityAccess(
      * `--control-root` — and for the same reason: they are facts about the
      * ENGINE's durable territory, not about a workspace that is NULL under the
      * local-first Managed lease and not about a run that ends before its
-     * question is answered. Conditional exposure mirrors the destructive
-     * capabilities below: registered ONLY when `controlDirRoot != null`, absent
-     * otherwise, so capability admission fails closed for the owning Step
-     * without affecting the rest of the registry.
+     * question is answered. The control directory root always exists, so the
+     * exposure mirrors the destructive capabilities below: always registered.
 */
     private fun bindDurableChannelCapabilities(
         context: CanonicalRuntimeContext,
         builder: MutableMap<StepCapability, Any>,
     ) {
+        val root = context.controlDirRoot
         // The POSIX file lock coordinator for core.lock.
         // The lock namespace is anchored to the CONTROL ROOT — the engine's own
         // durable territory (journal db parent, `--control-root`) — NOT to the
@@ -271,34 +270,24 @@ open class CanonicalRuntimeCapabilityAccess(
         //   - the control root is stable across runs sharing one `--db` /
         //     `--control-root`, so two runs on one host contend through the OS
         //     lock while a different install (different control dir) does not.
-        // Conditional exposure mirrors DELETE_DIR_OPERATIONS_CAPABILITY: the
-        // capability is registered ONLY when controlDirRoot != null. Absent
-        // otherwise, so capability admission fails closed for core.lock without
-        // affecting the rest of the registry. The hold registry inside
-        // FileLockCoordinator is process-scoped, so a fresh instance per context
-        // still observes every hold this JVM has taken.
-        context.controlDirRoot?.let { root ->
-            builder[LOCK_COORDINATION_CAPABILITY] = FileLockCoordinator(
-                root.resolve("locks"),
-            )
-        }
+        // The control directory root always exists, so the capability is
+        // always registered. The hold registry inside FileLockCoordinator is
+        // process-scoped, so a fresh instance per context still observes every
+        // hold this JVM has taken.
+        builder[LOCK_COORDINATION_CAPABILITY] = FileLockCoordinator(
+            root.resolve("locks"),
+        )
         // The filesystem answer channel for core.input.
-        // Anchored to the CONTROL ROOT for the same reason the lock is, and with the
-        // same conditional exposure: a question is a fact about the ENGINE's durable
-        // territory (who may answer a run that lives in `--db`), not about a
-        // workspace that is NULL under the Managed lease and not about a run that
-        // ends before its question is answered.
-        // Conditional on controlDirRoot for an additional reason specific to input:
-        // without an anchor there is nowhere to publish the request, and inventing a
-        // temp directory would silently relocate the channel from what the operator
-        // can inspect and answer. Absent capability therefore means fail-closed at
-        // admission — core.input refuses the run instead of asking a question into a
-        // void that nobody will ever read.
-        context.controlDirRoot?.let { root ->
-            builder[INPUT_DECISIONS_CAPABILITY] = FileInputDecisions(
-                root.resolve("inputs"),
-            )
-        }
+        // Anchored to the CONTROL ROOT for the same reason the lock is: a
+        // question is a fact about the ENGINE's durable territory (who may
+        // answer a run that lives in `--db`), not about a workspace that is
+        // NULL under the Managed lease and not about a run that ends before its
+        // question is answered. The control directory root always exists, so
+        // there is always somewhere to publish the request — the operator can
+        // always find it and answer it.
+        builder[INPUT_DECISIONS_CAPABILITY] = FileInputDecisions(
+            root.resolve("inputs"),
+        )
         // the compensation intent port.
         //
         // Exposed ONLY when the engine bound one for this invocation. The port is the only
@@ -401,7 +390,7 @@ open class CanonicalRuntimeCapabilityAccess(
 
     /**
      * What the run may DESTROY: the stage workspace itself (`deleteDir`) and its
-     * contents (`cleanWs`). They share an anchor, a conditional exposure, and a
+     * contents (`cleanWs`). They share an anchor and a
      * security story, so they live together: both are gated by the typed lease
      * through [executionLocationFor] rather than by the VCS-marker heuristic
      * that retires, because a user-owned root may not be destroyed on the
@@ -411,63 +400,58 @@ open class CanonicalRuntimeCapabilityAccess(
         context: CanonicalRuntimeContext,
         builder: MutableMap<StepCapability, Any>,
     ) {
+        val root = context.controlDirRoot
         // DeleteDir operations for core.deleteDir.
         // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex],
         // [controlDirRoot], and [EventSink] — exactly the inputs needed to resolve the
         // workspace, execute deletion, and emit the canonical `DirDeleted` event.
-        // Conditional exposure: the capability is registered ONLY when controlDirRoot != null.
-        // If absent, capability admission fails closed for core.deleteDir and the rest of
-        // the registry is unaffected.
-        context.controlDirRoot?.let { root ->
-            val deleteOps: DeleteDirOperations = DeleteDirOperationsAdapter(
-                runIdString = context.runId,
-                stageIdentity = StageIdentity(
-                    name = context.stageName,
-                    index = context.stageIndex,
-                ),
-                stepIndex = context.stepIndex,
-                controlDirRoot = root,
-                eventSink = context.eventSink,
-                workspaceBase = context.workspaceBase,
-                // The typed lease decides whether a
-                // user-owned root may be destroyed, replacing the VCS-marker
-                // heuristic that retires.
-                executionLocation = executionLocationFor(context),
-            )
-            builder[DELETE_DIR_OPERATIONS_CAPABILITY] = deleteOps
-        }
+        // The control directory root always exists, so the capability is always
+        // registered.
+        val deleteOps: DeleteDirOperations = DeleteDirOperationsAdapter(
+            runIdString = context.runId,
+            stageIdentity = StageIdentity(
+                name = context.stageName,
+                index = context.stageIndex,
+            ),
+            stepIndex = context.stepIndex,
+            controlDirRoot = root,
+            eventSink = context.eventSink,
+            workspaceBase = context.workspaceBase,
+            // The typed lease decides whether a
+            // user-owned root may be destroyed, replacing the VCS-marker
+            // heuristic that retires.
+            executionLocation = executionLocationFor(context),
+        )
+        builder[DELETE_DIR_OPERATIONS_CAPABILITY] = deleteOps
         // CleanWs operations for core.cleanWs (registry candidate).
         // The adapter binds the runtime's [runIdString], [StageIdentity], [stepIndex],
         // [controlDirRoot], and [EventSink] — exactly the inputs needed to resolve the
         // workspace, execute the cleanup via the existing CleanWsExecutor SDK substrate,
         // and emit the canonical `WsCleaned` event (single emission authority).
-        // Conditional exposure: the capability is registered ONLY when controlDirRoot != null.
-        // If absent, capability admission fails closed for core.cleanWs and the rest of
-        // the registry is unaffected.
-        context.controlDirRoot?.let { root ->
-            val cleanWsOps: CleanWsOperations = CleanWsOperationsAdapter(
-                runIdString = context.runId,
-                stageIdentity = StageIdentity(
-                    name = context.stageName,
-                    index = context.stageIndex,
-                ),
-                stepIndex = context.stepIndex,
-                controlDirRoot = root,
-                eventSink = context.eventSink,
-                workspaceBase = context.workspaceBase,
-                // The typed lease decides whether a
-                // user-owned root may be destroyed, replacing the VCS-marker
-                // heuristic that retires.
-                executionLocation = executionLocationFor(context),
-            )
-            builder[CLEAN_WS_OPERATIONS_CAPABILITY] = cleanWsOps
-        }
+        // The control directory root always exists, so the capability is always
+        // registered.
+        val cleanWsOps: CleanWsOperations = CleanWsOperationsAdapter(
+            runIdString = context.runId,
+            stageIdentity = StageIdentity(
+                name = context.stageName,
+                index = context.stageIndex,
+            ),
+            stepIndex = context.stepIndex,
+            controlDirRoot = root,
+            eventSink = context.eventSink,
+            workspaceBase = context.workspaceBase,
+            // The typed lease decides whether a
+            // user-owned root may be destroyed, replacing the VCS-marker
+            // heuristic that retires.
+            executionLocation = executionLocationFor(context),
+        )
+        builder[CLEAN_WS_OPERATIONS_CAPABILITY] = cleanWsOps
     }
 
     /**
      * What the run may move rather than destroy: the stage archive, the
      * stash/unstash seam, and the published HTML report.
-     * Same anchor and same conditional exposure as the destructive pair, for the
+     * Same anchor as the destructive pair, for the
      * same reason — they resolve a source and a destination against the shared
      * [executionLocationFor], so a `dir(...)` scope narrows what a pattern can
      * match instead of being bypassed by the adapter.
@@ -476,72 +460,61 @@ open class CanonicalRuntimeCapabilityAccess(
         context: CanonicalRuntimeContext,
         builder: MutableMap<StepCapability, Any>,
     ) {
+        val root = context.controlDirRoot
         // ArchiveArtifacts operations for core.archiveArtifacts.
         // The adapter binds runId, StageIdentity, controlDirRoot and the EventSink —
         // exactly the inputs needed to glob the stage workspace via the certified
         // AntStyleGlob substrate, copy matched files into the artefacts retention
         // directory, and emit ArtifactArchived / ArtifactArchiveFailed.
-        // Conditional exposure mirrors DELETE_DIR_OPERATIONS_CAPABILITY: registered
-        // ONLY when controlDirRoot != null; absent otherwise so capability admission
-        // fails closed for core.archiveArtifacts without affecting the rest of the
-        // registry.
-        context.controlDirRoot?.let { root ->
-            val archiveOps: ArchiveArtifactsOperations = ArchiveArtifactsOperationsAdapter(
-                runIdString = context.runId,
-                stageIdentity = StageIdentity(
-                    name = context.stageName,
-                    index = context.stageIndex,
-                ),
-                controlDirRoot = root,
-                eventSink = context.eventSink,
-                workspaceBase = context.workspaceBase,
-                // The archive source follows the shared location, so a
-                // `dir(...)` scope narrows what the pattern can match.
-                executionLocation = executionLocationFor(context),
-            )
-            builder[ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY] = archiveOps
-        }
-        // Stash/unstash capability. Same conditional exposure as
-        // ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY — bound ONLY when controlDirRoot
-        // is supplied (production path). Absent otherwise so the registry boundary
-        // fails closed at admission. Both CoreStashStep and CoreUnstashStep share
-        // the same STASH_OPERATIONS_CAPABILITY seam.
-        context.controlDirRoot?.let { root ->
-            val stashOps: StashOperations = StashOperationsAdapter(
-                runIdString = context.runId,
-                stageIdentity = StageIdentity(
-                    name = context.stageName,
-                    index = context.stageIndex,
-                ),
-                controlDirRoot = root,
-                eventSink = context.eventSink,
-                workspaceBase = context.workspaceBase,
-                // Stash source and unstash target follow the same
-                // location every other workspace-aware Step reads.
-                executionLocation = executionLocationFor(context),
-            )
-            builder[STASH_OPERATIONS_CAPABILITY] = stashOps
-        }
-        // Core.publishHTML capability. Same conditional exposure as
-        // STASH_OPERATIONS_CAPABILITY — bound ONLY when controlDirRoot is supplied
-        // (production path). Absent otherwise so the registry boundary fails
-        // closed at admission. CorePublishHtmlStep shares the same
+        // The control directory root always exists, so the capability is always
+        // registered.
+        val archiveOps: ArchiveArtifactsOperations = ArchiveArtifactsOperationsAdapter(
+            runIdString = context.runId,
+            stageIdentity = StageIdentity(
+                name = context.stageName,
+                index = context.stageIndex,
+            ),
+            controlDirRoot = root,
+            eventSink = context.eventSink,
+            workspaceBase = context.workspaceBase,
+            // The archive source follows the shared location, so a
+            // `dir(...)` scope narrows what the pattern can match.
+            executionLocation = executionLocationFor(context),
+        )
+        builder[ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY] = archiveOps
+        // Stash/unstash capability. Same anchor as
+        // ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY. Both CoreStashStep and
+        // CoreUnstashStep share the same STASH_OPERATIONS_CAPABILITY seam.
+        val stashOps: StashOperations = StashOperationsAdapter(
+            runIdString = context.runId,
+            stageIdentity = StageIdentity(
+                name = context.stageName,
+                index = context.stageIndex,
+            ),
+            controlDirRoot = root,
+            eventSink = context.eventSink,
+            workspaceBase = context.workspaceBase,
+            // Stash source and unstash target follow the same
+            // location every other workspace-aware Step reads.
+            executionLocation = executionLocationFor(context),
+        )
+        builder[STASH_OPERATIONS_CAPABILITY] = stashOps
+        // Core.publishHTML capability. Same anchor as
+        // STASH_OPERATIONS_CAPABILITY. CorePublishHtmlStep shares the same
         // PUBLISH_HTML_OPERATIONS_CAPABILITY seam.
-        context.controlDirRoot?.let { root ->
-            val publishHtmlOps: PublishHtmlOperations = PublishHtmlOperationsAdapter(
-                runIdString = context.runId,
-                stageIdentity = StageIdentity(
-                    name = context.stageName,
-                    index = context.stageIndex,
-                ),
-                controlDirRoot = root,
-                eventSink = context.eventSink,
-                workspaceBase = context.workspaceBase,
-                // ReportDir follows the shared location too.
-                executionLocation = executionLocationFor(context),
-            )
-            builder[PUBLISH_HTML_OPERATIONS_CAPABILITY] = publishHtmlOps
-        }
+        val publishHtmlOps: PublishHtmlOperations = PublishHtmlOperationsAdapter(
+            runIdString = context.runId,
+            stageIdentity = StageIdentity(
+                name = context.stageName,
+                index = context.stageIndex,
+            ),
+            controlDirRoot = root,
+            eventSink = context.eventSink,
+            workspaceBase = context.workspaceBase,
+            // ReportDir follows the shared location too.
+            executionLocation = executionLocationFor(context),
+        )
+        builder[PUBLISH_HTML_OPERATIONS_CAPABILITY] = publishHtmlOps
     }
 
     /**

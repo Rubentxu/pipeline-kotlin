@@ -33,7 +33,9 @@ import java.nio.file.Path
  *    [dev.rubentxu.pipeline.v2.sdk.runtime.durable.task.ProcessDurableTaskRuntime], which uses
  *    `script.sh` and `result.txt` for a DIFFERENT protocol: its `result.txt` holds a terminal
  *    RECORD (`EXIT <code> | TIMED_OUT | CANCELLED`), not an exit code. Same names, different
- *    family, different readers, different control root. It is deliberately out of this
+ *    family, different readers. It shares the run's control ROOT, and on the non-Linux route it
+ *    even shares the per-operation directory with the shell protocol — which is why the two
+ *    grammars must never be read by each other's reader. It is deliberately out of this
  *    layout's scope, and pulling it in would merge two formats that happen to share two
  *    words.
  */

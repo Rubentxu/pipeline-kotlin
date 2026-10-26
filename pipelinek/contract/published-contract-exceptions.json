@@ -585,6 +585,26 @@
       ],
       "removal_boundary": "the added integer may be given a default only when every caller that has to widen the cap can be recompiled; until then a consumer that constructs a TelemetryPolicy has to say what its cardinality budget is",
       "supersedes": null
+    },
+    {
+      "module": "pipeline-runtime-api",
+      "sha": "eb9a22723af0e2bf3dec6c96ec2f1ec2360507d8",
+      "surface": "RecoveryChoice.Reattach",
+      "change": "removed the `deadlineMs: Long` field from `RecoveryChoice.Reattach`: the constructor became `(AttemptId)` instead of `(AttemptId, Long)`, and `getDeadlineMs`, `component2` and the `copy-3E7C5Lg(IJ)` overload disappear from the ABI dump",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "A BINARY break for compiled consumers: an artifact compiled against the previous SHA that reads the deadline or copies the choice receives a NoSuchMethodError. Rebuilding fixes it. It is also a SOURCE break for a consumer that destructures the choice into two values.",
+        "",
+        "Why the field had to go rather than change its value: what it carried was NOT a deadline. It was the run's fencing token plus thirty seconds, and a fencing token is an authority counter — it says HOW RECENT a lease holder is, not WHEN anything happened. The number it produced was an instant in 1970, and the operator was told to come back before the epoch. Keeping the field with a different meaning would have kept a public type whose name promises a time and whose value is not one; renaming it would have been the same break spelled more slowly.",
+        "",
+        "Why the decision does not compute a time at all: the decider is pure and owns no clock, and the ADT it returns is consumed by an adapter that owns one. The instant belongs to the only owner of a clock, so the choice now says 're-attach' and the adapter says when. `RecoverOutcome.ReattachPending`, the type the recover port already publishes, carries a wall-clock deadline and was already correct; the two now agree by construction instead of by coincidence.",
+        "",
+        "Why this is a defect and not a redesign: the recover port's own published contract says the deadline is wall-clock, and the value the port published was not one. The alternative considered and rejected — keeping the field and computing the deadline inside the decider from an injected clock — would have made the pure decider impure and given the published ADT a second authority for time.",
+        "",
+        "Nothing about the DURABLE WIRE changed: the re-attach deadline is not a persisted row, not a journal column and not a protocol file. What broke is the compiled call, not a recorded run."
+      ],
+      "removal_boundary": "the field may return only as a wall-clock instant read from the recovering adapter's own clock, and only under a name that says it is an instant; it may not return as a value derived from a fencing token, a token count or any other counter",
+      "supersedes": null
     }
   ]
 }

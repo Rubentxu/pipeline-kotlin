@@ -9,8 +9,10 @@
 #      names a candidate_id whose sha256 matches the distZip artifact the
 #      script then uploads.
 #   3. The local sha256 of the distZip artifact equals the sha256 in the receipt.
-#   4. The tag name is fresh (does not collide with an existing remote tag)
-#      and points at HEAD on a clean working tree.
+#   4. The tag name is fresh — absent locally and absent on the remote, and the
+#      remote is READ to say so: a remote that cannot be read refuses the
+#      release instead of passing the check — and the tag points at HEAD on a
+#      clean working tree.
 #   5. The tag is SIGNED with the key the repository declares
 #      (scripts/release/signing-key.conf), and that signature VERIFIES before
 #      the tag is pushed. There is no unsigned fallback: the digest authority
@@ -102,7 +104,24 @@ if git rev-parse -q --verify "refs/tags/${PIPELINEK_RELEASE_TAG}" >/dev/null; th
     exit 1
 fi
 
-if git ls-remote --tags origin "refs/tags/${PIPELINEK_RELEASE_TAG}" | grep -q .; then
+# The remote is READ to say whether the tag name is free, and the READ is
+# checked. The old shape asked the pipeline `git ls-remote ... | grep -q .`,
+# whose status is grep's: a remote that could not be read produced an empty
+# listing, grep exited 1, and the script carried on as if the name were free.
+# The release gate — a fifteen-minute build — then ran on a guarantee nobody
+# had checked. A remote that cannot be read is not a remote without the tag.
+REMOTE_LISTING="$(git ls-remote --tags origin "refs/tags/${PIPELINEK_RELEASE_TAG}")" || {
+    echo "release-pipelinek: refusing — the listing of origin could not be read." >&2
+    echo "    The tag ${PIPELINEK_RELEASE_TAG} could not be checked against it, and a remote" >&2
+    echo "    that cannot be read is not a remote without the tag." >&2
+    exit 1
+}
+
+# The listing answers the question by exact name, not by pattern: a tag whose
+# name carries a dot cannot match another tag by accident.
+REMOTE_TAG_OBJECT="$(printf '%s\n' "$REMOTE_LISTING" | awk -v r="refs/tags/${PIPELINEK_RELEASE_TAG}" '$2 == r { print $1; exit }')"
+
+if [ -n "$REMOTE_TAG_OBJECT" ]; then
     echo "release-pipelinek: tag ${PIPELINEK_RELEASE_TAG} already exists on origin." >&2
     exit 1
 fi

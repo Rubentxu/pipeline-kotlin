@@ -19,8 +19,10 @@
 #   1. the tag is ANNOTATED and its SIGNATURE VERIFIES against the key this
 #      repository declares (scripts/release/signing-key.conf), checked by the
 #      same checker the release path already uses — one authority, not two;
-#   2. the tag already exists in the REMOTE, which is what --verify-tag
-#      requires and what makes the release point at a published tag;
+#   2. the tag already exists in the REMOTE — the remote is READ to say so, and
+#      a remote that cannot be read refuses the publication instead of
+#      reporting the tag as absent — which is what --verify-tag requires and
+#      what makes the release point at a published tag;
 #   3. gh is asked to CREATE A RELEASE for that tag, never to create a tag.
 #
 # And after gh: the published release is asked for its asset list, and the
@@ -274,7 +276,22 @@ fi
 #    gh's words.
 # ----------------------------------------------------------------------------
 
-if ! git ls-remote --tags "$REMOTE" "refs/tags/${TAG}" | grep -q .; then
+# The remote is READ to say whether the tag is there, and the READ is checked.
+# The old shape asked the pipeline `git ls-remote ... | grep -q .`, whose status
+# is grep's: a remote that could not be read produced an empty listing, grep
+# exited 1, and the script refused claiming the tag DID NOT EXIST — a fact
+# nobody had observed, about a tag the remote may well have held. A remote that
+# cannot be read is not a remote without the tag.
+REMOTE_LISTING="$(git ls-remote --tags "$REMOTE" "refs/tags/${TAG}")" || {
+    printf 'publish-github-release: refusing — the listing of %s could not be read.\n' "$REMOTE" >&2
+    printf '           The tag %s could not be checked against it, and a remote that cannot\n' "$TAG" >&2
+    printf '           be read is not a remote without the tag.\n' >&2
+    exit 1
+}
+
+# The listing answers the question by exact name, not by pattern: a tag whose
+# name carries a dot cannot match another tag by accident.
+if [[ -z "$(printf '%s\n' "$REMOTE_LISTING" | awk -v r="refs/tags/${TAG}" '$2 == r { print $1; exit }')" ]]; then
     printf 'publish-github-release: refusing — the tag %s does not exist in %s.\n' "$TAG" "$REMOTE" >&2
     printf '           gh would have to CREATE the tag to publish this release, and a tag it\n' >&2
     printf '           creates is a lightweight, unsigned tag. The tag is pushed by\n' >&2

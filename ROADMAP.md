@@ -1193,6 +1193,81 @@ PASS  sha=d73c3049380862ff02387882782cdbed6e2b43af  elapsed=208s  budget=900s  t
 - 208 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad. Tres trials sobre el mismo árbol: 187 s, 188 s y 208 s; se cita el PEOR, que es lo que §4 pide.
 - `VERIFY_LOC = 27605`, `PRODUCT_LOC = 71158`, ratio `0.388` (límite 2). El instrumento cuesta 145 líneas contadas por el censo —las de código, no las de sus comentarios— y entra en el numerador de verificación, que es donde debe estar: es código que decide qué se ejecutó.
 
+#### El corte: la promoción comprueba el digest que el RC nombra
+
+**Qué hace.** `scripts/release/promote-stable.sh` recibía `--candidate-id` como un parámetro libre: lo comprobaba contra el FORMATO (`sha256:` y 64 hex) y nada más. No lo contrastaba con el `candidate_id` que el propio RC nombra en el mensaje de su etiqueta. Medido contra un remoto real, con una etiqueta RC anotada, firmada y SUBIDA de verdad: se invocó la promoción con `--candidate-id sha256:0000…0000`, terminó con **salida 0**, firmó la etiqueta estable, la verificó y la subió al remoto, y el mensaje publicado fue `PipelineK v1.2.3 (candidate_id sha256:0000000000000000000000000000000000000000000000000000000000000000) (promotes v1.2.3-rc1)`. Todas las filas del veredicto de la promoción dieron PASS y su línea final imprimió `candidate_id=sha256:0000…` como si hubiera sido comprobado. El RC que promovía nombra `sha256:6f9566ef46386b8cf372671cb9eddff5488256eff5ea5fb99e1041c3e27082bf`.
+
+**Por qué ese digest es el del RC y no otro.** La publicación estable lleva los ASSETS del RC, y `publish-github-release.sh --expect-sums` los contrasta contra el digest que el RC ya publica. El digest que viaja con la etiqueta estable es, por tanto, el del RC: uno escrito a mano que el RC no nombra es un digest de nada, y queda en la procedencia publicada. La ley ya existía en el producto —`CandidateHandoffValidation` rechaza un `candidate_id` que no sea el SHA-256 del artefacto que nombra— y lo que faltaba era aplicarla en la promoción, que es donde la etiqueta se escribía.
+
+**El corte.** El objeto de la etiqueta del RC ya está PROBADO antes de esta comprobación (`RC_LOCAL_OBJECT` es el mismo objeto que el remoto publica), así que leer el mensaje de ese id de objeto es leer el mensaje del propio remoto. La promoción deriva ahora `RC_CANDIDATE_ID` de la línea de asunto de la etiqueta del RC y se niega en los dos casos: cuando el RC no nombra candidato, y cuando la afirmación del llamante no coincide. El parámetro NO se borra: es una AFIRMACIÓN sobre ese digest y no una segunda autoridad, y el fichero ya usa ese idioma —`--expect-fingerprint`, `--expect-commit`, el `--at` frente al `--expect-commit`—, donde el llamante nombra un hecho y el script lo contrasta con la autoridad y se niega ante la discrepancia.
+
+**Medido antes y después, con la única variable cambiada:**
+
+|celda|antes|después|
+|---|---|---|
+|afirmación distinta de la del RC|salida 0; etiqueta estable firmada, verificada y SUBIDA; procedencia publicada con `candidate_id sha256:0000…`|salida 1; el mensaje nombra las DOS afirmaciones; `stable_tag_local=absent` y `stable_tag_remote=absent`|
+|el RC no nombra candidato|salida 0; se publicaba una etiqueta cuyo digest nadie puede comprobar|salida 1; la promoción se detiene|
+|afirmación igual a la del RC|salida 0; la etiqueta publicada lleva `candidate_id sha256:6f9566ef…`, el del RC|salida 0; igual|
+
+**Visto en rojo, con la mutación leída de vuelta.** Se borró la rama de comparación, se leyó el `diff` contra la copia limpia (la mutación ESTABA aplicada) y el árbol se restauró desde esa copia, nunca desde git.
+
+|Mutación|Qué se encendió|
+|---|---|
+|La comparación de la afirmación con el digest del RC desaparece|exactamente UNA fila en rojo: la de la afirmación discrepante, que volvió a salir con 0 y a publicar y subir la etiqueta. La fila «el RC no nombra candidato» siguió en verde —la otra rama de negación sigue viva— y la de la afirmación coincidente también|
+
+**La garantía, la capacidad y el instrumento.** La garantía es que una etiqueta estable publicada nunca nombra un digest que el RC no nombra. La capacidad que la sostiene es que la procedencia publicada nombra un digest comprobable: el que el RC ya nombra. El instrumento es la promoción ejecutada contra un remoto real —etiqueta RC anotada, firmada y SUBIDA de verdad—, porque un test unitario no puede: AGENTS.md prohíbe que un test unitario haga `git` o `gpg`, y un escenario de `examples/` corre la distribución de desarrollo, que no produce etiquetas. La protección permanente es la negación del propio script, que es el idioma ya establecido en este camino de publicación.
+
+**Lo que este corte NO arregla, y se dice.** No comprueba que el `candidate_id` que nombra el RC sea el digest del ZIP de los assets: eso lo vigila `publish-github-release.sh --expect-sums` contra los bytes publicados, y lo que este corte comprueba es que la ETIQUETA no nombre un digest distinto del que nombra el RC. No arregla las lecturas `ls-remote` que se abren al fallar (`promote-stable.sh:165` y `release-pipelinek.sh:105`): la de aquí está ENMASCARADA por la lectura comprobada de la línea 179, así que es un diagnóstico engañoso y no una acción equivocada, y queda declarada como residual. No arregla que `publish-tag.sh` invoque `git` sin ruta absoluta y herede el envoltorio de identidad de esta máquina: también residual.
+
+#### El corte: la evidencia de la firma nombra lo observado
+
+**Qué hace.** Dos veredictos del camino de publicación contaban la PETICIÓN como si fuera la OBSERVACIÓN, y uno de ellos atribuía el fallo a la comprobación que había pasado.
+
+El primero es la cabecera de `scripts/release/verify-tag-signature.sh`: imprimía `fingerprint=`, `uid=` y `commit=` con lo que el llamante había PEDIDO. Medido con una etiqueta firmada por una segunda clave real, la cabecera decía:
+
+```
+tag-signature: FAIL rows=A:PASS B:FAIL C:PASS tag=v9.9.9 fingerprint=9600F7D49B9C966E3BB04E6A17E44CA7C5288281 uid=test@example.com commit=<any> elapsed=0s
+```
+
+La etiqueta la había firmado `E2C455E5418E114E01ED0DFA827FC099B6DD656C` con el uid `otra@example.invalid`, y la cabecera nombraba la huella y el uid DECLARADOS y un commit `<any>` que sí se sabía. Las filas de detalle sí eran verdad: la fila B nombraba al firmante real. Quien lee la línea de veredicto —que es lo que se cita— se queda con la afirmación falsa.
+
+El segundo es `scripts/release/verify-published-tags.sh`, que citaba SIEMPRE el motivo de la fila A. La fila que rechazó fue la B (identidad), y su motivo se quedó el de la A (criptografía):
+
+```
+published-tags: FAIL ... fingerprint=9600F7D49B9C966E3BB04E6A17E44CA7C5288281
+  tag v9.9.9 verdict=FAIL ... signature=DOES-NOT-VERIFY (the signature verifies cryptographically)
+```
+
+Una frase que se contradice sola —afirma que la firma no verifica y lo justifica con el detalle de que sí verifica— y en la que el firmante observado NO APARECE. Esta auditoría es la puerta que la promoción ejecuta al final, y su salida es parte de la evidencia que la promoción publica.
+
+**El corte.** La cabecera de la comprobación de firma nombra ahora la identidad OBSERVADA de la etiqueta —`signer=`, `uid=`, `commit=`— y guarda la petición en campos propios (`expected_fingerprint=`, `expected_uid=`, `expected_commit=`), de modo que ningún campo pueda decir una cosa y leerse como otra. La auditoría cita la fila que FALLÓ, con su letra (`B: …`), etiqueta el estado según la comprobación que rechazó (`DOES-NOT-VERIFY` / `FROM-ANOTHER-KEY` / `NOT-AS-DECLARED`), nombra al firmante observado en la fila, y separa en el resumen lo pedido de lo visto (`expected_fingerprint=` frente a `signers=`).
+
+**El código de salida no cambia.** Las negaciones ya eran correctas: una etiqueta firmada por otra clave ya rechazaba la promoción. Lo que cambia es que el veredicto dice lo que miró, y el error que se llevaba la evidencia —«la firma no verifica, porque la firma verifica»— desaparece.
+
+**Visto en rojo, con las mutaciones leídas de vuelta.** Dos mutaciones, cada una aplicada, leída con `diff` contra la copia limpia, y restaurada desde esa copia.
+
+|Mutación|Qué se encendió|
+|---|---|
+|La cabecera vuelve a imprimir la huella PEDIDA en el campo del firmante|cuatro filas en rojo en el caso de clave ajena —«la cabecera nombra al firmante observado», «la cabecera no afirma al firmante declarado», «la fila de la auditoría nombra al firmante observado» y «el resumen lista los firmantes observados»—; el caso de clave DECLARADA siguió enteramente en verde|
+|La auditoría vuelve a citar siempre la fila A|en el caso de clave ajena, la fila volvió a decir `signature=FROM-ANOTHER-KEY (the signature verifies cryptographically)` y se encendieron exactamente dos filas: «la auditoría cita la fila que rechazó» y «la auditoría no se contradice»; el caso de clave declarada siguió enteramente en verde|
+
+**Un defecto del propio producto, encontrado por el instrumento.** El resumen de la auditoría decía `signers=<none>` justo en el caso que más lo necesitaba, porque el firmante sólo se acumulaba en el camino de éxito. El instrumento lo enrojeció y el producto lo corrigió: ahora el firmante se registra lo haya rechazado o no la comprobación, porque el firmante que provocó el rechazo es exactamente el que hay que ver.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que la evidencia de la firma de una publicación nombra QUIÉN firmó y POR QUÉ se rechazó, y que ninguna fila atribuye un fallo a una comprobación que pasó. La capacidad que la sostiene es que un lector del veredicto puede saber quién firmó sin leer las filas de detalle. El instrumento son las dos puertas ejecutadas contra un remoto y una clave reales —la declarada y una segunda clave efímera—, porque no puede ser un test unitario (estos scripts ejecutan `git` y `gpg`) ni un escenario de `examples/` (corre la distribución de desarrollo, que no produce etiquetas).
+
+**Lo que este corte NO arregla, y se dice.** No ata la clave a una persona: una firma prueba la posesión de la clave privada, y la atribución a una cuenta o a una persona es un hecho que se establece fuera del repositorio; estos scripts ya lo dicen. No añade una regresión permanente, y se dice por qué: no hay un sitio permanente para una puerta de shell de publicación —`scripts/verify-all.sh` no la ejecuta, y un test unitario no puede hacer `git` ni `gpg`—, así que la protección es la negación del propio script y la evidencia que publica. No rompe el formato de la línea de veredicto: los campos que había pasan a ser `expected_…` porque ya no describen lo observado, y una búsqueda de todo el árbol no encuentra ningún lector de esas líneas.
+
+Medido sobre `3fba86491` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=3fba864914f94b56ae89d92e52bdb1946300b31e  elapsed=187s  budget=900s  tests=rewritten:1465 read:0  scenarios=observed:63 executed:63
+```
+
+- 1465 tests EJECUTADOS de verdad por esta ejecución, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E ejecutados y en verde.
+- 187 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 27615`, `PRODUCT_LOC = 71237`, ratio `0.388` (límite 2).
+
 ## 4. Orden y dependencias
 
 

@@ -51,9 +51,10 @@ import java.io.PrintStream
  * their option tables are not this one's, and they already refused an unknown
  * option before this admission existed.
  *
- * `events verify` is the exception, and it is not here either: its option loop
- * has no branch for an option it does not know, so it drops one without a
- * word. That verb has an admission of its own, and it is not this one.
+ * `events verify` reads this admission too, and its own rows -- the refusals
+ * the verb makes with the words it makes them with -- are in
+ * `MainEventsVerifyCliTest`. What is here is the vocabulary and the rule that
+ * decides whether a request is readable at all.
  */
 class CliOptionAdmissionTest {
 
@@ -135,8 +136,41 @@ class CliOptionAdmissionTest {
     }
 
     @Test
+    fun `a value that names an option of the verb itself is refused`() {
+        // The verb's own tokens are the stronger half of the rule: a token
+        // this request's verb owns is even less likely to be a path than one
+        // the shared parser happens to know.
+        assertEquals(
+            CliAdmission.Rejected(CliError.OptionValueIsAnOption("--db", "--run")),
+            CliOptionAdmission.admit(
+                arrayOf("--db", "--run", "run-1"),
+                EVENTS_VERIFY_OPTIONS,
+            ),
+        )
+    }
+
+    @Test
+    fun `the events verify vocabulary is the one its verb reads`() {
+        assertEquals(
+            CliAdmission.Admitted(
+                flags = emptySet(),
+                values = mapOf(
+                    "--db" to "/tmp/store/events.db",
+                    "--run" to "run-1",
+                    "--contract" to "/tmp/store/events.yaml",
+                ),
+                positionals = emptyList(),
+            ),
+            CliOptionAdmission.admit(
+                arrayOf("--db", "/tmp/store/events.db", "--run", "run-1", "--contract", "/tmp/store/events.yaml"),
+                EVENTS_VERIFY_OPTIONS,
+            ),
+        )
+    }
+
+    @Test
     fun `the two option vocabularies agree about every token they share`() {
-        val shared = (VERSION_OPTIONS + OPERATIONS_OPTIONS)
+        val shared = (VERSION_OPTIONS + OPERATIONS_OPTIONS + EVENTS_VERIFY_OPTIONS)
             .filter { knownOptionArity(it.token) != null }
         assertTrue(shared.isNotEmpty(), "no token is shared; the agreement proves nothing")
         for (option in shared) {

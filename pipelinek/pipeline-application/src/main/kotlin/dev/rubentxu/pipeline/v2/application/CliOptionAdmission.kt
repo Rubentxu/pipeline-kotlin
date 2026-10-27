@@ -71,20 +71,26 @@ internal sealed interface CliAdmission {
  *  - `doctor --json` answered 0 and printed the report the verb always prints,
  *    `version --db <path>` answered 0 and printed the version, and so did
  *    `capabilities --view full` and `sdk-info --db <path>`: a flag the operator
- *    believed in was dropped without a word.
+ *    believed in was dropped without a word;
+ *
+ *  - `events verify --db <db> --run <r> --contract <c> --bogus` printed
+ *    EXACTLY what the same invocation without `--bogus` printed. That verb was
+ *    the last one reading its options with a hand-written loop with no branch
+ *    for what it did not recognise, and it is the CLI's acceptance gate: a
+ *    dropped option there is a verdict about a request nobody made.
  *
  * A verb that owns no options has to SAY that a request is not one of its
  * requests. Silence is the failure mode here, not the message.
  *
  * ## Why one admission and not another parser
  *
- * The CLI already decides the arity of its options BY HAND in eight places:
- * the shared parser carries one per family (`observation`, `inspect`, `events`,
- * `console`), and the `events` inspection flags, `events verify`, the `runs`
- * family and `saga inspect` carry their own. Each of those writes its option
- * tokens in its own body, so there are eight places to drift. This table is a
- * NINTH piece of the same kind: the option surface of the verbs that do not
- * use the shared parser is written ONCE, here, and every verb reads it.
+ * The CLI decides the arity of its options in eight places. Seven write it BY
+ * HAND: the shared parser carries one per family (`observation`, `inspect`,
+ * `events`, `console`), and the `events` inspection flags, the `runs` family
+ * and `saga inspect` carry their own. Each of those writes its option tokens
+ * in its own body, so there are seven places to drift. The eighth is this
+ * table, where the six verbs that do not use the shared parser read their
+ * option surface: it is written ONCE, here, and every verb reads it.
  *
  * ## Why the arity is declared here and not read from the shared parser
  *
@@ -94,9 +100,10 @@ internal sealed interface CliAdmission {
  * in another. `--json` is not a token the shared parser knows — it belongs to
  * `version` alone, and admitting it to the shared parser would make `run
  * --json` a recognised option of a verb that does not own it. So this table
- * declares the arity of the tokens the shared parser does not know, and the
- * unit test checks the two tables against each other for every token they
- * share.
+ * declares the arity of the tokens ITS verbs own, and the unit test checks
+ * this table against the shared parser for every token they share: a verb that
+ * owns `--db` and the shared parser that also knows `--db` cannot disagree
+ * about what `--db` is.
  */
 internal object CliOptionAdmission {
 
@@ -134,7 +141,14 @@ internal object CliOptionAdmission {
             // scoped to the tokens this build knows, exactly as the shared
             // parser scopes it — a token that names nothing is far more likely
             // to be a path than a mistyped flag.
-            if (knownOptionArity(value) != null) {
+            //
+            // The verb's OWN tokens join that set, and they are the stronger
+            // half of it: a token this request's verb owns is even less likely
+            // to be a path than one the shared parser happens to know.
+            // `events verify --db --run r1` used to take "--run" for the value
+            // of "--db", and the operator was told about the "r1" left over
+            // instead of about the option that ate the other one.
+            if (knownOptionArity(value) != null || owned.any { it.token == value }) {
                 return CliAdmission.Rejected(CliError.OptionValueIsAnOption(token, value))
             }
             values[token] = value
@@ -172,4 +186,24 @@ internal val VERSION_OPTIONS: List<CliOption> = listOf(CliOption("--json"))
 internal val OPERATIONS_OPTIONS: List<CliOption> = listOf(
     CliOption("--control-root", takesValue = true),
     CliOption("--format", takesValue = true),
+)
+
+/**
+ * The options `events verify` owns.
+ *
+ * All five carry a value. `--db` is a token the shared parser also knows, so
+ * the shared parser's arity for it is the one this table has to agree with;
+ * `--run`, `--contract`, `--from-sequence` and `--scope` belong to this verb
+ * alone.
+ *
+ * The verb used to read these with a hand-written loop that had no branch for
+ * anything it did not recognise, so an option it did not own was dropped
+ * without a word and the verb answered about a request nobody had made.
+ */
+internal val EVENTS_VERIFY_OPTIONS: List<CliOption> = listOf(
+    CliOption("--db", takesValue = true),
+    CliOption("--run", takesValue = true),
+    CliOption("--contract", takesValue = true),
+    CliOption("--from-sequence", takesValue = true),
+    CliOption("--scope", takesValue = true),
 )

@@ -1246,6 +1246,62 @@ PASS  sha=d456d29233592d97447f94452acd39ed98635ed7  elapsed=204s  budget=900s  t
 - 204 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 27915`, `PRODUCT_LOC = 71400`, ratio `0.391` (límite 2).
 
+#### El corte: un error dice una sola cosa
+
+**Qué hace.** Un `CliError` se renderizaba de DOS maneras, y las dos vivían en el mismo repositorio: `toCliExit()`, la tabla de errores del CLI, y el `toString()` que cada caso de la ADT traía consigo —dieciocho sobrescrituras—. `observe` usaba la segunda, y por eso contestaba con la sintaxis del constructor (`UnknownOption(value=--bogus-flag)`, `InvalidView(bogus): expected one of …`) mientras `run` contestaba con una frase distinta para la misma familia de error. Un error, dos oraciones, y la que parecía un volcado de pila era la que el operador leía.
+
+El corte anterior dejó este mismo defecto escrito como residual: «`observe` sigue renderizando un `CliError` con el `toString()` de su ADT —la única sede de producción que interpola un error—, y por eso `observe` sigue contestando "observe: UnknownOption(value=--bogus)" en vez de una frase». Este corte lo cierra.
+
+Medido sobre la distribución construida de `dc2fd38f3` (diez invocaciones, la misma tabla de antes y después):
+
+|celda|antes|después|
+|---|---|---|
+|`observe run-1 --view bogus`|«observe: InvalidView(bogus): expected one of normal, events, console, quiet, full»|«observe: invalid view: bogus» + «known views: normal, events, console, quiet, full»|
+|`observe run-1 --channel bogus`|«observe: InvalidChannel: --channel 'bogus' is not a channel. Known: stdout, stderr»|«observe: invalid channel: bogus» + «known channels: stdout, stderr»|
+|`observe run-1 --limit abc`|«observe: InvalidLimit: --limit needs a positive whole number of records, got 'abc'. Omit it to show everything.»|«observe: invalid --limit value: abc» + «omit it to show everything»|
+|`observe run-1 --format bogus`|«observe: InvalidFormat(bogus): expected one of text, jsonl, json»|«observe: invalid format: bogus» + «known formats: text, jsonl, json»|
+|`observe run-1 --bogus-flag`|«observe: UnknownOption(value=--bogus-flag)»|«observe: unknown option: --bogus-flag»|
+|`run --view bogus`|«Invalid CLI arguments: invalid view: bogus» —SIN la lista de vistas|«Invalid CLI arguments: invalid view: bogus» + «known views: normal, events, console, quiet, full»|
+|`run --channel bogus`|«Invalid CLI arguments: invalid channel: bogus» —SIN la lista de canales|«Invalid CLI arguments: invalid channel: bogus» + «known channels: stdout, stderr»|
+|`run --limit abc`|«Invalid CLI arguments: invalid --limit value: abc» —SIN el consejo|«Invalid CLI arguments: invalid --limit value: abc» + «omit it to show everything»|
+|`operations --control-root --format json`|«operations: value for option --control-root looks like another option: --format» + «if you meant to pass '--format' as a value, prefix with '=' or quote it»|«operations: value for option --control-root looks like another option: --format» + «this build refuses a value spelled like one of its own options; quoting it or writing '--control-root=--format' does not change that, so pass a different value»|
+|`operations --control-root=/tmp/x`|«operations: unknown option: --control-root=/tmp/x»|igual|
+
+Las CINCO primeras filas son el contenido de la garantía: el mismo error, dos oraciones, y la que se leía no era una oración. Las TRES siguientes son el efecto del mismo corte por el otro lado —`run` ya usaba `toCliExit()`, y ahora recibe el vocabulario que la tabla no tenía—: el rechazo no cambia de forma, gana la lista de lo que sí se acepta. La NOVENA fila es la PISTA que el corte anterior declaró residual por escrito: «No arregla la PISTA del rechazo que dice "prefix with '=' or quote it" … es un texto PREEXISTENTE en `toCliExit()` … y es falso en las dos partes». La DÉCIMA fila es la que demuestra por qué era falsa: la distribución construida rechaza `--control-root=/tmp/x` con «unknown option» —la grafía con '=' NO existe— y entrecomillar `--format` entrega el mismo token.
+
+**El corte.** `toCliExit()` es la ÚNICA sede donde un `CliError` se convierte en palabras. La parte ACCIONABLE que vivía en los `toString()` —la lista de vistas, de formatos, de canales y de resultados que este build acepta, y el consejo de qué hacer— pasa al `hint` del renderer. Los dieciocho sobrescrituras desaparecen y el tipo sellado queda como un VALOR: dice qué falló y lleva los tokens, no la redacción.
+
+El `hint` nunca promete una forma que el CLI no acepta. La pista de un valor que parece otra opción decía «prefix with '=' or quote it», y ninguna de las dos funciona aquí; ahora dice lo que es verdad: este build rechaza un valor escrito como una de sus propias opciones, y ni entrecomillarlo ni escribir `--op=valor` cambian eso.
+
+`observe` deja de interpolar el error y usa `refusalLines("observe")`, el mismo helper que usan los demás verbos: el mensaje y el consejo salen del MISMO sitio.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que un error se dice de UNA sola manera: quien rechaza dice QUÉ pasó y QUÉ hacer, y hay un solo sitio donde se redacta, así que dos verbos no pueden contestar al mismo error con dos frases distintas. La capacidad que la sostiene es que un operador que escribe una opción mal lee una frase y la lista de lo que sí se acepta, sea cual sea el verbo que usó. El instrumento es un test unitario (`CliErrorRenderingTest`, 12 filas) sobre el renderer, que es una función pura: el instrumento más barato que puede fallar es llamarla y leer lo que dice. La COSTURA —que un verbo renderice su rechazo por el renderer y no por la forma del error— se cruza llamando al verbo EN PROCESO: se llama a `MainObserveCli.main`, se lee su código de salida y se captura su stderr. Un test unitario no puede lanzar un proceso —AGENTS.md lo prohíbe— y un escenario de `examples/` pagaría la construcción de la distribución entera para comprobar un rechazo.
+
+Las expectativas son LITERALES escritas en el test; lo único que se lee de producción es el vocabulario bajo prueba, y se lee como TEXTO: un cambio en ese vocabulario tiene que cambiar una cadena escrita a mano para ser cazado. Dos filas esquivan deliberadamente la vacuidad: la fila de `observe` exige «stdout, stderr» con COMA —la línea de uso ya nombra «stdout|stderr» con barra vertical, y una aserción más floja habría sido satisfecha por el uso—, y la fila de la pista exige que NO aparezcan «prefix with '='» ni «or quote it», que son exactamente las dos frases que la pista vieja prometía.
+
+**Visto en rojo, con la mutación leída de vuelta.** Dos mutaciones focales, una cada vez, sobre `CliExitMapping.kt` y `MainObserveCli.kt`. Cada una se aplicó, se leyó de vuelta con `diff -u` contra una copia byte a byte del fichero tal como estaba antes de mutar —con su sha256 anotado en `SHA256SUMS`— y se restauró desde ESA copia, nunca desde git, comprobando después con `sha256sum -c` que el fichero y la copia eran el mismo byte.
+
+|Mutación|Qué se encendió|
+|---|---|
+|La pista de la rama `InvalidChannel` desaparece —una línea: `hint = "known channels: …"`—|exactamente DOS filas en rojo: «the refusal of an invalid channel names the channels this build has» y «observe names the channels this build has when a channel is wrong»; las otras DIEZ siguieron en verde|
+|`observe` vuelve a interpolar el error —`"observe: ${result.error}"` en vez de `refusalLines("observe")`—|exactamente DOS filas en rojo: «observe refuses an option it does not own with the shared sentence» y «observe names the channels this build has when a channel is wrong»; las otras DIEZ siguieron en verde|
+
+Ninguna mutación encendió de más: en las dos, el resto del lote siguió en verde. Y cada una aprieta UNA mitad de la costura —la una el renderer, la otra el verbo— y deja en verde la mitad que no aprieta: es lo que distingue un instrumento que discrimina de uno que se rompe.
+
+**Lo que este corte NO arregla, y se dice.** No arregla el CÓDIGO DE SALIDA del despachador: un rechazo de primer nivel sale con 1 mientras `CliExit.InvalidArgument.code` es 2 —la taxonomía dice 2 y el despachador dice 1—. Es una inconsistencia real del contrato de salida, y no se toca porque cambiarla rompe un contrato observable que este corte no está autorizado a romper. No arregla los CUATRO verbos que rechazan con una cadena propia y no con un `CliError` —`runs cancel`, `runs recover`, `inspect`, `saga inspect`—: no producen este tipo, así que no tienen un vocabulario común al que unirse; unirlos exige que sus parsers produzcan el tipo, que es otro corte. No arregla `events verify`, que sigue tragándose una opción que no conoce. Y no arrastra la redacción EXPLICATIVA que tenían algunos `toString()` —«which used to be discarded silently», «Refusing rather than storing '$value' as the value of '$option', which would have dropped a flag you asked for and exited 0»—: era historia del defecto, no el camino de salida del operador, y lo que sí era accionable se volvió `hint`.
+
+Medido sobre `143f5aa23cf761cf3fd2691658fcff3f02e31faa` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=143f5aa23cf761cf3fd2691658fcff3f02e31faa  elapsed=207s  budget=900s  tests=rewritten:1499 read:0  scenarios=observed:63 executed:63
+```
+
+- 199 informes JUnit reescritos por esta ejecución, 1499 tests EJECUTADOS de verdad, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E observados y ejecutados, en verde.
+- 207 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28014`, `PRODUCT_LOC = 71353`, ratio `0.393` (límite 2). La producción BAJÓ 47 líneas —los dieciocho `toString()` borrados— y la verificación subió 99 —el test nuevo—.
+
+
 ## H6 — Reducir deuda del harness y asegurar la publicación
 
 Foco: `examples/run.sh`, `verify-all.sh` y scripts de release.

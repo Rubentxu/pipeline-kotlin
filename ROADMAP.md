@@ -509,6 +509,54 @@ Medido: una segunda corrida completa del gate sobre el árbol sin cambios ejecut
 
 El arreglo es de **H6**, que es donde vive el gate: el censo debe leer la marca de tiempo PROPIA del XML (`timestamp`), no el `mtime` del fichero, y distinguir tres estados —ejecutado ahora, servido de la cache, leído de disco— en vez de dos. No se toca el gate aquí: cambiar el instrumento de medición en mitad de un corte cambiaría la contabilidad del presupuesto que este corte está midiendo. Este corte se midió, por tanto, con la cache desactivada, y por eso su línea de veredicto dice lo que dice. En los tres cortes anteriores, cuyo código cambió, la cache sólo pudo servir los módulos cuyas entradas no cambiaron —sus hallazgos (detekt, LOC, escenarios) no dependen de ello—, pero su cifra de `rewritten` es la del gate, y el gate no distingue lo ejecutado de lo repuesto.
 
+#### El corte: un acoplamiento fallido no deja nada abierto
+
+**Qué hace.** `AgentRendezvous.rendezvous()` abría los dos descriptores de calentamiento, lanzaba el agente y esperaba su marca de listo, SIN try/catch. Medido sobre el árbol anterior al corte (`2ac2cf6bb`), las salidas posibles eran cuatro:
+
+- `materialiseFifos` falla → no hay nada abierto todavía; inofensivo.
+- `openWarmup` falla A MITAD → el primer descriptor queda abierto en la JVM del runtime y el segundo no existe: una fuga de un descriptor, sin proceso.
+- `launchAgent` falla → los DOS descriptores quedan abiertos en la JVM del runtime.
+- `awaitReady` falla (la marca de listo no aparece en 10 s) → los DOS descriptores quedan abiertos Y el proceso del agente queda vivo sin dueño: el handle `Process` se descarta al salir de `rendezvous`, y `LaunchedShell.agentWarmup` sólo transporta los descriptores.
+
+Los descriptores de calentamiento son, con el hijo, los ÚNICOS escritores de las FIFOs; el agente lee hasta EOF, y EOF llega cuando todo escritor se ha ido. Un descriptor que sigue abierto ⇒ el agente nunca ve EOF ⇒ su JVM se queda esperando una transcripción que no va a crecer. Cada acoplamiento fallido dejaba, por tanto, una JVM huérfana.
+
+Y el KDoc de `launchAgent` afirmaba: *«The runtime keeps the [Process] handle so the run terminal can send SIGTERM and, after a 5-second grace, SIGKILL»*. Eso era FALSO: el handle se perdía al salir de `rendezvous`. Una KDoc que afirma una propiedad que el cableado no tiene convierte una ausencia en una garantía.
+
+**El corte.** La POLÍTICA del rendezvous y sus EFECTOS se separan. La política —adquirir, y si no completar, liberar— vive en `AgentRendezvous`; los efectos —FIFOs, descriptores, agente, reloj— viven en un `RendezvousHost`, con una implementación real (`ProcessRendezvousHost`) y una costura interna. La política queda con esta forma:
+
+- se capturan los descriptores de calentamiento y el handle del agente;
+- si cualquier paso falla, los descriptores se cierran PRIMERO y el agente se mata DESPUÉS, y el fallo que provocó el desmontaje es el que se reporta;
+- si el agente no llegó a arrancar, no hay handle que matar, y los descriptores se cierran igual.
+
+El orden no es una preferencia: cerrar los descriptores es lo que hace que el agente vea EOF, y un agente al que se mata antes de cerrarlos queda con los extremos de lectura abiertos. Un descriptor que se niega a cerrar no impide que se cierren los demás ni que se mate al agente; un agente que se niega a morir no impide que se cierren los descriptores. Ninguno de los dos fallos cambia el veredicto: el veredicto es el fallo que provocó el desmontaje, y la KDoc lo dice en el sitio donde antes afirmaba lo contrario.
+
+**Lo que mide, y por qué se puede matar al agente.** Se midió en el host de referencia, desde un hijo de `ProcessBuilder`: `setsid` NO hace fork cuando quien llama no es ya líder de grupo, así que el pid que lleva el handle ES el pid que ejecuta el agente —medido: `cmdline=sleep 30`, `pgrp=session=pid`— y `destroyForcibly()` lo alcanza (`alive=false`, y la entrada de `/proc` desaparece). Sin esa medición, «matar al agente» habría sido una hipótesis.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que un rendezvous que no completa no deja nada de su propio abierto: ni descriptores, ni proceso del agente. La capacidad que sostiene es que un acoplamiento fallido se puede reintentar sin arrastrar un proceso huérfano ni un escritor que impida el siguiente intento: un FIFO reusado por un segundo intento necesita que los escritores anteriores se hayan ido. El instrumento es un test unitario —14 filas en el fichero, 5 nuevas— que conduce la política con dobles: sin proceso, sin FIFO, sin reloj, sin espera. La ruta del agente NO tiene ningún escenario ejecutable en `examples/` —nada en este árbol conduce al agente de extremo a extremo—, así que un test unitario que conduzca la política con dobles es el único instrumento disponible, y es el que nombra QUÉ mitad se rompió. La costura es lo que lo hace posible: sin ella, la política sólo se podría ejercitar contra un FIFO real y un agente real.
+
+**Visto en rojo tres veces.** Cada mutación se aplicó, se leyó de vuelta con `diff` contra la copia limpia, y el árbol se restauró desde esa copia antes de la siguiente —una mutación apilada sobre la anterior hace el conjunto rojo acumulativo, y un conjunto acumulativo no prueba nada de una fila sola—. Cada ejecución se comprobó contra el XML de JUnit autoritativo —no contra la salida del build, que también dice "BUILD FAILED"— con la condición de que corrieron las 14 filas.
+
+|Mutación|Filas que se encendieron|Lote|
+|---|---|---|
+|La llamada a `releaseFailedRendezvous` desaparece|4 — `a rendezvous that never attaches releases the warm-up descriptors and kills the agent`, `the warm-up descriptors are released before the agent is killed`, `a rendezvous whose agent never starts releases the warm-up descriptors`, `a descriptor that refuses to close does not keep the agent alive`|14 tests, 4 rojos, sin colateral|
+|El agente deja de matarse (`agent?.let { … }` desaparece)|3 — las tres que afirman que el agente fue matado|14 tests, 3 rojos, sin colateral|
+|El agente se mata ANTES de cerrarse los descriptores|1 — `the warm-up descriptors are released before the agent is killed`|14 tests, 1 rojo, sin colateral|
+
+La segunda mutación enciende tres filas y no cuatro: `a rendezvous whose agent never starts releases the warm-up descriptors` sigue en verde porque en ese camino no hay handle que matar —el agente no llegó a existir—, y esa fila afirma sólo la liberación de los descriptores. La tercera enciende una sola fila: el orden no es lo que las otras tres miran.
+
+**Lo que este corte NO arregla, y se dice.** No arregla la RUTA DEL AGENTE de extremo a extremo: `examples/` no tiene ningún escenario que conduzca al agente, así que lo que este corte observa es la POLÍTICA, con dobles, y no una ejecución del agente real. No arregla la fuga de un descriptor cuando `openWarmup` falla A MITAD —el segundo `FileChannel.open` lanza y el primero queda abierto—: la política no puede liberar lo que el host nunca devolvió, así que ese agujero vive en el host y este corte no lo tapa. No arregla el handle de un rendezvous EXITOSO: tras el éxito el handle se suelta a propósito —el agente debe sobrevivir al runtime— y su vida queda acotada por el EOF de las FIFOs, que es lo que dice ahora la KDoc en vez de prometer un handle que nadie guarda. Y no arregla `DurableShellExecutor.isAlive(controlDir, process)`, residuo ya declarado: sigue sin llamantes de producción.
+
+Medido sobre `f39838e9b` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=f39838e9b44f1d307539961c8a48c883134fde62  elapsed=144s  budget=900s  tests=rewritten:1465 read:0  scenarios=observed:63 executed:63
+```
+
+- 196 informes JUnit reescritos por esta ejecución, 1465 tests, 0 fallos, 0 omitidos: 1460 antes del corte más las 5 filas nuevas.
+- 63 de 63 escenarios E2E ejecutados y en verde, 594 comprobaciones sobre 114 ejecuciones y 220 pasos terminados.
+- 144 s de reloj de pared frente al presupuesto de 900 s.
+- `VERIFY_LOC = 27460`, `PRODUCT_LOC = 71158`, ratio `0.386` (límite 2). El módulo del corte, `pipeline-step-sdk:runtime`, queda en `2042 / 2364 = 0.864`.
+
 #### El corte: `ShellWatchdog`
 
 El ejecutor llevaba dentro el reloj: el hilo del temporizador, la escritura de la marca de expiración, el barrido de cookies sobre `/proc`, la escalada a `SIGKILL` y las cuatro consecuencias de una expiración (el código de salida de la limpieza, la decisión del transcripto, el terminal y la rama de excepción). `ShellWatchdog` (494 líneas, en `pipeline-step-sdk:runtime`) los recoge. `DurableShellExecutor` queda como fachada y `executeCore()` sigue siendo el único motor de shell.
@@ -981,7 +1029,7 @@ Luego una cookie ausente sin resultado publicado significa que el envoltorio nun
 |`pollDeadlineFor` vuelve a devolver la hora|`ShellWatchdogTest > an execution without a deadline has no ceiling()`|14 tests, 1 rojo, sin colateral|
 |El orden de las ramas pone la ausencia del envoltorio antes del resultado publicado|`ShellResultPollTest > a published result ends the wait with its exit code()`|7 tests, 1 rojo, sin colateral|
 
-**Lo que este corte NO arregla, y se dice.** No arregla `settle()` con un instrumento propio: la ventana ahora se abre sólo tras el plazo y ningún test unitario mide ese tiempo. La garantía que lo sostiene es «no cambia ningún veredicto» —la ventana sólo podía abrirse después del plazo, que es cuando el vigilante puede disparar—, y eso es una derivación del código, no una observación; se declara como tal en vez de vestirse de cobertura. No arregla el orden entre «el envoltorio terminó» y «el techo venció»: los dos terminan en `Lost` y sólo difieren en el mensaje, así que no hay una garantía que los separe. No arregla `DurableShellExecutor.isAlive(controlDir, process)`, una función que pregunta por la cookie y por un `ProcessHandle` y a la que el censo no encuentra ningún llamante de producción: es un residuo declarado y este corte no la toca. Y no arregla el AGENTE: `AgentRendezvous` sigue sin garantizar que un fallo de arranque no deje descriptores ni proceso abiertos. Eso pertenece al corte de `AgentRendezvous`, que sigue declarado en H2 y no se cierra aquí.
+**Lo que este corte NO arregla, y se dice.** No arregla `settle()` con un instrumento propio: la ventana ahora se abre sólo tras el plazo y ningún test unitario mide ese tiempo. La garantía que lo sostiene es «no cambia ningún veredicto» —la ventana sólo podía abrirse después del plazo, que es cuando el vigilante puede disparar—, y eso es una derivación del código, no una observación; se declara como tal en vez de vestirse de cobertura. No arregla el orden entre «el envoltorio terminó» y «el techo venció»: los dos terminan en `Lost` y sólo difieren en el mensaje, así que no hay una garantía que los separe. No arregla `DurableShellExecutor.isAlive(controlDir, process)`, una función que pregunta por la cookie y por un `ProcessHandle` y a la que el censo no encuentra ningún llamante de producción: es un residuo declarado y este corte no la toca. Y no arregla el AGENTE: `AgentRendezvous` sigue sin garantizar que un fallo de arranque no deje descriptores ni proceso abiertos. Eso pertenece al corte de `AgentRendezvous`, que sigue declarado en H2 y no se cierra aquí —se cerró después, en el corte de H2 «un acoplamiento fallido no deja nada abierto» (`f39838e9b`), que añadió la liberación de descriptores y la muerte del agente, y que este corte no anticipa ni sustituye—.
 
 **Medido sobre `2e3a1efd5` con `scripts/verify-all.sh` sin filtros —la misma ejecución midió los tres cortes de esta tanda, que salen del mismo árbol—:**
 

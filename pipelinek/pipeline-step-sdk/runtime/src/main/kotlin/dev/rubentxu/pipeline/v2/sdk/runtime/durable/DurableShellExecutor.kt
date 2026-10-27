@@ -483,23 +483,24 @@ class DurableShellExecutor {
             // must already be detached for that to mean anything.
             watchdog.arm(process)
 
-            // Poll in one interval slices so a watchdog kill does not leave us
-            // waiting for a result.txt that the killed wrapper cannot publish.
-            val pollDeadline = System.currentTimeMillis() + watchdog.pollDeadlineMs()
-            while (System.currentTimeMillis() < pollDeadline && !watchdog.fired()) {
-                val result = pollResult(controlDir, pollIntervalMs)
-                if (result != null) {
-                    exitCode = result
-                    break
-                }
+            // The poll's ceiling: the execution's own time plus the grace the kill needs. An
+            // execution with NO deadline has no ceiling at all — it waits until the wrapper
+            // publishes a result or ends without publishing one. The ceiling is measured on the
+            // MONOTONIC clock, because a wall-clock jump must not end an execution's wait.
+            val ceilingNanos = watchdog.pollDeadlineMs()?.let { millis ->
+                System.nanoTime() + millis * ShellWatchdog.NANOS_PER_MILLI
+            }
+            val polled = ShellResultPoll(controlDir, pollIntervalMs).await(ceilingNanos) {
+                watchdog.timedOut()
             }
 
-            // TMO race guard: under CPU load the watch's kill lands AFTER pollResult already
+            // TMO race guard: under CPU load the watch's kill lands AFTER the poll already
             // read a (misleading) wrapper exit code — the killed script's bash continued, echoed
             // `done` and wrote result.txt 0 just before the SIGKILL, while the watch had not yet
             // published. Without this bounded settle the terminal is classified Exited(0) →
             // success, defeating FAILED_TIMEOUT. The watch is given a bounded window to publish
-            // its latch before classifying.
+            // its latch before classifying — and only once the deadline has passed, because
+            // before it there is no kill to race with.
             watchdog.settle()
 
             // The persisted flag file is the AUTHORITATIVE timeout marker (written BEFORE the
@@ -512,14 +513,17 @@ class DurableShellExecutor {
             // Cancel the watch if it is still running
             watchdog.stop()
 
-            // If we exited due to timeout
-            if (timedOut) {
-                // One grace poll cycle - late exit wins
-                val graceExitCode = pollResult(controlDir, watchdog.graceWindowMs())
-                if (graceExitCode != null) {
-                    exitCode = graceExitCode
-                }
+            // The exit code the cleanup and the transcript's fate are read from. It is the code
+            // the wrapper PUBLISHED, or -1 when it published none: a code nobody wrote must not
+            // be passed off as one that was observed.
+            if (polled is ShellPollOutcome.Published) {
+                exitCode = polled.exitCode
             }
+
+            // The authority on the expiry is read once, at the end, and it wins over whatever
+            // the poll saw: a wrapper that publishes an exit code after its child was killed
+            // does not get to decide whether the execution succeeded.
+            val outcome = if (timedOut) ShellPollOutcome.Expired else polled
 
             // Drain the transcript pumps BEFORE projecting, so the last sanitized bytes have reached
             // the durable authority before the step is reported.
@@ -559,9 +563,8 @@ class DurableShellExecutor {
             // authoritative timeout.flag). A wrapper exit code published after its
             // child was killed is not a legitimate completion; timeout abort wins.
             // The rule belongs to the classification, not to this call site.
-            return decision.forExitCode(
-                exitCode = exitCode,
-                timedOut = timedOut,
+            return decision.forPollOutcome(
+                outcome = outcome,
                 capturedStdout = capturedStdout,
             )
         } catch (e: LinuxRequiredException) {

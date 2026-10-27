@@ -26,9 +26,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  *    authority, because it survives the race: a flag that exists means the execution expired,
  *    whatever the exit code says.
  *
- * The executor reads the latch while it polls (so a poll is not cut short by a mark that is not
- * yet durable) and the authority once the poll is over (so a race that the latch lost is not
- * reported as a success). Both live here, so there is one owner of the difference.
+ * The executor asks the authority while it polls (so a poll is not cut short by a mark that is
+ * not yet durable) and asks it again once the poll is over (so a race that the latch lost is not
+ * reported as a success). Both readings live here, so there is one owner of the difference.
  *
  * ## What this does NOT own
  *
@@ -53,6 +53,15 @@ internal class ShellWatchdog(
     private var timer: Thread? = null
 
     /**
+     * When the watch was armed, on the monotonic clock. Null when the execution has no deadline.
+     *
+     * It is the instant the deadline is measured from, and it is what tells the settle window
+     * whether the deadline has ALREADY passed — which is the only moment the race it closes can
+     * happen.
+     */
+    private var armedAtNanos: Long? = null
+
+    /**
      * Arms the watch.
      *
      * An execution without a deadline has no watch: the timer is not created, and every
@@ -65,6 +74,7 @@ internal class ShellWatchdog(
         if (!ShellWatchdog.watchArmed(timeoutMs)) {
             return
         }
+        armedAtNanos = System.nanoTime()
         timer = Thread(
             {
                 try {
@@ -101,14 +111,6 @@ internal class ShellWatchdog(
     }
 
     /**
-     * The latch: the watch fired and published its outcome.
-     *
-     * This is what the poll loop asks, because it is the fact that is available immediately. The
-     * authority is a different question, and [timedOut] is it.
-     */
-    fun fired(): Boolean = fired.get()
-
-    /**
      * The authority on "this execution expired": the latch, or the persisted flag.
      *
      * The flag file is written BEFORE the kill, so it exists even when the watch was killed
@@ -128,28 +130,37 @@ internal class ShellWatchdog(
     }
 
     /**
-     * Gives the watch a bounded window to publish its latch.
+     * Gives the watch a bounded window to publish its latch — but only once the deadline has
+     * PASSED.
      *
      * The race this closes: under CPU load the watch's kill lands AFTER the poll already read a
      * (misleading) wrapper exit code — the killed script's bash continued, echoed `done` and
      * wrote result.txt 0 just before the SIGKILL, while the watch had not yet published. Without
      * this bounded settle the terminal is classified Exited(0) → success, defeating the timeout.
+     *
+     * That race needs the deadline to have passed: before it, the watch has not fired and there
+     * is nothing to race with. And the wait used to be unconditional, so EVERY execution with a
+     * deadline paid two seconds of sleeping for a kill that was never coming. The window is now
+     * opened by the deadline and not by the call.
      */
     fun settle() {
-        if (timer == null) {
+        val armedAt = armedAtNanos ?: return
+        if (System.nanoTime() - armedAt < timeoutMs * NANOS_PER_MILLI) {
             return
         }
-        val settleDeadline = System.currentTimeMillis() + SETTLE_WINDOW_MS
-        while (!fired.get() && System.currentTimeMillis() < settleDeadline) {
+        val settleDeadline = System.nanoTime() + SETTLE_WINDOW_MS * NANOS_PER_MILLI
+        while (!fired.get() && System.nanoTime() < settleDeadline) {
             Thread.sleep(SETTLE_POLL_MS)
         }
     }
 
-    /** The deadline of the poll: the execution's time plus the grace the kill needs. */
-    fun pollDeadlineMs(): Long = ShellWatchdog.pollDeadlineFor(timeoutMs)
-
-    /** The window in which a late exit still counts as the execution's exit code. */
-    fun graceWindowMs(): Long = GRACE_WINDOW_MS
+    /**
+     * The ceiling of the poll: the execution's own time plus the grace the kill needs.
+     *
+     * Null when the execution has no deadline: an execution that was asked not to time out is
+     * not abandoned by a clock the operator never set.
+     */
+    fun pollDeadlineMs(): Long? = ShellWatchdog.pollDeadlineFor(timeoutMs)
 
     /**
      * The exit code the cleanup receives.
@@ -399,17 +410,14 @@ internal class ShellWatchdog(
         /** The grace the poll allows on top of the execution's own time, for the kill to land. */
         const val POLL_GRACE_MS: Long = 30_000L
 
-        /** The poll's deadline when the execution has no deadline: one hour of polling. */
-        const val NO_TIMEOUT_POLL_MS: Long = 3_600_000L
-
         /** The bounded window the watch is given to publish its latch before the terminal is read. */
         const val SETTLE_WINDOW_MS: Long = 2_000L
 
         /** How often the settle window looks at the latch. */
         const val SETTLE_POLL_MS: Long = 50L
 
-        /** The window in which a late exit still counts as the execution's exit code. */
-        const val GRACE_WINDOW_MS: Long = 1_000L
+        /** How many nanoseconds a millisecond is. Durations are measured on the monotonic clock. */
+        const val NANOS_PER_MILLI: Long = 1_000_000L
 
         /**
          * Whether the execution has a watch at all.
@@ -420,16 +428,21 @@ internal class ShellWatchdog(
         fun watchArmed(timeoutMs: Long): Boolean = timeoutMs > 0
 
         /**
-         * The deadline of the poll.
+         * The ceiling of the poll, or null when the execution has no deadline.
          *
-         * With a deadline it is the execution's time plus the grace the kill needs: the poll must
-         * outlast the watch, or it would give up while the child is still being killed. Without a
-         * deadline it is the no-timeout ceiling.
+         * With a deadline it is the execution's own time plus the grace the kill needs: the poll
+         * must outlast the watch, or it would give up while the child is still being killed.
+         *
+         * WITHOUT a deadline there is no ceiling. There was one — an hour — and it made
+         * "no timeout" mean "one hour, and then a made-up exit code": the poll gave up on an
+         * execution that was still running and published the exit code -1, a number no wrapper
+         * ever wrote. The wait of an execution with no deadline now ends when the protocol says
+         * it ends: the wrapper publishes a result, or it ends without publishing one.
          */
-        fun pollDeadlineFor(timeoutMs: Long): Long = if (watchArmed(timeoutMs)) {
+        fun pollDeadlineFor(timeoutMs: Long): Long? = if (watchArmed(timeoutMs)) {
             timeoutMs + POLL_GRACE_MS
         } else {
-            NO_TIMEOUT_POLL_MS
+            null
         }
 
         /**

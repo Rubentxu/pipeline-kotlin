@@ -58,28 +58,53 @@ internal class ShellTerminalDecision(
 ) {
 
     /**
-     * The terminal of an execution whose child published an exit code.
+     * The terminal of an execution whose wait for the result ended.
      *
-     * An expired execution is a TIMEOUT whatever the exit code says. The child that published it
-     * was killed, and a wrapper that keeps writing after its child died does not get to decide
-     * whether the execution succeeded: that is the same authority the reconciler reads from the
-     * control directory, and a terminal that disagreed with it would make the run unreadable.
+     * The outcome is what ended the wait, and the terminal is what that outcome means. A published
+     * exit code is an EXIT. An expiry is a TIMEOUT. Everything else — a result that is not an exit
+     * code, a wrapper that ended without publishing one, a ceiling that elapsed with nothing
+     * published — is LOST, because the outcome could not be established, and LOST never implies
+     * success.
+     *
+     * The expiry is folded into the outcome by the caller, so there is ONE authority for it here:
+     * the caller's final reading of the mark of the expiry, which the reconciler reads from the
+     * same control directory. A terminal that disagreed with the reconciler would make the run
+     * unreadable.
      */
-    fun forExitCode(
-        exitCode: Int,
-        timedOut: Boolean,
+    fun forPollOutcome(
+        outcome: ShellPollOutcome,
         capturedStdout: String?,
-    ): DurableTaskTerminal = if (timedOut) {
-        expired()
-    } else {
-        DurableTaskTerminal.Exited(
-            exitCode = exitCode,
+    ): DurableTaskTerminal = when (outcome) {
+        is ShellPollOutcome.Published -> DurableTaskTerminal.Exited(
+            exitCode = outcome.exitCode,
             output = DurableTaskOutput(
                 controlDir = controlDir.toString(),
                 capturedStdout = capturedStdout,
             ),
         )
+
+        ShellPollOutcome.Expired -> expired()
+
+        ShellPollOutcome.ResultNotAnExitCode -> lost(RESULT_NOT_AN_EXIT_CODE)
+
+        ShellPollOutcome.WrapperEnded -> lost(WRAPPER_ENDED_WITHOUT_RESULT)
+
+        ShellPollOutcome.CeilingElapsed -> lost(CEILING_ELAPSED)
+
+        // The poll only hands this over when it was interrupted, and an interrupted poll knows
+        // nothing: the outcome cannot be established, so it is LOST.
+        ShellPollOutcome.KeepWaiting -> lost(NO_FACT)
     }
+
+    /**
+     * The terminal of an execution whose outcome could not be established.
+     *
+     * LOST is retryable: the step did not publish a fact, so a new attempt with the same
+     * fingerprint is the caller's answer, and saying so is what makes this terminal different
+     * from a launch failure.
+     */
+    private fun lost(message: String): DurableTaskTerminal.Lost =
+        DurableTaskTerminal.Lost(lostFailureRecord(opId, controlDir, message))
 
     /**
      * The terminal of an execution that failed.
@@ -163,6 +188,21 @@ internal class ShellTerminalDecision(
     private companion object {
         /** What a failure says when it says nothing itself. */
         const val LOST_MESSAGE = "durable task could not be reconciled"
+
+        /** The result file exists and does not hold an exit code. */
+        const val RESULT_NOT_AN_EXIT_CODE =
+            "durable shell published a result that is not an exit code"
+
+        /** The wrapper ended without publishing a result. */
+        const val WRAPPER_ENDED_WITHOUT_RESULT =
+            "durable shell wrapper ended without publishing a result"
+
+        /** The deadline elapsed with nothing published. */
+        const val CEILING_ELAPSED =
+            "durable shell did not publish a result before its deadline elapsed"
+
+        /** The poll was interrupted before any fact was known. */
+        const val NO_FACT = "durable shell poll ended without a fact"
 
         /** The token of a child that is holding the transcript open. */
         const val STUCK_CHILD_CAUSE = "transcript-pump-still-alive"

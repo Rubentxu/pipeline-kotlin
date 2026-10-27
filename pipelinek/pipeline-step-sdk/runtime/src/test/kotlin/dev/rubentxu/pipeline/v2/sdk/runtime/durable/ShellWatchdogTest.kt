@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -65,11 +66,14 @@ class ShellWatchdogTest {
     }
 
     @Test
-    fun `an execution without a deadline polls for an hour`() {
-        assertEquals(
-            ShellWatchdog.NO_TIMEOUT_POLL_MS,
+    fun `an execution without a deadline has no ceiling`() {
+        // "No timeout" means no timeout. An execution the operator asked not to expire is not
+        // abandoned by a clock they never set, and it is not published with an exit code that
+        // nobody observed. There was a ceiling of an hour here, and the wait that reached it
+        // ended with the exit code -1 — a number no wrapper ever wrote.
+        assertNull(
             ShellWatchdog.pollDeadlineFor(timeoutMs = 0L),
-            "an execution without a deadline does not poll for the no-timeout ceiling",
+            "an execution without a deadline was given a ceiling",
         )
     }
 

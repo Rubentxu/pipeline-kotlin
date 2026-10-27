@@ -51,7 +51,10 @@ class ShellTerminalDecisionTest {
 
     @Test
     fun `an execution that published an exit code is an exit`() {
-        val terminal = decision().forExitCode(exitCode = 0, timedOut = false, capturedStdout = null)
+        val terminal = decision().forPollOutcome(
+            outcome = ShellPollOutcome.Published(exitCode = 0),
+            capturedStdout = null,
+        )
 
         val exited = assertInstanceOf(
             DurableTaskTerminal.Exited::class.java,
@@ -70,7 +73,10 @@ class ShellTerminalDecisionTest {
     fun `a non-zero exit code is still an exit`() {
         // The exit code is the child's own verdict. A step that failed on its own terms is an exit
         // with a non-zero code, not a failure of the launch: the child DID run.
-        val terminal = decision().forExitCode(exitCode = 7, timedOut = false, capturedStdout = null)
+        val terminal = decision().forPollOutcome(
+            outcome = ShellPollOutcome.Published(exitCode = 7),
+            capturedStdout = null,
+        )
 
         val exited = assertInstanceOf(
             DurableTaskTerminal.Exited::class.java,
@@ -82,7 +88,10 @@ class ShellTerminalDecisionTest {
 
     @Test
     fun `the captured value reaches the exit terminal`() {
-        val terminal = decision().forExitCode(exitCode = 0, timedOut = false, capturedStdout = "hello")
+        val terminal = decision().forPollOutcome(
+            outcome = ShellPollOutcome.Published(exitCode = 0),
+            capturedStdout = "hello",
+        )
 
         val exited = assertInstanceOf(
             DurableTaskTerminal.Exited::class.java,
@@ -97,10 +106,67 @@ class ShellTerminalDecisionTest {
     }
 
     @Test
+    fun `a wrapper that ended without publishing a result is lost`() {
+        // There is no exit code to publish: the wrapper never wrote one. The terminal says the
+        // outcome could not be established, and it does NOT carry an exit code that nobody
+        // observed.
+        val terminal = decision().forPollOutcome(
+            outcome = ShellPollOutcome.WrapperEnded,
+            capturedStdout = null,
+        )
+
+        val lost = assertInstanceOf(
+            DurableTaskTerminal.Lost::class.java,
+            terminal,
+            "an execution that published no result was not published as a loss",
+        )
+        assertTrue(
+            lost.failure.retryable,
+            "a lost execution is not retryable, and a retry is the caller's answer to it",
+        )
+    }
+
+    @Test
+    fun `a result that is not an exit code is lost`() {
+        // The protocol's promise about the result file is broken, so the outcome cannot be
+        // established. Reading another protocol's record as this one's success is the
+        // fabrication the reconciler refuses too.
+        val terminal = decision().forPollOutcome(
+            outcome = ShellPollOutcome.ResultNotAnExitCode,
+            capturedStdout = null,
+        )
+
+        assertInstanceOf(
+            DurableTaskTerminal.Lost::class.java,
+            terminal,
+            "a result that is not an exit code was not published as a loss",
+        )
+    }
+
+    @Test
+    fun `a ceiling that elapsed with nothing published is lost`() {
+        // The wait ended and the execution published nothing. The outcome cannot be established,
+        // so it is a loss and not an exit with a made-up code.
+        val terminal = decision().forPollOutcome(
+            outcome = ShellPollOutcome.CeilingElapsed,
+            capturedStdout = null,
+        )
+
+        assertInstanceOf(
+            DurableTaskTerminal.Lost::class.java,
+            terminal,
+            "an execution that published nothing was not published as a loss",
+        )
+    }
+
+    @Test
     fun `an expired execution is a timeout whatever the exit code says`() {
         // The child that published the exit code was killed. A wrapper that keeps writing after
         // its child died does not get to decide whether the execution succeeded.
-        val terminal = decision().forExitCode(exitCode = 0, timedOut = true, capturedStdout = null)
+        val terminal = decision().forPollOutcome(
+            outcome = ShellPollOutcome.Expired,
+            capturedStdout = null,
+        )
 
         val cancelled = assertInstanceOf(
             DurableTaskTerminal.Cancelled::class.java,

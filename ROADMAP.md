@@ -1613,6 +1613,83 @@ PASS  sha=e2d5bc3b53cff58844101531509009aa2ad816e5  elapsed=189s  budget=900s  t
 - 189 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 28318`, `PRODUCT_LOC = 71459`, ratio `0.396` (límite 2). La verificación subió 28 líneas —las 2 filas nuevas y su documentación— y la producción NO subió: el cambio es una línea de código por otra, y el resto es comentario, que el censo no cuenta.
 
+#### El corte: los cuatro verbos que leen un run rechazan con el error de la taxonomia
+
+**Qué hace.** `runs cancel`, `runs recover`, `inspect` y `saga inspect` rechazaban una petición con una frase escrita a mano y con un `2` literal. Cada uno tenía su propio parser; cada parser tenía su propia manera de decir «no te he entendido»; y ninguno pasaba por la tabla de errores del CLI. La misma falta recibía tres formas distintas según el verbo que la recibía.
+
+No es una frase: son cuatro autoridades sobre la misma taxonomía. `CliError` es un ADT cerrado y `toCliExit()` es su ÚNICA traducción a `CliExit` —mensaje, pista y código—, y la tabla distingue `1` («el pipeline se ejecutó y falló») de `2` («petición no admitida»). Cuatro verbos que contestaban `2` por su cuenta contestaban bien por casualidad: el día que la taxonomía mueva el `2`, esos cuatro se quedan atrás, y un consumidor que ramifica sobre el exit code lee un rechazo como otra cosa.
+
+El corte les da a los cuatro un `CliError` de verdad y deja que su código salga de la tabla. Los tipos que hacían falta para NOMBRAR las faltas que ya rechazaban —argumento que falta, valor que el verbo no puede usar, combinación sin respuesta honesta, opción que pertenece a otro verbo, subcomando que no existe— entran en el ADT como cinco casos más, SIN palabras propias: el ADT sigue sin `toString()` y el renderer sigue siendo el único que habla. Los 23 sitios de rechazo de `parseInspect` dejan de pintar una frase y pasan a nombrar una falta.
+
+Medido sobre dos distribuciones construidas de este repositorio —`e2dbf14cc` (antes) y `47bbb2645` (después)— en la misma máquina, con el MISMO script de sonda y la misma invocación. Lo que se mide es la primera línea de stderr: el mensaje. Detrás vienen la pista y el uso de cada verbo, que son suyos.
+
+|celda|antes|después|
+|---|---|---|
+|`runs cancel run-1 --bogus-flag`|`runs cancel: unknown option '--bogus-flag'`|`runs cancel: unknown option: --bogus-flag`|
+|`runs recover run-1 --bogus-flag`|`runs recover: unknown option '--bogus-flag'`|`runs recover: unknown option: --bogus-flag`|
+|`inspect run-1 --bogus-flag`|`inspect: unknown option '--bogus-flag'`|`inspect: unknown option: --bogus-flag`|
+|`saga inspect run-1 --bogus-flag`|`saga inspect: unknown option: --bogus-flag`|`saga inspect: unknown option: --bogus-flag`, sin cambio|
+|`runs cancel`|`runs cancel: a run id is required.`|`runs cancel: missing required argument: run id`|
+|`runs recover`|`runs recover: a run id is required.`|`runs recover: missing required argument: run id`|
+|`inspect`|`inspect: a run id is required.`|`inspect: missing required argument: run id`|
+|`saga inspect`|`saga inspect: a run id is required.`|`saga inspect: missing required argument: run id`|
+|`runs cancel run-1`|`runs cancel: --db <path> is required to read the run's durable state`|`runs cancel: missing required argument: --db <path>`|
+|`runs recover run-1`|`runs recover: --db <path> is required to read the run's durable state`|`runs recover: missing required argument: --db <path>`|
+|`inspect run-1`|`inspect: --db <path> is required to read the durable event store`|`inspect: missing required argument: --db <path>`|
+|`saga inspect run-1`|`saga inspect: --db <path> is required to read the durable promises`|`saga inspect: missing required argument: --db <path>`|
+|`runs cancel run-1 --db`|`runs cancel: --db requires a value`|`runs cancel: option --db requires a value`|
+|`inspect run-1 --db`|`inspect: --db requires a value`|`inspect: option --db requires a value`|
+|`runs`|`runs: the verbs are 'cancel' and 'recover'.`|`runs: missing required argument: subcommand`|
+|`runs bogus`|`runs: the verbs are 'cancel' and 'recover'.`|`runs: unknown subcommand: bogus`|
+|`saga`|`pipeline: unknown saga subcommand.`|`pipeline: missing required argument: subcommand`|
+|`saga bogus`|`pipeline: unknown saga subcommand.`|`pipeline: unknown subcommand: bogus`|
+
+El código de salida fue `2` en las DIECIOCHO celdas de las dos columnas, y stdout fue vacío en las dieciocho. Eso es exactamente lo que no cambia, y es por eso que el defecto era invisible: nadie lo veía porque el número era el correcto. Lo que cambia es la frase, y en la tabla hay tres formas que no son sólo distintas sino equivocadas:
+
+- `runs bogus` contestaba lo MISMO que `runs` a secas —«the verbs are 'cancel' and 'recover'»—, así que quien escribía una palabra que no existe recibía una lista de verbos y NINGUNA noticia de que su palabra estaba mal.
+- `saga` a secas contestaba «unknown saga subcommand», una queja sobre un token que NADIE había escrito.
+- La misma falta se decía de tres formas según el verbo, y la que parecía un volcado de depuración —`unknown option '--bogus-flag'`— era la que un operador leía.
+
+Ahora los cuatro verbos dicen la MISMA frase para la misma falta, y la frase la escribe el renderer. La puerta de cada familia distingue además las dos faltas que antes se confundían: no escribiste el subcomando, o escribiste uno que no existe.
+
+**La garantía, la capacidad y el instrumento.**
+- **Garantía**: la misma falta produce la MISMA frase en los cuatro verbos que leen un run, y una puerta de familia distingue «no escribiste el subcomando» de «escribiste uno que no existe».
+- **Capacidad observable**: la primera línea de stderr que cada verbo escribe al rechazar.
+- **Instrumento más barato que puede fallar**: una prueba unitaria que llama a los cuatro verbos EN PROCESO y compara sus mensajes ENTRE SÍ. Aquí una prueba unitaria SÍ puede servir, al contrario que en el corte del código de salida: estos verbos devuelven el código en vez de llamar a `System.exit`, así que no hay que lanzar un subproceso ni un CLI, que la política prohíbe. La puerta de la familia `saga` es la excepción: contesta por `System.exit`, y por eso se observa en la puerta (`cliFamilyDoor`), no en el terminal. La de `runs` contesta por su valor de retorno y se observa entera.
+
+El instrumento tiene una fila por falta, y cada fila compara los mensajes de los verbos entre ellos. Una garantía que ya tiene cobertura no recibe un segundo instrumento: no se añadió ninguna fila para `observe` —que ya cruzaba el renderer y ya tenía su fila— ni para el `2` de la puerta, que es la MISMA aritmética que el corte anterior ya midió en `scripts/verify-all.sh`.
+
+**El instrumento tuvo que rehacerse, y se dice.** La primera forma de estas filas comprobaba que el stderr de cada verbo CONTIENERA un fragmento escrito a mano —«missing required argument: run id»—. Una mutación que hacía que `inspect` dijera `missing required argument: run identifier` la SOBREVIVIÓ, porque el fragmento es un PREFIJO del mensaje y `contains` lo acepta. Un fragmento no puede ver una divergencia que está dentro de su propia cola. Las filas se reescribieron para comparar los mensajes de los verbos ENTRE SÍ —que es la garantía misma— y para comprobar el fragmento sobre el mensaje COMPARTIDO. Con esa forma, la misma mutación se pone en rojo y nombra la divergencia.
+
+**Visto en rojo, con la mutación leída de vuelta.** Cuatro mutaciones, de una en una, cada una aplicada con un `assert` de que el bloque objetivo aparecía exactamente una vez, leída de vuelta con `diff` contra una copia verificada por `sha256sum` —nunca con `git checkout --`, que destruye una reescritura sin commitear— y restaurada desde esa copia. El discriminador son las FILAS del XML de JUnit de los informes que escribió esa ejecución, no la palabra «BUILD FAILED»:
+
+|mutación|fila que se puso en rojo|
+|---|---|
+|`MainSagaInspectCli`: `CliError.UnknownOption(option)` → `CliError.InvalidOptionValue(option, "unknown option")`|`an option nobody wrote is refused the same way by every verb that reads a run`|
+|`MainInspectCli`: `MissingRequiredArgument("run id", …)` → `MissingRequiredArgument("run identifier", …)`|`a run nobody named is refused the same way by every verb that reads a run`|
+|`CliVerb`: `MissingRequiredArgument("subcommand", …)` → `MissingRequiredArgument("sub-command", …)`|`the saga family door refuses with the shared sentence`|
+|`MainRunsCli`: `MissingRequiredArgument("subcommand", …)` → `MissingRequiredArgument("verb", …)`|`the runs family refuses a word that names no verb with the shared sentence`|
+
+Cada una de las cuatro ejecuciones: 354 tests, 1 en rojo, 0 omitidos, y ninguna otra fila en rojo. La segunda mutación es la que sobrevivió a la primera forma del instrumento; contra la forma nueva se pone en rojo.
+
+**Lo que este corte NO arregla, y se dice.**
+- `runVersionVerb` y `runDoctorVerb` imprimen la frase compartida y luego responden `return 2`: la FRASE está unificada, el CÓDIGO sigue siendo un literal. Queda declarado, no se toca aquí.
+- Los rechazos sobre el MUNDO de estos cuatro verbos —un almacén que no se puede abrir, una cancelación que el propio run rehúsa, una inspección de saga que no puede leer las promesas— siguen trayendo su propio ADT y su propio renderer. Son hechos sobre el mundo, no peticiones que el CLI no entendió, y por eso quedan fuera de la taxonomía a propósito.
+- `pipeline-application` no está entre los módulos con `apiCheck`, así que los cinco casos nuevos de `CliError` no cambian ninguna superficie ABI vigilada. Si el módulo entra en esa lista algún día, el volcado hay que regenerarlo.
+- Sigue en pie, sin volver a medir en este corte, el residual ya declarado: el CLI habla con seis frases distintas para el mismo hecho —`events` y `console` dicen «Error: unexpected extra argument: extra», `observe` dice «trailing option without value: …» con una pista que habla de «script path», que es de otro verbo—; la línea de ayuda de `events verify` nombra tres de las cinco opciones que el verbo acepta, y la de `operations` no nombra ninguna de las dos. Este corte toca cuatro verbos del residual, no el residual entero.
+- `credentials` NO se ha medido para esta afirmación: el verbo exige una passphrase antes de mirar los argumentos, así que su caso es inconcluyente y se dice.
+
+Medido sobre `47bbb2645fe6bb6ffedb24fb756fab43729d8a3b` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=47bbb2645fe6bb6ffedb24fb756fab43729d8a3b  elapsed=185s  budget=900s  tests=rewritten:1536 read:0  scenarios=observed:63 executed:63
+```
+
+- 201 informes JUnit reescritos por esta ejecución, 1536 tests EJECUTADOS de verdad, 0 leídos de informes anteriores, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E observados y ejecutados, en verde.
+- 185 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28424`, `PRODUCT_LOC = 71566`, ratio `0.397` (límite 2). La verificación subió 106 líneas y la producción 107: el corte mete cinco casos en el ADT y reescribe los 23 sitios de rechazo de `parseInspect` para que nombren una falta en vez de pintar una frase.
+
 ## H6 — Reducir deuda del harness y asegurar la publicación
 
 Foco: `examples/run.sh`, `verify-all.sh` y scripts de release.

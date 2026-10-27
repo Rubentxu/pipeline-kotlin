@@ -101,6 +101,39 @@ for t in ${test_filters+"${test_filters[@]}"}; do
     [[ -n "$t" ]] || { echo "verify-all: --test was given an empty pattern" >&2; exit 2; }
 done
 
+# The BUILD CACHE is a different thing from the dependency cache, and the full
+# gate needs the first one switched off.
+#
+# The dependency cache is what "local dependency caches already populated"
+# means in AGENTS.md section 4: the third-party jars are already on this host,
+# so the measurement is of THIS project's work and not of the network. That
+# cache is kept.
+#
+# The BUILD cache stores the OUTPUTS of the tasks, keyed by their inputs. It is
+# what defeated this gate: `clean` removes the outputs, the build cache puts
+# them straight back, and a run that executes ZERO tests ends with 196 report
+# files on disk. The gate's own comment above the clean says the outputs go
+# first "so the run is measurable every time" -- the build cache made the clean
+# a no-op, so the second run of the day measured the cache instead of the work,
+# and its wall clock was a cache hit dressed as a measurement.
+#
+# So the full gate runs Gradle with `--no-build-cache` (measured to override
+# `org.gradle.caching=true` from pipelinek/gradle.properties: with the
+# property alone the task is served from the cache and the report files it
+# wrote come back unchanged; with the flag the task EXECUTES). The real cost
+# of this gate is the cost of building and testing this repository, not the
+# hundred-odd seconds a cache hit makes it look like, and only the former is a
+# number AGENTS.md's 900 s budget can be compared against.
+#
+# A SUBSET run keeps the cache. The inner loop exists to be cheap, and a
+# cache hit there is the cache doing its job; what the subset owes the reader
+# is an HONEST count, which the census below gives it by reading each report's
+# own stamp instead of the filesystem's.
+gradle_cache_args=()
+if [[ "$subset" == 0 ]]; then
+    gradle_cache_args=(--no-build-cache)
+fi
+
 # Stage selection. `--stage up-to-N` is the progressive form: everything from 1
 # to N. `--stage 1,3` is the explicit form. Both are a SUBSET by definition --
 # stage 5 alone, or stage 3 without stage 1, measures nothing about the gate.
@@ -315,7 +348,7 @@ mkdir -p "$log_dir"
 if [[ "$subset" == 0 ]]; then
     log "preparation  clean build outputs"
     stage_started_at=$(date +%s)
-    ./pipelinek/gradlew --no-daemon -p pipelinek clean > "$log_dir/clean.log" 2>&1 \
+    ./pipelinek/gradlew --no-daemon -p pipelinek "${gradle_cache_args[@]}" clean > "$log_dir/clean.log" 2>&1 \
         || { tail -40 "$log_dir/clean.log" >&2; fail "preparation (see "$log_dir/clean.log")"; }
     echo "    ok in $(elapsed "$stage_started_at")s"
 else
@@ -375,7 +408,7 @@ trap cleanup_logs EXIT
 if want_stage 1; then
 log "stage 1/5  compile + detekt + detektTest + apiCheck + installDist"
 stage_started_at=$(date +%s)
-./pipelinek/gradlew --no-daemon -p pipelinek \
+./pipelinek/gradlew --no-daemon -p pipelinek "${gradle_cache_args[@]}" \
     detektMain \
     detektTest \
     apiCheck \
@@ -481,7 +514,15 @@ else
     # 505 tests read as a 17s stage when 36 of them came from the cache. The
     # count is therefore split: how many reports this run rewrote, and how many
     # it read.
-    test_run_started=$(date +%s)
+    #
+    # The instant is kept in MILLISECONDS because the attribution below is made
+    # against a report's own timestamp, which carries milliseconds too. Whole
+    # seconds would leave a one-second window in which a report written by the
+    # PREVIOUS invocation is indistinguishable from one written by this one.
+    # The whole-second form is kept too, because the mtime is read in seconds
+    # and the two witnesses are compared with each other below.
+    test_run_started_ms=$(date +%s%3N)
+    test_run_started_s=$(date +%s)
     # `--tests` narrows which classes the Test tasks execute. It is appended per
     # task, because Gradle binds `--tests` to the task named before it; a single
     # trailing flag applies to the last task only, which is the same
@@ -495,7 +536,7 @@ else
     else
         gradle_args=("${tasks[@]}")
     fi
-    ./pipelinek/gradlew --no-daemon -p pipelinek "${gradle_args[@]}" \
+    ./pipelinek/gradlew --no-daemon -p pipelinek "${gradle_cache_args[@]}" "${gradle_args[@]}" \
         > "$log_dir/stage2.log" 2>&1 \
         || { tail -40 "$log_dir/stage2.log" >&2; fail "stage 2 (see "$log_dir/stage2.log")"; }
     # Gradle's exit status is not the result. A Test task can report success
@@ -510,6 +551,12 @@ else
     # measurement, so the set is taken from the same list the tasks came from.
     xml_total=0; xml_fail=0; xml_skip=0; xml_files=0; xml_fresh=0
     xml_fresh_tests=0; xml_fresh_fail=0; xml_fresh_skip=0
+    # The third state: a report that this run PLACED on disk without a test
+    # having written it, because the build cache restored its bytes. It is not
+    # "read from disk" and it is not "executed": the file is new, the content
+    # is old. The count is what lets the gate say which of the two happened
+    # instead of guessing.
+    xml_cached=0; xml_cached_tests=0
     silent_modules=()
     for m in "${modules_with_tests[@]}"; do
         mod_reports=0
@@ -529,11 +576,61 @@ else
             # excluded, and counting them would report tests this run never
             # executed. So the fresh-only totals are accumulated separately and
             # a scoped run quotes those.
-            if [[ "$(stat -c %Y "$xml")" -ge "$test_run_started" ]]; then
+            #
+            # WHICH run wrote a report is decided by the report's OWN content,
+            # not by the filesystem's mtime. The mtime is the wrong witness: the
+            # Gradle build cache restores a report's BYTES, and the restore
+            # stamps the restored file with the RESTORE moment. So a report
+            # that no test wrote since October carries yesterday's tests and
+            # today's mtime, and an mtime census calls it "rewritten by this
+            # run". That is exactly how a run that executed ZERO tests came to
+            # print `tests=rewritten:1465 read:0`, and how the gate's own guard
+            # ("no report was rewritten") could never fire.
+            #
+            # The `<testsuite timestamp="...">` attribute is written by the test
+            # framework at the moment the suite STARTS, and it lives INSIDE the
+            # restored bytes: a cache restore cannot renew it, because
+            # renewing it would mean rewriting the content the cache entry
+            # claims to reproduce. So the stamp is a witness the cache cannot
+            # forge, and reading it is the difference between a count and a
+            # measurement.
+            #
+            # A report whose stamp is missing or unparsable is counted as READ.
+            # The conservative direction is the one that does not claim credit:
+            # a report the census cannot attribute is not evidence that this run
+            # wrote it.
+            #
+            # The two witnesses answer two different questions, and the gate
+            # needs both. The stamp says WHEN THE CONTENT was produced; the
+            # mtime says WHEN THE FILE ARRIVED. Together they name the three
+            # states there are, instead of two:
+            #
+            #   EXECUTED NOW      the content is from this run. The stamp is
+            #                     this run's. The tests really ran.
+            #   SERVED FROM CACHE  the file arrived during this run but the
+            #                     content is older: the build cache restored the
+            #                     bytes, and the restore is what refreshed the
+            #                     mtime. The tests did NOT run.
+            #   READ FROM DISK    neither: the file was already there, untouched.
+            #
+            # The mtime is a bad witness for the CONTENT and a good one for the
+            # ARRIVAL, which is why it is used here for the second and not for
+            # the first. A build cache cannot forge a stamp, and it cannot
+            # avoid refreshing an mtime; between the two, the state is known.
+            suite=$(grep -m1 '<testsuite ' "$xml" 2>/dev/null || true)
+            stamp=$(sed -nE 's/.*timestamp="([^"]+)".*/\1/p' <<<"$suite")
+            stamp_ms=""
+            if [[ -n "$stamp" ]]; then
+                stamp_ms=$(date -d "$stamp" +%s%3N 2>/dev/null || true)
+            fi
+            if [[ -n "$stamp_ms" && "$stamp_ms" -ge "$test_run_started_ms" ]]; then
                 xml_fresh=$((xml_fresh + 1))
                 xml_fresh_tests=$((xml_fresh_tests + t))
                 xml_fresh_fail=$((xml_fresh_fail + f + e))
                 xml_fresh_skip=$((xml_fresh_skip + s))
+            elif [[ "$(stat -c %Y "$xml")" -ge "$test_run_started_s" ]]; then
+                xml_cached=$((xml_cached + 1))
+                xml_cached_tests=$((xml_cached_tests + t))
             fi
         done < <(find "$m/build/test-results" -name 'TEST-*.xml' 2>/dev/null | LC_ALL=C sort)
         # A module with a test source but no discovered test is the same silent
@@ -545,18 +642,50 @@ else
     # The two halves of the test census, taken BEFORE the subset branch below
     # narrows `xml_total` to this run. `rewritten` is what this run really
     # executed; `read` is what it found on disk and did not ask for -- written
-    # by an earlier invocation. The verdict line carries both, because a reader
-    # cannot otherwise tell a measurement from a cache hit.
+    # by an earlier invocation, or restored from the cache by this one. The
+    # verdict line carries both, because a reader cannot otherwise tell a
+    # measurement from a cache hit.
     xml_read_tests=$(( xml_total - xml_fresh_tests ))
+    xml_disk=$(( xml_files - xml_fresh - xml_cached ))
     stage2_ran=1
     if [[ "$subset" == 1 ]]; then
         echo "    JUnit XML (this run only): $xml_fresh_tests test(s) in $xml_fresh report(s)," \
              "failed=$xml_fresh_fail skipped=$xml_fresh_skip"
-        echo "    ($xml_files report(s) on disk, $(( xml_files - xml_fresh )) from an earlier invocation and excluded)"
+        echo "    ($xml_files report(s) on disk: $xml_cached served from the cache, $xml_disk already there," \
+             "$(( xml_files - xml_fresh )) not written by this run and excluded)"
         xml_fail="$xml_fresh_fail"; xml_skip="$xml_fresh_skip"; xml_total="$xml_fresh_tests"
     else
+        # The full gate counts what it EXECUTED, not what it found. A report
+        # that was already on disk carries the failures of an earlier
+        # invocation, and attributing them to this run would be a claim about
+        # work that did not happen here.
         echo "    JUnit XML: $xml_files report(s), $xml_fresh rewritten by this run," \
-             "tests=$xml_total failed=$xml_fail skipped=$xml_skip"
+             "executed=$xml_fresh_tests failed=$xml_fresh_fail skipped=$xml_fresh_skip"
+        if [[ "$xml_cached" -gt 0 ]]; then
+            echo "    ($xml_cached report(s) were served from the build cache by this run: $xml_cached_tests test(s) not executed)"
+        fi
+    fi
+    # The full gate quotes a wall clock, and a wall clock is a measurement of
+    # the work only if the work was DONE. A report served from the build cache
+    # is a test that did not run, so a run with any of them measured the cache
+    # for that part of the graph. Measured: a run with the cache on executed
+    # 45 of the 196 reports and had the other 151 served, and its clock was
+    # 103 s for a suite that costs 185 s. The wall clock of a partially cached
+    # run is not a smaller measurement of the same thing; it is a measurement
+    # of something else.
+    #
+    # `--no-build-cache` on the full gate is what makes this refusal
+    # unreachable in practice. The guard is here so that a gate whose cache
+    # switch is removed, or whose flag stops working, cannot quote a number it
+    # did not earn. A SUBSET run is not measured against the budget, so a
+    # cached subset is not a breach: it is the inner loop doing its job, and
+    # the note below says so.
+    if [[ "$subset" == 0 && "$xml_cached" -gt 0 ]]; then
+        echo "verify-all: $xml_cached report(s) were served from the build cache," >&2
+        echo "so this run did NOT execute the whole test graph ($xml_cached_tests" >&2
+        echo "test(s) never ran). Its wall clock would measure the cache and not" >&2
+        echo "the work; it must not be quoted as the cost of the gate." >&2
+        fail "stage 2: part of the test graph was served from the build cache"
     fi
     if [[ "$xml_fresh" -eq 0 ]]; then
         if [[ "$subset" == 1 ]]; then
@@ -564,13 +693,30 @@ else
             # source change, and failing would punish the fast loop for the
             # cache doing its job. It still says what happened, because a silent
             # cache hit reads exactly like an executed test.
-            echo "    note: every task was up to date; nothing was executed by this run."
+            #
+            # It says WHICH happened, because the two are different facts with
+            # different consequences: a task that was up to date did not run
+            # because nothing changed, and a task that was served from the
+            # cache did not run because the build cache had its output. The
+            # first is a no-op; the second is a measurement of the cache. The
+            # census knows which one it is, so the note does not guess.
+            if [[ "$xml_cached" -gt 0 ]]; then
+                echo "    note: $xml_cached report(s) were served from the build cache;" \
+                     "nothing was executed by this run."
+            else
+                echo "    note: every task was up to date; nothing was executed by this run."
+            fi
         else
-            echo "verify-all: no report was rewritten, so this run measured a fully" >&2
-            echo "up-to-date test graph. That is a valid cache hit but NOT a" >&2
+            # The refusal names the state it found, because the census knows it:
+            # the old wording asserted a cause ("up to date") that the gate had
+            # no way to observe. A report restored from the cache is a different
+            # fact with the same consequence, and only one of the two is true.
+            echo "verify-all: no report was rewritten, so this run executed no test:" >&2
+            echo "the test graph was served without running ($xml_cached report(s) restored" >&2
+            echo "from the build cache, $xml_disk already on disk). That is NOT a" >&2
             echo "measurement of the gate's cost; remove the test outputs and rerun" >&2
             echo "before quoting a wall clock." >&2
-            fail "stage 2: every test task was up to date"
+            fail "stage 2: no test task was executed by this run"
         fi
     fi
     [[ "$xml_fail" -eq 0 ]] || fail "stage 2: $xml_fail failing test(s) in the JUnit XML"

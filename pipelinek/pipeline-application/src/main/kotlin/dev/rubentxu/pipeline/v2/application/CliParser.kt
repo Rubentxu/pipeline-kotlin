@@ -40,6 +40,30 @@ enum class CliCommand {
     RUN,
 }
 
+/**
+ * A command the parser admits, and the line the help prints for it.
+ */
+internal data class CliParserCommand(val command: CliCommand, val summary: String)
+
+/**
+ * The commands this CLI admits.
+ *
+ * The parser reads its spellings from here, so a command cannot be admitted
+ * under one name and described under another. The help reads the same table,
+ * which is why the summary travels with the spelling: the two surfaces were
+ * free to disagree, and the help lost a form because of it.
+ */
+internal val CLI_PARSER_COMMANDS: Map<String, CliParserCommand> = mapOf(
+    "validate" to CliParserCommand(
+        command = CliCommand.VALIDATE,
+        summary = "compile a script and report every diagnostic",
+    ),
+    "run" to CliParserCommand(
+        command = CliCommand.RUN,
+        summary = "execute a script durably (--db, --resume|--rerun, --control-root)",
+    ),
+)
+
 /** Typed CLI flags produced by [CliParser]. */
 data class CliFlags(
     val command: CliCommand,
@@ -533,11 +557,8 @@ object CliParser {
     fun parse(args: Array<String>): CliParseResult {
         if (args.isEmpty()) return CliParseResult.Rejected(CliError.MissingCommand)
 
-        val command = when (args[0]) {
-            "validate" -> CliCommand.VALIDATE
-            "run" -> CliCommand.RUN
-            else -> return CliParseResult.Rejected(CliError.InvalidCommand(args[0]))
-        }
+        val command = CLI_PARSER_COMMANDS[args[0]]?.command
+            ?: return CliParseResult.Rejected(CliError.InvalidCommand(args[0]))
 
         val state = ParseState()
         var index = 1

@@ -12,41 +12,6 @@ import java.nio.file.Paths
 import java.nio.file.Files
 
 /**
- * The CLI's verb set, and the only place it is written down.
- *
- * Measured in the field: three defects came from this list living in prose. A rejected
- * argument printed `Usage: pipeline <validate|run>` — 2 of 11 verbs, under a name the
- * binary does not have. The hint on the same rejection said "run 'pipeline --help'",
- * and `--help` was itself rejected: a promise with nothing behind it. The list inside
- * [CliExitMapping] meanwhile named 10 verbs and omitted `inspect`.
- *
- * Enumerating verbs in a *message* is the census defect: a hand-kept list
- * drifts from the dispatch and nobody notices until an operator is misled. A
- * verb list in prose is worse than no list, because it is read as authoritative.
- *
- * So: one constant, rendered by [printUsage], referenced by the hints. The dispatch
- * chain in [MainVerbs.handleReadOnlyVerb] still spells each verb as its own comparison
- * — collapsing the two is a separate concern from telling the truth about the current
- * shape, and it would change the admission order that the per-verb guards depend on.
- */
-internal val CLI_VERBS: List<Pair<String, String>> = listOf(
-    "validate" to "compile a script and report every diagnostic",
-    "run" to "execute a script durably (--db, --resume|--rerun, --control-root)",
-    "observe" to "read a finished run's events, console and output (--view, --format)",
-    "console" to "read one step's output plane as frames or lines",
-    "operations" to "list a run's operations with their complete identity",
-    "events" to "read one run's domain events as text or json",
-    "inspect" to "read a run id's digests, steps and provenance",
-    "saga" to "read what a run's saga still owes (saga inspect <runId> --db <path>)",
-    "runs cancel" to "close a run that no live process is working on (--db, --control-root, --reason)",
-    "credentials" to "list registered credential material (redacted)",
-    "doctor" to "report the installation's health",
-    "version" to "print the product version (--json)",
-    "capabilities" to "print the capability keys this build admits",
-    "sdk-info" to "print the SDK coordinates a plugin builds against",
-)
-
-/**
  * Environment variables that change behaviour, rendered by [printUsage].
  *
  * ## Why this is a constant and not prose
@@ -210,7 +175,7 @@ fun main(args: Array<String>) {
     // The control plane's verb. `runs cancel` closes a run that no live process
     // is working on, and refuses to close one that is. It is a WRITE verb, and
     // it is the first one in this CLI: every other verb reads.
-    if (args.firstOrNull() == "runs") {
+    if (args.firstOrNull() == MainRunsCli.FAMILY) {
         val exitCode = MainRunsCli.main(args.drop(1).toTypedArray())
         System.exit(exitCode)
         return

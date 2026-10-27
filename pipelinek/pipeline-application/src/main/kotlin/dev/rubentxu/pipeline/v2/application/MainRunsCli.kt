@@ -67,7 +67,16 @@ import java.nio.file.Paths
  */
 internal object MainRunsCli {
 
-    private const val USAGE = """Usage: pipelinek runs <cancel|recover> <runId> [options]
+    /**
+     * The word that opens this family.
+     *
+     * It is the CLI's command name, and it lives here because everything that
+     * names the family reads it: the dispatch in `main`, the usage below, the
+     * refusal, and the inventory that renders the help.
+     */
+    const val FAMILY = "runs"
+
+    private val USAGE = """Usage: pipelinek $FAMILY <${RunsVerb.entries.joinToString("|") { it.spelling }}> <runId> [options]
 
 Closes a run that no live process is working on, and refuses to close one that is.
 
@@ -93,17 +102,33 @@ Exit codes:
 
     fun main(args: Array<String>): Int {
         val verb = args.firstOrNull()
-        if (verb != RunsVerb.Cancel.spelling && verb != RunsVerb.Recover.spelling) {
-            System.err.println("runs: the verbs are 'cancel' and 'recover'.")
+        val known = RunsVerb.entries.firstOrNull { it.spelling == verb }
+        if (known == null) {
+            System.err.println("$FAMILY: the verbs are ${spelledVerbs()}.")
             System.err.println(USAGE)
             return 2
         }
 
         val rest = args.drop(1).toTypedArray()
-        return if (verb == RunsVerb.Recover.spelling) {
+        return if (known == RunsVerb.Recover) {
             runRecover(rest)
         } else {
             runCancel(rest)
+        }
+    }
+
+    /**
+     * The verbs as the operator reads them: `'cancel' and 'recover'`.
+     *
+     * Derived from the enum, so the refusal cannot name a verb that does not
+     * exist and cannot leave one out.
+     */
+    private fun spelledVerbs(): String {
+        val spellings = RunsVerb.entries.map { it.spelling }
+        return when (spellings.size) {
+            0 -> ""
+            1 -> "'${spellings.first()}'"
+            else -> spellings.dropLast(1).joinToString(", ") { "'$it'" } + " and '${spellings.last()}'"
         }
     }
 
@@ -386,16 +411,28 @@ Exit codes:
     /**
      * The verbs this CLI offers.
      *
-     * The spelling lives HERE, once: the dispatch, the usage and the option
-     * ownership all read it, so the name of a verb is not written in three
-     * places that can drift apart.
+     * The spelling lives HERE, once: the dispatch, the usage, the option
+     * ownership and the help inventory all read it, so the name of a verb is
+     * not written in several places that can drift apart.
+     *
+     * The summary is the line the main help prints next to the form. It
+     * lives here for the same reason: a verb the operator cannot find is a
+     * verb the operator cannot use, and `runs recover` was implemented,
+     * reachable, and missing from the help.
      */
-    internal enum class RunsVerb(val spelling: String) {
+    internal enum class RunsVerb(val spelling: String, val summary: String) {
         /** Closes the run as aborted and records why. */
-        Cancel("cancel"),
+        Cancel(
+            spelling = "cancel",
+            summary = "close a run that no live process is working on (--db, --control-root, --reason)",
+        ),
 
         /** Reconciles a run whose work finished but whose terminal was never recorded. */
-        Recover("recover"),
+        Recover(
+            spelling = "recover",
+            summary = "reconcile a run whose work finished but whose terminal was never recorded " +
+                "(--db, --control-root, --dry-run)",
+        ),
     }
 
     /** The options `runs cancel` takes. */

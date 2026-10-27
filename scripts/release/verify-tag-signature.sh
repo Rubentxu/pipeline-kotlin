@@ -100,6 +100,13 @@ ROW_NAMES=()
 ROW_VERDICTS=()
 ROW_DETAILS=()
 
+# What the tag TURNED OUT to be. These are OBSERVATIONS and they stay empty
+# until a check reads them; the verdict line names them, so a reader of the
+# verdict sees who actually signed rather than who was asked for.
+SIGNER_FPR=""
+SIGNER_UID=""
+TAG_COMMIT=""
+
 record() {
     ROW_NAMES+=("$1")
     ROW_VERDICTS+=("$2")
@@ -135,8 +142,6 @@ else
     VERIFY_RC=0
     VERIFY_OUTPUT="$(git verify-tag --raw "$TAG" 2>&1)" || VERIFY_RC=$?
 
-    SIGNER_FPR=""
-    SIGNER_UID=""
     if printf '%s\n' "$VERIFY_OUTPUT" | grep -q '^\[GNUPG:\] VALIDSIG '; then
         SIGNER_FPR="$(printf '%s\n' "$VERIFY_OUTPUT" | awk '/^\[GNUPG:\] VALIDSIG /{print $3; exit}')"
     fi
@@ -197,6 +202,11 @@ fi
 
 # ----------------------------------------------------------------------------
 # 5. The verdict. One line, and it says what ran.
+#    The line names the tag's OBSERVED identity — who signed it, under which
+#    uid, at which commit — and separately what the caller ASKED for. The two
+#    are not the same fact: a verdict that prints the requested fingerprint in
+#    the field that reads as "the signer" says a tag signed by one key was
+#    signed by another, and the reader of the line has no way to tell.
 # ----------------------------------------------------------------------------
 
 ELAPSED=$(( $(date +%s) - STARTED_AT ))
@@ -217,9 +227,10 @@ else
 fi
 
 {
-    printf 'tag-signature: %s rows=%s tag=%s fingerprint=%s uid=%s commit=%s elapsed=%ss\n' \
-        "$VERDICT" "$SUMMARY_ROWS" "$TAG" "$EXPECT_FINGERPRINT_UPPER" \
-        "${EXPECT_UID:-<any>}" "${EXPECT_COMMIT:-<any>}" "$ELAPSED"
+    printf 'tag-signature: %s rows=%s tag=%s signer=%s uid=%s commit=%s expected_fingerprint=%s expected_uid=%s expected_commit=%s elapsed=%ss\n' \
+        "$VERDICT" "$SUMMARY_ROWS" "$TAG" \
+        "${SIGNER_FPR:-<none>}" "${SIGNER_UID:-<none>}" "${TAG_COMMIT:-<none>}" \
+        "$EXPECT_FINGERPRINT_UPPER" "${EXPECT_UID:-<any>}" "${EXPECT_COMMIT:-<any>}" "$ELAPSED"
     for index in "${!ROW_NAMES[@]}"; do
         printf '  row %s verdict=%s %s\n' \
             "${ROW_NAMES[$index]}" "${ROW_VERDICTS[$index]}" "${ROW_DETAILS[$index]}"

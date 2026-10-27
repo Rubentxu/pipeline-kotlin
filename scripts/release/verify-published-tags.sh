@@ -121,6 +121,7 @@ in_scope() {
 # ----------------------------------------------------------------------------
 
 ROWS=()
+SIGNERS=()
 FAILED=0
 GAPS=0
 CHECKED=0
@@ -176,9 +177,11 @@ while IFS= read -r line; do
         continue
     fi
 
-    # The checker's own row A says WHY a signature failed — "the tag carries
-    # no signature" and "the signature comes from another key" are different
-    # facts, and the audit reports the one that was measured.
+    # The checker's own rows say WHY it refused. The reason quoted must be the
+    # reason of the row that REFUSED. Quoting the crypto row's detail whatever
+    # failed produces a sentence that contradicts itself -- a claim that the
+    # signature does not verify, justified by the detail that it does -- and it
+    # hides which half of the check refused.
     check_output=""
     check_rc=0
     check_output="$("${repo_root}/scripts/release/verify-tag-signature.sh" \
@@ -187,13 +190,37 @@ while IFS= read -r line; do
         --expect-commit "$peeled" \
         ${EXPECT_UID:+--expect-uid "$EXPECT_UID"} 2>&1)" || check_rc=$?
 
-    check_detail="$(printf '%s\n' "$check_output" | sed -n 's/^  row A verdict=[A-Z]* //p' | head -1)"
+    check_detail="$(printf '%s\n' "$check_output" \
+        | sed -n 's/^  row \([A-Z]\) verdict=FAIL \(.*\)/\1: \2/p' | paste -sd'; ' -)"
+
+    # The signer the checker OBSERVED. The declared key is what this audit
+    # asked for; the signer is who actually held the pen, and it is the fact
+    # a reader needs when the two differ.
+    check_signer="$(printf '%s\n' "$check_output" \
+        | sed -n 's/^tag-signature: .* signer=\([0-9A-F]\{40\}\).*/\1/p' | head -1)"
+    check_signer="${check_signer:-<none>}"
+
+    # The signer is recorded whether the check passed or refused: the signer
+    # that caused the refusal is exactly the one a reader needs to see.
+    if [[ "$check_signer" != "<none>" ]]; then
+        SIGNERS+=("$check_signer")
+    fi
 
     if [[ "$check_rc" == "0" ]]; then
-        ROWS+=("  tag ${name} verdict=PASS type=ANNOTATED commit=${peeled} signature=VERIFIED (declared key)")
+        ROWS+=("  tag ${name} verdict=PASS type=ANNOTATED commit=${peeled} signer=${check_signer} signature=VERIFIED (the declared key)")
     else
         FAILED=$((FAILED + 1))
-        ROWS+=("  tag ${name} verdict=FAIL type=ANNOTATED commit=${peeled} signature=DOES-NOT-VERIFY (${check_detail:-the signature check failed})")
+        # The label says WHICH half refused: a signature that does not verify
+        # and a signature that verifies from the wrong key are different facts,
+        # and one label for both of them hides the difference.
+        if printf '%s\n' "$check_output" | grep -q '^  row A verdict=FAIL'; then
+            signature_state="DOES-NOT-VERIFY"
+        elif printf '%s\n' "$check_output" | grep -q '^  row B verdict=FAIL'; then
+            signature_state="FROM-ANOTHER-KEY"
+        else
+            signature_state="NOT-AS-DECLARED"
+        fi
+        ROWS+=("  tag ${name} verdict=FAIL type=ANNOTATED commit=${peeled} signer=${check_signer} signature=${signature_state} (${check_detail:-the signature check failed})")
     fi
 done <<< "$LISTING"
 
@@ -208,7 +235,17 @@ else
     VERDICT="FAIL"
 fi
 
-SUMMARY="published-tags: ${VERDICT} checked=${CHECKED} annotated=${ANNOTATED} lightweight=${LIGHTWEIGHT} failed=${FAILED} gaps=${GAPS} remote=${REMOTE} fingerprint=${EXPECT_FINGERPRINT^^}"
+# The summary separates what the audit ASKED for from what it SAW. `expected_
+# fingerprint` is the key this audit was told to look for; `signers` are the
+# keys that actually signed the published tags, and a difference between the
+# two is the whole point of the audit.
+if [[ ${#SIGNERS[@]} -gt 0 ]]; then
+    SUMMARY_SIGNERS="$(printf '%s\n' "${SIGNERS[@]}" | sort -u | paste -sd',' -)"
+else
+    SUMMARY_SIGNERS="<none>"
+fi
+
+SUMMARY="published-tags: ${VERDICT} checked=${CHECKED} annotated=${ANNOTATED} lightweight=${LIGHTWEIGHT} failed=${FAILED} gaps=${GAPS} remote=${REMOTE} expected_fingerprint=${EXPECT_FINGERPRINT^^} signers=${SUMMARY_SIGNERS}"
 
 VERDICT_FILE="$(mktemp "${TMPDIR:-/tmp}/published-tags-verdict.XXXXXX")"
 cleanup() { rm -f -- "$VERDICT_FILE"; }

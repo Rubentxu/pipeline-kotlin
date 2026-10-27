@@ -1301,6 +1301,69 @@ PASS  sha=143f5aa23cf761cf3fd2691658fcff3f02e31faa  elapsed=207s  budget=900s  t
 - 207 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 28014`, `PRODUCT_LOC = 71353`, ratio `0.393` (límite 2). La producción BAJÓ 47 líneas —los dieciocho `toString()` borrados— y la verificación subió 99 —el test nuevo—.
 
+#### El corte: el verbo del veredicto dice lo que no puede leer
+
+**Qué hace.** `events verify` era el ÚNICO verbo que todavía se tragaba una opción que no conocía, y los dos cortes anteriores lo dejaron escrito como residual. Su bucle de opciones era un `when` escrito a mano SIN rama `else`: lo que no reconocía se perdía en silencio. Y era peor que perderlo — leía dos valores que NO PODÍA leer y los leía como otra cosa: `--from-sequence abc` se leía como la secuencia 0, y `--scope cualquier-cosa` como el alcance WHOLE—. El verbo que emite el veredicto de aceptación estaba emitiendo un veredicto sobre peticiones que nadie había hecho.
+
+Medido sobre la distribución construida de `e884edbd1` —el estado anterior al corte— y la de `32eaff098` —el estado posterior—, con un store real, un contrato real y la misma máquina, seis invocaciones:
+
+|celda|antes|después|
+|---|---|---|
+|petición limpia: `--db <db> --run <r> --contract <c>`|salida 0, «observed-terminal-outcome: SUCCESS», «acceptance: PASSED»|igual|
+|la misma, más `--bogus`|salida 0, «acceptance: PASSED», stderr VACÍO: la opción desaparece sin dejar rastro|salida 2, stdout vacío, stderr «events verify: unknown option: --bogus» + el uso|
+|la misma, más `--scope bogus`|salida 0, «acceptance: PASSED»: se verificó el alcance WHOLE|salida 2, stdout vacío, stderr «events verify: --scope must be last-segment or whole.» + el uso|
+|la misma, más `--from-sequence abc`|salida 0, «acceptance: PASSED»: se verificó desde la secuencia 0|salida 2, stdout vacío, stderr «events verify: --from-sequence must be a whole number.» + el uso|
+|la misma, más un argumento de más (`extra`)|salida 0, «acceptance: PASSED»|salida 2, stdout vacío, stderr «events verify: unexpected argument: extra» + el uso|
+|`events verify --db --run <r> --contract <c>`|salida 2 y stderr SÓLO con la línea de uso: `--run` se había comido como VALOR de `--db`, el rechazo no culpaba a nadie y la línea de uso nombraba `[--after-last-run-started]`, una forma que el verbo nunca aceptó|salida 2, stderr «events verify: value for option --db looks like another option: --run» + la pista|
+
+Las CUATRO filas del medio son el contenido de la garantía: el verbo contestaba 0 con «PASSED» sobre peticiones que nadie había hecho, y el veredicto era el de un run que sí había pasado. La SEXTA fila es el otro lado del mismo defecto: el rechazo existía, pero culpaba al argumento sobrante —que no era lo que estaba mal— y su línea de uso prometía una bandera inexistente.
+
+**El corte.** El verbo lee su petición por la admisión compartida —`CliOptionAdmission.admit` con una tabla propia, `EVENTS_VERIFY_OPTIONS`—, que es la MISMA autoridad que ya leen `version`, `doctor`, `capabilities`, `sdk-info` y `operations`. Una opción ajena se rechaza NOMBRÁNDOLA; un argumento que no se le pidió se rechaza; una secuencia que no es un número y un scope que no es uno de los dos se rechazan. Y todo eso ocurre ANTES de tocar el store: una petición que no se puede leer no llega al sistema de archivos.
+
+La regla del valor que nombra una opción se extiende a los tokens del verbo, que son la mitad MÁS FUERTE de esa regla: un token que este verbo posee es todavía menos probable que sea un camino que uno que el parser compartido conoce por casualidad. Antes `--db --run r1` se comía `--run` como valor de `--db` y el rechazo echaba la culpa al argumento sobrante; ahora el rechazo nombra la opción que se comió la otra.
+
+El uso deja de nombrar dos formas que el verbo nunca aceptó: una estaba en el KDoc del verbo —`[--from-cursor TOKEN]`— y la otra en la propia línea de uso —`[--after-last-run-started]`—. Este corte imprime el uso más a menudo —cada rechazo lo imprime—, así que una forma falsa ahí se convierte en el rechazo de una forma documentada.
+
+El verbo queda partido en dos mitades: `main` lee la petición y rechaza lo que no puede leer; `verify` es la única función que abre algo. Sin esa partida el gate de `detekt` encuentra `main` con complejidad 26 sobre un tope de 25, y la respuesta NO es apagar la regla —la política de este repo no apaga ninguna regla para tapar un hallazgo—: es que la lectura y la verificación son dos cosas y estaban en una sola función.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que `events verify` nunca emite un veredicto sobre una petición que nadie le hizo: una petición que el verbo no puede leer se rechaza por su nombre, y el rechazo ocurre antes de que se toque el store. La capacidad que la sostiene es que el veredicto de aceptación de un run SIGNIFIQUE algo: si el verbo acepta cualquier cosa, «PASSED» deja de ser una afirmación sobre el run y pasa a ser una afirmación sobre la invocación, y quien lee el veredicto no puede distinguir las dos.
+
+El instrumento es un test unitario (`MainEventsVerifyCliTest`, 8 filas) más dos filas puras en `CliOptionAdmissionTest`. Los rechazos se deciden antes de cualquier E/S, así que el instrumento más barato que puede fallar es llamar al verbo EN PROCESO, leer su código de salida y capturar su stderr —sin proceso, sin disco, sin reloj—. Un test unitario de este árbol no puede abrir una base de datos —lo dice el propio `EventStoreAdmissionTest`—, y un escenario de `examples/` pagaría la construcción de la distribución entera para comprobar un rechazo.
+
+Las expectativas son LITERALES escritas en el test; lo único que se lee de producción es el vocabulario que el rechazo nombra. Y cada fila lee el RECHAZO —la parte de stderr anterior a la línea de uso—, porque la línea de uso nombra `--scope` y `--from-sequence` también: una fila que leyera todo el stderr quedaría satisfecha por la línea de uso sola, y un verbo que no imprimiera más que su uso la aprobaría. Una fila mira la AUSENCIA de las frases del store —«db not found», «no directory for db»— para probar que una petición rechazada no llegó a tocarlo.
+
+**Visto en rojo, con la mutación leída de vuelta.** Doce mutaciones focales, una cada vez, sobre `CliOptionAdmission.kt` y `MainEventsVerifyCli.kt`. Cada una se aplicó, se leyó de vuelta con `diff -u` contra una copia byte a byte del fichero tal como estaba antes de mutar —con su sha256 anotado— y se restauró desde ESA copia, nunca desde git, comprobando después con `sha256sum -c` que el fichero y la copia eran el mismo byte. Las seis primeras se hicieron sobre el corte tal como se escribió; las otras seis, sobre el código ya partido, porque al partirlo los rechazos cambiaron de sitio y un guard que no se vuelve a ver en rojo no está probado.
+
+|mutación|qué se encendió|
+|---|---|
+|La regla del valor que nombra una opción pierde la mitad del verbo —`knownOptionArity(value) != null \|\| owned.any { it.token == value }` → `knownOptionArity(value) != null`—|exactamente DOS filas en rojo: «a value that names an option of the verb itself is refused» y «events verify refuses a value that names one of its own options»; las otras 325 del módulo siguieron en verde|
+|El scope que no se sabe se lee como WHOLE —`else -> false` en vez de `else -> null`—|exactamente UNA fila: «events verify refuses a scope it cannot read»|
+|La secuencia que no se sabe se lee como 0 —`raw.toLongOrNull()` → `0L`—|exactamente UNA fila: «events verify refuses a from-sequence it cannot read»|
+|El rechazo del argumento que no se pidió desaparece|exactamente UNA fila: «events verify refuses an argument it was not asked about»|
+|Vuelve a la línea de uso una forma que el verbo nunca aceptó —`[--after-last-run-started]`—|exactamente UNA fila: «the usage of events verify names only the forms it accepts»|
+|Desaparece el rechazo de «--contract es obligatorio»|exactamente UNA fila: «events verify says which of its options a request is missing»|
+|Después de la partida: `readScope` deja de rechazar un scope desconocido —`else -> null` → `else -> false`—|exactamente UNA fila: «events verify refuses a scope it cannot read»; las otras 24 del lote filtrado en verde|
+|Después de la partida: `readFromSequence` deja de rechazar una secuencia ilegible —`raw.toLongOrNull()` → `0L`—|exactamente UNA fila: «events verify refuses a from-sequence it cannot read»; las otras 24 en verde|
+|Después de la partida: el rechazo del argumento sobrante desaparece —`if (unexpected != null)` → `if (false)`—|exactamente UNA fila: «events verify refuses an argument it was not asked about»; las otras 24 en verde|
+|Después de la partida: el rechazo de «--contract es obligatorio» desaparece|exactamente UNA fila: «events verify says which of its options a request is missing»; las otras 24 en verde|
+|Después de la partida: la línea de uso deja de imprimirse|exactamente UNA fila: «the usage of events verify names only the forms it accepts»; las otras 24 en verde|
+|Después de la partida: el veredicto nunca dice PASSED —`if (report.observedTerminalOutcome?.name == contract.expect.name)` → `if (false)`—|NINGUNA fila en rojo: el camino feliz no tiene fila unitaria —abrir el store es lo que un test unitario de este árbol no puede hacer—. Se ve en la DISTRIBUCIÓN, donde con la mutación el veredicto pasa a «acceptance: FAILED» y el código de salida a 1, y vuelve a «PASSED» al restaurar|
+
+Ninguna mutación encendió de más: en las once primeras, el resto del lote siguió en verde. La duodécima es la que se ve en la distribución, y es la que dice con honestidad qué camino NO tiene instrumento automático.
+
+**Lo que este corte NO arregla, y se dice.** No arregla la RUTA FELIZ de `events verify`: no hay fila unitaria para ella —abrir el store es lo que un test unitario de este árbol no puede hacer— y tampoco hay escenario en `examples/` que la cubra. El camino feliz se comprobó MANUALMENTE sobre la distribución construida, con un store real: «acceptance: PASSED» y salida 0. Es una observación, no una cobertura automatizada, y queda como hueco declarado. No arregla la línea de ayuda de `events verify` —`CliVerb("events verify", "check a run's events against a contract (--db, --run, --contract)")`—, que nombra TRES de las cinco opciones que el verbo acepta: `--from-sequence` y `--scope` no aparecen. No arregla la familia que deja pasar un ARGUMENTO que nadie pidió: `pipeline doctor foo`, `pipeline version foo`, `pipeline capabilities foo` y `pipeline sdk-info foo` siguen contestando 0 con su respuesta de siempre, porque la admisión aparta los POSICIONALES a una lista y cada verbo decide qué hacer con ellos, y esos cuatro no dicen nada. No arregla los vocabularios de opciones que siguen escritos a mano: las banderas de inspección de `events`, la familia `runs` y `saga inspect` tienen su propio bucle, y la tabla `CliOptionAdmission` es UN pedazo más del mismo género.
+
+Medido sobre `32eaff0984e057a710451a3c4597779ee314a071` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=32eaff0984e057a710451a3c4597779ee314a071  elapsed=182s  budget=900s  tests=rewritten:1509 read:0  scenarios=observed:63 executed:63
+```
+
+- 200 informes JUnit reescritos por esta ejecución, 1509 tests EJECUTADOS de verdad, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E observados y ejecutados, en verde.
+- 182 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28161`, `PRODUCT_LOC = 71422`, ratio `0.394` (límite 2).
+
 
 ## H6 — Reducir deuda del harness y asegurar la publicación
 

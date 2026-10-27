@@ -1377,6 +1377,61 @@ PASS  sha=6e342f1f182b902efacd6bf300b44d09e09a1292  elapsed=185s  budget=900s  t
 - 185 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 27617`, `PRODUCT_LOC = 71259`, ratio `0.388` (límite 2).
 
+#### El corte: una comprobación que no se pudo hacer no es una comprobación que pasó
+
+**Qué hace.** El corte anterior cerró `promote-stable.sh` y declaró como residuales las otras dos lecturas del remoto del camino de publicación, en `scripts/release-pipelinek.sh:105` y `scripts/release/publish-github-release.sh:277`. Las dos tenían la misma forma que la ya corregida: el estado de un pipeline es el de su última orden, y `grep` era la última.
+
+```bash
+if git ls-remote --tags origin "refs/tags/${PIPELINEK_RELEASE_TAG}" | grep -q .; then
+```
+
+Un remoto que no se puede leer deja el listado vacío; `grep` sale con 1; y la comprobación pasa como si la etiqueta no estuviera. Lo que cambia entre los dos sitios es QUÉ se deduce de ese paso:
+
+- En `release-pipelinek.sh` la lectura era la ÚNICA comprobación previa de la garantía #4 —«the tag name is fresh (does not collide with an existing remote tag)»— y el script **seguía adelante**. Medido: con el remoto ilegible, el script llegó al gate de publicación, que en el fixture es un `gradlew` falso que se anuncia. Sin ese tope, lo que venía después era un build de quince minutos.
+- En `publish-github-release.sh` la lectura es la única previa, pero el `if !` invertido convertía el paso en un **rechazo que afirmaba un hecho falso**: «the tag %s does not exist in %s». El remoto SÍ tenía la etiqueta —leído directamente en esa misma ejecución, `git ls-remote --tags …/remote-b.git refs/tags/v0.0.0-remote` responde `ac2148cfe56659467a3b92aae90fb5cc2393eaba refs/tags/v0.0.0-remote`— y el script dijo que no existía.
+
+**El montaje que responde al obstáculo declarado.** El corte anterior dejó escrito por qué no los arreglaba: «su instrumento exige otro montaje: `release-pipelinek.sh` hace `cd "$REPO_ROOT"` y su comprobación de árbol sucio precede a la lectura, de modo que medirlo exige el árbol limpio o una copia del script — y `publish-github-release.sh` hace su lectura DETRÁS de la verificación de firma, que exige una etiqueta firmada de verdad». El montaje que responde a las dos condiciones es el mismo:
+
+1. **El script de envío se alcanza por un symlink dentro de un árbol-fixture.** El fichero que se ejecuta es el de envío —el núcleo lee el destino del symlink—, y el árbol en el que el script cree estar es el del fixture, porque `REPO_ROOT` se deriva del propio camino del script. Así no hace falta ni un árbol limpio del repositorio real ni una copia del script: el symlink da las dos cosas.
+2. **La precondición de firma es REAL, no simulada.** El fixture firma la etiqueta con la clave que el propio repositorio DECLARA —`scripts/release/signing-key.conf` es el fichero de envío, enlazado— en un keyring real, y la comprobación la hace el `scripts/release/verify-tag-signature.sh` de envío, enlazado también. Su veredicto, observado sobre la etiqueta del fixture, sale entero en verde: `tag-signature: PASS rows=A:PASS B:PASS C:PASS tag=v0.0.0-remote signer=9600F7D49B9C966E3BB04E6A17E44CA7C5288281`. Lo único que se rompe es el TRANSPORTE.
+3. **El gate de publicación es un `gradlew` falso que se anuncia** (`FIXTURE-GATE: the release gate was reached`), para que caminar hasta el build sea una OBSERVACIÓN y no un build de quince minutos.
+
+**El corte.** El listado se lee UNA vez, con su estado comprobado, y la pregunta se le hace al listado por nombre EXACTO —`awk -v r=… '$2 == r'`—, que no es un patrón: una etiqueta con punto en el nombre no puede casar con otra por accidente. Un remoto que no se puede leer rechaza nombrando lo que no se pudo comprobar y qué etiqueta quedó sin comprobar.
+
+**Medido antes y después, con la única variable cambiada** (los scripts REALES, un remoto bare local y un shim de `git` en el PATH que hace fallar la PRIMERA lectura y delega el resto; 25 filas, 6 rojas antes y 0 después):
+
+|celda|antes|después|
+|---|---|---|
+|`release-pipelinek.sh`, el remoto no se puede leer|salida 3; **no hubo rechazo ninguno**: el script siguió hasta el gate de publicación (`FIXTURE-GATE: the release gate was reached`)|salida 1; el rechazo nombra el listado que no se pudo leer Y la etiqueta `v0.0.0-remote` que no pudo comprobarse; el gate no se alcanzó|
+|`publish-github-release.sh`, el remoto no se puede leer|el remoto SÍ tenía la etiqueta y el script rechazó diciendo «the tag v0.0.0-remote does not exist in …»|el rechazo nombra el listado que no se pudo leer y no afirma que la etiqueta falte|
+|`release-pipelinek.sh`, el remoto se lee bien y tiene la etiqueta|refusa diciendo «already exists on origin»|igual|
+|`release-pipelinek.sh`, el remoto se lee bien y no la tiene|llega al gate de publicación|igual|
+|`publish-github-release.sh`, el remoto se lee bien y tiene la etiqueta|publica: pregunta a `gh` con `release create … --verify-tag`|igual|
+|`publish-github-release.sh`, el remoto se lee bien y no la tiene|refusa diciendo «the tag … does not exist in …»|igual|
+
+Las CUATRO filas del medio son el contenido de la garantía y este corte no las toca: las dos que dependen de que el remoto TENGA la etiqueta, y las dos que dependen de que NO la tenga.
+
+**Visto en rojo, con la mutación leída de vuelta.** Se restauraron los DOS ficheros enteros a su contenido previo al corte —el defecto entero, no una rama—, se comprobó con `grep` que el guard `REMOTE_LISTING` NO aparecía en ninguno de los dos (es decir, que la mutación ESTABA aplicada) y que la forma `ls-remote … | grep -q .` había vuelto a las líneas 105 y 277, y el `git diff --stat` mostró 6 inserciones y 42 supresiones contra el commit. Después se restauró el arreglo desde una copia del fichero, nunca desde git, comprobando con `diff -q` que la copia y el fichero eran idénticos byte a byte.
+
+|Mutación|Qué se encendió|
+|---|---|
+|Los dos ficheros vuelven al defecto|exactamente SEIS filas en rojo —en `release-pipelinek.sh`: «refuses» (3 en vez de 1), «names the unreadable listing», «names the tag» y «never reached the build»; en `publish-github-release.sh`: «names the unreadable listing» y «does not claim the tag is absent»—; las otras DIECINUEVE filas siguieron en verde, incluidas las cuatro que son el contenido de la garantía|
+
+**La garantía, la capacidad y el instrumento.** La garantía es que el camino de publicación nunca afirma que un nombre de etiqueta está libre —o que falta— en el remoto sin haber leído el remoto, y que el motivo del rechazo nombra lo que no se pudo comprobar. La capacidad que la sostiene es que un lector del rechazo sabe si la garantía se comprobó o si el remoto no respondió. El instrumento son los scripts de envío ejecutados contra un remoto bare real con un shim de `git` que inyecta el fallo de transporte, porque no puede ser un test unitario —AGENTS.md prohíbe que un test unitario haga `git` o `gpg`— ni un escenario de `examples/` —corre la distribución de desarrollo, que no produce etiquetas—. El shim ESCRIBE un log de cada lectura, y por eso la cifra «read the remote once» es una OBSERVACIÓN del instrumento y no una cuenta hecha a mano.
+
+**Lo que este corte NO arregla, y se dice.** No arregla que `scripts/release/verify-published-tags.sh` vuelva a leer el remoto después de publicar: es otra puerta, con su propia lectura —`verify-published-tags.sh:101`, que sí comprueba el estado de su lectura—, y este corte no la toca. No arregla que `publish-tag.sh` —ni ahora `release-pipelinek.sh` ni `publish-github-release.sh`— invoque `git` sin ruta absoluta: heredan el `git` que haya en el PATH, que en esta máquina es un envoltorio de identidad; sigue siendo residual, y ahora alcanza a los tres. No arregla que el fixture no sea un build real: el `gradlew` falso observa el ORDEN en que el script recorre sus puertas, y el gate de verdad sigue siendo el de `scripts/verify-all.sh`. Y no arregla que el camino de publicación no tolere un remoto ilegible: lo RECHAZA, que es lo que se quería; lo que cambia es que el rechazo dice la verdad.
+
+Medido sobre `2e490b418` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=2e490b418a34365afbe4c4363381aa80921228dc  elapsed=186s  budget=900s  tests=rewritten:1465 read:0  scenarios=observed:63 executed:63
+```
+
+- 196 informes JUnit reescritos por esta ejecución, 1465 tests EJECUTADOS de verdad, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E ejecutados y en verde.
+- 186 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 27617`, `PRODUCT_LOC = 71292`, ratio `0.387` (límite 2).
+
 ## 4. Orden y dependencias
 
 

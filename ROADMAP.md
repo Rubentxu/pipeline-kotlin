@@ -1130,6 +1130,74 @@ PASS  sha=2e3a1efd5faf41c198feec425a62f8c66718c2f1  elapsed=108s  budget=900s  t
   real de este árbol es de 188 s, corregida con su reejecución más abajo (corte del gate).
 - `VERIFY_LOC = 27278`, `PRODUCT_LOC = 71109`, ratio `0.384` (límite 2).
 
+#### El corte: la ayuda nombra las formas que el CLI responde
+
+**Qué hace.** La ayuda y el despacho discrepaban CUATRO veces, y siempre hacia el mismo lado: la ayuda faltaba algo que el CLI hacía, o nombraba algo que el CLI rechaza. Medido sobre la distribución construida en `37b10f7f7`, cuya sección de verbos tenía 14 líneas:
+
+- `runs recover` estaba implementado y se alcanzaba —`pipelinek runs recover` responde «runs recover: a run id is required.» y sale con 2— y la ayuda NO lo nombraba.
+- `events verify` estaba implementado y se alcanzaba —`pipelinek events verify` imprime su uso y sale con 2— y la ayuda NO lo nombraba.
+- La ayuda nombraba `saga` como si fuera un comando, y `pipelinek saga` RECHAZA esa palabra: «pipeline: unknown saga subcommand.» y salida 2. La forma que sí corre, `saga inspect`, aparecía solo dentro del texto del resumen.
+- El rechazo de un comando desconocido enumeraba `saga` y `runs cancel` como si fueran palabras de comando, y `saga` es exactamente la palabra que el CLI rechaza.
+
+Las CUATRO son el mismo defecto: una lista escrita a mano de lo que el CLI hace, libre de divergir de lo que el CLI hace. Y nada la vigilaba: en todo el árbol rastreado de `37b10f7f7` no hay ni un test ni un ejemplo que mire la ayuda —solo los tres ficheros de producción que la definían—, así que la lista podía estar mal sin que ninguna fila se pusiera roja. `README.md` la señala como la autoridad de «every CLI flag and exit code»: la deriva no era solo interna.
+
+**El corte.** Una sola tabla, `CLI_VERBS`, y una fila por FORMA —las palabras que el operador escribe—, su resumen y el código que la responde. La clave de una fila es la forma ENTERA: `events` y `events verify` son dos formas distintas, y `saga inspect` es una forma cuya primera palabra es además el nombre de una familia. Cuando dos formas pueden contestar las mismas palabras, gana la MÁS LARGA, porque la corta es la familia de la larga.
+
+Cada fila se DERIVA de la autoridad que despacha su forma, y no hay una segunda lista con la que discrepar:
+
+- las formas de solo lectura son las filas de la tabla, y cada una lleva su handler: la tabla ES el despacho, así que una forma que está en ella se contesta y una que no, no es comando de este CLI.
+- las del parser (`validate`, `run`) salen de `CLI_PARSER_COMMANDS`, que el parser ya lee.
+- las de la familia `runs` salen de `MainRunsCli.RunsVerb`, que ya posee esas grafías.
+
+Una palabra de familia sola no es un comando: `saga` se rechaza con el uso de la familia, y ese rechazo lo construye la fila que posee la familia, para que la palabra del mensaje sea su propia palabra. Y el rechazo de un comando desconocido enumera las FORMAS de la tabla, no palabras sueltas.
+
+**Medido antes y después, con la única variable cambiada** (las dos distribuciones construidas con el mismo `installDist`: la de `37b10f7f7` en un worktree desechado, y la de este corte):
+
+|celda|antes|después|
+|---|---|---|
+|`--help`, líneas de la sección de verbos|14|16|
+|`--help`, `runs recover`|no aparece|`runs recover  reconcile a run whose work finished but whose terminal was never recorded (--db, --control-root, --dry-run)`|
+|`--help`, `events verify`|no aparece|`events verify check a run's events against a contract (--db, --run, --contract)`|
+|`--help`, `saga`|`saga          read what a run's saga still owes (saga inspect <runId> --db <path>)`|`saga inspect  read what a run's saga still owes (--db, --format)`|
+|el rechazo de `pipelinek bogus`|«expected one of: validate, run, observe, console, operations, events, inspect, saga, runs cancel, credentials, doctor, version, capabilities, sdk-info»|«expected one of: validate, run, observe, console, operations, events, events verify, inspect, saga inspect, credentials, doctor, version, capabilities, sdk-info, runs cancel, runs recover»|
+|`pipelinek saga`|«pipeline: unknown saga subcommand.» + el uso de `saga inspect`, salida 2|igual, byte a byte|
+|`pipelinek runs bogus`|«runs: the verbs are 'cancel' and 'recover.'», salida 2|igual, byte a byte|
+|`pipelinek events bogus`|el uso de `events`, salida 2|igual, byte a byte|
+|`pipelinek runs recover`|«runs recover: a run id is required.», salida 2|igual, byte a byte|
+|`pipelinek events verify`|el uso de `events verify`, salida 2|igual, byte a byte|
+|`pipelinek version`|`pipeline 0.91.0`, salida 0|igual|
+|`pipelinek bogus`, salida|1|1|
+
+Las SEIS filas que repiten un comportamiento —de `saga` a `version`— son el contenido de la garantía: este corte no cambia lo que el CLI hace con una forma, cambia lo que la ayuda DICE de ella, y las seis lo confirman byte a byte.
+
+**Visto en rojo, con la mutación leída de vuelta.** Cuatro mutaciones focales, una cada vez, sobre `CliVerb.kt` y `CliExitMapping.kt`. Cada una se aplicó, se leyó de vuelta con `diff -u` contra una copia byte a byte del fichero tal como estaba antes de mutar —con su sha256 anotado— y se restauró desde ESA copia, nunca desde git. En cada una se leyó el XML de JUnit de ESTA ejecución para ver qué filas se encendieron, no el «BUILD FAILED» del build:
+
+|Mutación|Qué se encendió|
+|---|---|
+|La familia `runs` vuelve a derivarse sin `Recover` —la ayuda sin `runs recover`|exactamente UNA fila en rojo: «the runs family is named the way the family spells it» («the help does not name the form 'runs recover'»); las otras SEIS siguieron en verde|
+|Vuelve la fila fantasma `saga`, sin handler y sin despacho —la ayuda nombrando lo que el CLI rechaza|exactamente UNA fila en rojo: «every form the help names is a form the CLI dispatches» («the help names 'saga' and nothing dispatches it»); las otras SEIS siguieron en verde|
+|La enumeración del rechazo vuelve a la primera palabra de cada forma|exactamente UNA fila en rojo: «the rejection hint enumerates the forms of the inventory»; las otras SEIS siguieron en verde|
+|La resolución de la forma pasa de la más larga a la primera que casa|exactamente UNA fila en rojo: «the longest form answers the words it owns» («the words of 'events verify' are answered by another form»); las otras SEIS siguieron en verde|
+
+Ninguna mutación encendió de más: en las cuatro, SEIS filas siguieron en verde. Eso es lo que distingue un instrumento que discrimina de uno que se rompe.
+
+La primera mutación es la que importa por lo que NO encendió: si la garantía se hubiera escrito como «la ayuda nombra lo mismo que nombra la tabla», esa mutación habría dejado la fila verde —la tabla y la ayuda se habrían apagado juntas— y el defecto habría vuelto sin que nada se encendiera. Por eso el instrumento compara la ayuda contra las DOS autoridades que están FUERA de la tabla, una por una, y no contra la tabla.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que la ayuda nombra las formas que el CLI responde y solo esas, y que el rechazo de un comando desconocido enumera las mismas. La capacidad que la sostiene es que un operador que lee `--help` —o que escribe mal un comando y lee el rechazo— aprende las palabras que el CLI responde. El instrumento es un test unitario que renderiza la ayuda en un búfer y la lee contra la tabla y contra esas dos autoridades, porque no puede ser un escenario de `examples/` —ese corre la distribución, no la ayuda— ni nada que lance un proceso.
+
+**Lo que este corte NO arregla, y se dice.** No arregla la otra mitad de la deriva: una forma de solo lectura BORRADA de la tabla se lleva su capacidad con ella, porque la tabla ES el despacho. Ese caso queda cerrado por construcción —no queda una segunda lista con la que discrepar— y no por una comprobación: el instrumento no puede ver una forma que ya no existe en ninguna parte, y la fila «the help names every form of the inventory» no lo vería, porque compara la ayuda contra la misma tabla. Las dos familias con autoridad FUERA de la tabla —el parser y la familia `runs`— sí se comprueban una por una, y por eso las dos formas que faltaban no podían volver. No arregla que `pipelinek bogus` salga con 1 y no con 2: es el comportamiento previo, ajeno a este corte. No arregla que la ayuda no detail las opciones de cada forma más allá de las que van en el resumen: es una deuda de la ayuda, no de esta lista. Y no arregla el hecho de que las formas de la familia `runs` aparezcan al final de la lista y no agrupadas: el orden no decide nada —una forma se reconoce por sus palabras y gana la más larga—, pero el orden sigue siendo el de quien escribió la tabla.
+
+Medido sobre `37a99f14c` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=37a99f14cbbb7d2c6679a0747556de6a8372ea56  elapsed=191s  budget=900s  tests=rewritten:1472 read:0  scenarios=observed:63 executed:63
+```
+
+- 197 informes JUnit reescritos por esta ejecución, 1472 tests EJECUTADOS de verdad, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E ejecutados y en verde.
+- 191 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 27764`, `PRODUCT_LOC = 71322`, ratio `0.389` (límite 2).
+
 ## H6 — Reducir deuda del harness y asegurar la publicación
 
 Foco: `examples/run.sh`, `verify-all.sh` y scripts de release.

@@ -149,30 +149,25 @@ internal object MainOperationsCli {
      * an empty list, because "this run wrote nothing" and "I asked about a run
      * that does not exist" are different facts and only one of them is a
      * failure of the request.
+     *
+     * The verb owns two options, and the admission says so. An option it does
+     * not own used to be dropped without a word, so `operations <runId>
+     * --control-root <dir> --bogus-flag` published an empty listing and exited
+     * 0 — a false answer about a run the operator never asked about.
      */
     fun main(args: Array<String>): Int {
-        var runId: String? = null
-        var controlRoot: String? = null
-        var format = "text"
-        var index = 0
-        while (index < args.size) {
-            when (val argument = args[index]) {
-                "--control-root" -> {
-                    controlRoot = args.getOrNull(index + 1)
-                    index += 2
-                }
-                "--format" -> {
-                    format = args.getOrNull(index + 1).orEmpty()
-                    index += 2
-                }
-                else -> {
-                    if (!argument.startsWith("--") && runId == null) {
-                        runId = argument
-                    }
-                    index += 1
-                }
+        val admission = CliOptionAdmission.admit(args, OPERATIONS_OPTIONS)
+        val accepted = when (admission) {
+            is CliAdmission.Rejected -> {
+                System.err.println(admission.error.refusalLines("operations").joinToString("\n"))
+                System.err.println(USAGE)
+                return 2
             }
+            is CliAdmission.Admitted -> admission
         }
+        val runId = accepted.positionals.firstOrNull()
+        val controlRoot = accepted.values["--control-root"]
+        val format = accepted.values["--format"] ?: "text"
 
         if (runId == null) {
             System.err.println("operations: a run id is required.")

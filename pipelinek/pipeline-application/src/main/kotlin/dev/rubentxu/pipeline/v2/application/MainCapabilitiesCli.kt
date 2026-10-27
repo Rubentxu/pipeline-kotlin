@@ -60,8 +60,15 @@ object MainCapabilitiesCli {
     /**
      * @return 0 on success (always).
 */
-    @Suppress("UnusedParameter") // args is required by the JVM main signature.
     fun main(args: Array<String>): Int {
+        val admission = CliOptionAdmission.admit(args, NO_OPTIONS)
+        when (admission) {
+            is CliAdmission.Rejected -> {
+                System.err.println(admission.error.refusalLines("capabilities").joinToString("\n"))
+                return 2
+            }
+            is CliAdmission.Admitted -> Unit
+        }
         val line = Json { prettyPrint = false; encodeDefaults = true }
             .encodeToString(JsonObject.serializer(), document()) + "\n"
         System.out.write(line.toByteArray(Charsets.UTF_8))

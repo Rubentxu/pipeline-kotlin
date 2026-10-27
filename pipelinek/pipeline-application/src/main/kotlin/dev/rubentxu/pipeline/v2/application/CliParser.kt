@@ -1688,6 +1688,19 @@ private fun recognise(option: String): RecognisedOption? =
     FlagOption.BY_TOKEN[option]?.let { RecognisedOption.Flag(it) }
         ?: ValuedOption.BY_TOKEN[option]?.let { RecognisedOption.Valued(it) }
 
+/**
+ * Whether [token] is an option this build knows, and whether it carries a value.
+ *
+ * `null` when this build has no such option. The answer comes from the one
+ * table of the CLI's option surface, so a verb that owns a token and the
+ * shared parser that also knows it cannot disagree about what that token is.
+ */
+internal fun knownOptionArity(token: String): Boolean? = when (recognise(token)) {
+    is RecognisedOption.Flag -> false
+    is RecognisedOption.Valued -> true
+    null -> null
+}
+
 /** Options with no value. Their outcome never depends on what follows them. */
 private object FlagOptions {
     fun apply(option: FlagOption, index: Int, state: ParseState): ApplyOutcome = when (option) {

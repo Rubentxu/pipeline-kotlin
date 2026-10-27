@@ -81,3 +81,16 @@ fun CliError.toCliExit(): CliExit = when (this) {
         hint = "if you meant to pass '$value' as a value, prefix with '=' or quote it",
     )
 }
+
+/**
+ * The lines a verb prints when it refuses a request it did not understand.
+ *
+ * The message and the hint are the CLI's own words: they come from [toCliExit],
+ * the one mapping from an error to a sentence. A verb that printed the error
+ * itself would print the sealed type's constructor syntax instead, which is
+ * how `observe` came to answer `UnknownOption(value=--bogus-flag)`.
+ */
+internal fun CliError.refusalLines(verb: String): List<String> {
+    val exit = toCliExit()
+    return listOfNotNull("$verb: ${exit.message}", exit.hint)
+}

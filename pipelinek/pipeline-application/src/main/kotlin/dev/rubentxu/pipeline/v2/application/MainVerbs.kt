@@ -104,7 +104,15 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
  * gate decides whether that is acceptable for what it is certifying.
  */
 internal fun runVersionVerb(args: Array<String>): Int {
-    if (args.firstOrNull() == "--json") {
+    val admission = CliOptionAdmission.admit(args, VERSION_OPTIONS)
+    val accepted = when (admission) {
+        is CliAdmission.Rejected -> {
+            System.err.println(admission.error.refusalLines("version").joinToString("\n"))
+            return 2
+        }
+        is CliAdmission.Admitted -> admission
+    }
+    if ("--json" in accepted.flags) {
         val identity = RuntimeApiVersion.buildIdentity()
         val commitField = when (identity) {
             is RuntimeApiVersion.BuildIdentity.Recorded -> "\"${identity.commit}\""
@@ -164,9 +172,20 @@ internal fun runSdkInfoVerb(args: Array<String>): Int =
  * The exit code comes from the verdicts. It is not read off the text the
  * report printed, because a report that reads its own sentences can contradict
  * them.
+ *
+ * The verb owns no option, and a request that carries one is refused: `doctor
+ * --json` used to answer 0 and print the report, so a flag the operator
+ * believed in was dropped without a word.
  */
-@Suppress("UnusedParameter") // the handler signature is uniform: it receives what follows the form.
 internal fun runDoctorVerb(args: Array<String>): Int {
+    val admission = CliOptionAdmission.admit(args, NO_OPTIONS)
+    when (admission) {
+        is CliAdmission.Rejected -> {
+            System.err.println(admission.error.refusalLines("doctor").joinToString("\n"))
+            return 2
+        }
+        is CliAdmission.Admitted -> Unit
+    }
     val runtimeConfig = dev.rubentxu.pipeline.v2.application.SystemRuntimeConfig()
     val cwd = Paths.get("").toAbsolutePath()
     val writable = try {

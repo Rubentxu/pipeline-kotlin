@@ -24,6 +24,11 @@ import java.io.PrintStream
  * 0 and printed exactly what the bare verb prints: a confident answer about a
  * request nobody had made.
  *
+ * A verb that owns one owns EXACTLY one, and the second one is refused
+ * naming it: `operations <runId> extra-arg` published the operations of
+ * `<runId>` and said nothing about `extra-arg`, so the operator who asked
+ * about two runs read an answer about one.
+ *
  * ## The capacity this serves
  *
  * An operator who mistypes a flag, hands a flag to a verb that never accepted
@@ -222,6 +227,17 @@ class CliOptionAdmissionTest {
     }
 
     @Test
+    fun `a verb that owns one positional argument refuses a second one`() {
+        // The verb owns the run id and the request carries another one. The
+        // verb used to read the first and to drop the second in silence, so
+        // the operator asked about two runs and read an answer about one.
+        assertEquals(
+            CliAdmission.Rejected(CliError.TooManyPositionals("run-2")),
+            CliOptionAdmission.admit(arrayOf("run-1", "run-2"), OPERATIONS_REQUEST),
+        )
+    }
+
+    @Test
     fun `version refuses an option it does not own`() {
         val result = capture { runVersionVerb(arrayOf("--db")) }
 
@@ -331,6 +347,26 @@ class CliOptionAdmissionTest {
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("--control-root"), result.stderr)
         assertFalse(result.stderr.contains("run-1"), result.stderr)
+        assertEquals("", result.stdout)
+    }
+
+    @Test
+    fun `operations refuses the second positional argument it does not own`() {
+        // No --control-root on purpose: the refusal of the extra argument
+        // happens in the admission, BEFORE the verb looks for anything else,
+        // and a unit test in this tree does not touch the filesystem. The
+        // request is refused naming the EXTRA argument and not the first one,
+        // which the verb owns.
+        val result = capture { MainOperationsCli.main(arrayOf("run-1", "run-2")) }
+
+        assertEquals(2, result.exitCode)
+        assertTrue(result.stderr.contains("run-2"), result.stderr)
+        // The FIRST one is not the offending token: the verb owns it. A
+        // refusal that named "run-1" would say the opposite of the truth.
+        assertFalse(result.stderr.contains("run-1"), result.stderr)
+        // The dangerous shape: a refusal that still publishes a listing of
+        // the first run. The operator asked about two runs and would read an
+        // answer about one.
         assertEquals("", result.stdout)
     }
 

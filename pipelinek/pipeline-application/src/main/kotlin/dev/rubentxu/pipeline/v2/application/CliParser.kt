@@ -317,6 +317,29 @@ sealed interface CliError {
      * operator is sent looking for a flag they never typed.
      */
     data class UnexpectedPositional(val value: String) : CliError
+
+    /**
+     * A positional argument BEYOND the ones the verb owns.
+     *
+     * This is not the same fact as [UnexpectedPositional]: there the verb
+     * owns NO positional argument, and here it owns exactly one and the
+     * request carries another. The refusal has to say a different thing,
+     * because the operator of a verb that takes one positional has to be
+     * told that the verb takes ONE, not none.
+     *
+     * Measured on the built distribution, `operations <runId> extra-arg`
+     * published the operations of `<runId>` and said nothing at all about
+     * `extra-arg`: the operator asked about two runs and read an answer about
+     * one. The verbs that read through the shared parser already refused a
+     * second positional argument —`observe`, `inspect`, `runs cancel`, `saga
+     * inspect` and `events` all answer 2 and name the token— and among the
+     * verbs that read through the admission, `operations` was the only one
+     * that swallowed one.
+     *
+     * The token is named for the same reason it is named in
+     * [UnexpectedPositional]: it is what the operator has to remove.
+     */
+    data class TooManyPositionals(val value: String) : CliError
 }
 
 /**

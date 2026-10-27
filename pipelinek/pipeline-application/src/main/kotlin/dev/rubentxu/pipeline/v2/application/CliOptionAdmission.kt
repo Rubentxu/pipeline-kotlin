@@ -54,7 +54,22 @@ internal sealed interface CliAdmission {
 }
 
 /**
- * Whether a verb owns the positional argument of its request.
+ * How many positional arguments a verb owns.
+ *
+ * ## Why the count and not a yes
+ *
+ * A verb that owns a positional argument has to say HOW MANY it owns, because
+ * "it owns one" and "it owns some" are different promises to the operator.
+ * Measured on the built distribution, `operations <runId> extra-arg`
+ * published the operations of `<runId>` and said NOTHING about `extra-arg`:
+ * the verb read the first positional and dropped the rest in silence. The
+ * operator asked about two runs and read an answer about one, with no word
+ * saying that the other had been ignored.
+ *
+ * The verbs that read through the shared parser already refuse a second
+ * positional argument: `observe`, `inspect`, `runs cancel`, `saga inspect`
+ * and `events` all answer 2 and name the token. Among the verbs that read
+ * through THIS admission, `operations` was the only one that swallowed one.
  *
  * ## Why the admission has to know
  *
@@ -76,19 +91,27 @@ internal sealed interface CliAdmission {
  * argument, and a request that carries one is refused. A verb that DOES own
  * one has to say so, out loud, in the shape of the request it accepts.
  *
- * ## What this does not police
+ * ## The invariant of this admission
  *
- * The admission does not decide how many positional arguments a verb that
- * owns one reads. `operations` owns the run id and reads the first one; the
- * admission hands it the list, exactly as it did before this declaration
- * existed.
+ * No verb that reads through THIS ADMISSION owns two positional arguments, so
+ * the whole vocabulary of positional ownership here is these two cases. A verb
+ * that ever needs a second one grows this type, and the admission's `when`
+ * over it — exhaustive by construction — makes the author decide what a
+ * request carrying too many of them means.
+ *
+ * The CLI as a whole is not the same, and the difference is not academic:
+ * `console` owns TWO — the run id and the operation id — and reads them
+ * through the shared parser, which has its own rule and already refuses a
+ * third (`console <runId> <opId> extra` answers "unexpected extra argument").
+ * That verb does not read through here, and how many positional arguments it
+ * owns is not this type's business.
  */
-internal enum class PositionalArgument {
+internal enum class PositionalArgument(val capacity: Int) {
     /** The verb owns no positional argument: a request that carries one is refused. */
-    NONE,
+    NONE(0),
 
-    /** The verb owns a positional argument and reads it from the admitted request. */
-    OWNED,
+    /** The verb owns exactly one positional argument: a request that carries another is refused. */
+    ONE(1),
 }
 
 /**
@@ -111,7 +134,7 @@ internal enum class PositionalArgument {
  * carries one is refused.
  *
  * @property options the options this verb owns.
- * @property positional whether this verb owns a positional argument.
+ * @property positional how many positional arguments this verb owns.
  */
 internal data class CliRequest(
     val options: List<CliOption> = emptyList(),
@@ -229,15 +252,30 @@ internal object CliOptionAdmission {
             values[token] = value
             index += 2
         }
-        // A positional argument is part of the request too, and a verb that
-        // owns none has to say so BY NAME. The four verbs that own none used
-        // to drop it without a word: `doctor foo` answered 0 and printed the
-        // health report, exactly as `doctor` alone does, and the operator read
-        // an answer about a request nobody made. The refusal names the token
-        // because the token is what the operator has to remove.
-        val unexpected = positionals.firstOrNull()
-        if (unexpected != null && request.positional == PositionalArgument.NONE) {
-            return CliAdmission.Rejected(CliError.UnexpectedPositional(unexpected))
+        // A positional argument is part of the request too, and a verb has to
+        // say, in the shape of the request it accepts, HOW MANY of them it
+        // owns. A verb that owns none refuses any; a verb that owns exactly
+        // one refuses the SECOND, naming it.
+        //
+        // The four verbs that own none used to drop it without a word:
+        // `doctor foo` answered 0 and printed the health report, exactly as
+        // `doctor` alone does, and the operator read an answer about a
+        // request nobody made. `operations` owns the run id and read the
+        // FIRST positional it was given and dropped the rest in silence:
+        // `operations <runId> extra-arg` published the operations of <runId>
+        // and said nothing at all about `extra-arg`. The operator asked about
+        // two runs and read an answer about one.
+        //
+        // The refusal names the token because the token is what the operator
+        // has to remove.
+        val extra = positionals.getOrNull(request.positional.capacity)
+        if (extra != null) {
+            return CliAdmission.Rejected(
+                when (request.positional) {
+                    PositionalArgument.NONE -> CliError.UnexpectedPositional(extra)
+                    PositionalArgument.ONE -> CliError.TooManyPositionals(extra)
+                },
+            )
         }
         return CliAdmission.Admitted(flags, values, positionals)
     }
@@ -276,15 +314,17 @@ internal val VERSION_REQUEST: CliRequest = CliRequest(
  *
  * This verb also owns the run id, which is a POSITIONAL argument: it is the
  * one verb of the six that reads one, and the shape says so here, with
- * [PositionalArgument.OWNED]. A verb that owns one has to say it out loud, and
- * saying it in the shape of the request is what keeps it said.
+ * [PositionalArgument.ONE]. It owns EXACTLY one, and the shape says that too:
+ * `operations <runId> extra-arg` used to publish the operations of `<runId>`
+ * and to say nothing about `extra-arg`, and the operator who asked about two
+ * runs read an answer about one.
  */
 internal val OPERATIONS_REQUEST: CliRequest = CliRequest(
     options = listOf(
         CliOption("--control-root", takesValue = true),
         CliOption("--format", takesValue = true),
     ),
-    positional = PositionalArgument.OWNED,
+    positional = PositionalArgument.ONE,
 )
 
 /**

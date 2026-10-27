@@ -141,6 +141,10 @@ fun CliError.toCliExit(): CliExit = when (this) {
         message = "unexpected argument: $value",
         hint = "this command takes no positional argument",
     )
+    is CliError.TooManyPositionals -> CliExit.InvalidArgument(
+        message = "unexpected argument: $value",
+        hint = "this command takes one positional argument",
+    )
 }
 
 /**

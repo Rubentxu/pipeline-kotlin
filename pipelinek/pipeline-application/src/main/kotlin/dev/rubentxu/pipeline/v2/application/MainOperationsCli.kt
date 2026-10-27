@@ -157,8 +157,11 @@ internal object MainOperationsCli {
      *
      * It also owns the run id, which is a positional argument, and says so in
      * the shape of the request it accepts: this is the one verb of the six
-     * that reads one. The verbs that own none say so too, by not saying they
-     * own one.
+     * that reads one. It owns EXACTLY one, and the shape says that too, so a
+     * request that carries a second one is refused naming it: `operations
+     * <runId> extra-arg` used to publish the operations of `<runId>` and to
+     * say nothing about `extra-arg`. The verbs that own none say so too, by
+     * not saying they own one.
      */
     fun main(args: Array<String>): Int {
         val admission = CliOptionAdmission.admit(args, OPERATIONS_REQUEST)

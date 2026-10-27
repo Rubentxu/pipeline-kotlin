@@ -1493,6 +1493,69 @@ PASS  sha=64ec65966ea6ea1ef37762e7a9fdc56acaa5bcff  elapsed=198s  budget=900s  t
 - 198 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 28247`, `PRODUCT_LOC = 71455`, ratio `0.395` (límite 2). La verificación subió 15 líneas —las 2 filas nuevas y su documentación— y la producción subió 10.
 
+#### El corte: el parser compartido no se traga el posicional que no posee
+
+**Qué hace.** El parser compartido —la autoridad por la que leen `run` y `validate`— cerraba su gramática SÓLO contra los tokens que empiezan por `--`. Un posicional de más no empieza por `--`, así que no lo miraba: se lo tragaba. Medido sobre la distribución construida de este repositorio, `run s.pipeline.kts extra-arg` EJECUTÓ el pipeline —salida 0, el paso `sh` de verdad imprimiendo `hello`, «Finished: success»— y no dijo NI UNA palabra de `extra-arg`; `validate s.pipeline.kts extra-arg` contestó «VALIDATION SUCCESSFUL» con el stdout y el stderr BYTE-IDÉNTICOS a los de la petición de una sola. Es el residual que el corte anterior DECLARÓ —«El MISMO defecto, en OTRA autoridad: el parser compartido… queda declarado como residual MEDIDO»— y este corte lo cierra.
+
+Medido sobre dos distribuciones construidas de este repositorio —`d77b82d77` (antes) y `f6eee6b7f` (después)— en la misma máquina, con el MISMO script —una etapa `build` con un paso `sh` de verdad— y con la misma invocación:
+
+|celda|antes|después|
+|---|---|---|
+|`validate s.pipeline.kts`|salida 0; stdout 76 B; stderr 22 B («VALIDATION SUCCESSFUL»)|salida 0; stdout y stderr BYTE-IDÉNTICOS: el camino feliz no se toca|
+|`validate s.pipeline.kts extra-arg`|salida 0; stdout 76 B y stderr 22 B, BYTE-IDÉNTICOS a los de la fila anterior; `extra-arg` NO aparece NI en stdout NI en stderr|salida 1; stdout 0 B; stderr «Invalid CLI arguments: unexpected argument: extra-arg» + «this command takes one positional argument» + el uso|
+|`run s.pipeline.kts`|salida 0; el pipeline EJECUTÓ —stdout 376 B con la salida del paso, stderr 608 B con el plano de lanzamiento|salida 0; el pipeline EJECUTÓ, con el mismo stdout salvo los ids de correlación|
+|`run s.pipeline.kts extra-arg`|salida 0; el pipeline EJECUTÓ IGUAL: stdout 376 B IDÉNTICO módulo los ids, el reloj y el directorio de control; `extra-arg` NO aparece NI en stdout NI en stderr|salida 1; stdout 0 B; stderr el MISMO rechazo que `validate`; NINGUNA señal de ejecución y NINGÚN fichero creado|
+|`run s.pipeline.kts --format text`|salida 1; stdout 0 B; stderr «trailing option without value: --format» + «options must appear before the script path, not after it» + el uso|IGUAL, byte a byte en stdout y en stderr: el rechazo anterior sobrevive|
+
+La cuarta fila es el contenido de la garantía y la más grave de las dos: antes, `run s.pipeline.kts extra-arg` PRODUCÍA UN EFECTO —el pipeline corría, el paso `sh` de verdad imprimía `hello`, el run se publicaba— y ese efecto era INDISTINGUIBLE del de la petición de una sola: las dos salidas eran byte a byte iguales módulo los ids, y el token de más no aparecía en ninguna. El operador pedía una cosa y recibía el efecto de otra, sin una palabra que lo dijera. La segunda fila es la misma forma pero SIN efecto: `validate` contestaba «VALIDATION SUCCESSFUL» sobre una petición que nadie había hecho. La quinta fila es la que dice que el corte anterior sobrevive: el rechazo de la opción que va detrás del script es el MISMO, byte a byte.
+
+**El corte, en una línea.** El parser compartido cierra su gramática contra las DOS formas de token que puede recibir: la que empieza por `--` —una opción— y la que no —un posicional—. Un verbo que posee UN posicional —el camino del script— rechaza el SEGUNDO nombrándolo, ANTES de leer el script y antes de cualquier efecto.
+
+El arreglo NO introduce una autoridad nueva: `CliError.TooManyPositionals` ya existía —lo creó el corte anterior, para `operations`— y el renderer que lo pronuncia es el MISMO `toCliExit()`. Lo que cambia es que el parser compartido pasa a usarlo. La aritmética que se declara es la de la admisión: aquí el verbo posee UN posicional, y el token que ocupa el lugar de más es el que hay que quitar.
+
+El añadido es ESTRICTAMENTE ADITIVO: toda petición que ya se rechazaba se rechaza igual —la opción se nombra PRIMERO cuando la petición trae las dos formas, porque el operador que escribió `--format` detrás del script CREÍA en una bandera, y esa creencia es la que hay que corregir antes que ninguna otra—. Lo único que cambia de respuesta es el posicional de más, que antes se perdía y ahora se nombra.
+
+El PUNTO del rechazo es lo que sostiene la garantía: el rechazo ocurre en `CliParser.parse`, que se llama ANTES de que el verbo abra el script, y por tanto antes de leer el fichero, antes de compilar y antes de publicar nada. Medido: `run s.pipeline.kts extra-arg` deja el directorio de trabajo con EXACTAMENTE los ficheros que la invocación había creado —ninguno más—.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que `run` y `validate` rechazan el segundo posicional nombrándolo, ANTES de cualquier efecto: el operador nunca lee una respuesta —ni una validación, ni un run— sobre una petición que no hizo. La capacidad que la sostiene es el vocabulario de lo que una petición de estos dos verbos PUEDE llevar: el camino del script y las opciones que lo preceden, y nada más.
+
+El instrumento es un test unitario nuevo (`CliParserPositionalTest`, 6 filas) sobre el parser puro, más una fila en el test del renderer (`CliErrorRenderingTest`). `CliParser.parse` es una función pura sobre un array: abre nada, lee nada, escribe nada y contesta con un resultado TIPADO. El instrumento más barato que puede fallar es, por tanto, llamarla y comparar el resultado contra una expectativa LITERAL escrita en el test —sin proceso, sin disco, sin reloj—. La costura —que el verbo RECHÚSE y no ejecute— se cruza en la FRONTERA SUPERIOR, que es donde se midió el defecto: sobre la distribución construida.
+
+Las seis filas del test puro se reparten en las particiones que importan: los DOS verbos que leen por aquí (`run` y `validate`), una opción ANTES del script —que no cambia la aridad—, el camino feliz —que sigue admitiéndose—, el rechazo anterior —que sigue siendo el que era— y la petición que trae las dos formas —que nombra la opción primero—. Esta última fila es la que congela el ORDEN de las dos negativas, que es una decisión y no un accidente: sin ella, un cambio que invirtiese el orden pasaría inadvertido.
+
+**Qué NO tiene instrumento, y se dice.** Este corte NO añade un ejemplo `.pipeline.kts` en `examples/`: el rechazo ocurre en el parser, ANTES de que exista un pipeline, así que un escenario end-to-end sólo podría comprobar lo mismo con más machinery —un directorio, una base de datos, un proceso— y no añadiría una garantía que el test unitario no dé ya. El EFECTO de que no hay efecto —que el rechazo no crea ficheros, ni abre el script, ni publica un run— no lo puede ver un test unitario de este árbol, porque eso toca el sistema de archivos: se midió MANUALMENTE sobre las dos distribuciones construidas. Y las PALABRAS exactas que el operador lee no están congeladas por las filas puras —asertan el VALOR de la ADT, no su prosa—: la prosa la fija el renderer, y una fila lo comprueba.
+
+**Visto en rojo, con la mutación leída de vuelta.** Tres mutaciones focales, una cada vez, sobre `CliParser.kt` y `CliExitMapping.kt`. Cada una se aplicó, se leyó de vuelta —el `grep` que confirma que la mutación ESTABA en el fichero, no un «BUILD FAILED»— y se restauró desde una copia byte a byte del fichero tal como estaba antes de mutar, comprobando después con `sha256sum -c` que el fichero y la copia eran el mismo byte. El discriminador lee las FILAS del informe JUnit, no la palabra «BUILD FAILED», y cada mutación se midió sobre el LOTE COMPLETO del módulo —50 clases, 345 tests— para poder afirmar que no encendió de más.
+
+|mutación|qué se encendió|
+|---|---|
+|La negativa del posicional sobrante DESAPARECE —se borra el bloque `extraPositional` de `CliParser.parse`—|exactamente TRES filas, las tres que dependen de que el parser compartido rehúse el segundo posicional: «run refuses the positional argument it does not own», «validate refuses the positional argument it does not own» y «an option before the script path does not change the arity»; las otras 342 del lote siguieron en verde —`clases=50 tests=345 failures=3 errors=0 skipped=0`—|
+|El error equivocado —`CliError.TooManyPositionals(extraPositional)` → `CliError.UnexpectedPositional(extraPositional)`—|exactamente las mismas TRES filas, y por un motivo que la mutación enseña: las dos negaciones dicen cosas DISTINTAS —«de más» frente a «no previsto»—, y una que se confundiera con la otra le diría al operador que el verbo no toma posicionales, que es falso: toma uno, el del script. Las otras 342 en verde —`clases=50 tests=345 failures=3 errors=0 skipped=0`—|
+|El consejo equivocado —en `toCliExit()`, «this command takes one positional argument» → «this command takes no positional argument»—|exactamente UNA fila, la del renderer: «the refusal of a second positional says the command takes one»; las otras 344 en verde, entre ellas las 28 de `CliOptionAdmissionTest` —`clases=50 tests=345 failures=1 errors=0 skipped=0`—|
+
+La primera mutación y la segunda aprietan el MISMO lado de la costura —la regla que decide— y por eso encienden las MISMAS tres filas: la fila que dice «no lo rechuses» y la fila que dice «rechúzalo con el error equivocado» son dos maneras de romper lo mismo. La tercera aprieta el lado que las otras dos no tocan —la PROSA del consejo— y se ve en su propia lectura de vuelta: tras la mutación el consejo «no positional argument» aparece DOS veces en el renderer, porque la rama de `TooManyPositionals` ha pasado a decir exactamente lo mismo que la de `UnexpectedPositional`. Un consejo que dice «ningún posicional» sobre un verbo que SÍ posee uno es la forma de mentir por la vía educada.
+
+**Lo que este corte NO arregla, y se dice.** El CÓDIGO DE SALIDA del rechazo del parser compartido es 1, mientras que el de los verbos de la admisión es 2: la misma familia de fallo sale con dos números distintos según la autoridad que lo pronuncia. No se toca aquí —cambiarlo es tocar la tabla de salida del CLI, y ese es otro corte—.
+
+Tampoco se unifica la FRASE: el CLI sigue hablando con seis frases distintas para el mismo hecho. Medidas hoy: el parser compartido dice «unexpected argument: extra-arg» + «this command takes one positional argument»; `observe` dice «trailing option without value: extra» + un consejo que habla de «script path», que es de otro verbo; `inspect` dice «unexpected positional argument 'extra'»; `events` y `console` dicen «Error: unexpected extra argument: extra»; `runs cancel` dice «unknown option 'extra'» y `saga inspect` dice «unknown option: extra». Seis frases para un mismo hecho, una por autoridad, y la tabla `CliOptionAdmission` es un PEDAZO más del mismo género.
+
+Ni la línea de ayuda de `events verify` —que nombra TRES de las CINCO opciones que el verbo acepta: `--from-sequence` y `--scope` no aparecen—, ni la de `operations`, que no nombra NINGUNA de sus dos. Ni los vocabularios de opciones escritos a mano fuera de la admisión. Ni `credentials`, que NO se ha medido para esta afirmación: el verbo exige una passphrase antes de mirar los argumentos, así que su caso es inconcluyente y se dice.
+
+Y una corrección que este ciclo se lleva por delante: el KDoc de `CliError.TooManyPositionals` afirmaba que «los verbos que leen por el parser compartido ya rechazaban un segundo posicional», y la medición lo desmentía —los DOS que leen por ahí, `run` y `validate`, se lo tragaban igual—. La afirmación se corrigió en el mismo corte que la desmentía, y el KDoc nombra ahora a los verbos que SÍ rechazan uno, cada uno con su frase.
+
+Y un hallazgo ajeno al producto, que se declara porque se encontró de paso: pedir `:pipeline-application:test` y `:pipeline-application:installDist` en la MISMA invocación de Gradle falla con un problema de validación de dependencias —«Task ':pipeline-application:test' uses this output of task ':buildExamplePlugin' without declaring an explicit or implicit dependency»—, porque los jars de los plugins de ejemplo están en el classpath del test y su tarea productora no está declarada como entrada. Se midió que NO depende de este corte: la invocación falla IGUAL con la fuente pre-fix puesta, y cada tarea POR SEPARADO tiene «BUILD SUCCESSFUL». La entrada documentada —`scripts/verify-all.sh`— no lo sufre, porque pregunta en una sola invocación por el `:test` de todos los módulos; pero un `./gradlew` a mano choca con ello, y queda dicho.
+
+Medido sobre `f6eee6b7fe93123280ba5c59d0d0416056e80c46` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=f6eee6b7fe93123280ba5c59d0d0416056e80c46  elapsed=195s  budget=900s  tests=rewritten:1527 read:0  scenarios=observed:63 executed:63
+```
+
+- 201 informes JUnit reescritos por esta ejecución, 1527 tests EJECUTADOS de verdad, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E observados y ejecutados, en verde.
+- 195 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28290`, `PRODUCT_LOC = 71459`, ratio `0.396` (límite 2). La verificación subió 43 líneas —las 7 filas nuevas y su documentación— y la producción subió 4.
+
 
 ## H6 — Reducir deuda del harness y asegurar la publicación
 

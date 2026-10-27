@@ -1557,6 +1557,62 @@ PASS  sha=f6eee6b7fe93123280ba5c59d0d0416056e80c46  elapsed=195s  budget=900s  t
 - `VERIFY_LOC = 28290`, `PRODUCT_LOC = 71459`, ratio `0.396` (límite 2). La verificación subió 43 líneas —las 7 filas nuevas y su documentación— y la producción subió 4.
 
 
+#### El corte: el rechazo del parser responde con el código que la taxonomía declara
+
+**Qué hace.** El despachador del CLI calculaba el código de salida del rechazo y lo tiraba. `CliParser.parse` devuelve un `CliError`; el renderer `toCliExit()` —la ÚNICA autoridad que traduce un `CliError` a un `CliExit`, con su mensaje y su pista— ya contestaba «qué KINDO de error es este»: `InvalidArgument` (2) para una petición que no se entendió, `RuntimeNotAvailable` (4) para una que esta build no puede servir. `Main.main` imprimía ese mensaje y su pista, y después salía con `System.exit(1)`: el literal, no el código del renderer. Ese 1 es, en la misma taxonomía que el renderer acababa de usar, `PipelineFailed` — «el pipeline se ejecutó y produjo un fallo»—.
+
+No se ejecutó nada. Medido sobre la distribución construida de este repositorio, las peticiones rechazadas por el parser compartido —un posicional de más, un comando inexistente, una opción inexistente, un formato inválido, un perfil de sandbox no soportado— respondían todas 1, y todas con `script_ran: no`: ningún script llegó a ejecutarse y ningún fichero se creó. La familia de la admisión (`observe`, `doctor`, …) ya contestaba 2 por su propia puerta: la misma familia de fallo salía con dos números distintos según la autoridad que lo pronunciara.
+
+Medido sobre dos distribuciones construidas de este repositorio —`b03377bd0` (antes) y `e2d5bc3b5` (después)— en la misma máquina, con el MISMO script de sonda y la misma invocación:
+
+|celda|antes|después|
+|---|---|---|
+|`validate s.pipeline.kts extra-arg`|salida 1; stderr 1969 B; `script_ran: no`|salida **2**; stderr los MISMOS 1969 B|
+|`run s.pipeline.kts extra-arg`|salida 1; stderr 1969 B; `script_ran: no`|salida **2**; stderr los MISMOS 1969 B|
+|`nosuchverb`|salida 1; stderr 2135 B; `script_ran: no`|salida **2**; stderr los MISMOS 2135 B|
+|`validate --no-such-option s.pipeline.kts`|salida 1; stderr 1928 B; `script_ran: no`|salida **2**; stderr los MISMOS 1928 B|
+|`run --sandbox-profile os s.pipeline.kts`|salida 1; stderr 2032 B; `script_ran: no`|salida **4**; stderr los MISMOS 2032 B|
+|`validate --format bogus s.pipeline.kts`|salida 1; stderr 1950 B; `script_ran: no`|salida **2**; stderr los MISMOS 1950 B|
+|`observe run-1 --bogus-flag` (admisión)|salida 2; stderr 286 B|salida 2; stderr los MISMOS 286 B, sin cambio|
+|`doctor foo` (admisión)|salida 2; stderr 75 B|salida 2; stderr los MISMOS 75 B, sin cambio|
+|`--help`|salida 0; stdout 1872 B|salida 0; stdout los MISMOS 1872 B, sin cambio|
+|`run --help`|salida 1; stderr 1918 B|salida **2**; stderr los MISMOS 1918 B|
+|`validate --help`|salida 1; stderr 1918 B|salida **2**; stderr los MISMOS 1918 B|
+
+La tabla entera tiene una forma: **el mensaje no cambia, ni un byte**. Se comprobó con `cmp` sobre el stderr COMPLETO de dos rechazos —1928 B el de la opción y 2032 B el del perfil—: idénticos byte a byte antes y después. Lo único que cambia es el número, y el número es lo único que lee un consumidor que ramifica sobre el exit code. Un script que lee 1 como «el run falló» y reintenta está reintentando una petición que nunca fue admitida; un supervisor que cuenta 1 como «fallo del pipeline» contabiliza como fallo del producto una petición mal escrita.
+
+**El corte, en una línea.** El despachador sale con el código que el renderer ya declaró, en lugar de con un literal: `System.exit(exit.code)`.
+
+No hay autoridad nueva. `toCliExit()` ya existía y ya era total —`CliError` es un ADT cerrado y el renderer lo cubre entero—. El corte no añade un caso, no añade un renderer y no cambia el mensaje de ni una sola de las once peticiones: lo que hace es dejar de descartar la respuesta. La aritmética es la de la taxonomía ya escrita: 0 éxito, 1 fallo del pipeline, 2 invocación y compilación, 4 runtime o capacidad no disponible.
+
+**La garantía, la capacidad y el instrumento.**
+- **Garantía**: una petición rechazada NUNCA responde con el código que significa «el pipeline se ejecutó y falló», y la distinción de la taxonomía —petición no admitida (2) frente a capacidad que esta build no carga (4)— llega viva al proceso.
+- **Capacidad observable**: el código de salida del proceso.
+- **Instrumento más barato que puede fallar**: el escenario de humo `examples/smoke/11-cli-self-report.pipeline.kts`, que ya pregunta al binario por dentro y ya vive en el conjunto. Una prueba unitaria NO puede servir aquí: `main` llama a `System.exit`, y la política prohíbe lanzar un CLI o un subproceso desde una prueba unitaria.
+
+Dos filas, dos códigos, porque la taxonomía distingue y la distinción tiene que sobrevivir: una opción que nadie entiende es 2, y un perfil de sandbox que esta build no lleva es 4. Un despachador que contestara siempre 2 pasaría la primera y fallaría la segunda; uno que contestara siempre 1 fallaría las dos. La TERCERA fila candidata —«un pipeline que falla de verdad sigue contestando 1»— se RECHAZA: ya hay cobertura equivalente en `examples/negative/*` y `examples/durable/*`, y una garantía que ya tiene cobertura no recibe un segundo instrumento.
+
+**Visto en rojo, con la mutación leída de vuelta.** La mutación es el DEFECTO MISMO: `System.exit(exit.code)` → `System.exit(1)`. Se aplicó con un cambio de una sola línea, comprobado con un `assert` de que el bloque objetivo aparecía exactamente una vez; se leyó de vuelta con `grep` —la 196 pasó a `System.exit(1)` y la 101, la del sobre JSON, quedó intacta— y con `diff`. Con el binario reconstruido sobre esa mutación, el escenario se puso en rojo con «stdout lacked: REFUSAL_ANSWERS_INVALID_ARGUMENT», y el censo de los marcadores sobre la salida del escenario cuenta lo que sigue: los ocho marcadores previos, UNO cada uno; `REFUSAL_ANSWERS_INVALID_ARGUMENT`, CERO; `MISSING_CAPABILITY_ANSWERS_RUNTIME_NOT_AVAILABLE`, CERO; `OPERATIONS_ADDRESS_THEIR_OWN_BYTES`, UNO; `FOLDED_IDENTITY_GETS_NO_NEIGHBOUR_BYTES`, UNO. Y los dos tokens de fallo presentes, con el texto «the product answered 1 for an option it does not understand» y «the product answered 1 for a capability this build does not carry». Es decir: exactamente las DOS filas esperadas en rojo, las otras diez en verde, sin colateral. El fichero se restauró después desde una copia verificada por `sha256sum` —nunca con `git checkout --`, que destruye una reescritura sin commitear—.
+
+**Lo que este corte NO arregla, y se dice.**
+- El sobre JSON `pipelinek.cli/1` se emite en UN solo camino de rechazo —`negotiateOutputProtocolOrExit`—, y NUNCA en el del parser compartido, aunque el KDoc de la taxonomía promete que se escribe en stderr antes de que el proceso termine. Una máquina que lee el sobre recibe la forma estructurada en un rechazo y no en el otro.
+- `pipelinek run --help` y `pipelinek validate --help` se rechazan («unknown option: --help»), y el README, en su tabla de «Every CLI flag and exit code», promete `pipelinek run --help` y «the flag table in `Main.kt`». Las dos mitades de esa promesa son falsas hoy: `run --help` no imprime nada, y en `Main.kt` no hay tabla de banderas.
+- El KDoc de `CliExit.RuntimeNotAvailable` nombra «control root, db, or journal» y nada más, así que el perfil de sandbox que esta build no carga viaja en un nombre que no lo menciona.
+- Cuatro verbos que rechazan con una frase propia —`runs cancel`, `runs recover`, `inspect`, `saga inspect`— siguen sin producir un `CliError`: su 2 viene de su propia puerta y no de la taxonomía, así que la unificación de la que este corte habla todavía no alcanza a todos.
+- `credentials` NO se ha medido para esta afirmación: el verbo exige una passphrase antes de mirar los argumentos, así que su caso es inconcluyente y se dice.
+- Sigue en pie el residual ya declarado y no tocado aquí: el CLI habla con seis frases distintas para el mismo hecho, la línea de ayuda de `events verify` nombra tres de las cinco opciones que el verbo acepta, y la de `operations` no nombra ninguna de las dos.
+
+Medido sobre `e2d5bc3b53cff58844101531509009aa2ad816e5` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=e2d5bc3b53cff58844101531509009aa2ad816e5  elapsed=189s  budget=900s  tests=rewritten:1527 read:0  scenarios=observed:63 executed:63
+```
+
+- 1527 tests EJECUTADOS de verdad por esta ejecución, 0 leídos de informes anteriores, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E observados y ejecutados, en verde.
+- 189 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28318`, `PRODUCT_LOC = 71459`, ratio `0.396` (límite 2). La verificación subió 28 líneas —las 2 filas nuevas y su documentación— y la producción NO subió: el cambio es una línea de código por otra, y el resto es comentario, que el censo no cuenta.
+
 ## H6 — Reducir deuda del harness y asegurar la publicación
 
 Foco: `examples/run.sh`, `verify-all.sh` y scripts de release.

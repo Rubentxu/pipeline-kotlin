@@ -104,9 +104,9 @@ Exit codes:
         val verb = args.firstOrNull()
         val known = RunsVerb.entries.firstOrNull { it.spelling == verb }
         if (known == null) {
-            System.err.println("$FAMILY: the verbs are ${spelledVerbs()}.")
+            val code = refuse(runsFamilyDoor(verb), FAMILY)
             System.err.println(USAGE)
-            return 2
+            return code
         }
 
         val rest = args.drop(1).toTypedArray()
@@ -114,21 +114,6 @@ Exit codes:
             runRecover(rest)
         } else {
             runCancel(rest)
-        }
-    }
-
-    /**
-     * The verbs as the operator reads them: `'cancel' and 'recover'`.
-     *
-     * Derived from the enum, so the refusal cannot name a verb that does not
-     * exist and cannot leave one out.
-     */
-    private fun spelledVerbs(): String {
-        val spellings = RunsVerb.entries.map { it.spelling }
-        return when (spellings.size) {
-            0 -> ""
-            1 -> "'${spellings.first()}'"
-            else -> spellings.dropLast(1).joinToString(", ") { "'$it'" } + " and '${spellings.last()}'"
         }
     }
 
@@ -145,25 +130,31 @@ Exit codes:
     private fun runCancel(rest: Array<String>): Int {
         val runId = rest.firstOrNull()?.takeIf { !it.startsWith("--") }
         if (runId == null) {
-            System.err.println("runs cancel: a run id is required.")
+            val code = refuse(
+                CliError.MissingRequiredArgument("run id", "name the run to close"),
+                "runs cancel",
+            )
             System.err.println(USAGE)
-            return 2
+            return code
         }
         val optionArgs = rest.drop(if (rest.first() == runId) 1 else 0)
 
         val options = when (val parsed = parseCancelArguments(optionArgs.toTypedArray())) {
             is OptionParse.Parsed -> parsed.value
             is OptionParse.Rejected -> {
-                System.err.println("runs cancel: ${parsed.error}")
+                val code = refuse(parsed.error, "runs cancel")
                 System.err.println(USAGE)
-                return 2
+                return code
             }
         }
 
         if (options.dbPath == null) {
-            System.err.println("runs cancel: --db <path> is required to read the run's durable state")
+            val code = refuse(
+                CliError.MissingRequiredArgument("--db <path>", "to read the run's durable state"),
+                "runs cancel",
+            )
             System.err.println(USAGE)
-            return 2
+            return code
         }
 
         val reason = when (val text = options.reason) {
@@ -171,8 +162,10 @@ Exit codes:
             else -> try {
                 CancelReason.Annotated(text)
             } catch (failure: IllegalArgumentException) {
-                System.err.println("runs cancel: --reason ${failure.message}")
-                return 2
+                return refuse(
+                    CliError.InvalidOptionValue("--reason", failure.message ?: "must not be blank"),
+                    "runs cancel",
+                )
             }
         }
 
@@ -255,25 +248,31 @@ Exit codes:
     private fun runRecover(rest: Array<String>): Int {
         val runId = rest.firstOrNull()?.takeIf { !it.startsWith("--") }
         if (runId == null) {
-            System.err.println("runs recover: a run id is required.")
+            val code = refuse(
+                CliError.MissingRequiredArgument("run id", "name the run to recover"),
+                "runs recover",
+            )
             System.err.println(USAGE)
-            return 2
+            return code
         }
         val optionArgs = rest.drop(if (rest.first() == runId) 1 else 0)
 
         val options = when (val parsed = parseRecoverArguments(optionArgs.toTypedArray())) {
             is OptionParse.Parsed -> parsed.value
             is OptionParse.Rejected -> {
-                System.err.println("runs recover: ${parsed.error}")
+                val code = refuse(parsed.error, "runs recover")
                 System.err.println(USAGE)
-                return 2
+                return code
             }
         }
 
         if (options.dbPath == null) {
-            System.err.println("runs recover: --db <path> is required to read the run's durable state")
+            val code = refuse(
+                CliError.MissingRequiredArgument("--db <path>", "to read the run's durable state"),
+                "runs recover",
+            )
             System.err.println(USAGE)
-            return 2
+            return code
         }
 
         val controlRoot: Path = options.controlRoot
@@ -457,8 +456,15 @@ Exit codes:
         /** The options the operator wrote. */
         data class Parsed<T>(val value: T) : OptionParse<T>
 
-        /** The options the operator did NOT write, and why they cannot be read. */
-        data class Rejected(val error: String) : OptionParse<Nothing>
+        /**
+         * The options the operator did NOT write, and why they cannot be read.
+         *
+         * The reason is a [CliError] and not a sentence: the words the operator
+         * reads belong to [toCliExit], and this family used to write its own
+         * ("unknown option '--x'"), which is how the same mistake got two
+         * different sentences depending on the verb that received it.
+         */
+        data class Rejected(val error: CliError) : OptionParse<Nothing>
     }
 
     /**
@@ -516,31 +522,35 @@ Exit codes:
             when (val arg = args[index]) {
                 "--db" -> {
                     dbPath = args.getOrNull(++index)
-                        ?: return OptionParse.Rejected("--db requires a value")
+                        ?: return OptionParse.Rejected(CliError.MissingOptionValue("--db"))
                 }
 
                 "--control-root" -> {
                     val raw = args.getOrNull(++index)
-                        ?: return OptionParse.Rejected("--control-root requires a value")
+                        ?: return OptionParse.Rejected(CliError.MissingOptionValue("--control-root"))
                     controlRoot = Paths.get(raw)
                 }
 
                 "--reason" -> {
                     if (verb != RunsVerb.Cancel) {
-                        return OptionParse.Rejected(REASON_BELONGS_TO_CANCEL)
+                        return OptionParse.Rejected(
+                            CliError.OptionBelongsToVerb("--reason", "runs cancel", REASON_BELONGS_TO_CANCEL),
+                        )
                     }
                     reason = args.getOrNull(++index)
-                        ?: return OptionParse.Rejected("--reason requires a value")
+                        ?: return OptionParse.Rejected(CliError.MissingOptionValue("--reason"))
                 }
 
                 "--dry-run" -> {
                     if (verb != RunsVerb.Recover) {
-                        return OptionParse.Rejected(DRY_RUN_BELONGS_TO_RECOVER)
+                        return OptionParse.Rejected(
+                            CliError.OptionBelongsToVerb("--dry-run", "runs recover", DRY_RUN_BELONGS_TO_RECOVER),
+                        )
                     }
                     dryRun = true
                 }
 
-                else -> return OptionParse.Rejected("unknown option '$arg'")
+                else -> return OptionParse.Rejected(CliError.UnknownOption(arg))
             }
             index++
         }
@@ -555,13 +565,51 @@ Exit codes:
         val dryRun: Boolean,
     )
 
-    /** Why `--reason` is refused by the verb that has no reason to record. */
+    /**
+     * Why `--reason` is refused by the verb that has no reason to record.
+     *
+     * The reason only: the sentence that names the option and the verb that
+     * owns it is rendered by [toCliExit], so this text cannot disagree with
+     * the rest of the CLI about who owns what.
+     */
     private const val REASON_BELONGS_TO_CANCEL =
-        "--reason belongs to 'runs cancel': 'runs recover' records the terminal it observed " +
-            "and has no reason to record."
+        "'runs recover' records the terminal it observed and has no reason to record."
 
     /** Why `--dry-run` is refused by the verb that cannot be simulated. */
     private const val DRY_RUN_BELONGS_TO_RECOVER =
-        "--dry-run belongs to 'runs recover': 'runs cancel' closes the run for real, " +
-            "so it cannot be simulated."
+        "'runs cancel' closes the run for real, so it cannot be simulated."
+}
+
+/**
+ * The refusal of a request that names no verb of the runs family.
+ *
+ * The family word ALONE and an UNKNOWN verb are two different facts, and
+ * the door used to answer both with the same sentence: `pipelinek runs` was
+ * told it did not know a subcommand, when what it did not have was a
+ * subcommand at all. The missing case names the absence; the unknown one
+ * names the token and the verbs that exist.
+ *
+ * It lives beside the family and not inside it: the door is about the
+ * family's OWN words, and it is the only place that reads the enum to name
+ * them.
+ */
+private fun runsFamilyDoor(verb: String?): CliError = if (verb == null) {
+    CliError.MissingRequiredArgument("subcommand", "the verbs are ${runsVerbsSpelled()}")
+} else {
+    CliError.UnknownSubcommand(verb, MainRunsCli.RunsVerb.entries.map { it.spelling })
+}
+
+/**
+ * The verbs as the operator reads them: `'cancel' and 'recover'`.
+ *
+ * Derived from the enum, so the refusal cannot name a verb that does not
+ * exist and cannot leave one out.
+ */
+private fun runsVerbsSpelled(): String {
+    val spellings = MainRunsCli.RunsVerb.entries.map { it.spelling }
+    return when (spellings.size) {
+        0 -> ""
+        1 -> "'${spellings.first()}'"
+        else -> spellings.dropLast(1).joinToString(", ") { "'$it'" } + " and '${spellings.last()}'"
+    }
 }

@@ -145,6 +145,11 @@ fun CliError.toCliExit(): CliExit = when (this) {
         message = "unexpected argument: $value",
         hint = "this command takes one positional argument",
     )
+    is CliError.MissingRequiredArgument -> CliExit.InvalidArgument("missing required argument: $argument", why)
+    is CliError.InvalidOptionValue -> CliExit.InvalidArgument("invalid value for $option: $reason")
+    is CliError.InvalidCombination -> CliExit.InvalidArgument("invalid combination: $reason")
+    is CliError.OptionBelongsToVerb -> CliExit.InvalidArgument("option $option belongs to '$owner': $why")
+    is CliError.UnknownSubcommand -> CliExit.InvalidArgument("unknown subcommand: $value", "expected one of: ${expected.joinToString(", ") { "'$it'" }}")
 }
 
 /**
@@ -158,4 +163,25 @@ fun CliError.toCliExit(): CliExit = when (this) {
 internal fun CliError.refusalLines(verb: String): List<String> {
     val exit = toCliExit()
     return listOfNotNull("$verb: ${exit.message}", exit.hint)
+}
+
+/**
+ * The refusal of a verb, on stderr, and the code the taxonomy declares for it.
+ *
+ * ## Why the code comes from here and not from the verb
+ *
+ * A verb that answers `2` itself has answered a question the taxonomy has
+ * already answered, and the two answers can drift apart: the day
+ * [CliExit.InvalidArgument] moves, the verb that wrote the literal keeps the
+ * old number and a consumer that branches on it reads a refusal as something
+ * else. Measured on the built distribution, four verbs wrote the literal while
+ * the rest of the CLI read it from the table, and the number happened to be
+ * right — which is why the drift is invisible until it is not.
+ *
+ * The words come from [refusalLines], so a verb that refuses a request cannot
+ * invent its own sentence either.
+ */
+internal fun refuse(error: CliError, verb: String): Int {
+    error.refusalLines(verb).forEach { System.err.println(it) }
+    return error.toCliExit().code
 }

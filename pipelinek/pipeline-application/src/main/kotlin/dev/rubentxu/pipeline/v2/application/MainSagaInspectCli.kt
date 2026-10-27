@@ -52,25 +52,31 @@ object MainSagaInspectCli {
     fun main(args: Array<String>): Int {
         val runId = args.firstOrNull()?.takeIf { !it.startsWith("--") }
         if (runId == null) {
-            System.err.println("saga inspect: a run id is required.")
+            val code = refuse(
+                CliError.MissingRequiredArgument("run id", "name the run to inspect"),
+                "saga inspect",
+            )
             System.err.println(USAGE)
-            return 2
+            return code
         }
         val optionArgs = args.drop(if (args.first() == runId) 1 else 0)
 
         val options = when (val r = parseOptions(optionArgs.toTypedArray())) {
             is OptionsParse.Parsed -> r.value
             is OptionsParse.Rejected -> {
-                System.err.println("saga inspect: ${r.error}")
+                val code = refuse(r.error, "saga inspect")
                 System.err.println(USAGE)
-                return 2
+                return code
             }
         }
 
         if (options.dbPath == null) {
-            System.err.println("saga inspect: --db <path> is required to read the durable promises")
+            val code = refuse(
+                CliError.MissingRequiredArgument("--db <path>", "to read the durable promises"),
+                "saga inspect",
+            )
             System.err.println(USAGE)
-            return 2
+            return code
         }
 
         val read = SqliteSagaObligationReader(options.dbPath).read(runId)
@@ -106,13 +112,25 @@ object MainSagaInspectCli {
         return 0
     }
 
-    private enum class OutputFormat { TEXT, JSON }
+    /** The formats this verb renders. The spelling is derived, so the refusal can name them. */
+    private enum class OutputFormat(val cli: String) {
+        TEXT("text"),
+        JSON("json"),
+    }
 
     private data class Options(val dbPath: String?, val format: OutputFormat)
 
     private sealed interface OptionsParse {
         data class Parsed(val value: Options) : OptionsParse
-        data class Rejected(val error: String) : OptionsParse
+
+        /**
+         * The refusal, as the typed error the renderer turns into a sentence.
+         *
+         * Not a string: the words belong to [toCliExit], and this verb used to
+         * write its own ("--db needs a path"), which is a third wording for a
+         * mistake the rest of the CLI words one way.
+         */
+        data class Rejected(val error: CliError) : OptionsParse
     }
 
     private fun parseOptions(args: Array<String>): OptionsParse {
@@ -123,25 +141,25 @@ object MainSagaInspectCli {
             when (val option = args[index]) {
                 "--db" -> {
                     val value = args.getOrNull(index + 1)
-                        ?: return OptionsParse.Rejected("--db needs a path")
+                        ?: return OptionsParse.Rejected(CliError.MissingOptionValue("--db"))
                     dbPath = value
                     index += 2
                 }
 
                 "--format" -> {
                     val value = args.getOrNull(index + 1)
-                        ?: return OptionsParse.Rejected("--format needs a value")
-                    format = when (value) {
-                        "text" -> OutputFormat.TEXT
-                        "json" -> OutputFormat.JSON
-                        else -> return OptionsParse.Rejected(
-                            "--format accepts text or json, got: $value",
+                        ?: return OptionsParse.Rejected(CliError.MissingOptionValue("--format"))
+                    format = OutputFormat.entries.firstOrNull { it.cli == value }
+                        ?: return OptionsParse.Rejected(
+                            CliError.InvalidOptionValue(
+                                "--format",
+                                "must be one of ${OutputFormat.entries.joinToString { it.cli }}, got '$value'",
+                            ),
                         )
-                    }
                     index += 2
                 }
 
-                else -> return OptionsParse.Rejected("unknown option: $option")
+                else -> return OptionsParse.Rejected(CliError.UnknownOption(option))
             }
         }
         return OptionsParse.Parsed(Options(dbPath, format))

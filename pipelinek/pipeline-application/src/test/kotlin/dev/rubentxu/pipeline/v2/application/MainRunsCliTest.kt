@@ -124,9 +124,15 @@ class MainRunsCliTest {
         assertNotNull(recovered, "a database without a value was accepted by recover")
     }
 
-    /** The refusal, when there was one. */
+    /**
+     * The refusal, when there was one, in the words the operator would read.
+     *
+     * The parser answers with a typed error and the WORDS belong to the one
+     * renderer, so the sentence is read from there and not from the error's
+     * own shape.
+     */
     private fun rejectionOf(parsed: MainRunsCli.OptionParse<*>): String? = when (parsed) {
-        is MainRunsCli.OptionParse.Rejected -> parsed.error
+        is MainRunsCli.OptionParse.Rejected -> parsed.error.toCliExit().message
         is MainRunsCli.OptionParse.Parsed -> null
     }
 

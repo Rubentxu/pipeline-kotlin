@@ -345,6 +345,61 @@ sealed interface CliError {
      * [UnexpectedPositional]: it is what the operator has to remove.
      */
     data class TooManyPositionals(val value: String) : CliError
+
+    /**
+     * A required argument the request did not carry.
+     *
+     * The verbs that refuse a request used to name the absence in their own
+     * words — "a run id is required." — and the shared table had no way to
+     * say it, because the case did not exist. The words the operator reads
+     * belong to the table, so the table grows the case that carries the fact.
+     *
+     * [why] is the CONSEQUENCE of the absence and it renders as a hint: it
+     * says what the argument was FOR, never what form to write it in.
+     */
+    data class MissingRequiredArgument(val argument: String, val why: String? = null) : CliError
+
+    /**
+     * A value an option cannot carry.
+     *
+     * Distinct from [InvalidFormat] and its siblings, which name a CLOSED
+     * VOCABULARY this build publishes — views, formats, channels, outcomes —
+     * and whose hint enumerates the accepted values. That vocabulary is the
+     * observation family's, and reusing those cases for a verb whose options
+     * are its own would publish a list the verb does not accept. This case
+     * carries the reason the request gave, and no enumeration it would have
+     * to keep in step with.
+     */
+    data class InvalidOptionValue(val option: String, val reason: String) : CliError
+
+    /**
+     * Two options that cannot be honoured together.
+     *
+     * Refused rather than resolved by a precedence: a combination with no
+     * honest answer has to say so, because a silent precedence answers a
+     * request nobody made.
+     */
+    data class InvalidCombination(val reason: String) : CliError
+
+    /**
+     * An option another verb owns.
+     *
+     * [OptionBelongsToObserve] is the instance of this for the reader family,
+     * and it names one fixed owner. This one names the owner the request
+     * named, because the runs family has two verbs that own each other's
+     * options: `--reason` belongs to `runs cancel` and `--dry-run` belongs to
+     * `runs recover`. A refusal that named the wrong owner would send the
+     * operator to the verb that cannot do what they asked.
+     */
+    data class OptionBelongsToVerb(val option: String, val owner: String, val why: String) : CliError
+
+    /**
+     * A subcommand the family does not have.
+     *
+     * The family word ALONE is a different fact — a MISSING subcommand, not
+     * an unknown one — and it says so through [MissingRequiredArgument].
+     */
+    data class UnknownSubcommand(val value: String, val expected: List<String>) : CliError
 }
 
 /**
@@ -764,13 +819,21 @@ object CliParser {
     /**
      * `pipelinek inspect <runId> [opts]`.
      * Body verbatim from [MainInspectCli.parseInspect]; the verb main now calls this and translates
-     * the typed result into the `inspect: ...` stderr line + exit 2 it has always used. The
+     * the typed result into the `inspect: ...` stderr line + the code the taxonomy declares. The
      * `Error:` prefix is not the inspect prefix — inspect prefixes with `inspect:`, and this
      * separation is intentional (events and console share `Error:` as their CLI-admission prefix).
      * Body kept inline rather than delegated so the cyclomatic cost [MainInspectCli.parseInspect]
      * used to wear is gone with it; the same option-table layout justifies the same
      * `@Suppress("CyclomaticComplexMethod")`. See [MainInspectCli.parseInspect] for the option
      * table and the per-option rationale.
+     *
+     * ## The rejections are VALUES, not sentences
+     *
+     * Every refusal below is a [CliError] and carries no words of its own. The sentence the
+     * operator reads is written once, in [toCliExit], and every verb that refuses a request says
+     * it the same way. This parser used to hand the verb a sentence it had written itself
+     * ("unknown option '--x'"), and the verb printed it with its own prefix: a second rendering
+     * of the same fact, free to disagree with the first.
 */
     @Suppress("CyclomaticComplexMethod")
     fun parseInspect(args: Array<String>): InspectParseResult {
@@ -802,79 +865,77 @@ object CliParser {
                 "--telemetry" -> telemetry = true
                 "--otlp" -> otlp = true
                 "--kind" -> {
-                    kind = args.getOrNull(++i) ?: return rejectInspect("--kind requires a value")
+                    kind = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--kind"))
                 }
                 "--stage" -> {
-                    stage = args.getOrNull(++i) ?: return rejectInspect("--stage requires a value")
+                    stage = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--stage"))
                 }
                 "--step" -> {
-                    val raw = args.getOrNull(++i) ?: return rejectInspect("--step requires a value")
-                    step = raw.toLongOrNull() ?: return rejectInspect("--step must be a Long, got '$raw'")
+                    val raw = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--step"))
+                    step = raw.toLongOrNull()
+                        ?: return rejectInspect(CliError.InvalidOptionValue("--step", "must be a Long, got '$raw'"))
                 }
                 "--context" -> {
-                    val raw = args.getOrNull(++i) ?: return rejectInspect("--context requires a value")
-                    context = raw.toIntOrNull() ?: return rejectInspect("--context must be an Int, got '$raw'")
-                    if (context < 0) return rejectInspect("--context must be >= 0, got $context")
+                    val raw = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--context"))
+                    context = raw.toIntOrNull()
+                        ?: return rejectInspect(CliError.InvalidOptionValue("--context", "must be an Int, got '$raw'"))
+                    if (context < 0) {
+                        return rejectInspect(CliError.InvalidOptionValue("--context", "must be >= 0, got $context"))
+                    }
                 }
                 "--log-tail" -> {
-                    val raw = args.getOrNull(++i) ?: return rejectInspect("--log-tail requires a value")
-                    logTail = raw.toIntOrNull() ?: return rejectInspect("--log-tail must be an Int, got '$raw'")
-                    if (logTail < 0) return rejectInspect("--log-tail must be >= 0, got $logTail")
+                    val raw = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--log-tail"))
+                    logTail = raw.toIntOrNull()
+                        ?: return rejectInspect(CliError.InvalidOptionValue("--log-tail", "must be an Int, got '$raw'"))
+                    if (logTail < 0) {
+                        return rejectInspect(CliError.InvalidOptionValue("--log-tail", "must be >= 0, got $logTail"))
+                    }
                 }
                 "--log-tail-op" -> {
-                    val raw = args.getOrNull(++i) ?: return rejectInspect("--log-tail-op requires a value")
-                    if (raw.isBlank()) return rejectInspect("--log-tail-op must not be blank")
+                    val raw = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--log-tail-op"))
+                    if (raw.isBlank()) {
+                        return rejectInspect(CliError.InvalidOptionValue("--log-tail-op", "must not be blank"))
+                    }
                     opId = raw
                 }
                 "--fields" -> {
-                    val raw = args.getOrNull(++i) ?: return rejectInspect("--fields requires a value")
+                    val raw = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--fields"))
                     fields = raw.split(',').map { token ->
                         val upper = token.trim().uppercase()
                         MainInspectCli.InspectField.parse(upper)
-                            ?: return rejectInspect("--fields has unknown token '$token'")
+                            ?: return rejectInspect(CliError.InvalidOptionValue("--fields", "unknown token '$token'"))
                     }
                 }
                 "--format" -> {
-                    val raw = args.getOrNull(++i) ?: return rejectInspect("--format requires a value")
+                    val raw = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--format"))
                     format = MainInspectCli.InspectFormat.parse(raw) ?: return rejectInspect(
-                        "--format must be one of ${MainInspectCli.InspectFormat.values().joinToString { it.cli }}",
+                        CliError.InvalidOptionValue(
+                            "--format",
+                            "must be one of ${MainInspectCli.InspectFormat.values().joinToString { it.cli }}",
+                        ),
                     )
                 }
                 "--control-root" -> {
                     controlRoot = args.getOrNull(++i)
-                        ?: return rejectInspect("--control-root requires a value")
+                        ?: return rejectInspect(CliError.MissingOptionValue("--control-root"))
                 }
                 "--db" -> {
-                    dbPath = args.getOrNull(++i) ?: return rejectInspect("--db requires a value")
+                    dbPath = args.getOrNull(++i) ?: return rejectInspect(CliError.MissingOptionValue("--db"))
                 }
                 else -> if (a.startsWith("--")) {
-                    return rejectInspect("unknown option '$a'")
+                    return rejectInspect(CliError.UnknownOption(a))
                 } else {
-                    return rejectInspect("unexpected positional argument '$a'")
+                    return rejectInspect(CliError.TooManyPositionals(a))
                 }
             }
             i++
         }
 
-        // Whole-run reports are modes, and a query carries one: two reports
-        // in one invocation would have to be ordered in an order the caller
-        // never chose.
-        val modes = buildList {
-            if (state) add("--state")
-            if (profile) add("--profile")
-            if (explain) add("--explain")
-            if (telemetry) add("--telemetry")
-        }
-        if (modes.size > 1) {
-            return rejectInspect("a query carries one whole-run report; got ${modes.joinToString(" + ")}")
-        }
-
-        // The OpenTelemetry shape is not a report of its own: it is another
-        // rendering of the telemetry report. Asked for alone, it would have
-        // no run to render.
-        if (otlp && !telemetry) {
-            return rejectInspect("--otlp renders the telemetry export; it requires --telemetry")
-        }
+        // Whole-run reports are modes, and a query carries one. What they may
+        // be combined into is decided in its own function, so that this one is
+        // about READING the options and not about what they may mean.
+        val conflict = rejectConflictingModes(state, profile, explain, telemetry, otlp)
+        if (conflict != null) return conflict
 
         return InspectParseResult.Parsed(
             CompiledInspectionQuery(
@@ -898,8 +959,48 @@ object CliParser {
         )
     }
 
-    private fun rejectInspect(message: String): InspectParseResult.Rejected =
-        InspectParseResult.Rejected(message)
+    private fun rejectInspect(error: CliError): InspectParseResult.Rejected =
+        InspectParseResult.Rejected(error)
+
+    /**
+     * The refusal when a query carries more than one whole-run report.
+     *
+     * The four modes answer four different questions, and a query that asks
+     * two of them at once would have to order them in an order the caller
+     * never chose.
+     *
+     * `--otlp` is not a report of its own: it is another rendering of the
+     * telemetry report, so asked for alone it would have no run to render.
+     *
+     * Null when the query carries at most one report.
+     */
+    private fun rejectConflictingModes(
+        state: Boolean,
+        profile: Boolean,
+        explain: Boolean,
+        telemetry: Boolean,
+        otlp: Boolean,
+    ): InspectParseResult.Rejected? {
+        val modes = buildList {
+            if (state) add("--state")
+            if (profile) add("--profile")
+            if (explain) add("--explain")
+            if (telemetry) add("--telemetry")
+        }
+        if (modes.size > 1) {
+            return rejectInspect(
+                CliError.InvalidCombination(
+                    "a query carries one whole-run report; got ${modes.joinToString(" + ")}",
+                ),
+            )
+        }
+        if (otlp && !telemetry) {
+            return rejectInspect(
+                CliError.InvalidCombination("--otlp renders the telemetry export; it requires --telemetry"),
+            )
+        }
+        return null
+    }
 
     /**
      * `pipelinek events --db <path> <runId> [opts]`.

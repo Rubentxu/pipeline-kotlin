@@ -157,10 +157,42 @@ internal fun cliVerbFor(args: Array<String>): CliVerb? =
  * that is. The refusal is built from the row that owns the family, so the
  * family word in the message is the family's own word and the usage printed
  * under it is the usage that family prints.
+ *
+ * ## The door carries a VALUE, not a sentence
+ *
+ * The refusal used to be a string this file wrote, and the dispatcher printed
+ * it with a literal `2`. Two hand-written renderings of the same fact, free to
+ * disagree with the one renderer the rest of the CLI uses. The error is now a
+ * [CliError] and the code comes from the taxonomy.
+ *
+ * ## The family word ALONE and an UNKNOWN verb are two facts
+ *
+ * `pipelinek saga` has no subcommand; `pipelinek saga bogus` has one that does
+ * not exist. The door used to answer both with the same sentence, which told
+ * an operator who typed the family word alone that the CLI did not know a
+ * subcommand — a complaint about a token nobody had written.
  */
-internal fun cliFamilyDoor(args: Array<String>): String? {
+internal fun cliFamilyDoor(args: Array<String>): CliFamilyDoor? {
     val family = args.firstOrNull() ?: return null
     val owner = CLI_VERBS.firstOrNull { it.family == family } ?: return null
     val usage = owner.familyUsage ?: return null
-    return "pipeline: unknown $family subcommand.\n$usage"
+    val expected = CLI_VERBS.filter { it.family == family }.map { it.words.last() }
+    val subcommand = args.getOrNull(1)
+    val error = if (subcommand == null) {
+        CliError.MissingRequiredArgument(
+            "subcommand",
+            "the forms of '$family' are: ${expected.joinToString(", ") { "'$family $it'" }}",
+        )
+    } else {
+        CliError.UnknownSubcommand(subcommand, expected)
+    }
+    return CliFamilyDoor(error, usage)
 }
+
+/**
+ * The refusal of a family word, and the usage that family prints under it.
+ *
+ * The usage travels with the refusal because it is the family's own text: the
+ * row that owns the family owns its usage too.
+ */
+internal data class CliFamilyDoor(val error: CliError, val usage: String)

@@ -146,25 +146,33 @@ object MainInspectCli {
     fun main(args: Array<String>): Int {
         val runId = args.firstOrNull()?.takeIf { !it.startsWith("--") }
         if (runId == null) {
-            System.err.println("inspect: a run id is required.")
+            val code = refuse(
+                CliError.MissingRequiredArgument("run id", "name the run to inspect"),
+                "inspect",
+            )
             System.err.println(USAGE)
-            return 2
+            return code
         }
         val optionArgs = args.drop(if (args.first() == runId) 1 else 0)
 
         val compiled = when (val r = parseInspect(optionArgs.toTypedArray())) {
             is InspectParseResult.Parsed -> r.value
             is InspectParseResult.Rejected -> {
-                System.err.println("inspect: ${r.error}")
+                val code = refuse(r.error, "inspect")
                 System.err.println(USAGE)
-                return 2
+                return code
             }
         }
 
         // Durable read seam.
         if (compiled.dbPath == null) {
-            System.err.println("inspect: --db <path> is required to read the durable event store")
-            return 2
+            return refuse(
+                CliError.MissingRequiredArgument(
+                    "--db <path>",
+                    "to read the durable event store",
+                ),
+                "inspect",
+            )
         }
         // The cost profile is a MODE, like --state, and answers a different
         // question than the record table: where did this run's time go. It
@@ -184,8 +192,13 @@ object MainInspectCli {
             return reportRunTelemetry(runId, compiled)
         }
         if (compiled.controlRoot == null) {
-            System.err.println("inspect: --control-root <path> is required to read the Output Plane")
-            return 2
+            return refuse(
+                CliError.MissingRequiredArgument(
+                    "--control-root <path>",
+                    "to read the Output Plane",
+                ),
+                "inspect",
+            )
         }
 
         // The run's state is a MODE, not a filter.
@@ -591,7 +604,10 @@ object MainInspectCli {
      */
     private fun reportRunProfile(runId: String, query: CompiledInspectionQuery): Int {
         val dbPath = query.dbPath
-            ?: return 2.also { System.err.println("inspect: --db <path> is required to profile the run") }
+            ?: return refuse(
+                CliError.MissingRequiredArgument("--db <path>", "to profile the run"),
+                "inspect",
+            )
 
         // Read-only admission: a missing store is refused here and no file is
         // created, so profiling a mistyped run id cannot fabricate a database.
@@ -630,7 +646,10 @@ object MainInspectCli {
      */
     private fun reportRunExplain(runId: String, query: CompiledInspectionQuery): Int {
         val dbPath = query.dbPath
-            ?: return 2.also { System.err.println("inspect: --db <path> is required to explain the run") }
+            ?: return refuse(
+                CliError.MissingRequiredArgument("--db <path>", "to explain the run"),
+                "inspect",
+            )
 
         // Read-only admission: a missing store is refused and no file is
         // created, so explaining a mistyped run id cannot fabricate a database.
@@ -675,7 +694,10 @@ object MainInspectCli {
      */
     private fun reportRunTelemetry(runId: String, query: CompiledInspectionQuery): Int {
         val dbPath = query.dbPath
-            ?: return 2.also { System.err.println("inspect: --db <path> is required to export the run's telemetry") }
+            ?: return refuse(
+                CliError.MissingRequiredArgument("--db <path>", "to export the run's telemetry"),
+                "inspect",
+            )
 
         val admission = admitEventStore(dbPath, EventStorePurpose.Read)
         if (admission is EventStoreAdmission.Refused) {
@@ -809,7 +831,15 @@ data class CompiledInspectionQuery(
 /** Result of [MainInspectCli.parseInspect]. */
 sealed interface InspectParseResult {
     data class Parsed(val value: CompiledInspectionQuery) : InspectParseResult
-    data class Rejected(val error: String) : InspectParseResult
+
+    /**
+     * The refusal, as the typed error the renderer turns into a sentence.
+     *
+     * Not a string: the words the operator reads belong to [toCliExit], and a
+     * parser that hands out its own sentences is a second rendering free to
+     * disagree with the first.
+     */
+    data class Rejected(val error: CliError) : InspectParseResult
 }
 
 /**

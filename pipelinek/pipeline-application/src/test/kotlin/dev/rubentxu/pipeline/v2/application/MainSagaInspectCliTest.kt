@@ -22,7 +22,7 @@ class MainSagaInspectCliTest {
         val result = run()
 
         assertEquals(2, result.exitCode)
-        assertTrue(result.stderr.contains("a run id is required"), result.stderr)
+        assertTrue(result.stderr.contains("missing required argument: run id"), result.stderr)
     }
 
     @Test
@@ -46,7 +46,8 @@ class MainSagaInspectCliTest {
         val result = run("run-42", "--db", "/tmp/run.sqlite", "--format", "yaml")
 
         assertEquals(2, result.exitCode)
-        assertTrue(result.stderr.contains("--format accepts text or json"), result.stderr)
+        assertTrue(result.stderr.contains("invalid value for --format"), result.stderr)
+        assertTrue(result.stderr.contains("text, json"), result.stderr)
     }
 
     @Test

@@ -66,11 +66,14 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
         return true
     }
     // The family word on its own is not a command. Saying so, and naming the
-    // form that is, is the refusal the operator gets.
+    // form that is, is the refusal the operator gets. The refusal is a
+    // [CliError] and the code is the one the taxonomy declares: the door used
+    // to print a sentence this repository wrote and exit with a literal.
     val door = cliFamilyDoor(args)
     if (door != null) {
-        System.err.println(door)
-        System.exit(2)
+        System.err.println(door.error.refusalLines("pipeline").joinToString("\n"))
+        System.err.println(door.usage)
+        System.exit(door.error.toCliExit().code)
         return true
     }
     return false

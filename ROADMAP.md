@@ -1198,6 +1198,54 @@ PASS  sha=37a99f14cbbb7d2c6679a0747556de6a8372ea56  elapsed=191s  budget=900s  t
 - 191 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 27764`, `PRODUCT_LOC = 71322`, ratio `0.389` (límite 2).
 
+#### El corte: un verbo rechaza la opción que no posee
+
+**Qué hace.** Cinco verbos contestaban una petición que llevaba una opción que NO era suya sin rechazarla: la opción se perdía en silencio y el verbo contestaba 0 con su respuesta de siempre. Medido sobre la distribución construida de `f3e079ba7` (siete invocaciones, la misma tabla de antes y después):
+
+|celda|antes|después|
+|---|---|---|
+|`version --db /tmp/x`|salida 0, 15 B por stdout: la versión|salida 2, stdout vacío, stderr «version: unknown option: --db»|
+|`doctor --json`|salida 0, 186 B por stdout: el informe|salida 2, stdout vacío, stderr «doctor: unknown option: --json»|
+|`capabilities --view full`|salida 0, 1448 B por stdout: las capacidades|salida 2, stdout vacío, stderr «capabilities: unknown option: --view»|
+|`sdk-info --db /tmp/x`|salida 0, 760 B por stdout: el manifiesto del SDK|salida 2, stdout vacío, stderr «sdk-info: unknown option: --db»|
+|`operations run-1 --control-root /tmp/x --bogus-flag`|salida 0, stdout vacío: un LISTADO VACÍO publicado|salida 2, stdout vacío, stderr «operations: unknown option: --bogus-flag»|
+|`operations --control-root --format json`|salida 0, stdout vacío: `--format` tomado como VALOR de `--control-root`|salida 2, stdout vacío, stderr «operations: value for option --control-root looks like another option: --format»|
+|`operations run-1 --bogus-flag`|salida 2, pero por otro motivo: «--control-root is required»; la opción se había perdido|salida 2, stderr «operations: unknown option: --bogus-flag» + el uso|
+
+Las DOS filas que muestran el falso silencio —la quinta y la sexta— son el contenido de la garantía: la quinta publicaba un listado vacío —el operador leía «este run no publicó operaciones», una respuesta FALSA sobre un run que nunca preguntó— y la sexta se comía una opción como si fuera un valor. La séptima dice algo que también es verdad: antes, la salida 2 de esa invocación no venía del rechazo de la opción sino de una comprobación posterior, así que el motivo que llegaba al operador era otro.
+
+**El corte.** Una tabla de admisión, `CliOptionAdmission`, declara qué opciones posee cada verbo y rechaza las demás NOMBRANDO la opción. Los verbos que no poseen ninguna la declaran vacía (`NO_OPTIONS`); los que poseen una declaran su aridad (`VERSION_OPTIONS`, `OPERATIONS_OPTIONS`). Un valor que nombra otra opción de ESTE BUILD se rechaza en vez de consumirse: es la misma regla que el parser compartido ya aplicaba, y ahora se lee de la misma autoridad.
+
+La aridad de los tokens que el parser compartido ya conoce se LEE de él (`knownOptionArity`), no se re-declara: el mismo token no puede valer en un sitio y ser bandera en otro. Los tokens que el parser compartido NO conoce —`--json` es de `version` solamente— los declara esta tabla, y el test unitario compara las DOS tablas token a token por cada token que comparten.
+
+El rechazo sale de `toCliExit()`, la única tabla de errores del CLI, así que el mensaje y el código de salida son los mismos que usa el resto del CLI. Los verbos leen el resultado con un `when` EXHAUSTIVO, y no con `if (admission is CliAdmission.Rejected) return`: la rama negativa de una comprobación de tipo NO estrecha el valor en este compilador, así que después de ese `if` el resultado seguía siendo el tipo sellado y sus datos no estaban al alcance. El `when` nombra las dos formas y, de paso, el compilador comprueba que las dos se atienden.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que un verbo nunca hace lo que no se le pidió: una opción que no posee se rechaza con un motivo que la nombra. La capacidad que la sostiene es que un operador que escribe una opción mal, o que entrega una bandera a un verbo que nunca la aceptó, lee un rechazo en vez de una respuesta que parece verdad. El instrumento es un test unitario (`CliOptionAdmissionTest`, 15 filas): la admisión es una función pura sobre un array de argumentos, así que el instrumento más barato que puede fallar es llamarla y comparar el resultado con una expectativa LITERAL escrita en el test —un valor calculado con la misma tabla que se comprueba concordaría con cualquier mutación de ella—. Y los verbos se ejercitan EN PROCESO: se llaman, se lee su código de salida y se captura su stderr, de modo que la costura entre «al verbo le dieron una opción» y «el verbo la rechazó» se cruza sin lanzar un proceso. Un test unitario no puede lanzar un proceso —AGENTS.md lo prohíbe—, y un escenario de `examples/` pagaría la construcción de la distribución entera para comprobar cinco rechazos que son funciones puras.
+
+Las expectativas son literales y lo único que se lee de producción es el vocabulario bajo prueba. Lo que NO se congela es la REDACCIÓN del rechazo: sólo el token de la opción ofensiva, que el operador tiene que poder leer. Y lo que el instrumento NO puede ver son los verbos con otro vocabulario —`run`, `events`, `console`, `inspect`, `saga inspect`, la familia `runs` y `observe`—, que ya rechazaban una opción desconocida ANTES de que existiera esta admisión.
+
+**Visto en rojo, con la mutación leída de vuelta.** Dos mutaciones focales, una cada vez, sobre `CliOptionAdmission.kt` y `MainVerbs.kt`. Cada una se aplicó, se leyó de vuelta con `diff -u` contra una copia byte a byte del fichero tal como estaba antes de mutar —con su sha256 anotado— y se restauró desde ESA copia, nunca desde git, comprobando después con sha256 que el fichero y la copia eran el mismo byte.
+
+|Mutación|Qué se encendió|
+|---|---|
+|La regla que rechaza un valor que nombra otra opción —`if (knownOptionArity(value) != null)` → `if (false)`—|exactamente DOS filas en rojo: «a value that names an option of this build is refused» y «operations refuses a value that is another option»; las otras TRECE siguieron en verde|
+|El verbo `doctor` vuelve a no admitir —el bloque de admisión sale de `runDoctorVerb`—|exactamente UNA fila en rojo: «doctor refuses an option it does not own» (esperaba 2, obtuvo 0); las otras CATORCE siguieron en verde|
+
+Ninguna mutación encendió de más: en las dos, el resto del lote siguió en verde. Eso es lo que distingue un instrumento que discrimina de uno que se rompe.
+
+**Lo que este corte NO arregla, y se dice.** No arregla la otra mitad de la lista: `observe` sigue renderizando un `CliError` con el `toString()` de su ADT —la única sede de producción que interpola un error—, y por eso `observe` sigue contestando «observe: UnknownOption(value=--bogus)» en vez de una frase. No arregla la PISTA del rechazo que dice «prefix with '=' or quote it»: es un texto PREEXISTENTE en `toCliExit()` —el parser compartido ya lo emitía antes de este corte, y ahora `operations` lo emite por la MISMA tabla—, y es falso en las dos partes —la distribución construida rechaza `--control-root=/tmp/x` con «unknown option» y rechaza `--format=json` con «unknown option», así que la grafía con '=' no existe; y entrecomillar no cambia el token que ve el parser—. Este corte no lo arregla porque es otra familia de defecto —la REDACCIÓN de un rechazo, no su existencia— y el texto vive en la tabla de errores, que este corte no toca. No arregla `events verify`, que es el ÚNICO verbo que todavía se traga una opción que no conoce: su bucle de opciones no tiene rama para lo que no reconoce, así que `events verify --db <db> --run <r> --contract <c> --bogus` da EXACTAMENTE la misma salida que la misma invocación sin `--bogus` —«Error: db not found: …»—, y la opción desconocida no aparece por ninguna parte. Es el mismo defecto que este corte cierra en los otros cinco verbos, y necesita la admisión de esa familia, que es una tabla propia. Y no arregla `CliParser.kt`, que sigue siendo un parser de unas 1.931 líneas que decide la aridad de sus opciones a mano en OCHO sitios —cuatro en el parser compartido, uno por familia (`observation`, `inspect`, `events`, `console`), y cuatro más fuera (`events`, `events verify`, la familia `runs` y `saga inspect`)—: esta tabla es el NOVENO pedazo del mismo género, y unificarlos es deuda que sigue viva.
+
+Medido sobre `d456d29233592d97447f94452acd39ed98635ed7` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=d456d29233592d97447f94452acd39ed98635ed7  elapsed=204s  budget=900s  tests=rewritten:1487 read:0  scenarios=observed:63 executed:63
+```
+
+- 198 informes JUnit reescritos por esta ejecución, 1487 tests EJECUTADOS de verdad, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E ejecutados y en verde, 556 comprobaciones sobre 114 ejecuciones y 220 pasos terminados.
+- 204 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 27915`, `PRODUCT_LOC = 71400`, ratio `0.391` (límite 2).
+
 ## H6 — Reducir deuda del harness y asegurar la publicación
 
 Foco: `examples/run.sh`, `verify-all.sh` y scripts de release.

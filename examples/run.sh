@@ -1510,6 +1510,24 @@ world_bytes() {
         >"$out_file" 2>/dev/null
 }
 
+# The directives a scenario declares, in the order it declares them.
+#
+# ONE reader, and no ceiling. The three places that read these lines each
+# carried a rule of their own: the clock took the first twenty of them, the
+# parser took the first twenty of them, and the census took the first forty
+# of a different pattern. A rule that differs per reader is a rule that a
+# line count can break: a promise written in the twenty-first line was
+# counted by the census as a guarantee and read by nobody, so the report said
+# the harness had checked it and the harness never looked at it. That is the
+# same silence the launcher already refuses for a directive it does not
+# understand.
+#
+# So the reader reads them ALL, and the census is computed from what the
+# parser read: one reading, one set of rules, one number.
+read_directives() {
+    grep '^//@ ' "$1" || true
+}
+
 # One scenario, under its clock.
 #
 # The body does the work and reaches a verdict of its own; this wrapper owns
@@ -1545,7 +1563,7 @@ run_scenario() {
         case "$directive" in
             '//@ timeout '*) budget="${directive#//@ timeout }" ;;
         esac
-    done < <(grep -m 20 '^//@ ' "$script" || true)
+    done < <(read_directives "$script")
     if [[ ! "$budget" =~ ^[0-9]+$ ]] || (( budget <= 0 )); then
         printf 'FAIL %-52s the timeout must be a positive number of seconds, got: %s\n' \
             "$name" "$budget"
@@ -1626,36 +1644,6 @@ emit_scenario_markers() {
     done
 }
 
-# What the harness COMPARED for one scenario, as opposed to what it merely ran.
-#
-# The census used to count what a scenario DECLARED, and that was the wrong
-# number to count. A scenario whose guarantee lives in the pipeline's own steps
-# -- a step that fails the run when the product misbehaves -- declares
-# nothing, and the count said it asserted nothing while the exit code it
-# watched was carrying exactly that guarantee. A metric that misreports what
-# the suite buys does not only mislead: it points the work at declarations
-# instead of guarantees, and a declaration is the cheapest thing to add.
-#
-# What is counted here is what the harness COMPARED: text the run had to
-# produce, text the refusal had to contain, the bytes the run had to commit,
-# and a non-zero exit that is a guarantee rather than an accident. The default
-# exit of zero is what a process returns when it did not crash, so checking it
-# is checking that nothing happened.
-count_content_expectations() {
-    local name="$1"
-    local script="$here/$name"
-    local count=0 directive
-    while IFS= read -r directive; do
-        case "$directive" in
-            '//@ expect-stdout '*|'//@ expect-stderr '*|'//@ expect-transcript '*)
-                count=$((count + 1)) ;;
-            '//@ expect-exit '*)
-                [[ "${directive#//@ expect-exit }" != "0" ]] && count=$((count + 1)) ;;
-        esac
-    done < <(grep -m 40 '^//@ expect-' "$script" || true)
-    printf '%s' "$count"
-}
-
 # The run's own conclusion, read from the product.
 #
 # The exit code says whether the process ended well. It does not say what the
@@ -1715,6 +1703,11 @@ run_scenario_body() {
     slug="$(printf '%s' "$name" | tr '/.' '--')"
 
     local expect_exit=0
+    # The promises this scenario made, counted by the arms that read them.
+    # The count is a by-product of the reading, so it cannot disagree with
+    # what was read: a promise the parser never saw cannot be counted, and a
+    # promise it saw cannot be missed.
+    local content_promises=0
     local expect_outcome=""
     local durable=0
     local durable_once=0
@@ -1745,9 +1738,12 @@ run_scenario_body() {
     while IFS= read -r directive; do
         case "$directive" in
             '//@ expect-exit '*)   expect_exit="${directive#//@ expect-exit }" ;;
-            '//@ expect-stdout '*) expect_stdout+=("${directive#//@ expect-stdout }") ;;
-            '//@ expect-stderr '*) expect_stderr+=("${directive#//@ expect-stderr }") ;;
-            '//@ expect-transcript '*) expect_transcript+=("${directive#//@ expect-transcript }") ;;
+            '//@ expect-stdout '*) expect_stdout+=("${directive#//@ expect-stdout }")
+                                 content_promises=$((content_promises + 1)) ;;
+            '//@ expect-stderr '*) expect_stderr+=("${directive#//@ expect-stderr }")
+                                 content_promises=$((content_promises + 1)) ;;
+            '//@ expect-transcript '*) expect_transcript+=("${directive#//@ expect-transcript }")
+                                 content_promises=$((content_promises + 1)) ;;
             '//@ durable')         durable=1 ;;
             '//@ durable-once')    durable_once=1 ;;
             '//@ resume')          resume=1 ;;
@@ -1769,7 +1765,16 @@ run_scenario_body() {
             '//@ timeout '*)        ;;
             *)                     unknown_directive="$directive" ;;
         esac
-    done < <(grep -m 20 '^//@ ' "$script" || true)
+    done < <(read_directives "$script")
+
+    # The exit is a promise of its own, and the parser keeps the LAST value
+    # it read, so the count follows the value the comparisons will use. The
+    # default exit of zero is what a process returns when it did not crash, so
+    # checking it is checking that nothing happened, and nothing happened is
+    # not a promise to count.
+    if [[ "$expect_exit" != "0" ]]; then
+        content_promises=$((content_promises + 1))
+    fi
 
     # A directive the launcher does not know is a promise nobody is keeping.
     #
@@ -1801,8 +1806,12 @@ run_scenario_body() {
     # once per scenario reported half the comparisons the harness made. The
     # promises are added once per execution instead, where the comparison
     # happens.
-    local content_promises
-    content_promises="$(count_content_expectations "$name")"
+    #
+    # The count itself was accumulated by the parser, from the same reading
+    # that produced the values it compares. A second reading of the file was a
+    # second rule: it took a different pattern and a different ceiling, and it
+    # counted the exit the parser had already counted, so the report published
+    # a number of checks the harness never made.
 
     # One run of the product. The census counts them because a scenario that
     # runs on both execution paths is TWO runs of the product, and a report
@@ -3440,14 +3449,8 @@ run_scenario_body() {
     # they are two runs of the product and each one is compared against its
     # OWN output: one promise, two runs, two comparisons.
     scenario_guarantees=$((scenario_guarantees + content_promises))
-    if [[ "$expect_exit" != "0" ]]; then
-        scenario_guarantees=$((scenario_guarantees + 1))
-    fi
     if [[ "$run_volatile" == 1 ]]; then
         scenario_guarantees=$((scenario_guarantees + content_promises))
-        if [[ "$expect_exit" != "0" ]]; then
-            scenario_guarantees=$((scenario_guarantees + 1))
-        fi
     fi
 
     # The execution that decides the verdict, against every expectation the

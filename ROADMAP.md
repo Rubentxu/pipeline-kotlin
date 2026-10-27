@@ -271,8 +271,17 @@ PASS  sha=2e3a1efd5faf41c198feec425a62f8c66718c2f1  elapsed=108s  budget=900s  t
 
 - 196 informes JUnit reescritos por esta ejecución, 1460 tests, 0 fallos, 0 omitidos.
 - 63 de 63 escenarios E2E ejecutados y en verde, 594 comprobaciones sobre 114 ejecuciones y 220 pasos terminados.
-- 108 s de reloj de pared frente al presupuesto de 900 s.
+- 108 s de reloj de pared frente al presupuesto de 900 s — cifra que la build cache contaminó: la medición
+  real de este árbol es de 188 s, corregida con su reejecución más abajo (corte del gate).
 - `VERIFY_LOC = 27278`, `PRODUCT_LOC = 71109`, ratio `0.384` (límite 2).
+
+**Corrección de este bloque, medida con el instrumento arreglado.** Las 108 s de esta línea tampoco eran una medición del trabajo —la build cache de Gradle estaba activa—, y el «1460 tests reescritos» incluía informes servidos en vez de ejecutados. Reejecutando ESTE MISMO árbol con el gate arreglado —build cache de construcción desactivada y censo leyendo el sello del informe— la línea es:
+
+```
+PASS  sha=2e3a1efd5faf41c198feec425a62f8c66718c2f1  elapsed=188s  budget=900s  tests=rewritten:1460 read:0  scenarios=observed:63 executed:63
+```
+
+El coste real de esta tanda de cortes fue de 188 s, no de 108 s. Los tres bloques que citan esta ejecución comparten la corrección. Ver el corte del gate, más abajo.
 
 ### Estado de H2 — cerrado
 
@@ -507,7 +516,7 @@ Medido: una segunda corrida completa del gate sobre el árbol sin cambios ejecut
 |sin `-Dorg.gradle.caching=false`|`FROM-CACHE`|
 |con `-Dorg.gradle.caching=false`|`executed`|
 
-El arreglo es de **H6**, que es donde vive el gate: el censo debe leer la marca de tiempo PROPIA del XML (`timestamp`), no el `mtime` del fichero, y distinguir tres estados —ejecutado ahora, servido de la cache, leído de disco— en vez de dos. No se toca el gate aquí: cambiar el instrumento de medición en mitad de un corte cambiaría la contabilidad del presupuesto que este corte está midiendo. Este corte se midió, por tanto, con la cache desactivada, y por eso su línea de veredicto dice lo que dice. En los tres cortes anteriores, cuyo código cambió, la cache sólo pudo servir los módulos cuyas entradas no cambiaron —sus hallazgos (detekt, LOC, escenarios) no dependen de ello—, pero su cifra de `rewritten` es la del gate, y el gate no distingue lo ejecutado de lo repuesto.
+El arreglo es de **H6**, que es donde vive el gate: el censo debe leer la marca de tiempo PROPIA del XML (`timestamp`), no el `mtime` del fichero, y distinguir tres estados —ejecutado ahora, servido de la cache, leído de disco— en vez de dos. El arreglo está hecho, y es el corte «el veredicto del gate cuenta lo ejecutado, no lo repuesto», en H6, más abajo de este documento. No se toca el gate aquí: cambiar el instrumento de medición en mitad de un corte cambiaría la contabilidad del presupuesto que este corte está midiendo. Este corte se midió, por tanto, con la cache desactivada, y por eso su línea de veredicto dice lo que dice. En los tres cortes anteriores, cuyo código cambió, la cache sólo pudo servir los módulos cuyas entradas no cambiaron —sus hallazgos (detekt, LOC, escenarios) no dependen de ello—, pero su cifra de `rewritten` es la del gate, y el gate no distingue lo ejecutado de lo repuesto.
 
 #### El corte: un acoplamiento fallido no deja nada abierto
 
@@ -554,8 +563,17 @@ PASS  sha=f39838e9b44f1d307539961c8a48c883134fde62  elapsed=144s  budget=900s  t
 
 - 196 informes JUnit reescritos por esta ejecución, 1465 tests, 0 fallos, 0 omitidos: 1460 antes del corte más las 5 filas nuevas.
 - 63 de 63 escenarios E2E ejecutados y en verde, 594 comprobaciones sobre 114 ejecuciones y 220 pasos terminados.
-- 144 s de reloj de pared frente al presupuesto de 900 s.
+- 144 s de reloj de pared frente al presupuesto de 900 s — cifra que la build cache contaminó: la medición
+  real de este árbol es de 186 s, corregida con su reejecución más abajo (corte del gate).
 - `VERIFY_LOC = 27460`, `PRODUCT_LOC = 71158`, ratio `0.386` (límite 2). El módulo del corte, `pipeline-step-sdk:runtime`, queda en `2042 / 2364 = 0.864`.
+
+**Corrección de este bloque, medida con el instrumento arreglado.** Las 144 s de esta línea NO son una medición del trabajo: la build cache de Gradle estaba activa, así que el grafo de tests fue servido en vez de ejecutado en la parte que no había cambiado, y el «196 informes JUnit reescritos por esta ejecución» era un `mtime` renovado por la restauración. Reejecutando ESTE MISMO árbol con el gate arreglado —build cache de construcción desactivada y censo leyendo el sello del informe— la línea es:
+
+```
+PASS  sha=f39838e9b44f1d307539961c8a48c883134fde62  elapsed=186s  budget=900s  tests=rewritten:1465 read:0  scenarios=observed:63 executed:63
+```
+
+El coste real del corte de B1 fue de 186 s, no de 144 s. Ver el corte del gate, más abajo.
 
 #### El corte: `ShellWatchdog`
 
@@ -1039,7 +1057,8 @@ PASS  sha=2e3a1efd5faf41c198feec425a62f8c66718c2f1  elapsed=108s  budget=900s  t
 
 - 196 informes JUnit reescritos por esta ejecución, 1460 tests, 0 fallos, 0 omitidos.
 - 63 de 63 escenarios E2E ejecutados y en verde, 594 comprobaciones sobre 114 ejecuciones y 220 pasos terminados.
-- 108 s de reloj de pared frente al presupuesto de 900 s.
+- 108 s de reloj de pared frente al presupuesto de 900 s — cifra que la build cache contaminó: la medición
+  real de este árbol es de 188 s, corregida con su reejecución más abajo (corte del gate).
 - `VERIFY_LOC = 27278`, `PRODUCT_LOC = 71109`, ratio `0.384` (límite 2).
 
 ## H4 — Refactorizar los casos de uso de `pipeline-application`
@@ -1107,7 +1126,8 @@ PASS  sha=2e3a1efd5faf41c198feec425a62f8c66718c2f1  elapsed=108s  budget=900s  t
 
 - 196 informes JUnit reescritos por esta ejecución, 1460 tests, 0 fallos, 0 omitidos.
 - 63 de 63 escenarios E2E ejecutados y en verde, 594 comprobaciones sobre 114 ejecuciones y 220 pasos terminados.
-- 108 s de reloj de pared frente al presupuesto de 900 s.
+- 108 s de reloj de pared frente al presupuesto de 900 s — cifra que la build cache contaminó: la medición
+  real de este árbol es de 188 s, corregida con su reejecución más abajo (corte del gate).
 - `VERIFY_LOC = 27278`, `PRODUCT_LOC = 71109`, ratio `0.384` (límite 2).
 
 ## H6 — Reducir deuda del harness y asegurar la publicación
@@ -1118,6 +1138,60 @@ Refactorizar internamente el lanzador E2E, conservando los escenarios actuales q
 Corregir el procedimiento existente de promoción estable y su evidencia de firma, sin introducir un sistema de publicación nuevo.
 Consolidar verificaciones redundantes cuando protejan exactamente la misma propiedad, y mantener la clasificación entre pruebas parciales y puerta completa.
 Entrega verificable: misma cobertura contractual o superior con menor código de infraestructura de pruebas, release reproducible y procedencia verificable.
+
+#### El corte: el veredicto del gate cuenta lo ejecutado, no lo repuesto
+
+**Qué hace.** `scripts/verify-all.sh` decidía que un informe JUnit lo había escrito ESTA ejecución por el `mtime` del fichero. La cache de construcción de Gradle restaura los BYTES de un informe y sella el fichero restaurado con el instante de la RESTAURACIÓN: un informe que ningún test escribía desde el martes llegaba con el `mtime` de hoy. El censo contaba ese fichero como «reescrito por esta ejecución», y la línea de veredicto —`tests=rewritten:1465 read:0`— describía 1465 tests que no se habían ejecutado. Y la guarda del gate para el caso «no se ejecutó nada, esto no es una medición, fallar» NO PODÍA dispararse, porque la restauración renovaba todos los `mtime`.
+
+**La medición, con la única variable cambiada.** Sobre el mismo árbol, con la cache ya caliente:
+
+|celda|censo de frescura|resultado|
+|---|---|---|
+|cache ON|`mtime`|`PASS elapsed=103s tests=rewritten:1465 read:0` — CERO tests ejecutados|
+|cache ON|sello del XML|0 informes reescritos; la guarda FUEGA; salida 1|
+|cache OFF|sello del XML|`PASS elapsed=187s tests=rewritten:1465 read:0` — 1465 tests ejecutados|
+
+**El sello es el testigo que la cache no puede falsificar.** El atributo `<testsuite timestamp="...">` lo escribe el framework cuando la suite EMPIEZA y vive DENTRO de los bytes restaurados: renovarlo sería reescribir el contenido que la entrada de cache afirma reproducir. El `mtime` responde a otra pregunta —cuándo LLEGÓ el fichero—, y para el contenido es un testigo malo. Los dos testigos juntos nombran TRES estados, que es lo que el corte distingue:
+
+- **ejecutado ahora**: el sello es de esta ejecución. Los tests corrieron.
+- **servido de la cache**: el fichero LLEGÓ en esta ejecución (el `mtime` lo dice) pero su contenido es viejo: la cache restauró los bytes. Los tests NO corrieron.
+- **leído de disco**: ni una cosa ni la otra; el fichero ya estaba ahí y no se tocó.
+
+**El corte.** El censo lee el sello del informe y no el `mtime`; un informe cuyo sello falta o no se puede leer se cuenta como LEÍDO, nunca como reescrito, porque la dirección conservadora es la que NO reclama crédito. El gate completo deja de usar la cache de CONSTRUCCIÓN —la de DEPENDENCIAS se conserva, que es lo que «caches de dependencias locales ya poblados» significa—: con `--no-build-cache` (medido que pisa `org.gradle.caching=true` de `pipelinek/gradle.properties`) el `clean` significa lo que dice y el reloj mide el trabajo. El camino de subset conserva la cache, porque el bucle interior existe para ser barato; lo que el subset debe es CONTAR con honestidad, y eso lo da el sello.
+
+**La guarda nueva, y por qué la vieja no servía.** La guarda vieja («ningún informe fue reescrito, esto no es una medición, fallar») no podía dispararse: la restauración renovaba todos los `mtime`. La nueva es «parte del grafo de tests fue servida de la cache, este reloj mide la cache y no el trabajo, fallar», y se dispara también en el caso MIXTO, que es el que se colaba: una ejecución que corre un módulo y deja los demás servidos.
+
+**Visto en rojo, con la mutación leída de vuelta.** Cada mutación se aplicó, se leyó con `diff` contra la copia limpia, y el árbol se restauró desde esa copia antes de la siguiente.
+
+|Mutación|Qué se encendió|
+|---|---|
+|El gate completo deja de pasar `--no-build-cache` (la cache sirve el grafo entero)|`verify-all: 196 report(s) were served from the build cache by this run: 1465 test(s) not executed` y después `FAILED at stage 2: part of the test graph was served from the build cache`, salida 1|
+|La misma, con UN módulo con bytecode distinto (estado mixto: 40 informes reescritos, 156 servidos, 1233 tests que no corrieron)|la misma guarda; con la guarda VIEJA ese run habría imprimido `tests=rewritten:1466 read:0` y PASADO|
+
+**Un hallazgo de paso, que explica cómo se provocaron los dos estados.** La clave de la cache de construcción se calcula sobre la SALIDA compilada, no sobre el fuente: un comentario añadido a un fichero de test NO invalida la clave y la tarea sigue siendo servida de la cache. Cambiar el bytecode sí. Por eso la primera tentativa de provocar el estado mixto —un comentario— no lo provocó, y por eso el estado mixto se provocó con una clase de test nueva.
+
+**Los tres estados, vistos uno a uno en el camino de subset**, donde el sello separa lo que el `mtime` no separaba:
+
+|estado|qué se observa|con el censo por `mtime`|con el sello|
+|---|---|---|---|
+|ejecutado ahora|el filtro cambia la clave de la tarea y ésta EJECUTA|`rewritten:8 read:0`|`rewritten:8 read:0`|
+|leído de disco|la misma invocación, la tarea está al día|`rewritten:0 read:8`|`rewritten:0 read:8`|
+|servido de la cache|las salidas se borran y Gradle RESTAURA: `mtime` de ahora, sello viejo|`rewritten:8 read:0`, 8 tests que no se ejecutaron|`rewritten:0 read:8`|
+
+**La garantía, la capacidad y el instrumento.** La garantía es que la línea de veredicto del gate describe lo que el gate EJECUTÓ, y que un reloj del gate no se puede citar como el coste del trabajo si el trabajo no se hizo. La capacidad que la sostiene es que un lector puede distinguir una medición de un acierto de cache sin tener que saber de la cache: el veredicto lleva `rewritten` y `read`, y el subset declara que no es la puerta. El instrumento es el propio gate —no hay test unitario, y no puede haberlo: un test del gate sería un meta-test, que AGENTS.md prohíbe explícitamente—. El instrumento se prueba mutando el gate y mirando lo que se enciende, que es lo que se ha medido arriba.
+
+**Lo que este corte NO arregla, y se dice.** No arregla que la cache de construcción exista, ni que `org.gradle.caching=true` siga en `pipelinek/gradle.properties`: el corte la desactiva SÓLO para el gate completo, y dejar el camino de subset con cache es una decisión del bucle interior, no un olvido. No arregla la granularidad del reloj: sigue siendo el reloj de pared de un proceso que compila y prueba, sin desglosar qué parte fue compilación y qué parte fue prueba. No arregla la dependencia del gate respecto al framework: un módulo que usara otro framework de test y no escribiera `<testsuite timestamp="...">` tendría sus informes contados como LEÍDOS —dirección conservadora—, pero el gate no podría atribuirlos. Y no arregla las cifras de reloj ya citadas en este documento para los cortes anteriores: se corrigen EN EL SITIO donde aparecen, no se reescribe la historia.
+
+Medido sobre `d73c30493` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=d73c3049380862ff02387882782cdbed6e2b43af  elapsed=208s  budget=900s  tests=rewritten:1465 read:0  scenarios=observed:63 executed:63
+```
+
+- 196 informes JUnit reescritos por esta ejecución, 1465 tests EJECUTADOS de verdad, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E ejecutados y en verde.
+- 208 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad. Tres trials sobre el mismo árbol: 187 s, 188 s y 208 s; se cita el PEOR, que es lo que §4 pide.
+- `VERIFY_LOC = 27605`, `PRODUCT_LOC = 71158`, ratio `0.388` (límite 2). El instrumento cuesta 145 líneas contadas por el censo —las de código, no las de sus comentarios— y entra en el numerador de verificación, que es donde debe estar: es código que decide qué se ejecutó.
 
 ## 4. Orden y dependencias
 

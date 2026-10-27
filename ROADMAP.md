@@ -1312,6 +1312,71 @@ PASS  sha=3a9483150302ea162989b09d897982a602a7229c  elapsed=181s  budget=900s  t
 - 181 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 27617`, `PRODUCT_LOC = 71237`, ratio `0.388` (límite 2).
 
+#### El corte: un remoto que no se puede leer no es un remoto sin etiquetas
+
+**Qué hace.** `scripts/release/promote-stable.sh` comprobaba que la etiqueta estable estaba libre con un pipeline cuyo estado era el de `grep`:
+
+```bash
+if git ls-remote --tags "$REMOTE" "refs/tags/${STABLE_TAG}" | grep -q .; then
+```
+
+Un remoto que no se puede leer hace salir a `git ls-remote` con error (128) y sin stdout; la salida vacía hace que `grep` no encuentre nada y salga con 1; el `if` toma la rama falsa y el script CONCLUYE que la etiqueta no existe en el remoto. `set -o pipefail` no lo evita: el estado de un pipeline es el de su última orden, y `grep` es la última. La garantía #1 del propio script —«the STABLE tag name is free — absent locally and absent on the remote»— podía cumplirse sin haber observado el remoto: una comprobación que no se pudo hacer no es una comprobación que pasó.
+
+Medido con `REMOTE=/nonexistent/remote.git`:
+
+```
+ls-remote exit: 128
+stdout: []
+stderr: [fatal: '/nonexistent/remote.git' does not appear to be a git repository]
+CHECK: the tag is ABSENT on the remote  <-- what the scripts conclude
+```
+
+El remoto se leía además DOS veces —la de la etiqueta estable y la del RC—, de modo que un transporte que falla una vez y luego responde, que es ordinario, dejaba pasar la primera comprobación con una lectura muerta y contestaba la segunda con otra. Dos lecturas del mismo remoto pueden discrepar sin que nadie lo vea.
+
+El corte anterior declaró este residual y acertó en una parte: en ESTE script la lectura del RC (línea 179) sí comprobaba su estado, así que la promoción se negaba igualmente —«un diagnóstico engañoso y no una acción equivocosa»—. Lo que su medición no vio, porque su remoto respondía, es lo que este corte mide: muerta la lectura de la etiqueta estable, la comprobación de la garantía se salta y el script sigue hacia otra.
+
+**El corte.** El remoto se lee UNA vez, con su estado comprobado:
+
+```bash
+REMOTE_LISTING="$(git ls-remote --tags "$REMOTE" \
+    "refs/tags/${STABLE_TAG}" \
+    "refs/tags/${RC_TAG}" "refs/tags/${RC_TAG}^{}")" || { … exit 1; }
+```
+
+y ese listado contesta las DOS preguntas —la de la etiqueta estable y la del RC—, con el idioma de exacto que ya usaba el RC (`awk -v r=… '$2 == r'`), que no es un patrón: una etiqueta con punto en el nombre no puede casar con otra por accidente. Un remoto que no se puede leer rechaza la promoción diciendo que no pudo leer el listado y que la etiqueta estable no pudo comprobarse; un remoto que sí se puede leer y tiene la etiqueta sigue siendo rechazado con el mismo mensaje de antes. La cabecera del script declara ahora la garantía como se cumple: «the STABLE tag name is free — absent locally and absent on the remote, and the remote is READ to say so».
+
+**Medido antes y después, con la única variable cambiada** (el script de publicación REAL, un remoto bare local y un shim de `git` en el PATH que hace fallar la PRIMERA lectura y delega el resto):
+
+|celda|antes|después|
+|---|---|---|
+|la primera lectura del remoto falla|lecturas al remoto: **2**; el script pasa la comprobación de la etiqueta estable; el rechazo final habla del `candidate_id` del RC —un motivo que no nombra la lectura que no se pudo hacer|lecturas al remoto: **1**; el rechazo nombra el listado que no se pudo leer Y la etiqueta `v1.0.0` que no pudo comprobarse|
+|el remoto tiene la etiqueta estable|salida 1; el rechazo la nombra como ya existente en el remoto|salida 1; igual|
+|el remoto se lee bien|salida 1 tras la lectura del RC; el rechazo habla del `candidate_id`|salida 1 tras la lectura del RC; el rechazo habla del `candidate_id`|
+
+El caso del medio es el que no puede cambiar: es el contenido de la garantía, y el corte no lo toca.
+
+**Visto en rojo, con la mutación leída de vuelta.** Se restauró el fichero de `HEAD` —el defecto entero, no una rama—, se comprobó con `grep` que `REMOTE_LISTING` NO estaba, es decir, que la mutación ESTABA aplicada, y se restauró el arreglo desde una copia del fichero, nunca desde git, comprobando después con `diff` que la copia y el fichero eran idénticos byte a byte.
+
+|Mutación|Qué se encendió|
+|---|---|
+|El fichero vuelve al de `HEAD` —la comprobación de la etiqueta estable vuelve a ser el pipeline con `grep`—|en el caso «la primera lectura falla»: exactamente TRES filas en rojo —«el remoto se leyó exactamente una vez», «el rechazo nombra la etiqueta estable» y «el rechazo dice que el listado no se pudo leer»—; el caso «el remoto tiene la etiqueta estable» siguió ENTERAMENTE en verde, porque es el contenido de la garantía y no lo toca este corte|
+|El mismo defecto, observado en el caso «el remoto se lee bien»|una fila en rojo: «el remoto se leyó exactamente una vez», que leyó DOS veces|
+
+**La garantía, la capacidad y el instrumento.** La garantía es que la promoción nunca afirma que un nombre de etiqueta está libre en el remoto sin haber leído el remoto, y que el motivo del rechazo nombra lo que no se pudo comprobar. La capacidad que la sostiene es que un lector del rechazo sabe si la garantía se comprobó o si el remoto no respondió. El instrumento es la promoción ejecutada contra un remoto bare real con un shim de `git` que inyecta el fallo de transporte, porque no puede ser un test unitario —AGENTS.md prohíbe que un test unitario haga `git` o `gpg`— ni un escenario de `examples/` —corre la distribución de desarrollo, que no produce etiquetas—. El shim ESCRIBE un log de cada lectura, y por eso la cifra «lecturas al remoto» es una OBSERVACIÓN del instrumento y no una cuenta hecha a mano.
+
+**Lo que este corte NO arregla, y se dice.** No arregla la misma forma en `scripts/release-pipelinek.sh:105` ni en `scripts/release/publish-github-release.sh:277`: ahí la lectura que se abre al fallar es la ÚNICA lectura previa, así que el rechazo posterior nombra un motivo que no es el del fallo —en `release-pipelinek.sh` el operador acabaría mirando el keyring de firma cuando el bloqueo real es la red—. No se arreglan aquí porque su instrumento exige otro montaje: `release-pipelinek.sh` hace `cd "$REPO_ROOT"` y su comprobación de árbol sucio precede a la lectura, de modo que medirlo exige el árbol limpio o una copia del script —y `publish-github-release.sh` hace su lectura DETRÁS de la verificación de firma, que exige una etiqueta firmada de verdad—. Quedan declarados como residuales, con su sitio exacto. No reduce a UNA las lecturas del remoto en todo el camino de publicación: la auditoría final (`scripts/release/verify-published-tags.sh`) vuelve a leer el remoto después de publicar, y esa lectura es de otra puerta. No arregla que `publish-tag.sh` invoque `git` sin ruta absoluta y herede el envoltorio de identidad de esta máquina: sigue siendo residual.
+
+Medido sobre `6e342f1f1` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=6e342f1f182b902efacd6bf300b44d09e09a1292  elapsed=185s  budget=900s  tests=rewritten:1465 read:0  scenarios=observed:63 executed:63
+```
+
+- 196 informes JUnit reescritos por esta ejecución, 1465 tests EJECUTADOS de verdad, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E ejecutados y en verde.
+- 185 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 27617`, `PRODUCT_LOC = 71259`, ratio `0.388` (límite 2).
+
 ## 4. Orden y dependencias
 
 

@@ -54,6 +54,71 @@ internal sealed interface CliAdmission {
 }
 
 /**
+ * Whether a verb owns the positional argument of its request.
+ *
+ * ## Why the admission has to know
+ *
+ * The admission used to collect the positional arguments and hand them to the
+ * verb, and each verb decided on its own what to do with them. Four of the six
+ * verbs that read through this admission own none of them, and each of those
+ * four DROPPED the positional without a word: measured on the built
+ * distribution, `doctor foo`, `version foo`, `capabilities foo` and
+ * `sdk-info foo` answered 0 and printed exactly what the bare verb prints.
+ *
+ * A verb that owns no positional argument has to SAY that a request carrying
+ * one is not one of its requests. The silence is the failure mode here, the
+ * same as it is for an option the verb does not own: the operator believes they
+ * asked something and reads an answer about something else.
+ *
+ * ## Why the default is [NONE]
+ *
+ * The default is the safe half: a verb that says nothing owns no positional
+ * argument, and a request that carries one is refused. A verb that DOES own
+ * one has to say so, out loud, in the shape of the request it accepts.
+ *
+ * ## What this does not police
+ *
+ * The admission does not decide how many positional arguments a verb that
+ * owns one reads. `operations` owns the run id and reads the first one; the
+ * admission hands it the list, exactly as it did before this declaration
+ * existed.
+ */
+internal enum class PositionalArgument {
+    /** The verb owns no positional argument: a request that carries one is refused. */
+    NONE,
+
+    /** The verb owns a positional argument and reads it from the admitted request. */
+    OWNED,
+}
+
+/**
+ * The shape of the requests a verb accepts: the options it owns and the
+ * positional argument it owns.
+ *
+ * ## Why the two travel together
+ *
+ * The shape of a request is ONE thing, and a verb that has to declare half of
+ * it in one place and the other half in another will declare one of the two
+ * halves by accident. The first shape of this cut declared the positional
+ * argument at the CALL SITE of the verb and left the options in a table, and
+ * the two unit rows that read the table through the admission broke the moment
+ * the table was used by a caller that had not repeated the declaration: the
+ * table said "options" and the caller had to remember something the table did
+ * not say.
+ *
+ * The default is the safe half — [PositionalArgument.NONE] — so a request
+ * shape that says nothing owns no positional argument and a request that
+ * carries one is refused.
+ *
+ * @property options the options this verb owns.
+ * @property positional whether this verb owns a positional argument.
+ */
+internal data class CliRequest(
+    val options: List<CliOption> = emptyList(),
+    val positional: PositionalArgument = PositionalArgument.NONE,
+)
+
+/**
  * The admission of the verbs that own a small, explicit set of options.
  *
  * ## What this exists for
@@ -89,8 +154,9 @@ internal sealed interface CliAdmission {
  * `events`, `console`), and the `events` inspection flags, the `runs` family
  * and `saga inspect` carry their own. Each of those writes its option tokens
  * in its own body, so there are seven places to drift. The eighth is this
- * table, where the six verbs that do not use the shared parser read their
- * option surface: it is written ONCE, here, and every verb reads it.
+ * table, where the six verbs that do not use the shared parser read the shape
+ * of the requests they accept: it is written ONCE, here, and every verb reads
+ * it.
  *
  * ## Why the arity is declared here and not read from the shared parser
  *
@@ -108,13 +174,22 @@ internal sealed interface CliAdmission {
 internal object CliOptionAdmission {
 
     /**
-     * The admission of [args] for a verb that owns [owned].
+     * The admission of [args] for a verb that accepts [request].
      *
      * Pure: it reads the arguments and answers with a typed outcome. It opens
      * nothing, reads nothing and writes nothing, which is what makes it
      * checkable without a process.
+     *
+     * The shape of the request is [request], and it says both things about it:
+     * the options the verb owns and the positional argument the verb owns. The
+     * verb does not declare either half at its call site, so it cannot declare
+     * one of the two by accident.
      */
-    fun admit(args: Array<String>, owned: List<CliOption>): CliAdmission {
+    fun admit(
+        args: Array<String>,
+        request: CliRequest,
+    ): CliAdmission {
+        val owned = request.options
         val flags = linkedSetOf<String>()
         val values = linkedMapOf<String, String>()
         val positionals = mutableListOf<String>()
@@ -154,56 +229,82 @@ internal object CliOptionAdmission {
             values[token] = value
             index += 2
         }
+        // A positional argument is part of the request too, and a verb that
+        // owns none has to say so BY NAME. The four verbs that own none used
+        // to drop it without a word: `doctor foo` answered 0 and printed the
+        // health report, exactly as `doctor` alone does, and the operator read
+        // an answer about a request nobody made. The refusal names the token
+        // because the token is what the operator has to remove.
+        val unexpected = positionals.firstOrNull()
+        if (unexpected != null && request.positional == PositionalArgument.NONE) {
+            return CliAdmission.Rejected(CliError.UnexpectedPositional(unexpected))
+        }
         return CliAdmission.Admitted(flags, values, positionals)
     }
 }
 
 /**
- * The options `doctor`, `capabilities` and `sdk-info` own: none.
+ * The requests `doctor`, `capabilities` and `sdk-info` accept: no options and
+ * no positional argument.
  *
- * Each of these verbs answers one question that takes no option: how the
+ * Each of these verbs answers one question that takes no argument: how the
  * installation is, what this build admits, and what a plugin builds against.
  * A flag handed to them has no meaning, and a flag with no meaning is a flag
  * the operator believed in.
+ *
+ * They own no positional argument either, and the shape says so here: a
+ * request that carries one is refused by the admission.
  */
-internal val NO_OPTIONS: List<CliOption> = emptyList()
+internal val NO_ARGUMENTS_REQUEST: CliRequest = CliRequest()
 
 /**
- * The options `version` owns.
+ * The requests `version` accepts.
  *
  * `--json` is the same fact as the text line, in a shape a harness can read.
  */
-internal val VERSION_OPTIONS: List<CliOption> = listOf(CliOption("--json"))
+internal val VERSION_REQUEST: CliRequest = CliRequest(
+    options = listOf(CliOption("--json")),
+)
 
 /**
- * The options `operations` owns.
+ * The requests `operations` accepts.
  *
  * `--control-root` names the directory the Output Plane lives under, and
  * `--format` names the rendering. Both carry a value, and both are tokens the
  * shared parser also knows, so the shared parser's arity for them is the one
  * this table has to agree with.
+ *
+ * This verb also owns the run id, which is a POSITIONAL argument: it is the
+ * one verb of the six that reads one, and the shape says so here, with
+ * [PositionalArgument.OWNED]. A verb that owns one has to say it out loud, and
+ * saying it in the shape of the request is what keeps it said.
  */
-internal val OPERATIONS_OPTIONS: List<CliOption> = listOf(
-    CliOption("--control-root", takesValue = true),
-    CliOption("--format", takesValue = true),
+internal val OPERATIONS_REQUEST: CliRequest = CliRequest(
+    options = listOf(
+        CliOption("--control-root", takesValue = true),
+        CliOption("--format", takesValue = true),
+    ),
+    positional = PositionalArgument.OWNED,
 )
 
 /**
- * The options `events verify` owns.
+ * The requests `events verify` accepts.
  *
- * All five carry a value. `--db` is a token the shared parser also knows, so
- * the shared parser's arity for it is the one this table has to agree with;
- * `--run`, `--contract`, `--from-sequence` and `--scope` belong to this verb
- * alone.
+ * All five options carry a value. `--db` is a token the shared parser also
+ * knows, so the shared parser's arity for it is the one this table has to
+ * agree with; `--run`, `--contract`, `--from-sequence` and `--scope` belong to
+ * this verb alone.
  *
  * The verb used to read these with a hand-written loop that had no branch for
  * anything it did not recognise, so an option it did not own was dropped
  * without a word and the verb answered about a request nobody had made.
  */
-internal val EVENTS_VERIFY_OPTIONS: List<CliOption> = listOf(
-    CliOption("--db", takesValue = true),
-    CliOption("--run", takesValue = true),
-    CliOption("--contract", takesValue = true),
-    CliOption("--from-sequence", takesValue = true),
-    CliOption("--scope", takesValue = true),
+internal val EVENTS_VERIFY_REQUEST: CliRequest = CliRequest(
+    options = listOf(
+        CliOption("--db", takesValue = true),
+        CliOption("--run", takesValue = true),
+        CliOption("--contract", takesValue = true),
+        CliOption("--from-sequence", takesValue = true),
+        CliOption("--scope", takesValue = true),
+    ),
 )

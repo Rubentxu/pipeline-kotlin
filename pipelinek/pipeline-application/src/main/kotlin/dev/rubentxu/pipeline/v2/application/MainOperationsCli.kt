@@ -154,9 +154,14 @@ internal object MainOperationsCli {
      * not own used to be dropped without a word, so `operations <runId>
      * --control-root <dir> --bogus-flag` published an empty listing and exited
      * 0 — a false answer about a run the operator never asked about.
+     *
+     * It also owns the run id, which is a positional argument, and says so in
+     * the shape of the request it accepts: this is the one verb of the six
+     * that reads one. The verbs that own none say so too, by not saying they
+     * own one.
      */
     fun main(args: Array<String>): Int {
-        val admission = CliOptionAdmission.admit(args, OPERATIONS_OPTIONS)
+        val admission = CliOptionAdmission.admit(args, OPERATIONS_REQUEST)
         val accepted = when (admission) {
             is CliAdmission.Rejected -> {
                 System.err.println(admission.error.refusalLines("operations").joinToString("\n"))

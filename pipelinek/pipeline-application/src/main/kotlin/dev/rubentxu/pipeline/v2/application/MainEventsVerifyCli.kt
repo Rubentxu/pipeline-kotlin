@@ -36,6 +36,15 @@ import java.nio.file.Path
  * The refusals are issued before the store is touched: a request that cannot
  * be read never reaches the filesystem.
  *
+ * ## Why the argument this verb does not own is refused by the admission
+ *
+ * This verb used to check the positional arguments itself, after the
+ * admission had already answered. It does not any more: the admission owns the
+ * WHOLE shape of the request — the options and the positional arguments — and
+ * this verb owns none of the second kind, so it says so by not claiming one.
+ * One place decides whether a request is one of this verb's requests, and the
+ * refusal it renders is the same one every verb of this family renders.
+ *
  * ## The shape of the verb
  *
  * The verb is four steps and each one is its own function: read the request by
@@ -57,19 +66,13 @@ object MainEventsVerifyCli {
     private const val SCOPE_WHOLE: String = "whole"
 
     fun main(args: Array<String>): Int {
-        val admission = CliOptionAdmission.admit(args, EVENTS_VERIFY_OPTIONS)
+        val admission = CliOptionAdmission.admit(args, EVENTS_VERIFY_REQUEST)
         val accepted = when (admission) {
             is CliAdmission.Rejected -> {
                 refuse(admission.error.refusalLines("events verify").joinToString("\n"))
                 return 2
             }
             is CliAdmission.Admitted -> admission
-        }
-
-        val unexpected = accepted.positionals.firstOrNull()
-        if (unexpected != null) {
-            refuse("events verify: unexpected argument: $unexpected")
-            return 2
         }
 
         val db = accepted.values["--db"]

@@ -137,6 +137,10 @@ fun CliError.toCliExit(): CliExit = when (this) {
         hint = "this build refuses a value spelled like one of its own options; quoting it or writing " +
             "'$option=$value' does not change that, so pass a different value",
     )
+    is CliError.UnexpectedPositional -> CliExit.InvalidArgument(
+        message = "unexpected argument: $value",
+        hint = "this command takes no positional argument",
+    )
 }
 
 /**

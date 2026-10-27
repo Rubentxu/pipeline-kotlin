@@ -301,6 +301,22 @@ sealed interface CliError {
      * a token that names nothing is far more likely to be a pattern than a mistyped flag.
 */
     data class OptionValueIsAnOption(val option: String, val value: String) : CliError
+
+    /**
+     * A positional argument in a request whose verb owns none.
+     *
+     * Refused rather than dropped, for the reason [OptionValueIsAnOption] is:
+     * a token the caller typed and the verb silently discarded is a request
+     * the verb answered in a way nobody asked for. Measured on the built
+     * distribution, `doctor foo`, `version foo`, `capabilities foo` and
+     * `sdk-info foo` all answered 0 and printed exactly what the bare verb
+     * prints — a confident answer about a request that was never made.
+     *
+     * A positional argument is not an option, so it does not reuse
+     * [UnknownOption]: the token has to be named as what it is, or the
+     * operator is sent looking for a flag they never typed.
+     */
+    data class UnexpectedPositional(val value: String) : CliError
 }
 
 /**

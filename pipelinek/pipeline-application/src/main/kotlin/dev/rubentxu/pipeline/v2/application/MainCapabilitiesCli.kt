@@ -61,7 +61,7 @@ object MainCapabilitiesCli {
      * @return 0 on success (always).
 */
     fun main(args: Array<String>): Int {
-        val admission = CliOptionAdmission.admit(args, NO_OPTIONS)
+        val admission = CliOptionAdmission.admit(args, NO_ARGUMENTS_REQUEST)
         when (admission) {
             is CliAdmission.Rejected -> {
                 System.err.println(admission.error.refusalLines("capabilities").joinToString("\n"))

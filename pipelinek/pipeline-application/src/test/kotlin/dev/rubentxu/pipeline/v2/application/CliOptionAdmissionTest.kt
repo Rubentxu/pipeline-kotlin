@@ -1,6 +1,7 @@
 package dev.rubentxu.pipeline.v2.application
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayOutputStream
@@ -16,13 +17,21 @@ import java.io.PrintStream
  * verb does not own is refused exactly like an option nobody knows, because the
  * defect is the verb's, not the build's.
  *
+ * The same holds for a POSITIONAL argument. A positional argument is part of
+ * the request too, and a verb that owns none has to say that a request
+ * carrying one is not one of its requests. Measured on the built distribution,
+ * `doctor foo`, `version foo`, `capabilities foo` and `sdk-info foo` answered
+ * 0 and printed exactly what the bare verb prints: a confident answer about a
+ * request nobody had made.
+ *
  * ## The capacity this serves
  *
- * An operator who mistypes a flag, or hands a flag to a verb that never
- * accepted it, gets a refusal on stderr and a nonzero exit. Before this
- * admission, `operations <runId> --control-root <dir> --bogus-flag` published
- * an empty list of operations and exited 0: the answer was about a run the
- * operator never asked about, and it looked like the truth.
+ * An operator who mistypes a flag, hands a flag to a verb that never accepted
+ * it, or types an argument the verb does not take, gets a refusal on stderr
+ * and a nonzero exit. Before this admission, `operations <runId>
+ * --control-root <dir> --bogus-flag` published an empty list of operations and
+ * exited 0: the answer was about a run the operator never asked about, and it
+ * looked like the truth.
  *
  * ## Why this instrument
  *
@@ -41,8 +50,9 @@ import java.io.PrintStream
  * ## What this does not freeze
  *
  * The wording of the refusal is not frozen, except for the token of the
- * offending option, which the operator has to be able to read. A verb that
- * printed its own sentence instead of the shared one would still refuse.
+ * offending option or argument, which the operator has to be able to read. A
+ * verb that printed its own sentence instead of the shared one would still
+ * refuse.
  *
  * ## What this instrument cannot see
  *
@@ -55,6 +65,11 @@ import java.io.PrintStream
  * the verb makes with the words it makes them with -- are in
  * `MainEventsVerifyCliTest`. What is here is the vocabulary and the rule that
  * decides whether a request is readable at all.
+ *
+ * `doctor` has no row that exercises the request that IS its own: its health
+ * probe writes a temporary file into the working directory, and a unit test in
+ * this tree does not touch the filesystem. The other three verbs are exercised
+ * both ways.
  */
 class CliOptionAdmissionTest {
 
@@ -62,7 +77,7 @@ class CliOptionAdmissionTest {
     fun `a verb that owns no option refuses one`() {
         assertEquals(
             CliAdmission.Rejected(CliError.UnknownOption("--json")),
-            CliOptionAdmission.admit(arrayOf("--json"), NO_OPTIONS),
+            CliOptionAdmission.admit(arrayOf("--json"), NO_ARGUMENTS_REQUEST),
         )
     }
 
@@ -70,7 +85,7 @@ class CliOptionAdmissionTest {
     fun `an option the build knows and the verb does not own is refused too`() {
         assertEquals(
             CliAdmission.Rejected(CliError.UnknownOption("--db")),
-            CliOptionAdmission.admit(arrayOf("--db", "/tmp/a-plane"), NO_OPTIONS),
+            CliOptionAdmission.admit(arrayOf("--db", "/tmp/a-plane"), NO_ARGUMENTS_REQUEST),
         )
     }
 
@@ -82,7 +97,7 @@ class CliOptionAdmissionTest {
                 values = emptyMap(),
                 positionals = emptyList(),
             ),
-            CliOptionAdmission.admit(arrayOf("--json"), VERSION_OPTIONS),
+            CliOptionAdmission.admit(arrayOf("--json"), VERSION_REQUEST),
         )
     }
 
@@ -96,7 +111,7 @@ class CliOptionAdmissionTest {
             ),
             CliOptionAdmission.admit(
                 arrayOf("run-1", "--control-root", "/tmp/a-plane"),
-                OPERATIONS_OPTIONS,
+                OPERATIONS_REQUEST,
             ),
         )
     }
@@ -105,7 +120,7 @@ class CliOptionAdmissionTest {
     fun `a valued option with no value is refused`() {
         assertEquals(
             CliAdmission.Rejected(CliError.MissingOptionValue("--control-root")),
-            CliOptionAdmission.admit(arrayOf("run-1", "--control-root"), OPERATIONS_OPTIONS),
+            CliOptionAdmission.admit(arrayOf("run-1", "--control-root"), OPERATIONS_REQUEST),
         )
     }
 
@@ -115,7 +130,7 @@ class CliOptionAdmissionTest {
             CliAdmission.Rejected(CliError.OptionValueIsAnOption("--control-root", "--format")),
             CliOptionAdmission.admit(
                 arrayOf("run-1", "--control-root", "--format"),
-                OPERATIONS_OPTIONS,
+                OPERATIONS_REQUEST,
             ),
         )
     }
@@ -130,7 +145,7 @@ class CliOptionAdmissionTest {
             ),
             CliOptionAdmission.admit(
                 arrayOf("run-1", "--control-root", "--bogus-flag"),
-                OPERATIONS_OPTIONS,
+                OPERATIONS_REQUEST,
             ),
         )
     }
@@ -144,7 +159,7 @@ class CliOptionAdmissionTest {
             CliAdmission.Rejected(CliError.OptionValueIsAnOption("--db", "--run")),
             CliOptionAdmission.admit(
                 arrayOf("--db", "--run", "run-1"),
-                EVENTS_VERIFY_OPTIONS,
+                EVENTS_VERIFY_REQUEST,
             ),
         )
     }
@@ -163,14 +178,15 @@ class CliOptionAdmissionTest {
             ),
             CliOptionAdmission.admit(
                 arrayOf("--db", "/tmp/store/events.db", "--run", "run-1", "--contract", "/tmp/store/events.yaml"),
-                EVENTS_VERIFY_OPTIONS,
+                EVENTS_VERIFY_REQUEST,
             ),
         )
     }
 
     @Test
     fun `the two option vocabularies agree about every token they share`() {
-        val shared = (VERSION_OPTIONS + OPERATIONS_OPTIONS + EVENTS_VERIFY_OPTIONS)
+        val shared = listOf(VERSION_REQUEST, OPERATIONS_REQUEST, EVENTS_VERIFY_REQUEST)
+            .flatMap { it.options }
             .filter { knownOptionArity(it.token) != null }
         assertTrue(shared.isNotEmpty(), "no token is shared; the agreement proves nothing")
         for (option in shared) {
@@ -180,6 +196,29 @@ class CliOptionAdmissionTest {
                 "the verb and the shared parser disagree about ${option.token}",
             )
         }
+    }
+
+    @Test
+    fun `a verb that owns no positional argument refuses one`() {
+        assertEquals(
+            CliAdmission.Rejected(CliError.UnexpectedPositional("foo")),
+            CliOptionAdmission.admit(arrayOf("foo"), NO_ARGUMENTS_REQUEST),
+        )
+    }
+
+    @Test
+    fun `a verb that owns a positional argument reads it`() {
+        assertEquals(
+            CliAdmission.Admitted(
+                flags = emptySet(),
+                values = emptyMap(),
+                positionals = listOf("run-1"),
+            ),
+            CliOptionAdmission.admit(
+                arrayOf("run-1"),
+                OPERATIONS_REQUEST,
+            ),
+        )
     }
 
     @Test
@@ -240,6 +279,75 @@ class CliOptionAdmissionTest {
 
         assertEquals(0, result.exitCode)
         assertTrue(result.stdout.contains("productVersion"), result.stdout)
+    }
+
+    @Test
+    fun `version refuses an argument it was not asked about`() {
+        val result = capture { runVersionVerb(arrayOf("foo")) }
+
+        assertEquals(2, result.exitCode)
+        assertTrue(result.stderr.contains("foo"), result.stderr)
+        // The dangerous shape: a refusal that still answers. An operator would
+        // read the version line as the answer to the request they made.
+        assertEquals("", result.stdout)
+    }
+
+    @Test
+    fun `doctor refuses an argument it was not asked about`() {
+        val result = capture { runDoctorVerb(arrayOf("foo")) }
+
+        assertEquals(2, result.exitCode)
+        assertTrue(result.stderr.contains("foo"), result.stderr)
+        // The health report is the answer to the request `doctor` was asked
+        // for; printing it here would answer a request nobody made.
+        assertEquals("", result.stdout)
+    }
+
+    @Test
+    fun `capabilities refuses an argument it was not asked about`() {
+        val result = capture { MainCapabilitiesCli.main(arrayOf("foo")) }
+
+        assertEquals(2, result.exitCode)
+        assertTrue(result.stderr.contains("foo"), result.stderr)
+        assertEquals("", result.stdout)
+    }
+
+    @Test
+    fun `sdk-info refuses an argument it was not asked about`() {
+        val result = capture { MainSdkInfoCli.main(arrayOf("foo")) }
+
+        assertEquals(2, result.exitCode)
+        assertTrue(result.stderr.contains("foo"), result.stderr)
+        assertEquals("", result.stdout)
+    }
+
+    @Test
+    fun `operations still reads the run id it owns`() {
+        val result = capture { MainOperationsCli.main(arrayOf("run-1")) }
+
+        // The verb owns the run id, so the argument is admitted and READ: the
+        // refusal is about the NEXT thing the verb needs, not about the
+        // argument. A refusal that named "run-1" would say the opposite.
+        assertEquals(2, result.exitCode)
+        assertTrue(result.stderr.contains("--control-root"), result.stderr)
+        assertFalse(result.stderr.contains("run-1"), result.stderr)
+        assertEquals("", result.stdout)
+    }
+
+    @Test
+    fun `capabilities still answers the request that is its own`() {
+        val result = capture { MainCapabilitiesCli.main(arrayOf()) }
+
+        assertEquals(0, result.exitCode)
+        assertTrue(result.stdout.contains("pipelinek.capabilities/2"), result.stdout)
+    }
+
+    @Test
+    fun `sdk-info still answers the request that is its own`() {
+        val result = capture { MainSdkInfoCli.main(arrayOf()) }
+
+        assertEquals(0, result.exitCode)
+        assertTrue(result.stdout.contains("pipelinek.sdk/1"), result.stdout)
     }
 
     private data class Result(val exitCode: Int, val stdout: String, val stderr: String)

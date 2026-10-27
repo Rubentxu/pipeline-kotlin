@@ -104,7 +104,7 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
  * gate decides whether that is acceptable for what it is certifying.
  */
 internal fun runVersionVerb(args: Array<String>): Int {
-    val admission = CliOptionAdmission.admit(args, VERSION_OPTIONS)
+    val admission = CliOptionAdmission.admit(args, VERSION_REQUEST)
     val accepted = when (admission) {
         is CliAdmission.Rejected -> {
             System.err.println(admission.error.refusalLines("version").joinToString("\n"))
@@ -178,7 +178,7 @@ internal fun runSdkInfoVerb(args: Array<String>): Int =
  * believed in was dropped without a word.
  */
 internal fun runDoctorVerb(args: Array<String>): Int {
-    val admission = CliOptionAdmission.admit(args, NO_OPTIONS)
+    val admission = CliOptionAdmission.admit(args, NO_ARGUMENTS_REQUEST)
     when (admission) {
         is CliAdmission.Rejected -> {
             System.err.println(admission.error.refusalLines("doctor").joinToString("\n"))

@@ -1268,6 +1268,50 @@ PASS  sha=3fba864914f94b56ae89d92e52bdb1946300b31e  elapsed=187s  budget=900s  t
 - 187 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 27615`, `PRODUCT_LOC = 71237`, ratio `0.388` (límite 2).
 
+#### El corte: el lanzador lee las directivas una vez y cuenta una vez
+
+**Qué hace.** `examples/run.sh` leía las líneas `//@` de cada escenario en TRES sitios, y cada sitio tenía su propia regla: el reloj de la ejecución tomaba las veinte primeras, el parser tomaba las veinte primeras, y el censo tomaba las cuarenta primeras con OTRO patrón (`^//@ expect-`). Tres lecturas del mismo fichero, tres reglas distintas, y un número que las tres alimentaban.
+
+La consecuencia viva era una cifra inflada. El censo contaba la promesa de `//@ expect-exit <distinto de cero>` como una promesa más, y el cuerpo del escenario la contaba OTRA VEZ con un `+1` por cada camino de ejecución. Medido sobre los 63 escenarios: **24 publicaban de más** —14 por dos comprobaciones y 10 por una—, y el informe anunciaba **594 comprobaciones** donde el lanzador hacía **556**.
+
+La consecuencia latente era peor y estaba a un paso. Una línea `//@` en la posición VEINTIUNO la contaba el censo y no la leía nadie, porque el parser se había parado en la veinte. Y una directiva que el lanzador no entiende en esa posición dejaba de negar al escenario, porque el parser ya no la veía: era el mismo silencio que el lanzador ya se niega a dejar cuando una directiva no entiende —«el escenario no declara nada que comprobar»—, extendido por un techo de líneas.
+
+**Medido antes y después, con la misma distribución y la misma suite:**
+
+|celda|comprobaciones publicadas|escenarios|ejecuciones|pasos|inestables|
+|---|---|---|---|---|---|
+|antes (`306059080`)|594|63/63|114|220|2|
+|después (`3a9483150`)|556|63/63|114|220|2|
+
+La cobertura contractual NO baja: los mismos 63 escenarios, las mismas 114 ejecuciones, los mismos 220 pasos terminados y los mismos 2 inestables. Lo que baja es la cifra que mentía sobre la cobertura.
+
+**El corte.** Un solo lector, `read_directives`, que lee TODAS las líneas `//@` del escenario, sin techo: los dos lectores que lo tenían —el del reloj y el del parser— pasan a usar ese lector, y el tercero desaparece. El censo deja de ser una SEGUNDA lectura del fichero: el número de promesas lo acumula el parser, en los mismos brazos que leen los valores que luego se comparan, de modo que el conteo no puede discrepar de lo leído —una promesa que el parser nunca vio no se cuenta, y una que vio no se pierde—. La cuenta del `expect-exit` se hace sobre el VALOR leído (el parser conserva el último) y sólo cuando ese valor es distinto de cero, porque el cero es lo que devuelve un proceso que no se ha caído: comprobar que no pasó nada no es una promesa. La comparación del código de salida ocurre una vez por ejecución —la que da el veredicto y la volátil, que son dos ejecuciones del producto comparadas cada una contra su propia salida—, y ahora el número publicado dice exactamente eso.
+
+**Visto en rojo, con las mutaciones leídas de vuelta.** El instrumento fue el lanzador real sobre una suite de un solo escenario, con 21 directivas `//@` cuya última es un `expect-stdout` que el escenario NO satisface. Cada mutación se aplicó, se leyó con `diff` contra la copia limpia y el árbol se restauró desde esa copia, nunca desde git.
+
+|Mutación|Qué se encendió|
+|---|---|
+|El lector vuelve a su techo de veinte líneas (`grep -m 20`), aplicado y leído con `diff` contra la copia limpia|el fixture queda VERDE (`ok … checks=46`): el escenario deja de comprobar la promesa VEINTIUNO y el lanzador la cuenta igual|
+|El lanzador de `HEAD` sin el corte (`git show HEAD:examples/run.sh`)|el fixture queda VERDE (`ok … checks=48`): el instrumento estaba rojo sobre el código publicado|
+|Los dos `+1` del `expect-exit` vuelven, aplicados y leídos con `diff`|la suite real vuelve a publicar **594** comprobaciones: la cifra mintiendo era observable|
+
+La diferencia entre los 46 y los 48 del fixture tiene explicación y no es una columna que sobre: con el corte el escenario FALLA en su promesa VEINTIUNO, así que la comparación del resultado final no llega a ejecutarse; sin corte, el techo la esconde y el escenario pasa.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que toda directiva que un escenario declara se respeta, y que el informe dice cuántas comparaciones hizo el lanzador: una por promesa y por ejecución. La capacidad que la sostiene es que el informe de E2E se puede citar como cifra de comprobaciones hechas. El instrumento es el lanzador real —el número publicado sobre la suite real— más un escenario de fixture con 21 directivas, porque un test unitario no puede ejecutar el lanzador (AGENTS.md prohíbe el subproceso y el sistema de ficheros en un test unitario) y un escenario PERMANENTE en `examples/` que existe sólo para ejercitar un techo del lanzador sería infraestructura del harness, que §3 prohíbe: el fixture es efímero y vive en el ciclo de verificación, no en el árbol.
+
+**Lo que este corte NO arregla, y se dice.** No arregla que el conjunto de escenarios se enumere DOS veces con reglas distintas: `scripts/verify-all.sh:plan_scenarios` busca `*.pipeline.kts` sin excluir `*/example-*-plugin/*`, mientras que `run.sh` sí lo excluye, y el gate nunca compara su plan con lo que realmente se ejecutó. Hoy las dos enumeraciones dan los mismos 63 caminos, así que no hay un defecto OBSERVADO, pero la regla es distinta y queda declarada. No arregla las OCHO copias del bloque que lee el identificador de ejecución de `$root/control/last-run/*` (once líneas efectivas cada una, la lectura y su brazo de negación, equivalentes en comportamiento salvo el nombre de la variable y el texto del fallo): es otra consolidación, con su propia medición. No arregla el idioma del fallo, que vive en dos vocabularios dentro del lanzador —la fila que se IMPRIME y la que se REGISTRA en `failures`— y que no siempre dicen lo mismo: en `examples/run.sh:2715` la fila impresa nombra «a database» y la registrada nombra «the file». No arregla la lectura `ls-remote` que se abre al fallar ni el `git` sin ruta absoluta de `publish-tag.sh`, ya declarados como residuales en los cortes anteriores de este mismo hito.
+
+Medido sobre `3a9483150` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=3a9483150302ea162989b09d897982a602a7229c  elapsed=181s  budget=900s  tests=rewritten:1465 read:0  scenarios=observed:63 executed:63
+```
+
+- 196 informes JUnit reescritos por esta ejecución, 1465 tests EJECUTADOS de verdad, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E ejecutados y en verde, 556 comprobaciones sobre 114 ejecuciones y 220 pasos terminados.
+- 181 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 27617`, `PRODUCT_LOC = 71237`, ratio `0.388` (límite 2).
+
 ## 4. Orden y dependencias
 
 

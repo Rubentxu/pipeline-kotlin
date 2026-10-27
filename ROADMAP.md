@@ -1364,6 +1364,76 @@ PASS  sha=32eaff0984e057a710451a3c4597779ee314a071  elapsed=182s  budget=900s  t
 - 182 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 28161`, `PRODUCT_LOC = 71422`, ratio `0.394` (límite 2).
 
+#### El corte: el verbo que no posee posicional lo dice
+
+**Qué hace.** Cuatro verbos contestaban una petición que llevaba un ARGUMENTO POSICIONAL sin rechazarla: el argumento se perdía en silencio y el verbo contestaba 0 con su respuesta de siempre. Es la misma familia del corte recién cerrado —un verbo debe SAY que una petición no es una suya— y es el residual más pequeño que quedaba abierto.
+
+Medido sobre la distribución construida de `ace673e2f` —el estado anterior al corte— y la de `7f71ccb57` —el estado posterior—, con la misma máquina, ocho invocaciones:
+
+|celda|antes|después|
+|---|---|---|
+|`version foo`|salida 0; stdout BYTE-IDÉNTICO al de `version` a secas; stderr vacío|salida 2; stdout vacío; stderr «version: unexpected argument: foo» + «this command takes no positional argument»|
+|`doctor foo`|salida 0; stdout BYTE-IDÉNTICO al informe de salud de `doctor` a secas; stderr vacío|salida 2; stdout vacío; stderr «doctor: unexpected argument: foo» + la pista|
+|`capabilities foo`|salida 0; stdout BYTE-IDÉNTICO al documento JSON de `capabilities` a secas; stderr vacío|salida 2; stdout vacío; stderr «capabilities: unexpected argument: foo» + la pista|
+|`sdk-info foo`|salida 0; stdout BYTE-IDÉNTICO al documento JSON de `sdk-info` a secas; stderr vacío|salida 2; stdout vacío; stderr «sdk-info: unexpected argument: foo» + la pista|
+|`version`, `capabilities` y `sdk-info` a secas|salida 0 con su respuesta|salida 0 con la MISMA respuesta, byte a byte: el camino feliz no se toca|
+|`events verify extra`|salida 2; stderr «events verify: unexpected argument: extra» + el uso, SIN la pista|salida 2; stderr la MISMA primera línea + «this command takes no positional argument» + el uso|
+|`operations run-1`|salida 2 por `--control-root`, sin nombrar el run id|salida 2 por `--control-root`, sin nombrar el run id: el verbo POSEE el posicional y lo lee|
+|`operations run-1 run-2`|salida 2 por `--control-root`; el posicional DE MÁS se pierde en silencio|igual — RESIDUAL declarado, ver abajo|
+
+Las CUATRO primeras filas son el contenido de la garantía: el verbo contestaba 0 con una respuesta BYTE-IDÉNTICA a la del verbo desnudo, así que el operador no tenía ninguna forma de saber que su argumento no se había leído. La QUINTA fila es la que dice que el camino feliz no se toca —el stdout del verbo desnudo es el mismo antes y después, byte a byte—. La SEXTA es el otro lado del mismo defecto: `events verify` ya rechazaba el argumento sobrante, pero con una comprobación PROPIA; ahora lo rechaza la MISMA autoridad que los otros cinco verbos, con una pista que antes no tenía. Las DOS últimas son el verbo que sí posee un posicional, y no se toca.
+
+**El corte, verbo por verbo.** La admisión compartida declara, para cada verbo, la FORMA de la petición que acepta: las opciones que posee y el argumento posicional que posee.
+
+|verbo|opciones|posicional|qué hace con él|
+|---|---|---|---|
+|`version`|`--json`|ninguno|lo rechaza|
+|`doctor`|ninguna|ninguno|lo rechaza|
+|`capabilities`|ninguna|ninguno|lo rechaza|
+|`sdk-info`|ninguna|ninguno|lo rechaza|
+|`operations`|`--control-root`, `--format`|el run id|lo LEE — y por eso no se toca|
+|`events verify`|`--db`, `--run`, `--contract`, `--from-sequence`, `--scope`|ninguno|lo rechaza|
+
+Las dos mitades de la forma viajan JUNTAS en un valor —`CliRequest`—, porque un verbo que declara una mitad en un sitio y la otra en otro declara una de las dos por accidente: con la forma partida, las dos filas de test que leían la tabla por el camino antiguo se rompieron al no repetir la declaración, que es exactamente el defecto que la forma unida evita. Las tablas dejan de llamarse `NO_OPTIONS` y `VERSION_OPTIONS` para llamarse `NO_ARGUMENTS_REQUEST` y `VERSION_REQUEST`: el nombre dice lo que el valor contiene, que es la forma completa de la petición y no sólo sus opciones.
+
+El valor por defecto es la mitad SEGURA: una forma que no dice que posee un posicional no lo posee, y una petición que lleva uno se rechaza NOMBRANDO EL TOKEN. Un verbo que sí lo posee lo dice en su forma: `operations`, que posee el run id, es el único de los seis que lo lee.
+
+El rechazo sale de la ÚNICA tabla de errores del CLI —`toCliExit()`—, así que el mensaje y el código de salida son los mismos que usa el resto del CLI, y la rama nueva es exhaustiva POR CONSTRUCCIÓN: un `CliError` nuevo sin su rama no compila.
+
+La comprobación local de `events verify` desaparece: la admisión decide ya si una petición es una suya, y un segundo sitio que decide lo mismo es un segundo lugar donde puede mentir.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que un verbo que no posee argumento posicional nunca contesta una petición que lo lleva: la rechaza nombrando el token, antes de hacer nada. La capacidad que la sostiene es que el operador que escribe `pipeline doctor foo` —o el que se equivoca de verbo— lee un RECHAZO y no una respuesta: hasta ahora leía un informe de salud, que es un documento que parece una verdad.
+
+El instrumento es un test unitario (`CliOptionAdmissionTest`, 9 filas nuevas). La admisión es una función pura sobre un array de argumentos, así que el instrumento más barato que puede fallar es llamarla y comparar el resultado contra una expectativa LITERAL escrita en el test; y la costura —que el verbo REHÚSE y no conteste— se cruza llamando al verbo EN PROCESO: se llama a `runDoctorVerb`, se lee su código de salida y se capturan su stderr y su stdout, sin proceso, sin disco y sin reloj.
+
+Las expectativas son literales, y lo único que se lee de producción es el vocabulario bajo prueba. Dos filas esquivan la vacuidad a propósito: las de los verbos comprueban que stdout está VACÍO, porque un rechazo que además contesta es la forma PELIGROSA —el operador leería la versión como la respuesta a lo que pidió—; y la de `operations` comprueba que stderr NO menciona el run id, porque el verbo lo posee y lo lee: un rechazo que lo nombrara estaría diciendo lo contrario.
+
+**Qué NO tiene instrumento, y se dice.** `doctor` no tiene fila que ejercite la petición que ES la suya: su sonda de salud escribe un fichero temporal en el directorio de trabajo, y un test unitario de este árbol no toca el sistema de archivos. Los otros tres verbos se ejercitan en las dos direcciones. El camino feliz de `doctor` se comprobó MANUALMENTE sobre la distribución construida: salida 0 y el informe de salud, con stdout byte a byte igual al de antes del corte.
+
+**Visto en rojo, con la mutación leída de vuelta.** Cuatro mutaciones focales, una cada vez, sobre `CliOptionAdmission.kt` y `CliExitMapping.kt`. Cada una se aplicó, se leyó de vuelta —el `grep` que confirma que la mutación ESTABA en el fichero, no un «BUILD FAILED»— y se restauró desde una copia byte a byte del fichero tal como estaba antes de mutar, comprobando después con `sha256sum` que el fichero y la copia eran el mismo byte. El discriminador lee las FILAS del informe JUnit, no la palabra «BUILD FAILED».
+
+|mutación|qué se encendió|
+|---|---|
+|El rechazo del posicional desaparece de la admisión —las cuatro líneas del `if`|exactamente SEIS filas en rojo: las cuatro de los verbos —«version refuses an argument it was not asked about», «doctor refuses an argument it was not asked about», «capabilities refuses an argument it was not asked about» y «sdk-info refuses an argument it was not asked about»—, la pura «a verb that owns no positional argument refuses one» y la de «events verify refuses an argument it was not asked about»; las otras 28 del lote siguieron en verde|
+|Se rechaza TODO posicional, incluso el que el verbo posee —`request.positional == PositionalArgument.NONE` sale de la condición—|exactamente CUATRO filas: «a valued option takes the token after it», «a value that names nothing this build knows is a value», «a verb that owns a positional argument reads it» y «operations still reads the run id it owns»; las otras 30 en verde|
+|El token desaparece del mensaje —«unexpected argument: $value» → «unexpected argument»—|exactamente CINCO filas —las cuatro de los verbos y la de `events verify`—; la fila pura NO se enciende, porque aserta el VALOR de la ADT y no su prosa, que es lo que este corte no congela; las otras 29 en verde|
+|La declaración `OWNED` desaparece de la forma de `operations`|exactamente CUATRO filas, las mismas que la segunda mutación: las que dependen de que un posicional POSEDIDO se admita; las otras 30 en verde|
+
+Ninguna mutación encendió de más: en las cuatro, el resto del lote siguió en verde. Y las dos últimas se aprietan en lados OPUESTOS de la misma costura —la regla que decide y la declaración que la activa—: una que no se vuelve a ver en rojo no está probada.
+
+**Lo que este corte NO arregla, y se dice.** No arregla el POSICIONAL DE MÁS de `operations`: `operations run-1 run-2` lee `run-1` y se pierde `run-2` en silencio, antes y después del corte. El verbo posee un posicional legítimamente y este corte no lo toca; el caso es DISTINTO —un verbo que posee UNO y traga el segundo— y queda declarado como residual medido. No arregla la línea de ayuda de `events verify` —`CliVerb("events verify", "check a run's events against a contract (--db, --run, --contract)")`—, que nombra TRES de las CINCO opciones que el verbo acepta: `--from-sequence` y `--scope` no aparecen. No arregla los vocabularios de opciones escritos a mano fuera de esta admisión: las banderas de inspección de `events`, la familia `runs` y `saga inspect` tienen su propio bucle, y la tabla `CliOptionAdmission` es UN pedazo más del mismo género.
+
+Medido sobre `7f71ccb57fe1579c67d25f547952bfd2eabfc4dd` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=7f71ccb57fe1579c67d25f547952bfd2eabfc4dd  elapsed=182s  budget=900s  tests=rewritten:1518 read:0  scenarios=observed:63 executed:63
+```
+
+- 200 informes JUnit reescritos por esta ejecución, 1518 tests EJECUTADOS de verdad, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E observados y ejecutados, en verde.
+- 182 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28232`, `PRODUCT_LOC = 71445`, ratio `0.395` (límite 2). La verificación subió 71 líneas —las 9 filas nuevas y su documentación— y la producción subió 23.
+
 
 ## H6 — Reducir deuda del harness y asegurar la publicación
 

@@ -1,43 +1,42 @@
 package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 import java.io.Closeable
-import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFileAttributes
-import java.nio.file.attribute.PosixFilePermission
-import java.util.EnumSet
+import java.util.concurrent.TimeUnit
 
 /**
  * The rendezvous between the durable child and the ingest agent.
  *
  * ## What this owns
  *
- * The FIFOs, the agent's launch, and the readiness the runtime waits for before the child is
- * allowed to write to them. Nothing else: the CHILD's launch is [ShellProcessLauncher]'s, and
- * the agent's own draining is the agent's.
+ * The POLICY of the rendezvous: the FIFOs exist, the agent is attached, and the child is safe to
+ * start — or, when any of that fails, nothing of the rendezvous is left open. The EFFECTS are the
+ * host's ([RendezvousHost]), and the split is what lets the policy be observed by an instrument
+ * that needs neither a real FIFO, nor a real agent JVM, nor a real clock: the agent path has no
+ * executable scenario in this tree, so an instrument that can drive it with fakes is the only one
+ * available for it.
  *
  * ## The contract is public because the agent is in another module
  *
- * Two processes meet here, and they live in two modules: the runtime launches the agent, and
- * the agent reads the argv it was handed. The values they agree on — the argv's shape, the
- * marker the agent writes, the type the FIFO must have, the variable that carries the secret —
- * are therefore a CONTRACT, and a contract only one side can see is a contract the two sides
- * can drift on.
+ * Two processes meet here, and they live in two modules: the runtime launches the agent, and the
+ * agent reads the argv it was handed. The values they agree on — the argv's shape, the marker the
+ * agent writes, the type the FIFO must have, the variable that carries the secret — are therefore a
+ * CONTRACT, and a contract only one side can see is a contract the two sides can drift on.
  *
  * The dependency runs the right way for that: `pipeline-application` already depends on
- * `pipeline-step-sdk:runtime`, so the contract can live in the runtime and the agent can read
- * it there. The other direction would be a cycle.
+ * `pipeline-step-sdk:runtime`, so the contract can live in the runtime and the agent can read it
+ * there. The other direction would be a cycle.
  *
  * ## What this replaces
  *
  * Before this cut each side carried its own copy of the agreement:
  *
- *  - the runtime built the argv with a private `buildAgentArgv`, and the agent read it by
- *    position. The agent also published an `argv` helper whose KDoc claimed the launcher used
- *    it, so the two could not drift. It did not use it: the helper had ZERO readers, and the
- *    launcher had its own builder;
+ *  - the runtime built the argv with a private builder, and the agent read it by position. The
+ *    agent also published an `argv` helper whose KDoc claimed the launcher used it, so the two
+ *    could not drift. It did not use it: the helper had ZERO readers, and the launcher had its
+ *    own builder;
  *  - the FIFO type predicate existed twice, once per module, as two copies of the same
  *    security invariant;
  *  - the agent published a `READY_CONTENT` that nothing read, and wrote the marker with an
@@ -55,10 +54,24 @@ import java.util.EnumSet
  * ENVIRONMENT, which `/proc/<pid>/environ` exposes to its owner alone (mode 400), under
  * [AGENT_SECRET_ENV]. The argv carries identifiers and paths, and nothing that must stay
  * secret.
+ *
+ * ## A failed rendezvous leaves nothing of its own open
+ *
+ * The warm-up descriptors are the FIFOs' only writers besides the child, and the agent reads
+ * until EOF. A rendezvous that fails without releasing them leaves two descriptors open in this
+ * JVM and — because the agent never sees the EOF it is waiting for — an agent JVM alive with
+ * nothing owning it, waiting for a transcript that will never grow. The failed attach would
+ * leave an orphan behind every time it happened.
+ *
+ * So the policy is: what the rendezvous acquires, it releases when the rendezvous does not
+ * complete. The descriptors go first, because closing them is what lets the agent see EOF; the
+ * agent is killed afterwards, because a release that leaves a process running has not released
+ * anything.
  */
 class AgentRendezvous internal constructor(
-    private val opId: String,
-    private val config: DurableShConfig,
+    opId: String,
+    config: DurableShConfig,
+    private val host: RendezvousHost = ProcessRendezvousHost(opId, config),
 ) {
 
     /**
@@ -126,176 +139,81 @@ class AgentRendezvous internal constructor(
      * does not block, launch the agent, and wait for its ready marker. Only then may the child
      * start, because opening a FIFO for write blocks until a reader appears.
      *
+     * When any step fails, everything the rendezvous acquired is released before the failure is
+     * reported. The release is not a courtesy: the warm-up descriptors are the FIFOs' only
+     * writers besides the child, so an attach that failed without releasing them leaves the agent
+     * waiting for an EOF that will never arrive.
+     *
      * @param protocol The control directory's layout.
      * @return The warm-up descriptors, which are the only writers on the FIFOs until the child
      *   writes to them.
      */
     internal fun rendezvous(protocol: ShellProtocolLayout): List<Closeable> {
-        val fifoDir = materialiseFifos(protocol)
-        val warmup = openWarmup(protocol)
-        val agent = launchAgent(protocol, fifoDir)
-        awaitReady(protocol, agent)
+        val fifoDir = host.materialiseFifos(protocol)
+        val warmup = host.openWarmup(protocol)
+        var agent: Process? = null
+        try {
+            val launched = host.launchAgent(protocol, fifoDir)
+            agent = launched
+            host.awaitReady(protocol, launched)
+        } catch (failure: Throwable) {
+            releaseFailedRendezvous(warmup, agent)
+            throw failure
+        }
         return warmup
     }
 
     /**
-     * Creates the FIFO rendezvous under `controlDir/fifos/`. The directory and the FIFOs are
-     * owned by the runtime; the child writes to them, the agent reads from them.
+     * Releases what a failed rendezvous acquired, and nothing else.
      *
-     * `java.nio.file` cannot create a FIFO, so we shell out to `mkfifo`. The mkfifo binary is
-     * the standard coreutils command and is present on every POSIX host the durable shell
-     * already requires (`LinuxRequiredException`).
+     * Two things must not survive a failed attach:
      *
-     * `mkfifo` defaults to `0666 & ~umask`, which on a typical umask 022 host is 0644 —
-     * world-readable. The child's raw bytes flow through the FIFO before redaction, so a
-     * world-readable FIFO is a plaintext-spool exposure (the same threat class the Output Plane
-     * excludes). We chmod 0600 immediately after `mkfifo` and assert the type is a named pipe,
-     * so a pre-existing regular file or symlink at the path is rejected rather than silently
-     * accepted as a spool.
+     *  - the warm-up descriptors, which are the FIFOs' only writers besides the child. The agent
+     *    reads until EOF, and EOF comes when every writer is gone: a descriptor left open keeps
+     *    the agent waiting for a transcript that will not grow, and leaks a descriptor for the
+     *    life of this JVM;
+     *  - the agent process, when it is still alive. It holds the FIFOs' read ends, and with the
+     *    warm-up closed it would drain an empty pipe and leave — but only if it gets that far. A
+     *    forced kill is what makes "nothing of ours is left open" true rather than likely.
+     *
+     * The descriptors go first, because closing them is what releases the agent's read ends; the
+     * agent is killed afterwards, because a release that leaves a process running has not
+     * released anything.
+     *
+     * Neither step's failure stops the other: a descriptor that refuses to close must not leave
+     * the agent running, and an agent that refuses to die must not leave the descriptors open.
      */
-    private fun materialiseFifos(protocol: ShellProtocolLayout): Path {
-        val fifoDir = protocol.fifoDir
-        Files.createDirectories(fifoDir)
-        // Lock down the dir too — only the owner may traverse it, so even if the FIFO perms
-        // were wider, the path itself cannot be reached by another user.
-        Files.setPosixFilePermissions(
-            fifoDir,
-            EnumSet.of(
-                PosixFilePermission.OWNER_READ,
-                PosixFilePermission.OWNER_WRITE,
-                PosixFilePermission.OWNER_EXECUTE,
-            ),
-        )
-        val mkfifo = ProcessBuilder(
-            "mkfifo",
-            ShellProtocolLayout.STDOUT_FIFO,
-            ShellProtocolLayout.STDERR_FIFO,
-        )
-            .directory(fifoDir.toFile())
-            .redirectErrorStream(true)
-            .start()
-        val exit = mkfifo.waitFor()
-        check(exit == 0) { "mkfifo failed with exit $exit in $fifoDir" }
-        for (name in listOf(ShellProtocolLayout.STDOUT_FIFO, ShellProtocolLayout.STDERR_FIFO)) {
-            val fifo = fifoDir.resolve(name)
-            // Refuse anything that is not a named pipe. A symlink or regular file pre-placed by
-            // another process would have made the child's output a plaintext spool on disk,
-            // exactly the threat class the excludes name.
-            require(isFifo(fifo)) {
-                "$fifo is not a FIFO; refusing to use it as a rendezvous"
+    private fun releaseFailedRendezvous(warmup: List<Closeable>, agent: Process?) {
+        warmup.asReversed().forEach { descriptor ->
+            try {
+                descriptor.close()
+            } catch (_: Throwable) {
+                // Deliberate: the next descriptor is released anyway, and the agent is killed
+                // either way. A failure to release one must not change the verdict of the
+                // failure that caused the release.
             }
-            // Owner read+write only. The agent (same uid as the runtime) opens it; no other user
-            // can.
-            Files.setPosixFilePermissions(
-                fifo,
-                EnumSet.of(
-                    PosixFilePermission.OWNER_READ,
-                    PosixFilePermission.OWNER_WRITE,
-                ),
-            )
         }
-        return fifoDir
+        agent?.let { process -> terminateAgent(process) }
     }
 
     /**
-     * Opens the warm-up pair of read-write descriptors.
+     * Kills an agent that outlived its rendezvous, and waits, bounded, for it to be gone.
      *
-     * The agent opens each FIFO O_RDONLY, and a read-only open on a named pipe BLOCKS until a
-     * writer appears. The warm-up IS that writer: it releases the agent's open, and the runtime
-     * holds it until the child has finished, after which the child is the only writer and the
-     * agent sees the EOF that ends the stream.
+     * The kill is forced: the agent is a separate session, and a polite request would leave a
+     * process whose only purpose was to drain FIFOs nobody will write to. The wait is bounded so
+     * a stuck agent cannot hold the failure hostage, and a wait that times out does not replace
+     * the failure that caused the teardown: the failure is the verdict, and the agent's fate is
+     * a fact about the teardown.
      */
-    private fun openWarmup(protocol: ShellProtocolLayout): List<Closeable> = listOf(
-        FileChannel.open(
-            protocol.stdoutFifo,
-            StandardOpenOption.READ,
-            StandardOpenOption.WRITE,
-        ),
-        FileChannel.open(
-            protocol.stderrFifo,
-            StandardOpenOption.READ,
-            StandardOpenOption.WRITE,
-        ),
-    )
-
-    /**
-     * Launches the production ingest agent as a separate JVM that owns the FIFO read ends.
-     *
-     * The agent lives in
-     * `dev.rubentxu.pipeline.v2.application.durable.ingest.ObsPc2IngestAgent` (production, in
-     * `pipeline-application`). The runtime module cannot depend on `pipeline-application` (it
-     * would be a cycle: `application` already depends on `runtime`), so the agent is loaded by
-     * name. The class name is a string the runtime owns; if the class is missing the runtime
-     * fails the launch with a typed message rather than a `ClassNotFoundException` leaking the
-     * architectural boundary.
-     *
-     * The agent opens the FIFOs O_RDONLY (no spurious EOF), redacts in memory, and commits
-     * sanitized bytes to the Output Plane. The runtime does NOT start its per-channel pump
-     * threads in this mode.
-     *
-     * ## Detachment
-     *
-     * The agent is launched with the same JVM as the runtime and inherits the runtime's
-     * session. The runtime keeps the [Process] handle so the run terminal can send `SIGTERM`
-     * and, after a 5-second grace, `SIGKILL`. Killing the runtime JVM does NOT automatically
-     * kill the agent: the agent owns the FIFO read ends and survives its writer's death, which
-     * is the whole point of the Level B design.
-     */
-    private fun launchAgent(protocol: ShellProtocolLayout, fifoDir: Path): Process {
-        val runId = config.runId ?: error("runId must be set when pumpedViaAgent is true")
-        val secret = config.agentSecret ?: error("agentSecret must be set when pumpedViaAgent is true")
-        val args = Args(
-            controlDirRoot = controlDirRootOf(protocol.controlDir),
-            runId = runId,
-            opId = opId,
-            fifoDir = fifoDir,
-            readyMarker = protocol.agentReadyMarker,
-        )
-
-        val javaBin = Path.of(System.getProperty("java.home"), "bin", "java").toString()
-        val classpath = System.getProperty("java.class.path")
-        // The agent MUST outlive the runtime JVM, so it is launched via `setsid` to create a
-        // new session. The default ProcessBuilder launch would put the agent in the runtime's
-        // process group, and a `kill -9` on the runtime would also kill the agent — defeating
-        // the whole point of Level B. `setsid` makes the agent its own session leader; the
-        // runtime killing its own process group does not take the agent down.
-        //
-        // The agent's output (including the `pc2-agent-pump-*-failed` lines the agent emits on
-        // its catch block) is captured to a log file in the control dir so a failed run can read
-        // it when the assertion fails. The runtime itself does not depend on this log; the FIFO
-        // is the contract.
-        val builder = ProcessBuilder(
-            listOf("setsid", javaBin, "-cp", classpath, AGENT_MAIN_CLASS) + args.toArgv().asList(),
-        )
-        builder.directory(protocol.controlDir.toFile())
-        builder.redirectErrorStream(true)
-        builder.redirectOutput(ProcessBuilder.Redirect.to(protocol.agentLog.toFile()))
-        // The secret travels in the environment, not in the argv: see the class KDoc.
-        builder.environment().putAll(agentEnvironment(secret))
-        return builder.start()
-    }
-
-    /**
-     * Blocks until the agent's ready marker exists, with a bounded deadline.
-     *
-     * The agent touches the marker once it has both FIFOs open and is ready to drain. The
-     * runtime MUST wait on the marker before starting the child: opening a FIFO for write blocks
-     * until a reader appears, so a child started before the agent attaches would deadlock on
-     * its first write.
-     */
-    private fun awaitReady(protocol: ShellProtocolLayout, agent: Process) {
-        val deadline = System.currentTimeMillis() + AGENT_READY_TIMEOUT_MILLIS
-        while (System.currentTimeMillis() < deadline) {
-            if (Files.exists(protocol.agentReadyMarker)) return
-            Thread.sleep(20L)
+    private fun terminateAgent(process: Process) {
+        try {
+            if (process.isAlive) {
+                process.destroyForcibly()
+            }
+            process.waitFor(AGENT_TERMINATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
+        } catch (_: Throwable) {
+            // Deliberate: the failure that caused the teardown is the one that is reported.
         }
-        val detail = if (!agent.isAlive) {
-            " (agent process exited before attaching)"
-        } else {
-            " (readyMarker ${protocol.agentReadyMarker} not found within " +
-                "${AGENT_READY_TIMEOUT_MILLIS}ms)"
-        }
-        error("ingest agent failed to attach: readyMarker missing" + detail)
     }
 
     companion object {
@@ -321,6 +239,15 @@ class AgentRendezvous internal constructor(
          * surfaces a crashed agent JVM as a typed error rather than an infinite wait.
          */
         const val AGENT_READY_TIMEOUT_MILLIS: Long = 10_000L
+
+        /**
+         * Bounded wait for a killed agent to be gone.
+         *
+         * The wait exists so "the agent was released" is a fact rather than a request that was
+         * sent. It is a bound, not a promise: a wait that times out leaves the failure that
+         * caused the teardown as the verdict.
+         */
+        const val AGENT_TERMINATION_TIMEOUT_MILLIS: Long = 5_000L
 
         /**
          * The environment variable that carries the agent's secret.
@@ -371,4 +298,36 @@ class AgentRendezvous internal constructor(
             environment[AGENT_SECRET_ENV]?.takeIf { it.isNotEmpty() }
                 ?: error("the agent's secret is not in the environment under $AGENT_SECRET_ENV")
     }
+}
+
+/**
+ * The rendezvous's effects on the host.
+ *
+ * The policy that OWNS what a rendezvous acquires — and releases it when the rendezvous fails —
+ * is the guarantee, and a policy that can only be exercised against a real FIFO, a real agent JVM
+ * and a real clock has no instrument: the agent path has no executable scenario in this tree.
+ * The seam is what lets the policy be driven with fakes, so the guarantee is observed rather than
+ * asserted.
+ */
+internal interface RendezvousHost {
+
+    /**
+     * Creates the FIFO rendezvous under `controlDir/fifos/`.
+     */
+    fun materialiseFifos(protocol: ShellProtocolLayout): Path
+
+    /**
+     * Opens the warm-up pair of read-write descriptors.
+     */
+    fun openWarmup(protocol: ShellProtocolLayout): List<Closeable>
+
+    /**
+     * Launches the ingest agent as a separate JVM that owns the FIFO read ends.
+     */
+    fun launchAgent(protocol: ShellProtocolLayout, fifoDir: Path): Process
+
+    /**
+     * Blocks until the agent's ready marker exists, or refuses.
+     */
+    fun awaitReady(protocol: ShellProtocolLayout, agent: Process)
 }

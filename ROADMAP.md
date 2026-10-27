@@ -239,6 +239,41 @@ No habrá dos motores shell. `executeCore()` debe convertirse en un coordinador 
 
 Entrega verificable: ejecutar, terminar, cancelar y recuperar `sh` con las mismas salidas, efectos y protocolos persistentes.
 
+#### El corte: el informe de la recuperación no afirma lo que nadie observó
+
+**Qué hace.** `RecoverAdapters.dispatchReuseTerminal` publicaba un informe con dos afirmaciones que no eran observaciones:
+
+- `cursorAdvanced` decía si un marcador de reanudación EXISTÍA antes de la recuperación, no si la recuperación lo movió. La línea era `cursorAdvanced = cursor != null`, y `cursor` era el marcador leído ANTES de avanzar. Un marcador que existía y no se pudo mover se reportaba como avanzado, y uno que la recuperación creó se reportaba como no avanzado. El campo era verdadero en un caso y falso en el otro, y ninguno de los dos tenía que ver con el avance.
+- la excepción de `cursors.advance()` caía en un `catch (_: Exception)` vacío, con un comentario que decía que el fallo «surfaces in the report rather than as a refusal». No surfacaba en ningún sitio: el informe salía como si el avance hubiera pasado.
+
+El lado de la LECTURA ya tenía el precedente, escrito en este mismo hito: un marcador que no se puede LEER es `StorageError`, y sólo la ausencia es ausencia. El lado de la ESCRITURA es el mismo hecho —un sustrato que se niega a decir dónde está el run no puede reportarse como si lo hubiera dicho—.
+
+**El corte.** El avance falla cerrado con `RecoverRefusal.StorageError`, que nombra la escritura que falló (`the replay cursor could not be advanced: …`). El rechazo es seguro de reintentar: el apéndice del diario es idempotente, luego un segundo intento no compromete nada dos veces. El recuento de filas del diario deja de mentir en el mismo sentido: `journalRowsCommitted` se leía del diario antes y después, y si la relectura fallaba devolvía el número anterior —«cero filas comprometidas» para un apéndice que sí había comprometido una—; ahora una relectura que falla es también `StorageError`.
+
+`cursorAdvanced` se calcula desde el avance: `true` cuando el avance no falló. El idempotente del avance no lo vuelve falso: un marcador que ya estaba allí sigue estando allí, y el informe dice que el cursor está donde el avance lo dejó.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que el informe de una recuperación dice lo que la recuperación hizo. La capacidad que sostiene es que un lector de ese informe —o del rechazo que lo sustituye— puede creerlo, porque ninguna de sus afirmaciones procede de una existencia anterior en lugar de de una escritura observada. El instrumento es un test unitario (`RuntimeRecoverPortStoreAdapterTest`), porque la decisión es el efecto de un puerto: un `ReplayCursorStore` en memoria cuya escritura falla, y la lectura del veredicto.
+
+**Visto en rojo antes del corte.** Dos mutaciones discriminantes, cada una aplicada, leída de vuelta con `git diff` y revertida:
+
+|Mutación|Fila que se puso roja|Filas del lote|
+|---|---|---|
+|El `catch` del avance vuelve a tragarse la excepción|`RuntimeRecoverPortStoreAdapterTest > un cursor que no se puede avanzar no se reporta como avanzado()`|15 tests, 1 rojo, sin colateral|
+|`cursorAdvanced = ready.cursor != null`|`RuntimeRecoverPortStoreAdapterTest > un cursor creado por la recuperacion se reporta como avanzado()`|15 tests, 1 rojo, sin colateral|
+
+**Lo que este corte NO arregla, y se dice.** No arregla la SEGUNDA propiedad del marcador: `RecoverAdapters` sigue siendo un segundo dueño del marcador de reanudación, porque `RecoveryInterpretationEngine` lo dejó a propósito y nadie lo reclamó después. Eso es trabajo de un corte posterior de este mismo hito, no de este corte. No arregla que el informe, cuando todo va bien, siga siendo un informe que el operador no ve: la capacidad que este corte sostiene es la del RECHAZO —un rechazo se imprime y se nombra—, no la del informe.
+
+**Medido sobre `2e3a1efd5` con `scripts/verify-all.sh` sin filtros:**
+
+```
+PASS  sha=2e3a1efd5faf41c198feec425a62f8c66718c2f1  elapsed=108s  budget=900s  tests=rewritten:1460 read:0  scenarios=observed:63 executed:63
+```
+
+- 196 informes JUnit reescritos por esta ejecución, 1460 tests, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E ejecutados y en verde, 594 comprobaciones sobre 114 ejecuciones y 220 pasos terminados.
+- 108 s de reloj de pared frente al presupuesto de 900 s.
+- `VERIFY_LOC = 27278`, `PRODUCT_LOC = 71109`, ratio `0.384` (límite 2).
+
 ### Estado de H2 — cerrado
 
 Los siete componentes están extraídos, la puerta completa está en verde sobre el árbol publicado y la candidata de fin de hito `v0.91.0-rc3` está publicada y verificada sobre el remoto. La evidencia de esa publicación está al final de este hito.
@@ -914,6 +949,51 @@ PASS  sha=126aa3b15c97ce93e46a0ca712e545c7aaaa9930  elapsed=142s  budget=900s  t
 |La instantánea de deuda de detekt sigue al código que la analiza|Ninguno: la instantánea nombra hallazgos por identidad de función, y un renombrado la invalida|Las cuatro filas que este corte invalida, movidas a mano; el resto de la instantánea, intacta|Medido: `./gradlew :pipeline-application:detektBaselineMain` retiraría 50 filas, 46 de ellas de ficheros que este corte no toca. La puerta con las cuatro filas movidas pasa en `126aa3b15`|Retain (las otras 46 quedan declaradas como residual)|4 líneas del fichero de instantánea|Bajo: la instantánea congelada en bloque habría ocultado hallazgos presentes|
 |El caso `NoControlRootConfigured` del puerto de observación es inalcanzable desde la ruta canónica, y se dice en vez de fingir que no lo es|Ninguno|La KDoc del corte lo declara como caso del puerto, no de la ruta; retirarlo tocaría `pipeline-runtime-api`, que es un módulo publicado|Censo: el único productor es `RunningSubprocessRecovery.kt:202`, y el único punto de construcción de producción del coordinador pasa un valor no nulo|Defer (decisión posterior, fuera de este corte)|0|Ninguno para este corte; queda declarado como trabajo futuro|
 
+#### El corte: sin timeout no significa una hora
+
+**Qué hace.** `ShellWatchdog.pollDeadlineFor(timeoutMs)` devolvía `NO_TIMEOUT_POLL_MS = 3_600_000L` cuando la ejecución no tenía plazo. El ejecutor lo usaba como techo del poll —`while (System.currentTimeMillis() < pollDeadline && !watchdog.fired())`—, luego un `timeoutMs = 0` pedía «sin timeout» y recibía una hora. Al alcanzarla sin resultado, el ejecutor publicaba `exitCode = -1`, un número que ningún envoltorio escribió, y `ShellTerminalDecision.forExitCode` lo traducía a `DurableTaskTerminal.Exited(exitCode = -1)`: un terminal de SALIDA con un código observado, cuando lo único observado era que el reloj había vencido.
+
+La regla estaba fijada por una prueba en verde: `ShellWatchdogTest > an execution without a deadline polls for an hour` afirmaba `assertEquals(ShellWatchdog.NO_TIMEOUT_POLL_MS, …)`. Una verde que protege una regla incorrecta.
+
+**El corte.** Tres cosas en la misma dirección:
+
+1. `pollDeadlineFor` devuelve `null` cuando la ejecución no tiene plazo, y el techo del poll sale del plazo y de nada más. Un operador que pidió no expirar no es abandonado por un reloj que él no puso.
+2. La espera pasa a tener dueña: `ShellResultPoll` la duerme y nombra QUÉ la terminó —publicado, expirado, resultado que no es un código de salida, envoltorio que terminó sin publicar, techo alcanzado, o nada todavía—. La regla es una función pura de hechos (`shellPollOutcome`), y el ejecutor ya no calcula un techo con aritmética en línea.
+3. `ShellTerminalDecision.forPollOutcome` ya no fabrica una salida: lo único que produce `Exited` es un código PUBLICADO. Todo lo demás —resultado ilegible, envoltorio que terminó sin publicar, techo vencido, espera interrumpida— es `Lost`, que es reintentable y nunca implica éxito.
+
+Además, la ventana de `settle()` —los dos segundos que se le dan al vigilante para publicar su cerrojo tras la muerte del hijo— se abre sólo cuando el plazo YA pasó, porque antes de eso no hay ninguna muerte con la que competir. Antes la pagaba toda ejecución con plazo: dos segundos de sueño por una muerte que no venía. Y las duraciones pasan al reloj MONOTÓNICO, porque un salto del reloj de pared no debe terminar la espera de una ejecución.
+
+**Por qué un envoltorio que terminó sin publicar NO es una salida.** El envoltorio publica el resultado ANTES de quitar la cookie:
+
+```text
+echo $EXIT_CODE > result.txt.tmp ; mv result.txt.tmp result.txt ; rm -f .cookie
+```
+
+Luego una cookie ausente sin resultado publicado significa que el envoltorio nunca llegó a la publicación: lo mataron, o murió. El código de salida no existe, y el único terminal honesto para un código que no existe es el que dice que el desenlace no se pudo establecer.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que una ejecución que no publica resultado nunca se reporta como un código de salida. La capacidad que sostiene es que un lector de un run durable puede distinguir un paso que terminó de un paso cuyo desenlace no se pudo establecer, y que una ejecución sin plazo espera al protocolo y no a un reloj. El instrumento es un test unitario: la regla (`shellPollOutcome`) y su traducción (`forPollOutcome`) son funciones puras sobre hechos, así que el instrumento más barato que puede fallar es una llamada a ellas. El escenario E2E durable no se usa aquí: el defecto sólo era observable esperando una hora, y una prueba que espera una hora no es un instrumento.
+
+**Visto en rojo antes del corte.** Tres mutaciones discriminantes, cada una aplicada, leída de vuelta con `git diff` y revertida:
+
+|Mutación|Fila que se puso roja|Filas del lote|
+|---|---|---|
+|`WrapperEnded` vuelve a fabricar `Exited(exitCode = -1)`|`ShellTerminalDecisionTest > a wrapper that ended without publishing a result is lost()`|16 tests, 1 rojo, sin colateral|
+|`pollDeadlineFor` vuelve a devolver la hora|`ShellWatchdogTest > an execution without a deadline has no ceiling()`|14 tests, 1 rojo, sin colateral|
+|El orden de las ramas pone la ausencia del envoltorio antes del resultado publicado|`ShellResultPollTest > a published result ends the wait with its exit code()`|7 tests, 1 rojo, sin colateral|
+
+**Lo que este corte NO arregla, y se dice.** No arregla `settle()` con un instrumento propio: la ventana ahora se abre sólo tras el plazo y ningún test unitario mide ese tiempo. La garantía que lo sostiene es «no cambia ningún veredicto» —la ventana sólo podía abrirse después del plazo, que es cuando el vigilante puede disparar—, y eso es una derivación del código, no una observación; se declara como tal en vez de vestirse de cobertura. No arregla el orden entre «el envoltorio terminó» y «el techo venció»: los dos terminan en `Lost` y sólo difieren en el mensaje, así que no hay una garantía que los separe. No arregla `DurableShellExecutor.isAlive(controlDir, process)`, una función que pregunta por la cookie y por un `ProcessHandle` y a la que el censo no encuentra ningún llamante de producción: es un residuo declarado y este corte no la toca. Y no arregla el AGENTE: `AgentRendezvous` sigue sin garantizar que un fallo de arranque no deje descriptores ni proceso abiertos. Eso pertenece al corte de `AgentRendezvous`, que sigue declarado en H2 y no se cierra aquí.
+
+**Medido sobre `2e3a1efd5` con `scripts/verify-all.sh` sin filtros —la misma ejecución midió los tres cortes de esta tanda, que salen del mismo árbol—:**
+
+```
+PASS  sha=2e3a1efd5faf41c198feec425a62f8c66718c2f1  elapsed=108s  budget=900s  tests=rewritten:1460 read:0  scenarios=observed:63 executed:63
+```
+
+- 196 informes JUnit reescritos por esta ejecución, 1460 tests, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E ejecutados y en verde, 594 comprobaciones sobre 114 ejecuciones y 220 pasos terminados.
+- 108 s de reloj de pared frente al presupuesto de 900 s.
+- `VERIFY_LOC = 27278`, `PRODUCT_LOC = 71109`, ratio `0.384` (límite 2).
+
 ## H4 — Refactorizar los casos de uso de `pipeline-application`
 
 Foco principal: ejecución durable, composition y despacho.
@@ -949,6 +1029,38 @@ Las proyecciones Explain, Cost y Telemetry deben compartir las reglas de identid
 Se corregirá además la inconsistencia de `CLI_VERBS` para que la ayuda refleje los comandos ya implementados, incluido `runs recover`.
 
 Entrega verificable: mismas invocaciones válidas, mismas respuestas públicas y mismo comportamiento de lectura, sin lógica de consulta duplicada en los controladores CLI.
+
+#### El corte: cada verbo de `runs` es dueño de sus opciones
+
+**Qué hace.** `runs cancel` aceptaba `--dry-run` y lo ignoraba: la cancelación era REAL y contestaba 0. `runs recover` aceptaba `--reason` y lo ignoraba: el texto se perdía y contestaba 0 también. Los dos fallos eran silenciosos, y cada uno era lo contrario de lo pedido —un operador que pedía una simulación recibía un cierre, y un operador que daba una razón recibía un run sin rastro de ella—.
+
+**El corte.** El parser de `runs` pasa a tener DOS verbos con opciones PROPIAS, y cada verbo RECHAZA la opción del otro con un mensaje que la nombra (`--dry-run belongs to 'runs recover'…`, `--reason belongs to 'runs cancel'…`). El rechazo usa el código 2, que el CLI ya reserva para un rechazo, y `--reason` sin valor o una opción desconocida también se rechazan. La ayuda de `runs` dice ahora QUÉ significa cada código, verbo por verbo: `recover` con 0 significa «la recuperación se decidió» —recuperada, simulada, ya recuperada, o en vuelo—, no «el run se cerró»; y dice qué opciones son de cada verbo.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que un verbo de `runs` nunca hace lo que no se le pidió. La capacidad que sostiene es que un operador que escribe una opción que no pertenece recibe un rechazo que la nombra, en vez de un 0 sobre un run en el estado que acababa de intentar evitar. El instrumento es un test unitario (`MainRunsCliTest`) sobre el parser: la decisión es una función pura del verbo y de los argumentos —sin disco, sin reloj, sin proceso—, así que el instrumento más barato que puede fallar es una llamada al parser y la lectura de su veredicto. Un test de CLI que ejecutara una cancelación real necesitaría un almacén durable, un run que cancelar y una forma de observar lo escrito, y deciría QUE el verbo cerró un run, nunca cuál de las dos reglas se rompió.
+
+**Visto en rojo antes del corte.** Cuatro mutaciones discriminantes, cada una aplicada, leída de vuelta y revertida —dos a nivel de unidad y dos sobre el binario construido:
+
+|Mutación|Fila que se puso roja|Filas del lote|
+|---|---|---|
+|`runs cancel` vuelve a aceptar `--dry-run`|`MainRunsCliTest > cancel refuses a dry run instead of closing the run for real()`|8 tests, 1 rojo, sin colateral|
+|`runs recover` vuelve a aceptar `--reason`|`MainRunsCliTest > recover refuses a reason instead of dropping the text()`|8 tests, 1 rojo, sin colateral|
+|`runs recover` vuelve a aceptar `--reason` (binario construido)|`durable/40-recover-refuses-a-half-finished-run.pipeline.kts: a recover given a reason exited 0, expected 2 (a refusal)`|escenario rojo|
+|`runs cancel` vuelve a aceptar `--dry-run` (binario construido)|`durable/39-cancel-dead-run.pipeline.kts: a cancel asked to simulate exited 0, expected 2 (a refusal)`|escenario rojo|
+
+Las dos filas E2E además comprueban que el rechazo NO escribe: el escenario durable compara la huella de los bytes durables del run antes y después de la invocación rechazada, y un rechazo que cambiara un solo byte lo diría.
+
+**Lo que este corte NO arregla, y se dice.** No arregla el resto del CLI: `CliParser.kt` sigue siendo un parser de unas 1.931 líneas y `MainConsoleCli.kt` sigue mezclando selección, lectura y presentación; este corte toca sólo `runs`. No arregla la inconsistencia de `CLI_VERBS` para otros verbos, que sigue pendiente en este mismo hito. Y no arregla que `runs cancel` cierre el run y selle las streams sin que exista un modo de simulación para EL: la respuesta es el rechazo, no un `--dry-run` para el verbo que no lo tiene.
+
+**Medido sobre `2e3a1efd5` con `scripts/verify-all.sh` sin filtros —la misma ejecución midió los tres cortes de esta tanda, que salen del mismo árbol—:**
+
+```
+PASS  sha=2e3a1efd5faf41c198feec425a62f8c66718c2f1  elapsed=108s  budget=900s  tests=rewritten:1460 read:0  scenarios=observed:63 executed:63
+```
+
+- 196 informes JUnit reescritos por esta ejecución, 1460 tests, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E ejecutados y en verde, 594 comprobaciones sobre 114 ejecuciones y 220 pasos terminados.
+- 108 s de reloj de pared frente al presupuesto de 900 s.
+- `VERIFY_LOC = 27278`, `PRODUCT_LOC = 71109`, ratio `0.384` (límite 2).
 
 ## H6 — Reducir deuda del harness y asegurar la publicación
 

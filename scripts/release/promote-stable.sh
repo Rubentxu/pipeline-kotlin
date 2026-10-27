@@ -18,7 +18,9 @@
 # locally or on the remote, and it says why.
 #
 # What this script guarantees, before it creates anything:
-#   1. the STABLE tag name is free — absent locally and absent on the remote;
+#   1. the STABLE tag name is free — absent locally and absent on the remote,
+#      and the remote is READ to say so: a remote that could not be read
+#      refuses the promotion instead of passing the check;
 #   2. the RC tag is published on the remote, is ANNOTATED (the remote
 #      publishes a peeled line for it), and its tag OBJECT is the one this
 #      repository holds — a signature is never verified against a different
@@ -154,6 +156,20 @@ fi
 #    alone leaves a hole: a tag absent locally but present on the remote is a
 #    tag the remote already published, and moving it is exactly the defect
 #    this file exists to prevent.
+#
+#    The remote's refs are read ONCE, and the read is CHECKED. The check used
+#    to be a pipeline whose status was grep's: a remote that could not be
+#    read produced no output, grep found nothing, and the check concluded
+#    that the tag was ABSENT — a conclusion nobody had observed. A check
+#    that could not be performed is not a check that passed, and a remote
+#    that cannot be read is not a remote without the tag. So the listing is
+#    read once, its status is checked, and a remote that cannot be read
+#    refuses the promotion saying so.
+#
+#    ONE listing answers BOTH questions, because two reads of the same remote
+#    can disagree — a transport that fails once and then answers is ordinary
+#    — and a disagreement nobody sees is the same defect with a different
+#    shape. The listing asks for both tags at once.
 # ----------------------------------------------------------------------------
 
 if git rev-parse --verify --quiet "refs/tags/${STABLE_TAG}" >/dev/null 2>&1; then
@@ -162,7 +178,18 @@ if git rev-parse --verify --quiet "refs/tags/${STABLE_TAG}" >/dev/null 2>&1; the
     exit 1
 fi
 
-if git ls-remote --tags "$REMOTE" "refs/tags/${STABLE_TAG}" | grep -q .; then
+REMOTE_LISTING="$(git ls-remote --tags "$REMOTE" \
+    "refs/tags/${STABLE_TAG}" \
+    "refs/tags/${RC_TAG}" "refs/tags/${RC_TAG}^{}")" || {
+    printf 'promote-stable: refusing — the listing of %s could not be read.\n' "$REMOTE" >&2
+    printf '           The tag %s could not be checked against it, and a remote that\n' "$STABLE_TAG" >&2
+    printf '           cannot be read is not a remote without the tag.\n' >&2
+    exit 1
+}
+
+STABLE_REMOTE_OBJECT="$(printf '%s\n' "$REMOTE_LISTING" | awk -v r="refs/tags/${STABLE_TAG}" '$2 == r { print $1; exit }')"
+
+if [[ -n "$STABLE_REMOTE_OBJECT" ]]; then
     printf 'promote-stable: refusing — the tag %s already exists in %s.\n' "$STABLE_TAG" "$REMOTE" >&2
     printf '           A published tag is never moved and never replaced: cut a new version.\n' >&2
     exit 1
@@ -173,16 +200,12 @@ fi
 #    the very object the remote published.
 #    `git ls-remote --tags` prints a peeled line (`refs/tags/<name>^{}`) only
 #    for an annotated tag. Its absence is the fact, and it is read from the
-#    remote without fetching anything.
+#    remote without fetching anything — from the listing read above, so that
+#    the RC and the stable tag are answered by the SAME observation.
 # ----------------------------------------------------------------------------
 
-RC_LISTING="$(git ls-remote --tags "$REMOTE" "refs/tags/${RC_TAG}" "refs/tags/${RC_TAG}^{}")" || {
-    printf 'promote-stable: the listing of %s could not be read\n' "$REMOTE" >&2
-    exit 1
-}
-
-RC_REMOTE_OBJECT="$(printf '%s\n' "$RC_LISTING" | awk -v r="refs/tags/${RC_TAG}" '$2 == r { print $1; exit }')"
-RC_PEELED="$(printf '%s\n' "$RC_LISTING" | awk -v r="refs/tags/${RC_TAG}^{}" '$2 == r { print $1; exit }')"
+RC_REMOTE_OBJECT="$(printf '%s\n' "$REMOTE_LISTING" | awk -v r="refs/tags/${RC_TAG}" '$2 == r { print $1; exit }')"
+RC_PEELED="$(printf '%s\n' "$REMOTE_LISTING" | awk -v r="refs/tags/${RC_TAG}^{}" '$2 == r { print $1; exit }')"
 
 if [[ -z "$RC_REMOTE_OBJECT" ]]; then
     printf 'promote-stable: refusing — the RC tag %s does not exist in %s.\n' "$RC_TAG" "$REMOTE" >&2

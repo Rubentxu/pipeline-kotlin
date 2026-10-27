@@ -34,6 +34,7 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 import dev.rubentxu.pipeline.v2.runtime.control.CancelReceipt
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.time.Instant
 
@@ -78,6 +79,25 @@ import java.time.Instant
  * in-memory implementation. Nothing here touches a disk, a socket or a clock
  * that moves on its own. That is what makes this a unit test of a decision
  * rather than a second harness of the stores.
+ *
+ * ## The report is not allowed to lie
+ *
+ * The recover publishes a REPORT of what it did, and the report is a claim
+ * about the substrate. Two claims in it were not observations:
+ *
+ *  1. `cursorAdvanced` said whether a cursor EXISTED before the recovery, not
+ *     whether the recovery moved it. So a cursor that existed and could not be
+ *     moved was reported as advanced, and a cursor the recovery CREATED was
+ *     reported as not advanced — the field was true in one case and false in
+ *     the other without either case having anything to do with the advance.
+ *  2. the exception that said the cursor could not be moved disappeared into a
+ *     comment, so the operator was told everything went well.
+ *
+ * The cursor that cannot be READ is already a storage failure, and the read
+ * side says so. The write side is the same fact: a substrate that refuses to
+ * say where the run is cannot be reported as having said it. So the advance
+ * fails closed with its own refusal, and the report that survives says what
+ * the recovery did.
  */
 class RuntimeRecoverPortStoreAdapterTest {
 
@@ -498,6 +518,76 @@ class RuntimeRecoverPortStoreAdapterTest {
         )
     }
 
+    /**
+     * A cursor that could not be ADVANCED is a storage failure, and the recover
+     * says so with its own refusal.
+     *
+     * The report used to say "the cursor advanced" whenever a cursor existed
+     * BEFORE the recovery, and the exception that said otherwise disappeared
+     * into a comment. So a recovery whose cursor could not be moved returned a
+     * report that claimed the move — and the operator, who is never shown the
+     * report, was told everything went well.
+     */
+    @Test
+    fun `un cursor que no se puede avanzar no se reporta como avanzado`() {
+        val fixture = fixture(
+            ops = listOf(
+                op("op-1", OperationStatus.SUCCEEDED),
+                op("op-2", OperationStatus.SUCCEEDED),
+            ),
+            observation = runningWithoutHolder(),
+            cursors = FailingAdvanceCursorStore(),
+            seedCursor = false,
+        )
+
+        val outcome = fixture.adapter.recover(runId, RecoverOptions.Default)
+
+        val failed = assertInstanceOf(
+            RecoverOutcome.FailClosed::class.java,
+            outcome,
+            "a cursor that could not be advanced was reported as advanced: the report claims a " +
+                "write nobody observed",
+        )
+        val storageError = assertInstanceOf(
+            RecoverRefusal.StorageError::class.java,
+            failed.reason,
+            "a cursor that could not be advanced is a storage failure, exactly as a cursor that " +
+                "could not be read is one",
+        )
+        assertTrue(
+            storageError.cause.contains("cursor"),
+            "the refusal does not name the write that failed: ${storageError.cause}",
+        )
+    }
+
+    /**
+     * A recovery that CREATED the cursor says that it advanced it.
+     *
+     * The field used to say whether a cursor existed before the recovery, so a
+     * recovery that created one reported that nothing had advanced. The report
+     * says what the recovery did, and what it did was advance the cursor.
+     */
+    @Test
+    fun `un cursor creado por la recuperacion se reporta como avanzado`() {
+        val fixture = fixture(
+            ops = listOf(
+                op("op-1", OperationStatus.SUCCEEDED),
+                op("op-2", OperationStatus.SUCCEEDED),
+            ),
+            observation = runningWithoutHolder(),
+            seedCursor = false,
+        )
+
+        val outcome = fixture.adapter.recover(runId, RecoverOptions.Default)
+
+        val recovered = assertInstanceOf(RecoverOutcome.RecoveredTerminal::class.java, outcome)
+        assertTrue(
+            recovered.report.cursorAdvanced,
+            "the recovery advanced the cursor and the report does not say so: the report says " +
+                "what the recovery did",
+        )
+    }
+
     private class Fixture(
         val adapter: RuntimeRecoverPortStoreAdapter,
         val journal: InMemoryOperationJournal,
@@ -551,18 +641,47 @@ class RuntimeRecoverPortStoreAdapterTest {
         ): StageIndex = inner.advancePastParallelFrame(runId, frame, branchResults, explicitMaxStageIndex)
     }
 
+    /**
+     * A cursor store whose READ works and whose WRITE fails.
+     *
+     * The failure sits on the write because that is where the report used to
+     * lie: the advance's exception disappeared, and the report said the cursor
+     * had advanced because one existed before. Every write fails, so the test
+     * that uses it must let the recovery be the only writer (`seedCursor =
+     * false`) — the fixture's seed advance would fail first and the recovery
+     * would never be reached.
+     */
+    private class FailingAdvanceCursorStore : ReplayCursorStore {
+        private val inner = InMemoryReplayCursorStore(SteppingClock())
+
+        override fun load(runId: String): ReplayCursor? = inner.load(runId)
+
+        override fun advance(runId: String, opId: String, stageIndex: Int) =
+            error("the cursor store is unavailable")
+
+        override fun advancePastParallelFrame(
+            runId: String,
+            frame: ParallelFrame,
+            branchResults: List<BranchExecutionResult>,
+            explicitMaxStageIndex: Int?,
+        ): StageIndex = inner.advancePastParallelFrame(runId, frame, branchResults, explicitMaxStageIndex)
+    }
+
     private fun fixture(
         ops: List<RerunOperation>,
         lease: RunLeasePort = FakeLease(),
         observation: RuntimeObservation = runningWithDeadWriter(),
         clock: Clock = SteppingClock(),
         cursors: ReplayCursorStore = InMemoryReplayCursorStore(clock),
+        seedCursor: Boolean = true,
     ): Fixture {
         val journal = InMemoryOperationJournal(clock)
         val frames = QuietFrameIndex()
         ops.forEach { op -> journal.append(op, deadlineMs = null) }
-        // A run that got this far has a cursor: the writer advanced it.
-        cursors.advance(runId, ops.lastOrNull()?.id ?: "op-0", stageIndex = 0)
+        if (seedCursor) {
+            // A run that got this far has a cursor: the writer advanced it.
+            cursors.advance(runId, ops.lastOrNull()?.id ?: "op-0", stageIndex = 0)
+        }
         val adapter = RuntimeRecoverPortStoreAdapter(
             journal = journal,
             cursors = cursors,

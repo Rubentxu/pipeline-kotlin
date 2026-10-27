@@ -424,7 +424,6 @@ class RuntimeRecoverPortStoreAdapter(
         receipt: TerminalReceipt,
         ready: RecoverEvidence.Ready,
     ): RecoverOutcome {
-        val cursor = ready.cursor
         val journalOps = ready.journalOperations
 
         // a) Append one terminal journal row (idempotent via the
@@ -463,18 +462,38 @@ class RuntimeRecoverPortStoreAdapter(
         }
         val rowsAfter = try {
             journal.listForRun(runId).size
-        } catch (_: Exception) {
-            rowsBefore
+        } catch (e: Exception) {
+            // The count is read BACK from the journal, so a storage that cannot
+            // be read cannot be counted. Reporting "0 rows committed" for an
+            // append that DID commit one is the same lie the cursor used to
+            // tell, and it is a lie the operator never sees: the report is not
+            // printed. A refusal names what failed.
+            return RecoverOutcome.FailClosed(
+                RecoverRefusal.StorageError(
+                    "the journal could not be read back: ${e.shortDiagnostic()}",
+                ),
+            )
         }
         val journalRowsCommitted = maxOf(0, rowsAfter - rowsBefore)
 
-        // b) Advance cursor (idempotent CAS).
+        // b) Advance the cursor (idempotent CAS).
+        //
+        // A cursor that cannot be ADVANCED is a storage failure, exactly as a
+        // cursor that cannot be READ is one: both are the substrate refusing
+        // to say where the run is, and the report must not answer for it. The
+        // refusal names the cursor, so the operator is told WHICH write failed
+        // instead of reading a report that says everything went well.
+        //
+        // The refusal is safe to retry: the append above is idempotent, so a
+        // second attempt commits nothing twice.
         try {
             cursors.advance(runId, opId, stageIndex = 0)
-        } catch (_: Exception) {
-            // Cursor advance is non-blocking; failure surfaces in the
-            // report rather than as a refusal — the terminal fact is
-            // already in the journal.
+        } catch (e: Exception) {
+            return RecoverOutcome.FailClosed(
+                RecoverRefusal.StorageError(
+                    "the replay cursor could not be advanced: ${e.shortDiagnostic()}",
+                ),
+            )
         }
 
         // c) Reconcile output store (existing, idempotent).
@@ -497,7 +516,13 @@ class RuntimeRecoverPortStoreAdapter(
             journalRowsCommitted = journalRowsCommitted,
             framesAppended = framesAppended,
             streamsReconciled = recoveryReport.streamsReconciled,
-            cursorAdvanced = cursor != null,
+            // The cursor advanced: the advance above returned without failing.
+            // This said whether a cursor EXISTED before the recovery, which is
+            // a different fact — and the wrong one twice over: a cursor that
+            // existed and could not be moved was reported as advanced, and a
+            // cursor that did not exist and was created was reported as not
+            // advanced.
+            cursorAdvanced = true,
             replayDecisions = receipt.perOperationDecisions.map { it.replayDecision },
         )
 

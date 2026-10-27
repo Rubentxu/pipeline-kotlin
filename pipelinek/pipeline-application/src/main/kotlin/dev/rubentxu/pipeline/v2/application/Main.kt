@@ -193,7 +193,20 @@ fun main(args: Array<String>) {
             System.err.println("Invalid CLI arguments: ${exit.message}")
             exit.hint?.let { System.err.println(it) }
             printUsage(System.err)
-            System.exit(1)
+            // The code the MAPPING declares, not a literal. The mapping has
+            // already answered "what KIND of mistake is this" — InvalidArgument
+            // (2) for a request that was not understood, RuntimeNotAvailable (4)
+            // for one this build cannot serve — and the dispatcher threw that
+            // answer away and exited with 1, which the SAME taxonomy calls
+            // PipelineFailed: "the pipeline executed and produced a failure".
+            //
+            // Nothing executed here. A consumer that branches on the exit code
+            // was told the pipeline ran and failed, and a script that reads 1
+            // as "the run failed" retries a request that was never admitted.
+            // The contract this file states further down — 0 success, 1
+            // pipeline fail, 2 invocation+compile — is the one the codes come
+            // from.
+            System.exit(exit.code)
             return
         }
     }

@@ -6,6 +6,8 @@
 //@ expect-stdout CAPABILITIES_SCHEMA_V2
 //@ expect-stdout CAPABILITIES_ONE_VOCABULARY
 //@ expect-stdout ONE_VERSION_THREE_FACES
+//@ expect-stdout REFUSAL_ANSWERS_INVALID_ARGUMENT
+//@ expect-stdout MISSING_CAPABILITY_ANSWERS_RUNTIME_NOT_AVAILABLE
 //@ expect-stdout OPERATIONS_ADDRESS_THEIR_OWN_BYTES
 //@ expect-stdout FOLDED_IDENTITY_GETS_NO_NEIGHBOUR_BYTES
 
@@ -22,7 +24,7 @@
 // language. Both were invisible from the inside, because the code that
 // produced them was the code that read them back.
 //
-// Eight facts are checked here, and each of them can fail on its own:
+// Ten facts are checked here, and each of them can fail on its own:
 //
 //   - the doctor answers 0 for an installation it finds healthy, and says so
 //     in words;
@@ -32,7 +34,10 @@
 //     vocabulary it publishes, and spells every value of that vocabulary the
 //     same way;
 //   - the three faces of the version — the human one, the SDK one and the
-//     catalogue one — report the same version of the same build.
+//     catalogue one — report the same version of the same build;
+//   - a request the product refuses is answered with the code that means
+//     "refused", and a capability this build does not carry is answered with
+//     its OWN code, so the two stay distinguishable from the outside.
 //
 // WHY THE FIRST DIRECTORY IS NAMED "NOT WRITABLE"
 //
@@ -179,6 +184,59 @@ pipeline {
                 else
                     echo "the three faces of the version disagree: version=$(cat version.txt) sdk-info=$(cat sdk-version.txt) capabilities=$(cat capabilities-version.txt)" >&2
                     echo LEG_version_faces_disagree
+                fi
+                """.trimIndent(),
+            )
+        }
+
+        // The codes the product answers a REFUSED request with.
+        //
+        // A consumer branches on the exit code, and the taxonomy the product
+        // publishes says what each code MEANS: 1 is a pipeline that executed
+        // and failed, 2 is a request that was not admitted, 4 is a capability
+        // this build does not carry. The dispatcher used to throw that answer
+        // away — every refusal through the parser answered 1 — so a request
+        // that never ran a pipeline answered with the code that means "the
+        // pipeline ran and failed".
+        //
+        // TWO requests, and TWO different codes, because the taxonomy
+        // distinguishes them and the distinction has to survive to the
+        // process: an option nobody understands is 2, and a sandbox profile
+        // this build does not carry is 4. A dispatcher that answered every
+        // refusal with 2 would pass the first and fail the second; one that
+        // answered every refusal with 1 would fail both.
+        //
+        // Neither request needs a script: the parser refuses both before it
+        // looks at the script path, so these two probes are about the CODE
+        // and about nothing else. The profile is "os" on purpose — it is a
+        // REAL profile that this build does not carry, as opposed to a name
+        // outside the vocabulary, which is a different mistake with a
+        // different code.
+        stage("refusal-codes") {
+            sh(
+                """
+                '${product}' validate --no-such-option > refusal.txt 2>&1
+                echo ${'$'}? > refusal.code
+                if [ "$(cat refusal.code)" = "2" ]; then
+                    echo REFUSAL_ANSWERS_INVALID_ARGUMENT
+                else
+                    echo "the product answered $(cat refusal.code) for an option it does not understand:" >&2
+                    cat refusal.txt >&2
+                    echo LEG_refusal_answers_invalid_argument
+                fi
+                """.trimIndent(),
+            )
+
+            sh(
+                """
+                '${product}' validate --sandbox-profile os > capability.txt 2>&1
+                echo ${'$'}? > capability.code
+                if [ "$(cat capability.code)" = "4" ]; then
+                    echo MISSING_CAPABILITY_ANSWERS_RUNTIME_NOT_AVAILABLE
+                else
+                    echo "the product answered $(cat capability.code) for a capability this build does not carry:" >&2
+                    cat capability.txt >&2
+                    echo LEG_missing_capability_answers_runtime_not_available
                 fi
                 """.trimIndent(),
             )

@@ -147,7 +147,18 @@ data class CliFlags(
     val query: ObservationQuery = ObservationQuery(),
 )
 
-/** Typed failures for CLI admission. */
+/**
+ * Typed failures for CLI admission.
+ *
+ * A case here is a VALUE: it says what went wrong and it carries the tokens
+ * that went wrong. The words the operator reads are NOT here — they are
+ * rendered by [toCliExit], the one mapping from an error to a sentence, so
+ * that every verb refuses the same mistake the same way.
+ *
+ * This type deliberately carries no `toString()` of its own. A second
+ * rendering is free to disagree with the first, and it did: `observe` printed
+ * `UnknownOption(value=--bogus-flag)` where `run` printed `invalid option`.
+ */
 sealed interface CliError {
     data object MissingCommand : CliError
     data class InvalidCommand(val value: String) : CliError
@@ -160,24 +171,18 @@ sealed interface CliError {
      * believe they attached a workspace while running in scratch, so the
      * combination fails closed at admission.
 */
-    data class ConflictingWorkspaceModes(val workspace: String) : CliError {
-        override fun toString(): String =
-            "ConflictingWorkspaceModes(workspace=$workspace): --isolated requests a " +
-                "PipelineK-managed scratch workspace while --workspace attaches a " +
-                "user directory; choose one."
-    }
+    data class ConflictingWorkspaceModes(val workspace: String) : CliError
     data class InvalidSandboxProfile(val value: String) : CliError
-    data class UnsupportedSandboxProfile(val value: String) : CliError {
-        // Enrich the typed error message with cross-references so the
-        // fail-closed CLI surface cites the contract documents the operator
-        // Expects to see at the boundary (sandbox policy, OS-level
-        // Isolation, multi-tenant gate). The value token echoes the rejected
-        // input verbatim so log scrapers can correlate.
-        override fun toString(): String =
-            "UnsupportedSandboxProfile(value=$value: " +
-                "'os' requires OS-level isolation which is out of scope for L3; " +
-                "use 'none' or 'local' instead."
-    }
+    /**
+     * A sandbox profile this build does not carry.
+     *
+     * The fail-closed surface cites the contract documents the operator expects
+     * to see at the boundary (sandbox policy, OS-level isolation, multi-tenant
+     * gate). The value token echoes the rejected input verbatim so log scrapers
+     * can correlate. The sentence the operator reads is rendered by
+     * [toCliExit], which is the one place a [CliError] becomes words.
+     */
+    data class UnsupportedSandboxProfile(val value: String) : CliError
     data class UnknownOption(val value: String) : CliError
     data object MissingScriptPath : CliError
 
@@ -189,37 +194,20 @@ sealed interface CliError {
      * applied was silently ignored — the fail-open shape the observation work
      * exists to remove. Trailing options are now rejected before any effect.
 */
-    data class TrailingOption(val value: String) : CliError {
-        override fun toString(): String =
-            "TrailingOption($value): options must appear BEFORE the script path. " +
-                "Got '$value' after the script, which used to be discarded silently."
-    }
+    data class TrailingOption(val value: String) : CliError
 
     /** `--view` named a value that is not a view. */
-    data class InvalidView(val value: String) : CliError {
-        override fun toString(): String =
-            "InvalidView($value): expected one of " +
-                ObservationView.entries.joinToString(", ") { it.name.lowercase() }
-    }
+    data class InvalidView(val value: String) : CliError
 
     /**
      * `--view` named a real view this build cannot deliver.
      * Refused rather than downgraded: silently substituting another view tells
      * the operator they observed something they did not observe.
 */
-    data class UnavailableView(val view: ObservationView) : CliError {
-        override fun toString(): String =
-            "UnavailableView($view): this build cannot deliver the '$view' view. " +
-                "Process transcript belongs to `pipeline console`; `full` interleaving " +
-                "has no decided rule yet."
-    }
+    data class UnavailableView(val view: ObservationView) : CliError
 
     /** `--format` named a value that is not a format. */
-    data class InvalidFormat(val value: String) : CliError {
-        override fun toString(): String =
-            "InvalidFormat($value): expected one of " +
-                ObservationFormat.entries.joinToString(", ") { it.wire }
-    }
+    data class InvalidFormat(val value: String) : CliError
 
     /**
      * `--grep` or `--grep-regex` was given an empty value.
@@ -227,17 +215,10 @@ sealed interface CliError {
      * matches EVERY line, so accepting it would turn a typo into a filter that
      * silently keeps everything.
 */
-    data class EmptyTextFilter(val option: String) : CliError {
-        override fun toString(): String =
-            "EmptyTextFilter($option): an empty pattern matches every line under " +
-                "substring semantics; refusing it rather than returning everything."
-    }
+    data class EmptyTextFilter(val option: String) : CliError
 
     /** `--grep-invert` with no `--grep` to invert. There is no group to negate. */
-    data object InvertWithoutGrep : CliError {
-        override fun toString(): String =
-            "InvertWithoutGrep: --grep-invert needs at least one --grep/--grep-regex to negate."
-    }
+    data object InvertWithoutGrep : CliError
 
     /**
      * `--channel` named no channel.
@@ -247,11 +228,7 @@ sealed interface CliError {
      * throwing because a durable store may name a channel this build does not know, and that is a
      * fact a reader can act on — but a human typing a flag is not reading a store, and gets a name.
 */
-    data class InvalidChannel(val value: String) : CliError {
-        override fun toString(): String =
-            "InvalidChannel: --channel '$value' is not a channel. Known: " +
-                OutputChannel.entries.joinToString(", ") { it.token }
-    }
+    data class InvalidChannel(val value: String) : CliError
 
     /**
      * A flag that changes what a run DOES was passed to a verb that only reads.
@@ -259,21 +236,14 @@ sealed interface CliError {
      * at all, so the user is not being denied a feature — they are being told that the verb they
      * reached for is not the one that does this.
 */
-    data class OptionNotReadable(val option: String) : CliError {
-        override fun toString(): String =
-            "OptionNotReadable: '$option' changes what a run DOES, and this command only reads. " +
-                "It has no meaning here, and dropping it silently would mean acting on something " +
-                "the caller did not ask for."
-    }
+    data class OptionNotReadable(val option: String) : CliError
 
     /**
      * The assembled query is not usable — most often an uncompilable
      * `--grep-regex`. Caught here so no process, store or journal is created
      * for a run that could never be filtered as asked.
 */
-    data class InvalidQuery(val reason: String) : CliError {
-        override fun toString(): String = "InvalidQuery: $reason"
-    }
+    data class InvalidQuery(val reason: String) : CliError
 
     /**
      * `--follow` in a format that has no continuation.
@@ -281,12 +251,7 @@ sealed interface CliError {
      * format is complete only when its closing bracket arrives, and following is by definition
      * stopping before you know whether that has happened.
 */
-    data class FollowNeedsAnIncrementalFormat(val format: String) : CliError {
-        override fun toString(): String =
-            "FollowNeedsAnIncrementalFormat: --follow with --format $format would emit one document " +
-                "per round, which is not a continuation of the first. Use --format jsonl, where every " +
-                "line stands alone and needs no closing bracket."
-    }
+    data class FollowNeedsAnIncrementalFormat(val format: String) : CliError
 
     /**
      * A reader's option reached `run`.
@@ -296,12 +261,7 @@ sealed interface CliError {
      * it would truncate the live transcript and `run` has no way to say the transcript was
      * truncated, which is the failure a reader that reports itself complete already causes elsewhere.
 */
-    data class OptionBelongsToObserve(val option: String) : CliError {
-        override fun toString(): String =
-            "OptionBelongsToObserve: '$option' is what a READER does, and 'run' cannot report that it " +
-                "showed you only part of what happened. Read the run after it finishes instead: " +
-                "'pipelinek observe <runId> $option'."
-    }
+    data class OptionBelongsToObserve(val option: String) : CliError
 
     /**
      * `--limit` that is not a count.
@@ -315,17 +275,9 @@ sealed interface CliError {
      * observable is a parameter the caller believed in. `console` is the only view whose records are
      * bytes, so it is the only one where a byte budget has anything to bound.
 */
-    data class TailNeedsTheOutputLane(val view: String) : CliError {
-        override fun toString(): String =
-            "TailNeedsTheOutputLane: --tail-bytes bounds committed process bytes, and --view $view " +
-                "shows none, so it would bound nothing. Use --view console."
-    }
+    data class TailNeedsTheOutputLane(val view: String) : CliError
 
-    data class InvalidTailBytes(val value: String) : CliError {
-        override fun toString(): String =
-            "InvalidTailBytes: --tail-bytes needs a positive whole number of bytes, got '$value'. " +
-                "Omit it to read the whole plane."
-    }
+    data class InvalidTailBytes(val value: String) : CliError
 
     /**
      * `--outcome` that names no outcome.
@@ -333,17 +285,9 @@ sealed interface CliError {
      * was that `--outcome` stops answering "which spelling did this producer use". A typo that
      * silently matched everything would hand the caller the opposite of what they asked for.
 */
-    data class InvalidOutcome(val value: String) : CliError {
-        override fun toString(): String =
-            "InvalidOutcome: --outcome names how something ended. Known: " +
-                ObservedOutcome.tokens.joinToString(", ") + ". Got '$value'."
-    }
+    data class InvalidOutcome(val value: String) : CliError
 
-    data class InvalidLimit(val value: String) : CliError {
-        override fun toString(): String =
-            "InvalidLimit: --limit needs a positive whole number of records, got '$value'. " +
-                "Omit it to show everything."
-    }
+    data class InvalidLimit(val value: String) : CliError
 
     /**
      * A valued option was handed a token that is itself an option of this CLI.
@@ -356,12 +300,7 @@ sealed interface CliError {
      * would make `--grep --verbose-stop` unexpressible, trading one silent drop for a new surprise;
      * a token that names nothing is far more likely to be a pattern than a mistyped flag.
 */
-    data class OptionValueIsAnOption(val option: String, val value: String) : CliError {
-        override fun toString(): String =
-            "OptionValueIsAnOption: '$option' was given '$value', which is another option of this CLI. " +
-                "Refusing rather than storing '$value' as the value of '$option', which would have " +
-                "dropped a flag you asked for and exited 0."
-    }
+    data class OptionValueIsAnOption(val option: String, val value: String) : CliError
 }
 
 /**

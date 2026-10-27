@@ -71,7 +71,11 @@ object MainObserveCli {
         val parsed = when (val result = CliParser.parseObservation(optionArgs.toTypedArray())) {
             is ObservationParseResult.Parsed -> result
             is ObservationParseResult.Rejected -> {
-                System.err.println("observe: ${result.error}")
+                // The refusal is rendered by the ONE mapping from an error to a
+                // sentence. Interpolating the error printed the sealed type's
+                // constructor syntax (`UnknownOption(value=--bogus-flag)`),
+                // which is not what the operator asked to read.
+                System.err.println(result.error.refusalLines("observe").joinToString("\n"))
                 System.err.println(USAGE)
                 return 2
             }

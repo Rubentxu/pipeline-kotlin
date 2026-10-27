@@ -1434,6 +1434,65 @@ PASS  sha=7f71ccb57fe1579c67d25f547952bfd2eabfc4dd  elapsed=182s  budget=900s  t
 - 182 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 28232`, `PRODUCT_LOC = 71445`, ratio `0.395` (límite 2). La verificación subió 71 líneas —las 9 filas nuevas y su documentación— y la producción subió 23.
 
+#### El corte: el verbo que posee UN posicional lo dice entero
+
+**Qué hace.** `operations <runId> extra-arg` publicaba las operaciones de `<runId>` y no decía NADA de `extra-arg`: el verbo leía el primer posicional y se tragaba el resto en silencio. El operador preguntaba por dos runs y leía una respuesta sobre uno, sin una palabra que dijera que el otro se había ignorado. Es el residual que el corte anterior DECLARÓ y no arregló —«No arregla el POSICIONAL DE MÁS de `operations`»— y es el último hueco que quedaba de esa familia dentro de la admisión.
+
+Medido sobre dos distribuciones construidas de este repositorio —`a10c34c8a` (antes) y `64ec65966` (después)— en la misma máquina, contra el MISMO Output Plane real (un run con un paso `sh` de verdad) y con la misma invocación:
+
+|celda|antes|después|
+|---|---|---|
+|`operations <rid> --control-root <control>`|salida 0; stdout el id de la operación|salida 0; stdout BYTE-IDÉNTICO: el camino feliz no se toca|
+|`operations <rid> extra-arg --control-root <control>`|salida 0; stdout BYTE-IDÉNTICO al de la petición de una sola; stderr vacío; `extra-arg` NO aparece ni en stdout ni en stderr|salida 2; stdout vacío; stderr «operations: unexpected argument: extra-arg» + «this command takes one positional argument» + el uso|
+|`operations <rid>` a secas|salida 2 por `--control-root`, sin nombrar el run id|igual, byte a byte: el verbo POSEE el posicional y lo lee|
+|`version foo`, `doctor foo`, `capabilities foo` y `sdk-info foo`|salida 2 con su rechazo|salida 2 con el MISMO rechazo, byte a byte en stdout y en stderr: el corte anterior no se toca|
+
+La segunda fila es el contenido de la garantía: el stdout del antes es byte a byte el de la petición de una sola, así que el operador no tenía NINGUNA forma de saber que su segundo argumento no se había leído, y la salida era 0, el mismo código de una respuesta correcta. La tercera fila es el otro lado del mismo defecto y por eso NO se toca: el verbo posee legítimamente ese posicional —el run id— y un rechazo que lo nombrara estaría diciendo lo contrario. La cuarta fila es la que dice que el corte anterior sobrevive: los cuatro verbos que no poseen posicional rechazan igual, con los mismos bytes.
+
+**El corte, en una línea.** La forma de la petición declara CUÁNTOS posicionales posee el verbo, no sólo si posee alguno. `PositionalArgument` pasa de `{NONE, OWNED}` a `{NONE, ONE}`, y cada caso lleva su CAPACIDAD: `NONE(0)` e `ONE(1)`.
+
+El nombre cambia porque la respuesta cambia. `OWNED` decía «posee alguno» y no distinguía «posee uno» de «posee todos»: con un `OWNED` la admisión no tenía forma de decir que el segundo es de más, porque la pregunta que hacía era binaria. `ONE` dice la cantidad, y la admisión hace una pregunta que tiene respuesta: el posicional que ocupa el lugar `capacity` es el de más, y el que lo nombra es el que hay que quitar. El valor por defecto NO cambia: sigue siendo `NONE`, la mitad segura, de modo que un verbo que no dice nada no posee ninguno.
+
+`operations` declara `PositionalArgument.ONE`, que es la verdad medida: es el único de los seis verbos de esta admisión que lee un posicional. El verbo no se toca: sigue leyendo `accepted.positionals.firstOrNull()`, y su camino feliz produce el mismo stdout byte a byte.
+
+El rechazo sale de la ÚNICA tabla de errores del CLI —`toCliExit()`—, con un error NUEVO y distinguible: `CliError.TooManyPositionals`, que no es lo mismo que `UnexpectedPositional`. Allí el verbo no posee ninguno; aquí posee exactamente uno. Un solo error para las dos cosas habría hecho que un rechazo dijera «este comando no toma posicionales» sobre una petición que sí tomaba uno, o que el mismo token fuera «de más» y «no previsto» según el verbo. La `when` sobre `CliError` sigue siendo exhaustiva POR CONSTRUCCIÓN: un error nuevo sin su rama no compila.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que un verbo que posee un posicional rechaza el SEGUNDO nombrándolo, antes de hacer nada: nunca contesta una petición que lleva un argumento de más. La capacidad que la sostiene es que el operador que escribe `pipeline operations <runId> <otro-run>` lee un RECHAZO y no el listado de otro run: hasta ahora leía el listado del primero, que es un documento que parece una verdad.
+
+El instrumento es un test unitario (`CliOptionAdmissionTest`, 2 filas nuevas). La admisión es una función pura sobre un array de argumentos, así que el instrumento más barato que puede fallar es llamarla y comparar el resultado contra una expectativa LITERAL escrita en el test; y la costura —que el verbo RECHÚSE y no conteste— se cruza llamando al verbo EN PROCESO: se llama a `MainOperationsCli.main`, se lee su código de salida y se capturan su stderr y su stdout, sin proceso, sin disco y sin reloj.
+
+La fila del verbo NO lleva `--control-root` a propósito: el rechazo del argumento de más ocurre en la admisión, ANTES de que el verbo mire nada más, y un test unitario de este árbol no toca el sistema de archivos. Esa fila esquiva tres vacuidades a propósito: comprueba que stderr nombra «run-2» —el token de más—, que stderr NO nombra «run-1» —el que el verbo posee, y un rechazo que lo nombrara estaría diciendo lo contrario— y que stdout está VACÍO, porque un rechazo que además contesta es la forma PELIGROSA: el operador leería el listado del primer run como la respuesta a lo que pidió.
+
+**Qué NO tiene instrumento, y se dice.** Este corte no añade fila al camino feliz de `operations` con un plano real: esa lectura toca el sistema de archivos, y un test unitario de este árbol no lo toca. El camino feliz se comprobó MANUALMENTE sobre las dos distribuciones construidas: salida 0 y el mismo stdout byte a byte antes y después.
+
+**Visto en rojo, con la mutación leída de vuelta.** Cuatro mutaciones focales, una cada vez, sobre `CliOptionAdmission.kt` y `CliExitMapping.kt`. Cada una se aplicó, se leyó de vuelta —el `grep` que confirma que la mutación ESTABA en el fichero, no un «BUILD FAILED»— y se restauró desde una copia byte a byte del fichero tal como estaba antes de mutar, comprobando después con `sha256sum` que el fichero y la copia eran el mismo byte. El discriminador lee las FILAS del informe JUnit, no la palabra «BUILD FAILED».
+
+|mutación|qué se encendió|
+|---|---|
+|La regla del exceso desaparece —`positionals.getOrNull(request.positional.capacity)` → `positionals.getOrNull(positionals.size)`—|exactamente OCHO filas: las cuatro de los verbos que no poseen posicional, las dos puras —«a verb that owns no positional argument refuses one» y «a verb that owns one positional argument refuses a second one»—, la de «operations refuses the second positional argument it does not own» y la de «events verify refuses an argument it was not asked about»; las otras 330 del lote siguieron en verde|
+|La capacidad de `ONE` pasa a 2 —el verbo que posee uno pasa a poseer dos—|exactamente DOS filas, las dos nuevas: «a verb that owns one positional argument refuses a second one» y «operations refuses the second positional argument it does not own»; las otras 336 en verde, entre ellas «a verb that owns a positional argument reads it», que sigue admitiendo el que el verbo posee|
+|El token desaparece del mensaje —«unexpected argument: $value» → «unexpected argument», en las dos ramas—|exactamente SEIS filas: las cuatro de los verbos, la de `events verify` y la nueva de `operations»; las filas puras NO se encienden, porque asertan el VALOR de la ADT y no su prosa, que es lo que este corte no congela; las otras 332 en verde|
+|La declaración `ONE` desaparece de la forma de `operations` —vuelve a no poseer posicional—|exactamente SEIS filas: las que dependen de que `operations` posea UN posicional —«a valued option takes the token after it», «a value that names nothing this build knows is a value», «a verb that owns a positional argument reads it», «operations still reads the run id it owns» y las dos nuevas—; las otras 332 en verde, entre ellas las cuatro de los verbos que no poseen ninguno, que no dependen de esta forma|
+
+Ninguna mutación encendió de más: en las cuatro, el resto del lote siguió en verde. Y las dos últimas se aprietan en lados OPUESTOS de la misma costura —la regla que decide y la declaración que la activa—: una que no se vuelve a ver en rojo no está probada.
+
+**Lo que este corte NO arregla, y se dice.** El MISMO defecto, en OTRA autoridad: el parser compartido. `run <script> extra-arg` y `validate <script> extra-arg` contestan 0, contestan EXACTAMENTE lo mismo que sin el argumento —el `run` termina en «success» y su stdout es byte a byte el de la petición de una sola, módulo el id de run— y no nombran el token ni una vez. El parser compartido rechaza los tokens `--` que van detrás del script (`CliError.TrailingOption`) y no tiene regla para los que NO empiezan por `--`: el bucle de `CliParser.parse` recorre lo que queda y sólo pregunta por los que empiezan por `--`, así que un posicional de más se pierde en silencio. Es la MISMA familia de defecto —un verbo debe SAY que una petición no es la suya— pero OTRA autoridad, y este corte no la toca: queda declarado como residual MEDIDO, con su número. `credentials` NO se ha medido para esta afirmación: el verbo exige una passphrase antes de mirar los argumentos, así que su caso es inconcluyente y se dice.
+
+Tampoco arregla la línea de ayuda de `events verify` —`CliVerb("events verify", "check a run's events against a contract (--db, --run, --contract)")`—, que nombra TRES de las CINCO opciones que el verbo acepta: `--from-sequence` y `--scope` no aparecen. Ni la de `operations`, que no nombra NINGUNA de sus dos opciones (`--control-root` y `--format`). Ni los vocabularios de opciones escritos a mano fuera de esta admisión: las banderas de inspección de `events`, la familia `runs` y `saga inspect` tienen su propio bucle, y la tabla `CliOptionAdmission` es UN pedazo más del mismo género. Ni la FAMILIA de verbos que tienen una frase propia por autoridad: `observe` dice «trailing option without value», `inspect` dice «unexpected positional argument», `runs cancel` dice «unknown option» y `events` dice «unexpected extra argument» — cuatro frases para un mismo hecho, cada una en su familia.
+
+Y una corrección que este ciclo se lleva por delante: el KDoc de `PositionalArgument` afirmaba que «ningún verbo del CLI posee dos posicionales», y la medición lo desmentía —`console` posee dos, el run id y el id de la operación, y los lee por el parser compartido—. La afirmación se acotó a esta admisión, el verbo que la desmiente quedó nombrado en el KDoc, y el mensaje del commit se enmendó para no dejar la frase falsa en la historia del corte.
+
+Medido sobre `64ec65966ea6ea1ef37762e7a9fdc56acaa5bcff` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=64ec65966ea6ea1ef37762e7a9fdc56acaa5bcff  elapsed=198s  budget=900s  tests=rewritten:1520 read:0  scenarios=observed:63 executed:63
+```
+
+- 200 informes JUnit reescritos por esta ejecución, 1520 tests EJECUTADOS de verdad, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E observados y ejecutados, en verde.
+- 198 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28247`, `PRODUCT_LOC = 71455`, ratio `0.395` (límite 2). La verificación subió 15 líneas —las 2 filas nuevas y su documentación— y la producción subió 10.
+
 
 ## H6 — Reducir deuda del harness y asegurar la publicación
 

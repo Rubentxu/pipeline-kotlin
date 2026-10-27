@@ -27,7 +27,13 @@
 #      declares (scripts/release/signing-key.conf), checked by the same
 #      checker the release path already uses: one authority, not two;
 #   4. the stable tag is placed on the RC's COMMIT, so the stable release
-#      and the release candidate describe the same tree.
+#      and the release candidate describe the same tree;
+#   5. the candidate_id is the RC's OWN. The stable release carries the RC's
+#      assets, so the digest that travels with the stable tag is the digest
+#      the RC already names. The --candidate-id the caller types is a CLAIM
+#      about that digest, not a second authority: it is checked against the
+#      RC tag's own message, and a promotion whose claim does not match it
+#      is refused instead of publishing a digest of nothing.
 #
 # The tag itself is cut by scripts/release/publish-tag.sh, which signs it,
 # verifies the signature and only then pushes it. This file does not re-implement
@@ -58,6 +64,10 @@
 # Usage:
 #   promote-stable.sh --rc-tag <name> --stable-tag <name> \
 #       --candidate-id <sha256:...> --out <file> [--remote <name>]
+#
+# --candidate-id is the digest of the candidate the stable release carries. It
+# is not free text: the RC tag names the same digest, and this script refuses
+# a claim that does not match it.
 #
 # Exit codes: 0 = the stable tag was signed, verified and pushed; 1 = refused;
 # 2 = usage error.
@@ -206,7 +216,44 @@ if [[ "$RC_LOCAL_OBJECT" != "$RC_REMOTE_OBJECT" ]]; then
 fi
 
 # ----------------------------------------------------------------------------
-# 4. The RC's signature must VERIFY against the declared key.
+# 4. The candidate's digest is the RC's, and the caller's claim is checked
+#    against it.
+#    The stable release carries the RC's ASSETS, checked against the RC's own
+#    digest authority (see publish-github-release.sh --expect-sums). So the
+#    digest that travels with the stable tag is the digest the RC already
+#    names — and the RC tag says which one, in its own message, because the
+#    tool that cut it measured the bytes.
+#    The --candidate-id the caller types is therefore a CLAIM about that
+#    digest and not a second authority. It is checked against the tag object
+#    this repository was just proven to hold, and a claim that does not match
+#    is a refusal: publishing a stable tag that names a digest the RC does
+#    not name would put a digest of nothing in the published provenance.
+# ----------------------------------------------------------------------------
+
+RC_TAG_BODY="$(git cat-file tag "$RC_LOCAL_OBJECT" 2>/dev/null || true)"
+RC_TAG_SUBJECT="$(printf '%s\n' "$RC_TAG_BODY" | awk 'body { print; exit } /^$/ { body = 1 }')"
+RC_CANDIDATE_ID="$(printf '%s\n' "$RC_TAG_SUBJECT" \
+    | grep -oE 'candidate_id sha256:[0-9a-f]{64}' | head -1 | sed 's/^candidate_id //' || true)"
+
+if [[ -z "$RC_CANDIDATE_ID" ]]; then
+    printf 'promote-stable: refusing — the RC tag %s does not name a candidate_id.\n' "$RC_TAG" >&2
+    printf '           A stable tag that names no candidate is a tag whose digest nobody\n' >&2
+    printf '           can check, so the promotion stops here.\n' >&2
+    exit 1
+fi
+
+if [[ "$CANDIDATE_ID" != "$RC_CANDIDATE_ID" ]]; then
+    printf 'promote-stable: refusing — the candidate_id does not match the one the RC names.\n' >&2
+    printf '           you passed   %s\n' "$CANDIDATE_ID" >&2
+    printf '           the RC tag %s names %s\n' "$RC_TAG" "$RC_CANDIDATE_ID" >&2
+    printf '           The stable release carries the RC'"'"'s assets, so the stable tag must\n' >&2
+    printf '           carry the RC'"'"'s digest. A digest typed at the keyboard that the RC\n' >&2
+    printf '           does not name is a digest of nothing.\n' >&2
+    exit 1
+fi
+
+# ----------------------------------------------------------------------------
+# 5. The RC's signature must VERIFY against the declared key.
 #    The checker is the one the release path already uses.
 # ----------------------------------------------------------------------------
 
@@ -233,7 +280,7 @@ if ! "${repo_root}/scripts/release/verify-tag-signature.sh" \
 fi
 
 # ----------------------------------------------------------------------------
-# 5. Cut the stable tag: sign it, verify it, push it. The ordering lives in
+# 6. Cut the stable tag: sign it, verify it, push it. The ordering lives in
 #    publish-tag.sh, which is the shipping code for that ordering.
 # ----------------------------------------------------------------------------
 
@@ -255,7 +302,7 @@ if ! "${repo_root}/scripts/release/publish-tag.sh" \
 fi
 
 # ----------------------------------------------------------------------------
-# 6. The closing audit: what does the REMOTE hold now? The promotion is only
+# 7. The closing audit: what does the REMOTE hold now? The promotion is only
 #    complete when the remote's own listing shows an annotated, signed tag.
 #    The audit is the same script that would have caught v0.90.0.
 # ----------------------------------------------------------------------------
@@ -276,7 +323,7 @@ if ! "${repo_root}/scripts/release/verify-published-tags.sh" \
 fi
 
 # ----------------------------------------------------------------------------
-# 7. The verdict. It carries what was checked, not only that it passed.
+# 8. The verdict. It carries what was checked, not only that it passed.
 # ----------------------------------------------------------------------------
 
 VERDICT_FILE="$(mktemp "${TMPDIR:-/tmp}/promote-stable-verdict.XXXXXX")"
@@ -285,11 +332,13 @@ trap cleanup EXIT
 
 {
     printf 'promote-stable: PASS stable=%s rc=%s commit=%s candidate_id=%s remote=%s\n' \
-        "$STABLE_TAG" "$RC_TAG" "$RC_COMMIT" "$CANDIDATE_ID" "$REMOTE"
+        "$STABLE_TAG" "$RC_TAG" "$RC_COMMIT" "$RC_CANDIDATE_ID" "$REMOTE"
     printf '  the stable tag name was free locally and in %s before the promotion\n' "$REMOTE"
     printf '  the RC tag is annotated and its signature verifies against %s (%s)\n' \
         "$SIGNING_FINGERPRINT" "$SIGNING_UID"
     printf '  the stable tag points at the RC commit and names the RC it promotes\n'
+    printf '  the candidate_id %s is the one the RC tag names, and the claim was checked against it\n' \
+        "$RC_CANDIDATE_ID"
     printf '  the published-tag audit on the remote agrees\n'
     printf '\n'
     printf '%s\n' '--- the RC signature check ---'

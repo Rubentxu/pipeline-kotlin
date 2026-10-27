@@ -2320,6 +2320,33 @@ run_scenario_body() {
             return
         fi
 
+        # A recover that is given a REASON is refused, and it writes nothing.
+        #
+        # `runs recover` records the terminal it OBSERVED. It has no operator's
+        # reason to record, and it used to drop the text without a word: an
+        # operator who annotated their recovery believed they had, and nothing
+        # said otherwise. A refused option is the honest answer.
+        local reason_code=0
+        binary runs recover "$recover_run_id" --db "$root/events.db" \
+            --control-root "$root/control" --reason "because the writer was killed" \
+            >"$root/stdout.recover-reason.txt" 2>"$root/stderr.recover-reason.txt" || reason_code=$?
+        if [[ "$reason_code" != 2 ]]; then
+            printf 'FAIL %-52s a recover given a reason exited %s, expected 2 (a refusal)\n' \
+                "$name" "$reason_code"
+            show_printed "$root/stderr.recover-reason.txt"
+            failed=$((failed + 1))
+            failures+=("$name: a recover given a reason exited $reason_code")
+            return
+        fi
+        if ! grep -aqF -- "--reason" "$root/stderr.recover-reason.txt"; then
+            printf 'FAIL %-52s the refusal did not name the option that does not belong\n' \
+                "$name"
+            show_printed "$root/stderr.recover-reason.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the refusal did not name the option that does not belong")
+            return
+        fi
+
         # The dry run and the recovery are TWO INVOCATIONS OF ONE VERB, and an
         # operator who asked "what would you do?" deserves the answer the
         # operator who asked "do it" gets. If they disagree, one of them is
@@ -2508,6 +2535,50 @@ run_scenario_body() {
             printf 'FAIL %-52s the crashed run left no run id, so it cannot be closed\n' "$name"
             failed=$((failed + 1))
             failures+=("$name: the crashed run left no run id")
+            return
+        fi
+
+        # A cancel that is asked to SIMULATE is refused, and it writes nothing.
+        #
+        # `runs cancel` closes the run for real: it takes the lease, writes
+        # the terminal bookend and seals the output streams. There is no
+        # simulation of it, and the CLI says so instead of closing the run and
+        # answering 0 over it — a green exit code over a run the operator
+        # explicitly asked to leave alone is the answer they would not
+        # believe.
+        #
+        # The refusal has to be the WHOLE answer: a cancel that refused the
+        # option and closed the run anyway would be the worst of both worlds.
+        # The run's own bytes are what say it did not, so they are compared
+        # around the invocation.
+        local cancel_dryrun_before cancel_dryrun_after cancel_dryrun_code=0
+        cancel_dryrun_before="$(durable_digest "$root")"
+        binary runs cancel "$run_id" --db "$root/events.db" --control-root "$root/control" \
+            --dry-run \
+            >"$root/stdout.cancel-dryrun.txt" 2>"$root/stderr.cancel-dryrun.txt" || cancel_dryrun_code=$?
+        cancel_dryrun_after="$(durable_digest "$root")"
+        if [[ "$cancel_dryrun_code" != 2 ]]; then
+            printf 'FAIL %-52s a cancel asked to simulate exited %s, expected 2 (a refusal)\n' \
+                "$name" "$cancel_dryrun_code"
+            show_printed "$root/stderr.cancel-dryrun.txt"
+            failed=$((failed + 1))
+            failures+=("$name: a cancel asked to simulate exited $cancel_dryrun_code")
+            return
+        fi
+        if ! grep -aqF -- "--dry-run" "$root/stderr.cancel-dryrun.txt"; then
+            printf 'FAIL %-52s the refusal did not name the option that does not belong\n' \
+                "$name"
+            show_printed "$root/stderr.cancel-dryrun.txt"
+            failed=$((failed + 1))
+            failures+=("$name: the refusal did not name the option that does not belong")
+            return
+        fi
+        if [[ "$cancel_dryrun_before" != "$cancel_dryrun_after" ]]; then
+            printf 'FAIL %-52s the refused cancel changed the durable bytes of the run\n' "$name"
+            diff <(printf '%s\n' "$cancel_dryrun_before") <(printf '%s\n' "$cancel_dryrun_after") \
+                | head -20 | sed 's/^/       | /'
+            failed=$((failed + 1))
+            failures+=("$name: the refused cancel changed the durable bytes of the run")
             return
         fi
 

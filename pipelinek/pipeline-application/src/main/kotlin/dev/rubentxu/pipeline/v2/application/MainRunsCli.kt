@@ -47,6 +47,23 @@ import java.nio.file.Paths
  * bookend. It is operator text, written as given: this verb does not open the
  * credentials store, so it has no credential pattern to redact against, and
  * the usage says not to paste secrets into a reason.
+ *
+ * ## Each verb owns its options, and the other's are REFUSED
+ * `--reason` belongs to `cancel` and `--dry-run` belongs to `recover`. A verb
+ * that is handed the other's option does not ignore it: it refuses the whole
+ * invocation with exit code 2 and says which option does not belong.
+ *
+ * The two are not the same mistake, and the difference is the whole point:
+ *
+ *  - `runs cancel --dry-run` used to CLOSE THE RUN. The cancel path never
+ *    read the flag, so an operator asking for a simulation got a real
+ *    closure and a green exit code over it;
+ *  - `runs recover --reason <text>` used to DROP THE TEXT. The recover path
+ *    never read it, so an operator who annotated their recovery believed they
+ *    had, and nothing said otherwise.
+ *
+ * An option that is silently dropped is an option the operator believes was
+ * honoured. An option that is silently honoured as something else is worse.
  */
 internal object MainRunsCli {
 
@@ -62,25 +79,45 @@ Options:
   --db <path>           The durable event store of the run (required).
   --control-root <path> The control directory of the run. Defaults to the same
                         place the `run` verb puts it: <db's directory>/durable-shell.
-  --reason <text>       Why the run is being closed (cancel only). Recorded
-                        verbatim in the run's history, so do not paste secrets into it.
-  --dry-run             recover only: compute the decision without writing.
+  --reason <text>       Why the run is being closed (cancel only; 'runs recover'
+                        refuses it). Recorded verbatim in the run's history, so do
+                        not paste secrets into it.
+  --dry-run             recover only ('runs cancel' refuses it): compute the
+                        decision without writing.
 
-Exit codes: 0 closed (or already closed), 2 refused."""
+Exit codes:
+  cancel   0 the run is closed, or already was. 2 the cancel was refused.
+  recover  0 the recovery was decided: the run was recovered, would be recovered
+           by a dry run, was already recovered, or is still in flight. 2 the
+           recovery was refused."""
 
     fun main(args: Array<String>): Int {
         val verb = args.firstOrNull()
-        if (verb != "cancel" && verb != "recover") {
+        if (verb != RunsVerb.Cancel.spelling && verb != RunsVerb.Recover.spelling) {
             System.err.println("runs: the verbs are 'cancel' and 'recover'.")
             System.err.println(USAGE)
             return 2
         }
 
-        if (verb == "recover") {
-            return runRecover(args.drop(1).toTypedArray())
+        val rest = args.drop(1).toTypedArray()
+        return if (verb == RunsVerb.Recover.spelling) {
+            runRecover(rest)
+        } else {
+            runCancel(rest)
         }
+    }
 
-        val rest = args.drop(1)
+    /**
+     * `runs cancel` — close a run that no live process is working on.
+     *
+     * ## It takes its OWN options
+     * `--dry-run` is REFUSED here, not ignored. This verb closes the run for
+     * real: it takes the lease, writes the terminal bookend and seals the
+     * output streams. An operator who asked for a simulation and got a
+     * closure would be reading a green exit code over a run they wanted
+     * untouched, and there is no way to undo that.
+     */
+    private fun runCancel(rest: Array<String>): Int {
         val runId = rest.firstOrNull()?.takeIf { !it.startsWith("--") }
         if (runId == null) {
             System.err.println("runs cancel: a run id is required.")
@@ -89,7 +126,7 @@ Exit codes: 0 closed (or already closed), 2 refused."""
         }
         val optionArgs = rest.drop(if (rest.first() == runId) 1 else 0)
 
-        val options = when (val parsed = parseOptions(optionArgs.toTypedArray())) {
+        val options = when (val parsed = parseCancelArguments(optionArgs.toTypedArray())) {
             is OptionParse.Parsed -> parsed.value
             is OptionParse.Rejected -> {
                 System.err.println("runs cancel: ${parsed.error}")
@@ -178,6 +215,17 @@ Exit codes: 0 closed (or already closed), 2 refused."""
      * last operation is still running is not a run that finished, and
      * recovering it would publish a result nobody observed. That run is the
      * `runs cancel` case.
+     *
+     * It also refuses a `--reason`: this verb records the terminal it
+     * OBSERVED, and it has no operator's reason to record.
+     *
+     * ## What its exit code means
+     * Zero does NOT mean "the run was closed". It means the recovery was
+     * DECIDED: the run was recovered, a dry run would recover it, it was
+     * already recovered, or it is still in flight and nothing was recovered.
+     * Only the last two are answers about a run that is still open, and the
+     * text on stdout says which one it is. Two is a refusal, and the refusal
+     * is on stderr.
      */
     private fun runRecover(rest: Array<String>): Int {
         val runId = rest.firstOrNull()?.takeIf { !it.startsWith("--") }
@@ -188,7 +236,7 @@ Exit codes: 0 closed (or already closed), 2 refused."""
         }
         val optionArgs = rest.drop(if (rest.first() == runId) 1 else 0)
 
-        val options = when (val parsed = parseOptions(optionArgs.toTypedArray())) {
+        val options = when (val parsed = parseRecoverArguments(optionArgs.toTypedArray())) {
             is OptionParse.Parsed -> parsed.value
             is OptionParse.Rejected -> {
                 System.err.println("runs recover: ${parsed.error}")
@@ -335,21 +383,93 @@ Exit codes: 0 closed (or already closed), 2 refused."""
         return if (msg.isNullOrBlank()) cls else "$cls: $msg"
     }
 
-    /** The options this verb takes. */
-    private data class Options(
+    /**
+     * The verbs this CLI offers.
+     *
+     * The spelling lives HERE, once: the dispatch, the usage and the option
+     * ownership all read it, so the name of a verb is not written in three
+     * places that can drift apart.
+     */
+    internal enum class RunsVerb(val spelling: String) {
+        /** Closes the run as aborted and records why. */
+        Cancel("cancel"),
+
+        /** Reconciles a run whose work finished but whose terminal was never recorded. */
+        Recover("recover"),
+    }
+
+    /** The options `runs cancel` takes. */
+    internal data class CancelArguments(
         val dbPath: String?,
         val controlRoot: Path?,
         val reason: String?,
-        /** recover only: compute the decision without writing. */
+    )
+
+    /** The options `runs recover` takes. */
+    internal data class RecoverArguments(
+        val dbPath: String?,
+        val controlRoot: Path?,
+        /** compute the decision without writing. */
         val dryRun: Boolean = false,
     )
 
-    private sealed interface OptionParse {
-        data class Parsed(val value: Options) : OptionParse
-        data class Rejected(val error: String) : OptionParse
+    /**
+     * The outcome of reading a verb's options.
+     */
+    internal sealed interface OptionParse<out T> {
+        /** The options the operator wrote. */
+        data class Parsed<T>(val value: T) : OptionParse<T>
+
+        /** The options the operator did NOT write, and why they cannot be read. */
+        data class Rejected(val error: String) : OptionParse<Nothing>
     }
 
-    private fun parseOptions(args: Array<String>): OptionParse {
+    /**
+     * The options of `runs cancel`.
+     *
+     * A `--dry-run` is REFUSED, not ignored: this verb closes the run for
+     * real, and a simulation that closed it anyway would be the answer the
+     * operator could not recover from.
+     */
+    internal fun parseCancelArguments(args: Array<String>): OptionParse<CancelArguments> =
+        when (val scanned = scanOptions(args, RunsVerb.Cancel)) {
+            is OptionParse.Rejected -> scanned
+            is OptionParse.Parsed -> OptionParse.Parsed(
+                CancelArguments(
+                    dbPath = scanned.value.dbPath,
+                    controlRoot = scanned.value.controlRoot,
+                    reason = scanned.value.reason,
+                ),
+            )
+        }
+
+    /**
+     * The options of `runs recover`.
+     *
+     * A `--reason` is REFUSED, not ignored: this verb records the terminal it
+     * OBSERVED, and it has no operator's reason to record. Silently dropping
+     * the text would let an operator believe they had annotated the run.
+     */
+    internal fun parseRecoverArguments(args: Array<String>): OptionParse<RecoverArguments> =
+        when (val scanned = scanOptions(args, RunsVerb.Recover)) {
+            is OptionParse.Rejected -> scanned
+            is OptionParse.Parsed -> OptionParse.Parsed(
+                RecoverArguments(
+                    dbPath = scanned.value.dbPath,
+                    controlRoot = scanned.value.controlRoot,
+                    dryRun = scanned.value.dryRun,
+                ),
+            )
+        }
+
+    /**
+     * The options as the operator wrote them, read once.
+     *
+     * The scan knows WHICH verb is asking, because an option that belongs to
+     * the other verb is refused HERE: an option that is merely ignored
+     * downstream is an option the operator believes was honoured.
+     */
+    private fun scanOptions(args: Array<String>, verb: RunsVerb): OptionParse<Scanned> {
         var dbPath: String? = null
         var controlRoot: Path? = null
         var reason: String? = null
@@ -369,16 +489,42 @@ Exit codes: 0 closed (or already closed), 2 refused."""
                 }
 
                 "--reason" -> {
+                    if (verb != RunsVerb.Cancel) {
+                        return OptionParse.Rejected(REASON_BELONGS_TO_CANCEL)
+                    }
                     reason = args.getOrNull(++index)
                         ?: return OptionParse.Rejected("--reason requires a value")
                 }
 
-                "--dry-run" -> dryRun = true
+                "--dry-run" -> {
+                    if (verb != RunsVerb.Recover) {
+                        return OptionParse.Rejected(DRY_RUN_BELONGS_TO_RECOVER)
+                    }
+                    dryRun = true
+                }
 
                 else -> return OptionParse.Rejected("unknown option '$arg'")
             }
             index++
         }
-        return OptionParse.Parsed(Options(dbPath, controlRoot, reason, dryRun))
+        return OptionParse.Parsed(Scanned(dbPath, controlRoot, reason, dryRun))
     }
+
+    /** The options as they were written, before the verb claims them. */
+    private data class Scanned(
+        val dbPath: String?,
+        val controlRoot: Path?,
+        val reason: String?,
+        val dryRun: Boolean,
+    )
+
+    /** Why `--reason` is refused by the verb that has no reason to record. */
+    private const val REASON_BELONGS_TO_CANCEL =
+        "--reason belongs to 'runs cancel': 'runs recover' records the terminal it observed " +
+            "and has no reason to record."
+
+    /** Why `--dry-run` is refused by the verb that cannot be simulated. */
+    private const val DRY_RUN_BELONGS_TO_RECOVER =
+        "--dry-run belongs to 'runs recover': 'runs cancel' closes the run for real, " +
+            "so it cannot be simulated."
 }

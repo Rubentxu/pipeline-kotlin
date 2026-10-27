@@ -330,11 +330,16 @@ sealed interface CliError {
      * Measured on the built distribution, `operations <runId> extra-arg`
      * published the operations of `<runId>` and said nothing at all about
      * `extra-arg`: the operator asked about two runs and read an answer about
-     * one. The verbs that read through the shared parser already refused a
-     * second positional argument —`observe`, `inspect`, `runs cancel`, `saga
-     * inspect` and `events` all answer 2 and name the token— and among the
-     * verbs that read through the admission, `operations` was the only one
-     * that swallowed one.
+     * one. Among the verbs that read through the admission, `operations` was
+     * the only one that swallowed one.
+     *
+     * The verbs that read through the shared parser's script-path entry point
+     * —`run` and `validate`— swallowed one the same way: measured, `run
+     * s.kts extra-arg` RAN the pipeline and said nothing about `extra-arg`,
+     * and `validate s.kts extra-arg` answered "VALIDATION SUCCESSFUL" with
+     * the byte-identical output of the request that carries no extra
+     * argument. `observe`, `inspect`, `runs cancel`, `saga inspect` and
+     * `events` each refuse one, each with its own sentence.
      *
      * The token is named for the same reason it is named in
      * [UnexpectedPositional]: it is what the operator has to remove.
@@ -532,6 +537,33 @@ private class ParseState(
 */
 @Suppress("TooManyFunctions")
 object CliParser {
+    /**
+     * The request of a verb that runs or validates a script.
+     *
+     * ## What this entry point owns
+     *
+     * Two verbs read through HERE — `run` and `validate` — and both of them
+     * own exactly ONE positional argument: the script path. A request that
+     * carries another one is not a request of these verbs, and it is REFUSED,
+     * by name, before any effect. Measured on the built distribution, `run
+     * s.kts extra-arg` ran the pipeline and said NOTHING about `extra-arg`,
+     * and `validate s.kts extra-arg` answered "VALIDATION SUCCESSFUL" with
+     * the byte-identical output of the request that carries no extra
+     * argument: the operator read an answer about a request nobody made.
+     *
+     * The refusal has nowhere else to go. The DSL opens no argument list for
+     * a script — `pipeline { }` takes no arguments, and `ScriptDefinition.file`
+     * takes none either — so a trailing positional is not an argument the
+     * pipeline could receive later.
+     *
+     * ## What this entry point does NOT own
+     *
+     * `console` owns TWO positional arguments — the run id and the operation
+     * id — and reads them through its own entry point of this object, which
+     * already refuses a third. How many positional arguments a verb owns is
+     * that verb's business; this refusal is about the verbs that come through
+     * HERE.
+     */
     fun parse(args: Array<String>): CliParseResult {
         if (args.isEmpty()) return CliParseResult.Rejected(CliError.MissingCommand)
 
@@ -557,10 +589,23 @@ object CliParser {
         // default output. The operator believed a flag was applied; it was not.
         // Options must precede the script path, and an unknown one anywhere is
         // an error rather than a silent no-op.
-        for (tail in args.drop(index + 1)) {
-            if (tail.startsWith("--")) {
-                return CliParseResult.Rejected(CliError.TrailingOption(tail))
-            }
+        val tails = args.drop(index + 1)
+        val trailingOption = tails.firstOrNull { it.startsWith("--") }
+        if (trailingOption != null) {
+            return CliParseResult.Rejected(CliError.TrailingOption(trailingOption))
+        }
+
+        // Fail closed on a trailing positional too, which is the same failure
+        // with a different shape: the verbs that come through here own ONE
+        // positional argument, and the request carried another one. The token
+        // is named because it is what the operator has to remove.
+        //
+        // The option is named first when a request carries both: an operator
+        // who wrote `--format` after the script path believed in a flag, and
+        // that belief is the one to correct before anything else.
+        val extraPositional = tails.firstOrNull { !it.startsWith("--") }
+        if (extraPositional != null) {
+            return CliParseResult.Rejected(CliError.TooManyPositionals(extraPositional))
         }
 
         // Fail closed on the incompatible pair.

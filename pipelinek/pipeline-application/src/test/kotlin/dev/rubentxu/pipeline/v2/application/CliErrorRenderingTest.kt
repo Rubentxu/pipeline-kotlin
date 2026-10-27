@@ -115,6 +115,15 @@ class CliErrorRenderingTest {
     }
 
     @Test
+    fun `the refusal of a second positional says the command takes one`() {
+        val exit = CliError.TooManyPositionals("extra-arg").toCliExit()
+
+        assertTrue(exit.message.contains("extra-arg"), exit.message)
+        val hint = requireNotNull(exit.hint) { "the refusal of a second positional has no hint" }
+        assertTrue(hint.contains("one positional argument"), hint)
+    }
+
+    @Test
     fun `the refusal of an option another verb owns names the verb that owns it`() {
         val exit = CliError.OptionBelongsToObserve("--limit").toCliExit()
 

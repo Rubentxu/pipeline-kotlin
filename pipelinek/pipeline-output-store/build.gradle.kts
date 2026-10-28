@@ -34,17 +34,19 @@ tasks.test {
     useJUnitPlatform()
 }
 
-// Tests cover the PURE half of this module: the sealed-segment name format, its reader, and the
-// `SealedSegment` extent. Those three are the contract between the writer that rotates a segment
-// and the reader that serves it back, and they are pure functions over a file NAME — the tests
-// build `Path` values by hand and never open one. The segment files' IO (`readChunk`, `readRange`,
-// `readRangeDigested`) is exercised by the E2E pipelines under `examples/output/`, not by JUnit;
-// the AGENTS.md rule against filesystem persistence in unit tests is what scopes the suite.
+// Tests cover the PURE half of this module: the sealed-segment name format, its reader, the
+// `SealedSegment` extent, the decision about who owns a stream directory, and the lifetime of the
+// per-stream exclusions. The first three are the contract between the writer that rotates a
+// segment and the reader that serves it back; the last two are the rules that decide which
+// directory a stream lands in and how long its exclusion lives. All of them are pure functions
+// over a file NAME, a record and a counter — the tests build `Path` values by hand and never open
+// one. The segment files' IO (`readChunk`, `readRange`, `readRangeDigested`) is exercised by the
+// E2E pipelines under `examples/output/`, not by JUnit; the AGENTS.md rule against filesystem
+// persistence in unit tests is what scopes the suite.
 
 // The `performanceTest` lane, its `tasks.test` tag exclusion and its Kover
-// `disabledForTestTasks` entry were REMOVED . All three
-// read `sourceSets["test"]`, which is now empty, and Gradle 8.14 reports success for an
-// empty source set -- it has no `failOnNoDiscoveredTests` property at all -- so the lane would
-// have been a green 1 GiB soak
+// `disabledForTestTasks` entry were REMOVED. All three read this module's test source set, and a
+// Gradle test task that discovers no tests reports SUCCESS -- Gradle 8.14 has no
+// `failOnNoDiscoveredTests` property at all -- so the lane would have been a green 1 GiB soak
 // that never allocated anything. The soak's real subject (Output Plane segment growth
 // and rollover) is exercised instead by an E2E pipeline under `examples/`.

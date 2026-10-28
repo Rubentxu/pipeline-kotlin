@@ -99,6 +99,16 @@ class SegmentOutputStore(
      * that do not need pins can construct a plain store.
 */
     private val pinPort: OutputPinPort? = null,
+    /**
+     * The mutual exclusion of the stream directories this store touches.
+     *
+     * It is HANDED to the store rather than created inside it, because the reader and the writer of
+     * one control root are two different stores and they have to exclude each other: the retention
+     * pass deletes a directory under the stream's lock, and a reader that does not share that lock
+     * can be served from a directory being removed underneath it. The owner of this registry is the
+     * Output Plane state of the control root — see [StreamLocks].
+     */
+    val streamLocks: StreamLocks = StreamLocks(),
 ) : OutputAppendPort, OutputReadPort, OutputRecoveryPort, OutputRetentionPort, OutputSealPort,
     OutputTailPort {
 
@@ -141,26 +151,6 @@ class SegmentOutputStore(
     private val recoveryLock = ReentrantLock()
 
     @Volatile private var recovered = false
-
-    /**
-     * One lock per stream, keyed by the **canonical** stream key.
-     * The key is `safe(streamId.value)` — exactly the directory name [layout] resolves for that
-     * stream — and it is deliberately a `String` rather than an [OutputStreamId]. [prune] reaches a
-     * stream by its directory name (the id is not invertible: `safe` folds `/` onto `_`), so a map
-     * keyed by the raw id could never share an entry with prune. The writer used to key on the raw
-     * id and prune on the folded name, so releasing a run added a second, permanently retained lock
-     * for a stream whose writer lock was already present (measured: `2N` locks after releasing `N`
-     * runs,/). Two ids that fold to the same name share one on-disk directory, so they share one
-     * lock — the lock protects the DIRECTORY, and the directory is what both of them reach.
-     *
-     * They are NOT one stream, though, and this comment used to say they were. A folded name is a
-     * lossy address, and two identities that land in one directory are two streams whose bytes
-     * would end up interleaved: neither of them could be attributed afterwards. The store now
-     * refuses that (see `claimStreamDirectory`), so the lock is shared because the directory is
-     * shared, and the directory is shared because the NAME is folded — not because the ids are the
-     * same stream.
-*/
-    private val perStream = HashMap<String, ReentrantLock>()
 
     @Volatile private var frameIndex: SegmentFrameIndex? = null
 
@@ -532,12 +522,11 @@ class SegmentOutputStore(
             // whose outcome is "some bytes, or an IOException", decided by scheduling.
             // The key is the directory name itself, which IS `streamKey(stream)` for the stream
             // that wrote this directory: prune reaches a stream by its directory (the id is not
-            // invertible), so keying on the name is what lets it share the writer's lock instead of
-            // Adding a permanent second one
-            val streamLock = synchronized(perStream) {
-                perStream.getOrPut(dir.fileName.toString()) { ReentrantLock() }
-            }
-            streamLock.withLock {
+            // invertible), so keying on the name is what lets it contend for the SAME lock the
+            // writer takes instead of adding a permanent second one. The registry is the one the
+            // root's plane hands to every store of that root, so a reader of the same root is
+            // excluded here too.
+            streamLocks.withLock(dir.fileName.toString()) {
                 bytes += committedLocked(layoutFor(dir))
                 if (deleteRecursively(dir)) removed++
             }
@@ -766,10 +755,8 @@ class SegmentOutputStore(
         block: () -> OutputReadDigestedResult,
     ): OutputReadDigestedResult = withStreamLockFor(stream) { block() }
 
-    private fun <T> withStreamLockFor(stream: OutputStreamId, block: () -> T): T {
-        val streamLock = synchronized(perStream) { perStream.getOrPut(streamKey(stream)) { ReentrantLock() } }
-        return streamLock.withLock { block() }
-    }
+    private fun <T> withStreamLockFor(stream: OutputStreamId, block: () -> T): T =
+        streamLocks.withLock(streamKey(stream)) { block() }
 
     /**
      * The canonical lock key for a stream: the `safe()`-folded name that also names its directory.

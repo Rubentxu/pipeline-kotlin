@@ -4,11 +4,21 @@ package dev.rubentxu.pipeline.v2.application
  * A scope that owns the resources acquired inside it.
  *
  * ## THE RULE, IN ONE PLACE
+ * Every resource has ONE owner. The owner is what gives it back, and the owner
+ * says when: a scope that ends, a registry that keeps an entry only while
+ * somebody needs it, a cache that can be discarded. A resource with no declared
+ * owner is a leak, and a resource with two owners is a race.
+ *
  * A resource belongs to the scope that acquired it, from the moment it is
  * acquired until the scope ends. A scope ends by giving back everything it
  * holds, and it ends the same way on every path: a run that succeeds, a run
  * that fails and a run that refuses all give back the same resources, in the
  * same order.
+ *
+ * ## HOW A RESOURCE APPLIES THE RULE
+ * The rule is written here and nowhere else. A resource that has one NAMES its
+ * owner, so the place that has to give it back is found by reading the resource
+ * and not by knowing the history of the code that created it.
  *
  * ## WHY THE ORDER IS REVERSED
  * A resource acquired later depends on the one acquired before it, so giving

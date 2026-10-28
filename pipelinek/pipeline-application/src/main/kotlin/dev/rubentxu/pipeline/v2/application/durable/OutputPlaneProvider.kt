@@ -27,19 +27,21 @@ import java.util.concurrent.ConcurrentHashMap
  * recovered store is held per control-directory root. A **new process** gets a new provider and
  * recovers again — that is the crash path, and it is exercised deliberately rather than cached
  * across it.
+ * ## What the provider owns
+ * The registry of the roots this process has touched, and through it the [OutputPlane] of each
+ * root. It lives as long as the process does; [forget] discards the stores of one root and
+ * [forgetAll] drops the roots themselves, which is what a process restart would do on its own.
  * @see storeForWriting
  * @see storeForReading
 */
 object OutputPlaneProvider {
 
     /**
-     * Two caches, deliberately. A reader and a writer over one control root are DIFFERENT stores and
-     * must not share a cache entry, or whichever opened first would silently decide the other's
-     * permissions — and a writing store recovered inside a read-only verb is precisely the defect
-     * removes.
-*/
-    private val stores = ConcurrentHashMap<Path, SegmentOutputStore>()
-    private val readerStores = ConcurrentHashMap<Path, SegmentOutputStore>()
+     * One plane per control root, and the plane is what holds that root's stores and that root's
+     * mutual exclusion. The registry is the provider's own; the plane's resources belong to the
+     * plane.
+     */
+    private val planes = ConcurrentHashMap<Path, OutputPlane>()
 
     /** Directory the Output Plane occupies inside a control-directory root. */
     const val OUTPUT_DIR: String = "output-plane"
@@ -54,22 +56,21 @@ object OutputPlaneProvider {
      * Reads are still honest without recovery. A reader only ever serves bytes at or below the
      * committed offset, so it cannot observe an unacknowledged byte; recovery is what makes debris
      * disappear, not what makes a read true.
-*/
-    fun storeForReading(controlDirRoot: Path): SegmentOutputStore =
-        readerStores.computeIfAbsent(controlDirRoot.normalize()) { root ->
-            SegmentOutputStore(root.resolve(OUTPUT_DIR), recoveryPermitted = false)
-        }
+     *
+     * The reader is a DIFFERENT store from the writer of the same root, and the two share that
+     * root's mutual exclusion: the retention pass deletes a directory under the stream's lock, and
+     * a reader that does not share that lock can be served from a directory being removed
+     * underneath it.
+    */
+    fun storeForReading(controlDirRoot: Path): SegmentOutputStore = planeFor(controlDirRoot).reader()
 
     /**
      * The store for [controlDirRoot] on the WRITE side: recovered, and therefore permitted to
      * reconcile.
      * Recovery is scoped by ownership, so this pass skips every stream a live writer holds — in this
      * process or any other — rather than deciding for them that their bytes are debris.
-*/
-    fun storeForWriting(controlDirRoot: Path): SegmentOutputStore =
-        stores.computeIfAbsent(controlDirRoot.normalize()) { root ->
-            SegmentOutputStore(root.resolve(OUTPUT_DIR)).also { it.recover() }
-        }
+    */
+    fun storeForWriting(controlDirRoot: Path): SegmentOutputStore = planeFor(controlDirRoot).reconcileWriter()
 
     /**
      * Retained for callers that are neither purely reading nor purely writing — retention in
@@ -77,7 +78,7 @@ object OutputPlaneProvider {
      * It resolves to the writing store because retention has always recovered, and quietly changing
      * that would change what a retention pass is allowed to do without anyone deciding it. Splitting
      * it is a separate decision, recorded here rather than taken silently.
-*/
+    */
     fun storeFor(controlDirRoot: Path): SegmentOutputStore = storeForWriting(controlDirRoot)
 
     /**
@@ -86,7 +87,7 @@ object OutputPlaneProvider {
      * survives a crash, a reopen and a cursor hand-off for free, because those already address bytes
      * by stream — a separate frame of metadata would be a second thing to keep in step with the
      * bytes, and keeping it in step is exactly what a crash interrupts.
-*/
+    */
     fun streamId(runId: String, opId: String, channel: OutputChannel): OutputStreamId =
         OutputStreamAddress.of(runId, opId, channel).stream
 
@@ -94,19 +95,38 @@ object OutputPlaneProvider {
      * The pair of channel streams one operation writes.
      * Exposed as the address type rather than as two loose ids so a caller cannot mix one
      * operation's stdout with another's stderr.
-*/
+    */
     fun streamsOf(runId: String, opId: String): OperationOutputStreams =
         OperationOutputStreams.of(runId, opId)
 
-    /** Drop the cached store for [controlDirRoot], forcing the next access to recover again. */
+    /**
+     * Discard the stores cached for [controlDirRoot] — the reader and the writer together — so the
+     * next access opens new ones.
+     *
+     * Both, and not the writer alone: a discarded writer left its reader alive, and the reader
+     * that survived kept a view of the root's bytes that nothing had asked to keep.
+     *
+     * The root's mutual exclusion survives the discard. It protects the root's directories, not the
+     * stores, and a store that a live caller still holds has to keep excluding the root's next
+     * writer.
+     */
     fun forget(controlDirRoot: Path) {
-        stores.remove(controlDirRoot.normalize())
+        planes[controlDirRoot.normalize()]?.discardStores()
     }
 
-    /** Drop every cached store. Used by tests and by anything simulating a process restart. */
+    /** Drop every root. Used by tests and by anything simulating a process restart. */
     fun forgetAll() {
-        stores.clear()
-        readerStores.clear()
+        planes.clear()
     }
-}
 
+    /**
+     * The plane of [controlDirRoot], created on first use.
+     *
+     * The plane is what owns the root's mutual exclusion and its two stores, so it is what the
+     * registry holds — one entry per root, and one set of locks per root.
+     */
+    internal fun planeFor(controlDirRoot: Path): OutputPlane =
+        planes.computeIfAbsent(controlDirRoot.normalize()) { root ->
+            OutputPlane(root.resolve(OUTPUT_DIR))
+        }
+}

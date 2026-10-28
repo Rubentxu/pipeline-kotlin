@@ -29,12 +29,10 @@ object CoreStepRegistryFactory {
      * exists.
 */
     fun builder(): StepRegistryBuilder = StepRegistryBuilder().apply {
-        // Every core Step below is registry-routed. The legacy set is empty, so
-        // `StructuralFamilyResolver.classify` answers `Registry` for all of them
-        // as soon as a registry is injected, and the registry owns production
+        // Every core Step below is registry-routed: the registry owns production
         // routing and production metadata. The comments that follow therefore
         // describe what each Step DECLARES -- its capability, its effects and
-        // its policies -- and not a migration that is already finished.
+        // its policies.
         CoreEchoStep.registerInto(this)
         // `sh(...)`: composes the typed input/output codecs and the
         // SHELL_OPERATIONS_CAPABILITY declaration.

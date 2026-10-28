@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
@@ -112,7 +113,6 @@ class DivergenceDetectorPortTest {
      */
     private fun coordinator(detector: DivergenceDetector): CanonicalDurableRunCoordinator =
         CanonicalDurableRunCoordinator(
-            dispatcher = CanonicalNodeDispatcher(),
             journal = InMemoryOperationJournal(FixedClock),
             cursorStore = InMemoryReplayCursorStore(FixedClock),
             clock = FixedClock,
@@ -123,6 +123,9 @@ class DivergenceDetectorPortTest {
             },
             controlDirRoot = Path.of("/nonexistent-control-root"),
             divergenceDetector = detector,
+            // The coordinator resolves every step through the open registry; this row
+            // never dispatches one, it only exercises the divergence gate.
+            stepRegistry = CoreStepRegistryFactory.registry(),
         )
 
     /** The resolver, composed with the detector it is given. */

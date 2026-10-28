@@ -13,7 +13,9 @@ import dev.rubentxu.pipeline.v2.domain.OpaqueStepNode
 import dev.rubentxu.pipeline.v2.domain.StageOption
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.PostSpec
+import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.StageBody
+import dev.rubentxu.pipeline.v2.domain.decideShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.StageId
 import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepId
@@ -473,6 +475,34 @@ object DslCompiledPipelineCompiler {
     )
 
     /**
+     * The compiler knows the `StepSpec.Shell -> CoreShellInput` transformation,
+     * which is a DOMAIN decision (what the step declares); it does not know the
+     * wire format, which is an ENCODING decision owned by [CoreShellWireCodec].
+     * Pure, total, one direction, no defaults invented here: every field maps
+     * verbatim.
+    */
+    private fun StepSpec.Shell.toCoreShellInput(): CoreShellInput = coreShellInput(
+        command = command,
+        isScriptBlock = isScriptBlock,
+        returnStdout = returnStdout,
+    )
+
+    /**
+     * The same DOMAIN decision for a command the compiler builds itself (the
+     * inlined shell wrappers): it is the declaration the DSL makes, spelled the
+     * same way. `returnStdout` is the only return vocabulary the declarative
+     * dialect has, so the interior's return mode is NONE or STDOUT.
+    */
+    private fun coreShellInput(command: String, isScriptBlock: Boolean, returnStdout: Boolean): CoreShellInput =
+        CoreShellInput(
+            command = ShellCommand(
+                script = command,
+                returnMode = decideShellReturnMode(returnStdout = returnStdout, returnStatus = false),
+            ),
+            isScriptBlock = isScriptBlock,
+        )
+
+    /**
      * Pre-compiler rewrite for catchError / warnError blocks.
      * Produces a linear sequence of nodes:
      * 1. `core.emit.event(kind="CatchErrorEntered", buildResult, enteredAt)` — entry marker (scope push)
@@ -767,32 +797,35 @@ object DslCompiledPipelineCompiler {
     // lowers to StepSpec.RegistryStepSpec; the runtime decoder/handler is CoreMilestoneStep
     // via the registry. No compiler-side payload construction needed.
 
-    private fun shellPayload(command: String, isScriptBlock: Boolean, returnStdout: Boolean): String {
-        return Json.encodeToString(JsonObject.serializer(), buildJsonObject {
-            put("kind", "sh")
-            put("command", command)
-            put("isScriptBlock", isScriptBlock)
-            put("returnStdout", returnStdout)
-        })
-    }
+    /**
+     * The compiler does NOT hand-write the `core.sh` wire JSON.
+     * [CoreShellWireCodec] is THE single authority for that format: the compiler
+     * knows the DOMAIN decision (which command, whether it is a script block, and
+     * whether stdout is returned) and delegates the ENCODING to the codec. The
+     * bytes are the ones this function has always written, so no durable body
+     * identity moves.
+    */
+    private fun shellPayload(command: String, isScriptBlock: Boolean, returnStdout: Boolean): String =
+        CoreShellWireCodec.encodeDeclarative(coreShellInput(command, isScriptBlock, returnStdout)).value
 
     @Suppress(
         "CyclomaticComplexMethod",
-        "reason: dispatch table over a closed StepSpec hierarchy; refactor would " +
-            "reduce readability AND require touching 14+ branches unrelated to " +
-            "WU-RP-053R. The complexity is structural (one branch per " +
-            "StepSpec subtype) and the corpus tests are GREEN at 33."
+        "reason: dispatch table over a closed StepSpec hierarchy — one branch " +
+            "per StepSpec subtype, each naming the canonical envelope of its " +
+            "core Step. Splitting the table would scatter one envelope per " +
+            "file and make the shape of a Step unreadable in one place."
     )
     private fun encodePayload(step: StepSpec): String {
+        // The compiler does NOT hand-write the `core.sh` wire JSON here either:
+        // CoreShellWireCodec is THE single authority for that format, and the
+        // bytes it writes are the ones this branch has always written.
+        if (step is StepSpec.Shell) {
+            return CoreShellWireCodec.encodeDeclarative(step.toCoreShellInput()).value
+        }
         val payload = buildJsonObject {
             put("kind", step.name)
             when (step) {
                 is StepSpec.Echo -> put("text", step.text)
-                is StepSpec.Shell -> {
-                    put("command", step.command)
-                    put("isScriptBlock", step.isScriptBlock)
-                    put("returnStdout", step.returnStdout)
-                }
                 is StepSpec.Error -> {
                     put("message", step.message)
                     // `failureKind` is typed, and the wire is not. `FailureKind.name` IS

@@ -14,14 +14,8 @@ import java.nio.file.Path
  * `BODY_INVOKER_CAPABILITY` — admission fails closed for any handler that declares it,
  * which is the correct behaviour: only runs that explicitly wire the adapter expose
  * the body-reentry seam.
- * Extracted from `CanonicalNodeDispatcher.kt` to its own file as part
- * of the partition plan
- * The data class is the canonical seam between the dispatcher body and the runtime
- * adapters; isolating it shrinks `CanonicalNodeDispatcher.kt` from 100 LOC to 67 LOC
- * and gives the field bundle its own focus. The FQN
- * (`dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext`) is
- * unchanged, so every existing `import` and bare usage in the 62 referencing files
- * continues to bind without edits.
+ * The data class is the canonical seam between the dispatch body and the runtime
+ * adapters; giving the field bundle its own file gives it its own focus.
 */
 data class CanonicalRuntimeContext(
     val opId: OpId,

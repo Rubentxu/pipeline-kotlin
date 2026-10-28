@@ -62,7 +62,7 @@ internal class DurableStepExecutor(
         fingerprint: Fingerprint,
         input: OperationInput,
         journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
-        prepared: PreparedExecution,
+        prepared: PreparedRegistryExecution,
         runtime: CanonicalRuntimeContext,
         lifecycleContext: StepLifecycleContext,
     ): CommonExecutionResult {

@@ -28,11 +28,14 @@ import kotlinx.serialization.json.longOrNull
  * including the `kind` discriminator and the key order. Two measured reasons:
  * 1. The compiled block payload carries `kind="waitUntilBlock"` across the productive
  *    authority: the compiler and the Step must not disagree about it.
- * 2. The compiled payload is the one string hashed into the operation identity
+ * 2. The compiled payload is the one string hashed into the durable FINGERPRINT
  *    (`StepDispatchEngine` puts `payload.encoded` into `OperationInput.params`,
- *    which `OperationInput` documents as fingerprint input), and the replay
- *    table's first rule is `!hasJournalEntry -> RERUN`. So a changed payload does
- *    not silently reuse old history: the operation runs again.
+ *    which `OperationInput` documents as fingerprint input). The operation id
+ *    does NOT carry the payload — `OpId` is run id + stage index + step index +
+ *    branch index + body path, and nothing else — so a changed payload leaves
+ *    the journaled row FOUND under the same key: the fingerprint DIVERGES and
+ *    the run ABORTS fail-closed (`InvocationReconciliation.Diverged`) instead
+ *    of silently reusing the old history. It does NOT re-execute the step.
  * This text previously cited `BodyStructureDigest` for reason 2. That was wrong.
  * `BodyStructureDigest.of()` appends the payload string, but its only call-site is
  * guarded by `hasBodyContinuation`, bound solely for the `HANDLER_CONTINUATION`
@@ -40,8 +43,10 @@ import kotlinx.serialization.json.longOrNull
  * engine-driven block, so its payload never reaches that digest. The conclusion
  * (bytes unchanged, extraction is about authorship) survived; the mechanism did not.
  * `maxBackoffMs` is therefore a deliberate format CHANGE made in a later slice,
- * and it is safe for the reason above: the durable resume misses its old key and
- * Re-executes, which is the fail-closed direction asks for. Removing the
+ * and it is safe for the reason above: the durable resume FINDS its old key,
+ * sees a diverged fingerprint and aborts the run, which is the fail-closed
+ * direction asked for. It does not Re-execute the step, and the resume does
+ * not miss the old key. Removing the
  * discriminator later is a separate decision that needs a compatibility review.
  * ## Not the same format as the registry one
  * `CoreWaitUntilStep`'s codec owns `encodedInput`, discriminator

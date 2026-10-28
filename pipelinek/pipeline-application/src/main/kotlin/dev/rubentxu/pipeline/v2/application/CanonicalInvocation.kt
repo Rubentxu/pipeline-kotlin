@@ -14,8 +14,8 @@ import kotlinx.serialization.json.jsonPrimitive
  * Structural, pre-decode canonical invocation
  * This is the durable, extensible input form for routing and execution: a Step identified by its
  * [PluginStepId] together with its raw canonical payload, carried exactly as the engine persisted it.
- * It deliberately predates [CanonicalCoreStepCommand] (the closed, already-decoded legacy/core world),
- * so registry-vs-legacy selection can happen on form/schema/type before any concrete Step decode.
+ * It is deliberately structural: the selection of a concrete Step happens on form/schema/type
+ * BEFORE any concrete Step decode.
  * [encodedInput] is derived losslessly and step-agnostically from [VersionedStepPayload.encoded], so
  * fingerprint/journal/operation-identity authority over the durable payload is untouched. It is NOT a
  * reconstruction from a decoded command (no `when(key){ Echo -> text }` bridging).
@@ -40,10 +40,9 @@ data class CanonicalInvocation(
  * Outcome of the structural (pre-decode) phase of an invocation
  * Structural preparation validates only what a step-agnostic envelope gate may decide before any
  * concrete Step semantics run: the canonical payload schema version and that the encoded payload is a
- * well-formed dsl-v1 JSON object. It deliberately predates [CanonicalCoreStepDecoder.decode], so a
- * structurally-invalid node is rejected as `SCHEMA` without ever entering typed field extraction. This
- * Is what keeps the frozen decode-first laws intact once typed decode is later relocated behind
- * the durable resolution.
+ * well-formed dsl-v1 JSON object. It is deliberately structural, so a structurally-invalid node is
+ * rejected as `SCHEMA` without ever entering typed field extraction. This is what keeps the
+ * decode-first laws intact: typed decode happens later, behind the durable resolution.
  * A [Ready] carries the structural [CanonicalInvocation] (stepKey + schemaVersion + lossless
  * [EncodedStepValue]); durable resolution and typed decode consume it. A [Rejected] carries the reason
  * the envelope gate rejected the node (terminal `SCHEMA`, never the executor).

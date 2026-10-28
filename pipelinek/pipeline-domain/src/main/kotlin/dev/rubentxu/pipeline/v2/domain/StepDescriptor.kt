@@ -16,9 +16,8 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
  *  - [replayPolicy]       — declared replay/reuse strategy
  *  - [recoveryPolicy]     — declared recovery/reconciliation behaviour for RUNNING
  *                            journaled operations (e.g. `ExternalSubprocess` for `core.sh`)
- * Putting all three on the descriptor mirrors how the legacy
- * [dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata] table carries them
- * and lets the registry metadata resolver propagate them 1:1 without per-Step branches.
+ * Putting all three on the descriptor lets the registry metadata resolver
+ * propagate them 1:1 without per-Step branches.
  * Defaults preserve backward compatibility: `core.echo` and other Steps that do not
  * need a typed recovery path keep `recoveryPolicy = RecoveryPolicy.None`.
 */

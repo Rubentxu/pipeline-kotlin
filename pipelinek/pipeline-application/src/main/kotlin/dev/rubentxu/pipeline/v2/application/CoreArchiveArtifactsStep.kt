@@ -22,15 +22,12 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Registry candidate for `core.archiveArtifacts` (/ registry seam proof)
- * Registered this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`. **  flipped
- * the authority**: `"core.archiveArtifacts"` was removed from `LEGACY_PLUGIN_IDS`, so
- * `StructuralFamilyResolver` now classifies the key `Registry` and this definition is the
- * production authority (wired through `CoreStepRegistryFactory`).
- * The legacy decoder branch, the `CanonicalCoreStepMetadata["core.archiveArtifacts"]` row and
- * `CanonicalArchiveArtifactsNodeDispatcher` remain physically present but are UNREACHABLE in
- * Production until (LEGACY_REMOVED) deletes them. Counter: 2 ids / 3 metadata rows /
- * 3 dispatcher files.
+ * The production definition of `core.archiveArtifacts`.
+ * It is registered through the SAME mechanism an external plugin uses
+ * ([CoreStepRegistryFactory]), and the registry is the only authority that resolves
+ * the key. The legacy decoder branch, the core metadata table and the legacy
+ * dispatcher that used to compete with it are gone: there is no second authority
+ * left to keep in step.
  * ## Capability discipline
  * [ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY] is the ONLY declared capability. The handler
  * does NOT consume `EVENT_SINK_CAPABILITY` or stage identity directly — those are bound
@@ -95,7 +92,7 @@ object CoreArchiveArtifactsStep {
         override val outcome: StepOutcome get() = StepOutcome.Success
     }
 
-    /** Typed failure output; kind/message mirror the legacy dispatcher's SCRIPT failures. */
+    /** Typed failure output; kind/message describe the failure in the Step's own terms. */
     data class ArchiveArtifactsFailureOutput(
         val failureKind: FailureKind,
         val message: String,
@@ -152,10 +149,8 @@ object CoreArchiveArtifactsStep {
     }
 
     /**
-     * Byte-equivalent to the legacy `CanonicalCoreStepMetadata["core.archiveArtifacts"]`
-     * row (`{Effect.READ_ONLY}, ReplayPolicy.MEMOIZED`) — recorded candidate delta:
-     * effects upgraded to `{WRITES_WORKSPACE}` per the classification memo. Replay
-     * policy unchanged.
+     * Effects are `{WRITES_WORKSPACE}` — this Step writes into the workspace, so it
+     * cannot claim `{READ_ONLY}`. Replay policy is `MEMOIZED`.
 */
     private val descriptor = StepDescriptor(
         stepId = "core.archiveArtifacts",

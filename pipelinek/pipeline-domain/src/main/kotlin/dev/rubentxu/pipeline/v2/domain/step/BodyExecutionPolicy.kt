@@ -133,12 +133,13 @@ enum class BodyExecutionPolicyShape {
  * This enum is therefore the declared migration frontier of body execution: the
  * canonical eligible body set is derived from it (never from a hard-coded list of
  * StepKeys), and `LEGACY_LINEAR` counts what is left to migrate.
- * ## Relationship to the decode/dispatch family
- * Different axis, deliberately not merged. `StructuralStepFamily` (application
- * layer) classifies DECODE/DISPATCH routing: registry Step vs legacy decode +
- * dispatch. This classifies BODY EXECUTION ownership. A Step can be a legacy
- * decoded Step whose body is owned by the canonical body engine (`core.dir`), so
- * neither can be derived from the other without a false equivalence.
+ * ## Relationship to the routing axis
+ * Different axis, deliberately not merged. Routing says HOW A STEP IS RESOLVED:
+ * every Step goes through the open registry, and there is no second decode or
+ * dispatch family. This enum classifies BODY EXECUTION ownership. A Step can be
+ * resolved by the registry and still have its body owned by the canonical body
+ * engine (`core.dir`), so neither axis can be derived from the other without a
+ * false equivalence.
 */
 enum class BodyExecutionOwner {
 

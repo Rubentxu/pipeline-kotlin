@@ -45,10 +45,10 @@ data object CoreSleepOutput : TypedStepOutput {
 }
 
 /**
- * Candidate registry authority for `core.sleep`.
- * Registers this definition but does not change `LEGACY_PLUGIN_IDS`, the legacy decoder, the
- * metadata row, or the legacy dispatcher. StructuralFamilyResolver therefore continues to route
- * production invocations to LegacyCore until the later cutover gate.
+ * The production definition of `core.sleep`.
+ * It is registered through the SAME mechanism an external plugin uses
+ * ([CoreStepRegistryFactory]), and the registry is the only authority that resolves
+ * the key.
  * A temporal operation does not imply a temporal capability: this handler requires only the
  * coroutine context supplied by the execution boundary and declares no runtime capability.
 */

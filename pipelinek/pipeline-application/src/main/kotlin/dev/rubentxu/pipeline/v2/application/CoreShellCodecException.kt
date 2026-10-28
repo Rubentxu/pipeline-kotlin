@@ -4,7 +4,14 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Typed decode failure for `core.sh` output codec.
+ * Typed failure of the `core.sh` WIRE FORMAT, on both of its sides.
+ *
+ * It is thrown by the INPUT codec ([CoreShellWireCodec]) when a payload cannot
+ * be interpreted — it is not JSON, it is not a `core.sh` payload, it declares an
+ * unknown return mode, or its interior has no spelling in the dialect being
+ * written — and by the OUTPUT codec (inside [CoreShellStep]) when a durable
+ * result envelope cannot be interpreted.
+ *
  * Subclassing [RuntimeException] (not [Exception]) keeps the failure visible to
  * the boundary's `try / catch (e: Exception)` adapter so the result shape can
  * become a typed `StepOutcome.Failure(ENGINE)` rather than silently coercing

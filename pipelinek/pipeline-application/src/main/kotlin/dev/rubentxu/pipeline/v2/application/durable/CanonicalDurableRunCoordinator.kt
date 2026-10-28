@@ -4,7 +4,6 @@ package dev.rubentxu.pipeline.v2.application.durable
 import dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.StepMetadata
-import dev.rubentxu.pipeline.v2.application.CoreLegacyStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.MilestoneStateStore
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyRejection
@@ -24,7 +23,6 @@ import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.FailureKind
-import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
@@ -42,7 +40,6 @@ import java.nio.file.Path
 
 /** Executes the linear canonical core subset with the durable journal and replay cursor. */
 class CanonicalDurableRunCoordinator(
-    private val dispatcher: CanonicalNodeDispatcher,
     private val journal: OperationJournal,
     private val cursorStore: ReplayCursorStore,
     private val clock: Clock,
@@ -73,23 +70,13 @@ class CanonicalDurableRunCoordinator(
     private val capabilityContributor: RuntimeCapabilityContributor = RuntimeCapabilityContributor { emptyMap() },
     private val divergenceDetector: DivergenceDetector = StrictFingerprintDivergenceDetector(),
     // durable metadata resolved by structural step key (pre-decode). Nullable default so a
-    // registry-injected constructor can opt into the composite; legacy call-sites that do
-    // not pass a resolver keep the [CoreLegacyStepMetadataResolver] authority exactly as before.
+    // registry-injected constructor can opt into the composite; when absent the composite
+    // over [stepRegistry] is the authority.
     private val stepMetadataResolver: StepMetadataResolver? = null,
-    // Temporary compatibility seam for the EFFECTIVE step invocation. Optional so the
-    // existing ~25 construction sites compile unchanged; production default delegates to the legacy
-    // dispatcher. Not the final DI architecture.
-    invocationExecutor: CanonicalInvocationExecutor? = null,
-
-    // the new authority seam for effective execution. Optional for dual characterization
-    // when absent it defaults to the legacy adapter over [invocationExecutor] (or the legacy
-    // dispatcher), preserving behaviour exactly. Existing callers that inject the old executor keep
-    // working unchanged because the default boundary routes to it.
-    commonExecutionBoundary: CommonExecutionBoundary? = null,
-    // Optional open StepRegistry (plugin definitions) for registry-driven metadata and,
-    // later, execution. Additive at the end of the ctor so the ~25 legacy call-sites (positional or
-    // named) compile unchanged. No global registry, no service locator, no singleton.
-    private val stepRegistry: StepRegistry? = null,
+    // The open StepRegistry (plugin definitions) that resolves both metadata and
+    // execution. Required: there is exactly ONE way to prepare and execute a step, and it
+    // starts here. No global registry, no service locator, no singleton.
+    private val stepRegistry: StepRegistry,
     // Optional retry control journal. When bound, the retry branch of `dispatchBody`
     // Routes through RetryReconciliationDriver. When null, the inline
     // retry loop is preserved bit-equivalent — existing callers and tests see no change.
@@ -206,7 +193,7 @@ class CanonicalDurableRunCoordinator(
         injectedBodyPolicyResolver ?: run {
             val canonical = StepDescriptorRegistry.standard().bodyPolicyResolver(BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING)
             val fromRegistry = RegistryBodyPolicyResolver(
-                registry = NoopStepRegistry(stepRegistry),
+                registry = stepRegistry,
                 support = BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING,
             )
             BodyPolicyResolver { key ->
@@ -243,42 +230,30 @@ class CanonicalDurableRunCoordinator(
 
 
     /**
-     * Effective pre-decode metadata authority. An explicit [stepMetadataResolver] wins
-     * otherwise an injected [stepRegistry] opts into the composite (core keys -> legacy authority,
-     * other keys -> registry metadata, unknown -> hard defect); otherwise the legacy core authority.
+     * Effective pre-decode metadata authority. An explicit [stepMetadataResolver] wins;
+     * otherwise the composite over [stepRegistry] is the authority (core keys -> the registry's
+     * own core definitions, other keys -> registry metadata, unknown -> hard defect).
      * The durable coordinator only ever consumes [StepMetadata]; it does not know where it came from.
 */
     private val metadataResolver: StepMetadataResolver = stepMetadataResolver
-        ?: if (stepRegistry != null) RegistryStepMetadataResolver.composite(stepRegistry)
-        else CoreLegacyStepMetadataResolver
+        ?: RegistryStepMetadataResolver.composite(stepRegistry)
 
     /**
-     * Effective step executor, routed through the new common seam. The production default
-     * adapts the injected legacy [invocationExecutor] (or the legacy dispatcher) behind
-     * [CommonExecutionBoundary], preserving behaviour exactly; a caller may inject its own boundary
-     * for dual characterization. The durable coordinator only ever hands an opaque [PreparedExecution]
-     * to this seam and never names a decoded command type.
-     * As of.5.7 the call is routed through [ExecutionBoundaryFactory.build] (the named
-     * producer seam) directly, bypassing the [buildDefaultExecutionBoundary] forwarder. The factory
-     * is the structural-switch authority (binary `if (stepRegistry != null)` preserved bit-a-bit); the
-     * forwarder is kept as a source-compatibility shim for any external callers.
+     * The effective step executor. There is exactly ONE seam and exactly ONE implementation
+     * of it, so the coordinator names it directly instead of choosing between candidates:
+     * [RegistryExecutionBoundary] over the registry it already owns.
+     * The coordinator only ever hands an opaque [PreparedRegistryExecution] to this seam and
+     * never names a decoded command type.
 */
-    private val executionBoundary: CommonExecutionBoundary = commonExecutionBoundary
-
-        // Structural switch lives in ExecutionBoundaryFactory.build
-        // (binary legacy-bit-equivalent: registry present -> SeamedRouting; otherwise -> LegacyOnly).
+    private val executionBoundary: CommonExecutionBoundary = RegistryExecutionBoundary.adapt(
         // Pass milestoneStateStore so RegistryExecutionBoundary can provide
         // MILESTONE_OPERATIONS_CAPABILITY during handler execution.
         // Pass artifactIndex so the producer (core.archiveArtifacts)
         // and the consumer (core.artifact.query) share one instance per run.
-        ?: ExecutionBoundaryFactory.build(
-            dispatcher = dispatcher,
-            invocationExecutor = invocationExecutor,
-            stepRegistry = stepRegistry,
-            milestoneStateStore = milestoneStateStore,
-            artifactIndex = artifactIndex,
-            capabilityContributor = capabilityContributor,
-        )
+        milestoneStateStore = milestoneStateStore,
+        artifactIndex = artifactIndex,
+        capabilityContributor = capabilityContributor,
+    )
 
     // The executor folds ONE operation; the traversal owns the cursor.
     private val stepExecutor: DurableStepExecutor = DurableStepExecutor(
@@ -524,30 +499,5 @@ class CanonicalDurableRunCoordinator(
     private companion object {
         const val REATTACH_TIMEOUT_MS = 60_000L
     }
-}
-
-/**
- * Read-only [StepRegistry] view over a nullable registry. Used by the
- * composed body-policy authority so callers that never wired a registry keep the
- * historical behaviour (open-registry lookup returns UnknownStep and the canonical
- * core table answers).
- * This adapter used to implement both `register` overloads by throwing
- * `UnsupportedOperationException`. That was the "freeze boolean" shape — a mutable-shaped
- * object carrying a flag that said it was immutable — and a caller could still reach the
- * method and be told so at runtime. [StepRegistry] no longer declares `register` at all, so
- * the adapter has nothing to refuse and the invariant is a property of the type.
-*/
-private class NoopStepRegistry(private val delegate: StepRegistry?) : StepRegistry {
-    override fun definition(key: dev.rubentxu.pipeline.v2.domain.PluginStepId) =
-        delegate?.definition(key)
-
-    override fun providerOf(key: dev.rubentxu.pipeline.v2.domain.PluginStepId) =
-        delegate?.providerOf(key)
-
-    override fun contains(key: dev.rubentxu.pipeline.v2.domain.PluginStepId): Boolean =
-        delegate?.contains(key) ?: false
-
-    override fun keys(): Set<dev.rubentxu.pipeline.v2.domain.PluginStepId> =
-        delegate?.keys() ?: emptySet()
 }
 

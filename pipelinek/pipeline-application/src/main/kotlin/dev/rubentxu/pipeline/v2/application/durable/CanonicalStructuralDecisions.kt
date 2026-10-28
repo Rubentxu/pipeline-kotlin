@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata
 import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
 import dev.rubentxu.pipeline.v2.domain.StageOption
 import dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection
@@ -37,8 +36,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Path
 
 internal val canonicalStepIds: Set<String> =
-    CanonicalCoreStepMetadata.pluginIds +
-        CoreStepRegistryFactory.registry().keys().map { it.value }
+        CoreStepRegistryFactory.registry().keys().map { it.value }.toSet()
 
 /**
  * Block Step families whose body is executed by THIS engine
@@ -81,7 +79,7 @@ fun CompiledPipeline.analyzeCanonicalDurableExecution(effectiveRegistry: StepReg
     // metadata + the production core factory) applies — behaviour unchanged for
     // callers that do not supply a registry.
     val eligibleStepIds: Set<String> = if (effectiveRegistry != null) {
-        CanonicalCoreStepMetadata.pluginIds + effectiveRegistry.keys().map { it.value }
+        effectiveRegistry.keys().map { it.value }.toSet()
     } else {
         canonicalStepIds
     }

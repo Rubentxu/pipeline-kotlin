@@ -73,10 +73,8 @@ data class DeleteDirOutput(
  * The control directory root always exists, so the capability is always
  * registered into the runtime capability table and the step is always
  * dispatched.
- * ## Re-entry (→)
- * Registered the candidate with three capabilities, following the
- * single-capability pattern.
- * Counters remain 6 / 6 / 6 (LEGACY_PLUGIN_IDS unchanged).
+ * ## Capability count
+ * Registered with three capabilities, following the single-capability pattern.
 */
 object CoreDeleteDirStep {
 
@@ -131,7 +129,8 @@ object CoreDeleteDirStep {
         }
     }
 
-    // Byte-equivalent to the legacy CanonicalCoreStepMetadata["core.deleteDir"] row.
+    // This Step deletes inside the workspace: the effect is WRITES_WORKSPACE and the
+    // replay policy is MEMOIZED (the deletion leaves an idempotent marker).
     private val descriptor = StepDescriptor(
         stepId = "core.deleteDir",
         name = "deleteDir",

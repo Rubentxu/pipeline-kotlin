@@ -89,17 +89,16 @@ sealed class MilestoneStatus {
 }
 
 /**
- * Registry candidate for `core.milestone` (/ registry seam proof)
- * Registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy
- * decoder, the metadata row, or the legacy dispatcher:
- * `StructuralFamilyResolver`'s legacy-membership-wins rule keeps LegacyCore as
- * The production authority until the/ flip. Counters stay 6 / 6 / 6
+ * The production definition of `core.milestone`.
+ * It is registered through the SAME mechanism an external plugin uses
+ * ([CoreStepRegistryFactory]), and the registry is the only authority that resolves
+ * the key.
  * **Semantics: **
  * - Strictly increasing ordinal (within this pipeline run) → MilestoneReached event + Success.
  * - Non-increasing ordinal → MilestoneAborted event + Unstable (record-only, never aborts run).
  * **State tracking:** the handler delegates ordinal state to [MILESTONE_OPERATIONS_CAPABILITY].
  * The capability is backed by a [MilestoneStateStore] created at coordinator construction time,
- * giving it the same per-run scope as the legacy [CanonicalMilestoneNodeDispatcher]. The handler
+ * giving it the same per-run scope as the rest of the run. The handler
  * itself holds no mutable state.
  * ## Capability separation
  * - [MILESTONE_OPERATIONS_CAPABILITY] provides milestone ordinal state operations
@@ -181,7 +180,6 @@ object CoreMilestoneStep {
         }
     }
 
-    // Byte-equivalent to the legacy CanonicalCoreStepMetadata["core.milestone"] row.
     // effects={READ_ONLY}, replay=MEMOIZED, location=CONTROLLER.
     private val descriptor = StepDescriptor(
         stepId = "core.milestone",

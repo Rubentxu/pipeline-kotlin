@@ -43,11 +43,10 @@ data object CoreWriteFileOutput : TypedStepOutput {
 }
 
 /**
- * Registry authority for `core.file.writeFile` (/ registry seam proof)
- * Registers this candidate without changing `LEGACY_PLUGIN_IDS`, the legacy decoder
- * the metadata row, or the legacy dispatcher: `StructuralFamilyResolver`'s
- * legacy-membership-wins rule keeps LegacyCore as the production authority until the
- * / flip.
+ * The production definition of `core.file.writeFile`.
+ * It is registered through the SAME mechanism an external plugin uses
+ * ([CoreStepRegistryFactory]), and the registry is the only authority that resolves
+ * the key.
  * The handler reaches workspace file operations ONLY through the typed
  * [WorkspaceOperations] seam (capability `WORKSPACE_OPERATIONS_CAPABILITY`), which binds
  * the certified `FileWriteExecutor` substrate. The handler:
@@ -104,7 +103,7 @@ object CoreWriteFileStep {
         }
     }
 
-    // Byte-equivalent to the legacy CanonicalCoreStepMetadata["core.file.writeFile"] row.
+    // This Step writes inside the workspace: WRITES_WORKSPACE, replay MEMOIZED.
     private val descriptor = StepDescriptor(
         stepId = "core.file.writeFile",
         name = "writeFile",

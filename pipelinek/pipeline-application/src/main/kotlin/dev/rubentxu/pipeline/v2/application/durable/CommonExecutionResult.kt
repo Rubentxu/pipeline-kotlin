@@ -15,13 +15,13 @@ import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
  *  - [encodedOutput]: the typed `O` produced by the Step handler, encoded through the
  *    Step's declared `outputCodec.encode(O)` and held under an [EncodedStepValue]
  *    (a value class over `String`; no `Any` crosses the seam). `null` when the step
- *    produces no durable-visible output (legacy paths and `Unit`-returning handlers).
+ *    produces no durable-visible output (a `Unit`-returning handler, or a handler
+ *    that failed).
  * The seam NEVER persists either of these into a journal row. Per the durable spine:
  * **execution produces outcome + encoded output atomically; durability decides whether
  * and how to persist them.**
- * Legacy execution paths return `CommonExecutionResult(outcome, encodedOutput = null)`
- * — backwards-behaviour-preserving. Registry-routed paths MAY populate [encodedOutput]
- * with a non-null value when the handler returns a non-`Unit` typed value.
+ * A handler that returns a non-`Unit` typed value populates [encodedOutput]; a
+ * handler that returned `Unit`, threw, or surfaced a failure leaves it `null`.
  * @see the step constitution: one typed value per step, no shared mutable state
 */
 data class CommonExecutionResult(

@@ -68,18 +68,17 @@ sealed interface CoreEmitEventOutput : TypedStepOutput {
 }
 
 /**
- * Registry candidate for `core.emit.event` (/ registry seam proof)
- * Registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy decoder
- * the metadata row, or the legacy dispatcher: `StructuralFamilyResolver`'s
- * legacy-membership-wins rule keeps LegacyCore as the production authority until the
- * / flip.
- * APPROVED FIX CANDIDATE: the legacy dispatcher escapes
- * untyped `IllegalStateException`s from `error(...)` on valid-kind incomplete payloads
- * (`StageMarkedUnstable` without `message`, `FileWritten` missing fields or non-numeric
- * `size`), which the run loop maps to INFRASTRUCTURE. The candidate validates these in the
- * handler and produces typed [CoreEmitEventOutput.EmitEventRejected] with
- * `FailureKind.SCHEMA` and ZERO events. Legacy behaviour remains byte-compatible until
- * the flip.
+ * The production definition of `core.emit.event`.
+ * It is registered through the SAME mechanism an external plugin uses
+ * ([CoreStepRegistryFactory]), and the registry is the only authority that resolves
+ * the key. The legacy decoder, the core metadata table and the legacy dispatcher that
+ * used to compete with it are gone.
+ * This handler VALIDATES the payload and produces a typed
+ * [CoreEmitEventOutput.EmitEventRejected] with `FailureKind.SCHEMA` and ZERO events
+ * when the payload is incomplete (`StageMarkedUnstable` without `message`, `FileWritten`
+ * with missing fields or a non-numeric `size`) — a refusal the run loop can report,
+ * instead of an untyped `IllegalStateException` it would have to map to
+ * INFRASTRUCTURE.
  * Whitelist authority is preserved verbatim: all four kinds KEEP their
  * place in the supported contract; classification as internal marker / runtime-used /
  * dead callsite is a separate dimension, not a burn-down concern.
@@ -150,7 +149,7 @@ object CoreEmitEventStep {
         }
     }
 
-    // Byte-equivalent to the legacy CanonicalCoreStepMetadata["core.emit.event"] row.
+    // Reads no workspace and publishes no event of its own: the effects are READ_ONLY.
     private val descriptor = StepDescriptor(
         stepId = "core.emit.event",
         name = "emitEvent",

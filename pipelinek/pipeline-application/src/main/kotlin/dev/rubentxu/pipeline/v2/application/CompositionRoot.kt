@@ -4,7 +4,6 @@ import dev.rubentxu.pipeline.v2.domain.step.CompositeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.AllowAll
 import dev.rubentxu.pipeline.v2.domain.step.DenyAll
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedWaitUntilControlJournal
 import dev.rubentxu.pipeline.v2.application.durable.OutputPlaneProvider
@@ -85,7 +84,6 @@ internal fun runCanonical(request: CanonicalRunRequest): RunOutcome = runBlockin
                     policy.credentialProvider,
                 ),
         ),
-        dispatcher = CanonicalNodeDispatcher(),
         journal = state.journal,
         cursorStore = state.cursorStore,
         clock = policy.clock,

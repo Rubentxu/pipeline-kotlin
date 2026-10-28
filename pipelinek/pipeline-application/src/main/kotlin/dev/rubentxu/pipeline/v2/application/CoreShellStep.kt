@@ -4,13 +4,11 @@ import dev.rubentxu.pipeline.v2.domain.ExecutionLocation
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
-import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.classifyShellTerminal
-import dev.rubentxu.pipeline.v2.domain.decideShellReturnMode
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.Effect
 import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
@@ -31,8 +29,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * `core.sh` registered as an open [StepDefinition] (/ registry seam proof)
@@ -75,59 +71,13 @@ object CoreShellStep {
     val KEY: PluginStepId = PluginStepId("core.sh")
 
     /**
-     * Input codec: encodes the durable subset (`{kind, script, encoding?
-     * label?, returnMode}`) as a well-formed JSON object. Per-call runtime
-     * args are filled from capability-resolved seams at execute-time; they
-     * MUST NOT be encoded into the durable payload.
-*/
-    private val inputCodec = object : StepCodec<CoreShellInput> {
-        override fun encode(value: CoreShellInput): EncodedStepValue {
-            val obj: JsonObject = buildJsonObject {
-                put("kind", JsonPrimitive("shell"))
-                put("script", JsonPrimitive(value.command.script))
-                value.command.encoding?.let { put("encoding", JsonPrimitive(it)) }
-                value.command.label?.let { put("label", JsonPrimitive(it)) }
-                put("returnMode", JsonPrimitive(value.command.returnMode.name))
-            }
-            return EncodedStepValue(Json.encodeToString(JsonObject.serializer(), obj))
-        }
-
-        override fun decode(encoded: EncodedStepValue): CoreShellInput {
-            val obj = Json.parseToJsonElement(encoded.value).jsonObject
-            // Flip: accept BOTH canonical kind spellings — the production DSL compiler
-            // (DslCompiledPipelineCompiler.shellPayload) emits `"sh"`, while the codec's
-            // own self-encoded form uses `"shell"`. Both name the same Step family; rejecting
-            // either would break the registry path for real `.pipeline.kts` files. Anything
-            // else is rejected fail-closed.
-            val kind = obj["kind"]?.jsonPrimitive?.content
-            require(kind == "shell" || kind == "sh") {
-                "shell payload kind must be 'shell' or 'sh'"
-            }
-            // Flip: the production DSL compiler emits `"command"`, while the codec's
-            // own self-encoded form uses `"script"`. Both name the same data; accept either
-            // so the codec's self-round-trip AND real `.pipeline.kts` files both decode.
-            val script = obj["command"]?.jsonPrimitive?.content
-                ?: obj["script"]?.jsonPrimitive?.content
-                ?: throw IllegalArgumentException("Shell payload must include 'command' or 'script'")
-            // Flip: the DSL compiler emits `"returnStdout"` (Jenkins boolean) and
-            // `"isScriptBlock"` (canonical flag). The codec's own self-encoded form uses
-            // `"returnMode"` (closed enum). Both shapes are canonical for the same Step;
-            // we accept either so registry routing works for real `.pipeline.kts` files.
-            val returnMode = obj["returnMode"]?.jsonPrimitive?.content?.let { ShellReturnMode.valueOf(it) }
-                ?: decideShellReturnMode(
-                    returnStdout = obj["returnStdout"]?.jsonPrimitive?.booleanOrNull == true,
-                    returnStatus = obj["returnStatus"]?.jsonPrimitive?.booleanOrNull == true,
-                )
-            return CoreShellInput(
-                command = ShellCommand(
-                    script = script,
-                    encoding = obj["encoding"]?.jsonPrimitive?.content,
-                    label = obj["label"]?.jsonPrimitive?.content,
-                    returnMode = returnMode,
-                ),
-            )
-        }
-    }
+     * Input codec: [CoreShellWireCodec], THE single authority for the `core.sh`
+     * wire format. It encodes the durable subset as a well-formed JSON object and
+     * reads every shipped spelling back into one interior. Per-call runtime args
+     * are filled from capability-resolved seams at execute-time; they MUST NOT be
+     * encoded into the durable payload.
+    */
+    private val inputCodec = CoreShellWireCodec
 
     /**
      * Output codec: deterministic, lossless for contractual fields, malformed-fail
@@ -427,9 +377,8 @@ object CoreShellStep {
         executionLocation = ExecutionLocation.AGENT,
         effects = listOf(Effect.EXECUTES_SUBPROCESS),
         replayPolicy = ReplayPolicy.RERUN,
-        // Recovery is a declared Step property. Mirrors the
-        // CanonicalCoreStepMetadata["core.sh"] row so the registry-resolved
-        // Metadata is byte-equivalent to the legacy one before flips routing
+        // Recovery is a declared Step property: a shell that dies mid-flight can be
+        // reattached to its running process.
         recoveryPolicy = RecoveryPolicy.ExternalSubprocess,
     )
 

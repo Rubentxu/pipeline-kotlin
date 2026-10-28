@@ -96,7 +96,8 @@ data class WaitUntilOutput(
 
 /**
  * Registry definition for `core.waitUntil`.
- * `core.waitUntil` is REGISTRY_PRIMARY (retired from `LEGACY_PLUGIN_IDS` at
+ * `core.waitUntil` is a registry Step: the registry is the single production
+ * authority for its contract and its metadata.
  * The descriptor declares
  * `BodyExecutionPolicy.Retrying(waitUntil = WaitUntilShape())` with
  * `BodyExecutionOwner.CANONICAL_ENGINE`, so [StepDispatchEngine] takes the
@@ -108,8 +109,8 @@ data class WaitUntilOutput(
  * (and nothing asserts it today). So the stub below is DEAD CODE on
  * the production path. It is kept, not deleted, because the StepDefinition requires a
  * handler; deleting it is a wider change than the handler's own file,
- * and its KDoc used to claim that the legacy dispatcher reached this stub, which
- * stopped being true and was the reason nobody questioned it
+ * and a KDoc that used to claim a legacy dispatcher reached this stub, which
+ * stopped being true and was the reason nobody questioned it.
  * The stub must not be "completed" as if it were a second polling loop: if it were
  * ever made reachable it would report `Satisfied` without evaluating the condition,
  * which Semantic Constitution classifies as a silent no-op.

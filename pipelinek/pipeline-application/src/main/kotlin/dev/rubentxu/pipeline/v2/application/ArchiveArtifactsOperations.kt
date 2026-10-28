@@ -70,10 +70,9 @@ val ARTIFACT_ARCHIVE_OPERATIONS_CAPABILITY: StepCapability =
 
 /**
  * Canonical input payload of `core.archiveArtifacts` (typed contract)
- * Shape mirrors the legacy `CanonicalCoreStepCommand.ArchiveArtifacts` command:
  * Jenkins-verbatim signature `archiveArtifacts(artifacts, allowEmptyArchive=false,
- * excludes="", fingerprint=false)`. `fingerprint` is carried on the wire (legacy
- * Envelope parity) but the candidate does not act on it (legacy parity; deferral)
+ * excludes="", fingerprint=false)`. `fingerprint` is carried on the wire for envelope
+ * parity but the handler does not act on it (deferral).
 */
 data class ArchiveArtifactsInput(
     val artifacts: String,
@@ -120,9 +119,8 @@ data class ArchiveArtifactsInput(
  * - empty match + `allowEmptyArchive=true` → success with an EMPTY `ArtifactArchived`
  *   event (legacy emits the event with zero entries);
  * - per-file copy failure → `ArtifactArchiveFailed` + typed failure, no partial success.
- * Recorded candidate delta: the legacy dispatcher used a hand-rolled
- * glob translation and silently IGNORED `excludes`; this candidate delegates to
- * `AntStyleGlob` (the certified Ant engine) and applies `excludes` after the Jenkins
+ * The glob translation delegates to `AntStyleGlob` (the certified Ant engine) and
+ * applies `excludes` after the Jenkins
  * 13-entry default excludes. `Files.copy(..., REPLACE_EXISTING)` makes fresh
  * Re-execution idempotent. The differential contract freeze owns this decision
 */

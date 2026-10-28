@@ -1,6 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata
+import dev.rubentxu.pipeline.v2.application.PluginStepType
 import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation
 import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
@@ -171,7 +171,7 @@ internal class CanonicalDispatchPreparation(
                 stageIndex = coordinates.stageIndex,
                 stepIndex = coordinates.stepIndex,
                 stepName = step.id.value,
-                stepType = CanonicalCoreStepMetadata.shortType(step.pluginStepId.value),
+                stepType = PluginStepType.shortType(step.pluginStepId.value),
             ),
         )
     }

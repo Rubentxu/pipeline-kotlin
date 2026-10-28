@@ -90,12 +90,11 @@ typealias PwdTmpOutput = PwdOutput
  * - no coordinator / journal / event sink reach
  * - the substrate (sha256 + Files + PwdResolved) is the adapter's responsibility
  * ## Scope firewall
- * - `core.pwd` legacy membership is untouched (`LEGACY_PLUGIN_IDS` still
- *   contains `"core.pwd"` and the legacy dispatcher remains the production
- * Authority until a separate flip)
- * - the public DSL (`PipelineDsl.pwd(tmp=true)`) is NOT rewired yet — that
- * Lower-binding is / (runtime-return consumer). For this
- *   slice the Step is reachable only through the generic registry path.
+ * - `core.pwd.tmp` is a registry Step like every other core Step: the registry
+ *   is the single production authority for its contract and its metadata.
+ * - the public DSL lowers to it directly: `pwd(tmp=true)` produces the
+ *   `core.pwd.tmp` registry candidate and `pwd(tmp=false)` produces `core.pwd`.
+ * - Lower-binding is / (runtime-return consumer).
  * ## Replay law
  * `Effect.WRITES_WORKSPACE` is declared; `ReplayPolicy.MEMOIZED` is declared
  * too — fresh/rerun creates (idempotently) the temp workspace; resume/reuse

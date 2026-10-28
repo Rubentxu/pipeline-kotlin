@@ -52,11 +52,10 @@ data class IsUnixOutput(
 }
 
 /**
- * Registry candidate for `core.isUnix` (/ registry seam proof)
- * Registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy decoder
- * the metadata row, or the legacy dispatcher: `StructuralFamilyResolver`'s
- * legacy-membership-wins rule keeps LegacyCore as the production authority until the
- * / flip. Counters stay 8 / 8 / 8
+ * The production definition of `core.isUnix`.
+ * It is registered through the SAME mechanism an external plugin uses
+ * ([CoreStepRegistryFactory]), and the registry is the only authority that resolves
+ * the key.
  * Classification policy is **PATH_B verbatim**:
  * `osName.lowercase()` contains any of
  * `linux | mac | darwin | freebsd`. The DSL-side whitelist (PATH_A) is deliberately NOT
@@ -67,9 +66,9 @@ data class IsUnixOutput(
  *   never in the handler.
  * - The Step owns the isUnix classification POLICY.
  * - [EVENT_SINK_CAPABILITY] publishes the durable `UnixDetected` observation.
- * Adjective checks: input codec preserves the legacy `"{}"` envelope; the handler is
- * total (no exceptions as semantics); `UnixDetected` fields mirror the legacy dispatcher
- * byte-for-byte (uuid eventId, sequence 0L, sha256 hex of osName).
+ * Adjective checks: the input codec preserves the `"{}"` envelope; the handler is
+ * total (no exceptions as semantics); `UnixDetected` carries a uuid eventId,
+ * sequence 0L and the sha256 hex of osName.
 */
 object CoreIsUnixStep {
 
@@ -117,7 +116,7 @@ object CoreIsUnixStep {
         }
     }
 
-    // Byte-equivalent to the legacy CanonicalCoreStepMetadata["core.isUnix"] row.
+    // Observes the platform without changing it: the effects are READ_ONLY.
     private val descriptor = StepDescriptor(
         stepId = "core.isUnix",
         name = "isUnix",

@@ -42,12 +42,6 @@ import kotlinx.coroutines.CancellationException
 object RegistryExecutionBoundary {
 
     /**
-     * Creates a [CommonExecutionBoundary] that executes registry Steps.
-     * Uses a default [CanonicalRuntimeCapabilityAccess] without milestone store support.
-*/
-    fun adapt(): CommonExecutionBoundary = adapt(milestoneStateStore = null)
-
-    /**
      * Creates a [CommonExecutionBoundary] that executes registry Steps, with optional
      * [MilestoneStateStore] support for milestone Steps.
      * @param milestoneStateStore Optional store for milestone ordinal state. When provided,
@@ -93,17 +87,12 @@ object RegistryExecutionBoundary {
         capabilityContributor: RuntimeCapabilityContributor = RuntimeCapabilityContributor { emptyMap() },
     ): CommonExecutionBoundary =
         CommonExecutionBoundary { prepared, context ->
-            when (prepared) {
-                is PreparedRegistryExecution -> coexecute(prepared, context) { ctx ->
-                    CanonicalRuntimeCapabilityAccess(
-                        ctx,
-                        milestoneStateStore = milestoneStateStore,
-                        artifactIndex = artifactIndex,
-                        capabilityContributor = capabilityContributor,
-                    )
-                }
-                is PreparedLegacyExecution -> throw EngineInvariantViolation(
-                    "RegistryExecutionBoundary cannot route a legacy-family PreparedExecution",
+            coexecute(prepared, context) { ctx ->
+                CanonicalRuntimeCapabilityAccess(
+                    ctx,
+                    milestoneStateStore = milestoneStateStore,
+                    artifactIndex = artifactIndex,
+                    capabilityContributor = capabilityContributor,
                 )
             }
         }

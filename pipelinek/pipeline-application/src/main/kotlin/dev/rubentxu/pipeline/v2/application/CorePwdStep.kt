@@ -72,11 +72,10 @@ data class PwdOutput(
 }
 
 /**
- * Registry candidate for `core.pwd` (/ registry seam proof)
- * Registers this candidate WITHOUT changing `LEGACY_PLUGIN_IDS`, the legacy
- * decoder, the metadata row, or the legacy dispatcher:
- * `StructuralFamilyResolver`'s legacy-membership-wins rule keeps LegacyCore as
- * The production authority until the/ flip. Counters stay 7 / 7 / 7
+ * The production definition of `core.pwd`.
+ * It is registered through the SAME mechanism an external plugin uses
+ * ([CoreStepRegistryFactory]), and the registry is the only authority that resolves
+ * the key.
  * The `tmp=false` truth is PATH_B verbatim: the resolved
  * absolute path comes from `WorkspaceIdentity.workspaceRoot`, which the capability bridge
  * populates from `context.shOptions.workspaceRoot` — the SAME source the
@@ -152,10 +151,9 @@ object CorePwdStep {
         }
     }
 
-    // Byte-equivalent to the legacy CanonicalCoreStepMetadata["core.pwd"] row for tmp=false.
-    // The legacy metadata declared {READ_ONLY} + MEMOIZED even though the legacy dispatcher
-    // actually CREATED a directory when tmp=true — that gap is documented as
-    // PWD_TMP_TRUE_DISPOSITION; this descriptor inherits the declared truth for tmp=false only.
+    // The effects are {READ_ONLY} + MEMOIZED. `core.pwd` only READS the workspace
+    // root; the `tmp=true` variant, which CREATES a directory, is a DIFFERENT StepKey
+    // (`core.pwd.tmp`) with its own descriptor.
     private val descriptor = StepDescriptor(
         stepId = "core.pwd",
         name = "pwd",

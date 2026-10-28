@@ -26,14 +26,12 @@ import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Typed input payload of `core.cleanWs`
- * The legacy wire payload for `core.cleanWs` is
- * `{"kind":"cleanWs","deleteDirs":<bool>,"patterns":[...]}` — the compiler
- * `encodePayload` else-branch (`declarativeValue`) is NEVER reached for
- * cleanWs: the generic `{"kind": step.name, ...}` projection plus a
- * `data class StepSpec.CleanWs` `toString()` carry the fields. The legacy
- * decoder (`CanonicalCoreStepDecoder` CLEAN_WS_PLUGIN_ID branch) accepts the
- * same envelope with tolerant defaults: `deleteDirs` defaults to `true` and a
- * missing/null `patterns` array defaults to an empty list.
+ * The wire payload for `core.cleanWs` is
+ * `{"kind":"cleanWs","deleteDirs":<bool>,"patterns":[...]}` — the generic
+ * `{"kind": step.name, ...}` projection plus a `data class StepSpec.CleanWs`
+ * `toString()` carry the fields. The decoder accepts that envelope with tolerant
+ * defaults: `deleteDirs` defaults to `true` and a missing/null `patterns` array
+ * defaults to an empty list.
 */
 data class CleanWsInput(
     val deleteDirs: Boolean = true,
@@ -84,11 +82,8 @@ data class CleanWsOutput(
  * dispatched.
  * ## Classification
  * Effectful (workspace-mutating, WRITES_WORKSPACE), non-recoverable
- * (RecoveryPolicy.None). ReplayPolicy MEMOIZED matches the legacy metadata row
- * (`CanonicalCoreStepMetadata["core.cleanWs"]`). While `core.cleanWs` remains
- * in LEGACY_PLUGIN_IDS, StructuralFamilyResolver's legacy-membership-wins rule
- * keeps LegacyCore as the production authority; this registration is
- * candidate-only.
+ * (RecoveryPolicy.None). ReplayPolicy MEMOIZED: the cleanup leaves an idempotent
+ * marker, so a replay does not repeat the deletion.
 */
 object CoreCleanWsStep {
 
@@ -155,7 +150,6 @@ object CoreCleanWsStep {
         }
     }
 
-    // Byte-equivalent to the legacy CanonicalCoreStepMetadata["core.cleanWs"] row:
     // StepMetadata(setOf(Effect.WRITES_WORKSPACE), ReplayPolicy.MEMOIZED).
     private val descriptor = StepDescriptor(
         stepId = "core.cleanWs",

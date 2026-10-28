@@ -7,7 +7,6 @@ import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationResolver
 import dev.rubentxu.pipeline.v2.application.durable.DurableStepExecutor
 import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.InvocationReconciliation
-import dev.rubentxu.pipeline.v2.application.durable.PreparedRegistryExecution
 import dev.rubentxu.pipeline.v2.application.durable.RecoveryInterpretationEngine
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionPreparation
 import dev.rubentxu.pipeline.v2.application.durable.StepLifecycleContext
@@ -480,7 +479,7 @@ internal class ScriptedRegistryInvoker(
             availableCapabilities = capabilityAccessFactory(runtime).available(),
         )
         val ready = when (preparation) {
-            is ExecutionPreparation.Ready -> preparation.prepared as PreparedRegistryExecution
+            is ExecutionPreparation.Ready -> preparation.prepared
             is ExecutionPreparation.Rejected -> return ScriptedRegistryResult.Failed(
                 PipelineFailure(FailureKind.SCHEMA, preparation.reason),
             )

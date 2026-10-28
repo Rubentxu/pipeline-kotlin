@@ -58,12 +58,10 @@ object CoreErrorStep {
     val KEY: PluginStepId = PluginStepId("core.error")
 
     /**
-     * Input codec: encodes the WHOLE input payload as a dsl-v1 JSON envelope. The encoded
-     * shape is byte-identical to what the legacy `CanonicalCoreStepDecoder` produced for
-     * `core.error` (`{"kind":"error","message":"...","failureKind":"USER"}`), so durable
-     * fingerprint/journal identity is continuous across the migration.
-     * Round-trip `encode(I) → payload.encoded → decode` is lossless. Rejects unknown
-     * `failureKind` names fail-closed (matches legacy behavior).
+     * Input codec: encodes the WHOLE input payload as a dsl-v1 JSON envelope
+     * (`{"kind":"error","message":"...","failureKind":"USER"}`).
+     * Round-trip `encode(I) → payload.encoded → decode` is lossless. An unknown
+     * `failureKind` name is rejected fail-closed.
 */
     private val inputCodec = object : StepCodec<CoreErrorInput> {
         override fun encode(value: CoreErrorInput): EncodedStepValue =
@@ -173,10 +171,8 @@ object CoreErrorStep {
     }
 
     /**
-     * Registers this Step into a [StepRegistry]. NOT yet wired into
-     * [CoreStepRegistryFactory]; until then `core.error` remains LEGACY_EXECUTABLE
-     * And `LEGACY_PLUGIN_IDS == 12`. Wiring happens in after handler/codec/contract
-     * unit tests pass.
+     * Registers this Step into a [StepRegistry]. [CoreStepRegistryFactory] calls this,
+     * so `core.error` resolves through the open registry like every other core Step.
 */
     fun registerInto(builder: StepRegistryBuilder) {
         builder.add(definition)

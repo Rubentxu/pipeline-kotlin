@@ -32,6 +32,18 @@ package dev.rubentxu.pipeline.v2.application
  * A refusal is a decision about the run, not a reason to abandon what the run
  * already owns. The scope is what lets a decision be made without the process
  * ending in the middle of it.
+ *
+ * ## WHEN A RELEASE FAILS
+ * A release that throws is a resource that may still be held — a lock whose
+ * owner row was written, a stream never closed — so the failure is counted,
+ * never swallowed. Two halves, neither without the other: the failure does not
+ * keep the OTHER releases from running, and the failure does not disappear.
+ * [close] tries every release, then throws the first failure with the rest
+ * attached as suppressed, so one leak is never reported as one when two
+ * releases failed. Kotlin's `use` chains the thrown failure as suppressed of
+ * the block's own outcome, which is why throwing here hides nothing: the block
+ * that made the scope close keeps its exception, and a caller with no outcome
+ * to protect receives the release failure it was never told about before.
  */
 internal class ResourceScope : AutoCloseable {
     private val releases = mutableListOf<() -> Unit>()
@@ -47,12 +59,13 @@ internal class ResourceScope : AutoCloseable {
     }
 
     override fun close() {
-        for (release in releases.asReversed()) {
-            // A release that fails must not hide the outcome that made the
-            // scope close, and it must not keep the other resources from being
-            // given back.
-            runCatching { release() }
+        val failures = releases.asReversed().mapNotNull { release ->
+            runCatching(release).exceptionOrNull()
         }
         releases.clear()
+        failures.firstOrNull()?.let { first ->
+            failures.drop(1).forEach(first::addSuppressed)
+            throw first
+        }
     }
 }

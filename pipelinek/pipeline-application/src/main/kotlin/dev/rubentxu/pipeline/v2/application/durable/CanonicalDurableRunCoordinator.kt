@@ -289,34 +289,46 @@ class CanonicalDurableRunCoordinator(
     private val dispatchPreparation = CanonicalDispatchPreparation(metadataResolver)
     private val leaseAdmission = CredentialLeaseAdmission(credentialScopePort)
     private val cursorAdvance = CanonicalCursorAdvance(cursorStore)
-    // The step-execution spine. `dispatch` falls through to `dispatchBody`
-    // which hands the body back to the body engine with this class's own `dispatchChild` as the
-    // re-entry reference, and a parallel branch walks its steps through `dispatch` again. That
-    // recursion is the unit of cohesion, so the whole closed cycle moves together and the
-    // coordinator keeps only the run's own control flow.
-    private val stepDispatch = StepDispatchEngine(        journal = journal,
+    // The two body/context owners the spine observes, built on the same ports the
+    // coordinator owns. The spine asks them and observes the answers; it never wires a
+    // SAGA port, an emitter or a body policy of its own.
+    private val runtimeContexts = CanonicalRuntimeContextFactory(
+        stepRegistry = stepRegistry,
+        bodyInvokerAdapter = bodyInvokerAdapter,
+        eventRegistry = eventRegistry,
         eventSink = eventSink,
         clock = clock,
+        outputWakeups = wakeups,
+        controlDirRoot = controlDirRoot,
+        workspaceBase = workspaceBase,
+        secretPatternRegistry = secretPatternRegistry,
+        sagaBinding = sagaBinding,
+    )
+    private val bodyDispatch = CanonicalBodyDispatch(
+        bodyPolicyResolver = bodyPolicyResolver,
+        bodyExecutionEngine = bodyExecutionEngine,
+        bodyInvokerAdapter = bodyInvokerAdapter,
         leaseAdmission = leaseAdmission,
+        eventSink = eventSink,
+        clock = clock,
+    )
+    // The step-execution spine. A body child walks it again through the engine's own
+    // `dispatchChild` — handed to `bodyDispatch` as the single re-entry reference — and a
+    // parallel branch walks its steps through `dispatch` again. That recursion is the unit of
+    // cohesion, so the whole closed cycle moves together and the coordinator keeps only the
+    // run's own control flow.
+    private val stepDispatch = StepDispatchEngine(
+        journal = journal,
+        clock = clock,
         dispatchPreparation = dispatchPreparation,
         typedInputPreparation = typedInputPreparation,
         stepExecutor = stepExecutor,
         invocationResolver = invocationResolver,
         recoveryInterpretation = recoveryInterpretation,
-        bodyExecutionEngine = bodyExecutionEngine,
-        bodyPolicyResolver = bodyPolicyResolver,
-        // The dispatch engine composes the emitter from this registry, sink and clock.
-        eventRegistry = eventRegistry,
-        outputWakeups = wakeups,
         cursorAdvance = cursorAdvance,
         stepRegistry = stepRegistry,
-        bodyInvokerAdapter = bodyInvokerAdapter,
-        controlDirRoot = controlDirRoot,
-        workspaceBase = workspaceBase,
-        secretPatternRegistry = secretPatternRegistry,
-        // the per-run Saga seam, forwarded so the dispatch can build the
-        // invocation-bound intent port.
-        sagaBinding = sagaBinding,
+        runtimeContexts = runtimeContexts,
+        bodyDispatch = bodyDispatch,
     )
     // A parallel stage is a composite with its own durable aggregate, not a
     // Step, so it does not belong to the step spine. It dispatches branch steps back through

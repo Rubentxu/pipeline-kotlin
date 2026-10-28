@@ -1,9 +1,5 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
-import java.nio.channels.FileChannel
-import java.nio.channels.FileLock
-import java.nio.channels.OverlappingFileLockException
-import java.nio.file.Files
 import java.nio.file.Path
 
 /**
@@ -29,13 +25,40 @@ import java.nio.file.Path
  * stop two processes both believing they hold token N.
  * This class gathers facts and holds resources. Every *decision* is made by
  * [RunExecutionLease], which stays pure and is what the tests pin.
+ *
+ * ## The window, and why it has exactly one exit
+ *
+ * An acquisition holds two resources — the open channel and the lock taken over
+ * it — from the moment the lock file is opened until this store takes
+ * responsibility for them. Every step in between can fail: opening the file,
+ * taking the lock, reading the previous record, writing the new one.
+ *
+ * A failure that leaves the lock behind is NOT a failed acquisition. It is a run
+ * that nobody can acquire again: the kernel still sees this process as the
+ * holder, so the next acquisition of the same run is answered "somebody else
+ * owns it" by a process that does not exist. A run that can never be recovered
+ * is a far worse failure than a run that failed loudly.
+ *
+ * So the window has ONE exit, not one per failure mode: a `finally` that gives
+ * back whatever this call took and did not hand over. The cleanup used to be
+ * spread over four places, and each of the four could be forgotten by the next
+ * change — which is exactly how a run gets locked for ever.
+ *
+ * The machine underneath is reached through [LeaseFileSystem], so the window can
+ * be exercised without a filesystem: a double can fail at the exact step the
+ * real machine would fail at, and can then be asked whether the lock was given
+ * back.
 */
 class FileBackedRunExecutionLeaseStore(
     private val leaseDir: Path,
+    private val files: LeaseFileSystem = FileLeaseFileSystem(),
 ) : AutoCloseable, RunLeasePort {
 
-    private var channel: FileChannel? = null
-    private var held: FileLock? = null
+    /**
+     * The lock this store owns, and the channel it lives on, as the one thing
+     * the operating system gives back together.
+     */
+    private var held: LeaseLock? = null
     private var heldRunId: String? = null
 
     /** True when this store currently holds the OS lock for a run. */
@@ -46,67 +69,82 @@ class FileBackedRunExecutionLeaseStore(
      * Returns the pure decider's verdict. A refusal is a *normal* outcome, not
      * an exception: losing the race is how ownership is enforced, and the
      * caller must surface it as a typed rejection.
-*/
+    */
     override fun acquire(request: LeaseRequest): LeaseAcquisition {
-        Files.createDirectories(leaseDir)
+        files.ensureDirectory(leaseDir)
         val lockFile = leaseDir.resolve(lockFileName(request.runId))
+        val recordFile = leaseDir.resolve(recordFileName(request.runId))
 
-        val channel = FileChannel.open(lockFile, java.nio.file.StandardOpenOption.CREATE,
-            java.nio.file.StandardOpenOption.READ, java.nio.file.StandardOpenOption.WRITE)
+        // What this call took and did not hand over. The `finally` below is the
+        // single exit of the window: while `committed` is false, whatever was
+        // taken goes back.
+        var channel: LeaseChannel? = null
+        var lock: LeaseLock? = null
+        var committed = false
 
-        val lock: FileLock? = try {
-            channel.tryLock()
-        } catch (_: OverlappingFileLockException) {
-            // Same JVM already holds it: a real ownership conflict, not an
-            // infrastructure failure. Reported as a typed denial, never as an
-            // acquisition.
-            null
-        }
+        try {
+            val opened = files.openLockFile(lockFile)
+            channel = opened
 
-        if (lock == null) {
-            // Either the kernel refused us (another process holds it) or this
-            // JVM already holds it. Both are ownership conflicts and both fail
-            // closed. We deliberately do NOT consult the durable record to try
-            // to "recover" the lease: an unobservable or refused lock is never
-            // a free lock, and a run that looks abandoned must be recovered by
-            // TAKEOVER on a later acquire, not by ignoring a live lock.
-            val observed = readRecord(leaseDir.resolve(recordFileName(request.runId)))
-            channel.close()
-            return LeaseAcquisition.AlreadyOwned(
-                record = observed ?: LeaseRecord(
-                    request.runId, ownerId = null,
-                    fencingToken = FencingToken.UNISSUED, ownerAlive = true,
-                ),
-                heldBy = observed?.ownerId ?: UNKNOWN_OWNER,
-                fencingToken = observed?.fencingToken ?: FencingToken.UNISSUED,
+            val taken = opened.tryLock()
+            lock = taken
+
+            if (taken == null) {
+                // Either the kernel refused us (another process holds it) or this
+                // JVM already holds it. Both are ownership conflicts and both fail
+                // closed. We deliberately do NOT consult the durable record to try
+                // to "recover" the lease: an unobservable or refused lock is never
+                // a free lock, and a run that looks abandoned must be recovered by
+                // TAKEOVER on a later acquire, not by ignoring a live lock.
+                val observed = files.readRecord(recordFile)
+                return LeaseAcquisition.AlreadyOwned(
+                    record = observed ?: LeaseRecord(
+                        request.runId, ownerId = null,
+                        fencingToken = FencingToken.UNISSUED, ownerAlive = true,
+                    ),
+                    heldBy = observed?.ownerId ?: UNKNOWN_OWNER,
+                    fencingToken = observed?.fencingToken ?: FencingToken.UNISSUED,
+                )
+            }
+
+            // We hold the OS lock, which is itself the liveness fact: the kernel
+            // grants this lock only when no other process holds it. So whatever the
+            // durable record says, the PREVIOUS owner is now gone — its lock was
+            // released because the process died or released it explicitly.
+            // Overwriting ownerAlive=false here is therefore correct, and is not
+            // the same as claiming a takeover when a live owner exists: we only
+            // reach this line while HOLDING the exclusive lock.
+            val previous = files.readRecord(recordFile)
+            val decision = RunExecutionLease.acquire(
+                current = previous?.copy(ownerAlive = false),
+                request = request,
             )
-        }
 
-        // We hold the OS lock, which is itself the liveness fact: the kernel
-        // grants this lock only when no other process holds it. So whatever the
-        // durable record says, the PREVIOUS owner is now gone — its lock was
-        // released because the process died or released it explicitly.
-        // Overwriting ownerAlive=false here is therefore correct, and is not
-        // the same as claiming a takeover when a live owner exists: we only
-        // reach this line while HOLDING the exclusive lock.
-        val previous = readRecord(leaseDir.resolve(recordFileName(request.runId)))
-        val decision = RunExecutionLease.acquire(
-            current = previous?.copy(ownerAlive = false),
-            request = request,
-        )
-
-        when (decision) {
-            is LeaseAcquisition.Acquired -> commitOwnership(channel, lock, request.runId, decision.record)
-            is LeaseAcquisition.TakenOver -> commitOwnership(channel, lock, request.runId, decision.record)
-            is LeaseAcquisition.Reentered -> commitOwnership(channel, lock, request.runId, decision.record)
-            else -> {
-                // A verdict that is not ownership cannot be honoured even
-                // though the OS lock granted us the turn.
-                runCatching { lock.release() }
-                channel.close()
+            // Only a verdict that GRANTS ownership may be honoured. A verdict
+            // that refuses cannot, even though the OS lock granted us the turn:
+            // the lock goes back in the `finally` below.
+            val granted: LeaseRecord? = when (decision) {
+                is LeaseAcquisition.Acquired -> decision.record
+                is LeaseAcquisition.TakenOver -> decision.record
+                is LeaseAcquisition.Reentered -> decision.record
+                else -> null
+            }
+            if (granted != null) {
+                commitOwnership(taken, request.runId, recordFile, granted)
+                committed = true
+            }
+            return decision
+        } finally {
+            // The ONE exit of the window. Anything this call took and did not
+            // hand over goes back, so the next acquisition of the same run can
+            // still progress. The lock carries its channel, so handing the lock
+            // back hands the channel back too; when there is no lock, the
+            // channel is closed on its own.
+            if (!committed) {
+                runCatching { lock?.close() }
+                if (lock == null) runCatching { channel?.close() }
             }
         }
-        return decision
     }
 
     /**
@@ -114,15 +152,18 @@ class FileBackedRunExecutionLeaseStore(
      * one place so every ownership-granting verdict commits identically — a
      * path that wrote the record but forgot the lock (or the reverse) would
      * produce a lease that claims authority without holding it.
-*/
+    */
     private fun commitOwnership(
-        channel: FileChannel,
-        lock: FileLock,
+        lock: LeaseLock,
         runId: String,
+        recordFile: Path,
         record: LeaseRecord,
     ) {
-        writeRecord(leaseDir.resolve(recordFileName(runId)), record)
-        this.channel = channel
+        // The order is the point: the ownership is on disk BEFORE the store
+        // claims the lock. A failure while writing leaves the lock with this
+        // call, which gives it back; the opposite order would leave a lease
+        // that claims authority without holding it, which nobody can recover.
+        files.writeRecord(recordFile, record)
         this.held = lock
         this.heldRunId = runId
     }
@@ -132,23 +173,25 @@ class FileBackedRunExecutionLeaseStore(
      * releasing must not unown the live one, which is enforced by
      * [RunExecutionLease.release] and re-checked here against the durable
      * record.
-*/
+     *
+     * The lock is given back whatever the record said: a release that could not
+     * write must not keep the run locked for everybody.
+    */
     override fun release(ownerId: RunOwnerId) {
         val runId = heldRunId
         val lock = held
-        val channel = this.channel
-        if (runId == null || lock == null || channel == null) return
+        if (runId == null || lock == null) return
 
-        val current = readRecord(leaseDir.resolve(recordFileName(runId)))
-        if (current != null) {
-            writeRecord(leaseDir.resolve(recordFileName(runId)),
-                RunExecutionLease.release(current, ownerId))
+        try {
+            val current = files.readRecord(recordFile(runId))
+            if (current != null) {
+                files.writeRecord(recordFile(runId), RunExecutionLease.release(current, ownerId))
+            }
+        } finally {
+            runCatching { lock.close() }
+            this.held = null
+            this.heldRunId = null
         }
-        runCatching { lock.release() }
-        runCatching { channel.close() }
-        this.held = null
-        this.channel = null
-        this.heldRunId = null
     }
 
     /**
@@ -171,16 +214,16 @@ class FileBackedRunExecutionLeaseStore(
      * Returns `false` for a runId whose record file does not exist (never
      * acquired, or acquired on a previous lease-dir that has since been
      * cleaned up).
-*/
+    */
     override fun isKnown(runId: String): Boolean =
-        Files.isRegularFile(leaseDir.resolve(recordFileName(runId)))
+        files.fileExists(recordFile(runId))
 
     /**
      * Whether [held] is still the authoritative token for [runId]. This is the
      * fencing check a publisher calls immediately before writing.
-*/
+    */
     fun authorise(runId: String, held: FencingToken): PublishAuthority {
-        val observed = readRecord(leaseDir.resolve(recordFileName(runId)))
+        val observed = files.readRecord(recordFile(runId))
             ?: return PublishAuthority.Unverifiable("no lease record for run $runId")
         return RunExecutionLease.authorisePublish(observed, held)
     }
@@ -197,9 +240,9 @@ class FileBackedRunExecutionLeaseStore(
      * to fetch the durable facts the decider needs.
      * @return The current `LeaseRecord`, or `null` when no lease has ever been
      *   issued for [runId].
-*/
+    */
     override fun observe(runId: String): LeaseRecord? =
-        readRecord(leaseDir.resolve(recordFileName(runId)))
+        files.readRecord(recordFile(runId))
 
     /**
      * Whether a LIVE process holds this run's lease right now.
@@ -230,30 +273,20 @@ class FileBackedRunExecutionLeaseStore(
      */
     override fun liveness(runId: String): LeaseLiveness {
         val lockFile = leaseDir.resolve(lockFileName(runId))
-        if (!Files.isRegularFile(lockFile)) {
+        if (!files.fileExists(lockFile)) {
             // No lock file: no lock was ever taken, so nobody holds it. The
             // probe must not create the file to find this out.
             return LeaseLiveness.Free
         }
         return try {
-            FileChannel.open(
-                lockFile,
-                java.nio.file.StandardOpenOption.READ,
-                java.nio.file.StandardOpenOption.WRITE,
-            ).use { channel ->
-                val lock: FileLock? = try {
-                    channel.tryLock()
-                } catch (_: OverlappingFileLockException) {
-                    null
-                }
-                if (lock == null) {
-                    LeaseLiveness.Held(
-                        readRecord(leaseDir.resolve(recordFileName(runId)))?.ownerId ?: UNKNOWN_OWNER,
-                    )
-                } else {
-                    runCatching { lock.release() }
-                    LeaseLiveness.Free
-                }
+            val lock = files.probeLock(lockFile)
+            if (lock == null) {
+                LeaseLiveness.Held(
+                    files.readRecord(recordFile(runId))?.ownerId ?: UNKNOWN_OWNER,
+                )
+            } else {
+                runCatching { lock.close() }
+                LeaseLiveness.Free
             }
         } catch (e: Exception) {
             LeaseLiveness.Unverifiable(e.shortDiagnostic())
@@ -262,59 +295,14 @@ class FileBackedRunExecutionLeaseStore(
 
     override fun close() {
         val lock = held
-        val channel = this.channel
-        if (lock != null) runCatching { lock.release() }
-        if (channel != null) runCatching { channel.close() }
+        if (lock != null) runCatching { lock.close() }
         held = null
-        this.channel = null
         heldRunId = null
     }
 
     // ------------------------------------------------------------ persistence
 
-    /**
-     * The durable record format. Deliberately a flat `key=value` text file:
-     * it is written while the OS lock is held, read by an operator with `cat`,
-     * and must survive a `SIGKILL` mid-run. A JSON or binary format would buy
-     * nothing here and cost inspectability.
-*/
-    private fun writeRecord(lockFile: Path, record: LeaseRecord) {
-        val body = buildString {
-            appendLine("run_id=${record.runId}")
-            appendLine("owner_id=${record.ownerId?.value ?: ""}")
-            appendLine("fencing_token=${record.fencingToken.value}")
-            appendLine("owner_alive=${record.ownerAlive ?: ""}")
-        }
-        // Write-and-rename so a crash mid-write cannot leave a half record
-        // that parses as a valid but wrong ownership claim.
-        val tmp = lockFile.resolveSibling(lockFile.fileName.toString() + ".tmp")
-        Files.writeString(tmp, body)
-        Files.move(
-            tmp,
-            lockFile,
-            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-            java.nio.file.StandardCopyOption.ATOMIC_MOVE,
-        )
-    }
-
-    private fun readRecord(lockFile: Path): LeaseRecord? {
-        if (!Files.isRegularFile(lockFile)) return null
-        val fields = Files.readAllLines(lockFile)
-            .mapNotNull { line ->
-                val idx = line.indexOf('=')
-                if (idx <= 0) null else line.substring(0, idx) to line.substring(idx + 1)
-            }.toMap()
-        val runId = fields["run_id"]?.takeIf { it.isNotBlank() } ?: return null
-        val owner = fields["owner_id"]?.takeIf { it.isNotBlank() }?.let { RunOwnerId.of(it) }
-        val token = fields["fencing_token"]?.toLongOrNull()?.let { FencingToken.of(it) }
-            ?: FencingToken.UNISSUED
-        val alive: Boolean? = when (fields["owner_alive"]?.trim()) {
-            "true" -> true
-            "false" -> false
-            else -> null
-        }
-        return LeaseRecord(runId, owner, token, alive)
-    }
+    private fun recordFile(runId: String): Path = leaseDir.resolve(recordFileName(runId))
 
     private fun lockFileName(runId: String): String =
         "lease-" + runId.replace(Regex("[^A-Za-z0-9._-]"), "_") + ".lock"
@@ -331,7 +319,7 @@ class FileBackedRunExecutionLeaseStore(
      * untouched for the whole life of the lease.
      * The lock file is created once and never written, so there is no window
      * in which its contents could disagree with the kernel's lock table.
-*/
+    */
     private fun recordFileName(runId: String): String =
         "lease-" + runId.replace(Regex("[^A-Za-z0-9._-]"), "_") + ".record"
 

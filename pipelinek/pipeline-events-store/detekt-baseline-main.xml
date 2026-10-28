@@ -27,7 +27,6 @@
     <ID>UseOrEmpty:EventJsonFields.kt:EventJsonFields$stringField("\"k\":$raw", "k") ?: ""</ID>
     <ID>UseOrEmpty:EventJsonFields.kt:EventJsonFields$stringField(cacheKeyJson, "value") ?: ""</ID>
     <ID>UseOrEmpty:EventJsonFields.kt:EventJsonFields$stringField(cacheKeyJson, "version") ?: ""</ID>
-    <ID>UseOrEmpty:FileBackedRunExecutionLeaseStore.kt:FileBackedRunExecutionLeaseStore$record.ownerId?.value ?: ""</ID>
     <ID>UseOrEmpty:InMemoryEventStore.kt:InMemoryEventStore$store[runId]?.asSequence() ?: emptySequence()</ID>
     <ID>UseOrEmpty:DomainEventJsonDecoder.kt:DomainEventJsonDecoder$EventJsonFields.stringField(s, "accepted") ?: ""</ID>
     <ID>UseOrEmpty:DomainEventJsonDecoder.kt:DomainEventJsonDecoder$EventJsonFields.stringField(s, "agentLabel") ?: ""</ID>

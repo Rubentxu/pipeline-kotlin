@@ -1831,6 +1831,62 @@ PASS  sha=d082ab47e6be9e79d851e2f3a6435d13af11c1ec  elapsed=189s  budget=900s  t
 - 189 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 28626`, `PRODUCT_LOC = 71579`, ratio `0.400` (límite 2). La verificación subió 202 líneas y la producción 13: el corte mete tres filas y extrae el loop para poder ejercitarlo.
 
+#### El corte: el token de continuación nombra la posición, no la cuenta
+
+**Qué hace.** `console --frames` entrega una página de frames de UNA operación y, cuando quedan frames, imprime en stderr el token con el que el consumidor reanuda (`--after-ordinal`). Ese token se calculaba como `request.afterOrdinal + page.records.size`: una CUENTA de los frames devueltos, no la POSICIÓN del último frame entregado.
+
+Las dos coinciden sólo cuando los frames de la operación empiezan en el primer ordinal del run. En un run con más de una operación no coinciden: la primera operación ocupa los ordinales bajos, y una operación que empieza más arriba se lee desde una posición que la cuenta no describe. Con una página de dos frames leída desde `-1`, la cuenta da siempre `1`, así que **todas** las operaciones del run anunciaban `out-frame-ord-v1:1` por muy distinta que fuese su posición real.
+
+La consecuencia no era teórica: reanudar con ese token devolvía los MISMOS frames otra vez. El consumidor no puede distinguir un frame repetido de uno nuevo, porque los bytes y el ordinal son los de un frame que ya tenía.
+
+Medido sobre dos distribuciones construidas de este repositorio —la anterior al corte y `f0863f874` (después)— en la misma máquina, con el MISMO script de sonda y la misma invocación. La sonda corre un pipeline de dos stages, lee el run entero para ver los ordinales de los que están hechas las ventanas, y después hace, para cada operación, una lectura en jsonl, una lectura en texto y una reanudación con el token impreso.
+
+|operación|frames que entrega|token antes|token después|reanudación antes|reanudación después|
+|---|---|---|---|---|---|
+|`s0-0` (la primera)|0, 1|`out-frame-ord-v1:1`|`out-frame-ord-v1:1`|(no queda nada por reanudar)|(no queda nada por reanudar)|
+|`s0-1`|2, 3|`out-frame-ord-v1:1`|`out-frame-ord-v1:3`|vuelve a entregar 2, 3|vacía|
+|`s1-0`|4, 5|`out-frame-ord-v1:1`|`out-frame-ord-v1:5`|vuelve a entregar 4, 5|vacía|
+|`s1-1`|6, 7|`out-frame-ord-v1:1`|`out-frame-ord-v1:7`|vuelve a entregar 6, 7|vacía|
+|`s1-2`|8, 9|`out-frame-ord-v1:1`|`out-frame-ord-v1:9`|vuelve a entregar 8, 9|vacía|
+
+La primera fila es el CONTROL: su posición y su cuenta coinciden por casualidad, así que el corte no puede moverle el token. Las otras cuatro son el defecto.
+
+**El corte.** El token nombra `page.lastOrdinal`: el ordinal del último frame que la página entregó, que es la posición desde la que la lectura siguiente continúa. Es la invariante que la página ya tenía —`require(records.isEmpty() || lastOrdinal == records.last().frame.ordinal)`— y que el emisor no estaba usando: la página ya sabía dónde paró, y el emisor calculaba otra cosa. Los dos formatos, texto y jsonl, imprimen el mismo token. El comentario que acompañaba al cálculo decía que el token es «a decimal frame ordinal» y el cálculo era una cuenta; el KDoc del verbo lo describía como «the next frame ordinal» y lo atribuía a un consumidor `--follow`, que no es quien lo usa. Los dos se corrigen con el código: el token es el ordinal del último frame escrito, y el consumidor es quien reanuda con `--after-ordinal`.
+
+**La garantía, la capacidad y el instrumento.**
+- **Garantía**: el token de continuación nombra la POSICIÓN desde la que la lectura siguiente continúa —el ordinal del último frame entregado—, no el número de frames de la página.
+- **Capacidad observable**: un consumidor que pagina la salida de una operación recibe cada frame de esa operación exactamente una vez, y puede reanudar desde el token impreso sin volver a ver lo que ya tenía.
+- **Instrumento más barato que puede fallar**: una prueba unitaria que conduce el LECTOR real (`FrameIndexedObservationOutputReader`) y el EMISOR real (`MainConsoleCli.emitFrames`) sobre un plano que sólo está en memoria. Aquí una prueba unitaria SÍ puede servir: no hay subproceso, ni disco, ni reloj —el plano es memoria y la salida es un `PrintStream` a un buffer—, y la fila que reanuda toma el token del propio emisor y se lo devuelve al lector real, que es exactamente el ciclo que hace el consumidor. Un escenario de `examples/` NO haría falta para esta garantía: el defecto no está en el contrato de la línea de órdenes sino en la aritmética del token, y un escenario de subproceso podría observar el token sólo comparando texto de stderr —la FORMA—, no la posición —la GARANTÍA—. El UAT efímero de CLI sí se usó, como EVIDENCIA DE ACEPTACIÓN sobre la distribución construida, y se retiró al cerrar el ciclo.
+- **Sin cobertura equivalente que duplicar**: el corte anterior del follow filtrado cubrió `emitFramesFiltered`, que ya imprimía la posición del último frame entregado; esta garantía es la del LECTOR DE FRAMES, que no tenía ninguna prueba que condujera al emisor.
+
+**Visto en rojo, con la mutación leída de vuelta.** La mutación se aplicó con un `assert` de que el bloque objetivo aparecía exactamente una vez, se leyó de vuelta con `diff` contra una copia verificada por `sha256sum` —nunca con `git checkout --`, que destruye una reescritura sin commitear— y se restauró desde esa copia, comprobando que el fichero y la copia eran idénticos byte a byte. El discriminador son las FILAS de los informes de JUnit que escribió esa ejecución.
+
+|mutación|fila que se puso en rojo|
+|---|---|
+|Las dos emisiones vuelven al cálculo por cuenta —el código previo al corte—|exactamente TRES filas en rojo: «the text continuation token names the last delivered frame», «the jsonl continuation token names the last delivered frame» y «resuming from the printed token delivers no frame twice». La cuarta —la de la operación vecina— siguió en verde|
+|Un solo formato vuelve al cálculo por cuenta —el texto—|exactamente UNA fila en rojo: «the text continuation token names the last delivered frame». Las otras tres siguen verdes|
+
+La segunda mutación es la que distingue el arreglo del arreglo equivocado: uno que cambiara el token en los dos formatos a la vez encendería las dos primeras filas, y uno que lo cambiara para toda operación encendería también la de la operación vecina, que es verde antes y verde después del corte.
+
+**Lo que este corte NO arregla, y se dice.**
+- El formato `text` no lleva el ordinal por frame: stdout son los bytes concatenados de los frames de la página, sin marcador por frame. Un consumidor que necesite el ordinal de cada frame debe leer `jsonl`. El token sigue siendo la única posición que la página entrega.
+- El token se escribe en stderr, no en stdout: el consumidor tiene que leer los dos flujos. No se ha movido.
+- La página está acotada por frames, no por bytes: `--frame-limit` cuenta frames, y una página puede ser grande. El corte no cambia el límite ni lo hace configurable.
+- El lector no se toca: `ObservationOutputPage.lastOrdinal` ya era la posición del último frame entregado y la invariante ya lo exigía. El defecto estaba en el emisor, que no la usaba.
+- No se toca el follow: su token ya era la posición, por el corte anterior.
+- `pipeline-application` no está entre los módulos con `apiCheck`, así que este corte no cambia ninguna superficie ABI vigilada.
+
+Medido sobre `f0863f874c6f6dcc2a7f8fe7c900ed6f507a608a` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=f0863f874c6f6dcc2a7f8fe7c900ed6f507a608a  elapsed=187s  budget=900s  tests=rewritten:1555 read:0  scenarios=observed:65 executed:65
+```
+
+- 206 informes JUnit reescritos por esta ejecución, 1555 tests EJECUTADOS de verdad, 0 leídos de informes anteriores, 0 fallos, 0 omitidos.
+- 65 de 65 escenarios E2E observados y ejecutados, en verde.
+- 187 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 29122`, `PRODUCT_LOC = 71375`, ratio `0.408` (límite 2). El corte mete 282 líneas de verificación —cuatro filas— y 8 netas de producción.
+
 #### El corte: el detector de divergencia se compone como puerto
 
 **Qué hace.** `CanonicalDurableRunCoordinator` declara su detector de divergencia como PUERTO: el constructor recibe un `DivergenceDetector` —la interfaz— y su colaborador, `DurableInvocationResolver`, también lo declara. Entre los dos había un estrechamiento en el cuerpo del coordinador: antes de entregar el detector al resolutor, lo convertía a `StrictFingerprintDivergenceDetector`.

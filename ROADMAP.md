@@ -2053,6 +2053,66 @@ PASS  sha=8a30517550f6333f82eb5a583f7282aa7dbaf313  elapsed=181s  budget=900s  t
 - 181 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 28882`, `PRODUCT_LOC = 71291`, ratio `0.405` (límite 2). La verificación subió 53 líneas efectivas y la producción 21. En `pipeline-credentials-local` el ratio es `1305 / 1876 = 0.696`.
 
+#### El corte: el rechazo de `credentials` sigue la FORMA del token
+
+**Qué hace.** El corte anterior dejó escrito lo que este corte arregla, y eran tres residuos que son el mismo defecto visto desde tres peticiones. Una bandera que el verbo NO posee llegaba a la misma frase que una opción a la que le falta el valor: `credentials add --bogus-flag owned-id-42` contestaba «Error: --bogus-flag needs a value», una respuesta que manda al sitio equivocado —no es que le falte el valor a la opción, es que la opción no existe— y lo mismo hacía `rotate`. `credentials list --bogus-flag` contestaba «Error: unexpected argument: --bogus-flag», es decir, llamaba ARGUMENTO a un token con forma de opción. Y `credentials remove --bogus-flag` se tragaba la bandera como si fuera el id: contestaba «No credentials stored.» sin decir nunca que el token no era suyo. `credentials remove --bogus-flag myid` era la misma avería con dos tokens: rechazaba nombrando `myid` —el segundo— y aceptaba `--bogus-flag` —el primero— como id sin decirlo.
+
+El cuarto residual era el subcomando. `credentials` a secas y `credentials bogus-subcommand` imprimían el MISMO bloque de uso, sin decir qué faltaba en el primer caso ni qué token sobraba en el segundo: dos peticiones distintas con la misma respuesta.
+
+Medido sobre dos distribuciones construidas de este repositorio —`e8ba7b46e` (antes) y `a59c74539` (después)— en la misma máquina, con el MISMO script de sonda y una tienda aislada que no existe. Se mide el código de salida y la primera línea de stdout.
+
+|celda|antes|después|
+|---|---|---|
+|`credentials`|`Usage: pipeline credentials {add\|list\|remove\|rotate} [args]` (1)|`Error: missing subcommand. 'credentials' takes one of: 'add', 'list', 'remove', 'rotate'.` (1)|
+|`credentials bogus-subcommand`|`Usage: pipeline credentials {add\|list\|remove\|rotate} [args]` (1)|`Error: unknown subcommand: bogus-subcommand. 'credentials' takes one of: 'add', 'list', 'remove', 'rotate'.` (1)|
+|`credentials add --bogus-flag owned-id-42`|`Error: --bogus-flag needs a value` (1)|`Error: unknown option: --bogus-flag. 'credentials add' takes one argument: credential id, and the options --kind <kind>, --from-stdin.` (1)|
+|`credentials add --bogus-flag`|`Error: --bogus-flag needs a value` (1)|idéntica a la anterior (1)|
+|`credentials list --bogus-flag`|`Error: unexpected argument: --bogus-flag. 'credentials list' takes no argument.` (1)|`Error: unknown option: --bogus-flag. 'credentials list' takes no argument, and no option.` (1)|
+|`credentials remove --bogus-flag`|`No credentials stored.` (1)|`Error: unknown option: --bogus-flag. 'credentials remove' takes one argument: credential id, and no option.` (1)|
+|`credentials remove --bogus-flag myid`|`Error: unexpected argument: myid. 'credentials remove' takes one argument: the credential id.` (1)|`Error: unknown option: --bogus-flag. 'credentials remove' takes one argument: credential id, and no option.` (1)|
+|`credentials rotate --bogus-flag owned-id-42`|`Error: --bogus-flag needs a value` (1)|`Error: unknown option: --bogus-flag. 'credentials rotate' takes one argument: credential id, and the options --kind <kind>, --from-stdin.` (1)|
+
+Las ocho celdas cambian y NINGUNA cambia de código de salida: todas siguen siendo 1. El corte no cambia el VEREDICTO —una petición mal formada es una petición que no se lleva a cabo— cambia lo que el operador LEE con él. Y la diferencia es de fondo: antes, cuatro de estas ocho celdas NO nombraban el token que el operador tenía que quitar. `credentials` a secas no decía QUÉ faltaba. `credentials bogus-subcommand` no nombraba el token. `credentials remove --bogus-flag` contestaba sobre la TIENDA, como si la petición sí se hubiera entendido, sin decir que la bandera no era suya. Y `credentials remove --bogus-flag myid` nombraba `myid` —el segundo token— en vez de `--bogus-flag`, que era el culpable.
+
+El estado vecino ya coincidía, y se comprobó para no atribuirle al corte lo que no era suyo. `credentials list extra-arg-xyz` contestaba y contesta lo mismo —«Error: unexpected argument: extra-arg-xyz. 'credentials list' takes no argument.»— porque lo arregló el corte anterior. Y `credentials add --kind bogus owned-id-42` tampoco cambia: un tipo desconocido es un error propio del VALOR, no de la forma del token.
+
+Una celda cambia sin que este corte la buscara: `credentials add --kind` —la opción que el verbo POSEE y cuyo valor falta— contestaba «Error: --kind needs a value» y ahora contesta «Error: option --kind requires a value». Es la misma frase que usa el resto del CLI, la de `pipeline-application`, y el corte la alinea porque el renderer nuevo usa el vocabulario de la casa. Es un efecto secundario VISIBLE, y por eso se dice aquí y no se descubre en una revisión.
+
+**El corte.** La DECISIÓN de qué posee cada verbo sigue viviendo en un solo sitio —`CredentialsVerb` y `CredentialsOption`—, que es donde ya vivía: este corte no añade una tabla, la lee. Lo que cambia es que el rechazo se dibuja en un sitio propio, `CredentialsRefusal`, que deriva la frase del contrato: por eso una forma de uso impresa no puede prometer una opción que el verbo no toma, y por eso un rechazo no puede quejarse de una opción que el verbo sí posee. La queja sigue la FORMA del token —un token con forma de opción es una opción, y una opción que el verbo no posee es DESCONOCIDA; un token que no tiene esa forma es un argumento, y un argumento que el verbo no posee es INESPERADO— y el verbo que se nombra en el mensaje es el que el operador escribió. `remove` intercepta el token con forma de opción ANTES de mirar la tienda, como los demás verbos.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que el rechazo nombra el token que el operador tiene que quitar, y que lo nombra como lo que es: una opción que este verbo no toma o un argumento que este verbo no toma. La capacidad que sostiene es que el operador, ante un rechazo, sabe QUITAR QUÉ sin tener que recordar qué opciones posee cada verbo y sin abrir el código: el mensaje dice la forma y el verbo. El instrumento es `CredentialsRefusalTest`, en proceso, sin disco, sin red y sin reloj, porque el rechazo ocurre ANTES de abrir la tienda. El archivo se renombra desde `CredentialsUnexpectedArgumentTest` porque la garantía ya no es sólo del argumento de sobra: ahora cubre también el token con forma de opción y el subcomando ausente o equivocado.
+
+Cubre cuatro garantías con cuatro filas, dos de ellas data-driven sobre los cuatro verbos, porque los cuatro verbos hacen la misma pregunta y comparten la misma respuesta. Las filas congelan el TOKEN y el verbo, no la frase entera: por eso afirman dos ausencias —que la salida no nombre el id poseído y que no publique la respuesta del verbo— y por eso un retoque de redacción no las rompe.
+
+**Mutación.** Tres mutaciones focales sobre el árbol final, cada una aplicada, leída de vuelta contra la COPIA verificada por digest —no contra git, que no ve un fichero que todavía no estaba versionado— y restaurada desde esa copia, con digest idéntico byte a byte.
+
+|mutación|qué se encendió|
+|---|---|
+|M1: la queja deja de seguir la FORMA del token (`val complaint = "unexpected argument"`)|exactamente 1 fila: `an option the verb does not own is refused as an unknown option`|
+|M2: `remove` deja de interceptar el token con forma de opción antes de mirar la tienda|exactamente esa misma fila, con el mensaje `remove: No credentials stored.` —el defecto viejo reproducido|
+|M3: el subcomando equivocado deja de nombrar el token|exactamente 1 fila: `a request that does not name a verb of this command is refused`|
+
+En las tres ejecuciones el XML llevaba 109 casos de prueba, sin colateral: ninguna otra fila se puso roja. Las restauraciones se comprobaron por digest contra la copia (`CredentialsRefusal.kt` `sha256 6d46fff5…`, `MainCredentialsCli.kt` `sha256 c4948dd0…`).
+
+**Lo que este corte NO arregla, y se dice.**
+- El código de salida del módulo para una petición mal formada sigue siendo 1 (`CredentialsOutcome.NOT_CARRIED_OUT`), donde la taxonomía del producto declara 2 para un error de invocación. `credentials` se delega en proceso desde la aplicación, así que el operador ve 1 por una petición de `credentials` y 2 por una petición equivalente del resto del CLI. Cambiarlo rompería el contrato publicado del módulo y el E2E que lo espera.
+- Los rechazos de este módulo siguen saliendo por stdout; los de la aplicación salen por stderr.
+- El VALOR de una opción con forma de opción sigue siendo ambiguo: `credentials add --kind --from-stdin` toma `--from-stdin` como el valor de `--kind`, y contesta «unknown kind '--from-stdin'». Una opción que empieza por `--` en la posición de valor es un caso que este corte no decide.
+- El vocabulario de la casa está DUPLICADO entre `pipeline-application` y `pipeline-credentials-local`: este corte copia la forma de las frases en vez de importarla, porque `pipeline-credentials-local` está POR DEBAJO de `pipeline-application` en el grafo de dependencias y no puede ver `CliError` ni `CliExitMapping`. La duplicación es real y sigue viva.
+- `credentials add --kind bogus` contesta «unknown kind 'bogus'» con su propia frase, que no es la de la casa: el tipo es un valor, no una forma, y este corte no lo unifica.
+- Ninguna fila congela el texto entero de una frase: congelan el token y el verbo.
+
+**Evidencia.** Gate completo sin filtros, sobre `a59c745396be1b0d03f61395386841dd2854f08e`:
+
+```
+PASS  sha=a59c745396be1b0d03f61395386841dd2854f08e  elapsed=185s  budget=900s  tests=rewritten:1551 read:0  scenarios=observed:65 executed:65
+```
+
+- 1551 tests EJECUTADOS de verdad —205 informes JUnit reescritos por esta ejecución—, 0 leídos de informes anteriores, 0 fallos, 0 omitidos.
+- 65 de 65 escenarios E2E observados y ejecutados, en verde.
+- 185 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28933`, `PRODUCT_LOC = 71375`, ratio `0.405` (límite 2). Frente al corte anterior, la verificación subió 41 líneas efectivas y la producción 79. En `pipeline-credentials-local` el ratio es `1346 / 1955 = 0.688`.
+
 ## H6 — Reducir deuda del harness y asegurar la publicación
 
 Foco: `examples/run.sh`, `verify-all.sh` y scripts de release.

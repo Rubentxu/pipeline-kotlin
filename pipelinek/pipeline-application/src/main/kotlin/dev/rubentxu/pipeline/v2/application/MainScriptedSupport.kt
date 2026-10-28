@@ -72,8 +72,10 @@ internal fun runScriptedFrontend(
         is dev.rubentxu.pipeline.v2.application.scripted.ScriptedFrontendRunner.Outcome.ArtifactIncompatible -> {
             // Fail closed (compatibility law): never silently replay an incompatible artifact.
             System.err.println("Error: ${outcome.message}")
-            System.exit(2)
-            null // unreachable
+            // The refusal UNWINDS instead of ending the process: a branch that owns a lease and an
+            // event store has to give them back before the process ends, and ending here would skip
+            // that release. The branch that owns nothing turns the refusal into the exit.
+            throw CommandRefused(exitCode = 2)
         }
     }
 }

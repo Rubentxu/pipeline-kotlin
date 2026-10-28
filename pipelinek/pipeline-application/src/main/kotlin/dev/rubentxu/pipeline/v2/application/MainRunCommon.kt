@@ -132,7 +132,10 @@ internal fun refuseNonCanonicalExecution(steps: List<NonCanonicalStep>): Nothing
     for (step in steps) {
         System.err.println("  - Step '${step.stepId}' (${step.pluginStepId}): ${step.reason}")
     }
-    kotlin.system.exitProcess(2)
+    // The refusal UNWINDS instead of ending the process: a branch that owns a lease and an
+    // event store has to give them back before the process ends, and ending here would skip
+    // that release. The branch that owns nothing turns the refusal into the exit.
+    throw CommandRefused(exitCode = 2)
 }
 
 /**
@@ -267,5 +270,8 @@ internal fun compileOrRefuse(
         )
     } catch (rejection: IllegalStateException) {
         System.err.println("Error: ${rejection.message}")
-        kotlin.system.exitProcess(1)
+        // The refusal UNWINDS instead of ending the process: a branch that owns a lease and an
+        // event store has to give them back before the process ends, and ending here would skip
+        // that release. The branch that owns nothing turns the refusal into the exit.
+        throw CommandRefused(exitCode = 1)
     }

@@ -84,8 +84,8 @@ internal fun computeScriptClasspath(pluginJars: List<String>): List<String> {
 
 /**
  * Resolves the bundled plugin JARs from the runtime classpath via
- * [BundledPluginClasspathPlan]. Failures (conflicts / rejections) terminate
- * the process with exit code 2 so the failure mode is observable to callers.
+ * [BundledPluginClasspathPlan]. Failures (conflicts / rejections) refuse the
+ * command with exit code 2, so the failure mode is observable to callers.
 */
 internal fun computeBundledPlugins(): List<String> {
     val classpath = System.getProperty("java.class.path", "")
@@ -99,14 +99,15 @@ internal fun computeBundledPlugins(): List<String> {
                         "${it.baseName} (${it.reason}): ${it.first.canonicalPath} vs ${it.second.canonicalPath}"
                     }
             )
-            System.exit(2)
-            emptyList() // unreachable
+            // The refusal UNWINDS instead of ending the process: a branch that owns a lease and an
+            // event store has to give them back before the process ends, and ending here would skip
+            // that release. The branch that owns nothing turns the refusal into the exit.
+            throw CommandRefused(exitCode = 2)
         }
         is BundledPluginResolution.Rejected -> {
             System.err.println("Bundled plugin classpath rejected: ${resolution.reason}")
             if (resolution.cause != null) resolution.cause.printStackTrace(System.err)
-            System.exit(2)
-            emptyList() // unreachable
+            throw CommandRefused(exitCode = 2)
         }
     }
 }
@@ -178,8 +179,8 @@ internal fun composeNarratingEventStore(
  * Both execution paths call THIS, so the two cannot disagree about what was admitted, what the
  * policy said about it, or whether it left a record.
  */
-internal fun admitPluginsForRun(config: CliFlags, controlDirRoot: Path): PreResolvedComposition =
-    admitThenComposeOrExit(
+internal fun admitPluginsForRun(config: CliFlags, controlDirRoot: Path): PluginAdmission =
+    admitThenCompose(
         config.pluginJars,
         // The policy is OPT-IN: without the file the runtime admits plugins as it always has.
         pluginTrustSource(config.pluginTrust),
@@ -189,8 +190,29 @@ internal fun admitPluginsForRun(config: CliFlags, controlDirRoot: Path): PreReso
     )
 
 /**
- * The product boundary: admit every plugin artifact, then compose, or exit.
- * ## Why the exit lives here and not at the call site
+ * The outcome of admitting the plugin artifacts a run asked for.
+ *
+ * ## WHY THE REFUSAL IS A VALUE AND NOT AN EXIT
+ * The place that knows why an artifact was refused is the place that says it, and the refusal
+ * has to be handed BACK to the caller rather than ending the process: a caller that owns a lease
+ * and an event store cannot afford to have the process end underneath it. The caller decides what
+ * ending means. The branch that owns nothing ends the process; the branch that owns resources
+ * gives them back first and then ends it.
+ */
+internal sealed interface PluginAdmission {
+    /** The artifacts were admitted and the composition is ready to be used. */
+    data class Admitted(val composition: PreResolvedComposition) : PluginAdmission
+
+    /**
+     * The admission was refused, the operator has been told why, and the caller ends the process
+     * with [exitCode].
+     */
+    data class Refused(val exitCode: Int) : PluginAdmission
+}
+
+/**
+ * The product boundary: admit every plugin artifact, then compose, or refuse.
+ * ## Why the refusal is rendered here and not at the call site
  * `Main` composes from two branches. If each one rendered its own refusal, one could report a
  * refusal while the other composed anyway, and the two messages would drift apart as they were
  * edited. Rendering once, here, makes "a refused plugin stops the run" a property of a single
@@ -205,11 +227,11 @@ internal fun admitPluginsForRun(config: CliFlags, controlDirRoot: Path): PreReso
  * refusals of the same kind can have different causes, and an operator who is told only the kind
  * has to go and read the code to find out which one they hit.
 */
-internal fun admitThenComposeOrExit(
+internal fun admitThenCompose(
     pluginJars: List<String>,
     trust: PluginTrustSource? = null,
     journal: AdmissionControlJournal? = null,
-): PreResolvedComposition =
+): PluginAdmission =
     when (val outcome = PluginCompositionAdmitter.admitThenCompose(pluginJars, trust, journal)) {
         is CompositionOutcome.Composed -> {
             outcome.composition.also { composition ->
@@ -231,14 +253,14 @@ internal fun admitThenComposeOrExit(
                     composition.reportTo { line -> System.err.println(line) }
                 }
             }
+            PluginAdmission.Admitted(outcome.composition)
         }
 
         is CompositionOutcome.Refused -> {
             val reason = outcome.rejection.toString()
             val detail = outcome.detail?.let { " — $it" }.orEmpty()
             System.err.println("Plugin admission refused for ${outcome.artifact}: $reason$detail")
-            System.exit(2)
-            error("unreachable: System.exit does not return")
+            PluginAdmission.Refused(exitCode = 2)
         }
 
         is CompositionOutcome.UnattributedProvider -> {
@@ -248,14 +270,12 @@ internal fun admitThenComposeOrExit(
                 "Plugin admission refused: provider ${outcome.providerClass} could not be " +
                     "attributed to an artifact (${outcome.reason})",
             )
-            System.exit(2)
-            error("unreachable: System.exit does not return")
+            PluginAdmission.Refused(exitCode = 2)
         }
 
         is CompositionOutcome.RuntimeVersionUnavailable -> {
             System.err.println("FATAL — ${outcome.detail}")
-            System.exit(3)
-            error("unreachable: System.exit does not return")
+            PluginAdmission.Refused(exitCode = 3)
         }
     }
 

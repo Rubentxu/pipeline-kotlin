@@ -75,17 +75,17 @@ internal fun composeCredentialSeam(
     } catch (e: PassphraseResolver.CredentialsStorePassphraseUnavailableException) {
         System.err.println("Error: ${e.message}")
         System.err.println("Hint: set PIPELINE_STORE_PASSPHRASE env var, or run interactively in a TTY.")
-        System.exit(3)
-        error("unreachable")
+        // The refusal UNWINDS instead of ending the process: a branch that owns a lease and an
+        // event store has to give them back before the process ends, and ending here would skip
+        // that release. The branch that owns nothing turns the refusal into the exit.
+        throw CommandRefused(exitCode = 3)
     } catch (e: LocalSecretStore.SecretStorePassphraseMismatchException) {
         System.err.println("Error: $e.message")
         System.err.println("Hint: check PIPELINE_STORE_PASSPHRASE.")
-        System.exit(3)
-        error("unreachable")
+        throw CommandRefused(exitCode = 3)
     } catch (e: LocalSecretStore.SecretStoreTamperException) {
         System.err.println("Error: credentials store tampered: ${e.message}")
-        System.exit(4)
-        error("unreachable")
+        throw CommandRefused(exitCode = 4)
     }
 
     // Composition root: construct credential ports and executor

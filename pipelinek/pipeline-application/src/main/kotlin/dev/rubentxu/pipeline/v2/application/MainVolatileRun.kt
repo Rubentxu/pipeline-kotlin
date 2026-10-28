@@ -60,7 +60,29 @@ internal fun runVolatilePipeline(
     compiledQuery: CompiledObservationQuery,
     scriptPath: Path,
     outputProtocol: OutputProtocol,
-) {
+): Int =
+    try {
+        runVolatilePipelineOwned(config, secretPatternRegistry, compiledQuery, scriptPath, outputProtocol)
+    } catch (refused: CommandRefused) {
+        refused.exitCode
+    }
+
+/**
+ * The body of a volatile run.
+ *
+ * ## WHY THE BODY IS SEPARATE FROM ITS ENTRY
+ * The helpers both worlds share refuse by THROWING, so that a branch holding resources can give
+ * them back before the process ends. The volatile branch holds nothing that outlives the process,
+ * so its entry turns the refusal into the exit code the process owner ends with, and the body
+ * below never ends the process itself.
+ */
+private fun runVolatilePipelineOwned(
+    config: CliFlags,
+    secretPatternRegistry: SecretPatternRegistry,
+    compiledQuery: CompiledObservationQuery,
+    scriptPath: Path,
+    outputProtocol: OutputProtocol,
+): Int {
     // the single-runtime-spine storage rule (single runtime spine): storage choice must not select a
     // different execution algorithm. Without --db the run uses the
     // canonical durable coordinator with volatile (in-memory) stores;
@@ -68,8 +90,7 @@ internal fun runVolatilePipeline(
     // Durable run selection flags are rejected without persistent state.
     if (config.durableRunPolicy != DurableRunPolicy.ReusePriorRun) {
         System.err.println("Error: --resume and --rerun require --db (no durable state exists without a journal database)")
-        System.exit(2)
-        return
+        return 2
     }
     val eventStore = composeNarratingEventStore(
         raw = InMemoryEventStore(),
@@ -110,7 +131,16 @@ internal fun runVolatilePipeline(
     // admission happens FIRST and inside the same function, so the in-memory and
     // durable branches cannot admit differently. S6/G's "one resolution for the whole run" now
     // also covers the decision about WHICH artifacts are allowed to resolve at all.
-    val composition = admitPluginsForRun(config, controlDirRoot)
+    // The refusal travels as a value, in BOTH worlds: the volatile branch owns nothing that
+    // outlives the process, so its entry turns the refusal into the exit code, and the durable
+    // branch owns a lease and an event store and gives them back before it ends. A refusal that
+    // ended the process HERE would skip the branch's own `finally`, and what that finally
+    // releases is the output observer — a thread. So the rule is the same everywhere: a refusal
+    // UNWINDS, and the place that owns the process ends it.
+    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot)) {
+        is PluginAdmission.Admitted -> admission.composition
+        is PluginAdmission.Refused -> throw CommandRefused(admission.exitCode)
+    }
     val composedStepRegistry = composition.steps
     val nonCanonicalSteps = compiledPipeline
         ?.analyzeCanonicalDurableExecution(composedStepRegistry).orEmpty()
@@ -253,7 +283,7 @@ internal fun runVolatilePipeline(
     // Saga that settled without saying so is a Saga the operator cannot see,
     // and "the run was green" is not a substitute for "the Saga was settled".
     SagaVerdict.verdicts(events.filterIsInstance<SagaTerminal>()).forEach { System.err.println(it) }
-    if (exitFailure) System.exit(1)
+    return if (exitFailure) 1 else 0
 }
 
 /**
@@ -340,8 +370,7 @@ private fun resolveVolatileControlRoot(config: CliFlags): Path =
             validateControlRoot(config.controlRoot)
         } catch (e: IllegalArgumentException) {
             System.err.println("Error: ${e.message}")
-            System.exit(2)
-            throw e // unreachable
+            throw CommandRefused(exitCode = 2)
         }
     } else {
         Files.createTempDirectory("pipelinek-inmem-run")

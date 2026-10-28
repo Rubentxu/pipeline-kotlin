@@ -280,7 +280,12 @@ fun main(args: Array<String>) {
         val store = RedactingEventSink(rawStore, secretPatternRegistry)
         val validateRunId = java.util.UUID.randomUUID().toString()
         val host = Kotlin24ScriptingHost(store, validateRunId)
-        val dslClasspath = computeScriptClasspath(config.pluginJars)
+        val dslClasspath = try {
+            computeScriptClasspath(config.pluginJars)
+        } catch (refused: CommandRefused) {
+            // Validation holds nothing, so the refusal becomes the exit right here.
+            kotlin.system.exitProcess(refused.exitCode)
+        }
         val definition = ScriptDefinition.file(scriptPath, classpath = dslClasspath)
         // Inject the production RuntimeConfig so DSL `pwd()` / `isUnix()` synchronous
         // return values reflect the host environment during validation.
@@ -346,20 +351,29 @@ fun main(args: Array<String>) {
     // provider where the volatile one does not. `runVolatilePipeline` says
     // which.)
     if (config.dbPath == null) {
-        runVolatilePipeline(
-            config = config,
-            secretPatternRegistry = secretPatternRegistry,
-            compiledQuery = compiledQuery,
-            scriptPath = scriptPath,
-            outputProtocol = outputProtocol,
+        // The branch reports the exit code and the process owner ends the process with it:
+        // a branch that holds resources has to give them back before this point.
+        System.exit(
+            runVolatilePipeline(
+                config = config,
+                secretPatternRegistry = secretPatternRegistry,
+                compiledQuery = compiledQuery,
+                scriptPath = scriptPath,
+                outputProtocol = outputProtocol,
+            ),
         )
         return
     }
-    runDurablePipeline(
-        config = config,
-        dbPath = config.dbPath,
-        secretPatternRegistry = secretPatternRegistry,
-        compiledQuery = compiledQuery,
-        scriptPath = scriptPath,
+    // The durable branch owns resources and gives them back before it returns, so the process
+    // ends here and not in the middle of the run: the exit code is the branch's to report, and
+    // the place that ends the process is the one that owns it.
+    System.exit(
+        runDurablePipeline(
+            config = config,
+            dbPath = config.dbPath,
+            secretPatternRegistry = secretPatternRegistry,
+            compiledQuery = compiledQuery,
+            scriptPath = scriptPath,
+        ),
     )
 }

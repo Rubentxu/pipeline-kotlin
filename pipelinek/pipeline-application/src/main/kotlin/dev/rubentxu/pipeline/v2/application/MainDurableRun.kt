@@ -82,18 +82,49 @@ private fun durableRunState(
     sagaBinding = SagaCompensationBinding(sagaObligationStore, lease.leaseEpoch),
 )
 
+/**
+ * A durable run, and the exit code it leaves behind.
+ *
+ * ## WHY THE SCOPE OPENS AT THE FIRST ACQUISITION
+ * The run acquires its event store and its lease before it does anything else, and it owns both
+ * from that moment. A refusal that ends the process in that window leaves the lease record
+ * claiming an owner that is gone, and the store's writer thread open: the next reader is told
+ * that the run is still being published by a process that no longer exists. The scope therefore
+ * opens with the first acquisition, closes on every path, and the refusals travel as values so
+ * that they can unwind through it.
+ */
 internal fun runDurablePipeline(
     config: CliFlags,
     dbPath: String,
     secretPatternRegistry: SecretPatternRegistry,
     compiledQuery: CompiledObservationQuery,
     scriptPath: Path,
-) {
+): Int =
+    try {
+        ResourceScope().use { scope ->
+            runDurablePipelineOwned(scope, config, dbPath, secretPatternRegistry, compiledQuery, scriptPath)
+        }
+    } catch (refused: CommandRefused) {
+        refused.exitCode
+    }
+
+/**
+ * The body of a durable run, with the scope that owns what the run acquires.
+ */
+private fun runDurablePipelineOwned(
+    scope: ResourceScope,
+    config: CliFlags,
+    dbPath: String,
+    secretPatternRegistry: SecretPatternRegistry,
+    compiledQuery: CompiledObservationQuery,
+    scriptPath: Path,
+): Int {
     // Durable mode: the run's events are kept in a SQLite journal. The narration is composed by
     // the SAME authority the volatile world asks, so the two worlds differ in WHERE the events
     // are kept and in nothing else: a run tells its story the same way with a database as
     // without one.
     val store = admitDurableEventStore(dbPath)
+    scope.own { store.rawEventStore.close() }
     val rawEventStore = store.rawEventStore
     val eventStore = composeNarratingEventStore(
         raw = rawEventStore,
@@ -115,14 +146,15 @@ internal fun runDurablePipeline(
     // `pipeline.workspace.root` any more (the historical writers were
     // F5.1 SCM/Git and F5.2 JUnit; F5.2 JUnit migrated to the typed
     // capability here; F5.1 SCM/Git migration is a sibling follow-up.
-    val identity = establishDurableIdentity(
+    val ownership = acquireDurableOwnership(
+        scope = scope,
         config = config,
-        eventStore = eventStore,
         controlDirRoot = controlDirRoot,
+        eventStore = eventStore,
         definitionId = definition.definitionId,
     )
-    val runId = identity.runId
-    val lease = identity.lease
+    val runId = ownership.runId
+    val lease = ownership.lease
     val source = compileDurableScript(
         eventStore = eventStore,
         runId = runId,
@@ -166,7 +198,12 @@ internal fun runDurablePipeline(
     // same single entry point as the in-memory branch above. Writing the admission
     // wiring out a second time here would let the two branches disagree about which plugins were
     // admitted, which is precisely the defect S6/G removed once already.
-    val composition = admitPluginsForRun(config, controlDirRoot)
+    // The refusal travels as a value: the scope still holds the lease and the
+    // store, and it gives them back before the process ends.
+    val composition = when (val admission = admitPluginsForRun(config, controlDirRoot)) {
+        is PluginAdmission.Admitted -> admission.composition
+        is PluginAdmission.Refused -> throw CommandRefused(admission.exitCode)
+    }
     val composedStepRegistry = composition.steps
     // the workspace decision rule + the typed owner decision: the workspace origin is decided
     // ONCE, here at the boundary, and both facts cross into the runtime — the
@@ -260,14 +297,14 @@ internal fun runDurablePipeline(
             }
         }
 
-        // durable pipeline work + durable subscriber regression fix regression fix: the single-writer thread single-writer thread
+        // durable pipeline work + durable subscriber regression fix: the single-writer thread
         // is non-daemon and processes events asynchronously. We must FLUSH the pending
         // writes BEFORE reading the events back from SQL, otherwise async events emitted
         // just before run-finished (e.g. StashCreated/StashRestored from a final stage)
         // are lost from the stdout JSON envelope (the SQL row exists but hasn't been
-        // committed when eventsFor(runId) runs). After flush, close() stops the writer
-        // and releases the persistent connection; the JVM exits cleanly because
-        // DestroyJavaVM no longer waits on queue.take().
+        // committed when eventsFor(runId) runs). The scope closes the store when the run
+        // returns, which stops the writer and releases the persistent connection; the JVM
+        // exits cleanly because DestroyJavaVM no longer waits on queue.take().
         rawEventStore.flush()
         val lastEventCaptured = publishDurableObservations(
             eventStore = eventStore,
@@ -277,16 +314,13 @@ internal fun runDurablePipeline(
             format = config.format,
             compiledQuery = compiledQuery,
         )
-        rawEventStore.close()
         Pair(outcome, lastEventCaptured)
     } finally {
+        // The observer is the last thing this run acquires and the first it
+        // gives back. The lease and the event store belong to the scope, which
+        // closes after this: they are given back on the refusal paths too, and
+        // a run that never reaches this block still gives them back.
         runCatching { outputObserver.close() }
-        // release ownership on every exit path, including the
-        // exception paths, so a crashed run is immediately recoverable by the
-        // next owner instead of waiting for the OS to reap the lock.
-        runCatching { lease.leaseStore.release(requireNotNull(lease.runOwner)) }
-        runCatching { lease.leaseStore.close() }
-        runCatching { rawEventStore.close() }
     }
     val runOutcome = runOutcomeAndLastEvent.first
     val lastEvent = runOutcomeAndLastEvent.second
@@ -301,7 +335,10 @@ internal fun runDurablePipeline(
     // concluded). It is printed in BOTH worlds: a Saga can run with and without
     // `--db` (P6), and a run that keeps its promises has to say so in each.
     SagaVerdict.verdicts(sagaTerminals).forEach { System.err.println(it) }
-    if (exitFailure) System.exit(1)
+    // The exit code is a value the caller owns: only the caller ends the
+    // process, and it does so after the scope has given back what the run
+    // acquired.
+    return if (exitFailure) 1 else 0
 }
 
 /**
@@ -400,22 +437,22 @@ private fun publishDurableObservations(
 }
 
 /**
- * The identity a durable run publishes: which run it is, which correlation it
- * answers to, and who owns it.
+ * The identity a durable run publishes: which run it is and which correlation
+ * it answers to.
  *
- * The lease is taken BEFORE the correlation is emitted, because the owner in
- * the receipt has to be the owner that holds the run — runId positional owner in one place
- * instead of three statements at a call site that a reader has to reconstruct.
+ * ## WHY THE LEASE IS NOT PART OF THE IDENTITY
+ * The lease is taken AFTER the run is selected and BEFORE the correlation is
+ * emitted, because the owner in the receipt has to be the owner that holds the
+ * run. Keeping the three steps apart is what lets the caller hand the lease to
+ * the scope that owns it before anything else can fail.
  */
 private data class DurableRunIdentity(
     val runId: String,
     val correlationId: CorrelationId,
-    val lease: DurableLease,
 )
 
-private fun establishDurableIdentity(
+private fun selectDurableRunIdentity(
     config: CliFlags,
-    eventStore: dev.rubentxu.pipeline.v2.events.EventSink,
     controlDirRoot: Path,
     definitionId: dev.rubentxu.pipeline.v2.domain.DefinitionId,
 ): DurableRunIdentity {
@@ -438,27 +475,9 @@ private fun establishDurableIdentity(
         // invocation/admission error, not a pipeline failure. Typed
         // rejection, no stack trace, exit 2 per the CLI exit contract.
         System.err.println("Error: ${e.message}")
-        System.exit(2)
-        throw e // unreachable
+        throw CommandRefused(exitCode = 2)
     }
-    val runId = runSelection.runId.value
-    val lease = acquireDurableLease(controlDirRoot, runId)
-    // lease is held; emit the RunCorrelated
-    // event on the durable event sink and the LaunchReceipt on stdout.
-    // The owner is the lease-acquired runOwner.
-    // the durable branch's correlation is the
-    // one persisted alongside the runId; fall back to the CLI-bound
-    // token if the durable record has none.
-    emitCorrelationAndReceipt(
-        eventStore = eventStore,
-        runId = RunId(runId),
-        correlationId = pk1Correlation,
-        ownerId = requireNotNull(lease.runOwner),
-        startedAtMs = System.currentTimeMillis(),
-        controlDir = controlDirRoot,
-        format = config.format,
-    )
-    return DurableRunIdentity(runId = runId, correlationId = pk1Correlation, lease = lease)
+    return DurableRunIdentity(runId = runSelection.runId.value, correlationId = pk1Correlation)
 }
 
 /**
@@ -485,9 +504,10 @@ private fun admitDurableEventStore(dbPath: String): DurableEventStores {
     val dbAdmission = admitEventStore(dbPath, EventStorePurpose.Produce)
     if (dbAdmission is EventStoreAdmission.Refused) {
         System.err.println(dbAdmission.refusal.render())
-        // `main` returns Unit and this is the depth at which every other refusal ends, so the
-        // exit is the process's rather than a value handed upwards.
-        System.exit(2)
+        // The refusal is a value the caller turns into an exit code: the run
+        // may already own a lease and an event store, and the process must not
+        // end while it holds them.
+        throw CommandRefused(exitCode = 2)
     }
     val rawEventStore = (dbAdmission as EventStoreAdmission.Admitted).store
     // The raw methods are read before anything wraps the store: the connection factory and the
@@ -511,8 +531,7 @@ private fun resolveDurableControlRoot(config: CliFlags, dbPath: String): Path =
             validateControlRoot(config.controlRoot)
         } catch (e: IllegalArgumentException) {
             System.err.println("Error: ${e.message}")
-            System.exit(2)
-            throw e // unreachable
+            throw CommandRefused(exitCode = 2)
         }
     } else {
         // The store's directory, made absolute. A relative `--db` has no parent component, and
@@ -521,7 +540,7 @@ private fun resolveDurableControlRoot(config: CliFlags, dbPath: String): Path =
         val storeDirectory = Paths.get(dbPath).toAbsolutePath().parent
         if (storeDirectory == null) {
             System.err.println("Error: the store path has no directory to hold it: ${dbPath}")
-            System.exit(2)
+            throw CommandRefused(exitCode = 2)
         }
         storeDirectory.resolve("durable-shell")
     }
@@ -561,8 +580,7 @@ private fun acquireDurableLease(controlDirRoot: Path, runId: String): DurableLea
                 "Error: run $runId is already owned by '${lease.heldBy.value}'; " +
                     "another process is publishing events for this run"
             )
-            System.exit(2)
-            error("unreachable")
+            throw CommandRefused(exitCode = 2)
         }
         is LeaseAcquisition.Unverifiable -> {
             // Fail closed: a process that cannot prove it is the authority must
@@ -570,11 +588,70 @@ private fun acquireDurableLease(controlDirRoot: Path, runId: String): DurableLea
             // operator response differs.
             runCatching { leaseStore.close() }
             System.err.println("Error: cannot establish ownership of run $runId: ${lease.reason}")
-            System.exit(2)
-            error("unreachable")
+            throw CommandRefused(exitCode = 2)
         }
     }
     return DurableLease(runOwner = runOwner, leaseStore = leaseStore, leaseEpoch = leaseEpoch)
+}
+
+/**
+ * The ownership a durable run takes on itself: which run it is, and the lease that says this
+ * process is the one publishing it.
+ */
+private data class DurableOwnership(
+    val runId: String,
+    val lease: DurableLease,
+)
+
+/**
+ * Become the owner of the run, and say so.
+ *
+ * ## WHY THE THREE STEPS ARE ONE
+ * The run is selected, the lease is taken and the receipt is published together, because the
+ * receipt names the lease's owner: a receipt published before the lease existed would name an
+ * owner the run does not have, and a receipt published without the run selected would name a run
+ * nobody can find.
+ *
+ * ## WHY THE SCOPE OWNS THE LEASE FROM HERE
+ * The lease is the run's ownership of itself, and the scope owns it from the moment it is
+ * acquired: it is given back on every path, including the refusals that unwind through the
+ * caller. The record the lease leaves behind is what the next reader believes, so it has to say
+ * that the run is over.
+ */
+private fun acquireDurableOwnership(
+    scope: ResourceScope,
+    config: CliFlags,
+    controlDirRoot: Path,
+    eventStore: dev.rubentxu.pipeline.v2.events.EventSink,
+    definitionId: dev.rubentxu.pipeline.v2.domain.DefinitionId,
+): DurableOwnership {
+    val identity = selectDurableRunIdentity(
+        config = config,
+        controlDirRoot = controlDirRoot,
+        definitionId = definitionId,
+    )
+    val runId = identity.runId
+    val lease = acquireDurableLease(controlDirRoot, runId)
+    scope.own {
+        runCatching { lease.leaseStore.release(requireNotNull(lease.runOwner)) }
+        lease.leaseStore.close()
+    }
+    // lease is held; emit the RunCorrelated
+    // event on the durable event sink and the LaunchReceipt on stdout.
+    // The owner is the lease-acquired runOwner.
+    // the durable branch's correlation is the
+    // one persisted alongside the runId; fall back to the CLI-bound
+    // token if the durable record has none.
+    emitCorrelationAndReceipt(
+        eventStore = eventStore,
+        runId = RunId(runId),
+        correlationId = identity.correlationId,
+        ownerId = requireNotNull(lease.runOwner),
+        startedAtMs = System.currentTimeMillis(),
+        controlDir = controlDirRoot,
+        format = config.format,
+    )
+    return DurableOwnership(runId = runId, lease = lease)
 }
 
 /**
@@ -628,8 +705,7 @@ private fun resolveScriptedFrontend(
                         // The source already compiled (host), so this is an internal
                         // invariant violation: fail closed, never fall back to eager.
                         System.err.println("Error: scripted source lowering failed: ${lowered.diagnostics}")
-                        System.exit(2)
-                        null // unreachable
+                        throw CommandRefused(exitCode = 2)
                     }
                 }
             } else null
@@ -651,15 +727,13 @@ private fun resolveScriptedFrontend(
             when {
                 scriptedResult is dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Failure -> {
                     System.err.println("Error: scripted frontend compilation failed: ${scriptedResult.diagnostics}")
-                    System.exit(2)
-                    null // unreachable
+                    throw CommandRefused(exitCode = 2)
                 }
                 else -> when (val out = (scriptedResult as dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult.Success).output) {
                     is dev.rubentxu.pipeline.v2.scripting.ScriptEvaluationOutput.CompiledEntryPoint -> out.entryPoint
                     else -> {
                         System.err.println("Error: scripted frontend did not produce a compiled entry point")
-                        System.exit(2)
-                        null // unreachable
+                        throw CommandRefused(exitCode = 2)
                     }
                 }
             }

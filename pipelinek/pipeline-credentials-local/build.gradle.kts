@@ -27,6 +27,15 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // The store these tests can SEE is a path that does not exist. A unit test
+    // must not read the operator's real credential store, and the answer a
+    // refusal has to be told apart from has to be the same answer on every
+    // machine: on one with a populated store, `credentials list` answers with
+    // the listing instead of with "No credentials stored.".
+    environment(
+        "PIPELINE_CREDENTIALS_STORE",
+        layout.buildDirectory.file("credentials-unit-store.bin").get().asFile.absolutePath,
+    )
 }
 
 // Tests cover the EIGHT pure primitives in this module: KdfParams, AeadCipher,
@@ -36,3 +45,10 @@ tasks.test {
 // AGENTS.md rule against filesystem persistence in unit tests is what scopes the
 // suite this way. Each primitive is a `data class` or a pure `object`; the test
 // functions take arguments and return values without touching disk, network or clock.
+//
+// There is ONE instrument here that is not a primitive: the CLI's own decision
+// to refuse an argument its verb does not own
+// (CredentialsUnexpectedArgumentTest). It calls the verb in process and reads
+// its exit code and its output; it touches neither disk nor network nor clock,
+// because the refusal comes before the store is opened.
+

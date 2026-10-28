@@ -109,7 +109,7 @@ object MainCredentialsCli {
     fun main(args: Array<String>): Int {
         return when (args.firstOrNull()) {
             "add" -> add(args.drop(1))
-            "list" -> list()
+            "list" -> list(args.drop(1))
             "remove" -> remove(args.drop(1))
             "rotate" -> rotate(args.drop(1))
             else -> {
@@ -126,7 +126,7 @@ object MainCredentialsCli {
     }
 
     private fun add(args: List<String>): Int {
-        val parsed = parseWriteArguments(args) ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
+        val parsed = parseWriteArguments(args, "add") ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         return try {
             val store = openStore()
             // The key is checked before the operator is asked for a secret: a
@@ -156,7 +156,19 @@ object MainCredentialsCli {
         }
     }
 
-    private fun list(): Int {
+    /**
+     * `list` — what the store holds, redacted.
+     *
+     * It owns NO argument: neither a positional one nor an option. A request
+     * that carries one is not a request of this verb, and it is refused naming
+     * the token before the store is looked at.
+     */
+    private fun list(args: List<String>): Int {
+        val foreign = args.firstOrNull()
+        if (foreign != null) {
+            refuseUnexpectedArgument("list", foreign, "takes no argument")
+            return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
+        }
         // Nothing to list means nothing to unlock: a store that is not there
         // does not need a key, and asking for one would be asking for the key
         // to a door that does not exist.
@@ -205,6 +217,14 @@ object MainCredentialsCli {
             println("Usage: pipeline credentials remove <id>")
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
+        // `remove` owns ONE argument — the id — and no option. A second token
+        // is not a request of this verb, and it is refused naming it before the
+        // store is looked at.
+        val extra = args.getOrNull(1)
+        if (extra != null) {
+            refuseUnexpectedArgument("remove", extra, "takes one argument: the credential id")
+            return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
+        }
         if (!storeHoldsAnything()) {
             println("No credentials stored.")
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
@@ -237,7 +257,7 @@ object MainCredentialsCli {
     }
 
     private fun rotate(args: List<String>): Int {
-        val parsed = parseWriteArguments(args) ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
+        val parsed = parseWriteArguments(args, "rotate") ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         if (!storeHoldsAnything()) {
             println("No credentials stored.")
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
@@ -288,8 +308,11 @@ object MainCredentialsCli {
      * do with the result. Returns null after printing the reason, so a caller
      * never has to invent a usage string of its own and two commands cannot
      * disagree about which flags exist.
+     *
+     * The verb is named because the refusal has to say which form of the
+     * command the operator wrote, and the caller is the one that knows it.
 */
-    private fun parseWriteArguments(args: List<String>): WriteArguments? {
+    private fun parseWriteArguments(args: List<String>, verb: String): WriteArguments? {
         var kind: CredentialKind? = null
         var id: String? = null
         var fromStdin = false
@@ -309,6 +332,15 @@ object MainCredentialsCli {
 
                 arg == "--from-stdin" -> fromStdin = true
                 !arg.startsWith("--") && id == null -> id = arg
+                // The SECOND positional is not a request of this verb: `add`
+                // and `rotate` own ONE, the credential id. It is refused
+                // naming the token, and it is refused HERE — before the store
+                // is opened — so a request that is not this verb's never asks
+                // for a passphrase and never asks for a secret.
+                !arg.startsWith("--") -> {
+                    refuseUnexpectedArgument(verb, arg, "takes one argument: the credential id")
+                    return null
+                }
                 // A flag whose value is missing is a typo the user should see,
                 // not a silently ignored argument.
                 arg.startsWith("--") -> {
@@ -323,6 +355,22 @@ object MainCredentialsCli {
             return null
         }
         return WriteArguments(kind ?: CredentialKind.SECRET_TEXT, idArg, fromStdin)
+    }
+
+    /**
+     * The refusal of a request that carries an argument this verb does not own.
+     *
+     * The token is named because the operator has to be able to read WHICH
+     * token to remove, and the shape is stated because the operator has to be
+     * able to read WHAT the verb takes. The verb is named because the refusal
+     * is about the form the operator wrote, and there are four of them.
+     *
+     * The refusal happens before the store is touched: a request that is not
+     * this verb's does not get to ask for a passphrase, does not get to read
+     * the store and does not get to ask for a secret.
+     */
+    private fun refuseUnexpectedArgument(verb: String, token: String, shape: String) {
+        println("Error: unexpected argument: $token. 'credentials $verb' $shape.")
     }
 
     private fun openStore(): LocalSecretStore =

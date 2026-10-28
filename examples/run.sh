@@ -2395,8 +2395,8 @@ run_scenario_body() {
         # operation row; only the RUN's own terminal fact may end a run, and
         # this run never got one.
         local recover_code=0
-        binary runs recover "$recover_run_id" --db "$root/events.db" \
-            --control-root "$root/control" \
+        binary runs recover --db "$root/events.db" \
+            --control-root "$root/control" "$recover_run_id" \
             >"$root/stdout.recover.txt" 2>"$root/stderr.recover.txt" || recover_code=$?
         if [[ "$recover_code" != 0 ]]; then
             printf 'FAIL %-52s the recover of the half-finished run exited %s, expected 0\n' \
@@ -2480,7 +2480,7 @@ run_scenario_body() {
         # port, and the answer is the run's own terminal fact: the event lane's
         # `RunFinished` bookend.
         local state_code=0
-        binary inspect "$state_run_id" --db "$root/events.db" --control-root "$root/control" --state \
+        binary inspect --db "$root/events.db" --control-root "$root/control" --state "$state_run_id" \
             >"$root/stdout.state.txt" 2>"$root/stderr.state.txt" || state_code=$?
         if [[ "$state_code" != 0 ]]; then
             printf 'FAIL %-52s reading the run state exited %s, expected 0\n' "$name" "$state_code"
@@ -2500,7 +2500,7 @@ run_scenario_body() {
         # A run nobody knows is not a run that finished. It is a refusal, it
         # says so, and it does not invent a state to answer with.
         local unknown_code=0
-        binary inspect "no-such-run-$state_run_id" --db "$root/events.db" --control-root "$root/control" --state \
+        binary inspect --db "$root/events.db" --control-root "$root/control" --state "no-such-run-$state_run_id" \
             >"$root/stdout.state-unknown.txt" 2>"$root/stderr.state-unknown.txt" || unknown_code=$?
         if [[ "$unknown_code" != 2 ]]; then
             printf 'FAIL %-52s reading the state of an unknown run exited %s, expected 2\n' \
@@ -2593,8 +2593,8 @@ run_scenario_body() {
 
         # The first cancel closes the run.
         local cancel_code=0
-        binary runs cancel "$run_id" --db "$root/events.db" --control-root "$root/control" \
-            --reason "the writer was killed" \
+        binary runs cancel --db "$root/events.db" --control-root "$root/control" \
+            --reason "the writer was killed" "$run_id" \
             >"$root/stdout.cancel.txt" 2>"$root/stderr.cancel.txt" || cancel_code=$?
         if [[ "$cancel_code" != 0 ]]; then
             printf 'FAIL %-52s the cancel of the dead run exited %s, expected 0\n' \

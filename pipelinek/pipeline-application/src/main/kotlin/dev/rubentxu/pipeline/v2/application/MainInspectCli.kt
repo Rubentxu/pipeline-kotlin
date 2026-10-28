@@ -144,7 +144,20 @@ object MainInspectCli {
      * are exercisable today.
 */
     fun main(args: Array<String>): Int {
-        val runId = args.firstOrNull()?.takeIf { !it.startsWith("--") }
+        // The parser is the only place that knows which options carry a value, so it is the
+        // only place that can tell the run id from an option's value. The verb reads the run
+        // id from the parsed query instead of from `args[0]`, and the request is therefore
+        // the same one whether the operator wrote the run id before the options or after.
+        val compiled = when (val r = parseInspect(args)) {
+            is InspectParseResult.Parsed -> r.value
+            is InspectParseResult.Rejected -> {
+                val code = refuse(r.error, "inspect")
+                System.err.println(USAGE)
+                return code
+            }
+        }
+
+        val runId = compiled.runId
         if (runId == null) {
             val code = refuse(
                 CliError.MissingRequiredArgument("run id", "name the run to inspect"),
@@ -152,16 +165,6 @@ object MainInspectCli {
             )
             System.err.println(USAGE)
             return code
-        }
-        val optionArgs = args.drop(if (args.first() == runId) 1 else 0)
-
-        val compiled = when (val r = parseInspect(optionArgs.toTypedArray())) {
-            is InspectParseResult.Parsed -> r.value
-            is InspectParseResult.Rejected -> {
-                val code = refuse(r.error, "inspect")
-                System.err.println(USAGE)
-                return code
-            }
         }
 
         // Durable read seam.
@@ -826,6 +829,16 @@ data class CompiledInspectionQuery(
      * the telemetry export, so the parser refuses it without `--telemetry`.
      */
     val otlp: Boolean = false,
+    /**
+     * The run this query is about, read from the ONE positional argument this
+     * verb owns. Null means the operator wrote none.
+     *
+     * It travels HERE and not in the verb because the parser is the only place
+     * that knows which options carry a value: the run id is whichever argument
+     * is not an option and not an option's value, and a verb that looked for it
+     * by position would have to guess.
+     */
+    val runId: String? = null,
 )
 
 /** Result of [MainInspectCli.parseInspect]. */

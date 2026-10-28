@@ -128,7 +128,20 @@ Exit codes:
      * untouched, and there is no way to undo that.
      */
     private fun runCancel(rest: Array<String>): Int {
-        val runId = rest.firstOrNull()?.takeIf { !it.startsWith("--") }
+        // The scan is the only place that knows which options carry a value, so it is the only
+        // place that can tell the run id from an option's value. The verb reads the run id from
+        // the parsed options instead of from `args[0]`, and the request is therefore the same
+        // one whether the operator wrote the run id before the options or after.
+        val options = when (val parsed = parseCancelArguments(rest)) {
+            is OptionParse.Parsed -> parsed.value
+            is OptionParse.Rejected -> {
+                val code = refuse(parsed.error, "runs cancel")
+                System.err.println(USAGE)
+                return code
+            }
+        }
+
+        val runId = options.runId
         if (runId == null) {
             val code = refuse(
                 CliError.MissingRequiredArgument("run id", "name the run to close"),
@@ -136,16 +149,6 @@ Exit codes:
             )
             System.err.println(USAGE)
             return code
-        }
-        val optionArgs = rest.drop(if (rest.first() == runId) 1 else 0)
-
-        val options = when (val parsed = parseCancelArguments(optionArgs.toTypedArray())) {
-            is OptionParse.Parsed -> parsed.value
-            is OptionParse.Rejected -> {
-                val code = refuse(parsed.error, "runs cancel")
-                System.err.println(USAGE)
-                return code
-            }
         }
 
         if (options.dbPath == null) {
@@ -246,7 +249,20 @@ Exit codes:
      * is on stderr.
      */
     private fun runRecover(rest: Array<String>): Int {
-        val runId = rest.firstOrNull()?.takeIf { !it.startsWith("--") }
+        // The scan is the only place that knows which options carry a value, so it is the only
+        // place that can tell the run id from an option's value. The verb reads the run id from
+        // the parsed options instead of from `args[0]`, and the request is therefore the same
+        // one whether the operator wrote the run id before the options or after.
+        val options = when (val parsed = parseRecoverArguments(rest)) {
+            is OptionParse.Parsed -> parsed.value
+            is OptionParse.Rejected -> {
+                val code = refuse(parsed.error, "runs recover")
+                System.err.println(USAGE)
+                return code
+            }
+        }
+
+        val runId = options.runId
         if (runId == null) {
             val code = refuse(
                 CliError.MissingRequiredArgument("run id", "name the run to recover"),
@@ -254,16 +270,6 @@ Exit codes:
             )
             System.err.println(USAGE)
             return code
-        }
-        val optionArgs = rest.drop(if (rest.first() == runId) 1 else 0)
-
-        val options = when (val parsed = parseRecoverArguments(optionArgs.toTypedArray())) {
-            is OptionParse.Parsed -> parsed.value
-            is OptionParse.Rejected -> {
-                val code = refuse(parsed.error, "runs recover")
-                System.err.println(USAGE)
-                return code
-            }
         }
 
         if (options.dbPath == null) {
@@ -439,6 +445,8 @@ Exit codes:
         val dbPath: String?,
         val controlRoot: Path?,
         val reason: String?,
+        /** The run this request is about; null means the operator wrote none. */
+        val runId: String? = null,
     )
 
     /** The options `runs recover` takes. */
@@ -447,6 +455,8 @@ Exit codes:
         val controlRoot: Path?,
         /** compute the decision without writing. */
         val dryRun: Boolean = false,
+        /** The run this request is about; null means the operator wrote none. */
+        val runId: String? = null,
     )
 
     /**
@@ -482,6 +492,7 @@ Exit codes:
                     dbPath = scanned.value.dbPath,
                     controlRoot = scanned.value.controlRoot,
                     reason = scanned.value.reason,
+                    runId = scanned.value.runId,
                 ),
             )
         }
@@ -501,6 +512,7 @@ Exit codes:
                     dbPath = scanned.value.dbPath,
                     controlRoot = scanned.value.controlRoot,
                     dryRun = scanned.value.dryRun,
+                    runId = scanned.value.runId,
                 ),
             )
         }
@@ -517,6 +529,9 @@ Exit codes:
         var controlRoot: Path? = null
         var reason: String? = null
         var dryRun = false
+        // The run id is the ONE positional argument this family owns, and it is read
+        // wherever the operator wrote it.
+        var runId: String? = null
         var index = 0
         while (index < args.size) {
             when (val arg = args[index]) {
@@ -550,11 +565,23 @@ Exit codes:
                     dryRun = true
                 }
 
-                else -> return OptionParse.Rejected(CliError.UnknownOption(arg))
+                else -> if (arg.startsWith("--")) {
+                    return OptionParse.Rejected(CliError.UnknownOption(arg))
+                } else {
+                    // The run id is the ONE positional argument this family owns, and it is
+                    // read wherever the operator wrote it: `runs cancel --db X run-1` and
+                    // `runs cancel run-1 --db X` are the same request. The scan is the only
+                    // place that knows which options carry a value, so it is the only place
+                    // that can tell the run id from an option's value.
+                    if (runId != null) {
+                        return OptionParse.Rejected(CliError.TooManyPositionals(arg))
+                    }
+                    runId = arg
+                }
             }
             index++
         }
-        return OptionParse.Parsed(Scanned(dbPath, controlRoot, reason, dryRun))
+        return OptionParse.Parsed(Scanned(dbPath, controlRoot, reason, dryRun, runId))
     }
 
     /** The options as they were written, before the verb claims them. */
@@ -563,6 +590,8 @@ Exit codes:
         val controlRoot: Path?,
         val reason: String?,
         val dryRun: Boolean,
+        /** The run this request is about; null means the operator wrote none. */
+        val runId: String?,
     )
 
     /**

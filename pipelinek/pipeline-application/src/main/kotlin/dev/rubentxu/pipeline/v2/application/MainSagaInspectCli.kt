@@ -50,7 +50,20 @@ object MainSagaInspectCli {
      * Runs the verb and returns the exit code.
      */
     fun main(args: Array<String>): Int {
-        val runId = args.firstOrNull()?.takeIf { !it.startsWith("--") }
+        // The parser is the only place that knows which options carry a value, so it is the
+        // only place that can tell the run id from an option's value. The verb reads the run
+        // id from the parsed options instead of from `args[0]`, and the request is therefore
+        // the same one whether the operator wrote the run id before the options or after.
+        val options = when (val r = parseOptions(args)) {
+            is OptionsParse.Parsed -> r.value
+            is OptionsParse.Rejected -> {
+                val code = refuse(r.error, "saga inspect")
+                System.err.println(USAGE)
+                return code
+            }
+        }
+
+        val runId = options.runId
         if (runId == null) {
             val code = refuse(
                 CliError.MissingRequiredArgument("run id", "name the run to inspect"),
@@ -58,16 +71,6 @@ object MainSagaInspectCli {
             )
             System.err.println(USAGE)
             return code
-        }
-        val optionArgs = args.drop(if (args.first() == runId) 1 else 0)
-
-        val options = when (val r = parseOptions(optionArgs.toTypedArray())) {
-            is OptionsParse.Parsed -> r.value
-            is OptionsParse.Rejected -> {
-                val code = refuse(r.error, "saga inspect")
-                System.err.println(USAGE)
-                return code
-            }
         }
 
         if (options.dbPath == null) {
@@ -118,7 +121,12 @@ object MainSagaInspectCli {
         JSON("json"),
     }
 
-    private data class Options(val dbPath: String?, val format: OutputFormat)
+    private data class Options(
+        val dbPath: String?,
+        val format: OutputFormat,
+        /** The run this request is about; null means the operator wrote none. */
+        val runId: String?,
+    )
 
     private sealed interface OptionsParse {
         data class Parsed(val value: Options) : OptionsParse
@@ -136,6 +144,10 @@ object MainSagaInspectCli {
     private fun parseOptions(args: Array<String>): OptionsParse {
         var dbPath: String? = null
         var format = OutputFormat.TEXT
+        // The run id is the ONE positional argument this verb owns, and it is read wherever
+        // the operator wrote it: the parser is the only place that knows which options carry
+        // a value, so it is the only place that can tell the run id from an option's value.
+        var runId: String? = null
         var index = 0
         while (index < args.size) {
             when (val option = args[index]) {
@@ -159,10 +171,21 @@ object MainSagaInspectCli {
                     index += 2
                 }
 
-                else -> return OptionsParse.Rejected(CliError.UnknownOption(option))
+                else -> if (option.startsWith("--")) {
+                    return OptionsParse.Rejected(CliError.UnknownOption(option))
+                } else {
+                    // The FIRST positional is the run id; a SECOND one is not a request of
+                    // this verb, and it is refused naming the token the operator has to
+                    // remove.
+                    if (runId != null) {
+                        return OptionsParse.Rejected(CliError.TooManyPositionals(option))
+                    }
+                    runId = option
+                    index += 1
+                }
             }
         }
-        return OptionsParse.Parsed(Options(dbPath, format))
+        return OptionsParse.Parsed(Options(dbPath, format, runId))
     }
 
     /**

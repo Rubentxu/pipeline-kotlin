@@ -57,17 +57,11 @@ object MainObserveCli {
     private const val EVENTS_PER_READ = 256
 
     fun main(args: Array<String>): Int {
-        // The run id comes FIRST and the options after it, so there is never a question about
-        // whether `--channel stderr` consumed the run id or the flag was missing its value.
-        val runId = args.firstOrNull()?.takeIf { !it.startsWith("--") }
-        if (runId == null) {
-            System.err.println("observe: a run id is required.")
-            System.err.println(USAGE)
-            return 2
-        }
-        val optionArgs = args.drop(if (args.first() == runId) 1 else 0)
-
-        val parsed = when (val result = CliParser.parseObservation(optionArgs.toTypedArray())) {
+        // The parser is the only place that knows which options carry a value, so it is the
+        // only place that can tell the run id from an option's value. The verb reads the run
+        // id from the parsed query instead of from `args[0]`, and the request is therefore
+        // the same one whether the operator wrote the run id before the options or after.
+        val parsed = when (val result = CliParser.parseObservation(args)) {
             is ObservationParseResult.Parsed -> result
             is ObservationParseResult.Rejected -> {
                 // The refusal is rendered by the ONE mapping from an error to a
@@ -78,6 +72,20 @@ object MainObserveCli {
                 System.err.println(USAGE)
                 return 2
             }
+        }
+
+        val runId = parsed.runId
+        if (runId == null) {
+            // The refusal is a CASE of the taxonomy, not a sentence of this verb: the words
+            // the operator reads belong to [toCliExit]. This verb used to write its own
+            // ("observe: a run id is required."), a second rendering free to disagree with
+            // the first about what a missing run id is.
+            val code = refuse(
+                CliError.MissingRequiredArgument("run id", "name the run to observe"),
+                "observe",
+            )
+            System.err.println(USAGE)
+            return code
         }
 
         // The admission is decided ONCE, here, and the lane receives its outcome. `forRequest`

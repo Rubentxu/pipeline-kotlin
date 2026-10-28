@@ -458,6 +458,16 @@ sealed interface ObservationParseResult {
         val dbPath: String?,
         /** Where the Output Plane is. Null means it was not named. */
         val controlRoot: String?,
+        /**
+         * The run this request is about, read from the ONE positional argument this verb
+         * owns. Null means the operator wrote none.
+         *
+         * It travels HERE and not in the verb because the parser is the only place that
+         * knows which options carry a value: the run id is whichever argument is not an
+         * option and not an option's value, and a verb that looked for it by position
+         * would have to guess.
+         */
+        val runId: String?,
     ) : ObservationParseResult
 
     data class Rejected(val error: CliError) : ObservationParseResult
@@ -756,6 +766,7 @@ object CliParser {
 */
     fun parseObservation(args: Array<String>): ObservationParseResult {
         val state = ParseState(deliverableViews = READS_BOTH_LANES)
+        var runId: String? = null
         var index = 0
         while (index < args.size) {
             val arg = args[index]
@@ -763,7 +774,22 @@ object CliParser {
                 return ObservationParseResult.Rejected(CliError.OptionNotReadable(arg))
             }
             if (!arg.startsWith("--")) {
-                return ObservationParseResult.Rejected(CliError.TrailingOption(arg))
+                // The run id is the ONE positional argument this verb owns, and it is read
+                // wherever the operator wrote it: `observe run-1 --view console` and
+                // `observe --view console run-1` are the same request.
+                //
+                // This used to refuse ANY positional argument with [CliError.TrailingOption],
+                // whose hint talks about "the script path" — a noun this verb does not have —
+                // and the verb read the run id from the FIRST argument only, so a request
+                // that wrote the run id after an option was told the run id was missing
+                // while it was written right there. `events`, `console` and `operations`
+                // already read it in either position.
+                if (runId != null) {
+                    return ObservationParseResult.Rejected(CliError.TooManyPositionals(arg))
+                }
+                runId = arg
+                index += 1
+                continue
             }
             when (val outcome = applyOption(arg, args, index, state)) {
                 is ApplyOutcome.Applied -> index = outcome.nextIndex
@@ -807,6 +833,7 @@ object CliParser {
                 tailBytes = state.tailBytes,
                 dbPath = state.dbPath,
                 controlRoot = state.controlRoot,
+                runId = runId,
             )
 
             is SelectorCompileResult.Invalid ->
@@ -853,6 +880,11 @@ object CliParser {
         var explain = false
         var telemetry = false
         var otlp = false
+        // The run id is the ONE positional argument this verb owns, and it is read
+        // wherever the operator wrote it: the parser is the only place that knows
+        // which options carry a value, so the run id is whichever argument is not an
+        // option and not an option's value.
+        var runId: String? = null
 
         var i = 0
         while (i < args.size) {
@@ -924,8 +956,12 @@ object CliParser {
                 }
                 else -> if (a.startsWith("--")) {
                     return rejectInspect(CliError.UnknownOption(a))
-                } else {
+                } else if (runId != null) {
+                    // The FIRST positional is the run id; a SECOND one is not a request of
+                    // this verb, and it is refused naming the token to remove.
                     return rejectInspect(CliError.TooManyPositionals(a))
+                } else {
+                    runId = a
                 }
             }
             i++
@@ -955,6 +991,7 @@ object CliParser {
                 explain = explain,
                 telemetry = telemetry,
                 otlp = otlp,
+                runId = runId,
             ),
         )
     }

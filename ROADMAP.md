@@ -1690,6 +1690,59 @@ PASS  sha=47bbb2645fe6bb6ffedb24fb756fab43729d8a3b  elapsed=185s  budget=900s  t
 - 185 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 28424`, `PRODUCT_LOC = 71566`, ratio `0.397` (límite 2). La verificación subió 106 líneas y la producción 107: el corte mete cinco casos en el ADT y reescribe los 23 sitios de rechazo de `parseInspect` para que nombren una falta en vez de pintar una frase.
 
+#### El corte: un follow filtrado avanza la lectura por encima de los frames descartados
+
+**Qué hace.** `console --frames --follow` entrega los frames que el filtro admite, pero la ventana de lectura se anclaba al ÚLTIMO frame ENTREGADO. Un frame que el filtro descarta se leía y se rechazaba, y como la entrega no lo movía, el siguiente sondeo volvía a pedir la MISMA ventana. Cuando el filtro descartaba todos los frames de la ventana, el presupuesto de sondeos se consumía entero sin entregar nada, y los frames que el filtro SÍ admitía quedaban sin leer más allá.
+
+No es un estilo: es un fallo de progreso. La misma pregunta tenía dos respuestas opuestas según por dónde se mirara. La lectura simple entregaba el frame; el follow con el MISMO filtro entregaba NADA y declaraba agotado el presupuesto.
+
+Medido sobre dos distribuciones construidas de este repositorio —la anterior al corte y `d082ab47e` (después)— en la misma máquina, con el MISMO script de sonda y la misma invocación. La sonda corre un pipeline de dos stages, lee el run entero en jsonl para ver los ordinales de los que están hechas las ventanas, y después hace tres lecturas.
+
+|celda|antes|después|
+|---|---|---|
+|A: la lectura simple con filtro, sin follow|salida 0; stdout `BETA_MARKER` (12 bytes)|igual|
+|B: el follow con filtro desde el principio, `--frame-limit 1 --follow-max-polls 6`|**salida 3**; stdout VACÍO; stderr `console-follow-exhausted: 6 polls, no terminal fact observed; last frame ordinal -1. The run was NOT observed to finish — resume with --after-ordinal -1`|salida 0; stdout `BETA_MARKER` (12 bytes); stderr vacío|
+|C: el run entero en jsonl|4 frames: ordinal 0 `ALPHA_MARKER`, 1 `\n`, 2 `BETA_MARKER`, 3 `\n`|igual|
+|D: el mismo follow reanudado con `--after-ordinal 1`|salida 0; stdout `BETA_MARKER`|igual|
+
+La fila B es el defecto y la fila D es su CONTROL: reanudado por encima de los frames descartados, el follow sí entregaba. El filtro funcionaba; lo que no avanzaba era la lectura.
+
+El corte separa las DOS posiciones que un follow responde de verdad. La posición de LECTURA avanza al último frame EXAMINADO, admita o no la selección. La posición de ENTREGA sigue siendo el último frame MOSTRADO, y es la que reporta el presupuesto agotado y la que reanuda `--after-ordinal`: una reanudación no debe saltar un frame que el consumidor nunca vio. Las dos posiciones coinciden cuando la selección no descarta nada, y se separan exactamente cuando descarta —que es el único caso en que la diferencia importa—.
+
+El loop se extrajo a `followFrames`, sobre el plano que el llamante entrega, con la espera entre sondeos inyectada. Eso es lo que permite ejercitar el loop real en memoria, sin reloj y sin dormir, y por eso la costura existe para esa fila y no por comodidad. La costura muerta `emitFollowPageForTest` se eliminó: no la referenciaba nadie en el árbol. Su contrato —el stream del consumidor sigue vivo entre dos páginas— queda cubierto por la segunda fila nueva, que escribe dos páginas por el mismo stream y comprueba que el stream sigue aceptando escrituras.
+
+**La garantía, la capacidad y el instrumento.**
+- **Garantía**: un follow con filtro entrega los frames que la selección admite, y un frame que la selección descarta nunca fija la ventana de lectura.
+- **Capacidad observable**: lo que el verbo escribe en stdout cuando se le pide un follow filtrado, y el ordinal que reporta cuando se agota el presupuesto.
+- **Instrumento más barato que puede fallar**: una prueba unitaria que ejercita el LOOP REAL —el que se despacha— sobre un plano en memoria, con la espera entre sondeos inyectada. Aquí una prueba unitaria SÍ puede servir, porque el loop no lanza subprocesos ni escribe en disco: son frames en memoria y un `PrintStream` a un buffer. Un escenario de `examples/` no haría falta: el defecto no está en el contrato de la línea de órdenes, sino en la aritmética de la ventana, y un escenario de subproceso no podría observar la posición del cursor sin escribir un acento en el resultado. La garantía del contrato de vida del stream no recibe un segundo instrumento: la fila que lo cubría ya no está en el árbol, y la nueva la cubre sobre el loop real.
+
+**Visto en rojo, con la mutación leída de vuelta.** Dos mutaciones, de una en una, cada una aplicada con un `assert` de que el bloque objetivo aparecía exactamente una vez, leída de vuelta con `diff` contra una copia verificada por `sha256sum` —nunca con `git checkout --`, que destruye una reescritura sin commitear— y restaurada desde esa copia. El discriminador son las FILAS del XML de JUnit de los informes que escribió esa ejecución, no la palabra «BUILD FAILED»:
+
+|mutación|fila que se puso en rojo|
+|---|---|
+|La posición de LECTURA vuelve al frame ENTREGADO —`scanOrdinal = page.lastOrdinal` pasa a moverse sólo cuando la selección admite frames—|las DOS filas que guardan el defecto: «a follow whose window opens with dropped frames still delivers the frame the filter admits» y «every admitted frame is delivered once, in order, through the same stream». La tercera sigue verde|
+|El presupuesto agotado reporta el ordinal EXAMINADO —`lastOrdinal = deliveredOrdinal` pasa a ser `lastOrdinal = scanOrdinal`—|exactamente la TERCERA fila: «an exhausted poll budget reports the last delivered ordinal and not the last examined one» (`expected: <1> but was: <3>`). Las otras dos siguen verdes|
+
+La primera mutación, sobre el módulo entero: 357 tests, 2 en rojo, ninguno más. La segunda enciende la fila que existe para RECHAZAR un arreglo equivocado —esa fila está verde antes del corte y verde después—: un arreglo que moviera el ordinal reportado al examinado reanudaría por encima de frames que el consumidor nunca vio, y la fila lo dice.
+
+**Lo que este corte NO arregla, y se dice.**
+- El verbo `console --follow` no tiene autoridad sobre el plano de ejecución: declara `RunPlane.Unavailable` porque el verbo nunca abre el journal de eventos, así que el fin de la ejecución no se puede observar desde aquí y el follow se apoya sólo en el plano de salida. Sigue declarado, no se toca aquí.
+- El presupuesto de sondeos agotado sigue siendo una salida `0` con un ordinal reportado. Este corte no cambia esa semántica: cambia QUÉ ordinal se reporta y qué se entrega antes.
+- La espera entre sondeos es un parámetro con valor por defecto, y un llamante que no lo inyecte duerme de verdad. El corte no introduce un reloj inyectado en el resto del verbo.
+- No se toca la aritmética de las ventanas del resto de verbos: `MainObserveCli` ya usaba `page.lastOrdinal` —el último EXAMINADO— y por eso este defecto era del verbo de consola y no del lector. El lector no se ha modificado.
+- `pipeline-application` no está entre los módulos con `apiCheck`, así que este corte no cambia ninguna superficie ABI vigilada.
+
+Medido sobre `d082ab47e6be9e79d851e2f3a6435d13af11c1ec` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=d082ab47e6be9e79d851e2f3a6435d13af11c1ec  elapsed=189s  budget=900s  tests=rewritten:1539 read:0  scenarios=observed:63 executed:63
+```
+
+- 202 informes JUnit reescritos por esta ejecución, 1539 tests EJECUTADOS de verdad, 0 leídos de informes anteriores, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E observados y ejecutados, en verde; 560 comprobaciones de garantía sobre 114 ejecuciones, 0 que no comprobaran nada.
+- 189 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28626`, `PRODUCT_LOC = 71579`, ratio `0.400` (límite 2). La verificación subió 202 líneas y la producción 13: el corte mete tres filas y extrae el loop para poder ejercitarlo.
+
 ## H6 — Reducir deuda del harness y asegurar la publicación
 
 Foco: `examples/run.sh`, `verify-all.sh` y scripts de release.

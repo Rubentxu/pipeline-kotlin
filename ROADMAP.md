@@ -1783,7 +1783,7 @@ Y conviene precisar qué cierra la segunda fila y qué no: fija que el RESOLUTOR
 
 **Lo que este corte NO arregla, y se dice.**
 - El instrumento no observa, A TRAVÉS del coordinador, qué detector consulta un run real. Sólo un run durable completo lo diría, y eso no es una prueba unitaria.
-- `CanonicalStructuralDecisions.kt` arrastra dos imports MUERTOS de `DivergenceDetector` y `StrictFingerprintDivergenceDetector` (líneas 69 y 76): ninguno de los dos tipos se usa en el cuerpo. `detekt` 2.0.0-alpha.6 no trae `UnusedImports` activo, así que el gate no los ve. No se tocan aquí: no pertenecen al corte.
+- `CanonicalStructuralDecisions.kt` arrastra imports MUERTOS: la sección anterior de este ROADMAP nombraba dos —`DivergenceDetector` y `StrictFingerprintDivergenceDetector` (líneas 69 y 76)— y afirmaba que `detekt` 2.0.0-alpha.6 no puede verlos. **Era falso, y el corte siguiente lo mide**: la regla `UnusedImport` SÍ los veía; lo que los escondía era la entrada de la instantánea que los nombraba. Y no eran dos: ese archivo solo llevaba 67. Ver «El corte: los imports que no se usan dejan de estar escondidos en la instantánea», más abajo.
 - El comportamiento de producción NO cambia. La única composición del coordinador que existe (`CompositionRoot.kt:70`) no pasa detector, así que usa el valor por defecto, que es el estricto. Lo que cambia es que la puerta queda ABIERTA para otra política, como decía la firma desde el principio.
 - `ScriptedFrontendRunner.kt:96` pasa `StrictFingerprintDivergenceDetector()` a un parámetro ya tipado con la interfaz: eso no es un estrechamiento y no se toca.
 - `pipeline-application` no está entre los módulos con `apiCheck`, así que este corte no cambia ninguna superficie ABI vigilada.
@@ -1798,6 +1798,77 @@ PASS  sha=b46f33ec90adc3e1c315ee4891c7341e5ed1bfa6  elapsed=160s  budget=900s  t
 - 63 de 63 escenarios E2E observados y ejecutados, en verde; 560 comprobaciones de garantía sobre 114 ejecuciones, 0 que no comprobaran nada.
 - 160 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 28731`, `PRODUCT_LOC = 71579`, ratio `0.401` (límite 2). La verificación subió 105 líneas y la producción 0: el corte mete dos filas y quita un token de una línea.
+
+#### El corte: los imports que no se usan dejan de estar escondidos en la instantánea
+
+**Qué hace.** El análisis estático del árbol reportaba 346 imports que NINGÚN archivo usa, y los 346 estaban en la instantánea de `detekt`. La regla `UnusedImport` no fallaba nunca: el archivo que la contiene la silenciaba. Una instantánea de hallazgos es una lista de excepciones con el nombre de una regla —una entrada por hallazgo aceptado—, así que 380 entradas `UnusedImport` no eran 380 excepciones: eran 380 Findings guardados. De esas, 346 nombraban un hallazgo vivo y 34 nombraban un import que ya no estaba en el archivo.
+
+El corte borra los 346 imports del código y retira las 380 entradas de las 20 instantáneas que las contenían —de las 24 que hay en el árbol; las otras 4 nunca tuvieron una. Con eso la regla queda vigente sobre todo el árbol, incluidos los módulos anidados del SDK, y el archivo que la apagaba deja de apagarla.
+
+```kotlin
+// antes — pipeline-application/.../durable/CanonicalStructuralDecisions.kt:20
+import java.util.concurrent.atomic.AtomicLong
+```
+
+```xml
+<!-- antes — pipeline-application/detekt-baseline-main.xml -->
+<ID>UnusedImport:CanonicalCoreStepDecoder.kt:import kotlinx.serialization.json.jsonArray</ID>
+```
+
+```kotlin
+// después — el import no está
+```
+
+```xml
+<!-- después — ninguna entrada: la regla vuelve a tener dientes -->
+```
+
+|celda|antes|después|
+|---|---|---|
+|Imports declarados y no usados en el árbol|346, repartidos en 113 archivos|0|
+|Líneas de `import` borradas del código fuente|—|346, en 113 archivos, 0 añadidas, 0 líneas no-import tocadas|
+|Entradas `UnusedImport` en las instantáneas|380, en 20 de 24 archivos|0|
+|Entradas que ya no nombraban nada|34: el import se había borrado antes y la entrada se quedó|0, porque la entrada no está|
+|La regla `UnusedImport` sobre `pipeline-application`|no falla nunca: cada hallazgo está guardado|falla y nombra el archivo, la línea y la regla|
+|`CanonicalStructuralDecisions.kt`|99 líneas de `import`, 67 muertas|32 líneas de `import`|
+
+El archivo con más imports muertos era el que la sección anterior del ROADMAP señalaba por dos: `CanonicalStructuralDecisions.kt` llevaba 67 imports que no usaba, no dos. La sección anterior afirmaba que `detekt` «no puede verlos». La verdad medida es al revés: `detekt` los veía, y la entrada de la instantánea los tapaba.
+
+**La garantía, la capacidad y el instrumento.**
+- **Garantía**: un import declara una dependencia; el código la cumple o el import sobra. Un import muerto es una afirmación falsa sobre lo que el archivo toca.
+- **Capacidad observable**: el conjunto de dependencias declaradas que el árbol realmente usa, dicho por el análisis estático sobre el árbol entero, módulo por módulo.
+- **Instrumento más barato que puede fallar**: el propio `detekt`, que YA está dentro de `check`. No se añade ninguna prueba, ningún script, ninguna línea de LOC de verificación: el instrumento existía y estaba callado. El corte no AÑADE una capacidad, retira una supresión — y por eso esta garantía no recibe un segundo instrumento. Un escenario de `examples/` tampoco podría observarlo: el defecto no se manifiesta por la línea de órdenes, sino en una afirmación del código sobre sí mismo.
+
+**Visto en rojo, con la mutación leída de vuelta.** Dos mutaciones, de una en una, cada una aplicada con un `assert` de que el import objetivo aparecía exactamente una vez, leída de vuelta con `diff` contra una copia verificada por `sha256sum` —nunca con `git checkout --`, que destruye una reescritura sin commitear— y restaurada desde esa copia. El discriminador son los HALLAZGOS que nombra el análisis estático, con su archivo, su línea y su regla:
+
+|mutación|hallazgo que se puso en rojo|
+|---|---|
+|Reimporta `java.util.concurrent.atomic.AtomicLong` en `CanonicalStructuralDecisions.kt` —módulo de primer nivel|exactamente UNO: `CanonicalStructuralDecisions.kt:20:1 The import 'java.util.concurrent.atomic.AtomicLong' is unused. [UnusedImport]`. Ningún otro hallazgo, ni de otra regla|
+|Reimporta el mismo import en `pipeline-step-sdk/runtime/.../ShellWatchdog.kt` —módulo ANIDADO|exactamente UNO: `ShellWatchdog.kt:2:1 The import 'java.util.concurrent.atomic.AtomicLong' is unused. [UnusedImport]`. Ningún otro|
+
+La segunda mutación es la que importa y por eso se cuenta. El SDK vive dos niveles más abajo que `<module>/src/main/kotlin/`, así que un barrido de un solo nivel no lo ve: un corte que sólo hubiera mirado `pipelinek/*/…` habría dejado la regla apagada justo en los seis módulos anidados, y el árbol habría parecido limpio. La mutación en `ShellWatchdog.kt` es la que demuestra que la regla llega hasta allí.
+
+Antes del corte, el mismo análisis con las entradas retiradas de la instantánea reportaba 266 hallazgos en los módulos de primer nivel y 80 en los anidados: 346, que es exactamente el número de líneas borradas. La correspondencia es una-a-una, y por eso el corte no borra «imports que parecían muertos»: borra lo que el instrumento nombraba.
+
+**Lo que este corte NO arregla, y se dice.**
+- `detekt` no es un compilador. `UnusedImport` afirma que el archivo no USA el símbolo; no afirma que el símbolo no exista, ni que quitar el import no rompa una resolución que se hacía por otra vía. Se dice porque el corte borra 346 líneas, y eso es una afirmación sobre lo que se USA, no sobre lo que COMPILA.
+- Lo que demuestra que la eliminación es segura NO es el hallazgo: es la COMPILACIÓN del árbol entero en verde con los 346 imports fuera, más los 1541 tests ejecutados de verdad. Un hallazgo ausente dice que el archivo no usaba el símbolo; no dice que el símbolo no hiciera falta.
+- El corte abre UNA regla en 20 archivos. Las demás reglas de las instantáneas siguen apagadas, y aquí no se dice cuántas quedan ni cuántas deberían quedar.
+- Las 4 instantáneas sin ninguna entrada `UnusedImport` —`pipeline-credentials-executor`, `pipeline-runtime-api`, `pipeline-step-sdk/files`, `pipeline-step-sdk/workflow-control`— no se tocaron. No se afirma que tuvieran imports muertos: no los tenían.
+- La configuración de `detekt` no se toca: ni `detekt.yml` (138 líneas de sobreescritura) ni la forma de calcular `moduleBaseline` en `build.gradle.kts`. Lo que cambia es qué se le deja decir.
+- `pipeline-application` no está entre los módulos con `apiCheck`, y este corte no cambia ninguna superficie ABI vigilada: no toca firmas, ni tipos públicos, ni formatos durables. Los imports no son parte de la superficie publicada; lo que se borra es la declaración de una dependencia que el archivo no cumple.
+- La regla se lee en modo «construido sobre la configuración por defecto» (`buildUponDefaultConfig.set(true)`), así que este corte puede sacar a la luz hallazgos que la configuración por defecto de `detekt` tampoco consideraría. Se dice para que nadie lea este corte como un censo completo de imports muertos.
+
+Medido sobre `9b859077af2afece30c9ddf3e9cdb75086857570` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=9b859077af2afece30c9ddf3e9cdb75086857570  elapsed=181s  budget=900s  tests=rewritten:1541 read:0  scenarios=observed:63 executed:63
+```
+
+- 203 informes JUnit reescritos por esta ejecución, 1541 tests EJECUTADOS de verdad, 0 leídos de informes anteriores, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E observados y ejecutados, en verde; 560 comprobaciones de garantía sobre 114 ejecuciones, 0 que no comprobaran nada.
+- 181 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28731`, `PRODUCT_LOC = 71233`, ratio `0.403` (límite 2). La verificación no cambió NI UNA línea y la producción bajó 346: el ratio SUBE de `0.401` a `0.403` porque el denominador encogió, no porque el numerador creciera. El corte no añade ni una línea de verificación.
 
 ## H6 — Reducir deuda del harness y asegurar la publicación
 

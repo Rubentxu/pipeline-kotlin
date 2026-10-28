@@ -14,8 +14,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.StepReconcilerL1
 import java.nio.file.Path
 
 /**
- * TRAIN /, corrected by — the observer behind the "a2" external-subprocess
- * compatibility hook.
+ * The observer behind the external-subprocess compatibility hook.
  * [DurableInvocationResolver] used to reach for [StepReconcilerL1] and [DurableShellExecutor]
  * itself. That put process-reconciliation knowledge — control directories, reattach polling,
  * the 60 s reattach timeout — inside the class that owns the durable replay DECISION, which is

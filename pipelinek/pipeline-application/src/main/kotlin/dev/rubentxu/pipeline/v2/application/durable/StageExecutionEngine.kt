@@ -15,7 +15,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * TRAIN / — what a stage DOES, out of the run loop
+ * What a stage DOES, out of the run loop
  * The coordinator owns the run: its bookends, the stage loop, and what the run does
  * next. This engine owns a single stage once the run has decided to start it: its
  * linear body, its continuation, and its `post` finalizers.

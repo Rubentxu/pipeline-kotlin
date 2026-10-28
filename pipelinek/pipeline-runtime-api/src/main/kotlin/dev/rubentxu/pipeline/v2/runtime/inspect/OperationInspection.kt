@@ -5,11 +5,10 @@ import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 
 /**
  * Closed ADT returned by [RuntimeIntrospectionPort.inspectOperation].
- * A sealed result with two cases (the
- * inspection or a refusal). The [OperationInspection] is the typed view the
- * audit'sF.2 names "what is the terminality of THIS operation?"; the
- * `IntrospectionRefusal` is the existing closed ADT (no new refusal
- * variants needed).
+ * A sealed result with two cases (the inspection or a refusal).
+ * The [OperationInspection] is the typed view that answers "what is the
+ * terminality of THIS operation?"; the `IntrospectionRefusal` is the
+ * existing closed ADT (no new refusal variants needed).
 */
 sealed interface OperationInspectionResult {
 

@@ -110,9 +110,8 @@ interface RuntimeIntrospectionPort {
         /**
          * Upper bound on a single `runStructure` call's wall time.
          * Documented so the UAT matrix can pin it; the implementation
-         * MUST honour it. The audit's B.1 hardening item is to
-         * name the budget for the bounded-scan / paginated read path
-         * the same way `DEFAULT_INSPECT_TIMEOUT_MS` names the budget
+         * MUST honour it. The budget for the bounded-scan / paginated read
+         * path is named the same way `DEFAULT_INSPECT_TIMEOUT_MS` names the budget
          * for the single-page inspect path. The value is 10_000L
          * (twice `DEFAULT_INSPECT_TIMEOUT_MS`) because paginated
          * reads may legitimately take longer than a single-page

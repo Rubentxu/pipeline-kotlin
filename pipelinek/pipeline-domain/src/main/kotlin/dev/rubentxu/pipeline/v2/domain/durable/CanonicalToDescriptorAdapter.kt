@@ -8,7 +8,7 @@ import java.nio.file.Path
 
 /**
  * Adapter from canonical coordinator types to the
- * Parallel descriptor vocabulary introduced by
+ * Parallel descriptor vocabulary.
  * ## Why this exists
  * Created `BodyInterpreter` with its own descriptor family
  * ([BodyExecutionProjectionDescriptor], [BlockShellScopeDescriptor]) because
@@ -17,9 +17,9 @@ import java.nio.file.Path
  * canonical coordinator untouched: it still inlines the dispatch loop,
  * still holds its private `BlockShellScope` / `BodyExecutionProjection`
  * types, and still branches on `is BodyShellScope.Directory` etc.
- * Slice 1/3 is the **adapter** that lets the canonical
+ * This is the **adapter** that lets the canonical
  * coordinator publish its types and consume the interpreter. Once this
- * adapter is in place, slices 2/3 and 3/3 migrate the inline loops
+ * adapter is in place, the inline loops
  * (`dispatchBody`, `runParallelStage`, retry loop) to consume the
  * interpreter + durable control engine policy + branch invoker without
  * changing the durable event/journal byte stream.
@@ -38,9 +38,9 @@ import java.nio.file.Path
  * currently `private` inside `CanonicalDurableRunCoordinator`. To make this
  * adapter usable by the canonical code, those types must be published
  * (moved to `:pipeline-domain` or made public inside `:pipeline-application`).
- * Slice 1/3 prepares the adapter; /3 publishes the types and
- * introduces the canonical coordinator's `interpret(...)` call site;
- * /3 migrates the inline loops behind the engines.
+ * The adapter publishes the types and introduces the canonical
+ * coordinator's `interpret(...)` call site; the inline loops then move
+ * behind the engines.
 */
 object CanonicalToDescriptorAdapter {
 

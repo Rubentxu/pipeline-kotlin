@@ -17,7 +17,7 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 
 /**
- * TRAIN / — the INTERPRETATION half of durable recovery
+ * The INTERPRETATION half of durable recovery
  * [DurableInvocationResolver] decides. This interprets. The two were previously one `when`
  * block inside `CanonicalDurableRunCoordinator.dispatch`, which meant the coordinator both
  * decided what a resumed run may do and performed the journal write, the cursor advance and
@@ -47,7 +47,7 @@ import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
  * its [Request] carried `runIdValue` + `stageIndex` purely to do so. Both are gone. The
  * cursor models where the canonical RUN resumes, which is traversal state; interpreting a
  * recovery is not traversal. Leaving the store here would also have split cursor ownership
- * Between this engine and the executor, which is the two-owner shape exists to remove
+ * Between this engine and the executor, which is the two-owner shape this split exists to remove
  * The consequence is the signal that the boundary is now correct: with `runIdValue` and
  * `stageIndex` deleted as unused, every remaining field of [Request] is a durable fact
  * about the operation or the lifecycle coordinates of the execution. Nothing here needs a

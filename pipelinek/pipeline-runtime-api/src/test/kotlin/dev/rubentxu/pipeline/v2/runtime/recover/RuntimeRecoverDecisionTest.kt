@@ -140,7 +140,7 @@ class RuntimeRecoverDecisionTest {
         // rather than hiding it: a fifth attempt that was cancelled is reported as attempt one.
         // It is pinned, not endorsed. The authority that would settle which is right is the design
         // Markdown this repository deleted, so the honest state is "observed, unverified". If this
-        // value is changed, the diff IS the decision, and the roadmap entry should move with it.
+        // value is changed, the diff IS the decision, and the record of that decision should move with it.
         val fifth = running(attempt = 5)
 
         assertEquals(AttemptId(1), (decide(fifth, proof(terminalRow = row("cancelled"))) as RecoveryChoice.AlreadyRecovered).attempt)

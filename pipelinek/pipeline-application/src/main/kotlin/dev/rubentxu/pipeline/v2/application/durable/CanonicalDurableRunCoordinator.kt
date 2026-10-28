@@ -226,7 +226,7 @@ class CanonicalDurableRunCoordinator(
         divergenceDetector = divergenceDetector,
         effectReplayPolicy = effectReplayPolicy,
         journal = journal,
-        // TRAIN /: the a2 external-subprocess compatibility hook is COMPOSED here and
+        // The external-subprocess compatibility hook is COMPOSED here and
         // reaches the resolver only as a port. The resolver decides when recovery applies; this
         // adapter owns the only place that knows a control directory and a live process exist.
         runningSubprocessRecovery = ExternalSubprocessRecovery(clock, controlDirRoot, reattachPoll),
@@ -289,11 +289,11 @@ class CanonicalDurableRunCoordinator(
     // The run-lifecycle bookends and the running outcome live in
     // the extracted engine (same events, same ordering, same quirks).
     private val runLifecycle = RunLifecycleEngine(eventSink)
-    // TRAIN /: the BEFORE_STAGE directive seam. It admits, decodes, composes
+    // The BEFORE_STAGE directive seam. It admits, decodes, composes
     // evaluates and observes, then returns a closed verdict; this class keeps the run's control
     // flow, because only the owner of the loop may decide what the run does next.
     private val beforeStageDirectives = BeforeStageDirectiveEngine(eventSink, gateContext, gateEvaluator, capabilityContributor)
-    // TRAIN /: the INTERPRETATION of a recovery resolution. The DECISION already
+    // The INTERPRETATION of a recovery resolution. The DECISION already
     // lives in invocationResolver; this engine performs the journal write and the lifecycle
     // events that a resolution names, and reports ProceedToExecution for the one resolution
     // That is not a recovery case.: it advances no cursor — that is traversal state
@@ -305,7 +305,7 @@ class CanonicalDurableRunCoordinator(
         retryControlJournal,
         waitUntilControlJournal,
     )
-    // TRAIN /: the step-execution spine. `dispatch` falls through to `dispatchBody`
+    // The step-execution spine. `dispatch` falls through to `dispatchBody`
     // which hands the body back to the body engine with this class's own `dispatchChild` as the
     // re-entry reference, and a parallel branch walks its steps through `dispatch` again. That
     // recursion is the unit of cohesion, so the whole closed cycle moves together and the
@@ -336,7 +336,7 @@ class CanonicalDurableRunCoordinator(
         // invocation-bound intent port.
         sagaBinding = sagaBinding,
     )
-    // TRAIN /: a parallel stage is a composite with its own durable aggregate, not a
+    // A parallel stage is a composite with its own durable aggregate, not a
     // Step, so it does not belong to the step spine. It dispatches branch steps back through
     // `stepDispatch`, which keeps one direction only and one dispatch spine.
     private val parallelStages = ParallelStageEngine(
@@ -348,7 +348,7 @@ class CanonicalDurableRunCoordinator(
         controlDirRoot = controlDirRoot,
         workspaceBase = workspaceBase,
     )
-    // TRAIN /: what a stage DOES once the run has decided to start it — its linear
+    // What a stage DOES once the run has decided to start it — its linear
     // body, its continuation, and its `post` finalizers. A stage reports a closed verdict and
     // the context it leaves behind; only this loop decides what the run does next.
     private val stageExecution = StageExecutionEngine(
@@ -368,7 +368,7 @@ class CanonicalDurableRunCoordinator(
             stagesLoop@ for (stageIndex in pipeline.stages.indices) {
                 val stage = pipeline.stages[stageIndex]
 
-                // TRAIN /: the BEFORE_STAGE directive seam is interpreted by
+                // The BEFORE_STAGE directive seam is interpreted by
                 // BeforeStageDirectiveEngine, which admits, decodes, composes, evaluates and
                 // OBSERVES, then returns a closed verdict. Only this loop owns the run's control
                 // flow: a collaborator may not write `return@run` or `continue@stagesLoop`.
@@ -480,7 +480,7 @@ class CanonicalDurableRunCoordinator(
                 // The canonical coordinator emits StageStarted at entry and StageFinished on normal
                 // completion (success/unstable). An aborting stage returns before StageFinished;
                 // RunFinished carries the failure.
-                // TRAIN /: the stage body, its continuation and its `post`
+                // The stage body, its continuation and its `post`
                 // finalizers live in StageExecutionEngine. The run loop keeps only the two
                 // things a stage may say to a run: carry on carrying this context, or abort
                 // with this typed reason. A collaborator may not write return@run.

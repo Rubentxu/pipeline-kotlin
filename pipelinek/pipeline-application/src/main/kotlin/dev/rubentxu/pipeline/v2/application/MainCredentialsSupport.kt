@@ -88,7 +88,7 @@ internal fun composeCredentialSeam(
         error("unreachable")
     }
 
-    // H0 composition root: construct credential ports and executor
+    // Composition root: construct credential ports and executor
     // LocalSecretStore (existing) -> LocalCredentialProvider -> CredentialMaterializer
     // -> LocalFileMaterialization -> WithCredentialsExecutor
     val provider: CredentialProvider = LocalCredentialProvider(secretStore)

@@ -1974,7 +1974,7 @@ run_scenario_body() {
     # The reason their cache is the cycle-local one is NOT the path. The
     # product's cache key is by CONTENT -- the classpath enters it as digest
     # and size, not as a path -- and that was measured: the same bytes in
-    # another path give the same key (section 2.94 of the ROADMAP).
+    # another path give the same key.
     #
     # The reason is the BYTES: of the nine scenarios that name their own
     # artifact, six rebuild it in every cycle, so its digest -- and with it
@@ -1987,7 +1987,7 @@ run_scenario_body() {
     # never be served again. The export is local to this scenario's own
     # subshell, so no other scenario inherits it. What this forgoes is at
     # most the compilation of those two scenarios -- measured, and left as a
-    # DEFER (section 2.96 of the ROADMAP), because moving per-cycle artifacts
+    # DEFER, because moving per-cycle artifacts
     # into a shared namespace is a cache-safety question, and those two run
     # in parallel with the rest.
     if [[ -n "$plugin_jar" || -n "$distribution" ]]; then

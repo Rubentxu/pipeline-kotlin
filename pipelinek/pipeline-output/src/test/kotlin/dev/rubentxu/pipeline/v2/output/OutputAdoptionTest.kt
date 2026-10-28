@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test
 
 /**
  * What the product is allowed to say about its own output, and what it is not.
- * [OutputAdoption] is the checkable form of the ADR that chose segment reservation with recovery
+ * [OutputAdoption] is the checkable form of the decision that chose segment reservation with recovery
  * Over three other candidates. Its answer decides whether " is implemented" is a claim or a
  * hope, so the two functions here are guards rather than documentation -- and both have already
  * been wrong once, in ways the compiler could not see. Each of those two defects gets its own test

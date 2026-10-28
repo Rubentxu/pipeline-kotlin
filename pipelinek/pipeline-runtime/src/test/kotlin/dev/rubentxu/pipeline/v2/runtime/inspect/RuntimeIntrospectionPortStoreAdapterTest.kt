@@ -42,9 +42,8 @@ import java.time.Instant
  * a fact about an OPERATION. An operation reaches a terminal state long
  * before the run does: a run whose first step succeeded and whose second
  * step is still running already has a terminal row, so the plane reported a
- * half-finished run as finished. That is the same defect section 2.20 of the
- * ROADMAP fixed in the control adapter, and it stood here precisely because
- * nothing consumed this adapter.
+ * half-finished run as finished. That is the same defect the control adapter
+ * fixed, and it stood here precisely because nothing consumed this adapter.
  *
  * ## The two halves of the guarantee
  *

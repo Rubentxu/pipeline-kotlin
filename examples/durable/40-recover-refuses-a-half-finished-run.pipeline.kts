@@ -17,7 +17,7 @@
 // a half-finished run as successful — a result nobody observed, published
 // under the operator's name.
 //
-// The same distinction the cancel adapter got in section 2.20 of the ROADMAP:
+// The same distinction the cancel adapter got:
 // a terminal operation is not a terminal run. This time the adapter that got
 // it wrong was the RECOVER one, and it was wrong in the same way.
 //

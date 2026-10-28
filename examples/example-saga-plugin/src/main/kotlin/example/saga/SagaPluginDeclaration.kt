@@ -20,7 +20,7 @@ import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 /**
  * The external plugin's DECLARATION, in one place.
  *
- * ## Why this file exists now and not in BLOCK 1-A..1-H
+ * ## Why this file exists now
  *
  * Because until here this plugin had no manifest at all. That was not a smaller plugin, it was an
  * UNADMITTED one: `PluginAdmissionGate` refuses any contributor whose artifact has no
@@ -32,8 +32,8 @@ import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
  *
  * The manifest is emitted into the artifact at BUILD time and read back at RUN time. Both readers
  * must read THIS object. A JSON document typed by hand in `build.gradle.kts` would be a second
- * authority able to describe a Step this code does not have — the same defect as the KSP in
- * BLOCK 1-H, in a different file.
+ * authority able to describe a Step this code does not have — the same defect, in a different
+ * file.
  */
 object SagaPluginDeclaration {
 

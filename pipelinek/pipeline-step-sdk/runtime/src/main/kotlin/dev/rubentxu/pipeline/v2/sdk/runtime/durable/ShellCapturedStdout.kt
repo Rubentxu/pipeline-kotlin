@@ -19,8 +19,8 @@ import java.nio.file.Path
  * that printed `hello\n` therefore published `"hello"` on a fresh run and `"hello\n"` on a
  * resumed one — the same step, the same program, the same file, and two different public values.
  * The difference was invisible until a consumer compared them, and it is exactly the difference
- * ROADMAP's H3 delivery criterion forbids: a complete `sh` whose typed capture and whose
- * resumption do NOT preserve the same public semantics.
+ * a complete `sh` must not have: a typed capture and a resumption that do NOT preserve the same
+ * public semantics.
  *
  * ## The rule
  * ```text

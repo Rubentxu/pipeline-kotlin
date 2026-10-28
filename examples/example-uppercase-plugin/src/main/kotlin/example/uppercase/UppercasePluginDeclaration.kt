@@ -127,7 +127,7 @@ object UppercasePluginDeclaration {
         )
     }
 
-    /** All four families, from one artifact. The subject of BLOCK 1-I and of 1-J. */
+    /** All four families, from one artifact. */
     fun manifest(
         classLoader: ClassLoader = UppercasePluginDeclaration::class.java.classLoader,
     ): PluginManifest {

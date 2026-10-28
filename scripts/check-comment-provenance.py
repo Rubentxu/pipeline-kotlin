@@ -39,6 +39,24 @@ WHAT COUNTS AS PROVENANCE
   comment is only ever a hash somebody pasted. It must carry both a letter and
   a digit: `decades` and `999999999` are words and a glob, not hashes.
 
+  A management document: the name of a document that decides the work rather
+  than describing the code. `ROADMAP` and `BACKLOG` are matched in any case,
+  because no ordinary sentence in a source file uses those words, and glued to
+  a neighbouring word (`..._ROADMAP`), because a glued name points at the same
+  document.
+
+  An administrative label: `ADR`, `SPEC`, `TRAIN` in capitals only, and only
+  standing on their own. Lower case `spec` and lower case `release train` are
+  ordinary English and appear in this tree as such, and `PIPELINEK_RELEASE_TRAIN`
+  is a variable name rather than a pointer.
+
+  A plan coordinate: the alphabet the plan itself uses, and nothing else.
+  `H3` (a milestone), `a2` (a slice), `Slice 2`, `BLOCK 1`, `B.1` (an audit
+  finding, also found glued to a word as in `auditB.3`). The vocabulary is
+  closed on purpose: a rule shaped like "a letter next to a digit" also
+  matches `v2`, which is this product's own version, and a rule that knew
+  every token would be the plan wearing the guard's clothes.
+
 WHAT IS DELIBERATELY NOT PROVENANCE
   Published vulnerability identifiers such as CVE-2023-32981. They name a real
   defect in the world and they are the reason the code they sit next to
@@ -49,6 +67,14 @@ WHAT IS DELIBERATELY NOT PROVENANCE
 
   Directives. A line that starts with `//@` is read by the scenario launcher;
   it is configuration, not commentary, and this check never looks inside one.
+
+WHY THE MANAGEMENT DOCUMENTS ARE A RULE AND NOT A MATTER OF TASTE
+  The documents these rules name are not repository content: they live outside
+  the Git index, so a reader of this tree cannot open them. A comment that
+  points at one therefore points at nothing the reader has, and the fact the
+  comment wanted to convey -- what the code does, and why -- has to be said in
+  the comment itself. The same is true of a plan coordinate: it locates a fact
+  in a document that does not travel, so the fact has to travel in the comment.
 
 HOW THE COMMENTS ARE FOUND
   By tokenising the file for the language it is written in, not by guessing from
@@ -75,6 +101,32 @@ from pathlib import Path
 TICKET = re.compile(r"\b[A-Z][A-Z0-9]{0,5}-(?=[A-Z0-9])[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\b")
 SECTION = re.compile(r"§\s*[0-9][0-9A-Za-z.]*")
 HASH = re.compile(r"(?<![A-Za-z0-9])[0-9a-f]{7,40}(?![A-Za-z0-9])")
+
+# The name of a document that decides the work instead of describing the code.
+# Matched in any case: no ordinary sentence in a source file says "roadmap".
+# The name may be glued to a neighbouring word (`..._ROADMAP`), because a glued
+# name points at the same document.
+DOCUMENT = re.compile(r"[A-Za-z0-9_]*(?:ROADMAP|BACKLOG)\b", re.IGNORECASE)
+
+# An administrative label. Capitals only, and NOT glued: lower case "spec" and
+# lower case "release train" are ordinary English and occur in this tree as
+# such, and `PIPELINEK_RELEASE_TRAIN` is a variable name, not a pointer.
+LABEL = re.compile(r"\b(?:ADR|SPEC|TRAIN)\b")
+
+# A coordinate of the plan. A closed vocabulary, not a shape: a shape like
+# "a letter next to a digit" also matches `v2`, which is the product's own
+# version token, and would fire on it 457 times.
+#
+# The audit-coordinate branch accepts a glued prefix (`auditB.3`) because the
+# coordinate is the pointer and the prefix is only the word it was stuck to.
+# The other branches do not: `a[0-9]` glued would also match `schema1`.
+PLAN = re.compile(
+    r"[A-Za-z0-9_]*[A-Z]\.[0-9]\b"
+    r"|\bH[0-9]\b"
+    r"|\ba[0-9]\b"
+    r"|\b[Ss]lice\s+[0-9A-Z]\b"
+    r"|\bBLOCK\s+[0-9]\b"
+)
 
 ALLOWED = {
     "SHA-1", "SHA-224", "SHA-256", "SHA-384", "SHA-512",
@@ -241,6 +293,15 @@ def scan(text: str, spans):
         commits = [h for h in HASH.findall(block) if looks_like_hash(h)]
         if commits:
             reasons.append("commit " + ",".join(sorted(set(commits))[:4]))
+        documents = sorted({d.upper() for d in DOCUMENT.findall(block)})
+        if documents:
+            reasons.append("documento " + ",".join(documents[:4]))
+        labels = sorted({label for label in LABEL.findall(block)})
+        if labels:
+            reasons.append("etiqueta " + ",".join(labels[:4]))
+        plans = sorted({plan for plan in PLAN.findall(block)})
+        if plans:
+            reasons.append("plan " + ",".join(plans[:4]))
         if reasons:
             found.append((line_no, "; ".join(reasons), block.strip().splitlines()[0][:96]))
     return found
@@ -274,7 +335,7 @@ def main() -> int:
         print(f"\nCOMENTARIOS CON PROCEDENCIA: {total}")
         print("Un comentario explica que hace el codigo. Quien lo pidio lo dice la historia.")
         return 1
-    print("OK: ningun comentario nombra un encargo, una seccion de documento o un commit")
+    print("OK: ningun comentario nombra un encargo, un documento de trabajo, una etiqueta administrativa o un commit")
     return 0
 
 

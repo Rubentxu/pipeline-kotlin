@@ -3,7 +3,7 @@ package dev.rubentxu.pipeline.v2.sdk.utilities.domain
 import kotlinx.serialization.Serializable
 
 /**
- * `core-utils.unzip` typed Output (utilities, Slice 2 /.5)
+ * `core-utils.unzip` typed Output (utilities)
  * Three fields are all nullable because the operation mode is what
  * determines which one is populated. The codec rejects envelopes
  * where more than one is set or where none is set.

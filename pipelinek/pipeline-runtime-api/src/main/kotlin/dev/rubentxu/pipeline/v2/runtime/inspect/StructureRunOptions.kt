@@ -2,13 +2,12 @@ package dev.rubentxu.pipeline.v2.runtime.inspect
 
 /**
  * Bounded-scan + resume-cursor options for [RuntimeIntrospectionPort.runStructure].
- * The audit'sF.3 names "bounded scan + resume cursor" as the F.3 gap. The
- * options pin the contract:
+ * It names "bounded scan + resume cursor". The options pin the contract:
  *  - `pageSize` — the maximum number of operations returned in a single
  *    call. Bounded per-call, not per-run. The init guard enforces a [1, 4096]
  *    range; the lower bound stops an unbounded call, the upper bound stops a
- *    one-shot giant scan that would defeat the audit's "lectura eficiente
- *    con presupuestos explícitos" rule.
+ *    one-shot giant scan that would defeat a bounded read with explicit
+ *    budgets.
  *  - `cursor` — the [StructureCursor] from the previous call's result, or
  *    `null` for the first call. Passing a cursor that does not match the
  *    run's state returns a `RunStructureResult.Refused(...)` or a truncated
@@ -36,7 +35,7 @@ data class StructureRunOptions(
         /** Default page size; matches the design's `DEFAULT_INSPECT_TIMEOUT_MS` discipline */
         const val DEFAULT_STRUCTURE_PAGE_SIZE: Int = 64
 
-        /** Hard cap on a single call's `pageSize`. The audit's F.3 answer. */
+        /** Hard cap on a single call's `pageSize`. */
         const val MAX_STRUCTURE_PAGE_SIZE: Int = 4096
 
         /** The default options (`pageSize = 64`, no cursor, include all stages). */

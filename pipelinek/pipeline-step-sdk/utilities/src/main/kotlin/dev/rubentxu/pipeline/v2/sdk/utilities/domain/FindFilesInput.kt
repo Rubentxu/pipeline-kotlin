@@ -4,7 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import kotlinx.serialization.Serializable
 
 /**
- * `core-utils.findFiles` typed Input (utilities, Slice 2 /.3)
+ * `core-utils.findFiles` typed Input (utilities)
  * Jenkins reference: pipeline-utility-steps-plugin::FindFilesStep.
  * Behaviour summary: enumerate entries under the workspace, optionally
  * filtered by a glob. An empty pattern lists direct children only.

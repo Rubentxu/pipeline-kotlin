@@ -6,7 +6,7 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.TerminalObservation
 /**
  * Closed ADT returned by [RuntimeRecoverPort.recover]. Each case names a
  * real outcome; new cases are compile errors at every `when` site.
- * Mirrors the audit's B.3 `RecoveryChoice` ADT (plus the `AlreadyRecovered`
+ * Mirrors the `RecoveryChoice` ADT (plus the `AlreadyRecovered`
  * idempotency case).
 */
 sealed interface RecoverOutcome {
@@ -15,7 +15,7 @@ sealed interface RecoverOutcome {
      * The run reached a known terminal state and the recovery is complete. The
      * `terminal` carries the typed [TerminalObservation].
      * This is the only outcome that does NOT re-execute external effects; the
-     * terminal is the journal's own observation (audit D.4, no-rerun invariant).
+     * terminal is the journal's own observation (the no-rerun invariant).
 */
     data class RecoveredTerminal(
         val attempt: AttemptId,

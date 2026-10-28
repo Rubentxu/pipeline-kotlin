@@ -4,9 +4,8 @@ package dev.rubentxu.pipeline.v2.runtime.inspect
  * Closed ADT of reasons an inspection could not be served.
  * Mirrors the convention (`OutputRefusal`, `EventRecordReadRefusal`
  * `EventFollowRefusal`): a sealed interface per port, no `Either`/`Result` reuse.
- * The audit's B.1 names `NoEventStore`, `NoControlRoot`, `UnknownRun`,
- * `LeaseHeldByAnother`. This design formalises those plus the substrate gaps
- * the audit'sC unmasked (`InconsistentLeaseState`).
+ * It names `NoEventStore`, `NoControlRoot`, `UnknownRun`,
+ * `LeaseHeldByAnother`, plus the substrate gap `InconsistentLeaseState`.
 */
 sealed interface IntrospectionRefusal {
 
@@ -25,7 +24,7 @@ sealed interface IntrospectionRefusal {
     /**
      * The run is held by another process whose lease is still live. The `heldBy`
      * and `fencingToken` name the live authority; this is the same fact the
-     * cancel port refuses on (audit B.2). The introspection port reports it; it
+     * cancel port refuses on. The introspection port reports it; it
      * does NOT attempt to take over.
 */
     data class LeaseHeldByAnother(
@@ -48,7 +47,7 @@ sealed interface IntrospectionRefusal {
      * pair that the journal has no row for. The case is additive on the
      * Existing `IntrospectionRefusal` ADT (no breaking change). The
      * first-cut adapter used `StorageError("no journal row ...")` for
-     * This case; the audit's B.2 hardening item is to lift the
+     * This case; the hardening is to lift the
      * "no row" mode into a typed refusal case so a consumer can
      * `when` on it without parsing the StorageError's cause string.
 */

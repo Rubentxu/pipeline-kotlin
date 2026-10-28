@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # install-pipelinek.sh — Autonomous installer for the PipelineK CLI
 # Authority:
-#   -: the canonical artifact is the ZIP.
-#   - TRAIN: SHA256SUMS authority, transactional install,
+#   - The canonical artifact is the ZIP.
+#   - The release carries SHA256SUMS authority, transactional install,
 #     exact runtime identity, doctor diagnostics.
 # Verification status: the contract tests that used to cover this installer
-# (scripts/test_install_pipelinek.py, exercised by the former /)
+# (scripts/test_install_pipelinek.py, exercised by the former harness)
 # were deleted by the testing reset, and the current policy forbids the
 # subprocess-based unit tests that would replace them. These guarantees are
 # therefore NOT covered by a permanent automated check; they are exercised,

@@ -27,7 +27,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * TRAIN / — the BEFORE_STAGE directive seam, out of the run loop
+ * The BEFORE_STAGE directive seam, out of the run loop
  * Admission plus interpretation of a stage's declared directives used to be ~317 lines inline in
  * `CanonicalDurableRunCoordinator.run`, interleaved with the run's control flow: every denial
  * site wrote a `return@run`, and the skip site wrote a `continue@stagesLoop`. That made the seam

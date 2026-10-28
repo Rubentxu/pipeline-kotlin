@@ -4,15 +4,15 @@ import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 
 /**
- * Closed ADT the audit's B.1/B.4 names "what does this run look like right
+ * Closed ADT that names "what does this run look like right
  * now?". Each case names a substrate condition; new cases are compile errors at
  * every `when` site that exhausts this ADT.
  *  - `Running.process` is OPTIONAL (the runtime does not always have a durable
  *    reference to the live writer process — e.g. when Fabric is on a different
  *    host). The contract does not depend on it.
  *  - `Terminal.terminal` carries a typed [TerminalObservation] (NOT a raw
- *    `(StepOutcome, OperationStatus)` pair), which is whatD.4 of the audit
- *    names as the fix for the category error between "what the journal recorded"
+ *    `(StepOutcome, OperationStatus)` pair), which names the fix for the
+ *    category error between "what the journal recorded"
  *    and "what the run semantically is".
 */
 sealed interface RuntimeObservation {
@@ -145,7 +145,7 @@ sealed interface TerminalObservation {
 
 /**
  * Closed ADT of reasons the substrate could not be inspected at all.
- * Mirrors the audit's B.1 distinction: "substrate cannot be inspected" (this
+ * Mirrors the distinction: "substrate cannot be inspected" (this
  * refusal) is a different type from "substrate was inspected and yields
  * nothing" ([RuntimeObservation.LiveButEmpty]). The two cases are deliberately
  * different types so a consumer can `when` on them without parsing a free-text

@@ -6,9 +6,9 @@
 # resolves an asset's expected digest out of a published manifest. This is the
 # PRODUCER half. Splitting them means the format has exactly one producer and
 # exactly one consumer, and both are testable without a GitHub release.
-# What the spec requires (and what this therefore emits)
+# What the manifest has to carry (and what this therefore emits)
 # ------------------------------------------------------
-#  lists what is "published alongside" the distribution ZIP:
+# It lists what is "published alongside" the distribution ZIP:
 #   - the ZIP
 #   - SHA256SUMS      <- this script's output
 #   - the SBOM
@@ -103,7 +103,7 @@ main() {
   mkdir -p "$manifest_dir"
 
   # Entry names are recorded RELATIVE TO THE MANIFEST'S OWN DIRECTORY.
-  # The spec ( ) says entries carry "the build-time path, not the download
+  # The manifest's own contract says entries carry "the build-time path, not the download
   # name", and the consumer resolves on basename, so any path would technically
   # work. But an ABSOLUTE path is a build-machine detail: it does not resolve
   # after a consumer downloads the assets and runs `sha256sum -c` beside them,

@@ -94,9 +94,9 @@ class SegmentOutputStore(
     /**
      * Optional pin port consulted by [canPrune]. When `null` (default),
      * `canPrune` returns [PruneAuthorisation.Granted] unconditionally. The
-     * auditB.3 (f) names the consult-before-act primitive as the load-bearing
-     * authority on the retention-under-pin invariant; the wiring is optional
-     * so test fixtures that do not need pins can construct a plain store.
+     * consult-before-act primitive is the load-bearing authority on the
+     * retention-under-pin invariant; the wiring is optional so test fixtures
+     * that do not need pins can construct a plain store.
 */
     private val pinPort: OutputPinPort? = null,
 ) : OutputAppendPort, OutputReadPort, OutputRecoveryPort, OutputRetentionPort, OutputSealPort,

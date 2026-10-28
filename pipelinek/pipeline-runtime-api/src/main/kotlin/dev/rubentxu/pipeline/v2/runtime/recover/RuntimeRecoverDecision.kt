@@ -278,7 +278,7 @@ sealed interface RecoveryChoice {
      * The substrate was inspected and the terminal is the journal's own
      * observation; the recover port materialises the terminal and returns
      * [RecoverOutcome.RecoveredTerminal]. This is the ONLY case that does NOT
-     * re-execute external effects (audit D.4).
+     * re-execute external effects.
 */
     data class ReuseTerminal(
         val receipt: TerminalReceipt,

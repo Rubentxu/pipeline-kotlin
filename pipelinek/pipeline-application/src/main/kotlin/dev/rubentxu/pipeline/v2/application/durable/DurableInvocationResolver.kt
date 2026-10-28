@@ -21,7 +21,7 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
 
 /**
  * Durable invocation reconciliation extracted from the
- * coordinator. Owns exactly the frozen a1/a2.3 decision: divergence gate,
+ * coordinator. Owns exactly one frozen decision: divergence gate,
  * external-subprocess recovery hook, effect-aware replay resolution.
  * Deps are the minimal collaborators of that decision; no event sink, no
  * cursor store, no dispatcher.
@@ -30,7 +30,7 @@ internal class DurableInvocationResolver(
     private val divergenceDetector: dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector,
     private val effectReplayPolicy: EffectReplayPolicy,
     private val journal: OperationJournal,
-    // TRAIN /: the a2 external-subprocess compatibility hook is a PORT. The resolver
+    // The external-subprocess compatibility hook is a PORT. The resolver
     // decides when recovery applies; the adapter observes the process. The resolver no longer
     // constructs StepReconcilerL1 / DurableShellExecutor, so this class stays free of process
     // and control-directory knowledge and remains testable with no filesystem.
@@ -64,9 +64,9 @@ internal class DurableInvocationResolver(
      *  - [deterministicGate] is pure: fingerprint divergence and the effect-aware replay policy decide
      *    from their inputs alone.
      *  - running-process detection is the sole effectful part: it inspects and reattaches to a real
-     *    external process. It is an explicit a2 compatibility hook, NOT generic durable-protocol
+     *    external process. It is an explicit compatibility hook, NOT generic durable-protocol
      *    semantics.
-     * ## Where the WHEN lives, after
+     * ## Where the WHEN lives
      * This function decides **whether** a subprocess observation is owed
      * ([recoveryRequirement]) and only then asks **what** was found
      * ([RunningSubprocessRecovery.observe]). The two were conflated until the spike, where
@@ -75,7 +75,7 @@ internal class DurableInvocationResolver(
      * non-answer was a single sentinel.
      * The durable decision consumes only the typed [StepMetadata] properties resolved by step key
      * it never selects behaviour by a concrete Step name.
-     * Precedence reproduces the frozen a1 flow exactly: divergence first, then recovery, then replay.
+     * Precedence reproduces the frozen flow exactly: divergence first, then recovery, then replay.
      * No journal, cursor, event or executor is touched here; terminal resolutions carry only the data
      * their own handling needs.
 */
@@ -146,7 +146,7 @@ internal class DurableInvocationResolver(
         }
 
     /**
-     * Pure, deterministic part of the reconciliation: the fingerprint-divergence gate (.2c2-a2.3)
+     * Pure, deterministic part of the reconciliation: the fingerprint-divergence gate
      * Returns a terminal divergence resolution when the fingerprints diverge, otherwise `null` so the
      * recovery hook and replay kernel can run in the frozen order. Never touches a journal, cursor,
      * process, event or executor.
@@ -165,7 +165,7 @@ internal class DurableInvocationResolver(
     }
 
     /**
-     * Pure mapping of the effect-aware replay policy onto the reconciliation resolutions (.2c2-a2.3)
+     * Pure mapping of the effect-aware replay policy onto the reconciliation resolutions
 */
     internal fun replayResolution(decision: ReplayDecision, operationId: String): InvocationReconciliation =
         when (decision) {

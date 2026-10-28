@@ -5,10 +5,9 @@ import dev.rubentxu.pipeline.v2.output.OutputStreamId
 
 /**
  * Closed ADT of reasons a recover call failed closed.
- * The audit's B.3 names `NotRecoverable`, `UnknownRun`, `JournalIncompatible`.
- * This design adds `StorageError`, `SubstrateUnavailable`, and `LeaseHeldByAnother`
- * (mirroring the cancel port — recover also MUST NOT cross lease boundaries, audit
- * G.3 by analogy).
+ * It names `NotRecoverable`, `UnknownRun`, `JournalIncompatible`.
+ * It adds `StorageError`, `SubstrateUnavailable`, and `LeaseHeldByAnother`
+ * (mirroring the cancel port — recover also MUST NOT cross lease boundaries).
  * Adds `PinnedBytesOutsideRecoveredRegion` to honour the retention-under-pin
  * invariant: a recover that drops pinned bytes would invalidate the consumer's
  * retention hold.
@@ -41,7 +40,7 @@ sealed interface RecoverRefusal {
 
     /**
      * The run is held by another process whose lease is still live. Recover
-     * MUST NOT cross lease boundaries (audit B.8, G.3 by analogy); the live
+     * MUST NOT cross lease boundaries; the live
      * authority must release before recover can proceed.
 */
     data class LeaseHeldByAnother(val details: String) : RecoverRefusal

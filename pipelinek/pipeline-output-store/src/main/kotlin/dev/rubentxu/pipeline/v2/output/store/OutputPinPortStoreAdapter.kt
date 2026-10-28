@@ -25,12 +25,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  * - A pin request beyond [OutputPinPort.DEFAULT_MAX_PINS_PER_STREAM]
  *   active pins for the same stream (`PinRefusal.TooManyPins`).
  * Expired pins are NOT a refusal — they are released on read so a
- * consumer that holds an expired pin does not get blocked. The audit
- * B.3's "expired pin is RELEASED, not refused" rule.
+ * consumer that holds an expired pin does not get blocked: an expired pin
+ * is released on read, not refused.
  * ## Threading
  * The internal [OutputPinStore] takes its own lock; the adapter holds
  * no lock of its own. Reads ([pinsOf], [isPinned]) are O(active-pins)
- * and O(active-pins), respectively; the audit's O(1) target for
+ * and O(active-pins), respectively; the O(1) target for
  * [isPinned] is approximated by the linear scan being O(constant) for
  * the default cap.
 */

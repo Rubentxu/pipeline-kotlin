@@ -4,14 +4,14 @@ import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 
 /**
  * New authority seam for the EFFECTIVE execution of a Step's concrete semantics.
- * This is the seam the durable protocol observes for the a1 law going forward: a call to [execute]
+ * This is the seam the durable protocol observes going forward: a call to [execute]
  * means "the concrete Step will actually run and may produce side effects". It supersedes
  * [CanonicalInvocationExecutor] as the architectural authority. During the migration the old
  * command-typed seam lives behind [LegacyExecutionAdapter] as a compatibility detail; after the
  * legacy dispatcher disappears, only this seam remains.
  * The durable protocol decides whether to call it (fresh/re-run executes; replay reuse, decode
  * rejection, divergence and running-shell recovery return before it is reached).
- * ## /: atomic outcome + encodedOutput
+ * ## Atomic outcome and encodedOutput
  * The seam returns a [CommonExecutionResult] — `outcome + encodedOutput` in one value — to
  * eliminate temporal connascence. Legacy paths encode `encodedOutput = null`; registry-routed
  * paths MAY carry a non-null encoded typed output. **There is exactly one execution seam.**

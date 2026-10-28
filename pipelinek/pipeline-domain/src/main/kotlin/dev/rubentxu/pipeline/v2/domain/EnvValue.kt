@@ -22,7 +22,7 @@ sealed interface EnvValue {
     /**
      * A secret-bearing environment variable value.
      * The [ref] is an opaque identifier that must be resolved via the
-     * Slice 1 typed channel: either
+     * Typed channel: either
      * [dev.rubentxu.pipeline.v2.credentials.spi.CredentialProvider.resolve]
      * (returns [dev.rubentxu.pipeline.v2.domain.SecretHandle] directly),
      * or

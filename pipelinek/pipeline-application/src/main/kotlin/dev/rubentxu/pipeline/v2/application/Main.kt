@@ -82,7 +82,7 @@ internal val CLI_ENVIRONMENT_INTERNAL: List<Pair<String, String>> = listOf(
  *   process exits with [CliExit.InvalidArgument] (code 2) and an
  *   envelope listing every supported id. The server NEVER falls
  *   back to Published on an unknown request — silent degradation
- *   is the exact defect the ADR was written to prevent.
+ *   is the exact defect this negotiation exists to prevent.
  *
  * Resolution lives in [OutputProtocol.negotiate]; this wrapper
  * only translates "no intersection" into the typed CLI envelope.
@@ -215,7 +215,7 @@ fun main(args: Array<String>) {
     // BEFORE the run starts. An unknown id is a fail-closed
     // CliExit.InvalidArgument (exit 2); the server never falls back
     // to Published on an unknown request, because that would be the
-    // silent-degradation defect the ADR was written to prevent.
+    // silent-degradation defect this negotiation exists to prevent.
     val outputProtocol: OutputProtocol = negotiateOutputProtocolOrExit(config.outputProtocolTokens)
 
     val command = config.command

@@ -4,8 +4,8 @@ import dev.rubentxu.pipeline.v2.runtime.inspect.FencingToken
 
 /**
  * Closed ADT of reasons a cancel call was refused.
- * The audit's B.2 names `LeaseHeldByAnother`, `UnknownRun`, `RunTerminal`,
- * `JournalUnavailable`. This design adds `IncompatibleRunState` for runs in a
+ * It names `LeaseHeldByAnother`, `UnknownRun`, `RunTerminal`,
+ * `JournalUnavailable`. It adds `IncompatibleRunState` for runs in a
  * terminal state that is not `Cancelled` (e.g. a run that already reached
  * `Succeeded` or `Failed`).
 */
@@ -24,7 +24,7 @@ sealed interface CancelRefusal {
     /**
      * The run is held by another process whose lease is still live. The
      * `ownerId` and `fencingToken` name the live authority; the cancel port
-     * MUST NOT cross lease boundaries (audit B.2, B.8, G.3).
+     * MUST NOT cross lease boundaries.
 */
     data class LeaseHeldByAnother(
         val ownerId: String,
@@ -45,7 +45,7 @@ sealed interface CancelRefusal {
     /**
      * The journal could not be written. `cause` is a short diagnostic. A cancel
      * that cannot write its terminal fact is a fail-closed refusal, NOT a
-     * fallback to `start()` or `run()` (audit B.2).
+     * fallback to `start()` or `run()`.
 */
     data class JournalUnavailable(val cause: String) : CancelRefusal
 

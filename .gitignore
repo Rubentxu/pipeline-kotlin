@@ -126,17 +126,18 @@ BACKLOG.md
 ### Mission declaration (local configuration) ###
 # The goal chain's declaration and its working directory are local configuration
 # of this checkout, not repository content: a tool that leaves unversioned files
-# in someone else's repository earns their mistrust. The ROADMAP stays the
-# authority for the work itself; this only says where the chain starts.
-.goal-compass/
+# in someone else's repository earns their mistrust. This only says where the
+# chain starts.
+/.goal-compass/
 goal-compass.json
 
-### Backlog.md board (local queue, not repository content) ###
-# The board holds the work THIS checkout has queued; it is not repository
-# content and it is not a second authority: ROADMAP.md stays the record of the
-# cuts already made, and the board only holds what is still to be done. A
-# second tree of Markdown that can disagree with the ROADMAP is the drift this
-# repository keeps paying for, so the board stays on disk and out of Git.
+### Work records (local, not repository content) ###
+# The roadmap of the cuts already made and the queue of what is still to be done
+# are records of the work, not the product. They stay on disk and out of Git: a
+# second tree of Markdown that can disagree with the code is the drift this
+# repository keeps paying for. The history in Git is what the repository
+# publishes about itself, and it is enough.
 # The uppercase BACKLOG.md above is a DIFFERENT file: an old SDDK projection,
 # kept on disk and ignored.
+/ROADMAP.md
 /backlog/

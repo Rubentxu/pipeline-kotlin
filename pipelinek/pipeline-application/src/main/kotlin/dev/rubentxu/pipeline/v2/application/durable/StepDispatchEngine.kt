@@ -48,7 +48,7 @@ import java.nio.file.Path
 import java.util.UUID
 
 /**
- * TRAIN H4 — the step-execution spine, out of the run loop.
+ * The step-execution spine, out of the run loop.
  *
  * What used to be one class carrying two unrelated jobs is split along the line the
  * coordinator could never draw itself: the run's control flow stays in the coordinator,
@@ -625,7 +625,7 @@ internal class StepDispatchEngine(
             status = OperationStatus.PENDING,
             attempt = 1,
         )
-        // TRAIN H3: the four recovery resolutions are interpreted by
+        // The four recovery resolutions are interpreted by
         // RecoveryInterpretationEngine; only Execute — which IS the invocation — stays here.
         // The arms were moved verbatim, including which ones emit lifecycle events and
         // write the journal.
@@ -927,7 +927,7 @@ internal class StepDispatchEngine(
         // the body through `BodyInvoker.invoke`. The single shared body-child
         // iteration site stays inside `invokeBodyChildren`; this adapter NEVER
         // iterates body children itself.
-        // TRAIN H2 slice 3b: the scoped-body execution (reentry binding,
+        // The scoped-body execution (reentry binding,
         // engine delegation or inline loops, and the bracketed bookends) lives in
         // BodyExecutionEngine; the coordinator composes it with the projected
         // scope decided above. The credential-lease path composes through the

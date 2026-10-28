@@ -3,7 +3,7 @@ package example.block
 import dev.rubentxu.pipeline.v2.dsl.StageScope
 
 /**
- * External DSL facade for a body-bearing Step (, slice D)
+ * External DSL facade for a body-bearing Step
  * The plugin teaches the DSL its own block Step. Core, compiler and coordinator never learn
  * the name `repeat`; the generic `registryBlock` primitive lowers to `StepSpec.RegistryBlockSpec`
  * and the engine resolves the declared body policy from the open registry.

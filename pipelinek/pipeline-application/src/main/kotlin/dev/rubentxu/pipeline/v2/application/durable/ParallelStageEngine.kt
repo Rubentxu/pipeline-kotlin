@@ -32,7 +32,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * TRAIN / — the parallel aggregate, out of the step-execution spine
+ * The parallel aggregate, out of the step-execution spine
  * A parallel stage is not a Step. It is a composite whose durable identity is an AGGREGATE row
  * reconciled against every branch child's row, and whose outcome is a fold over typed branch
  * outcomes. That is a different job from "take this Step and make it happen", so it gets its

@@ -360,8 +360,8 @@ fun gitCommitOf(root: Project): String = try {
 // Any non-zero exit from any of the three propagates verbatim. There is no
 // "I will skip the gate" escape: the only way to advance is for the gate to
 // admit the bytes the ZIP actually contains.
-// Block 3 of the spec also asked the gate to be reachable from `check` so a
-// developer without a clean tree can run it locally. The `releaseGate` task
+// The gate is meant to be reachable without a clean tree, so a developer can
+// run it locally. The `releaseGate` task
 // is wired as a sibling of the standard lifecycle: it does NOT depend on
 // `check` (which is test-time, takes minutes, and is orthogonal to the
 // candidate's own identity) but it is a single Gradle invocation, so a

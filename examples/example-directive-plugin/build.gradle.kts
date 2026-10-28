@@ -228,7 +228,7 @@ val computeDirectiveRelease = tasks.register("computeDirectiveRelease") {
                 // The compatibility range is DERIVED, not typed.
                 // The ceiling is the NEXT MINOR of the resolved SDK, not the resolved version itself:
                 // PipelineKApiRange.accepts is `runtime < untilExclusive`, so a ceiling equal to
-                // sdkVersion would make the plugin refuse the very host that loads it. See ADR.
+                // sdkVersion would make the plugin refuse the very host that loads it.
                 appendLine("pipeline.example.directive.compatibility.min=$directiveApiRangeMin")
                 appendLine("pipeline.example.directive.compatibility.untilExclusive=$nextMinor")
             },

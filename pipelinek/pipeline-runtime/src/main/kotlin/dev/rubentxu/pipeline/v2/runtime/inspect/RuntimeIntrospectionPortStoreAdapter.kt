@@ -62,10 +62,10 @@ class RuntimeIntrospectionPortStoreAdapter(
     private val syntheticObserverId: String = "m2-observer",
     /**
      * Optional typed-event read port. When present, `runStructure`
-     * uses it to drive event-driven grouping (the audit's I.6 PARTIAL
-     * Closure). When null, the adapter falls back to the synthetic
-     * single-stage / single-step view. The pattern this signature states:
-     * The surface is additive, the fallback is preserved
+     * uses it to drive event-driven grouping. When null, the adapter falls
+     * back to the synthetic single-stage / single-step view. The pattern
+     * this signature states: the surface is additive, the fallback is
+     * preserved.
 */
     private val eventShapeRead: EventShapeReadPort? = null,
 ) : RuntimeIntrospectionPort {
@@ -145,10 +145,9 @@ class RuntimeIntrospectionPortStoreAdapter(
             // terminal state long before the run does: a run whose first step
             // succeeded and whose second step is still running already has a
             // terminal row. Reading that row as "the run finished" reported a
-            // half-finished run as Terminal — the exact defect that section
-            // 2.20 of the ROADMAP fixed in the control adapter, left standing
-            // here, and left unfixed precisely because nothing consumed this
-            // adapter.
+            // half-finished run as Terminal — the exact defect the control
+            // adapter fixed, left standing here, and left unfixed precisely
+            // because nothing consumed this adapter.
             //
             // The run's own terminal fact is the event lane's `RunFinished`
             // bookend: the same bookend the writer writes and the same one the
@@ -453,11 +452,10 @@ class RuntimeIntrospectionPortStoreAdapter(
     // protected is announced and NOT delivered
     // (`runtime.structure.v1` — see `SdkCapabilities`). A future that adds
     // event-shape correlation has to bring the test with it.
-    // The audit's I.6 PARTIAL closure is therefore "synthetic grouping in
-    // First cut; event-driven grouping in a follow-up ". The
-    // PARTIAL is honest: a consumer that needs true event-driven grouping
-    // Must wait for the follow-up, and the candidate's release-receipt
-    // documents this.
+    // The closure is therefore partial: "synthetic grouping in the first
+    // cut; event-driven grouping in a follow-up". The partiality is
+    // honest: a consumer that needs true event-driven grouping must wait
+    // for the follow-up, and the candidate's release-receipt documents this.
 
     override fun runStructure(
         runId: String,

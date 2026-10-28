@@ -4,7 +4,7 @@ package dev.rubentxu.pipeline.v2.runtime.recover
  * Public idempotent recover verb that brings a run back to a known state
  * WITHOUT re-executing external effects.
  * ## Why this port exists
- * The audit's B.3 / B.6 gap is that every existing `Recover` path is internal to
+ * The gap this port fills is that every existing `Recover` path is internal to
  * `EffectReplayPolicy.decide`, `RunningSubprocessRecovery.observe`,
  * `RecoveredExecutionMaterializer.materialize`, `RecoveryInterpretationEngine
  * .interpret`. None is reachable from outside the JVM that owns the run.
@@ -14,7 +14,7 @@ package dev.rubentxu.pipeline.v2.runtime.recover
  * This port publishes the recover verb. The implementation composes the existing
  * journal / cursor / output-recovery path through the pure
  * [RuntimeRecoverDecision] decider (Step 2).
- * ## Idempotency + no-rerun invariant (audit D.4)
+ * ## Idempotency + no-rerun invariant
  * A second call to `recover(runId)` on the same run is a no-op: the journal
  * already says the run is reconciled, and the recover port returns
  * [RecoverOutcome.AlreadyRecovered] without re-running the substrate observer
@@ -25,8 +25,7 @@ package dev.rubentxu.pipeline.v2.runtime.recover
  *    already done.
  *  - Read the cursor (`ReplayCursorStore.load`) to determine where the run
  *    left off.
- *  - Consult [RuntimeRecoverDecision.decideRecovery] (the pure decider the
- *    audit's B.6 asks for).
+ *  - Consult [RuntimeRecoverDecision.decideRecovery] (the pure decider).
  *  - For `ReuseTerminal`: materialise via the existing
  *    [dev.rubentxu.pipeline.v2.application.durable.RecoveredExecutionMaterializer.materialize],
  *    append the terminal journal row via [dev.rubentxu.pipeline.v2.events.durable.OperationJournal.append],

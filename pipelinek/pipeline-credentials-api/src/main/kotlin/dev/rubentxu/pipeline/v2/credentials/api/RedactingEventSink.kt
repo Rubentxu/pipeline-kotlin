@@ -53,7 +53,7 @@ import dev.rubentxu.pipeline.v2.events.StepFailed
  * Some of the kinds listed here have no emitter yet. They are listed anyway,
  * because "nobody emits it yet" is a fact about this week, and the moment
  * somebody writes the emitter the secret walks. The list belongs to the
- * taxonomy, not to the roadmap.
+ * taxonomy, not to today's emitters.
  *
  * ## What this sink does NOT touch
  *

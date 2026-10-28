@@ -7,8 +7,8 @@ package dev.rubentxu.pipeline.v2.output
  * Not wherever a code-point ends. The read pipeline concatenates page bytes into a transcript
  * with [java.nio.charset.CharsetDecoder] re-decoded PER PAGE — which means a multi-byte codepoint
  * straddling two pages produces two replacement characters (or one `null` + one base64) instead of
- * One correctly emitted character. (OBS_PROGRESSIVE_CONSOLE_ROADMAP) names this exact defect
- * > Decodificación por frame sin estado de caracteres
+ * One correctly emitted character. That is the defect this decoder exists to
+ * fix: decoding by frame without character state.
  * ## The contract
  * `decode(page)` accepts the next byte page, holds any partial codepoint between calls, and returns
  * the text THIS page contributed. It is not an accumulator: the returned `String` starts empty on

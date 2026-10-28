@@ -239,7 +239,7 @@ class CoreUtilsUnzipStepDefinition : StepDefinition<UnzipInput, UnzipOutput> {
         //
         // What it cannot catch is a symlink ALREADY inside the
         // destination: the lexical rule cannot see it. That limitation
-        // is the tracked Slice 2 debt, and it is stated here rather
+        // is a known debt, and it is stated here rather
         // than implied.
         //
         // Future hardening: parse the extra field manually to detect

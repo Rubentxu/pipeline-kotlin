@@ -22,7 +22,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
- * `core-utils.zip` codecs (input + output) (, Slice 2 /.4)
+ * `core-utils.zip` codecs (input + output)
  * Envelope shape (durable eligible):
  *   input: { "path": <string>, "overwrite": <bool>,
  *              "sources": { "kind": "glob", "glob": <string> }

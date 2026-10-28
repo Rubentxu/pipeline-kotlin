@@ -89,7 +89,7 @@ fun interface RuntimeRecoverPortIntrospect {
  * `OperationJournal.listForRun` + `ReplayCursorStore.load`, hands the proof to
  * the pure [RuntimeRecoverDecision.decideRecovery] decider, and dispatches the
  * returned [RecoveryChoice] into one of the four [RecoverOutcome] cases.
- * ## No-rerun invariant (audit D.4)
+ * ## No-rerun invariant
  * The adapter NEVER re-executes a step's `execute()`. It materialises the
  * terminal row by writing it through the existing `OperationJournal.append`
  * (which is the journal's own observation, not a side-effecting re-run) and
@@ -107,10 +107,9 @@ class RuntimeRecoverPortStoreAdapter(
     private val clock: Clock,
     /**
      * Optional pin port consulted by [recover] before returning
-     * `RecoveredTerminal`. When `null` (default), no pin check runs and
-     * The recover adapter behaves exactly as it did in
-     * The auditD.4 PARTIAL verdict flagged that the recover port is
-     * Silent on pins; closes this with a consult that returns
+     * `RecoveredTerminal`. When `null` (default), no pin check runs and the
+     * recover adapter behaves exactly as it did before. Without the consult
+     * the recover port is silent on pins; the consult returns
      * [RecoverRefusal.PinnedBytesOutsideRecoveredRegion] when an active
      * pin covers bytes the run owns.
 */
@@ -144,11 +143,11 @@ class RuntimeRecoverPortStoreAdapter(
         //    "is a live process publishing this run".
         //
         //    It used to CONSULT the lease record and decide with the pure
-        //    decider, and that was the same defect section 2.20 of the ROADMAP
-        //    fixed in the cancel adapter: a record left behind by a killed
-        //    writer still says its owner is alive, so recovering a DEAD run
-        //    concluded the run was busy and refused. The whole point of
-        //    recovering a run is that nobody is working on it.
+        //    decider, and that was the same defect the cancel adapter fixed:
+        //    a record left behind by a killed writer still says its owner is
+        //    alive, so recovering a DEAD run concluded the run was busy and
+        //    refused. The whole point of recovering a run is that nobody is
+        //    working on it.
         //
         //    The lease is held for the whole call and given back at the end,
         //    so a recover that refused and a recover that committed both leave

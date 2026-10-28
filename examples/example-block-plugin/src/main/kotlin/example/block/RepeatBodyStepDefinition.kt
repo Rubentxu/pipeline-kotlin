@@ -30,7 +30,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Example external BLOCK plugin (, slice D)
+ * Example external block plugin
  * This is the plugin claimed was possible: an external Step that owns a body and
  * whose OWN logic decides whether, when and how many times that body runs. It depends only
  * on public SDK contracts (`pipeline-domain`) and the public DSL (`pipeline-scripting-api`),

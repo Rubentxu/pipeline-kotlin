@@ -259,7 +259,7 @@ internal sealed interface RecoveryRequirement {
 }
 
 /**
- * Resolution of the durable replay/reconcile decision (.2c2-a2.2), derived from the real branches
+ * Resolution of the durable replay/reconcile decision, derived from the real branches
  * in `dispatch`: divergence detection, running-shell recovery and the effect-aware replay policy.
  * These are genuinely distinct protocol states with distinct terminal semantics, so each carries only
  * the data its own handling needs; incoherent combinations (e.g. a reuse that also re-executes) are not

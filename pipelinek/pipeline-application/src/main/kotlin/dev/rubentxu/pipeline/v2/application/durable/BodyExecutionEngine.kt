@@ -29,8 +29,7 @@ import java.nio.file.Files
 import java.util.UUID
 
 /**
- * The body-execution machinery, extracted from the durable coordinator
- * (TRAIN / )
+ * The body-execution machinery, extracted from the durable coordinator.
  * The coordinator remains the composition point: it constructs this engine
  * and hands it its own child dispatcher, so the body loop re-enters the SAME
  * dispatch path every other caller uses — composition, not a second engine.

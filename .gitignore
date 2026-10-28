@@ -130,3 +130,13 @@ BACKLOG.md
 # authority for the work itself; this only says where the chain starts.
 .goal-compass/
 goal-compass.json
+
+### Backlog.md board (local queue, not repository content) ###
+# The board holds the work THIS checkout has queued; it is not repository
+# content and it is not a second authority: ROADMAP.md stays the record of the
+# cuts already made, and the board only holds what is still to be done. A
+# second tree of Markdown that can disagree with the ROADMAP is the drift this
+# repository keeps paying for, so the board stays on disk and out of Git.
+# The uppercase BACKLOG.md above is a DIFFERENT file: an old SDDK projection,
+# kept on disk and ignored.
+/backlog/

@@ -13,10 +13,6 @@ import dev.rubentxu.pipeline.v2.events.identity.EventQuery
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
-import dev.rubentxu.pipeline.v2.events.shape.EventShapeReadPort
-import dev.rubentxu.pipeline.v2.events.shape.StageStartedTyped
-import dev.rubentxu.pipeline.v2.events.shape.StepStartedTyped
-import dev.rubentxu.pipeline.v2.events.shape.TypedEvent
 import dev.rubentxu.pipeline.v2.output.OutputFrameIndex
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import dev.rubentxu.pipeline.v2.output.OutputTailPort
@@ -60,14 +56,6 @@ class RuntimeIntrospectionPortStoreAdapter(
     private val cursors: ReplayCursorStore,
     private val lease: RunLeaseObservationPort,
     private val syntheticObserverId: String = "m2-observer",
-    /**
-     * Optional typed-event read port. When present, `runStructure`
-     * uses it to drive event-driven grouping. When null, the adapter falls
-     * back to the synthetic single-stage / single-step view. The pattern
-     * this signature states: the surface is additive, the fallback is
-     * preserved.
-*/
-    private val eventShapeRead: EventShapeReadPort? = null,
 ) : RuntimeIntrospectionPort {
 
     // The inspect body composes (lease-or-event-plane) knownness, tail
@@ -438,24 +426,20 @@ class RuntimeIntrospectionPortStoreAdapter(
     // OperationJournal.get, OutputFrameIndex.streamsOfRun). The methods do
     // NOT introduce a new lease, a new scheduler, or a new query engine — they
     // read the existing stores and project to closed ADTs.
-    // ## First-cut scope
-    // The design's audit-cited group of operations by their enclosing
-    // stage / step would require reading the typed `StageStarted` / `StepStarted`
-    // events from the event plane. The published `PipelineEventEnvelope`
-    // projection strips the type-specific fields, exposing only `kind`,
-    // `occurredAt`, and `sequence`; the stageIndex / stepOrdinal / stageName
-    // Are not on the envelope. A follow-up (or.x patch) that
-    // exposes a typed event-shape read port can lift this limitation; until
-    // Then, the first cut uses a SYNTHETIC single-stage single-step view
-    // derived from the journal alone. Nothing pins that synthetic grouping
-    // today: the test that used to is gone, and the capability it would have
-    // protected is announced and NOT delivered
-    // (`runtime.structure.v1` — see `SdkCapabilities`). A future that adds
-    // event-shape correlation has to bring the test with it.
-    // The closure is therefore partial: "synthetic grouping in the first
-    // cut; event-driven grouping in a follow-up". The partiality is
-    // honest: a consumer that needs true event-driven grouping must wait
-    // for the follow-up, and the candidate's release-receipt documents this.
+    // ## The grouping decision
+    // A run's operations could be grouped by their enclosing stage / step
+    // only through the typed `StageStarted` / `StepStarted` events, and the
+    // published `PipelineEventEnvelope` projection strips the type-specific
+    // fields, exposing only `kind`, `occurredAt`, and `sequence`. An
+    // experimental event-shape plane was once wired here to drive that
+    // grouping, but nothing ever composed it: no production graph handed the
+    // port in, the capability it would have carried (`runtime.structure.v1`
+    // — see `SdkCapabilities`) stayed announced and NOT delivered, and the
+    // whole plane was removed rather than kept alive unconsumed. The
+    // synthetic single-stage single-step view derived from the journal alone
+    // is therefore THE structure view, and the unit test pins its paging.
+    // A future that brings event-shape correlation back has to bring the
+    // port, the capability and its instrument with it.
 
     override fun runStructure(
         runId: String,
@@ -476,21 +460,6 @@ class RuntimeIntrospectionPortStoreAdapter(
                     cursor = null,
                 )
             }
-            // Read the typed events to drive
-            // event-driven grouping. An absent plane, an unconfigured plane
-            // Or an event-free run falls back to the synthetic view
-            // all three describe a stable property of the build. A plane
-            // that FAILED, or that does not know a run the journal has rows
-            // for, refuses instead: those are claims about the READ, and
-            // rendering them as "this run has no event-driven shape" hands
-            // the caller a structure the run does not have.
-            val typedEvents: List<TypedEvent> =
-                when (val availability = readTypedEventsForRun(runId)) {
-                    is TypedEventAvailability.Available -> availability.events
-                    is TypedEventAvailability.Unreadable ->
-                        return RunStructureResult.Refused(availability.refusal)
-                    TypedEventAvailability.Unavailable -> emptyList()
-                }
             val startOpOrdinal: Int = options.cursor?.operationOrdinal ?: 0
             if (startOpOrdinal >= journalOps.size) {
                 return RunStructureResult.Structure(
@@ -499,18 +468,9 @@ class RuntimeIntrospectionPortStoreAdapter(
                 )
             }
             val effectiveOps = journalOps.drop(startOpOrdinal).take(options.pageSize)
-            val stages: List<StageSummary> = if (typedEvents.isNotEmpty()) {
-                groupEventDriven(
-                    runId = runId,
-                    operations = effectiveOps,
-                    typedEvents = typedEvents,
-                )
-            } else {
-                listOf(buildSyntheticStage(runId, effectiveOps))
-            }
+            val stages: List<StageSummary> = listOf(buildSyntheticStage(runId, effectiveOps))
             // Apply includeTerminalStages filter: when false, drop stages
-            // whose every operation is in a terminal status. Both the
-            // event-driven and synthetic paths share this rule.
+            // whose every operation is in a terminal status.
             val filtered = if (options.includeTerminalStages) stages else {
                 stages.filter { stage ->
                     stage.steps.any { step ->
@@ -659,82 +619,11 @@ class RuntimeIntrospectionPortStoreAdapter(
     // ── helpers (private) ──────────────────────────────────────────────
 
     /**
-     * What the event shape plane answered for [runId].
-     * Three cases because the plane has three, and two of them are claims
-     * about the RUN while the third is a claim about the READ — the same
-     * distinction [EventStorePresence] draws one function above.
-     * - [Available] — typed events are present; grouping can be event-driven.
-     * - [Unavailable] — there is no event-driven grouping to have. Three
-     *   distinct inputs collapse here because they are the same *state of
-     * The build*, not three ways of failing: the port is absent (the
-     *   path, a build with no event plane wired), the run is known but has
-     *   no typed events yet, or the plane reports it is not configured
-     *   ([dev.rubentxu.pipeline.v2.events.shape.EventShapeRefusal.NoEventStore]).
-     * The synthetic view is the correct answer for all three
-     * - [Unreadable] — the plane could not answer. This is NOT a statement
-     *   that the run has no events, and rendering it as one is the defect
-     *   this case exists to prevent.
-*/
-    private sealed interface TypedEventAvailability {
-        data class Available(val events: List<TypedEvent>) : TypedEventAvailability
-
-        data object Unavailable : TypedEventAvailability
-
-        data class Unreadable(val refusal: IntrospectionRefusal) : TypedEventAvailability
-    }
-
-    /**
-     * Read the typed events for [runId] via the constructor's
-     * [eventShapeRead] port, keeping [TypedEventAvailability.Unavailable]
-     * (a legitimate state) distinct from
-     * [TypedEventAvailability.Unreadable] (the plane failed, or does not
-     * know the run).
-     * The two are not the same fact and must not share an answer. Pre-fix
-     * this function returned `emptyList()` for a `Refused` as well, so a
-     * transient substrate failure and a build with no event plane both
-     * produced an identical synthetic structure — a confident claim about
-     * The run's shape that no caller could falsify. The fallback keeps
-     * its meaning for [TypedEventAvailability.Unavailable], which describes
-     * a stable property of the build; only a failure stops degrading.
-*/
-    private fun readTypedEventsForRun(runId: String): TypedEventAvailability {
-        val port = eventShapeRead ?: return TypedEventAvailability.Unavailable
-        return when (val r = port.eventShapesForRun(
-            runId,
-            dev.rubentxu.pipeline.v2.events.shape.EventShapeOptions.Default,
-        )) {
-            is dev.rubentxu.pipeline.v2.events.shape.EventShapeResult.Events ->
-                TypedEventAvailability.Available(r.events)
-            dev.rubentxu.pipeline.v2.events.shape.EventShapeResult.Empty ->
-                TypedEventAvailability.Unavailable
-            is dev.rubentxu.pipeline.v2.events.shape.EventShapeResult.Refused ->
-                when (val refusal = r.refusal) {
-                    // Not a failure: the plane is not configured, which is the
-                    // same state as an absent port. Degrading here is correct.
-                    dev.rubentxu.pipeline.v2.events.shape.EventShapeRefusal.NoEventStore ->
-                        TypedEventAvailability.Unavailable
-                    // An answer about the RUN. Reaching this branch means the
-                    // journal returned rows for a run the event plane does not
-                    // know; that disagreement is worth surfacing rather than
-                    // hiding behind a synthetic view.
-                    is dev.rubentxu.pipeline.v2.events.shape.EventShapeRefusal.UnknownRun ->
-                        TypedEventAvailability.Unreadable(
-                            IntrospectionRefusal.UnknownRun(runId),
-                        )
-                    is dev.rubentxu.pipeline.v2.events.shape.EventShapeRefusal.StorageError ->
-                        TypedEventAvailability.Unreadable(
-                            IntrospectionRefusal.StorageError(refusal.cause),
-                        )
-                }
-        }
-    }
-
-    /**
-     * Build the synthetic single-stage / single-step view (the
-     * fallback). Every operation is placed under a synthetic stage 0
-     * / step 0. Nothing pins this fallback today: the method is not
-     * composed by anything, so the capability that would carry it is
-     * announced and NOT delivered (`runtime.structure.v1`).
+     * Build the synthetic single-stage / single-step view. Every
+     * operation is placed under a synthetic stage 0 / step 0. This is
+     * THE structure view: the event-driven grouping it once fell back
+     * from was removed together with the unconsumed experimental plane
+     * that drove it, so there is no second path behind this one.
 */
     private fun buildSyntheticStage(
         runId: String,
@@ -777,101 +666,6 @@ class RuntimeIntrospectionPortStoreAdapter(
         )
     }
 
-    /**
-     * Group operations by their enclosing stage and step using the
-     * typed events. An operation's stage is the most recent
-     * [StageStartedTyped] whose `occurredAtMs` is `<=` the operation's
-     * `startedAtMs`; the operation's step is the most recent
-     * [StepStartedTyped] for that stage. When no events match, the
-     * operation falls back to a synthetic "ungrouped" stage 0 / step 0.
-     * The grouping is in execution order: stages by `stageOrdinal`,
-     * steps within a stage by `stepKey`, operations within a step by
-     * their journal `startedAtMs`.
-*/
-    private fun groupEventDriven(
-        runId: String,
-        operations: List<DurableOperation>,
-        typedEvents: List<TypedEvent>,
-    ): List<StageSummary> {
-        val stageStartEvents = typedEvents.filterIsInstance<StageStartedTyped>()
-        val stepStartEvents = typedEvents.filterIsInstance<StepStartedTyped>()
-        val groupKey: (DurableOperation) -> Triple<Int, String, String> = { op ->
-            val opMs = startedAtMsOf(op)
-            val stage = stageStartEvents
-                .filter { opMs == null || it.occurredAtMs <= opMs }
-                .maxByOrNull { it.occurredAtMs }
-            val step = stepStartEvents
-                .filter { stage == null || it.stageOrdinal == stage.stageOrdinal }
-                .filter { opMs == null || it.occurredAtMs <= opMs }
-                .maxByOrNull { it.occurredAtMs }
-            val stageOrd = stage?.stageOrdinal ?: 0
-            val stageName = stage?.stageName ?: "ungrouped-stage"
-            val stepKey = step?.stepKey ?: "ungrouped-step"
-            Triple(stageOrd, "$stageOrd::$stageName", "$stageOrd::$stepKey")
-        }
-        val groups: Map<Triple<Int, String, String>, List<DurableOperation>> =
-            operations.groupBy(groupKey)
-        return groups.entries
-            .sortedBy { it.key.first }
-            .map { (key, ops) ->
-                val stageOrd = key.first
-                val stageName = key.second.substringAfter("::")
-                val stageStartedAtMs = ops
-                    .mapNotNull { startedAtMsOf(it) }
-                    .minOrNull() ?: 0L
-                val stageFinishedAtMs = ops
-                    .mapNotNull { endedAtMsOf(it) }
-                    .maxOrNull()
-                val stepGroupKey: (DurableOperation) -> String = { op ->
-                    val opMs = startedAtMsOf(op)
-                    val step = stepStartEvents
-                        .filter { it.stageOrdinal == stageOrd }
-                        .filter { opMs == null || it.occurredAtMs <= opMs }
-                        .maxByOrNull { it.occurredAtMs }
-                    step?.stepKey ?: "ungrouped-step"
-                }
-                val stepGroups: Map<String, List<DurableOperation>> = ops.groupBy(stepGroupKey)
-                val stepSummaries: List<StepSummary> = stepGroups.entries
-                    .sortedBy { it.key }
-                    .map { (stepKey, stepOps) ->
-                        val stepStartedAtMs: Long = stepOps
-                            .mapNotNull { startedAtMsOf(it) }
-                            .minOrNull() ?: 0L
-                        val stepFinishedAtMs: Long? = stepOps
-                            .mapNotNull { endedAtMsOf(it) }
-                            .maxOrNull()
-                        val operationSummaries: List<OperationSummary> = stepOps.map { op ->
-                            OperationSummary(
-                                operationId = op.id,
-                                attempt = op.attempt,
-                                status = op.status,
-                                startedAtMs = startedAtMsOf(op),
-                                endedAtMs = endedAtMsOf(op),
-                                fingerprint = op.fingerprint.hex,
-                                streams = streamsForOperation(
-                                    runId = op.input.runId,
-                                    operationId = op.id,
-                                ),
-                            )
-                        }
-                        StepSummary(
-                            stepOrdinal = 0,
-                            stepKey = stepKey,
-                            startedAtMs = stepStartedAtMs,
-                            finishedAtMs = stepFinishedAtMs,
-                            state = stateOf(stepOps),
-                            operations = operationSummaries,
-                        )
-                    }
-                StageSummary(
-                    stageOrdinal = stageOrd,
-                    stageIndex = stageName,
-                    startedAtMs = stageStartedAtMs,
-                    finishedAtMs = stageFinishedAtMs,
-                    steps = stepSummaries,
-                )
-            }
-    }
 }
 
 /**

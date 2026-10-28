@@ -387,9 +387,9 @@ sealed interface ConsoleReadRequest {
 
     /**
      * `--follow` over the per-frame path.
-     * A thin loop over [Frames] reads. Each poll re-reads with
-     * `afterOrdinal = (last seen ordinal) + 1` (or `-1` for the first poll), emits any new
-     * frames, and continues until either:
+     * A thin loop over [Frames] reads. Each poll re-reads with `afterOrdinal` set to the last
+     * frame the loop EXAMINED (or `-1` for the first poll), emits the frames the selection
+     * admits, and continues until either:
      *   - the read returns 0 new frames AND every known output stream is [Sealed]
      *     (the durable authority for "the writer closed this stream") — EOF, exit 0;
      *   - the [followConfig] has been polled [FollowConfig.maxPolls] times — exit 0;
@@ -1195,6 +1195,13 @@ object MainConsoleCli {
         return selection.includes(address.operationId)
     }
 
+    /**
+     * The `--follow` loop over the per-frame path, over the durable plane.
+     *
+     * The loop is a pure interpreter of [ConsoleReadRequest.FollowFrames]: it reads, it emits
+     * what the selection admits, and it mutates no journal state. The plane is supplied by the
+     * caller, so the same loop serves the verb and the tests.
+*/
     fun runFollowFrames(
         request: ConsoleReadRequest.FollowFrames,
         root: Path,
@@ -1215,85 +1222,135 @@ object MainConsoleCli {
         val hook = Thread { shutdown.set(true) }
         Runtime.getRuntime().addShutdownHook(hook)
 
-        var ordinal = request.afterOrdinal
+        try {
+            return followFrames(
+                request = request,
+                reader = reader,
+                out = out,
+                err = err,
+                selection = selection,
+                isStopping = { shutdown.get() },
+            )
+        } finally {
+            try { Runtime.getRuntime().removeShutdownHook(hook) } catch (_: IllegalStateException) { /* shutdown in flight */ }
+        }
+    }
+
+    /**
+     * The loop itself, over a plane the caller supplies.
+     *
+     * ## Why this loop has TWO cursors and not one
+     *
+     * A follow answers two questions, and they have different answers:
+     *  - WHERE THE SCAN IS: the last frame the loop EXAMINED. A frame the selection dropped was
+     *    examined all the same — it was read and it was rejected — so asking for it again on the
+     *    next poll re-reads the same window for ever. Pinning the window to the last DELIVERED
+     *    frame is the defect this function fixes: a filter that dropped every frame of the
+     *    first window kept the window pinned, burned the whole poll budget and delivered
+     *    nothing, while the frames the filter DID admit sat unread beyond it.
+     *  - WHERE THE CONSUMER IS: the last frame the consumer was SHOWN. That is what an
+     *    exhausted poll budget reports and what `--after-ordinal` resumes from, because a
+     *    resume must not show a frame twice and must not skip one the consumer never saw.
+     *
+     * The two cursors coincide when every frame is admitted, and they part exactly when the
+     * selection drops something — which is the only case in which the distinction matters.
+     *
+     * ## The seams
+     *
+     * [isStopping] is the flag the JVM shutdown hook flips, and [waitBetweenPolls] is the wait
+     * between rounds. Both are parameters so the loop can be driven in process, over an in-memory
+     * plane, with no clock and no sleep: the cheapest instrument that can fail is the real loop
+     * over frames that are already in memory.
+*/
+    internal fun followFrames(
+        request: ConsoleReadRequest.FollowFrames,
+        reader: dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader,
+        out: PrintStream,
+        err: PrintStream,
+        selection: OperationSelection,
+        isStopping: () -> Boolean = { false },
+        waitBetweenPolls: (Long) -> Unit = { millis -> Thread.sleep(millis) },
+    ): FollowExit {
+        // The SCAN cursor: the last frame the loop EXAMINED, admitted or not.
+        var scanOrdinal = request.afterOrdinal
+        // The DELIVERY cursor: the last frame the consumer was SHOWN. A frame the selection
+        // dropped never moves it, and it is what an exhausted poll budget reports.
+        var deliveredOrdinal = request.afterOrdinal
         val maxPolls = request.followConfig.maxPolls
         val pollIntervalMillis = request.followConfig.pollIntervalMillis
 
-        try {
-            for (poll in 0 until maxPolls) {
-                if (shutdown.get()) return FollowExit.Signalled
+        for (poll in 0 until maxPolls) {
+            if (isStopping()) return FollowExit.Signalled
 
-                // OpId-scoped read; see readFrames.
-                val page = when (val read = readFramePage(reader, request.runId, request.opId, ordinal, request.frameLimit)) {
-                    is ObservationOutputRead.Refused -> {
-                        err.println(ConsoleReadService.renderRefusal(read.reason))
-                        return FollowExit.Refused(read.reason)
-                    }
-                    is ObservationOutputRead.Page -> read.page
+            // OpId-scoped read; see readFrames.
+            val page = when (val read = readFramePage(reader, request.runId, request.opId, scanOrdinal, request.frameLimit)) {
+                is ObservationOutputRead.Refused -> {
+                    err.println(ConsoleReadService.renderRefusal(read.reason))
+                    return FollowExit.Refused(read.reason)
                 }
+                is ObservationOutputRead.Page -> read.page
+            }
 
-                // Audit. The filter is applied to EVERY page the loop emits,
-                // using the same [selection] the single read consults. rc1 applied no filter here
-                // at all: `--frames --follow --stage build` was admitted as a plain follow and the
-                // operator was shown the whole run with exit 0.
-                // The cursor advances on the LAST DELIVERED frame, not on the last READ one. That
-                // distinction is what keeps a filter from stalling the loop: advancing to the last
-                // read ordinal when the filter dropped everything after it would re-read those
-                // frames forever and never reach a frame the filter does admit.
-                val admitted = page.records.filter { selectionSelects(selection, it.frame.stream.value) }
-                if (admitted.isNotEmpty()) {
-                    emitFollowPage(admitted, request.format, out, err)
-                    // The next read starts at the last ordinal we just emitted. The reader is
-                    // strictly `ordinal > afterOrdinal` (see SegmentFrameIndex.framesOfRun), so
-                    // passing the last-delivered ordinal is what resumes at the NEXT frame, not
-                    // at the one after the next. Adding +1 here would skip a frame between
-                    // polls. Empty pages leave the cursor where it is so the next poll reads
-                    // the same window and can see anything new.
-                    ordinal = admitted.last().frame.ordinal
-                }
+            // Audit. The filter is applied to EVERY page the loop emits,
+            // using the same [selection] the single read consults. rc1 applied no filter here
+            // at all: `--frames --follow --stage build` was admitted as a plain follow and the
+            // operator was shown the whole run with exit 0.
+            val admitted = page.records.filter { selectionSelects(selection, it.frame.stream.value) }
+            if (admitted.isNotEmpty()) {
+                emitFollowPage(admitted, request.format, out, err)
+                deliveredOrdinal = admitted.last().frame.ordinal
+            }
 
-                // EOF detection. Three facts, each from a different authority:
-                //  - moreFrames: did the index know there were frames beyond what it gave us
-                //    (a window-shape fact);
-                //  - tailStates: what the durable stores say about each stream this run owns
-                //    (whether more bytes can ever arrive on it);
-                //  RunPlane: what the EXECUTION plane can say about the run. / — this
-                //    verb never opens the events journal, so it has NO run-plane authority and
-                //    says so explicitly with [RunPlane.Unavailable] instead of passing a `false`
-                //    that was indistinguishable from "the run is still going". The distinction is
-                //    what lets `followDecision` degrade to the output lane's own authority here
-                //    (keeping a console-only follow terminatable) while still refusing to treat
-                //    sealing as sufficient on a lane that CAN ask. Closing the gap means giving
-                //    this verb a `--db` to read `RunFinished` from; recorded as NOT_RUN in the
-                //    RC4 receipt rather than papered over.
-                val tails = reader.tailStatesOf(request.runId)
-                val decision = followDecision(
-                    moreFrames = page.moreFrames,
-                    tailStates = tails,
-                    runPlane = RunPlane.Unavailable,
-                )
-                when (decision) {
-                    FollowDecision.Finished -> return FollowExit.Completed
-                    FollowDecision.ReadAgain -> {
-                        // Only sleep between rounds. The last iteration need not sleep.
-                        if (poll < maxPolls - 1) {
-                            try {
-                                Thread.sleep(pollIntervalMillis)
-                            } catch (_: InterruptedException) {
-                                Thread.currentThread().interrupt()
-                                return FollowExit.Signalled
-                            }
+            // The SCAN cursor advances to the last frame the loop EXAMINED, whether or not the
+            // selection admitted it. The reader is strictly `ordinal > afterOrdinal` (see
+            // SegmentFrameIndex.framesOfRun), so passing the last examined ordinal resumes at
+            // the NEXT frame and never skips one. An empty page hands back the position it was
+            // given, so a poll that found nothing leaves the cursor where it is and reads the
+            // same window again — which is right: there was nothing new to skip, and the next
+            // poll may find a frame that arrived.
+            scanOrdinal = page.lastOrdinal
+
+            // EOF detection. Three facts, each from a different authority:
+            //  - moreFrames: did the index know there were frames beyond what it gave us
+            //    (a window-shape fact);
+            //  - tailStates: what the durable stores say about each stream this run owns
+            //    (whether more bytes can ever arrive on it);
+            //  RunPlane: what the EXECUTION plane can say about the run. / — this
+            //    verb never opens the events journal, so it has NO run-plane authority and
+            //    says so explicitly with [RunPlane.Unavailable] instead of passing a `false`
+            //    that was indistinguishable from "the run is still going". The distinction is
+            //    what lets `followDecision` degrade to the output lane's own authority here
+            //    (keeping a console-only follow terminatable) while still refusing to treat
+            //    sealing as sufficient on a lane that CAN ask. Closing the gap means giving
+            //    this verb a `--db` to read `RunFinished` from; recorded as NOT_RUN in the
+            //    RC4 receipt rather than papered over.
+            val tails = reader.tailStatesOf(request.runId)
+            val decision = followDecision(
+                moreFrames = page.moreFrames,
+                tailStates = tails,
+                runPlane = RunPlane.Unavailable,
+            )
+            when (decision) {
+                FollowDecision.Finished -> return FollowExit.Completed
+                FollowDecision.ReadAgain -> {
+                    // Only sleep between rounds. The last iteration need not sleep.
+                    if (poll < maxPolls - 1) {
+                        try {
+                            waitBetweenPolls(pollIntervalMillis)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            return FollowExit.Signalled
                         }
                     }
                 }
             }
-            // The budget ran out and nothing terminal was ever observed. NOT a completion: see
-            // `FollowExit.PollBudgetExhausted`. The cursor is reported so a caller can tell how
-            // far the follow got and resume with `--after-ordinal`.
-            return FollowExit.PollBudgetExhausted(polls = maxPolls, lastOrdinal = ordinal)
-        } finally {
-            try { Runtime.getRuntime().removeShutdownHook(hook) } catch (_: IllegalStateException) { /* shutdown in flight */ }
         }
+        // The budget ran out and nothing terminal was ever observed. NOT a completion: see
+        // `FollowExit.PollBudgetExhausted`. The cursor is reported so a caller can tell how
+        // far the follow got and resume with `--after-ordinal` — and it is the cursor of the
+        // DELIVERED frames, so a resume shows the consumer nothing twice and skips nothing it
+        // was never shown.
+        return FollowExit.PollBudgetExhausted(polls = maxPolls, lastOrdinal = deliveredOrdinal)
     }
 
     /**
@@ -1303,24 +1360,6 @@ object MainConsoleCli {
      * that needs to recover from a clip would re-invoke `pipelinek console --follow --after-ordinal
      * <N>` directly, the same way it started.
 */
-    /**
-     * Test seam for the follow-page emitter.
-     * The emitter's stream-lifetime contract is the defect the rc1 audit found (it closed
-     * the caller's `System.out` after the first page), and a stream-lifetime contract
-     * cannot be verified from outside a process: the row has to write two pages through
-     * the same stream and observe whether the second one lands. That needs a seam, not a
-     * forked JVM per assertion.
-     * It delegates to the private [emitFollowPage]; it does not re-implement it, so the
-     * row tests the shipped code path rather than a copy of it.
-*/
-    internal fun emitFollowPageForTest(
-        records: List<ObservationRecord.Output>,
-        format: ConsoleFormat,
-        out: PrintStream,
-    ) {
-        emitFollowPage(records, format, out, PrintStream(java.io.OutputStream.nullOutputStream()))
-    }
-
     private fun emitFollowPage(
         records: List<ObservationRecord.Output>,
         format: ConsoleFormat,

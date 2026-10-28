@@ -1870,6 +1870,59 @@ PASS  sha=9b859077af2afece30c9ddf3e9cdb75086857570  elapsed=181s  budget=900s  t
 - 181 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 28731`, `PRODUCT_LOC = 71233`, ratio `0.403` (límite 2). La verificación no cambió NI UNA línea y la producción bajó 346: el ratio SUBE de `0.401` a `0.403` porque el denominador encogió, no porque el numerador creciera. El corte no añade ni una línea de verificación.
 
+#### El corte: los verbos que leen un run lo leen donde el operador lo escribió
+
+**Qué hace.** Cinco verbos leían el run id sólo desde el primer argumento: `observe`, `inspect`, `runs cancel`, `runs recover` y `saga inspect`. Cuando el operador lo escribía DESPUÉS de una opción, la respuesta era «a run id is required.» o «missing required argument: run id»: una afirmación falsa sobre un argumento que el operador acababa de escribir, y un rechazo que nombraba una falta que no existía.
+
+El caso de `observe` era el más franco, porque su frase ni siquiera pasaba por la taxonomía: la escribía el verbo. Los otros cuatro ya usaban `CliError`, pero la tabla no tenía un caso que dijera «te falta el run id» y por eso el verbo escribía su propia frase.
+
+No es una regla nueva: `events`, `console` y `operations` ya leen el run id en cualquier posición. `CliParser.parseEvents` lo recoge como primer posicional donde aparezca, `CliOptionAdmission` admite la petición de `operations` con `PositionalArgument.ONE`, y `parseConsole` acepta el run id antes o después de las opciones. Este corte alinea los cinco verbos que quedaban con la convención del propio CLI: el parser es el único sitio que sabe qué opciones llevan valor, y por eso es el único que puede distinguir el run id del valor de una opción.
+
+Medido sobre dos distribuciones construidas de este repositorio —`a0e4f027f` (antes) y `9639e7213` (después)— en la misma máquina, con el MISMO script de sonda. Se mide el código de salida y la primera línea de stderr.
+
+|celda|antes|después|
+|---|---|---|
+|`inspect --db X run-1`|`inspect: missing required argument: run id`|`inspect: missing required argument: --control-root <path>`|
+|`inspect run-1 --db X`|`inspect: missing required argument: --control-root <path>`|sin cambio|
+|`observe --view console run-1`|`observe: a run id is required.`|`observe: there is no Output Plane to read, because --control-root was not given.`|
+|`observe run-1 --view console`|sin cambio|sin cambio|
+|`runs cancel --reason w run-1`|`runs cancel: missing required argument: run id`|`runs cancel: missing required argument: --db <path>`|
+|`runs cancel run-1 --reason w`|sin cambio|sin cambio|
+|`runs recover --dry-run run-1`|`runs recover: missing required argument: run id`|`runs recover: missing required argument: --db <path>`|
+|`runs recover run-1 --dry-run`|sin cambio|sin cambio|
+|`saga inspect --format json run-1`|`saga inspect: missing required argument: run id`|`saga inspect: missing required argument: --db <path>`|
+|`saga inspect run-1 --format json`|sin cambio|sin cambio|
+|`inspect --db X run-1 run-2`|`inspect: missing required argument: run id`|`inspect: unexpected argument: run-2`|
+|`observe --view console run-1 run-2`|`observe: a run id is required.`|`observe: unexpected argument: run-2`|
+|`runs cancel --reason w run-1 run-2`|`runs cancel: missing required argument: run id`|`runs cancel: unexpected argument: run-2`|
+|`runs recover --dry-run run-1 run-2`|`runs recover: missing required argument: run id`|`runs recover: unexpected argument: run-2`|
+|`saga inspect --format json run-1 run-2`|`saga inspect: missing required argument: run id`|`saga inspect: unexpected argument: run-2`|
+
+Las quince celdas salen con código 2 antes y después. Lo que cambia es la frase: la de «antes» nombra una falta que no existía, la de «después» nombra lo que el verbo pide de verdad. Y el segundo posicional, que antes se tragaba en silencio, ahora se rechaza nombrando el token sobrante: «unexpected argument: run-2», con la pista «this command takes one positional argument».
+
+**El instrumento.** Una fila unitaria por verbo, en proceso, con el patrón que ya usan `CliOptionAdmissionTest` y `MainSagaInspectCliTest`: se da el array de argumentos, se lee el código de salida y se captura `stderr`. Cada fila pregunta lo mismo a un verbo distinto, porque la extracción es un sitio distinto en cada uno: una fila de `inspect` no puede cazar un verbo que siga leyendo `args[0]`. La fila no congela la frase del rechazo —congela el NOMBRE de lo que el verbo pide— y por eso afirma dos ausencias: que la stderr no nombre el run id («run id») y que no nombre su valor («run-1»). La primera caza un verbo que se niega POR el run id; la segunda caza un parser que niega el run id COMO posicional. Y afirma que stdout va vacío, porque un rechazo que además publica una respuesta se lee como la respuesta.
+
+**El E2E no se toca, se reordena.** Cuatro invocaciones existentes de `examples/run.sh` cambian de orden para que el run id vaya después de las opciones —`runs recover`, `runs cancel`, `inspect --state` sobre un run real y `inspect --state` sobre un run que no existe— y así se ve que el verbo USA el id leído. El cambio es de cero líneas: los mismos comandos, la misma tienda, los mismos códigos esperados.
+
+**Mutación.** Con los cinco archivos de producción restaurados a su versión de HEAD, `:pipeline-application:test` dio 365 tests completados y 6 fallos, y el único XML con `<failure>` fue `RunIdPositionTest`: sin colateral. Con esa misma mutación, la distribución construida fue a rojo en `events/05-*` («reading the run state exited 2, expected 0»), en `durable/39-*` («the cancel of the dead run exited 2») y en `durable/40-*` («the recover of the half-finished run exited 2»), mientras el escenario hermano `durable/39-saga-two-same-kind` siguió en verde. La restauración se hizo desde una copia verificada por digest, no desde git.
+
+**Lo que este corte NO arregla.**
+- `events` y `console` siguen escribiendo su propia frase para el segundo posicional («unexpected extra argument: …»), y `operations` sigue con «a run id is required.» de su puño. Ahora es un residuo declarado y medido, no un olvido.
+- La pista de `TooManyPositionals` dice «this command takes one positional argument», y estos verbos tienen exactamente un posicional: es correcta, pero el texto no distingue el caso de un verbo con dos.
+- `pipeline-application` no está entre los módulos con `apiCheck`, así que este corte no toca ninguna superficie ABI vigilada: no cambia firmas, ni tipos públicos, ni formatos durables.
+- Los verbos que admiten el run id por bandera (`events` con `--run`) conservan su camino propio.
+
+**Evidencia.** Gate completo sin filtros, sobre `9639e72131849c2c24a75ddbf1d5939d6102a943`:
+
+```
+PASS  sha=9639e72131849c2c24a75ddbf1d5939d6102a943  elapsed=182s  budget=900s  tests=rewritten:1547 read:0  scenarios=observed:63 executed:63
+```
+
+- 1547 tests EJECUTADOS de verdad, 0 leídos de informes anteriores, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E observados y ejecutados, en verde.
+- 182 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28829`, `PRODUCT_LOC = 71270`, ratio `0.405` (límite 2). La verificación subió 98 líneas —las seis filas nuevas y su documentación— y la producción subió 37. En `pipeline-application` el ratio es `6419 / 25655 = 0.25`.
+
 ## H6 — Reducir deuda del harness y asegurar la publicación
 
 Foco: `examples/run.sh`, `verify-all.sh` y scripts de release.

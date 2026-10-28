@@ -12,7 +12,6 @@ import dev.rubentxu.pipeline.v2.application.CoreShellStep
 import dev.rubentxu.pipeline.v2.application.IsUnixInput
 import dev.rubentxu.pipeline.v2.application.PwdInput
 import dev.rubentxu.pipeline.v2.application.PwdTmpInput
-import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
 import dev.rubentxu.pipeline.v2.domain.ShellCommand
 import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
@@ -20,7 +19,6 @@ import dev.rubentxu.pipeline.v2.scripting.CompiledScriptedEntryPoint
 import dev.rubentxu.pipeline.v2.scripting.ReturnStatus
 import dev.rubentxu.pipeline.v2.scripting.ReturnStdout
 import dev.rubentxu.pipeline.v2.scripting.ScriptCompilationResult
-import dev.rubentxu.pipeline.v2.scripting.ScriptedArtifactIdentity
 import dev.rubentxu.pipeline.v2.scripting.ScriptedCallSiteId
 import dev.rubentxu.pipeline.v2.scripting.ScriptedDynamicScopeId
 import dev.rubentxu.pipeline.v2.scripting.ScriptEvaluationOutput

@@ -14,14 +14,6 @@
     <ID>UnsafeCallOnNullableType:ExecutionPlanner.kt:ExecutionPlanner$inDegree[next]!!</ID>
     <ID>UnsafeCallOnNullableType:ExecutionPlanner.kt:ExecutionPlanner$successors[edge.from]!!</ID>
     <ID>UnsafeCallOnNullableType:ExecutionTargetRequirementCodec.kt:ExecutionTargetRequirementCodec.ByteCursor$peek()!!</ID>
-    <ID>UnusedImport:DurableOperation.kt:import kotlinx.serialization.Serializable</ID>
-    <ID>UnusedImport:DurableOperation.kt:import kotlinx.serialization.json.JsonElement</ID>
-    <ID>UnusedImport:DurableTaskRuntime.kt:import kotlinx.serialization.Serializable</ID>
-    <ID>UnusedImport:OperationInput.kt:import kotlinx.serialization.json.JsonNull</ID>
-    <ID>UnusedImport:OperationInput.kt:import kotlinx.serialization.json.JsonPrimitive</ID>
-    <ID>UnusedImport:OperationOutput.kt:import kotlinx.serialization.json.JsonNull</ID>
-    <ID>UnusedImport:PluginManifestCodec.kt:import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs</ID>
-    <ID>UnusedImport:StageDirectivePlanner.kt:import dev.rubentxu.pipeline.v2.domain.StageDirective</ID>
     <ID>UnusedPrivateProperty:ExecutionTargetRequirementCodec.kt:ExecutionTargetRequirementCodec.ByteCursor$private val source: String</ID>
     <ID>UnusedVariable:PluginManifestCodec.kt:JsonCursor$val esc = source[pos++]</ID>
     <ID>UnusedVariable:WaitUntilReconciler.kt:WaitUntilReconciler$val lastBackoff = input.controlRows.maxByOrNull { it.attempt }?.currentBackoffMs ?: input.initialRecurrencePeriodMs</ID>

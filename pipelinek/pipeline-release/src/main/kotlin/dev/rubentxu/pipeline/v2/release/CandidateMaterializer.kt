@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.release
 
-import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256

@@ -4,7 +4,6 @@ import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.FailureOrigin
 import dev.rubentxu.pipeline.v2.domain.durable.FailureRecord
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles
 import java.nio.file.Path
 
 /** Transitional adapter retained for PipelineRun's projection; remove */

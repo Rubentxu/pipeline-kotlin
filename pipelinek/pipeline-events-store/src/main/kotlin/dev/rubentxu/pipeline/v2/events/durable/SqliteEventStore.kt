@@ -23,7 +23,6 @@ import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventRecordRead
 import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
 import dev.rubentxu.pipeline.v2.events.UndecodableEventRecordException
-import dev.rubentxu.pipeline.v2.events.UndecodableReason
 import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.ExecutionTargetResolved

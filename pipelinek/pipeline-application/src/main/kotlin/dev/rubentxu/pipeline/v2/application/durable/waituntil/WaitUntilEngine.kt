@@ -13,7 +13,6 @@ import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilAbortCause
 import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilCompletion
-import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilControlIdentity
 import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciliationDecision
 import dev.rubentxu.pipeline.v2.domain.durable.WaitUntilReconciler
 import dev.rubentxu.pipeline.v2.domain.step.WaitUntilPredicateOutcome
@@ -22,14 +21,11 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyInvocationContext
 import dev.rubentxu.pipeline.v2.domain.step.BodyInvoker
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodyRef
-import dev.rubentxu.pipeline.v2.domain.step.BodyRefs
-import dev.rubentxu.pipeline.v2.domain.step.CancellationReason
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
 import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
 import java.time.Instant
 import java.util.UUID
-import kotlin.math.min
 
 /**
  * Application-internal authority for the waitUntil aggregate (

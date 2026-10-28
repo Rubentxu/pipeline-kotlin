@@ -1,7 +1,5 @@
 package dev.rubentxu.pipeline.v2.domain.durable
 
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
 
 /**
  * Sealed hierarchy of durable operations.

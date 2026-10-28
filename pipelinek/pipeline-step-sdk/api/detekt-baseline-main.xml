@@ -2,6 +2,5 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>UnusedImport:PipelineJson.kt:import kotlinx.serialization.json.longOrNull</ID>
   </CurrentIssues>
 </SmellBaseline>

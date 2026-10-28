@@ -21,9 +21,7 @@ import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.events.durable.RunLeasePort
 import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.output.OutputFrameIndex
-import dev.rubentxu.pipeline.v2.output.OutputPin
 import dev.rubentxu.pipeline.v2.output.OutputPinPort
-import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import dev.rubentxu.pipeline.v2.output.store.OutputRecoveryPort
 import dev.rubentxu.pipeline.v2.domain.AttemptId
 import dev.rubentxu.pipeline.v2.runtime.control.CancelReceipt

@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.scripting
 
 import dev.rubentxu.pipeline.v2.events.CompilationFinished
 import dev.rubentxu.pipeline.v2.events.CompilationStarted
-import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.events.NullEventSink
@@ -11,9 +10,7 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.script.experimental.api.ResultWithDiagnostics
 import kotlin.script.experimental.api.ResultValue
-import kotlin.script.experimental.api.ScriptCompilationConfiguration
 import kotlin.script.experimental.api.ScriptDiagnostic
-import kotlin.script.experimental.api.ScriptEvaluationConfiguration
 import kotlin.script.experimental.api.SourceCode
 import kotlin.script.experimental.api.defaultImports
 import kotlin.script.experimental.api.compilerOptions
@@ -21,7 +18,6 @@ import kotlin.script.experimental.host.StringScriptSource
 import kotlin.script.experimental.jvm.dependenciesFromCurrentContext
 import kotlin.script.experimental.jvm.jvm
 import kotlin.script.experimental.jvm.updateClasspath
-import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromTemplate
 
 /**
  * Kotlin 2.4.10 adapter that wraps [CachingJvmScriptingHost] (a

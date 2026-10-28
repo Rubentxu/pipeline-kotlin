@@ -3,7 +3,6 @@ package dev.rubentxu.pipeline.v2.domain.step
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.directive.DirectiveKey
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
-import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
 
 /**
  * The machine-readable manifest format, and the ONLY place its spelling is decided.

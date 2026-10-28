@@ -1,7 +1,5 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.domain.durable.Effect
-import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 
 /**
  * Single source of truth for the durable metadata of each canonical core plugin.

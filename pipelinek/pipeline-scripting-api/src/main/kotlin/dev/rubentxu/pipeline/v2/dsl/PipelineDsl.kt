@@ -1,10 +1,6 @@
 package dev.rubentxu.pipeline.v2.dsl
 
-import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.FailureKind
-import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec
-import dev.rubentxu.pipeline.v2.domain.scm.GitScm
-import dev.rubentxu.pipeline.v2.domain.scm.Scm
 
 /**
  * Top-level `pipeline { }` DSL entry point.

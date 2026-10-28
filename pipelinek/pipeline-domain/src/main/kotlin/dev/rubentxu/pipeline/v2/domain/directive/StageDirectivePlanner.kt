@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.domain.directive
 
-import dev.rubentxu.pipeline.v2.domain.StageDirective
 import dev.rubentxu.pipeline.v2.domain.StageNode
 
 /**

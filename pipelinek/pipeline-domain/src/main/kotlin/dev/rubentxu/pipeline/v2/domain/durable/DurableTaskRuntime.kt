@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.domain.durable
 
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
-import kotlinx.serialization.Serializable
 
 /**
  * Which pipe a chunk came from.

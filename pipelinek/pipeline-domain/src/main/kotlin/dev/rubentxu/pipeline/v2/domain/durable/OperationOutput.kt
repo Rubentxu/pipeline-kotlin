@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.domain.durable
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
 
 /**
  * Immutable, serializable carrier for the output of a durable operation.

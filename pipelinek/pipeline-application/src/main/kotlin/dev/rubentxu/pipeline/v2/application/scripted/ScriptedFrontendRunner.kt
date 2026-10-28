@@ -8,7 +8,6 @@ import dev.rubentxu.pipeline.v2.application.durable.ExternalSubprocessRecovery
 import dev.rubentxu.pipeline.v2.application.durable.OpId
 import dev.rubentxu.pipeline.v2.application.durable.RecoveryInterpretationEngine
 import dev.rubentxu.pipeline.v2.application.durable.RegistryExecutionBoundary
-import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.RunOutcomeReducer
 import dev.rubentxu.pipeline.v2.domain.StepOutcome

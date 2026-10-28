@@ -1,7 +1,5 @@
 package dev.rubentxu.pipeline.v2.events.identity
 
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
 
 /**
  * Read-side projection of an event history query.

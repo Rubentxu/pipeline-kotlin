@@ -2,9 +2,5 @@
 <SmellBaseline>
   <ManuallySuppressedIssues/>
   <CurrentIssues>
-    <ID>UnusedImport:CredentialMaterializer.kt:import dev.rubentxu.pipeline.v2.domain.SecretHandle</ID>
-    <ID>UnusedImport:LocalFileMaterialization.kt:import dev.rubentxu.pipeline.v2.credentials.api.SecretStore</ID>
-    <ID>UnusedImport:MaterializedCredential.kt:import java.nio.file.Files</ID>
-    <ID>UnusedImport:MaterializedCredential.kt:import java.nio.file.Path</ID>
   </CurrentIssues>
 </SmellBaseline>

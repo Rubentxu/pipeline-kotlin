@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.sdk.utilities.step
 
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
-import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.longOrNull
 import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredLong
 import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredString
 import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.stringOrNull

@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.credentials.multipart
 
-import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
 import dev.rubentxu.pipeline.v2.credentials.spi.CredentialMaterialization
 import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
 import dev.rubentxu.pipeline.v2.credentials.spi.MaterializedCredential

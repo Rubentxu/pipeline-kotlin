@@ -3,7 +3,6 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.domain.step.CompositeCapabilityContributor
 import dev.rubentxu.pipeline.v2.domain.step.AllowAll
 import dev.rubentxu.pipeline.v2.domain.step.DenyAll
-import dev.rubentxu.pipeline.v2.domain.directivekey.WHEN_DIRECTIVE_KEY
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalDurableRunCoordinator
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalNodeDispatcher
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal

@@ -7,7 +7,6 @@ import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
-import dev.rubentxu.pipeline.v2.domain.post.PostCondition
 import dev.rubentxu.pipeline.v2.domain.post.PostPlanner
 import dev.rubentxu.pipeline.v2.domain.post.StageOutcome
 import dev.rubentxu.pipeline.v2.events.EventSink

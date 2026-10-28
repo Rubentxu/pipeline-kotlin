@@ -1,14 +1,6 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git.step
 
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Typed input for the `scm-git.checkout` Step

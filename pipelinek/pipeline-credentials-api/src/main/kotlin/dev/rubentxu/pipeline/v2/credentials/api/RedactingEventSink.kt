@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.credentials.api
 
-import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
 import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
 import dev.rubentxu.pipeline.v2.events.CompilationFinished

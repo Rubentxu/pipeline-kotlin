@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.application.scripted
 
 import dev.rubentxu.pipeline.v2.application.CoreShellInput
 import dev.rubentxu.pipeline.v2.application.CoreShellStep
-import dev.rubentxu.pipeline.v2.domain.ShellInvocationResult
 
 /**
  * The scripted shell reaches the durable engine through the REGISTRY,

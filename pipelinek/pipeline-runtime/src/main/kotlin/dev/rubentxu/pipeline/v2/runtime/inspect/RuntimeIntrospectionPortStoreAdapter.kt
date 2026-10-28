@@ -14,9 +14,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal
 import dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult
 import dev.rubentxu.pipeline.v2.events.shape.EventShapeReadPort
-import dev.rubentxu.pipeline.v2.events.shape.StageFinishedTyped
 import dev.rubentxu.pipeline.v2.events.shape.StageStartedTyped
-import dev.rubentxu.pipeline.v2.events.shape.StepFinishedTyped
 import dev.rubentxu.pipeline.v2.events.shape.StepStartedTyped
 import dev.rubentxu.pipeline.v2.events.shape.TypedEvent
 import dev.rubentxu.pipeline.v2.output.OutputFrameIndex

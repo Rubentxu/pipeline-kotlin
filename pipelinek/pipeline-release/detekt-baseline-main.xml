@@ -6,7 +6,5 @@
     <ID>LongParameterList:CandidateAdmission.kt:CandidateAdmission$fun admit: AdmissionOutcome</ID>
     <ID>LongParameterList:CandidateMaterializer.kt:CandidateMaterializer$fun materialize: MaterializationResult</ID>
     <ID>UnsafeCallOnNullableType:DistributionIdentity.kt:facts.reported(it)!!</ID>
-    <ID>UnusedImport:BundledPluginCompatibility.kt:import dev.rubentxu.pipeline.v2.domain.digest.Sha256</ID>
-    <ID>UnusedImport:CandidateMaterializer.kt:import java.io.InputStream</ID>
   </CurrentIssues>
 </SmellBaseline>

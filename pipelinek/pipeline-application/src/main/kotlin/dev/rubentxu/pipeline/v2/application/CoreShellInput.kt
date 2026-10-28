@@ -1,7 +1,6 @@
 package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.ShellCommand
-import dev.rubentxu.pipeline.v2.domain.ShellReturnMode
 
 /**
  * Typed input for `core.sh`, registry-routed

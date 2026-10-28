@@ -26,7 +26,6 @@ import dev.rubentxu.pipeline.v2.output.store.OutputRecoveryPort
 import dev.rubentxu.pipeline.v2.output.store.SealOutcome
 import dev.rubentxu.pipeline.v2.scripting.ScriptDiagnosticSeverity
 import dev.rubentxu.pipeline.v2.scripting.ScriptingDiagnostic
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import java.util.UUID

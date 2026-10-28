@@ -6,7 +6,6 @@ import dev.rubentxu.pipeline.v2.harness.model.EventSelector
 import dev.rubentxu.pipeline.v2.harness.model.ExpectedRunOutcome
 import dev.rubentxu.pipeline.v2.harness.model.FieldMatch
 import dev.rubentxu.pipeline.v2.harness.model.KeyKind
-import dev.rubentxu.pipeline.v2.harness.model.PipelineOutcome
 import dev.rubentxu.pipeline.v2.harness.model.RelationScope
 import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.error.YAMLException

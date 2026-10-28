@@ -2,10 +2,8 @@ package dev.rubentxu.pipeline.v2.sdk.runtime.durable
 
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
-import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.concurrent.withLock
 
 /**
  * State machine for a durable shell execution.

@@ -6,12 +6,6 @@
     <ID>NewLineAtEndOfFile:CachingJvmScriptingHost.kt:dev.rubentxu.pipeline.v2.scripting.CachingJvmScriptingHost.kt</ID>
     <ID>NewLineAtEndOfFile:CompiledScriptCache.kt:dev.rubentxu.pipeline.v2.scripting.CompiledScriptCache.kt</ID>
     <ID>TooManyFunctions:EnvVarNameExtractor.kt:EnvVarNameExtractor</ID>
-    <ID>UnusedImport:Kotlin24ScriptingHost.kt:import dev.rubentxu.pipeline.v2.events.DomainEvent</ID>
-    <ID>UnusedImport:Kotlin24ScriptingHost.kt:import kotlin.script.experimental.api.ScriptCompilationConfiguration</ID>
-    <ID>UnusedImport:Kotlin24ScriptingHost.kt:import kotlin.script.experimental.api.ScriptEvaluationConfiguration</ID>
-    <ID>UnusedImport:Kotlin24ScriptingHost.kt:import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromTemplate</ID>
-    <ID>UnusedImport:KotlinScriptedSourceMapper.kt:import org.jetbrains.kotlin.psi.KtValueArgument</ID>
-    <ID>UnusedImport:KotlinScriptedSourceMapper.kt:import org.jetbrains.kotlin.psi.KtValueArgumentName</ID>
     <ID>UnusedPrivateFunction:EnvVarNameExtractor.kt:EnvVarNameExtractor$private fun findOpeningBrace: Int</ID>
     <ID>UseOrEmpty:Kotlin24ScriptingHost.kt:Kotlin24ScriptingHost$definition.sourceText ?: definition.sourcePath?.toFile()?.readText() ?: ""</ID>
     <ID>VarCouldBeVal:EnvVarNameExtractor.kt:EnvVarNameExtractor$var depth = 0</ID>

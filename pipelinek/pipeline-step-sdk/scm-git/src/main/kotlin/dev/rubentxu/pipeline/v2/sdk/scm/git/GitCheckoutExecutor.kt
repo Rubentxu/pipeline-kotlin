@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.sdk.scm.git
 
 import dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry
 import dev.rubentxu.pipeline.v2.credentials.api.SecretStore
-import dev.rubentxu.pipeline.v2.domain.CredentialsId
 import dev.rubentxu.pipeline.v2.domain.MismatchedSecretException
 import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.RunId
@@ -24,7 +23,6 @@ import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 
 /**
  * Git checkout executor with idempotent SHA-equality.

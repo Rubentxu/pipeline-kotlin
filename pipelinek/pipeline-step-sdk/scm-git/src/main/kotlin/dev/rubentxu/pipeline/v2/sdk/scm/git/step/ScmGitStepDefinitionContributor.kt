@@ -1,29 +1,16 @@
 package dev.rubentxu.pipeline.v2.sdk.scm.git.step
 
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
-import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
-import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
-import dev.rubentxu.pipeline.v2.domain.step.Delivery
 import dev.rubentxu.pipeline.v2.domain.step.Digest
-import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY
-import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion
-import dev.rubentxu.pipeline.v2.domain.step.PipelineKApiRange
-import dev.rubentxu.pipeline.v2.domain.step.PluginContributions
-import dev.rubentxu.pipeline.v2.domain.step.PluginFamily
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifest
 import dev.rubentxu.pipeline.v2.domain.step.PluginManifestValidator
 import dev.rubentxu.pipeline.v2.domain.step.PluginReleaseRef
-import dev.rubentxu.pipeline.v2.domain.step.PluginStepContribution
 import dev.rubentxu.pipeline.v2.domain.step.SemVer
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinitionContributor
-import dev.rubentxu.pipeline.v2.domain.step.StepManifest
 import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistration
-import dev.rubentxu.pipeline.v2.domain.step.StepRegistration.Companion.legacy
-import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistryBuilder
-import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata
 import java.nio.file.Files
 import java.nio.file.Path
 

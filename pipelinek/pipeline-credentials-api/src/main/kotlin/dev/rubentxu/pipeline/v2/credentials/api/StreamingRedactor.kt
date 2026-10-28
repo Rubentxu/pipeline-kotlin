@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.credentials.api
 
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
-import java.util.ArrayDeque
 
 /**
  * The mutable state of a single [StreamingRedactor] pass.

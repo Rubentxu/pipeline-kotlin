@@ -6,7 +6,6 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepException
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredArray
-import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredObject
 import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredString
 import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.stringOrNull
 import dev.rubentxu.pipeline.v2.sdk.PipelineJson
@@ -16,15 +15,11 @@ import dev.rubentxu.pipeline.v2.sdk.utilities.domain.TestReport
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.UnzipInput
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.UnzipMode
 import dev.rubentxu.pipeline.v2.sdk.utilities.domain.UnzipOutput
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put

@@ -5,12 +5,6 @@
     <ID>ImplicitDefaultLocale:StageScopeBuilders.kt:StageScopeTopSteps$"%04x".format(c.code)</ID>
     <ID>NewLineAtEndOfFile:CacheKey.kt:dev.rubentxu.pipeline.v2.scripting.CacheKey.kt</ID>
     <ID>UnsafeCallOnNullableType:StageScope.kt:StageScope$label!!</ID>
-    <ID>UnusedImport:PipelineDsl.kt:import dev.rubentxu.pipeline.v2.domain.CredentialsId</ID>
-    <ID>UnusedImport:PipelineDsl.kt:import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec</ID>
-    <ID>UnusedImport:PipelineDsl.kt:import dev.rubentxu.pipeline.v2.domain.scm.GitScm</ID>
-    <ID>UnusedImport:PipelineDsl.kt:import dev.rubentxu.pipeline.v2.domain.scm.Scm</ID>
-    <ID>UnusedImport:StepSpec.kt:import dev.rubentxu.pipeline.v2.domain.scm.CheckoutSpec</ID>
-    <ID>UnusedImport:StepSpec.kt:import dev.rubentxu.pipeline.v2.domain.scm.GitScm</ID>
     <ID>UnusedVariable:StageScopeBuilders.kt:StageScopeCore$carrier</ID>
     <ID>UseOrEmpty:StageScope.kt:StageScope$patterns ?: emptyList()</ID>
     <ID>UseOrEmpty:StageScopeBuilders.kt:StageScopeCore$bindings.firstOrNull()?.variable ?: bindings.firstOrNull()?.usernameVariable ?: ""</ID>

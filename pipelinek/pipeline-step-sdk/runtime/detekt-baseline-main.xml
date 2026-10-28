@@ -5,9 +5,6 @@
     <ID>AbstractClassCanBeInterface:StepReconcilerL1.kt:StepReconcilerL1.Classification$Classification</ID>
     <ID>InjectDispatcher:ProcessDurableTaskRuntime.kt:ProcessDurableTaskRuntime$IO</ID>
     <ID>MaxLineLength:DurableShellExecutor.kt:"DurableShellExecutor().executeTerminal(controlDir, scriptContent, opId, ShOptions(timeoutMs = timeoutMs, env = env, sandbox = sandbox, workspaceRoot = workspaceRoot ?: controlDir))"</ID>
-    <ID>UnusedImport:DurableShellExecutor.kt:import java.io.ByteArrayOutputStream</ID>
-    <ID>UnusedImport:DurableShellExecutor.kt:import kotlin.concurrent.withLock</ID>
-    <ID>UnusedImport:DurableTaskTerminalAdapter.kt:import dev.rubentxu.pipeline.v2.sdk.runtime.durable.DurableShellFiles</ID>
     <ID>UnusedParameter:DurableShellExecutor.kt:DurableShellExecutor$process: ProcessHandle</ID>
     <ID>UnusedParameter:StepExecutors.kt:context: StepContext</ID>
     <ID>UnusedParameter:StepExecutors.kt:sink: EventSink</ID>

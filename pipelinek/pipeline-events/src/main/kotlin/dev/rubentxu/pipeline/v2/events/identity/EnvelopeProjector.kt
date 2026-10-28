@@ -1,10 +1,8 @@
 package dev.rubentxu.pipeline.v2.events.identity
 
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
-import dev.rubentxu.pipeline.v2.domain.identity.ResourceKind
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
-import dev.rubentxu.pipeline.v2.domain.step.PluginFamily
 import dev.rubentxu.pipeline.v2.domain.step.StepProviderMetadata
 import dev.rubentxu.pipeline.v2.events.AgentResolved
 import dev.rubentxu.pipeline.v2.events.ArtifactArchived

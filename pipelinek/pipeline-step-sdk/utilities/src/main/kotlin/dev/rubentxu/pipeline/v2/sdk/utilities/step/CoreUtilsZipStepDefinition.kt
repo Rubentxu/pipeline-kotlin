@@ -27,7 +27,6 @@ import java.util.zip.ZipOutputStream
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.readBytes
 import kotlin.io.path.relativeTo
-import kotlin.streams.toList
 
 /**
  * `core-utils.zip` OFFICIAL_PLUGIN Step (utilities).

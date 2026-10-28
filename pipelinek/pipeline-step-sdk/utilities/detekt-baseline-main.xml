@@ -14,21 +14,5 @@
     <ID>UnnecessaryNotNullOperator:SnakeYamlAdapter.kt:SnakeYamlAdapter$value!!</ID>
     <ID>UnsafeCallOnNullableType:CoreUtilsReadYamlCodec.kt:CoreUtilsReadYamlInputCodec$obj["source"]!!</ID>
     <ID>UnsafeCallOnNullableType:SnakeYamlAdapter.kt:SnakeYamlAdapter$k!!</ID>
-    <ID>UnusedImport:CoreUtilsFindFilesStepDefinition.kt:import kotlin.io.path.isRegularFile</ID>
-    <ID>UnusedImport:CoreUtilsFindFilesStepDefinition.kt:import kotlin.streams.toList</ID>
-    <ID>UnusedImport:CoreUtilsReadYamlCodec.kt:import kotlinx.serialization.json.jsonPrimitive</ID>
-    <ID>UnusedImport:CoreUtilsReadYamlStepDefinition.kt:import java.nio.file.Files</ID>
-    <ID>UnusedImport:CoreUtilsReadYamlStepDefinition.kt:import java.nio.file.Path</ID>
-    <ID>UnusedImport:CoreUtilsSha256Codec.kt:import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.longOrNull</ID>
-    <ID>UnusedImport:CoreUtilsStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY</ID>
-    <ID>UnusedImport:CoreUtilsStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.PluginContributions</ID>
-    <ID>UnusedImport:CoreUtilsStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.PluginStepContribution</ID>
-    <ID>UnusedImport:CoreUtilsStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.StepManifest</ID>
-    <ID>UnusedImport:CoreUtilsUnzipCodec.kt:import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredObject</ID>
-    <ID>UnusedImport:CoreUtilsUnzipCodec.kt:import kotlinx.serialization.json.JsonArray</ID>
-    <ID>UnusedImport:CoreUtilsUnzipCodec.kt:import kotlinx.serialization.json.JsonObject</ID>
-    <ID>UnusedImport:CoreUtilsUnzipCodec.kt:import kotlinx.serialization.json.add</ID>
-    <ID>UnusedImport:CoreUtilsUnzipCodec.kt:import kotlinx.serialization.json.jsonArray</ID>
-    <ID>UnusedImport:CoreUtilsZipStepDefinition.kt:import kotlin.streams.toList</ID>
   </CurrentIssues>
 </SmellBaseline>

@@ -3,21 +3,13 @@ package dev.rubentxu.pipeline.v2.harness.verify
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.saga.SagaOutcome
 import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
-import dev.rubentxu.pipeline.v2.events.ParallelBranchStarted
 import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
-import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
 import dev.rubentxu.pipeline.v2.events.RunFinished
-import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.SagaTerminal
 import dev.rubentxu.pipeline.v2.events.StageFinished
-import dev.rubentxu.pipeline.v2.events.StageStarted
-import dev.rubentxu.pipeline.v2.events.StepFailed
-import dev.rubentxu.pipeline.v2.events.StepFinished
-import dev.rubentxu.pipeline.v2.events.StepStarted
 import dev.rubentxu.pipeline.v2.events.identity.RunPresentationProjection
 import dev.rubentxu.pipeline.v2.harness.model.EventViolation
 import dev.rubentxu.pipeline.v2.harness.model.TraceEntry
-import dev.rubentxu.pipeline.v2.harness.model.VerificationResult
 import dev.rubentxu.pipeline.v2.harness.model.ViolationRule
 
 /**

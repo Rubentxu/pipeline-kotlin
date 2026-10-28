@@ -3,10 +3,7 @@ package dev.rubentxu.pipeline.v2.application.durable.retry
 import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
-import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
-import dev.rubentxu.pipeline.v2.domain.durable.RetryChildRowSnapshot
 import dev.rubentxu.pipeline.v2.domain.durable.RetryControlIdentity
-import dev.rubentxu.pipeline.v2.domain.durable.RetryControlRowSnapshot
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationDecision
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciliationInput
 import dev.rubentxu.pipeline.v2.domain.durable.RetryReconciler

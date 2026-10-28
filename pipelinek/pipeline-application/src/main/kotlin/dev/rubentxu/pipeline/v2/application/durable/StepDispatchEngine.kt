@@ -14,7 +14,6 @@ import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeO
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
-import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.ContextOverlay
 import dev.rubentxu.pipeline.v2.domain.ContextTransition
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
@@ -22,31 +21,19 @@ import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
-import dev.rubentxu.pipeline.v2.domain.StageBody
-import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
-import dev.rubentxu.pipeline.v2.domain.durable.BranchTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import dev.rubentxu.pipeline.v2.domain.durable.CompositeOperation
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
-import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
-import dev.rubentxu.pipeline.v2.domain.durable.ParallelAggregateId
-import dev.rubentxu.pipeline.v2.domain.durable.ParallelAggregateSnapshot
-import dev.rubentxu.pipeline.v2.domain.durable.ParallelBranchChildSnapshot
-import dev.rubentxu.pipeline.v2.domain.durable.ParallelDecision
-import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciler
-import dev.rubentxu.pipeline.v2.domain.durable.ParallelReconciliationInput
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker
 import dev.rubentxu.pipeline.v2.domain.step.BodySlots
 import dev.rubentxu.pipeline.v2.domain.step.SlotResolution
 import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
-import dev.rubentxu.pipeline.v2.domain.step.BodyAggregateIdentity
 import dev.rubentxu.pipeline.v2.domain.step.BodyContinuation
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
@@ -56,10 +43,8 @@ import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
-import kotlinx.coroutines.async
 import kotlinx.serialization.json.JsonPrimitive
 import java.nio.file.Path
-import java.time.Instant
 import java.util.UUID
 
 /**

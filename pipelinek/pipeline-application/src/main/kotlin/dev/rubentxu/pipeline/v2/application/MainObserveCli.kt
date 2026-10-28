@@ -3,7 +3,6 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader
 import dev.rubentxu.pipeline.v2.application.observation.LiveOutputPresentation
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
-import dev.rubentxu.pipeline.v2.application.observation.ObservationJsonLines
 import dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
 import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput

@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.application
 
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Typed decode failure for `core.sh` output codec.

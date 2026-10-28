@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.application.observation
 
 import dev.rubentxu.pipeline.v2.output.OutputRefusal
 import dev.rubentxu.pipeline.v2.output.OutputTailState
-import java.io.Writer
 
 /**
  * The run-time half of the read model — a drain that keeps up with a run IN PROGRESS.

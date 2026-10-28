@@ -13,7 +13,6 @@ import dev.rubentxu.pipeline.v2.domain.step.RecoveredProjection
 import dev.rubentxu.pipeline.v2.domain.step.RecoveredStepProjection
 import dev.rubentxu.pipeline.v2.domain.step.StepCodec
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
 /**

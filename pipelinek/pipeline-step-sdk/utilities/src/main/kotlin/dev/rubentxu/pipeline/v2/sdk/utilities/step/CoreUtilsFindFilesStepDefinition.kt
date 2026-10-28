@@ -25,9 +25,7 @@ import java.nio.file.PathMatcher
 import kotlin.io.path.exists
 import kotlin.io.path.getLastModifiedTime
 import kotlin.io.path.isDirectory
-import kotlin.io.path.isRegularFile
 import kotlin.io.path.relativeTo
-import kotlin.streams.toList
 
 /**
  * `core-utils.findFiles` OFFICIAL_PLUGIN Step (utilities).

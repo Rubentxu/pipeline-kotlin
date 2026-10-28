@@ -12,13 +12,7 @@ import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.requiredString
 import dev.rubentxu.pipeline.v2.sdk.JsonAccessors.stringOrNull
 import dev.rubentxu.pipeline.v2.sdk.PipelineJson
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.doubleOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**

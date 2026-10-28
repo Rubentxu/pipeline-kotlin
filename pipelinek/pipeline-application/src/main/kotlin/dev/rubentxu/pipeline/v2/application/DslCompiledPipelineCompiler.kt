@@ -3,10 +3,8 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialBindingsPayload
-import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
-import dev.rubentxu.pipeline.v2.domain.DefinitionId
 import dev.rubentxu.pipeline.v2.domain.DefinitionIdentityInput
 import dev.rubentxu.pipeline.v2.domain.Digest
 import dev.rubentxu.pipeline.v2.domain.DeterministicIdGenerator

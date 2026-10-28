@@ -3,24 +3,5 @@
   <ManuallySuppressedIssues/>
   <CurrentIssues>
     <ID>MaxLineLength:JUnitResultsStepDefinition.kt:JUnitResultsStepDefinition$"junit.results: report file is ${sizeBytes} bytes (maxReportBytes=${input.maxReportBytes}); refusing to parse. Raise maxReportBytes in the input if this is intentional."</ID>
-    <ID>UnusedImport:JUnitReportCodec.kt:import kotlinx.serialization.json.booleanOrNull</ID>
-    <ID>UnusedImport:JUnitReportCodec.kt:import kotlinx.serialization.json.contentOrNull</ID>
-    <ID>UnusedImport:JUnitReportCodec.kt:import kotlinx.serialization.json.doubleOrNull</ID>
-    <ID>UnusedImport:JUnitReportCodec.kt:import kotlinx.serialization.json.intOrNull</ID>
-    <ID>UnusedImport:JUnitReportCodec.kt:import kotlinx.serialization.json.jsonObject</ID>
-    <ID>UnusedImport:JUnitReportCodec.kt:import kotlinx.serialization.json.jsonPrimitive</ID>
-    <ID>UnusedImport:JUnitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.Delivery</ID>
-    <ID>UnusedImport:JUnitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.Digest</ID>
-    <ID>UnusedImport:JUnitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY</ID>
-    <ID>UnusedImport:JUnitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion</ID>
-    <ID>UnusedImport:JUnitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.PipelineKApiRange</ID>
-    <ID>UnusedImport:JUnitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.PluginContributions</ID>
-    <ID>UnusedImport:JUnitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.PluginFamily</ID>
-    <ID>UnusedImport:JUnitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.PluginManifest</ID>
-    <ID>UnusedImport:JUnitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.PluginReleaseRef</ID>
-    <ID>UnusedImport:JUnitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.PluginStepContribution</ID>
-    <ID>UnusedImport:JUnitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.SemVer</ID>
-    <ID>UnusedImport:JUnitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.StepManifest</ID>
-    <ID>UnusedImport:JUnitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata</ID>
   </CurrentIssues>
 </SmellBaseline>

@@ -1,7 +1,5 @@
 package dev.rubentxu.pipeline.v2.events.identity
 
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Agent-efficient event inspection.

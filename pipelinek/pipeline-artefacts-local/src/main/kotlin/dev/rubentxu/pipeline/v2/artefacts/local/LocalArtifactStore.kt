@@ -3,7 +3,6 @@ package dev.rubentxu.pipeline.v2.artefacts.local
 import dev.rubentxu.pipeline.v2.domain.digest.Sha256
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialFilePermissions
 import dev.rubentxu.pipeline.v2.events.ArtifactEntry
-import java.io.OutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions

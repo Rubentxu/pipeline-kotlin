@@ -11,7 +11,6 @@ import dev.rubentxu.pipeline.v2.events.HtmlReportPublished
 import dev.rubentxu.pipeline.v2.events.HtmlReportSkipped
 import java.io.IOException
 import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.time.Instant

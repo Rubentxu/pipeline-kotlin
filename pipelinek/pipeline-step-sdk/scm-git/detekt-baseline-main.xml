@@ -6,31 +6,6 @@
     <ID>UnnecessarySafeCall:GitCredentialsApplier.kt:GitCredentialsApplier$repoUrl?.let { extractHost(it) }</ID>
     <ID>UnsafeCallOnNullableType:GitCheckoutExecutor.kt:GitCheckoutExecutor$effectiveStore!!</ID>
     <ID>UnsafeCallOnNullableType:GitCheckoutExecutor.kt:GitCheckoutExecutor$remoteShaResult.getOrNull()!!</ID>
-    <ID>UnusedImport:GitChangelogWriter.kt:import java.nio.file.StandardOpenOption</ID>
-    <ID>UnusedImport:GitCheckoutContract.kt:import kotlinx.serialization.json.Json</ID>
-    <ID>UnusedImport:GitCheckoutContract.kt:import kotlinx.serialization.json.JsonObject</ID>
-    <ID>UnusedImport:GitCheckoutContract.kt:import kotlinx.serialization.json.JsonPrimitive</ID>
-    <ID>UnusedImport:GitCheckoutContract.kt:import kotlinx.serialization.json.boolean</ID>
-    <ID>UnusedImport:GitCheckoutContract.kt:import kotlinx.serialization.json.booleanOrNull</ID>
-    <ID>UnusedImport:GitCheckoutContract.kt:import kotlinx.serialization.json.contentOrNull</ID>
-    <ID>UnusedImport:GitCheckoutContract.kt:import kotlinx.serialization.json.jsonObject</ID>
-    <ID>UnusedImport:GitCheckoutContract.kt:import kotlinx.serialization.json.jsonPrimitive</ID>
-    <ID>UnusedImport:GitCheckoutExecutor.kt:import dev.rubentxu.pipeline.v2.domain.CredentialsId</ID>
-    <ID>UnusedImport:GitCheckoutExecutor.kt:import java.util.concurrent.TimeUnit</ID>
-    <ID>UnusedImport:GitCheckoutStepDefinition.kt:import dev.rubentxu.pipeline.v2.domain.step.StepHandlerContext</ID>
-    <ID>UnusedImport:ScmGitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef</ID>
-    <ID>UnusedImport:ScmGitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs</ID>
-    <ID>UnusedImport:ScmGitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.Delivery</ID>
-    <ID>UnusedImport:ScmGitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.EXECUTION_LOCATION_CAPABILITY</ID>
-    <ID>UnusedImport:ScmGitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.ManifestSchemaVersion</ID>
-    <ID>UnusedImport:ScmGitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.PipelineKApiRange</ID>
-    <ID>UnusedImport:ScmGitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.PluginContributions</ID>
-    <ID>UnusedImport:ScmGitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.PluginFamily</ID>
-    <ID>UnusedImport:ScmGitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.PluginStepContribution</ID>
-    <ID>UnusedImport:ScmGitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.StepManifest</ID>
-    <ID>UnusedImport:ScmGitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistration.Companion.legacy</ID>
-    <ID>UnusedImport:ScmGitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.StepRegistry</ID>
-    <ID>UnusedImport:ScmGitStepDefinitionContributor.kt:import dev.rubentxu.pipeline.v2.domain.step.TrustMetadata</ID>
     <ID>UnusedPrivateProperty:GitCheckoutStepDefinition.kt:GitCheckoutStepDefinition$private val clock: Clock = Clock.systemUTC()</ID>
     <ID>UnusedPrivateProperty:GitCheckoutStepDefinition.kt:GitCheckoutStepDefinition$private val eventSink: EventSink? = null</ID>
     <ID>UnusedPrivateProperty:GitCheckoutStepDefinition.kt:GitCheckoutStepDefinition$private val executorFactory: (workspaceRoot: Path) -&gt; GitCheckoutExecutor = { workspaceRoot -&gt; GitCheckoutExecutor( poll = GitPollExecutor(), changelog = GitChangelogWriter(), credentialsApplier = GitCredentialsApplier( tempDir = Files.createTempDirectory("scm-git-step"), credentials = GitCredentials(), ), ) }</ID>

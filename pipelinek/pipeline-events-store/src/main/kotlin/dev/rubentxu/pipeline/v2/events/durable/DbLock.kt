@@ -2,7 +2,6 @@ package dev.rubentxu.pipeline.v2.events.durable
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
 
 /**
  * Cross-instance file-level lock for SQLite operation journal writes.

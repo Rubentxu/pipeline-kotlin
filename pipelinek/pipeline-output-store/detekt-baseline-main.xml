@@ -4,8 +4,6 @@
   <CurrentIssues>
     <ID>ImplicitDefaultLocale:SegmentReader.kt:SegmentReader$"%02x".format(it)</ID>
     <ID>UnsafeCallOnNullableType:OutputPinPortStoreAdapter.kt:OutputPinPortStoreAdapter$reads.committedExtent(stream)!!</ID>
-    <ID>UnusedImport:SegmentOutputStore.kt:import dev.rubentxu.pipeline.v2.output.OutputDigest</ID>
-    <ID>UnusedImport:SegmentOutputStore.kt:import dev.rubentxu.pipeline.v2.output.OutputPinResult</ID>
     <ID>UnusedPrivateProperty:OutputPinPortStoreAdapter.kt:OutputPinPortStoreAdapter$private val now: () -&gt; Long = System::currentTimeMillis</ID>
     <ID>UnusedPrivateProperty:OutputPinPortStoreAdapter.kt:OutputPinPortStoreAdapter$private val root: Path</ID>
     <ID>UnusedVariable:SegmentOutputStore.kt:SegmentOutputStore$val owner = declaredTo[dir.fileName.toString()]</ID>

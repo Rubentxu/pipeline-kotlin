@@ -4,6 +4,5 @@
   <CurrentIssues>
     <ID>ImplicitDefaultLocale:LocalArtifactStore.kt:LocalArtifactStore$"%02x".format(it)</ID>
     <ID>TooGenericExceptionThrown:TarWriter.kt:TarWriter$throw RuntimeException("tar cf failed (exit ${result.exitCode}${if (result.timedOut) " timed-out" else ""}): $err")</ID>
-    <ID>UnusedImport:LocalArtifactStore.kt:import java.io.OutputStream</ID>
   </CurrentIssues>
 </SmellBaseline>

@@ -7,7 +7,6 @@ import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKind
 import dev.rubentxu.pipeline.v2.credentials.spi.MaterializedCredential
 import dev.rubentxu.pipeline.v2.credentials.spi.MaterializationKindUnsupportedException
 import dev.rubentxu.pipeline.v2.domain.CredentialsId
-import dev.rubentxu.pipeline.v2.domain.SecretHandle
 import dev.rubentxu.pipeline.v2.domain.credentials.Certificate
 import dev.rubentxu.pipeline.v2.domain.credentials.Credential
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialFilePermissions

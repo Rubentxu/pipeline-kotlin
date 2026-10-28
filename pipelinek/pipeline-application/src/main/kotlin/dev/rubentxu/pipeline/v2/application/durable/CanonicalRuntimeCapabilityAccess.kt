@@ -34,10 +34,8 @@ import dev.rubentxu.pipeline.v2.application.PublishHtmlOperations
 import dev.rubentxu.pipeline.v2.application.PublishHtmlOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.DELETE_DIR_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.DeleteDirOperations
-import dev.rubentxu.pipeline.v2.application.durable.DeleteDirOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.CLEAN_WS_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.CleanWsOperations
-import dev.rubentxu.pipeline.v2.application.durable.CleanWsOperationsAdapter
 import dev.rubentxu.pipeline.v2.application.MILESTONE_OPERATIONS_CAPABILITY
 import dev.rubentxu.pipeline.v2.application.MilestoneOperations
 import dev.rubentxu.pipeline.v2.application.MilestoneOperationsAdapter

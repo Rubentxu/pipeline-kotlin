@@ -18,10 +18,6 @@ import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeP
 // Durable waitUntil reconciliation driver and identity factory.
 
 // Control journal + reconciliation driver.
-import dev.rubentxu.pipeline.v2.application.durable.FileBasedRetryControlJournal
-import dev.rubentxu.pipeline.v2.application.durable.retry.RetryReconciliationDriver
-import dev.rubentxu.pipeline.v2.domain.BlockSegment
-import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
@@ -29,30 +25,19 @@ import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor
-import dev.rubentxu.pipeline.v2.domain.step.StepRegistration
-import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.domain.StageBody
-import dev.rubentxu.pipeline.v2.domain.StageNode
-import dev.rubentxu.pipeline.v2.domain.StepOutcome
-import dev.rubentxu.pipeline.v2.domain.post.PostCondition
-import dev.rubentxu.pipeline.v2.domain.post.PostPlanner
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector
 import dev.rubentxu.pipeline.v2.domain.durable.StrictFingerprintDivergenceDetector
 import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.events.RunFinished
-import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
 import dev.rubentxu.pipeline.v2.events.registry.EventRegistry
-import dev.rubentxu.pipeline.v2.events.registry.RegistryEventEmitter
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 import java.nio.file.Path
-import java.time.Instant
-import java.util.UUID
 
 /** Executes the linear canonical core subset with the durable journal and replay cursor. */
 class CanonicalDurableRunCoordinator(

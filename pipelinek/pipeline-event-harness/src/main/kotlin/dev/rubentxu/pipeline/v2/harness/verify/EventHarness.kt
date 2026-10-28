@@ -3,13 +3,10 @@ package dev.rubentxu.pipeline.v2.harness.verify
 import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.identity.EnvelopeProjector
-import dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope
 import dev.rubentxu.pipeline.v2.harness.model.AcceptanceOutcome
-import dev.rubentxu.pipeline.v2.harness.model.EventConstraint
 import dev.rubentxu.pipeline.v2.harness.model.EventContract
 import dev.rubentxu.pipeline.v2.harness.model.EventViolation
 import dev.rubentxu.pipeline.v2.harness.model.PipelineOutcome
-import dev.rubentxu.pipeline.v2.harness.model.RelationScope
 import dev.rubentxu.pipeline.v2.harness.model.VerificationReport
 import dev.rubentxu.pipeline.v2.harness.model.VerificationResult
 

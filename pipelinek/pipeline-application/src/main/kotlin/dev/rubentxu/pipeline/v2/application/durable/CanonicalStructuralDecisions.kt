@@ -113,14 +113,17 @@ fun CompiledPipeline.analyzeCanonicalDurableExecution(effectiveRegistry: StepReg
     return nonCanonical
 }
 
-/** True when the compiled pipeline fits the promoted canonical execution subset. */
-fun CompiledPipeline.supportsCanonicalDurableExecution(effectiveRegistry: StepRegistry? = null): Boolean =
-    analyzeCanonicalDurableExecution(effectiveRegistry).isEmpty()
-
 /**
  * Default body-owner resolver over the static core descriptor registry. Preserves the
  * previous behaviour for callers that do not thread an effective registry: core
  * CANONICAL_ENGINE rows are eligible, everything else is refused exactly as before.
+ *
+ * NOTE: `supportsCanonicalDurableExecution` — the boolean projection of
+ * [analyzeCanonicalDurableExecution] — was removed with it. The boolean was the
+ * durable world's gate, and the gate was the reason the durable world reduced the
+ * analysis to a yes/no and threw the reasons away: the operator was told their
+ * script used non-canonical plugins and not WHICH step did. The analysis is the
+ * decision, and a decision that has to be explained is kept whole.
 */
 internal val standardBodyOwnerOf: (PluginStepId) -> dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner? =
     { key ->

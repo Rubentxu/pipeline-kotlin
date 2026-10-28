@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.application.durable.SagaCompensationBinding
 import dev.rubentxu.pipeline.v2.application.durable.SagaVerdict
-import dev.rubentxu.pipeline.v2.application.durable.supportsCanonicalDurableExecution
+import dev.rubentxu.pipeline.v2.application.durable.analyzeCanonicalDurableExecution
 import dev.rubentxu.pipeline.v2.application.observation.CompiledObservationQuery
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.application.observation.ObservationView
@@ -208,7 +208,12 @@ internal fun runDurablePipeline(
                 outputWakeups = outputObserver.wakeups,
             )
             compiledPipeline != null -> {
-                if (compiledPipeline.supportsCanonicalDurableExecution(composedStepRegistry)) {
+                // The SAME analysis the volatile world runs, and the SAME refusal.
+                // The reasons are NOT discarded: reducing the analysis to a boolean
+                // is what left the operator with a rule violation and no way to
+                // locate it (see refuseNonCanonicalExecution).
+                val nonCanonicalSteps = compiledPipeline.analyzeCanonicalDurableExecution(composedStepRegistry)
+                if (nonCanonicalSteps.isEmpty()) {
                     runCanonical(
                         CanonicalRunRequest(
                             pipeline = compiledPipeline,
@@ -242,9 +247,7 @@ internal fun runDurablePipeline(
                     )
                 } else {
                     // Fail-closed: non-canonical pipelines are not supported by the canonical bridge.
-                    System.err.println(NON_CANONICAL_CANONICAL_BRIDGE_ERROR)
-                    System.exit(2)
-                    null // unreachable
+                    refuseNonCanonicalExecution(nonCanonicalSteps)
                 }
             }
             else -> compilation.failure

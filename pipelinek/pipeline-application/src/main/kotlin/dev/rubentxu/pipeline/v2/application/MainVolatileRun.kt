@@ -226,13 +226,10 @@ internal fun runVolatilePipeline(
             )
         } else {
             // Fail-closed: non-canonical pipelines are not supported by the canonical bridge.
-            // Same gate and message as the durable path (STEP SEMANTICS: fail-closed on every run path).
-            System.err.println(NON_CANONICAL_CANONICAL_BRIDGE_ERROR)
-            for (step in nonCanonicalSteps) {
-                System.err.println("  - Step '${step.stepId}' (${step.pluginStepId}): ${step.reason}")
-            }
-            System.exit(2)
-            null // unreachable
+            // Same gate, and the SAME refusal, as the durable path (STEP SEMANTICS: fail-closed
+            // on every run path). The refusal is stated once, in refuseNonCanonicalExecution,
+            // so the two worlds cannot drift into answering the same question differently.
+            refuseNonCanonicalExecution(nonCanonicalSteps)
         }
     } finally {
         // The observer stops here, not before: everything the pipeline committed is already in

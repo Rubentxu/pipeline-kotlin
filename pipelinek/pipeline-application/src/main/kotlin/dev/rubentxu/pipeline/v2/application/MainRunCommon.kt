@@ -5,6 +5,7 @@ import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.CorrelationId
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
+import dev.rubentxu.pipeline.v2.application.durable.NonCanonicalStep
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
 import dev.rubentxu.pipeline.v2.application.observation.RunObservationOutput
 import dev.rubentxu.pipeline.v2.events.RunCorrelated
@@ -82,6 +83,53 @@ internal fun emitCorrelationAndReceipt(
             System.out.flush()
         }
     }
+}
+
+/**
+ * Refuse a pipeline the canonical engine cannot execute, and say WHICH step.
+ *
+ * ## Why this refusal is said ONCE
+ *
+ * The header names the rule; the lines that follow name the STEPS that broke
+ * it. Both are facts about one decision, and the decision is made the same way
+ * in both run worlds -- the volatile one and the `--db` one -- so the refusal
+ * has to be stated the same way too.
+ *
+ * It was not. The volatile world computed the eligibility analysis and printed
+ * every offending step; the durable world computed the SAME analysis, reduced
+ * it to a boolean and threw the reasons away. Measured on the built
+ * distribution, with one script and one pipeline:
+ *
+ * ```console
+ * $ pipelinek run noncanonical.pipeline.kts              # volatile
+ * Error: script uses non-canonical plugins; ...
+ *   - Step 'never-runs/registrystep-0' (custom.notCanonical): opaque step plugin not in canonical core step IDs
+ *
+ * $ pipelinek run --db run.db --control-root control noncanonical.pipeline.kts   # durable
+ * Error: script uses non-canonical plugins; ...
+ * ```
+ *
+ * The same script, the same refusal, two answers -- and one of them left the
+ * operator with a rule violation and no way to locate it. The header alone is
+ * not a refusal the operator can act on.
+ *
+ * ## Why the exit code is 2
+ *
+ * 2 is the product's code for an admission refusal: the request was
+ * understood and not carried out. It is the code both worlds already used for
+ * this refusal, so this changes WHAT the operator reads and not WHICH verdict
+ * they get.
+ *
+ * @param steps the offending steps, as the eligibility analysis reported them.
+ *   Never empty at the call sites: an empty list would mean there is nothing to
+ *   refuse.
+ */
+internal fun refuseNonCanonicalExecution(steps: List<NonCanonicalStep>): Nothing {
+    System.err.println(NON_CANONICAL_CANONICAL_BRIDGE_ERROR)
+    for (step in steps) {
+        System.err.println("  - Step '${step.stepId}' (${step.pluginStepId}): ${step.reason}")
+    }
+    kotlin.system.exitProcess(2)
 }
 
 // ------------------------------------------------------------------------

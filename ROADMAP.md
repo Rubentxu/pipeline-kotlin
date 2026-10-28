@@ -1127,6 +1127,50 @@ PASS  sha=61e105f03544590a1067ac2634a6b265634644d7  elapsed=180s  budget=900s  t
 - 180 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 28891`, `PRODUCT_LOC = 71291`, ratio `0.405` (límite 2).
 
+#### El corte: el script sin pipeline dice la misma causa en los dos mundos
+
+**Qué hace.** El mundo volátil tenía una rama explícita para «compiló pero no produjo `PipelineSpec`» —un `RunOutcome.Failure` de tipo `FailureKind.SCHEMA` con el mensaje «the script compiled but did not produce a PipelineSpec; …»— y el mundo durable caía en `else -> compilation.failure`. En ese estado `compilation.failure` es NULO: la salida del run era nula, y `durableRunFailed` tomaba su «ruta legacy», que sólo sabe decir dos cosas —«terminó bien» o «no terminó bien»— sin decir por qué. El resultado era que el mismo script recibía el mismo veredicto con distinta información: con `--db` el operador leía «Pipeline finished with FAILURE» y se quedaba sin la razón.
+
+Medido sobre la distribución construida de este repositorio, con un script cuya última expresión no es un `PipelineSpec` y las dos modalidades:
+
+|celda|antes|después|
+|---|---|---|
+|volátil (sin `--db`)|«Pipeline finished with FAILURE» **+** «  cause [SCHEMA]: the script compiled but did not produce a PipelineSpec; …»|igual|
+|durable (`--db`)|«Pipeline finished with FAILURE» **Y NADA MÁS**|«Pipeline finished with FAILURE» **+** la misma línea de causa|
+
+Las dos celdas salen con código 1 antes y después: el corte no cambia el VEREDICTO, cambia lo que el operador puede leer con él.
+
+El estado vecino ya coincidía, y se comprobó para no atribuirle al corte lo que no era suyo: un script que NO COMPILA produce el mismo «cause [SCHEMA]: …» con el mensaje del compilador en las DOS modalidades, antes y después.
+
+**El corte.** La causa sale a una función compartida, `MainRunCommon.absentPipelineOutcome`, y los DOS mundos la consultan con la misma compilación: la respuesta es la misma POR CONSTRUCCIÓN y no por dos puntos de llamada que coinciden. El mundo volátil conserva la protección contra el NPE —un script que no compiló no tiene spec, así que también llega a esa rama— y la función devuelve la causa propia de la compilación cuando la hay, porque un script que no compiló es otro fallo y su mensaje es del autor.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que un run rechazado porque el script no produjo pipeline dice la MISMA razón en las dos modalidades: el mismo código de salida y la misma causa, que nombra lo que el script NO hizo. La capacidad que sostiene es que el operador, con `--db` o sin él, puede saber que su script nunca construyó una tubería —y por tanto que el arreglo está en su última expresión— sin re-ejecutar el pipeline con otros scripts y sin leer el código. El instrumento es un escenario de `examples/negative/`, NO un test unitario: la garantía es sobre lo que el operador LEE en dos invocaciones del CLI, y AGENTS.md §2 prohíbe CLI, subproceso y persistencia en el sistema de ficheros dentro de un test unitario. El launcher ejecuta el escenario en las DOS modalidades y sujeta ambas a las mismas expectativas, así que un rechazo que nombra la causa en una y no en la otra falla ahí. Es el instrumento más barato que puede fallar: un solo fichero de DSL, sin harness ni driver.
+
+**Visto en rojo antes del corte.** El escenario se ejecutó contra la distribución sin el corte y falló por la razón correcta:
+
+```
+FAIL negative/no-pipeline-produced.pipeline.kts           exit 1 as expected, but stderr lacked: did not produce a PipelineSpec
+```
+
+Una mutación focal, aplicada, leída de vuelta con `git diff` y revertida desde una COPIA —nunca desde git—: el mundo durable vuelve a `compilation.failure`.
+
+|Mutación|Qué se encendió|
+|---|---|
+|El mundo durable vuelve a `else -> compilation.failure` (la divergencia, tal cual)|exactamente la ejecución DURABLE: su stderr deja de contener «did not produce a PipelineSpec»; la VOLÁTIL siguió en verde, porque la mutación no la tocaba|
+
+**Lo que este corte NO arregla, y se dice.** No arregla la ruta del frontend guionizado, que sigue existiendo SÓLO en el mundo durable —está escrito en el KDoc de `MainVolatileRun`—: este corte no la unifica, y en esta sesión no se ha medido si produce una respuesta observable distinta. No arregla la redacción de la causa, que no se congela: el escenario afirma la PISTA del operador («did not produce a PipelineSpec»), no el mensaje entero, de modo que un retoque de redacción no lo rompe. No cambia el código de salida: sigue siendo 1, que es el código de un fallo de definición, y no 2, que es el de una admisión rechazada —este corte tampoco decide si este fallo ES una admisión—. No arregla la FORMA del hito, que es más grande que este corte: H4 sigue pidiendo extraer verticalmente la admisión, la preparación y el despacho, y este corte no extrae nada —mueve una causa a un sitio único y le pone un instrumento—. Y este corte NO agota la lista de divergencias entre las dos modalidades: no se ha hecho un censo exhaustivo de ellas, así que lo que queda declarado es lo que se ha MEDIDO.
+
+**Medido sobre `864e0e3a23d71b6a524a948210550c1edeed79d7` con `scripts/verify-all.sh` sin filtros:**
+
+```
+PASS  sha=864e0e3a23d71b6a524a948210550c1edeed79d7  elapsed=201s  budget=900s  tests=rewritten:1549 read:0  scenarios=observed:65 executed:65
+```
+
+- 1549 tests EJECUTADOS de verdad —205 informes JUnit reescritos por esta ejecución—, 0 fallos, 0 errores, 0 omitidos.
+- 65 de 65 escenarios E2E ejecutados y en verde: los 64 de antes y el nuevo.
+- 201 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28892`, `PRODUCT_LOC = 71296`, ratio `0.405` (límite 2).
+
 ## H5 — Separar CLI, consultas y proyecciones
 
 Foco: `CliParser.kt`, `MainConsoleCli.kt`, Observe, Explain, Cost y Telemetry.

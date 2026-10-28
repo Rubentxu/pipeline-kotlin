@@ -234,7 +234,11 @@ class CanonicalDurableRunCoordinator(
             }
         }
     private val invocationResolver: DurableInvocationResolver = DurableInvocationResolver(
-        divergenceDetector = divergenceDetector as StrictFingerprintDivergenceDetector,
+        // The detector is a PORT: the constructor declares the interface and the resolver declares
+        // it too, so the composition hands the interface straight through. It used to narrow it to
+        // [StrictFingerprintDivergenceDetector] here, which made every other implementation die
+        // with a ClassCastException at CONSTRUCTION — before the run had said anything.
+        divergenceDetector = divergenceDetector,
         effectReplayPolicy = effectReplayPolicy,
         journal = journal,
         // TRAIN /: the a2 external-subprocess compatibility hook is COMPOSED here and

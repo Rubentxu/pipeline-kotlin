@@ -1049,8 +1049,8 @@ object MainConsoleCli {
      * Emit the per-frame result.
      * The dispatch is on the closed [ConsoleFormat] ADT:
      *  - `TEXT` writes the merged bytes of the page's frames to stdout (in observation order,
-     *    one frame after another), with a continuation token on stderr carrying the next
-     *    frame ordinal so a `--follow` consumer can resume.
+     *    one frame after another), with a continuation token on stderr carrying the ordinal of
+     *    the last frame written, so a consumer can resume from it.
      *  - `JSONL` writes one [ObservationJsonLines] record per real frame, in observation
      *    order, each carrying the frame's true [OutputFrame.ordinal] / [OutputFrame.from] /
      *    [OutputFrame.to] / [OutputFrame.channel] plus the operation id parsed from the
@@ -1082,7 +1082,13 @@ object MainConsoleCli {
                         // The continuation token is a decimal frame ordinal, not a byte
                         // cursor: the per-frame path is bounded by frame count and resumes
                         // by frame ordinal, and that is the only honest way to express it.
-                        err.println(encodeFrameOrdinal(request.afterOrdinal + page.records.size))
+                        // It is the ordinal of the LAST frame this page delivered, because
+                        // that is the position the next read continues from. The number of
+                        // frames in the page is not that position: an operation whose frames
+                        // begin after another operation's does not begin at the ordinal the
+                        // read started from, and a token built from the count would send the
+                        // consumer back into the page it already has.
+                        err.println(encodeFrameOrdinal(page.lastOrdinal))
                     }
                     0
                 }
@@ -1100,7 +1106,9 @@ object MainConsoleCli {
                         )
                     }
                     if (page.moreFrames) {
-                        err.println(encodeFrameOrdinal(request.afterOrdinal + page.records.size))
+                        // The same token the text form prints: the ordinal of the last frame
+                        // delivered, which is where the next read continues from.
+                        err.println(encodeFrameOrdinal(page.lastOrdinal))
                     }
                     0
                 }

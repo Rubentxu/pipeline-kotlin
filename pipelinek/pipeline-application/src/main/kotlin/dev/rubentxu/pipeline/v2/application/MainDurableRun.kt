@@ -250,7 +250,14 @@ internal fun runDurablePipeline(
                     refuseNonCanonicalExecution(nonCanonicalSteps)
                 }
             }
-            else -> compilation.failure
+            else -> {
+                // No pipeline to run: either the script did not compile, or it
+                // compiled and produced no PipelineSpec. The SAME answer the
+                // volatile world gives, from the SAME function, so the two
+                // worlds cannot read one fact and report two different reasons
+                // (see absentPipelineOutcome).
+                absentPipelineOutcome(compilation)
+            }
         }
 
         // durable pipeline work + durable subscriber regression fix regression fix: the single-writer thread single-writer thread

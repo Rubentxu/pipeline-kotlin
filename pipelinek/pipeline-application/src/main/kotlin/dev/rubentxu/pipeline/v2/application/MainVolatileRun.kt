@@ -143,24 +143,20 @@ internal fun runVolatilePipeline(
 
     val runOutcome: RunOutcome? = try {
         val pipeline = compiledPipeline
-        if (compilation.failure != null) {
-            // Compilation must be checked FIRST. If the script failed to compile there is no
-            // compiled pipeline to run; jumping to the canonical run would NPE on `!!`. This
-            // regression was introduced when the per-step canonical gate was added (v0.33.1 P2
-            // corpus-closure) but the compile-failure branch was left inside `else -> compileOutcome`
-            // which only fires when nonCanonicalSteps is non-empty OR pipelineSpec is non-null.
-            compilation.failure
-        } else if (pipeline == null) {
-            // compile "succeeded" but produced no PipelineSpec. Before this
-            // branch this reached the canonical run with a `!!` and died as an NPE
-            // with exit 0. A script that cannot produce its IR is an admission failure.
-            RunOutcome.Failure(
-                dev.rubentxu.pipeline.v2.domain.PipelineFailure(
-                    kind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
-                    message = "the script compiled but did not produce a PipelineSpec; " +
-                        "its body failed during construction and no pipeline can run",
-                ),
-            )
+        if (pipeline == null) {
+            // No pipeline to run: either the script did not compile, or it compiled
+            // and produced no PipelineSpec. Both are refusals, and ONE function
+            // answers them, so the durable world cannot answer them differently
+            // (see absentPipelineOutcome).
+            //
+            // The check comes FIRST on purpose. If the script failed to compile there
+            // is no compiled pipeline to run; jumping to the canonical run would NPE
+            // on `!!`. That regression came in with the per-step canonical gate
+            // (v0.33.1 P2 corpus-closure), which left the compile-failure branch
+            // inside `else -> compileOutcome`, where it only fires when
+            // nonCanonicalSteps is non-empty OR pipelineSpec is non-null. A script
+            // that failed to compile has no spec, so it reaches this branch too.
+            absentPipelineOutcome(compilation)
         } else if (nonCanonicalSteps.isEmpty()) {
             runCanonical(
                 CanonicalRunRequest(

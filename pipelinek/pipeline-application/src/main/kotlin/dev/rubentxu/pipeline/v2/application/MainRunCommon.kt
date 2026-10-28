@@ -3,7 +3,10 @@ package dev.rubentxu.pipeline.v2.application
 import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
 import dev.rubentxu.pipeline.v2.domain.CorrelationId
+import dev.rubentxu.pipeline.v2.domain.FailureKind
+import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
+import dev.rubentxu.pipeline.v2.domain.RunOutcome
 import dev.rubentxu.pipeline.v2.dsl.PipelineSpec
 import dev.rubentxu.pipeline.v2.application.durable.NonCanonicalStep
 import dev.rubentxu.pipeline.v2.application.observation.ObservationFormat
@@ -131,6 +134,51 @@ internal fun refuseNonCanonicalExecution(steps: List<NonCanonicalStep>): Nothing
     }
     kotlin.system.exitProcess(2)
 }
+
+/**
+ * The outcome of a script that produced NO pipeline to run.
+ *
+ * ## Why this is said ONCE
+ *
+ * A script that failed to compile has no pipeline, and a script that compiled
+ * without producing a `PipelineSpec` has no pipeline either. Both are
+ * refusals, and the second one has to be NAMED: without a name the durable
+ * world answered it with a bare "Pipeline finished with FAILURE", which is a
+ * verdict the operator cannot act on -- it says the run did not end well and
+ * nothing about the script that caused it.
+ *
+ * Measured on the built distribution, with one script whose last expression
+ * is not a pipeline:
+ *
+ * ```console
+ * $ pipelinek run nopipeline.pipeline.kts              # volatile
+ * Pipeline finished with FAILURE
+ *   cause [SCHEMA]: the script compiled but did not produce a PipelineSpec; ...
+ *
+ * $ pipelinek run --db run.db --control-root control nopipeline.pipeline.kts   # durable
+ * Pipeline finished with FAILURE
+ * ```
+ *
+ * The same exit code, the same verdict line, and the durable world said no
+ * more than that. The two worlds read one fact and answered it differently,
+ * which is what the single-runtime-spine rule forbids: the storage choice
+ * must not select a different behaviour.
+ *
+ * Both worlds ask THIS function, with the same compilation, so the answer is
+ * the same BY CONSTRUCTION and not by two call sites that happen to agree.
+ *
+ * @param compilation what the script produced. Its own failure wins when it
+ *   has one: a script that did not compile is a different fault, and the
+ *   message that belongs to it is the author's.
+ */
+internal fun absentPipelineOutcome(compilation: ScriptCompilation): RunOutcome.Failure =
+    compilation.failure ?: RunOutcome.Failure(
+        PipelineFailure(
+            kind = FailureKind.SCHEMA,
+            message = "the script compiled but did not produce a PipelineSpec; " +
+                "its body failed during construction and no pipeline can run",
+        ),
+    )
 
 // ------------------------------------------------------------------------
 // opt-in output protocol helpers.

@@ -13,8 +13,10 @@ import kotlinx.serialization.json.JsonPrimitive
  * Effective-execution block extracted from [CanonicalDurableRunCoordinator]
  * (the Execute branch of the dispatch reconciliation). This is the ONLY code that invokes
  * the effective executor: beginOperation, the [StepExecutionBoundary]-wrapped
- * [CommonExecutionBoundary] call, the terminal journal write and the cursor advance
- * decision live here. Reuse/divergence/recover never reach this class.
+ * [CommonExecutionBoundary] call and the terminal journal write live here. Reuse/divergence/recover
+ * never reach this class.
+ * The cursor advance decision does NOT live here: it belongs to [CanonicalCursorAdvance],
+ * which is the single authority for what advances and for the write that advances it.
  * This class is FRONTEND-NEUTRAL and does not own the replay cursor
  * It once took a [dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore] and advanced
  * it, which made it un-enterable by any caller that does not own a canonical stage
@@ -41,7 +43,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * this repository already has. Consumers that only need the outcome read
  * `execution.outcome`.
  * Note the ordering law, unchanged: the terminal journal append happens BEFORE the
- * Caller may advance the cursor (ReplayCursorStore's mitigation)
+ * caller may advance the cursor (ReplayCursorStore's mitigation).
 */
 internal class DurableStepExecutor(
     private val eventSink: EventSink,
@@ -93,22 +95,3 @@ internal class DurableStepExecutor(
         return executionResult
     }
 }
-
-/**
- * Whether this terminal outcome counts as progress for the canonical traversal.
- * Extracted from the executor when the cursor moved up so that the
- * predicate is named, tested in one place, and cannot drift between the Execute and the
- * RecoverRunning advancement sites.
- * ## This predicate is deliberately ASYMMETRIC with recovery — do not "fix" it here
- * Historical behaviour, characterized before the cursor was relocated:
- * ```text
- * Execute        → advance when  outcome !is StepOutcome.Failure   (Unstable ADVANCES)
- * RecoverRunning → advance when  outcome  is StepOutcome.Success    (Unstable does NOT)
- * ```
- * That asymmetry is pre-existing and is NOT resolved here, which only changed who owns
- * the cursor. Execute keeps its `!is Failure` rule verbatim; recovery keeps its `is
- * Success` rule verbatim. Whether the two SHOULD agree is a separate question tracked on
- * its own work item; until then, changing either predicate would be an unevidenced
- * behaviour change disguised as a refactor.
-*/
-internal fun StepOutcome.advancesCanonicalCursor(): Boolean = this !is StepOutcome.Failure

@@ -1,22 +1,12 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.StepMetadata
-import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
-import dev.rubentxu.pipeline.v2.application.StructuralOverlay
-import dev.rubentxu.pipeline.v2.application.StructuralOverlayProjection
-import dev.rubentxu.pipeline.v2.application.StructuralPreparation
-import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation
-import dev.rubentxu.pipeline.v2.application.CanonicalCoreStepMetadata
-import dev.rubentxu.pipeline.v2.application.durable.credentials.AcquiredCredentialScope
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialLeaseAdmission
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeCleanup
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeFailure
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopeOutcome
-import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
+import dev.rubentxu.pipeline.v2.application.durable.credentials.LeaseAdmission
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.ContextOverlay
-import dev.rubentxu.pipeline.v2.domain.ContextTransition
-import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.FailureKind
 import dev.rubentxu.pipeline.v2.domain.PipelineFailure
@@ -25,7 +15,6 @@ import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
-import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
@@ -41,9 +30,7 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolver
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
-import dev.rubentxu.pipeline.v2.sdk.runtime.durable.SandboxProfile
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
-import kotlinx.serialization.json.JsonPrimitive
 import java.nio.file.Path
 import java.util.UUID
 
@@ -62,11 +49,24 @@ import java.util.UUID
  * forwards to a collaborator, which is exactly the indirection the previous shape lacked
  * and this refactor exists to remove. So the whole closed cycle moves as one unit.
  *
- * Nothing here decides. The durable identity, the structural verdict, the recovery
- * resolution, the body policy and the replay decision are all made by pure components
- * elsewhere; this class observes those decisions, performs the effects they name, and
- * reports typed results. [RecoveryInterpretationEngine] is the boundary where a recovery
- * resolution becomes either a settled outcome or a progression to execution.
+ * ## What decides, and where
+ *
+ * Every decision this class used to make now has a declared owner. The engine keeps the
+ * ORDER and performs the effects; it observes the answers.
+ *
+ * | decision | owner |
+ * |---|---|
+ * | preparation — durable identity, control overlay, metadata, fingerprint | [CanonicalDispatchPreparation] |
+ * | admission — the credential lease | [CredentialLeaseAdmission] |
+ * | reconciliation against the journal | [DurableInvocationResolver] |
+ * | interpretation of a recovery resolution | [RecoveryInterpretationEngine] |
+ * | the durable cursor | [CanonicalCursorAdvance] |
+ * | the ORDER of the dispatch | this class |
+ *
+ * [RecoveryInterpretationEngine] is the boundary where a recovery resolution becomes either
+ * a settled outcome or a progression to execution. [CanonicalCursorAdvance] is the boundary
+ * where an outcome becomes a cursor position, and it is the only place in the application
+ * that writes one.
  *
  * The coordinator keeps only what it alone can do: the run's bookends, the stage loop and
  * the stage-level finalizers.
@@ -75,15 +75,18 @@ internal class StepDispatchEngine(
     private val journal: OperationJournal,
     private val eventSink: EventSink,
     private val clock: Clock,
-    private val credentialScopePort: CredentialScopePort,
-    private val metadataResolver: StepMetadataResolver,
+    // ADMISION: the lease of the credentials is decided by its owner, and the engine only
+    // observes whether it was admitted. The port itself is not the engine's business.
+    private val leaseAdmission: CredentialLeaseAdmission,
+    // PREPARACION: durable identity, control overlay, metadata and fingerprint are decided
+    // by their owner, which has no clock, no journal and no executor.
+    private val dispatchPreparation: CanonicalDispatchPreparation,
     private val typedInputPreparation: DurableTypedInputPreparation,
     private val stepExecutor: DurableStepExecutor,
     private val invocationResolver: DurableInvocationResolver,
     private val recoveryInterpretation: RecoveryInterpretationEngine,
     private val bodyExecutionEngine: BodyExecutionEngine,
     private val bodyPolicyResolver: BodyPolicyResolver,
-    private val runLifecycle: RunLifecycleEngine,
     // S6.4: the open plugin event registry for THIS run. The engine composes the emitter
     // itself from this registry plus the sink and clock it already holds, so one run has one
     // registry shared by every invocation — two registries would let two Steps disagree about what
@@ -100,25 +103,16 @@ internal class StepDispatchEngine(
     // announce and the observer converges on its poll deadline.
     private val outputWakeups: dev.rubentxu.pipeline.v2.application.observation.WakeupSignal? = null,
     /**
-     * the replay cursor is traversal state, so it lives here and nowhere
-     * else. `ReplayCursor(runId, lastOpId, stageIndex, savedAt)` models where the canonical
-     * RUN resumes; the values needed to write it (`runId`, `operationId`, `stageIndex`) are
-     * all facts of this traversal and none of them are facts of an operation. The executor
-     * and the recovery engine both lost their copy so that ownership is not split.
-     *
-     * This class is the CURRENT single authority, not a permanent name: the law is that
-     * the cursor belongs to the canonical structural/run traversal, so this dependency
-     * moves with the traversal if the traversal is ever refactored.
+     * AVANCE DURABLE: the replay cursor is traversal state, and its owner decides whether it
+     * moves and performs the write that moves it. The engine asks and observes; it never
+     * writes a cursor of its own.
      */
-    private val cursorStore: dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore,
+    private val cursorAdvance: CanonicalCursorAdvance,
     private val stepRegistry: StepRegistry?,
     private val bodyInvokerAdapter: CanonicalBodyInvokerAdapter,
     private val controlDirRoot: Path,
     private val workspaceBase: Path?,
     private val secretPatternRegistry: dev.rubentxu.pipeline.v2.credentials.api.SecretPatternRegistry?,
-    // H2b: handed to PREPARE so admission and execution observe the same set.
-    private val capabilityContributor: dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor =
-        dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor { emptyMap() },
     // SAGA: the per-run Saga seam. The PORT itself is built per dispatch, because it
     // carries the forward operation's identity; this binding only carries the run-level facts
     // (the durable store and the lease epoch that fences writes).
@@ -143,34 +137,6 @@ internal class StepDispatchEngine(
      * happening by accident.
      */
     data class Dispatched(val result: CommonExecutionResult, val context: ExecutionContext)
-
-    /**
-     * Everything a dispatch needs BEFORE any effect, decided as one value.
-     *
-     * Closed because "structurally rejected" and "ready to execute" are opposite outcomes, and
-     * because the rejection still has to carry the durable identity the journal row needs: a
-     * rejection that lost its [operationId] could not be journaled fail-closed, it would simply
-     * vanish. A nullable seam would have let exactly that happen silently.
-     */
-    private sealed interface DispatchPreparation {
-        /** Terminal SCHEMA rejection. The identity is carried so the caller can journal it. */
-        data class Rejected(
-            val operationId: String,
-            val input: OperationInput,
-            val reason: String,
-        ) : DispatchPreparation
-
-        /** Admitted. Every field is derived; nothing here observed anything. */
-        data class Ready(
-            val opId: OpId,
-            val operationId: String,
-            val input: OperationInput,
-            val contextAfterOverlay: ExecutionContext,
-            val metadata: StepMetadata,
-            val fingerprint: Fingerprint,
-            val lifecycleContext: StepLifecycleContext,
-        ) : DispatchPreparation
-    }
 
     /**
      * SAGA: a slot the handler asked for and the engine cannot honour.
@@ -311,97 +277,6 @@ internal class StepDispatchEngine(
             null
         },
     )
-
-    /**
-     * The PURE pre-execution prologue of a dispatch: durable identity, structural verdict,
-     * control-overlay projection, metadata and fingerprint. No journal, no events, no clock and
-     * no executor, so the whole thing is decidable — and therefore testable — without a run.
-     *
-     * Order is contract. The durable identity is derived FIRST because every rejection path
-     * needs it to journal the rejection. The structural gate precedes typed decode because a
-     * structurally-invalid node must be rejected before any typed semantics are read
-     * . Metadata is resolved by structural step key BEFORE the fingerprint, so
-     * reconciliation never depends on a decoded command.
-     */
-    private fun prepareDispatch(
-        step: StepNode,
-        runId: RunId,
-        stageIndex: Int,
-        stepIndex: Int,
-        bodyPath: List<BlockSegment>,
-        stageShOptions: ShOptions,
-        hasBodyContinuation: Boolean,
-        executionContext: ExecutionContext,
-    ): DispatchPreparation {
-        val opId = OpId(runId.value, stageIndex, stepIndex, bodyPath = bodyPath)
-        val operationId = opId.format()
-        // the body of a HANDLER_CONTINUATION Step is part of the parent's durable
-        // identity. Without it, the same parent payload with a different body would reuse a
-        // memoized result, the handler would never run, and the changed child would not even
-        // reach divergence. Engine-driven blocks are deliberately EXCLUDED so every journal
-        // row written by the published 0.45.0 candidate stays valid.
-        val bodyStructure: String? = if (hasBodyContinuation && step is BlockStepNode) {
-            BodyStructureDigest.of(step.body)
-        } else {
-            null
-        }
-        val input = OperationInput(
-            stepId = step.pluginStepId.value,
-            // a non-NONE sandbox profile enters the operation fingerprint,
-            // so a resume with a CHANGED confinement profile diverges fail-closed instead
-            // of silently re-attaching under different semantics. NONE stays absent from
-            // params so default-run journals keep their historical fingerprints.
-            params = buildMap {
-                put("payload", JsonPrimitive(step.payload.encoded))
-                if (stageShOptions.sandbox.profile != SandboxProfile.NONE) {
-                    put("sandboxProfile", JsonPrimitive(stageShOptions.sandbox.profile.name))
-                }
-                bodyStructure?.let { digest -> put("bodyStructure", JsonPrimitive(digest)) }
-            },
-            runId = runId.value,
-            attempt = 1,
-        )
-
-        val structuralReady = when (val structural = CanonicalStructuralPreparation.prepare(step)) {
-            is StructuralPreparation.Rejected ->
-                return DispatchPreparation.Rejected(operationId, input, structural.reason)
-            is StructuralPreparation.Ready -> structural
-        }
-        // pure context derivation, no ambient mutation (C6 preserved: pushed pre-reconcile).
-        val projectedOverlay = StructuralOverlayProjection.project(
-            structuralReady.invocation.stepKey,
-            structuralReady.envelope,
-        )
-        // Baseline behaviour preserved: Triggered with emitted=false performs NO scope exit.
-        val overlayExitedSilently =
-            projectedOverlay is StructuralOverlay.CatchErrorTriggered && !projectedOverlay.emitted
-        val contextAfterOverlay = if (overlayExitedSilently) {
-            executionContext
-        } else {
-            deriveOverlay(executionContext, projectedOverlay)
-        }
-
-        // durable metadata resolved by structural step key BEFORE typed semantics, so
-        // fingerprint and reconcile never depend on the decoded command.
-        val metadata = metadataResolver.resolve(step.pluginStepId)
-            ?: throw EngineInvariantViolation("No durable metadata for canonical step '${step.pluginStepId.value}'")
-
-        return DispatchPreparation.Ready(
-            opId = opId,
-            operationId = operationId,
-            input = input,
-            contextAfterOverlay = contextAfterOverlay,
-            metadata = metadata,
-            fingerprint = Fingerprint.compute(input, step.pluginStepId.value, metadata.replayPolicy, 1),
-            lifecycleContext = StepLifecycleContext(
-                runId = runId.value,
-                stageIndex = stageIndex,
-                stepIndex = stepIndex,
-                stepName = step.id.value,
-                stepType = CanonicalCoreStepMetadata.shortType(step.pluginStepId.value),
-            ),
-        )
-    }
 
     suspend fun dispatch(
         step: StepNode,
@@ -585,18 +460,21 @@ internal class StepDispatchEngine(
         // (rewriteWorkflowControl) until semantics are implemented.
 
         // the whole pre-execution prologue is ONE pure decision — durable identity
-        // structural verdict, control overlay, metadata and fingerprint. It is decided here and
-        // interpreted below, so the executor is reachable only under a Ready preparation and a
-        // structural rejection can never fall through to typed decode.
-        val preparation = prepareDispatch(
+        // structural verdict, control overlay, metadata and fingerprint. Its OWNER decides it
+        // and this engine interprets the answer, so the executor is reachable only under a
+        // Ready preparation and a structural rejection can never fall through to typed decode.
+        val preparation = dispatchPreparation.prepare(
             step = step,
-            runId = runId,
-            stageIndex = stageIndex,
-            stepIndex = stepIndex,
-            bodyPath = bodyPath,
+            coordinates = DispatchCoordinates(
+                runId = runId,
+                stageIndex = stageIndex,
+                stepIndex = stepIndex,
+                bodyPath = bodyPath,
+            ),
             stageShOptions = stageShOptions,
             hasBodyContinuation = bodyContinuation != null,
             executionContext = executionContext,
+            now = clock.now().toEpochMilli(),
         )
         val ready = when (preparation) {
             // Terminal SCHEMA rejection (C3/C5): the effective executor is never invoked.
@@ -667,12 +545,18 @@ internal class StepDispatchEngine(
                 // point — a consumer that needs `encodedOutput` downstream must be able to see that
                 // the carrier carried it, instead of trusting that a bare outcome could not have
                 // dropped it on the way out.
-                if (
-                    resolution is InvocationReconciliation.RecoverRunning &&
-                    interpretation.result.outcome is StepOutcome.Success
-                ) {
-                    cursorStore.advance(runId.value, operationId, stageIndex)
-                }
+                //
+                // the RULE of what advances belongs to [CanonicalCursorAdvance]; the engine asks
+                // it and performs the write it names.
+                cursorAdvance.advance(
+                    runId = runId.value,
+                    decision = cursorAdvance.decideAfterRecovery(
+                        operationId = operationId,
+                        stageIndex = stageIndex,
+                        resolution = resolution,
+                        outcome = interpretation.result.outcome,
+                    ),
+                )
                 return Dispatched(interpretation.result, contextAfterOverlay)
             }
             RecoveryInterpretationEngine.RecoveryInterpretation.ProceedToExecution -> Unit
@@ -734,42 +618,20 @@ internal class StepDispatchEngine(
             runtime = runtime,
             lifecycleContext = lifecycleContext,
         )
-        if (execution.outcome.advancesCanonicalCursor()) {
-            cursorStore.advance(runId.value, operationId, stageIndex)
-        }
+        // the RULE of what advances belongs to [CanonicalCursorAdvance]: the engine asks it for a
+        // decision and performs the write the decision names. It does not repeat the predicate.
+        cursorAdvance.advance(
+            runId = runId.value,
+            decision = cursorAdvance.decideAfterExecution(
+                operationId = operationId,
+                stageIndex = stageIndex,
+                outcome = execution.outcome,
+            ),
+        )
         // R14: `executeAndJournal` already returns the atomic carrier, so this is a COMPOSITION.
         // It used to be `Dispatched(execution.outcome, ...)`, which is the narrowing this whole
         // slice exists to remove: a recovered or a fresh encoded value died at this line.
         return Dispatched(execution, contextAfterOverlay)
-    }
-
-    /**
-     * Applies the pre-reconcile control overlay projected from the structural envelope
-     * establishing or closing a CatchError context frame. This runs BEFORE durable resolution, so a
-     * reused CatchErrorEntered still establishes its scope without re-executing (C6: executor stays 0).
-     * Only the structural overlay descriptor is consumed; no typed command is built here.
-     *
-     * pure derivation of the successor ExecutionContext from the structural overlay.
-     * The old CatchErrorTriggered pop/underflow check disappears: the frame was pushed by the
-     * matching CatchErrorEntered derivation, and the caller simply keeps its own parent value.
-     * There is no shared authority to underflow.
-     */
-    private fun deriveOverlay(parent: ExecutionContext, overlay: StructuralOverlay): ExecutionContext = when (overlay) {
-        StructuralOverlay.None -> parent
-        is StructuralOverlay.CatchErrorEntered -> parent.pushed(
-            ContextOverlay.CatchErrorOverlay(
-                overlay.buildResult,
-                overlay.stageResult,
-                overlay.message,
-                overlay.enteredAt?.toLongOrNull() ?: System.currentTimeMillis(),
-            ),
-        )
-        is StructuralOverlay.CatchErrorTriggered -> when (val exit = parent.exitCatchError()) {
-            is ContextTransition.Advanced -> exit.context
-            is ContextTransition.Rejected -> throw IllegalStateException(
-                "Context stack underflow: CatchErrorTriggered without matching CatchErrorEntered",
-            )
-        }
     }
 
     /**
@@ -1030,8 +892,7 @@ internal class StepDispatchEngine(
      * folded with the body's outcome by [mergeBodyAndCleanup], a total pure function of two
      * values.
      *
-     * Fail-closed: an [CredentialScopeOutcome.Unavailable] or
-     * [CredentialScopeOutcome.Invalid] acquisition returns BEFORE any child is dispatched, so
+     * Fail-closed: a [LeaseAdmission.Refused] lease returns BEFORE any child is dispatched, so
      * a lease that cannot be acquired never runs its body. The bindings were already decoded
      * by the pure projection (`decodeCredentialBindings`), so a malformed payload never
      * reaches this function.
@@ -1055,33 +916,22 @@ internal class StepDispatchEngine(
         // the failure MUST surface as a typed StepFailed event — otherwise external
         // observers see StageStarted -> RunFinished(failure) with empty diagnostics and
         // no way to know the credential lease was rejected.
-        val leased: AcquiredCredentialScope = when (val acquisition = credentialScopePort.acquire(bindings, runId)) {
-            is CredentialScopeOutcome.Unavailable -> {
+        // ADMISSION: the owner of the lease decision says whether the lease was admitted and,
+        // when it was refused, says the KIND of the refusal and its sentence ONCE. The engine
+        // reports that sentence; it does not build it, and it never asks twice for the same one.
+        val leased = when (val admission = leaseAdmission.admit(bindings, runId)) {
+            is LeaseAdmission.Acquired -> admission.scope
+            is LeaseAdmission.Refused -> {
                 emitCredentialLeaseAdmissionFailure(
                     runId = runId, stageIndex = stageIndex, stepIndex = stepIndex,
                     stepName = "${block.pluginStepId.value}", stepType = "withcredentials",
-                    failureKind = dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
-                    message = acquisition.failure.describe(),
+                    failureKind = admission.failureKind,
+                    message = admission.message,
                 )
                 return StepOutcome.Failure(
-                    PipelineFailure(
-                        dev.rubentxu.pipeline.v2.domain.FailureKind.INFRASTRUCTURE,
-                        acquisition.failure.describe(),
-                    ),
+                    PipelineFailure(admission.failureKind, admission.message),
                 )
             }
-            is CredentialScopeOutcome.Invalid -> {
-                emitCredentialLeaseAdmissionFailure(
-                    runId = runId, stageIndex = stageIndex, stepIndex = stepIndex,
-                    stepName = "${block.pluginStepId.value}", stepType = "withcredentials",
-                    failureKind = dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA,
-                    message = acquisition.failure.describe(),
-                )
-                return StepOutcome.Failure(
-                    PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA, acquisition.failure.describe()),
-                )
-            }
-            is CredentialScopeOutcome.Acquired -> acquisition.scope
         }
         val childContext = executionContext.pushed(
             ContextOverlay.Environment(
@@ -1163,13 +1013,5 @@ internal class StepDispatchEngine(
                 message = message,
             ),
         )
-    }
-
-    private fun CredentialScopeFailure.describe(): String = when (this) {
-        is CredentialScopeFailure.StoreUnavailable -> message
-        is CredentialScopeFailure.CredentialMissing -> "Credential '${credentialsId.value}' is not present in the store"
-        is CredentialScopeFailure.BindingMismatch -> message
-        is CredentialScopeFailure.AcquisitionFailed -> message
-        CredentialScopeFailure.ReplayUnsupported -> "Replay of an in-flight credential scope is not supported"
     }
 }

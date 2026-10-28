@@ -121,8 +121,8 @@
     <ID>UnusedPrivateProperty:OpId.kt:OpId.Companion$/** * Pattern for OpId with optional branch: "runId-s{stageIndex}-{stepIndex}[-b{branchIndex}]" * The branchIndex group is captured as an optional group (may be null). */ private val BRANCH_PATTERN = Regex("^(.+)-s(\\d+)-(\\d+)(-b(\\d+))?$")</ID>
     <ID>UnusedPrivateProperty:OpId.kt:OpId.Companion$/** * Pattern for OpId without branch: "runId-s{stageIndex}-{stepIndex}" */ private val ROOT_PATTERN = Regex("^(.+)-s(\\d+)-(\\d+)$")</ID>
     <ID>UnusedPrivateProperty:ScriptedRegistryInvoker.kt:ScriptedRegistryInvoker$private val eventSink: EventSink</ID>
-    <ID>UnusedPrivateProperty:StepDispatchEngine.kt:StepDispatchEngine$private val capabilityContributor: dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor = dev.rubentxu.pipeline.v2.domain.step.RuntimeCapabilityContributor { emptyMap() }</ID>
-    <ID>UnusedPrivateProperty:StepDispatchEngine.kt:StepDispatchEngine$private val runLifecycle: RunLifecycleEngine</ID>
+
+
     <ID>UnusedPrivateProperty:WaitUntilEngine.kt:WaitUntilEngine$private val blockId: StepId</ID>
     <ID>UnusedPrivateProperty:WaitUntilEngine.kt:WaitUntilEngine$private val blockPluginStepId: PluginStepId</ID>
     <ID>UnusedPrivateProperty:WaitUntilEngine.kt:WaitUntilEngine$private val parentBodyPath: List&lt;BlockSegment&gt;</ID>
@@ -148,7 +148,7 @@
     <ID>UseCheckOrError:MainConsoleCli.kt:MainConsoleCli$throw IllegalStateException( ConsoleReadService.renderRefusal(result.reason), )</ID>
     <ID>UseCheckOrError:RuntimeApiVersion.kt:RuntimeApiVersion$throw IllegalStateException( "the generated version resource is missing or empty at $RESOURCE. Refusing to decide " + "plugin compatibility against a version that did not come from the build. Rebuild " + "via Gradle so the resource is generated from project.version.", )</ID>
     <ID>UseCheckOrError:RuntimeApiVersion.kt:RuntimeApiVersion$throw IllegalStateException( "version '$raw' read from $RESOURCE is not MAJOR.MINOR.PATCH. The SDK admits plugin " + "apiRanges against a three-component SemVer and nothing else, so a version it " + "cannot read is a version it cannot safely compare.", )</ID>
-    <ID>UseCheckOrError:StepDispatchEngine.kt:StepDispatchEngine$throw IllegalStateException( "Context stack underflow: CatchErrorTriggered without matching CatchErrorEntered", )</ID>
+
     <ID>UseCheckOrError:WorkspaceOperations.kt:WorkspaceOperationsAdapter$throw IllegalStateException("controlDirRoot is required for workspace file operations")</ID>
     <ID>UseOrEmpty:AdmissionControlJournal.kt:row.measuredDigest?.value ?: ""</ID>
     <ID>UseOrEmpty:BodyExecutionEngine.kt:BodyExecutionEngine$ctx.attempt?.let { seg -&gt; listOf(dev.rubentxu.pipeline.v2.domain.BlockSegment(seg.index, seg.key)) } ?: emptyList()</ID>

@@ -14,6 +14,7 @@ import dev.rubentxu.pipeline.v2.domain.step.RegistryBodyPolicyResolver
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.post.StageOutcome
 import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
+import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialLeaseAdmission
 import dev.rubentxu.pipeline.v2.application.durable.credentials.CredentialScopePort
 // Durable waitUntil reconciliation driver and identity factory.
 
@@ -305,6 +306,14 @@ class CanonicalDurableRunCoordinator(
         retryControlJournal,
         waitUntilControlJournal,
     )
+    // The three OWNERS the dispatch engine observes. The coordinator builds them here because
+    // it owns the ports they wrap; the engine never sees the ports themselves.
+    //   PREPARACION — the durable identity, the control overlay, the metadata and the fingerprint.
+    //   ADMISION — the credential lease.
+    //   AVANCE — the canonical cursor: what moves it and the write that moves it.
+    private val dispatchPreparation = CanonicalDispatchPreparation(metadataResolver)
+    private val leaseAdmission = CredentialLeaseAdmission(credentialScopePort)
+    private val cursorAdvance = CanonicalCursorAdvance(cursorStore)
     // The step-execution spine. `dispatch` falls through to `dispatchBody`
     // which hands the body back to the body engine with this class's own `dispatchChild` as the
     // re-entry reference, and a parallel branch walks its steps through `dispatch` again. That
@@ -313,25 +322,23 @@ class CanonicalDurableRunCoordinator(
     private val stepDispatch = StepDispatchEngine(        journal = journal,
         eventSink = eventSink,
         clock = clock,
-        credentialScopePort = credentialScopePort,
-        metadataResolver = metadataResolver,
+        leaseAdmission = leaseAdmission,
+        dispatchPreparation = dispatchPreparation,
         typedInputPreparation = typedInputPreparation,
         stepExecutor = stepExecutor,
         invocationResolver = invocationResolver,
         recoveryInterpretation = recoveryInterpretation,
         bodyExecutionEngine = bodyExecutionEngine,
         bodyPolicyResolver = bodyPolicyResolver,
-        runLifecycle = runLifecycle,
         // The dispatch engine composes the emitter from this registry, sink and clock.
         eventRegistry = eventRegistry,
         outputWakeups = wakeups,
-        cursorStore = cursorStore,
+        cursorAdvance = cursorAdvance,
         stepRegistry = stepRegistry,
         bodyInvokerAdapter = bodyInvokerAdapter,
         controlDirRoot = controlDirRoot,
         workspaceBase = workspaceBase,
         secretPatternRegistry = secretPatternRegistry,
-        capabilityContributor = capabilityContributor,
         // the per-run Saga seam, forwarded so the dispatch can build the
         // invocation-bound intent port.
         sagaBinding = sagaBinding,

@@ -47,8 +47,9 @@ tasks.test {
 // functions take arguments and return values without touching disk, network or clock.
 //
 // There is ONE instrument here that is not a primitive: the CLI's own decision
-// to refuse an argument its verb does not own
-// (CredentialsUnexpectedArgumentTest). It calls the verb in process and reads
-// its exit code and its output; it touches neither disk nor network nor clock,
-// because the refusal comes before the store is opened.
+// to refuse a request it does not carry out -- a token its verb does not own,
+// or a request that names no verb of this command at all
+// (CredentialsRefusalTest). It calls the command in process and reads its exit
+// code and its output; it touches neither disk nor network nor clock, because
+// the refusal comes before the store is opened.
 

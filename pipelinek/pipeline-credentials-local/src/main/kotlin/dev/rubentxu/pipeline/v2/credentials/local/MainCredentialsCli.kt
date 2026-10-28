@@ -20,6 +20,19 @@ import java.nio.file.Path
  * - `remove <id>` — removes a credential
  * - `rotate [--kind <kind>] [--from-stdin] <id>` — replaces a stored credential
  *   with a new value, read the same way `add` reads it.
+ * ## Refusals
+ * A request the command does not carry out is refused BEFORE the store is
+ * opened, so it never asks for a passphrase and never asks for a secret. The
+ * complaint follows the SHAPE of the token the operator wrote: an
+ * option-shaped token is an option, and an option the verb does not own is
+ * unknown; a token that is not option-shaped is an argument, and an argument
+ * the verb does not own is unexpected. A request that names no verb is a
+ * missing subcommand, and one that names a verb this command does not have is
+ * an unknown subcommand. Which options and arguments each verb owns is stated
+ * once, in [CredentialsVerb], and the refusal and the usage are derived from
+ * it, so neither can promise an option that does not exist. The sentences
+ * themselves are rendered by [CredentialsRefusal], which reads the contract
+ * and adds nothing of its own to it.
  * ## The passphrase is the authorization
  * The passphrase is what opens the store, so the verbs that read or change
  * what is inside need it — and a passphrase that does not match changes
@@ -107,26 +120,20 @@ object MainCredentialsCli {
 
     @JvmStatic
     fun main(args: Array<String>): Int {
-        return when (args.firstOrNull()) {
-            "add" -> add(args.drop(1))
-            "list" -> list(args.drop(1))
-            "remove" -> remove(args.drop(1))
-            "rotate" -> rotate(args.drop(1))
-            else -> {
-                println("Usage: pipeline credentials {add|list|remove|rotate} [args]")
-                println("Add:    pipeline credentials add [--kind <kind>] [--from-stdin] <id>")
-                println("        --kind values: ${CredentialKind.ALL_KINDS}")
-                println("        --from-stdin reads the value from standard input")
-                println("List:   pipeline credentials list")
-                println("Remove: pipeline credentials remove <id>")
-                println("Rotate: pipeline credentials rotate [--kind <kind>] [--from-stdin] <id>")
+        return when (CredentialsVerb.from(args.firstOrNull())) {
+            CredentialsVerb.ADD -> add(args.drop(1))
+            CredentialsVerb.LIST -> list(args.drop(1))
+            CredentialsVerb.REMOVE -> remove(args.drop(1))
+            CredentialsVerb.ROTATE -> rotate(args.drop(1))
+            null -> {
+                println(CredentialsRefusal.ofUnknownVerb(args.firstOrNull()))
                 CredentialsOutcome.NOT_CARRIED_OUT.exitCode
             }
         }
     }
 
     private fun add(args: List<String>): Int {
-        val parsed = parseWriteArguments(args, "add") ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
+        val parsed = parseWriteArguments(args, CredentialsVerb.ADD) ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         return try {
             val store = openStore()
             // The key is checked before the operator is asked for a secret: a
@@ -166,7 +173,7 @@ object MainCredentialsCli {
     private fun list(args: List<String>): Int {
         val foreign = args.firstOrNull()
         if (foreign != null) {
-            refuseUnexpectedArgument("list", foreign, "takes no argument")
+            println(CredentialsRefusal.of(CredentialsVerb.LIST, foreign))
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
         // Nothing to list means nothing to unlock: a store that is not there
@@ -213,8 +220,17 @@ object MainCredentialsCli {
     }
 
     private fun remove(args: List<String>): Int {
+        // `remove` owns NO option, so a token that looks like one is not the
+        // credential id: it is refused naming it, BEFORE the store is looked
+        // at. Taking it for an id would only discover the mistake at the end,
+        // when a credential with that name is looked up.
+        val option = args.firstOrNull { it.startsWith("--") }
+        if (option != null) {
+            println(CredentialsRefusal.of(CredentialsVerb.REMOVE, option))
+            return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
+        }
         val id = args.firstOrNull() ?: run {
-            println("Usage: pipeline credentials remove <id>")
+            println(CredentialsRefusal.ofMissingArgument(CredentialsVerb.REMOVE))
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
         // `remove` owns ONE argument — the id — and no option. A second token
@@ -222,7 +238,7 @@ object MainCredentialsCli {
         // store is looked at.
         val extra = args.getOrNull(1)
         if (extra != null) {
-            refuseUnexpectedArgument("remove", extra, "takes one argument: the credential id")
+            println(CredentialsRefusal.of(CredentialsVerb.REMOVE, extra))
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         }
         if (!storeHoldsAnything()) {
@@ -257,7 +273,7 @@ object MainCredentialsCli {
     }
 
     private fun rotate(args: List<String>): Int {
-        val parsed = parseWriteArguments(args, "rotate") ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
+        val parsed = parseWriteArguments(args, CredentialsVerb.ROTATE) ?: return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
         if (!storeHoldsAnything()) {
             println("No credentials stored.")
             return CredentialsOutcome.NOT_CARRIED_OUT.exitCode
@@ -312,7 +328,7 @@ object MainCredentialsCli {
      * The verb is named because the refusal has to say which form of the
      * command the operator wrote, and the caller is the one that knows it.
 */
-    private fun parseWriteArguments(args: List<String>, verb: String): WriteArguments? {
+    private fun parseWriteArguments(args: List<String>, verb: CredentialsVerb): WriteArguments? {
         var kind: CredentialKind? = null
         var id: String? = null
         var fromStdin = false
@@ -320,9 +336,17 @@ object MainCredentialsCli {
         val it = args.iterator()
         while (it.hasNext()) {
             val arg = it.next()
+            val option = verb.ownedOption(arg)
             when {
-                arg == "--kind" && it.hasNext() -> {
-                    val kindStr = it.next()
+                option == CredentialsOption.KIND -> {
+                    val kindStr = if (it.hasNext()) it.next() else null
+                    if (kindStr == null) {
+                        // The verb OWNS this option and the operator left its
+                        // value out. That is a typo about a KNOWN option, and
+                        // it is a different mistake from an unknown option.
+                        println(CredentialsRefusal.ofMissingOptionValue(verb, CredentialsOption.KIND))
+                        return null
+                    }
                     kind = CredentialKind.fromString(kindStr)
                     if (kind == null) {
                         println("Error: unknown kind '$kindStr'. Valid kinds: ${CredentialKind.ALL_KINDS}")
@@ -330,47 +354,33 @@ object MainCredentialsCli {
                     }
                 }
 
-                arg == "--from-stdin" -> fromStdin = true
-                !arg.startsWith("--") && id == null -> id = arg
+                option == CredentialsOption.FROM_STDIN -> fromStdin = true
+                // An option this verb does not own is NOT an option whose value
+                // is missing: the operator has to be told WHICH token to
+                // remove, or the refusal sends them to the wrong place.
+                arg.startsWith("--") -> {
+                    println(CredentialsRefusal.of(verb, arg))
+                    return null
+                }
+
+                id == null -> id = arg
                 // The SECOND positional is not a request of this verb: `add`
                 // and `rotate` own ONE, the credential id. It is refused
                 // naming the token, and it is refused HERE — before the store
                 // is opened — so a request that is not this verb's never asks
                 // for a passphrase and never asks for a secret.
-                !arg.startsWith("--") -> {
-                    refuseUnexpectedArgument(verb, arg, "takes one argument: the credential id")
-                    return null
-                }
-                // A flag whose value is missing is a typo the user should see,
-                // not a silently ignored argument.
-                arg.startsWith("--") -> {
-                    println("Error: $arg needs a value")
+                else -> {
+                    println(CredentialsRefusal.of(verb, arg))
                     return null
                 }
             }
         }
 
         val idArg = id ?: run {
-            println("Error: missing credential id")
+            println(CredentialsRefusal.ofMissingArgument(verb))
             return null
         }
         return WriteArguments(kind ?: CredentialKind.SECRET_TEXT, idArg, fromStdin)
-    }
-
-    /**
-     * The refusal of a request that carries an argument this verb does not own.
-     *
-     * The token is named because the operator has to be able to read WHICH
-     * token to remove, and the shape is stated because the operator has to be
-     * able to read WHAT the verb takes. The verb is named because the refusal
-     * is about the form the operator wrote, and there are four of them.
-     *
-     * The refusal happens before the store is touched: a request that is not
-     * this verb's does not get to ask for a passphrase, does not get to read
-     * the store and does not get to ask for a secret.
-     */
-    private fun refuseUnexpectedArgument(verb: String, token: String, shape: String) {
-        println("Error: unexpected argument: $token. 'credentials $verb' $shape.")
     }
 
     private fun openStore(): LocalSecretStore =

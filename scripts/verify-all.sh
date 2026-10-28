@@ -917,6 +917,21 @@ elif [[ "$skip_budget" == 1 ]]; then
     python3 scripts/check-comment-provenance.py >/tmp/.verify-comment.out 2>&1 \
         || { cat /tmp/.verify-comment.out >&2; fail "stage 4b: comment provenance"; }
     echo "    ok in $(elapsed "$stage_started_at")s"
+
+    # --- Stage 4c: only the entry point may end the process ------------------
+    #
+    # A helper that ends the process takes a decision that belongs to somebody
+    # else, and the price is paid in the places that cannot be tested: the
+    # helper cannot be called, so the code around it cannot be exercised, and
+    # the exit code it invents is a literal rather than a case of the taxonomy
+    # the CLI already declares. The guard reads the product sources, resolves
+    # the function that holds each exit call, and fails when that function is
+    # not the entry point.
+    log "stage 4c/5 process exits"
+    stage_started_at=$(date +%s)
+    python3 scripts/check-process-exits.py >"$log_dir/exits.out" 2>&1 \
+        || { cat "$log_dir/exits.out" >&2; fail "stage 4c: process exits"; }
+    echo "    ok in $(elapsed "$stage_started_at")s"
 else
     log "stage 4/5  LOC budget"
     stage_started_at=$(date +%s)
@@ -937,6 +952,21 @@ else
     stage_started_at=$(date +%s)
     python3 scripts/check-comment-provenance.py >/tmp/.verify-comment.out 2>&1 \
         || { cat /tmp/.verify-comment.out >&2; fail "stage 4b: comment provenance"; }
+    echo "    ok in $(elapsed "$stage_started_at")s"
+
+    # --- Stage 4c: only the entry point may end the process ------------------
+    #
+    # A helper that ends the process takes a decision that belongs to somebody
+    # else, and the price is paid in the places that cannot be tested: the
+    # helper cannot be called, so the code around it cannot be exercised, and
+    # the exit code it invents is a literal rather than a case of the taxonomy
+    # the CLI already declares. The guard reads the product sources, resolves
+    # the function that holds each exit call, and fails when that function is
+    # not the entry point.
+    log "stage 4c/5 process exits"
+    stage_started_at=$(date +%s)
+    python3 scripts/check-process-exits.py >"$log_dir/exits.out" 2>&1 \
+        || { cat "$log_dir/exits.out" >&2; fail "stage 4c: process exits"; }
     echo "    ok in $(elapsed "$stage_started_at")s"
 fi
 

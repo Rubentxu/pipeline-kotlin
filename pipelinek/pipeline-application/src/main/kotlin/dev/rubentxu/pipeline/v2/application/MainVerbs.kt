@@ -35,7 +35,31 @@ internal fun isHelpRequest(args: Array<String>): Boolean =
 private val HELP_TOKENS = setOf("--help", "-h", "help")
 
 /**
- * The read-only verbs: the ones that answer and exit without writing.
+ * What the read-only verbs decided.
+ *
+ * ## Why this is a value and not a Boolean
+ *
+ * The read-only verbs answer, and the process ends. The dispatcher used to end
+ * the process ITSELF, from inside a helper: it swallowed the result of the
+ * verb and ended the JVM before its caller had decided anything. A helper
+ * that ends the process takes a decision that is not its own, and it takes it
+ * away from the one place that owns the process.
+ *
+ * The dispatcher now says WHAT happened and lets the entry point decide what
+ * to do with it. Two facts, not one: whether a read-only verb answered, and
+ * the decision it answered with.
+ */
+internal sealed interface ReadOnlyVerbOutcome {
+
+    /** No read-only verb answers these words; the request is not one of ours. */
+    data object NotHandled : ReadOnlyVerbOutcome
+
+    /** A read-only verb answered, and this is the decision it answered with. */
+    data class Answered(val exit: CliExit) : ReadOnlyVerbOutcome
+}
+
+/**
+ * The read-only verbs: the ones that answer without writing.
  *
  * ## Why they live here
  *
@@ -52,31 +76,34 @@ private val HELP_TOKENS = setOf("--help", "-h", "help")
  * to spell out is gone, and with it the chance of the two lists disagreeing
  * about what a verb is.
  *
- * ## Why it returns a Boolean
+ * ## Why it returns a decision and does not end the process
  *
- * Every branch here ends in `System.exit`, so the function does not really
- * return. The Boolean says "this verb is mine" so that a future verb that
- * forgets to exit still cannot fall through into the run path: the caller
- * stops here either way.
+ * The verb that answers is not the owner of the process. The dispatcher
+ * returns what the verb decided, and the entry point — the only place that
+ * ends the process — decides what to do with it. A verb that forgets to
+ * answer can still not fall through into the run path: the caller stops on
+ * the outcome, whatever the outcome is.
  */
-internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
+internal fun handleReadOnlyVerb(args: Array<String>): ReadOnlyVerbOutcome {
     val verb = cliVerbFor(args)
     if (verb != null && verb.handler != null) {
-        System.exit(verb.handler(args.drop(verb.words.size).toTypedArray()))
-        return true
+        return ReadOnlyVerbOutcome.Answered(verb.handler(args.drop(verb.words.size).toTypedArray()))
     }
     // The family word on its own is not a command. Saying so, and naming the
     // form that is, is the refusal the operator gets. The refusal is a
     // [CliError] and the code is the one the taxonomy declares: the door used
     // to print a sentence this repository wrote and exit with a literal.
+    //
+    // The door PRINTS the refusal and the usage; printing is not ending the
+    // process. The decision travels back to the entry point, which owns the
+    // process and is the only place that ends it.
     val door = cliFamilyDoor(args)
     if (door != null) {
         System.err.println(door.error.refusalLines("pipeline").joinToString("\n"))
         System.err.println(door.usage)
-        System.exit(door.error.toCliExit().code)
-        return true
+        return ReadOnlyVerbOutcome.Answered(door.error.toCliExit())
     }
-    return false
+    return ReadOnlyVerbOutcome.NotHandled
 }
 
 /**
@@ -86,8 +113,8 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
  * The version MUST be produced by the build from project.version. The legacy
  * "0.1.0-SNAPSHOT" sentinel is removed: if the generated resource is missing,
  * that is a packaging defect, NOT a fallback case. Fail-closed: print an
- * explicit error and exit non-zero so CI cannot ship an unversioned
- * artifact.
+ * explicit error and refuse with a typed decision, so CI cannot ship an
+ * unversioned artifact.
  *
  * ONE authority for "what version is this". Admission reads the same value
  * through RuntimeApiVersion, so the number a plugin is judged against and
@@ -106,12 +133,12 @@ internal fun handleReadOnlyVerb(args: Array<String>): Boolean {
  * error: a working-tree build has no commit to report, and the candidate
  * gate decides whether that is acceptable for what it is certifying.
  */
-internal fun runVersionVerb(args: Array<String>): Int {
+internal fun runVersionVerb(args: Array<String>): CliExit {
     val admission = CliOptionAdmission.admit(args, VERSION_REQUEST)
     val accepted = when (admission) {
         is CliAdmission.Rejected -> {
             System.err.println(admission.error.refusalLines("version").joinToString("\n"))
-            return 2
+            return admission.error.toCliExit()
         }
         is CliAdmission.Admitted -> admission
     }
@@ -126,7 +153,7 @@ internal fun runVersionVerb(args: Array<String>): Int {
         println(
             """{"productVersion":$versionField,"buildCommit":$commitField}""",
         )
-        return 0
+        return CliExit.Success()
     }
     val manifestVersion = RuntimeApiVersion.readImplementationVersion()
     if (manifestVersion.isNullOrBlank()) {
@@ -135,10 +162,13 @@ internal fun runVersionVerb(args: Array<String>): Int {
                 "Refusing to report a version derived from a hard-coded sentinel. " +
                 "Rebuild via Gradle so it is generated from project.version."
         )
-        return 3
+        return CliExit.IncompatibleVersion(
+            message = "the generated version resource is missing",
+            hint = "rebuild via Gradle so the version is generated from project.version",
+        )
     }
     println("pipeline $manifestVersion")
-    return 0
+    return CliExit.Success()
 }
 
 /**
@@ -146,16 +176,16 @@ internal fun runVersionVerb(args: Array<String>): Int {
  *
  * Side-effect free. Machine-verifiable surface for external consumers.
  */
-internal fun runCapabilitiesVerb(args: Array<String>): Int =
-    MainCapabilitiesCli.main(args)
+internal fun runCapabilitiesVerb(args: Array<String>): CliExit =
+    verbExit(MainCapabilitiesCli.main(args))
 
 /**
  * `sdk-info` — the SDK coordinates a plugin builds against, as one JSON line.
  *
  * Side-effect free.
  */
-internal fun runSdkInfoVerb(args: Array<String>): Int =
-    MainSdkInfoCli.main(args)
+internal fun runSdkInfoVerb(args: Array<String>): CliExit =
+    verbExit(MainSdkInfoCli.main(args))
 
 /**
  * `doctor` — local-only health diagnostics.
@@ -180,12 +210,12 @@ internal fun runSdkInfoVerb(args: Array<String>): Int =
  * --json` used to answer 0 and print the report, so a flag the operator
  * believed in was dropped without a word.
  */
-internal fun runDoctorVerb(args: Array<String>): Int {
+internal fun runDoctorVerb(args: Array<String>): CliExit {
     val admission = CliOptionAdmission.admit(args, NO_ARGUMENTS_REQUEST)
     when (admission) {
         is CliAdmission.Rejected -> {
             System.err.println(admission.error.refusalLines("doctor").joinToString("\n"))
-            return 2
+            return admission.error.toCliExit()
         }
         is CliAdmission.Admitted -> Unit
     }
@@ -212,7 +242,7 @@ internal fun runDoctorVerb(args: Array<String>): Int {
         InstallationHealth.workdir(cwd, writable),
     )
     checks.forEach { println(it.render()) }
-    return InstallationHealth.exitCode(checks)
+    return InstallationHealth.decision(checks)
 }
 
 /**
@@ -220,8 +250,8 @@ internal fun runDoctorVerb(args: Array<String>): Int {
  *
  * Structured local history inspection.
  */
-internal fun runEventsVerb(args: Array<String>): Int =
-    MainEventsCli.main(args)
+internal fun runEventsVerb(args: Array<String>): CliExit =
+    verbExit(MainEventsCli.main(args))
 
 /**
  * `events verify` — the run's events against a contract.
@@ -229,8 +259,8 @@ internal fun runEventsVerb(args: Array<String>): Int =
  * A verb of its own because it answers a different question from `events`:
  * not what happened, but whether what happened matches what was promised.
  */
-internal fun runEventsVerifyVerb(args: Array<String>): Int =
-    MainEventsVerifyCli.main(args)
+internal fun runEventsVerifyVerb(args: Array<String>): CliExit =
+    verbExit(MainEventsVerifyCli.main(args))
 
 /**
  * `console` — the current release: read process output from the Output Plane
@@ -243,8 +273,8 @@ internal fun runEventsVerifyVerb(args: Array<String>): Int =
  * conflation the byte-offset rule exists to prevent, and it is exactly what
  * the deprecated EventViewProjection.CONSOLE was.
  */
-internal fun runConsoleVerb(args: Array<String>): Int =
-    MainConsoleCli.main(args)
+internal fun runConsoleVerb(args: Array<String>): CliExit =
+    verbExit(MainConsoleCli.main(args))
 
 /**
  * `operations` — the run's operations, with their complete identity.
@@ -256,8 +286,8 @@ internal fun runConsoleVerb(args: Array<String>): Int =
  * identity as it was minted, not with a name derived from the Output Plane's
  * directory layout, which folds every separator into an underscore.
  */
-internal fun runOperationsVerb(args: Array<String>): Int =
-    MainOperationsCli.main(args)
+internal fun runOperationsVerb(args: Array<String>): CliExit =
+    verbExit(MainOperationsCli.main(args))
 
 /**
  * `observe` — one public verb over both durable authorities.
@@ -268,14 +298,14 @@ internal fun runOperationsVerb(args: Array<String>): Int =
  * `Event.sequence` and `OutputFrame.ordinal` have no total order, so
  * `--view full` stays refused here exactly as it is in `run`.
  */
-internal fun runObserveVerb(args: Array<String>): Int =
-    MainObserveCli.main(args)
+internal fun runObserveVerb(args: Array<String>): CliExit =
+    verbExit(MainObserveCli.main(args))
 
 /**
  * `credentials` — the registered credential material, redacted.
  */
-internal fun runCredentialsVerb(args: Array<String>): Int =
-    MainCredentialsCli.main(args)
+internal fun runCredentialsVerb(args: Array<String>): CliExit =
+    verbExit(MainCredentialsCli.main(args))
 
 /**
  * `inspect` — a bounded diagnostic surface.
@@ -284,8 +314,8 @@ internal fun runCredentialsVerb(args: Array<String>): Int =
  * `console` are for their lanes: a typed parser + a typed query + a typed
  * projection.
  */
-internal fun runInspectVerb(args: Array<String>): Int =
-    MainInspectCli.main(args)
+internal fun runInspectVerb(args: Array<String>): CliExit =
+    verbExit(MainInspectCli.main(args))
 
 /**
  * `saga inspect` — what a run still owes, read from the durable promises.
@@ -294,5 +324,5 @@ internal fun runInspectVerb(args: Array<String>): Int =
  * a different authority: `inspect` reads what a run DID, and this one reads
  * what a run PROMISED and has not yet discharged.
  */
-internal fun runSagaInspectVerb(args: Array<String>): Int =
-    MainSagaInspectCli.main(args)
+internal fun runSagaInspectVerb(args: Array<String>): CliExit =
+    verbExit(MainSagaInspectCli.main(args))

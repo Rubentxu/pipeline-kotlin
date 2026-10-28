@@ -239,7 +239,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `version refuses an option it does not own`() {
-        val result = capture { runVersionVerb(arrayOf("--db")) }
+        val result = capture { runVersionVerb(arrayOf("--db")).code }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("--db"), result.stderr)
@@ -247,7 +247,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `doctor refuses an option it does not own`() {
-        val result = capture { runDoctorVerb(arrayOf("--json")) }
+        val result = capture { runDoctorVerb(arrayOf("--json")).code }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("--json"), result.stderr)
@@ -291,7 +291,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `version still answers the option it owns`() {
-        val result = capture { runVersionVerb(arrayOf("--json")) }
+        val result = capture { runVersionVerb(arrayOf("--json")).code }
 
         assertEquals(0, result.exitCode)
         assertTrue(result.stdout.contains("productVersion"), result.stdout)
@@ -299,7 +299,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `version refuses an argument it was not asked about`() {
-        val result = capture { runVersionVerb(arrayOf("foo")) }
+        val result = capture { runVersionVerb(arrayOf("foo")).code }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("foo"), result.stderr)
@@ -310,7 +310,7 @@ class CliOptionAdmissionTest {
 
     @Test
     fun `doctor refuses an argument it was not asked about`() {
-        val result = capture { runDoctorVerb(arrayOf("foo")) }
+        val result = capture { runDoctorVerb(arrayOf("foo")).code }
 
         assertEquals(2, result.exitCode)
         assertTrue(result.stderr.contains("foo"), result.stderr)

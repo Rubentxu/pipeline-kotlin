@@ -89,8 +89,9 @@ import java.io.PrintStream
  * understand.
  *
  * The door of the `saga` family is observed at the door and not at the
- * terminal: it answers through `System.exit`, so calling it in this process
- * would end the process. The door of the `runs` family answers through its
+ * terminal: it answers with a [CliError] and does not end the process, so it
+ * can be observed whole here — the refusal, the code the taxonomy declares
+ * for it and the sentence. The door of the `runs` family answers through its
  * return value and is observed whole.
  *
  * The two phrases this file refuses to accept are the two the old hint
@@ -287,9 +288,10 @@ class CliErrorRenderingTest {
 
     @Test
     fun `the saga family door refuses with the shared sentence`() {
-        // The door answers through System.exit, so it is observed where it is
-        // produced: at the door itself. The rendering of it is the renderer's,
-        // which the rows above already cross.
+        // The door answers with a decision and does not end the process, so it
+        // is observed where it is produced: at the door itself, whole. The
+        // rendering of it is the renderer's, which the rows above already
+        // cross.
         val alone = requireNotNull(cliFamilyDoor(arrayOf("saga"))) { "the saga family has no door" }
         val unknown = requireNotNull(cliFamilyDoor(arrayOf("saga", "bogus"))) { "the saga family has no door" }
 

@@ -66,48 +66,6 @@ internal val CLI_ENVIRONMENT_INTERNAL: List<Pair<String, String>> = listOf(
 )
 
 /**
- * Resolve the operator-supplied `--output-protocol` tokens to a
- * concrete [OutputProtocol] or fail closed with
- * [CliExit.InvalidArgument] (exit 2).
- *
- * Negotiation rules:
- * - Empty list → [OutputProtocol.DEFAULT] (Published). No change
- *   in behaviour for callers that did not opt in.
- * - The token list is the CLIENT'S PREFERENCE ORDER. The first id
- *   in the list that intersects [OutputProtocol.SUPPORTED_IDS] wins.
- *   Unknown ids in the list are SKIPPED, not rejected — clients
- *   may declare more ids than this binary supports, as long as at
- *   least one matches.
- * - When NO id in the list intersects the supported set, the
- *   process exits with [CliExit.InvalidArgument] (code 2) and an
- *   envelope listing every supported id. The server NEVER falls
- *   back to Published on an unknown request — silent degradation
- *   is the exact defect this negotiation exists to prevent.
- *
- * Resolution lives in [OutputProtocol.negotiate]; this wrapper
- * only translates "no intersection" into the typed CLI envelope.
- */
-private fun negotiateOutputProtocolOrExit(tokens: List<String>): OutputProtocol {
-    val resolved = OutputProtocol.negotiate(tokens)
-    if (resolved != null) return resolved
-    val supported = OutputProtocol.SUPPORTED_IDS.joinToString(", ")
-    val requested = tokens.joinToString(", ")
-    val exit = CliExit.InvalidArgument(
-        message = "no acceptable --output-protocol in [$requested]. Supported: $supported",
-        hint = "see ADR-PK1-OUTPUT-FRAMING for the negotiation contract",
-    )
-    System.err.write(exit.encodeEnvelope().toByteArray(Charsets.UTF_8))
-    System.err.flush()
-    System.exit(exit.code)
-    // unreachable; System.exit never returns control. The return
-    // statement below exists only to satisfy the Kotlin compiler's
-    // "missing return on a path" check on a function declared with a
-    // non-Unit return type.
-    return OutputProtocol.DEFAULT
-}
-
-
-/**
  * Opt-in system property that registers the redaction canaries.
  *
  * ## Why it exists rather than the canaries being unconditional
@@ -166,10 +124,16 @@ fun main(args: Array<String>) {
         return
     }
 
-    // The verbs that only read. They answer and exit; nothing after this point
-    // is reached when one of them is the verb.
-    if (handleReadOnlyVerb(args)) {
-        return
+    // The verbs that only read. They answer, and this is the one place that
+    // ends the process, so the decision the verb made becomes the process's
+    // exit code here. Nothing after this point is reached when one of them is
+    // the verb.
+    when (val outcome = handleReadOnlyVerb(args)) {
+        is ReadOnlyVerbOutcome.Answered -> {
+            System.exit(outcome.exit.code)
+            return
+        }
+        ReadOnlyVerbOutcome.NotHandled -> Unit
     }
 
     // The control plane's verb. `runs cancel` closes a run that no live process
@@ -177,7 +141,7 @@ fun main(args: Array<String>) {
     // it is the first one in this CLI: every other verb reads.
     if (args.firstOrNull() == MainRunsCli.FAMILY) {
         val exitCode = MainRunsCli.main(args.drop(1).toTypedArray())
-        System.exit(exitCode)
+        System.exit(verbExit(exitCode).code)
         return
     }
 
@@ -216,7 +180,21 @@ fun main(args: Array<String>) {
     // CliExit.InvalidArgument (exit 2); the server never falls back
     // to Published on an unknown request, because that would be the
     // silent-degradation defect this negotiation exists to prevent.
-    val outputProtocol: OutputProtocol = negotiateOutputProtocolOrExit(config.outputProtocolTokens)
+    //
+    // The negotiation decides; the process owner acts. The envelope goes to
+    // stderr, where a consumer reads it, and the exit code is the one the
+    // refusal carries.
+    val outputProtocol: OutputProtocol = when (
+        val decision = negotiateOutputProtocol(config.outputProtocolTokens)
+    ) {
+        is OutputProtocolDecision.Accepted -> decision.protocol
+        is OutputProtocolDecision.Refused -> {
+            System.err.write(decision.exit.encodeEnvelope().toByteArray(Charsets.UTF_8))
+            System.err.flush()
+            System.exit(decision.exit.code)
+            return
+        }
+    }
 
     val command = config.command
 

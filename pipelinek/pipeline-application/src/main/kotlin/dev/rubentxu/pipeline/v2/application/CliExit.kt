@@ -111,5 +111,41 @@ sealed interface CliExit {
 
     companion object {
         const val SCHEMA: String = "pipelinek.cli/1"
+
+        /**
+         * Every case of this taxonomy, once.
+         *
+         * The codes are READ from the cases, never written here. A copy of the
+         * number would be a second place where a code lives, and a case that
+         * moved would leave the copy naming a number nobody owns.
+         */
+        private val CASES: List<CliExit> = listOf(
+            Success(),
+            PipelineFailed(message = "the command reported a failure"),
+            InvalidArgument(message = "the request was not understood"),
+            IncompatibleVersion(message = "the version this build needs is not available"),
+            RuntimeNotAvailable(message = "this build cannot serve the request"),
+            UnknownExecution(message = "the execution named is unknown"),
+            ReadFailure(message = "the durable material could not be read"),
+            IntegrityViolation(message = "the durable material did not match its digest"),
+        )
+
+        /**
+         * The case that owns [code], or null when this taxonomy declares none.
+         *
+         * ## Why a number needs a way back to its case
+         *
+         * Ten of the read-only verbs are CLIs of their own, and their entry
+         * point answers with a number, because that is the contract it has
+         * always had. A number that cannot find the case that owns it leaves
+         * the CLI with two ways of saying what an exit means: the case, and a
+         * number spelled out somewhere else.
+         *
+         * A number this taxonomy does not declare has no case, and the refusal
+         * that says so is the honest answer: a verb that answered with a code
+         * nobody declared is a defect, and guessing a case for it would hide
+         * that defect behind a plausible number.
+         */
+        fun of(code: Int): CliExit? = CASES.firstOrNull { it.code == code }
     }
 }

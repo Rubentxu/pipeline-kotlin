@@ -159,11 +159,52 @@ fun CliError.toCliExit(): CliExit = when (this) {
  * the one mapping from an error to a sentence. A verb that printed the error
  * itself would print the sealed type's constructor syntax instead, which is
  * how `observe` came to answer `UnknownOption(value=--bogus-flag)`.
+ *
+ * The words are rendered by [refusalLines] on the CASE, so a refusal that
+ * starts from an error and a refusal that starts from a case say the same
+ * thing in the same words: one renderer, two doors into it.
  */
-internal fun CliError.refusalLines(verb: String): List<String> {
-    val exit = toCliExit()
-    return listOfNotNull("$verb: ${exit.message}", exit.hint)
-}
+internal fun CliError.refusalLines(verb: String): List<String> =
+    toCliExit().refusalLines(verb)
+
+/**
+ * The lines a refusal prints, rendered from the case that owns it.
+ *
+ * ## Why the case owns the rendering
+ *
+ * The case carries the message and the hint, so the case is what can render
+ * them. An error that rendered its own words would need a second copy of
+ * every sentence, and the two copies would be free to disagree.
+ */
+internal fun CliExit.refusalLines(verb: String): List<String> =
+    listOfNotNull("$verb: $message", hint)
+
+/**
+ * The case that carries [code] to the process.
+ *
+ * ## Why the number is mapped and not kept
+ *
+ * Ten of the read-only verbs are CLIs of their own, and their entry point
+ * answers with a number. Changing that contract would reach every call site
+ * of every one of them for no gain: the number is the fact, and the taxonomy
+ * owns what a number means.
+ *
+ * The case is the carrier. Its WORDS are not this function's to write — a verb
+ * that refused a request printed its own refusal already — so the case
+ * travels from here to the exit code and no further.
+ *
+ * ## Why a number this taxonomy does not declare is refused
+ *
+ * Measured over the twelve read-only verbs, every number the product answers
+ * with is inside the taxonomy, so this refusal is unreachable today. It is
+ * here anyway: a code nobody declared is a defect, and failing closed with a
+ * typed refusal is what a defect deserves. Quietly keeping the number would
+ * let an undeclared code reach the operator as if the taxonomy had meant it.
+ */
+internal fun verbExit(code: Int): CliExit =
+    CliExit.of(code) ?: CliExit.RuntimeNotAvailable(
+        message = "the verb answered with exit code $code, which this taxonomy does not declare",
+    )
 
 /**
  * The refusal of a verb, on stderr, and the code the taxonomy declares for it.

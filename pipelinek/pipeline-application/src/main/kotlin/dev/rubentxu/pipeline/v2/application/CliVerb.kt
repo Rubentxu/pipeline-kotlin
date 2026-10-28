@@ -2,7 +2,7 @@ package dev.rubentxu.pipeline.v2.application
 
 /**
  * A command form: the words the operator types, what the form does, and the
- * code that answers it.
+ * decision that answers it.
  *
  * ## Why a form and not a word
  *
@@ -33,8 +33,14 @@ internal class CliVerb(
     val label: String,
     /** The line the help prints next to the form. */
     val summary: String,
-    /** The code that answers the form, or null when another authority owns it. */
-    val handler: ((Array<String>) -> Int)? = null,
+    /**
+     * The decision that answers the form, or null when another authority owns it.
+     *
+     * The decision is a [CliExit] and not a number, so the code the process
+     * ends with is the one the taxonomy declares. A handler that answered with
+     * a number would carry a second, hand-written copy of that answer.
+     */
+    val handler: ((Array<String>) -> CliExit)? = null,
     /**
      * The usage the family prints when the family word is given alone.
      *

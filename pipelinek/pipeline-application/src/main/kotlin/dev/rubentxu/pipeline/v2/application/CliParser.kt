@@ -1923,7 +1923,7 @@ private object ValuedOptions {
         // --output-protocol token in the order the operator passed them.
         // The list is the client's priority for the negotiation. Resolution
         // (intersection with OutputProtocol.SUPPORTED_IDS, fail-closed on
-        // no intersection) lives in Main.kt#negotiateOutputProtocolOrExit.
+        // no intersection) lives in OutputProtocolDecision.kt#negotiateOutputProtocol.
         ValuedOption.OUTPUT_PROTOCOL -> {
             if (value.isBlank()) {
                 ApplyOutcome.Rejected(CliError.MissingOptionValue("--output-protocol"))

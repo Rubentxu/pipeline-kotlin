@@ -49,6 +49,13 @@ RULES: list[tuple[str, str, str]] = [
     ("verify", "budget script", "scripts/check-budgets.py"),
     ("verify", "verification entrypoint", "scripts/verify-all.sh"),
     ("verify", "E2E launcher", "examples/run.sh"),
+    # The source guards. They read the tree and report; they produce no
+    # artifact and ship nothing, so they are the numerator and not the
+    # denominator. The catch-all rule below calls every other script a release
+    # tool, and a guard caught by it would make the ratio look better than the
+    # truth -- the same reason the two release checks are named above.
+    ("verify", "source guard", "scripts/check-comment-provenance.py"),
+    ("verify", "source guard", "scripts/check-process-exits.py"),
     # The external-consumer check verifies the published artifacts against a
     # consumer outside this repository. It does not ship them: it runs on the
     # publisher's machine during publication. Counting it as production would
@@ -56,6 +63,9 @@ RULES: list[tuple[str, str, str]] = [
     # the catch-all rule for the rest of scripts/.
     ("verify", "external consumer check", "scripts/release/verify-external-compatibility.sh"),
     ("verify", "tag signature check", "scripts/release/verify-tag-signature.sh"),
+    # The audit of the tags this repository has already published. It reads
+    # the remote's own listing and reports; it publishes nothing.
+    ("verify", "published tag audit", "scripts/release/verify-published-tags.sh"),
     # Permanent unit tests. Two module depths: pipelinek/<m> and pipelinek/<g>/<m>.
     ("verify", "unit tests", "pipelinek/*/src/test/*"),
     ("verify", "unit tests", "pipelinek/*/*/src/test/*"),

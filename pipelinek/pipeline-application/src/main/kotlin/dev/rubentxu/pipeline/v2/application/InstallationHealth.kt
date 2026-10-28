@@ -43,26 +43,37 @@ data class HealthCheck(
 }
 
 /**
- * The health of an installation, and the exit code that reports it.
+ * The health of an installation, and the decision that reports it.
  */
 object InstallationHealth {
 
-    /** The exit code of an installation with no defect. */
-    const val HEALTHY_EXIT: Int = 0
-
-    /** The exit code of an installation with a defect. */
-    const val DEFECTIVE_EXIT: Int = 2
-
     /**
-     * The exit code the report answers with.
+     * The decision the report answers with.
      *
      * The verdicts decide it and nothing else does. A reading that happens to
      * contain the word "NOT WRITABLE" is still a healthy reading when that is
      * what was measured: the sentence a report prints is not the judgement it
      * makes.
+     *
+     * The decision is a [CliExit] and not a number, so the code the process
+     * ends with is the one the taxonomy declares rather than a literal
+     * written here: a defect in the installation is a request this build
+     * cannot serve as it stands, which is the case the CLI already has.
+     *
+     * The case is the one whose code the doctor has always answered with, and
+     * the code is observed: the E2E example reads it. A case that carried a
+     * different number would change what an operator's script sees, so the
+     * case was chosen to keep the number and drop the literal.
      */
-    fun exitCode(checks: List<HealthCheck>): Int =
-        if (checks.any { it.verdict == HealthVerdict.DEFECTIVE }) DEFECTIVE_EXIT else HEALTHY_EXIT
+    fun decision(checks: List<HealthCheck>): CliExit =
+        if (checks.any { it.verdict == HealthVerdict.DEFECTIVE }) {
+            CliExit.InvalidArgument(
+                message = "the installation is not healthy",
+                hint = "the checks above name the defect",
+            )
+        } else {
+            CliExit.Success(message = "the installation is healthy")
+        }
 
     /**
      * The check for the directory the product writes into.

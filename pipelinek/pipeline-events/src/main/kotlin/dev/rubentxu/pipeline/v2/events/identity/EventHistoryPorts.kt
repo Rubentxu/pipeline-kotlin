@@ -136,6 +136,20 @@ data class EventPage(
      * "where does the consumer's stream stand". A consumer of a page must know which one it holds.
 */
     val nextCursor: EventCursor?,
+    /**
+     * Whether the holder of this page still has work ahead of it.
+     * The KDoc of this type used to point at a field named `remaining` that no longer exists; this
+     * is that field's successor, and it carries its promise: never claim completeness silently.
+     *
+     * **Whose horizon this is depends on who built the page**, the same way as [nextCursor]:
+     *  - a STORE page's flag says whether the store holds more rows;
+     *  - a FILTERED page's flag (the drain in `dev.rubentxu.pipeline.v2.application.EventPageDrain`,
+     *    rule `clientHasMore`) says whether the CONSUMER has facts ahead: the store's flag alone is
+     *    wrong there, because a limit cut can leave matching rows the store already read — and when
+     *    the store exhausted the history on that same page its flag is false while the consumer
+     *    still has a fact ahead. Measured on this tree: a consumer was told "nothing remains" with
+     *    a live matching fact behind the cut, and lost it with exit code 0.
+    */
     val hasMore: Boolean,
     /**
      * The durable rows in this page that exist and could NOT be read.

@@ -81,8 +81,12 @@ object EventPageDrain {
 
         /**
          * The requested number of matching envelopes was reached, or the store reported no more rows.
-         * [page.hasMore] is the store's own answer, copied rather than recomputed: it is true when
-         * the drain stopped at the limit with rows still unread, and false when the history ended.
+         * [page.hasMore] is the CLIENT's answer, computed by [clientHasMore]: the store's flag alone
+         * says nothing about what stands in front of the consumer, because a limit cut leaves
+         * matching rows the store already read — and when the store exhausted the history on that
+         * same page, its flag is false while the consumer still has a fact ahead. Copying the
+         * store's flag used to hand the consumer "nothing remains" with a live fact behind it, and
+         * the consumer never asked again.
 */
         data class Answered(override val page: EventPage, override val runEnded: Boolean) : Outcome
 
@@ -148,7 +152,11 @@ object EventPageDrain {
                     page = EventPage(
                         envelopes = envelopes.toList(),
                         nextCursor = clientCursor(run.segments.last(), lastDelivered, continuation),
-                        hasMore = page.hasMore,
+                        hasMore = clientHasMore(
+                            storeHasMore = page.hasMore,
+                            undeliveredMatchesRemain =
+                                undeliveredMatchesRemain(page.envelopes.asSequence(), lastDelivered, query),
+                        ),
                         refusals = refusals.toList(),
                     ),
                     runEnded = runEnded,
@@ -237,7 +245,16 @@ object EventPageDrain {
                     page = TypedPage(
                         events = events.toList(),
                         nextCursor = clientCursor(run.segments.last(), lastDelivered, continuation),
-                        hasMore = slice.hasMore,
+                        hasMore = clientHasMore(
+                            storeHasMore = slice.hasMore,
+                            undeliveredMatchesRemain = undeliveredMatchesRemain(
+                                slice.records.asSequence().mapNotNull {
+                                    if (it is EventRecordRead.Decoded) envelopeOf(it.event) else null
+                                },
+                                lastDelivered,
+                                query,
+                            ),
+                        ),
                         refusals = refusals.toList(),
                     ),
                     runEnded = runEnded,
@@ -337,3 +354,58 @@ private fun clientCursor(
     lastDeliveredSequence: Long?,
     storePosition: EventCursor?,
 ): EventCursor? = lastDeliveredSequence?.let { EventCursor(runId, it) } ?: storePosition
+
+/**
+ * Whether the client still has work ahead of it, given where the store stands and what the last
+ * page left undelivered.
+ *
+ * ## The flag is the other half of the cursor's law
+ * [clientCursor] answers WHERE the consumer stands: the last fact it was handed. This answers
+ * WHAT REMAINS in front of it, and the store's own `hasMore` is not that answer. The two horizons
+ * split exactly when the drain stops at the limit: the page is bounded by ROWS, the limit counts
+ * MATCHING facts, so the cut can leave matching rows the store already read. When the store
+ * exhausted the history on that same page, its flag is FALSE while the consumer still has a fact
+ * ahead — and a consumer that reads "nothing remains" never asks again, so the fact is lost with
+ * exit code 0 and no gap marker. Measured on this tree: a history whose rows 2, 3 and 4 match a
+ * filter and a limit of two delivered rows 2 and 3 with `hasMore=false`, leaving row 4 behind.
+ *
+ * ## The rule
+ * `storeHasMore || undeliveredMatchesRemain`. The second term is true only when the last page
+ * holds a row BEHIND the cut that matches the filter: a row the consumer was not handed and would
+ * never see again on its own. The term is cheap because the page holds at most `limit` rows, and
+ * it is computed only on the exit path.
+ *
+ * ## What it does not change
+ * Without a filter the drain cannot stop in the middle of a page — the page holds at most `limit`
+ * rows and all of them match — so no matching row is ever left behind and the flag IS the store's.
+ * A cut that fills the limit exactly with the page's last matching row leaves nothing behind
+ * either: the term scans the rows after the last delivered one and finds none.
+ */
+private fun clientHasMore(
+    storeHasMore: Boolean,
+    undeliveredMatchesRemain: Boolean,
+): Boolean = storeHasMore || undeliveredMatchesRemain
+
+/**
+ * Whether the page that was just read holds a MATCHING row the limit cut left undelivered.
+ *
+ * The page arrives in sequence order and the drain delivers in sequence order, so the rows behind
+ * the last delivered fact are exactly the undelivered remainder: no count, no re-derivation —
+ * every compared sequence was observed. When the page delivered nothing, [lastDeliveredSequence]
+ * names a position from an earlier page and every row of THIS page was considered by the loop,
+ * which handed out everything it matched (it only stops handing out when the limit is full, and a
+ * limit reached on an earlier page never opens this one); so a null position correctly finds
+ * nothing undelivered here.
+ *
+ * One rule, two projections: the envelope drain and the typed drain call it with the envelopes
+ * their own rows project to, so the filter semantics stay the one [EventQuery.matches] both loops
+ * already use.
+ */
+private fun undeliveredMatchesRemain(
+    visibleEnvelopes: Sequence<PipelineEventEnvelope>,
+    lastDeliveredSequence: Long?,
+    query: EventQuery,
+): Boolean {
+    val delivered = lastDeliveredSequence ?: return false
+    return visibleEnvelopes.any { it.sequence > delivered && query.matches(it) }
+}

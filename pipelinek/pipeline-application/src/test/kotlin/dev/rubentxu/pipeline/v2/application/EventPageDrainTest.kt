@@ -160,6 +160,82 @@ class EventPageDrainTest {
     }
 
     /**
+     * La otra mitad de la continuación: la bandera, no sólo el cursor.
+     *
+     * ## La garantía
+     * El cliente decide si vuelve a preguntar leyendo `hasMore`. Esa bandera describe lo que queda
+     * **por delante del cliente**, no lo que queda por delante del almacén: son dos horizontes
+     * distintos cuando el corte es por límite, porque la página está acotada por filas y el límite
+     * cuenta hechos que coinciden. Un hecho que el almacén leyó, que coincide con el filtro y que
+     * el corte del límite dejó sin entregar sigue estando por delante del cliente, aunque el
+     * almacén haya terminado de leer. Copiar la bandera del almacén en ese corte le dice al
+     * cliente «no queda nada» con un hecho vivo detrás, y el cliente no vuelve: el hecho se pierde
+     * con un código de salida cero.
+     *
+     * ## Por qué esta historia y no la del cursor
+     * La historia del cursor tiene una fila 5 tras la cortada, así que la bandera del almacén
+     * sigue en true y el defecto queda enmascarado. Ésta termina justo en la página del corte: el
+     * almacén agota la historia en la misma página en la que el límite del cliente corta, que es
+     * el único caso en el que las dos banderas se separan.
+     */
+    @Test
+    @DisplayName("un hecho cortado por el límite deja la bandera en true aunque el almacén terminó")
+    fun aLimitCutMatchingFactKeepsTheFlagUp() {
+        val tail = FakeTail(
+            listOf(
+                row(1, "Other"),
+                row(2, "Wanted"),
+                row(3, "Wanted"),
+                row(4, "Wanted"),
+            ),
+        )
+
+        val outcome = EventPageDrain.drain(tail, run, EventQuery.ByKind("Wanted"), null, limit = 2)
+
+        assertEquals(
+            listOf(2L, 3L),
+            outcome.page.envelopes.map { it.sequence },
+            "la lectura entrega hasta agotar el límite",
+        )
+        assertTrue(
+            outcome.page.hasMore,
+            "la fila 4 se leyó, coincide y no se entregó: la bandera debe decir que queda " +
+                "trabajo por delante del cliente aunque el almacén haya terminado de leer. " +
+                "Bandera emitida: ${outcome.page.hasMore}",
+        )
+    }
+
+    /**
+     * La misma bandera, la misma regla, la otra proyección.
+     *
+     * El drenador tipado tiene su propio bucle sobre otro puerto, y una regla de paginación que
+     * existe en una proyección y no en la otra es la divergencia que sobrevive a la revisión.
+     */
+    @Test
+    @DisplayName("la proyección tipada también levanta la bandera cuando el corte dejó un hecho atrás")
+    fun theTypedProjectionRaisesTheFlagToo() {
+        val store = InMemoryEventStore()
+        store.append(RunStarted("evt-1", "run-1", 0L, Instant.EPOCH, "p.pipeline.kts"))
+        store.append(StageStarted("evt-2", "run-1", 0L, Instant.EPOCH, 0, "stage-0"))
+        store.append(StageStarted("evt-3", "run-1", 0L, Instant.EPOCH, 1, "stage-1"))
+        store.append(StageStarted("evt-4", "run-1", 0L, Instant.EPOCH, 2, "stage-2"))
+
+        val outcome = EventPageDrain.drainTyped(store, run, EventQuery.ByKind("StageStarted"), null, limit = 2)
+
+        assertEquals(
+            listOf(2L, 3L),
+            outcome.page.events.map { it.sequence },
+            "la lectura entrega hasta agotar el límite",
+        )
+        assertTrue(
+            outcome.page.hasMore,
+            "el StageStarted de la secuencia 4 se leyó, coincide y no se entregó: la bandera " +
+                "debe decir que queda trabajo por delante del cliente aunque el almacén haya " +
+                "terminado de leer. Bandera emitida: ${outcome.page.hasMore}",
+        )
+    }
+
+    /**
      * La misma garantía en la proyección tipada.
      *
      * El drenador tipado lee por otro puerto (`EventStore.readRecords` en vez de `EventTail`) y

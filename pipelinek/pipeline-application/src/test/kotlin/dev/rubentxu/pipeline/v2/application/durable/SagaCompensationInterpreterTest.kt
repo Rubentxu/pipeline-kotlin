@@ -34,39 +34,47 @@ import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventSink
 import dev.rubentxu.pipeline.v2.events.NullEventSink
 import dev.rubentxu.pipeline.v2.events.SagaTerminal
-import dev.rubentxu.pipeline.v2.events.durable.SqliteConnectionFactory
-import dev.rubentxu.pipeline.v2.events.durable.SqliteSagaObligationStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemorySagaObligationStore
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertInstanceOf
-import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Path
 import kotlinx.coroutines.runBlocking
 import java.time.Instant
 
 /**
- * The engine's compensation loop, exercised against a real SQLite file.
+ * The engine's compensation loop, exercised against the PORT's volatile implementation.
  *
- * The file is real because the loop's whole claim is about DURABLE state: it decides on what
- * is on disk, it writes there before and after every body, and a later process would have to
- * reach the same conclusion from the same rows.
+ * ## What this test decides, and what it does not
+ *
+ * The loop's decisions are about what the promises say: which obligation is compensated first,
+ * that a promise is marked in flight BEFORE its body leaves the process, that a lost answer is
+ * asked again with the same key, that a Saga which lost the lease compensates nothing, and that
+ * a compensation which could not be written down is not claimed as done. Those decisions belong
+ * to the interpreter, and the interpreter reads them from the PORT — so this test hands it the
+ * port's cheapest implementation, the one that keeps the promises in memory.
+ *
+ * A real file would have made this a test about the FILE as well. The durability of the
+ * promises is guarded elsewhere and better: `SqliteSagaObligationStoreTest` pins the durable
+ * store's own answers, `SagaObligationStoreContractTest` pins that the durable and the
+ * volatile answers AGREE, and the durable scenarios in `examples/durable/` exercise the whole
+ * flow against a real database. What this test guards is the LOOP.
  */
 class SagaCompensationInterpreterTest {
 
-    @TempDir
-    lateinit var tempDir: Path
-
-    private fun dbPath(): String = tempDir.resolve("run.sqlite").toString()
-
-    private fun store() = SqliteSagaObligationStore(
-        connectionFactory = { SqliteConnectionFactory.open(dbPath()) },
-        dbPath = dbPath(),
-    )
+    /**
+     * The promises of this run, in memory.
+     *
+     * One instance for the whole test, because the loop's claims are about promises that
+     * outlive the call that made them: a promise armed in one step is read back in another.
+     * JUnit gives every test method its own instance of this class, so each test starts with
+     * an empty store.
+     */
+    private val store = InMemorySagaObligationStore()
 
     private fun planOperations(leaseEpoch: Long = 1L) = SagaPlanOperationsAdapter(
         runId = "run-1",
         leaseEpoch = leaseEpoch,
-        store = store(),
+        store = store,
         clock = FixedClock,
     )
 
@@ -77,7 +85,7 @@ class SagaCompensationInterpreterTest {
         runId = "run-1",
         forwardOpId = "run-1|stage-0|step-$actionId",
         leaseEpoch = leaseEpoch,
-        store = store(),
+        store = store,
         eventSink = NullEventSink,
         clock = FixedClock,
     )
@@ -130,8 +138,8 @@ class SagaCompensationInterpreterTest {
      * outside world: a compensation that started, one that finished, and the Saga's terminal
      * state are facts a reader of the event plane needs.
      *
-     * The completion port is the real one, against the same database: the interpreter does not
-     * decide what a closing means, it asks the durable state and announces the answer.
+     * The completion port is the real one, against the same promises: the interpreter does not
+     * decide what a closing means, it asks the state and announces the answer.
      */
     private fun interpreter(
         slots: BodySlotInvoker,
@@ -153,12 +161,12 @@ class SagaCompensationInterpreterTest {
     )
 
     /**
-     * The engine's side of a Saga's completion, against the same database as everything else.
+     * The engine's side of a Saga's completion, against the same promises as everything else.
      */
     private fun completion(leaseEpoch: Long = 1L) = SagaCompletionAdapter(
         runId = "run-1",
         leaseEpoch = leaseEpoch,
-        store = store(),
+        store = store,
         clock = FixedClock,
     )
 
@@ -285,10 +293,10 @@ class SagaCompensationInterpreterTest {
         )
         assertEquals(2, context.attempt?.index)
 
-        // And the answer is durable now: the obligation is discharged and the Saga settles.
+        // And the answer is written down: the obligation is discharged and the Saga settles.
         assertEquals(
             CompensationObligationStatus.COMPENSATED,
-            store().find("run-1", KEY_OF_RESERVE)?.status,
+            store.find("run-1", KEY_OF_RESERVE)?.status,
         )
         assertInstanceOf<CompensationDirective.Settled>(report.directive)
     }
@@ -346,7 +354,7 @@ class SagaCompensationInterpreterTest {
         armAndConfirm("reserve", "release")
         var statusDuringTheBody: CompensationObligationStatus? = null
         val slots = RecordingSlotInvoker { slot ->
-            statusDuringTheBody = store().find("run-1", KEY_OF_RESERVE)?.status
+            statusDuringTheBody = store.find("run-1", KEY_OF_RESERVE)?.status
         }
 
         runBlocking {
@@ -359,7 +367,7 @@ class SagaCompensationInterpreterTest {
         assertEquals(CompensationObligationStatus.COMPENSATION_PENDING, statusDuringTheBody)
         assertEquals(
             CompensationObligationStatus.COMPENSATED,
-            store().find("run-1", KEY_OF_RESERVE)?.status,
+            store.find("run-1", KEY_OF_RESERVE)?.status,
         )
     }
 
@@ -396,7 +404,7 @@ class SagaCompensationInterpreterTest {
         assertEquals(InterventionReason.COMPENSATION_FAILED, directive.reason)
         assertEquals(
             CompensationObligationStatus.EFFECT_CONFIRMED,
-            store().find("run-1", KEY_OF_RESERVE)?.status,
+            store.find("run-1", KEY_OF_RESERVE)?.status,
         )
     }
 
@@ -510,7 +518,7 @@ class SagaCompensationInterpreterTest {
         assertEquals(InterventionReason.COMPENSATION_NOT_DISPATCHED, directive.reason)
         assertEquals(
             CompensationObligationStatus.EFFECT_CONFIRMED,
-            store().find("run-1", KEY_OF_RESERVE)?.status,
+            store.find("run-1", KEY_OF_RESERVE)?.status,
         )
     }
 
@@ -536,7 +544,7 @@ class SagaCompensationInterpreterTest {
         assertEquals(InterventionReason.COMPENSATION_UNCERTAIN, directive.reason)
         assertEquals(
             CompensationObligationStatus.COMPENSATION_PENDING,
-            store().find("run-1", KEY_OF_RESERVE)?.status,
+            store.find("run-1", KEY_OF_RESERVE)?.status,
         )
     }
 
@@ -570,7 +578,7 @@ class SagaCompensationInterpreterTest {
         // KEPT, not compensated, and nothing is owed afterwards.
         assertEquals(
             CompensationObligationStatus.EFFECT_KEPT,
-            store().find("run-1", KEY_OF_RESERVE)?.status,
+            store.find("run-1", KEY_OF_RESERVE)?.status,
         )
         assertEquals(listOf("reserve"), report.kept.map { it.value })
         assertInstanceOf<CompensationDirective.Settled>(report.directive)
@@ -608,7 +616,7 @@ class SagaCompensationInterpreterTest {
         // The row still says the effect was undone: a refused completion does not rewrite it.
         assertEquals(
             CompensationObligationStatus.COMPENSATED,
-            store().find("run-1", KEY_OF_RESERVE)?.status,
+            store.find("run-1", KEY_OF_RESERVE)?.status,
         )
         val terminal = assertInstanceOf<SagaTerminal>(events.events.last())
         assertEquals("NEEDS_INTERVENTION", terminal.state)
@@ -632,7 +640,7 @@ class SagaCompensationInterpreterTest {
         // was kept would be a claim nobody can back.
         assertEquals(
             CompensationObligationStatus.EFFECT_CONFIRMED,
-            store().find("run-1", KEY_OF_RESERVE)?.status,
+            store.find("run-1", KEY_OF_RESERVE)?.status,
         )
         assertEquals(emptyList<SagaActionId>(), report.kept)
         val directive = assertInstanceOf<CompensationDirective.NeedsIntervention>(report.directive)

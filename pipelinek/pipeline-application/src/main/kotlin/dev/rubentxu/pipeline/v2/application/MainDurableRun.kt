@@ -21,6 +21,7 @@ import dev.rubentxu.pipeline.v2.events.durable.LeaseAcquisition
 import dev.rubentxu.pipeline.v2.events.durable.LeaseRequest
 import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.events.durable.ReplayCursorStore
+import dev.rubentxu.pipeline.v2.events.durable.RunLeasePort
 import dev.rubentxu.pipeline.v2.events.durable.RunOwnerId
 import dev.rubentxu.pipeline.v2.events.durable.SqliteOperationJournalImpl
 import dev.rubentxu.pipeline.v2.events.durable.SqliteReplayCursorStoreImpl
@@ -548,23 +549,56 @@ private fun resolveDurableControlRoot(config: CliFlags, dbPath: String): Path =
 /**
  * The lease this run holds, and the epoch that fences a writer that lost it.
  */
-private data class DurableLease(
-    val runOwner: RunOwnerId?,
-    val leaseStore: FileBackedRunExecutionLeaseStore,
+internal data class DurableLease(
+    val runOwner: RunOwnerId,
     val leaseEpoch: Long,
 )
 
-private fun acquireDurableLease(controlDirRoot: Path, runId: String): DurableLease {
+private fun acquireDurableLease(
+    scope: ResourceScope,
+    controlDirRoot: Path,
+    runId: String,
+): DurableLease = acquireDurableLease(
+    scope = scope,
+    runId = runId,
+    runOwner = requireNotNull(
+        RunOwnerId.of("cli-" + ProcessHandle.current().pid() + "-" +
+            java.util.UUID.randomUUID().toString().take(8)),
+    ) { "the run owner id must build" },
+    leaseStore = FileBackedRunExecutionLeaseStore(controlDirRoot.resolve("leases")),
+)
+
+/**
+ * Take the run's lease with a caller-supplied store, leaving the store owned on
+ * EVERY path.
+ *
+ * ## WHY THE RELEASE BEGINS AT ACQUISITION
+ * The store enters [scope] BEFORE `acquire` runs, so every branch — the one
+ * that throws, the ones that refuse and the one that wins — leaves it owned.
+ * The previous shape transferred ownership only on the winning branch: an
+ * `acquire` that threw left the store with no declared owner, and the refusal
+ * branches closed it by hand with a swallowed failure, the pattern
+ * [ResourceScope] no longer permits. One transfer, three branches. The
+ * release inside the scope's lambda is a no-op when the store never acquired
+ * (it looks at its own retained owner), so the same lambda serves all three.
+ */
+internal fun <S> acquireDurableLease(
+    scope: ResourceScope,
+    runId: String,
+    runOwner: RunOwnerId,
+    leaseStore: S,
+): DurableLease where S : RunLeasePort, S : AutoCloseable {
     // first-class run ownership. Before any event is written for this
     // run we must prove we are the only process writing to it. Without this,
     // two concurrent `--resume` invocations of the same definition both proceed
     // and collide on the durable `ux_events_run_sequence` uniqueness index, so
     // the loser sees a raw SQLite constraint violation instead of a typed
     // refusal. The lease turns that crash into an explicit admission decision.
-    val runOwner = RunOwnerId.of("cli-" + ProcessHandle.current().pid() + "-" +
-        java.util.UUID.randomUUID().toString().take(8))
-    val leaseStore = FileBackedRunExecutionLeaseStore(controlDirRoot.resolve("leases"))
-    val lease = leaseStore.acquire(LeaseRequest(runId, requireNotNull(runOwner)))
+    scope.own {
+        runCatching { leaseStore.release(runOwner) }
+        leaseStore.close()
+    }
+    val lease = leaseStore.acquire(LeaseRequest(runId, runOwner))
     // SAGA / durable run: the fencing token of the lease THIS process holds. It is the epoch the
     // durable Saga store uses to refuse a write from a writer that lost the run to a
     // takeover, so it has to travel from the acquisition to the store.
@@ -574,8 +608,8 @@ private fun acquireDurableLease(controlDirRoot: Path, runId: String): DurableLea
         is LeaseAcquisition.Reentered -> lease.fencingToken.value
         is LeaseAcquisition.AlreadyOwned -> {
             // Typed admission rejection: this run already has a live owner.
-            // Exit 2 (invocation/admission), not a pipeline failure.
-            runCatching { leaseStore.close() }
+            // Exit 2 (invocation/admission), not a pipeline failure. The store
+            // is already owned by the scope: no hand close on the way out.
             System.err.println(
                 "Error: run $runId is already owned by '${lease.heldBy.value}'; " +
                     "another process is publishing events for this run"
@@ -585,13 +619,13 @@ private fun acquireDurableLease(controlDirRoot: Path, runId: String): DurableLea
         is LeaseAcquisition.Unverifiable -> {
             // Fail closed: a process that cannot prove it is the authority must
             // not publish. Kept distinct from AlreadyOwned because the
-            // operator response differs.
-            runCatching { leaseStore.close() }
+            // operator response differs. The store is already owned by the
+            // scope: no hand close on the way out.
             System.err.println("Error: cannot establish ownership of run $runId: ${lease.reason}")
             throw CommandRefused(exitCode = 2)
         }
     }
-    return DurableLease(runOwner = runOwner, leaseStore = leaseStore, leaseEpoch = leaseEpoch)
+    return DurableLease(runOwner = runOwner, leaseEpoch = leaseEpoch)
 }
 
 /**
@@ -631,11 +665,7 @@ private fun acquireDurableOwnership(
         definitionId = definitionId,
     )
     val runId = identity.runId
-    val lease = acquireDurableLease(controlDirRoot, runId)
-    scope.own {
-        runCatching { lease.leaseStore.release(requireNotNull(lease.runOwner)) }
-        lease.leaseStore.close()
-    }
+    val lease = acquireDurableLease(scope, controlDirRoot, runId)
     // lease is held; emit the RunCorrelated
     // event on the durable event sink and the LaunchReceipt on stdout.
     // The owner is the lease-acquired runOwner.
@@ -646,7 +676,7 @@ private fun acquireDurableOwnership(
         eventStore = eventStore,
         runId = RunId(runId),
         correlationId = identity.correlationId,
-        ownerId = requireNotNull(lease.runOwner),
+        ownerId = lease.runOwner,
         startedAtMs = System.currentTimeMillis(),
         controlDir = controlDirRoot,
         format = config.format,

@@ -1743,6 +1743,62 @@ PASS  sha=d082ab47e6be9e79d851e2f3a6435d13af11c1ec  elapsed=189s  budget=900s  t
 - 189 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 28626`, `PRODUCT_LOC = 71579`, ratio `0.400` (límite 2). La verificación subió 202 líneas y la producción 13: el corte mete tres filas y extrae el loop para poder ejercitarlo.
 
+#### El corte: el detector de divergencia se compone como puerto
+
+**Qué hace.** `CanonicalDurableRunCoordinator` declara su detector de divergencia como PUERTO: el constructor recibe un `DivergenceDetector` —la interfaz— y su colaborador, `DurableInvocationResolver`, también lo declara. Entre los dos había un estrechamiento en el cuerpo del coordinador: antes de entregar el detector al resolutor, lo convertía a `StrictFingerprintDivergenceDetector`.
+
+```kotlin
+// antes
+divergenceDetector = divergenceDetector as StrictFingerprintDivergenceDetector,
+// después
+divergenceDetector = divergenceDetector,
+```
+
+Un estrechamiento no puede fallar con la interfaz: falla con la clase. Cualquier detector que no fuera el estricto moría con `ClassCastException` en la CONSTRUCCIÓN, antes de que el run hubiera dicho una palabra. El llamante no podía elegir otra política de divergencia y ni siquiera podía enterarse de que la elección se le había rechazado: el run no empezaba, y no había ningún sitio donde mirar para saber por qué.
+
+No es una lectura: es un hecho medido en el árbol. `DivergenceDetector` se estrecha en UN solo sitio de todo el repositorio, y `DurableInvocationResolver` sólo usa `check(...)`. El cast no cumplía ninguna función: no convertía nada que alguien leyera.
+
+|celda|antes|después|
+|---|---|---|
+|La composición del coordinador con un detector que NO es el estricto|ROJA: `java.lang.ClassCastException` en `DivergenceDetectorPortTest.kt:114` — la construcción revienta antes de que el run empezara|VERDE: la composición termina|
+|La fila que dice que el resolutor consulta el detector que tiene|VERDE|VERDE, y el detector que puede llegar a ser ése pasa a ser cualquiera|
+
+La segunda fila estaba verde antes y después: el resolutor siempre consultó el detector que tenía. Lo que el corte cambia no es esa consulta, sino QUÉ detector puede llegar a tener.
+
+**La garantía, la capacidad y el instrumento.**
+- **Garantía**: el detector de divergencia es un puerto —una propiedad que no puede romperse— y la composición lo conserva: quien compone el coordinador entrega una política de divergencia, y ésa es la que el run aplica.
+- **Capacidad observable**: la política de divergencia que un run durable consulta cuando vuelve a invocar una operación cuyo rastro no coincide con el journal. Es la capacidad que decide si un reuso se reconcilia, se repite o se niega.
+- **Instrumento más barato que puede fallar**: una prueba unitaria que COMPONE el coordinador con un detector que no es el estricto y comprueba que la construcción termina. El defecto estaba en una composición, así que el instrumento es una composición: los colaboradores son los de producción en memoria —el journal y el almacén de cursores ya son implementaciones en memoria, el sumidero de eventos descarta, el reloj está fijo— y la raíz de control es una ruta que NO existe, de modo que cualquier escritura ahí rompería la fila en lugar de pasar inadvertida. Un escenario de `examples/` no añadiría nada: el defecto no está en el contrato de la línea de órdenes sino en la firma de una clase, y desde fuera ningún proceso observable distingue «el run no arrancó» de «el run se negó». La segunda fila —el resolutor consulta el detector que tiene— es verde antes y después del corte: no es un segundo instrumento de la misma garantía, es el OTRO EXTREMO del mismo puerto. Fija qué significa el puerto y rechaza un arreglo que estreche el colaborador en vez del coordinador.
+
+**Visto en rojo, con la mutación leída de vuelta.** Dos mutaciones, de una en una, cada una aplicada con un `assert` de que el bloque objetivo aparecía exactamente una vez, leída de vuelta con `diff` contra una copia verificada por `sha256sum` —nunca con `git checkout --`, que destruye una reescritura sin commitear— y restaurada desde esa copia. El discriminador son las FILAS del XML de JUnit de los informes que escribió esa ejecución, no la palabra «BUILD FAILED»:
+
+|mutación|fila que se puso en rojo|
+|---|---|
+|Restaura el cast —la interfaz vuelve a estrecharse a `StrictFingerprintDivergenceDetector` al componer el resolutor|exactamente la PRIMERA fila: «the coordinator composes a detector that is not the strict one», con `java.lang.ClassCastException` en `DivergenceDetectorPortTest.kt:114`. La segunda sigue verde, sin colateral|
+|Sustituye el cast por un estrechamiento CON RESERVA —`divergenceDetector as? StrictFingerprintDivergenceDetector ?: StrictFingerprintDivergenceDetector()`—|NINGUNA: la fila siguió VERDE|
+
+La segunda mutación es el dato importante de este corte, y se declara en vez de esconderse: **el instrumento ve que la composición ACEPTA cualquier implementación, no que la CONSULTE.** Un estrechamiento con reserva dentro del cuerpo del coordinador —el arreglo plausible que escribiría quien lee deprisa— sobrevive a este instrumento, porque el fallo que ese arreglo introduce no es «no acepta el detector», sino «acepta el detector y luego consulta otro». Sólo un run durable completo distinguiría las dos cosas, y un run durable no es una prueba unitaria: es un escenario de `examples/`, y no se añade ninguno porque el defecto que este corte arregla no se manifiesta por la línea de órdenes.
+
+Y conviene precisar qué cierra la segunda fila y qué no: fija que el RESOLUTOR consulta el detector que tiene, de modo que rechaza un arreglo que estreche el colaborador. Lo que NO puede rechazar es un estrechamiento con reserva en el COORDINADOR. Se dice con esas palabras, sin ensanchar la cobertura.
+
+**Lo que este corte NO arregla, y se dice.**
+- El instrumento no observa, A TRAVÉS del coordinador, qué detector consulta un run real. Sólo un run durable completo lo diría, y eso no es una prueba unitaria.
+- `CanonicalStructuralDecisions.kt` arrastra dos imports MUERTOS de `DivergenceDetector` y `StrictFingerprintDivergenceDetector` (líneas 69 y 76): ninguno de los dos tipos se usa en el cuerpo. `detekt` 2.0.0-alpha.6 no trae `UnusedImports` activo, así que el gate no los ve. No se tocan aquí: no pertenecen al corte.
+- El comportamiento de producción NO cambia. La única composición del coordinador que existe (`CompositionRoot.kt:70`) no pasa detector, así que usa el valor por defecto, que es el estricto. Lo que cambia es que la puerta queda ABIERTA para otra política, como decía la firma desde el principio.
+- `ScriptedFrontendRunner.kt:96` pasa `StrictFingerprintDivergenceDetector()` a un parámetro ya tipado con la interfaz: eso no es un estrechamiento y no se toca.
+- `pipeline-application` no está entre los módulos con `apiCheck`, así que este corte no cambia ninguna superficie ABI vigilada.
+
+Medido sobre `b46f33ec90adc3e1c315ee4891c7341e5ed1bfa6` con `scripts/verify-all.sh` sin filtros:
+
+```
+PASS  sha=b46f33ec90adc3e1c315ee4891c7341e5ed1bfa6  elapsed=160s  budget=900s  tests=rewritten:1541 read:0  scenarios=observed:63 executed:63
+```
+
+- 203 informes JUnit reescritos por esta ejecución, 1541 tests EJECUTADOS de verdad, 0 leídos de informes anteriores, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E observados y ejecutados, en verde; 560 comprobaciones de garantía sobre 114 ejecuciones, 0 que no comprobaran nada.
+- 160 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28731`, `PRODUCT_LOC = 71579`, ratio `0.401` (límite 2). La verificación subió 105 líneas y la producción 0: el corte mete dos filas y quita un token de una línea.
+
 ## H6 — Reducir deuda del harness y asegurar la publicación
 
 Foco: `examples/run.sh`, `verify-all.sh` y scripts de release.

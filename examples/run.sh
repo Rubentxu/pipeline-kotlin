@@ -2042,6 +2042,95 @@ compare_worlds() {
 
 # One scenario, fully isolated. Nothing is read from the developer's HOME and
 # nothing is written outside $cycle_root.
+# The events-refusal flow, hoisted out of the scenario body the same way the
+# checkers were: the scenario owns its variables, and this checker receives
+# what it reads by value and what it rebinds by NAME (bash namerefs), so the
+# rebinding stays visible at the call site and nothing is captured silently.
+# A refusal flow answers the read verb's question instead of the run's: the
+# run itself is the fixture, and the REFUSAL it gets is the verdict.
+check_events_refusal() {
+    local er_name="$1" er_root="$2" er_events_refusal="$3"
+    local -n er_code="$4"
+    local -n er_verdict_stdout="$5"
+    local -n er_verdict_stderr="$6"
+    local -n er_verdict_is_run="$7"
+    local run_id=""
+    local record
+    local refusal_code=0
+    # The scenario's own run is the FIXTURE: it writes a history that the
+    # read verb is then asked about. So the run has to succeed — a scenario
+    # whose pipeline crashed would be asserting about a history nobody
+    # wrote.
+    if [[ "$er_code" != 0 ]]; then
+        printf 'FAIL %-52s the scenario run exited %s, expected 0 (it is the fixture the refusal is asked about)\n' \
+            "$er_name" "$er_code"
+        show_printed "$er_root/stderr.txt"
+        failed=$((failed + 1))
+        failures+=("$er_name: the scenario run exited $er_code")
+        return 1
+    fi
+
+    # The id of the run that was written. The launcher reads it from the
+    # run's own record of its last run, because the id is a UUID the
+    # launcher cannot know in advance.
+    for record in "$er_root"/control/last-run/*; do
+        [[ -f "$record" ]] || continue
+        run_id="$(head -1 "$record")"
+        break
+    done
+    if [[ -z "$run_id" ]]; then
+        printf 'FAIL %-52s the run left no run id, so there is no history to read\n' "$er_name"
+        failed=$((failed + 1))
+        failures+=("$er_name: the run left no run id")
+        return 1
+    fi
+
+    # The read verb is asked the question the scenario is about. Its answer
+    # is the verdict: the run itself succeeded, and the REFUSAL is what
+    # the scenario is testing.
+    case "$er_events_refusal" in
+        unknown-run)
+            binary events "no-such-run-$run_id" --db "$er_root/events.db" \
+                >"$er_root/stdout.events-refusal.txt" 2>"$er_root/stderr.events-refusal.txt" || refusal_code=$?
+            ;;
+        cursor-beyond-tail)
+            binary events "$run_id" --db "$er_root/events.db" \
+                --after-cursor "evt-cursor-v1:$run_id:999999999" \
+                >"$er_root/stdout.events-refusal.txt" 2>"$er_root/stderr.events-refusal.txt" || refusal_code=$?
+            ;;
+        no-event-history)
+            # A file that is not an event store at all: an EMPTY file. SQLite treats a
+            # zero-length file as an empty database, so the reader can open it — and what
+            # it finds inside is a database with no history in it.
+            : >"$er_root/empty.db"
+            binary events "$run_id" --db "$er_root/empty.db" \
+                >"$er_root/stdout.events-refusal.txt" 2>"$er_root/stderr.events-refusal.txt" || refusal_code=$?
+            # And the reader must not have CREATED a database in it. A reader that opens
+            # the file with a writer's permissions turns a zero-length file into a
+            # database with the event schema in it; a reader that cannot write leaves
+            # the file exactly as it found it.
+            if [[ -s "$er_root/empty.db" ]]; then
+                printf 'FAIL %-52s the reader wrote to a database it was only asked to read\n' "$er_name"
+                failed=$((failed + 1))
+                failures+=("$er_name: the reader wrote to the file it was asked to read")
+                return 1
+            fi
+            ;;
+        *)
+            printf 'FAIL %-52s unknown events-refusal fixture: %s\n' "$er_name" "$er_events_refusal"
+            failed=$((failed + 1))
+            failures+=("$er_name: unknown events-refusal fixture '$er_events_refusal'")
+            return 1
+            ;;
+    esac
+
+    er_verdict_stdout="$er_root/stdout.events-refusal.txt"
+    er_verdict_stderr="$er_root/stderr.events-refusal.txt"
+    er_code="$refusal_code"
+    er_verdict_is_run=0
+    return 0
+}
+
 run_scenario_body() {
     local script="$1"
     local relative="${script#"$here"/}"
@@ -2994,80 +3083,10 @@ run_scenario_body() {
     fi
 
     if [[ "$events_refusal" != "" ]]; then
-        # The scenario's own run is the FIXTURE: it writes a history that the
-        # read verb is then asked about. So the run has to succeed — a scenario
-        # whose pipeline crashed would be asserting about a history nobody
-        # wrote.
-        if [[ "$code" != 0 ]]; then
-            printf 'FAIL %-52s the scenario run exited %s, expected 0 (it is the fixture the refusal is asked about)\n' \
-                "$name" "$code"
-            show_printed "$root/stderr.txt"
-            failed=$((failed + 1))
-            failures+=("$name: the scenario run exited $code")
+        if ! check_events_refusal "$name" "$root" "$events_refusal" \
+            code verdict_stdout verdict_stderr verdict_is_run; then
             return
         fi
-
-        # The id of the run that was written. The launcher reads it from the
-        # run's own record of its last run, because the id is a UUID the
-        # launcher cannot know in advance.
-        local run_id=""
-        local record
-        for record in "$root"/control/last-run/*; do
-            [[ -f "$record" ]] || continue
-            run_id="$(head -1 "$record")"
-            break
-        done
-        if [[ -z "$run_id" ]]; then
-            printf 'FAIL %-52s the run left no run id, so there is no history to read\n' "$name"
-            failed=$((failed + 1))
-            failures+=("$name: the run left no run id")
-            return
-        fi
-
-        # The read verb is asked the question the scenario is about. Its answer
-        # is the verdict: the run itself succeeded, and the REFUSAL is what
-        # the scenario is testing.
-        local refusal_code=0
-        case "$events_refusal" in
-            unknown-run)
-                binary events "no-such-run-$run_id" --db "$root/events.db" \
-                    >"$root/stdout.events-refusal.txt" 2>"$root/stderr.events-refusal.txt" || refusal_code=$?
-                ;;
-            cursor-beyond-tail)
-                binary events "$run_id" --db "$root/events.db" \
-                    --after-cursor "evt-cursor-v1:$run_id:999999999" \
-                    >"$root/stdout.events-refusal.txt" 2>"$root/stderr.events-refusal.txt" || refusal_code=$?
-                ;;
-            no-event-history)
-                # A file that is not an event store at all: an EMPTY file. SQLite treats a
-                # zero-length file as an empty database, so the reader can open it — and what
-                # it finds inside is a database with no history in it.
-                : >"$root/empty.db"
-                binary events "$run_id" --db "$root/empty.db" \
-                    >"$root/stdout.events-refusal.txt" 2>"$root/stderr.events-refusal.txt" || refusal_code=$?
-                # And the reader must not have CREATED a database in it. A reader that opens
-                # the file with a writer's permissions turns a zero-length file into a
-                # database with the event schema in it; a reader that cannot write leaves
-                # the file exactly as it found it.
-                if [[ -s "$root/empty.db" ]]; then
-                    printf 'FAIL %-52s the reader wrote to a database it was only asked to read\n' "$name"
-                    failed=$((failed + 1))
-                    failures+=("$name: the reader wrote to the file it was asked to read")
-                    return
-                fi
-                ;;
-            *)
-                printf 'FAIL %-52s unknown events-refusal fixture: %s\n' "$name" "$events_refusal"
-                failed=$((failed + 1))
-                failures+=("$name: unknown events-refusal fixture '$events_refusal'")
-                return
-                ;;
-        esac
-
-        verdict_stdout="$root/stdout.events-refusal.txt"
-        verdict_stderr="$root/stderr.events-refusal.txt"
-        code="$refusal_code"
-        verdict_is_run=0
     fi
 
     if [[ "$events_resume" != "" ]]; then

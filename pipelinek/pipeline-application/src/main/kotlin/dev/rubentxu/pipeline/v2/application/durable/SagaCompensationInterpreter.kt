@@ -312,10 +312,8 @@ class SagaCompensationInterpreter(
         val attempt = (attempts[obligation.key] ?: 1) + 1
         attempts[obligation.key] = attempt
 
-        return when (obligation.status) {
-            CompensationObligationStatus.EFFECT_PENDING,
-            CompensationObligationStatus.EFFECT_UNKNOWN,
-            -> {
+        return when (val ask = SagaCompensationRules.askFor(obligation.status)) {
+            SagaCompensationRules.Ask.Forward -> {
                 // The FORWARD's answer was lost. Ask the body that performs the effect, with
                 // the forward's own key: a provider that recognises it answers "already done"
                 // or does it now, and both answers are safe.
@@ -336,7 +334,7 @@ class SagaCompensationInterpreter(
                 }
             }
 
-            CompensationObligationStatus.COMPENSATION_PENDING -> {
+            SagaCompensationRules.Ask.Compensation -> {
                 // The COMPENSATION's answer was lost. Ask the body that undoes the effect,
                 // with the compensation's own key — the same key the first attempt used.
                 //
@@ -370,9 +368,9 @@ class SagaCompensationInterpreter(
                 }
             }
 
-            else -> CompensationDirective.NeedsIntervention(
+            is SagaCompensationRules.Ask.Intervene -> CompensationDirective.NeedsIntervention(
                 obligation,
-                unresolvedReason(obligation.status),
+                ask.reason,
             )
         }
     }
@@ -551,13 +549,7 @@ class SagaCompensationInterpreter(
      * something that MAY ALREADY have been undone.
      */
     private fun unresolvedReason(status: CompensationObligationStatus): InterventionReason =
-        when (status) {
-            CompensationObligationStatus.COMPENSATION_PENDING,
-            CompensationObligationStatus.COMPENSATION_UNCERTAIN,
-            -> InterventionReason.COMPENSATION_UNCERTAIN
-
-            else -> InterventionReason.UNKNOWN_EFFECT
-        }
+        SagaCompensationRules.unresolvedReason(status)
 
     /**
      * What a compensation body produced, as the durable vocabulary sees it.
@@ -567,35 +559,15 @@ class SagaCompensationInterpreter(
      * establish that the resource was put back, and the difference between "not back" and
      * "nobody knows" decides whether the Saga may continue compensating.
      */
-    private fun observe(outcome: BodyOutcome): CompensationObservation = when (outcome) {
-        is BodyOutcome.Cancelled -> CompensationObservation.Uncertain(
-            dev.rubentxu.pipeline.v2.domain.saga.UncertaintyReason.ACK_LOST,
-        )
-
-        is BodyOutcome.Completed -> when (val result = outcome.outcome) {
-            is StepOutcome.Success -> CompensationObservation.Confirmed(receipt = null)
-
-            is StepOutcome.Failure -> CompensationObservation.Failed(result.failure.message)
-
-            is StepOutcome.Unstable -> CompensationObservation.Uncertain(
-                dev.rubentxu.pipeline.v2.domain.saga.UncertaintyReason.ACK_LOST,
-            )
-        }
-    }
+    private fun observe(outcome: BodyOutcome): CompensationObservation =
+        SagaCompensationRules.observationOf(outcome)
 
     private companion object {
-        /** The three names the domain's closed vocabulary projects to. */
-        fun outcomeName(observation: CompensationObservation): String = when (observation) {
-            is CompensationObservation.Confirmed -> "CONFIRMED"
-            is CompensationObservation.Failed -> "FAILED"
-            is CompensationObservation.Uncertain -> "UNCERTAIN"
-        }
+        /** The durable vocabulary's own projections, owned by the rules table. */
+        fun outcomeName(observation: CompensationObservation): String =
+            SagaCompensationRules.outcomeName(observation)
 
-        /** The provider's message for a failure, the reason for an uncertainty. */
-        fun detailOf(observation: CompensationObservation): String? = when (observation) {
-            is CompensationObservation.Confirmed -> null
-            is CompensationObservation.Failed -> observation.reason
-            is CompensationObservation.Uncertain -> observation.reason.name
-        }
+        fun detailOf(observation: CompensationObservation): String? =
+            SagaCompensationRules.detailOf(observation)
     }
 }

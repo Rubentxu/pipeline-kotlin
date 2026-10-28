@@ -1083,6 +1083,50 @@ Reducir la dependencia de `CanonicalRuntimeCapabilityAccess` sobre capacidades n
 
 Entrega verificable: ambas modalidades de ejecución existentes utilizan los mismos contratos canónicos, sin duplicar el camino de ejecución durable ni alterar el comportamiento del registro de plugins.
 
+#### El corte: el rechazo de los dos mundos es el mismo
+
+**Qué hace.** El mundo durable reducía el análisis de elegibilidad canónica a un booleano y tiraba las razones. La puerta era `supportsCanonicalDurableExecution`, y el mundo durable la usaba como puerta: `if (soporta(...)) { ejecutar } else { cabecera; salir }`. El mundo volátil hacía el MISMO análisis —`analyzeCanonicalDurableExecution`— y conservaba la lista, así que imprimía una línea por paso infractor. El resultado era que el mismo script, en las dos modalidades, recibía el mismo rechazo con distinta información: con `--db` el operador leía «script uses non-canonical plugins; canonical bridge requires…» y se quedaba sin saber QUÉ paso tenía que cambiar.
+
+Medido sobre dos distribuciones construidas de este repositorio —`4d6aa4155` (antes) y `61e105f03` (después)— con el MISMO script y las dos modalidades:
+
+|celda|antes|después|
+|---|---|---|
+|volátil (sin `--db`)|cabecera **+** «  - Step 'never-runs/registrystep-0' (custom.notCanonical): opaque step plugin not in canonical core step IDs»|igual|
+|durable (`--db`)|cabecera **Y NADA MÁS**|cabecera **+** la misma línea del paso|
+
+Las cuatro mediciones salen con código 2 antes y después: el corte no cambia el VEREDICTO, cambia lo que el operador puede leer con él.
+
+**El corte.** El rechazo se dice UNA vez, en `MainRunCommon.refuseNonCanonicalExecution`: la cabecera y la línea por paso salen del mismo sitio, y las dos modalidades llaman a la misma función. El mundo durable conserva el análisis entero en vez de su proyección booleana, y la proyección se borra: `supportsCanonicalDurableExecution` no tiene más llamantes. No se borra por gusto —es justo la que hacía PERDER las razones: una decisión que hay que explicar se conserva entera o no se conserva.
+
+**La garantía, la capacidad y el instrumento.** La garantía es que una ejecución rechazada dice en las dos modalidades lo mismo, y dice QUÉ paso hay que cambiar. La capacidad que sostiene es que el operador, con `--db` o sin él, puede localizar el paso infractor sin adivinarlo y sin re-ejecutar el pipeline con otros scripts. El instrumento es un escenario de `examples/negative/`, NO un test unitario: la garantía es sobre lo que el operador LEE en dos invocaciones del CLI, y un test unitario no puede observar dos invocaciones —AGENTS.md §2 prohíbe CLI, subproceso y persistencia en el sistema de ficheros dentro de un test unitario—. El launcher ejecuta el escenario en las DOS modalidades y sujeta ambas a las mismas expectativas, así que un rechazo que nombra el paso en una y no en la otra falla ahí. Es el instrumento más barato que puede fallar: un solo fichero de DSL, sin harness ni driver.
+
+**Visto en rojo antes del corte.** El escenario se ejecutó contra la distribución sin el corte y falló por la razón correcta:
+
+```
+FAIL negative/non-canonical-step-refusal.pipeline.kts     exit 2 as expected, but stderr lacked: custom.notCanonical
+```
+
+Una mutación focal, aplicada, leída de vuelta con `git diff` y revertida desde una COPIA —nunca desde git—: el mundo durable vuelve a imprimir sólo la cabecera.
+
+|Mutación|Qué se encendió|
+|---|---|
+|El mundo durable tira las razones (`refuseNonCanonicalExecution(nonCanonicalSteps)` → cabecera y salida)|exactamente la ejecución DURABLE: su stderr deja de contener «custom.notCanonical»; la VOLÁTIL siguió en verde, porque la mutación no la tocaba|
+
+Eso es lo que distingue un instrumento que discrimina de uno que se rompe: la fila que se enciende es la del mundo que la mutación alcanzó, y la otra siguió en verde.
+
+**Lo que este corte NO arregla, y se dice.** No arregla la SEGUNDA divergencia entre las dos modalidades, que es de otro género y sigue viva: el mundo volátil tiene una rama explícita para «compiló pero no produjo `PipelineSpec`» (`FailureKind.SCHEMA`) y el mundo durable cae en `else -> compilation.failure`, que no distingue ese caso. No se han medido las dos respuestas de ese caso, así que se declara como residuo y no como defecto medido. No arregla la redacción de la cabecera, que sigue siendo la misma de antes. No arregla el hecho de que el análisis de elegibilidad sólo mire `StageBody.Steps` y no baje a los cuerpos anidados: se comprobó que es INACCESIBLE desde el DSL —`BranchScope` no expone `registryStep`—, así que no es un defecto sino un límite del modelo. Y no arregla la FORMA del hito, que es más grande que este corte: H4 sigue pidiendo extraer verticalmente la admisión, la preparación y el despacho, y este corte no extrae nada —quita una proyección que perdía información y pone un rechazo en un solo sitio—.
+
+**Medido sobre `61e105f03544590a1067ac2634a6b265634644d7` con `scripts/verify-all.sh` sin filtros:**
+
+```
+PASS  sha=61e105f03544590a1067ac2634a6b265634644d7  elapsed=180s  budget=900s  tests=rewritten:1549 read:0  scenarios=observed:64 executed:64
+```
+
+- 1549 tests EJECUTADOS de verdad —205 informes JUnit reescritos por esta ejecución—, 0 fallos, 0 errores, 0 omitidos.
+- 64 de 64 escenarios E2E ejecutados y en verde: los 63 de antes y el nuevo.
+- 180 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28891`, `PRODUCT_LOC = 71291`, ratio `0.405` (límite 2).
+
 ## H5 — Separar CLI, consultas y proyecciones
 
 Foco: `CliParser.kt`, `MainConsoleCli.kt`, Observe, Explain, Cost y Telemetry.

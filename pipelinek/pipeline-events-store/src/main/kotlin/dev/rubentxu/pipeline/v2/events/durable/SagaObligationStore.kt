@@ -197,6 +197,38 @@ internal fun isForeignOwner(row: SagaObligationRow, writerPluginId: String?): Bo
  * and are written by the same process that writes them. There is no second store, no second
  * transaction model and no second source of truth: an obligation that is not in this table was
  * never promised, and an obligation in this table is the promise, whatever the event log says.
+ *
+ * ## The contract of the port
+ *
+ * The port has two implementations — the durable one and the volatile one a run without `--db`
+ * binds — and the product's rule is that the storage choice must not select a different
+ * execution algorithm. That rule only holds if the two implementations ANSWER THE SAME, so
+ * the answers are written down here and EXECUTED against both implementations by
+ * [SagaObligationStoreContractTest]. What follows is that contract; the tests of each
+ * implementation pin the answers themselves.
+ *
+ * - **The arm is idempotent.** Arming the same key twice keeps the FIRST promise and reports
+ *   it. A writer that is behind the run's epoch and asks about a key that already holds a
+ *   promise is answered WITH that promise: the promise exists, and the caller is told what is
+ *   there rather than that it lost the run.
+ * - **The arm is fenced.** A writer whose epoch is below the run's high-water mark — the
+ *   newest epoch among the run's rows — writes nothing when the key is free, and is told the
+ *   epoch that superseded it.
+ * - **The arm moment is strictly increasing inside a Saga.** Two promises armed in the same
+ *   millisecond get different moments, in the order they were armed. The compensation order is
+ *   the reverse of the arm order, so a tie broken by the identifiers would compensate in an
+ *   order nobody declared.
+ * - **The arm fails closed.** A blank run id, a negative epoch and an intent version this
+ *   build does not honour are refused, not accepted.
+ * - **The update reports why it refused.** A key with no promise behind it is `NotFound`; a
+ *   promise that belongs to another plugin is `ForeignOwner`, and the refusal names the
+ *   holder; a writer behind the epoch is `Fenced`. A writer that names nobody claims no
+ *   ownership, so it may write a promise a plugin owns.
+ * - **The bulk move is all or nothing.** One promise that belongs to another plugin stops the
+ *   whole move, so a Saga is never closed halfway. A writer behind the epoch moves nothing;
+ *   when there was nothing to move in the first place, the move says so instead of refusing.
+ * - **The run's promises come back in a defined order**: by arm moment, then Saga, action and
+ *   compensation.
  */
 interface SagaObligationStore {
 

@@ -1693,6 +1693,353 @@ print("outcome=" + outcome + " steps=" + str(steps))
 '
 }
 
+# One run of the product. The census counts them because a scenario that
+# runs on both execution paths is TWO runs of the product, and a report
+# that says "one scenario" without saying how many times the product ran
+# describes a suite that costs half of what it costs.
+count_run() {
+    scenario_executions=$((scenario_executions + 1))
+    return 0
+}
+
+# Checks ONE execution against every expectation the scenario declares.
+# The expectations are the scenario's own, and they arrive as parameters:
+# hoisting the function out of the scenario body must not invent a second
+# place to keep them, so the scenario keeps owning its lists and hands
+# their NAMES over. $8 the expected exit code, $9 the expected run
+# outcome, $10-$12 the names of the expected stdout, stderr and committed
+# transcript arrays (namerefs, resolved where the scenario declared them),
+# $13 the scenario root. The rest describes the execution under test.
+#
+# $1 label, $2 stdout file, $3 stderr file, $4 exit code, $5 control root,
+# $6 journal database, or empty when the execution had no journal to read.
+# $7 1 when the execution under test WAS a run, 0 when it was a control
+#    command. A run publishes a launch receipt; a command does not, and the
+#    rule that a run that ended well published one belongs to the runs.
+# Returns non-zero when an expectation did not hold, and leaves the reason
+# in $check_detail for the caller to report.
+check_execution() {
+    local ex_label="$1" ex_stdout="$2" ex_stderr="$3" ex_code="$4" ex_control="$5"
+    local ex_db="$6" ex_is_run="${7:-1}"
+    local ex_expect_exit="$8" ex_expect_outcome="$9" ex_root="${13}"
+    local -n ex_expect_stdout="${10}"
+    local -n ex_expect_stderr="${11}"
+    local -n ex_expect_transcript="${12}"
+    local wanted
+    local acceptable=""
+
+    if [[ "$ex_code" != "$ex_expect_exit" ]]; then
+        printf 'FAIL %-52s exit %s, expected %s\n' "$ex_label" "$ex_code" "$ex_expect_exit"
+        show_printed "$ex_stdout"
+        show_printed "$ex_stderr"
+        check_detail="exit $ex_code, expected $ex_expect_exit"
+        return 1
+    fi
+
+    # The run's own conclusion, when the execution under test WAS a run.
+    #
+    # A scenario that watches a process end is watching the weakest thing
+    # about it. The exit code does not say what the run concluded, and it
+    # does not say that the run concluded anything: a run that dies between
+    # its last step and its terminal bookend leaves an exit code and no
+    # verdict. The product publishes that conclusion in its event lane, and
+    # the launcher reads it from there, so the verdict and the exit code
+    # become two independent facts about the same run and can be compared.
+    #
+    # The verdict is what the scenario's guarantee is really about. A run
+    # that caught a failure and continued ends well, exactly like a run that
+    # had nothing to catch, and the exit code cannot tell the two apart;
+    # the published conclusion can, and it is the conclusion the scenario
+    # declares. A run that ends successfully without publishing a verdict
+    # has said nothing about itself, and a scenario that accepts that as a
+    # pass accepts silence.
+    #
+    # A run that FAILED may legitimately leave no verdict: that is what a
+    # run that died looks like. Only the successful side is a promise.
+    if [[ -n "$ex_db" ]]; then
+        local run_id="" receipt_state=0
+        local receipt=""
+        receipt="$(launch_receipt_run_id "$ex_stderr")" || receipt_state=$?
+        case "$receipt_state" in
+            0) run_id="$receipt" ;;
+            1)
+                # A receipt IS there and could not be read. Saying nothing
+                # here would make the launcher look like it had nothing to
+                # check, and the check it skipped is one the run promised.
+                printf 'FAIL %-52s %s\n' "$ex_label" "$receipt"
+                check_detail="$receipt"
+                return 1
+                ;;
+            2)
+                # No run to read. A run that ENDED WELL published a
+                # receipt and a verdict: the receipt comes first in the
+                # launch sequence, so a run that ended well and left no
+                # receipt is a run that said nothing about itself. A run
+                # that FAILED may legitimately leave none, and a control
+                # command is not a run and publishes none.
+                if [[ "$ex_code" == "0" && "$ex_is_run" == "1" ]]; then
+                    printf 'FAIL %-52s the run ended well but %s\n' "$ex_label" "$receipt"
+                    check_detail="the run ended well but $receipt"
+                    return 1
+                fi
+                ;;
+        esac
+        if [[ -n "$run_id" ]]; then
+            local verdict="" run_outcome="" run_steps=0
+            verdict="$(read_run_verdict "$ex_db" "$run_id" || true)"
+            if [[ -z "$verdict" ]]; then
+                if [[ "$ex_code" == 0 ]]; then
+                    printf 'FAIL %-52s the run %s exited 0 without publishing a verdict\n' \
+                        "$ex_label" "$run_id"
+                    check_detail="the run $run_id exited 0 without publishing a verdict"
+                    return 1
+                fi
+            else
+                run_outcome="$(sed -n 's/^outcome=\([a-z]*\).*/\1/p' <<<"$verdict")"
+                run_steps="$(sed -n 's/.*steps=\([0-9]*\).*/\1/p' <<<"$verdict")"
+                scenario_guarantees=$((scenario_guarantees + 1))
+                scenario_steps=$((scenario_steps + run_steps))
+                scenario_outcome="$run_outcome"
+                # The conclusions a run may reach, and which of them agree
+                # with a process that ended well: a clean success, and the
+                # unstable one a run reaches when it caught a failure and
+                # carried on. A process that did not end well concluded
+                # either a failure or an abort, and the exit code cannot
+                # tell those two apart either.
+                case "$ex_expect_outcome" in
+                    success)  acceptable="success" ;;
+                    unstable) acceptable="unstable" ;;
+                    failure)  acceptable="failure aborted" ;;
+                    *)        acceptable="$ex_expect_outcome" ;;
+                esac
+                if [[ " $acceptable " != *" $run_outcome "* ]]; then
+                    printf 'FAIL %-52s the run %s concluded %s, expected %s\n' \
+                        "$ex_label" "$run_id" "$run_outcome" "$ex_expect_outcome"
+                    check_detail="the run $run_id concluded $run_outcome, expected $ex_expect_outcome"
+                    return 1
+                fi
+            fi
+        fi
+    fi
+
+    # -a porque la salida puede traer bytes NUL, y sin el fallo se reporta
+    # como "fichero binario" sin la coincidencia, indistinguible de su ausencia.
+    for wanted in ${ex_expect_stdout[@]+"${ex_expect_stdout[@]}"}; do
+        if ! grep -aqF -- "$wanted" "$ex_stdout"; then
+            printf 'FAIL %-52s exit %s as expected, but stdout lacked: %s\n' \
+                "$ex_label" "$ex_code" "$wanted"
+            show_printed "$ex_stdout"
+            check_detail="stdout lacked: $wanted"
+            return 1
+        fi
+    done
+    for wanted in ${ex_expect_stderr[@]+"${ex_expect_stderr[@]}"}; do
+        if ! grep -aqF -- "$wanted" "$ex_stderr"; then
+            printf 'FAIL %-52s exit %s as expected, but stderr lacked: %s\n' \
+                "$ex_label" "$ex_code" "$wanted"
+            show_printed "$ex_stderr"
+            check_detail="stderr lacked: $wanted"
+            return 1
+        fi
+    done
+
+    # The committed transcript. The Output Plane holds every byte a step
+    # printed, and the product's own `console` verb is the reader for it.
+    # The operations are the stream directories the plane created, so the
+    # launcher asks for each of them rather than composing one: a name it
+    # invented would be refused. Every channel counts, so an operation
+    # that wrote only to stderr is in the transcript too.
+    #
+    # A refusal is a failure here and not a missing line: a transcript
+    # that could not be read is not a transcript that lacked the text,
+    # and reporting the second when the truth is the first would blame
+    # the pipeline for the reader's refusal.
+    if (( ${#ex_expect_transcript[@]} > 0 )); then
+        local transcript="$ex_root/transcript.$(basename "$ex_control").txt"
+        local run_id="" receipt_state=0
+        local receipt=""
+        receipt="$(launch_receipt_run_id "$ex_stderr")" || receipt_state=$?
+        if [[ "$receipt_state" == "1" ]]; then
+            printf 'FAIL %-52s %s\n' "$ex_label" "$receipt"
+            check_detail="$receipt"
+            return 1
+        fi
+        if [[ "$receipt_state" != "0" ]]; then
+            printf 'FAIL %-52s the run published no run id, so its transcript cannot be read\n' \
+                "$ex_label"
+            check_detail="no run id in the launch receipt"
+            return 1
+        fi
+        run_id="$receipt"
+        : >"$transcript"
+        local operations
+        if ! operations="$(declared_operations "$ex_control" "$run_id")"; then
+            printf 'FAIL %-52s the operations of the run could not be listed\n' "$ex_label"
+            check_detail="the operations of the run could not be listed"
+            return 1
+        fi
+        local operation
+        while IFS= read -r operation; do
+            [[ -n "$operation" ]] || continue
+            if ! world_bytes "$ex_control" "$run_id" "$operation" "$ex_root/transcript.part"; then
+                printf 'FAIL %-52s the committed transcript could not be read\n' "$ex_label"
+                check_detail="the committed transcript could not be read"
+                return 1
+            fi
+            cat "$ex_root/transcript.part" >>"$transcript"
+        done <<<"$operations"
+
+        for wanted in ${ex_expect_transcript[@]+"${ex_expect_transcript[@]}"}; do
+            if ! grep -aqF -- "$wanted" "$transcript"; then
+                printf 'FAIL %-52s the committed transcript lacked: %s\n' \
+                    "$ex_label" "$wanted"
+                head -40 "$transcript" | sed 's/^/       | /'
+                check_detail="transcript lacked: $wanted"
+                return 1
+            fi
+        done
+    fi
+    return 0
+}
+
+# The two worlds, compared with each other.
+#
+# The launcher held each execution to the scenario's expectations and never
+# compared the executions with one another: the two worlds were two chances
+# to fail, not one guarantee that they agree. A defect that lives in one
+# world only, and that no expectation names, passed the suite twice.
+#
+# What is compared is what a run SAYS and what it COMMITS, because those are
+# the two things that have to be true in every world:
+#
+#   - the account: the console the run printed and the diagnostics it wrote,
+#     with the identity, the clock and the two roots normalized away. A run
+#     that tells a different story in the two worlds is two different runs.
+#   - the bytes: what the run committed to the Output Plane, read back with
+#     the product's own reader. Two worlds that commit different bytes are
+#     two different runs, whatever their console says.
+#
+# The place where the process output lands between two console lines is NOT
+# compared, and that is deliberate: the observer that delivers it polls, so
+# that place is a projection and not a promise, and a comparison that
+# depended on it would be a coin toss.
+#
+# The scenario's own facts arrive as parameters: $7 the label, $8 the
+# expected exit code, $9 whether the durable execution WAS a run and $10
+# the scenario root -- the same hand-over the single-execution check makes,
+# so neither world is held to expectations the other one kept to itself.
+compare_worlds() {
+    local cw_durable_out="$1" cw_durable_err="$2" cw_durable_control="$3"
+    local cw_volatile_out="$4" cw_volatile_err="$5" cw_volatile_control="$6"
+    local cw_label="$7" cw_expect_exit="$8" cw_verdict_is_run="$9" cw_root="${10}"
+
+    local durable_run volatile_run
+    local durable_state=0 volatile_state=0
+    local durable_receipt="" volatile_receipt=""
+    durable_receipt="$(launch_receipt_run_id "$cw_durable_err")" || durable_state=$?
+    volatile_receipt="$(launch_receipt_run_id "$cw_volatile_err")" || volatile_state=$?
+    if [[ "$durable_state" == "1" || "$volatile_state" == "1" ]]; then
+        printf 'FAIL %-52s %s\n' "$cw_label" \
+            "$([[ "$durable_state" == "1" ]] && printf '%s' "$durable_receipt" || printf '%s' "$volatile_receipt")"
+        world_detail="a launch receipt could not be read"
+        return 1
+    fi
+    if [[ "$durable_state" == "2" || "$volatile_state" == "2" ]]; then
+        # One of the two paths published no run to read. A run that ENDED
+        # WELL published a receipt, so on that side the launcher is being
+        # told nothing about a run that promised something.
+        if [[ "$cw_expect_exit" == "0" && "$cw_verdict_is_run" == "1" ]]; then
+            printf 'FAIL %-52s the two execution paths did not both publish a run to read\n' "$cw_label"
+            world_detail="one of the two execution paths published no run id"
+            return 1
+        fi
+        durable_run=""
+        volatile_run=""
+    else
+        durable_run="$durable_receipt"
+        volatile_run="$volatile_receipt"
+    fi
+
+    # The comparisons this scenario is owed, counted before any of them
+    # happens: a comparison that failed was still promised, and a census
+    # that shrank when something failed would report a smaller suite than
+    # the one that ran.
+    scenario_guarantees=$((scenario_guarantees + 1))
+    if [[ -n "$durable_run" && -n "$volatile_run" ]]; then
+        scenario_guarantees=$((scenario_guarantees + 1))
+    fi
+
+    local durable_account volatile_account
+    durable_account="$(world_account "$cw_durable_out" "$cw_durable_err" "$cw_root")"
+    volatile_account="$(world_account "$cw_volatile_out" "$cw_volatile_err" "$cw_root")"
+    if [[ "$durable_account" != "$volatile_account" ]]; then
+        printf 'FAIL %-52s the two execution paths told different stories\n' "$cw_label"
+        diff <(printf '%s\n' "$durable_account") <(printf '%s\n' "$volatile_account") \
+            | head -12 | sed 's/^/       | /' || true
+        world_detail="the two execution paths told different stories"
+        return 1
+    fi
+
+    if [[ -n "$durable_run" && -n "$volatile_run" ]]; then
+        # The operations each world committed output for. Two runs of the
+        # same pipeline commit the same operations; a world that committed
+        # an operation the other one did not is a difference, and it is
+        # named before the bytes are compared, because a byte comparison
+        # cannot say WHICH operation disagreed.
+        local durable_ops volatile_ops
+        if ! durable_ops="$(declared_operations "$cw_durable_control" "$durable_run")"; then
+            printf 'FAIL %-52s the operations of the durable path could not be listed\n' "$cw_label"
+            world_detail="the operations of the durable path could not be listed"
+            return 1
+        fi
+        if ! volatile_ops="$(declared_operations "$cw_volatile_control" "$volatile_run")"; then
+            printf 'FAIL %-52s the operations of the volatile path could not be listed\n' "$cw_label"
+            world_detail="the operations of the volatile path could not be listed"
+            return 1
+        fi
+        if [[ "$durable_ops" != "$volatile_ops" ]]; then
+            printf 'FAIL %-52s the two execution paths committed output for different operations\n' "$cw_label"
+            diff <(printf '%s\n' "$durable_ops") <(printf '%s\n' "$volatile_ops") \
+                | head -12 | sed 's/^/       | /' || true
+            world_detail="the two execution paths committed output for different operations"
+            return 1
+        fi
+
+        local operation
+        while IFS= read -r operation; do
+            [[ -n "$operation" ]] || continue
+            if ! world_bytes "$cw_durable_control" "$durable_run" "$operation" \
+                    "$cw_root/world.durable.bytes"; then
+                printf 'FAIL %-52s the bytes the durable path committed for %s could not be read\n' \
+                    "$cw_label" "$operation"
+                world_detail="the bytes the durable path committed for $operation could not be read"
+                return 1
+            fi
+            if ! world_bytes "$cw_volatile_control" "$volatile_run" "$operation" \
+                    "$cw_root/world.volatile.bytes"; then
+                printf 'FAIL %-52s the bytes the volatile path committed for %s could not be read\n' \
+                    "$cw_label" "$operation"
+                world_detail="the bytes the volatile path committed for $operation could not be read"
+                return 1
+            fi
+            normalize_identity <"$cw_root/world.durable.bytes" >"$cw_root/world.durable.norm"
+            normalize_identity <"$cw_root/world.volatile.bytes" >"$cw_root/world.volatile.norm"
+            if ! cmp -s "$cw_root/world.durable.norm" "$cw_root/world.volatile.norm"; then
+                printf 'FAIL %-52s the two execution paths committed different bytes for %s\n' \
+                    "$cw_label" "$operation"
+                printf '       | the durable path committed %s byte(s), the volatile path %s\n' \
+                    "$(wc -c <"$cw_root/world.durable.norm" | tr -d ' ')" \
+                    "$(wc -c <"$cw_root/world.volatile.norm" | tr -d ' ')"
+                diff "$cw_root/world.durable.norm" "$cw_root/world.volatile.norm" 2>/dev/null \
+                    | head -12 | sed 's/^/       | /' || true
+                world_detail="the two execution paths committed different bytes for $operation"
+                return 1
+            fi
+        done <<<"$durable_ops"
+    fi
+    return 0
+}
+
 # One scenario, fully isolated. Nothing is read from the developer's HOME and
 # nothing is written outside $cycle_root.
 run_scenario_body() {
@@ -1812,15 +2159,6 @@ run_scenario_body() {
     # second rule: it took a different pattern and a different ceiling, and it
     # counted the exit the parser had already counted, so the report published
     # a number of checks the harness never made.
-
-    # One run of the product. The census counts them because a scenario that
-    # runs on both execution paths is TWO runs of the product, and a report
-    # that says "one scenario" without saying how many times the product ran
-    # describes a suite that costs half of what it costs.
-    count_run() {
-        scenario_executions=$((scenario_executions + 1))
-        return 0
-    }
 
     # The result the scenario expects its RUN to conclude, in the product's own
     # vocabulary. The exit code cannot say it: a run that caught a failure and
@@ -3096,329 +3434,6 @@ run_scenario_body() {
         label="$name (resume x2)"
     fi
 
-    # Checks ONE execution against every expectation the scenario declares.
-    # Declared inside the scenario so it reads the scenario's own expectations
-    # without inventing a second place to keep them.
-    #
-    # $1 label, $2 stdout file, $3 stderr file, $4 exit code, $5 control root,
-    # $6 journal database, or empty when the execution had no journal to read.
-    # $7 1 when the execution under test WAS a run, 0 when it was a control
-    #    command. A run publishes a launch receipt; a command does not, and the
-    #    rule that a run that ended well published one belongs to the runs.
-    # Returns non-zero when an expectation did not hold, and leaves the reason
-    # in $check_detail for the caller to report.
-    check_execution() {
-        local ex_label="$1" ex_stdout="$2" ex_stderr="$3" ex_code="$4" ex_control="$5"
-        local ex_db="$6" ex_is_run="${7:-1}"
-        local wanted
-        local acceptable=""
-
-        if [[ "$ex_code" != "$expect_exit" ]]; then
-            printf 'FAIL %-52s exit %s, expected %s\n' "$ex_label" "$ex_code" "$expect_exit"
-            show_printed "$ex_stdout"
-            show_printed "$ex_stderr"
-            check_detail="exit $ex_code, expected $expect_exit"
-            return 1
-        fi
-
-        # The run's own conclusion, when the execution under test WAS a run.
-        #
-        # A scenario that watches a process end is watching the weakest thing
-        # about it. The exit code does not say what the run concluded, and it
-        # does not say that the run concluded anything: a run that dies between
-        # its last step and its terminal bookend leaves an exit code and no
-        # verdict. The product publishes that conclusion in its event lane, and
-        # the launcher reads it from there, so the verdict and the exit code
-        # become two independent facts about the same run and can be compared.
-        #
-        # The verdict is what the scenario's guarantee is really about. A run
-        # that caught a failure and continued ends well, exactly like a run that
-        # had nothing to catch, and the exit code cannot tell the two apart;
-        # the published conclusion can, and it is the conclusion the scenario
-        # declares. A run that ends successfully without publishing a verdict
-        # has said nothing about itself, and a scenario that accepts that as a
-        # pass accepts silence.
-        #
-        # A run that FAILED may legitimately leave no verdict: that is what a
-        # run that died looks like. Only the successful side is a promise.
-        if [[ -n "$ex_db" ]]; then
-            local run_id="" receipt_state=0
-            local receipt=""
-            receipt="$(launch_receipt_run_id "$ex_stderr")" || receipt_state=$?
-            case "$receipt_state" in
-                0) run_id="$receipt" ;;
-                1)
-                    # A receipt IS there and could not be read. Saying nothing
-                    # here would make the launcher look like it had nothing to
-                    # check, and the check it skipped is one the run promised.
-                    printf 'FAIL %-52s %s\n' "$ex_label" "$receipt"
-                    check_detail="$receipt"
-                    return 1
-                    ;;
-                2)
-                    # No run to read. A run that ENDED WELL published a
-                    # receipt and a verdict: the receipt comes first in the
-                    # launch sequence, so a run that ended well and left no
-                    # receipt is a run that said nothing about itself. A run
-                    # that FAILED may legitimately leave none, and a control
-                    # command is not a run and publishes none.
-                    if [[ "$ex_code" == "0" && "$ex_is_run" == "1" ]]; then
-                        printf 'FAIL %-52s the run ended well but %s\n' "$ex_label" "$receipt"
-                        check_detail="the run ended well but $receipt"
-                        return 1
-                    fi
-                    ;;
-            esac
-            if [[ -n "$run_id" ]]; then
-                local verdict="" run_outcome="" run_steps=0
-                verdict="$(read_run_verdict "$ex_db" "$run_id" || true)"
-                if [[ -z "$verdict" ]]; then
-                    if [[ "$ex_code" == 0 ]]; then
-                        printf 'FAIL %-52s the run %s exited 0 without publishing a verdict\n' \
-                            "$ex_label" "$run_id"
-                        check_detail="the run $run_id exited 0 without publishing a verdict"
-                        return 1
-                    fi
-                else
-                    run_outcome="$(sed -n 's/^outcome=\([a-z]*\).*/\1/p' <<<"$verdict")"
-                    run_steps="$(sed -n 's/.*steps=\([0-9]*\).*/\1/p' <<<"$verdict")"
-                    scenario_guarantees=$((scenario_guarantees + 1))
-                    scenario_steps=$((scenario_steps + run_steps))
-                    scenario_outcome="$run_outcome"
-                    # The conclusions a run may reach, and which of them agree
-                    # with a process that ended well: a clean success, and the
-                    # unstable one a run reaches when it caught a failure and
-                    # carried on. A process that did not end well concluded
-                    # either a failure or an abort, and the exit code cannot
-                    # tell those two apart either.
-                    case "$expect_outcome" in
-                        success)  acceptable="success" ;;
-                        unstable) acceptable="unstable" ;;
-                        failure)  acceptable="failure aborted" ;;
-                        *)        acceptable="$expect_outcome" ;;
-                    esac
-                    if [[ " $acceptable " != *" $run_outcome "* ]]; then
-                        printf 'FAIL %-52s the run %s concluded %s, expected %s\n' \
-                            "$ex_label" "$run_id" "$run_outcome" "$expect_outcome"
-                        check_detail="the run $run_id concluded $run_outcome, expected $expect_outcome"
-                        return 1
-                    fi
-                fi
-            fi
-        fi
-
-        # -a porque la salida puede traer bytes NUL, y sin el fallo se reporta
-        # como "fichero binario" sin la coincidencia, indistinguible de su ausencia.
-        for wanted in ${expect_stdout[@]+"${expect_stdout[@]}"}; do
-            if ! grep -aqF -- "$wanted" "$ex_stdout"; then
-                printf 'FAIL %-52s exit %s as expected, but stdout lacked: %s\n' \
-                    "$ex_label" "$ex_code" "$wanted"
-                show_printed "$ex_stdout"
-                check_detail="stdout lacked: $wanted"
-                return 1
-            fi
-        done
-        for wanted in ${expect_stderr[@]+"${expect_stderr[@]}"}; do
-            if ! grep -aqF -- "$wanted" "$ex_stderr"; then
-                printf 'FAIL %-52s exit %s as expected, but stderr lacked: %s\n' \
-                    "$ex_label" "$ex_code" "$wanted"
-                show_printed "$ex_stderr"
-                check_detail="stderr lacked: $wanted"
-                return 1
-            fi
-        done
-
-        # The committed transcript. The Output Plane holds every byte a step
-        # printed, and the product's own `console` verb is the reader for it.
-        # The operations are the stream directories the plane created, so the
-        # launcher asks for each of them rather than composing one: a name it
-        # invented would be refused. Every channel counts, so an operation
-        # that wrote only to stderr is in the transcript too.
-        #
-        # A refusal is a failure here and not a missing line: a transcript
-        # that could not be read is not a transcript that lacked the text,
-        # and reporting the second when the truth is the first would blame
-        # the pipeline for the reader's refusal.
-        if (( ${#expect_transcript[@]} > 0 )); then
-            local transcript="$root/transcript.$(basename "$ex_control").txt"
-            local run_id="" receipt_state=0
-            local receipt=""
-            receipt="$(launch_receipt_run_id "$ex_stderr")" || receipt_state=$?
-            if [[ "$receipt_state" == "1" ]]; then
-                printf 'FAIL %-52s %s\n' "$ex_label" "$receipt"
-                check_detail="$receipt"
-                return 1
-            fi
-            if [[ "$receipt_state" != "0" ]]; then
-                printf 'FAIL %-52s the run published no run id, so its transcript cannot be read\n' \
-                    "$ex_label"
-                check_detail="no run id in the launch receipt"
-                return 1
-            fi
-            run_id="$receipt"
-            : >"$transcript"
-            local operations
-            if ! operations="$(declared_operations "$ex_control" "$run_id")"; then
-                printf 'FAIL %-52s the operations of the run could not be listed\n' "$ex_label"
-                check_detail="the operations of the run could not be listed"
-                return 1
-            fi
-            local operation
-            while IFS= read -r operation; do
-                [[ -n "$operation" ]] || continue
-                if ! world_bytes "$ex_control" "$run_id" "$operation" "$root/transcript.part"; then
-                    printf 'FAIL %-52s the committed transcript could not be read\n' "$ex_label"
-                    check_detail="the committed transcript could not be read"
-                    return 1
-                fi
-                cat "$root/transcript.part" >>"$transcript"
-            done <<<"$operations"
-
-            for wanted in ${expect_transcript[@]+"${expect_transcript[@]}"}; do
-                if ! grep -aqF -- "$wanted" "$transcript"; then
-                    printf 'FAIL %-52s the committed transcript lacked: %s\n' \
-                        "$ex_label" "$wanted"
-                    head -40 "$transcript" | sed 's/^/       | /'
-                    check_detail="transcript lacked: $wanted"
-                    return 1
-                fi
-            done
-        fi
-        return 0
-    }
-
-    # The two worlds, compared with each other.
-    #
-    # The launcher held each execution to the scenario's expectations and never
-    # compared the executions with one another: the two worlds were two chances
-    # to fail, not one guarantee that they agree. A defect that lives in one
-    # world only, and that no expectation names, passed the suite twice.
-    #
-    # What is compared is what a run SAYS and what it COMMITS, because those are
-    # the two things that have to be true in every world:
-    #
-    #   - the account: the console the run printed and the diagnostics it wrote,
-    #     with the identity, the clock and the two roots normalized away. A run
-    #     that tells a different story in the two worlds is two different runs.
-    #   - the bytes: what the run committed to the Output Plane, read back with
-    #     the product's own reader. Two worlds that commit different bytes are
-    #     two different runs, whatever their console says.
-    #
-    # The place where the process output lands between two console lines is NOT
-    # compared, and that is deliberate: the observer that delivers it polls, so
-    # that place is a projection and not a promise, and a comparison that
-    # depended on it would be a coin toss.
-    compare_worlds() {
-        local cw_durable_out="$1" cw_durable_err="$2" cw_durable_control="$3"
-        local cw_volatile_out="$4" cw_volatile_err="$5" cw_volatile_control="$6"
-
-        local durable_run volatile_run
-        local durable_state=0 volatile_state=0
-        local durable_receipt="" volatile_receipt=""
-        durable_receipt="$(launch_receipt_run_id "$cw_durable_err")" || durable_state=$?
-        volatile_receipt="$(launch_receipt_run_id "$cw_volatile_err")" || volatile_state=$?
-        if [[ "$durable_state" == "1" || "$volatile_state" == "1" ]]; then
-            printf 'FAIL %-52s %s\n' "$label" \
-                "$([[ "$durable_state" == "1" ]] && printf '%s' "$durable_receipt" || printf '%s' "$volatile_receipt")"
-            world_detail="a launch receipt could not be read"
-            return 1
-        fi
-        if [[ "$durable_state" == "2" || "$volatile_state" == "2" ]]; then
-            # One of the two paths published no run to read. A run that ENDED
-            # WELL published a receipt, so on that side the launcher is being
-            # told nothing about a run that promised something.
-            if [[ "$expect_exit" == "0" && "$verdict_is_run" == "1" ]]; then
-                printf 'FAIL %-52s the two execution paths did not both publish a run to read\n' "$label"
-                world_detail="one of the two execution paths published no run id"
-                return 1
-            fi
-            durable_run=""
-            volatile_run=""
-        else
-            durable_run="$durable_receipt"
-            volatile_run="$volatile_receipt"
-        fi
-
-        # The comparisons this scenario is owed, counted before any of them
-        # happens: a comparison that failed was still promised, and a census
-        # that shrank when something failed would report a smaller suite than
-        # the one that ran.
-        scenario_guarantees=$((scenario_guarantees + 1))
-        if [[ -n "$durable_run" && -n "$volatile_run" ]]; then
-            scenario_guarantees=$((scenario_guarantees + 1))
-        fi
-
-        local durable_account volatile_account
-        durable_account="$(world_account "$cw_durable_out" "$cw_durable_err" "$root")"
-        volatile_account="$(world_account "$cw_volatile_out" "$cw_volatile_err" "$root")"
-        if [[ "$durable_account" != "$volatile_account" ]]; then
-            printf 'FAIL %-52s the two execution paths told different stories\n' "$label"
-            diff <(printf '%s\n' "$durable_account") <(printf '%s\n' "$volatile_account") \
-                | head -12 | sed 's/^/       | /' || true
-            world_detail="the two execution paths told different stories"
-            return 1
-        fi
-
-        if [[ -n "$durable_run" && -n "$volatile_run" ]]; then
-            # The operations each world committed output for. Two runs of the
-            # same pipeline commit the same operations; a world that committed
-            # an operation the other one did not is a difference, and it is
-            # named before the bytes are compared, because a byte comparison
-            # cannot say WHICH operation disagreed.
-            local durable_ops volatile_ops
-            if ! durable_ops="$(declared_operations "$cw_durable_control" "$durable_run")"; then
-                printf 'FAIL %-52s the operations of the durable path could not be listed\n' "$label"
-                world_detail="the operations of the durable path could not be listed"
-                return 1
-            fi
-            if ! volatile_ops="$(declared_operations "$cw_volatile_control" "$volatile_run")"; then
-                printf 'FAIL %-52s the operations of the volatile path could not be listed\n' "$label"
-                world_detail="the operations of the volatile path could not be listed"
-                return 1
-            fi
-            if [[ "$durable_ops" != "$volatile_ops" ]]; then
-                printf 'FAIL %-52s the two execution paths committed output for different operations\n' "$label"
-                diff <(printf '%s\n' "$durable_ops") <(printf '%s\n' "$volatile_ops") \
-                    | head -12 | sed 's/^/       | /' || true
-                world_detail="the two execution paths committed output for different operations"
-                return 1
-            fi
-
-            local operation
-            while IFS= read -r operation; do
-                [[ -n "$operation" ]] || continue
-                if ! world_bytes "$cw_durable_control" "$durable_run" "$operation" \
-                        "$root/world.durable.bytes"; then
-                    printf 'FAIL %-52s the bytes the durable path committed for %s could not be read\n' \
-                        "$label" "$operation"
-                    world_detail="the bytes the durable path committed for $operation could not be read"
-                    return 1
-                fi
-                if ! world_bytes "$cw_volatile_control" "$volatile_run" "$operation" \
-                        "$root/world.volatile.bytes"; then
-                    printf 'FAIL %-52s the bytes the volatile path committed for %s could not be read\n' \
-                        "$label" "$operation"
-                    world_detail="the bytes the volatile path committed for $operation could not be read"
-                    return 1
-                fi
-                normalize_identity <"$root/world.durable.bytes" >"$root/world.durable.norm"
-                normalize_identity <"$root/world.volatile.bytes" >"$root/world.volatile.norm"
-                if ! cmp -s "$root/world.durable.norm" "$root/world.volatile.norm"; then
-                    printf 'FAIL %-52s the two execution paths committed different bytes for %s\n' \
-                        "$label" "$operation"
-                    printf '       | the durable path committed %s byte(s), the volatile path %s\n' \
-                        "$(wc -c <"$root/world.durable.norm" | tr -d ' ')" \
-                        "$(wc -c <"$root/world.volatile.norm" | tr -d ' ')"
-                    diff "$root/world.durable.norm" "$root/world.volatile.norm" 2>/dev/null \
-                        | head -12 | sed 's/^/       | /' || true
-                    world_detail="the two execution paths committed different bytes for $operation"
-                    return 1
-                fi
-            done <<<"$durable_ops"
-        fi
-        return 0
-    }
-
     # The checks this scenario made BEYOND watching a process end. Counted from
     # what the launcher did, not from what the scenario declared: a mode the
     # launcher ran is a check the launcher made, whether or not the scenario
@@ -3459,7 +3474,8 @@ run_scenario_body() {
     local check_detail=""
     local world_detail=""
     if ! check_execution "$label" "$verdict_stdout" "$verdict_stderr" "$code" "$root/control" \
-        "$root/events.db" "$verdict_is_run"; then
+        "$root/events.db" "$verdict_is_run" \
+        "$expect_exit" "$expect_outcome" expect_stdout expect_stderr expect_transcript "$root"; then
         failed=$((failed + 1))
         failures+=("$label: $check_detail")
         return
@@ -3474,7 +3490,8 @@ run_scenario_body() {
     # what it is.
     if [[ "$run_volatile" == 1 ]]; then
         if ! check_execution "$label (volatile)" "$vstdout" "$vstderr" "$vcode" \
-            "$root/control-volatile" "" "1"; then
+            "$root/control-volatile" "" "1" \
+            "$expect_exit" "$expect_outcome" expect_stdout expect_stderr expect_transcript "$root"; then
             failed=$((failed + 1))
             failures+=("$label (volatile): $check_detail")
             return
@@ -3484,7 +3501,8 @@ run_scenario_body() {
         # on its own; this asks the question neither of them could answer alone:
         # did they do the SAME thing?
         if ! compare_worlds "$verdict_stdout" "$verdict_stderr" "$root/control" \
-            "$vstdout" "$vstderr" "$root/control-volatile"; then
+            "$vstdout" "$vstderr" "$root/control-volatile" \
+            "$label" "$expect_exit" "$verdict_is_run" "$root"; then
             failed=$((failed + 1))
             failures+=("$label: $world_detail")
             return

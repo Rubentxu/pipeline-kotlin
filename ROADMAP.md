@@ -1923,6 +1923,48 @@ PASS  sha=9639e72131849c2c24a75ddbf1d5939d6102a943  elapsed=182s  budget=900s  t
 - 182 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
 - `VERIFY_LOC = 28829`, `PRODUCT_LOC = 71270`, ratio `0.405` (límite 2). La verificación subió 98 líneas —las seis filas nuevas y su documentación— y la producción subió 37. En `pipeline-application` el ratio es `6419 / 25655 = 0.25`.
 
+#### El corte: los verbos de `credentials` rechazan el argumento que no poseen
+
+**Qué hace.** Los cuatro verbos de `credentials` se tragaban el argumento sobrante. `credentials list extra-arg-xyz` contestaba «No credentials stored.» con código 0: un veredicto que dice que la petición se entendió y se llevó a cabo cuando no era una petición de ese verbo. `credentials add|remove|rotate <id> extra-arg-xyz` se tragaba el token: `add` seguía pidiendo la clave, `remove` y `rotate` contestaban sobre la tienda, y ninguno nombraba nunca el token que había.
+
+El verbo es el único que sabe qué argumentos posee, así que el rechazo vive donde el posicional se lee. No es una tabla nueva, y no es la admisión de la aplicación: `pipeline-credentials-local` está por debajo de `pipeline-application` en el grafo de dependencias, así que no puede ver `CliError` ni `CliOptionAdmission`, que viven en la aplicación. Un solo renderer dice la frase, el código de salida es el del módulo (`CredentialsOutcome`), y el rechazo ocurre ANTES de abrir la tienda: una petición que no es de este verbo no pide clave, no lee la tienda y no pide un secreto.
+
+Medido sobre dos distribuciones construidas de este repositorio —`dea5593f5` (antes) y `8a3051755` (después)— en la misma máquina, con el MISMO script de sondeo y una tienda aislada que no existe. Se mide el código de salida y la primera línea de stdout.
+
+|celda|antes|después|
+|---|---|---|
+|`credentials list`|`No credentials stored.` (0)|sin cambio (0)|
+|`credentials list extra-arg-xyz`|`No credentials stored.` (0)|`Error: unexpected argument: extra-arg-xyz. 'credentials list' takes no argument.` (1)|
+|`credentials add owned-id-42 extra-arg-xyz`|`Error: Passphrase required: set PIPELINE_STORE_PASSPHRASE or run interactively in a TTY` (2)|`Error: unexpected argument: extra-arg-xyz. 'credentials add' takes one argument: the credential id.` (1)|
+|`credentials add --kind secret-text owned-id-42 extra-arg-xyz`|`Error: Passphrase required: …` (2)|`Error: unexpected argument: extra-arg-xyz. 'credentials add' takes one argument: the credential id.` (1)|
+|`credentials remove owned-id-42 extra-arg-xyz`|`No credentials stored.` (1)|`Error: unexpected argument: extra-arg-xyz. 'credentials remove' takes one argument: the credential id.` (1)|
+|`credentials rotate owned-id-42 extra-arg-xyz`|`No credentials stored.` (1)|`Error: unexpected argument: extra-arg-xyz. 'credentials rotate' takes one argument: the credential id.` (1)|
+
+Las cinco celdas del argumento sobrante cambian. TRES cambian de código de salida, y las dos que había —0 y 2— son veredictos falsos: una petición que no era del verbo contestada como si lo fuera, y una petición respondida con la pregunta de la clave. Las tres salen ahora con 1, el código del módulo para una petición que no lleva a cabo. Las otras DOS cambian sólo de frase: `remove` y `rotate` ya contestaban 1, pero contestaban sobre la tienda, no sobre el token.
+
+**El instrumento.** El verbo, llamado en proceso: se le da el array de argumentos, se lee su código de salida y se captura su salida (`CredentialsUnexpectedArgumentTest`). Sin CLI, sin subproceso, sin disco, sin reloj: el rechazo es anterior a la tienda, así que la fila no toca nada. Dos filas y no una por verbo: los tres verbos que poseen un id hacen la misma pregunta y comparten la misma respuesta. La fila no congela la frase del rechazo —congela el token, el id que el verbo posee y el verbo— y por eso afirma dos ausencias: que la salida no nombre el id poseído y que no publique la respuesta del verbo. El módulo fija además `PIPELINE_CREDENTIALS_STORE` a una ruta que no existe, porque la respuesta tiene que ser la misma en toda máquina: en una con la tienda poblada, `credentials list` contestaría con el listado y no con «No credentials stored.».
+
+**Mutación.** Con los tres guards fuera, `:pipeline-credentials-local:test` dio 107 tests completados y 2 fallos, y los únicos XML con `<failure>` fueron las dos filas de `CredentialsUnexpectedArgumentTest`: sin colateral. Con sólo el guard de `remove` fuera, la fila data-driven murió en `remove` («remove: No credentials stored.») y la fila de `list` quedó en verde: cada guard se prueba por separado. La restauración se hizo desde una copia verificada por digest (`sha256 21bb20e0…`), no desde git.
+
+**Lo que este corte NO arregla.**
+- `credentials add --bogus-flag` responde «Error: --bogus-flag needs a value»: la bandera desconocida se confunde con una bandera a la que le falta el valor. Es un rechazo (código 1), pero la frase manda al sitio equivocado.
+- `credentials remove --bogus-flag` toma la bandera como id: `remove` no distingue una opción de un posicional, así que un `--bogus-flag` sólo se descubre al final, cuando se busca un credential con ese nombre.
+- `credentials remove --bogus-flag myid` rechaza nombrando `myid` (el segundo token), pero acepta `--bogus-flag` como id sin decirlo.
+- `credentials <subcomando-desconocido>` y `credentials` a secas imprimen el uso sin nombrar el token que no es del verbo.
+- El código de salida del módulo para una petición mal formada es 1 (`CredentialsOutcome.NOT_CARRIED_OUT`), donde la taxonomía del producto declara 2 para un error de invocación. `credentials` se delega en proceso desde la aplicación, así que el operador ve 1 por una petición de `credentials` y 2 por una petición equivalente del resto del CLI. Cambiarlo rompería el contrato publicado del módulo y el E2E que lo espera.
+- Los rechazos de este módulo salen por stdout; los de la aplicación salen por stderr.
+
+**Evidencia.** Gate completo sin filtros, sobre `8a30517550f6333f82eb5a583f7282aa7dbaf313`:
+
+```
+PASS  sha=8a30517550f6333f82eb5a583f7282aa7dbaf313  elapsed=181s  budget=900s  tests=rewritten:1549 read:0  scenarios=observed:63 executed:63
+```
+
+- 1549 tests EJECUTADOS de verdad, 0 leídos de informes anteriores, 0 fallos, 0 omitidos.
+- 63 de 63 escenarios E2E observados y ejecutados, en verde.
+- 181 s de reloj de pared frente al presupuesto de 900 s, con la suite COMPLETA ejecutada de verdad.
+- `VERIFY_LOC = 28882`, `PRODUCT_LOC = 71291`, ratio `0.405` (límite 2). La verificación subió 53 líneas efectivas y la producción 21. En `pipeline-credentials-local` el ratio es `1305 / 1876 = 0.696`.
+
 ## H6 — Reducir deuda del harness y asegurar la publicación
 
 Foco: `examples/run.sh`, `verify-all.sh` y scripts de release.

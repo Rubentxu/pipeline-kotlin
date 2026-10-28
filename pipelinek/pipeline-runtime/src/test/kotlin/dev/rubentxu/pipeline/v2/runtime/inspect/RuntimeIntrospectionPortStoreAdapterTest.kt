@@ -150,6 +150,65 @@ class RuntimeIntrospectionPortStoreAdapterTest {
     }
 
     /**
+     * Paging a run's structure with the adapter's OWN cursor covers every
+     * operation exactly once.
+     *
+     * The cursor the adapter hands out names the position of the next
+     * operation in the list it just read; a consumer that walks page by page
+     * with that cursor must see every operation once, in order, with no gap
+     * and no repeat. A cursor derived from a COUNT instead — rows delivered,
+     * page size, an off-by-one on the last included ordinal — splits, loses
+     * or repeats operations on every page after the first.
+     *
+     * The walk is bounded by the operation count on purpose: a cursor that
+     * never closes would otherwise hang the consumer. The bound cuts the
+     * walk short and the final assertion names it — the walk must end
+     * because the adapter closed the cursor, never because the guard ran
+     * out.
+     */
+    @Test
+    fun `la paginacion del runStructure cubre cada operacion exactamente una vez`() {
+        val opCount = 5
+        val adapter = adapter(
+            journalRows = (1..opCount).map { n ->
+                operation(id = "op-$n", status = OperationStatus.SUCCEEDED)
+            },
+            laneEvents = emptyList(),
+        )
+
+        var cursor: StructureCursor? = null
+        val walk = mutableListOf<List<String>>()
+        while (walk.size <= opCount) {
+            val result = assertInstanceOf(
+                RunStructureResult.Structure::class.java,
+                adapter.runStructure(runId, StructureRunOptions(pageSize = 2, cursor = cursor)),
+            )
+            val stages = assertInstanceOf(RunStructure.Stages::class.java, result.structure)
+            walk += stages.stages
+                .flatMap { stage -> stage.steps }
+                .flatMap { step -> step.operations }
+                .map { it.operationId }
+            cursor = result.cursor
+            if (cursor == null) break
+        }
+
+        assertEquals(
+            listOf(
+                listOf("op-1", "op-2"),
+                listOf("op-3", "op-4"),
+                listOf("op-5"),
+            ),
+            walk,
+            "walking the adapter's own cursors repeated, lost or split an operation: $walk",
+        )
+        assertNull(
+            cursor,
+            "the walk ended on its guard, not on the adapter closing the cursor; " +
+                "a cursor that never closes hangs every paging consumer",
+        )
+    }
+
+    /**
      * The plane is read-only by construction: reading a run's state writes
      * nothing.
      *
@@ -204,8 +263,8 @@ class RuntimeIntrospectionPortStoreAdapterTest {
         )
     }
 
-    private fun operation(status: OperationStatus): RerunOperation = RerunOperation(
-        id = "op-1",
+    private fun operation(id: String = "op-1", status: OperationStatus): RerunOperation = RerunOperation(
+        id = id,
         fingerprint = Fingerprint("a".repeat(64)),
         input = OperationInput(
             stepId = "step-1",

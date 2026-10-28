@@ -17,6 +17,21 @@ import dev.rubentxu.pipeline.v2.events.EventRecordRead
  * by sequence. NEVER timestamp-based. Deliberately a distinct type
  * from the OperationJournal ReplayCursor: event-tail cursors and durable
  * replay cursors are different authorities and MUST NOT be unified.
+ *
+ * ## The law of projection: a cursor is an observed position, never a derived count
+ * Every `lastSequence` this type carries was PRODUCED by one of exactly two
+ * observations, and nothing else:
+ *  - the sequence of the last row the reader was HANDED (`page.last().sequence`);
+ *  - a position the reader itself already named (`after`, a consumer-declared
+ *    bound), used verbatim when the page handed over nothing.
+ * A count of records — rows read, page size, `start + length` — is never a
+ * position: sequences are store-assigned and may skip, so a count over any
+ * window diverges from the global position as soon as the window is not the
+ * whole space. The divergence is not hypothetical: a continuation token that
+ * carried `after + page.size` instead of the last delivered sequence resumed
+ * at a position no row occupied and redelivered the same rows. Every new
+ * projector goes through the same two observations; if it cannot name one of
+ * them, it has no cursor to hand out.
 */
 data class EventCursor(val runId: String, val lastSequence: Long) {
     /**

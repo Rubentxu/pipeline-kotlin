@@ -652,7 +652,7 @@ else
     fi
     ./pipelinek/gradlew --no-daemon -p pipelinek "${gradle_cache_args[@]}" "${gradle_args[@]}" \
         > "$log_dir/stage2.log" 2>&1 \
-        || { tail -40 "$log_dir/stage2.log" >&2; fail "stage 2 (see "$log_dir/stage2.log")"; }
+        || { tail -40 "$log_dir/stage2.log" >&2; fail "stage 2 (the tail of the stage log is above)"; }
     # Gradle's exit status is not the result. A Test task can report success
     # with its classes skipped or absent, so the executed/failed/skipped counts
     # are read from the JUnit XML that the task wrote.
@@ -928,10 +928,10 @@ fi
 export PIPELINEK_E2E_BUDGET_SECONDS="$stage_budget"
 if [[ -n "$scenario_filter" ]]; then
     ./examples/run.sh "$scenario_filter" > "$log_dir/stage3.log" 2>&1 \
-        || { tail -40 "$log_dir/stage3.log" >&2; fail "stage 3 (see "$log_dir/stage3.log")"; }
+        || { tail -40 "$log_dir/stage3.log" >&2; fail "stage 3 (the tail of the stage log is above)"; }
 else
     ./examples/run.sh > "$log_dir/stage3.log" 2>&1 \
-        || { tail -40 "$log_dir/stage3.log" >&2; fail "stage 3 (see "$log_dir/stage3.log")"; }
+        || { tail -40 "$log_dir/stage3.log" >&2; fail "stage 3 (the tail of the stage log is above)"; }
 fi
 # Reading the log with -a: the scenario output can carry NUL bytes, and without
 # it the match is reported as a binary file with no text, which is

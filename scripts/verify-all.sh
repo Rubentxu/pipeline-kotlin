@@ -510,7 +510,25 @@ if want_stage 1; then
         || { cat "$log_dir/exits.out" >&2; fail "stage 1d: process exits"; }
     echo "    ok in $(elapsed "$stage_started_at")s"
 
-    # --- Stage 1e: compile, static analysis, API compatibility, distribution --
+    # --- Stage 1e: a scenario may not create a process ------------------------
+    # A `.pipeline.kts` program reaches the outside world through the steps the
+    # product offers. Creating a process from the program itself is a second
+    # authority: the product does not know about it, does not account for the
+    # temporaries it names, does not put a deadline on it and does not read back
+    # its exit code. The `sh` step is the sanctioned door, and the guard refuses
+    # a scenario that steps around it.
+    #
+    # It sits next to the exit guard and not inside the census because it is a
+    # check on what the source SAYS, not a measurement of lines. The rule is
+    # about CREATING a process; asking about the process already running is a
+    # question, and several scenarios need it.
+    log "stage 1e/4  process creation in scenarios"
+    stage_started_at=$(date +%s)
+    python3 scripts/check-scenario-process-creation.py >"$log_dir/scenario-process.out" 2>&1 \
+        || { cat "$log_dir/scenario-process.out" >&2; fail "stage 1e: a scenario creates a process"; }
+    echo "    ok in $(elapsed "$stage_started_at")s"
+
+    # --- Stage 1f: compile, static analysis, API compatibility, distribution --
     # One Gradle invocation, so the distribution is assembled exactly once and
     # the tests below reuse the same compiled classes rather than recompiling.
     # `detektTest` sits beside `detektMain` because they are the same analysis
@@ -541,7 +559,7 @@ if want_stage 1; then
     # distribution". It travels, inside the application's `lib/`. What it is not
     # is a PUBLISHED SDK artifact — an external consumer compiles against the
     # ports in `:pipeline-runtime-api`, never against these adapters.
-    log "stage 1e/4  compile + detekt + detektTest + apiCheck + installDist"
+    log "stage 1f/4  compile + detekt + detektTest + apiCheck + installDist"
     stage_started_at=$(date +%s)
     ./pipelinek/gradlew --no-daemon -p pipelinek "${gradle_cache_args[@]}" \
         detektMain \
@@ -550,7 +568,7 @@ if want_stage 1; then
         :pipeline-runtime:compileKotlin \
         :pipeline-application:installDist \
         > "$log_dir/stage1.log" 2>&1 \
-        || { tail -40 "$log_dir/stage1.log" >&2; fail "stage 1e (see "$log_dir/stage1.log")"; }
+        || { tail -40 "$log_dir/stage1.log" >&2; fail "stage 1f (the tail of the stage log is above)"; }
     echo "    ok in $(elapsed "$stage_started_at")s"
 else
   log "stage 1/4  SKIPPED by --stage"

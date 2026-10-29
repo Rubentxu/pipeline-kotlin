@@ -2171,6 +2171,43 @@ run_scenario_body() {
     local storage_agnostic=0
     local unknown_directive=""
     local directive
+    # The state the phases share. A value declared inside a phase does not
+    # reach the next one: a local belongs to the function that declares it,
+    # so the phase that declares it is the only one that can see it. These
+    # are the names that cross a phase boundary, and the body declares them
+    # because the body owns the sequence.
+    local root stdout stderr code
+    local vstdout vstderr vcode
+    local verdict_stdout verdict_stderr verdict_is_run
+    local before_snapshot after_snapshot run_volatile caller_pwd
+    local -a plugin_jar_args plugin_trust_args
+    # Whether a phase stopped the scenario. The phase says it by writing
+    # here, and the body reads it: a phase that returns non-zero would say
+    # it too, but a non-zero return inside a function called under a test
+    # does not stop the shell, so the words travel by name instead.
+    local phase_failed=0
+    # The three phases of one scenario, in the order they happen: what the
+    # scenario PROMISES, what it RUNS, and what the run PROVED. Each one is
+    # a function called on its own, so a command that fails inside one still
+    # stops the scenario the way it stopped it when the body was one piece.
+    scenario_prepare
+    if (( phase_failed )); then
+        return 0
+    fi
+    scenario_execute
+    if (( phase_failed )); then
+        return 0
+    fi
+    scenario_verify
+}
+
+# --- What the scenario PROMISES, before it runs -------------------------
+#
+# The directives it declared, its own directory, the artifacts it brings,
+# the credentials it seeds and the files where its output will be written.
+# None of this looks at the product; everything the next phase needs to
+# know is here.
+scenario_prepare() {
     while IFS= read -r directive; do
         case "$directive" in
             '//@ expect-exit '*)   expect_exit="${directive#//@ expect-exit }" ;;
@@ -2226,7 +2263,8 @@ run_scenario_body() {
             "$name" "${unknown_directive#//@ }"
         failed=$((failed + 1))
         failures+=("$name: unknown directive: ${unknown_directive#//@ }")
-        return
+        phase_failed=1
+        return 0
     fi
 
     # The guarantees this scenario PROMISED, before any of them is checked:
@@ -2264,7 +2302,7 @@ run_scenario_body() {
         fi
     fi
 
-    local root="$cycle_root/$slug"
+    root="$cycle_root/$slug"
     # A private working directory per scenario, entered with `cd`, so a step
     # that writes a relative path cannot land in the repository. AGENTS.md
     # section 3 asks for one temporary directory per example; --isolated and
@@ -2280,7 +2318,7 @@ run_scenario_body() {
     # `bundled-uppercase` is the distribution's own copy of the example plugin, copied here so
     # the scenario owns the file it points at: the operator brings a plugin, and what the operator
     # brings is what the trust policy is about.
-    local -a plugin_jar_args=()
+    plugin_jar_args=()
     if [[ -n "$plugin_jar" ]]; then
         case "$plugin_jar" in
             missing)
@@ -2293,7 +2331,8 @@ run_scenario_body() {
                     printf 'FAIL %-52s the distribution has no example plugin to point at\n' "$name"
                     failed=$((failed + 1))
                     failures+=("$name: the distribution has no example-uppercase-plugin JAR")
-                    return
+                    phase_failed=1
+                    return 0
                 fi
                 mkdir -p "$root/cwd/plugins"
                 cp "$bundled_plugin" "$root/cwd/plugins/uppercase.jar"
@@ -2308,14 +2347,16 @@ run_scenario_body() {
                     printf 'FAIL %-52s the distribution has no example plugin to repack\n' "$name"
                     failed=$((failed + 1))
                     failures+=("$name: the distribution has no example-uppercase-plugin JAR")
-                    return
+                    phase_failed=1
+                    return 0
                 fi
                 mkdir -p "$root/cwd/plugins"
                 if ! build_repacked_plugin_fixture "$bundled_plugin" "$root/cwd/plugins/uppercase.jar"; then
                     printf 'FAIL %-52s the repacked plugin fixture could not be built\n' "$name"
                     failed=$((failed + 1))
                     failures+=("$name: the repacked plugin fixture could not be built")
-                    return
+                    phase_failed=1
+                    return 0
                 fi
                 plugin_jar_args=(--plugin-jar "$root/cwd/plugins/uppercase.jar")
                 ;;
@@ -2323,7 +2364,8 @@ run_scenario_body() {
                 printf 'FAIL %-52s unknown plugin-jar fixture: %s\n' "$name" "$plugin_jar"
                 failed=$((failed + 1))
                 failures+=("$name: unknown plugin-jar fixture '$plugin_jar'")
-                return
+                phase_failed=1
+                return 0
                 ;;
         esac
     fi
@@ -2361,13 +2403,15 @@ run_scenario_body() {
                     printf 'FAIL %-52s the distribution has no lib directory to copy\n' "$name"
                     failed=$((failed + 1))
                     failures+=("$name: the distribution has no lib directory to copy")
-                    return
+                    phase_failed=1
+                    return 0
                 fi
                 if ! cp -R "$installed_dist" "$private_dist"; then
                     printf 'FAIL %-52s the distribution could not be copied\n' "$name"
                     failed=$((failed + 1))
                     failures+=("$name: the distribution could not be copied")
-                    return
+                    phase_failed=1
+                    return 0
                 fi
                 local private_plugin
                 private_plugin="$(ls "$private_dist/lib/"example-uppercase-plugin-*.jar 2>/dev/null | head -1 || true)"
@@ -2375,13 +2419,15 @@ run_scenario_body() {
                     printf 'FAIL %-52s the copied distribution has no example plugin to replace\n' "$name"
                     failed=$((failed + 1))
                     failures+=("$name: the copied distribution has no example-uppercase-plugin JAR")
-                    return
+                    phase_failed=1
+                    return 0
                 fi
                 if ! build_lying_plugin_fixture "$private_plugin" "$lying_kind" "$lying_key"; then
                     printf 'FAIL %-52s the lying plugin fixture could not be built\n' "$name"
                     failed=$((failed + 1))
                     failures+=("$name: the lying plugin fixture could not be built")
-                    return
+                    phase_failed=1
+                    return 0
                 fi
                 scenario_product="$private_dist/bin/pipelinek"
                 ;;
@@ -2389,7 +2435,8 @@ run_scenario_body() {
                 printf 'FAIL %-52s unknown distribution fixture: %s\n' "$name" "$distribution"
                 failed=$((failed + 1))
                 failures+=("$name: unknown distribution fixture '$distribution'")
-                return
+                phase_failed=1
+                return 0
                 ;;
         esac
     fi
@@ -2434,7 +2481,7 @@ run_scenario_body() {
     # plugin's bytes, and the row that pins those bytes and names the publisher and the key. The
     # private key never leaves the scenario's directory and dies with it, so nothing in the
     # repository can have signed these bytes and nothing outside the scenario can reuse the key.
-    local -a plugin_trust_args=()
+    plugin_trust_args=()
     if [[ -n "$plugin_trust" ]]; then
         case "$plugin_trust" in
             signed|signed-then-tampered)
@@ -2442,7 +2489,8 @@ run_scenario_body() {
                     printf 'FAIL %-52s the plugin trust fixture could not be built\n' "$name"
                     failed=$((failed + 1))
                     failures+=("$name: the plugin trust fixture could not be built")
-                    return
+                    phase_failed=1
+                    return 0
                 fi
                 plugin_trust_args=(--plugin-trust "$root/trust/plugin-trust.json")
                 ;;
@@ -2450,7 +2498,8 @@ run_scenario_body() {
                 printf 'FAIL %-52s unknown plugin-trust fixture: %s\n' "$name" "$plugin_trust"
                 failed=$((failed + 1))
                 failures+=("$name: unknown plugin-trust fixture '$plugin_trust'")
-                return
+                phase_failed=1
+                return 0
                 ;;
         esac
     fi
@@ -2493,7 +2542,8 @@ run_scenario_body() {
             printf 'FAIL %-52s the stage credential store could not be copied\n' "$name"
             failed=$((failed + 1))
             failures+=("$name: the stage credential store could not be copied")
-            return
+            phase_failed=1
+            return 0
         }
     fi
 
@@ -2516,7 +2566,8 @@ run_scenario_body() {
                             "$name" "$seed_id"
                         failed=$((failed + 1))
                         failures+=("$name: binary fixtures unavailable")
-                        return
+                        phase_failed=1
+                        return 0
                     fi
                 fi
                 ;;
@@ -2529,21 +2580,28 @@ run_scenario_body() {
             sed 's/^/       | /' "$seed_out" 2>/dev/null | head -5
             failed=$((failed + 1))
             failures+=("$name: credential $seed_id could not be seeded")
-            return
+            phase_failed=1
+            return 0
         fi
         seeded=$((seeded + 1))
     done
 
-    local stdout="$root/stdout.txt" stderr="$root/stderr.txt" code=0
-    local vstdout="$root/stdout.volatile.txt" vstderr="$root/stderr.volatile.txt" vcode=0
-    local verdict_stdout="$stdout" verdict_stderr="$stderr"
+    stdout="$root/stdout.txt"
+    stderr="$root/stderr.txt"
+    code=0
+    vstdout="$root/stdout.volatile.txt"
+    vstderr="$root/stderr.volatile.txt"
+    vcode=0
+    verdict_stdout="$stdout"
+    verdict_stderr="$stderr"
     # Whether the execution under test WAS a run. Most of the time it is: the
     # scenario's own pipeline. But a scenario whose verdict is a CONTROL command
     # -- a cancel, a recover, a read of a refused run -- is holding a command
     # under test, and a command is not a run and publishes no launch receipt.
     # The rule "a run that ended well published a receipt" belongs to the runs.
-    local verdict_is_run=1
-    local before_snapshot="" after_snapshot=""
+    verdict_is_run=1
+    before_snapshot=""
+    after_snapshot=""
 
     # The scenario's own private directory, absolute, and unique per scenario.
     # A scenario that needs a resource that SURVIVES between two runs cannot
@@ -2583,7 +2641,7 @@ run_scenario_body() {
     # that product. It would also be unfair to the scenario: the marker a
     # durable scenario writes lives in this directory, so the second execution
     # would find the first one's effect and read it as a repeat.
-    local run_volatile=1
+    run_volatile=1
     if [[ "$durable" == 1 || "$durable_once" == 1 || "$resume" == 1 || "$cancel" == 1 || "$events_refusal" != "" || "$events_resume" != "" || "$step_verdict" != "" || "$run_state" != "" || "$recover" == 1 ]]; then
         run_volatile=0
     fi
@@ -2602,7 +2660,8 @@ run_scenario_body() {
             "$name"
         failed=$((failed + 1))
         failures+=("$name: the scenario promises it does not need a store and would only run with one")
-        return
+        phase_failed=1
+        return 0
     fi
 
     # `cd` in this shell, not a subshell: a subshell would discard the exit
@@ -2615,10 +2674,18 @@ run_scenario_body() {
     # running both can find one. It happened: the two paths reported a
     # failing pipeline differently, and a suite that ran only one of them
     # could not see that there was a choice to make.
-    local caller_pwd="$PWD"
+    caller_pwd="$PWD"
     # The place the operator names for the native library of the SQLite driver,
     # per scenario and NOT created by the harness. The product has to make it.
     export JAVA_OPTS="$machine_java_opts $(native_library_home_option "$root/native-library")"
+}
+
+# --- What the scenario RUNS --------------------------------------------
+#
+# The pipeline under test, executed the ways this scenario asked for: with
+# the journal, without it, resumed, cancelled, recovered. Every effect it
+# produces stays in the scenario's own directory.
+scenario_execute() {
     cd "$root/cwd"
     binary run --isolated --db "$root/events.db" --control-root "$root/control" \
         ${plugin_jar_args[@]+"${plugin_jar_args[@]}"} ${plugin_trust_args[@]+"${plugin_trust_args[@]}"} "$script" \
@@ -2626,10 +2693,12 @@ run_scenario_body() {
     cd "$caller_pwd"
     count_run
     if ! check_story_order "$name" "$stdout"; then
-        return
+        phase_failed=1
+        return 0
     fi
     if ! check_native_library_home "$name" "$stdout" "$root/native-library"; then
-        return
+        phase_failed=1
+        return 0
     fi
 
     if [[ "$run_volatile" == 1 ]]; then
@@ -2663,7 +2732,8 @@ run_scenario_body() {
         export PIPELINEK_E2E_CONTROL="$durable_control"
         count_run
         if ! check_story_order "$name (volatile)" "$vstdout"; then
-            return
+            phase_failed=1
+            return 0
         fi
     fi
 
@@ -2682,14 +2752,16 @@ run_scenario_body() {
         cd "$caller_pwd"
         count_run
         if ! check_story_order "$name (rerun)" "$root/stdout.rerun.txt"; then
-            return
+            phase_failed=1
+            return 0
         fi
         if [[ "$second" != 0 ]]; then
             printf 'FAIL %-52s the resumed run exited %s, expected 0\n' "$name" "$second"
             show_printed "$root/stderr.rerun.txt"
             failed=$((failed + 1))
             failures+=("$name: the resumed run exited $second")
-            return
+            phase_failed=1
+            return 0
         fi
         durable_runs=$((durable_runs + 1))
     fi
@@ -2704,7 +2776,8 @@ run_scenario_body() {
             printf 'FAIL %-52s the run was supposed to crash and finished cleanly\n' "$name"
             failed=$((failed + 1))
             failures+=("$name: the run was supposed to crash and did not")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # The workspace picture BEFORE the resumed run. This is the observation
@@ -2722,7 +2795,8 @@ run_scenario_body() {
         cd "$caller_pwd"
         count_run
         if ! check_story_order "$name (resumed)" "$root/stdout.rerun.txt"; then
-            return
+            phase_failed=1
+            return 0
         fi
         code="$second"
         # The verdict is the SECOND run's: the first one died before it could
@@ -2739,7 +2813,8 @@ run_scenario_body() {
             printf 'FAIL %-52s the run was supposed to crash and finished cleanly\n' "$name"
             failed=$((failed + 1))
             failures+=("$name: the run was supposed to crash and did not")
-            return
+            phase_failed=1
+            return 0
         fi
 
         local recover_run_id=""
@@ -2753,7 +2828,8 @@ run_scenario_body() {
             printf 'FAIL %-52s the crashed run left no run id, so it cannot be recovered\n' "$name"
             failed=$((failed + 1))
             failures+=("$name: the crashed run left no run id")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # A recover that is given a REASON is refused, and it writes nothing.
@@ -2772,7 +2848,8 @@ run_scenario_body() {
             show_printed "$root/stderr.recover-reason.txt"
             failed=$((failed + 1))
             failures+=("$name: a recover given a reason exited $reason_code")
-            return
+            phase_failed=1
+            return 0
         fi
         if ! grep -aqF -- "--reason" "$root/stderr.recover-reason.txt"; then
             printf 'FAIL %-52s the refusal did not name the option that does not belong\n' \
@@ -2780,7 +2857,8 @@ run_scenario_body() {
             show_printed "$root/stderr.recover-reason.txt"
             failed=$((failed + 1))
             failures+=("$name: the refusal did not name the option that does not belong")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # The dry run and the recovery are TWO INVOCATIONS OF ONE VERB, and an
@@ -2805,7 +2883,8 @@ run_scenario_body() {
             show_printed "$root/stderr.dryrun.txt"
             failed=$((failed + 1))
             failures+=("$name: the dry run of the half-finished run exited $dryrun_code")
-            return
+            phase_failed=1
+            return 0
         fi
         durable_after="$(durable_digest "$root")"
         if [[ "$durable_before" != "$durable_after" ]]; then
@@ -2814,7 +2893,8 @@ run_scenario_body() {
                 | head -20 | sed 's/^/       | /'
             failed=$((failed + 1))
             failures+=("$name: the dry run changed the durable bytes of the run")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # The recover of a run that did NOT finish its work must not close it.
@@ -2831,14 +2911,16 @@ run_scenario_body() {
             show_printed "$root/stderr.recover.txt"
             failed=$((failed + 1))
             failures+=("$name: the recover of the half-finished run exited $recover_code")
-            return
+            phase_failed=1
+            return 0
         fi
         if ! grep -aqF -- "nothing was recovered" "$root/stdout.recover.txt"; then
             printf 'FAIL %-52s the recover closed a run that had not finished its work\n' "$name"
             show_printed "$root/stdout.recover.txt"
             failed=$((failed + 1))
             failures+=("$name: the recover closed a run that had not finished its work")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # And the dry run said the SAME thing. One decision, said twice.
@@ -2852,7 +2934,8 @@ run_scenario_body() {
             show_printed "$root/stdout.recover.txt"
             failed=$((failed + 1))
             failures+=("$name: the dry run decided '$dryrun_decision' and the recovery decided '$recovery_decision'")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # And the run's own state says so too: it is still running, because
@@ -2867,14 +2950,16 @@ run_scenario_body() {
             show_printed "$root/stderr.recover-state.txt"
             failed=$((failed + 1))
             failures+=("$name: reading the run state exited $recover_state_code")
-            return
+            phase_failed=1
+            return 0
         fi
         if ! grep -aqF -- "run-state running" "$root/stdout.recover-state.txt"; then
             printf 'FAIL %-52s the run was not running after the recover refused it\n' "$name"
             show_printed "$root/stdout.recover-state.txt"
             failed=$((failed + 1))
             failures+=("$name: the run was not running after the recover refused it")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # The verdict is the recover's: the run that died could not say
@@ -2900,7 +2985,8 @@ run_scenario_body() {
             printf 'FAIL %-52s the run left no run id, so its state cannot be read\n' "$name"
             failed=$((failed + 1))
             failures+=("$name: the run left no run id")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # The introspection plane answers about the RUN, through the published
@@ -2914,14 +3000,16 @@ run_scenario_body() {
             show_printed "$root/stderr.state.txt"
             failed=$((failed + 1))
             failures+=("$name: reading the run state exited $state_code")
-            return
+            phase_failed=1
+            return 0
         fi
         if ! grep -aqF -- "$run_state" "$root/stdout.state.txt"; then
             printf 'FAIL %-52s the run state did not say: %s\n' "$name" "$run_state"
             show_printed "$root/stdout.state.txt"
             failed=$((failed + 1))
             failures+=("$name: the run state did not say: $run_state")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # A run nobody knows is not a run that finished. It is a refusal, it
@@ -2935,14 +3023,16 @@ run_scenario_body() {
             show_printed "$root/stderr.state-unknown.txt"
             failed=$((failed + 1))
             failures+=("$name: reading the state of an unknown run exited $unknown_code")
-            return
+            phase_failed=1
+            return 0
         fi
         if ! grep -aqF -- "does not know run" "$root/stderr.state-unknown.txt"; then
             printf 'FAIL %-52s the refusal for an unknown run did not say it does not know it\n' "$name"
             show_printed "$root/stderr.state-unknown.txt"
             failed=$((failed + 1))
             failures+=("$name: the refusal for an unknown run did not name the unknown run")
-            return
+            phase_failed=1
+            return 0
         fi
     fi
 
@@ -2954,7 +3044,8 @@ run_scenario_body() {
             printf 'FAIL %-52s the run was supposed to crash and finished cleanly\n' "$name"
             failed=$((failed + 1))
             failures+=("$name: the run was supposed to crash and did not")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # The id of the run that died. The launcher reads it from the run's own
@@ -2971,7 +3062,8 @@ run_scenario_body() {
             printf 'FAIL %-52s the crashed run left no run id, so it cannot be closed\n' "$name"
             failed=$((failed + 1))
             failures+=("$name: the crashed run left no run id")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # A cancel that is asked to SIMULATE is refused, and it writes nothing.
@@ -2999,7 +3091,8 @@ run_scenario_body() {
             show_printed "$root/stderr.cancel-dryrun.txt"
             failed=$((failed + 1))
             failures+=("$name: a cancel asked to simulate exited $cancel_dryrun_code")
-            return
+            phase_failed=1
+            return 0
         fi
         if ! grep -aqF -- "--dry-run" "$root/stderr.cancel-dryrun.txt"; then
             printf 'FAIL %-52s the refusal did not name the option that does not belong\n' \
@@ -3007,7 +3100,8 @@ run_scenario_body() {
             show_printed "$root/stderr.cancel-dryrun.txt"
             failed=$((failed + 1))
             failures+=("$name: the refusal did not name the option that does not belong")
-            return
+            phase_failed=1
+            return 0
         fi
         if [[ "$cancel_dryrun_before" != "$cancel_dryrun_after" ]]; then
             printf 'FAIL %-52s the refused cancel changed the durable bytes of the run\n' "$name"
@@ -3015,7 +3109,8 @@ run_scenario_body() {
                 | head -20 | sed 's/^/       | /'
             failed=$((failed + 1))
             failures+=("$name: the refused cancel changed the durable bytes of the run")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # The first cancel closes the run.
@@ -3029,14 +3124,16 @@ run_scenario_body() {
             show_printed "$root/stderr.cancel.txt"
             failed=$((failed + 1))
             failures+=("$name: the cancel of the dead run exited $cancel_code")
-            return
+            phase_failed=1
+            return 0
         fi
         if ! grep -aqF -- "cancelled run $run_id" "$root/stdout.cancel.txt"; then
             printf 'FAIL %-52s the cancel did not report the run as closed\n' "$name"
             show_printed "$root/stdout.cancel.txt"
             failed=$((failed + 1))
             failures+=("$name: the cancel did not report the run as closed")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # The second cancel is a no-op: it closes nothing twice and it refuses
@@ -3051,14 +3148,16 @@ run_scenario_body() {
             show_printed "$root/stderr.cancel2.txt"
             failed=$((failed + 1))
             failures+=("$name: the second cancel exited $again")
-            return
+            phase_failed=1
+            return 0
         fi
         if ! grep -aqF -- "was already cancelled" "$root/stdout.cancel2.txt"; then
             printf 'FAIL %-52s the second cancel did not report the run as already closed\n' "$name"
             show_printed "$root/stdout.cancel2.txt"
             failed=$((failed + 1))
             failures+=("$name: the second cancel did not report the run as already closed")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # The run's history ends with a terminal bookend. Without it the run
@@ -3071,7 +3170,8 @@ run_scenario_body() {
             head -20 "$root/events.after-cancel.txt" | sed 's/^/       | /'
             failed=$((failed + 1))
             failures+=("$name: the closed run has no terminal bookend")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # The verdict is the cancel's: the run that died could not say anything
@@ -3085,7 +3185,8 @@ run_scenario_body() {
     if [[ "$events_refusal" != "" ]]; then
         if ! check_events_refusal "$name" "$root" "$events_refusal" \
             code verdict_stdout verdict_stderr verdict_is_run; then
-            return
+            phase_failed=1
+            return 0
         fi
     fi
 
@@ -3105,7 +3206,8 @@ run_scenario_body() {
             show_printed "$root/stderr.txt"
             failed=$((failed + 1))
             failures+=("$name: the scenario run exited $code")
-            return
+            phase_failed=1
+            return 0
         fi
 
         local run_id=""
@@ -3119,7 +3221,8 @@ run_scenario_body() {
             printf 'FAIL %-52s the run left no run id, so there is no history to read\n' "$name"
             failed=$((failed + 1))
             failures+=("$name: the run left no run id")
-            return
+            phase_failed=1
+            return 0
         fi
 
         local resume_kind="${events_resume%% *}"
@@ -3128,7 +3231,8 @@ run_scenario_body() {
             printf 'FAIL %-52s events-resume needs <kind> <limit>, got: %s\n' "$name" "$events_resume"
             failed=$((failed + 1))
             failures+=("$name: events-resume needs <kind> <limit>")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # The truth: the whole history of that kind, read in one go.
@@ -3139,7 +3243,8 @@ run_scenario_body() {
             printf 'FAIL %-52s the full read exited %s\n' "$name" "$read_code"
             failed=$((failed + 1))
             failures+=("$name: the full read exited $read_code")
-            return
+            phase_failed=1
+            return 0
         fi
         expected="$(printf '%s' "$expected" | tr -s ' ' | sed 's/^ //;s/ $//')"
         if [[ -z "$expected" ]]; then
@@ -3147,7 +3252,8 @@ run_scenario_body() {
                 "$name" "$resume_kind"
             failed=$((failed + 1))
             failures+=("$name: the history holds no $resume_kind facts")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # The external client. Each page is a separate invocation: the
@@ -3170,7 +3276,8 @@ run_scenario_body() {
                 show_printed "$root/stderr.events-resume.txt"
                 failed=$((failed + 1))
                 failures+=("$name: a page read exited $read_code")
-                return
+                phase_failed=1
+                return 0
             fi
             next="$(grep -aoE 'evt-cursor-v1:[^ ]+' "$root/stderr.events-resume.txt" 2>/dev/null | tail -1 || true)"
             facts="$(printf '%s\n' "$page" | tail -n +2 | tr '\n' ' ')"
@@ -3211,7 +3318,8 @@ run_scenario_body() {
             fi
             failed=$((failed + 1))
             failures+=("$name: the external reader lost or repeated facts while resuming")
-            return
+            phase_failed=1
+            return 0
         fi
     fi
 
@@ -3236,7 +3344,8 @@ run_scenario_body() {
             printf 'FAIL %-52s the run left no run id, so there is no history to read\n' "$name"
             failed=$((failed + 1))
             failures+=("$name: the run left no run id")
-            return
+            phase_failed=1
+            return 0
         fi
 
         local sv_code=0
@@ -3248,7 +3357,8 @@ run_scenario_body() {
             show_printed "$root/stderr.step-verdict.txt"
             failed=$((failed + 1))
             failures+=("$name: reading the step terminals exited $sv_code")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # Each terminal event, read as "<step>=<verdict>". A terminal event that
@@ -3276,7 +3386,8 @@ run_scenario_body() {
             printf '       | delivered: %s\n' "$sv_delivered_sorted"
             failed=$((failed + 1))
             failures+=("$name: the external reader could not read the step verdicts")
-            return
+            phase_failed=1
+            return 0
         fi
     fi
 
@@ -3297,7 +3408,8 @@ run_scenario_body() {
             show_printed "$root/stderr.txt"
             failed=$((failed + 1))
             failures+=("$name: the scenario run exited $code")
-            return
+            phase_failed=1
+            return 0
         fi
 
         local follow_run_id=""
@@ -3311,7 +3423,8 @@ run_scenario_body() {
             printf 'FAIL %-52s the run left no run id, so there is no history to follow\n' "$name"
             failed=$((failed + 1))
             failures+=("$name: the run left no run id")
-            return
+            phase_failed=1
+            return 0
         fi
 
         local follow_kind="${events_follow%% *}"
@@ -3320,7 +3433,8 @@ run_scenario_body() {
             printf 'FAIL %-52s events-follow needs <kind> <seconds>, got: %s\n' "$name" "$events_follow"
             failed=$((failed + 1))
             failures+=("$name: events-follow needs <kind> <seconds>")
-            return
+            phase_failed=1
+            return 0
         fi
 
         local follow_code=0
@@ -3334,14 +3448,16 @@ run_scenario_body() {
             printf 'FAIL %-52s the follow with a filter never ended on a run that had finished\n' "$name"
             failed=$((failed + 1))
             failures+=("$name: the follow with a filter never ended")
-            return
+            phase_failed=1
+            return 0
         fi
         if [[ "$follow_code" != 0 ]]; then
             printf 'FAIL %-52s the follow with a filter exited %s\n' "$name" "$follow_code"
             show_printed "$root/stderr.events-follow.txt"
             failed=$((failed + 1))
             failures+=("$name: the follow with a filter exited $follow_code")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # The terminal fact is what ENDS the follow; the filter still decides what is delivered.
@@ -3349,14 +3465,16 @@ run_scenario_body() {
             printf 'FAIL %-52s the follow delivered a fact the filter excluded\n' "$name"
             failed=$((failed + 1))
             failures+=("$name: the follow delivered a fact the filter excluded")
-            return
+            phase_failed=1
+            return 0
         fi
         if ! grep -q "\"kind\":\"$follow_kind\"" "$root/stdout.events-follow.txt"; then
             printf 'FAIL %-52s the follow delivered no %s fact, so it ended without following anything\n' \
                 "$name" "$follow_kind"
             failed=$((failed + 1))
             failures+=("$name: the follow delivered no $follow_kind fact")
-            return
+            phase_failed=1
+            return 0
         fi
     fi
 
@@ -3384,7 +3502,8 @@ run_scenario_body() {
             printf 'FAIL %-52s the run left no run id, so there is no history to read\n' "$name"
             failed=$((failed + 1))
             failures+=("$name: the run left no run id")
-            return
+            phase_failed=1
+            return 0
         fi
 
         local fs_code=0
@@ -3396,7 +3515,8 @@ run_scenario_body() {
             show_printed "$root/stderr.failure-stage.txt"
             failed=$((failed + 1))
             failures+=("$name: reading the failure events exited $fs_code")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # Each failure event, read as "<step>=<stage>". A failure event that carries
@@ -3424,10 +3544,19 @@ run_scenario_body() {
             printf '       | delivered: %s\n' "$fs_delivered_sorted"
             failed=$((failed + 1))
             failures+=("$name: the external reader could not attribute the failure to its stage")
-            return
+            phase_failed=1
+            return 0
         fi
     fi
 
+}
+
+# --- What the run PROVED -----------------------------------------------
+#
+# The comparisons that turn a run into a verdict: the exit code, the words
+# on the wire, the order of the facts, and the workspace the run left
+# behind.
+scenario_verify() {
     local label="$name"
     if [[ "$recover" == 1 ]]; then
         label="$name (recover)"
@@ -3497,7 +3626,8 @@ run_scenario_body() {
         "$expect_exit" "$expect_outcome" expect_stdout expect_stderr expect_transcript "$root"; then
         failed=$((failed + 1))
         failures+=("$label: $check_detail")
-        return
+        phase_failed=1
+        return 0
     fi
 
     # The volatile path, when the scenario ran it. Both paths are held to the
@@ -3513,7 +3643,8 @@ run_scenario_body() {
             "$expect_exit" "$expect_outcome" expect_stdout expect_stderr expect_transcript "$root"; then
             failed=$((failed + 1))
             failures+=("$label (volatile): $check_detail")
-            return
+            phase_failed=1
+            return 0
         fi
 
         # The two worlds, one against the other. Each one met the expectations
@@ -3524,7 +3655,8 @@ run_scenario_body() {
             "$label" "$expect_exit" "$verdict_is_run" "$root"; then
             failed=$((failed + 1))
             failures+=("$label: $world_detail")
-            return
+            phase_failed=1
+            return 0
         fi
     fi
 
@@ -3547,14 +3679,16 @@ run_scenario_body() {
                 | sed 's/^/       | /' | head -10
             failed=$((failed + 1))
             failures+=("$name: the resumed run changed the workspace")
-            return
+            phase_failed=1
+            return 0
         fi
     fi
 
     # The clock has the last word even here: a scenario that ran out of it
     # did not check its guarantee, so the body does not get to say "ok".
     if [[ -f "$clock_marker" ]]; then
-        return
+        phase_failed=1
+        return 0
     fi
 
     # What this row COMPARED, next to what it ran. A green that does not say

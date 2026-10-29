@@ -116,7 +116,7 @@ class CliVerbInventoryTest {
                 "the help describes '$spelling' with another text",
             )
             assertTrue(
-                CliParser.parse(arrayOf(spelling, "/tmp/pipelinek-verification-script.kts")) is CliParseResult.Parsed,
+                CliExecutionParser.parse(arrayOf(spelling, "/tmp/pipelinek-verification-script.kts")) is CliParseResult.Parsed,
                 "the parser refuses the command '$spelling' that the help names",
             )
         }

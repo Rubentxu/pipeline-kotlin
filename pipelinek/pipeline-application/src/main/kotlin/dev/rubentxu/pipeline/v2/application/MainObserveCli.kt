@@ -69,7 +69,7 @@ object MainObserveCli {
         // only place that can tell the run id from an option's value. The verb reads the run
         // id from the parsed query instead of from `args[0]`, and the request is therefore
         // the same one whether the operator wrote the run id before the options or after.
-        val parsed = when (val result = CliParser.parseObservation(args)) {
+        val parsed = when (val result = CliObservationParser.parse(args)) {
             is ObservationParseResult.Parsed -> result
             is ObservationParseResult.Rejected -> {
                 // The refusal is rendered by the ONE mapping from an error to a

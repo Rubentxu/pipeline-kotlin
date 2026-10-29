@@ -71,7 +71,7 @@ class CursorPlaneSeparationTest {
     fun theConsoleVerbRefusesAnEventTokenWithATypedRefusal() {
         val eventToken = EventCursor("run-1", 7L).encode()
 
-        val result = CliParser.parseConsole(
+        val result = CliConsoleParser.parse(
             arrayOf("--control-dir", "/control", "run-1", "op-1", "--after-cursor", eventToken),
         )
 

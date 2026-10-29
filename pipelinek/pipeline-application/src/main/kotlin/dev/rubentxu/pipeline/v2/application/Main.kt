@@ -145,7 +145,7 @@ fun main(args: Array<String>) {
         return
     }
 
-    val config = when (val parsed = CliParser.parse(args)) {
+    val config = when (val parsed = CliExecutionParser.parse(args)) {
         is CliParseResult.Parsed -> parsed.flags
         is CliParseResult.Rejected -> {
             // Render the rejection through the ONE mapping that already carries a human

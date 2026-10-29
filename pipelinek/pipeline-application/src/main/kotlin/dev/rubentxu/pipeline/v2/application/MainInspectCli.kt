@@ -565,7 +565,7 @@ object MainInspectCli {
      * entry point. Both return the same typed [InspectParseResult].
 */
     @Suppress("CyclomaticComplexMethod")
-    fun parseInspect(args: Array<String>): InspectParseResult = CliParser.parseInspect(args)
+    fun parseInspect(args: Array<String>): InspectParseResult = CliInspectParser.parse(args)
 
     /**
      * Report the RUN's lifecycle state, read through the published

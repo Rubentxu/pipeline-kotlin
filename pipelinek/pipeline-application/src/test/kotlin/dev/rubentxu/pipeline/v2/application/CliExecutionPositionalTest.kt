@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test
  *
  * ## Why this instrument
  *
- * [CliParser.parse] is pure: it opens nothing, reads nothing and writes
+ * [CliExecutionParser.parse] is pure: it opens nothing, reads nothing and writes
  * nothing, and it answers with a typed outcome. The cheapest instrument that
  * can fail is to call it and read that outcome — no process, no filesystem, no
  * clock.
@@ -42,46 +42,46 @@ import org.junit.jupiter.api.Test
  * [CliErrorRenderingTest]. The exit code and the stderr of the binary belong
  * to the CLI as a whole, and their measurement belongs to the distribution.
  */
-class CliParserPositionalTest {
+class CliExecutionPositionalTest {
 
     @Test
     fun `run refuses the positional argument it does not own`() {
-        val result = CliParser.parse(arrayOf("run", "s.pipeline.kts", "extra-arg"))
+        val result = CliExecutionParser.parse(arrayOf("run", "s.pipeline.kts", "extra-arg"))
 
         assertEquals(CliParseResult.Rejected(CliError.TooManyPositionals("extra-arg")), result)
     }
 
     @Test
     fun `validate refuses the positional argument it does not own`() {
-        val result = CliParser.parse(arrayOf("validate", "s.pipeline.kts", "extra-arg"))
+        val result = CliExecutionParser.parse(arrayOf("validate", "s.pipeline.kts", "extra-arg"))
 
         assertEquals(CliParseResult.Rejected(CliError.TooManyPositionals("extra-arg")), result)
     }
 
     @Test
     fun `an option before the script path does not change the arity`() {
-        val result = CliParser.parse(arrayOf("run", "--db", "/tmp/pipelinek.db", "s.pipeline.kts", "extra-arg"))
+        val result = CliExecutionParser.parse(arrayOf("run", "--db", "/tmp/pipelinek.db", "s.pipeline.kts", "extra-arg"))
 
         assertEquals(CliParseResult.Rejected(CliError.TooManyPositionals("extra-arg")), result)
     }
 
     @Test
     fun `the request that owns exactly one positional argument is still admitted`() {
-        val result = CliParser.parse(arrayOf("run", "s.pipeline.kts"))
+        val result = CliExecutionParser.parse(arrayOf("run", "s.pipeline.kts"))
 
         assertTrue(result is CliParseResult.Parsed, result.toString())
     }
 
     @Test
     fun `a trailing option is still the refusal it was`() {
-        val result = CliParser.parse(arrayOf("run", "s.pipeline.kts", "--format", "text"))
+        val result = CliExecutionParser.parse(arrayOf("run", "s.pipeline.kts", "--format", "text"))
 
         assertEquals(CliParseResult.Rejected(CliError.TrailingOption("--format")), result)
     }
 
     @Test
     fun `a request carrying a trailing option and a trailing positional names the option first`() {
-        val result = CliParser.parse(arrayOf("run", "s.pipeline.kts", "extra-arg", "--format", "text"))
+        val result = CliExecutionParser.parse(arrayOf("run", "s.pipeline.kts", "extra-arg", "--format", "text"))
 
         assertEquals(CliParseResult.Rejected(CliError.TrailingOption("--format")), result)
     }

@@ -18,7 +18,7 @@ import java.io.PrintStream
  *
  * This is not a new rule invented here: `events`, `console` and `operations`
  * already read the run id in any position, and the CLI's own parsers
- * ([CliParser.parseEvents], [CliParser.parseConsole]) collect it as the first
+ * ([CliEventsParser.parse], [CliConsoleParser.parse]) collect it as the first
  * positional wherever it appears. The four verbs this file exercises read it
  * from `args[0]` instead, so a request that wrote the run id AFTER an option
  * was answered "a run id is required" — a claim about an argument the operator

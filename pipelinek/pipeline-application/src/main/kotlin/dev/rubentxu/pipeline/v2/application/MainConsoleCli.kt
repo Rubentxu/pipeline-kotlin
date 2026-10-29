@@ -889,7 +889,7 @@ object MainConsoleCli {
         }
     }
 
-    fun main(args: Array<String>): Int = when (val admitted = CliParser.parseConsole(args)) {
+    fun main(args: Array<String>): Int = when (val admitted = CliConsoleParser.parse(args)) {
         is ConsoleCliParseResult.Rejected -> {
             System.err.println(renderConsoleCliRefusal(admitted.refusal))
             2

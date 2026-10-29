@@ -205,7 +205,7 @@ object MainEventsCli {
         // the translation, exactly as before. Refusal of the data-plane read (a different concern, the
         // one [MainEventsCli.reportRefusals] emits on stdout / stderr as `evt-refusal-v1:` /
         // `evt-refusals-v1:`) is downstream of this and unchanged.
-        val parsed = CliParser.parseEvents(args)
+        val parsed = CliEventsParser.parse(args)
         if (parsed is EventsCliParseResult.Rejected) {
             System.err.println("Error: ${parsed.reason}")
             return 2

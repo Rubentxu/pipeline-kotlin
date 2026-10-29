@@ -10,9 +10,6 @@
     <ID>CyclomaticComplexMethod:Main.kt:fun main</ID>
     <ID>CyclomaticComplexMethod:PluginAdmissionGate.kt:PluginAdmissionGate$fun admitThenLoad: PluginAdmissionResult</ID>
     <ID>CyclomaticComplexMethod:SimplePipelineCompiler.kt:SimplePipelineCompiler$override fun compile: CompileResult</ID>
-    <ID>DoubleMutabilityForCollection:CliParser.kt:CliParser$var kinds: MutableSet&lt;String&gt; = LinkedHashSet()</ID>
-    <ID>DoubleMutabilityForCollection:CliParser.kt:CliParser$var stages: MutableSet&lt;String&gt; = LinkedHashSet()</ID>
-    <ID>DoubleMutabilityForCollection:CliParser.kt:CliParser$var steps: MutableSet&lt;String&gt; = LinkedHashSet()</ID>
     <ID>ImplicitDefaultLocale:Main.kt:" %-13s %s\n".format(verb, summary)</ID>
     <ID>ImplicitDefaultLocale:Main.kt:" %-28s %s\n".format(name, purpose)</ID>
     <ID>ImplicitDefaultLocale:PluginManifestResourceReader.kt:PluginManifestResourceReader$"%02x".format(it)</ID>
@@ -30,11 +27,6 @@
     <ID>LongParameterList:BodyExecutionEngine.kt:BodyExecutionEngine$suspend fun executeWaitUntilInline: StepOutcome</ID>
     <ID>LongParameterList:BodyExecutionEngine.kt:BodyExecutionEngine$suspend fun invokeBodyChildren: StepOutcome</ID>
     <ID>LongParameterList:CanonicalDurableRunCoordinator.kt:CanonicalDurableRunCoordinator</ID>
-    <ID>LongParameterList:CliParser.kt:CliParser$private fun consoleAdmitFollowFrames: ConsoleCliParseResult</ID>
-    <ID>LongParameterList:CliParser.kt:CliParser$private fun consoleAdmitFramesFiltered: ConsoleCliParseResult</ID>
-    <ID>LongParameterList:CliParser.kt:CliParser$private fun consoleDecideVerb: ConsoleCliParseResult</ID>
-    <ID>LongParameterList:CliParser.kt:CliParser$private fun consoleValidate: ConsoleCliParseResult</ID>
-    <ID>LongParameterList:CliParser.kt:ParseState</ID>
     <ID>LongParameterList:CompositionRoot.kt:internal fun runCanonicalPipeline: RunOutcome</ID>
     <ID>LongParameterList:MainScriptedSupport.kt:internal fun runScriptedFrontend: RunOutcome?</ID>
     <ID>LongParameterList:RetryEngine.kt:RetryEngine</ID>
@@ -137,7 +129,6 @@
     <ID>UnusedVariable:OperatorTrustDatabase.kt:JsonObjectCursor$val esc = source[pos++]</ID>
     <ID>UnusedVariable:RunLifecycleEngine.kt:RunLifecycleEngine$val o = outcome</ID>
     <ID>UnusedVariable:StepDispatchEngine.kt:StepDispatchEngine$var outcome: StepOutcome = StepOutcome.Success</ID>
-    <ID>UseCheckOrError:CliParser.kt:CliParser.ResolvedRunAxis.Admitted$throw IllegalStateException("admitted")</ID>
     <ID>UseCheckOrError:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$throw IllegalStateException( "Workflow-control scope '$scopeToken' cannot compile structured step '${step.name}' " + "into its shell wrapper; only sh/echo/writeFile are embeddable and " + "catchError/warnError/unstable are rewritten. Refusing to emit a silent shell comment.", )</ID>
     <ID>UseCheckOrError:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$throw IllegalStateException( "buildShellScript cannot embed structured step '${step.name}' into a " + "workflow-control shell wrapper; the pre-compiler rewrite must project it. " + "Refusing to emit a silent shell comment.", )</ID>
     <ID>UseCheckOrError:ExternalEventDefinitionDiscovery.kt:ExternalEventDefinitionDiscovery$throw IllegalStateException( "Event definition contributor '${contributor.id}' declared an invalid " + "event definition: ${outcome.problems.joinToString("; ")}. " + "Aborting composition.", )</ID>
@@ -177,7 +168,6 @@
     <ID>UseRequire:RunIdDirectory.kt:RunIdDirectory$throw IllegalArgumentException( "Recorded run id for this pipeline definition is blank; " + "delete the corrupted record $file or run without --resume" )</ID>
     <ID>UselessCallOnNotNull:DslCompiledPipelineCompiler.kt:DslCompiledPipelineCompiler$listOfNotNull( emitStep( stepId = "$parentToken/unstable-$occurrence", eventKind = "StageMarkedUnstable", payload = buildJsonObject { put("message", message) }, ), OpaqueStepNode( id = StepId("$parentToken/unstable-exit-0-$occurrence"), pluginStepId = PluginStepId("core.sh"), payload = VersionedStepPayload( PAYLOAD_SCHEMA_VERSION, shellPayload("exit 0", isScriptBlock = false, returnStdout = false), ), ), )</ID>
     <ID>VarCouldBeVal:BodyExecutionEngine.kt:BodyExecutionEngine$var contextInBody = context</ID>
-    <ID>VarCouldBeVal:CliParser.kt:CliParser$var limit = EVENTS_DEFAULT_LIMIT</ID>
     <ID>VarCouldBeVal:ParallelStageEngine.kt:ParallelStageEngine$var outcome: StepOutcome = StepOutcome.Success</ID>
     <ID>VarCouldBeVal:StepDispatchEngine.kt:StepDispatchEngine$var contextInBody = executionContext</ID>
     <ID>VarCouldBeVal:StepDispatchEngine.kt:StepDispatchEngine$var outcome: StepOutcome = StepOutcome.Success</ID>

@@ -25,21 +25,46 @@
 # and row B states the other half of the same fact: within a line, the
 # previously published SDK still loads.
 #
-# What the check does NOT do: it does not rebuild the candidate, it does not
-# touch the repository's build outputs (the plugin is built in an isolated copy
-# of the plugin sources), and it does not publish anything. It reads bytes and
-# runs them.
+# Two more rows, about the ABI the release PUBLISHES rather than about a plugin
+# that loads:
+#   D  the tree's own committed baseline   -> `apiCheck` accepts the surface
+#   E  the previously PUBLISHED artifact   -> the candidate's published surface
+#                                               carries everything the previous
+#                                               release published
+# D and E are two DIFFERENT readings and they are reported separately, because
+# they answer two different questions and only one of them can be satisfied by
+# a rewrite of a file in this repository:
+#   D compares the tree against `<module>/api/<module>.api`, a file THIS tree
+#     commits. Rewriting that file makes D green whatever the published surface
+#     does — so D alone certifies the rewrite, not the artifact.
+#   E compares the candidate's PUBLISHED artifact against the artifact the
+#     previous release published. Neither side is a file in this tree, so no
+#     rewrite here can satisfy it.
+# A release that ran only D would certify the rewrite; a release that ran only
+# E would miss a break inside a module this tree never publishes. Both run, and
+# a red row in either stops the publication.
+#
+# What the check does NOT do: it does not rebuild the candidate distribution, it
+# does not publish anything, and it does not modify any tracked file. It DOES
+# run the repository's own Gradle build for rows D and E, which writes under the
+# build directory and reads the tree's committed baselines. The plugin of rows
+# A, B and C is still built in an isolated copy of the plugin sources, so the
+# repository's own build output is never the artifact those rows measure.
+# It reads bytes and runs them.
 #
 # Usage:
 #   verify-external-compatibility.sh --candidate-zip <path> --candidate-sdk-zip <path> \
-#       --candidate-train <train> [--baseline-tag <tag>] [--older-tag <tag>] [--out <file>]
+#       --candidate-train <train> [--baseline-tag <tag>] [--older-tag <tag>] \
+#       [--previous-tag <tag>] [--out <file>]
 #
 # --baseline-tag and --older-tag default to the most recent published release on
-# the same line and on a different line respectively. A row whose baseline does
-# not exist is SKIPPED with its reason stated; a row whose baseline exists but
-# cannot be downloaded or verified is FAILED. The difference matters: "there is
-# nothing to compare against" is a fact, "the comparison could not be made" is
-# a broken instrument.
+# the same line and on a different line respectively. --previous-tag names the
+# release row E compares against; it defaults to the most recently PUBLISHED
+# release that carries a version other than the candidate's. A row whose
+# baseline does not exist is SKIPPED with its reason stated; a row whose
+# baseline exists but cannot be downloaded or verified is FAILED. The
+# difference matters: "there is nothing to compare against" is a fact, "the
+# comparison could not be made" is a broken instrument.
 
 set -Eeuo pipefail
 
@@ -50,6 +75,7 @@ CANDIDATE_SDK_ZIP=""
 CANDIDATE_TRAIN=""
 BASELINE_TAG=""
 OLDER_TAG=""
+PREVIOUS_TAG=""
 OUT_FILE=""
 
 usage() {
@@ -67,6 +93,7 @@ while [[ $# -gt 0 ]]; do
         --candidate-train)  CANDIDATE_TRAIN="${2:-}"; shift 2 ;;
         --baseline-tag)     BASELINE_TAG="${2:-}"; shift 2 ;;
         --older-tag)        OLDER_TAG="${2:-}"; shift 2 ;;
+        --previous-tag)     PREVIOUS_TAG="${2:-}"; shift 2 ;;
         --out)              OUT_FILE="${2:-}"; shift 2 ;;
         -h|--help)          usage ;;
         *)
@@ -113,6 +140,30 @@ trap cleanup EXIT
 STARTED_AT="$(date +%s)"
 
 log() { printf 'external-compat: %s\n' "$*"; }
+
+# The reason a row failed, flattened into one line so it can travel inside the
+# row's own line of the report. A row that says only "FAILED" sends the reader
+# to a log file that the run has already deleted; the reason has to be in the
+# report or it is not there at all.
+tail_reason() {
+    local file="$1"
+    local lines
+    # The instrument's own verdict line, when the instrument wrote one. The
+    # tail of the log is the BUILD's tail, and the build's tail says "BUILD
+    # FAILED", which is not a reason: it names the symptom and not the cause.
+    # The cause is what the instrument said when it refused.
+    lines="$(grep '^\[release\] FATAL' "$file" 2>/dev/null | tail -1 || true)"
+    if [[ -z "$lines" ]]; then
+        lines="$(grep 'API check failed for project' "$file" 2>/dev/null | tail -1 || true)"
+    fi
+    if [[ -z "$lines" ]]; then
+        lines="$(grep '^\[release\]' "$file" 2>/dev/null | tail -3 || true)"
+    fi
+    if [[ -z "$lines" ]]; then
+        lines="$(grep -v '^[[:space:]]*$' "$file" 2>/dev/null | tail -3 || true)"
+    fi
+    printf '%s' "${lines//$'\n'/ | }"
+}
 
 # ----------------------------------------------------------------------------
 # 1. The candidate's own bytes: the distribution the release is about to
@@ -376,7 +427,7 @@ train_of_tag() {
     printf '%s' "${tag%-rc[0-9]*}"
 }
 
-if [[ -z "$BASELINE_TAG" || -z "$OLDER_TAG" ]]; then
+if [[ -z "$BASELINE_TAG" || -z "$OLDER_TAG" || -z "$PREVIOUS_TAG" ]]; then
     if ! command -v gh >/dev/null; then
         printf 'verify-external-compatibility: gh is required to find the published releases\n' >&2
         exit 2
@@ -402,9 +453,40 @@ if [[ -z "$BASELINE_TAG" || -z "$OLDER_TAG" ]]; then
             fi
         done <<< "$RELEASE_TAGS"
     fi
+    if [[ -z "$PREVIOUS_TAG" ]]; then
+        # The previous side of row E: the last release that was PUBLISHED, in
+        # publication order, on a train other than the candidate's.
+        #
+        # `publishedAt`, and not the order the releases were created in: a
+        # draft carries no publication date and is not a published release,
+        # and a release created but never published is not one either.
+        #
+        # The candidate's own train is excluded, and the reason is the
+        # exception ledger's vocabulary rather than a preference. An RC and
+        # its stable ship ONE published version, and an approval names a
+        # version: an entry that says "0.92.0" cannot say whether it excuses
+        # a break for the RC or for the stable. Comparing two artifacts of
+        # one version would ask the ledger a question it cannot answer, so
+        # the comparison moves back to the last release of another train.
+        # That diff is broader, and broader fails closed: it finds more
+        # breaks, it hides none.
+        PUBLISHED_BY_DATE="$(gh release list --limit 100 --json tagName,publishedAt,isDraft \
+            --jq '[.[] | select(.isDraft == false and .publishedAt != null)]
+                   | sort_by(.publishedAt) | reverse | .[].tagName' 2>/dev/null || true)"
+        if [[ -z "$PUBLISHED_BY_DATE" ]]; then
+            printf 'verify-external-compatibility: no published release could be listed by publication date\n' >&2
+            exit 1
+        fi
+        while IFS= read -r candidate_tag; do
+            if [[ "$(train_of_tag "$candidate_tag")" != "$CANDIDATE_TRAIN" ]]; then
+                PREVIOUS_TAG="$candidate_tag"
+                break
+            fi
+        done <<< "$PUBLISHED_BY_DATE"
+    fi
 fi
 
-log "candidate train=$CANDIDATE_TRAIN baseline=${BASELINE_TAG:-<none>} older=${OLDER_TAG:-<none>}"
+log "candidate train=$CANDIDATE_TRAIN baseline=${BASELINE_TAG:-<none>} older=${OLDER_TAG:-<none>} previous=${PREVIOUS_TAG:-<none>}"
 
 # ----------------------------------------------------------------------------
 # 5. Row A: the candidate's own published SDK.
@@ -508,7 +590,128 @@ else
 fi
 
 # ----------------------------------------------------------------------------
-# 8. The verdict. One line, and it says what ran and what did not.
+# 8. Row D: the tree against its OWN committed baseline.
+#
+#    `apiCheck` compares the tree against `<module>/api/<module>.api`, a file
+#    this repository commits. That is the reading that says "the tree still
+#    matches the promise it makes about its own public surface", and it is a
+#    reading the release gate was NOT making: `:pipeline-release:releaseGate`
+#    does not depend on `check`, so it never ran `apiCheck` at all.
+#
+#    It is reported SEPARATELY from row E because it answers a different
+#    question AND it can be satisfied by a rewrite: rewriting the committed
+#    baseline makes this row green whatever the published surface does. A
+#    publication that ran only this row would certify the rewrite.
+# ----------------------------------------------------------------------------
+
+record_row "D" "tree" "$CANDIDATE_TRAIN"
+ROW_D_STATUS=0
+"$repo_root/pipelinek/gradlew" --no-daemon -p "$repo_root/pipelinek" apiCheck \
+    > "$WORK/row-d.log" 2>&1 || ROW_D_STATUS=$?
+if [[ "$ROW_D_STATUS" == "0" ]]; then
+    ROW_VERDICTS+=("PASS")
+    ROW_DETAILS+=("the tree's committed API baseline accepts the tree's public surface")
+else
+    ROW_VERDICTS+=("FAIL")
+    ROW_DETAILS+=("apiCheck refused the tree against its own committed baseline: $(tail_reason "$WORK/row-d.log")")
+fi
+
+# ----------------------------------------------------------------------------
+# 9. Row E: the candidate's PUBLISHED surface against the surface the PREVIOUS
+#    release published.
+#
+#    Neither side of this comparison is a file in this tree. The candidate's
+#    side is the SDK archive this release publishes; the previous side is the
+#    SDK archive that release published, downloaded and verified against the
+#    digest that release published. So no rewrite of a committed file here can
+#    make this row green — which is exactly what row D cannot say about
+#    itself.
+#
+#    The comparison is decided by the exception ledger: a break that a ledger
+#    entry approves — naming the version it applies to, the exact removals it
+#    covers and the evidence behind it — is a break the release may ship. A
+#    break with no such entry stops the publication, and the key of each one
+#    is printed so that the operator who has to approve it does not have to
+#    reconstruct it by hand.
+# ----------------------------------------------------------------------------
+
+record_row "E" "${PREVIOUS_TAG:-<none>}" "<pending>"
+if [[ -z "$PREVIOUS_TAG" ]]; then
+    ROW_SDK_VERSIONS[${#ROW_SDK_VERSIONS[@]}-1]="<none>"
+    ROW_VERDICTS+=("SKIP")
+    ROW_DETAILS+=("no published release on another train exists to compare the published surface against")
+elif [[ -z "${CANDIDATE_SDK_VERSION:-}" ]]; then
+    ROW_SDK_VERSIONS[${#ROW_SDK_VERSIONS[@]}-1]="<none>"
+    ROW_VERDICTS+=("FAIL")
+    ROW_DETAILS+=("the candidate's own published SDK states no version, so there is no candidate surface to compare")
+else
+    PREVIOUS_SDK_REPO="$(download_published_sdk "$PREVIOUS_TAG" "$WORK/sdk-previous" || true)"
+    if [[ -z "$PREVIOUS_SDK_REPO" ]]; then
+        ROW_SDK_VERSIONS[${#ROW_SDK_VERSIONS[@]}-1]="<none>"
+        ROW_VERDICTS+=("FAIL")
+        ROW_DETAILS+=("the SDK of $PREVIOUS_TAG could not be downloaded or verified")
+    else
+        PREVIOUS_SDK_VERSION="$(sdk_version_from_layout "$PREVIOUS_SDK_REPO" || true)"
+        ROW_SDK_VERSIONS[${#ROW_SDK_VERSIONS[@]}-1]="$PREVIOUS_SDK_VERSION"
+        if [[ -z "$PREVIOUS_SDK_VERSION" ]]; then
+            ROW_VERDICTS+=("FAIL")
+            ROW_DETAILS+=("the SDK of $PREVIOUS_TAG states no version in its layout")
+        else
+            # The interpreter's exit code is the decision, and the build does
+            # not carry it: Gradle turns every non-zero exit into the same
+            # failure. The task writes the code where this script can read it.
+            ROW_E_VERDICT_FILE="$WORK/row-e-exit-code.txt"
+            ROW_E_STATUS=0
+            "$repo_root/pipelinek/gradlew" --no-daemon -p "$repo_root/pipelinek" \
+                :pipeline-release:publishedApiCompatibility \
+                "-PcandidateArtifactRepo=$CANDIDATE_SDK_REPO" \
+                "-PcandidateArtifactVersion=$CANDIDATE_SDK_VERSION" \
+                "-PpreviousArtifactRepo=$PREVIOUS_SDK_REPO" \
+                "-PpreviousArtifactVersion=$PREVIOUS_SDK_VERSION" \
+                "-PpublishedApiVerdictFile=$ROW_E_VERDICT_FILE" \
+                > "$WORK/row-e.log" 2>&1 || ROW_E_STATUS=$?
+            if [[ ! -f "$ROW_E_VERDICT_FILE" ]]; then
+                # No verdict at all. The comparison did not happen, and a
+                # comparison that did not happen certifies nothing: this is a
+                # broken instrument, not a compatible candidate.
+                ROW_VERDICTS+=("FAIL")
+                ROW_DETAILS+=("the published-surface comparison produced no verdict: $(tail_reason "$WORK/row-e.log")")
+            else
+                ROW_E_EXIT="$(tr -d '[:space:]' < "$ROW_E_VERDICT_FILE")"
+                case "$ROW_E_EXIT" in
+                    0)
+                        if [[ "$ROW_E_STATUS" == "0" ]]; then
+                            ROW_VERDICTS+=("PASS")
+                            ROW_DETAILS+=("the published surface carries everything $PREVIOUS_TAG published")
+                        else
+                            # The comparison certified the candidate and the
+                            # build still failed. The two facts do not cancel
+                            # each other: a green comparison inside a red build
+                            # is not a green candidate.
+                            ROW_VERDICTS+=("FAIL")
+                            ROW_DETAILS+=("the comparison reported a compatible surface but the build failed: $(tail_reason "$WORK/row-e.log")")
+                        fi
+                        ;;
+                    1)
+                        ROW_VERDICTS+=("FAIL")
+                        ROW_DETAILS+=("the published surface breaks something $PREVIOUS_TAG published and no ledger entry approves it: $(tail_reason "$WORK/row-e.log")")
+                        ;;
+                    2)
+                        ROW_VERDICTS+=("FAIL")
+                        ROW_DETAILS+=("the two published surfaces could not be compared: $(tail_reason "$WORK/row-e.log")")
+                        ;;
+                    *)
+                        ROW_VERDICTS+=("FAIL")
+                        ROW_DETAILS+=("the published-surface comparison produced the unreadable verdict '$ROW_E_EXIT': $(tail_reason "$WORK/row-e.log")")
+                        ;;
+                esac
+            fi
+        fi
+    fi
+fi
+
+# ----------------------------------------------------------------------------
+# 10. The verdict. One line, and it says what ran and what did not.
 # ----------------------------------------------------------------------------
 
 ELAPSED=$(( $(date +%s) - STARTED_AT ))
@@ -529,9 +732,9 @@ else
 fi
 
 {
-    printf 'external-compatibility: %s rows=%s candidate=%s baseline=%s older=%s elapsed=%ss\n' \
+    printf 'external-compatibility: %s rows=%s candidate=%s baseline=%s older=%s previous=%s elapsed=%ss\n' \
         "$VERDICT" "$SUMMARY_ROWS" "$CANDIDATE_TRAIN" "${BASELINE_TAG:-<none>}" \
-        "${OLDER_TAG:-<none>}" "$ELAPSED"
+        "${OLDER_TAG:-<none>}" "${PREVIOUS_TAG:-<none>}" "$ELAPSED"
     for index in "${!ROW_NAMES[@]}"; do
         printf '  row %s source=%s sdk=%s verdict=%s %s\n' \
             "${ROW_NAMES[$index]}" "${ROW_SOURCES[$index]}" "${ROW_SDK_VERSIONS[$index]}" \

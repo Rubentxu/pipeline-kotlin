@@ -245,6 +245,132 @@ tasks.register<JavaExec>("candidateAdmission") {
 
 
 /**
+ * The second ABI reading: the candidate's PUBLISHED surface against the
+ * surface the PREVIOUS release published.
+ *
+ * `apiCheck` compares the tree against its own committed baseline
+ * (`<module>/api/<module>.api`). That baseline is a file in this repository,
+ * so a rewritten baseline makes `apiCheck` green while the published surface
+ * breaks: the gate would be certifying the rewrite instead of the artifact.
+ *
+ * This task reads two PUBLISHED artifacts instead — the candidate this release
+ * publishes and the artifact the previous release published. Neither side is a
+ * file in this tree, so no rewrite of a file here can satisfy it.
+ *
+ * The geometry — which repositories, which versions, which modules — is NOT
+ * recomputed here. It is read from the root build script through
+ * `rootProject.extra`, because the root build script is what names the sides
+ * and owns the module list; computing it in a second place would be a second
+ * answer to the same question, and a comparison whose two sides came from
+ * different answers would compare artifacts that were never named together.
+ *
+ * The decision itself lives in `PublishedApiCompatibility` (pure) and is
+ * applied by `PublishedApiCompatibilityMain` (the interpreter at the
+ * boundary). This task only resolves the paths, hands the arguments over and
+ * propagates the exit code; it re-derives no rule.
+ */
+tasks.register<JavaExec>("publishedApiCompatibility") {
+    group = "verification"
+    description = "compare the candidate's published API surface against the surface " +
+        "the previous release published."
+
+    val dumpDirs: Map<String, String> = (rootProject.extra["publishedApiDumpDirs"] as Map<*, *>)
+        .map { (side, dir) -> side.toString() to dir.toString() }
+        .toMap()
+    val versions: Map<String, String?> = (rootProject.extra["publishedApiVersions"] as Map<*, *>)
+        .map { (side, version) -> side.toString() to version?.toString() }
+        .toMap()
+    val modules: List<String> = (rootProject.extra["publishedApiModules"] as List<*>)
+        .map { it.toString() }
+    val ledger = rootProject.file("contract/published-contract-exceptions.json")
+
+    // Where the interpreter's own exit code is written. The caller owns the
+    // path, because the caller is the one that has to tell "the comparison
+    // found an unauthorized break" from "the comparison could not be made":
+    // Gradle collapses every failure into exit code 1, and those two are not
+    // the same fact. The difference decides whether the operator is looking at
+    // a defect in the candidate or at a broken instrument.
+    val verdictFile: File? = project.providers.gradleProperty("publishedApiVerdictFile")
+        .orNull
+        ?.let { project.file(it) }
+
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("dev.rubentxu.pipeline.v2.release.PublishedApiCompatibilityMainKt")
+
+    // The dumps are produced by the root build script's own tasks, one per
+    // side and per published module. They are named by path and not by
+    // reference, because this project is evaluated before the modules that
+    // publish later in the alphabetical order: a task reference resolved here
+    // would be a reference to a task that does not exist yet.
+    dependsOn(
+        modules.flatMap { module ->
+            listOf(":$module:candidateArtifactApiDump", ":$module:previousArtifactApiDump")
+        },
+    )
+
+    // The ledger is an input, not an argument: the decision depends on its
+    // bytes, and a task that carried only the path could consider itself up to
+    // date while the approvals changed underneath it.
+    inputs.file(ledger)
+    inputs.property("candidateVersion", versions["candidate"] ?: "")
+    inputs.property("previousVersion", versions["previous"] ?: "")
+
+    // The arguments are fixed while the task is CONFIGURED, not while it
+    // runs. A task whose arguments are set inside a `doFirst` cannot declare
+    // them as its inputs, and a verification that cannot see its own
+    // arguments cannot say what it verified.
+    args = listOf(
+        dumpDirs.getValue("candidate"),
+        dumpDirs.getValue("previous"),
+        versions["candidate"] ?: "",
+        versions["previous"] ?: "",
+        ledger.absolutePath,
+    ) + modules
+
+    doFirst {
+        val candidateVersion = versions["candidate"]
+        val previousVersion = versions["previous"]
+        if (candidateVersion.isNullOrBlank() || previousVersion.isNullOrBlank()) {
+            throw GradleException(
+                "publishedApiCompatibility needs both sides of the comparison named: " +
+                    "-PcandidateArtifactRepo/-PcandidateArtifactVersion and " +
+                    "-PpreviousArtifactRepo/-PpreviousArtifactVersion. Without them there is " +
+                    "nothing to compare, and a comparison that did not happen certifies nothing.",
+            )
+        }
+        // A verdict left behind by an earlier run is not this run's verdict.
+        // It is removed BEFORE the comparison starts, so a run that never
+        // reaches the interpreter leaves no verdict behind for a reader to
+        // mistake for one.
+        verdictFile?.delete()
+    }
+
+    // The interpreter's exit code is the decision, and it carries two facts
+    // that are not the same: 1 means "there is an unauthorized break", 2 means
+    // "the two surfaces could not be compared". Gradle turns every non-zero
+    // exit into the same build failure, which would collapse a defect in the
+    // candidate into an indistinguishable broken instrument. So the exit code
+    // is written where the caller can read it, and the build failure is
+    // raised afterwards.
+    isIgnoreExitValue = true
+    doLast {
+        val exitValue = executionResult.get().exitValue
+        if (verdictFile != null) {
+            verdictFile.parentFile?.mkdirs()
+            verdictFile.writeText("$exitValue\n")
+        }
+        if (exitValue != 0) {
+            throw GradleException(
+                "the published API comparison exited with $exitValue: 1 means an unauthorized " +
+                    "break against the previously published artifact, 2 means the two surfaces " +
+                    "could not be compared.",
+            )
+        }
+    }
+}
+
+
+/**
  * Build the SDK distribution ZIP and the SDK BOM JSON manifest.
  *  of the project's DISTRIBUTION-FIRST RELEASE POLICY requires both
  * `pipelinek-<v>.sdk.zip` and `pipelinek-bom-<v>.json` as exact release

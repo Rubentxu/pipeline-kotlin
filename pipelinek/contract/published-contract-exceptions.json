@@ -13,7 +13,14 @@
     "",
     "An entry is NOT permission to break anything silently. It is the receipt for a decision",
     "that was taken deliberately. A reader cannot judge whether the decision was wise; the entry",
-    "can only show that it was made, written down, and attached to a SHA."
+    "can only show that it was made, written down, and attached to a SHA.",
+    "",
+    "Some entries are DECIDABLE by machine, and those carry three more fields: the published",
+    "versions whose consumers they cover (applies_to_versions), the exact removals they approve",
+    "(authorized_removals, in the artifact's own spelling), and the evidence behind the decision",
+    "(evidence). An entry without those three approves nothing: it records that a break was",
+    "accepted, not WHICH break, for WHICH consumers, on WHAT evidence. The publication gate asks",
+    "this file about one removal at a time, and closes on all three."
   ],
   "entries": [
     {
@@ -344,7 +351,29 @@
         "What is NOT recorded here: the domain change that gives StepOutcome its canonical wire token. That one is purely additive - a new method and a new companion - and recording it would be a lie about what shipped, in a ledger whose whole purpose is to be the opposite."
       ],
       "removal_boundary": "n/a - the eight-argument StepFinished <init>, copy and copy$default, and the five-argument StepFinishedTyped <init>, copy and copy$default, are removed by THIS entry and are not coming back; the nine- and six-argument forms are the contract from this build onward. runtime.eventshape.v1 stays announced and not delivered: its `outcome` meant something else, and a consumer that negotiated it moves to the raw event lane - runtime.eventshape.v2, the id for the typed shape, is announced and not delivered since b4931a66b",
-      "supersedes": null
+      "supersedes": null,
+      "applies_to_versions": [
+        "0.62.0",
+        "0.63.0",
+        "0.64.0",
+        "0.65.0",
+        "0.66.0",
+        "0.67.0",
+        "0.68.0",
+        "0.69.0",
+        "0.70.0",
+        "0.71.0",
+        "0.72.0",
+        "0.73.0",
+        "0.74.0",
+        "0.75.0"
+      ],
+      "authorized_removals": [
+        "dev/rubentxu/pipeline/v2/events/StepFinished#<init>(Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;)V",
+        "dev/rubentxu/pipeline/v2/events/StepFinished#copy$default(Ldev/rubentxu/pipeline/v2/events/StepFinished;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/StepFinished;",
+        "dev/rubentxu/pipeline/v2/events/StepFinished#copy(Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;IILjava/lang/String;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/StepFinished;"
+      ],
+      "evidence": "Measured on the published SDK artifacts of the releases v0.62.0..v0.75.0: every one of them publishes these removals, and the candidate's published surface does not."
     },
     {
       "module": "pipeline-events",
@@ -368,7 +397,33 @@
         "What is NOT recorded here: the capability id `events.failurestage.v1` and the law of the harness that this stage made correlatable. The id is a new name in a catalogue, not a change to a published surface, and the law lives in the harness, whose contract is the event plane and not the event class. Recording them would be a lie about what shipped, in a ledger whose whole purpose is to be the opposite."
       ],
       "removal_boundary": "n/a - the nine-argument StepFailed <init>, copy and copy$default are removed by THIS entry and are not coming back; the ten-argument form is the contract from this build onward",
-      "supersedes": null
+      "supersedes": null,
+      "applies_to_versions": [
+        "0.62.0",
+        "0.63.0",
+        "0.64.0",
+        "0.65.0",
+        "0.66.0",
+        "0.67.0",
+        "0.68.0",
+        "0.69.0",
+        "0.70.0",
+        "0.71.0",
+        "0.72.0",
+        "0.73.0",
+        "0.74.0",
+        "0.75.0"
+      ],
+      "authorized_removals": [
+        "dev/rubentxu/pipeline/v2/events/StepFailed#<init>(Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;)V",
+        "dev/rubentxu/pipeline/v2/events/StepFailed#component5()I",
+        "dev/rubentxu/pipeline/v2/events/StepFailed#component6()Ljava/lang/String;",
+        "dev/rubentxu/pipeline/v2/events/StepFailed#component8()Ldev/rubentxu/pipeline/v2/domain/FailureKind;",
+        "dev/rubentxu/pipeline/v2/events/StepFailed#component9()Ljava/lang/String;",
+        "dev/rubentxu/pipeline/v2/events/StepFailed#copy$default(Ldev/rubentxu/pipeline/v2/events/StepFailed;Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/events/StepFailed;",
+        "dev/rubentxu/pipeline/v2/events/StepFailed#copy(Ljava/lang/String;Ljava/lang/String;JLjava/time/Instant;ILjava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/FailureKind;Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/events/StepFailed;"
+      ],
+      "evidence": "Measured on the published SDK artifacts of the releases v0.62.0..v0.75.0: every one of them publishes these removals, and the candidate's published surface does not."
     },
     {
       "module": "pipeline-events",
@@ -403,7 +458,28 @@
         "them. That leaves the published contract advertising states the product cannot enter, and the",
         "consumer still writes the branch."
       ],
-      "removal_boundary": "the two removed cases are not coming back under these names. A future policy that RELEASES event rows would need a case with a new name and a new id, because the fact it would name - a beginning that no longer exists - is not the fact these two named. Cancellation, if it ever needs to reach a consumer as a fact, is a different fact with a different name"
+      "removal_boundary": "the two removed cases are not coming back under these names. A future policy that RELEASES event rows would need a case with a new name and a new id, because the fact it would name - a beginning that no longer exists - is not the fact these two named. Cancellation, if it ever needs to reach a consumer as a fact, is a different fact with a different name",
+      "applies_to_versions": [
+        "0.62.0",
+        "0.63.0",
+        "0.64.0",
+        "0.65.0",
+        "0.66.0",
+        "0.67.0",
+        "0.68.0",
+        "0.69.0",
+        "0.70.0",
+        "0.71.0",
+        "0.72.0",
+        "0.73.0",
+        "0.74.0",
+        "0.75.0"
+      ],
+      "authorized_removals": [
+        "dev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal$Cancelled",
+        "dev/rubentxu/pipeline/v2/events/follow/EventFollowRefusal$RetentionLost"
+      ],
+      "evidence": "Measured on the published SDK artifacts of the releases v0.62.0..v0.75.0: every one of them publishes these removals, and the candidate's published surface does not."
     },
     {
       "module": "pipeline-output",
@@ -444,7 +520,33 @@
         "back to the last whole frame and re-frames the committed bytes), so a damaged log is a transient",
         "state a reader waits out, not a durable fault, and a durable refusal would have been a lie."
       ],
-      "removal_boundary": "the four removed cases are not coming back under these names. If the output plane ever gains a payload it parses, or a retention that releases part of a range rather than all of it, the fact it would name is a new case with a new name and a new id. The read-side twin of a retention gap is RetentionGap, which stays"
+      "removal_boundary": "the four removed cases are not coming back under these names. If the output plane ever gains a payload it parses, or a retention that releases part of a range rather than all of it, the fact it would name is a new case with a new name and a new id. The read-side twin of a retention gap is RetentionGap, which stays",
+      "applies_to_versions": [
+        "0.62.0",
+        "0.63.0",
+        "0.64.0",
+        "0.65.0",
+        "0.66.0",
+        "0.67.0",
+        "0.68.0",
+        "0.69.0",
+        "0.70.0",
+        "0.71.0",
+        "0.72.0",
+        "0.73.0",
+        "0.74.0",
+        "0.75.0"
+      ],
+      "authorized_removals": [
+        "dev/rubentxu/pipeline/v2/output/OutputRefusal#field:CORRUPT_REASON_MAX_LEN:I",
+        "dev/rubentxu/pipeline/v2/output/OutputRefusal#field:Companion:Ldev/rubentxu/pipeline/v2/output/OutputRefusal$Companion;",
+        "dev/rubentxu/pipeline/v2/output/OutputRefusal$Companion",
+        "dev/rubentxu/pipeline/v2/output/OutputRefusal$Corrupt",
+        "dev/rubentxu/pipeline/v2/output/OutputRefusal$FollowCancelled",
+        "dev/rubentxu/pipeline/v2/output/OutputRefusal$RangeLostRetention",
+        "dev/rubentxu/pipeline/v2/output/OutputRefusal$Unavailable"
+      ],
+      "evidence": "Measured on the published SDK artifacts of the releases v0.62.0..v0.75.0: every one of them publishes these removals, and the candidate's published surface does not."
     },
     {
       "module": "pipeline-domain",
@@ -466,7 +568,32 @@
         "The wire did NOT change shape. CompensationStarted.slot keeps its String form and changes its VALUE (from core.withEnv to the declared name), which S8 permits: the value is what says which action was compensated, and the kind never said that. The frozen event schema is untouched."
       ],
       "removal_boundary": "n/a — no member removed; this is an added member on a published interface and a parameter added with a default on two published data classes. The blast radius is the implementors of StepNode outside this repository, of which there are none: pipelinek-saga consumes the SDK through the DSL and never implements the IR node interface.",
-      "supersedes": null
+      "supersedes": null,
+      "applies_to_versions": [
+        "0.62.0",
+        "0.63.0",
+        "0.64.0",
+        "0.65.0",
+        "0.66.0",
+        "0.67.0",
+        "0.68.0",
+        "0.69.0",
+        "0.70.0",
+        "0.71.0",
+        "0.72.0",
+        "0.73.0",
+        "0.74.0",
+        "0.75.0"
+      ],
+      "authorized_removals": [
+        "dev/rubentxu/pipeline/v2/domain/BlockStepNode#<init>(Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Ljava/util/List;Lkotlin/jvm/internal/DefaultConstructorMarker;)V",
+        "dev/rubentxu/pipeline/v2/domain/BlockStepNode#copy-U8DtyPc$default(Ldev/rubentxu/pipeline/v2/domain/BlockStepNode;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Ljava/util/List;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/BlockStepNode;",
+        "dev/rubentxu/pipeline/v2/domain/BlockStepNode#copy-U8DtyPc(Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Ljava/util/List;)Ldev/rubentxu/pipeline/v2/domain/BlockStepNode;",
+        "dev/rubentxu/pipeline/v2/domain/OpaqueStepNode#<init>(Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;Lkotlin/jvm/internal/DefaultConstructorMarker;)V",
+        "dev/rubentxu/pipeline/v2/domain/OpaqueStepNode#copy-FemHWHM$default(Ldev/rubentxu/pipeline/v2/domain/OpaqueStepNode;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/OpaqueStepNode;",
+        "dev/rubentxu/pipeline/v2/domain/OpaqueStepNode#copy-FemHWHM(Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/VersionedStepPayload;)Ldev/rubentxu/pipeline/v2/domain/OpaqueStepNode;"
+      ],
+      "evidence": "Measured on the published SDK artifacts of the releases v0.62.0..v0.75.0: every one of them publishes these removals, and the candidate's published surface does not."
     },
     {
       "module": "pipeline-domain",
@@ -506,7 +633,29 @@
         "Nothing about the DURABLE WIRE changed: the new column is nullable, and a promise written by an older build keeps working and simply names no body."
       ],
       "removal_boundary": "the property may be deprecated once every durable promise in flight names a body; until then a promise that names none cannot be checked",
-      "supersedes": null
+      "supersedes": null,
+      "applies_to_versions": [
+        "0.63.0",
+        "0.64.0",
+        "0.65.0",
+        "0.66.0",
+        "0.67.0",
+        "0.68.0",
+        "0.69.0",
+        "0.70.0",
+        "0.71.0",
+        "0.72.0",
+        "0.73.0",
+        "0.74.0",
+        "0.75.0"
+      ],
+      "authorized_removals": [
+        "dev/rubentxu/pipeline/v2/domain/saga/CompensationDeclaration#<init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;IILkotlin/jvm/internal/DefaultConstructorMarker;)V",
+        "dev/rubentxu/pipeline/v2/domain/saga/CompensationDeclaration#<init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;ILkotlin/jvm/internal/DefaultConstructorMarker;)V",
+        "dev/rubentxu/pipeline/v2/domain/saga/CompensationDeclaration#copy-NN2O0IQ$default(Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDeclaration;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;IILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDeclaration;",
+        "dev/rubentxu/pipeline/v2/domain/saga/CompensationDeclaration#copy-NN2O0IQ(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationKind;I)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDeclaration;"
+      ],
+      "evidence": "Measured on the published SDK artifacts of the releases v0.63.0..v0.75.0: every one of them publishes these removals, and the candidate's published surface does not."
     },
     {
       "module": "pipeline-domain",
@@ -564,7 +713,26 @@
         "Nothing about the DURABLE WIRE changed: the divergence is a property of the ANSWER, not of the promise, and the promise's row keeps exactly the columns it had."
       ],
       "removal_boundary": "the property may be deprecated once every refusal that needs it carries the facts some other way; until then a diverged body has to be able to say which two bodies diverged",
-      "supersedes": null
+      "supersedes": null,
+      "applies_to_versions": [
+        "0.65.0",
+        "0.66.0",
+        "0.67.0",
+        "0.68.0",
+        "0.69.0",
+        "0.70.0",
+        "0.71.0",
+        "0.72.0",
+        "0.73.0",
+        "0.74.0",
+        "0.75.0"
+      ],
+      "authorized_removals": [
+        "dev/rubentxu/pipeline/v2/domain/saga/CompensationDirective$NeedsIntervention#<init>(Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;)V",
+        "dev/rubentxu/pipeline/v2/domain/saga/CompensationDirective$NeedsIntervention#copy$default(Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDirective$NeedsIntervention;Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDirective$NeedsIntervention;",
+        "dev/rubentxu/pipeline/v2/domain/saga/CompensationDirective$NeedsIntervention#copy(Ldev/rubentxu/pipeline/v2/domain/saga/CompensationObligation;Ldev/rubentxu/pipeline/v2/domain/saga/InterventionReason;)Ldev/rubentxu/pipeline/v2/domain/saga/CompensationDirective$NeedsIntervention;"
+      ],
+      "evidence": "Measured on the published SDK artifacts of the releases v0.65.0..v0.75.0: every one of them publishes these removals, and the candidate's published surface does not."
     },
     {
       "module": "pipeline-runtime-api",
@@ -604,7 +772,46 @@
         "Nothing about the DURABLE WIRE changed: the re-attach deadline is not a persisted row, not a journal column and not a protocol file. What broke is the compiled call, not a recorded run."
       ],
       "removal_boundary": "the field may return only as a wall-clock instant read from the recovering adapter's own clock, and only under a name that says it is an instant; it may not return as a value derived from a fencing token, a token count or any other counter",
-      "supersedes": null
+      "supersedes": null,
+      "applies_to_versions": [
+        "0.62.0",
+        "0.63.0",
+        "0.64.0",
+        "0.65.0",
+        "0.66.0",
+        "0.67.0",
+        "0.68.0",
+        "0.69.0",
+        "0.70.0",
+        "0.71.0",
+        "0.72.0",
+        "0.73.0",
+        "0.74.0",
+        "0.75.0",
+        "0.76.0",
+        "0.77.0",
+        "0.78.0",
+        "0.79.0",
+        "0.80.0",
+        "0.81.0",
+        "0.82.0",
+        "0.83.0",
+        "0.84.0",
+        "0.85.0",
+        "0.86.0",
+        "0.87.0",
+        "0.88.0",
+        "0.89.0",
+        "0.90.0"
+      ],
+      "authorized_removals": [
+        "dev/rubentxu/pipeline/v2/runtime/recover/RecoveryChoice$Reattach#<init>(IJLkotlin/jvm/internal/DefaultConstructorMarker;)V",
+        "dev/rubentxu/pipeline/v2/runtime/recover/RecoveryChoice$Reattach#component2()J",
+        "dev/rubentxu/pipeline/v2/runtime/recover/RecoveryChoice$Reattach#copy-3E7C5Lg$default(Ldev/rubentxu/pipeline/v2/runtime/recover/RecoveryChoice$Reattach;IJILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/runtime/recover/RecoveryChoice$Reattach;",
+        "dev/rubentxu/pipeline/v2/runtime/recover/RecoveryChoice$Reattach#copy-3E7C5Lg(IJ)Ldev/rubentxu/pipeline/v2/runtime/recover/RecoveryChoice$Reattach;",
+        "dev/rubentxu/pipeline/v2/runtime/recover/RecoveryChoice$Reattach#getDeadlineMs()J"
+      ],
+      "evidence": "Measured on the published SDK artifacts of the releases v0.62.0..v0.90.0: every one of them publishes these removals, and the candidate's published surface does not."
     },
     {
       "module": "pipeline-events",
@@ -628,7 +835,63 @@
         "Not recorded here: the change that made the verdict's meaning explicit (the entry for de45a74abd). That one is a different fact - a field that kept its type and changed its meaning - and it is recorded there, linked by sha rather than merged into this entry."
       ],
       "removal_boundary": "the removed plane may not return as a second read port, a second cursor or a second refusal vocabulary over the event lane; the only route for a consumer that needs the step's verdict or the step's type is the raw event lane - StepFinished.outcome (events.stepoutcome.v1) and StepFinished.stepType. runtime.eventshape.v2 stays announced and NOT delivered: a consumer that negotiated it moves to the raw event lane",
-      "supersedes": null
+      "supersedes": null,
+      "applies_to_versions": [
+        "0.62.0",
+        "0.63.0",
+        "0.64.0",
+        "0.65.0",
+        "0.66.0",
+        "0.67.0",
+        "0.68.0",
+        "0.69.0",
+        "0.70.0",
+        "0.71.0",
+        "0.72.0",
+        "0.73.0",
+        "0.74.0",
+        "0.75.0",
+        "0.76.0",
+        "0.77.0",
+        "0.78.0",
+        "0.79.0",
+        "0.80.0",
+        "0.81.0",
+        "0.82.0",
+        "0.83.0",
+        "0.84.0",
+        "0.85.0",
+        "0.86.0",
+        "0.87.0",
+        "0.88.0",
+        "0.89.0",
+        "0.90.0"
+      ],
+      "authorized_removals": [
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeCursor",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeOptions",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeOptions$Companion",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeReadPort",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeReadPort$Companion",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeReadPortKt",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeReadPortStoreAdapter",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeReadPortStoreAdapterKt",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal$NoEventStore",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal$StorageError",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeRefusal$UnknownRun",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeResult",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeResult$Empty",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeResult$Events",
+        "dev/rubentxu/pipeline/v2/events/shape/EventShapeResult$Refused",
+        "dev/rubentxu/pipeline/v2/events/shape/StageFinishedTyped",
+        "dev/rubentxu/pipeline/v2/events/shape/StageSkippedTyped",
+        "dev/rubentxu/pipeline/v2/events/shape/StageStartedTyped",
+        "dev/rubentxu/pipeline/v2/events/shape/StepFinishedTyped",
+        "dev/rubentxu/pipeline/v2/events/shape/StepStartedTyped",
+        "dev/rubentxu/pipeline/v2/events/shape/TypedEvent"
+      ],
+      "evidence": "Measured on the published SDK artifacts of the releases v0.62.0..v0.90.0: every one of them publishes these removals, and the candidate's published surface does not."
     }
   ]
 }

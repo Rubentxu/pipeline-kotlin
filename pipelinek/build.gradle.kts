@@ -1,3 +1,4 @@
+import kotlinx.validation.KotlinApiBuildTask
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.jvm.toolchain.JavaLanguageVersion
 
@@ -389,6 +390,144 @@ val publishedContractModules = listOf(
     // review, whether it earns publication.
     "pipeline-runtime-api",
 )
+
+// ── the second ABI reading: the candidate against the PREVIOUSLY PUBLISHED artifact ──
+//
+// `apiCheck` compares the tree against its OWN committed baseline
+// (`<module>/api/<module>.api`). That baseline is a file in this repository, so a
+// rewritten baseline makes `apiCheck` green while the published surface breaks: the
+// gate would be certifying the rewrite instead of the artifact.
+//
+// The second reading compares two PUBLISHED artifacts: the candidate this release
+// publishes, and the artifact the previous release published. Neither side is the
+// committed baseline, so no rewrite of a file in this tree can satisfy it.
+//
+// The dump is produced by the SAME engine that produced the tree's baseline: the
+// binary-compatibility-validator plugin's own `KotlinApiBuildTask`, asked to read a
+// JAR instead of a classes directory. Measured on 0.18.2: the plugin ships no
+// command-line entry point, so its Gradle task is the only route to an arbitrary
+// jar's surface; `inputJar` is `@Optional`, and the worker reads the jar through
+// `inputJar` alone without consulting `inputDependencies`.
+//
+// Two properties a text diff between two `.api` files would not have:
+//   - both sides are rendered by the same engine in the same build, so a change in
+//     the validator's own output format cannot invent a break;
+//   - the comparison never reads the committed `.api`, which is the one file a
+//     rewrite would move.
+//
+// The sides are named by Gradle properties because the release script knows which
+// published artifacts it is comparing and the build does not:
+//   -PpreviousArtifactRepo=<maven repo>  -PpreviousArtifactVersion=<version>
+//   -PcandidateArtifactRepo=<maven repo> -PcandidateArtifactVersion=<version>
+// A missing property means "there is no artifact on that side", NOT "an empty
+// surface": the dump task is skipped and the comparison reports that there is
+// nothing to compare, instead of writing an empty dump that would read as a total
+// removal of the module's ABI.
+
+/**
+ * The Maven layout of a published artifact: the group is one for every published
+ * module, and the `sdk` publications declare no `artifactId`, so Gradle derives it
+ * from the project name.
+ */
+val PUBLISHED_GROUP_PATH = "dev/rubentxu/pipeline/v2"
+
+/**
+ * The two sides of the comparison and the Gradle properties that name them. The
+ * side name is also the task-name infix and the dump-directory prefix, so one
+ * spelling travels through the whole chain.
+ */
+val publishedApiSides = mapOf(
+    "candidate" to ("candidateArtifactRepo" to "candidateArtifactVersion"),
+    "previous" to ("previousArtifactRepo" to "previousArtifactVersion"),
+)
+
+/**
+ * A short digest of a string. The dump directory carries one so that two different
+ * repositories at the SAME version cannot share a dump: a file left behind by a
+ * repository that had the artifact must not be read as the artifact of a repository
+ * that does not have it.
+ */
+fun shortDigestOf(value: String): String =
+    java.security.MessageDigest.getInstance("SHA-256")
+        .digest(value.toByteArray())
+        .take(6)
+        .joinToString("") { "%02x".format(it) }
+
+/**
+ * The repository and the version of each side, read ONCE from the Gradle
+ * properties.
+ *
+ * Read twice — once here for the dump directory and once inside the
+ * subproject that dumps — the two readings would be two answers to the same
+ * question, and a comparison whose sides came from different answers would
+ * compare artifacts that were never named together.
+ */
+val publishedApiCoordinates: Map<String, Pair<String?, String?>> =
+    publishedApiSides.mapValues { (_, properties) ->
+        providers.gradleProperty(properties.first).orNull to
+            providers.gradleProperty(properties.second).orNull
+    }
+
+/**
+ * The dump directory of each side. Computed ONCE, here, and handed to the
+ * comparison as an argument: computed in two places it would be two answers.
+ */
+val publishedApiDumpDirs: Map<String, String> = publishedApiCoordinates.mapValues { (side, coordinate) ->
+    val (repo, version) = coordinate
+    val name = if (repo == null || version == null) {
+        "$side-none"
+    } else {
+        "$side-$version-${shortDigestOf(File(repo).absolutePath)}"
+    }
+    layout.buildDirectory.dir("api-artifacts/$name").get().asFile.absolutePath
+}
+
+// The geometry of the comparison, handed to `:pipeline-release` — the module
+// that decides — so that the build script and the decision agree on which
+// artifacts, which versions and which modules are being compared. The
+// alternative, each side recomputing it, is the second authority this task
+// exists to remove.
+extra["publishedApiDumpDirs"] = publishedApiDumpDirs
+extra["publishedApiVersions"] = publishedApiCoordinates.mapValues { it.value.second }
+extra["publishedApiModules"] = publishedContractModules
+
+subprojects {
+    val publishedModule = publishedContractModules.firstOrNull { ":$it" == project.path }
+    if (publishedModule != null) {
+        pluginManager.withPlugin("org.jetbrains.kotlin.jvm") {
+            // The engine that produced this tree's committed baseline. Copying its
+            // worker classpath is what makes the two sides comparable: the same
+            // renderer, in the same build.
+            val apiBuildTask = tasks.named<KotlinApiBuildTask>("apiBuild")
+            for ((side, coordinate) in publishedApiCoordinates) {
+                val (repo, version) = coordinate
+                val artifact = if (repo == null || version == null) {
+                    null
+                } else {
+                    File(
+                        repo,
+                        "$PUBLISHED_GROUP_PATH/$publishedModule/$version/$publishedModule-$version.jar",
+                    )
+                }
+                val outputFile = File(publishedApiDumpDirs.getValue(side), "$publishedModule.api")
+                tasks.register<KotlinApiBuildTask>("${side}ArtifactApiDump") {
+                    group = "verification"
+                    description =
+                        "Dump the public API surface of the $side published artifact of $publishedModule."
+                    runtimeClasspath.setFrom(apiBuildTask.map { it.runtimeClasspath })
+                    if (artifact != null && artifact.isFile) {
+                        inputJar.set(artifact)
+                        outputApiFile.set(outputFile)
+                    } else {
+                        // There is no artifact to read on this side. Skipped, not empty: an
+                        // empty dump would read as a total removal of the module's ABI.
+                        enabled = false
+                    }
+                }
+            }
+        }
+    }
+}
 
 /**
  * The SDK BOM, published alongside the five contracts and deliberately OUTSIDE

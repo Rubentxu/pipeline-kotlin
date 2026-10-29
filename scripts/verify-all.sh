@@ -372,12 +372,113 @@ export PATH="$JAVA_HOME/bin:$PATH"
 echo "    JAVA_HOME=$JAVA_HOME"
 "$JAVA_HOME/bin/java" -version 2>&1 | sed 's/^/    /'
 
+# --- The owned cycle ----------------------------------------------------------
+# Everything this run writes belongs to ONE directory, and that directory is
+# under the state area rather than in the shared temporary directory of the
+# machine.
+#
+# The first reason is ownership. AGENTS.md section 3 says the temporaries a
+# verification cycle produces live under the state area and that the cycle
+# removes them when it is over. A temporary in the shared temporary directory
+# belongs to nobody: the process that made it forgets it, and the machine
+# keeps it until something else happens to delete it.
+#
+# The second reason is measurement. The residue this run leaves in the shared
+# temporary directory was invisible until now. The gate wrote its logs into it,
+# the scenarios wrote their workspaces into it, and the product wrote its own
+# temporaries into it because that is what java.io.tmpdir said. The gate then
+# claimed to leave zero owned temporary artifacts while the directory filled up
+# underneath it. A gate that cannot see its own residue cannot report it.
+state_base="${XDG_STATE_HOME:-$HOME/.local/state}/pipelinek/verification-cycles"
+cycle_dir="$state_base/gate-$(date +%Y%m%d-%H%M%S)-$$"
+mkdir -p "$cycle_dir/tmp" "$cycle_dir/logs"
+export PIPELINEK_TMPDIR="$cycle_dir/tmp"
+export TMPDIR="$cycle_dir/tmp"
+# The JVM takes its temporaries from java.io.tmpdir, so the property is what
+# moves them, and JAVA_OPTS is how a Gradle client is given one without
+# editing the build. The scenarios read the same variable, so the gate and the
+# scenarios point at the same place.
+if [[ -n "${JAVA_OPTS:-}" ]]; then
+    export JAVA_OPTS="$JAVA_OPTS -Djava.io.tmpdir=$cycle_dir/tmp"
+else
+    export JAVA_OPTS="-Djava.io.tmpdir=$cycle_dir/tmp"
+fi
+
 # Each invocation writes its stage output into its own directory, so two gates
 # running concurrently on the same machine cannot write into the same file.
 # A shared path let one run truncate the log while another was still appending
 # to it, which silently destroyed part of that run's evidence.
-log_dir="${TMPDIR:-/tmp}/verify-all.$$"
-mkdir -p "$log_dir"
+log_dir="$cycle_dir/logs"
+
+# --- The residue census -------------------------------------------------------
+# The question is narrow and factual: did THIS run leave anything of its own in
+# the shared temporary directory of the machine? The answer is the difference
+# between two listings of that directory, taken before and after the run.
+#
+# The difference counts only the prefixes this project owns. Another program's
+# temporary is not our residue, and blaming it would be a defect of the
+# measurement rather than of the run.
+#
+# Two gates on the same machine would each see the other's entries and blame
+# them, so the measurement is taken under a lock. A gate that cannot take the
+# lock does not measure and says so, instead of reporting a number it cannot
+# attribute.
+residue_locked=0
+residue_measured=0
+residue_count=0
+residue_reported=0
+if command -v flock >/dev/null 2>&1 && exec 9>"$state_base/gate.lock" 2>/dev/null; then
+    if flock -n 9; then
+        residue_locked=1
+    fi
+fi
+if [[ "$residue_locked" == 1 ]]; then
+    LC_ALL=C ls -A /tmp 2>/dev/null | LC_ALL=C sort > "$cycle_dir/tmp-before.txt" || residue_locked=0
+fi
+
+# Count what appeared in the shared temporary directory since the listing above.
+measure_residue() {
+    if [[ "$residue_measured" != 0 ]]; then
+        return 0
+    fi
+    if [[ "$residue_locked" != 1 || ! -f "$cycle_dir/tmp-before.txt" ]]; then
+        residue_measured=2
+        return 0
+    fi
+    LC_ALL=C ls -A /tmp 2>/dev/null | LC_ALL=C sort > "$cycle_dir/tmp-after.txt" || return 0
+    LC_ALL=C comm -13 "$cycle_dir/tmp-before.txt" "$cycle_dir/tmp-after.txt" \
+        | LC_ALL=C awk '/^(shoptions-shared|captured-stdout-|pipeline-secret-dir-|pipelinek-sqlite-|kotlin-daemon[.]|pipelinek-e2e-|verify-all[.])/' \
+        > "$cycle_dir/tmp-residue.txt" || return 0
+    residue_count="$(wc -l < "$cycle_dir/tmp-residue.txt" | tr -d ' ')"
+    residue_measured=1
+}
+
+# Say it once, in a form that cannot be read as a zero.
+report_residue() {
+    if [[ "$residue_reported" == 1 ]]; then
+        return 0
+    fi
+    residue_reported=1
+    if [[ "$residue_measured" == 1 ]]; then
+        if (( residue_count > 0 )); then
+            printf '    own temporaries left in the shared temporary directory: %s  <- FAILURE\n' "$residue_count"
+        else
+            printf '    own temporaries left in the shared temporary directory: 0\n'
+        fi
+    else
+        printf '    own temporaries left in the shared temporary directory: NOT_MEASURED (another gate holds the lock)\n'
+    fi
+}
+
+# The verdict line carries the number, because a number nobody reads is a
+# number nobody acts on.
+residue_suffix() {
+    if [[ "$residue_measured" == 1 ]]; then
+        printf '  residuo_tmp=%s' "$residue_count"
+    else
+        printf '  residuo_tmp=NOT_MEASURED'
+    fi
+}
 
 # --- Preparation: clean build outputs -----------------------------------------
 # The full gate measures a real build, so it starts from one. AGENTS.md section 4
@@ -393,22 +494,17 @@ mkdir -p "$log_dir"
 # also match a package directory named `build` that holds tracked sources.
 # A subset run does not clean: it is the inner loop, it never quotes a wall
 # clock, and paying a full rebuild for it would defeat its purpose.
-if [[ "$subset" == 0 ]]; then
-    log "preparation  clean build outputs"
-    stage_started_at=$(date +%s)
-    ./pipelinek/gradlew --no-daemon -p pipelinek "${gradle_cache_args[@]}" clean > "$log_dir/clean.log" 2>&1 \
-        || { tail -40 "$log_dir/clean.log" >&2; fail "preparation (see "$log_dir/clean.log")"; }
-    echo "    ok in $(elapsed "$stage_started_at")s"
-else
-    log "preparation  SKIPPED (a subset run does not quote a wall clock)"
-fi
-
-# The logs are removed only when the run reaches a full pass. Every other
-# outcome leaves them in place, because that is when someone needs to read them.
+# The cycle is deleted when the run ends, whatever the verdict.
+#
+# It used to be kept on a failing run, because that is when somebody needs to
+# read the logs. The logs are still read: every failing stage prints the tail
+# of its own log as it fails, so the evidence reaches the reader without the
+# directory having to survive. A cycle that outlives its run is exactly the
+# residue this change is about.
 #
 # The trap returns the status the run already had. A trap that ends on a failed
 # test OVERRIDES the exit code of the script that installed it: with
-# `VERIFY_ALL_VERDICT` unset, the `[[ ]]` is false, the function returns 1, and
+# `VERIFY_ALL_VERDICT` unset, the `[[ ]]` was false, the function returned 1, and
 # every SUBSET run -- and every INCOMPLETE verdict, whose comment says its exit
 # status stays 0 -- left with status 1 while the verdict line said PASS. The
 # documented inner loop (`--stage 2 --module ... --test ...`) was therefore
@@ -416,12 +512,22 @@ fi
 # returned said different things.
 cleanup_logs() {
     local status=$?
-    if [[ "${VERIFY_ALL_VERDICT:-FAIL}" == PASS* ]]; then
-        rm -rf "$log_dir"
-    fi
+    measure_residue
+    report_residue
+    rm -rf "$cycle_dir"
     return "$status"
 }
 trap cleanup_logs EXIT
+
+if [[ "$subset" == 0 ]]; then
+    log "preparation  clean build outputs"
+    stage_started_at=$(date +%s)
+    ./pipelinek/gradlew --no-daemon -p pipelinek "${gradle_cache_args[@]}" clean > "$log_dir/clean.log" 2>&1 \
+        || { tail -40 "$log_dir/clean.log" >&2; fail "preparation (the tail of the clean log is above)"; }
+    echo "    ok in $(elapsed "$stage_started_at")s"
+else
+    log "preparation  SKIPPED (a subset run does not quote a wall clock)"
+fi
 
 # --- Stage 1: the checks that read the tree, then the build ------------------
 # The stage runs four checks that read ONLY the tree, and only then the Gradle
@@ -492,8 +598,8 @@ if want_stage 1; then
     # would be the wrong reason to stop saying what the code does.
     log "stage 1c/4  comment provenance"
     stage_started_at=$(date +%s)
-    python3 scripts/check-comment-provenance.py >/tmp/.verify-comment.out 2>&1 \
-        || { cat /tmp/.verify-comment.out >&2; fail "stage 1c: comment provenance"; }
+    python3 scripts/check-comment-provenance.py >"$log_dir/comment.out" 2>&1 \
+        || { cat "$log_dir/comment.out" >&2; fail "stage 1c: comment provenance"; }
     echo "    ok in $(elapsed "$stage_started_at")s"
 
     # --- Stage 1d: only the entry point may end the process ------------------
@@ -927,7 +1033,7 @@ scenarios_suffix() {
 # unrepresentable -- one string, one `%s` -- and each field keeps saying NOT_RUN
 # rather than going quiet when its stage was skipped.
 evidence_suffixes() {
-    printf '%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)"
+    printf '%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" "$(residue_suffix)"
 }
 
 if want_stage 3; then
@@ -1037,6 +1143,17 @@ fi
 
 total=$(elapsed "$started_at")
 log "stage 4/4  wall clock"
+# What this run left behind. The number is the difference between two listings
+# of the shared temporary directory, and the difference is the part that
+# matters: the gate promises to leave zero owned temporary artifacts, and a
+# promise nobody measures is a promise nobody checks.
+measure_residue
+report_residue
+if [[ "$subset" == 0 && "$residue_measured" == 1 ]] && (( residue_count > 0 )); then
+    echo "    the entries this run left in the shared temporary directory:" >&2
+    sed 's/^/      /' "$cycle_dir/tmp-residue.txt" >&2
+    fail "stage 4: the gate left ${residue_count} own entries in the shared temporary directory"
+fi
 if [[ "$subset" == 1 ]]; then
     # A subset that spends 3 minutes instead of 240 is not a budget breach, and a
     # subset that spends 900 is not evidence the gate would. Comparing either

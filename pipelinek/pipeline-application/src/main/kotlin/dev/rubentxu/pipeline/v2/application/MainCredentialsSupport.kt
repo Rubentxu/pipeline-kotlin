@@ -94,5 +94,33 @@ internal fun composeCredentialSeam(
     val provider: CredentialProvider = LocalCredentialProvider(secretStore)
     val materialization: CredentialMaterialization = LocalFileMaterialization(CredentialMaterializer(secretStore))
     val executor = WithCredentialsExecutor(provider, materialization, clock, redactionRegistry)
+    // The process opened the store and wrote the credential material to disk, so
+    // the process is what gives both back. The materializer removes the files
+    // it wrote and the provider closes the store; without this the material of
+    // every run stayed on disk under the shared temporary directory, which is
+    // where a secret outlives the run that needed it.
+    Runtime.getRuntime().addShutdownHook(
+        Thread(
+            {
+                closeQuietly(materialization)
+                closeQuietly(provider)
+            },
+            "pipelinek-credentials-cleanup",
+        ),
+    )
     return CredentialSeam(provider = provider, executor = executor)
+}
+
+/**
+ * Release a resource on the way out, ignoring whatever it throws.
+ *
+ * A failure while releasing must not turn a successful run into a failed one,
+ * so the exception is swallowed on this path.
+ */
+private fun closeQuietly(resource: AutoCloseable) {
+    try {
+        resource.close()
+    } catch (_: Exception) {
+        // Shutdown path.
+    }
 }

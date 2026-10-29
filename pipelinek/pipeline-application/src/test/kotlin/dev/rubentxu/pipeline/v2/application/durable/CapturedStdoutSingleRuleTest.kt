@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -41,6 +42,16 @@ import java.time.Instant
  * the text the value IS, and the equality between the paths separately.
  */
 class CapturedStdoutSingleRuleTest {
+
+    /**
+     * The directory this instrumentation writes into.
+     *
+     * The test framework creates it before the test and removes it when the
+     * test ends, so the fixture owns its own temporary instead of leaving one
+     * behind in the shared temporary directory of the machine.
+     */
+    @TempDir
+    lateinit var tempDir: Path
 
     @Test
     fun `a resumed execution publishes the value a fresh execution publishes`() {
@@ -110,7 +121,7 @@ class CapturedStdoutSingleRuleTest {
      * is absent, which is a different fact from an empty one.
      */
     private fun controlRootWith(captured: String?): Path {
-        val root = Files.createTempDirectory("captured-stdout-")
+        val root = tempDir.resolve("captured-stdout")
         val opDir = root.resolve(OP_ID)
         Files.createDirectories(opDir)
         val protocol = ShellProtocolLayout(opDir)

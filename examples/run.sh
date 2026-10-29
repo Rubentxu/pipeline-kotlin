@@ -162,8 +162,32 @@ if [[ ! -x "$(product_path)" ]]; then
     exit 2
 fi
 
-cycle_root="$(mktemp -d "${TMPDIR:-/tmp}/pipelinek-e2e-XXXXXXXX")"
-cleanup() { rm -rf "$cycle_root"; }
+# The base the cycle writes into.
+#
+# When the gate runs the scenarios it has already prepared a cycle and points
+# PIPELINEK_TMPDIR at it, so the scenarios write inside the gate's own cycle.
+# Standalone, the launcher prepares its own under the state area. A scenario
+# that writes into the shared temporary directory of the machine leaves rubbish
+# that belongs to nobody, and the machine keeps it: the launcher is the owner
+# of what its scenarios produce, so the launcher is what gives it back.
+if [[ -n "${PIPELINEK_TMPDIR:-}" ]]; then
+    cycle_base="$PIPELINEK_TMPDIR"
+    cycle_base_owned=0
+else
+    cycle_base="${XDG_STATE_HOME:-$HOME/.local/state}/pipelinek/verification-cycles/e2e-$(date +%Y%m%d-%H%M%S)-$$"
+    mkdir -p "$cycle_base"
+    cycle_base_owned=1
+fi
+export PIPELINEK_TMPDIR="$cycle_base"
+export TMPDIR="$cycle_base"
+
+cycle_root="$(mktemp -d "$cycle_base/pipelinek-e2e-XXXXXXXX")"
+cleanup() {
+    rm -rf "$cycle_root"
+    if [[ "$cycle_base_owned" == 1 ]]; then
+        rm -rf "$cycle_base"
+    fi
+}
 trap cleanup EXIT
 
 # The product compiles every script it runs, and that compilation is the
@@ -517,8 +541,11 @@ resolve_script_cache
 # scenario of the suite, loudly, with a message about the wrong thing.
 #
 # What the machine running the harness had configured is kept, and the harness
-# option goes last, because the last `-D` is the one the JVM takes.
-machine_java_opts="${JAVA_OPTS:-}"
+# options go last, because the last `-D` is the one the JVM takes. There are
+# two of them: `java.io.tmpdir` moves every temporary the product writes into
+# the directory of the cycle, and `org.sqlite.tmpdir` (added further down, per
+# scenario) names the place the native library is extracted into.
+machine_java_opts="${JAVA_OPTS:+$JAVA_OPTS }-Djava.io.tmpdir=$cycle_base"
 
 native_library_home_option() {
     printf -- '-Dorg.sqlite.tmpdir=%s' "$1"

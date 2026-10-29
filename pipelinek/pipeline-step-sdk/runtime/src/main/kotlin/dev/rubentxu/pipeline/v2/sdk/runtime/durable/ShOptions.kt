@@ -122,8 +122,44 @@ data class ShOptions(
          * `ProcessBuilder.directory(...)`, which rejects a path that is absent.
          * So the fix is not "stop creating it" but "create it once, under one
          * stable name, and reuse it".
+         *
+         * The process that creates it is the one that removes it. A shared
+         * temporary directory with no owner is a leak that only announces
+         * itself much later as a full filesystem, so the JVM deletes the
+         * directory when it exits. Nothing outside the JVM has to know that
+         * the directory exists, and one that outlives its creator cannot be
+         * cleaned up by anybody.
 */
         private val sharedWorkspace: Path = java.nio.file.Files.createTempDirectory("shoptions-shared")
+
+        init {
+            Runtime.getRuntime().addShutdownHook(
+                Thread(
+                    { deleteTree(sharedWorkspace) },
+                    "pipelinek-shoptions-cleanup",
+                ),
+            )
+        }
+
+        /**
+         * Remove a directory tree, ignoring whatever resists removal.
+         *
+         * This runs on the way out of the JVM. A temporary that cannot be
+         * removed is noise, not a failure, and a failure here must not turn a
+         * successful run into a failed one.
+        */
+        private fun deleteTree(root: Path) {
+            try {
+                if (!java.nio.file.Files.exists(root)) return
+                java.nio.file.Files.walk(root).use { paths ->
+                    paths.sorted(Comparator.reverseOrder<Path>()).forEach {
+                        java.nio.file.Files.deleteIfExists(it)
+                    }
+                }
+            } catch (_: Exception) {
+                // Best effort on a shutdown path.
+            }
+        }
 
         /**
          * Empty options for tests that don't need workspace/env.

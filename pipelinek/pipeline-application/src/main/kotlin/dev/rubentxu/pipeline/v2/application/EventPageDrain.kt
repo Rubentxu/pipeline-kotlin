@@ -57,7 +57,7 @@ object EventPageDrain {
      * there is nothing more, while after [Stalled] the store SAID there was more and the reader could
      * not reach it. Reporting the second as the first is a silent truncation, and reporting it as
      * nothing at all is the original fail-open.
-*/
+    */
     sealed interface Outcome {
 
         /** The accumulated page. Only the case in which the continuation is trustworthy. */
@@ -87,7 +87,7 @@ object EventPageDrain {
          * same page, its flag is false while the consumer still has a fact ahead. Copying the
          * store's flag used to hand the consumer "nothing remains" with a live fact behind it, and
          * the consumer never asked again.
-*/
+    */
         data class Answered(override val page: EventPage, override val runEnded: Boolean) : Outcome
 
         /**
@@ -95,7 +95,7 @@ object EventPageDrain {
          * Unreachable against both stores today — it is the guard that keeps the loop from spinning
          * if that ever changes, and it fails loudly because the alternative to reporting it is an
          * answer that silently stops short.
-*/
+    */
         data class Stalled(
             override val page: EventPage,
             val stuckAfter: EventCursor?,
@@ -109,7 +109,14 @@ object EventPageDrain {
      * re-decides order, continuation or `hasMore`; the loop only decides whether to ask again.
      * @param limit bounds MATCHING envelopes, not rows, so the flag keeps meaning what it says even
      *   though the store's page bound counts rows. Each page therefore reads at most [limit] rows.
-*/
+     * ## Where the decisions live
+     * The loop, the continuation rule, the stall guard and the refusal accumulation are NOT written
+     * here: they live in ONE shared rule, [drainPages], and this function only adapts the pages
+     * [EventTail] returns to it. The typed drain answers with the stored event instead of the
+     * envelope, so it needs its own adaptation — but the DECISIONS (when to ask again, when to
+     * stop, what the cursor names, what the flag says) are made once. Two loops side by side would
+     * be two places where a paging bug can live, and each one looks right on its own.
+    */
     fun drain(
         tail: EventTail,
         run: ResourceRef,
@@ -119,88 +126,35 @@ object EventPageDrain {
     ): Outcome {
         require(limit > 0) { "limit must be positive, got $limit" }
 
-        val envelopes = ArrayList<PipelineEventEnvelope>(minOf(limit, DRAIN_PAGE_HINT))
-        val refusals = ArrayList<EventRecordRead.Undecodable>()
-        var readFrom = cursor
-        var lastDelivered: Long? = null
-        var maxNotifiedRefusal: Long? = null
-        var runEnded = false
-
-        while (true) {
-            val page = tail.readAfter(run, readFrom, limit)
-            val continuation = page.nextCursor
-            // The terminal fact is read from the ROWS the store returned, never from the facts
-            // this drain hands out: with a filter in play the terminal fact is usually the one
-            // fact the filter excludes, and a follow that cannot see it never ends.
-            if (!runEnded && RunTerminal.hasEnded(page.envelopes.asSequence().map { it.kind })) {
-                runEnded = true
-            }
-            for (envelope in page.envelopes) {
-                if (envelopes.size == limit) break
-                if (query.matches(envelope)) {
-                    envelopes.add(envelope)
-                    lastDelivered = envelope.sequence
-                }
-            }
-
-            val reachedLimit = envelopes.size == limit
-            val advanced = continuation != null &&
-                continuation.lastSequence > (readFrom?.lastSequence ?: 0L)
-
-            if (reachedLimit || !page.hasMore) {
-                // The EXIT page. Whether one of its refusals can be told about depends on what
-                // the cut left undelivered, and that is only known now that the delivery loop
-                // above has run: a refusal behind an undelivered matching fact would force the
-                // cursor past that fact and lose it. So the page's refusals are split here, and
-                // only the ones no undelivered matching fact precedes are told about.
-                val undelivered =
-                    undeliveredMatchingSequence(page.envelopes.asSequence(), lastDelivered, query)
-                val notifiable = notifiableRefusals(page.refusals, undelivered)
-                refusals.addAll(notifiable)
-                maxNotifiedRefusal = maxRefusalSequence(maxNotifiedRefusal, notifiable)
-                return Outcome.Answered(
-                    page = EventPage(
-                        envelopes = envelopes.toList(),
-                        nextCursor = clientCursor(
-                            run.segments.last(),
-                            lastDelivered,
-                            continuation,
-                            maxNotifiedRefusal,
-                        ),
-                        hasMore = clientHasMore(
-                            storeHasMore = page.hasMore,
-                            undelivered = undelivered,
-                        ),
-                        refusals = refusals.toList(),
-                    ),
-                    runEnded = runEnded,
+        val progress = drainPages(
+            limit = limit,
+            query = query,
+            runId = run.segments.last(),
+            cursor = cursor,
+            read = { readFrom ->
+                val page = tail.readAfter(run, readFrom, limit)
+                DrainPage(
+                    rows = page.envelopes.map { envelope ->
+                        DrainRow(sequence = envelope.sequence, envelope = envelope, payload = envelope)
+                    },
+                    refusals = page.refusals,
+                    position = page.nextCursor,
+                    hasMore = page.hasMore,
                 )
-            }
-            // A page that arrives before the limit is reached is consumed whole: every matching
-            // envelope it held was handed out and none of them waits behind the cut. Every row of
-            // a later page sits above this one's, so a refusal of this page can be told about now
-            // and the cursor can cover it without skipping anything.
-            refusals.addAll(page.refusals)
-            maxNotifiedRefusal = maxRefusalSequence(maxNotifiedRefusal, page.refusals)
+            },
+        )
 
-            if (!advanced) {
-                return Outcome.Stalled(
-                    page = EventPage(
-                        envelopes = envelopes.toList(),
-                        nextCursor = clientCursor(
-                            run.segments.last(),
-                            lastDelivered,
-                            continuation,
-                            maxNotifiedRefusal,
-                        ),
-                        hasMore = true,
-                        refusals = refusals.toList(),
-                    ),
-                    stuckAfter = readFrom,
-                    runEnded = runEnded,
-                )
-            }
-            readFrom = continuation
+        val page = EventPage(
+            envelopes = progress.delivered,
+            nextCursor = progress.nextCursor,
+            hasMore = progress.hasMore,
+            refusals = progress.refusals,
+        )
+        val stall = progress.stall
+        return if (stall == null) {
+            Outcome.Answered(page = page, runEnded = progress.runEnded)
+        } else {
+            Outcome.Stalled(page = page, stuckAfter = stall.stuckAfter, runEnded = progress.runEnded)
         }
     }
 
@@ -218,16 +172,20 @@ object EventPageDrain {
      * sequence number back from the caller and re-ask the store for a row it has already paged —
      * which makes the caller, not the store, responsible for position. [EventStore.readRecords] is the
      * port that already returns the records of a page, and it returns them with the SAME continuation
-     * and `hasMore` rule [drain] relies on, so this loop keeps the store as the single authority over
+     * and `hasMore` rule [drain] relies on, so this read keeps the store as the single authority over
      * position instead of adding a second reader beside it.
-     * What is deliberately NOT duplicated: the paging loop, the continuation rule, the stall guard and
-     * the refusal accumulation. Those mirror [drain] structurally rather than being re-derived,
-     * because a paging bug that exists in one projection and not the other is exactly the kind of
-     * divergence that survives review. The filter is shared for the same reason: the query is
-     * evaluated against the envelope the store hands back alongside each record, and `kind` is the
-     * shared discriminator, so `--kind StepStarted --typed` selects the rows its envelope-mode
-     * counterpart selects.
-*/
+     * ## What is deliberately NOT duplicated
+     * The paging loop, the continuation rule, the stall guard and the refusal accumulation are not
+     * re-derived here: they live in ONE shared rule, [drainPages], which both drains call with their
+     * own pages. The reason is not tidiness — the two loops used to sit side by side, and a paging
+     * bug that exists in one projection and not in the other is exactly the kind of divergence that
+     * survives review, because each one reads correctly on its own. What stays specialized is the
+     * PROJECTION: this function hands out the stored event and [drain] hands out the envelope, and
+     * only the payload differs.
+     * The filter is shared for the same reason: the query is evaluated against the envelope the store
+     * hands back alongside each record, and `kind` is the shared discriminator, so `--kind
+     * StepStarted --typed` selects the rows its envelope-mode counterpart selects.
+    */
     fun drainTyped(
         store: EventStore,
         run: ResourceRef,
@@ -237,84 +195,40 @@ object EventPageDrain {
     ): TypedOutcome {
         require(limit > 0) { "limit must be positive, got $limit" }
 
-        val events = ArrayList<DomainEvent>(minOf(limit, DRAIN_PAGE_HINT))
-        val refusals = ArrayList<EventRecordRead.Undecodable>()
-        var readFrom = cursor
-        var lastDelivered: Long? = null
-        var maxNotifiedRefusal: Long? = null
-        var runEnded = false
-
-        while (true) {
-            val slice = store.readRecords(run.segments.last(), readFrom, limit)
-            val continuation = slice.nextCursor
-            // The same fact, read from the same rows: a record that could not be decoded carries
-            // no kind, and a row the client was not handed still counts.
-            if (!runEnded && RunTerminal.hasEnded(
-                    slice.records.asSequence().mapNotNull { (it as? EventRecordRead.Decoded)?.event?.kind },
+        val progress = drainPages(
+            limit = limit,
+            query = query,
+            runId = run.segments.last(),
+            cursor = cursor,
+            read = { readFrom ->
+                val slice = store.readRecords(run.segments.last(), readFrom, limit)
+                DrainPage(
+                    rows = slice.records.mapNotNull { record ->
+                        val decoded = record as? EventRecordRead.Decoded ?: return@mapNotNull null
+                        DrainRow(
+                            sequence = decoded.event.sequence,
+                            envelope = envelopeOf(decoded.event),
+                            payload = decoded.event,
+                        )
+                    },
+                    refusals = slice.refusals,
+                    position = slice.nextCursor,
+                    hasMore = slice.hasMore,
                 )
-            ) {
-                runEnded = true
-            }
-            for (record in slice.records) {
-                if (events.size == limit) break
-                if (record !is EventRecordRead.Decoded) continue
-                if (!query.matches(envelopeOf(record.event))) continue
-                events.add(record.event)
-                lastDelivered = record.event.sequence
-            }
+            },
+        )
 
-            val reachedLimit = events.size == limit
-            val advanced = continuation.lastSequence > (readFrom?.lastSequence ?: 0L)
-
-            if (reachedLimit || !slice.hasMore) {
-                // The EXIT page, and the same law as the envelope drain: a refusal is told about
-                // only when no undelivered matching fact precedes it, and the cursor covers
-                // every refusal that was told about.
-                val undelivered = undeliveredMatchingSequence(decodedEnvelopes(slice.records), lastDelivered, query)
-                val notifiable = notifiableRefusals(slice.refusals, undelivered)
-                refusals.addAll(notifiable)
-                maxNotifiedRefusal = maxRefusalSequence(maxNotifiedRefusal, notifiable)
-                return TypedOutcome.Answered(
-                    page = TypedPage(
-                        events = events.toList(),
-                        nextCursor = clientCursor(
-                            run.segments.last(),
-                            lastDelivered,
-                            continuation,
-                            maxNotifiedRefusal,
-                        ),
-                        hasMore = clientHasMore(
-                            storeHasMore = slice.hasMore,
-                            undelivered = undelivered,
-                        ),
-                        refusals = refusals.toList(),
-                    ),
-                    runEnded = runEnded,
-                )
-            }
-            // A page that arrives before the limit is reached is consumed whole, so none of its
-            // matching rows waits behind the cut and every one of its refusals can be told about now.
-            refusals.addAll(slice.refusals)
-            maxNotifiedRefusal = maxRefusalSequence(maxNotifiedRefusal, slice.refusals)
-
-            if (!advanced) {
-                return TypedOutcome.Stalled(
-                    page = TypedPage(
-                        events = events.toList(),
-                        nextCursor = clientCursor(
-                            run.segments.last(),
-                            lastDelivered,
-                            continuation,
-                            maxNotifiedRefusal,
-                        ),
-                        hasMore = true,
-                        refusals = refusals.toList(),
-                    ),
-                    stuckAfter = readFrom,
-                    runEnded = runEnded,
-                )
-            }
-            readFrom = continuation
+        val page = TypedPage(
+            events = progress.delivered,
+            nextCursor = progress.nextCursor,
+            hasMore = progress.hasMore,
+            refusals = progress.refusals,
+        )
+        val stall = progress.stall
+        return if (stall == null) {
+            TypedOutcome.Answered(page = page, runEnded = progress.runEnded)
+        } else {
+            TypedOutcome.Stalled(page = page, stuckAfter = stall.stuckAfter, runEnded = progress.runEnded)
         }
     }
 
@@ -325,19 +239,9 @@ object EventPageDrain {
      * what a filter means — the row is projected to the identity envelope it always had, and the
      * EXISTING predicate decides. A filter added later therefore applies to both projections for
      * free, and cannot be implemented for one and forgotten for the other.
-*/
+    */
     private fun envelopeOf(event: DomainEvent): PipelineEventEnvelope =
         EnvelopeProjector.project(event, null)
-
-    /**
-     * The envelopes the DECODED rows of a slice project to, in the order the store returned them.
-     * A row that could not be decoded contributes nothing: it has no event to project, and its
-     * refusal is accounted for by its own rule.
-     */
-    private fun decodedEnvelopes(records: List<EventRecordRead>): Sequence<PipelineEventEnvelope> =
-        records.asSequence().mapNotNull { record ->
-            (record as? EventRecordRead.Decoded)?.event?.let { envelopeOf(it) }
-        }
 
     /** The typed page: the events themselves, plus the same continuation and refusal facts. */
     data class TypedPage(
@@ -363,6 +267,149 @@ object EventPageDrain {
         ) : TypedOutcome
     }
 }
+
+/**
+ * The ONE rule that decides how a filtered read advances, stops and reports.
+ *
+ * ## What it owns
+ * Everything that is a DECISION and not a projection: when to ask for another page, when to stop
+ * because the limit is full, when to stop because the store ran out, when to report a stall, which
+ * refusals may be told about now, what the cursor names and what the flag says. Both drains used to
+ * spell that out twice, and the two copies were free to drift apart: a paging bug that exists in one
+ * projection and not in the other is exactly the kind of divergence that survives review, because
+ * each copy reads correctly on its own.
+ *
+ * ## What it does NOT own
+ * The payload. The page arrives already projected: each row carries the envelope the filter is
+ * evaluated against and the payload the client is handed, and the two projections differ only in
+ * that payload — the envelope one hands out the envelope, the typed one hands out the stored event.
+ *
+ * ## The read seam
+ * [read] is the only thing that differs between the projections: it turns the port's own page into
+ * the shape below. It is a function, not a port, so the rule stays pure and testable without a
+ * store, and the port stays the single authority over position.
+ */
+private fun <P> drainPages(
+    limit: Int,
+    query: EventQuery,
+    runId: String,
+    cursor: EventCursor?,
+    read: (EventCursor?) -> DrainPage<P>,
+): DrainProgress<P> {
+    val delivered = ArrayList<P>(minOf(limit, DRAIN_PAGE_HINT))
+    val refusals = ArrayList<EventRecordRead.Undecodable>()
+    var readFrom = cursor
+    var lastDelivered: Long? = null
+    var maxNotifiedRefusal: Long? = null
+    var runEnded = false
+
+    while (true) {
+        val page = read(readFrom)
+        // The terminal fact is read from the ROWS the store returned, never from the facts this
+        // drain hands out: with a filter in play the terminal fact is usually the one fact the
+        // filter excludes, and a follow that cannot see it never ends. A row that could not be
+        // decoded carries no kind, and a row the client was not handed still counts.
+        if (!runEnded && RunTerminal.hasEnded(page.rows.asSequence().map { it.envelope.kind })) {
+            runEnded = true
+        }
+        for (row in page.rows) {
+            if (delivered.size == limit) break
+            if (query.matches(row.envelope)) {
+                delivered.add(row.payload)
+                lastDelivered = row.sequence
+            }
+        }
+
+        val reachedLimit = delivered.size == limit
+        val advanced = page.position != null &&
+            page.position.lastSequence > (readFrom?.lastSequence ?: 0L)
+
+        if (reachedLimit || !page.hasMore) {
+            // The EXIT page. Whether one of its refusals can be told about depends on what the
+            // cut left undelivered, and that is only known now that the delivery loop above has
+            // run: a refusal behind an undelivered matching fact would force the cursor past that
+            // fact and lose it. So the page's refusals are split here, and only the ones no
+            // undelivered matching fact precedes are told about.
+            val undelivered = undeliveredMatchingSequence(
+                page.rows.asSequence().map { it.envelope },
+                lastDelivered,
+                query,
+            )
+            val notifiable = notifiableRefusals(page.refusals, undelivered)
+            refusals.addAll(notifiable)
+            maxNotifiedRefusal = maxRefusalSequence(maxNotifiedRefusal, notifiable)
+            return DrainProgress(
+                delivered = delivered.toList(),
+                nextCursor = clientCursor(runId, lastDelivered, page.position, maxNotifiedRefusal),
+                hasMore = clientHasMore(storeHasMore = page.hasMore, undelivered = undelivered),
+                refusals = refusals.toList(),
+                runEnded = runEnded,
+                stall = null,
+            )
+        }
+        // A page that arrives before the limit is reached is consumed whole: every matching row it
+        // held was handed out and none of them waits behind the cut. Every row of a later page sits
+        // above this one's, so a refusal of this page can be told about now and the cursor can
+        // cover it without skipping anything.
+        refusals.addAll(page.refusals)
+        maxNotifiedRefusal = maxRefusalSequence(maxNotifiedRefusal, page.refusals)
+
+        if (!advanced) {
+            return DrainProgress(
+                delivered = delivered.toList(),
+                nextCursor = clientCursor(runId, lastDelivered, page.position, maxNotifiedRefusal),
+                hasMore = true,
+                refusals = refusals.toList(),
+                runEnded = runEnded,
+                stall = DrainStall(stuckAfter = readFrom),
+            )
+        }
+        readFrom = page.position
+    }
+}
+
+/**
+ * One row of a page, as both projections see it: the envelope the filter is evaluated against, the
+ * payload the client is handed, and the sequence that names the row's position.
+ */
+private class DrainRow<P>(
+    val sequence: Long,
+    val envelope: PipelineEventEnvelope,
+    val payload: P,
+)
+
+/**
+ * One page, in the shape the shared rule reads it: the rows, the refusals, the store's position and
+ * the store's own flag. The position is nullable because the envelope page may carry none; the typed
+ * page always carries one, and the rule treats a missing position as "the store did not move".
+ */
+private class DrainPage<P>(
+    val rows: List<DrainRow<P>>,
+    val refusals: List<EventRecordRead.Undecodable>,
+    val position: EventCursor?,
+    val hasMore: Boolean,
+)
+
+/**
+ * Why the drain stopped short: the store promised more rows and the continuation did not move.
+ * It is a case of its own rather than a flag because the position it was stuck at can be null — the
+ * store did not move from the very beginning — and a null position cannot say which case it was.
+ */
+private class DrainStall(val stuckAfter: EventCursor?)
+
+/**
+ * What the shared rule decided, in the shape the caller needs to build its own answer.
+ * [stall] is null when the read was answered; it is the stall case otherwise, carrying the position
+ * the reader was stuck at.
+ */
+private class DrainProgress<P>(
+    val delivered: List<P>,
+    val nextCursor: EventCursor?,
+    val hasMore: Boolean,
+    val refusals: List<EventRecordRead.Undecodable>,
+    val runEnded: Boolean,
+    val stall: DrainStall?,
+)
 
 /** Only sizes the first allocation; the answer is bounded by `limit`, not by this. */
 private const val DRAIN_PAGE_HINT = 64
@@ -413,9 +460,9 @@ private const val DRAIN_PAGE_HINT = 64
  *
  * ## One rule, two projections
  * The envelope drain and the typed drain read through different seams but owe the client the same
- * cursor, so the rule lives HERE and both call it. A paging rule that exists in one projection
- * and not in the other is a divergence waiting to be discovered by a consumer that reads one of
- * them.
+ * cursor, so the rule lives HERE and the shared rule calls it for both. A paging rule that exists
+ * in one projection and not in the other is a divergence waiting to be discovered by a consumer
+ * that reads one of them.
  */
 private fun clientCursor(
     runId: String,
@@ -481,9 +528,8 @@ private fun clientHasMore(
  * undelivered matching row can be told about now; one that follows it cannot, because the cursor
  * would have to jump past an undelivered fact to cover it.
  *
- * One rule, two projections: the envelope drain and the typed drain call it with the envelopes
- * their own rows project to, so the filter semantics stay the one [EventQuery.matches] both loops
- * already use.
+ * One rule, two projections: the shared paging rule calls it with the envelopes both projections'
+ * rows carry, so the filter semantics stay the one [EventQuery.matches] both drains already use.
  */
 private fun undeliveredMatchingSequence(
     visibleEnvelopes: Sequence<PipelineEventEnvelope>,

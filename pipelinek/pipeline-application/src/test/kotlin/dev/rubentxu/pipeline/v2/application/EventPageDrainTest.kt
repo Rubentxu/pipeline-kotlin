@@ -6,11 +6,13 @@ import dev.rubentxu.pipeline.v2.events.DomainEvent
 import dev.rubentxu.pipeline.v2.events.EventRecordRead
 import dev.rubentxu.pipeline.v2.events.EventRecordSlice
 import dev.rubentxu.pipeline.v2.events.EventStore
+import dev.rubentxu.pipeline.v2.events.RunFinished
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.StageStarted
 import dev.rubentxu.pipeline.v2.events.UndecodableReason
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
+import dev.rubentxu.pipeline.v2.events.identity.EnvelopeProjector
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import dev.rubentxu.pipeline.v2.events.identity.EventId
 import dev.rubentxu.pipeline.v2.events.identity.EventPage
@@ -758,6 +760,143 @@ class EventPageDrainTest {
             stalled.stuckAfter?.lastSequence == 7L,
             "el drenador tiene que decir en qué posición se quedó. Posición emitida: " +
                 "${stalled.stuckAfter}",
+        )
+    }
+
+    /**
+     * La historia que se lee por los dos puertos a la vez.
+     *
+     * ## El reparto
+     * Las filas 1, 3, 4 y 5 coinciden con el filtro; la 2 no se puede leer y la 6 es el final de
+     * la ejecución, que el filtro descarta. Con un límite de tres, la primera página (filas 1 a 3)
+     * entrega dos hechos y la segunda (filas 4 a 6) entrega uno y agota el límite: la **fila 5
+     * coincide y no se entrega**, y detrás de ella está la 6, que el filtro no deja pasar.
+     *
+     * ## Por qué esta historia y no una más simple
+     * Junta las tres cosas que la regla decide y que un defecto puede romper por separado: el
+     * cursor (tiene que nombrar el 4 y no el 6), la bandera (la 5 sigue por delante aunque el
+     * almacén haya terminado de leer) y el rechazo (la fila 2 se informa una vez y el cursor la
+     * cubre). Y el final de la ejecución se lee de las FILAS, no de los hechos entregados: la
+     * fila 6 es terminal y el filtro la descarta, así que un drenador que preguntara sólo por lo
+     * que entregó nunca diría que la ejecución terminó.
+     */
+    private fun sharedHistory(): List<EventRecordRead> = listOf(
+        EventRecordRead.Decoded(StageStarted("evt-1", "run-1", 1L, Instant.EPOCH, 0, "stage-0")),
+        refusal(2),
+        EventRecordRead.Decoded(StageStarted("evt-3", "run-1", 3L, Instant.EPOCH, 2, "stage-2")),
+        EventRecordRead.Decoded(StageStarted("evt-4", "run-1", 4L, Instant.EPOCH, 3, "stage-3")),
+        EventRecordRead.Decoded(StageStarted("evt-5", "run-1", 5L, Instant.EPOCH, 4, "stage-4")),
+        EventRecordRead.Decoded(
+            RunFinished("evt-6", "run-1", 6L, Instant.EPOCH, "success", emptyList()),
+        ),
+    )
+
+    /**
+     * La misma historia por el puerto de envelopes: cada fila legible proyectada como la proyecta
+     * el almacén, para que las dos proyecciones comparen sobre la MISMA fila y no sobre dos
+     * historias parecidas.
+     */
+    private fun tailOf(records: List<EventRecordRead>): FakeTail = FakeTail(
+        records.map { record ->
+            when (record) {
+                is EventRecordRead.Decoded ->
+                    TailRow.Valid(EnvelopeProjector.project(record.event, null))
+                is EventRecordRead.Undecodable -> TailRow.Refused(record)
+            }
+        },
+    )
+
+    /**
+     * Una historia, dos puertos, una sola decisión.
+     *
+     * ## La garantía
+     * El drenador de envelopes y el tipado le deben al cliente LO MISMO: las mismas filas, el
+     * mismo cursor, la misma bandera, los mismos rechazos y la misma respuesta sobre si la
+     * ejecución terminó. Sólo difieren en lo que la fila contiene —el envelope o el hecho— y en
+     * el puerto por el que se lee.
+     *
+     * ## Por qué esta fila y no una por proyección
+     * Dos filas que comprueban la misma garantía en cada proyección pueden las dos estar verdes
+     * y las reglas divergir: basta con que un defecto viva en el lado que nadie miró. Una fila
+     * que mete la MISMA historia por los dos puertos y compara las dos respuestas no puede tener
+     * esa ceguera: cualquier divergencia se ve como una diferencia, y la comparación es tan
+     * fuerte como la más débil de las dos.
+     *
+     * ## Por qué esto NO lo puede observar la capa ejecutable
+     * El verbo `events` elige una proyección u otra según una opción, y cada una produce hechos
+     * con forma distinta en `stdout`. Un escenario de ejemplos que ejecutara las dos y las
+     * comparara tendría que detectar que dos filas de hechos son el mismo hecho, y eso es un
+     * problema de formato, no de comportamiento. La garantía necesita un instrumento que monte
+     * la historia y lea las dos respuestas del drenador.
+     */
+    @Test
+    @DisplayName("las dos proyecciones deciden lo mismo sobre la misma historia")
+    fun bothProjectionsDecideTheSameAboutTheSameHistory() {
+        val records = sharedHistory()
+        val tail = tailOf(records)
+        val store = FakeRecordStore(records)
+        val query = EventQuery.ByKind("StageStarted")
+
+        val envelopes = EventPageDrain.drain(tail, run, query, null, limit = 3)
+        val typed = EventPageDrain.drainTyped(store, run, query, null, limit = 3)
+
+        assertEquals(
+            listOf(1L, 3L, 4L),
+            envelopes.page.envelopes.map { it.sequence },
+            "la proyección de envelopes entrega hasta agotar el límite",
+        )
+        assertEquals(
+            envelopes.page.envelopes.map { it.sequence },
+            typed.page.events.map { it.sequence },
+            "las dos proyecciones entregan las MISMAS filas de la misma historia: si divergearan, " +
+                "el cliente que lee una de ellas y el que lee la otra verían historias distintas",
+        )
+
+        assertEquals(
+            4L,
+            envelopes.page.nextCursor?.lastSequence,
+            "el cursor nombra el último hecho entregado (4), no la posición del almacén (6): si " +
+                "nombrara la del almacén, la fila 5 —que coincide y no se entregó— quedaría " +
+                "detrás y se perdería. Cursor emitido: ${envelopes.page.nextCursor}",
+        )
+        assertEquals(
+            envelopes.page.nextCursor?.lastSequence,
+            typed.page.nextCursor?.lastSequence,
+            "las dos proyecciones le deben al cliente el mismo cursor",
+        )
+
+        assertTrue(
+            envelopes.page.hasMore,
+            "la fila 5 se leyó, coincide y no se entregó: la bandera debe decir que queda trabajo " +
+                "por delante del cliente aunque el almacén haya terminado de leer. Bandera " +
+                "emitida: ${envelopes.page.hasMore}",
+        )
+        assertEquals(
+            envelopes.page.hasMore,
+            typed.page.hasMore,
+            "las dos proyecciones le deben al cliente la misma bandera",
+        )
+
+        assertEquals(
+            listOf(2L),
+            envelopes.page.refusals.map { it.sequence },
+            "la fila ilegible se informa una vez, y su cursor la cubre",
+        )
+        assertEquals(
+            envelopes.page.refusals.map { it.sequence },
+            typed.page.refusals.map { it.sequence },
+            "las dos proyecciones informan los mismos rechazos",
+        )
+
+        assertTrue(
+            envelopes.runEnded,
+            "la fila 6 es terminal y el filtro la descarta: el final de la ejecución se lee de " +
+                "las filas del almacén, no de los hechos entregados",
+        )
+        assertEquals(
+            envelopes.runEnded,
+            typed.runEnded,
+            "las dos proyecciones responden lo mismo sobre si la ejecución terminó",
         )
     }
 

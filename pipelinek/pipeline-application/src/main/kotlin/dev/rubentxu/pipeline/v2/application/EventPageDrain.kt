@@ -176,7 +176,7 @@ object EventPageDrain {
                     runEnded = runEnded,
                 )
             }
-            // A MID-LOOP page is consumed whole: the limit was not reached, so every matching
+            // A page that arrives before the limit is reached is consumed whole: every matching
             // envelope it held was handed out and none of them waits behind the cut. Every row of
             // a later page sits above this one's, so a refusal of this page can be told about now
             // and the cursor can cover it without skipping anything.
@@ -292,8 +292,8 @@ object EventPageDrain {
                     runEnded = runEnded,
                 )
             }
-            // A MID-LOOP page is consumed whole, so none of its matching rows waits behind the
-            // cut and every one of its refusals can be told about now.
+            // A page that arrives before the limit is reached is consumed whole, so none of its
+            // matching rows waits behind the cut and every one of its refusals can be told about now.
             refusals.addAll(slice.refusals)
             maxNotifiedRefusal = maxRefusalSequence(maxNotifiedRefusal, slice.refusals)
 

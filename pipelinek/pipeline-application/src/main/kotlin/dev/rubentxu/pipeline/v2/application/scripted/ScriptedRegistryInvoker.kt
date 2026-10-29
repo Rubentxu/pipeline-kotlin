@@ -3,6 +3,7 @@ package dev.rubentxu.pipeline.v2.application.scripted
 import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeCapabilityAccess
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
+import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationRecord
 import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationResolver
 import dev.rubentxu.pipeline.v2.application.durable.DurableStepExecutor
 import dev.rubentxu.pipeline.v2.application.durable.ExecutionPreparation
@@ -17,13 +18,10 @@ import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
-import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
-import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.scripting.ScriptedCallSiteId
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -150,11 +148,18 @@ data class ScriptedRegistryCall(
  * 1. ADDRESS     operationId + OperationInput + fingerprint
  * 2. RESOLVE     declared metadata (effects / replayPolicy / recoveryPolicy)
  * 3. FINGERPRINT over the DECLARED policy ←
- * 4. OBSERVE     journal.get(operationId)          ← obtaining a fact, not interpreting one
- * 5. DELEGATE    DurableInvocationResolver.reconcileInvocation
+ * 4. DELEGATE    DurableInvocationResolver.reconcileInvocation
  * ```
  * and then interprets the CLOSED [InvocationReconciliation] ADT — never an
- * [OperationStatus].
+ * `OperationStatus`.
+ *
+ * Step 4 used to be a separate `OBSERVE` step of its own: this class read the durable row
+ * through the journal port and handed it to the resolver, which then compared that row against
+ * a fingerprint. Reading the row is part of deciding, so the read moved INTO the resolver
+ * (which returns the row together with the decision in `ReconciledInvocation`) and this class
+ * stopped holding the port. The row this surface used to read was the HIGHEST attempt; the
+ * resolver reads the EXACT attempt. The durable protocol only ever writes attempt 1, so the two
+ * answers were the same row today — and the asymmetry was a latent divergence, not a behaviour.
  * A note on what was claimed here before, because the claim was false and the code
  * is the authority: the `when (existing.status)` table and the `memoized` import did go, but the
  * `ReplayPolicy` literal in the fingerprint call did **not**. It was still there, hashing every
@@ -222,7 +227,6 @@ data class ScriptedRegistryCall(
 */
 internal class ScriptedRegistryInvoker(
     private val registry: StepRegistry,
-    private val journal: OperationJournal,
     private val runtimeContextFactory: (call: ScriptedRegistryCall) -> CanonicalRuntimeContext,
     /**
      * Capability bridge construction. The default is the canonical bridge over the
@@ -335,7 +339,7 @@ internal class ScriptedRegistryInvoker(
                 put("definitionDigest", JsonPrimitive(call.definitionDigest))
             }.let(::flattenParams),
             runId = call.runId,
-            attempt = ATTEMPT,
+            attempt = DurableInvocationRecord.ATTEMPT,
         )
         // 2. RESOLVE THE DECLARED METADATA —/, before anything hashes against it
         // Pre-decode metadata (effects, replay policy, recovery policy) is the Step's own
@@ -367,29 +371,20 @@ internal class ScriptedRegistryInvoker(
         //    neutral default, it is a second opinion about the Step, and the canonical path does
         //    not get to have one.
         val fingerprint = dev.rubentxu.pipeline.v2.domain.durable.Fingerprint.compute(
-            input, stepId, metadata.replayPolicy, ATTEMPT,
+            input, stepId, metadata.replayPolicy, DurableInvocationRecord.ATTEMPT,
         )
         val operationId = call.operationId()
 
-        // 4. OBSERVE — obtaining the durable fact.: reading a fact is not
-        //    interpreting a protocol. What the fact MEANS is decided below, by the resolver.
-        val journaled: DurableOperation? = journal.get(operationId)
-        val currentOperation = RerunOperation(
-            id = operationId,
+        // 4. DELEGATE — the canonical decision. This invoker never reads a status to choose,
+        //    and it no longer reads the row either: reading the row is part of deciding, so the
+        //    resolver does it and hands the row back with the decision.
+        val reconciliation = invocationResolver.reconcileInvocation(
+            metadata = metadata,
             fingerprint = fingerprint,
             input = input,
-            output = null,
-            status = OperationStatus.PENDING,
-            attempt = ATTEMPT,
-        )
-
-        // 5. DELEGATE — the canonical decision. This invoker never reads a status to choose.
-        return when (val resolution = invocationResolver.reconcileInvocation(
-            metadata = metadata,
-            journaled = journaled,
-            currentOperation = currentOperation,
             operationId = operationId,
-        )) {
+        )
+        return when (val resolution = reconciliation.resolution) {
             is InvocationReconciliation.Diverged -> notReplayable(
                 "scripted registry step input diverged from its durable history",
             )
@@ -400,7 +395,7 @@ internal class ScriptedRegistryInvoker(
 
             // Reuse materialises, it does not decide. The ADT carries no output by design:
             // Mixing the decision with the materialisation is exactly what forbids
-            InvocationReconciliation.ReuseCompleted -> restoredOutput(journaled?.output)
+            InvocationReconciliation.ReuseCompleted -> restoredOutput(reconciliation.journaled?.output)
 
             // A recovered terminal now DOES yield a typed value, and this is where a
             // scripted call finally receives one. The interpretation engine owns the projection and
@@ -455,7 +450,13 @@ internal class ScriptedRegistryInvoker(
                     "could not be observed; the operation is left RUNNING rather than re-executed",
             )
 
-            InvocationReconciliation.Execute -> execute(call, operationId, fingerprint, input, journaled)
+            InvocationReconciliation.Execute -> execute(
+                call,
+                operationId,
+                fingerprint,
+                input,
+                reconciliation.journaled,
+            )
         }
     }
 
@@ -588,8 +589,6 @@ internal class ScriptedRegistryInvoker(
     private fun flattenParams(obj: JsonObject): Map<String, kotlinx.serialization.json.JsonElement> = obj
 
     private companion object {
-        const val ATTEMPT = 1
-
         /** Namespace rule: `scripted.` + stepKey; collision-checked by fitness tests. */
         fun scriptedStepId(key: PluginStepId): String = "scripted." + key.value
     }

@@ -206,6 +206,10 @@ class CanonicalDurableRunCoordinator(
                 }
             }
         }
+    // The durable row of ONE invocation. It is the single holder of the journal port on this
+    // surface: the resolver READS the row, the executor ADMITS and SETTLES it, and the recovery
+    // interpreter SETTLES the recovered terminal. Three writers, one shape, one owner.
+    private val invocationRecords = DurableInvocationRecord(journal)
     private val invocationResolver: DurableInvocationResolver = DurableInvocationResolver(
         // The detector is a PORT: the constructor declares the interface and the resolver declares
         // it too, so the composition hands the interface straight through. It used to narrow it to
@@ -213,7 +217,7 @@ class CanonicalDurableRunCoordinator(
         // with a ClassCastException at CONSTRUCTION — before the run had said anything.
         divergenceDetector = divergenceDetector,
         effectReplayPolicy = effectReplayPolicy,
-        journal = journal,
+        records = invocationRecords,
         // The external-subprocess compatibility hook is COMPOSED here and
         // reaches the resolver only as a port. The resolver decides when recovery applies; this
         // adapter owns the only place that knows a control directory and a live process exist.
@@ -259,7 +263,7 @@ class CanonicalDurableRunCoordinator(
     private val stepExecutor: DurableStepExecutor = DurableStepExecutor(
         eventSink = eventSink,
         executionBoundary = executionBoundary,
-        journal = journal,
+        records = invocationRecords,
     )
 
     // The run-lifecycle bookends and the running outcome live in
@@ -273,7 +277,7 @@ class CanonicalDurableRunCoordinator(
     // lives in invocationResolver; this engine performs the journal write and the lifecycle
     // events that a resolution names, and reports ProceedToExecution for the one resolution
     // That is not a recovery case.: it advances no cursor — that is traversal state
-    private val recoveryInterpretation = RecoveryInterpretationEngine(eventSink, journal)
+    private val recoveryInterpretation = RecoveryInterpretationEngine(eventSink, invocationRecords)
     private val bodyExecutionEngine = BodyExecutionEngine(
         eventSink,
         clock,
@@ -318,7 +322,6 @@ class CanonicalDurableRunCoordinator(
     // cohesion, so the whole closed cycle moves together and the coordinator keeps only the
     // run's own control flow.
     private val stepDispatch = StepDispatchEngine(
-        journal = journal,
         clock = clock,
         dispatchPreparation = dispatchPreparation,
         typedInputPreparation = typedInputPreparation,

@@ -133,7 +133,7 @@ class DivergenceDetectorPortTest {
         DurableInvocationResolver(
             divergenceDetector = detector,
             effectReplayPolicy = DefaultEffectReplayPolicy(),
-            journal = InMemoryOperationJournal(FixedClock),
+            records = DurableInvocationRecord(InMemoryOperationJournal(FixedClock)),
             runningSubprocessRecovery = RunningSubprocessRecovery {
                 RunningSubprocessObservation.Unavailable(UnobservableCause.NoControlRootConfigured)
             },

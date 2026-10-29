@@ -9,12 +9,10 @@ import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
-import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepDefinition
 import kotlinx.serialization.json.JsonPrimitive
 import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 
 /**
  * The INTERPRETATION half of durable recovery
@@ -55,7 +53,7 @@ import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 */
 internal class RecoveryInterpretationEngine(
     private val eventSink: EventSink,
-    private val journal: OperationJournal,
+    private val records: DurableInvocationRecord,
     /**
      * How a recovered terminal becomes a Step's typed value. NOT nullable, and that is
      * a correction rather than a style choice.
@@ -193,27 +191,24 @@ internal class RecoveryInterpretationEngine(
             val result = StepExecutionBoundary(eventSink).execute(request.lifecycleContext) {
                 materialised.result
             }
-            journal.append(
-                RerunOperation(
-                    id = request.operationId,
-                    fingerprint = request.fingerprint,
-                    input = request.input,
-                    output = materialised.encoded?.let { encoded ->
-                        // The SAME bridge DurableStepExecutor uses, deliberately: a recovered row and
-                        // a fresh row are written by one shape, so nothing downstream has to know which
-                        // direction produced the value. Timing here is the RECOVERY's own duration,
-                        // not the original process's, which is the truth: we are recording how long
-                        // reconciling took, because the original duration was never observed.
-                        val finishedAt = System.currentTimeMillis()
-                        OperationOutput(
-                            result = JsonPrimitive(encoded.value),
-                            durationMs = (finishedAt - materialised.startedAtMs).coerceAtLeast(0),
-                            finishedAt = finishedAt,
-                        )
-                    },
-                    status = materialised.status,
-                    attempt = 1,
-                ),
+            records.settle(
+                operationId = request.operationId,
+                fingerprint = request.fingerprint,
+                input = request.input,
+                status = materialised.status,
+                output = materialised.encoded?.let { encoded ->
+                    // The SAME bridge DurableStepExecutor uses, deliberately: a recovered row and
+                    // a fresh row are written by one shape, so nothing downstream has to know which
+                    // direction produced the value. Timing here is the RECOVERY's own duration,
+                    // not the original process's, which is the truth: we are recording how long
+                    // reconciling took, because the original duration was never observed.
+                    val finishedAt = System.currentTimeMillis()
+                    OperationOutput(
+                        result = JsonPrimitive(encoded.value),
+                        durationMs = (finishedAt - materialised.startedAtMs).coerceAtLeast(0),
+                        finishedAt = finishedAt,
+                    )
+                },
             )
             RecoveryInterpretation.Settled(result)
         }

@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application.scripted
 
 import dev.rubentxu.pipeline.v2.application.RegistryStepMetadataResolver
 import dev.rubentxu.pipeline.v2.application.durable.CanonicalRuntimeContext
+import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationRecord
 import dev.rubentxu.pipeline.v2.application.durable.DurableInvocationResolver
 import dev.rubentxu.pipeline.v2.application.durable.DurableStepExecutor
 import dev.rubentxu.pipeline.v2.application.durable.ExternalSubprocessRecovery
@@ -91,25 +92,28 @@ object ScriptedFrontendRunner {
         // `sh` that was RUNNING when the process died is genuinely recoverable rather than
         // refused — which is what the previous hand-written `when (status)` table made
         // impossible.
+        // The durable row of ONE invocation: the single holder of the journal port on this
+        // surface. The resolver READS it, the executor ADMITS and SETTLES it, the recovery
+        // interpreter SETTLES the recovered terminal — one shape, one owner.
+        val records = DurableInvocationRecord(journal)
         val resolver = DurableInvocationResolver(
             divergenceDetector = StrictFingerprintDivergenceDetector(),
             effectReplayPolicy = DefaultEffectReplayPolicy(),
-            journal = journal,
+            records = records,
             runningSubprocessRecovery = ExternalSubprocessRecovery(clock, controlDirRoot),
         )
         val executor = DurableStepExecutor(
             eventSink = eventSink,
             executionBoundary = RegistryExecutionBoundary.adapt(milestoneStateStore = null),
-            journal = journal,
+            records = records,
         )
         // The scripted surface runs the SAME authorities as the canonical coordinator,
         // with the materialiser supplied by the engine's own default — so a recovered `core.sh`
         // returns the same value on both surfaces, and neither composition site can forget it.
-        val interpretation = RecoveryInterpretationEngine(eventSink, journal)
+        val interpretation = RecoveryInterpretationEngine(eventSink, records)
 
         val invoker = ScriptedRegistryInvoker(
             registry = registry,
-            journal = journal,
             eventSink = eventSink,
             invocationResolver = resolver,
             stepExecutor = executor,

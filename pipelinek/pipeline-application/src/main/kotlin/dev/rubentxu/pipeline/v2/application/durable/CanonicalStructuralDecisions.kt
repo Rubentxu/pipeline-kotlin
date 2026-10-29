@@ -25,6 +25,7 @@ import dev.rubentxu.pipeline.v2.domain.StageNode
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.credentials.CredentialBindingSpec
+import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.DurableTaskTerminal
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
@@ -306,6 +307,30 @@ internal sealed interface InvocationReconciliation {
     /** Fresh/re-run: the invocation is cleared to execute through the effective executor. */
     data object Execute : InvocationReconciliation
 }
+
+/**
+ * The resolution of a reconciliation TOGETHER with the journaled row it was derived from.
+ *
+ * The row is a fact the resolver OBSERVED, and the resolution is what it DECIDED about that
+ * fact. Before this carrier existed, the two travelled apart: the reader of the row was not
+ * the decider of the resolution, so the caller that received a resolution had to go and read
+ * the row itself — and two callers read it with two different questions (the exact attempt,
+ * and the highest attempt), which is why the scripted surface could compare the fingerprint
+ * of attempt 1 against a row belonging to another attempt.
+ *
+ * The row travels as [DurableOperation], the journal's own type, because it IS the journal's
+ * row and nothing projects it. `null` means the invocation was never journalled, which is a
+ * fact too and not the absence of one: it is what makes [InvocationReconciliation.Execute]
+ * and [InvocationReconciliation.ReuseCompleted] distinguishable to the caller without a
+ * second read.
+ *
+ * @property resolution What the reconciliation decided.
+ * @property journaled The row this attempt had, or `null` when it had none.
+ */
+internal data class ReconciledInvocation(
+    val resolution: InvocationReconciliation,
+    val journaled: DurableOperation?,
+)
 
 internal sealed interface BlockShellScope {
     data object None : BlockShellScope

@@ -1,6 +1,5 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
 import dev.rubentxu.pipeline.v2.domain.ExecutionContext
@@ -11,17 +10,13 @@ import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
-import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
-import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker
 import dev.rubentxu.pipeline.v2.domain.step.BodySlots
 import dev.rubentxu.pipeline.v2.domain.step.SlotResolution
-import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.step.BodyContinuation
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
-import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
 
 /**
@@ -50,7 +45,8 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  * | preparation — durable identity, control overlay, metadata, fingerprint | [CanonicalDispatchPreparation] |
  * | the runtime context — SAGA ports, body adapter, plugin emitter | [CanonicalRuntimeContextFactory] |
  * | the body — policy, projection, credential preamble, child loop | [CanonicalBodyDispatch] |
- * | reconciliation against the journal | [DurableInvocationResolver] |
+ * | reconciliation against the journal — reading the row and deciding about it | [DurableInvocationResolver] |
+ * | the durable row of an invocation — admission and terminal write | [DurableInvocationRecord] |
  * | interpretation of a recovery resolution | [RecoveryInterpretationEngine] |
  * | the durable cursor | [CanonicalCursorAdvance] |
  * | the ORDER of the dispatch | this class |
@@ -60,11 +56,19 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  * where an outcome becomes a cursor position, and it is the only place in the application
  * that writes one.
  *
+ * ## The engine holds no journal
+ *
+ * It used to hold the journal port to read the row of the invocation it was about to
+ * reconcile, and to write the terminal row of a schema rejection. Both of those are now
+ * somebody else's job — the row is read by the resolver that DECIDES about it, and written by
+ * [DurableInvocationRecord]. What the engine keeps is the ORDER, and the one thing it still
+ * owns on this path: the shape of a schema rejection, which is a terminal SCHEMA outcome in
+ * the context the Step left behind.
+ *
  * The coordinator keeps only what it alone can do: the run's bookends, the stage loop and
  * the stage-level finalizers.
  */
 internal class StepDispatchEngine(
-    private val journal: OperationJournal,
     private val clock: Clock,
     // PREPARACION: durable identity, control overlay, metadata and fingerprint are decided
     // by their owner, which has no clock, no journal and no executor.
@@ -341,11 +345,11 @@ internal class StepDispatchEngine(
         )
         val ready = when (preparation) {
             // Terminal SCHEMA rejection (C3/C5): the effective executor is never invoked.
-            is DispatchPreparation.Rejected -> return Dispatched(
-                CommonExecutionResult(
-                    outcome = rejectSchema(preparation.operationId, preparation.input, preparation.reason),
-                ),
-                executionContext,
+            is DispatchPreparation.Rejected -> return schemaRejection(
+                operationId = preparation.operationId,
+                input = preparation.input,
+                message = preparation.reason,
+                context = executionContext,
             )
             is DispatchPreparation.Ready -> preparation
         }
@@ -357,27 +361,27 @@ internal class StepDispatchEngine(
         val fingerprint = ready.fingerprint
         val lifecycleContext = ready.lifecycleContext
 
-        val journaled = journal.get(operationId, 1)
-        val currentOperation = RerunOperation(
-            id = operationId,
-            fingerprint = fingerprint,
-            input = input,
-            output = null,
-            status = OperationStatus.PENDING,
-            attempt = 1,
-        )
         // The four recovery resolutions are interpreted by
         // RecoveryInterpretationEngine; only Execute — which IS the invocation — stays here.
         // The arms were moved verbatim, including which ones emit lifecycle events and
         // write the journal.
         //
-        // the resolution is NAMED rather than inlined into the call. Naming it
+        // the reconciliation is NAMED rather than inlined into the call. Naming it
         // is what lets the cursor decision below see both halves of the fact — the
         // resolution (RecoverRunning or not) and the interpreted outcome (success or not) —
         // without any arm of the interpretation engine having to carry a traversal flag.
-        val resolution = reconcileInvocation(metadata, journaled, currentOperation, operationId)
+        //
+        // It also carries the row the decision was made from, so the engine never asks the
+        // journal a second question about the same invocation: the reader of that row is
+        // the resolver that decided about it.
+        val reconciliation = invocationResolver.reconcileInvocation(
+            metadata = metadata,
+            fingerprint = fingerprint,
+            input = input,
+            operationId = operationId,
+        )
         val interpretation = recoveryInterpretation.interpret(
-            resolution,
+            reconciliation.resolution,
             RecoveryInterpretationEngine.Request(
                 operationId = operationId,
                 fingerprint = fingerprint,
@@ -416,7 +420,7 @@ internal class StepDispatchEngine(
                     decision = cursorAdvance.decideAfterRecovery(
                         operationId = operationId,
                         stageIndex = stageIndex,
-                        resolution = resolution,
+                        resolution = reconciliation.resolution,
                         outcome = interpretation.result.outcome,
                     ),
                 )
@@ -450,16 +454,12 @@ internal class StepDispatchEngine(
         // terminal SCHEMA rejection (journal FAILED, common executor never runs).
         // extracted to DurableTypedInputPreparation.
         val prepared = when (val typed = typedInputPreparation.prepare(step, runtime)) {
-            is DurableTypedInputPreparation.TypedPreparation.Rejected -> return Dispatched(
-                CommonExecutionResult(
-                    outcome = rejectSchema(
-                        operationId,
-                        input,
-                        "schema mismatch for step '${step.pluginStepId.value}' on " +
-                            "'${step.id.value}': ${typed.reason}",
-                    ),
-                ),
-                contextAfterOverlay,
+            is DurableTypedInputPreparation.TypedPreparation.Rejected -> return schemaRejection(
+                operationId = operationId,
+                input = input,
+                message = "schema mismatch for step '${step.pluginStepId.value}' on " +
+                    "'${step.id.value}': ${typed.reason}",
+                context = contextAfterOverlay,
             )
             is DurableTypedInputPreparation.TypedPreparation.Ready -> typed.prepared
         }
@@ -476,7 +476,7 @@ internal class StepDispatchEngine(
             operationId = operationId,
             fingerprint = fingerprint,
             input = input,
-            journaled = journaled,
+            journaled = reconciliation.journaled,
             prepared = prepared,
             runtime = runtime,
             lifecycleContext = lifecycleContext,
@@ -498,19 +498,29 @@ internal class StepDispatchEngine(
     }
 
     /**
-     * Records a FAILED journal row and returns the terminal `SCHEMA` [StepOutcome]; the effective
-     * executor is never invoked (C3/C5). Fingerprint uses [ReplayPolicy.RERUN] as on the rejection path.
+     * A terminal SCHEMA rejection, in the context the Step left behind.
+     *
+     * The row itself is written by the resolver that owns the rejection ([DurableInvocationResolver]
+     * records a FAILED row with the rejection's own fingerprint); what the engine owns here is the
+     * SHAPE of the refusal: a [CommonExecutionResult] carrying the typed SCHEMA failure, in the
+     * context that the rejected Step had reached.
+     *
+     * The two rejection sites — the structural verdict and the typed-input mismatch — differ in
+     * WHAT they reject and in WHICH context they leave behind, and nothing else. They are one
+     * helper because they are one decision with two inputs, not two decisions that happen to look
+     * alike.
      */
-    private fun rejectSchema(operationId: String, input: OperationInput, message: String): StepOutcome =
-        invocationResolver.rejectSchema(operationId, input, message)
-
-    private fun reconcileInvocation(
-        metadata: StepMetadata,
-        journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
-        currentOperation: RerunOperation,
+    private fun schemaRejection(
         operationId: String,
-    ): InvocationReconciliation =
-        invocationResolver.reconcileInvocation(metadata, journaled, currentOperation, operationId)
+        input: OperationInput,
+        message: String,
+        context: ExecutionContext,
+    ): Dispatched = Dispatched(
+        CommonExecutionResult(
+            outcome = invocationResolver.rejectSchema(operationId, input, message),
+        ),
+        context,
+    )
 
 
     /**

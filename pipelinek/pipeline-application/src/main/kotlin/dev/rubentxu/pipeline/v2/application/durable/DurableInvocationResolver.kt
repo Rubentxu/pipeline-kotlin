@@ -12,7 +12,6 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.EffectReplayPolicy
 import dev.rubentxu.pipeline.v2.domain.durable.OperationStatus
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
-import dev.rubentxu.pipeline.v2.events.durable.OperationJournal
 import dev.rubentxu.pipeline.v2.domain.durable.RecoveryPolicy
 import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ReplayDecision
 import dev.rubentxu.pipeline.v2.domain.durable.ReplayPolicy
@@ -25,11 +24,24 @@ import dev.rubentxu.pipeline.v2.domain.StepOutcome
  * external-subprocess recovery hook, effect-aware replay resolution.
  * Deps are the minimal collaborators of that decision; no event sink, no
  * cursor store, no dispatcher.
+ *
+ * ## It is also the READER of the journaled row
+ *
+ * The reconciliation compares a fingerprint against the row this invocation had. That row is a
+ * FACT, and reading it is part of deciding — it is not a lookup the caller does on the
+ * side. This class therefore reads the row itself, through [DurableInvocationRecord], and
+ * returns the row TOGETHER with the decision in [ReconciledInvocation], so the caller never
+ * asks the journal a second, differently-worded question about the same invocation.
+ *
+ * Before this class owned the read, the two callers of the reconciliation each read the row
+ * their own way and each rebuilt the same `PENDING` envelope: the engine asked for the exact
+ * attempt and the scripted invoker asked for the highest attempt. One of those two answers was
+ * a row of a DIFFERENT attempt than the fingerprint it was compared against.
 */
 internal class DurableInvocationResolver(
     private val divergenceDetector: dev.rubentxu.pipeline.v2.domain.durable.DivergenceDetector,
     private val effectReplayPolicy: EffectReplayPolicy,
-    private val journal: OperationJournal,
+    private val records: DurableInvocationRecord,
     // The external-subprocess compatibility hook is a PORT. The resolver
     // decides when recovery applies; the adapter observes the process. The resolver no longer
     // constructs StepReconcilerL1 / DurableShellExecutor, so this class stays free of process
@@ -39,27 +51,29 @@ internal class DurableInvocationResolver(
 
     /**
      * Records a FAILED journal row and returns the terminal `SCHEMA` [StepOutcome]; the effective
-     * Executor is never invoked. Fingerprint uses [ReplayPolicy.RERUN] as on the rejection path
-*/
+     * Executor is never invoked. Fingerprint uses [ReplayPolicy.RERUN] as on the rejection path.
+     *
+     * The row is written through [DurableInvocationRecord], which owns the row's shape; the
+     * fingerprint stays this method's because a schema rejection never reaches the dispatch
+     * preparation that owns the canonical one.
+    */
     internal fun rejectSchema(operationId: String, input: OperationInput, message: String): StepOutcome {
-        val fingerprint = Fingerprint.compute(input, input.stepId, ReplayPolicy.RERUN, 1)
-        journal.append(
-            RerunOperation(
-                id = operationId,
-                fingerprint = fingerprint,
-                input = input,
-                output = null,
-                status = OperationStatus.FAILED,
-                attempt = 1,
-            ),
+        val fingerprint = Fingerprint.compute(
+            input,
+            input.stepId,
+            ReplayPolicy.RERUN,
+            DurableInvocationRecord.ATTEMPT,
         )
+        records.settle(operationId, fingerprint, input, OperationStatus.FAILED, null)
         return StepOutcome.Failure(
             PipelineFailure(dev.rubentxu.pipeline.v2.domain.FailureKind.SCHEMA, message),
         )
     }
 
     /**
-     * Resolves the durable replay/reconcile decision for an invocation
+     * Resolves the durable replay/reconcile decision for an invocation, and returns the row the
+     * decision was made from.
+     *
      * The decision has two purity domains, kept separate:
      *  - [deterministicGate] is pure: fingerprint divergence and the effect-aware replay policy decide
      *    from their inputs alone.
@@ -76,13 +90,38 @@ internal class DurableInvocationResolver(
      * The durable decision consumes only the typed [StepMetadata] properties resolved by step key
      * it never selects behaviour by a concrete Step name.
      * Precedence reproduces the frozen flow exactly: divergence first, then recovery, then replay.
-     * No journal, cursor, event or executor is touched here; terminal resolutions carry only the data
+     * No cursor, event or executor is touched here; terminal resolutions carry only the data
      * their own handling needs.
-*/
+     *
+     * ## What it returns
+     * [ReconciledInvocation] carries the decision AND the row the decision was made from. The
+     * caller that goes on to reuse a completed result, or to admit an execution, needs that
+     * row; giving it back here means the caller does not read the journal again.
+    */
     internal fun reconcileInvocation(
         metadata: StepMetadata,
-        journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
+        fingerprint: Fingerprint,
+        input: OperationInput,
+        operationId: String,
+    ): ReconciledInvocation {
+        val journaled = records.read(operationId)
+        val currentOperation = records.pending(operationId, fingerprint, input)
+        return ReconciledInvocation(
+            resolution = decide(metadata, currentOperation, journaled, operationId),
+            journaled = journaled,
+        )
+    }
+
+    /**
+     * The frozen decision, over a row the caller of this class already read.
+     *
+     * [journaled] is `null` when the invocation was never journalled, which is a fact and not
+     * the absence of one: it is what lets the replay kernel see a fresh invocation.
+    */
+    private fun decide(
+        metadata: StepMetadata,
         currentOperation: RerunOperation,
+        journaled: DurableOperation?,
         operationId: String,
     ): InvocationReconciliation {
         deterministicGate(currentOperation, journaled, operationId, metadata.effects, metadata.replayPolicy)?.let { return it }
@@ -134,7 +173,7 @@ internal class DurableInvocationResolver(
      * and a row that is not `RUNNING` are both ordinary "not applicable" and both fall through to
      * the replay policy unchanged; a row that IS `RUNNING` under a subprocess policy is the third,
      * separate case, and it is the one that used to be lost.
-*/
+    */
     internal fun recoveryRequirement(
         recoveryPolicy: RecoveryPolicy,
         journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
@@ -150,7 +189,7 @@ internal class DurableInvocationResolver(
      * Returns a terminal divergence resolution when the fingerprints diverge, otherwise `null` so the
      * recovery hook and replay kernel can run in the frozen order. Never touches a journal, cursor,
      * process, event or executor.
-*/
+    */
     internal fun deterministicGate(
         currentOperation: RerunOperation,
         journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
@@ -166,7 +205,7 @@ internal class DurableInvocationResolver(
 
     /**
      * Pure mapping of the effect-aware replay policy onto the reconciliation resolutions
-*/
+    */
     internal fun replayResolution(decision: ReplayDecision, operationId: String): InvocationReconciliation =
         when (decision) {
             ReplayDecision.SKIP -> InvocationReconciliation.ReuseCompleted

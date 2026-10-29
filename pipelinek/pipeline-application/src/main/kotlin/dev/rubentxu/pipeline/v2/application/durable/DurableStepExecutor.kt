@@ -1,12 +1,11 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
+import dev.rubentxu.pipeline.v2.domain.durable.DurableOperation
 import dev.rubentxu.pipeline.v2.domain.durable.OperationOutput
-import dev.rubentxu.pipeline.v2.domain.durable.RerunOperation
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.events.EventSink
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
@@ -44,11 +43,19 @@ import kotlinx.serialization.json.JsonPrimitive
  * `execution.outcome`.
  * Note the ordering law, unchanged: the terminal journal append happens BEFORE the
  * caller may advance the cursor (ReplayCursorStore's mitigation).
+ *
+ * ## The row is written through [DurableInvocationRecord]
+ *
+ * This class no longer holds the journal port. It holds the record, which owns the row's
+ * shape: the admission (`RUNNING`, only when the row does not exist yet) and the terminal
+ * append. What stays here is what this class measured — the execution's own duration, from
+ * its own start to its own end — and the fact that the terminal row is written after the
+ * effect and before the caller may advance the cursor.
 */
 internal class DurableStepExecutor(
     private val eventSink: EventSink,
     private val executionBoundary: CommonExecutionBoundary,
-    private val journal: dev.rubentxu.pipeline.v2.events.durable.OperationJournal,
+    private val records: DurableInvocationRecord,
 ) {
 
     /**
@@ -61,14 +68,12 @@ internal class DurableStepExecutor(
         operationId: String,
         fingerprint: Fingerprint,
         input: OperationInput,
-        journaled: dev.rubentxu.pipeline.v2.domain.durable.DurableOperation?,
+        journaled: DurableOperation?,
         prepared: PreparedRegistryExecution,
         runtime: CanonicalRuntimeContext,
         lifecycleContext: StepLifecycleContext,
     ): CommonExecutionResult {
-        if (journaled == null) {
-            journal.beginOperation(operationId, 1, fingerprint.hex, Json.encodeToString(input))
-        }
+        records.admit(operationId, fingerprint, input, journaled)
 
         val executionStartMs = System.currentTimeMillis()
         val executionResult = StepExecutionBoundary(eventSink).execute(lifecycleContext) {
@@ -76,21 +81,18 @@ internal class DurableStepExecutor(
         }
         val outcome = executionResult.outcome
         val executionEndMs = System.currentTimeMillis()
-        journal.append(
-            RerunOperation(
-                id = operationId,
-                fingerprint = fingerprint,
-                input = input,
-                output = executionResult.encodedOutput?.let {
-                    OperationOutput(
-                        result = JsonPrimitive(it.value),
-                        durationMs = executionEndMs - executionStartMs,
-                        finishedAt = executionEndMs,
-                    )
-                },
-                status = outcome.toOperationStatus(),
-                attempt = 1,
-            ),
+        records.settle(
+            operationId = operationId,
+            fingerprint = fingerprint,
+            input = input,
+            status = outcome.toOperationStatus(),
+            output = executionResult.encodedOutput?.let {
+                OperationOutput(
+                    result = JsonPrimitive(it.value),
+                    durationMs = executionEndMs - executionStartMs,
+                    finishedAt = executionEndMs,
+                )
+            },
         )
         return executionResult
     }

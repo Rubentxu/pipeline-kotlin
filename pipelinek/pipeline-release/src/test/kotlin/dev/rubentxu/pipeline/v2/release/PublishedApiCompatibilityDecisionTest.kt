@@ -64,12 +64,12 @@ class PublishedApiCompatibilityDecisionTest {
         val comparison = PublishedApiCompatibility.compare(previous, candidate)
 
         assertEquals(1, comparison.removedMembers.size)
-        val break_ = comparison.removedMembers.single()
-        assertEquals("dev/rubentxu/pipeline/v2/domain/Kept", break_.declaration)
-        assertEquals("<init>", break_.member)
+        val removed = comparison.removedMembers.single()
+        assertEquals("dev/rubentxu/pipeline/v2/domain/Kept", removed.declaration)
+        assertEquals("<init>", removed.member)
         assertEquals(
             "dev/rubentxu/pipeline/v2/domain/Kept#<init>(Ljava/lang/String;)V",
-            break_.removalKey,
+            removed.removalKey,
         )
     }
 
@@ -111,10 +111,10 @@ class PublishedApiCompatibilityDecisionTest {
 
         val comparison = PublishedApiCompatibility.compare(previous, changed)
 
-        val break_ = comparison.removedMembers.single { it.member == "toString" }
+        val removed = comparison.removedMembers.single { it.member == "toString" }
         assertEquals(
             "dev/rubentxu/pipeline/v2/domain/Kept#toString()Ljava/lang/String;",
-            break_.removalKey,
+            removed.removalKey,
         )
     }
 

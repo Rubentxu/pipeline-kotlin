@@ -21,7 +21,7 @@ data class PublishedApiSurface(
     val declarations: Map<String, Set<String>>,
 ) {
     /** The member lines of [name], or an empty set when the declaration is absent. */
-    fun membersOf(name: String): Set<String> = declarations[name] ?: emptySet()
+    fun membersOf(name: String): Set<String> = declarations[name].orEmpty()
 
     /** Whether this surface declares [name]. */
     operator fun contains(name: String): Boolean = declarations.containsKey(name)
@@ -60,47 +60,48 @@ object PublishedApiSurfaceReader {
      * whose shape was not understood cannot certify compatibility.
      */
     fun read(text: String): PublishedApiSurface {
-        val declarations = LinkedHashMap<String, MutableSet<String>>()
-        var current: MutableSet<String>? = null
-        var currentName: String? = null
+        val declarations = LinkedHashMap<String, Set<String>>()
+        // The members of the declaration that is open. It is a single set that
+        // is emptied when a declaration closes, and NOT a `var` of a mutable
+        // collection: the state of the reader is the NAME of the open
+        // declaration, and the members are a value that belongs to it.
+        val members = LinkedHashSet<String>()
+        var openName: String? = null
         text.lineSequence().forEach { raw ->
             val line = raw.trimEnd()
+            // The rendering has three shapes and no fourth. The shape is
+            // checked before it is dispatched, so that an unknown shape is
+            // refused here and not by a branch that happens not to be reached.
+            require(line.isBlank() || line.startsWith("\t") || line == "}" || line.endsWith("{")) {
+                "a rendered surface carries only headers, members and closing braces; got '$line'"
+            }
             when {
                 line.isBlank() -> Unit
                 line.startsWith("\t") -> {
-                    val members = current
-                        ?: throw IllegalArgumentException(
-                            "a member line appears before any declaration: '$line'",
-                        )
+                    requireNotNull(openName) {
+                        "a member line appears before any declaration: '$line'"
+                    }
                     members.add(line.trim())
                 }
 
                 line == "}" -> {
-                    current = null
-                    currentName = null
-                }
-
-                line.endsWith("{") -> {
-                    if (current != null) {
-                        throw IllegalArgumentException(
-                            "the declaration $currentName was never closed before '$line'",
-                        )
+                    val name = openName
+                    if (name != null) {
+                        declarations[name] = members.toSet()
+                        members.clear()
+                        openName = null
                     }
-                    val name = declarationNameOf(line)
-                    val members = LinkedHashSet<String>()
-                    declarations[name] = members
-                    current = members
-                    currentName = name
                 }
 
-                else -> throw IllegalArgumentException(
-                    "a rendered surface carries only headers, members and closing braces; got '$line'",
-                )
+                else -> {
+                    require(openName == null) {
+                        "the declaration $openName was never closed before '$line'"
+                    }
+                    openName = declarationNameOf(line)
+                }
             }
         }
-        if (current != null) {
-            throw IllegalArgumentException("the declaration $currentName was never closed")
-        }
+        require(openName == null) { "the declaration $openName was never closed" }
         return PublishedApiSurface(declarations)
     }
 
@@ -117,8 +118,8 @@ object PublishedApiSurfaceReader {
         val body = header.removeSuffix("{").trim()
         val tokens = body.split(Regex("""\s+"""))
         val kindIndex = tokens.indexOfLast { it in KIND_KEYWORDS }
-        if (kindIndex < 0 || kindIndex + 1 >= tokens.size) {
-            throw IllegalArgumentException("the header does not name a declaration: '$header'")
+        require(kindIndex >= 0 && kindIndex + 1 < tokens.size) {
+            "the header does not name a declaration: '$header'"
         }
         return tokens[kindIndex + 1]
     }

@@ -110,7 +110,7 @@ data class ShOptions(
 ) {
     companion object {
         /**
-         * One directory per JVM, not per classload and not per call.
+         * One directory per JVM, created when a caller asks for it.
          * This used to be `Files.createTempDirectory("shoptions-empty")` evaluated
          * at class-initialisation time. That leaked exactly one directory into
          * `java.io.tmpdir` per classload — one per Gradle test worker, one per
@@ -118,10 +118,16 @@ data class ShOptions(
          * that is thousands of directories and the failure arrives as
          * `ENOSPC: no space left on device` on the *filesystem*, which reads
          * like a disk problem and is not one.
-         * The directory still has to exist: `DurableShellExecutor` passes it to
+         *
+         * The directory still has to exist **when a caller asks for the shared
+         * default**: `DurableShellExecutor` passes it to
          * `ProcessBuilder.directory(...)`, which rejects a path that is absent.
-         * So the fix is not "stop creating it" but "create it once, under one
-         * stable name, and reuse it".
+         * So the fix is not "stop creating it" but "create it once, when it is
+         * asked for, and reuse it".
+         *
+         * "Once" is once per JVM and per classload, and the name is the one
+         * `createTempDirectory` gives it: unique, and the same for every caller
+         * of this JVM.
          *
          * The process that creates it is the one that removes it. A shared
          * temporary directory with no owner is a leak that only announces
@@ -129,16 +135,22 @@ data class ShOptions(
          * directory when it exits. Nothing outside the JVM has to know that
          * the directory exists, and one that outlives its creator cannot be
          * cleaned up by anybody.
+         *
+         * That last sentence is why the creation is lazy and not eager: a JVM
+         * killed with SIGKILL never runs its shutdown hook, so a temporary that
+         * nobody asked for is a permanent leftover on the machine. The CLI
+         * passes its own workspace root and never touches this default, and
+         * the scenarios that crash a run kill it on purpose.
 */
-        private val sharedWorkspace: Path = java.nio.file.Files.createTempDirectory("shoptions-shared")
-
-        init {
+        private val sharedWorkspace: Path by lazy {
+            val dir = java.nio.file.Files.createTempDirectory("shoptions-shared")
             Runtime.getRuntime().addShutdownHook(
                 Thread(
-                    { deleteTree(sharedWorkspace) },
+                    { deleteTree(dir) },
                     "pipelinek-shoptions-cleanup",
                 ),
             )
+            dir
         }
 
         /**
@@ -164,14 +176,24 @@ data class ShOptions(
         /**
          * Empty options for tests that don't need workspace/env.
          * Uses a single shared /tmp workspace root, no capture, no timeout, empty env.
+         *
+         * It is lazy for the same reason [sharedWorkspace] is: this property reads
+         * the shared workspace, so an eager `val` here would ask for that directory
+         * the moment the class is loaded and would undo the laziness of the
+         * directory itself. A JVM that never asks for the empty options -- the
+         * CLI, which passes its own workspace root -- must not pay for a
+         * temporary it never uses, because a temporary it never uses is one it
+         * cannot remove when it is killed.
 */
-        val EMPTY: ShOptions = ShOptions(
-            workspaceRoot = sharedWorkspace,
-            captureStdout = false,
-            timeoutMs = null,
-            env = emptyMap(),
-            sandbox = SandboxConfig.NONE,
-        )
+        val EMPTY: ShOptions by lazy {
+            ShOptions(
+                workspaceRoot = sharedWorkspace,
+                captureStdout = false,
+                timeoutMs = null,
+                env = emptyMap(),
+                sandbox = SandboxConfig.NONE,
+            )
+        }
 
         /**
          * Backwards-compatible factory for legacy callers using Map<String, String>.

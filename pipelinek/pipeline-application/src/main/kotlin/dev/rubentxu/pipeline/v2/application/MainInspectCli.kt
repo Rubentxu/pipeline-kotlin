@@ -26,8 +26,11 @@ import java.nio.file.Paths
 
 /**
  * `pipelinek inspect <run>` — bounded diagnostic surface for a single run.
+ *
  * ## What this verb is
- * The primary bounded diagnostic surface named byDecision. Five typed dimensions
+ *
+ * The primary bounded diagnostic surface. Five typed dimensions:
+ *
  * ```text
  * inputs   --control-root PATH, --db PATH, <runId>
  * state    --failed (boolean shorthand for outcome=failure), --kind K, --stage S, --step N
@@ -35,10 +38,21 @@ import java.nio.file.Paths
  * shape    --fields STAGE,STEP,OUTCOME,MESSAGE,CONSOLETAIL
  * output   --format json|text
  * ```
+ *
  * `--failed`, `--kind`, `--stage`, `--step`, `--context` and `--log-tail` close the gaps
- * in_CLI_GAP_ANALYSIS... `--fields` projects to one of the [InspectField] cases; the
- * ADT is closed so adding a sixth field forces every caller to be revisited.
+ * the diagnostic surface used to leave: before them a caller could not ask which stage
+ * failed, nor how much of a failed step's console output it wanted to read.
+ * `--fields` projects to one of the [InspectField] cases; the ADT is closed so adding a
+ * sixth field forces every caller to be revisited.
+ *
+ * ## Whole-run reports are MODES
+ *
+ * `--state`, `--profile`, `--explain` and `--telemetry` each answer a different question
+ * about the whole run, so a query carries at most one of them; `--otlp` is another
+ * rendering of the telemetry export and requires `--telemetry`.
+ *
  * ## What this verb is NOT
+ *
  *  - NOT a second authority on run state. The event store and the Output Plane keep theirs.
  *    `inspect` reads both lanes; it does not claim they interleaved.
  *  - NOT a substitute for `observe`. `observe` returns the full envelopes + bytes; `inspect`
@@ -46,15 +60,19 @@ import java.nio.file.Paths
  *    of the same read authority.
  *  - NOT a follow loop. A query that wants live events uses `observe --follow`; `inspect`
  *    is a static query against the durable history.
- * ## / — skeleton
- * This slice ships the PARSER + the closed ADT + the typed query record + the dispatcher
- * entry point. The full read-side (event-store and Output Plane wiring) is implemented
- * incrementally under the same closed ADT; for now the verb parses, validates, and reports
- * the typed query on stdout so a caller can confirm the surface and the field selection
- * before the durable read is wired.
+ *
+ * ## What it reads
+ *
+ * The verb parses and validates the request, then reads the durable history: the event store
+ * (`--db`) and the Output Plane (`--control-root`). Each event is resolved to the operation
+ * it belongs to BEFORE any Output Plane read, because the console tail belongs to the
+ * operation and not to the run. The whole-run reports read the event plane only, so they do
+ * not demand a control root.
+ *
  * Exit codes follow the canonical contract:
- *   0 — parsed successfully and emitted the typed query;
- *   2 — usage error (missing run id, unknown option, refused value).
+ *   0 — the document (or the whole-run report) was emitted;
+ *   2 — usage error or refused read (missing run id, unknown option, refused value,
+ *       unreadable event store, or an `--log-tail-op` that is not an operation of the run).
 */
 object MainInspectCli {
 
@@ -68,7 +86,8 @@ object MainInspectCli {
 
     /**
      * The five dimensional columns a caller can request from the inspection document.
-     * Closed ADT (/, distinct from `EventField`)
+     * Closed ADT (distinct from `EventField`):
+     *
      *   * `Stage`    — the stage name the record was inspected for (--stage).
      *   * `Step`     — the step ordinal within the stage (--step).
      *   * `Outcome`  — the outcome value the record carried (success / failure / unstable / aborted).
@@ -76,6 +95,7 @@ object MainInspectCli {
      *   * `ConsoleTail` — the last `logTail` bytes of the Output Plane for THIS row's operation.
      *     Resolved per operation, not once for the run: see [operationIdPerEvent] for the
      *     measurement that made the run-scoped value wrong.
+     *
      * Adding a sixth case is a compile-time break for every call site that pattern-matches
      * over [InspectField]; that is the discipline that makes the projection closed.
 */
@@ -138,10 +158,11 @@ object MainInspectCli {
 
     /**
      * Entry point for `pipelinek inspect <runId> [opts]`.
-     * The parser + the typed query are the contract. The durable read seam
-     * (SqliteEventStore + FrameIndexedObservationOutputReader.readTail) is the next slice; for
-     * now the verb reports the typed query on stdout so the CLI dispatch + field selection
-     * are exercisable today.
+     * The parser is the contract: it turns the arguments into a typed
+     * [CompiledInspectionQuery], and every refusal it raises is a [CliError] rendered by the
+     * shared mapping. The query then drives the read — the event store for the run's events,
+     * the Output Plane for the console tail each event's operation printed, and the filters
+     * and the context window over the records that survive them.
 */
     fun main(args: Array<String>): Int {
         // The parser is the only place that knows which options carry a value, so it is the
@@ -280,33 +301,42 @@ object MainInspectCli {
 
     /**
      * Resolve each event to the operation whose console tail it may report, in event order.
+     *
      * ## The defect this removes
+     *
      * `--log-tail` used to be answered ONCE for the whole run and the same value stamped onto
      * every row. Measured in an earlier build against distribution 0.62.0, a two-stage run whose first
      * stage printed `DESPUES` and whose second stage exited 7:
+     *
      * ```text
      * STAGE          OUTCOME   CONSOLETAIL
      *  build/sh-0    StepStarted  DESPUES
      *  verify/sh-0   failure     DESPUES     <- a FAILURE carrying the other step's transcript
      * ```
+     *
      * Thirteen rows, thirteen copies, and the failure's row quoted a step that SUCCEEDED. Same
      * defect class as the `ok` verdict, in the opposite direction: a projection rendering a fact
      * its event does not carry. [InspectField.ConsoleTail] had always promised "the Output Plane
      * for THE FAILED STEP'S OP"; this function is what makes the promise true.
+     *
      * ## Why a fold, and what it cannot do
+     *
      * `StepFailed` carries `stepIndex` but NOT `stageIndex`, and an [OpId] needs both. The fold
      * therefore keeps the op of the most recent [StepStarted] — a step runs inside its stage, so
      * the open step's op is the right one — while every event that carries its own indices
      * prefers them.
+     *
      * Both stage boundaries CLEAR the open op: a stage-level row belongs to a stage, and a stage
      * is not an operation. `StageFinished` was measured inheriting the last step's op and printing
      * that step's transcript on the row that closes its stage — the same defect as the failure row,
      * one level up, and found by reading the rendered document rather than by a test.
      * `StageSkipped` needs no case: a skipped stage never opened a step, so `open` is already null.
+     *
      * What the fold cannot decide: a `StepFailed` from a PARALLEL branch that reports after a
      * sibling started. The event carries nothing to resolve it with, so it inherits the sibling.
      * Stated rather than hidden, because wrong-but-present attribution is precisely what the
      * measurement above removes.
+     *
      * Pure: no clock, no filesystem, no reader. [OpId] is the typed authority for the format —
      * this never re-templates the string.
 */
@@ -328,8 +358,10 @@ object MainInspectCli {
 
     /**
      * Read each operation's tail ONCE and index it by opId.
+     *
      * Bounded by the number of DISTINCT operations in the run, not by the number of rows: a
      * 40-step run reads 40 indexed tails and stamps them onto however many rows each owns.
+     *
      * [scopeOpId] (`--log-tail-op`) narrows the eligible set to the operation the operator named,
      * so every other row projects silence rather than someone else's transcript. [main] has
      * already validated that a named operation belongs to the run, which is what lets
@@ -380,6 +412,7 @@ object MainInspectCli {
      * Translate one [DomainEvent] into the row shape that [InspectField] extractors read from.
      * The mapping is intentionally narrow: the five [InspectField] cases are the contract,
      * not the union of every DomainEvent subtype.
+     *
      * [opId] is this row's operation, or null when the event belongs to no step. A row with no
      * operation has no transcript, and says nothing rather than borrowing one.
 */
@@ -491,13 +524,15 @@ object MainInspectCli {
     )
 
     /**
-     * Decode a stream of per-frame byte buffers as one continuous transcript
+     * Decode a stream of per-frame byte buffers as one continuous UTF-8 transcript.
+     *
      * `ObservationOutputReader.decodeWindow` decodes one frame at a time on purpose: the contract
      * is per-frame determinism, and a carry-over buffer would re-decode the same bytes differently
      * depending on where a reader resumed. `inspect --log-tail`, however, presents ONE transcript
      * to a human; a multi-byte codepoint straddling a frame boundary must be reassembled or the
-     * Tail shows two U+FFFD characters instead of the original character. names that defect
+     * tail shows two U+FFFD characters instead of the original character. That defect is named
      * for the human-facing surface; this helper is the fix.
+     *
      * The decoder is the same [StreamingUtf8Decoder] the [StreamingUtf8DecoderTest] exercises; the
      * bytes are not re-decoded character-by-character — the full byte array per frame is fed
      * through the incremental decoder in [r.page.records] order, oldest first, and the final
@@ -522,10 +557,11 @@ object MainInspectCli {
 
     /**
      * Parse the option args (run id consumed upstream) into a [CompiledInspectionQuery].
-     * Delegates to [CliParser.parseInspect]; the body that used to live here
-     * moved into [CliParser] as part of the four-verb parser unification. This signature stays so the
+     *
+     * Delegates to [CliInspectParser.parse]; the body that used to live here
+     * moved into [CliInspectParser] as part of the four-verb parser unification. This signature stays so the
      * existing test surface (`MainInspectCli.parseInspect`) keeps compiling without changes.
-     * `MainInspectCli.parseInspect` is the test seam; `CliParser.parseInspect` is the production
+     * `MainInspectCli.parseInspect` is the test seam; `CliInspectParser.parse` is the production
      * entry point. Both return the same typed [InspectParseResult].
 */
     @Suppress("CyclomaticComplexMethod")
@@ -536,12 +572,14 @@ object MainInspectCli {
      * introspection port.
      *
      * ## What this answers
+     *
      * Whether the run is still going, and — if it is over — how it ended and
      * when. The answer comes from the run's own terminal fact: the event
      * lane's `RunFinished` bookend. A terminal OPERATION row does not end a
      * run, and this surface says so.
      *
      * ## The line it prints
+     *
      * One line, one shape, so a caller can read it without parsing prose:
      *
      * ```
@@ -857,11 +895,13 @@ sealed interface InspectParseResult {
 
 /**
  * What the console tail of an inspected record actually IS.
+ *
  * Three states, because the Output Plane's own contract keeps them apart and a nullable `String`
  * did not. [ObservationOutputRead] already distinguishes "the page" from "the store could not
  * answer", and [dev.rubentxu.pipeline.v2.output.OutputRefusal] spells out what a refusal means:
  * the bytes are NOT absent, they are unread. Rendering that as an empty transcript told a consumer
  * that a step printed nothing, which is the one fact it would act on.
+ *
  * The empty [Bytes] case is deliberately still a value rather than folded into [NotRequested]: "this
  * step ran and printed nothing" and "nothing was asked for" are different answers to different
  * questions, and only the first one is evidence about the step.
@@ -880,9 +920,11 @@ sealed interface InspectConsoleTail {
 
 /**
  * One inspected record — the row shape that the projection fields read from.
+ *
  * Kept as a data class, not a sealed ADT: every record carries all five columns, with `null` for
  * the ones that do not apply, because the consumer chooses which fields to project and a row that
  * has `null` for un-requested fields is not a different SHAPE of record.
+ *
  * [consoleTail] is the exception, and the exception is the point: its states are not "which columns
  * this row fills in" but "what the Output Plane answered". A `null` there would have to mean both
  * "un-requested" and "refused", which are different facts about a run, so it is a closed ADT

@@ -29,22 +29,30 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The consumable read side: console output, addressed by [OutputCursor].
+ *
  * ## What this is for
+ *
  * `OutputReadPort` existed since, and nothing called it. A contract nobody can call is a
  * design, not a product. This is the surface a consumer actually reaches for: a Jenkins
  * `LogStorage`, a Fabric ACL adapter, or [MainConsoleCli].
+ *
  * ## Why it is not built on `EventHistoryReader`
+ *
  * The event plane continues over a store-assigned **sequence**; the output plane continues over a
  * **committed byte offset**. Building a console reader on the event sequence is precisely the
  * A gap in the sequence is indistinguishable from output that was
  * never emitted, and unrelated event traffic perturbs the read. So this reads the Output Plane and
  * only the Output Plane, and its continuation token is `out-cursor-v1:`, never `evt-cursor-v1:`.
+ *
  * ## Resolution, not guessing
+ *
  * A consumer names a **run and an operation**, not a stream id. The mapping is
  * [OutputPlaneProvider.streamId] and it is one-way on purpose: this service never *derives* a
  * cursor, it only resolves what a consumer already asked for. A reader that invented a stream
  * identity would be one refactor away from reading the wrong run.
+ *
  * ## Refusals are reported, not swallowed
+ *
  * A refusal is a fact about the question, not an error: an unknown stream and a cursor from another
  * stream are both ways a consumer asked something that cannot be answered. They are rendered to the
  * caller, never turned into an empty page — an empty page is a valid answer, and conflating it with
@@ -57,6 +65,7 @@ object ConsoleReadService {
 
     /**
      * Frames emitted per continuation by default on the per-frame path.
+     *
      * 1024 frames is a defensive default: at the typical 8 KiB frame size a step's transcript
      * fits well under it, while a noisy script that emits many small frames does not get capped
      * too soon. Callers that want a different bound pass `--frame-limit N`; the admission
@@ -72,11 +81,14 @@ object ConsoleReadService {
 
     /**
  * Read one bounded page of [opId]'s transcript in [runId], continuing after [after].
+ *
  * ## Why one call still answers "the whole console"
- * 3 split an operation's output into two channel-addressed streams, and this method is where
+ *
+ * An operation's output was split into two channel-addressed streams, and this method is where
  * a consumer is meant to see them as one console again. The concatenation happens HERE, on the read
- * side, and is never persisted — a merged run on disk would be the second byte authority that
- * a second byte authority is not allowed
+ * side, and is never persisted — a merged run on disk would be the second byte authority
+ * that is not allowed.
+ *
  * The continuation cursor names **the channel the page stopped on**, because that is the only thing
  * an [OutputCursor] can honestly name: it addresses a byte position inside ONE stream, and the type
  * refuses a cursor that claims otherwise. So a reader resuming from the returned cursor continues
@@ -84,8 +96,9 @@ object ConsoleReadService {
  * ordering across channels — the interleaving a real console shows — is `OutputFrameIndex`'s job, and
  * this method deliberately does NOT pretend to do it: it concatenates in a fixed channel order, which
  * is a projection and not a claim about what the kernel interleaved.
+ *
  * @param after `null` reads from the start. A token for a different stream is **refused**,
- *   not clamped — see the class KDoc.
+ * not clamped — see the class KDoc.
 */
     fun read(
         controlDirRoot: Path,
@@ -185,8 +198,10 @@ object ConsoleReadService {
 
     /**
      * Read an arbitrary committed byte range of [opId]'s console.
+     *
      * ## The merged offset space
-     * 3 gives an operation two channel streams, so "byte 30 of this console" is only
+     *
+     * An operation has two channel streams, so "byte 30 of this console" is only
      * meaningful once the two are put in an order. That order is the fixed channel order used by
      * [read], which makes a range and a page agree by construction: the same offsets name the same
      * bytes whichever way a reader asks for them. It is a **projection**, not a claim about what the
@@ -295,11 +310,14 @@ object ConsoleReadService {
 
 /**
  * What `pipeline console` was asked to read.
+ *
  * ## Why this is a type and not a branch
+ *
  * The two readings are not variants of one thing. A [Paged] read CONTINUES after a cursor and is
  * bounded by a budget. A [Range] read NAMES A SPAN of the merged offset space and is not resumable,
  * because continuation is expressed with a cursor and a span across two channel streams has no
  * honest single cursor.
+ *
  * `main` used to hold a `String?` for `--range`, another for `--after-cursor`, and pick between them
  * with an `if`. Nothing in that program said the two are different requests, so `--range 0:10
  * --max-bytes 5` was not refused — the budget was silently discarded, and `readRange`'s `require`
@@ -314,10 +332,12 @@ sealed interface ConsoleReadRequest {
     /**
      * The operation to read, or `null` to read the WHOLE RUN and let the
      * [dev.rubentxu.pipeline.v2.application.console.OperationSelection] narrow it.
+     *
      * Nullable because a required opId made `--stage`, `--step` and `--kind` unable to select
      * among operations at all: the read was scoped to ONE operation before any filter ran, so a
      * filter could only ever narrow within it. `--stage build` against `run-1-s0-0` could never
      * reach `run-1-s1-0`, whatever the filter said.
+     *
      * `null` is therefore the shape a content filter REQUIRES, and the positional stays
      * mandatory for an unfiltered read so `console <runId> <opId>` keeps its meaning. Both may
      * be supplied together and then INTERSECT: the positional names one operation and the
@@ -328,10 +348,12 @@ sealed interface ConsoleReadRequest {
 
     /**
      * The events journal this request may consult, or `null` when none was supplied.
+     *
      * It is a PATH, not an opened store: the parser admits a request without performing an
      * effect (STRICT TYPED FUNCTIONAL DESIGN — a builder describes, it does not interpret),
      * so opening the journal happens in `main`, after admission, where a failure is a typed
      * refusal rather than a parse error.
+     *
      * `null` is a real, load-bearing value and not an omission. Stage/step NAMES and `--kind`
      * live only in the journal, so without it those axes cannot be honoured and
      * [dev.rubentxu.pipeline.v2.application.console.ConsoleOperationSelection.resolve] refuses
@@ -362,12 +384,14 @@ sealed interface ConsoleReadRequest {
 
     /**
      * Per-frame walk.
+     *
      * Continue after [afterOrdinal] (`-1` starts at the first frame), emitting at most
      * [frameLimit] frames in observation order. Unlike [Paged] (byte-budgeted, cursor-resumable)
      * and [Range] (byte span, no continuation), this path answers the question only the frame
      * index can: "what did this operation publish, frame by frame, in the order PipelineK
      * observed it?" The JSONL emitter walks this path and writes one record per real frame;
      * the per-record [OutputFrame.ordinal] / [OutputFrame.from] / [OutputFrame.to] ride on the wire.
+     *
      * [frameLimit] is the loop bound. The constructor refuses non-positive values, so the
      * caller learns the rule at compile + admission rather than at the runtime loop.
 */
@@ -387,18 +411,22 @@ sealed interface ConsoleReadRequest {
 
     /**
      * `--follow` over the per-frame path.
+     *
      * A thin loop over [Frames] reads. Each poll re-reads with `afterOrdinal` set to the last
      * frame the loop EXAMINED (or `-1` for the first poll), emits the frames the selection
      * admits, and continues until either:
-     *   - the read returns 0 new frames AND every known output stream is [Sealed]
-     *     (the durable authority for "the writer closed this stream") — EOF, exit 0;
-     *   - the [followConfig] has been polled [FollowConfig.maxPolls] times — exit 0;
-     *   - the JVM receives a SIGINT/SIGTERM — exit 2.
+     *
+     * - the read returns 0 new frames AND every known output stream is [Sealed]
+     * (the durable authority for "the writer closed this stream") — EOF, exit 0;
+     * - the [followConfig] has been polled [FollowConfig.maxPolls] times — exit 0;
+     * - the JVM receives a SIGINT/SIGTERM — exit 2.
+     *
      * The cursor between polls is local state, fully reconstructible from the durable
-     * Authority ([afterOrdinal] + [frameLimit]); it is NOT journaled (in AGENTS.md)
+     * authority ([afterOrdinal] + [frameLimit]); it is NOT journaled (in AGENTS.md).
      * A fresh process invocation starts over from [afterOrdinal]; a follow does NOT resume
      * across runs.
-     * The follow is reading, not deciding: is in force. The typed decision
+     *
+     * The follow is reading, not deciding: that separation is in force. The typed decision
      * ([FollowFrames]) is what reaches the loop; the loop is a pure interpreter of that
      * decision and must not mutate any journal state.
 */
@@ -412,10 +440,12 @@ sealed interface ConsoleReadRequest {
         override val format: MainConsoleCli.ConsoleFormat,
         /**
          * The same content filter a single [FramesFiltered] read carries.
-         * This field is the fix for that defect. `CliParser.consoleValidate` dispatched `--follow`
+         * This field is the fix for that defect. The console parser's `consoleValidate`
+         * dispatched `--follow`
          * BEFORE the filter branch, so `console --frames --follow --stage build` admitted a
          * filterless [FollowFrames] and dropped the filter without a word: the operator asked to
          * see one stage and was shown the whole run, with a successful exit code.
+         *
          * Defaulting to [ConsoleFrameFilters.None] rather than being required keeps every
          * existing construction valid, and the default is the honest value — "no filter was
          * asked for" is not the same as "no filter could be applied", and only the latter is a
@@ -432,10 +462,12 @@ sealed interface ConsoleReadRequest {
 
     /**
      * Per-frame walk with content filters.
+     *
      * Same per-frame contract as [Frames] (resume by frame ordinal, bounded by frame count) but
      * with a [filters] constraint applied at emit time. The filters name stage, step and event
      * kind; the verb main resolves those into a set of opIds by walking the events journal,
      * and only emits frames whose stream names a matching opId.
+     *
      * A filter request without [filters] being [ConsoleFrameFilters.Active] is a [Frames] read;
      * a filter request with no `--frames` flag is refused at admission. The closed [filters] ADT
      * keeps the "no filters" path on the same sealed type as the active path so the verb main's
@@ -463,9 +495,11 @@ sealed interface ConsoleReadRequest {
 
 /**
  * The bounded knobs that turn a [ConsoleReadRequest.Frames] read into a loop.
+ *
  * A closed payload rather than a flag bag: [pollIntervalMillis] is the wait between rounds,
  * [maxPolls] is the loop bound. The constructor refuses non-positive values so a malformed
  * `--follow-*` is a typed refusal at admission, not a silent degradation at runtime.
+ *
  * The defaults (1000 ms / 60 polls) make one `--follow` invocation roughly a minute of
  * follow time, which is the budget the events verb established and which we keep here
  * for parity. The CLI surface admits `--follow-poll-interval` and `--follow-max-polls`
@@ -491,23 +525,30 @@ data class FollowConfig(
 
 /**
  * Why a `--follow` loop stopped.
+ *
  * ## Why this is an ADT and not an `Int`
+ *
  * The loop previously returned a bare `Int`, with `0` meaning both "the output lane is final" and
  * "we ran out of polls" and `1`/`2` meaning a refusal and a signal. Three facts about a run were
  * encoded in one number with no way to tell them apart, and two of them — a finished follow and an
  * abandoned one — were reported **identically**. A caller could not distinguish "this operation's
  * output is complete" from "we gave up looking", which is the same false-green the follow
  * decision itself was fixed for: a truncated transcript that looks like a clean exit.
+ *
  * [exitCode] is a *projection* of the case, defined once here so the mapping is stated in exactly
  * one place and cannot drift per call site.
+ *
  * ## Why `PollBudgetExhausted` is NOT zero
+ *
  * Running out of polls means the loop never observed a terminal fact. It says nothing about the
  * run: the run may be alive, may have failed, may have finished a millisecond after the last poll.
  * Reporting that as success claims the product completed an observation it never completed.
+ *
  * The cost is real and deliberate: this verb has **no event-plane authority** (it never opens the
  * journal — see the note on the filter resolver), so for an op that owns no stream — a silent
  * `sh("true")` — the poll budget is the ONLY exit, and such a follow now reports exhaustion rather
  * than a clean completion. That is the honest answer. The alternative was a `0` that lied.
+ *
  * Closing the gap properly means giving this verb a run-plane authority (see `RunPlane` and the
  * `--db` gap recorded in the RC4 receipt); until then this case is the honest ceiling, not a bug
  * to be tuned away.
@@ -533,6 +574,7 @@ sealed interface FollowExit {
 
     /**
      * The poll budget ran out before any terminal fact was observed.
+     *
      * Its own case because none of the others happened. Deliberately non-zero — see the type KDoc.
 */
     data class PollBudgetExhausted(val polls: Int, val lastOrdinal: Long) : FollowExit {
@@ -542,11 +584,13 @@ sealed interface FollowExit {
 
 /**
  * Closed ADT of content filters on the per-frame `console` path.
+ *
  * `None` is the existing [ConsoleReadRequest.Frames] path: no filter, every frame in observation
  * order. `Active` carries the closed set of values the user requested for `--stage`, `--step` and
  * `--kind`. Each axis is a set, so repeated flags OR within an axis (`--kind StepStarted
  * --kind StepFinished` = "StepStarted OR StepFinished") and the three axes AND together (a frame
  * must match every axis that has a value).
+ *
  * The closed shape is what makes "filter that filters nothing" a typed decision: a caller that
  * says "filter by stage=build, but I am reading the whole run" gets a frame walk; a caller that
  * says "filter by stage=build on the run that contains no build stage" gets zero frames. There
@@ -577,6 +621,7 @@ sealed interface ConsoleFrameFilters {
 
 /**
  * Why `pipeline console` will not do what it was asked.
+ *
  * Every case is decided before a store is opened, except [ConsoleCliRefusal.ControlDirNotFound],
  * which is the first thing that touches the filesystem. A refusal names the token that is wrong,
  * because a diagnostic that does not is a diagnostic the caller has to guess from.
@@ -591,6 +636,7 @@ sealed interface ConsoleCliRefusal {
     data class ControlDirNotFound(val path: String) : ConsoleCliRefusal
     /**
      * A valued option was written and its value was not.
+     *
      * Distinct from [MissingArgument], which is about a REQUIRED positional that was not supplied.
      * This one is about an option that IS present, so the caller has already made a choice and must
      * learn that the choice is incomplete. Keeping them apart is not cosmetic: conflating them is how
@@ -601,6 +647,7 @@ sealed interface ConsoleCliRefusal {
 
     /**
      * A reader flag offered to a range read, or the other way round.
+     *
      * [spansNothing] is the argument, in one token: the flag does not shrink the answer, it does not
      * change it, and it produces no output at all. There is no documented meaning to honour it by.
 */
@@ -615,6 +662,7 @@ sealed interface ConsoleCliRefusal {
     /**
      * A byte-budgeted or cursor-resume flag offered to a per-frame read, or vice
      * versa.
+     *
      * The per-frame path answers "what did the operation publish, in observation order?" and
      * bounds the answer with [ConsoleReadRequest.Frames.frameLimit] (frame count) and
      * [ConsoleReadRequest.Frames.afterOrdinal] (frame ordinal). `--max-bytes`, `--after-cursor`,
@@ -633,6 +681,7 @@ sealed interface ConsoleCliRefusal {
 
     /**
      * `--format` was given a value that is neither `text` nor `jsonl`.
+     *
      * Distinct from [UnknownOption] (which is about a flag the verb does not recognise) and from
      * [MissingOptionValue] (the flag had no value). The closed [MainConsoleCli.ConsoleFormat] ADT
      * has exactly two cases; this refusal names the offending value so the caller edits one token
@@ -642,6 +691,7 @@ sealed interface ConsoleCliRefusal {
 
     /**
      * `--follow` was supplied without `--frames`.
+     *
      * The follow is a loop over the per-frame read; without `--frames` it would be a loop over
      * nothing. Refused rather than defaulted: a `--follow` against the legacy byte-budgeted path
      * would silently emit the merged page once and then poll forever on `OutputCursor`, which is
@@ -656,6 +706,7 @@ sealed interface ConsoleCliRefusal {
 
     /**
      * `--run` and the positional `<runId>` were both supplied.
+     *
      * Two ways of naming the same value is a silent-precedence defect waiting to happen: the
      * verb would have to pick one and tell the user they did not get the other. Refused
      * instead, with both tokens named so the caller deletes one rather than guessing which
@@ -665,6 +716,7 @@ sealed interface ConsoleCliRefusal {
 
     /**
      * A content filter was supplied without `--frames`.
+     *
      * Filters narrow the answer on a per-frame basis: the byte-budgeted (Paged) and
      * byte-span (Range) paths do not produce per-frame records, so a filter on them would
      * have nothing to apply to. The refusal names the offending flag(s) so the caller adds
@@ -674,9 +726,11 @@ sealed interface ConsoleCliRefusal {
 
     /**
      * The filter could not be turned into a selection.
+     *
      * Carries the whole [dev.rubentxu.pipeline.v2.application.console.SelectionRefusal] rather
      * than flattening it, because the four reasons need genuinely different messages and a
      * flattened "filter failed" would make the caller guess which one applied.
+     *
      * Its own case, and the reason `--kind` stopped being a lie: the rc1 resolver returned `true`
      * for any kind, so `--kind anything` selected the whole run and exited 0. A caller asking for
      * a filter the verb cannot apply must be told so.
@@ -691,6 +745,7 @@ sealed interface ConsoleCliRefusal {
  * legacy path, the byte-span path, and the per-frame path. Each is mutually
  * exclusive with the others; the per-frame path's options are listed in the
  * block under `--frames`.
+ *
  * The line is intentionally longer than the legacy single-line form: the
  * mandate's "UX observable" requires the operator to see every verb on
  * `pipelinek console` with no args, not just the byte-budgeted affordance that
@@ -759,40 +814,54 @@ fun renderConsoleCliRefusal(refusal: ConsoleCliRefusal): String = when (refusal)
 
 /**
  * The console reader CLI.
+ *
  * ```text
  * pipeline console --control-dir <path> <runId> <opId> [--max-bytes N] [--after-cursor TOKEN]
  * pipeline console --control-dir <path> <runId> <opId> --range FROM:TO
  * pipeline console --control-dir <path> <runId> <opId> --format text|jsonl...
  * ```
+ *
  * The console transcript goes to **stdout as bytes**, not as a rendered line, because a consumer
  * that has to strip a CLI's framing out of a transcript will eventually strip the wrong thing. The
  * continuation token goes to **stderr**, which is the convention [MainEventsCli] already uses and
  * keeps the two planes from colliding. A refusal is therefore also stderr-only: it must never reach
  * stdout, because a consumer reading bytes there cannot tell a refusal from an empty transcript.
- * `--format text | jsonl`
- * The default is `text` (raw bytes to stdout, unchanged from). `--format jsonl` switches
+ *
+ * ## `--format text | jsonl`
+ *
+ * The default is `text` (raw bytes to stdout, unchanged). `--format jsonl` switches
  * the emitter to [ObservationJsonLines]: one record per page, with the canonical
  * `{type:"output", channel, operation, ordinal, from, to, text/base64}` shape, the same one
  * `pipelinek observe --view console --format jsonl` already produces. Stdout stays the protocol
  * surface (one record per line, newline-terminated, flushed); the continuation token still
  * goes to stderr, so a script can resume without parsing the jsonl stream for control bytes.
+ *
  * The jsonl path is bounded to the operation's merged page; a future slice can wire per-frame
  * records through `FrameIndexedObservationOutputReader` once the per-operation index is
  * available.
- * ## Three steps, in that order
- * [MainConsoleCliAdmission.parseTokens] collects argv and decides nothing. [admit] validates — and
- * validates CONFLICTS before TYPES, so `--range 0:10 --max-bytes abc` says the budget has no meaning
+ *
+ * ## Two steps, in that order
+ *
+ * [CliConsoleParser.parse] collects the argv into one holder and validates it — conflicts
+ * before types, so `--range 0:10 --max-bytes abc` says the budget has no meaning
  * there rather than complaining about the number, which would send the caller to edit a token they
  * should delete. [MainConsoleCli.execute] interprets the admitted request.
- * Why this object holds 21 functions, more than detekt's 12
- * The object is the canonical CLI surface for `pipeline console`. The tests that certified it
- * all reached the verbs
- * through `MainConsoleCli.X`, and the testing reset removed all six. Nothing reaches
- * these verbs from a test today, so the 21-vs-12 count below is argued, not enforced. Splitting the
- * object into per-verb objects (Read/Follow/Emit) would
- * require moving every public function and rewriting the test call sites, and the only honest
- * way to certify a refactor that changes both production and tests at once is to re-derive
- * every row's expectation. That is a separate slice; recorded in the receipt, not done here.
+ *
+ * ## Why this object holds 21 functions, more than detekt's 12
+ *
+ * The object is the canonical CLI surface for `pipeline console`: the verb entry point, the
+ * byte and frame read paths, the follow loop and the emitters. Argument scanning no longer
+ * lives here — [CliConsoleParser.parse] owns it — so what remains is the read/follow/emit
+ * surface the detekt object counter measures.
+ *
+ * Four of the twenty-one functions are reached from a test today: `followFrames`,
+ * `emitFrames`, `decodeFrameOrdinal` and `selectionSelects`. The other seventeen are not,
+ * so the 21-vs-12 count is a statement about shape, not a claim that every function is
+ * exercised. Splitting the object into per-verb objects (Read/Follow/Emit) would require
+ * moving every public function and rewriting the test call sites, and the only honest way to
+ * certify a refactor that changes both production and tests at once is to re-derive every
+ * row's expectation. That is a separate slice; recorded in the receipt, not done here.
+ *
  * Suppressing the rule here is therefore not a relaxed assertion to obtain green: it is a
  * DECISION to keep the public surface stable and pay down the count later, in a follow-up whose
  * only purpose is the move.
@@ -802,7 +871,8 @@ object MainConsoleCli {
 
     /**
      * The closed ADT of console output formats.
-     * `TEXT` is the legacy raw-bytes path (unchanged from). `JSONL` is the canonical
+     *
+     * `TEXT` is the legacy raw-bytes path, unchanged. `JSONL` is the canonical
      * machine-readable projection [ObservationJsonLines] emits. Adding a third case is a
      * compile-time break for every caller of [ConsoleReadRequest.format] and for the emit
      * dispatch in [MainConsoleCli.emit].
@@ -837,7 +907,7 @@ object MainConsoleCli {
                 2
             } else {
                 // The dispatch is on the request variant: Paged / Range go
-                // Through the byte-budgeted [emit] path (unchanged from); Frames
+                // Through the byte-budgeted [emit] path (unchanged); Frames
                 // goes through the per-frame path, which reads the index directly and
                 // emits one record per real frame.
                 // FramesFiltered is the filtered per-frame path; the
@@ -902,10 +972,11 @@ object MainConsoleCli {
 
     /**
      * Per-frame read.
+     *
      * Uses [dev.rubentxu.pipeline.v2.application.observation.FrameIndexedObservationOutputReader]
      * (the per-op public seam) to walk the operation's frames in observation order
      * starting at [ConsoleReadRequest.Frames.afterOrdinal], bounded by [ConsoleReadRequest.Frames.frameLimit].
-     * The opId filter is applied on the read side, exactly as documents it
+     * The opId filter is applied on the read side, as the read-side contract documents.
 */
     private fun readFrames(
         request: ConsoleReadRequest.Frames,
@@ -927,6 +998,7 @@ object MainConsoleCli {
 
     /**
      * The per-frame reader over the run's Output Plane.
+     *
      * One constructor for every frame path, so the three paths cannot end up reading different
      * stores. `storeForReading` memoises per control root in a process-wide cache, which is why
      * HARNESS FIDELITY forbids a shared mutable singleton in a harness and why the test
@@ -934,10 +1006,12 @@ object MainConsoleCli {
 */
     /**
      * One bounded frame read, scoped or not.
+     *
      * The scope decision lives HERE, in the verb, rather than in the reader, because that is
      * where the selection lives. `ObservationOutputReader` keeps its contract — a supplied
      * `opId` is a scope, never a filter — and this function is the single place that decides
      * whether a request asked for one operation or for the whole run.
+     *
      * Supplying `null` reads the run wide; the selection then narrows. Supplying an opId reads
      * that operation and the selection may only remove from it. Both together are an
      * intersection, which is the honest reading of two constraints.
@@ -966,6 +1040,7 @@ object MainConsoleCli {
 
     /**
      * Filtered per-frame read.
+     *
      * Reads the run's frames via the same per-frame reader as [readFrames] (the reader stays
      * un-touched per "do not modify the reader" in the slice's scope). The filter is applied
      * at emit time, not read time — see [emitFramesFiltered] — so the page returned here is
@@ -989,6 +1064,7 @@ object MainConsoleCli {
 
     /**
      * Emit the filtered per-frame result.
+     *
      * The filter is applied HERE, at emit time, against the [ConsoleFrameFilters.Active] ADT
      * the parser admitted. The predicate runs on each frame's stream id
      * (`<runId>/<opId>/<channel>`): the id is read from its two ends and the operation it
@@ -1047,15 +1123,16 @@ object MainConsoleCli {
 
     /**
      * Emit the per-frame result.
+     *
      * The dispatch is on the closed [ConsoleFormat] ADT:
-     *  - `TEXT` writes the merged bytes of the page's frames to stdout (in observation order,
-     *    one frame after another), with a continuation token on stderr carrying the ordinal of
-     *    the last frame written, so a consumer can resume from it.
-     *  - `JSONL` writes one [ObservationJsonLines] record per real frame, in observation
-     *    order, each carrying the frame's true [OutputFrame.ordinal] / [OutputFrame.from] /
-     *    [OutputFrame.to] / [OutputFrame.channel] plus the operation id parsed from the
-     *    stream. This is the per-frame wire shape [ObservationJsonLines] was already wired
-     * To emit (the path was a synthetic-merged-page workaround)
+     * - `TEXT` writes the merged bytes of the page's frames to stdout (in observation order,
+     * one frame after another), with a continuation token on stderr carrying the ordinal of
+     * the last frame written, so a consumer can resume from it.
+     * - `JSONL` writes one [ObservationJsonLines] record per real frame, in observation
+     * order, each carrying the frame's true [OutputFrame.ordinal] / [OutputFrame.from] /
+     * [OutputFrame.to] / [OutputFrame.channel] plus the operation id parsed from the
+     * stream. This is the per-frame wire shape [ObservationJsonLines] was already wired
+     * to emit (the path was a synthetic-merged-page workaround).
 */
     fun emitFrames(
         result: dev.rubentxu.pipeline.v2.application.observation.ObservationOutputRead,
@@ -1118,40 +1195,50 @@ object MainConsoleCli {
 
     /**
      * `--follow` interpreter. A pure interpreter of [ConsoleReadRequest.FollowFrames].
-     * The loop is reading, not deciding: is in force. The typed decision
+     *
+     * The loop is reading, not deciding: that separation is in force. The typed decision
      * ([FollowFrames]) is what reached this method; the loop interprets it and walks the
      * durable authority via the per-frame reader.
-     * Is in force too: the `afterOrdinal` cursor is local state threaded as a parameter
-     * never a global or thread-local. Each poll derives a fresh `afterOrdinal` from the previous
-     * one; the durable authority is unchanged by the loop.
+     *
+     * The same separation is in force here: the `afterOrdinal` cursor is local state threaded
+     * as a parameter, never a global or thread-local. Each poll derives a fresh `afterOrdinal`
+     * from the previous one; the durable authority is unchanged by the loop.
+     *
      * ## Exit conditions
+     *
      * The loop exits when any of:
-     *  - **`followDecision` returns [FollowDecision.Finished].** That is: the page returned no
-     *    new frames AND every known stream this run owns is [Sealed]. The durable authority
-     *    promises nothing more will arrive on this run.
-     *  - **`maxPolls` reached.** Bounded at admission. An op that owns no stream (e.g.
-     *    `sh("true")`) cannot reach `Finished` because no stream exists to seal — this verb
-     *    has no run-plane authority to ask instead — so the bound is the only exit for a silent
-     *    op, and it reports [FollowExit.PollBudgetExhausted] rather than a clean completion.
-     *  - **SIGINT/SIGTERM.** Shutdown hook flips a flag; the loop checks it between rounds.
+     *
+     * - **`followDecision` returns [FollowDecision.Finished].** That is: the page returned no
+     * new frames AND every known stream this run owns is [Sealed]. The durable authority
+     * promises nothing more will arrive on this run.
+     * - **`maxPolls` reached.** Bounded at admission. An op that owns no stream (e.g.
+     * `sh("true")`) cannot reach `Finished` because no stream exists to seal — this verb
+     * has no run-plane authority to ask instead — so the bound is the only exit for a silent
+     * op, and it reports [FollowExit.PollBudgetExhausted] rather than a clean completion.
+     * - **SIGINT/SIGTERM.** Shutdown hook flips a flag; the loop checks it between rounds.
+     *
      * ## Status mapping
-     *  - 0 on [FollowExit.Completed] — nothing pending and every known stream sealed.
-     *  - 1 on [FollowExit.Refused] — the store refused to answer the call in flight.
-     *  - 2 on [FollowExit.Signalled] — a `Ctrl-C` is distinguishable from every other way out.
-     *  - 3 on [FollowExit.PollBudgetExhausted] — the loop ran out of polls without ever observing
-     *    a terminal fact. **Non-zero on purpose:** an abandoned follow and a completed one are
-     *    different facts and must not share an exit code.
+     *
+     * - 0 on [FollowExit.Completed] — nothing pending and every known stream sealed.
+     * - 1 on [FollowExit.Refused] — the store refused to answer the call in flight.
+     * - 2 on [FollowExit.Signalled] — a `Ctrl-C` is distinguishable from every other way out.
+     * - 3 on [FollowExit.PollBudgetExhausted] — the loop ran out of polls without ever observing
+     * a terminal fact. **Non-zero on purpose:** an abandoned follow and a completed one are
+     * different facts and must not share an exit code.
 */
     /**
      * Turn a request's filter tokens into ONE [OperationSelection].
+     *
      * The only place the events journal is opened for a console read. Everything downstream —
      * the single filtered read AND the follow loop — receives the resulting selection as a value
      * and never asks the journal anything, so the two paths cannot drift apart.
+     *
      * `dbPath == null` is passed through as `null` rather than as an empty history. Those are
      * different facts and the resolver gives them different answers: an empty history means "this
      * run has no such stage", while no journal at all means "nobody can tell", which is a refusal
      * naming the axis. Collapsing them would make `--db` optional in the worst possible way —
      * silently narrowing the answer.
+     *
      * A request with no filter at all short-circuits to [OperationSelection.AllOperations]
      * WITHOUT opening the journal, so the byte paths and the unfiltered per-frame read are
      * untouched by this block.
@@ -1188,6 +1275,7 @@ object MainConsoleCli {
 
     /**
      * Does [selection] admit this frame?
+     *
      * The frame's stream id is `<runId>/<opId>/<channel>`, and the operation is the WHOLE
      * middle of it: it may carry separators of its own, so the middle is not a segment but a
      * range. The id is read from its two ends — the run first, the channel last — and what is
@@ -1250,15 +1338,15 @@ object MainConsoleCli {
      * ## Why this loop has TWO cursors and not one
      *
      * A follow answers two questions, and they have different answers:
-     *  - WHERE THE SCAN IS: the last frame the loop EXAMINED. A frame the selection dropped was
-     *    examined all the same — it was read and it was rejected — so asking for it again on the
-     *    next poll re-reads the same window for ever. Pinning the window to the last DELIVERED
-     *    frame is the defect this function fixes: a filter that dropped every frame of the
-     *    first window kept the window pinned, burned the whole poll budget and delivered
-     *    nothing, while the frames the filter DID admit sat unread beyond it.
-     *  - WHERE THE CONSUMER IS: the last frame the consumer was SHOWN. That is what an
-     *    exhausted poll budget reports and what `--after-ordinal` resumes from, because a
-     *    resume must not show a frame twice and must not skip one the consumer never saw.
+     * - WHERE THE SCAN IS: the last frame the loop EXAMINED. A frame the selection dropped was
+     * examined all the same — it was read and it was rejected — so asking for it again on the
+     * next poll re-reads the same window for ever. Pinning the window to the last DELIVERED
+     * frame is the defect this function fixes: a filter that dropped every frame of the
+     * first window kept the window pinned, burned the whole poll budget and delivered
+     * nothing, while the frames the filter DID admit sat unread beyond it.
+     * - WHERE THE CONSUMER IS: the last frame the consumer was SHOWN. That is what an
+     * exhausted poll budget reports and what `--after-ordinal` resumes from, because a
+     * resume must not show a frame twice and must not skip one the consumer never saw.
      *
      * The two cursors coincide when every frame is admitted, and they part exactly when the
      * selection drops something — which is the only case in which the distinction matters.
@@ -1363,8 +1451,9 @@ object MainConsoleCli {
 
     /**
      * Emit one [ObservationOutputPage] of records to stdout, in the requested format.
+     *
      * The follow path does not emit a continuation token to stderr: the per-poll ordinal is a
-     * Local cursor that does not survive the process (; the spec for `--follow`). A consumer
+     * local cursor that does not survive the process, as the spec for `--follow` requires. A consumer
      * that needs to recover from a clip would re-invoke `pipelinek console --follow --after-ordinal
      * <N>` directly, the same way it started.
 */
@@ -1405,6 +1494,7 @@ object MainConsoleCli {
 
     /**
      * Frame-ordinal continuation token, distinct from [OutputCursor.TOKEN_PREFIX].
+     *
      * The byte path encodes `out-cursor-v1:<stream>:<offset>`; the per-frame path encodes
      * `out-frame-ord-v1:<ordinal>`. Two prefixes, two planes, and a consumer that pastes the
      * wrong one in the wrong command is told so at decode, not by being silently advanced to
@@ -1469,10 +1559,11 @@ object MainConsoleCli {
 
     /**
      * Emit the result. Split out so a test drives it without capturing the real process streams.
+     *
      * The format dispatch is a `when` over the closed [ConsoleFormat] ADT (two
      * cases: `TEXT` raw bytes, `JSONL` envelope). The `JSONL` path builds a synthetic
      * [ObservationRecord.Output] from the page so the existing [ObservationJsonLines] writer
-     * stays the only encoder; an [ObservationFrameOrdinal] of `0` and a synthetic
+     * stays the only encoder; an ordinal of `0L` and a synthetic
      * [OutputFrame] are honest about the fact that the merged page is one reader-side
      * projection, not a kernel-recorded frame.
 */
@@ -1503,6 +1594,7 @@ object MainConsoleCli {
 
     /**
      * Emit one [ObservationJsonLines] record for a merged [OutputPage].
+     *
      * The page names one stream (`page.stream`) and a byte range (`page.from..page.committedEnd`).
      * We construct an [ObservationRecord.Output] carrying the page's bytes so the existing
      * encoder handles the text/base64 split (`ObservationJsonLines.encodeOutputLine`). The
@@ -1573,6 +1665,7 @@ object MainConsoleCli {
 
     /**
  * The stream id a consumer is handed for one operation's console.
+ *
  * The console is the operation's channel-addressed streams, and a reader that wants one
  * channel asks for it by name. This stays a single helper so the shape is minted in ONE place — the
  * same reason [OutputStreamAddress.parse] reads it back from the two ends.

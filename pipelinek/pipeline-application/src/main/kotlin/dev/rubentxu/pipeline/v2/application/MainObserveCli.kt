@@ -21,20 +21,27 @@ import java.io.PrintStream
 
 /**
  * `pipelinek observe <run>` — one public verb over both durable authorities.
+ *
  * ## Why one verb and not two
+ *
  * `events` and `console` already exist and both stay. But a caller who wants "this run's failures
  * and the stderr around them" currently has to know that these are two stores, two cursor
  * vocabularies and two flags. The query that expresses that is ONE question, and the answer should
  * not require knowing which half of the system holds it.
+ *
  * What this verb does NOT do is merge the two planes. `Event.sequence` and `OutputFrame.ordinal` have
  * no total order, so [ObservationView.FULL] stays refused here exactly as it is in `run`. `observe`
  * reads both lanes; it does not claim they interleaved.
+ *
  * ## Why it reuses instead of reimplementing
+ *
  * Every decision this verb could have made twice is made once, elsewhere:
- * - option meaning — [CliParser.parseObservation], sharing `applyOption` with `run`;
+ *
+ * - option meaning — [CliObservationParser.parse], sharing `applyOption` with `run`;
  * - event presentation — [RunObservationOutput.encode];
  * - output presentation — [LiveOutputPresentation];
  * - selection — the one compiled query the parser handed over.
+ *
  * A second implementation of any of those would be a second authority, and the two would drift the
  * first time one of them gained a case.
 */
@@ -48,6 +55,7 @@ object MainObserveCli {
 
     /**
      * Frames read per round trip.
+     *
      * A read-side bound, not a result size: the loop continues while the index says more frames
      * exist, so this trades memory for round trips and never changes what is eventually read.
 */
@@ -140,6 +148,7 @@ object MainObserveCli {
 
     /**
      * Replays what is durable, into [out], with nothing interpreted.
+     *
      * Returns a typed outcome rather than an exit code so the decision is testable without a process,
      * and takes both lanes as a port so a test can answer for both without a filesystem.
 */
@@ -253,20 +262,27 @@ object MainObserveCli {
 
     /**
      * Follows ONE lane until it is finished or the consumer stops asking.
+     *
      * ## Why one lane, never both
+     *
      * Following the event lane and the output lane in one loop would have to emit them in SOME
      * order, and that order is not a fact about the run — it is a fact about when this process
      * happened to poll each store. Emitting them as one stream would be claiming an interleaving,
      * which is the same fabrication that keeps [ObservationView.FULL] refused. So `--follow` follows
      * the lane the chosen view names, and a caller who wants both uses two readers with two cursors.
+     *
      * ## How each lane knows it is finished
+     *
      * Two different answers, and neither is a tail state:
+     *
      * - the event lane ends on `RunFinished` committed in the store — a terminal FACT, not an
      *   inference about how much longer the run might write;
      * - the output lane ends when no frame is pending and every stream it has seen is sealed —
      *   which is [followDecision]'s own question, and which says nothing about success.
+     *
      * ## What it polls, stated plainly
-     * There is no `EventsCommitted` emitter yet (bis), so this asks the durable authority for
+     *
+     * There is no `EventsCommitted` emitter yet, so this asks the durable authority for
      * its position rather than being told. That is a NAMED gap, not a hidden one: it costs a cheap
      * indexed read per idle round instead of a push, and the alternative would have been to ship a
      * follow whose latency source was undocumented.
@@ -412,6 +428,7 @@ sealed interface FollowOutcome {
 
     /**
      * The read spent `--limit`.
+     *
      * Its own case because none of the others happened. The run did not commit a terminal fact, and
      * the consumer did not ask to stop — so reporting either would be a caller being told the run
      * finished, or that we gave up, when in fact we were told exactly how much to show.
@@ -423,6 +440,7 @@ sealed interface FollowOutcome {
 
 /**
  * The control the CLI hands a follow.
+ *
  * Interruption rather than a duration: a user who does not want to watch a run any more presses a
  * key or sends a signal, and "should I keep waiting" is answered by whether anyone is still asking.
 */
@@ -436,6 +454,7 @@ private const val FOLLOW_IDLE_MILLIS = 25L
 
 /**
  * When a follow reads again, and when it gives up.
+ *
  * A port rather than a clock so a test can stop after a COUNT of idle rounds instead of waiting for
  * a duration: a follower that only ends when the wall clock says so is a follower whose test is a
  * timing assertion, and those fail on a loaded machine and get read as a product defect.
@@ -452,6 +471,7 @@ interface ObserveLanes : AutoCloseable {
 
     /**
      * False when the event lane has no durable store at all.
+     *
      * Distinct from "the store has no rows": a run executed in memory never wrote events, and a
      * reader that answered both with an empty list would be reporting an absence as an empty truth.
 */
@@ -464,16 +484,20 @@ interface ObserveLanes : AutoCloseable {
 
     /**
      * Whether the durable EVENT authority says this run reached a terminal state.
+     *
      * Added for the terminality mandate, because the output lane provably cannot
      * substitute for it. A run that finished writing nothing owns no stream and no frame, so
      * [outputTailsOf] answers an empty list for it — and so it answers the same empty list for a run
      * that has not started. A follower that read termination off that list would hang on
      * `sh("true")` forever, which is precisely the UAT row.
+     *
      * It is consulted ONLY when the tail list is empty. A non-empty sealed tail is the output lane's
      * own authority and needs no corroboration; requiring the run to have finished as well would make
      * a console-only lane, which has no event store to ask, unterminatable. See `followDecision`.
+     *
      * It is a FACT from the run's own authority rather than an inference, which is why it is a
      * method here and not something `observe` has to derive from what the output lane happens to hold.
+     *
      * Defaulted so every lane can answer without re-implementing: [RunFinished] is the terminal fact
      * and the event lane already knows how to enumerate. A lane with a cheaper indexed query may
      * override it; one that cannot answer this must NOT return true, because that would end a follow
@@ -483,20 +507,25 @@ interface ObserveLanes : AutoCloseable {
 
     /**
      * The EXECUTION plane's tri-state answer, for [followDecision].
+     *
      * ## Why this exists and is not `hasRunFinished`
+     *
      * [hasRunFinished] answers a yes/no question. [followDecision] needs three answers, and the
      * difference between two of them is the whole point:
+     *
      * ```text
      * "there is a RunFinished event"     -> Completed
      * "I can look, and there is none yet" -> Live
      * "I have no event store to look in"  -> Unavailable
      * ```
+     *
      * The second and the third both project to `false`, and that projection loses exactly the
      * information the follow decision needs. Between two steps of a live run the previous step's
      * stream is sealed and the next has not been declared, so EVERY known stream is sealed — and
      * `Live` must answer `ReadAgain` or the follow ends with exit 0 over a truncated transcript.
      * But a console-only lane with no event store cannot answer at all, and `Unavailable` must
      * still let sealing end the loop, or the follow never returns.
+     *
      * Defaulted from [hasEventStore] and [hasRunFinished] so every lane answers correctly without
      * re-implementing. A lane overrides this only if it has a cheaper or more precise authority —
      * a lane that CANNOT see its own event store must return [RunPlane.Unavailable], never
@@ -518,6 +547,7 @@ interface ObserveLanes : AutoCloseable {
 
     /**
      * Where `--tail-bytes` starts the output lane.
+     *
      * `null` for the same reason [outputOf] returns `null`: this lane is absent. It never means
      * "the tail is empty", which is an ordinary page with no records.
 */
@@ -525,6 +555,7 @@ interface ObserveLanes : AutoCloseable {
 
     /**
      * One bounded page of the event lane, resumed strictly after [after].
+     *
      * Incremental on purpose: a follower that re-read the whole history every round would be O(run)
      * per poll, which is the difference between following a build and stalling on it. `null` means
      * this lane is absent, exactly as in [outputOf].
@@ -537,6 +568,7 @@ interface ObserveLanes : AutoCloseable {
 
     /**
      * Tail state per stream of the run, or `null` when the lane is absent.
+     *
      * Entries that are `null` INSIDE the list are streams whose state could not be established, and
      * [followDecision] keeps reading on them — unknown is the safe direction.
 */
@@ -552,6 +584,7 @@ sealed interface ObserveOutcome {
 
     /**
      * A follow stopped for a NAMED reason.
+     *
      * Carrying which one matters because "followed to the end" and "stopped when I asked" are
      * different facts about the run, and a reader that reported both as "done" would be claiming
      * the run had finished when this process simply went away.
@@ -589,6 +622,7 @@ sealed interface ObserveRefusal {
 
     /**
      * A follow was asked for in a format that cannot be continued.
+     *
      * Refused rather than approximated. Emitting one array per round would put several documents on
      * stdout with nothing between them, and closing the array when a consumer cuts the follow short
      * would claim the run was complete when it is not. Neither is the document that was asked for,
@@ -604,6 +638,7 @@ sealed interface ObserveRefusal {
 
 /**
  * Builds the lanes a request implies.
+ *
  * Split out of [MainObserveCli] so the I/O of opening stores stays in one place and [replay] stays
  * free of it.
 */
@@ -656,11 +691,13 @@ internal object ComposeLanes {
 
 /**
  * Which event lane this observe request has.
+ *
  * The two cases are genuinely different and both are live: a request that named no `--db` has no
  * event lane at all, while a request pointing at an EMPTY store has one that simply has nothing to
  * report. Carrying that as a `SqliteEventStore?` alongside a `hasEventStore` boolean encodes the
  * same fact twice, and two encodings of one fact are free to disagree — a store that is non-null
  * while the boolean says otherwise is representable, and nothing would say so.
+ *
  * A nullable is still the honest shape for [storeOrNull], which projects the case into the
  * accessor signature that `ObserveLanes` already declares. That nullable reads a closed case; it
  * is not a sentinel standing in for a refusal.

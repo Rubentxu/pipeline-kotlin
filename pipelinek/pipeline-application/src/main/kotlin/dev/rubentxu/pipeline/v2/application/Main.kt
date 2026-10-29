@@ -102,7 +102,7 @@ private const val REDACTION_CANARY_PROPERTY = "pipelinek.redaction.canaries"
  *
  *  1. `--help`/`-h`/`help` are real verbs.
  *  2. The read-only verbs answer and exit; they never reach the parser.
- *  3. The parser decides, and its rejection is rendered by [CliExitMapping].
+ *  3. The parser decides, and its rejection is rendered by [toCliExit].
  *  4. `--output-protocol` is validated BEFORE the run starts.
  *  5. The script is checked for existence BEFORE any store, journal or
  *     process is created.

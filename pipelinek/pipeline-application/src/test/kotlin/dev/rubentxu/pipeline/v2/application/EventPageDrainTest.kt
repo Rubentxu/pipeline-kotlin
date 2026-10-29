@@ -2,9 +2,14 @@ package dev.rubentxu.pipeline.v2.application
 
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.identity.ResourceRefs
+import dev.rubentxu.pipeline.v2.events.DomainEvent
+import dev.rubentxu.pipeline.v2.events.EventRecordRead
+import dev.rubentxu.pipeline.v2.events.EventRecordSlice
+import dev.rubentxu.pipeline.v2.events.EventStore
 import dev.rubentxu.pipeline.v2.events.RunStarted
 import dev.rubentxu.pipeline.v2.events.StageFinished
 import dev.rubentxu.pipeline.v2.events.StageStarted
+import dev.rubentxu.pipeline.v2.events.UndecodableReason
 import dev.rubentxu.pipeline.v2.events.durable.InMemoryEventStore
 import dev.rubentxu.pipeline.v2.events.identity.EventCursor
 import dev.rubentxu.pipeline.v2.events.identity.EventId
@@ -26,7 +31,7 @@ import org.junit.jupiter.api.Test
  * Un cliente externo lee la historia por cursor: pide una página, recibe hechos y un cursor, se
  * desconecta, vuelve con el cursor y sigue. Lo que la garantía promete es que entre una lectura
  * y la siguiente **no se salta ningún hecho y no se repite ninguno**. El cursor es la posición
- * del cliente, y la posición del cliente sólo sirve si el.store no la adelanta.
+ * del cliente, y la posición del cliente sólo sirve si el store no la adelanta.
  *
  * ## Por qué esto NO lo puede observar la capa ejecutable
  * El verbo `events` escribe los hechos en `stdout` y el cursor en `stderr`. El lanzador de
@@ -47,15 +52,48 @@ import org.junit.jupiter.api.Test
  * la 3 coincide, y la 4 también. Con un límite de dos, la primera página (filas 1 y 2) entrega un
  * hecho, y la segunda (filas 3 y 4) entrega otro y agota el límite en su **primera** fila: la
  * cuarta se leyó y no se entregó.
+ *
+ * ## La segunda mitad: los rechazos también son posiciones
+ * Una fila ilegible no es un evento, pero es una FILA: ocupa su lugar en la secuencia y el almacén
+ * la cuenta. El cliente la recibe como un rechazo, y un rechazo es una entrega — así que el
+ * cursor tiene que cubrirlo, igual que cubre el último hecho. Y al revés: el cursor no puede
+ * adelantarse al rechazo para cubrirlo si con eso salta un hecho coincidente que quedó sin
+ * entregar. Las dos mitades se resuelven con una sola regla, y esta clase la ejerce en las dos
+ * proyecciones: la de envelopes y la tipada.
+ *
+ * Por eso el doble tiene que saber fabricar FILAS y no sólo envelopes: una historia sin una fila
+ * ilegible no puede observar la ley de los rechazos, y una ley sin instrumento es una intención.
  */
 class EventPageDrainTest {
 
     /**
+     * Una fila durable tal como el almacén la corta: un envelope legible o un rechazo.
+     *
+     * El rechazo ocupa su lugar en la secuencia igual que un envelope: no es un evento, pero es
+     * una FILA, y la página se corta por filas. Un doble que sólo sabe fabricar envelopes no
+     * puede representar el caso que la ley de los rechazos trata, que es precisamente el de una
+     * fila que existe y no se puede leer.
+     */
+    private sealed interface TailRow {
+        val sequence: Long
+
+        data class Valid(val envelope: PipelineEventEnvelope) : TailRow {
+            override val sequence: Long get() = envelope.sequence
+        }
+
+        data class Refused(val refusal: EventRecordRead.Undecodable) : TailRow {
+            override val sequence: Long get() = refusal.sequence
+        }
+    }
+
+    /**
      * El almacén en memoria, con las reglas del almacén real: la página se corta por FILAS, y el
-     * cursor es la secuencia de la última fila de la página.
+     * cursor es la secuencia de la última fila de la página — legible o no. Un rechazo que ocupa
+     * la última fila avanza el cursor igual que un envelope: dejarlo fuera contaría la página dos
+     * veces.
      */
     private class FakeTail(
-        private val rows: List<PipelineEventEnvelope>,
+        private val rows: List<TailRow>,
     ) : EventTail {
         override fun readAfter(
             run: ResourceRef,
@@ -63,11 +101,38 @@ class EventPageDrainTest {
             limit: Int,
         ): EventPage {
             val after = cursor?.lastSequence ?: 0L
-            val slice = rows.filter { it.sequence > after }.take(limit)
+            val cut = rows.filter { it.sequence > after }.take(limit)
+            val lastCut = cut.lastOrNull()?.sequence ?: after
             return EventPage(
-                envelopes = slice,
-                nextCursor = EventCursor(run.segments.last(), slice.lastOrNull()?.sequence ?: after),
-                hasMore = rows.any { it.sequence > (slice.lastOrNull()?.sequence ?: after) },
+                envelopes = cut.mapNotNull { (it as? TailRow.Valid)?.envelope },
+                nextCursor = EventCursor(run.segments.last(), lastCut),
+                hasMore = rows.any { it.sequence > lastCut },
+                refusals = cut.mapNotNull { (it as? TailRow.Refused)?.refusal },
+            )
+        }
+    }
+
+    /**
+     * El mismo almacén por el otro puerto: el que devuelve REGISTROS, con la fila ilegible
+     * intercalada en su sitio. El corte es por filas y el cursor es la última fila de la página,
+     * legible o no — la misma ley que el almacén real, porque un doble que la rompe no mide nada.
+     */
+    private class FakeRecordStore(
+        private val records: List<EventRecordRead>,
+    ) : EventStore {
+        override fun append(event: DomainEvent) = Unit
+
+        override fun eventsFor(runId: String): Sequence<DomainEvent> =
+            records.mapNotNull { (it as? EventRecordRead.Decoded)?.event }.asSequence()
+
+        override fun readRecords(runId: String, after: EventCursor?, limit: Int): EventRecordSlice {
+            val afterSequence = after?.lastSequence ?: 0L
+            val cut = records.filter { it.sequence > afterSequence }.take(limit)
+            val lastCut = cut.lastOrNull()?.sequence ?: afterSequence
+            return EventRecordSlice(
+                records = cut,
+                nextCursor = EventCursor(runId, lastCut),
+                hasMore = records.any { it.sequence > lastCut },
             )
         }
     }
@@ -86,6 +151,15 @@ class EventPageDrainTest {
         )
     }
 
+    /** Una fila que existe y no se puede leer: el almacén la cuenta y la secuencia la nombra. */
+    private fun refusal(sequence: Long, kind: String = "GhostKind"): EventRecordRead.Undecodable =
+        EventRecordRead.Undecodable(
+            sequence = sequence,
+            kind = kind,
+            eventId = "evt-$sequence",
+            reason = UndecodableReason.UnknownKind(kind),
+        )
+
     /** La historia que hace la pérdida posible: 2, 3 y 4 coinciden con el filtro. */
     private val history = listOf(
         row(1, "Other"),
@@ -95,10 +169,13 @@ class EventPageDrainTest {
         row(5, "Other"),
     )
 
+    private fun valid(rows: List<PipelineEventEnvelope>): List<TailRow> =
+        rows.map { TailRow.Valid(it) }
+
     @Test
     @DisplayName("una lectura paginada con filtro entrega los hechos que el cursor salta")
     fun aFilteredPagedReadDeliversEveryMatchingFact() {
-        val tail = FakeTail(history)
+        val tail = FakeTail(valid(history))
         val query = EventQuery.ByKind("Wanted")
 
         // El cliente lee, corta y vuelve: dos llamadas, como dos procesos distintos.
@@ -117,7 +194,7 @@ class EventPageDrainTest {
     @Test
     @DisplayName("el cursor de continuación es la posición del último hecho entregado")
     fun theContinuationIsThePositionOfTheLastDeliveredFact() {
-        val tail = FakeTail(history)
+        val tail = FakeTail(valid(history))
 
         val outcome = EventPageDrain.drain(tail, run, EventQuery.ByKind("Wanted"), null, limit = 2)
         val cursor = outcome.page.nextCursor
@@ -138,7 +215,7 @@ class EventPageDrainTest {
     @Test
     @DisplayName("sin filtro, la paginación entrega la historia entera sin repetir ni saltar")
     fun withoutAFilterTheWholeHistoryArrivesWithoutRepeatsOrGaps() {
-        val tail = FakeTail(history)
+        val tail = FakeTail(valid(history))
 
         var cursor: EventCursor? = null
         val delivered = mutableListOf<Long>()
@@ -182,11 +259,13 @@ class EventPageDrainTest {
     @DisplayName("un hecho cortado por el límite deja la bandera en true aunque el almacén terminó")
     fun aLimitCutMatchingFactKeepsTheFlagUp() {
         val tail = FakeTail(
-            listOf(
-                row(1, "Other"),
-                row(2, "Wanted"),
-                row(3, "Wanted"),
-                row(4, "Wanted"),
+            valid(
+                listOf(
+                    row(1, "Other"),
+                    row(2, "Wanted"),
+                    row(3, "Wanted"),
+                    row(4, "Wanted"),
+                ),
             ),
         )
 
@@ -264,6 +343,194 @@ class EventPageDrainTest {
             listOf(2L, 3L, 4L),
             delivered,
             "el cursor no puede adelantar a los hechos que el cliente todavía no ha visto",
+        )
+    }
+
+    /**
+     * La historia que separa las dos mitades de la ley de los rechazos.
+     *
+     * ## El reparto
+     * Las filas 1, 2, 5, 6 y 7 coinciden con el filtro; la 3 y la 4 no. La fila 8 no se puede
+     * leer: existe, ocupa su lugar en la secuencia y el almacén la cuenta. Con un límite de
+     * cuatro, la primera página (filas 1 a 4) entrega dos hechos y la segunda (filas 5 a 8)
+     * entrega dos más y agota el límite: la **fila 7 coincide y no se entrega**, y detrás de ella
+     * está la fila 8, que es un rechazo.
+     *
+     * ## Por qué esta historia y no una más simple
+     * El rechazo tiene que quedar DETRÁS de un hecho coincidente que el corte deja sin entregar.
+     * Si el rechazo fuese la última fila y no hubiera nada coincidente sin entregar detrás, el
+     * cursor podría cubrirlo sin perder nada y el caso no distinguiría ninguna ley. Con esta
+     * historia, un cursor que avanza hasta el rechazo (8) salta el hecho 7 y lo pierde; un
+     * cursor que se queda en el hecho entregado (6) deja el rechazo sin informar, y un rechazo
+     * informado sin cursor que lo cubra se vuelve a informar en la lectura siguiente.
+     */
+    private fun rowsWithATrailingRefusal(): List<TailRow> = listOf(
+        TailRow.Valid(row(1, "Wanted")),
+        TailRow.Valid(row(2, "Wanted")),
+        TailRow.Valid(row(3, "Other")),
+        TailRow.Valid(row(4, "Other")),
+        TailRow.Valid(row(5, "Wanted")),
+        TailRow.Valid(row(6, "Wanted")),
+        TailRow.Valid(row(7, "Wanted")),
+        TailRow.Refused(refusal(8)),
+    )
+
+    /**
+     * ## La garantía
+     * Un rechazo se informa **una vez** y el cursor que lo acompaña lo cubre.
+     *
+     * ## Por qué la notificación y el cursor no pueden separarse
+     * El cursor es la posición del cliente: lo que está por detrás ya se le entregó o ya se
+     * consideró. Un rechazo informado es una entrega: si el cursor no lo cubre, la lectura
+     * siguiente vuelve a encontrar la fila y vuelve a informar el mismo rechazo. Y al revés: si
+     * el cursor se adelanta al rechazo para cubrirlo, se salta el hecho que coincide y quedó
+     * sin entregar, y ese hecho se pierde con un código de salida cero.
+     *
+     * ## La regla que resuelve las dos cosas a la vez
+     * Un rechazo puede informarse **cuando no hay ningún hecho coincidente sin entregar por
+     * delante de él**. Entonces, y sólo entonces, el cursor puede cubrirlo: nadie queda detrás.
+     *
+     * ## Por qué esto NO lo puede observar la capa ejecutable
+     * El CLI informa los rechazos por `stderr` una línea por rechazo, y una fila ilegible sólo
+     * existe si alguien la escribió: no hay verbo que produzca una. Un escenario de ejemplos
+     * que fabricase esa fila estaría probando su propio generador, no el producto. La garantía
+     * necesita un instrumento que la pueda construir: un doble del puerto de lectura.
+     */
+    @Test
+    @DisplayName("un rechazo detrás de un hecho sin entregar no se informa todavía")
+    fun aRefusalBehindAnUndeliveredFactIsNotNotifiedYet() {
+        val tail = FakeTail(rowsWithATrailingRefusal())
+
+        val first = EventPageDrain.drain(tail, run, EventQuery.ByKind("Wanted"), null, limit = 4)
+
+        assertEquals(
+            listOf(1L, 2L, 5L, 6L),
+            first.page.envelopes.map { it.sequence },
+            "la primera lectura entrega los hechos que coinciden hasta agotar el límite",
+        )
+        assertEquals(
+            emptyList<Long>(),
+            first.page.refusals.map { it.sequence },
+            "el rechazo de la secuencia 8 está detrás del hecho 7, que coincide y no se entregó: " +
+                "informarlo ahora obligaría al cursor a adelantarse hasta el 8 y perdería el 7. " +
+                "Rechazos emitidos: ${first.page.refusals.map { it.sequence }}",
+        )
+        assertTrue(
+            first.page.nextCursor?.lastSequence == 6L,
+            "el cursor no puede pasar del último hecho entregado (6): ni al 7, que no se entregó, " +
+                "ni al 8, que es un rechazo todavía sin informar. Cursor emitido: " +
+                "${first.page.nextCursor}",
+        )
+        assertTrue(
+            first.page.hasMore,
+            "el hecho 7 sigue por delante del cliente: la bandera debe decir que queda trabajo",
+        )
+    }
+
+    /**
+     * La mitad que cierra la ley: reanudar no duplica el rechazo ni lo omite.
+     *
+     * ## La garantía
+     * Cuando el cliente vuelve con el cursor que recibió, el rechazo pendiente se informa **una
+     * sola vez** y el cursor nuevo lo cubre, de modo que una tercera lectura no vuelve a
+     * encontrarlo.
+     */
+    @Test
+    @DisplayName("reanudar informa el rechazo una sola vez y el cursor lo cubre")
+    fun resumingNotifiesTheRefusalOnceAndTheCursorCoversIt() {
+        val tail = FakeTail(rowsWithATrailingRefusal())
+        val query = EventQuery.ByKind("Wanted")
+
+        val first = EventPageDrain.drain(tail, run, query, null, limit = 4)
+        val second = EventPageDrain.drain(tail, run, query, first.page.nextCursor, limit = 4)
+
+        assertEquals(
+            listOf(7L),
+            second.page.envelopes.map { it.sequence },
+            "la segunda lectura entrega el hecho coincidente que quedó atrás",
+        )
+        assertEquals(
+            listOf(8L),
+            second.page.refusals.map { it.sequence },
+            "ya no hay ningún hecho coincidente sin entregar por delante: el rechazo se informa",
+        )
+        assertTrue(
+            second.page.nextCursor?.lastSequence == 8L,
+            "el cursor debe cubrir el rechazo que se acaba de informar; si no lo cubre, la " +
+                "lectura siguiente lo encontrará otra vez y lo informará otra vez. Cursor " +
+                "emitido: ${second.page.nextCursor}",
+        )
+        assertEquals(
+            1,
+            first.page.refusals.size + second.page.refusals.size,
+            "el rechazo se informa exactamente una vez entre las dos lecturas",
+        )
+        assertTrue(
+            !second.page.hasMore,
+            "no queda nada por delante del cliente: la historia terminó con el rechazo",
+        )
+    }
+
+    /**
+     * La misma ley en la proyección tipada.
+     *
+     * El drenador tipado lee por otro puerto (`EventStore.readRecords`) y tiene su propio bucle,
+     * pero la ley del rechazo es la misma: un rechazo informado, un cursor que lo cubre. Aquí el
+     * doble es un almacén que devuelve REGISTROS, con la fila ilegible intercalada en su sitio,
+     * que es la única forma de que la fila exista.
+     */
+    @Test
+    @DisplayName("la proyección tipada cumple la misma ley de rechazos")
+    fun theTypedProjectionObeysTheSameRefusalLaw() {
+        val store = FakeRecordStore(
+            listOf(
+                EventRecordRead.Decoded(StageStarted("evt-1", "run-1", 1L, Instant.EPOCH, 0, "stage-0")),
+                EventRecordRead.Decoded(StageStarted("evt-2", "run-1", 2L, Instant.EPOCH, 1, "stage-1")),
+                EventRecordRead.Decoded(StageFinished("evt-3", "run-1", 3L, Instant.EPOCH, 2, "stage-2", "success")),
+                EventRecordRead.Decoded(StageFinished("evt-4", "run-1", 4L, Instant.EPOCH, 3, "stage-3", "success")),
+                EventRecordRead.Decoded(StageStarted("evt-5", "run-1", 5L, Instant.EPOCH, 4, "stage-4")),
+                EventRecordRead.Decoded(StageStarted("evt-6", "run-1", 6L, Instant.EPOCH, 5, "stage-5")),
+                EventRecordRead.Decoded(StageStarted("evt-7", "run-1", 7L, Instant.EPOCH, 6, "stage-6")),
+                refusal(8),
+            ),
+        )
+        val query = EventQuery.ByKind("StageStarted")
+
+        val first = EventPageDrain.drainTyped(store, run, query, null, limit = 4)
+        val second = EventPageDrain.drainTyped(store, run, query, first.page.nextCursor, limit = 4)
+
+        assertEquals(
+            listOf(1L, 2L, 5L, 6L),
+            first.page.events.map { it.sequence },
+            "la primera lectura entrega los hechos que coinciden hasta agotar el límite",
+        )
+        assertEquals(
+            emptyList<Long>(),
+            first.page.refusals.map { it.sequence },
+            "el rechazo de la secuencia 8 está detrás del hecho 7, que coincide y no se entregó: " +
+                "informarlo ahora obligaría al cursor a adelantarse hasta el 8 y perdería el 7. " +
+                "Rechazos emitidos: ${first.page.refusals.map { it.sequence }}",
+        )
+        assertEquals(
+            listOf(7L),
+            second.page.events.map { it.sequence },
+            "la segunda lectura entrega el hecho coincidente que quedó atrás",
+        )
+        assertEquals(
+            listOf(8L),
+            second.page.refusals.map { it.sequence },
+            "ya no hay ningún hecho coincidente sin entregar por delante: el rechazo se informa",
+        )
+        assertTrue(
+            second.page.nextCursor?.lastSequence == 8L,
+            "el cursor debe cubrir el rechazo que se acaba de informar; si no lo cubre, la " +
+                "lectura siguiente lo encontrará otra vez y lo informará otra vez. Cursor " +
+                "emitido: ${second.page.nextCursor}",
+        )
+        assertEquals(
+            1,
+            first.page.refusals.size + second.page.refusals.size,
+            "el rechazo se informa exactamente una vez entre las dos lecturas",
         )
     }
 }

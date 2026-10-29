@@ -123,12 +123,12 @@ object EventPageDrain {
         val refusals = ArrayList<EventRecordRead.Undecodable>()
         var readFrom = cursor
         var lastDelivered: Long? = null
+        var maxNotifiedRefusal: Long? = null
         var runEnded = false
 
         while (true) {
             val page = tail.readAfter(run, readFrom, limit)
             val continuation = page.nextCursor
-            refusals.addAll(page.refusals)
             // The terminal fact is read from the ROWS the store returned, never from the facts
             // this drain hands out: with a filter in play the terminal fact is usually the one
             // fact the filter excludes, and a follow that cannot see it never ends.
@@ -148,25 +148,51 @@ object EventPageDrain {
                 continuation.lastSequence > (readFrom?.lastSequence ?: 0L)
 
             if (reachedLimit || !page.hasMore) {
+                // The EXIT page. Whether one of its refusals can be told about depends on what
+                // the cut left undelivered, and that is only known now that the delivery loop
+                // above has run: a refusal behind an undelivered matching fact would force the
+                // cursor past that fact and lose it. So the page's refusals are split here, and
+                // only the ones no undelivered matching fact precedes are told about.
+                val undelivered =
+                    undeliveredMatchingSequence(page.envelopes.asSequence(), lastDelivered, query)
+                val notifiable = notifiableRefusals(page.refusals, undelivered)
+                refusals.addAll(notifiable)
+                maxNotifiedRefusal = maxRefusalSequence(maxNotifiedRefusal, notifiable)
                 return Outcome.Answered(
                     page = EventPage(
                         envelopes = envelopes.toList(),
-                        nextCursor = clientCursor(run.segments.last(), lastDelivered, continuation),
+                        nextCursor = clientCursor(
+                            run.segments.last(),
+                            lastDelivered,
+                            continuation,
+                            maxNotifiedRefusal,
+                        ),
                         hasMore = clientHasMore(
                             storeHasMore = page.hasMore,
-                            undeliveredMatchesRemain =
-                                undeliveredMatchesRemain(page.envelopes.asSequence(), lastDelivered, query),
+                            undelivered = undelivered,
                         ),
                         refusals = refusals.toList(),
                     ),
                     runEnded = runEnded,
                 )
             }
+            // A MID-LOOP page is consumed whole: the limit was not reached, so every matching
+            // envelope it held was handed out and none of them waits behind the cut. Every row of
+            // a later page sits above this one's, so a refusal of this page can be told about now
+            // and the cursor can cover it without skipping anything.
+            refusals.addAll(page.refusals)
+            maxNotifiedRefusal = maxRefusalSequence(maxNotifiedRefusal, page.refusals)
+
             if (!advanced) {
                 return Outcome.Stalled(
                     page = EventPage(
                         envelopes = envelopes.toList(),
-                        nextCursor = clientCursor(run.segments.last(), lastDelivered, continuation),
+                        nextCursor = clientCursor(
+                            run.segments.last(),
+                            lastDelivered,
+                            continuation,
+                            maxNotifiedRefusal,
+                        ),
                         hasMore = true,
                         refusals = refusals.toList(),
                     ),
@@ -215,12 +241,12 @@ object EventPageDrain {
         val refusals = ArrayList<EventRecordRead.Undecodable>()
         var readFrom = cursor
         var lastDelivered: Long? = null
+        var maxNotifiedRefusal: Long? = null
         var runEnded = false
 
         while (true) {
             val slice = store.readRecords(run.segments.last(), readFrom, limit)
             val continuation = slice.nextCursor
-            refusals.addAll(slice.refusals)
             // The same fact, read from the same rows: a record that could not be decoded carries
             // no kind, and a row the client was not handed still counts.
             if (!runEnded && RunTerminal.hasEnded(
@@ -241,30 +267,46 @@ object EventPageDrain {
             val advanced = continuation.lastSequence > (readFrom?.lastSequence ?: 0L)
 
             if (reachedLimit || !slice.hasMore) {
+                // The EXIT page, and the same law as the envelope drain: a refusal is told about
+                // only when no undelivered matching fact precedes it, and the cursor covers
+                // every refusal that was told about.
+                val undelivered = undeliveredMatchingSequence(decodedEnvelopes(slice.records), lastDelivered, query)
+                val notifiable = notifiableRefusals(slice.refusals, undelivered)
+                refusals.addAll(notifiable)
+                maxNotifiedRefusal = maxRefusalSequence(maxNotifiedRefusal, notifiable)
                 return TypedOutcome.Answered(
                     page = TypedPage(
                         events = events.toList(),
-                        nextCursor = clientCursor(run.segments.last(), lastDelivered, continuation),
+                        nextCursor = clientCursor(
+                            run.segments.last(),
+                            lastDelivered,
+                            continuation,
+                            maxNotifiedRefusal,
+                        ),
                         hasMore = clientHasMore(
                             storeHasMore = slice.hasMore,
-                            undeliveredMatchesRemain = undeliveredMatchesRemain(
-                                slice.records.asSequence().mapNotNull {
-                                    if (it is EventRecordRead.Decoded) envelopeOf(it.event) else null
-                                },
-                                lastDelivered,
-                                query,
-                            ),
+                            undelivered = undelivered,
                         ),
                         refusals = refusals.toList(),
                     ),
                     runEnded = runEnded,
                 )
             }
+            // A MID-LOOP page is consumed whole, so none of its matching rows waits behind the
+            // cut and every one of its refusals can be told about now.
+            refusals.addAll(slice.refusals)
+            maxNotifiedRefusal = maxRefusalSequence(maxNotifiedRefusal, slice.refusals)
+
             if (!advanced) {
                 return TypedOutcome.Stalled(
                     page = TypedPage(
                         events = events.toList(),
-                        nextCursor = clientCursor(run.segments.last(), lastDelivered, continuation),
+                        nextCursor = clientCursor(
+                            run.segments.last(),
+                            lastDelivered,
+                            continuation,
+                            maxNotifiedRefusal,
+                        ),
                         hasMore = true,
                         refusals = refusals.toList(),
                     ),
@@ -286,6 +328,16 @@ object EventPageDrain {
 */
     private fun envelopeOf(event: DomainEvent): PipelineEventEnvelope =
         EnvelopeProjector.project(event, null)
+
+    /**
+     * The envelopes the DECODED rows of a slice project to, in the order the store returned them.
+     * A row that could not be decoded contributes nothing: it has no event to project, and its
+     * refusal is accounted for by its own rule.
+     */
+    private fun decodedEnvelopes(records: List<EventRecordRead>): Sequence<PipelineEventEnvelope> =
+        records.asSequence().mapNotNull { record ->
+            (record as? EventRecordRead.Decoded)?.event?.let { envelopeOf(it) }
+        }
 
     /** The typed page: the events themselves, plus the same continuation and refusal facts. */
     data class TypedPage(
@@ -316,7 +368,8 @@ object EventPageDrain {
 private const val DRAIN_PAGE_HINT = 64
 
 /**
- * The position a client may resume from, given what it was handed and where the store is.
+ * The position a client may resume from, given what it was handed, where the store is and how far
+ * the refusals it was told about reach.
  *
  * ## Why the store's position is not always the answer
  * The store's page is bounded by ROWS; the verb's `--limit` counts FACTS THAT MATCH. Two counts
@@ -329,14 +382,29 @@ private const val DRAIN_PAGE_HINT = 64
  * exit code 0 and no gap marker.
  *
  * ## The rule
- * The cursor is the position of the last fact the client was HANDED. That is the only position
- * that cannot skip an undelivered fact: everything after it is still ahead of the client, and
- * everything before it was either delivered or did not match the filter.
+ * The cursor is the position of the last fact the client was HANDED, extended to cover every
+ * refusal the client was TOLD ABOUT. Both are positions the client actually knows: a fact it
+ * holds, and a row it was told exists. The cursor is `max(lastDelivered, highest notified
+ * refusal)`.
+ *
+ * Why the refusal has to be included: a refusal is a row that exists and could not be read. If
+ * the client is told about it and the cursor stays below it, the client resumes, the store reads
+ * the same row again, and the client is told the same thing a second time — the refusal is
+ * reported forever, or until a round that happens to deliver nothing. That was the defect this
+ * rule fixes, measured on this tree: three rounds, three copies of the same refusal, and a cursor
+ * that never advanced past it.
+ *
+ * Why it is safe to advance the cursor to a notified refusal: a refusal is notified only when no
+ * UNDELIVERED matching fact precedes it, so the notified refusal sits BELOW the first undelivered
+ * matching row; and the last delivered fact also sits below it. Their maximum is therefore still
+ * below the first undelivered matching fact, so advancing to it never skips one.
  *
  * When the call delivered nothing, there is no fact to point at, and the store's position is the
  * answer: every row it read was considered and none of them matched, so nothing is lost by
  * advancing to it. That is also what lets a client whose filter matches nothing yet keep polling
- * forward instead of rescanning the whole history on every call.
+ * forward instead of rescanning the whole history on every call. The store's position is never
+ * below a notified refusal — it is the last row the store read, and every refusal it reported is a
+ * row it read.
  *
  * ## What it does not change
  * Without a filter, every row matches, the drain cannot stop in the middle of a page (the page
@@ -353,7 +421,17 @@ private fun clientCursor(
     runId: String,
     lastDeliveredSequence: Long?,
     storePosition: EventCursor?,
-): EventCursor? = lastDeliveredSequence?.let { EventCursor(runId, it) } ?: storePosition
+    maxNotifiedRefusalSequence: Long?,
+): EventCursor? {
+    if (lastDeliveredSequence == null) {
+        // Nothing was delivered: the store's position covers every row it read, and every
+        // notified refusal sits at or below it.
+        return storePosition ?: maxNotifiedRefusalSequence?.let { EventCursor(runId, it) }
+    }
+    val covered = maxNotifiedRefusalSequence?.let { maxOf(lastDeliveredSequence, it) }
+        ?: lastDeliveredSequence
+    return EventCursor(runId, covered)
+}
 
 /**
  * Whether the client still has work ahead of it, given where the store stands and what the last
@@ -370,10 +448,10 @@ private fun clientCursor(
  * filter and a limit of two delivered rows 2 and 3 with `hasMore=false`, leaving row 4 behind.
  *
  * ## The rule
- * `storeHasMore || undeliveredMatchesRemain`. The second term is true only when the last page
- * holds a row BEHIND the cut that matches the filter: a row the consumer was not handed and would
- * never see again on its own. The term is cheap because the page holds at most `limit` rows, and
- * it is computed only on the exit path.
+ * `storeHasMore || undeliveredRemains`. The second term is true when the last page holds a row
+ * BEHIND the cut that matches the filter: a row the consumer was not handed and would never see
+ * again on its own. The term is cheap because the page holds at most `limit` rows, and it is
+ * computed only on the exit path.
  *
  * ## What it does not change
  * Without a filter the drain cannot stop in the middle of a page — the page holds at most `limit`
@@ -383,11 +461,12 @@ private fun clientCursor(
  */
 private fun clientHasMore(
     storeHasMore: Boolean,
-    undeliveredMatchesRemain: Boolean,
-): Boolean = storeHasMore || undeliveredMatchesRemain
+    undelivered: Long?,
+): Boolean = storeHasMore || undelivered != null
 
 /**
- * Whether the page that was just read holds a MATCHING row the limit cut left undelivered.
+ * The LOWEST sequence of a MATCHING row the limit cut left undelivered, or null when there is
+ * none.
  *
  * The page arrives in sequence order and the drain delivers in sequence order, so the rows behind
  * the last delivered fact are exactly the undelivered remainder: no count, no re-derivation —
@@ -397,15 +476,64 @@ private fun clientHasMore(
  * limit reached on an earlier page never opens this one); so a null position correctly finds
  * nothing undelivered here.
  *
+ * The lowest sequence, and not a boolean, because the number answers a second question: whether a
+ * refusal of this page sits BEFORE the cut or behind it. A refusal that precedes the first
+ * undelivered matching row can be told about now; one that follows it cannot, because the cursor
+ * would have to jump past an undelivered fact to cover it.
+ *
  * One rule, two projections: the envelope drain and the typed drain call it with the envelopes
  * their own rows project to, so the filter semantics stay the one [EventQuery.matches] both loops
  * already use.
  */
-private fun undeliveredMatchesRemain(
+private fun undeliveredMatchingSequence(
     visibleEnvelopes: Sequence<PipelineEventEnvelope>,
     lastDeliveredSequence: Long?,
     query: EventQuery,
-): Boolean {
-    val delivered = lastDeliveredSequence ?: return false
-    return visibleEnvelopes.any { it.sequence > delivered && query.matches(it) }
+): Long? {
+    val delivered = lastDeliveredSequence ?: return null
+    return visibleEnvelopes
+        .filter { it.sequence > delivered && query.matches(it) }
+        .minOfOrNull { it.sequence }
+}
+
+/**
+ * The refusals that can be told about NOW: those no undelivered matching row precedes.
+ *
+ * A refusal is a row that exists and could not be read. Reporting it costs the client a fact
+ * about the history, so it may only be reported when the client can also keep its promise about
+ * the facts: the cursor that covers the refusal must not skip a matching row that the client was
+ * not handed. A refusal that sits below the first undelivered matching row satisfies that — the
+ * cursor advances to it and every matching row stays ahead of it. A refusal that sits ABOVE it
+ * does not: covering it would push the cursor past an undelivered fact, and the client would never
+ * see that fact again.
+ *
+ * So a refusal is withheld until the round that delivers the fact in front of it. It is not lost:
+ * it stays in the store, and the round that delivers the fact reads it again and reports it then.
+ * The rule is the same in both projections.
+ */
+private fun notifiableRefusals(
+    refusals: List<EventRecordRead.Undecodable>,
+    undeliveredMatchingSequence: Long?,
+): List<EventRecordRead.Undecodable> = refusals.filter {
+    undeliveredMatchingSequence == null || it.sequence < undeliveredMatchingSequence
+}
+
+/**
+ * The highest sequence among the refusals told about so far, and the one the cursor must cover.
+ *
+ * The refusal set is accumulated across pages, so the highest one can come from an EARLIER page
+ * than the last. The cursor has to cover the highest, because the client's promise is that it
+ * resumes after everything it was already told about; covering only the last would let the
+ * earlier one be read again.
+ */
+private fun maxRefusalSequence(
+    current: Long?,
+    additions: List<EventRecordRead.Undecodable>,
+): Long? {
+    val added = additions.maxOfOrNull { it.sequence }
+    return when {
+        current == null -> added
+        added == null -> current
+        else -> maxOf(current, added)
+    }
 }

@@ -203,12 +203,232 @@ module_selected() {
 }
 
 started_at=$(date +%s)
+started_at_ms=$(date +%s%3N)
 stage_started_at=$started_at
 
 log()  { printf '\n=== %s\n' "$*"; }
 fail() { printf 'verify-all: FAILED at %s\n' "$*" >&2; exit 1; }
 
 elapsed() { printf '%s' "$(( $(date +%s) - $1 ))"; }
+
+# --- The cost census ---------------------------------------------------------
+# The gate answers two questions about time: how much did the run cost, and
+# what did that time buy. Until now it answered the first with one number per
+# stage and the second with nothing at all. A stage log that carries a single
+# clock for four different works -- the compilation, the static analysis, the
+# public-API check and the assembly of the distribution -- cannot say which of
+# them the time went to, and a cost nobody can attribute is a cost nobody can
+# cut.
+#
+# The census names PARTS of the run. Each part carries the time it took, the
+# number of things behind that time, and whether the gate declared it
+# mandatory. Three rules keep it honest:
+#
+#   1. A part is measured or it is absent. There is no invented zero.
+#   2. A part the gate declared mandatory and did not measure is a FAILURE.
+#      An instrument with a hole makes every other number look more trustworthy
+#      than it is, and that is the direction the reader errs in.
+#   3. The parts do NOT add up to the wall clock. The build runs its tasks in
+#      parallel, so the sum of the tasks is the WORK, not the time. What does
+#      have to hold is that no single item costs more than the clock of the
+#      stage it belongs to, and that the stages which ran one after another
+#      fit inside the total.
+#
+# The unit is the millisecond. Seconds cannot tell a task that cost nothing
+# from a task that cost a tenth of a second, and a census that cannot tell
+# those apart cannot answer the question it was built for.
+
+declare -A component_ms=()
+declare -A component_count=()
+declare -A component_note=()
+declare -A component_required=()
+declare -A component_measured_flag=()
+declare -a component_order=()
+component_measured_total=0
+component_required_total=0
+
+# How the tasks of the build ended. Two runs of the same gate cost the reader
+# the same wall clock on the page, and one of them may have done almost no
+# work at all: the tasks were up to date, or they were served from the build
+# cache. So the count of the tasks that REALLY ran travels with the verdict
+# line, because "the gate passed in 240 s" is not the same statement when 210
+# of the 319 tasks were free.
+task_timing_lines=0
+task_executed_total=0
+task_no_work_total=0
+
+now_ms() { date +%s%3N; }
+
+component_touch() {
+    local key="$1"
+    if [[ -n "${component_ms[$key]+x}" ]]; then
+        return 0
+    fi
+    component_ms[$key]=0
+    component_count[$key]=0
+    component_note[$key]=""
+    component_order+=("$key")
+}
+
+component_add() {
+    local key="$1" ms="$2" count="$3" note="$4"
+    component_touch "$key"
+    component_ms[$key]=$(( component_ms[$key] + ms ))
+    component_count[$key]=$(( component_count[$key] + count ))
+    if [[ -n "$note" ]]; then
+        component_note[$key]="$note"
+    fi
+    if [[ -z "${component_measured_flag[$key]+x}" ]]; then
+        component_measured_flag[$key]=1
+        component_measured_total=$(( component_measured_total + 1 ))
+    fi
+}
+
+component_set() {
+    local key="$1" ms="$2" note="$3"
+    component_touch "$key"
+    component_ms[$key]="$ms"
+    if [[ -n "$note" ]]; then
+        component_note[$key]="$note"
+    fi
+    if [[ -z "${component_measured_flag[$key]+x}" ]]; then
+        component_measured_flag[$key]=1
+        component_measured_total=$(( component_measured_total + 1 ))
+    fi
+}
+
+component_require() {
+    local key="$1" why="$2"
+    component_touch "$key"
+    if [[ -z "${component_required[$key]+x}" ]]; then
+        component_required[$key]="$why"
+        component_required_total=$(( component_required_total + 1 ))
+    fi
+}
+
+component_is_measured() {
+    local key="$1"
+    [[ -n "${component_measured_flag[$key]+x}" ]]
+}
+
+components_suffix() {
+    # NOT_RUN means this run measured no part at all. A run that measured
+    # something but declared nothing mandatory still says what it measured:
+    # hiding the measurement behind a NOT_RUN would be the same silence the
+    # census was built to end.
+    if (( component_measured_total == 0 )); then
+        printf '  components=NOT_RUN'
+        return 0
+    fi
+    printf '  components=measured:%d required:%d' \
+        "$component_measured_total" "$component_required_total"
+}
+
+print_cost_breakdown() {
+    local key
+    if [[ "${#component_order[@]}" -eq 0 ]]; then
+        printf '    cost census: nothing was measured\n'
+        return 0
+    fi
+    printf '    cost census (milliseconds; a part is the work it did -- a part that ran in parallel is the SUM of its pieces, which is more than the clock of the stage that ran them):\n'
+    for key in "${component_order[@]}"; do
+        printf '      %-24s %9d ms  %s\n' \
+            "$key" "${component_ms[$key]}" "${component_note[$key]}"
+    done
+}
+
+# The per-task clock of the build. It lives outside the project directory on
+# purpose: Gradle resolves an initialization script against the project it is
+# given, not against the directory the command was typed in, so a relative
+# path here would be looked for inside the Gradle root and reported missing.
+timing_probe="$repo_root/scripts/gradle-task-timing.init.gradle"
+
+require_timing_probe() {
+    if [[ ! -f "$timing_probe" ]]; then
+        fail "the per-task clock of the build is missing: $timing_probe"
+    fi
+}
+
+# Which part of the build a task belongs to. The first match wins, and the
+# order matters three times over: the static analysis of the test sources is
+# part of the analysis and not part of the tests; the compilation of the test
+# sources is reported apart from the tests themselves, because the two land in
+# different stages and one bucket for both would hide which of them is the
+# expensive half; and the test tasks are what "the cost of the tests" means.
+task_category() {
+    case "$1" in
+        *detekt*)                                         printf 'static' ;;
+        *apiCheck*|*apiBuild*|*apiCompatibility*)          printf 'api' ;;
+        *installDist*|*distZip*|*distTar*|*startScripts*) printf 'distribution' ;;
+        *compileTest*|*TestClasses*|*testClasses*)         printf 'test-compilation' ;;
+        *Test*|*test*)                                   printf 'unit' ;;
+        *compile*)                                       printf 'compile' ;;
+        *)                                               printf 'other' ;;
+    esac
+}
+
+# Read the per-task clock the build wrote and turn it into parts. The log is
+# the only witness: a build that wrote no timing lines measured nothing, and
+# the gate has to say that rather than report a zero for it.
+read_timings() {
+    local log="$1" stage_ms="$2" label="$3"
+    local lines n path ms state bucket slowest_ms=0 slowest=""
+    local -A state_counts=()
+    lines="$(grep -a '^TASK_TIMING ' "$log" || true)"
+    if [[ -z "$lines" ]]; then
+        fail "$label: the build wrote no timing lines, so its cost is unknown"
+    fi
+    n=0
+    while read -r _ path ms state; do
+        [[ "$ms" =~ ^[0-9]+$ ]] || continue
+        n=$(( n + 1 ))
+        if (( ms > slowest_ms )); then
+            slowest_ms=$ms
+            slowest="$path"
+        fi
+        bucket="$(task_category "$path")"
+        component_add "build:$bucket" "$ms" 1 "tasks of the build"
+        state_counts[$state]=$(( ${state_counts[$state]:-0} + 1 ))
+        task_timing_lines=$(( task_timing_lines + 1 ))
+        if [[ "$state" == "EXECUTED" ]]; then
+            task_executed_total=$(( task_executed_total + 1 ))
+        else
+            task_no_work_total=$(( task_no_work_total + 1 ))
+        fi
+    done <<< "$lines"
+    if (( n == 0 )); then
+        fail "$label: the timing lines carry no readable duration"
+    fi
+    if (( slowest_ms > stage_ms )); then
+        fail "$label: a task took ${slowest_ms}ms, more than the ${stage_ms}ms of the stage that ran it"
+    fi
+    printf '    %s: %d task(s) timed, the slowest %s at %dms\n' \
+        "$label" "$n" "$slowest" "$slowest_ms"
+    # The distribution by the state each task ended in. A count of tasks that
+    # ran is only half the story: the reader also has to know how many were
+    # free, because the free ones are the ones a cache produced.
+    local state_name
+    for state_name in $(printf '%s\n' "${!state_counts[@]}" | sort); do
+        printf '      %-14s %d task(s)\n' "$state_name" "${state_counts[$state_name]}"
+    done
+}
+
+# The host the measurement was taken on. A number without the machine it came
+# from is a number nobody can compare against a number from another machine,
+# and the budget of a fixed number of seconds only means something on a
+# declared host.
+print_host_description() {
+    local cores ram_mb gradle_version
+    cores="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)"
+    [[ -n "$cores" ]] || cores=unknown
+    ram_mb="$(awk '/^MemTotal:/ { printf "%d", $2 / 1024 }' /proc/meminfo 2>/dev/null || true)"
+    [[ -n "$ram_mb" ]] || ram_mb=unknown
+    gradle_version="$(sed -nE 's/^distributionUrl=.*gradle-([0-9.]+)-(bin|all)\.zip.*$/\1/p' \
+        pipelinek/gradle/wrapper/gradle-wrapper.properties 2>/dev/null | head -1)"
+    [[ -n "$gradle_version" ]] || gradle_version=unknown
+    printf '    reference host: %s cpu(s), %s MB of RAM, JDK %s, Gradle %s\n' \
+        "$cores" "$ram_mb" "${java_version:-unknown}" "$gradle_version"
+}
 
 # --- Plan resolution ---------------------------------------------------------
 # The plan is derived from the filesystem, not remembered. Stage 2 asks exactly
@@ -370,7 +590,13 @@ fi
 export JAVA_HOME="$java_home"
 export PATH="$JAVA_HOME/bin:$PATH"
 echo "    JAVA_HOME=$JAVA_HOME"
-"$JAVA_HOME/bin/java" -version 2>&1 | sed 's/^/    /'
+# The whole output is captured and then printed, rather than the first line
+# being cut out of a pipe: a reader that closes the pipe early makes the
+# producer fail on SIGPIPE, and a pipe failure under `set -o pipefail` takes
+# the whole gate down with it.
+java_version_output="$("$JAVA_HOME/bin/java" -version 2>&1)"
+printf '%s\n' "$java_version_output" | sed 's/^/    /'
+java_version="$(printf '%s\n' "$java_version_output" | awk 'NR==1 { print $3 }' | tr -d '"')"
 
 # --- The owned cycle ----------------------------------------------------------
 # Everything this run writes belongs to ONE directory, and that directory is
@@ -427,7 +653,19 @@ residue_locked=0
 residue_measured=0
 residue_count=0
 residue_reported=0
-if command -v flock >/dev/null 2>&1 && exec 9>"$state_base/gate.lock" 2>/dev/null; then
+# The redirection of the lock file is NOT silenced with 2>/dev/null. On an
+# `exec` with no command the redirections become the redirections of the
+# SHELL itself, so a silenced stderr there silences the stderr of the whole
+# run: every later failure message of the gate -- the refusal of the residue
+# census, the LOC budget, the wall clock, the cost census -- disappears into
+# /dev/null and the run exits 1 with no reason at all. A gate that dies
+# without saying why is the worst way for a gate to fail.
+#
+# So the writability is probed first, in a command whose own failure is
+# harmless and local: `:` writes nothing, and `>>` appends, so the probe
+# neither truncates the lock nor changes any descriptor of the shell.
+if command -v flock >/dev/null 2>&1 && { : >> "$state_base/gate.lock"; } 2>/dev/null; then
+    exec 9>"$state_base/gate.lock"
     if flock -n 9; then
         residue_locked=1
     fi
@@ -519,6 +757,7 @@ cleanup_logs() {
 }
 trap cleanup_logs EXIT
 
+prep_started_ms=$(now_ms)
 if [[ "$subset" == 0 ]]; then
     log "preparation  clean build outputs"
     stage_started_at=$(date +%s)
@@ -528,6 +767,7 @@ if [[ "$subset" == 0 ]]; then
 else
     log "preparation  SKIPPED (a subset run does not quote a wall clock)"
 fi
+prep_wall_ms=$(( $(now_ms) - prep_started_ms ))
 
 # --- Stage 1: the checks that read the tree, then the build ------------------
 # The stage runs four checks that read ONLY the tree, and only then the Gradle
@@ -546,6 +786,7 @@ fi
 # AGENTS.md section 5 calls this stage "compile + statics". The statics that
 # are cheap now come first, and the word "compile" names what is left.
 
+stage1_started_ms=$(now_ms)
 if want_stage 1; then
     # --- Stage 1a: the LOC budget -------------------------------------------
     # AGENTS.md section 4's contract: VERIFY_LOC <= 2 * PRODUCT_LOC, globally
@@ -667,7 +908,13 @@ if want_stage 1; then
     # ports in `:pipeline-runtime-api`, never against these adapters.
     log "stage 1f/4  compile + detekt + detektTest + apiCheck + installDist"
     stage_started_at=$(date +%s)
-    ./pipelinek/gradlew --no-daemon -p pipelinek "${gradle_cache_args[@]}" \
+    # The per-task clock rides along with the build. Without it this stage has
+    # ONE number for four different works, and the reader cannot tell which of
+    # them the time went to. The clock is the build's own listener, so it adds
+    # no work of its own to the stage it measures.
+    require_timing_probe
+    build_started_ms=$(now_ms)
+    ./pipelinek/gradlew --no-daemon -p pipelinek --init-script "$timing_probe" "${gradle_cache_args[@]}" \
         detektMain \
         detektTest \
         apiCheck \
@@ -675,10 +922,108 @@ if want_stage 1; then
         :pipeline-application:installDist \
         > "$log_dir/stage1.log" 2>&1 \
         || { tail -40 "$log_dir/stage1.log" >&2; fail "stage 1f (the tail of the stage log is above)"; }
+    build_wall_ms=$(( $(now_ms) - build_started_ms ))
+    read_timings "$log_dir/stage1.log" "$build_wall_ms" "stage 1f"
+    # The four works this stage does are what the gate exists to certify, so
+    # each one is a part the census declares mandatory: if the clock did not
+    # measure it, the census is incomplete and the run is not a green gate.
+    component_require "build:static" "the static analysis of the sources is part of the build"
+    component_require "build:api" "the public-API check is part of the build"
+    component_require "build:compile" "the compilation is part of the build"
+    component_require "build:distribution" "the assembly of the distribution is part of the build"
+    echo "    ok in $(elapsed "$stage_started_at")s"
+
+    # --- Stage 1g: what the PRODUCT costs -----------------------------------
+    # The gate's own time is only half the story. What a consumer waits for is
+    # the product's own latency, and that has two very different shapes. The
+    # first compilation of a script pays for the compiler; the second one pays
+    # for the cache. The difference between them is what the script cache buys,
+    # and it is invisible unless BOTH are measured. The third number is the
+    # price of starting the product at all, which every invocation pays and
+    # which no other number in this report contains.
+    log "stage 1g/4  product calibration (cold script, warm script, startup)"
+    stage_started_at=$(date +%s)
+    calib_dir="$cycle_dir/calibration"
+    mkdir -p "$calib_dir/cache"
+    cat > "$calib_dir/calibration.pipeline.kts" <<'CALIBRATION_SCRIPT'
+pipeline {
+    stages {
+        stage("noop") {
+            echo("cost baseline")
+        }
+    }
+}
+CALIBRATION_SCRIPT
+    dist_bin="$repo_root/pipelinek/pipeline-application/build/install/pipelinek/bin/pipelinek"
+    if [[ ! -x "$dist_bin" ]]; then
+        fail "stage 1g: the distribution this gate just assembled is not there: $dist_bin"
+    fi
+    # The script cache is the product's own and it is off by default. Turning
+    # it on HERE is what makes the two numbers comparable: the first pass has
+    # to compile, and the second one has to find the compiled bytes the first
+    # pass left behind.
+    had_cache_dir=0
+    saved_cache_dir="${PIPELINEK_SCRIPT_CACHE_DIR-}"
+    if [[ -n "${PIPELINEK_SCRIPT_CACHE_DIR+x}" ]]; then
+        had_cache_dir=1
+    fi
+    export PIPELINEK_SCRIPT_CACHE_DIR="$calib_dir/cache"
+
+    cold_started_ms=$(now_ms)
+    "$dist_bin" validate "$calib_dir/calibration.pipeline.kts" > "$calib_dir/cold.log" 2>&1 \
+        || { tail -20 "$calib_dir/cold.log" >&2; fail "stage 1g: the first compilation of a script did not succeed"; }
+    cold_ms=$(( $(now_ms) - cold_started_ms ))
+
+    # The second pass is only warm if it did NOT compile the script again. The
+    # product names the compiled bytes after the CONTENT of the script, so the
+    # file that was there before the pass has to be the file that is there
+    # after it: same name, same size, same moment. A second pass that rewrote
+    # it would be a second cold pass wearing a warm name.
+    if [[ -z "$(find "$calib_dir/cache" -type f -print -quit 2>/dev/null)" ]]; then
+        fail "stage 1g: the first pass left no compiled bytes, so there is nothing for a second pass to reuse"
+    fi
+    cache_before="$(find "$calib_dir/cache" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | md5sum)"
+    warm_started_ms=$(now_ms)
+    "$dist_bin" validate "$calib_dir/calibration.pipeline.kts" > "$calib_dir/warm.log" 2>&1 \
+        || { tail -20 "$calib_dir/warm.log" >&2; fail "stage 1g: the second compilation of a script did not succeed"; }
+    warm_ms=$(( $(now_ms) - warm_started_ms ))
+    cache_after="$(find "$calib_dir/cache" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | md5sum)"
+    if [[ "$cache_before" != "$cache_after" ]]; then
+        fail "stage 1g: the second pass rewrote the compiled bytes, so it was not a warm pass"
+    fi
+
+    # The price of starting the product. Three runs, and the MEDIAN, because
+    # the first one pays for the page cache and the last one does not: the
+    # MEAN of three would charge the product for a warm file system it does
+    # not always meet. The median is the number a consumer actually meets.
+    startup_runs=()
+    for startup_index in 1 2 3; do
+        startup_started_ms=$(now_ms)
+        "$dist_bin" version > "$calib_dir/version-$startup_index.log" 2>&1 \
+            || fail "stage 1g: the product did not report its version"
+        startup_runs+=("$(( $(now_ms) - startup_started_ms ))")
+    done
+    startup_median="$(printf '%s\n' "${startup_runs[@]}" | sort -n | sed -n '2p')"
+
+    if (( had_cache_dir == 1 )); then
+        export PIPELINEK_SCRIPT_CACHE_DIR="$saved_cache_dir"
+    else
+        unset PIPELINEK_SCRIPT_CACHE_DIR
+    fi
+
+    component_set "product:script_cold" "$cold_ms" "first compilation of a script"
+    component_set "product:script_warm" "$warm_ms" "second compilation, served from the script cache"
+    component_set "product:startup" "$startup_median" "median of three starts of the product"
+    component_require "product:script_cold" "the price of the first compilation is part of the baseline"
+    component_require "product:script_warm" "the price of a cached compilation is part of the baseline"
+    component_require "product:startup" "the price of starting the product is part of the baseline"
+    printf '    cold %dms, warm %dms, startup %dms (the median of three)\n' \
+        "$cold_ms" "$warm_ms" "$startup_median"
     echo "    ok in $(elapsed "$stage_started_at")s"
 else
   log "stage 1/4  SKIPPED by --stage"
 fi
+stage1_wall_ms=$(( $(now_ms) - stage1_started_ms ))
 
 # --- Stage 2: permanent unit tests ------------------------------------------
 # Every module runs its own:test. A module with no test source has nothing to
@@ -695,6 +1040,7 @@ stage2_ran=0
 xml_fresh_tests=0
 xml_read_tests=0
 
+stage2_started_ms=$(now_ms)
 if want_stage 2; then
 log "stage 2/4  permanent unit tests"
 stage_started_at=$(date +%s)
@@ -774,9 +1120,18 @@ else
     else
         gradle_args=("${tasks[@]}")
     fi
-    ./pipelinek/gradlew --no-daemon -p pipelinek "${gradle_cache_args[@]}" "${gradle_args[@]}" \
+    # The per-task clock rides along here too. The unit tests are the part of
+    # the build a reader most wants to weigh against the scenarios, and the
+    # stage clock alone cannot say how much of it was the tests and how much
+    # was the compilation of the sources the tests exercise.
+    require_timing_probe
+    unit_started_ms=$(now_ms)
+    ./pipelinek/gradlew --no-daemon -p pipelinek --init-script "$timing_probe" "${gradle_cache_args[@]}" "${gradle_args[@]}" \
         > "$log_dir/stage2.log" 2>&1 \
         || { tail -40 "$log_dir/stage2.log" >&2; fail "stage 2 (the tail of the stage log is above)"; }
+    unit_wall_ms=$(( $(now_ms) - unit_started_ms ))
+    read_timings "$log_dir/stage2.log" "$unit_wall_ms" "stage 2"
+    component_require "build:unit" "the permanent unit tests are part of the build"
     # Gradle's exit status is not the result. A Test task can report success
     # with its classes skipped or absent, so the executed/failed/skipped counts
     # are read from the JUnit XML that the task wrote.
@@ -973,6 +1328,7 @@ echo "    ok in $(elapsed "$stage_started_at")s"
 else
   log "stage 2/4  SKIPPED by --stage"
 fi
+stage2_wall_ms=$(( $(now_ms) - stage2_started_ms ))
 
 # --- Stage 3: E2E scenarios --------------------------------------------------
 
@@ -1024,6 +1380,25 @@ scenarios_suffix() {
     fi
 }
 
+# How much of the build REALLY ran. It travels with the verdict line for the
+# same reason the test census does: the seconds on the line are the same
+# whether the tasks executed or the cache answered for them, and a reader who
+# compares two runs needs to know which one paid for the work.
+#
+#   executed   the tasks that ran their work.
+#   cached     the tasks that did none: up to date, served from the build
+#              cache, or without source. They are the ones the cache paid for.
+#
+# A run that never read a timing line says NOT_RUN instead of staying silent,
+# because a silent field reads like a zero.
+tasks_suffix() {
+    if (( task_timing_lines == 0 )); then
+        printf '  tasks=NOT_RUN'
+        return 0
+    fi
+    printf '  tasks=executed:%s cached:%s' "$task_executed_total" "$task_no_work_total"
+}
+
 # Everything the run observed, as ONE argument.
 #
 # These used to travel as separate `%s` in the verdict format, and that is how a
@@ -1033,9 +1408,11 @@ scenarios_suffix() {
 # unrepresentable -- one string, one `%s` -- and each field keeps saying NOT_RUN
 # rather than going quiet when its stage was skipped.
 evidence_suffixes() {
-    printf '%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" "$(residue_suffix)"
+    printf '%s%s%s%s%s%s' "$(tests_suffix)" "$(gaps_suffix)" "$(scenarios_suffix)" \
+        "$(residue_suffix)" "$(components_suffix)" "$(tasks_suffix)"
 }
 
+stage3_started_ms=$(now_ms)
 if want_stage 3; then
 log "stage 3/4  E2E scenarios in examples/"
 stage_started_at=$(date +%s)
@@ -1134,14 +1511,50 @@ if [[ "$e2e_not_run" -gt 0 ]]; then
     # stage log.
     echo "    ${e2e_not_run} scenario(s) NOT_RUN — declared unrunnable, NOT a pass"
 fi
-echo "    ok in $(elapsed "$stage_started_at")s"
+    # The cost of the scenarios, per family. The launcher already prices every
+    # scenario it ran; the gate turns those prices into parts a reader can act
+    # on, because a suite whose cost is only a total is a suite nobody can
+    # shrink. The family is the first segment of the path relative to the
+    # examples directory, so the parts line up with the directories a reader
+    # can see in the tree.
+    #
+    # The resolution is the one the launcher publishes: a tenth of a second.
+    # Finer numbers are not invented here.
+    e2e_cost_total_ms=0
+    e2e_cost_n=0
+    while read -r cost_path cost_label; do
+        [[ -n "$cost_path" ]] || continue
+        e2e_cost_n=$(( e2e_cost_n + 1 ))
+        cost_family="${cost_path%%/*}"
+        if [[ "$cost_family" == "$cost_path" ]]; then
+            cost_family="(root)"
+        fi
+        cost_ms="$(printf '%s' "$cost_label" | sed 's/s$//' | awk '{ printf "%d", $1 * 1000 }')"
+        e2e_cost_total_ms=$(( e2e_cost_total_ms + cost_ms ))
+        component_add "e2e_family:$cost_family" "$cost_ms" 1 \
+            "sum of the scenarios of this family; they run in parallel"
+    done < <(printf '%s\n' "$stage3_cost" | sed 's/^ *//' | awk '{ print $1, $2 }')
+    # The number of prices has to agree with the launcher's own counters. A
+    # scenario that reached a verdict carries a price, and one that never
+    # reached one carries none. If the two disagree, the reader is looking at a
+    # cost report that does not describe the run it claims to describe.
+    e2e_blocked="$(printf '%s\n' "$e2e_counts" | sed -n 's/^ *\([0-9][0-9]*\) blocked.*/\1/p' | head -1)"
+    [[ -n "$e2e_blocked" ]] || e2e_blocked=0
+    e2e_cost_expected=$(( e2e_passed + e2e_failed + e2e_blocked ))
+    if (( e2e_cost_n != e2e_cost_expected )); then
+        fail "stage 3: the cost report prices ${e2e_cost_n} scenario(s) and the launcher says ${e2e_cost_expected} reached a verdict"
+    fi
+    component_set "e2e:scenarios" "$e2e_cost_total_ms" \
+        "sum of every scenario the launcher priced; they run in parallel"
+    component_require "e2e:scenarios" "the cost of the scenarios is part of the baseline"
+    echo "    ok in $(elapsed "$stage_started_at")s"
 else
   log "stage 3/4  SKIPPED by --stage"
 fi
+stage3_wall_ms=$(( $(now_ms) - stage3_started_ms ))
 
 # --- Stage 4: wall clock -------------------------------------------------------
 
-total=$(elapsed "$started_at")
 log "stage 4/4  wall clock"
 # What this run left behind. The number is the difference between two listings
 # of the shared temporary directory, and the difference is the part that
@@ -1154,6 +1567,57 @@ if [[ "$subset" == 0 && "$residue_measured" == 1 ]] && (( residue_count > 0 )); 
     sed 's/^/      /' "$cycle_dir/tmp-residue.txt" >&2
     fail "stage 4: the gate left ${residue_count} own entries in the shared temporary directory"
 fi
+
+# The removal of the cycle is part of what the run costs, so it is measured
+# and it happens BEFORE the clock is read. A number that excluded the cleanup
+# would be the cost of a run nobody had to pay for.
+cleanup_started_ms=$(now_ms)
+rm -rf "$cycle_dir"
+component_set "cleanup" "$(( $(now_ms) - cleanup_started_ms ))" \
+    "removal of the cycle this run owned"
+
+total=$(elapsed "$started_at")
+total_ms=$(( $(now_ms) - started_at_ms ))
+print_host_description
+print_cost_breakdown
+
+# The stages run one after another, so their clocks have to fit inside the
+# clock of the run. This checks the ACCOUNTING, not the product: the stages do
+# not overlap, so a sum larger than the run that held them means one of the
+# clocks was taken from the wrong place. It is NOT the same check as "the
+# categories of the build add up to the clock of their stage": the build runs
+# its tasks in parallel, so those categories MAY exceed their stage.
+printf '    the stages, one after another:\n'
+printf '      %-24s %9d ms\n' "preparation" "$prep_wall_ms"
+printf '      %-24s %9d ms\n' "stage 1" "$stage1_wall_ms"
+printf '      %-24s %9d ms\n' "stage 2" "$stage2_wall_ms"
+printf '      %-24s %9d ms\n' "stage 3" "$stage3_wall_ms"
+sequential_ms=$(( prep_wall_ms + stage1_wall_ms + stage2_wall_ms + stage3_wall_ms ))
+printf '      %-24s %9d ms\n' "sum of the stages" "$sequential_ms"
+printf '      %-24s %9d ms\n' "the whole run" "$total_ms"
+if (( sequential_ms > total_ms )); then
+    echo "verify-all: the stages took ${sequential_ms}ms together, more than the ${total_ms}ms of the run that held them." >&2
+    fail "stage 4: the sequential clocks do not fit inside the wall clock"
+fi
+
+# A part the gate declared mandatory and did not measure is a hole in the
+# baseline, not a zero. The census would otherwise publish a number for a
+# cost it never observed, which is the same defect as the gate that reported
+# a scenario it never ran.
+missing_parts=()
+for part_key in "${!component_required[@]}"; do
+    if ! component_is_measured "$part_key"; then
+        missing_parts+=("$part_key")
+    fi
+done
+if (( ${#missing_parts[@]} > 0 )); then
+    echo "verify-all: the cost census declared parts it did not measure:" >&2
+    for part_key in "${missing_parts[@]}"; do
+        printf '  %s: %s\n' "$part_key" "${component_required[$part_key]}" >&2
+    done
+    fail "stage 4: the cost census is incomplete"
+fi
+
 if [[ "$subset" == 1 ]]; then
     # A subset that spends 3 minutes instead of 240 is not a budget breach, and a
     # subset that spends 900 is not evidence the gate would. Comparing either

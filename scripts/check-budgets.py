@@ -56,6 +56,11 @@ RULES: list[tuple[str, str, str]] = [
     # truth -- the same reason the two release checks are named above.
     ("verify", "source guard", "scripts/check-comment-provenance.py"),
     ("verify", "source guard", "scripts/check-process-exits.py"),
+    # The per-task clock the gate reads to report what each part of the build
+    # cost. It produces no artifact and ships nothing, so it is the numerator
+    # and not the denominator; the catch-all rule below would otherwise call it
+    # a release tool and make the ratio look better than the truth.
+    ("verify", "build timing probe", "scripts/gradle-task-timing.init.gradle"),
     # The external-consumer check verifies the published artifacts against a
     # consumer outside this repository. It does not ship them: it runs on the
     # publisher's machine during publication. Counting it as production would

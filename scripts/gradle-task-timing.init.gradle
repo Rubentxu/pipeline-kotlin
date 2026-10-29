@@ -1,0 +1,62 @@
+// The per-task clock of the build.
+//
+// One Gradle invocation in this repository carries several different works:
+// the compilation of the modules, the static analysis, the public-API check
+// and the assembly of the distribution. The stage log keeps ONE clock for
+// all of them, and a reader cannot tell which of them the time went to. This
+// listener turns that single number into one line per task, so the gate can
+// report the cost of each part instead of a figure it cannot spend.
+//
+// The clock is the task's own duration, measured around its execution, and it
+// travels WITH the state the task ended in. A task that was up to date, or
+// that was served from the cache, cost almost nothing, and a report that hid
+// the state would let a free build read as an expensive one.
+//
+// The line is a contract with the gate:
+//
+//     TASK_TIMING <task path> <milliseconds> <state>
+//
+// The state is a single word with no spaces, so the gate can read the line
+// without knowing which state a task ended in. The gate counts the lines it
+// can attribute, and refuses to report a cost for a part it never measured.
+
+import org.gradle.api.execution.TaskExecutionListener
+import org.gradle.api.tasks.TaskState
+
+def startedAt = [:]
+
+gradle.taskGraph.addTaskExecutionListener(new TaskExecutionListener() {
+    @Override
+    void beforeExecute(org.gradle.api.Task task) {
+        startedAt[task.path] = System.nanoTime()
+    }
+
+    @Override
+    void afterExecute(org.gradle.api.Task task, TaskState state) {
+        def began = startedAt.remove(task.path)
+        if (began == null) {
+            return
+        }
+        // Integer division on purpose: the contract says milliseconds, and a
+        // fractional millisecond is a digit the gate would have to know how to
+        // read.
+        long millis = (System.nanoTime() - began).intdiv(1000000L)
+        // The order matters. `TaskState.executed` is true for a task that was
+        // up to date, because being up to date is not being skipped; it only
+        // reports false when the task was excluded or its condition said no.
+        // So the state that names a FREE task -- up to date, or served from the
+        // cache -- has to be read first, or a build that did almost nothing
+        // would report that it executed everything.
+        String outcome
+        if (state.failure != null) {
+            outcome = 'FAILED'
+        } else if (state.skipMessage != null) {
+            outcome = state.skipMessage
+        } else {
+            outcome = 'EXECUTED'
+        }
+        // One word, so the line has a fixed shape whatever the state said.
+        outcome = outcome.replaceAll('[^A-Za-z0-9]+', '-').toUpperCase()
+        println "TASK_TIMING ${task.path} ${millis} ${outcome}"
+    }
+})

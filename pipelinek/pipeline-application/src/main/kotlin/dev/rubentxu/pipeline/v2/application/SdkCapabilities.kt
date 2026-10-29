@@ -27,9 +27,9 @@ package dev.rubentxu.pipeline.v2.application
  * The seventeen ids and their publication state. The first two were published
  * together; the three runtime verbs came with the next release; the output
  * trio with the one after; the runtime trio with the following two; the
- * step's verdict, with the event shape that carries it, and the failure's
- * stage, with this build. The two follow vocabularies carry two ids each: the
- * one this build delivers, and the one it announces and does not.
+ * step's verdict and the failure's stage, with this build. The two follow
+ * vocabularies carry two ids each: the one this build delivers, and the one it
+ * announces and does not.
  *
  * | Capability ID                 | Status     | First published |
  * |-------------------------------|------------|-----------------|
@@ -47,7 +47,7 @@ package dev.rubentxu.pipeline.v2.application
  * | `runtime.structure.v1`        | DEPRECATED | `v0.53.0-rc1`   |
  * | `runtime.operation.v1`        | DEPRECATED | `v0.53.0-rc1`   |
  * | `runtime.eventshape.v1`       | DEPRECATED | `v0.54.0-rc1`   |
- * | `runtime.eventshape.v2`       | PUBLISHED  | `v0.62.0`       |
+ * | `runtime.eventshape.v2`       | DEPRECATED | `v0.62.0`       |
  * | `events.stepoutcome.v1`       | PUBLISHED  | `v0.62.0`       |
  * | `events.failurestage.v1`      | PUBLISHED  | `v0.62.0`       |
  *
@@ -113,17 +113,27 @@ package dev.rubentxu.pipeline.v2.application
  * in, and for an id that first ships here it is the version this
  * build declares. The release that carries it is named by its own tag.
  *
- * ## Why the event shape changed its version
+ * ## Why the event shape changed its version, and why v2 is announced and not delivered
  * The typed shape's `outcome` field carried the step's **type**, under a name
  * that promised a result. The same field now carries the step's **verdict**,
  * and the type has a field of its own. A consumer compiled against the old
  * shape reads a different thing out of the same field — and nothing in the
  * field's type says so. So the old id cannot keep claiming to be delivered:
  * `runtime.eventshape.v1` is announced and NOT delivered, which is exactly what
- * DEPRECATED means here, and `runtime.eventshape.v2` is the id a consumer of
- * that shape negotiates.
+ * DEPRECATED means here.
  *
- * The step's verdict in the raw event lane has its own id, `events.stepoutcome.v1`,
+ * `runtime.eventshape.v2` named the TYPED SHAPE itself: the per-event-type view
+ * of the event lane, with its own read port and its own classes. That view is
+ * gone. Its only composer was an internal adapter that took the read port as
+ * an OPTIONAL parameter defaulting to null, and when the adapter stopped
+ * carrying it, the whole plane went with it — no command, no script and no
+ * example reached it. A consumer that negotiates v2 therefore finds nothing
+ * this build serves, so v2 is announced and NOT delivered as well.
+ *
+ * The route for a consumer of the shape is the raw event lane, which is where
+ * the two facts the shape promised have been all along: the verdict in
+ * `StepFinished.outcome` and the step's type in `StepFinished.stepType`. The
+ * step's verdict in the raw event lane has its own id, `events.stepoutcome.v1`,
  * because a consumer that reads the event lane has to be able to ask whether
  * this build publishes a verdict at all: a terminal event with no verdict is
  * what an older build wrote, and a consumer that cannot tell that apart from
@@ -282,11 +292,16 @@ object SdkCapabilities {
             firstPublished = "v0.54.0-rc1",
         ),
         CapabilityEntry(
-            // The typed shape with the step's verdict in `outcome` and the step's type in its own
-            // field. A consumer that wants a step's result reads it; a consumer that wants the kind
-            // of step reads that too.
+            // Announced, and NOT delivered by this build. The typed shape this id named — the
+            // per-event-type view of the event lane, with its own read port — was retired: its
+            // only composer was an internal adapter that took the read port as an optional
+            // parameter defaulting to null, and the whole plane went with it. A consumer that
+            // negotiates this id finds nothing this build serves. The two facts the shape promised
+            // live in the raw event lane instead: the verdict in `StepFinished.outcome` and the
+            // step's type in `StepFinished.stepType`. The verdict's own id is
+            // `events.stepoutcome.v1`.
             id = "runtime.eventshape.v2",
-            status = CapabilityStatus.PUBLISHED,
+            status = CapabilityStatus.DEPRECATED,
             firstPublished = "v0.62.0",
         ),
         CapabilityEntry(

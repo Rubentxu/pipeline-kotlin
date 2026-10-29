@@ -328,7 +328,7 @@
       "module": "pipeline-events",
       "sha": "de45a74abd0717c9b39e32d6f47bdc7e4676aace",
       "surface": "StepFinished.outcome, StepFinishedTyped.outcome and StepFinishedTyped.stepType",
-      "change": "THREE changes in one commit, listed separately because they are three different facts a consumer has to act on. (1) StepFinished: added property `outcome: String?`; the eight-argument <init>(String, String, long, Instant, int, int, String, String), copy and copy$default all DISAPPEAR from the dump, and component9/getOutcome plus the nine-argument forms are added. (2) StepFinishedTyped: added property `stepType: String`; the five-argument <init>, copy and copy$default disappear and the six-argument forms are added. (3) StepFinishedTyped.outcome: same descriptor (String) but a DIFFERENT MEANING - it carried the step's TYPE and now carries the step's VERDICT. The capability id was re-versioned for that reason: runtime.eventshape.v1 is DEPRECATED and runtime.eventshape.v2 is what this build delivers",
+      "change": "THREE changes in one commit, listed separately because they are three different facts a consumer has to act on. (1) StepFinished: added property `outcome: String?`; the eight-argument <init>(String, String, long, Instant, int, int, String, String), copy and copy$default all DISAPPEAR from the dump, and component9/getOutcome plus the nine-argument forms are added. (2) StepFinishedTyped: added property `stepType: String`; the five-argument <init>, copy and copy$default disappear and the six-argument forms are added. (3) StepFinishedTyped.outcome: same descriptor (String) but a DIFFERENT MEANING - it carried the step's TYPE and now carries the step's VERDICT. The capability id was re-versioned for that reason: runtime.eventshape.v1 is DEPRECATED, and runtime.eventshape.v2 was the id for the typed shape - whose own removal is recorded in the entry for b4931a66b",
       "permitting_maturity": "EXPERIMENTAL",
       "reasoning": [
         "BINARY, in parts (1) and (2). An artifact compiled against 0.47.0 that constructs a StepFinished or a StepFinishedTyped receives a NoSuchMethodError. A consumer that REBUILDS against this build needs a source edit, and that is the point of the design: the field has NO default value, so every construction site has to say what it means.",
@@ -343,7 +343,7 @@
         "",
         "What is NOT recorded here: the domain change that gives StepOutcome its canonical wire token. That one is purely additive - a new method and a new companion - and recording it would be a lie about what shipped, in a ledger whose whole purpose is to be the opposite."
       ],
-      "removal_boundary": "n/a - the eight-argument StepFinished <init>, copy and copy$default, and the five-argument StepFinishedTyped <init>, copy and copy$default, are removed by THIS entry and are not coming back; the nine- and six-argument forms are the contract from this build onward. runtime.eventshape.v1 stays announced and not delivered: its `outcome` meant something else, and a consumer that negotiated it has to move to runtime.eventshape.v2",
+      "removal_boundary": "n/a - the eight-argument StepFinished <init>, copy and copy$default, and the five-argument StepFinishedTyped <init>, copy and copy$default, are removed by THIS entry and are not coming back; the nine- and six-argument forms are the contract from this build onward. runtime.eventshape.v1 stays announced and not delivered: its `outcome` meant something else, and a consumer that negotiated it moves to the raw event lane - runtime.eventshape.v2, the id for the typed shape, is announced and not delivered since b4931a66b",
       "supersedes": null
     },
     {
@@ -604,6 +604,30 @@
         "Nothing about the DURABLE WIRE changed: the re-attach deadline is not a persisted row, not a journal column and not a protocol file. What broke is the compiled call, not a recorded run."
       ],
       "removal_boundary": "the field may return only as a wall-clock instant read from the recovering adapter's own clock, and only under a name that says it is an instant; it may not return as a value derived from a fencing token, a token count or any other counter",
+      "supersedes": null
+    },
+    {
+      "module": "pipeline-events",
+      "sha": "b4931a66b193d30c2bfcba525fe7089eee3f2e05",
+      "surface": "the whole dev.rubentxu.pipeline.v2.events.shape plane: TypedEvent, StepFinishedTyped, StepStartedTyped, StageFinishedTyped, StageSkippedTyped, StageStartedTyped, EventShapeCursor, EventShapeOptions, EventShapeResult with its Empty/Events/Refused cases, EventShapeRefusal with its NoEventStore/StorageError/UnknownRun cases, EventShapeReadPort, EventShapeReadPortStoreAdapter and their companions",
+      "change": "removed 22 public types from the published ABI of pipeline-events, and added none: the per-event-type view of the event lane, with its own read port, its own cursor and its own refusal vocabulary. Every one of them disappears from the dump. The published port RuntimeIntrospectionPort does NOT change: it is byte for byte identical to the baseline",
+      "permitting_maturity": "EXPERIMENTAL",
+      "reasoning": [
+        "BINARY, and the break has a NAME. A consumer compiled against a published artifact that carries this plane (0.57.0 and 0.62.0 both carry it) receives NoClassDefFoundError: dev.rubentxu.pipeline.v2.events.shape.StepFinishedTyped, caused by ClassNotFoundException. Measured against both real artifacts, not against the dump: a consumer of the old surface compiles against the published 0.62.0 jar and fails to link against the current one with that named error, instead of reading a different thing out of the same field.",
+        "",
+        "Why the plane went rather than changed: it was not a second VIEW of the same event lane, it was a SECOND reading of it, with its own authority - EventShapeReadPort, its own EventShapeCursor and its own EventShapeRefusal vocabulary. The published port RuntimeIntrospectionPort never announced a shape, so no consumer of the published seam had anything to migrate: the port is byte for byte identical to the baseline. The removed plane was reachable only from inside the tree, and its only composer was an internal adapter that took the read port as an OPTIONAL parameter defaulting to null (`private val eventShapeRead: EventShapeReadPort? = null`), so nothing in the tree composed it: zero references to events.shape, EventShape* or *Typed remain in pipelinek, scripts, examples and the .api dumps. Its own projection type, TypedEventAvailability, died with it.",
+        "",
+        "Who was reachable, measured rather than assumed: of the 25 jars in the local maven repository under dev, only 2 carry this plane, and both are pipeline-events itself (0.57.0 and 0.62.0). The other local consumers - studio-infra-fabric and pipelinek-assurance-plugin - do not declare pipeline-events and their jars carry none of these classes. What cannot be read from this machine - the sources of pipelinek-studio and pipelinek-assurance, and any external SDK or client of pipeline-events - stays UNKNOWN and is not inferred from the absence of a local copy.",
+        "",
+        "The catalogue was already lying about this before the removal. runtime.eventshape.v2 announced a PUBLISHED typed shape whose types had already gone in an earlier SHA, so the id promised a delivery the artifact no longer had. This entry records the removal; the catalogue is corrected next to it - runtime.eventshape.v2 becomes DEPRECATED, announced and NOT delivered, which is what that state means here. An id a consumer can find but not use is a promise the build cannot keep, and it has to be said in the catalogue, not only here.",
+        "",
+        "What did NOT change, and where a consumer goes instead: the two facts the shape promised live today in the raw event lane - the verdict in StepFinished.outcome, whose id is events.stepoutcome.v1, and the step's type in StepFinished.stepType. No event changes shape: the payload is a JSON TEXT column, the decoder already reads both fields, and a row written before this SHA decodes to the same fields it always did.",
+        "",
+        "The alternative considered and rejected: a shim that reintroduces the removed types. It was rejected because the shape was a second reading with its own authority - reintroducing it would resurrect a second authority over the event lane, which is exactly what this product forbids. What survives instead is the route: the raw event lane, with an id of its own for the verdict.",
+        "",
+        "Not recorded here: the change that made the verdict's meaning explicit (the entry for de45a74abd). That one is a different fact - a field that kept its type and changed its meaning - and it is recorded there, linked by sha rather than merged into this entry."
+      ],
+      "removal_boundary": "the removed plane may not return as a second read port, a second cursor or a second refusal vocabulary over the event lane; the only route for a consumer that needs the step's verdict or the step's type is the raw event lane - StepFinished.outcome (events.stepoutcome.v1) and StepFinished.stepType. runtime.eventshape.v2 stays announced and NOT delivered: a consumer that negotiated it moves to the raw event lane",
       "supersedes": null
     }
   ]

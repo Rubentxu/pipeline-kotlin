@@ -48,7 +48,7 @@ class SdkCapabilitiesRegistryTest {
         Triple("runtime.structure.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.53.0-rc1"),
         Triple("runtime.operation.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.53.0-rc1"),
         Triple("runtime.eventshape.v1", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.54.0-rc1"),
-        Triple("runtime.eventshape.v2", SdkCapabilities.CapabilityStatus.PUBLISHED, "v0.62.0"),
+        Triple("runtime.eventshape.v2", SdkCapabilities.CapabilityStatus.DEPRECATED, "v0.62.0"),
         Triple("events.stepoutcome.v1", SdkCapabilities.CapabilityStatus.PUBLISHED, "v0.62.0"),
         Triple("events.failurestage.v1", SdkCapabilities.CapabilityStatus.PUBLISHED, "v0.62.0"),
     )
@@ -103,6 +103,7 @@ class SdkCapabilitiesRegistryTest {
                 "runtime.structure.v1",
                 "runtime.operation.v1",
                 "runtime.eventshape.v1",
+                "runtime.eventshape.v2",
             ),
             deprecated,
             "the ids this build announces but does NOT deliver are exactly the ones a consumer " +
@@ -130,10 +131,15 @@ class SdkCapabilitiesRegistryTest {
             "only the id this build delivers may claim to be delivered; two ids for one " +
                 "vocabulary leave the consumer choosing between them",
         )
-        assertTrue(
-            announced.contains("runtime.eventshape.v2"),
-            "the typed shape carries the same verdict, so the id that names it has to be announced " +
-                "too — otherwise a consumer of the shape has nothing to negotiate",
+        assertEquals(
+            SdkCapabilities.CapabilityStatus.DEPRECATED,
+            SdkCapabilities.ALL.single { it.id == "runtime.eventshape.v2" }.status,
+            "the typed shape this id named is gone: its only composer was an internal adapter " +
+                "that took the read port as an optional parameter defaulting to null, and the " +
+                "whole plane went with it. The id stays announced so a consumer that negotiated " +
+                "it can see that this build does not serve it, instead of finding it PUBLISHED " +
+                "and then a missing class at runtime. The verdict it promised is delivered by " +
+                "events.stepoutcome.v1, in the raw event lane",
         )
     }
 

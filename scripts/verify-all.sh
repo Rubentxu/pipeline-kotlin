@@ -2,17 +2,28 @@
 # verify-all.sh — THE single local verification entrypoint (AGENTS.md section 5).
 # It composes, in one process and on purpose no other:
 #   0. a clean of the project's build outputs, so the run measures a real build;
-#   1. the development distribution, built ONCE with installDist;
-#   2. static analysis (detekt) and the public-API compatibility check;
-#   3. the permanent unit tests of every module that has any;
-#   4. the tracked E2E scenarios in examples/, run by examples/run.sh;
-#   5. the LOC budget gate (scripts/check-budgets.py);
-#   6. the wall-clock gate.
+#   1. the checks that read only the tree, cheapest first, and then the build:
+#      the LOC budget census, the forbidden-source-set census, the comment
+#      provenance guard, the process-exit guard, static analysis (detekt), the
+#      public-API compatibility check, and the development distribution built
+#      ONCE with installDist;
+#   2. the permanent unit tests of every module that has any;
+#   3. the tracked E2E scenarios in examples/, run by examples/run.sh;
+#   4. the wall-clock gate.
 # It is not a test framework and it has no registry, no service, no database
 # and no tests-of-tests. It runs named commands in a fixed order, and it stops
 # at the first failing stage so a red run names the stage that is red.
+#
+# THE ORDER IS PART OF THE GATE, not a detail of it. Four of the checks read
+# only the tree -- the LOC census, the source-set census, the words the
+# comments use, and the calls that end the process -- and they cost seconds
+# between them. The checks that RUN the product cost minutes. A tree that
+# breaks one of the cheap rules is therefore told so BEFORE the build, the
+# unit tests and the scenarios have spent the time, instead of after the whole
+# run has already been paid for: the same defect, found minutes later.
+#
 #   scripts/verify-all.sh              # the whole gate
-#   scripts/verify-all.sh --no-budget  # skip only the LOC gate, for a quick loop
+#   scripts/verify-all.sh --no-budget  # skip only the LOC census, for a quick loop
 # SCOPED RUNS. The gate above is the unit of truth and always the default. For
 # the inner loop there are filters, and they are deliberately subordinate: any
 # filter switches the run to SUBSET mode, which prints its verdict in a
@@ -30,6 +41,9 @@
 #   scripts/verify-all.sh --stage 3 --scenario 'control-flow/*'
 # Filters compose; --list never invokes Gradle; a filter that selects nothing is
 # an error rather than a green, for the same reason an empty census is not zero.
+# The gate has four stages, and a stage number that names a fifth is a typo: a
+# typo that selected nothing would run nothing and print a clean verdict, which
+# is the same silent green this script refuses everywhere else.
 # Exit 0 when every stage passed, 1 otherwise. The wall-clock gate prints its
 # own verdict even on failure; callers who want a hard ceiling should wrap the
 # whole command, as AGENTS.md section 5 describes:
@@ -62,15 +76,20 @@ stage_given=0
 module_given=0
 scenario_given=0
 
-usage() { sed -n '2,57p' "$0"; }
+# The help is the header, and the header is the help: the range of lines the
+# old text named by hand had drifted past the end of the comment block and
+# printed a dozen lines of code with it. Reading the block until the first
+# line that is not a comment keeps the two in step by construction.
+usage() { awk 'NR > 1 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "$0"; }
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         # `--no-budget` is a subset flag as well as a budget skip. It used to set
-        # only skip_budget, so the run skipped stage 4 and then fell through to
-        # the SAME `PASS sha=… budget=900s` line the full gate prints -- a line
-        # naming a LOC budget this run never measured. The verdict belongs to the
-        # run that observed everything, so dropping a stage drops the claim with it.
+        # only skip_budget, so the run skipped the LOC census and then fell
+        # through to the SAME `PASS sha=… budget=900s` line the full gate prints
+        # -- a line naming a LOC budget this run never measured. The verdict
+        # belongs to the run that observed everything, so dropping a stage drops
+        # the claim with it.
         --no-budget) skip_budget=1; subset=1 ;;
         --list)      list_only=1; subset=1 ;;
         --stage)     stage_spec="${2:-}"; stage_given=1; subset=1; shift ;;
@@ -100,6 +119,30 @@ fi
 for t in ${test_filters+"${test_filters[@]}"}; do
     [[ -n "$t" ]] || { echo "verify-all: --test was given an empty pattern" >&2; exit 2; }
 done
+
+# The gate has four stages. A number that names a fifth is a typo, and a typo
+# that selected nothing would run nothing and print a clean verdict: the same
+# silent green this script refuses everywhere else. The check is here, before
+# any work, because a stage that does not exist must not be discovered after
+# the build has already been paid for.
+if [[ -n "$stage_spec" ]]; then
+    for st in ${stage_spec//,/ }; do
+        case "$st" in
+            up-to-*) st="${st#up-to-}" ;;
+        esac
+        if [[ ! "$st" =~ ^[0-9]+$ ]]; then
+            echo "verify-all: '$stage_spec' is not a stage selection." >&2
+            echo "  the gate has four stages: 1 statics and compile, 2 unit tests," >&2
+            echo "  3 E2E scenarios, 4 wall clock." >&2
+            exit 2
+        fi
+        if (( st < 1 || st > 4 )); then
+            echo "verify-all: stage $st does not exist; the gate has four stages." >&2
+            echo "  1 statics and compile, 2 unit tests, 3 E2E scenarios, 4 wall clock." >&2
+            exit 2
+        fi
+    done
+fi
 
 # The BUILD CACHE is a different thing from the dependency cache, and the full
 # gate needs the first one switched off.
@@ -136,14 +179,14 @@ fi
 
 # Stage selection. `--stage up-to-N` is the progressive form: everything from 1
 # to N. `--stage 1,3` is the explicit form. Both are a SUBSET by definition --
-# stage 5 alone, or stage 3 without stage 1, measures nothing about the gate.
+# stage 4 alone, or stage 3 without stage 1, measures nothing about the gate.
 want_stage() {
     [[ -z "$stage_spec" ]] && return 0
     local n spec up_to=""
     if [[ "$stage_spec" == up-to-* ]]; then
         up_to="${stage_spec#up-to-}"; spec=""
         [[ "$up_to" =~ ^[0-9]+$ ]] || { echo "verify-all: 'up-to-$up_to' is not a stage number" >&2; exit 2; }
-        for n in 1 2 3 4 5; do [[ "$n" -le "$up_to" ]] && spec="${spec:+$spec,}$n"; done
+        for n in 1 2 3 4; do [[ "$n" -le "$up_to" ]] && spec="${spec:+$spec,}$n"; done
     else
         spec="$stage_spec"
     fi
@@ -221,10 +264,17 @@ print_plan() {
     if [[ "$subset" == 0 ]]; then
         printf '  prep      clean build outputs\n'
     fi
-    for s in 1 2 3 4 5; do
+    for s in 1 2 3 4; do
         want_stage "$s" || continue
         case "$s" in
-            1) printf '  stage 1  detektMain detektTest apiCheck :pipeline-runtime:compileKotlin :pipeline-application:installDist\n' ;;
+            1)
+                printf '  stage 1  LOC budget census%s\n' \
+                    "$([[ "$skip_budget" == 1 ]] && printf ' (SKIPPED: --no-budget)' || printf '')"
+                printf '             forbidden Kotlin source sets\n'
+                printf '             comment provenance\n'
+                printf '             process exits\n'
+                printf '             detektMain detektTest apiCheck :pipeline-runtime:compileKotlin :pipeline-application:installDist\n'
+                ;;
             2)
                 printf '  stage 2  unit tests\n'
                 planned_modules=0
@@ -254,9 +304,7 @@ print_plan() {
                     exit 2
                 fi
                 ;;
-            4) [[ "$skip_budget" == 1 ]] && printf '  stage 4  SKIPPED (--no-budget)\n' \
-                 || printf '  stage 4  LOC budget\n' ;;
-            5) printf '  stage 5  wall clock%s\n' "$([[ "$subset" == 1 ]] && printf ' (reported, NOT compared to 900s: subset run)')" ;;
+            4) printf '  stage 4  wall clock%s\n' "$([[ "$subset" == 1 ]] && printf ' (reported, NOT compared to 900s: subset run)')" ;;
         esac
     done
     [[ "$subset" == 1 ]] && printf 'SUBSET run: these stages are not the gate.\n'
@@ -375,50 +423,137 @@ cleanup_logs() {
 }
 trap cleanup_logs EXIT
 
-# --- Stage 1: compile, static analysis, API compatibility, distribution -------
-# One Gradle invocation, so the distribution is assembled exactly once and the
-# tests below reuse the same compiled classes rather than recompiling.
-# `detektTest` sits beside `detektMain` because they are the same analysis over
-# two source sets, and only one of them used to be in this list. Every module
-# declares both; nothing ran the second. Thirteen test files across seven
-# modules were missing a trailing newline for as long as that held, and no
-# gate was in a position to say so -- the analysis was green in the only sense
-# that a task nobody invokes is green. It fans out to 26 subprojects and costs
-# 3s, so running it adds no new gate: it runs one that was already declared.
+# --- Stage 1: the checks that read the tree, then the build ------------------
+# The stage runs four checks that read ONLY the tree, and only then the Gradle
+# invocation that builds the product and analyses it. The order is the point,
+# and it is the reason this stage exists at all.
 #
-# `:pipeline-runtime:compileKotlin` is there because the analysis above does not
-# compile: detekt parses the sources, and a module whose only defect is that it
-# no longer matches the contract it implements parses perfectly.
+# The four checks cost seconds between them, measured on the reference host:
+# the LOC census a fraction of a second, the source-set census a tenth of a
+# second, the comment guard about five seconds and the process-exit guard about
+# seven. The build, the unit tests and the scenarios cost minutes, because
+# they RUN the product. A tree that breaks one of the cheap rules used to be
+# told so only after all of that had been paid for -- the same defect, found
+# minutes later, in a run that had already spent its budget. A guard that
+# reports late is a guard nobody waits for.
 #
-# It is NOT the only thing that compiles it. `:pipeline-application:installDist`
-# already builds `pipeline-runtime-<version>.jar` for the distribution's `lib/`
-# — measured in the installed tree, not inferred — so the module is compiled
-# transitively either way. What the explicit task buys is that the gate NAMES
-# it: the dependency that puts the module in the distribution is invisible in a
-# stage plan, and the day it is dropped the module would fall out of the
-# compiled set without anything turning red. Asking for it by name keeps it
-# inside the gate whatever the dependency graph does, and it costs nothing: the
-# same compilation was already going to happen.
-#
-# A word that is NOT true of this module: it does not "not travel in the
-# distribution". It travels, inside the application's `lib/`. What it is not is
-# a PUBLISHED SDK artifact — an external consumer compiles against the ports in
-# `:pipeline-runtime-api`, never against these adapters.
+# AGENTS.md section 5 calls this stage "compile + statics". The statics that
+# are cheap now come first, and the word "compile" names what is left.
 
 if want_stage 1; then
-log "stage 1/5  compile + detekt + detektTest + apiCheck + installDist"
-stage_started_at=$(date +%s)
-./pipelinek/gradlew --no-daemon -p pipelinek "${gradle_cache_args[@]}" \
-    detektMain \
-    detektTest \
-    apiCheck \
-    :pipeline-runtime:compileKotlin \
-    :pipeline-application:installDist \
-    > "$log_dir/stage1.log" 2>&1 \
-    || { tail -40 "$log_dir/stage1.log" >&2; fail "stage 1 (see "$log_dir/stage1.log")"; }
-echo "    ok in $(elapsed "$stage_started_at")s"
+    # --- Stage 1a: the LOC budget -------------------------------------------
+    # AGENTS.md section 4's contract: VERIFY_LOC <= 2 * PRODUCT_LOC, globally
+    # and per module. The census reads the Git index and the tracked files, so
+    # it needs no build output and it measures the tree that is about to be
+    # built.
+    if [[ "$skip_budget" == 1 ]]; then
+        log "stage 1a/4  LOC budget SKIPPED by --no-budget"
+    else
+        log "stage 1a/4  LOC budget"
+        stage_started_at=$(date +%s)
+        python3 scripts/check-budgets.py || fail "stage 1a: LOC budget"
+        echo "    ok in $(elapsed "$stage_started_at")s"
+    fi
+
+    # --- Stage 1b: only src/main and src/test may hold Kotlin ----------------
+    # AGENTS.md section 2 allows Kotlin unit tests and forbids the rest: "0
+    # tests Kotlin UAT/E2E/harness interno". A bespoke lane named anything
+    # other than `src/test` is exactly that rest, and an earlier census looked
+    # only for `src/test`, so a seven-file `src/pluginContractTest` source set
+    # sat in the tree for a whole cycle with no gate noticing and no task
+    # compiling it. Enumerating only the permitted name would repeat the
+    # blindness; so the forbidden names are searched for by name instead.
+    log "stage 1b/4  forbidden Kotlin source sets"
+    stage_started_at=$(date +%s)
+    stray_lanes=()
+    while IFS= read -r stray; do
+        stray_lanes+=("$stray")
+    done < <(find pipelinek -path '*/src/*' -name '*.kt' -not -path '*/build/*' \
+             -not -path 'pipelinek/buildSrc/*' -not -path 'examples/*' \
+             -not -path '*/src/main/*' -not -path '*/src/test/*' \
+         | LC_ALL=C sort)
+    if [[ ${#stray_lanes[@]} -gt 0 ]]; then
+        printf '    a Kotlin source set exists outside src/test, which AGENTS.md section 2\n' >&2
+        printf '    forbids: it is either dead code or a lane no gate enumerates.\n' >&2
+        printf '  %s\n' "${stray_lanes[@]}" >&2
+        fail "stage 1b: forbidden Kotlin test source set"
+    fi
+    echo "    ok in $(elapsed "$stage_started_at")s"
+
+    # --- Stage 1c: the words a comment uses ----------------------------------
+    # A comment that names its ticket, its document section, or its commit is
+    # the comment that anchors the code to a process, not to its behaviour. The
+    # guard reads Kotlin, `.kts` and `.sh` files, and walks the comment stream
+    # tokenised by hand so a `//` inside a string literal stays a string.
+    #
+    # It does NOT go with the LOC census, and `--no-budget` does not skip it: a
+    # budget is a contract, and the guard is a check on the words the source
+    # says. Skipping it because the operator did not want the census of lines
+    # would be the wrong reason to stop saying what the code does.
+    log "stage 1c/4  comment provenance"
+    stage_started_at=$(date +%s)
+    python3 scripts/check-comment-provenance.py >/tmp/.verify-comment.out 2>&1 \
+        || { cat /tmp/.verify-comment.out >&2; fail "stage 1c: comment provenance"; }
+    echo "    ok in $(elapsed "$stage_started_at")s"
+
+    # --- Stage 1d: only the entry point may end the process ------------------
+    # A helper that ends the process takes a decision that belongs to somebody
+    # else, and the price is paid in the places that cannot be tested: the
+    # helper cannot be called, so the code around it cannot be exercised, and
+    # the exit code it invents is a literal rather than a case of the taxonomy
+    # the CLI already declares. The guard reads the product sources, resolves
+    # the function that holds each exit call, and fails when that function is
+    # not the entry point.
+    log "stage 1d/4  process exits"
+    stage_started_at=$(date +%s)
+    python3 scripts/check-process-exits.py >"$log_dir/exits.out" 2>&1 \
+        || { cat "$log_dir/exits.out" >&2; fail "stage 1d: process exits"; }
+    echo "    ok in $(elapsed "$stage_started_at")s"
+
+    # --- Stage 1e: compile, static analysis, API compatibility, distribution --
+    # One Gradle invocation, so the distribution is assembled exactly once and
+    # the tests below reuse the same compiled classes rather than recompiling.
+    # `detektTest` sits beside `detektMain` because they are the same analysis
+    # over two source sets, and only one of them used to be in this list. Every
+    # module declares both; nothing ran the second. Thirteen test files across
+    # seven modules were missing a trailing newline for as long as that held,
+    # and no gate was in a position to say so -- the analysis was green in the
+    # only sense that a task nobody invokes is green. It fans out to 26
+    # subprojects and costs 3s, so running it adds no new gate: it runs one
+    # that was already declared.
+    #
+    # `:pipeline-runtime:compileKotlin` is there because the analysis above
+    # does not compile: detekt parses the sources, and a module whose only
+    # defect is that it no longer matches the contract it implements parses
+    # perfectly.
+    #
+    # It is NOT the only thing that compiles it. `:pipeline-application:installDist`
+    # already builds `pipeline-runtime-<version>.jar` for the distribution's `lib/`
+    # — measured in the installed tree, not inferred — so the module is compiled
+    # transitively either way. What the explicit task buys is that the gate NAMES
+    # it: the dependency that puts the module in the distribution is invisible in a
+    # stage plan, and the day it is dropped the module would fall out of the
+    # compiled set without anything turning red. Asking for it by name keeps it
+    # inside the gate whatever the dependency graph does, and it costs nothing: the
+    # same compilation was already going to happen.
+    #
+    # A word that is NOT true of this module: it does not "not travel in the
+    # distribution". It travels, inside the application's `lib/`. What it is not
+    # is a PUBLISHED SDK artifact — an external consumer compiles against the
+    # ports in `:pipeline-runtime-api`, never against these adapters.
+    log "stage 1e/4  compile + detekt + detektTest + apiCheck + installDist"
+    stage_started_at=$(date +%s)
+    ./pipelinek/gradlew --no-daemon -p pipelinek "${gradle_cache_args[@]}" \
+        detektMain \
+        detektTest \
+        apiCheck \
+        :pipeline-runtime:compileKotlin \
+        :pipeline-application:installDist \
+        > "$log_dir/stage1.log" 2>&1 \
+        || { tail -40 "$log_dir/stage1.log" >&2; fail "stage 1e (see "$log_dir/stage1.log")"; }
+    echo "    ok in $(elapsed "$stage_started_at")s"
 else
-  log "stage 1/5  SKIPPED by --stage"
+  log "stage 1/4  SKIPPED by --stage"
 fi
 
 # --- Stage 2: permanent unit tests ------------------------------------------
@@ -437,29 +572,8 @@ xml_fresh_tests=0
 xml_read_tests=0
 
 if want_stage 2; then
-log "stage 2/5  permanent unit tests"
+log "stage 2/4  permanent unit tests"
 stage_started_at=$(date +%s)
-
-# Gate first, then run. AGENTS.md section 2 allows Kotlin unit tests and
-# forbids the rest: "0 tests Kotlin UAT/E2E/harness interno". A bespoke lane
-# named anything other than `src/test` is exactly that rest, and an earlier
-# census looked only for `src/test`, so a seven-file `src/pluginContractTest`
-# source set sat in the tree for a whole cycle with no gate noticing and no
-# task compiling it. Enumerating only the permitted name would repeat the
-# blindness; so the forbidden names are searched for by name instead.
-stray_lanes=()
-while IFS= read -r stray; do
-    stray_lanes+=("$stray")
-done < <(find pipelinek -path '*/src/*' -name '*.kt' -not -path '*/build/*' \
-             -not -path 'pipelinek/buildSrc/*' -not -path 'examples/*' \
-             -not -path '*/src/main/*' -not -path '*/src/test/*' \
-         | LC_ALL=C sort)
-if [[ ${#stray_lanes[@]} -gt 0 ]]; then
-    printf '    a Kotlin source set exists outside src/test, which AGENTS.md section 2\n' >&2
-    printf '    forbids: it is either dead code or a lane no gate enumerates.\n' >&2
-    printf '  %s\n' "${stray_lanes[@]}" >&2
-    fail "stage 2: forbidden Kotlin test source set"
-fi
 
 modules_with_tests=()
 while IFS= read -r kt; do
@@ -733,7 +847,7 @@ else
 fi
 echo "    ok in $(elapsed "$stage_started_at")s"
 else
-  log "stage 2/5  SKIPPED by --stage"
+  log "stage 2/4  SKIPPED by --stage"
 fi
 
 # --- Stage 3: E2E scenarios --------------------------------------------------
@@ -799,7 +913,7 @@ evidence_suffixes() {
 }
 
 if want_stage 3; then
-log "stage 3/5  E2E scenarios in examples/"
+log "stage 3/4  E2E scenarios in examples/"
 stage_started_at=$(date +%s)
 # The launcher gets the time this gate has LEFT, minus a reserve for the
 # stages that come after it. The launcher's own clock then stops the stage
@@ -898,82 +1012,13 @@ if [[ "$e2e_not_run" -gt 0 ]]; then
 fi
 echo "    ok in $(elapsed "$stage_started_at")s"
 else
-  log "stage 3/5  SKIPPED by --stage"
+  log "stage 3/4  SKIPPED by --stage"
 fi
 
-# --- Stage 4: LOC budget -----------------------------------------------------
-
-if ! want_stage 4; then
-    log "stage 4/5  SKIPPED by --stage"
-elif [[ "$skip_budget" == 1 ]]; then
-    log "stage 4/5  LOC budget SKIPPED by --no-budget"
-    # The provenance guard does NOT go with the LOC budget. `--no-budget` skips a
-    # CONTRACT, and the guard is not that contract: it is a check on the words
-    # the source says, and skipping it because the operator did not want the
-    # census of lines would be the wrong reason to stop saying what the code
-    # does.
-    log "stage 4b/5 comment provenance"
-    stage_started_at=$(date +%s)
-    python3 scripts/check-comment-provenance.py >/tmp/.verify-comment.out 2>&1 \
-        || { cat /tmp/.verify-comment.out >&2; fail "stage 4b: comment provenance"; }
-    echo "    ok in $(elapsed "$stage_started_at")s"
-
-    # --- Stage 4c: only the entry point may end the process ------------------
-    #
-    # A helper that ends the process takes a decision that belongs to somebody
-    # else, and the price is paid in the places that cannot be tested: the
-    # helper cannot be called, so the code around it cannot be exercised, and
-    # the exit code it invents is a literal rather than a case of the taxonomy
-    # the CLI already declares. The guard reads the product sources, resolves
-    # the function that holds each exit call, and fails when that function is
-    # not the entry point.
-    log "stage 4c/5 process exits"
-    stage_started_at=$(date +%s)
-    python3 scripts/check-process-exits.py >"$log_dir/exits.out" 2>&1 \
-        || { cat "$log_dir/exits.out" >&2; fail "stage 4c: process exits"; }
-    echo "    ok in $(elapsed "$stage_started_at")s"
-else
-    log "stage 4/5  LOC budget"
-    stage_started_at=$(date +%s)
-    python3 scripts/check-budgets.py || fail "stage 4: LOC budget"
-    echo "    ok in $(elapsed "$stage_started_at")s"
-
-    # --- Stage 4b: comment provenance ---------------------------------------
-    #
-    # A comment that names its ticket, its document section, or its commit is
-    # the comment that anchors the code to a process, not to its behaviour. The
-    # guard reads Kotlin, `.kts` and `.sh` files, and walks the comment stream
-    # tokenised by hand so a `//` inside a string literal stays a string.
-    #
-    # It runs here, between the LOC gate and the wall clock, because the LOC
-    # contract already names the file as a whole -- a guard that runs later
-    # cannot qualify the verdict the way the 2:1 contract qualifies the budget.
-    log "stage 4b/5 comment provenance"
-    stage_started_at=$(date +%s)
-    python3 scripts/check-comment-provenance.py >/tmp/.verify-comment.out 2>&1 \
-        || { cat /tmp/.verify-comment.out >&2; fail "stage 4b: comment provenance"; }
-    echo "    ok in $(elapsed "$stage_started_at")s"
-
-    # --- Stage 4c: only the entry point may end the process ------------------
-    #
-    # A helper that ends the process takes a decision that belongs to somebody
-    # else, and the price is paid in the places that cannot be tested: the
-    # helper cannot be called, so the code around it cannot be exercised, and
-    # the exit code it invents is a literal rather than a case of the taxonomy
-    # the CLI already declares. The guard reads the product sources, resolves
-    # the function that holds each exit call, and fails when that function is
-    # not the entry point.
-    log "stage 4c/5 process exits"
-    stage_started_at=$(date +%s)
-    python3 scripts/check-process-exits.py >"$log_dir/exits.out" 2>&1 \
-        || { cat "$log_dir/exits.out" >&2; fail "stage 4c: process exits"; }
-    echo "    ok in $(elapsed "$stage_started_at")s"
-fi
-
-# --- Stage 5: wall-clock -----------------------------------------------------
+# --- Stage 4: wall clock -------------------------------------------------------
 
 total=$(elapsed "$started_at")
-log "stage 5/5  wall clock"
+log "stage 4/4  wall clock"
 if [[ "$subset" == 1 ]]; then
     # A subset that spends 3 minutes instead of 240 is not a budget breach, and a
     # subset that spends 900 is not evidence the gate would. Comparing either
@@ -990,7 +1035,7 @@ if [[ "$total" -gt "$BUDGET_SECONDS" ]]; then
     echo "  Per AGENTS.md section 4 this is not something to raise or split:" >&2
     echo "  shrink the scenario set, drop duplicate verification, or cut the" >&2
     echo "  slowest stage, then rerun the whole gate." >&2
-    fail "stage 5: wall clock ${total}s"
+    fail "stage 4: wall clock ${total}s"
 fi
 
 # A scenario that did not run is not a scenario that passed. AGENTS.md section 4

@@ -12,6 +12,7 @@ import dev.rubentxu.pipeline.v2.events.StashRestored
 import dev.rubentxu.pipeline.v2.events.StashedEntry
 import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.time.Instant
@@ -68,6 +69,57 @@ class StashOperationsAdapter(
         }
         val resolver = WorkspaceResolver(controlDirRoot, workspaceBase)
         return resolver.ensureCreated(resolver.resolve(stageIdentity.name, stageIdentity.index))
+    }
+
+    /**
+     * The real path of a location that may not exist yet.
+     *
+     * A restore judges a destination BEFORE the copy creates it, so the whole
+     * path cannot be resolved: `toRealPath` fails on a path that is absent.
+     * The deepest existing ancestor is resolved instead, and the segments that
+     * are still missing are re-attached to it.
+     *
+     * Both sides of a containment check must then speak the same coordinate
+     * system, which is the one the filesystem uses. Mixing the two is what
+     * made an honest restore fail: the root was compared resolved and the
+     * destination unresolved, so a workspace reached through a symbolic link
+     * looked like an escape. It is also what let an escape pass: a destination
+     * below a link that leaves the workspace resolved to the link's target
+     * while the root did not, so the two never matched.
+     *
+     * A symbolic link is treated as an existing node, not as a transparent
+     * one: the ancestor is resolved THROUGH it, which is what makes a link
+     * that leaves the workspace visible as an escape.
+     *
+     * A node that exists but cannot be resolved — a broken link — is treated as
+     * a name and the walk continues upwards. Falling back to the unresolved path
+     * would put the two sides of a containment check back into different
+     * coordinate systems, which is the mistake this function exists to remove.
+     */
+    private fun realPathOf(path: Path): Path {
+        val absolute = path.toAbsolutePath().normalize()
+        val missing = ArrayDeque<Path>()
+        var existing = absolute
+        while (true) {
+            if (Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
+                val resolved = try {
+                    existing.toRealPath()
+                } catch (e: IOException) {
+                    null
+                }
+                if (resolved != null) {
+                    var out = resolved
+                    for (segment in missing) {
+                        out = out.resolve(segment.toString())
+                    }
+                    return out
+                }
+            }
+            val name = existing.fileName ?: return absolute
+            val parent = existing.parent ?: return absolute
+            missing.addFirst(name)
+            existing = parent
+        }
     }
 
     override fun stash(input: StashInput): StashResult {
@@ -153,14 +205,7 @@ class StashOperationsAdapter(
         // Resolve stashRoot's real path too: the stash archive itself must not
         // be a symlink (otherwise `relativize` and `target = stashRoot.resolve(rel)`
         // would silently follow it on copy). Defence-in-depth.
-        val stashRootReal: Path = try {
-            stashRoot.toRealPath()
-        } catch (e: IOException) {
-            // stashRoot does not exist yet — `toRealPath` of an absent path resolves
-            // the existing parent chain. This should not throw for the staged layout,
-            // but capture defensively.
-            stashRoot.toAbsolutePath().normalize()
-        }
+        val stashRootReal: Path = realPathOf(stashRoot)
         return try {
             // Recreate the stash root (idempotent: a fresh stash overwrites a previous one).
             if (Files.exists(stashRoot)) {
@@ -178,11 +223,7 @@ class StashOperationsAdapter(
                 // though `rel` is derived from `workspaceRootReal`-bound files,
                 // a poisoned glob or an unusual lexical layout could in principle
                 // produce a rel path that resolves outside. Reject fail-closed.
-                val targetReal = try {
-                    target.toRealPath()
-                } catch (e: IOException) {
-                    target.toAbsolutePath().normalize()
-                }
+                val targetReal = realPathOf(target)
                 if (!targetReal.startsWith(stashRootReal)) {
                     val reason = "stash target '$target' (real '$targetReal') escapes stashRoot (real '$stashRootReal'); refusing"
                     eventSink.append(stashFailedEvent(input.name, "stash", reason))
@@ -282,11 +323,7 @@ class StashOperationsAdapter(
             target
         }
         // Resolve restoreRoot's real path for the per-file containment check.
-        val restoreRootReal: Path = try {
-            restoreRoot.toRealPath()
-        } catch (e: IOException) {
-            restoreRoot.toAbsolutePath().normalize()
-        }
+        val restoreRootReal: Path = realPathOf(restoreRoot)
         // Also reject if restoreRoot is a symlink (defence-in-depth).
         if (Files.isSymbolicLink(restoreRoot)) {
             val reason = "unstash restoreRoot '$restoreRoot' is a symlink (resolves to '$restoreRootReal'); refusing to follow symlinks"
@@ -320,11 +357,7 @@ class StashOperationsAdapter(
                 val rel = stashRoot.relativize(src)
                 val dst = restoreRoot.resolve(rel.toString())
                 // Defence-in-depth: every dst MUST resolve inside restoreRootReal.
-                val dstReal = try {
-                    dst.toRealPath()
-                } catch (e: IOException) {
-                    dst.toAbsolutePath().normalize()
-                }
+                val dstReal = realPathOf(dst)
                 if (!dstReal.startsWith(restoreRootReal)) {
                     val reason = "restored path '$dst' (real '$dstReal') escapes restoreRoot (real '$restoreRootReal')"
                     eventSink.append(stashFailedEvent(input.name, "unstash", reason))

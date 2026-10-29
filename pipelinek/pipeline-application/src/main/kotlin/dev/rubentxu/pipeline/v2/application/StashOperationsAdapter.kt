@@ -108,7 +108,9 @@ class StashOperationsAdapter(
                     null
                 }
                 if (resolved != null) {
-                    var out = resolved
+                    // The type is written out because a `var` keeps the nullable type of
+                    // its initialiser even when that initialiser is already narrowed.
+                    var out: Path = resolved
                     for (segment in missing) {
                         out = out.resolve(segment.toString())
                     }

@@ -1,0 +1,43 @@
+// The temporaries of the workers that run the tests, relocated with the run.
+//
+// The gate relocates the temporaries of the PROCESS it runs: it exports
+// JAVA_OPTS with -Djava.io.tmpdir pointing at the cycle's own directory, and
+// the product's JVM, the CLI the scenarios launch and the compiler daemon all
+// inherit it.
+//
+// The workers Gradle forks to execute the tests do not. They are launched
+// with their own arguments and the property the client was given is not among
+// them. Measured, with the client writing into the run's own directory: four
+// `shoptions-shared*` directories appeared in the shared temporary directory
+// of the machine during `:pipeline-step-sdk:runtime:test`, one per worker.
+//
+// That gap is what made the residue census blind. A temporary in the shared
+// directory has no owner: the census of that directory can report the names
+// but cannot attribute them, so the leak produced by the very tests that
+// guard the product could not be told apart from another program's leak --
+// and the run stayed green with the leak in it.
+//
+// Relocating the workers closes the gap. What they leave lands in the run's
+// own directory, where the owner is known, so the residue is the run's debt
+// and the census can say so.
+//
+// The destination is read from the environment and not written here, because
+// the gate owns that directory: it creates it, it hands it over, and it is
+// the one that removes it with the cycle. When the variable is absent this
+// script does nothing, so a build outside the gate keeps the default
+// behaviour of the machine.
+
+def target = System.getenv('PIPELINEK_GATE_TMPDIR')
+if (target == null || target.isEmpty()) {
+    return
+}
+
+gradle.projectsLoaded {
+    gradle.rootProject.allprojects { project ->
+        // configureEach, not each: the task is configured when it exists, so a
+        // module that declares its tests later is covered too.
+        project.tasks.withType(org.gradle.api.tasks.testing.Test).configureEach { test ->
+            test.systemProperty 'java.io.tmpdir', target
+        }
+    }
+}

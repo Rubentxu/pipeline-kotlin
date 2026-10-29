@@ -20,6 +20,7 @@ import dev.rubentxu.pipeline.v2.events.identity.EventTail
 import dev.rubentxu.pipeline.v2.events.identity.PipelineEventEnvelope
 import java.time.Instant
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -94,12 +95,29 @@ class EventPageDrainTest {
      */
     private class FakeTail(
         private val rows: List<TailRow>,
+        private val maxReads: Int = 16,
     ) : EventTail {
+        /**
+         * Cuántas páginas se han pedido.
+         *
+         * El número dice si el drenador AVANZÓ: una página que no entrega ningún hecho no es el
+         * final de la historia, así que el drenador tiene que pedir otra. Y un bucle que vuelve a
+         * preguntar sin consumir se corta aquí, con un error, en vez de dejar la prueba colgada:
+         * una prueba que se cuelga no es una prueba, es un proceso huérfano esperando un tope
+         * que nadie puso.
+         */
+        var reads: Int = 0
+            private set
+
         override fun readAfter(
             run: ResourceRef,
             cursor: EventCursor?,
             limit: Int,
         ): EventPage {
+            reads++
+            check(reads <= maxReads) {
+                "el drenador pidió $reads páginas y el almacén ya no contesta: el bucle no avanza"
+            }
             val after = cursor?.lastSequence ?: 0L
             val cut = rows.filter { it.sequence > after }.take(limit)
             val lastCut = cut.lastOrNull()?.sequence ?: after
@@ -119,13 +137,22 @@ class EventPageDrainTest {
      */
     private class FakeRecordStore(
         private val records: List<EventRecordRead>,
+        private val maxReads: Int = 16,
     ) : EventStore {
+        /** Cuántas páginas se han pedido; el mismo papel que en el doble de envelopes. */
+        var reads: Int = 0
+            private set
+
         override fun append(event: DomainEvent) = Unit
 
         override fun eventsFor(runId: String): Sequence<DomainEvent> =
             records.mapNotNull { (it as? EventRecordRead.Decoded)?.event }.asSequence()
 
         override fun readRecords(runId: String, after: EventCursor?, limit: Int): EventRecordSlice {
+            reads++
+            check(reads <= maxReads) {
+                "el drenador pidió $reads páginas y el almacén ya no contesta: el bucle no avanza"
+            }
             val afterSequence = after?.lastSequence ?: 0L
             val cut = records.filter { it.sequence > afterSequence }.take(limit)
             val lastCut = cut.lastOrNull()?.sequence ?: afterSequence
@@ -133,6 +160,60 @@ class EventPageDrainTest {
                 records = cut,
                 nextCursor = EventCursor(runId, lastCut),
                 hasMore = records.any { it.sequence > lastCut },
+            )
+        }
+    }
+
+    /**
+     * El almacén que promete más de lo que entrega: su continuación no se mueve.
+     *
+     * Es una avería de un tercero, no un caso del producto: los dos almacenes que hay cortan la
+     * página por filas y su continuación avanza con la última fila leída. Aquí el doble rompe
+     * esa ley a propósito, porque la pregunta que hace falta responder es qué contesta el
+     * drenador cuando el almacén no deja avanzar y todavía dice que queda más.
+     */
+    private class StuckTail : EventTail {
+        /** Cuántas páginas se han pedido; el tope corta el bucle en vez de dejarlo colgado. */
+        var reads: Int = 0
+            private set
+
+        override fun readAfter(
+            run: ResourceRef,
+            cursor: EventCursor?,
+            limit: Int,
+        ): EventPage {
+            reads++
+            check(reads <= 8) {
+                "el drenador volvió a preguntar sin que la continuación cambiara: gira en vacío"
+            }
+            return EventPage(
+                envelopes = emptyList(),
+                nextCursor = EventCursor(run.segments.last(), cursor?.lastSequence ?: 0L),
+                hasMore = true,
+                refusals = emptyList(),
+            )
+        }
+    }
+
+    /** El mismo almacén atascado por el otro puerto: el que devuelve registros. */
+    private class StuckRecordStore : EventStore {
+        /** Cuántas páginas se han pedido; el tope corta el bucle en vez de dejarlo colgado. */
+        var reads: Int = 0
+            private set
+
+        override fun append(event: DomainEvent) = Unit
+
+        override fun eventsFor(runId: String): Sequence<DomainEvent> = emptySequence()
+
+        override fun readRecords(runId: String, after: EventCursor?, limit: Int): EventRecordSlice {
+            reads++
+            check(reads <= 8) {
+                "el drenador volvió a preguntar sin que la continuación cambiara: gira en vacío"
+            }
+            return EventRecordSlice(
+                records = emptyList(),
+                nextCursor = EventCursor(runId, after?.lastSequence ?: 0L),
+                hasMore = true,
             )
         }
     }
@@ -531,6 +612,185 @@ class EventPageDrainTest {
             1,
             first.page.refusals.size + second.page.refusals.size,
             "el rechazo se informa exactamente una vez entre las dos lecturas",
+        )
+    }
+
+    /**
+     * Una página que no entrega ningún hecho porque todas sus filas son ilegibles.
+     *
+     * ## La garantía
+     * Una página de sólo rechazos no es una página vacía: son filas que existen y que el cliente
+     * tiene que conocer. El drenador que la toma por el final de la historia se queda con los
+     * rechazos a medias, y el cliente reanuda desde un cursor que no cubre la última fila: vuelve
+     * a encontrar esa fila y vuelve a informar el mismo rechazo.
+     *
+     * El drenador que, en cambio, la trata como trabajo pendiente sigue pidiendo páginas hasta
+     * que el almacén dice que no hay más, y entonces informa todos los rechazos.
+     *
+     * ## Por qué esto NO lo puede observar la capa ejecutable
+     * Ningún verbo escribe una fila ilegible: el almacén en disco sólo la tiene si otro proceso
+     * escribió un tipo de evento que este binario no conoce. Un escenario de ejemplos que la
+     * fabricase probaría su propio generador, no el producto. La garantía necesita un
+     * instrumento que sepa construir la fila, que es el doble del puerto de lectura.
+     */
+    @Test
+    @DisplayName("una página de sólo rechazos avanza y los informa todos")
+    fun aPageOfOnlyRefusalsAdvancesAndReportsThemAll() {
+        val tail = FakeTail(
+            listOf(
+                TailRow.Refused(refusal(1)),
+                TailRow.Refused(refusal(2)),
+                TailRow.Refused(refusal(3)),
+            ),
+        )
+
+        val outcome = EventPageDrain.drain(tail, run, EventQuery.All, null, limit = 2)
+
+        assertEquals(
+            2,
+            tail.reads,
+            "la primera página no entrega ningún hecho, así que el drenador tiene que pedir la " +
+                "segunda: quedarse en la primera deja la fila 3 sin conocer",
+        )
+        assertEquals(
+            listOf(1L, 2L, 3L),
+            outcome.page.refusals.map { it.sequence },
+            "las tres filas ilegibles se informan: cada una ocupa su sitio en la secuencia",
+        )
+        assertEquals(
+            emptyList<Long>(),
+            outcome.page.envelopes.map { it.sequence },
+            "ninguna fila de esta historia es un hecho entregable",
+        )
+        assertTrue(
+            outcome.page.nextCursor?.lastSequence == 3L,
+            "sin hechos entregados, el cursor es la posición observada del almacén: la última " +
+                "fila leída. Cursor emitido: ${outcome.page.nextCursor}",
+        )
+        assertTrue(
+            !outcome.page.hasMore,
+            "el almacén agotó la historia: no queda nada por delante del cliente",
+        )
+    }
+
+    /**
+     * Un filtro que no casa con ninguna fila.
+     *
+     * ## La garantía
+     * Un filtro que no coincide con nada no puede devolver una respuesta vacía como si fuera el
+     * final de la historia: el almacén puede tener páginas enteras por delante y el cliente tiene
+     * que preguntar hasta que el almacén conteste que no hay más. El drenador que interpretara
+     * «ningún hecho en esta página» como «no hay más» perdería la historia entera con un código de
+     * salida cero.
+     *
+     * Y el que no consumiera una página en cada ronda se quedaría girando: el almacén contesta
+     * «queda más» mientras queden filas, así que un bucle que no avanza no termina nunca.
+     *
+     * ## Por qué el doble cuenta las lecturas
+     * El número de páginas leídas es la prueba de las dos cosas: si el drenador se parase antes
+     * de tiempo contaría menos, y si girara el doble se negaría a contestar una cuarta vez y la
+     * prueba se caería con un error en vez de con un silencio.
+     */
+    @Test
+    @DisplayName("un filtro sin coincidencias agota la historia y no se queda girando")
+    fun aFilterWithoutMatchesExhaustsTheHistoryWithoutSpinning() {
+        val tail = FakeTail(valid(history))
+
+        val outcome = EventPageDrain.drain(tail, run, EventQuery.ByKind("Absent"), null, limit = 2)
+
+        assertEquals(
+            3,
+            tail.reads,
+            "la historia tiene cinco filas y el corte es de dos: hacen falta tres páginas para " +
+                "recorrerla entera. Menos, y el drenador se paró antes de tiempo; más, y giró",
+        )
+        assertEquals(
+            emptyList<Long>(),
+            outcome.page.envelopes.map { it.sequence },
+            "ninguna fila coincide con el filtro",
+        )
+        assertTrue(
+            outcome.page.nextCursor?.lastSequence == 5L,
+            "el cursor es la última posición observada del almacén. Cursor emitido: " +
+                "${outcome.page.nextCursor}",
+        )
+        assertTrue(
+            !outcome.page.hasMore,
+            "el almacén agotó la historia: no queda nada por delante del cliente",
+        )
+    }
+
+    /**
+     * El almacén que promete más y no avanza.
+     *
+     * ## La garantía
+     * Hay una respuesta que el drenador no puede dar: la que no sabe. Cuando el almacén dice
+     * «queda más» y la continuación no se mueve, no hay hecho que entregar ni final que
+     * anunciar: seguir preguntando es girar en vacío, y cortar ahí es truncar en silencio. La
+     * respuesta honesta es un tercer caso, distinto de «respondí» y de «no queda nada»: el
+     * drenador se declara atascado, dice en qué posición se quedó y deja la bandera en alto para
+     * que el cliente sepa que puede reintentar.
+     *
+     * ## Por qué esto NO lo puede observar la capa ejecutable
+     * Los dos almacenes que hay nunca hacen esto: el corte avanza con la última fila leída o el
+     * almacén dice que no queda nada. Un almacén atascado es una avería de un tercero, y aquí la
+     * garantía se ejerce contra un doble que la provoca a propósito.
+     */
+    @Test
+    @DisplayName("un almacén que promete más y no avanza deja al drenador atascado")
+    fun aStoreThatPromisesMoreAndDoesNotAdvanceLeavesTheDrainStuck() {
+        val tail = StuckTail()
+        val start = EventCursor("run-1", 7L)
+
+        val outcome = EventPageDrain.drain(tail, run, EventQuery.All, start, limit = 2)
+
+        val stalled = assertInstanceOf(EventPageDrain.Outcome.Stalled::class.java, outcome)
+        assertEquals(
+            1,
+            tail.reads,
+            "la continuación no se movió: preguntar otra vez daría la misma página",
+        )
+        assertTrue(
+            stalled.page.hasMore,
+            "el almacén dijo que queda más: la bandera no puede decir que no",
+        )
+        assertTrue(
+            stalled.stuckAfter?.lastSequence == 7L,
+            "el drenador tiene que decir en qué posición se quedó. Posición emitida: " +
+                "${stalled.stuckAfter}",
+        )
+    }
+
+    /**
+     * La misma garantía en la proyección tipada.
+     *
+     * El drenador tipado lee por otro puerto y tiene su propio bucle, así que el guard de
+     * atasco puede existir en una proyección y no en la otra. Y el fallo de esa divergencia no
+     * es un resultado equivocado: es un bucle que no termina, que es el peor modo de fallar
+     * porque una prueba colgada parece una prueba que nunca terminó.
+     */
+    @Test
+    @DisplayName("la proyección tipada también declara que se atascó")
+    fun theTypedProjectionAlsoReportsTheStall() {
+        val store = StuckRecordStore()
+        val start = EventCursor("run-1", 7L)
+
+        val outcome = EventPageDrain.drainTyped(store, run, EventQuery.All, start, limit = 2)
+
+        val stalled = assertInstanceOf(EventPageDrain.TypedOutcome.Stalled::class.java, outcome)
+        assertEquals(
+            1,
+            store.reads,
+            "la continuación no se movió: preguntar otra vez daría la misma página",
+        )
+        assertTrue(
+            stalled.page.hasMore,
+            "el almacén dijo que queda más: la bandera no puede decir que no",
+        )
+        assertTrue(
+            stalled.stuckAfter?.lastSequence == 7L,
+            "el drenador tiene que decir en qué posición se quedó. Posición emitida: " +
+                "${stalled.stuckAfter}",
         )
     }
 }

@@ -5,7 +5,7 @@
     <ID>CyclomaticComplexMethod:EventJsonWriter.kt:EventJsonWriter$fun encodeEvent: String</ID>
     <ID>CyclomaticComplexMethod:InMemoryEventStore.kt:InMemoryEventStore$override fun appendAssigned: DomainEvent</ID>
     <ID>CyclomaticComplexMethod:DomainEventJsonDecoder.kt:DomainEventJsonDecoder$fun decode: EventDecodeOutcome</ID>
-    <ID>CyclomaticComplexMethod:SqliteEventStore.kt:SqliteEventStore$override fun appendAssigned: DomainEvent</ID>
+    <ID>CyclomaticComplexMethod:SqliteEventWriter.kt:SqliteEventWriter$fun appendAssigned: DomainEvent</ID>
     <ID>EmptyElseBlock:EventJsonDecoder.kt:EventJsonDecoder$if (depth &gt; 0) current.append(ch)</ID>
     <ID>EmptyElseBlock:EventJsonFields.kt:EventJsonFields$if (depth == 0) break</ID>
     <ID>LongMethod:EventJsonWriter.kt:EventJsonWriter$fun encodeEvent: String</ID>
@@ -18,7 +18,6 @@
     <ID>UnreachableCode:DomainEventJsonDecoder.kt:DomainEventJsonDecoder$EventJsonFields.boolField(s, "isUnix") ?: false</ID>
     <ID>UnreachableCode:DomainEventJsonDecoder.kt:DomainEventJsonDecoder$EventJsonFields.boolField(s, "skipIfLocked") ?: false</ID>
     <ID>UnsafeCallOnNullableType:FileBackedRunExecutionLeaseStore.kt:FileBackedRunExecutionLeaseStore.Companion$RunOwnerId.of("unknown-owner")!!</ID>
-    <ID>UnusedPrivateFunction:SqliteEventStore.kt:SqliteEventStore$private fun withConnection</ID>
     <ID>UnusedPrivateProperty:SqliteEventFollowHandle.kt:SqliteEventFollowHandle$/** One-shot flag for the [EventFollowEvent.Completed] end of the natural-tail / until-condition path. */ private var completedEmitted = false</ID>
     <ID>UnusedVariable:EventJsonFields.kt:EventJsonFields$val next = raw[i + 1]</ID>
     <ID>UseCheckOrError:InMemoryOperationJournal.kt:InMemoryOperationJournal$throw IllegalStateException("Operation $opId attempt $attempt already journaled")</ID>

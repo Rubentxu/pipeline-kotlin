@@ -1,90 +1,8 @@
 package dev.rubentxu.pipeline.v2.events.durable
 
-
-import dev.rubentxu.pipeline.v2.events.AgentResolved
-import dev.rubentxu.pipeline.v2.events.ArtifactArchiveFailed
-import dev.rubentxu.pipeline.v2.events.ArtifactArchived
-import dev.rubentxu.pipeline.v2.events.CatchErrorTriggered
-import dev.rubentxu.pipeline.v2.events.CompensationArmed
-import dev.rubentxu.pipeline.v2.events.CompensationFinished
-import dev.rubentxu.pipeline.v2.events.CompensationStarted
-import dev.rubentxu.pipeline.v2.events.SagaTerminal
-import dev.rubentxu.pipeline.v2.events.CompilationFinished
-import dev.rubentxu.pipeline.v2.events.CompilationStarted
-import dev.rubentxu.pipeline.v2.events.CredentialBound
-import dev.rubentxu.pipeline.v2.events.CredentialUnbound
-import dev.rubentxu.pipeline.v2.events.CredentialUsed
-import dev.rubentxu.pipeline.v2.events.DirDeleted
-import dev.rubentxu.pipeline.v2.events.DirEntered
-import dev.rubentxu.pipeline.v2.events.DirExited
-import dev.rubentxu.pipeline.v2.events.DirectiveAdmitted
-import dev.rubentxu.pipeline.v2.events.DirectiveDenied
 import dev.rubentxu.pipeline.v2.events.DomainEvent
-import dev.rubentxu.pipeline.v2.events.EventRecordRead
-import dev.rubentxu.pipeline.v2.events.PluginEventEmitted
-import dev.rubentxu.pipeline.v2.events.UndecodableEventRecordException
-import dev.rubentxu.pipeline.v2.events.EchoOutputCaptured
 import dev.rubentxu.pipeline.v2.events.EventSink
-import dev.rubentxu.pipeline.v2.events.ExecutionTargetResolved
-import dev.rubentxu.pipeline.v2.events.FileExistsChecked
-import dev.rubentxu.pipeline.v2.events.FileRead
-import dev.rubentxu.pipeline.v2.events.FileWritten
-import dev.rubentxu.pipeline.v2.events.GateEvaluated
-import dev.rubentxu.pipeline.v2.events.GitCheckoutCompleted
-import dev.rubentxu.pipeline.v2.events.GitCheckoutFailed
-import dev.rubentxu.pipeline.v2.events.GitCheckoutStarted
-import dev.rubentxu.pipeline.v2.events.GitPollChanged
-import dev.rubentxu.pipeline.v2.events.HtmlReportFailed
-import dev.rubentxu.pipeline.v2.events.HtmlReportPublished
-import dev.rubentxu.pipeline.v2.events.HtmlReportSkipped
-import dev.rubentxu.pipeline.v2.events.HttpRequestFailed
-import dev.rubentxu.pipeline.v2.events.HttpRequestStarted
-import dev.rubentxu.pipeline.v2.events.HttpResponseReceived
-import dev.rubentxu.pipeline.v2.events.HttpStatusRejected
-import dev.rubentxu.pipeline.v2.events.InputAborted
-import dev.rubentxu.pipeline.v2.events.InputDenied
-import dev.rubentxu.pipeline.v2.events.InputProceed
-import dev.rubentxu.pipeline.v2.events.InputRequested
-import dev.rubentxu.pipeline.v2.events.LockAcquireFailed
-import dev.rubentxu.pipeline.v2.events.LockAcquired
-import dev.rubentxu.pipeline.v2.events.LockReleased
-import dev.rubentxu.pipeline.v2.events.LockRequested
-import dev.rubentxu.pipeline.v2.events.LockSkipped
-import dev.rubentxu.pipeline.v2.events.MilestoneAborted
-import dev.rubentxu.pipeline.v2.events.MilestoneReached
-import dev.rubentxu.pipeline.v2.events.ParallelBranchFinished
-import dev.rubentxu.pipeline.v2.events.ParallelBranchStarted
-import dev.rubentxu.pipeline.v2.events.PostConditionSelected
-import dev.rubentxu.pipeline.v2.events.PwdResolved
-import dev.rubentxu.pipeline.v2.events.RetryAttemptFinished
-import dev.rubentxu.pipeline.v2.events.RetryAttemptStarted
-import dev.rubentxu.pipeline.v2.events.RunFinished
-import dev.rubentxu.pipeline.v2.events.RunStarted
-import dev.rubentxu.pipeline.v2.events.RunCorrelated
-import dev.rubentxu.pipeline.v2.events.StageFinished
-import dev.rubentxu.pipeline.v2.events.StageMarkedUnstable
-import dev.rubentxu.pipeline.v2.events.StageSkipped
-import dev.rubentxu.pipeline.v2.events.StageStarted
-import dev.rubentxu.pipeline.v2.events.StashCreated
-import dev.rubentxu.pipeline.v2.events.StashFailed
-import dev.rubentxu.pipeline.v2.events.StashRestored
-import dev.rubentxu.pipeline.v2.events.StepAdmissionObserved
-import dev.rubentxu.pipeline.v2.events.StepFailed
-import dev.rubentxu.pipeline.v2.events.StepFinished
-import dev.rubentxu.pipeline.v2.events.StepStarted
-import dev.rubentxu.pipeline.v2.events.TimeoutScheduled
-import dev.rubentxu.pipeline.v2.events.TimeoutTriggered
-import dev.rubentxu.pipeline.v2.events.TimestampsEntered
-import dev.rubentxu.pipeline.v2.events.TimestampsExited
-import dev.rubentxu.pipeline.v2.events.UnixDetected
-import dev.rubentxu.pipeline.v2.events.WaitUntilCompleted
-import dev.rubentxu.pipeline.v2.events.WaitUntilPolled
-import dev.rubentxu.pipeline.v2.events.WorkflowLoaded
-import dev.rubentxu.pipeline.v2.events.WsCleaned
 import java.sql.Connection
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * SQLite-backed event store using JDK 21 stdlib java.sql.
@@ -110,346 +28,65 @@ import java.util.concurrent.atomic.AtomicLong
  * the database engine refuses to write through, creates no schema, migrates nothing, backfills
  * nothing and starts no writer thread — so an observer of a live run cannot change that run's
  * journal, and cannot hold a write lock on it either.
-*/
+ *
+ * ## The three owners
+ *
+ * This class is the FACADE, and it decides nothing: it owns the file, the lane, and the hand-off
+ * between three owners that each own exactly one thing.
+ *
+ * - [SqliteEventWriter] — the WRITING of an event: the sequence authority, the bounded queue, the
+ *   single writer thread and the commit that makes a fact durable.
+ * - [SqliteEventReader] — the READING of an event and its projection: the page cut, the cursor,
+ *   and the refusal a row that cannot be decoded earns.
+ * - [SqliteEventSchema] — the SCHEMA of the file: the tables, the uniqueness index and the
+ *   migrations.
+ *
+ * The split is STRUCTURAL, not behavioural: the SQL, the order of the operations and the
+ * observable output of every verb that reads events are the same before and after the cut.
+ *
+ * ## What the facade does NOT decide
+ *
+ * It does not decide which operations a reader is shown: that is the consumer's decision, made by
+ * the selection authority that already exists, and this class only hands it the history it reads.
+ */
 class SqliteEventStore(
     private val file: String,
     private val mode: EventStoreMode = EventStoreMode.Writable,
 ) : EventSink, AutoCloseable {
 
-    private val sequenceCounters = ConcurrentHashMap<String, AtomicLong>()
-
-    // ------------------------------------------------------------------
-    // Persistent connection + single-writer batched appends.
-    // Overload policy (explicit, honest): appends enqueue on a bounded
-    // queue drained by ONE writer thread that commits in batches inside a
-    // single transaction. If the queue fills (producer outpacing durable
-    // writer), append BLOCKS — bounded + lossless; silent loss is not an
-    // option. The durable unit is the SQLite COMMIT (WAL, synchronous=
-    // NORMAL: durable under process crash). flush is a barrier: blocks
-    // until every enqueued event is committed.
-    // ------------------------------------------------------------------
+    /**
+     * The store's DOOR. Every owner opens its connections through it, so the lane is decided in
+     * ONE place: the producer's door sets the journal mode and verifies WAL, and the reader's door
+     * is one the database engine refuses to write through.
+     */
+    private val connections: () -> Connection = { openEventStoreConnection(file, mode) }
 
     /**
-     * Closed ADT for the single-writer queue: each case carries only what
-     * it needs (no nullable-sentinel DomainEvent, no flag bag).
-*/
-    private sealed interface PendingWrite {
-        /** A real event to insert. */
-        data class Event(val event: DomainEvent) : PendingWrite
+     * The reading owner. It exists in BOTH lanes: a writer can read back what it wrote, and a
+     * reader can only read.
+     */
+    private val reader = SqliteEventReader(connections, mode)
 
-        /** Barrier: released after every prior entry is committed. */
-        data class FlushBarrier(val done: java.util.concurrent.CountDownLatch) : PendingWrite
-
-        /** Terminal: stop the writer loop. */
-        data object Stop : PendingWrite
-    }
-
-    private val appendQueue = java.util.concurrent.ArrayBlockingQueue<PendingWrite>(10_000)
-    private var writerThread: Thread? = null
-    @Volatile private var writerError: Throwable? = null
-
-    // Prepared once on the persistent writer connection; created in init
-    // AFTER schema creation (the table must exist first). A READ-ONLY store has
-    // neither a writer connection nor an insert statement: it writes nothing, so
-    // it holds no write capability over the producer's file.
-    private val writerConnection: Connection? = if (mode.mayWrite()) freshConnection() else null
-    private var insertStatement: java.sql.PreparedStatement? = null
-
-    private fun freshConnection(): Connection = when (mode) {
-        EventStoreMode.Writable -> SqliteConnectionFactory.open(file)
-        EventStoreMode.ReadOnly -> SqliteConnectionFactory.openReadOnly(file)
-    }
-
-    private fun withConnection(block: (Connection) -> Unit) {
-        val conn = freshConnection()
-        try {
-            block(conn)
-        } finally {
-            conn.close()
-        }
-    }
+    /**
+     * The writing owner. It exists only in the producer's lane: a reader's store holds no writer
+     * connection, starts no writer thread, and can never append.
+     */
+    private val writer: SqliteEventWriter? =
+        if (mode.mayWrite()) SqliteEventWriter(connections) else null
 
     /**
      * Whether this store holds an event history at all.
      *
-     * A WRITABLE store always does: it creates the table. A READ-ONLY store cannot create it,
-     * so it asks the file instead —and the answer is a property of the store, computed once,
-     * never assigned later.
-     *
-     * It is a `val` with its own initialiser, and that shape is the point. As a `var` filled
-     * in by the constructor and initialised to `true`, Kotlin's initialisation order made the
-     * initialiser run AFTER the constructor body and reset the probe's answer: a database
-     * with no `events` table was admitted and died later with a raw `no such table` instead of
-     * the refusal it was owed. A `val` computed in one place cannot be overwritten by a later
-     * initialiser, so the trap is gone rather than merely avoided.
+     * The answer is computed ONCE, by the reading owner, and never changes afterwards: a WRITABLE
+     * store creates the table, and a READ-ONLY store asks the file instead —and a reader cannot
+     * create the table to find out.
      */
-    public val holdsEventHistory: Boolean = probeEventHistory()
-
-    init {
-        when (mode) {
-            EventStoreMode.Writable -> prepareForWriting()
-            EventStoreMode.ReadOnly -> prepareForReading()
-        }
-    }
-
-    /**
-     * Asks the file whether it holds an event history, without writing anything to it.
-     *
-     * A WRITABLE store does not need to ask: it creates the table. A READ-ONLY store asks
-     * `sqlite_master`, which is a read.
-     */
-    private fun probeEventHistory(): Boolean {
-        if (mode.mayWrite()) return true
-        val conn = freshConnection()
-        return try {
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery(
-                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'events'"
-                ).use { rs -> rs.next() }
-            }
-        } finally {
-            conn.close()
-        }
-    }
-
-    /**
-     * The producer's lane. The schema is created, the journal is migrated and backfilled, and a
-     * single writer thread starts to commit the facts this store is given.
-     */
-    private fun prepareForWriting() {
-        val conn = freshConnection()
-        try {
-            conn.createStatement().use { stmt ->
-                stmt.execute("PRAGMA journal_mode = WAL")
-                stmt.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS events (
-                        event_id TEXT NOT NULL,
-                        run_id TEXT NOT NULL,
-                        sequence INTEGER NOT NULL,
-                        kind TEXT NOT NULL,
-                        occurred_at TEXT NOT NULL,
-                        payload TEXT NOT NULL
-                    )
-                    """.trimIndent()
-                )
-            }
-            // The durable sequence authority.
-            // The per-run counter is seeded ONCE per instance from
-            // MAX(sequence), so two store instances over the same database
-            // each start from the same number and then increment
-            // independently. Without a uniqueness constraint BOTH inserts
-            // succeed and the events table accumulates duplicate sequences,
-            // breaking the per-run monotonic invariant that replay and every
-            // External observer depend on (observed rows=300 distinct=150).
-            // UNIQUE(run_id, sequence) makes the DATABASE the authority: a
-            // writer that would duplicate a sequence is rejected by SQLite
-            // itself (fail-closed, no silent corruption) instead of
-            // appending a second event with a number already in the log.
-            // This is deliberately the MINIMAL invariant repair. It does not
-            // renumber a colliding event: the single-writer queue already
-            // gives a dense 1..N for one instance, and renumbering under
-            // contention would open holes. Deciding which writer owns a run
-            // is the separate RunExecutionLease design question.
-            createSequenceUniquenessIndex(conn)
-            // Create durable operation journal tables.
-            OperationJournalSchema.create(conn)
-            // Migrate operation_journal schema: add started_at + ended_at columns if absent.
-            // Idempotent: safe to run on databases written by an older format
-            migrateOperationJournalSchema(conn)
-            // Backfill run_id from input JSON for pre-existing rows.
-            // Idempotent: only updates rows where run_id IS NULL.
-            backfillRunId(conn)
-        } finally {
-            conn.close()
-        }
-        // Durable sequence truth. The per-run counters MUST be
-        // seeded from SQLite (durable state), not start empty per instance.
-        // Without this, a fresh store instance restarts sequences at 1 and
-        // duplicates the history of any run already present in the DB.
-        seedSequenceCounters()
-        // Prepare the insert on the persistent connection and
-        // start the single writer.
-        val connection = requireNotNull(writerConnection) {
-            "a writable store holds a writer connection"
-        }
-        insertStatement = connection.prepareStatement(
-            "INSERT INTO events (event_id, run_id, sequence, kind, occurred_at, payload) VALUES (?, ?, ?, ?, ?, ?)"
-        )
-        val thread = Thread({ writerLoop() }, "sqlite-event-writer")
-        thread.isDaemon = false
-        thread.start()
-        writerThread = thread
-    }
-
-    /**
-     * The reader's lane. No schema is created, nothing is migrated, nothing is backfilled, and
-     * no writer thread starts: the store only reads what the producer committed. The database
-     * itself refuses every write on this connection, so the reader cannot alter the producer's
-     * journal even by accident.
-     *
-     * A database with no `events` table holds no history at all, and a reader cannot create the
-     * table to find out. It answers the question instead of failing with "no such table: events"
-     * on the first read; [holdsEventHistory] is what the admission reads.
-     */
-    private fun prepareForReading() {
-        // Nothing to prepare: the reader's lane writes nothing and owns nothing. The only
-        // thing it has to know — whether the file holds a history at all — is the probe
-        // above, which is a property of the store and not a step of preparation.
-    }
-
-    /**
-     * Seeds [sequenceCounters] with the durable per-run MAX(sequence) from
-     * the events table. Called once at construction; later appends advance
-     * the in-memory counters monotonically and persist through the normal
-     * write path.
-*/
-    private fun seedSequenceCounters() {
-        val conn = freshConnection()
-        try {
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery(
-                    "SELECT run_id, MAX(sequence) FROM events GROUP BY run_id"
-                ).use { rs ->
-                    while (rs.next()) {
-                        val runId = rs.getString(1)
-                        val maxSeq = rs.getLong(2)
-                        sequenceCounters[runId] = AtomicLong(maxSeq)
-                    }
-                }
-            }
-        } finally {
-            conn.close()
-        }
-    }
-
-    /**
-     * Idempotent schema migration for operation_journal.
-     * Adds started_at INTEGER and ended_at INTEGER columns if they do not already exist.
-     * Safe to call on databases created with the schema (before this migration)
-*/
-    private fun migrateOperationJournalSchema(conn: java.sql.Connection) {
-        conn.createStatement().use { stmt ->
-            // Check which columns exist in operation_journal
-            val existingColumns = mutableSetOf<String>()
-            stmt.executeQuery("PRAGMA table_info(operation_journal)").use { rs ->
-                while (rs.next()) {
-                    existingColumns.add(rs.getString("name"))
-                }
-            }
-            // Idempotent: only ALTER if column is absent
-            if (!existingColumns.contains("started_at")) {
-                stmt.execute("ALTER TABLE operation_journal ADD COLUMN started_at INTEGER")
-            }
-            if (!existingColumns.contains("ended_at")) {
-                stmt.execute("ALTER TABLE operation_journal ADD COLUMN ended_at INTEGER")
-            }
-            // Add run_id column and index if absent
-            if (!existingColumns.contains("run_id")) {
-                stmt.execute("ALTER TABLE operation_journal ADD COLUMN run_id TEXT")
-                stmt.execute("CREATE INDEX IF NOT EXISTS operation_journal_run_id_idx ON operation_journal(run_id)")
-            }
-        }
-    }
-
-    /**
-     * Backfills run_id from the input JSON.
-     *
-     * Idempotent: only updates rows where run_id IS NULL.
-     * Uses json_extract to pull $.runId from the input JSON blob.
-     *
-     * ## What this is for, and what it is NOT for
-     *
-     * This is a NORMALISATION of the rows an older build wrote: that build
-     * left a RUNNING row unattributed, so a run that died mid-operation left
-     * a row that named no run. Filling the column puts those rows on the
-     * index and makes the write lane's own reads cheap.
-     *
-     * It is NOT what makes the read lane correct. A reader cannot run this
-     * — the read lane opens the database through an engine that refuses every
-     * write — so the read reads through the attribution that is missing
-     * instead (see [SqliteOperationJournalImpl.listForRun]). Before that, the
-     * journal's answer about a run's operations depended on WHICH LANE was
-     * asking, and a half-finished run looked finished to the lane that could
-     * not repair the column.
-*/
-    private fun backfillRunId(conn: java.sql.Connection) {
-        conn.createStatement().use { stmt ->
-            stmt.execute(
-                "UPDATE operation_journal SET run_id = json_extract(input, '\$.runId') WHERE run_id IS NULL"
-            )
-        }
-    }
-
-    /**
-     * Artificial per-batch writer delay (default 0 =
-     * production behaviour untouched). Widens the old append/COMMIT window
-     * deterministically so the sequence-publication race is reproducible in
-     * tests instead of flaky in CI.
-*/
-    @Volatile var writerDelayMillis: Long = 0
+    val holdsEventHistory: Boolean get() = reader.holdsEventHistory
 
     override fun append(event: DomainEvent) {
         appendAssigned(event)
     }
 
-    /**
-     * Makes `UNIQUE(run_id, sequence)` the durable authority.
-     * Idempotent: `IF NOT EXISTS`, so opening an already-migrated database
-     * is a no-op.
-     * A database that ALREADY carries duplicate sequences cannot satisfy the
-     * constraint, and SQLite would then fail the index creation for an opaque
-     * reason at some later moment. That is reported here, with the offending
-     * run, instead of leaving a corrupt log that only fails later: an operator
-     * gets a named cause and a remediation (drop the database, or re-run the
-     * corrupted run) rather than a mystery UNIQUE violation mid-run.
-*/
-    private fun createSequenceUniquenessIndex(conn: java.sql.Connection) {
-        // Cheap existence probe FIRST. The duplicate scan below is a full
-        // GROUP BY over the whole events table; running it on every open of an
-        // already-migrated database would cost a full scan to learn something
-        // the index presence already answers — and a durable event log is
-        // exactly the table that grows without bound. One indexed lookup, then
-        // a no-op for every subsequent open.
-        val alreadyMigrated = conn.createStatement().use { stmt ->
-            stmt.executeQuery(
-                "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'ux_events_run_sequence'"
-            ).use { rs -> rs.next() }
-        }
-        if (alreadyMigrated) return
-
-        val duplicates = conn.createStatement().use { stmt ->
-            stmt.executeQuery(
-                """
-                SELECT run_id, sequence, COUNT(*) FROM events
-                GROUP BY run_id, sequence HAVING COUNT(*) > 1
-                ORDER BY run_id, sequence LIMIT 5
-                """.trimIndent()
-            ).use { rs ->
-                buildList {
-                    while (rs.next()) {
-                        add("runId=${rs.getString(1)} sequence=${rs.getLong(2)} count=${rs.getLong(3)}")
-                    }
-                }
-            }
-        }
-        check(duplicates.isEmpty()) {
-            "durable event log has duplicate (run_id, sequence) pairs, " +
-                "so UNIQUE(run_id, sequence) cannot be established: ${duplicates.joinToString("; ")}. " +
-                "This database was written by more than one store instance before the " +
-                "constraint existed. It cannot be repaired automatically without " +
-                "renumbering committed history; start a fresh database or re-run the run."
-        }
-        conn.createStatement().use { stmt ->
-            stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_events_run_sequence ON events(run_id, sequence)")
-        }
-    }
-
-    /**
-     * The store assigns the sequence and returns the assigned
-     * event explicitly. Single counter, single authority — the read model is
-     * never consulted for write metadata.
-*/
     override fun appendAssigned(event: DomainEvent): DomainEvent {
         // A reader that appends would be a writer wearing a reader's clothes: it would
         // write to the producer's journal from a connection the producer does not own.
@@ -457,562 +94,39 @@ class SqliteEventStore(
         check(mode.mayWrite()) {
             "this event store is read-only and cannot append facts to $file"
         }
-        writerError?.let { throw IllegalStateException("event writer failed earlier", it) }
-        // Assign per-runId sequence eagerly (monotonic per run
-        // counters seeded from durable truth at construction).
-        val counter = sequenceCounters.computeIfAbsent(event.runId) { AtomicLong() }
-        val assignedSequence = if (event.sequence == 0L) {
-            counter.incrementAndGet()
-        } else {
-            val current = counter.get()
-            if (event.sequence > current) {
-                counter.set(event.sequence)
-            }
-            event.sequence
-        }
-        val eventWithSequence = when (event) {
-                is RunStarted -> event.copy(sequence = assignedSequence)
-                // RunCorrelated carries the
-                // assigned sequence like every other durable event; it
-                // must appear in the when for the assignment to take
-                // effect.
-                is RunCorrelated -> event.copy(sequence = assignedSequence)
-                is PluginEventEmitted -> event.copy(sequence = assignedSequence)
-                is CompilationStarted -> event.copy(sequence = assignedSequence)
-                is CompilationFinished -> event.copy(sequence = assignedSequence)
-                is RunFinished -> event.copy(sequence = assignedSequence)
-                is StageStarted -> event.copy(sequence = assignedSequence)
-                is StageSkipped -> event.copy(sequence = assignedSequence)
-                is PostConditionSelected -> event.copy(sequence = assignedSequence)
-                is StageFinished -> event.copy(sequence = assignedSequence)
-                is StepStarted -> event.copy(sequence = assignedSequence)
-                is StepFinished -> event.copy(sequence = assignedSequence)
-                is AgentResolved -> event.copy(sequence = assignedSequence)
-                is ParallelBranchStarted -> event.copy(sequence = assignedSequence)
-                is ParallelBranchFinished -> event.copy(sequence = assignedSequence)
-                is RetryAttemptStarted -> event.copy(sequence = assignedSequence)
-                is RetryAttemptFinished -> event.copy(sequence = assignedSequence)
-                is TimeoutScheduled -> event.copy(sequence = assignedSequence)
-                is StepFailed -> event.copy(sequence = assignedSequence)
-                is EchoOutputCaptured -> event.copy(sequence = assignedSequence)
-                is CredentialBound -> event.copy(sequence = assignedSequence)
-                is CredentialUsed -> event.copy(sequence = assignedSequence)
-                is CredentialUnbound -> event.copy(sequence = assignedSequence)
-                is GitCheckoutStarted -> event.copy(sequence = assignedSequence)
-                is GitCheckoutCompleted -> event.copy(sequence = assignedSequence)
-                is GitCheckoutFailed -> event.copy(sequence = assignedSequence)
-                is GitPollChanged -> event.copy(sequence = assignedSequence)
-                is FileWritten -> event.copy(sequence = assignedSequence)
-                is FileRead -> event.copy(sequence = assignedSequence)
-                is FileExistsChecked -> event.copy(sequence = assignedSequence)
-                is ArtifactArchived -> event.copy(sequence = assignedSequence)
-                is ArtifactArchiveFailed -> event.copy(sequence = assignedSequence)
-                // Core.stash/core.unstash durable cross-stage data movement
-                is StashCreated -> event.copy(sequence = assignedSequence)
-                is StashRestored -> event.copy(sequence = assignedSequence)
-                is StashFailed -> event.copy(sequence = assignedSequence)
-                // Core.publishHTML durable HTML report publishing
-                is HtmlReportPublished -> event.copy(sequence = assignedSequence)
-                is HtmlReportSkipped -> event.copy(sequence = assignedSequence)
-                is HtmlReportFailed -> event.copy(sequence = assignedSequence)
-                is DirEntered -> event.copy(sequence = assignedSequence)
-                is DirExited -> event.copy(sequence = assignedSequence)
-                is DirDeleted -> event.copy(sequence = assignedSequence)
-                is WsCleaned -> event.copy(sequence = assignedSequence)
-                is CatchErrorTriggered -> event.copy(sequence = assignedSequence)
-                is DirectiveAdmitted -> event.copy(sequence = assignedSequence)
-            is ExecutionTargetResolved -> event.copy(sequence = assignedSequence)
-                is DirectiveDenied -> event.copy(sequence = assignedSequence)
-                is GateEvaluated -> event.copy(sequence = assignedSequence)
-                is StageMarkedUnstable -> event.copy(sequence = assignedSequence)
-                is WorkflowLoaded -> event.copy(sequence = assignedSequence)
-                is WaitUntilPolled -> event.copy(sequence = assignedSequence)
-                is WaitUntilCompleted -> event.copy(sequence = assignedSequence)
-                is PwdResolved -> event.copy(sequence = assignedSequence)
-                is UnixDetected -> event.copy(sequence = assignedSequence)
-                is MilestoneReached -> event.copy(sequence = assignedSequence)
-                is MilestoneAborted -> event.copy(sequence = assignedSequence)
-                // / lock events
-                is LockRequested -> event.copy(sequence = assignedSequence)
-                is LockAcquired -> event.copy(sequence = assignedSequence)
-                is LockReleased -> event.copy(sequence = assignedSequence)
-                is LockSkipped -> event.copy(sequence = assignedSequence)
-                is LockAcquireFailed -> event.copy(sequence = assignedSequence)
-                // / input events
-                is InputRequested -> event.copy(sequence = assignedSequence)
-                is HttpRequestStarted -> event.copy(sequence = assignedSequence)
-                is HttpResponseReceived -> event.copy(sequence = assignedSequence)
-                is HttpStatusRejected -> event.copy(sequence = assignedSequence)
-                is HttpRequestFailed -> event.copy(sequence = assignedSequence)
-                is InputProceed -> event.copy(sequence = assignedSequence)
-                is InputAborted -> event.copy(sequence = assignedSequence)
-                is InputDenied -> event.copy(sequence = assignedSequence)
-                is TimeoutTriggered -> event.copy(sequence = assignedSequence)
-                is TimestampsEntered -> event.copy(sequence = assignedSequence)
-                is TimestampsExited -> event.copy(sequence = assignedSequence)
-                // durable-spine admission observation
-                is StepAdmissionObserved -> event.copy(sequence = assignedSequence)
-                // the armed-obligation notification carries the assigned
-                // sequence like every other durable event; without this branch it would be
-                // written with sequence 0 and collide on the run-sequence uniqueness index.
-                is CompensationArmed -> event.copy(sequence = assignedSequence)
-            is CompensationStarted -> event.copy(sequence = assignedSequence)
-            is CompensationFinished -> event.copy(sequence = assignedSequence)
-            is SagaTerminal -> event.copy(sequence = assignedSequence)
-            }
-
-            // Enqueue for the single writer. Bounded queue: blocks when full
-            // (documented overload policy — lossless, backpressure to producer).
-            try {
-                appendQueue.put(PendingWrite.Event(eventWithSequence))
-            } catch (e: InterruptedException) {
-                Thread.currentThread().interrupt()
-                throw IllegalStateException("interrupted while enqueueing event append", e)
-            }
-            return eventWithSequence
-    }
-
-    /**
-     * Release every [PendingWrite.FlushBarrier] still queued behind a
-     * writer that is about to die.
-     * A barrier is a wait for the writer to make progress. Once the writer has
-     * failed there is no progress left to wait for, so a barrier left in the
-     * queue converts an immediate fail-fast into a stall for the full
-     * `barrier.await(60, SECONDS)` bound. Releasing it lets the waiter reach
-     * the `writerError` path and report the real failure instead.
-     * Queued [PendingWrite.Event]s are put **back**, not dropped: discarding
-     * them would silently lose writes. They are unreadable in practice because
-     * every later `append`/`appendAssigned` fails fast on `writerError`, and
-     * the store is closed right after.
-*/
-    private fun releaseQueuedBarriers() {
-        val queued = ArrayList<PendingWrite>(appendQueue.size)
-        appendQueue.drainTo(queued)
-        val events = ArrayList<PendingWrite>(queued.size)
-        for (pending in queued) {
-            when (pending) {
-                is PendingWrite.FlushBarrier -> pending.done.countDown()
-                // Re-offer so the queue still describes every write that was
-                // accepted; nothing is silently lost.
-                else -> events.add(pending)
-            }
-        }
-        for (pending in events) {
-            runCatching { appendQueue.put(pending) }
-        }
-    }
-
-    /**
-     * Single-writer loop: drains the bounded queue in batches, inserting
-     * every batch inside ONE transaction. The COMMIT is the durable unit.
-     * On failure, records [writerError] and releases all waiters; later
-     * appends fail fast.
-*/
-    private fun writerLoop() {
-        val connection = requireNotNull(writerConnection) {
-            "the writer loop only runs on a writable store"
-        }
-        val insert = requireNotNull(insertStatement) {
-            "the writer loop only runs on a writable store"
-        }
-        val batch = ArrayList<PendingWrite>(256)
-        while (true) {
-            try {
-                val first = appendQueue.take() // blocks; Stop ends loop
-                if (first is PendingWrite.Stop) {
-                    return
-                }
-                batch.add(first)
-                appendQueue.drainTo(batch, 511)
-                if (writerDelayMillis > 0) Thread.sleep(writerDelayMillis)
-                connection.autoCommit = false
-                try {
-                    for (pending in batch) {
-                        when (pending) {
-                            is PendingWrite.Event -> {
-                                bindInsert(insert, pending.event)
-                                insert.executeUpdate()
-                            }
-                            is PendingWrite.FlushBarrier, PendingWrite.Stop -> {} // handled post-commit
-                        }
-                    }
-                    connection.commit()
-                    for (pending in batch) {
-                        if (pending is PendingWrite.FlushBarrier) pending.done.countDown()
-                    }
-                } catch (e: Throwable) {
-                    connection.rollback()
-                    writerError = e
-                    for (pending in batch) {
-                        if (pending is PendingWrite.FlushBarrier) pending.done.countDown()
-                    }
-                    // The writer is dying and will never take another
-                    // item off the queue. A FlushBarrier enqueued AFTER this
-                    // batch was taken -- which is exactly what happens when a
-                    // producer appends a doomed event and immediately flushes --
-                    // is stranded in the queue and its waiter blocks for the
-                    // full 60 s bound. Release those barriers now, so the
-                    // waiter observes the writer's real error.
-                    // Only barriers are released. Queued Events are NOT
-                    // dropped: discarding them would silently lose writes, and
-                    // every later append/appendAssigned already fails fast on
-                    // `writerError`.
-                    releaseQueuedBarriers()
-                    throw e
-                } finally {
-                    writerConnection.autoCommit = true
-                    batch.clear()
-                }
-            } catch (e: InterruptedException) {
-                return
-            }
-        }
-    }
-
-    private fun bindInsert(ps: java.sql.PreparedStatement, event: DomainEvent) {
-        ps.setString(1, event.eventId)
-        ps.setString(2, event.runId)
-        ps.setLong(3, event.sequence)
-        ps.setString(4, event.kind)
-        ps.setString(5, event.occurredAt.toString())
-        ps.setString(6, JsonEventLog.encode(listOf(event)))
+        return requireWriter().appendAssigned(event)
     }
 
     /**
      * Flush barrier: blocks until every event enqueued BEFORE this call is
-     * durably committed. Implemented with a one-shot latch carried through
-     * the queue behind the pending events (ordering guarantee of the
-     * single writer).
-*/
+     * durably committed.
+     *
+     * A read-only store never queues a write, so there is nothing to commit and nothing to wait
+     * for. Enqueuing a barrier here would strand it: no writer would ever release it, and the
+     * caller would burn the whole 60 s bound for a store that never had anything to flush.
+     */
     fun flush() {
-        if (!mode.mayWrite()) {
-            // A read-only store never queues a write, so there is nothing to commit and
-            // nothing to wait for. Enqueuing a barrier here would strand it: no writer would
-            // ever release it, and the caller would burn the whole 60 s bound for a store
-            // that never had anything to flush.
-            return
-        }
-        writerError?.let { throw IllegalStateException("event writer failed", it) }
-        val barrier = java.util.concurrent.CountDownLatch(1)
-        try {
-            // A barrier enqueued while the
-            // writer is DYING is stranded and burns the full 60 s bound.
-            // The failing batch contains only events -- the writer dies on a
-            // duplicate INSERT, so the catch-block release loop finds zero
-            // barriers to count down (observed: "batch FAILED size=4
-            // barriers=0"). The barrier enqueued by this flush therefore
-            // lands in the queue AFTER the writer stopped consuming, and nobody
-            // will ever release it. The `writerError` fast path above cannot
-            // catch this: it is a race, and the failing append returns BEFORE
-            // the writer records its error.
-            // Symptom seen in a real gate: `flush()` took 60008 ms, the exact
-            // barrier bound. Fix: a latch that is already counted down cannot
-            // be stranded, and `await` returns immediately, so the writer's
-            // real error surfaces instead of a timeout.
-            val released = if (writerError != null) {
-                barrier.countDown()
-                true
-            } else {
-                appendQueue.put(PendingWrite.FlushBarrier(barrier))
-                barrier.await(60, TimeUnit.SECONDS)
-            }
-            if (!released) {
-                // A timed-out barrier almost always means
-                // the writer thread DIED on a write error (e.g. SQLITE_TOOBIG for
-                // an oversized event payload). Surface the writer's real failure
-                // instead of the misleading "timed out" message.
-                writerError?.let { throw IllegalStateException("event writer failed during flush", it) }
-                check(false) { "flush barrier timed out" }
-            }
-        } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw IllegalStateException("interrupted during flush", e)
-        }
-        writerError?.let { throw IllegalStateException("event writer failed during flush", it) }
+        writer?.flush()
     }
 
-    override fun eventsFor(runId: String): Sequence<DomainEvent> {
-        // This CANNOT report a refusal — `Sequence<DomainEvent>` has no case for one —
-        // so it FAILS CLOSED at the unreadable row instead of skipping it. See the KDoc on
-        // EventStore.eventsFor for why a skip here is worse than a crash: a skip is invisible, and
-        // the caller reads a shorter stream as complete history.
-        // Lazy row-by-row read. Materialising the full
-        // list held every decoded event (including GiB-scale transcripts) in
-        // memory before the caller could stream them out. The sequence owns its
-        // connection and closes it at exhaustion; a partial iteration leaks the
-        // connection to GC finalisation (same as the previous eager form's
-        // error path), which no production caller does — all iterate fully.
-        // The ORDER BY is `sequence`, and it used to be `rowid`. That is the
-        // difference between the row's physical position and the number this
-        // store assigned, and it is not a stylistic one: `appendAssigned` stamps
-        // the sequence on the PRODUCT thread and enqueues a few instructions
-        // later, so two concurrent writers can enqueue in the opposite order to
-        // the one they were assigned and the two orders part company. A cursor
-        // cuts on `sequence > lastSequence`, so a read that walks the physical
-        // order can step over an event whose sequence is below the cursor and
-        // lose it for good — the next cursor starts even higher.
-        // `sequence` is also the column the `ux_events_run_sequence` index covers,
-        // so this ordering is the one the database can serve from the index
-        // instead of sorting a temporary b-tree over every matching row.
-        sequence {
-            // A file with no `events` table has no history to stream. The reader knows it
-            // already, so it says so here instead of letting SQLite's "no such table" escape.
-            if (!holdsEventHistory) return@sequence
-            val conn = freshConnection()
-            try {
-                conn.prepareStatement(
-                    "SELECT event_id, sequence, kind, payload FROM events " +
-                        "WHERE run_id = ? ORDER BY sequence ASC"
-                ).use { ps ->
-                    ps.setString(1, runId)
-                    ps.executeQuery().use { rs ->
-                        while (rs.next()) {
-                            val record = readRecord(rs)
-                            // The row's event, or a NAMED refusal. Never a silent skip.
-                            // Unwrap rather than cast: `Decoded` is a wrapper carrying the event, not
-                            // a DomainEvent itself. Writing `record as? DomainEvent` here compiled
-                            // and always yielded null, so every well-formed row reported itself
-                            // unreadable — a refusal that was true of nothing. It surfaced as eight
-                            // unrelated test failures, which is exactly how a cast error looks when
-                            // the exception message is honest about what it believes.
-                            val event = when (record) {
-                                is dev.rubentxu.pipeline.v2.events.EventRecordRead.Decoded -> record.event
-                                is dev.rubentxu.pipeline.v2.events.EventRecordRead.Undecodable ->
-                                    throw UndecodableEventRecordException(
-                                        runId = runId,
-                                        sequence = record.sequence,
-                                        kind = record.kind,
-                                        reason = record.reason,
-                                        message = "durable event row ${record.sequence} exists and could " +
-                                            "not be decoded; eventsFor cannot report a refusal, so the read " +
-                                            "stops here rather than returning history with a hole in it",
-                                    )
-                            }
-                            yield(event)
-                        }
-                    }
-                }
-            } finally {
-                conn.close()
-            }
-        }.constrainOnce().let { return it }
-    }
+    override fun eventsFor(runId: String): Sequence<DomainEvent> = reader.eventsFor(runId)
 
-    /**
-     * Cuts the page in SQL, which is the only place where that is possible: the cut and the limit
-     * are the index's job, and asking SQLite for a run's whole history to keep `limit` of it meant
-     * decoding every event of a long run to hand back a page of three.
-     * `LIMIT limit + 1` is how [dev.rubentxu.pipeline.v2.events.EventSlice.hasMore] is proved
-     * rather than guessed: the extra row is looked at and dropped, which is the same single peek
-     * the inherited default performs, only here it costs one row instead of the rest of the run.
-     * The `ORDER BY sequence` is the same one `eventsFor` uses, and for the same reason — the
-     * cursor cuts on sequence, so the read has to be in sequence. `ux_events_run_sequence` covers
-     * it, so the database serves the ordering from the index.
-     * ## The page bound counts ROWS, not decodable events (E4c)
-     * This used to `page.add(decode(payload))` under a `page.size == limit` check, which meant the
-     * bound counted rows that had DECODED. One unreadable row then let its successor into the
-     * page, so the returned page was neither the requested size nor a prefix of the history, and
-     * `nextCursor` advanced by an amount unrelated to how far the reader had got. It also inverted
-     * `hasMore`: a row that failed to decode consumed its slot without filling it, so a page could
-     * report "no more" with rows still unread. A consumer resuming from that cursor would skip the
-     * unreadable row entirely — the silent hole, arrived at from the pagination side as well as
-     * the decode side.
-     * The fix is not a guard but an order change: count rows, decode inside the page, and let the
-     * refusal travel on the same cursor. `EventRecordSlice.nextCursor` is the last ROW's sequence
-     * whether or not that row decoded, which is what lets a resuming reader page past a refusal on
-     * purpose instead of re-reading it forever or stepping over it blind.
-     * This page law is argued here, not witnessed by a test: [SqliteConnectionFactory.open] opens a
-     * FRESH connection per call, so an in-memory database would be empty on every read and the
-     * store is file-backed by design. Exercising this path needs real durable storage, which is
-     * outside what a unit test may own; the claim above is therefore the authority, and the reader
-     * of it is the auditor.
-*/
+    fun hasRun(runId: String): Boolean = reader.hasRun(runId)
 
-    /**
-     * Authoritatively answer "has this run ever been written to".
-     * The [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
-     * adapter needs to distinguish a run that does not exist (the
-     * consumer mistyped the runId, or the run was on a different host)
-     * from a run that exists but has not yet produced any event. The
-     * adapter's only authority for that distinction is this method, and
-     * SQLite's `EXISTS` over the events table is the cheapest correct
-     * answer.
-     * The check is row-presence on the events table, NOT "non-empty
-     * page from readRecords": a run that has just been declared but
-     * not yet appended to must answer `true` so the adapter can serve
-     * an empty [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadResult.Page]
-     * to the consumer instead of refusing with
-     * [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadRefusal.UnknownRun].
-     * Connection lifecycle: opens a fresh short-lived connection via
-     * [freshConnection] so the call does not share state with the
-     * persistent writer connection (a write under load would otherwise
-     * see the connection busy).
-*/
-    fun hasRun(runId: String): Boolean {
-        // A file with no `events` table holds no run. Saying so here keeps the refusal in
-        // the vocabulary of the product instead of letting SQLite's "no such table" escape
-        // as a raw stack trace from a verb that only wanted to read.
-        if (!holdsEventHistory) return false
-        return freshConnection().use { conn ->
-            conn.prepareStatement(
-                "SELECT 1 FROM events WHERE run_id = ? LIMIT 1"
-            ).use { ps ->
-                ps.setString(1, runId)
-                ps.executeQuery().use { rs -> rs.next() }
-            }
-        }
-    }
-
-    /**
-     * Durable `MAX(sequence)` for [runId], or `null` if the run
-     * has no rows.
-     * The [dev.rubentxu.pipeline.v2.events.identity.EventRecordReadPort]
-     * adapter uses this to refuse a cursor that is past the tail.
-     * SQLite's `MAX` is `null` over an empty set, so the function
-     * returns `null` for an empty run without a separate existence
-     * check; the adapter already gated the unknown-run case on
-     * [hasRun] before calling this.
-     * Connection lifecycle: opens a fresh short-lived connection via
-     * [freshConnection] (same rationale as [hasRun]: avoid sharing
-     * state with the persistent writer connection).
-*/
-    fun tailSequence(runId: String): Long? {
-        // A file with no `events` table has no tail either.
-        if (!holdsEventHistory) return null
-        return freshConnection().use { conn ->
-            conn.prepareStatement(
-                "SELECT MAX(sequence) FROM events WHERE run_id = ?"
-            ).use { ps ->
-                ps.setString(1, runId)
-                ps.executeQuery().use { rs ->
-                    if (rs.next()) {
-                        val v = rs.getLong(1)
-                        if (rs.wasNull()) null else v
-                    } else {
-                        null
-                    }
-                }
-            }
-        }
-    }
+    fun tailSequence(runId: String): Long? = reader.tailSequence(runId)
 
     override fun readRecords(
         runId: String,
         after: dev.rubentxu.pipeline.v2.events.identity.EventCursor?,
         limit: Int,
-    ): dev.rubentxu.pipeline.v2.events.EventRecordSlice {
-        require(limit > 0) { "limit must be positive, got $limit" }
-        val afterSequence = after?.lastSequence ?: 0L
-        val page = ArrayList<dev.rubentxu.pipeline.v2.events.EventRecordRead>(minOf(limit, 64))
-        var hasMore = false
-        if (!holdsEventHistory) {
-            // A file with no `events` table has no page to read. The cursor does not move:
-            // there was nothing past it to begin with.
-            return dev.rubentxu.pipeline.v2.events.EventRecordSlice(
-                records = page,
-                nextCursor = dev.rubentxu.pipeline.v2.events.identity.EventCursor(runId, afterSequence),
-                hasMore = false,
-            )
-        }
-        freshConnection().use { conn ->
-            conn.prepareStatement(
-                "SELECT event_id, sequence, kind, payload FROM events WHERE run_id = ? AND sequence > ? " +
-                    "ORDER BY sequence ASC LIMIT ?"
-            ).use { ps ->
-                ps.setString(1, runId)
-                ps.setLong(2, afterSequence)
-                ps.setInt(3, limit + 1)
-                ps.executeQuery().use { rs ->
-                    while (rs.next()) {
-                        if (page.size == limit) {
-                            // One ROW beyond the page exists. Decoded or not, it is a row, and it
-                            // is the only honest way to know the run continues.
-                            hasMore = true
-                            break
-                        }
-                        page.add(readRecord(rs))
-                    }
-                }
-            }
-        }
-        return dev.rubentxu.pipeline.v2.events.EventRecordSlice(
-            records = page,
-            nextCursor = dev.rubentxu.pipeline.v2.events.identity.EventCursor(
-                runId,
-                page.lastOrNull()?.sequence ?: afterSequence,
-            ),
-            hasMore = hasMore,
-        )
-    }
-
-    /**
-     * Turns ONE durable row into either its typed event or a refusal that names it.
-     * The identity comes from the row's own COLUMNS, not from the payload, and that is what makes
-     * the refusal honest: `event_id`, `sequence` and `kind` are `NOT NULL` in the schema and are
-     * written by [bindInsert] from the event, so a refusal can repeat what storage actually holds
-     * even when the payload is unparseable text. Reading identity out of the payload instead would
-     * make the refusal disappear in exactly the case it exists to describe.
-     * ## Read by COLUMN NAME, never by index (paid for on the day this was written)
-     * The first version of this read `rs.getString(1)`, `rs.getLong(2)`, … against
-     * `SELECT event_id, sequence, kind, payload`. That is wrong the moment the SELECT list and the
-     * schema disagree: the schema is `(event_id, run_id, sequence, kind, occurred_at, payload)`, so
-     * position 2 in the SELECT is `sequence` while position 2 in the TABLE is `run_id`, and
-     * `getLong(2)` returned a run id silently coerced to 0. Every row came back as
-     * `Undecodable(sequence = 0)`.
-     * What makes it worth recording is how it presented. The old code was
-     * `firstOrNull()?.let { yield(it) }`, so a mis-indexed read looked exactly like an empty table:
-     * `eventsFor` returned an empty list and the row-tuple test failed on `assertEquals(4, …)` with a
-     * message about order and payload. Nothing said "you read the wrong column". Under E4c the same
-     * bug surfaces as a refusal naming sequence 0, which is strictly more diagnosable — but only
-     * because the refusal exists. Positional reads and silent skips were the same accident twice.
-     * Returning a sealed result rather than throwing is deliberate: the caller here is a PAGE, and
-     * a page has to be able to carry the refusal. Throwing at this level would lose the rows after
-     * it. The fail-closed decision belongs to whoever asked for typed events —
-     * [eventsFor] and [readSlice] make it, and [readRecords] hands the caller the choice.
-*/
-    private fun readRecord(rs: java.sql.ResultSet): dev.rubentxu.pipeline.v2.events.EventRecordRead {
-        val eventId = rs.getString("event_id")
-        val sequence = rs.getLong("sequence")
-        val kind = rs.getString("kind")
-        return when (val outcome = JsonEventLog.decodeStoredRow(rs.getString("payload"), kind)) {
-            is StoredRowDecode.Accepted ->
-                dev.rubentxu.pipeline.v2.events.EventRecordRead.Decoded(outcome.event)
-            is StoredRowDecode.Refused ->
-                dev.rubentxu.pipeline.v2.events.EventRecordRead.Undecodable(
-                    sequence = sequence,
-                    kind = kind,
-                    eventId = eventId,
-                    reason = outcome.reason,
-                )
-        }
-    }
+    ): dev.rubentxu.pipeline.v2.events.EventRecordSlice = reader.readRecords(runId, after, limit)
 
     /**
      * Closes the store: flush barrier, then stops the writer and releases
      * the persistent connection. Close is idempotent.
-*/
-    @Volatile private var closed = false
-    private val closeLock = Any()
-
+    */
     override fun close() {
-        synchronized(closeLock) {
-            if (closed) return
-            closed = true
-        }
-        try {
-            flush()
-        } finally {
-            if (mode.mayWrite()) {
-                try {
-                    appendQueue.put(PendingWrite.Stop)
-                    writerThread?.join(10_000)
-                } catch (_: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                }
-            }
-            runCatching { insertStatement?.close() }
-            runCatching { writerConnection?.close() }
-        }
+        writer?.close()
     }
 
     /**
@@ -1020,25 +134,31 @@ class SqliteEventStore(
      * and [ReplayCursorStore].
      * This is intentionally internal — it is only used within the durable
      * execution subsystem that shares the same SQLite database file.
-*/
-    fun underlyingConnectionFactory(): () -> Connection = { freshConnection() }
+    */
+    fun underlyingConnectionFactory(): () -> Connection = connections
 
     /**
      * Exposes the database file path for use by [SqliteOperationJournalImpl]
      * to enable cross-instance [DbLock] synchronization.
-*/
+    */
     fun databasePath(): String = file
 
-    private companion object {
-        /**
-         * How much of an unreadable payload a refusal quotes back.
-         * Enough to recognise the row by eye — the head of a truncated transcript or a stray byte
-         * is diagnostic, the whole thing is not — and deliberately bounded, because the payloads
-         * this store holds are the GiB-scale transcripts it reads row by row specifically to avoid
-         * materialising. A refusal that copied the failing payload in full would reintroduce the
-         * memory profile the row-at-a-time read exists to avoid, at exactly the moment something
-         * has already gone wrong.
-*/
-        const val REFUSAL_DETAIL_CHARS = 200
+    /**
+     * The writing owner of a store that is allowed to write.
+     */
+    private fun requireWriter(): SqliteEventWriter = requireNotNull(writer) {
+        "a writable store holds a writer"
     }
+}
+
+/**
+ * Opens a connection to the store's file in the lane the store was opened in.
+ *
+ * The mode decides which door this is: the producer's door sets the journal mode and verifies
+ * WAL, and the reader's door is one the database engine refuses to write through. Every owner
+ * opens its connections here, so the lane is decided in ONE place.
+ */
+internal fun openEventStoreConnection(file: String, mode: EventStoreMode): Connection = when (mode) {
+    EventStoreMode.Writable -> SqliteConnectionFactory.open(file)
+    EventStoreMode.ReadOnly -> SqliteConnectionFactory.openReadOnly(file)
 }

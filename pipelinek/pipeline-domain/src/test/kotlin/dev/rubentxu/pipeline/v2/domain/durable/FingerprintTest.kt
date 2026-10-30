@@ -109,6 +109,52 @@ class FingerprintTest {
     }
 
     /**
+     * The identity is a function of the DECLARED program, not of the moment
+     * the program was compiled.
+     *
+     * The payload of a scope step carries the instant the compiler entered the
+     * scope, and that instant moved with every compilation: the same program
+     * compiled twice acquired two identities, and the identity check that
+     * decides whether an operation may be resumed became a comparison of two
+     * clocks.
+     */
+    @Nested
+    @DisplayName("the identity does not depend on the clock")
+    inner class ClockIndependence {
+
+        private fun scopePayload(instant: String, kind: String = "CatchErrorEntered") = JsonPrimitive(
+            """{"kind":"$kind","buildResult":"UNSTABLE","stageResult":"UNSTABLE","enteredAt":"$instant"}""",
+        )
+
+        @Test
+        fun `the instant of entry does not participate in the identity`() {
+            val earlier = fp(input(params = mapOf("payload" to scopePayload("1793356105290"))))
+            val later = fp(input(params = mapOf("payload" to scopePayload("1793356106291"))))
+            assertEquals(
+                earlier,
+                later,
+                "the identity moved with the clock: the same program compiled twice acquired two identities",
+            )
+        }
+
+        /**
+         * The control for the row above. If the projection swallowed the whole
+         * payload instead of the fact of instant, the row above would stay
+         * green while every scope step shared one identity.
+         */
+        @Test
+        fun `a declared field of the payload still participates in the identity`() {
+            val emitted = fp(input(params = mapOf("payload" to scopePayload("1793356105290", kind = "CatchErrorEntered"))))
+            val shelled = fp(input(params = mapOf("payload" to scopePayload("1793356105290", kind = "sh"))))
+            assertNotEquals(
+                emitted,
+                shelled,
+                "the projection swallowed a declared field: two different programs share one identity",
+            )
+        }
+    }
+
+    /**
      * Every field of the canonical payload must actually reach the digest. A
      * field that is declared, serialised and then ignored would leave two
      * genuinely different operations sharing one identity — which is precisely

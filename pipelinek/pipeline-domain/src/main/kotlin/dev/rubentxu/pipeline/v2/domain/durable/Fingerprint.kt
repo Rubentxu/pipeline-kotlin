@@ -27,6 +27,13 @@ import kotlinx.serialization.json.JsonObject
  * revision of this comment claimed otherwise, and the dangling
  * `[Json].[canonical][Json.DeepRecursive]` link beside it was the tell.
  *
+ * ## Facts of instant
+ *
+ * The payload parameter may carry a fact of instant — a wall-clock moment the
+ * compiler recorded. Such a fact is projected out of the material that reaches
+ * the digest, so the identity is a function of the DECLARED program and not of
+ * the moment the program was compiled. See [Fingerprint.compute].
+ *
  * ## Collision resistance
  *
  * SHA-256 over bounded input (≤ 64 KiB enforced by [OperationInput.validate]) is
@@ -102,6 +109,30 @@ value class Fingerprint(val hex: String) {
          * The canonical payload is constructed from [input], [stepId], [replayPolicy],
          * and [attempt], then encoded as canonical JSON and hashed with SHA-256.
          *
+         * ## What the identity is a function of
+         *
+         * The identity is a function of the DECLARED program: the step, the
+         * parameters it declared, the run, the attempt and the replay policy. It
+         * is not a function of WHEN the program was compiled.
+         *
+         * The payload parameter carries the Step's own encoding, and some Step
+         * encodings carry a fact of instant — `enteredAt`, the wall-clock moment
+         * the compiler entered a control scope. That fact is diagnostic, not
+         * constitutive: the same program compiled twice is the same operation,
+         * and an identity that moved with the clock made a replayed run look
+         * like a new one — which is exactly what the identity comparison
+         * decides when it asks whether an operation may be resumed. The facts
+         * of instant are therefore projected out of the material that reaches
+         * the digest; see [IdentityMaterial].
+         *
+         * The projection does NOT change the payload: it is journalled as it
+         * was declared, and the instant stays observable there for whoever
+         * reads the journal.
+         *
+         * The `runId` IS part of the identity by design and is NOT touched by
+         * that projection: two runs of the same program are two identities, on
+         * purpose, because the journal is scoped to a run.
+         *
          * @param input        The durable operation's input.
          * @param stepId       Stable step identifier.
          * @param replayPolicy The replay policy at the time of computation.
@@ -120,7 +151,7 @@ value class Fingerprint(val hex: String) {
 
             val payload = FingerprintPayload(
                 stepId = stepId,
-                params = input.params.withSortedKeys(),
+                params = IdentityMaterial.project(input.params).withSortedKeys(),
                 runId = input.runId,
                 attempt = attempt,
                 replayPolicy = replayPolicy,

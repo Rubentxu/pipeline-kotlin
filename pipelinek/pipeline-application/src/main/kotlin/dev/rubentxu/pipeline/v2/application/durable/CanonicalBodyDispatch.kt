@@ -86,7 +86,10 @@ internal class CanonicalBodyDispatch(
         }
         // no parent capture, no restore — executionContext is the caller's value and stays it.
         val contextInBody = executionContext
-        val scope = when (projection) {
+        // The FOLD is the scope's own outcome rule: the children run in the caller's
+        // context and the fold decides what the scope's outcome IS. It is kept aside
+        // because it applies AFTER the body has run, to the outcome the body produced.
+        val fold = when (projection) {
             // reworked by W1d: the credential lease is a body
             // PREAMBLE, not a path of its own. Acquisition is an effectful preamble and the
             // body then re-enters the engine through the same child loop every other block
@@ -117,8 +120,13 @@ internal class CanonicalBodyDispatch(
                         "'${block.pluginStepId.value}' but not implemented by this engine",
                 ),
             )
-            is BodyExecutionProjection.Scope -> projection.scope
+            is BodyExecutionProjection.Folding -> projection
+            is BodyExecutionProjection.Scope -> null
         }
+        // A folding body runs in the caller's own context: the fold changes what the
+        // scope's outcome IS, not what the children inherit.
+        val scope = fold?.let { BlockShellScope.None }
+            ?: (projection as BodyExecutionProjection.Scope).scope
         val projected = bodyExecutionEngine.projectScope(
             scope, block, runId, stageIndex, stepIndex, stageShOptions, contextInBody,
         )
@@ -150,7 +158,7 @@ internal class CanonicalBodyDispatch(
         // BodyExecutionEngine; this class composes it with the projected
         // scope decided above. The credential-lease path composes through
         // [executeCredentialLeasedBody] (this class's own method).
-        return bodyExecutionEngine.executeScope3b(
+        val bodyOutcome = bodyExecutionEngine.executeScope3b(
             scope = scope,
             block = block,
             runId = runId,
@@ -163,6 +171,59 @@ internal class CanonicalBodyDispatch(
             dispatcher = reentry,
             bodyInvokerAdapter = bodyInvokerAdapter,
         )
+        // A scope WITHOUT a fold reports the body's own outcome. A scope WITH one
+        // reports the outcome the fold derives, and publishes what it saw.
+        if (fold == null) return bodyOutcome
+        return publishFold(fold, bodyOutcome, runId, stageName)
+    }
+
+    /**
+     * Applies the scope's fold to the outcome its body produced and publishes what
+     * the fold observed.
+     *
+     * The ORDER is contract: the fold is applied FIRST, so the scope's outcome is
+     * the folded one, and the publications follow in the order the fold declared
+     * them. A publication that happened before the fold would describe the body's
+     * outcome rather than the scope's.
+     *
+     * The publications carry the injected CLOCK and a fresh event id: the fold is
+     * a pure rule and knows neither, and an instant read from `Instant.now()` here
+     * would put a second clock in the durable path.
+     */
+    private fun publishFold(
+        fold: BodyExecutionProjection.Folding,
+        bodyOutcome: StepOutcome,
+        runId: RunId,
+        stageName: String,
+    ): StepOutcome {
+        val result = BodyOutcomeFolder.fold(fold.fold, fold.contract, bodyOutcome)
+        result.emissions.forEach { emission ->
+            when (emission) {
+                is BodyFoldEmission.CaughtFailure -> eventSink.append(
+                    dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
+                        eventId = java.util.UUID.randomUUID().toString(),
+                        runId = runId.value,
+                        sequence = 0L,
+                        occurredAt = clock.now(),
+                        stageName = stageName,
+                        buildResult = emission.buildResult,
+                        stageResult = emission.stageResult,
+                        message = emission.message,
+                    ),
+                )
+                is BodyFoldEmission.StageDegraded -> eventSink.append(
+                    dev.rubentxu.pipeline.v2.events.StageMarkedUnstable(
+                        eventId = java.util.UUID.randomUUID().toString(),
+                        runId = runId.value,
+                        sequence = 0L,
+                        occurredAt = clock.now(),
+                        stageName = stageName,
+                        message = emission.message,
+                    ),
+                )
+            }
+        }
+        return result.outcome
     }
 
     /**

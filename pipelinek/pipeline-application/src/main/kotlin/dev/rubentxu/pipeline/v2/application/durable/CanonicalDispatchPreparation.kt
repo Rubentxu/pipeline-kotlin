@@ -4,15 +4,10 @@ import dev.rubentxu.pipeline.v2.application.PluginStepType
 import dev.rubentxu.pipeline.v2.application.CanonicalStructuralPreparation
 import dev.rubentxu.pipeline.v2.application.StepMetadata
 import dev.rubentxu.pipeline.v2.application.StepMetadataResolver
-import dev.rubentxu.pipeline.v2.application.StructuralOverlay
-import dev.rubentxu.pipeline.v2.application.StructuralOverlayProjection
 import dev.rubentxu.pipeline.v2.application.StructuralPreparation
 import dev.rubentxu.pipeline.v2.domain.BlockSegment
 import dev.rubentxu.pipeline.v2.domain.BlockStepNode
-import dev.rubentxu.pipeline.v2.domain.ContextOverlay
-import dev.rubentxu.pipeline.v2.domain.ContextTransition
 import dev.rubentxu.pipeline.v2.domain.EngineInvariantViolation
-import dev.rubentxu.pipeline.v2.domain.ExecutionContext
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.durable.Fingerprint
@@ -46,7 +41,6 @@ internal sealed interface DispatchPreparation {
         val opId: OpId,
         val operationId: String,
         val input: OperationInput,
-        val contextAfterOverlay: ExecutionContext,
         val metadata: StepMetadata,
         val fingerprint: Fingerprint,
         val lifecycleContext: StepLifecycleContext,
@@ -69,8 +63,8 @@ internal data class DispatchCoordinates(
 
 /**
  * The PURE pre-execution prologue of a dispatch: durable identity, structural verdict,
- * control-overlay projection, metadata and fingerprint. No journal, no events, no executor and
- * no clock, so the whole thing is decidable — and therefore testable — without a run.
+ * metadata and fingerprint. No journal, no events, no executor and no clock, so the whole
+ * thing is decidable — and therefore testable — without a run.
  *
  * It is the OWNER of the preparation decision: the dispatch engine asks it and interprets the
  * answer, it never re-derives any of these facts.
@@ -80,6 +74,14 @@ internal data class DispatchCoordinates(
  * structurally-invalid node must be rejected before any typed semantics are read
  * . Metadata is resolved by structural step key BEFORE the fingerprint, so
  * reconciliation never depends on a decoded command.
+ *
+ * ## What it does NOT decide
+ * It used to project a CONTROL OVERLAY here — the frame a `catchError` scope pushed when
+ * it was entered and popped when it was triggered — and the stage continuation walked that
+ * frame to decide what a failure meant. That is GONE: a scope's contract travels in its
+ * block payload and its outcome is decided by the scope itself, inside the scope. Two
+ * authorities on what a control scope means would have been a second event authority, and
+ * this class no longer has one to offer.
  */
 internal class CanonicalDispatchPreparation(
     private val metadataResolver: StepMetadataResolver,
@@ -87,17 +89,17 @@ internal class CanonicalDispatchPreparation(
     /**
      * Decides everything a dispatch needs before any effect happens.
      *
-     * @param now the instant a catchError scope is entered, in epoch millis. It is an
-     *   ARGUMENT, not a reading of the ambient clock: the core of this decision has no
-     *   clock of its own, so the instant is a fact the caller observes and hands over.
+     * There is no instant here any more. The decision used to carry one because a
+     * `catchError` scope pushed a frame stamped with the moment it was entered, and
+     * the stamp travelled inside the durable identity. The scope's contract now
+     * travels in the block payload and the scope's outcome is decided by the scope
+     * itself, so no frame is pushed and nothing here reads a clock.
      */
     fun prepare(
         step: StepNode,
         coordinates: DispatchCoordinates,
         stageShOptions: ShOptions,
         hasBodyContinuation: Boolean,
-        executionContext: ExecutionContext,
-        now: Long,
     ): DispatchPreparation {
         val opId = OpId(
             coordinates.runId.value,
@@ -133,23 +135,12 @@ internal class CanonicalDispatchPreparation(
             attempt = 1,
         )
 
-        val structuralReady = when (val structural = CanonicalStructuralPreparation.prepare(step)) {
+        // The structural gate: a node that is not structurally a canonical Step is
+        // rejected here, before any typed semantics are read.
+        when (val structural = CanonicalStructuralPreparation.prepare(step)) {
             is StructuralPreparation.Rejected ->
                 return DispatchPreparation.Rejected(operationId, input, structural.reason)
-            is StructuralPreparation.Ready -> structural
-        }
-        // pure context derivation, no ambient mutation (C6 preserved: pushed pre-reconcile).
-        val projectedOverlay = StructuralOverlayProjection.project(
-            structuralReady.invocation.stepKey,
-            structuralReady.envelope,
-        )
-        // Baseline behaviour preserved: Triggered with emitted=false performs NO scope exit.
-        val overlayExitedSilently =
-            projectedOverlay is StructuralOverlay.CatchErrorTriggered && !projectedOverlay.emitted
-        val contextAfterOverlay = if (overlayExitedSilently) {
-            executionContext
-        } else {
-            deriveOverlay(executionContext, projectedOverlay, now)
+            is StructuralPreparation.Ready -> Unit
         }
 
         // durable metadata resolved by structural step key BEFORE typed semantics, so
@@ -163,7 +154,6 @@ internal class CanonicalDispatchPreparation(
             opId = opId,
             operationId = operationId,
             input = input,
-            contextAfterOverlay = contextAfterOverlay,
             metadata = metadata,
             fingerprint = Fingerprint.compute(input, step.pluginStepId.value, metadata.replayPolicy, 1),
             lifecycleContext = StepLifecycleContext(
@@ -174,34 +164,5 @@ internal class CanonicalDispatchPreparation(
                 stepType = PluginStepType.shortType(step.pluginStepId.value),
             ),
         )
-    }
-
-    /**
-     * pure derivation of the successor ExecutionContext from the structural overlay.
-     * The old CatchErrorTriggered pop/underflow check disappears: the frame was pushed by the
-     * matching CatchErrorEntered derivation, and the caller simply keeps its own parent value.
-     * There is no shared authority to underflow.
-     */
-    private fun deriveOverlay(
-        parent: ExecutionContext,
-        overlay: StructuralOverlay,
-        now: Long,
-    ): ExecutionContext = when (overlay) {
-        StructuralOverlay.None -> parent
-        is StructuralOverlay.CatchErrorEntered -> parent.pushed(
-            ContextOverlay.CatchErrorOverlay(
-                overlay.buildResult,
-                overlay.stageResult,
-                overlay.message,
-                overlay.enteredAt?.toLongOrNull() ?: now,
-            ),
-        )
-        is StructuralOverlay.CatchErrorTriggered -> {
-            val exit = parent.exitCatchError()
-            check(exit is ContextTransition.Advanced) {
-                "Context stack underflow: CatchErrorTriggered without matching CatchErrorEntered"
-            }
-            exit.context
-        }
     }
 }

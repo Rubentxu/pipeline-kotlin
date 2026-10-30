@@ -4,6 +4,7 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
+import dev.rubentxu.pipeline.v2.domain.step.BodyOutcomeFold
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolution
 import dev.rubentxu.pipeline.v2.domain.step.BodyPolicyResolver
 import dev.rubentxu.pipeline.v2.domain.step.RetryPolicy
@@ -78,18 +79,19 @@ class StepDescriptorRegistry private constructor(
 */
         fun standard(): StepDescriptorRegistry = StepDescriptorRegistry(
             buildMap {
-                legacyLinearBodyRows().forEach { (key, descriptor) -> put(key, descriptor) }
                 canonicalEngineBodyRows().forEach { (key, descriptor) -> put(key, descriptor) }
                 terminalRows().forEach { (key, descriptor) -> put(key, descriptor) }
             }
         )
 
         /**
-         * Body rows folded by the legacy workflow-control rewrite.
-         * Containment and output decoration are properties of the legacy linear engine, so
-         * the canonical body engine does not own these bodies. Declared, never inferred.
+         * Body rows executed by the canonical body engine.
+         * Each row names the scope it projects, the retry shape it polls under, or the
+         * fold it applies to the body's typed outcome. The coordinator derives
+         * eligibility from [BodyExecutionOwner.CANONICAL_ENGINE], so adding a row here
+         * is what makes a body Step routable.
 */
-        private fun legacyLinearBodyRows(): List<Pair<PluginStepId, StepDescriptor>> = listOf(
+        private fun canonicalEngineBodyRows(): List<Pair<PluginStepId, StepDescriptor>> = listOf(
             PluginStepId("core.catchError") to StepDescriptor(
                 stepId = "core.catchError",
                 name = "catchError",
@@ -99,12 +101,8 @@ class StepDescriptorRegistry private constructor(
                     // Containment is a FOLD of the body's typed outcome, not an execution
                     // reshape: the body still runs once, in the caller's own context.
                     execution = BodyExecution(
-                        //: containment semantics live in the legacy workflow-control
-                        // rewrite (`CatchErrorOverlay` propagation), not in the canonical body
-                        // engine, so this Step's body is NOT owned there. Declared, not inferred:
-                        // `Sequential` is also the shape of a plain body the canonical engine runs.
-                        owner = BodyExecutionOwner.LEGACY_LINEAR,
-                        policy = BodyExecutionPolicy.Sequential,
+                        owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                        policy = BodyExecutionPolicy.Folding(BodyOutcomeFold.CONTAINMENT),
                     ),
                     introduces = ContextKind.CANCELLATION,
                     catchesInterruptions = true,
@@ -117,23 +115,18 @@ class StepDescriptorRegistry private constructor(
                 body = StepBody.Declared(
                     invocation = BodyInvocationPolicy.AT_MOST_ONCE,
                     execution = BodyExecution(
-                        //: output decoration is applied by the legacy workflow-control
-                        // rewrite, same reasoning as `core.catchError`.
-                        owner = BodyExecutionOwner.LEGACY_LINEAR,
-                        policy = BodyExecutionPolicy.Sequential,
+                        owner = BodyExecutionOwner.CANONICAL_ENGINE,
+                        policy = BodyExecutionPolicy.Folding(BodyOutcomeFold.OUTPUT_DECORATION),
                     ),
                     introduces = ContextKind.OUTPUT_DECORATOR,
+                    // The family catches interruptions — that is what the DSL's own
+                    // `warnError(message, catchInterruptions = true)` default says. The
+                    // PER-CALL-SITE flag travels in the block payload; this row declares
+                    // what the family supports, so a default that contradicted it would
+                    // be a contradiction between the descriptor and the DSL.
+                    catchesInterruptions = true,
                 ),
             ),
-        )
-
-        /**
-         * Body rows executed by the canonical body engine.
-         * Each row names the scope it projects, or the retry shape it polls under. The
-         * coordinator derives eligibility from [BodyExecutionOwner.CANONICAL_ENGINE], so
-         * adding a row here is what makes a body Step routable.
-*/
-        private fun canonicalEngineBodyRows(): List<Pair<PluginStepId, StepDescriptor>> = listOf(
             PluginStepId("core.withEnv") to StepDescriptor(
                 stepId = "core.withEnv",
                 name = "withEnv",

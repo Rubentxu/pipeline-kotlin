@@ -7028,6 +7028,18 @@ public final class dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy$Defa
 	public static fun getShape (Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy;)Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicyShape;
 }
 
+public final class dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy$Folding : dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy {
+	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/BodyOutcomeFold;)V
+	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/BodyOutcomeFold;
+	public final fun copy (Ldev/rubentxu/pipeline/v2/domain/step/BodyOutcomeFold;)Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy$Folding;
+	public static synthetic fun copy$default (Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy$Folding;Ldev/rubentxu/pipeline/v2/domain/step/BodyOutcomeFold;ILjava/lang/Object;)Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy$Folding;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFold ()Ldev/rubentxu/pipeline/v2/domain/step/BodyOutcomeFold;
+	public fun getShape ()Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicyShape;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy$Parallel : dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicy {
 	public fun <init> (Ldev/rubentxu/pipeline/v2/domain/step/ParallelPolicy;)V
 	public final fun component1 ()Ldev/rubentxu/pipeline/v2/domain/step/ParallelPolicy;
@@ -7084,6 +7096,7 @@ public final class dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicyKt {
 }
 
 public final class dev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicyShape : java/lang/Enum {
+	public static final field FOLDING Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicyShape;
 	public static final field PARALLEL Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicyShape;
 	public static final field RETRYING Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicyShape;
 	public static final field SCOPED Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionPolicyShape;
@@ -7157,6 +7170,7 @@ public final class dev/rubentxu/pipeline/v2/domain/step/BodyExecutionSupport$Com
 	public final fun getFULL ()Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionSupport;
 	public final fun getNONE ()Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionSupport;
 	public final fun getSCOPED_SEQUENTIAL_RETRYING ()Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionSupport;
+	public final fun getSCOPED_SEQUENTIAL_RETRYING_FOLDING ()Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionSupport;
 	public final fun getSEQUENTIAL_ONLY ()Ldev/rubentxu/pipeline/v2/domain/step/BodyExecutionSupport;
 }
 
@@ -7218,6 +7232,15 @@ public final class dev/rubentxu/pipeline/v2/domain/step/BodyOutcome$Completed : 
 	public final fun getOutcome ()Ldev/rubentxu/pipeline/v2/domain/StepOutcome;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/rubentxu/pipeline/v2/domain/step/BodyOutcomeFold : java/lang/Enum {
+	public static final field CONTAINMENT Ldev/rubentxu/pipeline/v2/domain/step/BodyOutcomeFold;
+	public static final field OUTPUT_DECORATION Ldev/rubentxu/pipeline/v2/domain/step/BodyOutcomeFold;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getRequiredContextKind ()Ldev/rubentxu/pipeline/v2/domain/ContextKind;
+	public static fun valueOf (Ljava/lang/String;)Ldev/rubentxu/pipeline/v2/domain/step/BodyOutcomeFold;
+	public static fun values ()[Ldev/rubentxu/pipeline/v2/domain/step/BodyOutcomeFold;
 }
 
 public abstract interface class dev/rubentxu/pipeline/v2/domain/step/BodyPolicyRejection {

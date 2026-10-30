@@ -79,9 +79,12 @@ sealed interface CoreEmitEventOutput : TypedStepOutput {
  * with missing fields or a non-numeric `size`) — a refusal the run loop can report,
  * instead of an untyped `IllegalStateException` it would have to map to
  * INFRASTRUCTURE.
- * Whitelist authority is preserved verbatim: all four kinds KEEP their
- * place in the supported contract; classification as internal marker / runtime-used /
- * dead callsite is a separate dimension, not a burn-down concern.
+ * Whitelist authority is preserved verbatim for the kinds the product still emits:
+ * `StageMarkedUnstable` and `FileWritten` KEEP their place in the supported contract;
+ * classification as internal marker / runtime-used / dead callsite is a separate
+ * dimension, not a burn-down concern. The two scope markers that the control-scope
+ * fold replaced are GONE, and a pipeline that still asks for them is refused with a
+ * SCHEMA failure rather than answered by a no-op.
  * Capabilities: the handler reaches the event sink ONLY through [EVENT_SINK_CAPABILITY]
  * and the current stage identity ONLY through [STAGE_IDENTITY_CAPABILITY] (narrow
  * `StageIdentity(name, index)`; `StepHandlerContext` stays free of stage data and the
@@ -90,10 +93,18 @@ sealed interface CoreEmitEventOutput : TypedStepOutput {
 object CoreEmitEventStep {
     val KEY: PluginStepId = PluginStepId("core.emit.event")
 
-    /**whitelist, byte-equivalent to the legacy authority */
+    /**
+     * The whitelist of kinds this handler accepts.
+     *
+     * It used to hold FOUR kinds. `CatchErrorEntered` and `CatchErrorTriggered` were the
+     * markers a translated control scope pushed and popped; the scope's own fold
+     * ([dev.rubentxu.pipeline.v2.application.durable.BodyOutcomeFolder]) now owns that
+     * meaning and publishes the real `events.CatchErrorTriggered` itself. A kind that
+     * nothing produces any more is a kind whose meaning lives in two places, so it is
+     * GONE — and a pipeline that still asked for it is refused with a SCHEMA failure
+     * instead of being answered by a no-op that pretends to have handled it.
+     */
     private val ALLOWED_KINDS = setOf(
-        "CatchErrorEntered",
-        "CatchErrorTriggered",
         "StageMarkedUnstable",
         "FileWritten",
     )
@@ -176,10 +187,6 @@ object CoreEmitEventStep {
             }
             val sink: dev.rubentxu.pipeline.v2.events.EventSink = ctx.capabilities.get(EVENT_SINK_CAPABILITY)
             when (input.kind) {
-                // Scope-only markers: the coordinator handles scope push/pop and publishes
-                // The real CatchErrorTriggered event at the fold-walk
-                "CatchErrorEntered" -> CoreEmitEventOutput.EmitEventSuccess
-                "CatchErrorTriggered" -> CoreEmitEventOutput.EmitEventSuccess
                 "StageMarkedUnstable" -> {
                     val message = input.payload["message"]
                         ?: return@StepHandler CoreEmitEventOutput.EmitEventRejected(

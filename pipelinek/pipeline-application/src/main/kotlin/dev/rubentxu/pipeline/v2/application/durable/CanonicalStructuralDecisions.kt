@@ -1,12 +1,16 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.application.CoreStepRegistryFactory
+import dev.rubentxu.pipeline.v2.application.CoreWorkflowControlInput
+import dev.rubentxu.pipeline.v2.application.CoreWorkflowControlWireCodec
 import dev.rubentxu.pipeline.v2.domain.StageOption
 import dev.rubentxu.pipeline.v2.domain.step.BodyContextProjection
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionOwner
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicyShape
 import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionSupport
+import dev.rubentxu.pipeline.v2.domain.step.BodyOutcomeFold
+import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepRegistry
 import dev.rubentxu.pipeline.v2.domain.step.WaitUntilShape
 import dev.rubentxu.pipeline.v2.domain.StepDescriptorRegistry
@@ -44,9 +48,10 @@ internal val canonicalStepIds: Set<String> =
  * Derived from the declared [StepDescriptor] metadata, never from a list of StepKeys: a
  * Step is canonical-body-eligible when it declares a body row
  * (`StepBody.Declared`) whose `BodyExecution.owner` is this engine. Since that row has
- * no implicit owner, so a new body Step cannot become eligible by omission. `core.catchError` / `core.warnError` declare
- * `LEGACY_LINEAR` because their semantics live in the legacy workflow-control rewrite,
- * so they stay refused here rather than being executed as empty shells.
+ * no implicit owner, so a new body Step cannot become eligible by omission.
+ * `core.catchError` / `core.warnError` declare `CANONICAL_ENGINE` and a
+ * `BodyExecutionPolicy.Folding`: their semantics are the fold of the body's typed
+ * outcome, and the canonical engine is the one that performs it.
  * Adding a body Step therefore takes ONE descriptor row and no engine change, and this
  * engine cannot silently gain a body family it does not implement.
 */
@@ -384,6 +389,26 @@ internal sealed interface BodyExecutionProjection {
     data class Scope(val scope: BlockShellScope) : BodyExecutionProjection
 
     /**
+     * The body runs in the caller's own context and its typed outcome is FOLDED
+     * by [BodyOutcomeFolder]: the scope's outcome is not the body's own.
+     *
+     * Carries the scope's DECLARED contract — the results the author declared
+     * and the message it wrote — because the fold needs them and the payload is
+     * decoded exactly once, here, in the pure projector. A malformed payload is
+     * a typed [InvalidInput] before any child runs.
+     *
+     * [fold] is the DECLARED fold and [contract.fold] is the fold the payload
+     * claims. They are two spellings of the same fact and the projector
+     * refuses a payload that disagrees with the declaration: a `catchError`
+     * carrying a `warnError` payload would otherwise be folded the wrong way
+     * while looking like a well-formed scope.
+     */
+    data class Folding(
+        val fold: BodyOutcomeFold,
+        val contract: CoreWorkflowControlInput,
+    ) : BodyExecutionProjection
+
+    /**
      * The body runs under a bound credential lease (acquire -> environment overlay ->
      * always close). Not a `BlockShellScope`: a lease is not a context dimension children
      * inherit from [ShOptions], because its value only exists AFTER the acquisition effect.
@@ -420,6 +445,7 @@ internal fun BlockStepNode.projectBodyExecution(
     options: ShOptions,
 ): BodyExecutionProjection = when (policy) {
     is BodyExecutionPolicy.Sequential -> BodyExecutionProjection.Scope(BlockShellScope.None)
+    is BodyExecutionPolicy.Folding -> projectFoldingBody(policy.fold)
     is BodyExecutionPolicy.Scoped -> projectScopedBody(policy.projection, options)
     is BodyExecutionPolicy.Retrying -> {
         // Dispatch is policy-driven, not StepKey-driven. A Retrying body that
@@ -433,6 +459,38 @@ internal fun BlockStepNode.projectBodyExecution(
             )
     }
     is BodyExecutionPolicy.Parallel -> BodyExecutionProjection.Unimplemented(policy.shape)
+}
+
+/**
+ * Projects the DECLARED contract of a control scope (`catchError` / `warnError`).
+ *
+ * The payload is decoded through [CoreWorkflowControlWireCodec] — the ONE authority
+ * for the wire format — and the decoded fold is checked against the DECLARED fold.
+ * A payload whose discriminator names the other family is a typed
+ * [BodyExecutionProjection.InvalidInput]: the two families own different semantics,
+ * and a scope that carried the other's payload would be folded the wrong way while
+ * looking well-formed.
+ *
+ * The decode happens HERE, in the pure projector, and nowhere else: a malformed
+ * payload is refused before any child is dispatched, and the contract reaches the
+ * fold already decoded.
+*/
+private fun BlockStepNode.projectFoldingBody(
+    declaredFold: BodyOutcomeFold,
+): BodyExecutionProjection {
+    val contract = try {
+        CoreWorkflowControlWireCodec.decode(EncodedStepValue(payload.encoded))
+    } catch (error: IllegalArgumentException) {
+        return BodyExecutionProjection.InvalidInput(
+            "control scope payload invalid: ${error.message ?: "decode failed"}",
+        )
+    }
+    if (contract.fold != declaredFold) {
+        return BodyExecutionProjection.InvalidInput(
+            "declared fold ${declaredFold.name} but the payload declares ${contract.fold.name}",
+        )
+    }
+    return BodyExecutionProjection.Folding(declaredFold, contract)
 }
 
 /**

@@ -289,9 +289,12 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     }
 
     @Deprecated(
-        message = "LFC1-007: catchError is rewritten at compile time by rewriteWorkflowControl " +
-            "into core.emit.event + core.sh (the rewrite IS implemented and runs). This spec type " +
-            "remains as the rewrite's input shape; do not introduce new direct uses.",
+        message = "catchError is compiled into a canonical body-bearing Step: the scope's " +
+            "declared contract travels in the block payload and its children travel in the " +
+            "block body, so the scope is executed by the canonical body engine and its " +
+            "outcome is decided by the scope itself. This spec type remains as the " +
+            "authoring shape behind the StageScope.catchError helper; do not introduce " +
+            "new direct uses.",
     )
     data class CatchError(
         // typed at authoring. `FailureKind` on Error did the same for error handling;
@@ -309,9 +312,12 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     }
 
     @Deprecated(
-        message = "LFC1-007: warnError is rewritten at compile time by rewriteWorkflowControl " +
-            "into core.emit.event + core.sh (the rewrite IS implemented and runs). This spec type " +
-            "remains as the rewrite's input shape; do not introduce new direct uses.",
+        message = "warnError is compiled into a canonical body-bearing Step: the scope's " +
+            "declared contract travels in the block payload and its children travel in the " +
+            "block body, so the scope is executed by the canonical body engine and its " +
+            "outcome is decided by the scope itself. This spec type remains as the " +
+            "authoring shape behind the StageScope.warnError helper; do not introduce " +
+            "new direct uses.",
     )
     data class WarnError(
         val message: String,
@@ -323,7 +329,7 @@ sealed interface StepSpec : dev.rubentxu.pipeline.v2.domain.durable.StepSpec {
     }
 
     @Deprecated(
-        message = "LFC1-007: unstable is rewritten at compile time by rewriteWorkflowControl into " +
+        message = "unstable is rewritten at compile time into " +
             "core.emit.event(StageMarkedUnstable) + core.sh(exit 0) (the rewrite IS implemented " +
             "and runs). This spec type remains as the rewrite's input shape; do not introduce " +
             "new direct uses.",

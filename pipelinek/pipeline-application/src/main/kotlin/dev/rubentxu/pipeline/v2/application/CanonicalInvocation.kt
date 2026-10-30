@@ -1,14 +1,11 @@
 package dev.rubentxu.pipeline.v2.application
 
-import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.VersionedStepPayload
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Structural, pre-decode canonical invocation
@@ -93,75 +90,3 @@ object CanonicalStructuralPreparation {
     }
 }
 
-/**
- * Structural, closed overlay descriptor for this invocation
- * Expresses exactly the pre-reconcile control context an invocation contributes, derived from the
- * structural envelope WITHOUT building a typed command. It is NOT Step metadata (stable per plugin:
- * [StepMetadata]) and NOT a typed Step input (post-reconcile): it is the structural control info of
- * this particular invocation that the coordinator must apply to its context before durable
- * A reused CatchErrorEntered still pushes its overlay pre-reconcile).
- * Only the control boundaries that actually affect pre-reconcile context are represented. Full
- * runtime emission semantics belong to the later TypedInputDecode/executor, not here.
-*/
-sealed interface StructuralOverlay {
-    /** No pre-reconcile control context to apply for this invocation. */
-    data object None : StructuralOverlay
-
-    /** A catchError scope is entered; the coordinator pushes the matching context frame. */
-    data class CatchErrorEntered(
-        val buildResult: CatchErrorBuildResult,
-        val stageResult: CatchErrorBuildResult,
-        val message: String?,
-        val enteredAt: String?,
-    ) : StructuralOverlay
-
-    /** A catchError scope is (possibly) exited; the coordinator pops it only when [emitted]. */
-    data class CatchErrorTriggered(val emitted: Boolean) : StructuralOverlay
-}
-
-/**
- * Projects the pre-reconcile control overlay from a structurally-validated envelope.
- * This is the structural-overlay boundary: it reads only the known control-emission envelope shape
- * (the legacy `core.emit.event` CatchErrorEntered/Triggered) and yields a closed [StructuralOverlay].
- * It deliberately does not decode full Step input; everything else is [StructuralOverlay.None] and
- * handled by the typed decode that runs only when the operation actually executes.
-*/
-object StructuralOverlayProjection {
-    private const val EMIT_EVENT_PLUGIN = "core.emit.event"
-
-    fun project(stepKey: PluginStepId, envelope: JsonObject): StructuralOverlay {
-        if (stepKey.value != EMIT_EVENT_PLUGIN) return StructuralOverlay.None
-        val kind = envelope["kind"]?.jsonPrimitive?.contentOrNull
-        if (kind != "CatchErrorEntered" && kind != "CatchErrorTriggered") {
-            return StructuralOverlay.None
-        }
-        // No defaults here. This used to read
-        //   `?: "UNSTABLE"` for buildResult and `?: buildResult` for stageResult,
-        // which is the same fail-open E4c removed from the store: an unreadable field
-        // became a semantic claim, and UNSTABLE is the claim that SUPPRESSES the failure
-        // this scope was installed to catch. A corrupt payload used to be the one input
-        // guaranteed not to abort the run.
-        // `None` is the fail-closed direction rather than a silent coercion: no overlay is
-        // pushed, so the scope never catches, so the failure propagates and the run fails
-        // loudly. That is the opposite of the old behaviour, by construction.
-        if (kind == "CatchErrorTriggered") {
-            return StructuralOverlay.CatchErrorTriggered(
-                emitted = envelope["emitted"]?.jsonPrimitive?.contentOrNull == "true",
-            )
-        }
-        val buildResult = envelope["buildResult"]?.jsonPrimitive?.contentOrNull
-            ?.let(CatchErrorBuildResult::parse)
-            ?: return StructuralOverlay.None
-        // A scope that declares no stageResult inherits buildResult, which is the producer's
-        // own rule (`stageResult?.uppercase() ?: effectiveBuildResult`) and not an invention.
-        val stageResult = envelope["stageResult"]?.jsonPrimitive?.contentOrNull
-            ?.let(CatchErrorBuildResult::parse)
-            ?: buildResult
-        return StructuralOverlay.CatchErrorEntered(
-            buildResult = buildResult,
-            stageResult = stageResult,
-            message = envelope["message"]?.jsonPrimitive?.contentOrNull,
-            enteredAt = envelope["enteredAt"]?.jsonPrimitive?.contentOrNull,
-        )
-    }
-}

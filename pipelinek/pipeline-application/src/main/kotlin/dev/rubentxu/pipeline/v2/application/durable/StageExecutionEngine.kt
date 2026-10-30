@@ -165,9 +165,7 @@ internal class StageExecutionEngine(
             context = dispatched.context
             // The stage fold needs the OUTCOME, so it projects it explicitly and leaves the
             // carrier alone. See StepDispatchEngine.Dispatched for why no `outcome` shortcut exists.
-            when (val continuation = runLifecycle.decideStageContinuation(
-                dispatched.result.outcome, stage.name, runId.value, context,
-            )) {
+            when (val continuation = runLifecycle.decideStageContinuation(dispatched.result.outcome)) {
                 CanonicalContinuation.Continue -> Unit
                 CanonicalContinuation.ContinueUnstable -> {
                     runLifecycle.fold(dev.rubentxu.pipeline.v2.domain.RunOutcome.Unstable)
@@ -255,7 +253,7 @@ internal class StageExecutionEngine(
         stageShOptions: ShOptions,
         ambient: ExecutionContext,
     ): StageVerdict = when (
-        val continuation = runLifecycle.decideStageContinuation(bodyOutcome, stage.name, runId.value, ambient)
+        val continuation = runLifecycle.decideStageContinuation(bodyOutcome)
     ) {
         CanonicalContinuation.Continue -> {
             finalizeStage(stage, stageIndex, StageOutcome.Succeeded, runId, stageShOptions, ambient)

@@ -8,7 +8,6 @@ import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.StepNode
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
-import dev.rubentxu.pipeline.v2.domain.durable.Clock
 import dev.rubentxu.pipeline.v2.domain.durable.OperationInput
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker
@@ -40,7 +39,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  *
  * | decision | owner |
  * |---|---|
- * | preparation — durable identity, control overlay, metadata, fingerprint | [CanonicalDispatchPreparation] |
+ * | preparation — durable identity, metadata, fingerprint | [CanonicalDispatchPreparation] |
  * | the runtime context — SAGA ports, body adapter, plugin emitter | [CanonicalRuntimeContextFactory] |
  * | the body — policy, projection, credential preamble, child loop | [CanonicalBodyDispatch] |
  * | reconciliation against the journal — reading the row and deciding about it | [DurableInvocationResolver] |
@@ -67,8 +66,7 @@ import dev.rubentxu.pipeline.v2.sdk.runtime.durable.ShOptions
  * the stage-level finalizers.
  */
 internal class StepDispatchEngine(
-    private val clock: Clock,
-    // PREPARACION: durable identity, control overlay, metadata and fingerprint are decided
+    // PREPARACION: durable identity, metadata and fingerprint are decided
     // by their owner, which has no clock, no journal and no executor.
     private val dispatchPreparation: CanonicalDispatchPreparation,
     private val typedInputPreparation: DurableTypedInputPreparation,
@@ -268,9 +266,11 @@ internal class StepDispatchEngine(
         val bodies: SagaBodyResolver? = ownedBodies?.let { SagaBodyResolver(it) }
 
         // BlockStepNode bypasses decoder and goes directly to dispatchBody.
-        // handles only the body-execution substrate for dir/withEnv/withCredentials
-        // timeout/retry. catchError and warnError remain on the legacy linear path
-        // (rewriteWorkflowControl) until semantics are implemented.
+        // It handles every body-execution family: dir/withEnv/withCredentials,
+        // timeout/retry, and the control scopes catchError/warnError — the last two
+        // decide their own outcome inside the scope, by folding the body's typed
+        // outcome (BodyOutcomeFolder). There is NO legacy linear path left for a
+        // scope, and no fallback: a family the engine cannot execute is rejected.
 
         // the whole pre-execution prologue is ONE pure decision — durable identity
         // structural verdict, control overlay, metadata and fingerprint. Its OWNER decides it
@@ -286,8 +286,6 @@ internal class StepDispatchEngine(
             ),
             stageShOptions = stageShOptions,
             hasBodyContinuation = bodyContinuation != null,
-            executionContext = executionContext,
-            now = clock.now().toEpochMilli(),
         )
         val ready = when (preparation) {
             // Terminal SCHEMA rejection (C3/C5): the effective executor is never invoked.
@@ -302,7 +300,6 @@ internal class StepDispatchEngine(
         val opId = ready.opId
         val operationId = ready.operationId
         val input = ready.input
-        val contextAfterOverlay = ready.contextAfterOverlay
         val metadata = ready.metadata
         val fingerprint = ready.fingerprint
         val lifecycleContext = ready.lifecycleContext
@@ -370,7 +367,7 @@ internal class StepDispatchEngine(
                         outcome = interpretation.result.outcome,
                     ),
                 )
-                return Dispatched(interpretation.result, contextAfterOverlay)
+                return Dispatched(interpretation.result, executionContext)
             }
             RecoveryInterpretationEngine.RecoveryInterpretation.ProceedToExecution -> Unit
         }
@@ -405,7 +402,7 @@ internal class StepDispatchEngine(
                 input = input,
                 message = "schema mismatch for step '${step.pluginStepId.value}' on " +
                     "'${step.id.value}': ${typed.reason}",
-                context = contextAfterOverlay,
+                context = executionContext,
             )
             is DurableTypedInputPreparation.TypedPreparation.Ready -> typed.prepared
         }
@@ -440,7 +437,7 @@ internal class StepDispatchEngine(
         // R14: `executeAndJournal` already returns the atomic carrier, so this is a COMPOSITION.
         // It used to be `Dispatched(execution.outcome, ...)`, which is the narrowing this whole
         // slice exists to remove: a recovered or a fresh encoded value died at this line.
-        return Dispatched(execution, contextAfterOverlay)
+        return Dispatched(execution, executionContext)
     }
 
     /**

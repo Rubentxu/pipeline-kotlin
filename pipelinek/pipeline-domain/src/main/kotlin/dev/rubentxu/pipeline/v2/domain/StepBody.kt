@@ -25,9 +25,11 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyExecutionPolicy
  * shape, the context kind it introduces, and its interruption policy.
  * Still a cross-field CHECK (not a type): [Declared.invocation] against the shape of
  * [BodyExecution.policy], and [Declared.introduces] against the projection of a
- * [BodyExecutionPolicy.Scoped] shape. Those two invariants relate values that are
- * legitimately independent — `core.catchError` is `Sequential` yet introduces
- * `CANCELLATION`, and `core.warnError` is `Sequential` yet is `AT_MOST_ONCE` — so they are
+ * [BodyExecutionPolicy.Scoped] shape or the kind a
+ * [BodyExecutionPolicy.Folding] owns. Those two invariants relate values that are
+ * legitimately independent — `core.catchError` is `Folding(CONTAINMENT)` yet is
+ * `ONCE`, and `core.warnError` is `Folding(OUTPUT_DECORATION)` yet is
+ * `AT_MOST_ONCE` — so they are
  * enforced by [dev.rubentxu.pipeline.v2.domain.step.resolveBodyExecutionPolicy], which
  * rejects an incoherent row as
  * [dev.rubentxu.pipeline.v2.domain.step.BodyPolicyRejection.IncoherentMetadata] before any
@@ -74,9 +76,9 @@ sealed interface StepBody {
 
 /**
  * WHO executes a Step's body and WHAT shape that body has, as one value
- * Both fields are required. The owner is not derivable from the shape: `core.catchError`
- * and a plain `core.dir` body can both be `Sequential`, yet only one of them is executed by
- * the canonical body engine (see [BodyExecutionOwner]).
+ * Both fields are required. The owner is not derivable from the shape: a plain body and
+ * a folding body are different shapes, and the fold is what tells the engine that the
+ * scope's outcome is not the body's own (see [BodyExecutionOwner]).
 */
 data class BodyExecution(
     /** The engine that re-enters and executes this body. */

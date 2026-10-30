@@ -7,12 +7,15 @@ import dev.rubentxu.pipeline.v2.domain.FailureKind
  * The STABLE authoring boundary for results whose vocabulary is CLOSED.
  * ## Why this object exists at all
  * `error(message, failureKind)` and `catchError(buildResult?, stageResult?, message?)` are
- * declared **STABLE** in the published authoring contract. `StepSpec.Error`,
- * `StepSpec.CatchError` and `ContextOverlay.CatchErrorOverlay` are the **EXPERIMENTAL
+ * declared **STABLE** in the published authoring contract. `StepSpec.Error` and
+ * `StepSpec.CatchError` are the **EXPERIMENTAL
  * representation** an external consumer compiles against
  * (`published-contract-maturity.json` classifies all four published modules EXPERIMENTAL,
  * and says so deliberately: the authoring contract classifies authoring constructs,
  * that file classifies library ABI).
+ * `ContextOverlay.CatchErrorOverlay` was the third of that representation; it is now
+ * RETIRED — the scope's contract travels in the block payload instead — and it is
+ * published ABI only, kept for the wire format an older compiled pipeline carries.
  * Typing the representation is therefore allowed. Typing the *authoring signature* was not,
  * and it silently turned `error("boom", "USER")` and `catchError(buildResult = "FAILURE")`
  * — spellings the authoring contract documents — into compile errors. Ten UAT scenarios failed on

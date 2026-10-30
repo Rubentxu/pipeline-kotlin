@@ -157,7 +157,8 @@ class StageScope(
      * @param block Nested steps
 */
     @Deprecated(
-        message = "LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.",
+        message = "catchError is compiled into a canonical body-bearing Step whose scope "
+            + "decides its own outcome. Use try/catch at the orchestrator level instead.",
         replaceWith = ReplaceWith("catchError(buildResult, stageResult, message, block)"),
     )
     fun catchError(
@@ -193,7 +194,8 @@ class StageScope(
      * which is the declared replacement path — not a deprecation added here.
 */
     @Deprecated(
-        message = "LFC1-007: catchError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.",
+        message = "catchError is compiled into a canonical body-bearing Step whose scope "
+            + "decides its own outcome. Use try/catch at the orchestrator level instead.",
         replaceWith = ReplaceWith("catchError(buildResult, stageResult, message, block)"),
     )
     fun catchError(
@@ -221,7 +223,8 @@ class StageScope(
      * @param block Nested steps
 */
     @Deprecated(
-        message = "LFC1-007: warnError is pre-compiler-rewritten. Use try/catch at the orchestrator level instead.",
+        message = "warnError is compiled into a canonical body-bearing Step whose scope "
+            + "decides its own outcome. Use try/catch at the orchestrator level instead.",
         replaceWith = ReplaceWith("warnError(message, catchInterruptions, block)"),
     )
     fun warnError(
@@ -245,7 +248,8 @@ class StageScope(
      * @param message User-visible message describing the instability
 */
     @Deprecated(
-        message = "LFC1-007: unstable is pre-compiler-rewritten. Use emitEvent('StageMarkedUnstable', ...) instead.",
+        message = "unstable is rewritten into core.emit.event(StageMarkedUnstable) + core.sh(exit 0). "
+            + "Use emitEvent('StageMarkedUnstable', ...) instead.",
         replaceWith = ReplaceWith("unstable(message)"),
     )
     fun unstable(message: String) {

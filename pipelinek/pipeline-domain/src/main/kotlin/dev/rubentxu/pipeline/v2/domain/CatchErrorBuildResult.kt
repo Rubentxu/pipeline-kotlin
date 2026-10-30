@@ -71,7 +71,10 @@ sealed interface CatchErrorBuildResult {
     /**
      * Reads and writes this type as a **bare JSON string**, not as an object.
      * `ContextOverlay.CatchErrorOverlay` is `@Serializable` and has carried these values as
-     * `"UNSTABLE"` since before the type existed. kotlinx's default handling for a sealed
+     * `"UNSTABLE"` since before the type existed; that overlay is now RETIRED — nothing
+     * produces it — but it is still part of the wire format a pipeline compiled by an older
+     * version carries, so its serializer stays byte-identical.
+     * kotlinx's default handling for a sealed
      * hierarchy would emit `{"type":"UNSTABLE"}` — a different document — so persisting the
      * typed value without this serializer would quietly change the compiled-pipeline format
      * That is required to leave byte-identical

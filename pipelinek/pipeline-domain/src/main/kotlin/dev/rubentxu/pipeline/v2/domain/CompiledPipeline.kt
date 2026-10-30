@@ -384,10 +384,16 @@ sealed interface ContextOverlay {
     data class CancellationScope(val scopeId: String) : ContextOverlay
 
     // Legacy catch-error overlay for migration compatibility.
-    // Carries stageResult + message so the coordinator's
-    // catchError fold-walk can publish the CatchErrorTriggered domain event at the point of the
-    // real failure (re-throw/suppress decision) instead of at a later IR marker step.
-    // Both results are typed, and both keep travelling as BARE JSON STRINGS. The
+    //
+    // ## RETIRED — published, no producer, no consumer
+    // It carried stageResult + message so the coordinator's catchError fold-walk could
+    // publish the CatchErrorTriggered domain event at the point of the real failure. The
+    // scope's own fold owns that decision now, from inside the scope, so nothing pushes
+    // this frame and nothing reads it.
+    //
+    // It stays because it is PUBLISHED ABI and because it is part of the wire format a
+    // pipeline compiled by an older version carries: a decoder must still be able to read
+    // it. Both results are typed, and both keep travelling as BARE JSON STRINGS. The
     // explicit serializer is load-bearing — kotlinx would otherwise emit `{"type":"UNSTABLE"}`
     // and change the compiled-pipeline format this overlay has always had.
     @Serializable

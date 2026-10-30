@@ -8,6 +8,57 @@ import dev.rubentxu.pipeline.v2.domain.StepDescriptor
 import kotlinx.serialization.Serializable
 
 /**
+ * What the engine does with the TYPED OUTCOME a body produced.
+ *
+ * ## Why this exists
+ *
+ * A control scope (`catchError`/`warnError`) does not reshape execution: the body
+ * still runs once, in the caller's own context. What it does is FOLD the body's
+ * outcome — absorb it, or turn it into an output decoration. That fold used to be
+ * owned by a compiler-side projection into a shell script, which is why the product
+ * carried two execution authorities; the fold itself is a domain decision and lives
+ * here, declared on the descriptor, so the canonical engine can implement it without
+ * branching on a StepKey.
+ *
+ * ## The two folds
+ *
+ * - [CONTAINMENT]: the body's failure is absorbed and the scope's outcome is the
+ *   DECLARED one (`Success`/`Unstable`/`Failure`). This is `catchError`.
+ * - [OUTPUT_DECORATION]: the scope always ends UNSTABLE and publishes a warning.
+ *   This is `warnError`.
+ *
+ * The fold is a property of the Step KIND, never of one invocation: the same
+ * declared fold applies to every run of that family.
+ */
+enum class BodyOutcomeFold {
+
+    /**
+     * The body's failure is absorbed by the scope, whose outcome becomes the
+     * DECLARED one instead of the body's.
+     */
+    CONTAINMENT,
+
+    /**
+     * The scope always ends UNSTABLE and publishes a warning about what it saw.
+     */
+    OUTPUT_DECORATION;
+
+    /**
+     * The [ContextKind] a descriptor MUST declare to host this fold.
+     *
+     * The two folds own the two context kinds that the legacy projection
+     * implemented as shell side effects, and that had no consumer until this fold:
+     * containment is the cancellation of a failure, and decoration is a decoration
+     * of the output.
+     */
+    val requiredContextKind: ContextKind
+        get() = when (this) {
+            CONTAINMENT -> ContextKind.CANCELLATION
+            OUTPUT_DECORATION -> ContextKind.OUTPUT_DECORATOR
+        }
+}
+
+/**
  * Static, pre-decode declaration of HOW the body of a block Step is executed
  * ## Why this exists
  * The engine must decide the execution shape of a body (run it once in sequence,
@@ -30,9 +81,9 @@ import kotlinx.serialization.Serializable
  * ## Relationship to the existing descriptor metadata
  * [dev.rubentxu.pipeline.v2.domain.StepBody.Declared.invocation] (cardinality) and
  * [dev.rubentxu.pipeline.v2.domain.StepBody.Declared.introduces] (context-kind hint) CANNOT
- * derive the execution shape: `core.timeout` and
- * `core.catchError` both declare [ContextKind.CANCELLATION] yet require different
- * shapes (`Scoped(Deadline)` vs `Sequential`). The policy is therefore declared
+ * derive the execution shape: `core.timeout` declares `Scoped(Deadline)` and
+ * `core.catchError` declares `Folding(CONTAINMENT)`, and both declare
+ * [ContextKind.CANCELLATION]. The policy is therefore declared
  * explicitly and checked for COHERENCE against those hints
  * ([BodyPolicyRejection.IncoherentMetadata]) rather than derived from them.
 */
@@ -41,10 +92,27 @@ sealed interface BodyExecutionPolicy {
 
     /**
      * The body runs once, in declaration order, in the caller's own execution
-     * context. No projection, no repetition, no fan-out.
-     * Examples: `core.catchError`, `core.warnError`.
+     * context. No projection, no repetition, no fan-out, no fold: the body's
+     * outcome IS the scope's outcome.
 */
     data object Sequential : BodyExecutionPolicy
+
+    /**
+     * The body runs once, in the caller's own execution context, and its typed
+     * outcome is FOLDED by the engine according to [fold].
+     *
+     * The fold is NOT an execution reshape: the body runs exactly once, in the
+     * caller's context, exactly as under [Sequential]. What the fold changes is
+     * what the engine does with the outcome the body produced — absorb it
+     * ([BodyOutcomeFold.CONTAINMENT]) or turn it into an output decoration
+     * ([BodyOutcomeFold.OUTPUT_DECORATION]).
+     *
+     * The fold is declared here rather than derived from a StepKey on purpose:
+     * the whole point of this policy is that the engine reads a DECLARATION
+     * instead of branching on a name, and a fold that lived outside the policy
+     * would be exactly such a branch.
+*/
+    data class Folding(val fold: BodyOutcomeFold) : BodyExecutionPolicy
 
     /**
      * The body runs once inside a single derived execution context projected from
@@ -89,6 +157,7 @@ sealed interface BodyExecutionPolicy {
     val shape: BodyExecutionPolicyShape
         get() = when (this) {
             is Sequential -> BodyExecutionPolicyShape.SEQUENTIAL
+            is Folding -> BodyExecutionPolicyShape.FOLDING
             is Scoped -> BodyExecutionPolicyShape.SCOPED
             is Retrying -> BodyExecutionPolicyShape.RETRYING
             is Parallel -> BodyExecutionPolicyShape.PARALLEL
@@ -107,6 +176,7 @@ sealed interface BodyExecutionPolicy {
 */
 enum class BodyExecutionPolicyShape {
     SEQUENTIAL,
+    FOLDING,
     SCOPED,
     RETRYING,
     PARALLEL,
@@ -118,18 +188,15 @@ enum class BodyExecutionPolicyShape {
  * [BodyExecutionPolicy] says WHAT shape the body has. It deliberately cannot say
  * WHO executes it, and the two do not agree today:
  * ```text
- * core.catchError   Sequential  -> legacy linear workflow-control rewrite
- * core.dir          Scoped(CWD) -> canonical durable body engine
- * core.withEnv      Scoped(ENV) -> canonical durable body engine
+ * core.catchError   Folding(CONTAINMENT) -> canonical durable body engine
+ * core.dir          Scoped(CWD)          -> canonical durable body engine
+ * core.withEnv      Scoped(ENV)          -> canonical durable body engine
  * ```
 
  * `Sequential` is not the discriminator, because the canonical engine can run a
- * plain sequential body too. What differs is that `catchError` / `warnError`
- * semantics (containment of a failing body, output decoration) live in the legacy
- * workflow-control rewrite and their nodes are refused by the canonical
- * eligibility gate. Claiming `Scoped`/`Retrying` ownership for them, or inferring
- * ownership from the shape, would silently route them to an engine that does not
- * implement their semantics.
+ * plain sequential body too. What differs is the FOLD: the containment of a
+ * failing body and the output decoration are executed by the canonical engine as
+ * a declared [BodyExecutionPolicy.Folding], not by a compiler-side projection.
  * This enum is therefore the declared migration frontier of body execution: the
  * canonical eligible body set is derived from it (never from a hard-coded list of
  * StepKeys), and `LEGACY_LINEAR` counts what is left to migrate.
@@ -157,6 +224,12 @@ enum class BodyExecutionOwner {
      * workflow-control rewrite. A Step declaring this is NOT eligible for the
      * canonical durable runner and must be rejected there before any effect,
      * never executed as an empty shell.
+     *
+     * No core body declares this owner today: the control scopes that used to
+     * declare it now declare a [BodyExecutionPolicy.Folding] and are executed by
+     * the canonical engine. The case stays published because it is the declared
+     * frontier — a body whose semantics no engine implements yet still has to be
+     * able to say so, and it is refused rather than executed as an empty shell.
 */
     LEGACY_LINEAR,
 
@@ -319,6 +392,8 @@ data class BodyExecutionSupport(val shapes: Set<BodyExecutionPolicyShape>) {
          * `PARALLEL` is deliberately absent: branch fan-out is still executed as a plain
          * sequence, so a Step declaring `Parallel` is rejected fail-closed rather than
          * Silently run sequentially (owns the fan-out)
+         * `FOLDING` is deliberately absent too: an engine that does not implement the
+         * fold must refuse a folding body rather than run it and drop the effect.
 */
         val SCOPED_SEQUENTIAL_RETRYING: BodyExecutionSupport =
             BodyExecutionSupport(
@@ -326,6 +401,27 @@ data class BodyExecutionSupport(val shapes: Set<BodyExecutionPolicyShape>) {
                     BodyExecutionPolicyShape.SEQUENTIAL,
                     BodyExecutionPolicyShape.SCOPED,
                     BodyExecutionPolicyShape.RETRYING,
+                ),
+            )
+
+        /**
+         * The engine support of the canonical durable body engine: everything
+         * [SCOPED_SEQUENTIAL_RETRYING] admits, plus the fold of a body's typed
+         * outcome.
+         *
+         * This is a SEPARATE constant rather than an addition to the one above
+         * because that one is a published name whose own text enumerates the
+         * shapes it admits: widening it would make the name say less than the
+         * value does. The narrower constant stays published and truthful — it
+         * describes an engine build that cannot fold.
+        */
+        val SCOPED_SEQUENTIAL_RETRYING_FOLDING: BodyExecutionSupport =
+            BodyExecutionSupport(
+                setOf(
+                    BodyExecutionPolicyShape.SEQUENTIAL,
+                    BodyExecutionPolicyShape.SCOPED,
+                    BodyExecutionPolicyShape.RETRYING,
+                    BodyExecutionPolicyShape.FOLDING,
                 ),
             )
 
@@ -563,9 +659,13 @@ class RegistryBodyPolicyResolver(
  *  2. A [BodyExecutionPolicy.Retrying] declaration requires ZERO_OR_MORE.
  *  3. A [BodyExecutionPolicy.Scoped] declaration requires the descriptor to
  *     declare the matching [ContextKind].
+ *  4. A [BodyExecutionPolicy.Folding] declaration requires the descriptor to
+ *     declare the context kind the fold owns.
  * The converse of (3) is deliberately NOT checked: `CANCELLATION` is shared by
- * `core.timeout` (`Scoped(Deadline)`) and `core.catchError` (`Sequential`), so a
- * declared context kind does not determine the execution shape.
+ * `core.timeout` (`Scoped(Deadline)`) and `core.catchError`
+ * (`Folding(CONTAINMENT)`), so a declared context kind does not determine the
+ * execution shape. The converse of (4) is not checked either, for the same
+ * reason: `CANCELLATION` is shared by those two.
 */
 private fun incoherenceOf(
     body: StepBody.Declared,
@@ -586,6 +686,13 @@ private fun incoherenceOf(
         val required = declared.projection.requiredContextKind ?: return null
         if (body.introduces != required) {
             return "declared Scoped(${declared.projection}) requires introduces=$required " +
+                "but the body declares ${body.introduces}"
+        }
+    }
+    if (declared is BodyExecutionPolicy.Folding) {
+        val required = declared.fold.requiredContextKind
+        if (body.introduces != required) {
+            return "declared Folding(${declared.fold}) requires introduces=$required " +
                 "but the body declares ${body.introduces}"
         }
     }

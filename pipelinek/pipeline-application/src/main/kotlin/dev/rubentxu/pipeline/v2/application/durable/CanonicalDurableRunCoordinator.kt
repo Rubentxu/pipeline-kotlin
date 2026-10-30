@@ -170,10 +170,14 @@ internal class CanonicalDurableRunCoordinator(
     //   2. the canonical descriptor table (StepDescriptorRegistry.standard) — the core
     //      block Steps without a registered handler (dir/withEnv/timeout/retry/...).
     private val bodyPolicyResolver: BodyPolicyResolver = run {
-        val canonical = StepDescriptorRegistry.standard().bodyPolicyResolver(BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING)
+        // FOLDING is admitted: the canonical body engine implements the two folds
+        // (containment and output decoration), so a control scope is executed by the
+        // engine that owns its semantics instead of by a translated artifact.
+        val canonical = StepDescriptorRegistry.standard()
+            .bodyPolicyResolver(BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING_FOLDING)
         val fromRegistry = RegistryBodyPolicyResolver(
             registry = stepRegistry,
-            support = BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING,
+            support = BodyExecutionSupport.SCOPED_SEQUENTIAL_RETRYING_FOLDING,
         )
         BodyPolicyResolver { key ->
             when (val resolved = fromRegistry.resolve(key)) {
@@ -305,7 +309,6 @@ internal class CanonicalDurableRunCoordinator(
     // cohesion, so the whole closed cycle moves together and the coordinator keeps only the
     // run's own control flow.
     private val stepDispatch = StepDispatchEngine(
-        clock = clock,
         dispatchPreparation = dispatchPreparation,
         typedInputPreparation = typedInputPreparation,
         stepExecutor = stepExecutor,

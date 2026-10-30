@@ -1,9 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
-import dev.rubentxu.pipeline.v2.domain.CatchErrorBuildResult
 import dev.rubentxu.pipeline.v2.domain.CompiledPipeline
-import dev.rubentxu.pipeline.v2.domain.ExecutionContext
-import dev.rubentxu.pipeline.v2.domain.PipelineFailure
 import dev.rubentxu.pipeline.v2.domain.StepOutcome
 import dev.rubentxu.pipeline.v2.domain.RunId
 import dev.rubentxu.pipeline.v2.domain.RunOutcome
@@ -109,61 +106,27 @@ internal class RunLifecycleEngine(private val eventSink: EventSink) {
         )
     }
 
-    fun decideStageContinuation(
-        outcome: StepOutcome,
-        stageName: String,
-        runIdValue: String,
-        executionContext: ExecutionContext,
-    ): CanonicalContinuation = when (outcome) {
+    /**
+     * The stage continuation rule.
+     *
+     * A scope that CONTAINS a failure decides it, and that decision IS the scope's
+     * own outcome: a `catchError` that absorbs the failure reports Success or
+     * Unstable, so the stage never receives a Failure it would have to interpret.
+     * What arrives here is therefore an outcome the stage reads directly — a
+     * Success continues, an Unstable continues and degrades the stage, and a
+     * Failure has no suppressor left and aborts.
+     *
+     * The walk this used to perform — over the context overlay the scope had
+     * pushed, publishing a `CatchErrorTriggered` per frame — is GONE, and with it
+     * the SECOND authority on what a control scope means. The scope's own fold
+     * ([BodyOutcomeFolder]) owns that decision now, inside the scope, and it
+     * publishes what it saw. A stage that received the scope's outcome cannot
+     * disagree with the scope about it.
+     */
+    fun decideStageContinuation(outcome: StepOutcome): CanonicalContinuation = when (outcome) {
         StepOutcome.Success -> CanonicalContinuation.Continue
         StepOutcome.Unstable -> CanonicalContinuation.ContinueUnstable
-        is StepOutcome.Failure -> walkCatchErrorChain(outcome.failure, stageName, runIdValue, executionContext)
-    }
-
-    private fun walkCatchErrorChain(
-        failure: PipelineFailure,
-        stageName: String,
-        runIdValue: String,
-        executionContext: ExecutionContext,
-    ): CanonicalContinuation {
-        // Identical walk over the pure trailing chain (outermost-first fold order).
-        val chain = executionContext.trailingCatchErrorChain()
-        for (overlay in chain) {
-            // Parsed once at the decision, over the closed vocabulary, never with a
-            // default: the previous `else -> ContinueUnstable` read UNSTABLE for every token
-            // that was not FAILURE or SUCCESS, so a typo in the pipeline's own error handling
-            // suppressed the failure it was installed to catch.
-            // Removed the parse. `overlay.buildResult` IS the vocabulary now, so the
-            // `null` arm this used to need — an unrecognised token, aborted with SCHEMA — is
-            // no longer reachable, and that is the point: the illegal state became
-            // unrepresentable rather than handled. Refusal did not disappear, it moved to
-            // the three places where untrusted text still enters: StructuralOverlayProjection
-            // (unknown token -> no overlay), CatchErrorBuildResult.Serializer (unknown token
-            // -> SerializationException) and the event decoder (unknown token -> record
-            // refused). None of them can reach this walk with a value outside the type.
-            val declared = overlay.buildResult
-            eventSink.append(
-                dev.rubentxu.pipeline.v2.events.CatchErrorTriggered(
-                    eventId = UUID.randomUUID().toString(),
-                    runId = runIdValue,
-                    sequence = 0L,
-                    occurredAt = Instant.now(),
-                    stageName = stageName,
-                    // Nullable because ABSENCE is a real historical encoding on this field,
-                    // not because this producer can fail to classify: it cannot any more.
-                    buildResult = declared,
-                    stageResult = overlay.stageResult,
-                    message = overlay.message,
-                ),
-            )
-            when (declared) {
-                CatchErrorBuildResult.Failure -> Unit // re-throw outward to the next enclosing catch scope
-                CatchErrorBuildResult.Success -> return CanonicalContinuation.Continue
-                CatchErrorBuildResult.Unstable -> return CanonicalContinuation.ContinueUnstable
-            }
-        }
-        // Exhausted enclosing catch scopes (or no catch overlay) without a suppressor: abort.
-        return CanonicalContinuation.Abort(failure)
+        is StepOutcome.Failure -> CanonicalContinuation.Abort(outcome.failure)
     }
 
     /**

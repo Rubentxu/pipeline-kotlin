@@ -52,6 +52,33 @@ class ShellProcessLauncherTest {
     }
 
     @Test
+    fun `the launch demands the tool the child needs`() {
+        val argv = ShellProcessLauncher.shellLaunchArgv(protocol.wrapperFile)
+
+        // The child has to be in a session of its own, and the tool that gives it one is named in
+        // the argv. A host without that tool cannot start the child AT ALL, and the launch
+        // refuses with its own refusal: there is nothing else in the argv that could succeed and
+        // hide the absence.
+        assertEquals(
+            "setsid",
+            argv.first(),
+            "the argv does not demand the tool the child needs",
+        )
+    }
+
+    @Test
+    fun `a launch that could not start the child refuses with the launch's own refusal`() {
+        // The refusal names the operation and says that the launch failed; the CAUSE carries the
+        // host's own refusal — the tool that is not there. Its identity is a value, so it can be
+        // checked without a host that cannot launch a child.
+        assertEquals(
+            "Failed to launch durable shell for op-42",
+            ShellProcessLauncher.launchRefusalMessage("op-42"),
+            "the launch's refusal is not the one the operator reads",
+        )
+    }
+
+    @Test
     fun `the composition pumps the child's bytes when it has a redactor`() {
         assertTrue(
             ShellProcessLauncher.pumpsThroughJvm(hasRedactor = true, channelSinkCount = 0),

@@ -56,6 +56,8 @@ RULES: list[tuple[str, str, str]] = [
     # truth -- the same reason the two release checks are named above.
     ("verify", "source guard", "scripts/check-comment-provenance.py"),
     ("verify", "source guard", "scripts/check-process-exits.py"),
+    ("verify", "source guard", "scripts/check-scenario-process-creation.py"),
+    ("verify", "source guard", "scripts/check-durable-shell-cost.py"),
     # The per-task clock the gate reads to report what each part of the build
     # cost. It produces no artifact and ships nothing, so it is the numerator
     # and not the denominator; the catch-all rule below would otherwise call it

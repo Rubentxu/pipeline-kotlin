@@ -111,7 +111,7 @@ class ShellTerminalDecisionTest {
         // outcome could not be established, and it does NOT carry an exit code that nobody
         // observed.
         val terminal = decision().forPollOutcome(
-            outcome = ShellPollOutcome.WrapperEnded,
+            outcome = ShellPollOutcome.WrapperEnded(exitCode = null),
             capturedStdout = null,
         )
 
@@ -123,6 +123,27 @@ class ShellTerminalDecisionTest {
         assertTrue(
             lost.failure.retryable,
             "a lost execution is not retryable, and a retry is the caller's answer to it",
+        )
+    }
+
+    @Test
+    fun `the code the wrapper left with is the reason of the loss`() {
+        // The wrapper is the process that failed, so its code is the reason. A reason that said
+        // only "the wrapper ended" left the reader to guess between a script that could not be
+        // found and a host that refused to run it.
+        val terminal = decision().forPollOutcome(
+            outcome = ShellPollOutcome.WrapperEnded(exitCode = 3),
+            capturedStdout = null,
+        )
+
+        val lost = assertInstanceOf(
+            DurableTaskTerminal.Lost::class.java,
+            terminal,
+            "a wrapper that ended with a code was not published as a loss",
+        )
+        assertTrue(
+            lost.failure.message.contains("3"),
+            "the reason of the loss does not name the code the wrapper left with: ${lost.failure.message}",
         )
     }
 

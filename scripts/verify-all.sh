@@ -688,7 +688,7 @@ log_dir="$cycle_dir/logs"
 # 1. This run's own temporary directory, the relocated one. Everything the
 #    product writes lands there, because the product's JVM is given
 #    -Djava.io.tmpdir pointing at it -- and the gate PROVES that, per run, by
-#    asking the product's own JVM which directory it uses (stage 1g). What
+#    asking the product's own JVM which directory it uses (stage 1h). What
 #    survives there when the run is over is this run's residue, with no
 #    ambiguity at all: it FAILS the run.
 #
@@ -1001,6 +1001,27 @@ if want_stage 1; then
         || { cat "$log_dir/scenario-process.out" >&2; fail "stage 1e: a scenario creates a process"; }
     echo "    ok in $(elapsed "$stage_started_at")s"
 
+    # --- Stage 1f: the durable path spends no probe and no fixed wait --------
+    # The durable shell used to establish the child's detachment with an
+    # auxiliary process whose only object was to ask the platform whether
+    # `setsid` was there, and then with a fixed hundred milliseconds whose
+    # only object was to let the answer be inferred from a file's absence.
+    # Both cost every execution a process and a wait, and the wait could
+    # report a wrapper that was merely slow to start as a wrapper that never
+    # started at all.
+    #
+    # The guard is a census, not a linter: every process the durable path
+    # creates and every wait it makes is DECLARED, with the purpose it
+    # serves. A cost that is not in the table fails, a row that the code no
+    # longer has fails too, and a cost whose purpose is a probe or a fixed
+    # wait is refused by name. The counts are taken over the code of the live
+    # path, which is the only place where "there are none" is a fact.
+    log "stage 1f/4  the durable path's costs"
+    stage_started_at=$(date +%s)
+    python3 scripts/check-durable-shell-cost.py >"$log_dir/durable-cost.out" 2>&1 \
+        || { cat "$log_dir/durable-cost.out" >&2; fail "stage 1f: the durable path spends a probe or a fixed wait"; }
+    echo "    ok in $(elapsed "$stage_started_at")s"
+
     # --- Stage 1f: compile, static analysis, API compatibility, distribution --
     # One Gradle invocation, so the distribution is assembled exactly once and
     # the tests below reuse the same compiled classes rather than recompiling.
@@ -1032,7 +1053,7 @@ if want_stage 1; then
     # distribution". It travels, inside the application's `lib/`. What it is not
     # is a PUBLISHED SDK artifact — an external consumer compiles against the
     # ports in `:pipeline-runtime-api`, never against these adapters.
-    log "stage 1f/4  compile + detekt + detektTest + apiCheck + installDist"
+    log "stage 1g/4  compile + detekt + detektTest + apiCheck + installDist"
     stage_started_at=$(date +%s)
     # The per-task clock rides along with the build. Without it this stage has
     # ONE number for four different works, and the reader cannot tell which of
@@ -1049,9 +1070,9 @@ if want_stage 1; then
         :pipeline-runtime:compileKotlin \
         :pipeline-application:installDist \
         > "$log_dir/stage1.log" 2>&1 \
-        || { tail -40 "$log_dir/stage1.log" >&2; fail "stage 1f (the tail of the stage log is above)"; }
+        || { tail -40 "$log_dir/stage1.log" >&2; fail "stage 1g (the tail of the stage log is above)"; }
     build_wall_ms=$(( $(now_ms) - build_started_ms ))
-    read_timings "$log_dir/stage1.log" "$build_wall_ms" "stage 1f"
+    read_timings "$log_dir/stage1.log" "$build_wall_ms" "stage 1g"
     # The four works this stage does are what the gate exists to certify, so
     # each one is a part the census declares mandatory: if the clock did not
     # measure it, the census is incomplete and the run is not a green gate.
@@ -1069,7 +1090,7 @@ if want_stage 1; then
     # and it is invisible unless BOTH are measured. The third number is the
     # price of starting the product at all, which every invocation pays and
     # which no other number in this report contains.
-    log "stage 1g/4  product calibration (cold script, warm script, startup)"
+    log "stage 1h/4  product calibration (cold script, warm script, startup)"
     stage_started_at=$(date +%s)
     calib_dir="$cycle_dir/calibration"
     mkdir -p "$calib_dir/cache"
@@ -1084,7 +1105,7 @@ pipeline {
 CALIBRATION_SCRIPT
     dist_bin="$repo_root/pipelinek/pipeline-application/build/install/pipelinek/bin/pipelinek"
     if [[ ! -x "$dist_bin" ]]; then
-        fail "stage 1g: the distribution this gate just assembled is not there: $dist_bin"
+        fail "stage 1h: the distribution this gate just assembled is not there: $dist_bin"
     fi
     # The script cache is the product's own and it is off by default. Turning
     # it on HERE is what makes the two numbers comparable: the first pass has
@@ -1099,7 +1120,7 @@ CALIBRATION_SCRIPT
 
     cold_started_ms=$(now_ms)
     "$dist_bin" validate "$calib_dir/calibration.pipeline.kts" > "$calib_dir/cold.log" 2>&1 \
-        || { tail -20 "$calib_dir/cold.log" >&2; fail "stage 1g: the first compilation of a script did not succeed"; }
+        || { tail -20 "$calib_dir/cold.log" >&2; fail "stage 1h: the first compilation of a script did not succeed"; }
     cold_ms=$(( $(now_ms) - cold_started_ms ))
 
     # The second pass is only warm if it did NOT compile the script again. The
@@ -1108,16 +1129,16 @@ CALIBRATION_SCRIPT
     # after it: same name, same size, same moment. A second pass that rewrote
     # it would be a second cold pass wearing a warm name.
     if [[ -z "$(find "$calib_dir/cache" -type f -print -quit 2>/dev/null)" ]]; then
-        fail "stage 1g: the first pass left no compiled bytes, so there is nothing for a second pass to reuse"
+        fail "stage 1h: the first pass left no compiled bytes, so there is nothing for a second pass to reuse"
     fi
     cache_before="$(find "$calib_dir/cache" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | md5sum)"
     warm_started_ms=$(now_ms)
     "$dist_bin" validate "$calib_dir/calibration.pipeline.kts" > "$calib_dir/warm.log" 2>&1 \
-        || { tail -20 "$calib_dir/warm.log" >&2; fail "stage 1g: the second compilation of a script did not succeed"; }
+        || { tail -20 "$calib_dir/warm.log" >&2; fail "stage 1h: the second compilation of a script did not succeed"; }
     warm_ms=$(( $(now_ms) - warm_started_ms ))
     cache_after="$(find "$calib_dir/cache" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | md5sum)"
     if [[ "$cache_before" != "$cache_after" ]]; then
-        fail "stage 1g: the second pass rewrote the compiled bytes, so it was not a warm pass"
+        fail "stage 1h: the second pass rewrote the compiled bytes, so it was not a warm pass"
     fi
 
     # The price of starting the product. Three runs, and the MEDIAN, because
@@ -1128,7 +1149,7 @@ CALIBRATION_SCRIPT
     for startup_index in 1 2 3; do
         startup_started_ms=$(now_ms)
         "$dist_bin" version > "$calib_dir/version-$startup_index.log" 2>&1 \
-            || fail "stage 1g: the product did not report its version"
+            || fail "stage 1h: the product did not report its version"
         startup_runs+=("$(( $(now_ms) - startup_started_ms ))")
     done
     startup_median="$(printf '%s\n' "${startup_runs[@]}" | sort -n | sed -n '2p')"
@@ -1149,7 +1170,7 @@ CALIBRATION_SCRIPT
     proof_log="$calib_dir/tmpdir-proof.log"
     JAVA_OPTS="${JAVA_OPTS:-} -XshowSettings:properties" "$dist_bin" version \
         > "$proof_log" 2>&1 \
-        || { tail -20 "$proof_log" >&2; fail "stage 1g: the product did not report its version while proving its temporary directory"; }
+        || { tail -20 "$proof_log" >&2; fail "stage 1h: the product did not report its version while proving its temporary directory"; }
     product_tmpdir="$(LC_ALL=C awk -F' = ' '/^[[:space:]]*java\.io\.tmpdir = /{ print $2; exit }' "$proof_log")"
     if [[ "$product_tmpdir" == "$cycle_dir/tmp" ]]; then
         relocation_proved=1

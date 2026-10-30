@@ -23,13 +23,36 @@ import java.io.Closeable
  *
  * ## Why it carries only what the caller needs
  *
- * The handle to wait on, the pumps to drain, the sinks to read refusals from, and the
- * warm-up descriptors to close when the child is done. The agent's own bookkeeping stays
- * inside the executor, which is the only thing that can act on it.
+ * The handle to kill with, the reader of the code the child left with, the pumps to drain, the
+ * sinks to read refusals from, and the warm-up descriptors to close when the child is done. The
+ * agent's own bookkeeping stays inside the executor, which is the only thing that can act on it.
+ *
+ * ## Why the child is carried twice
+ *
+ * The handle and the reader are the SAME child seen two ways, and each of them answers a
+ * question the other cannot:
+ *
+ *  - the HANDLE is the identity and the kill. It is captured while the child is alive, because
+ *    a handle obtained from a dead child is not obtainable at all: the platform looks the pid up
+ *    among the live processes and finds nothing there.
+ *  - the READER is the outcome. The exit code of a child that ended is reported by the platform
+ *    to the object that started it, and to nothing else, so the launch closes over the child and
+ *    hands over the reading of its code.
+ *
+ * Neither is derived from the other, and neither is a copy: the child is one process, and these
+ * are the two views of it that the kill and the wait need.
  */
 internal class LaunchedShell(
-    /** The child, for the wait and for the kill. */
+    /** The child, for the kill: its identity and the signal the kill sends. */
     val handle: ProcessHandle,
+    /**
+     * The code the child left with, for the wait that reports the child's own reason.
+     *
+     * It is read from the object the platform reports it to, and from nowhere else: a handle
+     * says whether a process is alive and never what it exited with, so a reason read from a
+     * handle would have to be invented.
+     */
+    val exitCode: ShellExitCode,
     /** The transcript pumps THIS launch started. Empty when the channel was not pumped. */
     val transcriptPumps: List<TranscriptPumpView>,
     /** The sinks those pumps wrote into. Their refusals are THIS launch's refusals. */

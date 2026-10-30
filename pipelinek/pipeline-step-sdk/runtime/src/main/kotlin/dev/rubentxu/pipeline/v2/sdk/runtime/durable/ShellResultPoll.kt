@@ -16,7 +16,8 @@ import java.nio.file.Path
  * ## The facts that end a wait
  *
  * - the wrapper PUBLISHED a result: `result.txt` holds an exit code;
- * - the wrapper ENDED without publishing one: the cookie is gone and no result was published;
+ * - the wrapper ENDED without publishing one: the wrapper's process is gone and no result was
+ *   published;
  * - the execution EXPIRED: the watch published it, or the `timeout.flag` it writes before the
  *   kill exists;
  * - the CEILING elapsed: the deadline and the grace the kill needs are over, and nothing was
@@ -28,11 +29,21 @@ import java.nio.file.Path
  * ```text
  * echo $EXIT_CODE > result.txt.tmp ; mv result.txt.tmp result.txt ; rm -f .cookie
  * ```
- * So a cookie that is gone with no result published means the wrapper never reached the
- * publication: it was killed, or it died. Either way the exit code does not exist, and the only
- * honest terminal for an exit code that does not exist is the one that says the outcome could not
- * be established. It is NOT an exit code of -1: -1 is a number the wrapper never wrote, and
- * publishing it as if it had been observed is the fabrication this class exists to prevent.
+ * So a wrapper that is gone with no result published never reached the publication: it was
+ * killed, or it died. Either way the exit code does not exist, and the only honest terminal for
+ * an exit code that does not exist is the one that says the outcome could not be established. It
+ * is NOT an exit code of -1: -1 is a number the wrapper never wrote, and publishing it as if it
+ * had been observed is the fabrication this class exists to prevent.
+ *
+ * The wrapper's own exit code, when the platform reported one, travels with that ending: the
+ * process that failed is the one that knows why it failed.
+ *
+ * ## Where the wrapper's state comes from
+ *
+ * From the two facts the launch holds, and from nothing else: the cookie the wrapper publishes,
+ * and the child the launcher started — its handle for the liveness, and its reader for the code
+ * it left with. The reading is [ShellAvailability]'s rule, and the wait never infers the
+ * wrapper's state from the absence of a file.
  *
  * ## Why an execution with no deadline has no ceiling
  *
@@ -55,16 +66,23 @@ internal class ShellResultPoll(
      *
      * @param ceilingNanos the instant the wait gives up, on the MONOTONIC clock, or null when the
      *   execution has no deadline and therefore no ceiling.
+     * @param launch the launch that started the wrapper. The poll cannot do without it: the
+     *   wrapper's liveness and the code it left with are two of the facts it reads, and a wait
+     *   that cannot see the wrapper cannot say that the wrapper ended.
      * @param expired the authority on "this execution expired", asked once per iteration: the
      *   poll must not keep waiting on an execution that already expired, and the authority is the
      *   only thing that can say so.
      * @return what ended the wait.
      */
-    fun await(ceilingNanos: Long?, expired: () -> Boolean): ShellPollOutcome {
+    fun await(
+        ceilingNanos: Long?,
+        launch: LaunchedShell,
+        expired: () -> Boolean,
+    ): ShellPollOutcome {
         while (true) {
             val outcome = shellPollOutcome(
                 result = readResult(),
-                wrapperAlive = Files.exists(protocol.cookieFile),
+                availability = availability(launch),
                 expired = expired(),
                 ceilingReached = ceilingNanos != null && System.nanoTime() >= ceilingNanos,
             )
@@ -73,6 +91,20 @@ internal class ShellResultPoll(
             }
             Thread.sleep(pollIntervalMs)
         }
+    }
+
+    /**
+     * The wrapper's state, read from the two facts the launch holds.
+     *
+     * The cookie says the wrapper published itself, and the launch says whether the wrapper is
+     * still there and what code it left with. Both are read, and neither is inferred from the
+     * absence of the other.
+     */
+    private fun availability(launch: LaunchedShell): ShellAvailability {
+        val identityPublished = Files.exists(protocol.cookieFile)
+        val running = launch.handle.isAlive
+        val exitCode = if (running) null else launch.exitCode.read()
+        return shellAvailability(identityPublished, !running, exitCode)
     }
 
     /**
@@ -129,8 +161,14 @@ internal sealed interface ShellPollOutcome {
     /** The result file exists and does not hold an exit code. */
     data object ResultNotAnExitCode : ShellPollOutcome
 
-    /** The wrapper ended without publishing a result. */
-    data object WrapperEnded : ShellPollOutcome
+    /**
+     * The wrapper ended without publishing a result.
+     *
+     * @param exitCode the code the wrapper exited with, or null when the platform did not report
+     *   one. It is the wrapper's own reason for failing, and it is carried rather than
+     *   reconstructed.
+     */
+    data class WrapperEnded(val exitCode: Int?) : ShellPollOutcome
 
     /** The ceiling elapsed with nothing published. */
     data object CeilingElapsed : ShellPollOutcome
@@ -154,19 +192,25 @@ internal sealed interface ShellPollOutcome {
  * 2. the published result next: it is the strongest fact available;
  * 3. a result that is not an exit code next: the protocol's promise is broken and the outcome
  *    cannot be established;
- * 4. the wrapper's absence next: it ended without publishing, so there is no exit code;
+ * 4. the wrapper's ending next: it is gone and published nothing, so there is no exit code, and
+ *    the code it left with is the reason;
  * 5. the ceiling last: it says the wait is over, not what the execution did.
+ *
+ * A wrapper that is RUNNING — with or without its cookie — keeps the wait open. The cookie's
+ * absence is not the wrapper's absence: a wrapper that had not published its identity yet is
+ * starting, and reading that as an ending reported a wrapper that was on its way as one that
+ * never arrived.
  */
 internal fun shellPollOutcome(
     result: ShellResultRead,
-    wrapperAlive: Boolean,
+    availability: ShellAvailability,
     expired: Boolean,
     ceilingReached: Boolean,
 ): ShellPollOutcome = when {
     expired -> ShellPollOutcome.Expired
     result is ShellResultRead.Code -> ShellPollOutcome.Published(result.exitCode)
     result is ShellResultRead.NotAnExitCode -> ShellPollOutcome.ResultNotAnExitCode
-    !wrapperAlive -> ShellPollOutcome.WrapperEnded
+    availability is ShellAvailability.Ended -> ShellPollOutcome.WrapperEnded(availability.exitCode)
     ceilingReached -> ShellPollOutcome.CeilingElapsed
     else -> ShellPollOutcome.KeepWaiting
 }

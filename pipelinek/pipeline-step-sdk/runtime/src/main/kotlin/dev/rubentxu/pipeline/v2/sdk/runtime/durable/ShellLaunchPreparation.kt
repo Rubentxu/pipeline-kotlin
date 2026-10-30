@@ -120,12 +120,13 @@ internal class ShellLaunchPreparation(
             append("RESULT_FILE='$resultFileEscaped'; ")
             append("RESULT_TMP='$resultTmpEscaped'; ")
             append("CHECK_INTERVAL=$heartbeatCheckInterval; ")
-            // The cookie file holds the heartbeat's process id, and it is also what tells the
-            // watchdog that the wrapper's machinery is alive.
+            // The cookie holds the WRAPPER's own pid: `$$` is this shell's pid, and this shell is
+            // the process the launcher keeps. Its presence says the wrapper is up, and its
+            // removal at the end says the wrapper published its result.
             append("echo \$\$ > \"\$COOKIE_FILE\"; ")
-            // The heartbeat's process id is captured so it can be killed explicitly at exit: when
-            // the transcript is piped, the heartbeat subshell holds the pipe's write end, and
-            // leaving it running delays the end of the stream by up to the check interval.
+            // The pid of the last background job is captured so it can be killed at exit. The
+            // wrapper starts no background job before this point, so the capture is empty and the
+            // kill at exit is a silenced no-op.
             append("HB_PID=\$!; ")
             // The user's script runs by path. Its content is never in the arguments.
             append("'$scriptPathEscaped'; ")

@@ -195,40 +195,6 @@ class DurableShellExecutor {
         }
     }
 
-    fun detach(process: ProcessHandle, controlDir: Path) {
-        requireLinuxHost()
-
-        val protocol = ShellProtocolLayout(controlDir)
-        val cookieFile = protocol.cookieFile
-        val resultFile = protocol.resultFile
-
-        // The wrapper handles setsid internally via:
-        // `nohup /bin/sh -c '...' >&- 2>&- &`
-        // This detaches from the JVM process group.
-
-        // For safety, also use ProcessBuilder to explicitly setsid if available
-        try {
-            ProcessBuilder("setsid", "-f", "true").start().waitFor()
-        } catch (_: Exception) {
-            // setsid may not be available; wrapper handles detachment
-        }
-
-        // Wait a brief moment for the wrapper to initialize
-        Thread.sleep(100)
-
-        // Check if script already finished (for fast-executing scripts)
-        // If result.txt exists, the script completed and we don't need to check cookie
-        if (Files.exists(resultFile)) {
-            return
-        }
-
-        // Verify cookie exists - indicates the wrapper process is still running
-        // If cookie doesn't exist and result doesn't exist, the wrapper failed to start
-        if (!Files.exists(cookieFile)) {
-            throw IllegalStateException("Cookie file not created; wrapper may have failed to start")
-        }
-    }
-
     fun pollResult(controlDir: Path, timeoutMs: Long): Int? {
         val resultFile = ShellProtocolLayout(controlDir).resultFile
         val deadline = if (timeoutMs > 0) System.currentTimeMillis() + timeoutMs else Long.MAX_VALUE
@@ -473,12 +439,12 @@ class DurableShellExecutor {
             process = shell.handle
             launched = true
 
-            // Step 2: Detach
-            detach(process, controlDir)
-
-            // Step 3: Arm the watch and poll for the result.
-            // The watch is armed AFTER the detach: it asks for the child's death, and the child
-            // must already be detached for that to mean anything.
+            // Step 2: Arm the watch and poll for the result.
+            // The watch is armed right after the launch: it asks for the child's death, and the
+            // child is already detached, because the launcher started it with `setsid` and that
+            // put it in its own session. There is no detachment step of its own to wait for, and
+            // no probe to run: the launch's own argv already demanded the tool the detachment
+            // needs, and a host without it fails the launch with the launch's own refusal.
             watchdog.arm(process)
 
             // The poll's ceiling: the execution's own time plus the grace the kill needs. An
@@ -488,7 +454,10 @@ class DurableShellExecutor {
             val ceilingNanos = watchdog.pollDeadlineMs()?.let { millis ->
                 System.nanoTime() + millis * ShellWatchdog.NANOS_PER_MILLI
             }
-            val polled = ShellResultPoll(controlDir, pollIntervalMs).await(ceilingNanos) {
+            // The poll reads the wrapper's state from the two facts the launch holds: the cookie
+            // it publishes and the child this launch started. The child is the wrapper itself, so
+            // its death and its exit code are the wrapper's own.
+            val polled = ShellResultPoll(controlDir, pollIntervalMs).await(ceilingNanos, shell) {
                 watchdog.timedOut()
             }
 

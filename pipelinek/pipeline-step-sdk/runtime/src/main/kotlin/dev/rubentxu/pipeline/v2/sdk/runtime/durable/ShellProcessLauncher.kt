@@ -117,9 +117,12 @@ internal class ShellProcessLauncher(
 
         // Jenkins-faithful launch: setsid creates a new session+process group.
         // argv = [setsid, bash, wrapper.sh] — no -c, no inline content in argv.
-        // setsid forks; the parent exits immediately; the child (bash) becomes the session leader.
-        // The ProcessHandle therefore points at the setsid parent, which exits quickly, and the
-        // real target is found by the cookie scan.
+        // setsid EXECS in place when its caller is not already a process group leader, and a
+        // JVM's child never is one: it inherits the JVM's group and receives a fresh pid, so it
+        // can never lead that group. The ProcessHandle therefore IS the wrapper, which is the
+        // session leader, and the wrapper's death and its exit code are the wrapper's own.
+        // The argv already demands the tool the detachment needs, so a host without it fails
+        // this launch with this launch's own refusal, and never reaches a probe.
         val builder = ProcessBuilder(shellLaunchArgv(protocol.wrapperFile))
         builder.directory((request.workspaceRoot ?: controlDir).toFile())
 
@@ -149,10 +152,10 @@ internal class ShellProcessLauncher(
             agentOwns = agentOwns,
         )
 
-        // Pre-create console.log so the wrapper heartbeat `touch` and external observers always see
-        // the transcript file, and so a fallback sink owns the ONLY writer handle from the first
-        // byte. When a composed sink exists this file is not written at all, and creating it would
-        // only leave an empty second copy of a transcript that lives somewhere else.
+        // Pre-create console.log so external observers always see the transcript file, and so a
+        // fallback sink owns the ONLY writer handle from the first byte. When a composed sink
+        // exists this file is not written at all, and creating it would only leave an empty
+        // second copy of a transcript that lives somewhere else.
         if (!pumpedThroughJvm && !request.captureStdout) {
             Files.newOutputStream(logFile).use { /* create/truncate */ }
         }
@@ -192,6 +195,7 @@ internal class ShellProcessLauncher(
 
             LaunchedShell(
                 handle = process.toHandle(),
+                exitCode = ShellExitCode { process.exitCodeOrNull() },
                 transcriptPumps = transcriptPumps,
                 transcriptSinks = transcriptSinks,
                 agentWarmup = warmup,
@@ -202,7 +206,7 @@ internal class ShellProcessLauncher(
             // them: the caller never receives a launch, so it cannot close them either, and the
             // agent would wait for an EOF that never comes.
             warmup.forEach { runCatching { it.close() } }
-            throw IllegalStateException("Failed to launch durable shell for $opId", e)
+            throw IllegalStateException(launchRefusalMessage(opId), e)
         }
     }
 
@@ -311,6 +315,18 @@ internal class ShellProcessLauncher(
          */
         fun shellLaunchArgv(wrapperFile: Path): List<String> =
             listOf("setsid", "bash", wrapperFile.toString())
+
+        /**
+         * The refusal a launch that could not start the child publishes.
+         *
+         * It names the operation and says that the launch failed, and nothing more: the CAUSE
+         * carries the host's own refusal — the tool that is not there, the shell that is not
+         * there — and the cause is what a reader needs. The message is a value so that the
+         * refusal's identity is checkable without launching a child on a host that cannot launch
+         * one.
+         */
+        fun launchRefusalMessage(opId: String): String =
+            "Failed to launch durable shell for $opId"
 
         /**
          * Whether the child's bytes travel through the JVM.

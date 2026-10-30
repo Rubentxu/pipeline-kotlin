@@ -254,6 +254,9 @@ class TranscriptDrainTest {
         sinks: List<ProcessOutputSink>,
     ) = LaunchedShell(
         handle = ProcessHandle.current(),
+        // The drain's verdict never reads the child's code: the launch is a value the test gives,
+        // and the reader that says "no code" says the truth about a child nobody ran.
+        exitCode = ShellExitCode { null },
         transcriptPumps = pumps,
         transcriptSinks = sinks,
         agentWarmup = emptyList(),

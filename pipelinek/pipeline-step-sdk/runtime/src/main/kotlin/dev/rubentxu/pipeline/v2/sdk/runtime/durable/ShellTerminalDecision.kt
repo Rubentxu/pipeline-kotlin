@@ -87,7 +87,7 @@ internal class ShellTerminalDecision(
 
         ShellPollOutcome.ResultNotAnExitCode -> lost(RESULT_NOT_AN_EXIT_CODE)
 
-        ShellPollOutcome.WrapperEnded -> lost(WRAPPER_ENDED_WITHOUT_RESULT)
+        is ShellPollOutcome.WrapperEnded -> lost(wrapperEndedMessage(outcome.exitCode))
 
         ShellPollOutcome.CeilingElapsed -> lost(CEILING_ELAPSED)
 
@@ -105,6 +105,19 @@ internal class ShellTerminalDecision(
      */
     private fun lost(message: String): DurableTaskTerminal.Lost =
         DurableTaskTerminal.Lost(lostFailureRecord(opId, controlDir, message))
+
+    /**
+     * The reason a wrapper that ended without publishing gives.
+     *
+     * The wrapper's own exit code is the reason, because the process that failed is the one that
+     * knows why it failed: a terminal that said only "the wrapper ended" left the reader to guess
+     * between a script that could not be found and a host that refused to run it. A code the
+     * platform did not report is not invented, and the reason then says only what is known.
+     */
+    private fun wrapperEndedMessage(exitCode: Int?): String = when (exitCode) {
+        null -> WRAPPER_ENDED_WITHOUT_RESULT
+        else -> "$WRAPPER_ENDED_WITH_EXIT_CODE $exitCode $WITHOUT_PUBLISHING_A_RESULT"
+    }
 
     /**
      * The terminal of an execution that failed.
@@ -196,6 +209,12 @@ internal class ShellTerminalDecision(
         /** The wrapper ended without publishing a result. */
         const val WRAPPER_ENDED_WITHOUT_RESULT =
             "durable shell wrapper ended without publishing a result"
+
+        /** The wrapper ended with a code the platform reported. */
+        const val WRAPPER_ENDED_WITH_EXIT_CODE = "durable shell wrapper ended with exit code"
+
+        /** The part of the reason that says the result was never published. */
+        const val WITHOUT_PUBLISHING_A_RESULT = "without publishing a result"
 
         /** The deadline elapsed with nothing published. */
         const val CEILING_ELAPSED =

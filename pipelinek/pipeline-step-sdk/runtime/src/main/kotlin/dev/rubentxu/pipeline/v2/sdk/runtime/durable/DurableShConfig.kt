@@ -221,7 +221,6 @@ data class DurableShConfig(
  * Durable shell relies on Linux-specific primitives:
  * - `/proc` filesystem for PID discovery
  * - `setsid` for process group leadership
- * - `nohup` for detachment
  * Local execution is Linux-only for; Windows/containers come in
 */
 class LinuxRequiredException(
@@ -231,15 +230,19 @@ class LinuxRequiredException(
 /**
  * The durable shell is a Linux-only contract, and this is its single check.
  *
- * It lives beside the exception it raises, so the two cannot drift apart, and it is shared by
- * the launch and by the detach step: a host that is not Linux cannot run a durable shell, and
- * the two places that need the child to exist must not disagree about it.
+ * It lives beside the exception it raises, so the two cannot drift apart, and the LAUNCH is the
+ * one place that has to agree about it: a host that is not Linux cannot run a durable shell, and
+ * the launch is where the child would be created.
  *
- * @throws LinuxRequiredException When the host is not Linux.
+ * The operating system's name is an argument so that the rule can be read as a rule: the default
+ * is the host's own name, and a caller that names another one is stating the rule about that
+ * name. This is what makes the refusal checkable without a host that is not Linux.
+ *
+ * @param osName The operating system's name to judge. Defaults to the host's own.
+ * @throws LinuxRequiredException When the named platform is not Linux.
  */
-internal fun requireLinuxHost() {
-    val osName = System.getProperty("os.name", "").lowercase()
-    if (!osName.contains("linux")) {
+internal fun requireLinuxHost(osName: String = System.getProperty("os.name", "")) {
+    if (!osName.lowercase().contains("linux")) {
         throw LinuxRequiredException()
     }
 }

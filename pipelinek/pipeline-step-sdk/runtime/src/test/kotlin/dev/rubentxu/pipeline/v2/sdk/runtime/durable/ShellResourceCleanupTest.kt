@@ -68,6 +68,10 @@ class ShellResourceCleanupTest {
 
     private fun launch(descriptors: List<Closeable>) = LaunchedShell(
         handle = ProcessHandle.current(),
+        // The rules these tests exercise are about bookkeeping, not about a child: no rule under
+        // test reads the code the child left with, and the reader that says "no code" says the
+        // truth about a launch nobody ran.
+        exitCode = ShellExitCode { null },
         transcriptPumps = emptyList(),
         transcriptSinks = emptyList(),
         agentWarmup = descriptors,

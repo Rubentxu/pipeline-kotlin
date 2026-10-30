@@ -233,9 +233,11 @@ internal class ShellWatchdog(
         // Step 2: SIGTERM to the session (all processes in the session)
         terminateSession(targetSid)
 
-        // Step 3: Grace poll up to 5000ms
+        // Step 3: The grace the TERM is given, before the escalation replaces it with the KILL.
+        // The window is bounded and named: a wait whose length is a number buried in the middle
+        // of a function is a wait nobody reviewed.
         if (!allGone(matchingPids)) {
-            Thread.sleep(500)
+            Thread.sleep(SOFT_KILL_GRACE_MS)
         }
 
         // Step 4: SIGKILL escalation if still alive
@@ -307,13 +309,13 @@ internal class ShellWatchdog(
         }
 
         try {
-            val deadline = System.currentTimeMillis() + 3000L
+            val deadline = System.currentTimeMillis() + KILL_WAIT_DEADLINE_MS
             while (pids.any { pid ->
                 try {
                     ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
                 } catch (_: Exception) { false }
             } && System.currentTimeMillis() < deadline) {
-                Thread.sleep(100)
+                Thread.sleep(KILL_WAIT_POLL_MS)
             }
         } catch (_: Exception) {}
 
@@ -415,6 +417,21 @@ internal class ShellWatchdog(
 
         /** How often the settle window looks at the latch. */
         const val SETTLE_POLL_MS: Long = 50L
+
+        /**
+         * The grace the TERM is given before the escalation replaces it with the KILL.
+         *
+         * This is the window in which the child is EXPECTED to die on its own, so the wait is a
+         * grace and not a decision: the escalation is what decides, and it reads the tree when
+         * the grace ends.
+         */
+        const val SOFT_KILL_GRACE_MS: Long = 500L
+
+        /** How long the escalation waits for the tree to die after the KILL. */
+        const val KILL_WAIT_DEADLINE_MS: Long = 3_000L
+
+        /** How often the escalation looks at the tree while it waits for it to die. */
+        const val KILL_WAIT_POLL_MS: Long = 100L
 
         /** How many nanoseconds a millisecond is. Durations are measured on the monotonic clock. */
         const val NANOS_PER_MILLI: Long = 1_000_000L

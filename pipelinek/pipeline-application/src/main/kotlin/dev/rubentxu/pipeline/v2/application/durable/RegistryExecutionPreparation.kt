@@ -1,5 +1,6 @@
 package dev.rubentxu.pipeline.v2.application.durable
 
+import dev.rubentxu.pipeline.v2.application.MissingCapabilityReason
 import dev.rubentxu.pipeline.v2.domain.PluginStepId
 import dev.rubentxu.pipeline.v2.domain.step.EncodedStepValue
 import dev.rubentxu.pipeline.v2.domain.step.StepCapability
@@ -43,9 +44,7 @@ object RegistryExecutionPreparation {
         // supply means this invocation can never run, so it is rejected during preparation.
         val missing = contract.requiredCapabilities - availableCapabilities
         if (missing.isNotEmpty()) {
-            return ExecutionPreparation.Rejected(
-                "missing required capabilities for step '${key.value}': ${missing.joinToString { it.key }}",
-            )
+            return ExecutionPreparation.Rejected(MissingCapabilityReason.of(key, missing))
         }
 
         val decoded = try {

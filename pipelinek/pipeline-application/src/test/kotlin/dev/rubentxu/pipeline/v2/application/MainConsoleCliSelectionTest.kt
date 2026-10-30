@@ -31,7 +31,7 @@ class MainConsoleCliSelectionTest {
         val selection = OperationSelection.Operations(setOf("run-7-s0-0"))
 
         assertTrue(
-            MainConsoleCli.selectionSelects(selection, "run-7/run-7-s0-0/stdout"),
+            ConsoleFramePlane.selectionSelects(selection, "run-7/run-7-s0-0/stdout"),
             "the frames of the selected operation belong to the filtered read",
         )
     }
@@ -41,7 +41,7 @@ class MainConsoleCliSelectionTest {
         val selection = OperationSelection.Operations(setOf("stage/step/inner"))
 
         assertTrue(
-            MainConsoleCli.selectionSelects(selection, "run-7/stage/step/inner/stdout"),
+            ConsoleFramePlane.selectionSelects(selection, "run-7/stage/step/inner/stdout"),
             "the operation is the whole middle of the id, separators included",
         )
     }
@@ -51,7 +51,7 @@ class MainConsoleCliSelectionTest {
         val selection = OperationSelection.Operations(setOf("stage"))
 
         assertFalse(
-            MainConsoleCli.selectionSelects(selection, "run-7/stage/step/inner/stdout"),
+            ConsoleFramePlane.selectionSelects(selection, "run-7/stage/step/inner/stdout"),
             "the first segment of a composite id is not an operation of its own",
         )
     }
@@ -61,7 +61,7 @@ class MainConsoleCliSelectionTest {
         val selection = OperationSelection.Operations(setOf("other/foo"))
 
         assertTrue(
-            MainConsoleCli.selectionSelects(selection, "run-7/other/foo/stdout"),
+            ConsoleFramePlane.selectionSelects(selection, "run-7/other/foo/stdout"),
             "the operation is named whole, so a selection that names it whole finds it",
         )
     }
@@ -71,7 +71,7 @@ class MainConsoleCliSelectionTest {
         val selection = OperationSelection.Operations(setOf("other"))
 
         assertFalse(
-            MainConsoleCli.selectionSelects(selection, "run-7/other/foo/stdout"),
+            ConsoleFramePlane.selectionSelects(selection, "run-7/other/foo/stdout"),
             "the frames of `other/foo` are not the frames of `other`",
         )
     }
@@ -81,11 +81,11 @@ class MainConsoleCliSelectionTest {
         val selection = OperationSelection.Operations(setOf("run-7-s0-0"))
 
         assertFalse(
-            MainConsoleCli.selectionSelects(selection, "run-7/run-7-s0-0/transcript"),
+            ConsoleFramePlane.selectionSelects(selection, "run-7/run-7-s0-0/transcript"),
             "a stream without a channel carries no operation to select",
         )
         assertFalse(
-            MainConsoleCli.selectionSelects(selection, "run-7"),
+            ConsoleFramePlane.selectionSelects(selection, "run-7"),
             "a stream too short to name an operation carries none either",
         )
     }
@@ -93,7 +93,7 @@ class MainConsoleCliSelectionTest {
     @Test
     fun `an unfiltered read admits every frame`() {
         assertTrue(
-            MainConsoleCli.selectionSelects(OperationSelection.AllOperations, "run-7/other/foo/stdout"),
+            ConsoleFramePlane.selectionSelects(OperationSelection.AllOperations, "run-7/other/foo/stdout"),
             "a read with no filter has nothing to decide",
         )
     }

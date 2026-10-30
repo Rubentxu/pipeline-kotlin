@@ -50,7 +50,7 @@ import java.io.PrintStream
  *
  * ## Why this instrument
  *
- * The loop is the thing, so the loop is what is driven: [MainConsoleCli.followFrames] over an
+ * The loop is the thing, so the loop is what is driven: [ConsoleFollowLoop.followFrames] over an
  * in-memory plane, with the wait between polls INJECTED. That is what makes the instrument
  * cheap and deterministic — no filesystem, no subprocess, no clock, no sleep — and it is what
  * makes it a real instrument rather than a restatement of the rule: the loop, the filter and
@@ -179,7 +179,7 @@ class MainConsoleCliFollowTest {
         maxPolls: Int,
         out: PrintStream,
         format: MainConsoleCli.ConsoleFormat = MainConsoleCli.ConsoleFormat.TEXT,
-    ): FollowExit = MainConsoleCli.followFrames(
+    ): FollowExit = ConsoleFollowLoop.followFrames(
         request = ConsoleReadRequest.FollowFrames(
             controlDir = "/not-used",
             runId = "run-1",

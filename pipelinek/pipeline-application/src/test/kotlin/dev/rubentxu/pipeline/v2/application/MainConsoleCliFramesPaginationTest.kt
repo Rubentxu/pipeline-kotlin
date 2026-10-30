@@ -78,7 +78,7 @@ class MainConsoleCliFramesPaginationTest {
     @Test
     fun `resuming from the printed token delivers no frame twice`() {
         val first = emit(opId = "op-b", afterOrdinal = -1L, format = MainConsoleCli.ConsoleFormat.JSONL)
-        val resumeAt = MainConsoleCli.decodeFrameOrdinal(first.token)
+        val resumeAt = ConsoleFramePlane.decodeFrameOrdinal(first.token)
         assertEquals(4L, resumeAt, "the token did not name a position: ${first.token}")
 
         val second = emit(opId = "op-b", afterOrdinal = resumeAt!!, format = MainConsoleCli.ConsoleFormat.JSONL)
@@ -140,7 +140,7 @@ class MainConsoleCliFramesPaginationTest {
         )
         val out = ByteArrayOutputStream()
         val err = ByteArrayOutputStream()
-        val exit = MainConsoleCli.emitFrames(
+        val exit = ConsolePresentation.emitFrames(
             result = reader.readOutput("run-1", opId, afterOrdinal, frameLimit),
             request = request,
             out = PrintStream(out, true, Charsets.UTF_8.name()),

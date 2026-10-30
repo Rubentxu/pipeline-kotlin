@@ -221,14 +221,7 @@ object DslCompiledPipelineCompiler {
             )
             is StepSpec.Slot -> slotNode(step, parentToken, occurrence)
             is StepSpec.WriteFile -> listOf(
-                OpaqueStepNode(
-                    id = StepId("$parentToken/${stableToken(step.name)}-$occurrence"),
-                    pluginStepId = PluginStepId("core.file.writeFile"),
-                    payload = VersionedStepPayload(
-                        PAYLOAD_SCHEMA_VERSION,
-                        writeFilePayload(step.file, step.text, step.encoding),
-                    ),
-                ),
+                writeFileNode(step, "$parentToken/${stableToken(step.name)}-$occurrence"),
             )
             is StepSpec.CatchError -> rewriteWorkflowControl(
                 projection = WorkflowControlProjection.CatchError,
@@ -592,6 +585,38 @@ object DslCompiledPipelineCompiler {
     }
 
     /**
+     * Whether a step may be embedded as TEXT inside a control scope's shell wrapper.
+     *
+     * Only a shell command and an echo are text. A file capability is NOT a shell
+     * command: the shell has no `writeFile`, so embedding one would emit text the
+     * shell cannot parse — the artefact would not be written and the run would
+     * report a shell syntax error instead of naming a missing file. A step that
+     * is not embeddable is projected as its own typed node instead.
+     */
+    private fun isShellEmbeddable(step: StepSpec): Boolean = when (step) {
+        is StepSpec.Shell, is StepSpec.Echo -> true
+        else -> false
+    }
+
+    /**
+     * The typed node for a `writeFile`, built in ONE place.
+     *
+     * The stage level and the workflow-control scope level project the SAME
+     * capability through this function: one plugin step id, one payload schema
+     * version, one payload vocabulary. A second construction site would be a
+     * second authority for writing files.
+     */
+    private fun writeFileNode(step: StepSpec.WriteFile, stepId: String): OpaqueStepNode =
+        OpaqueStepNode(
+            id = StepId(stepId),
+            pluginStepId = PluginStepId("core.file.writeFile"),
+            payload = VersionedStepPayload(
+                PAYLOAD_SCHEMA_VERSION,
+                writeFilePayload(step.file, step.text, step.encoding),
+            ),
+        )
+
+    /**
      * Projects the inner steps of a workflow-control scope into canonical nodes.
      * Without structured children the plain steps are inlined into a single
      * `set +e` shell wrapper with the scope's own step id, preserving the
@@ -599,15 +624,22 @@ object DslCompiledPipelineCompiler {
      * With nested catchError/warnError children the scope is projected as ordered
      * segments: each plain run becomes its own shell wrapper and each structured
      * child is recursively rewritten inside the parent scope.
+     * A `writeFile` is structured too: it is NOT shell text, so it is projected as
+     * the same typed `core.file.writeFile` node the stage level uses, in the
+     * position where it was declared.
      * Any other structured step kind fails compilation loudly — the compiler
      * never emits a silent shell comment.
-*/
+     */
     private fun projectInnerScope(innerSteps: List<StepSpec>, scopeToken: String): List<StepNode> {
         // `error` is also structured — it must abort the inner scope as a typed
         // core.error node so the coordinator's catchError overlay can catch it, never be inlined
         // as a silent shell comment by buildShellScript.
+        // `writeFile` is structured for that reason and for one more: it is a file
+        // capability, not a shell command, so a scope that contains one cannot become
+        // a single shell wrapper.
         val hasStructuredChild = innerSteps.any {
-            it is StepSpec.CatchError || it is StepSpec.WarnError || it is StepSpec.Error
+            it is StepSpec.CatchError || it is StepSpec.WarnError || it is StepSpec.Error ||
+                it is StepSpec.WriteFile
         }
         if (!hasStructuredChild) {
             return listOf(
@@ -626,6 +658,7 @@ object DslCompiledPipelineCompiler {
         val plainRun = mutableListOf<StepSpec>()
         var shellSegment = 0
         var structuredOccurrence = 0
+        var writeFileOccurrence = 0
 
         fun flushPlainRun() {
             if (plainRun.isEmpty()) return
@@ -669,7 +702,19 @@ object DslCompiledPipelineCompiler {
                     )
                     structuredOccurrence++
                 }
-                is StepSpec.Shell, is StepSpec.Echo, is StepSpec.WriteFile -> plainRun += step
+                is StepSpec.Shell, is StepSpec.Echo -> plainRun += step
+                is StepSpec.WriteFile -> {
+                    if (isShellEmbeddable(step)) {
+                        plainRun += step
+                    } else {
+                        // A file capability is not shell text: it is projected to the SAME
+                        // typed node the stage level uses — one authority for writing, one
+                        // vocabulary for files — and it keeps the position it was declared in.
+                        flushPlainRun()
+                        nodes += writeFileNode(step, "$scopeToken/writeFile-$writeFileOccurrence")
+                        writeFileOccurrence++
+                    }
+                }
                 is StepSpec.Error -> {
                     // Project a structured `error` to a typed core.error abort node so the
                     // coordinator dispatches a Failure and the enclosing catchError overlay decides
@@ -682,10 +727,11 @@ object DslCompiledPipelineCompiler {
                     )
                     structuredOccurrence++
                 }
-                else -> throw IllegalStateException(
+                else -> error(
                     "Workflow-control scope '$scopeToken' cannot compile structured step '${step.name}' " +
-                        "into its shell wrapper; only sh/echo/writeFile are embeddable and " +
-                        "catchError/warnError/unstable are rewritten. Refusing to emit a silent shell comment.",
+                        "into its shell wrapper; only sh/echo are embeddable as shell text and " +
+                        "catchError/warnError/writeFile/unstable are projected as typed nodes. " +
+                        "Refusing to emit a silent shell comment.",
                 )
             }
         }
@@ -739,11 +785,12 @@ object DslCompiledPipelineCompiler {
                     val text = step.text.replace("'", "'\\''")
                     "echo '$text'"
                 }
-                is StepSpec.WriteFile -> {
-                    val file = step.file.replace("'", "'\\''")
-                    val text = step.text.replace("'", "'\\''")
-                    "writeFile('$file', '$text', '${step.encoding}')"
-                }
+                is StepSpec.WriteFile -> error(
+                    "buildShellScript cannot embed a writeFile into a workflow-control shell wrapper: " +
+                        "a file capability is not a shell command, and the shell has no such command. " +
+                        "The pre-compiler rewrite must project it to core.file.writeFile. " +
+                        "Refusing to emit a shell literal.",
+                )
                 else -> throw IllegalStateException(
                     "buildShellScript cannot embed structured step '${step.name}' into a " +
                         "workflow-control shell wrapper; the pre-compiler rewrite must project it. " +

@@ -12,7 +12,6 @@
 package dev.rubentxu.pipeline.v2.output.store
 
 import dev.rubentxu.pipeline.v2.output.OutputCursor
-import dev.rubentxu.pipeline.v2.output.OutputPinPort
 import dev.rubentxu.pipeline.v2.output.OutputPruneIntent
 import dev.rubentxu.pipeline.v2.output.OutputPruneReport
 import dev.rubentxu.pipeline.v2.output.OutputReadDigestedResult
@@ -92,13 +91,23 @@ class SegmentOutputStore(
 */
     private val recoveryPermitted: Boolean = true,
     /**
-     * Optional pin port consulted by [canPrune]. When `null` (default),
-     * `canPrune` returns [PruneAuthorisation.Granted] unconditionally. The
-     * consult-before-act primitive is the load-bearing authority on the
-     * retention-under-pin invariant; the wiring is optional so test fixtures
-     * that do not need pins can construct a plain store.
-*/
-    private val pinPort: OutputPinPort? = null,
+     * The substrate consulted before a directory of this root is deleted.
+     *
+     * It is REQUIRED, and it is not optional, because the answer it gives is the load-bearing
+     * authority on the retention-under-pin invariant: a directory somebody pinned must survive the
+     * prune, and the only way to know that is to ask. The previous shape carried an
+     * `OutputPinPort?` that defaulted to `null` and answered [PruneAuthorisation.Granted]
+     * unconditionally when it was absent — so a store that forgot to wire the pins deleted pinned
+     * bytes and reported success. There was exactly one way to build a store in production
+     * ([OutputPlane]) and it did not wire them, which means the promise the published port makes
+     * ("the pin survives any subsequent prune") was not kept in code.
+     *
+     * The consult is asked BY DIRECTORY NAME, because that is the only identity the retention side
+     * holds: the fold from a stream id to its directory is exact in one direction and lossy in the
+     * other, so the question is asked in the direction that loses nothing and the answer names the
+     * real stream.
+    */
+    private val pinConsult: DirectoryPinConsult,
     /**
      * The mutual exclusion of the stream directories this store touches.
      *
@@ -150,7 +159,19 @@ class SegmentOutputStore(
 
     private val recoveryLock = ReentrantLock()
 
-    @Volatile private var recovered = false
+    @Volatile private var reconciled = false
+
+    /**
+     * What this store is allowed to do, derived from ONE fact.
+     *
+     * The store used to spell the same question four ways — `check(recovered)`,
+     * `check(recovered || !recoveryPermitted)`, `check(recoveryPermitted)` and
+     * `if (!recovered && recoveryPermitted)` — and each spelling was right where it sat. Together
+     * they answered one question four times, so a change to the question had to be made four times
+     * and a reader had to compare four shapes to know what the store would do. [StoreAuthority] is
+     * the question once; the four call sites below read its answer.
+     */
+    private val authority: StoreAuthority get() = storeAuthority(recoveryPermitted, reconciled)
 
     @Volatile private var frameIndex: SegmentFrameIndex? = null
 
@@ -243,7 +264,7 @@ class SegmentOutputStore(
         // reservations and truncating a live writer's range*, which is what `recover()` does and
         // what this method does not. So the guard keeps its old meaning for a WRITING store that
         // has not recovered, and stops blocking a reader store that never may.
-        if (!recovered && recoveryPermitted) return null
+        if (authority.requiresReconciliationForReads) return null
         val layout = layout(stream)
         if (!Files.isDirectory(layout.streamDir)) return null
         return withStreamLockFor(stream) {
@@ -284,7 +305,7 @@ class SegmentOutputStore(
     }
 
     override fun read(stream: OutputStreamId, cursor: OutputCursor, maxBytes: Int): OutputReadResult {
-        if (!recovered && recoveryPermitted) {
+        if (authority.requiresReconciliationForReads) {
             return OutputReadResult.Refused(OutputRefusal.RecoveryNotCompleted)
         }
         if (maxBytes <= 0) {
@@ -315,7 +336,7 @@ class SegmentOutputStore(
     }
 
     override fun readRange(stream: OutputStreamId, from: Long, to: Long): OutputReadResult {
-        if (!recovered && recoveryPermitted) {
+        if (authority.requiresReconciliationForReads) {
             return OutputReadResult.Refused(OutputRefusal.RecoveryNotCompleted)
         }
         val layout = layout(stream)
@@ -348,7 +369,7 @@ class SegmentOutputStore(
         from: Long,
         to: Long,
     ): OutputReadDigestedResult {
-        if (!recovered && recoveryPermitted) {
+        if (authority.requiresReconciliationForReads) {
             return OutputReadDigestedResult.Refused(OutputRefusal.RecoveryNotCompleted)
         }
         val layout = layout(stream)
@@ -378,7 +399,7 @@ class SegmentOutputStore(
         // A reader may not reconcile, and saying so loudly beats letting a read-side
         // caller reach a destructive path by accident: the whole defect was that recovery was
         // available to everyone and therefore performed by everyone.
-        check(recoveryPermitted) {
+        check(authority.mayRecover) {
             "this store was opened for READING and must not recover: a read-only verb that reconciles " +
                 "can truncate a live writer's range. Open a writing store instead."
         }
@@ -410,11 +431,11 @@ class SegmentOutputStore(
                 // the kernel drops it the instant the owning process dies, so "held" means ALIVE rather
                 // than "recently seen". Truncating a held stream would destroy a live writer's bytes,
                 // Which is the defect measured
-                val reconciled = tryWithStreamOwnership(layout) {
+                val ownedHere = tryWithStreamOwnership(layout) {
                     releasedBytes += reconcile(layout)
                     if (Files.deleteIfExists(layout.reservationFile)) releasedReservations++
                 }
-                if (reconciled) streams++ else ownedByLiveWriter++
+                if (ownedHere) streams++ else ownedByLiveWriter++
                 // Counted either way: a stream being written still has committed bytes worth knowing
                 // about, and its unbacked count is a fact about it rather than about this pass.
                 unbackedBytes += maxOf(0L, committedLocked(layout) - readableEndLocked(layout))
@@ -422,7 +443,7 @@ class SegmentOutputStore(
             }
         }
 
-        recovered = true
+        reconciled = true
         OutputRecoveryReport(
             streamsReconciled = streams,
             streamsOwned = ownedByLiveWriter,
@@ -508,7 +529,29 @@ class SegmentOutputStore(
      * a segment can be sealed, and a file's size is not what a reader was ever promised. A report
      * naming the wrong number would be a small lie in the one place a caller uses it to confirm
      * that data is really gone.
-*/
+     *
+     * ## THE PIN IS CONSULTED BEFORE EVERY DELETION
+     *
+     * The published port promises that a pin survives any subsequent prune unless it was released
+     * or it expired. This method used to delete every target directory without asking anybody, so
+     * that promise was NOT kept in code: a pinned directory was removed and the report said the
+     * bytes were gone.
+     *
+     * Two facts hold a directory back, and they are different facts:
+     * - somebody pinned it ([RetentionHold.Pinned]);
+     * - the pin substrate could not be read ([RetentionHold.SubstrateUnavailable]).
+     *
+     * The second one is the one that is easy to forget. "I could not find out" is not "there is
+     * nobody", and a retention pass that reads it as "there is nobody" deletes bytes somebody is
+     * holding.
+     *
+     * ## WHAT THE REPORT COUNTS
+     * [OutputPruneReport.streamsRemoved] counts the directories that were really deleted, and
+     * [OutputPruneReport.bytesReleased] counts only their bytes: a directory that survived — pinned,
+     * unreadable substrate, or refused by the filesystem — releases nothing.
+     * [OutputPruneReport.streamsRetained] counts the directories that are still there, whatever the
+     * reason they survived.
+    */
     override fun prune(intent: OutputPruneIntent): OutputPruneReport {
         requireRecoveredForWriting()
         val targets = runStreamDirs(intent.runId)
@@ -527,38 +570,50 @@ class SegmentOutputStore(
             // root's plane hands to every store of that root, so a reader of the same root is
             // excluded here too.
             streamLocks.withLock(dir.fileName.toString()) {
-                bytes += committedLocked(layoutFor(dir))
-                if (deleteRecursively(dir)) removed++
+                // The consult happens INSIDE the lock, so a directory cannot be pinned between the
+                // question and the deletion.
+                val decision = decideDirectoryRetention(consultPins(dir.fileName.toString()))
+                if (decision is DirectoryRetention.Deletable) {
+                    val committed = committedLocked(layoutFor(dir))
+                    if (deleteRecursively(dir)) {
+                        removed++
+                        bytes += committed
+                    }
+                }
             }
         }
         // Whatever survived its deletion attempt is counted, not hidden, so a caller can tell
-        // "nothing was there" from "the filesystem refused".
+        // "nothing was there" from "the filesystem refused" — and now also from "somebody holds it".
         val retained = targets.count { Files.isDirectory(it) }
         return OutputPruneReport(removed, bytes, retained)
     }
 
     /**
-     * Consult-before-act: would [intent] succeed RIGHT NOW, given the
-     * current pins?
-     * When [pinPort] is wired, this composes the existing retention port
-     * with the pin port's `pinsForSafeName` per stream directory of the run.
-     * When no pin port is wired (the default), returns
-     * [PruneAuthorisation.Granted] unconditionally — the test fixtures and
-     * The/ paths do not need the consult-before-act primitive
-     * The composition table:
+     * Consult-before-act: would [intent] succeed RIGHT NOW, given the current pins?
+     *
+     * The consult is asked BY DIRECTORY NAME — the only identity the retention side holds — and the
+     * answer names the real stream, so no id has to be reconstructed from a folded name. The
+     * previous shape did the opposite: it downcast the consult to the concrete adapter to reach a
+     * helper that existed only on that adapter, and fell back to undoing the fold (`_` back to `/`)
+     * for anything else. Undoing the fold is guessing, and a guess is not an answer a deletion can
+     * be authorised on.
+     *
      * ```text
      * canPrune(intent):
-     *   for each stream of intent.runId:
-     *     pins = pinsOf(stream)
-     *     if pins.isNotEmpty -> Consulted(stream, range, pins)
-     *     else -> Granted
-     *   if no streams for runId -> Refused(StorageError("unknown run..."))
-     *   if pin storage failed -> Refused(SubstrateUnavailable)
+     *   for each stream directory of intent.runId:
+     *     answered and pinned -> Consulted(stream, range, pins)
+     *     answered and empty   -> keep asking
+     *     unavailable          -> Refused(SubstrateUnavailable)
+     *   no directories for the run -> Refused(StorageError("unknown run ..."))
+     *   none pinned           -> Granted
      * ```
-*/
+     *
+     * The `SubstrateUnavailable` refusal is REACHABLE here: the substrate is a real thing that can
+     * fail, and a caller that cannot tell "nothing is pinned" from "I could not find out" must not
+     * be handed the first answer.
+    */
     override fun canPrune(intent: OutputPruneIntent): PruneAuthorisation {
         requireRecoveredForWriting()
-        val pins = pinPort ?: return PruneAuthorisation.Granted
         val streamDirs = runStreamDirs(intent.runId)
         if (streamDirs.isEmpty()) {
             // An earlier design specified a `Refused(UnknownStream)` case for
@@ -572,31 +627,38 @@ class SegmentOutputStore(
                 PruneRefusal.StorageError("unknown run ${intent.runId}"),
             )
         }
-        var pinError = false
         for (dir in streamDirs) {
-            val safeName = dir.fileName.toString()
-            val active = if (pins is OutputPinPortStoreAdapter) {
-                pins.pinsForSafeName(safeName)
-            } else {
-                // Fallback path: a custom pin port adapter that does not
-                // implement the canPrune helper. Try to reconstruct by
-                // streaming the pinsOf API; works when the original id's
-                // safe fold equals the dir name (lossy fold caveat applies).
-                pins.pinsOf(streamFromSafeName(safeName))
+            val decision = decideDirectoryRetention(consultPins(dir.fileName.toString()))
+            if (decision is DirectoryRetention.Retained) {
+                when (val hold = decision.hold) {
+                    is RetentionHold.Pinned -> {
+                        val first = hold.pins.first()
+                        return PruneAuthorisation.Consulted(
+                            stream = first.stream,
+                            range = first.range,
+                            pinsAtConsult = hold.pins,
+                        )
+                    }
+                    is RetentionHold.SubstrateUnavailable ->
+                        return PruneAuthorisation.Refused(PruneRefusal.SubstrateUnavailable)
+                }
             }
-            if (active.isNotEmpty()) {
-                val firstRange = active.first().range
-                return PruneAuthorisation.Consulted(
-                    stream = active.first().stream,
-                    range = firstRange,
-                    pinsAtConsult = active,
-                )
-            }
-        }
-        if (pinError) {
-            return PruneAuthorisation.Refused(PruneRefusal.SubstrateUnavailable)
         }
         return PruneAuthorisation.Granted
+    }
+
+    /**
+     * Ask the substrate about one directory, and keep its failure apart from its answer.
+     *
+     * A third-party [DirectoryPinConsult] that throws is turned into
+     * [DirectoryPinAnswer.Unavailable] rather than being allowed to escape: the consumer that
+     * cannot tell "there are no pins" from "I could not find out" is the consumer that deletes,
+     * so the two answers must stay distinguishable all the way to the decision.
+    */
+    private fun consultPins(directoryName: String): DirectoryPinAnswer = try {
+        pinConsult.pinsOfDirectory(directoryName)
+    } catch (t: Throwable) {
+        DirectoryPinAnswer.Unavailable(t.shortDiagnostic())
     }
 
     /** Post-order delete: children before their parent, so a partially-failed pass is re-runnable. */
@@ -635,7 +697,7 @@ class SegmentOutputStore(
      * deleting a range you have not proved is unreferenced. Neither is a read concern.
 */
     private fun requireRecoveredForWriting() {
-        check(recovered) {
+        check(authority.mayWrite) {
             "appends, seals and prunes require OutputRecoveryPort.recover() first (O3): refusing to " +
                 "act on an unreconciled state"
         }
@@ -650,7 +712,7 @@ class SegmentOutputStore(
      * either way, and the entry point is distinct precisely so that a reader never has to invoke it.
 */
     private fun requireReadable() {
-        check(recovered || !recoveryPermitted) {
+        check(authority.mayRead) {
             "reads require OutputRecoveryPort.recover() first (O3): refusing to serve an unreconciled state"
         }
     }
@@ -908,15 +970,6 @@ class SegmentOutputStore(
         from = from,
         to = to,
     )
-
-    /**
-     * Reconstruct the [OutputStreamId] from a directory's safe name. Lossy
-     * in general, but the canonical `run/op/transcript` shape round-trips
-     * through `_`→`/`. Used only as a fallback when the pin adapter is not
-     * an [OutputPinPortStoreAdapter].
-*/
-    private fun streamFromSafeName(safeName: String): OutputStreamId =
-        OutputStreamId(safeName.replace("_", "/"))
 
     /**
      * Runs [block] holding this stream's ownership, or answers `false` when a live writer holds it.

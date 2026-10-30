@@ -357,6 +357,11 @@ internal fun composeRuntimeRecoverPort(
         frames = output.frameIndex(),
         introspect = { runId -> introspect.inspect(runId) },
         clock = clock,
+        // The pins of this root. The recover port consults them before it declares a run terminal,
+        // so a run whose bytes somebody still holds is NOT declared recovered-and-done. The
+        // substrate is the root's, not the store's, so the reader and the writer of the root answer
+        // the same question with the same manifest.
+        pinPort = OutputPlaneProvider.pinPortFor(controlRoot),
         syntheticObserverId = owner,
     )
 }

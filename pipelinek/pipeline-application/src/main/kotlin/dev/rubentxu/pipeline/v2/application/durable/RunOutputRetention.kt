@@ -22,9 +22,12 @@ internal sealed interface RunOutputDisposition {
 
     /**
      * A release was authorised and the store performed it.
-     * [OutputPruneReport.streamsRetained] is non-zero when the filesystem refused a deletion that was
-     * authorised: the report says so rather than hiding it, so a zero removal count can still be read
-     * correctly as "nothing was there" or "something resisted".
+     *
+     * [OutputPruneReport.streamsRetained] is non-zero when the release did not reach everything, and
+     * it has more than one cause: an active pin holds the stream, the record of who holds it could
+     * not be read, or the filesystem refused a deletion that was authorised. The report says so
+     * rather than hiding it, so a zero removal count can still be read correctly as "nothing was
+     * there" or "something resisted".
 */
     data class Released(val report: OutputPruneReport) : RunOutputDisposition
 

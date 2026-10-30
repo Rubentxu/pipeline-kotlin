@@ -111,13 +111,28 @@ sealed interface OutputPruneIntent {
 /** What a prune pass actually did. Zero counts are a legitimate, meaningful answer. */
 data class OutputPruneReport(
     val streamsRemoved: Int,
+    /**
+     * The bytes of the streams that were really deleted.
+     *
+     * Only a deletion that happened releases bytes: a stream that survived — because somebody holds
+     * it, because the record of who holds it could not be read, or because the filesystem refused —
+     * releases nothing, and counting its bytes would tell a caller that data is gone while it is
+     * still there.
+     */
     val bytesReleased: Long,
     /**
      * How many of the run's streams were **not** removed.
-     * Non-zero means the filesystem refused a deletion that was authorised. It is reported rather
-     * than swallowed because a caller confirming "my release reached everything" has to be able to
-     * tell "there was nothing there" from "something resisted", and a removal count of zero cannot
-     * distinguish those.
+     *
+     * Non-zero means the release did not reach everything, and it has more than one cause:
+     * - somebody holds the stream — an active pin, which the published port promises survives any
+     *   prune until it is released or expires;
+     * - the record of who holds it could not be read, so the pass could not find out whether anybody
+     *   does — "I could not find out" is not "there is nobody";
+     * - the filesystem refused a deletion that was authorised.
+     *
+     * It is reported rather than swallowed because a caller confirming "my release reached
+     * everything" has to be able to tell "there was nothing there" from "something resisted", and a
+     * removal count of zero cannot distinguish those.
 */
     val streamsRetained: Int,
 )

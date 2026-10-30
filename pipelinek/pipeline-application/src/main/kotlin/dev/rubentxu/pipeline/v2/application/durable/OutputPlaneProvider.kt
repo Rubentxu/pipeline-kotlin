@@ -2,6 +2,7 @@ package dev.rubentxu.pipeline.v2.application.durable
 
 import dev.rubentxu.pipeline.v2.output.OperationOutputStreams
 import dev.rubentxu.pipeline.v2.output.OutputChannel
+import dev.rubentxu.pipeline.v2.output.OutputPinPort
 import dev.rubentxu.pipeline.v2.output.OutputStreamAddress
 import dev.rubentxu.pipeline.v2.output.OutputStreamId
 import dev.rubentxu.pipeline.v2.output.store.SegmentOutputStore
@@ -80,6 +81,16 @@ object OutputPlaneProvider {
      * it is a separate decision, recorded here rather than taken silently.
     */
     fun storeFor(controlDirRoot: Path): SegmentOutputStore = storeForWriting(controlDirRoot)
+
+    /**
+     * The pin substrate of [controlDirRoot]: who holds which bytes.
+     *
+     * The substrate is a property of the ROOT, so it is the plane's and not a store's: a pin taken
+     * against the reader and a pin taken against the writer name the same bytes, and the retention
+     * pass that later deletes those bytes has to find the pin whichever store recorded it. One
+     * root, one manifest, one answer.
+     */
+    fun pinPortFor(controlDirRoot: Path): OutputPinPort = planeFor(controlDirRoot).pinPort()
 
     /**
      * The stream id carrying [channel]'s bytes for one operation.

@@ -221,7 +221,7 @@ object DslCompiledPipelineCompiler {
             is StepSpec.WriteFile -> listOf(
                 writeFileNode(step, "$parentToken/${stableToken(step.name)}-$occurrence"),
             )
-            // A control scope is a BODY-BEARING step, exactly like `dir` or `retry`.
+            // A control scope is a body-bearing step, exactly like `dir` or `retry`.
             // It used to be rewritten into a linear sequence of shell segments; now it
             // lowers through the SAME block machinery every other body family uses, and
             // its contract travels in the block payload.

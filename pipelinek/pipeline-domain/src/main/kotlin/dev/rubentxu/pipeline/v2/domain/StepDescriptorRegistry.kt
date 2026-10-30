@@ -121,7 +121,7 @@ class StepDescriptorRegistry private constructor(
                     introduces = ContextKind.OUTPUT_DECORATOR,
                     // The family catches interruptions — that is what the DSL's own
                     // `warnError(message, catchInterruptions = true)` default says. The
-                    // PER-CALL-SITE flag travels in the block payload; this row declares
+                    // per-call-site flag travels in the block payload; this row declares
                     // what the family supports, so a default that contradicted it would
                     // be a contradiction between the descriptor and the DSL.
                     catchesInterruptions = true,

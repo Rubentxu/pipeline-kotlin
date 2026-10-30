@@ -173,7 +173,7 @@ internal object BodyOutcomeFolder {
         contract: CoreWorkflowControlInput,
         bodyOutcome: StepOutcome,
     ): BodyFoldResult {
-        val degraded = BodyFoldEmission.StageDegraded(contract.message ?: "")
+        val degraded = BodyFoldEmission.StageDegraded(contract.message.orEmpty())
         return when (bodyOutcome) {
             StepOutcome.Success -> BodyFoldResult(StepOutcome.Unstable, listOf(degraded))
             StepOutcome.Unstable -> BodyFoldResult(StepOutcome.Unstable, listOf(degraded))

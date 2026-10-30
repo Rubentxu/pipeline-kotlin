@@ -79,19 +79,22 @@ class StepDescriptorRegistry private constructor(
 */
         fun standard(): StepDescriptorRegistry = StepDescriptorRegistry(
             buildMap {
+                foldingBodyRows().forEach { (key, descriptor) -> put(key, descriptor) }
                 canonicalEngineBodyRows().forEach { (key, descriptor) -> put(key, descriptor) }
                 terminalRows().forEach { (key, descriptor) -> put(key, descriptor) }
             }
         )
 
         /**
-         * Body rows executed by the canonical body engine.
-         * Each row names the scope it projects, the retry shape it polls under, or the
-         * fold it applies to the body's typed outcome. The coordinator derives
-         * eligibility from [BodyExecutionOwner.CANONICAL_ENGINE], so adding a row here
-         * is what makes a body Step routable.
+         * Body rows that FOLD the body's typed outcome instead of projecting a scope.
+         * A folding row is not a scoped row: the body still runs once, in the caller's own
+         * context, and what the scope does with that outcome is a fold, not a projection.
+         * Which fold it applies travels in the block payload, so the row declares it.
+         * The coordinator derives eligibility from [BodyExecutionOwner.CANONICAL_ENGINE]
+         * like every other body row, so this group is where the rows live, not what makes
+         * them routable.
 */
-        private fun canonicalEngineBodyRows(): List<Pair<PluginStepId, StepDescriptor>> = listOf(
+        private fun foldingBodyRows(): List<Pair<PluginStepId, StepDescriptor>> = listOf(
             PluginStepId("core.catchError") to StepDescriptor(
                 stepId = "core.catchError",
                 name = "catchError",
@@ -127,6 +130,15 @@ class StepDescriptorRegistry private constructor(
                     catchesInterruptions = true,
                 ),
             ),
+        )
+
+        /**
+         * Body rows executed by the canonical body engine that project a scope.
+         * Each row names the scope it projects or the retry shape it polls under. The
+         * coordinator derives eligibility from [BodyExecutionOwner.CANONICAL_ENGINE], so
+         * adding a row here is what makes a body Step routable.
+*/
+        private fun canonicalEngineBodyRows(): List<Pair<PluginStepId, StepDescriptor>> = listOf(
             PluginStepId("core.withEnv") to StepDescriptor(
                 stepId = "core.withEnv",
                 name = "withEnv",

@@ -43,13 +43,17 @@ import java.time.Instant
  * through the store the engine writes, so what this test reads is what the engine would
  * have left behind. Nothing here is written by hand.
  *
- * ## What it proves
+ * ## What it proves, and what it does not
  *
- * That the read-side answers from the durable state and not from a transcript: the plan
- * fingerprint it shows is the one the run ANNOUNCED, the resources are the ones the run
- * announced, and the promises are the ones the engine armed before it let anything happen.
- * A reader that reconstructed the state from logs would have to agree with the engine by
- * luck.
+ * The READER against a real file: that the reader hands back what the run left, that its
+ * connection cannot write, that reading leaves the file untouched, that a run which is not
+ * there is not a run that owes nothing, and that a store without the promise table refuses
+ * instead of answering.
+ *
+ * What the reader hands back is not this file's business: the plan fingerprint the view
+ * shows and the plugin each promise names are READINGS of the rows, and they are asked of
+ * the projection itself, in SagaInspectionProjectionTest. Two files, two questions, neither
+ * asked twice.
  */
 class SagaInspectionTest {
 
@@ -124,19 +128,6 @@ class SagaInspectionTest {
     }
 
     @Test
-    fun `the plan the read-side shows is the plan the run announced`() {
-        val state = durableStateOfCapturedRun()
-        val announced = state.announcedPlanFingerprints()
-
-        val view = SagaInspectionProjection.read(RUN_ID, state.rows, state.events).view
-
-        assertEquals(
-            announced,
-            view.actions.map { it.planFingerprint.hex },
-        )
-    }
-
-    @Test
     fun `the connection the reader opens cannot write`() {
         durableStateOfCapturedRun()
 
@@ -204,37 +195,6 @@ class SagaInspectionTest {
      * The durable state of the captured run: its history written through the store the
      * engine writes, and its promises written through the store the engine writes.
      */
-    @Test
-    fun `the read-side says which plugin armed each promise`() {
-        val store = store()
-        store.arm(
-            SagaObligationRow(
-                runId = RUN_ID,
-                sagaId = SagaId.of("checkout"),
-                actionId = SagaActionId.of("reserve-stock"),
-                compensationId = CompensationId.of("release-stock"),
-                intentVersion = SagaIntentContract.CURRENT_VERSION,
-                planFingerprint = SagaPlanFingerprint("a".repeat(64)),
-                resourceRef = ResourceRef.of("stock/reservation-42"),
-                kind = CompensationKind.RESTORE,
-                status = CompensationObligationStatus.ARMED,
-                forwardOpId = "run-1|stage-0|step-3",
-                compensationOpId = "saga-v1|compensate|release-stock|run-1|stage-0|step-3",
-                leaseEpoch = 1L,
-                createdAtMs = 1_000L,
-                updatedAtMs = 1_000L,
-                receiptRef = null,
-                ownerPluginId = "example.saga",
-            ),
-        )
-
-        val report = SagaInspectionProjection.read(RUN_ID, store.listForRun(RUN_ID), emptyList())
-
-        val origin = report.originOf("checkout", "reserve-stock", "release-stock")
-        assertEquals("example.saga", origin?.pluginId)
-        assertEquals(SagaIntentContract.CURRENT_VERSION, origin?.intentVersion)
-    }
-
     private fun durableStateOfCapturedRun(): CapturedState {
         val events = JsonEventLog.decode(plane(PLANE))
         SqliteEventStore(dbPath()).use { store ->
@@ -298,17 +258,13 @@ class SagaInspectionTest {
 
         val read = SqliteSagaObligationReader(dbPath()).read(RUN_ID)
         val state = assertInstanceOf<SagaInspectionRead.Read>(read)
-        return CapturedState(state.rows, state.events, armed)
+        return CapturedState(state.rows, state.events)
     }
 
     private data class CapturedState(
         val rows: List<SagaObligationRow>,
         val events: List<DomainEvent>,
-        val armed: List<CompensationArmed>,
-    ) {
-        /** The plan digests the run announced, in the order it announced them. */
-        fun announcedPlanFingerprints(): List<String> = armed.map { it.planFingerprint }
-    }
+    )
 
     /**
      * The forward operation the promise protects, read out of the compensation's own id.

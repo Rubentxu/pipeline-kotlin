@@ -12,47 +12,45 @@ import dev.rubentxu.pipeline.v2.domain.saga.CompensationObservation
 import dev.rubentxu.pipeline.v2.domain.saga.CompensationPolicy
 import dev.rubentxu.pipeline.v2.domain.saga.EffectEvidence
 import dev.rubentxu.pipeline.v2.domain.saga.EffectReceiptRef
-import dev.rubentxu.pipeline.v2.domain.saga.InterventionReason
 import dev.rubentxu.pipeline.v2.domain.saga.ResourceRef
 import dev.rubentxu.pipeline.v2.domain.saga.SagaActionId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaId
 import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
 import dev.rubentxu.pipeline.v2.domain.saga.SagaRecordOutcome
 import dev.rubentxu.pipeline.v2.domain.saga.SagaRecordRejection
-import dev.rubentxu.pipeline.v2.domain.saga.UncertaintyReason
 import dev.rubentxu.pipeline.v2.events.NullEventSink
-import dev.rubentxu.pipeline.v2.events.durable.SqliteConnectionFactory
-import dev.rubentxu.pipeline.v2.events.durable.SqliteSagaObligationStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemorySagaObligationStore
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertInstanceOf
-import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Path
 import java.time.Instant
 
 /**
- * The Saga PLAN port, exercised against a real SQLite file.
+ * The Saga PLAN port, exercised against the store that keeps no file.
  *
- * The file is real on purpose: the guarantee under test is that the STATE a plugin reports is
- * the state that survives, and that the answer a later process gets is derived from that
- * state rather than from anything the first process remembered.
+ * ## What this file is for
+ *
+ * The guarantee under test is the ALGORITHM of the plan port: what a Saga owes, what a
+ * compensation discharges, which transition is refused, and which writer is fenced out. None
+ * of those answers is a fact about a file — they are decisions the port takes — so they are
+ * asked of the VOLATILE store the product already ships, the one a run without `--db` binds.
+ * The store is the product's, not a double of it.
+ *
+ * ## Where the durability went
+ *
+ * The other half of the port has its own home: the state a LATER process reads is the state
+ * that SURVIVES, and that is a fact about the file, so the durable store's own test
+ * (SqliteSagaObligationStoreTest) asks it what it leaves behind once its writer is gone. The
+ * two files answer two different questions, and neither one is asked twice.
  */
 class SagaPlanOperationsAdapterTest {
 
-    @TempDir
-    lateinit var tempDir: Path
-
-    private fun dbPath(): String = tempDir.resolve("run.sqlite").toString()
-
-    private fun store() = SqliteSagaObligationStore(
-        connectionFactory = { SqliteConnectionFactory.open(dbPath()) },
-        dbPath = dbPath(),
-    )
+    private val store = InMemorySagaObligationStore()
 
     private fun plan(leaseEpoch: Long = 1L) = SagaPlanOperationsAdapter(
         runId = "run-1",
         leaseEpoch = leaseEpoch,
-        store = store(),
+        store = store,
         clock = FixedClock,
     )
 
@@ -65,7 +63,7 @@ class SagaPlanOperationsAdapterTest {
             runId = "run-1",
             forwardOpId = "run-1|stage-0|step-3",
             leaseEpoch = leaseEpoch,
-            store = store(),
+            store = store,
             eventSink = NullEventSink,
             clock = FixedClock,
         )
@@ -108,7 +106,7 @@ class SagaPlanOperationsAdapterTest {
     }
 
     @Test
-    fun `the receipt that was reported is the receipt that is durable`() {
+    fun `the receipt that was reported is the receipt that comes back`() {
         arm()
         val plan = plan()
 
@@ -153,19 +151,6 @@ class SagaPlanOperationsAdapterTest {
         val superseded = assertInstanceOf<SagaRecordRejection.LeaseSuperseded>(refused.reason)
         assertEquals(2L, superseded.heldEpoch)
         assertEquals(5L, superseded.currentEpoch)
-    }
-
-    @Test
-    fun `the state a later process reads is the state the first one wrote`() {
-        arm()
-        plan().recordForward(KEY, EffectEvidence.Unknown(UncertaintyReason.ACK_LOST))
-
-        // A DIFFERENT adapter over the SAME file: this is what a process that resumes the run
-        // after a crash gets to see.
-        val directive = plan().next(SAGA, CompensationPolicy.NotReconcilable)
-
-        val intervention = assertInstanceOf<CompensationDirective.NeedsIntervention>(directive)
-        assertEquals(InterventionReason.UNKNOWN_EFFECT, intervention.reason)
     }
 
     private object FixedClock : Clock {

@@ -14,14 +14,11 @@ import dev.rubentxu.pipeline.v2.domain.saga.SagaPlanFingerprint
 import dev.rubentxu.pipeline.v2.domain.saga.SagaRecordOutcome
 import dev.rubentxu.pipeline.v2.domain.saga.SagaRecordRejection
 import dev.rubentxu.pipeline.v2.events.NullEventSink
-import dev.rubentxu.pipeline.v2.events.durable.SqliteConnectionFactory
-import dev.rubentxu.pipeline.v2.events.durable.SqliteSagaObligationStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemorySagaObligationStore
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertInstanceOf
-import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Path
 import java.time.Instant
 
 /**
@@ -30,24 +27,29 @@ import java.time.Instant
  * The ports are the seam a plugin actually touches, so this is where the refusal has to be
  * legible: the reason names the plugin that holds the promise, because "not allowed" without
  * a name sends the reader looking in the wrong place.
+ *
+ * ## What this file is for
+ *
+ * Three refusals, asked of the VOLATILE store the product already ships: a second plugin is
+ * told who owns the promise, the owner may arm it again, and a foreign plugin is told whose
+ * promise it tried to move. Ownership is a DECISION the ports take, not a fact about a file.
+ *
+ * ## What this file is NOT for
+ *
+ * The rest of ownership lives where it belongs: the durable store's own test
+ * (SagaPromiseOwnershipStoreTest) asks the file who owns a promise and what survives the
+ * writer, and the domain's own test asks what a promise with no recorded owner means. This
+ * file does not ask those questions again.
  */
 class SagaPromiseOwnershipPortsTest {
 
-    @TempDir
-    lateinit var tempDir: Path
-
-    private fun dbPath(): String = tempDir.resolve("run.sqlite").toString()
-
-    private fun store() = SqliteSagaObligationStore(
-        connectionFactory = { SqliteConnectionFactory.open(dbPath()) },
-        dbPath = dbPath(),
-    )
+    private val store = InMemorySagaObligationStore()
 
     private fun intent(ownerPluginId: String?) = SagaCompensationOperations(
         runId = "run-1",
         forwardOpId = "run-1|stage-0|step-3",
         leaseEpoch = 1L,
-        store = store(),
+        store = store,
         eventSink = NullEventSink,
         clock = FixedClock,
         ownerPluginId = ownerPluginId,
@@ -56,7 +58,7 @@ class SagaPromiseOwnershipPortsTest {
     private fun plan(ownerPluginId: String?) = SagaPlanOperationsAdapter(
         runId = "run-1",
         leaseEpoch = 1L,
-        store = store(),
+        store = store,
         clock = FixedClock,
         ownerPluginId = ownerPluginId,
     )
@@ -69,13 +71,6 @@ class SagaPromiseOwnershipPortsTest {
         resourceRef = ResourceRef.of("stock/reservation-42"),
         kind = CompensationKind.RESTORE,
     )
-
-    @Test
-    fun `the promise is armed with the plugin that armed it`() {
-        val outcome = intent("example.saga").arm(declaration())
-
-        assertInstanceOf<CompensationArmOutcome.Armed>(outcome)
-    }
 
     @Test
     fun `another plugin that arms the same key is refused, and the reason names the owner`() {
@@ -107,24 +102,6 @@ class SagaPromiseOwnershipPortsTest {
         val foreign = assertInstanceOf<SagaRecordRejection.ForeignOwner>(refused.reason)
         assertEquals("example.saga", foreign.owner)
         assertEquals("other.saga", foreign.writer)
-    }
-
-    @Test
-    fun `the plugin that owns the promise can move it`() {
-        intent("example.saga").arm(declaration())
-
-        val outcome = plan("example.saga").beginForward(KEY)
-
-        assertInstanceOf<SagaRecordOutcome.Recorded>(outcome)
-    }
-
-    @Test
-    fun `a writer that names nobody is not claiming ownership, so it is not refused`() {
-        intent("example.saga").arm(declaration())
-
-        val outcome = plan(null).beginForward(KEY)
-
-        assertInstanceOf<SagaRecordOutcome.Recorded>(outcome)
     }
 
     private object FixedClock : Clock {

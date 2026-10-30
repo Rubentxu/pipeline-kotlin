@@ -43,6 +43,13 @@ import java.time.Instant
  * defecto estaba en las dos, y una fila que sólo cubre una de ellas deja
  * libre la otra.
  *
+ * Las dos filas viven en ESTE fichero porque preguntan lo mismo —¿la operación
+ * en curso tiene la atribución de su run?— a dos implementaciones del mismo
+ * puerto: separarlas en dos ficheros separaría la pregunta, no la garantía, y
+ * dejaría dos copias de los mismos helpers para dos filas que se leen igual.
+ * Lo que SÍ cambia entre ellas —el fichero real frente a la memoria— está en
+ * lo que cada fila hace, no en dónde vive.
+ *
  * ## Por qué el SQLite es contra un fichero real
  *
  * La garantía es sobre lo que SOBREVIVE y sobre lo que un lector puede ver.
@@ -78,30 +85,6 @@ class OperationJournalRunAttributionTest {
     )
 
     private val fingerprint = "a".repeat(64)
-
-    /**
-     * El journal en memoria lista la operación que sigue en curso.
-     */
-    @Test
-    fun `el journal en memoria lista la operacion que sigue en curso`() {
-        val journal = InMemoryOperationJournal(FixedClock())
-
-        journal.beginOperation("run-1-s0-0", 1, fingerprint, inputJson("run-1"))
-
-        val rows = journal.listForRun("run-1")
-
-        assertEquals(
-            1,
-            rows.size,
-            "la operación que sigue en curso pertenece al run: es la fila que dice que el " +
-                "run NO terminó, y sin ella el run parece finished",
-        )
-        assertEquals(
-            OperationStatus.RUNNING,
-            rows.single().status,
-            "la fila que se lists es la que está en curso, no una terminada",
-        )
-    }
 
     /**
      * El journal SQLite lista la operación que sigue en curso.
@@ -159,6 +142,36 @@ class OperationJournalRunAttributionTest {
             OperationStatus.RUNNING,
             rows.single().status,
             "y la fila que se lista es la que sigue en curso",
+        )
+    }
+
+    /**
+     * El journal en memoria lista la operación que sigue en curso.
+     *
+     * La implementación en memoria no tiene SQL: la fila RUNNING nace con la
+     * atribución del run y la lectura la encuentra. Se pregunta aquí, y no en
+     * la fila de SQLite, porque el defecto que la fila persiguía estaba en las
+     * DOS implementaciones y cada una necesita su fila: una que sólo cubriera
+     * una dejaría libre la otra.
+     */
+    @Test
+    fun `el journal en memoria lista la operacion que sigue en curso`() {
+        val journal = InMemoryOperationJournal(FixedClock())
+
+        journal.beginOperation("run-1-s0-0", 1, fingerprint, inputJson("run-1"))
+
+        val rows = journal.listForRun("run-1")
+
+        assertEquals(
+            1,
+            rows.size,
+            "la operación que sigue en curso pertenece al run: es la fila que dice que el " +
+                "run NO terminó, y sin ella el run parece finished",
+        )
+        assertEquals(
+            OperationStatus.RUNNING,
+            rows.single().status,
+            "la fila que se lista es la que está en curso, no una terminada",
         )
     }
 

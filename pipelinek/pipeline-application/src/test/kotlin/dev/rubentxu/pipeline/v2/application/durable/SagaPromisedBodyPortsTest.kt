@@ -30,8 +30,7 @@ import dev.rubentxu.pipeline.v2.domain.step.BodyInvocationContext
 import dev.rubentxu.pipeline.v2.domain.step.BodyOutcome
 import dev.rubentxu.pipeline.v2.domain.step.BodySlotInvoker
 import dev.rubentxu.pipeline.v2.events.NullEventSink
-import dev.rubentxu.pipeline.v2.events.durable.SqliteConnectionFactory
-import dev.rubentxu.pipeline.v2.events.durable.SqliteSagaObligationStore
+import dev.rubentxu.pipeline.v2.events.durable.InMemorySagaObligationStore
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
@@ -39,8 +38,6 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertInstanceOf
-import org.junit.jupiter.api.io.TempDir
-import java.nio.file.Path
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 
@@ -51,18 +48,18 @@ import kotlinx.coroutines.runBlocking
  * promise is made and again when the compensation is about to run. These are the rules that
  * make the two measurements mean the same thing: the plugin NAMES the body, the engine MEASURES
  * it, and a compensation whose body is not the promised one does not run.
+ *
+ * ## What this file is for
+ *
+ * What a body PROMISE is worth, asked of the VOLATILE store the product already ships: the
+ * promise is made with the body it names, a body nobody has is refused before any effect runs
+ * behind it, a body that changed is caught before it undoes anything, and a promise that names
+ * no body cannot contradict one. None of those answers is a fact about a file — they are
+ * decisions about a MEASUREMENT, so the file is not the subject.
  */
 class SagaPromisedBodyPortsTest {
 
-    @TempDir
-    lateinit var tempDir: Path
-
-    private fun dbPath(): String = tempDir.resolve("run.sqlite").toString()
-
-    private fun store() = SqliteSagaObligationStore(
-        connectionFactory = { SqliteConnectionFactory.open(dbPath()) },
-        dbPath = dbPath(),
-    )
+    private val store = InMemorySagaObligationStore()
 
     /**
      * The intent port, as a plugin would hold it.
@@ -73,7 +70,7 @@ class SagaPromisedBodyPortsTest {
         runId = "run-1",
         forwardOpId = "run-1|stage-0|step-reserve",
         leaseEpoch = 1L,
-        store = store(),
+        store = store,
         eventSink = NullEventSink,
         clock = FixedClock,
         ownerPluginId = "example.saga",
@@ -83,7 +80,7 @@ class SagaPromisedBodyPortsTest {
     private fun planOperations() = SagaPlanOperationsAdapter(
         runId = "run-1",
         leaseEpoch = 1L,
-        store = store(),
+        store = store,
         clock = FixedClock,
         ownerPluginId = "example.saga",
     )
@@ -128,7 +125,7 @@ class SagaPromisedBodyPortsTest {
 
         assertInstanceOf<CompensationArmOutcome.Armed>(outcome)
 
-        val stored = store().find("run-1", KEY)?.bodyDigest
+        val stored = store.find("run-1", KEY)?.bodyDigest
         assertNotNull(stored)
         // It is the COMPENSATING body, not the forward one and not the whole body: a promise
         // is about one body, and a change elsewhere must not invalidate it.
@@ -144,7 +141,7 @@ class SagaPromisedBodyPortsTest {
         val refusal = assertInstanceOf<ArmRejection.UnknownCompensationBody>(rejected.reason)
         assertEquals(PluginStepId("reserve.nope"), refusal.slot)
         // No promise was made, so no effect may run behind it.
-        assertNull(store().find("run-1", KEY))
+        assertNull(store.find("run-1", KEY))
     }
 
     @Test
@@ -153,7 +150,7 @@ class SagaPromisedBodyPortsTest {
 
         val rejected = assertInstanceOf<CompensationArmOutcome.Rejected>(outcome)
         assertInstanceOf<ArmRejection.UnknownCompensationBody>(rejected.reason)
-        assertNull(store().find("run-1", KEY))
+        assertNull(store.find("run-1", KEY))
     }
 
     @Test
@@ -270,7 +267,7 @@ class SagaPromisedBodyPortsTest {
         completion = SagaCompletionAdapter(
             runId = "run-1",
             leaseEpoch = 1L,
-            store = store(),
+            store = store,
             clock = FixedClock,
         ),
         slotInvoker = slots,
@@ -278,7 +275,7 @@ class SagaPromisedBodyPortsTest {
         clock = FixedClock,
         bodies = bodies,
         // The body each promise is paid with, read from the durable row — as the engine does.
-        promisedBodies = SagaPromisedBodyReader { key -> store().find("run-1", key)?.bodyDigest },
+        promisedBodies = SagaPromisedBodyReader { key -> store.find("run-1", key)?.bodyDigest },
     )
 
     /**
